@@ -171,7 +171,7 @@ expressible in cells.
 ## Everything that runs on the host is built from source
 
 Every program, library and module that the host installs and runs on its own processor is compiled
-in this tree from pinned source: 2,027 recipes, 2,003 under `ports/core` for upstream software,
+in this tree from pinned source: 2,025 recipes, 2,001 under `ports/core` for upstream software,
 each pinned by hash, and 24 under `src/` for the software kept in this repository, most of it
 written for KDOS. [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of
 them by phase and group, and [How KDOS is built](../05-developer/how-kdos-is-built.md) follows the
@@ -264,7 +264,7 @@ and [A bundle no tool writes](../05-developer/writing-ports.md#a-bundle-no-tool-
 ## Reproducible by construction
 
 A package built twice from the same tree is byte-identical. That is a property of one function
-rather than of 2,027 recipes: `roll_package()` in `kpkg`, the package manager
+rather than of 2,025 recipes: `roll_package()` in `kpkg`, the package manager
 (`src/packages/kdos-kpkg/build.c`), runs tar with `--sort=name`, `--format=gnu`,
 `--owner=0 --group=0 --numeric-owner`, an `--mtime` taken from `SOURCE_DATE_EPOCH`, and
 `xz -9 -T1` as a pinned compressor. The build also sets its umask to `022` before a recipe runs.

@@ -14,7 +14,7 @@ with a desktop whose every surface is a grid of character cells.
 </p>
 
 <p align="center">
-<sub>2,003 upstream ports · 24 of its own · Linux 7.2.7 · 73 containerised applications · builds with the network off</sub>
+<sub>2,001 upstream ports · 24 of its own · Linux 7.2.7 · 73 containerised applications · builds with the network off</sub>
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@ documentation is a book under [`docs/kdos/`](docs/kdos/README.md).
 ## What KDOS is
 
 KDOS is a complete operating system built in this repository from upstream source archives: a
-cross toolchain, a musl userland, a self-hosting bootstrap, 2,003 upstream ports, a Wayland
+cross toolchain, a musl userland, a self-hosting bootstrap, 2,001 upstream ports, a Wayland
 compositor, a panel, a terminal, an installer and a package manager. There is no base image and no
 binary archive to fall back on.
 
@@ -78,7 +78,7 @@ util-linux, procps-ng and a few GNU tools where toybox falls short; toybox `init
 scripts and the `ksvc` supervisor in place of systemd; Wayland only, with rootless Xwayland for X11
 clients and no display manager; a desktop whose every surface draws character cells and links no
 GUI toolkit, while GTK, Qt, KDE Frameworks, wxWidgets, FLTK and Tk are built for the applications
-that use them; and packages compiled from 2,027 recipes, on a build host for the installation
+that use them; and packages compiled from 2,025 recipes, on a build host for the installation
 image and on the machine itself for updates.
 [How KDOS differs](docs/kdos/01-philosophy/how-kdos-differs.md) compares each choice with the
 usual alternatives, says why KDOS chose differently, and lists what is given up.
@@ -89,7 +89,7 @@ usual alternatives, says why KDOS chose differently, and lists what is given up.
 |---|---|
 | The desktop | A Wayland compositor (`kdos-comp`, a fork of labwc 0.20.0 whose KDOS code lives in eighteen source files of its own, with a CRT-style phosphor shader), a panel program, `kdos-shell`, whose one binary provides 54 surfaces (the panel itself, the Start menu, launcher, settings, file chooser, notifications, network, Bluetooth, audio, displays, the store and more), a terminal, a resource monitor and a lock screen |
 | Applications | Native ports compiled with the rest of the host, among them Firefox ESR, LibreWolf, Chromium, Thunderbird, LibreOffice, GIMP, Krita, Inkscape, Blender, FreeCAD, KiCad, Kdenlive, OBS Studio, QGIS, Kodi, TeX Live and Wine, built Wayland-first with their X11 backends compiled in; and 73 catalogue applications, among them Zathura, Scribus, ParaView, Maxima, Scilab, VSCodium, Meld, Claws Mail and Hugin, each built on demand into its own box and movable between machines as a pack file, signed when a signing key is configured |
-| The host | 2,003 upstream ports built on musl: PipeWire audio, NetworkManager, Xwayland for X11-only programs, GTK 3 and 4, libadwaita, WebKitGTK, Qt 5 and 6, QtWebEngine and KDE Frameworks 6 for the applications, podman and QEMU, GCC and Clang/LLVM, Rust, Go, Zig, Haskell, Node.js and Python, cross toolchains for ARM, RISC-V and AVR, SDR and FPGA tooling, and CUPS printing |
+| The host | 2,001 upstream ports built on musl: PipeWire audio, NetworkManager, Xwayland for X11-only programs, GTK 3 and 4, libadwaita, WebKitGTK, Qt 5 and 6, QtWebEngine and KDE Frameworks 6 for the applications, podman and QEMU, GCC and Clang/LLVM, Rust, Go, Zig, Haskell, Node.js and Python, cross toolchains for ARM, RISC-V and AVR, SDR and FPGA tooling, and CUPS printing |
 | Boot and install | A boot splash, an optionally encrypted root, A/B root slots, and `kinstall`, a text-mode installer that also runs unattended from an answer file |
 | Its own software | 17 C libraries written for this system, the package manager and the installer (both compiled in phase 1 directly from `src/packages/`), and 24 recipes of its own: the desktop, five root daemons, the `kdos` command and its 31 subcommands, `help` included |
 
@@ -202,7 +202,7 @@ page carries the full table of contents and four reading paths.
 ## Repository layout
 
 ```
-ports/core/       2,003 upstream ports: a kpkgbuild and a build.sh each, patches where needed
+ports/core/       2,001 upstream ports: a kpkgbuild and a build.sh each, patches where needed
 ports/            fetch, update and publish tools, and sources.idx
 src/libs/         17 C libraries written for this system
 src/desktop/      the compositor, the panel, the terminal, the root daemons

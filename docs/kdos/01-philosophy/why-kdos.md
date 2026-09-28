@@ -47,7 +47,7 @@ built and who maintains it:
 
 | Ring | Where it is in the repository | What it holds | How it is built |
 |---|---|---|---|
-| Core | `ports/core/`, 2,003 recipes | musl, toybox, the toolchains, the libraries, the services, the kernel and its firmware, and the natively ported applications | Compiled here from upstream source archives, each pinned by its sha256 |
+| Core | `ports/core/`, 2,001 recipes | musl, toybox, the toolchains, the libraries, the services, the kernel and its firmware, and the natively ported applications | Compiled here from upstream source archives, each pinned by its sha256 |
 | Desktop | `src/`, 24 recipes | The compositor, the panel, the terminal, the root daemons, the installer, the `kdos` command and the 17 C libraries they share | Compiled here from source written for KDOS; `kpkg` and the installer by two phase-1 scripts |
 | Outer | `src/packages/kdos-appbox/catalogue` | 73 graphical and command-line applications over 7 shared runtimes | Declared as Debian packages and built by podman on the machine that asks for them |
 
@@ -71,7 +71,7 @@ process on a working desktop and says where each kind of state is kept.
 
 ## Built from source, with named exceptions
 
-The host is compiled in this repository from 2,027 recipes, 2,003 under `ports/core` for upstream
+The host is compiled in this repository from 2,025 recipes, 2,001 under `ports/core` for upstream
 software and 24 under `src/` for the desktop, the daemons and the tools written for KDOS, and
 from two scripts: one builds `kpkg` itself, which has no recipe, and the other builds the
 installer, `kinstall`, whose recipe exists but is named in no phase list.
@@ -86,8 +86,8 @@ The finished system has no base image beneath it and no binary archive to fall b
 container the build runs in, an Alpine 3.23 image with a host compiler, supplies the tools that
 build the cross toolchain and the first userland, and nothing from it is installed. Every recipe
 that a phase list (`script/*/packages.txt`) names is installed on the finished system, together with
-everything those recipes depend on. That reaches all but 6 of the 2,003 upstream recipes; the other
-6 stay in the tree unbuilt. A *phase* is defined in the [Glossary](../06-reference/glossary.md).
+everything those recipes depend on. That reaches all but 5 of the 2,001 upstream recipes; the other
+5 stay in the tree unbuilt. A *phase* is defined in the [Glossary](../06-reference/glossary.md).
 [How KDOS is built](../05-developer/how-kdos-is-built.md) follows the build from `git clone` to a
 bootable ISO, [The build system](../05-developer/build-system.md) describes the orchestrator that
 runs the phases, and [The ports catalogue](../06-reference/ports-catalogue.md) lists every recipe by
@@ -258,7 +258,7 @@ lists and every `depends =` line, and the catalogue by counting its rows by kind
 
 | | |
 |---|---|
-| Port recipes in `ports/core` | 2,003 |
+| Port recipes in `ports/core` | 2,001 |
 | Port recipes under `src/` for KDOS's own software | 24 (13 in `src/desktop`, 11 in `src/packages`) |
 | Upstream recipes that no phase list or dependency reaches, and so are not built | 6 |
 | C libraries written for this system, under `src/libs` | 17, one of them (`libkvt`) a fork of libtsm |

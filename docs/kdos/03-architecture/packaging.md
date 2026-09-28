@@ -66,11 +66,11 @@ There are three port repositories, all in the same format, searched in this orde
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 2,003 | Upstream software |
+| `/ports/core` | `ports/core/` | 2,001 | Upstream software |
 | `/kdos/src/packages` | `src/packages/` | 11 | KDOS's own tools, theme, installer and packer |
 | `/kdos/src/desktop` | `src/desktop/` | 13 | KDOS's own compositor, shell, terminal, daemons and portal |
 
-That is 2,027 recipes in all (counted as directories holding a `kpkgbuild`). When two repositories
+That is 2,025 recipes in all (counted as directories holding a `kpkgbuild`). When two repositories
 hold a port of the same name, the first one in the search order wins.
 
 `PORT_REPO` lists the repositories `kpkg` may resolve against. Its default, from
@@ -122,20 +122,20 @@ system or in what order they are built. That is the job of the **phase package l
 | List | Names | Named sections |
 |---|---|---|
 | `script/02_phase2/packages.txt` | 8 | none: the self-hosting bootstrap, rebuilt inside the chroot |
-| `script/03_phase3/packages.txt` | 98 | 9, from "Build Toolchain" to "Documentation & Spec Tooling" |
+| `script/03_phase3/packages.txt` | 97 | 9, from "Build Toolchain" to "Documentation & Spec Tooling" |
 | `script/04_phase4/packages.txt` | 1,687 | 90, from "Core Build Utilities (host-side)" to "Data the applications read" |
 | `script/05_desktop/packages.txt` | 22 | 1: "The resource monitor" (see below) |
 | `script/05_phase5/packages.txt` | 1 | none: the kernel, `linux` |
 
-"Names" counts the non-comment lines. Between them the five lists name 1,776 distinct ports.
+"Names" counts the non-comment lines. Between them the five lists name 1,775 distinct ports.
 The desktop list opens with an unnamed block under its banner, which titles the list "Phase 5:
 The desktop": `xcb-util-wm`, `wlroots`, the compositor, the box socket, the shell, the terminal
 and the lock screen. Its one named group, "The resource monitor", holds `kdos-res` and everything
 after it: the root daemons, the pack tools, the input method, the two portals and the recorder.
 
 A list names only the ports a phase wants; each port's `depends =` pulls in the rest. Following the
-`depends =` lines from the 1,776 names reaches 2,020 ports: 1,997 of the 2,003 in `ports/core`, and
-every recipe under `src/` except `kdos-installer`, which phase 1 builds by name. The 6 `ports/core`
+`depends =` lines from the 1,775 names reaches 2,019 ports: 1,996 of the 2,001 in `ports/core`, and
+every recipe under `src/` except `kdos-installer`, which phase 1 builds by name. The 5 `ports/core`
 recipes nothing reaches are built only on request.
 
 A list is a plain file: one port name per line, with `#` comments. The comments do two jobs. After
@@ -351,7 +351,9 @@ rename. A file that cannot be placed aborts the install before any database entr
 because an entry written past a failure would claim a complete install of a package that is half
 on disk. Writing to the root is permitted whenever the root is writable, which is what lets a
 build install into a sysroot (a directory standing in for a target's root filesystem) it owns
-without being root.
+without being root. `kpkgadd` creates every directory 0755, whatever mode it was packaged with:
+the package is rolled root:root, and a mode that leaned on a daemon's group would lock that
+daemon out. A hook that needs a directory's mode sets it.
 
 ### Who owns a file
 
@@ -405,8 +407,9 @@ bash. A name that is not installed is reported and skipped, and the rest of the 
 still processed.
 
 An install or removal ends by rebuilding the shared indexes its manifest fed, from everything then
-on disk: the GSettings schemas, the GIO module and pixbuf loader caches, the MIME database, the font
-cache and the X core fonts' `fonts.dir`, the info directory and the udev hardware database. The
+on disk: the GSettings schemas, the GIO module and pixbuf loader caches, the MIME database, the
+desktop entries' `mimeinfo.cache`, the font cache and the X core fonts' `fonts.dir`, the info
+directory, the TeX `ls-R` files and the udev hardware database. The
 manual index is merged instead: an install that only adds pages adds them to `mandoc.db`, and the
 index is rebuilt from the whole tree only when a page was removed (by a removal, or as an upgrade's
 orphan) or when there is no `mandoc.db` yet. A tool that is not installed yet is skipped, and a
@@ -475,7 +478,7 @@ their URL's basename, and `file::url` names a file explicitly.
 
 ## Deciding what to rebuild
 
-The build must not recompile 2,027 ports on every run, and must not skip one whose recipe changed.
+The build must not recompile 2,025 ports on every run, and must not skip one whose recipe changed.
 Two hashes decide, and they are the same two the binary host uses.
 
 ### `E:` — the recipe hash
@@ -553,7 +556,7 @@ command line and miss every *dependency* whose recipe changed.
 ## Reproducible packages
 
 A package built twice from the same tree is byte-identical. That is a property of one function, the
-archive roller inside `kpkg`, rather than of 2,027 recipes, which is why `kpkg` rolls the archive
+archive roller inside `kpkg`, rather than of 2,025 recipes, which is why `kpkg` rolls the archive
 itself instead of letting each `build.sh` do it.
 
 Each setting removes one source of difference between two builds:

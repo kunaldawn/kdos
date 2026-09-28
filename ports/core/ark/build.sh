@@ -16,9 +16,9 @@ patch -p1 -i "$PORT_SRC/app-id.patch"
 # fall to the unzip/zip command-line plugin, which cannot report progress or
 # cancel. The command-line plugins find their tools at run time: 7z, zip and
 # unzip are depended on, while unrar, rar, arj and unar are not ports and their
-# formats open through libarchive or not at all. Ark calls the 7-Zip binary
-# `7z`, a name the 7zip port does not install, so 7z archives are handled by
-# libarchive alone until it does. KF_SKIP_PO_PROCESSING leaves the interface
+# formats open through libarchive or not at all. Ark runs 7-Zip as `7z`, the
+# name the 7zip port links to its 7zz, so 7z archives get the cli7z plugin's
+# read and write support. KF_SKIP_PO_PROCESSING leaves the interface
 # catalogues out: bundled data is English only. kdoctools_install() builds the
 # translated handbooks too, and those are removed after the install.
 cmake -S . -B build -G Ninja \

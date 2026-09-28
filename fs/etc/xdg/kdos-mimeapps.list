@@ -35,9 +35,15 @@
 # Folders: Dolphin. Kate's entry claims inode/directory too.
 inode/directory=org.kde.dolphin.desktop
 
-# Documents: Okular for PDF, through its per-format entry (the main
-# org.kde.okular.desktop claims only Okular's own archive type).
+# Documents: Okular, through its per-format entries for PDF, PostScript and
+# DjVu (the main org.kde.okular.desktop claims only Okular's own archive
+# type). *.djvu is globbed by vnd.djvu and vnd.djvu+multipage at equal weight,
+# so both are named; the DjVu generator serves the subclass.
 application/pdf=okularApplication_pdf.desktop
+application/postscript=okularApplication_ghostview.desktop
+image/x-eps=okularApplication_ghostview.desktop
+image/vnd.djvu=okularApplication_djvu.desktop
+image/vnd.djvu+multipage=okularApplication_djvu.desktop
 
 # Books: Calibre's viewer.
 application/epub+zip=calibre-ebook-viewer.desktop
@@ -51,11 +57,36 @@ application/x-fictionbook+xml=calibre-ebook-viewer.desktop
 application/x-openzim=org.kiwix.desktop.desktop
 application/org.kiwix.desktop.x-zim=org.kiwix.desktop.desktop
 
-# Text: Kate.
+# Text: Kate. Its entry claims text/plain alone, and the opener reads the
+# exact type with no subclass walk, so every text subtype that should reach it
+# is named.
 text/plain=org.kde.kate.desktop
 text/markdown=org.kde.kate.desktop
 text/x-shellscript=org.kde.kate.desktop
 application/json=org.kde.kate.desktop
+text/x-csrc=org.kde.kate.desktop
+text/x-chdr=org.kde.kate.desktop
+text/x-c++src=org.kde.kate.desktop
+text/x-c++hdr=org.kde.kate.desktop
+text/x-python=org.kde.kate.desktop
+text/x-python3=org.kde.kate.desktop
+text/x-log=org.kde.kate.desktop
+text/x-patch=org.kde.kate.desktop
+text/x-makefile=org.kde.kate.desktop
+text/x-cmake=org.kde.kate.desktop
+text/x-go=org.kde.kate.desktop
+text/rust=org.kde.kate.desktop
+text/x-java=org.kde.kate.desktop
+text/x-lua=org.kde.kate.desktop
+text/css=org.kde.kate.desktop
+text/javascript=org.kde.kate.desktop
+text/x-tex=org.kde.kate.desktop
+application/x-perl=org.kde.kate.desktop
+application/x-ruby=org.kde.kate.desktop
+application/xml=org.kde.kate.desktop
+application/yaml=org.kde.kate.desktop
+application/toml=org.kde.kate.desktop
+application/sql=org.kde.kate.desktop
 
 # Pictures: Gwenview.
 image/png=org.kde.gwenview.desktop
@@ -68,6 +99,17 @@ image/svg+xml=org.kde.gwenview.desktop
 image/avif=org.kde.gwenview.desktop
 image/heif=org.kde.gwenview.desktop
 image/jxl=org.kde.gwenview.desktop
+image/x-tga=org.kde.gwenview.desktop
+image/vnd.microsoft.icon=org.kde.gwenview.desktop
+image/x-portable-bitmap=org.kde.gwenview.desktop
+image/x-portable-graymap=org.kde.gwenview.desktop
+image/x-portable-pixmap=org.kde.gwenview.desktop
+image/x-portable-anymap=org.kde.gwenview.desktop
+image/vnd.adobe.photoshop=org.kde.gwenview.desktop
+
+# GIMP's own format: GIMP. Gwenview and KolourPaint claim it too, and only
+# preview it.
+image/x-xcf=gimp.desktop
 
 # Video: Haruna.
 video/mp4=org.kde.haruna.desktop
@@ -79,8 +121,15 @@ video/ogg=org.kde.haruna.desktop
 video/vnd.avi=org.kde.haruna.desktop
 video/mp2t=org.kde.haruna.desktop
 video/x-ms-wmv=org.kde.haruna.desktop
+video/x-theora+ogg=org.kde.haruna.desktop
+video/x-ogm+ogg=org.kde.haruna.desktop
+video/x-flv=org.kde.haruna.desktop
+video/3gpp=org.kde.haruna.desktop
 
-# Music: Strawberry.
+# Music: Strawberry. *.ogg and *.opus are globbed by several Ogg subtypes of
+# equal weight, and which one a lookup lands on is the order of the compiled
+# glob table, so every subtype is named, as with x-openzim above. Playlists
+# (*.m3u, *.pls) come here too.
 audio/mpeg=org.strawberrymusicplayer.strawberry.desktop
 audio/flac=org.strawberrymusicplayer.strawberry.desktop
 audio/ogg=org.strawberrymusicplayer.strawberry.desktop
@@ -92,6 +141,13 @@ audio/x-wavpack=org.strawberrymusicplayer.strawberry.desktop
 audio/x-ape=org.strawberrymusicplayer.strawberry.desktop
 audio/x-musepack=org.strawberrymusicplayer.strawberry.desktop
 audio/x-ms-wma=org.strawberrymusicplayer.strawberry.desktop
+audio/x-opus+ogg=org.strawberrymusicplayer.strawberry.desktop
+audio/x-flac+ogg=org.strawberrymusicplayer.strawberry.desktop
+audio/x-speex+ogg=org.strawberrymusicplayer.strawberry.desktop
+audio/x-aiff=org.strawberrymusicplayer.strawberry.desktop
+audio/matroska=org.strawberrymusicplayer.strawberry.desktop
+audio/x-mpegurl=org.strawberrymusicplayer.strawberry.desktop
+audio/x-scpls=org.strawberrymusicplayer.strawberry.desktop
 
 # Archives Ark writes as well as reads: zip, the tar family and 7z.
 application/zip=org.kde.ark.desktop
@@ -101,6 +157,9 @@ application/x-bzip2-compressed-tar=org.kde.ark.desktop
 application/x-xz-compressed-tar=org.kde.ark.desktop
 application/x-zstd-compressed-tar=org.kde.ark.desktop
 application/x-7z-compressed=org.kde.ark.desktop
+
+# Disc images: Burn, the entry that exists for them. Ark claims the type too.
+application/vnd.efi.iso=kdos-burn.desktop
 
 # Mail and calendars: Thunderbird.
 x-scheme-handler/mailto=thunderbird.desktop

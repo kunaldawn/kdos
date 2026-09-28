@@ -30,11 +30,11 @@
  *       which is exactly its upstream filename. Get this wrong and every
  *       running alien app shows a second grey cog beside its own pinned icon.
  *   etc/skel/.local/share/applications/mimeinfo.cache
- *       the mime -> desktop-id index. Written here rather than left to
- *       update-desktop-database: the host has no desktop-file-utils, and
- *       without the cache the MimeType lines are never consulted, so no alien
- *       app appears in any "Open with" dialog and none can be a default
- *       handler.
+ *       the mime -> desktop-id index. Written here because this directory
+ *       is not /usr/share/applications, whose cache kpkg's trigger writes,
+ *       and no package install touches it; without the cache the MimeType
+ *       lines are never consulted, so no alien app appears in any "Open
+ *       with" dialog and none can be a default handler.
  *   usr/share/kdos/alien-apps
  *       name -> in-box command line, read by the launch path.
  *   usr/local/bin/<name> -> kdos-appbox

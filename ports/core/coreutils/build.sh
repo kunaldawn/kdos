@@ -9,8 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ONLY WHAT TOYBOX IMPLEMENTS TOO NARROWLY IS INSTALLED, and today that is one
-# program. toybox is the userland by rule; this exists for the same reason
+# ONLY WHAT TOYBOX IMPLEMENTS TOO NARROWLY IS INSTALLED, and that is two
+# programs. toybox is the userland by rule; this exists for the same reason
 # `sed`, `gawk` and `findutils` do — an upstream build system reaches for a GNU
 # extension, toybox answers with nothing rather than an error, and the failure
 # lands somewhere else entirely.
@@ -32,8 +32,8 @@ INSTALL_PROGRAMS="expr ln"
 
 # FORCE_UNSAFE_CONFIGURE because kpkg builds as root in a chroot. The check
 # exists because one mknod probe would pass as root and fail for a normal
-# user, baking in a wrong answer — which does not apply to `expr`, and the
-# whole of what this port installs is `expr`.
+# user, baking in a wrong answer — which applies to neither program this port
+# installs, `expr` and `ln`.
 export FORCE_UNSAFE_CONFIGURE=1
 
 # `expr` does its big-integer arithmetic through libgmp when configure finds it

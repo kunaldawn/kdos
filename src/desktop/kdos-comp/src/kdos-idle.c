@@ -20,7 +20,9 @@
  *
  * Hooks in upstream files: one call in idle_manager_notify_activity()
  * (the single funnel every input path already goes through), and one
- * in each idle-inhibitor handler.
+ * in each idle-inhibitor handler; kdos-screensaver.c calls
+ * kdos_idle_inhibit() once per org.freedesktop.ScreenSaver cookie, the
+ * route an Xwayland client has.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>

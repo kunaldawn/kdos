@@ -15,4 +15,4 @@ source      = https://downloads.sourceforge.net/gparted/$name-$version.tar.gz
 sha256      = 67388ac405f9fe92a40636cb03b0e1e0bb6403ad89ccc174b2ff190ef6f32349  gparted-1.8.1.tar.gz
 description = GParted — create, resize, move, copy and check partitions and filesystems
 homepage    = https://gparted.org/
-depends     = pkgconf gettext glib gtk3 gtkmm3 glibmm2.66 parted polkit util-linux e2fsprogs dosfstools mtools ntfs-3g exfatprogs btrfs-progs xfsprogs f2fs-tools lvm2 cryptsetup mdadm
+depends     = pkgconf gettext glib gtk3 gtkmm3 glibmm2.66 parted polkit util-linux e2fsprogs dosfstools mtools ntfs-3g exfatprogs btrfs-progs xfsprogs f2fs-tools lvm2 cryptsetup mdadm hfsprogs jfsutils nilfs-utils udftools

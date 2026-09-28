@@ -31,4 +31,4 @@ sha256      = 937ded1229ee69f340772056a4ff6daaede5b899f12c4c7b091c40f430c56fd8  
 sha256      = a0c98a54340a194588205d8cbd6db667bb73d6e9acb0fbc790d409287d31c4f6  translatelocally-0.0.2.20250330.tar.gz
 description = translateLocally: machine translation on the CPU with Bergamot models, with the text never leaving the machine
 homepage    = https://translatelocally.com/
-depends     = cmake ninja librsvg qt6-qtbase qt6-qttools qt6-qtsvg openblas pcre2 libarchive hicolor-icon-theme
+depends     = cmake ninja librsvg qt6-qtbase qt6-qttools qt6-qtsvg qt6-qtwayland openblas pcre2 libarchive hicolor-icon-theme

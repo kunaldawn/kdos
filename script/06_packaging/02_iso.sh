@@ -52,7 +52,10 @@ fi
 echo "Squashing Root Filesystem..."
 # The pseudo filesystems, build artifacts and caches are excluded, and the
 # mountpoints they need are recreated as empty directories — an excluded /proc
-# is a root that cannot mount one.
+# is a root that cannot mount one. /var/cache and /var/log come back empty for
+# the same reason: a daemon creates its own directory under them with a single
+# mkdir(2), which fails with no parent — cupsd's CacheDir and smbd's cache
+# directory among them — and the installed system is copied from this root.
 #
 # `-e` CONSUMES THE REST OF THE COMMAND LINE: every argument after it is an
 # exclude pattern, so it goes LAST and every option goes ahead of it. An option
@@ -69,6 +72,8 @@ mksquashfs / $ISO_ROOT/system.sfs \
     -p "run d 755 0 0" \
     -p "mnt d 755 0 0" \
     -p "media d 755 0 0" \
+    -p "var/cache d 755 0 0" \
+    -p "var/log d 755 0 0" \
     -e proc sys dev tmp run mnt media var/cache var/log build kdos ports
 
 # 2a. The KDOS base pack, when KDOS_PACK_KDOS built one.

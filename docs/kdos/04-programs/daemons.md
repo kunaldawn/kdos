@@ -1,6 +1,6 @@
 # The daemons
 
-KDOS has no logind, no udisks and no polkit agent on the path between the desktop and the kernel.
+KDOS has no logind and no polkit agent on the path between the desktop and the kernel.
 In their place are five small root daemons, each answering a few fixed questions on a Unix socket
 in `/run`: suspend the machine, mount a USB stick, say which application is spending the battery,
 kill a runaway program before the desktop freezes, and mount application packs. This chapter
@@ -380,6 +380,7 @@ carrying its own copy.
 | `nfs` | TCP 2049 | Sharing files over NFSv4 (`72_nfsd`) |
 | `babel` | UDP 6696 | Babel mesh routing (`31_babeld`) |
 | `nut` | TCP 3493 | UPS status for other machines (`56_nut`) |
+| `snmp` | UDP 161 | SNMP queries of this machine (`71_snmpd`) |
 | `mumble` | TCP 64738, UDP 64738 | A Mumble voice server (`75_mumble-server`) |
 | `caldav` | TCP 5232 | Shared calendars and contacts (`77_radicale`) |
 | `mail` | TCP 25, 143, 465, 587, 993 | A LAN mail server (`78_maddy`) |
@@ -389,6 +390,9 @@ carrying its own copy.
 | `caddy` | TCP 8443 | Caddy's shipped site (HTTPS) |
 | `mosh` | UDP 60000–61000 | Incoming mosh sessions (needs `ssh` on as well) |
 | `syncthing` | TCP 22000, UDP 22000, UDP 21027 | Syncthing sync and local discovery |
+| `kdeconnect` | TCP 1714–1764, UDP 1714–1764 | KDE Connect with a phone on the LAN |
+| `vnc` | TCP 5900 | This desktop over VNC (`wayvnc`, which listens on 127.0.0.1 until its config or `wayvnc 0.0.0.0` says otherwise) |
+| `xonotic` | UDP 26000 | Hosting a Xonotic game for the LAN |
 
 How a change is applied:
 
@@ -631,8 +635,10 @@ choose; which process the daemon picks on a busy desktop is what `--fixture` tes
 ## kdos-mountd
 
 Removable media, encrypted volumes, SMART health and network shares for a desktop that is not root.
-There is no general-purpose disk service (no udisks) on KDOS, so this daemon is the whole of what
-stands between the desktop and `mount`.
+udisks2 serves the natively ported toolkit applications (see
+[Administration](../02-user-guide/administration.md)); for the desktop's own surfaces this daemon is
+the whole of what stands between them and `mount`. Both read `/proc/mounts`, so a device udisks2
+mounted under `/run/media/<user>` is listed here as mounted, with its mountpoint.
 
 The client never names a path or a mountpoint. It asks for a row out of a list the daemon
 published, and the daemon decides the device, the mountpoint and the options. A design that takes

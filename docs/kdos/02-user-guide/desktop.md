@@ -278,11 +278,10 @@ once, with no arrows and no `Enter`. The shipped favorites are:
 | `lazygit` | `GI` |
 | `foot`, the terminal | `TE` |
 | `firefox-esr` | `WW` |
-| `org.xfce.mousepad`, a text editor | `ED` |
+| `org.kde.kate`, the text editor | `ED` |
 | `gimp` | `IM` |
 
-Firefox ESR and GIMP are native applications. Mousepad runs in a box and appears only once it is
-installed from the catalogue. At most eight pinned applications are shown: the first eight
+Firefox ESR, Kate and GIMP are native applications. At most eight pinned applications are shown: the first eight
 entries whose application is installed. An entry with nothing installed behind it is skipped and
 does not use up a place. The panel's pinned launchers read the same file.
 
@@ -696,22 +695,27 @@ Some of the shipped defaults:
 | You open | It goes to |
 |---|---|
 | A folder | Dolphin |
-| A `.pdf` | Okular |
+| A `.pdf`, `.ps`, `.eps` or `.djvu` | Okular |
 | An `.epub`, `.mobi` or `.fb2` book | Calibre's e-book viewer |
 | A `.zim` archive | Kiwix |
-| A text file, Markdown, JSON or a shell script | Kate |
-| A picture (PNG, JPEG, GIF, WebP, BMP, TIFF, SVG, AVIF, HEIF, JPEG XL) | Gwenview |
+| A text file, Markdown, JSON, a shell script, source code, a patch, a log, or an XML, YAML or TOML file | Kate |
+| A picture (PNG, JPEG, GIF, WebP, BMP, TIFF, SVG, AVIF, HEIF, JPEG XL, TGA, ICO, PBM/PGM/PPM/PNM, PSD) | Gwenview |
+| A GIMP `.xcf` image | GIMP |
 | A video | Haruna |
-| A music file | Strawberry |
+| A music file, or an `.m3u` or `.pls` playlist | Strawberry |
 | A `.zip`, `.tar.*` or `.7z` archive | Ark |
+| A disc image (`.iso`) | Burn (`kdos-burn`) |
 | A `.rar` archive, or a comic book packed as 7z or rar | `kdos-openarchive` |
-| A `.csv` file | No default: `visidata`, Gnumeric and LibreOffice Calc all claim `text/csv`, so **Open With** asks |
+| A `.csv` file | No default: `visidata` and LibreOffice Calc both claim `text/csv`, so **Open With** asks |
+| A Word, OpenDocument or RTF document | LibreOffice Writer |
 | A `mailto:` link, an `.eml` message or an `.ics` calendar | Thunderbird |
 | A web page, `http:` or `https:` link | Firefox ESR |
 
 The system-wide defaults are in two files, and a type is named in only one of them.
 `/etc/xdg/kdos-mimeapps.list` is searched first and holds every choice that needs a window, which is
-every row in the table above except the `kdos-openarchive` row and the `.csv` row.
+every row in the table above except the `kdos-openarchive` row, the `.csv` row and the office
+document row: LibreOffice Writer is the only application that claims those types, so they need no
+row.
 `/etc/xdg/mimeapps.list` is the layer under it and holds the types whose handler draws in a
 terminal: rar and comic-book archives, and the XPS and zipped comic-book pages `kdos-peek` shows.
 Both tables are read on `tty1` too, where there is no compositor for Firefox or Okular to open in;

@@ -422,9 +422,9 @@ same for guests on a `virbr*` bridge and lets them reach the network's dnsmasq f
 and holds the services an administrator has opened.
 
 Opening a port goes through the same rule as every other daemon verb: the client names a service,
-never a port. `kdos-powerd` carries the table of twenty-one names (`ssh`, `http`, `https`, `ipp`,
-`smb`, `kiwix`, `mdns`, `mqtt`, `xmpp`, `nfs`, `babel`, `nut`, `mumble`, `caldav`, `mail`, `irc`,
-`dlna`, `tryton`, `caddy`, `mosh`, `syncthing`), each with the one rule it adds, so a client that
+never a port. `kdos-powerd` carries the table of twenty-five names (`ssh`, `http`, `https`, `ipp`,
+`smb`, `kiwix`, `mdns`, `mqtt`, `xmpp`, `nfs`, `babel`, `nut`, `snmp`, `mumble`, `caldav`, `mail`,
+`irc`, `dlna`, `tryton`, `caddy`, `mosh`, `syncthing`, `kdeconnect`, `vnc`, `xonotic`), each with the one rule it adds, so a client that
 can only say `ssh` can open exactly TCP 22 and nothing else. The daemon rewrites
 `50-kdos-services.nft` whole from the names that are on, checks the full ruleset with `nft --check`,
 and then reloads it. A rule written by hand into that file is dropped on the

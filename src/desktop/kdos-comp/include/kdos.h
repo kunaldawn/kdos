@@ -503,6 +503,12 @@ bool kdos_a11ymon_key(struct wlr_keyboard *kb, unsigned int evdev_keycode,
 /* A toast through org.freedesktop.Notifications; nothing without a bus. */
 void kdos_a11ymon_notify(const char *summary);
 
+/* org.freedesktop.ScreenSaver on the session bus (kdos-screensaver.c): the
+ * idle inhibitor an X11 client under Xwayland can reach. Each cookie is one
+ * kdos_idle_inhibit(true). */
+void kdos_screensaver_init(void);
+void kdos_screensaver_finish(void);
+
 /* A supervised session-wide child's pid by command name, or 0. */
 pid_t kdos_child_pid(const char *cmd);
 

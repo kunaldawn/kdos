@@ -29,6 +29,12 @@ DESTDIR=$PKG meson install --no-rebuild -C build
 rm -rf "$PKG/usr/share/locale"
 find "$PKG/usr/share/help" -mindepth 1 -maxdepth 1 ! -name C -exec rm -rf {} +
 
+# The scheduler, /usr/libexec/deja-dup/deja-dup-monitor, is started by
+# kdos-desktop-start: nothing here reads /etc/xdg/autostart, so upstream's
+# entry there, the only file upstream installs under /etc, would name a start
+# path that does not exist.
+rm -rf "$PKG/etc"
+
 # THE MENU ICON: upstream ships it as SVG only, which the panel never reads.
 for s in 48 64 128; do
 	install -d "$PKG/usr/share/icons/hicolor/${s}x${s}/apps"

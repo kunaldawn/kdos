@@ -14,8 +14,9 @@
 # include path and 3.x's does not, and its own copy under thirdparty/ is 2.3.
 #
 # ZXING_WRITERS=OLD is the encoder mupdf's barcode creation calls when the
-# library has no experimental API. The NEW writer is libzint, which zxing-cpp
-# bundles and which is not a port. ZXING_DEPENDENCIES=LOCAL stops CMake from
+# library has no experimental API. The NEW writer is libzint; mupdf calls
+# only the OLD one, so zxing-cpp is built without it and neither the bundled
+# copy nor the zint port is linked. ZXING_DEPENDENCIES=LOCAL stops CMake from
 # fetching anything from GitHub, and the examples, which would fetch stb, are
 # off.
 cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \

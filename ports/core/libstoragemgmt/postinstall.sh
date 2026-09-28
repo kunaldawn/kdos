@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,10 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = stemmer
-version     = 3.1.1
-release     = 1
-source      = $name-$version.tar.gz::https://github.com/snowballstem/snowball/archive/v$version.tar.gz
-sha256      = d8714aa91ed4333654708472a7a98b529c867a8f99b05c5e66febf4ca72c44c7  stemmer-3.1.1.tar.gz
-description = Stemming library supporting several languages
-depends     = perl
+
+# lsmd started as root drops to this account for every plugin that does not
+# need root; without it the plugins keep root. Created under PKG_ROOT, the
+# root kpkgadd is installing into, and guarded by reading the files.
+root="${PKG_ROOT:-/}"
+grep -q '^libstoragemgmt:' "$root/etc/group" 2>/dev/null || groupadd -R "$root" -r libstoragemgmt
+grep -q '^libstoragemgmt:' "$root/etc/passwd" 2>/dev/null || \
+	useradd -R "$root" -r -g libstoragemgmt -d /run/lsm -s /sbin/nologin libstoragemgmt

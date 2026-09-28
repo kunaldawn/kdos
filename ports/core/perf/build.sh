@@ -51,10 +51,10 @@
 # a perl without the shared library stops this build rather than dropping the
 # engine.
 #
-# slang, capstone, python3, zlib, xz and zstd have no switch to demand them —
-# only a NO_* to refuse them — so their place in depends is what keeps the
-# report/top TUI, the capstone disassembler, `perf script` Python, and
-# compressed modules and `record -z`.
+# slang, capstone, numactl, python3, zlib, xz and zstd have no switch to
+# demand them — only a NO_* to refuse them — so their place in depends is what
+# keeps the report/top TUI, the capstone disassembler, `perf bench numa mem`,
+# `perf script` Python, and compressed modules and `record -z`.
 #
 # The Python extension module (python/perf.so) is built whenever setuptools
 # imports, and `install` never installs it. PYTHON_SETUPTOOLS_INSTALLED=no
@@ -67,11 +67,11 @@
 # narrower binary, so the absent ones are stated rather than probed: a
 # detection that silently flips is a perf that loses a feature on an unrelated
 # version bump.
-#   NO_LIBNUMA           numactl is not ported; drops `perf bench numa mem`
 #   NO_LIBPFM4           libpfm is not ported; drops its raw event names
 #   NO_BABELTRACE2       babeltrace2 is not ported; drops `perf data` CTF
 #   NO_LIBDEBUGINFOD     elfutils is configured --disable-debuginfod
-#   NO_JVMTI             no JDK, so no Java JIT agent
+#   NO_JVMTI             openjdk is not a dependency of perf, so there are
+#                        no JDK headers to build the Java JIT agent against
 #   NO_SDT               no sys/sdt.h; systemtap is not ported
 #   NO_LIBLLVM           LLVM here is BUILD_SHARED_LIBS, so `llvm-config
 #                        --libs all` is two hundred shared objects mapped at
@@ -88,7 +88,6 @@ perf_make=(
 	EXTRA_CFLAGS="$CFLAGS"
 	LIBBPF_DYNAMIC=1
 	BUILD_BPF_SKEL=1
-	NO_LIBNUMA=1
 	NO_LIBPFM4=1
 	NO_BABELTRACE2=1
 	NO_LIBDEBUGINFOD=1

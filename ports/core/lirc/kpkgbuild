@@ -10,7 +10,7 @@
 
 name        = lirc
 version     = 0.10.2
-release     = 1
+release     = 2
 source      = https://downloads.sourceforge.net/project/lirc/LIRC/$version/$name-$version.tar.gz
 sha256      = a44a26caf9ba55c2343e065f0a9451425c136572b279ea1e011ad012b36b607e  lirc-0.10.2.tar.gz
 description = Infrared remote control daemon, client library and tools — lircd, irexec, irw, liblirc_client and the Python bindings

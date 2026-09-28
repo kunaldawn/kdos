@@ -21,5 +21,6 @@ cp $PKG/usr/include/bsd/sys/cdefs.h $PKG/usr/include/sys/
 cp $PKG/usr/include/bsd/sys/queue.h $PKG/usr/include/sys/
 cp $PKG/usr/include/bsd/sys/tree.h  $PKG/usr/include/sys/
 
-# Fix recursion in cdefs.h (since it is now the system cdefs.h)
-sed -i 's|#include <sys/cdefs.h>|/* #include <sys/cdefs.h> */|g' $PKG/usr/include/sys/cdefs.h
+# The copy becomes the system sys/cdefs.h, so its include of <sys/cdefs.h>
+# would include itself.
+patch -d "$PKG" -p0 -i "$PORT_SRC/sys-cdefs-no-self-include.patch"

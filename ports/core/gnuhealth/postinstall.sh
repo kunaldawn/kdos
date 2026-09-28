@@ -25,7 +25,10 @@ grep -q '^gnuhealth:' "$root/etc/passwd" 2>/dev/null || \
 
 # chown resolves a name against the running root's passwd, so the ids are read
 # out of PKG_ROOT's.
+# The mode is set as well: kpkgadd creates every directory 0755, whatever mode
+# it was packaged with, because the package carries no group to give it.
 while IFS=: read -r n _ uid gid _; do
 	[ "$n" = gnuhealth ] || continue
 	chown "$uid:$gid" "$root/var/lib/gnuhealth" "$root/var/lib/gnuhealth/attach"
+	chmod 750 "$root/var/lib/gnuhealth" "$root/var/lib/gnuhealth/attach"
 done < "$root/etc/passwd"

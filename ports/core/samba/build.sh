@@ -31,9 +31,9 @@
 # must not switch them on.
 #
 # --without-ldb-lmdb follows from --without-ad-dc: the lmdb backend exists for
-# the domain controller's database, which is not built here, and lmdb is not a
-# port. Samba makes it an ERROR rather than a downgrade — "ldb build (unless
-# --without-ldb-lmdb) requires lmdb 0.9.16 or later" — so it has to be said.
+# the domain controller's database, which is not built here. Samba makes it
+# an ERROR rather than a downgrade — "ldb build (unless --without-ldb-lmdb)
+# requires lmdb 0.9.16 or later" — so it has to be said.
 #
 # --with-libunwind IS SAMBA'S CRASH BACKTRACE. musl has no execinfo.h —
 # backtrace() and backtrace_symbols() are a glibc extension — so without it

@@ -17,6 +17,7 @@ labwc_sources = files(
   'kdos-crt.c', # KDOS
   'kdos-a11y.c', # KDOS
   'kdos-a11ymon.c', # KDOS
+  'kdos-screensaver.c', # KDOS
   'action.c',
   'buffer.c',
   'debug.c',

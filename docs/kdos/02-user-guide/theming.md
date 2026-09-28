@@ -184,7 +184,7 @@ different moment:
 | `~/.icons/KDOS-cursors/` | Cursors inside boxes | The application's next launch |
 | `~/.config/kdeglobals` | Qt applications using the KDE platform theme | The application's next launch |
 | `~/.local/share/color-schemes/KDOS.colors` | KDE's own appearance settings, as a scheme you can choose | The application's next launch |
-| `~/.config/qt5ct/qt5ct.conf`, `~/.config/qt5ct/colors/KDOS.conf` | Qt 5 applications under the `qt5ct` platform theme | The application's next launch |
+| `~/.config/qt5ct/qt5ct.conf`, `~/.config/qt5ct/colors/KDOS.conf` | Qt 5 applications, under the `qt5ct` platform theme or the session's `kde` value, which qt5ct also answers | The application's next launch |
 | `~/.config/qt6ct/qt6ct.conf`, `~/.config/qt6ct/colors/KDOS.conf` | Qt 6 applications under the `qt6ct` platform theme | The application's next launch |
 | `/etc/kdos/accent` | The boot splash, retinted during startup | The next boot |
 | `/boot/efi/limine.conf` | The boot menu | The next boot |
@@ -542,9 +542,10 @@ as boxed ones, through two variables that `/etc/profile.d/10-wayland.sh` exports
 | `GTK_USE_PORTAL=1` | GTK reads its theme, icon, cursor and font names from the settings portal, and opens the portal's file chooser instead of its own dialog, so a running GTK3 application restyles on an accent switch |
 | `QT_QPA_PLATFORMTHEME=kde` | A Qt 6 application loads KDE's platform theme (the `plasma-integration` port) and reads the palette, fonts and icons from `~/.config/kdeglobals` |
 
-The variable names one platform theme, not a list. A Qt 5 application finds no `kde` plugin for
-its version and falls back to Qt's own; set `QT_QPA_PLATFORMTHEME=qt5ct` for it to read the
-generated `qt5ct` files instead, which are described under
+The variable names one platform theme, not a list, and each Qt major version searches only its own
+plugin directory. KDE's platform theme is built for Qt 6 only; the `qt5ct` port's plugin also
+answers the name `kde`, so a native Qt 5 application loads qt5ct under the same value and reads the
+generated `qt5ct` files, which are described under
 [Theming applications inside boxes](#theming-applications-inside-boxes).
 
 ## Theming applications inside boxes
@@ -616,7 +617,8 @@ under `[KDE]`, and `Theme=KDOS` under `[Icons]`.
 
 **Qt without the KDE platform theme.** The KDE platform theme is built for Qt 6 only, so a Qt 5
 application cannot read `kdeglobals`. `kdos theme` also writes the files of qt5ct and qt6ct, the
-platform themes an application loads when `QT_QPA_PLATFORMTHEME` is `qt5ct` or `qt6ct`: in each
+platform themes an application loads when `QT_QPA_PLATFORMTHEME` is `qt5ct` or `qt6ct`, and which a
+native Qt 5 application on the host loads under `kde` as well: in each
 tool's directory, `colors/KDOS.conf` holds the palette, with a selected row in the same colours as
 GTK's, and `qt5ct.conf` or `qt6ct.conf` selects it with `custom_palette=true`, sets the `KDOS` icon
 theme, the portal's file chooser and the two Noto fonts, and names the style: `Fusion` for Qt 5,

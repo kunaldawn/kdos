@@ -11,9 +11,9 @@
 
 name        = qt5ct
 version     = 1.9
-release     = 1
+release     = 2
 source      = https://downloads.sourceforge.net/project/qt5ct/qt5ct-$version.tar.bz2
 sha256      = dc10e6939d423b925981ce67febb1a015b6f61c022a9cc7e6c8b5efea4588bff  qt5ct-1.9.tar.bz2
 description = Qt 5 appearance settings — the palette, style, fonts and icon theme of every Qt 5 program, as a platform theme plugin
 homepage    = https://sourceforge.net/projects/qt5ct/
-depends     = cmake ninja qt5-qtbase qt5-qttools qt5-qtsvg breeze-icons librsvg
+depends     = cmake ninja qt5-qtbase qt5-qttools qt5-qtsvg qt5-qtwayland breeze-icons librsvg

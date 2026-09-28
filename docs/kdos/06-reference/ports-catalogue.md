@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,003 recipes in `ports/core` and the
-24 recipes KDOS writes itself under `src/`, 2,027 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,001 recipes in `ports/core` and the
+24 recipes KDOS writes itself under `src/`, 2,025 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, and
 where in the build it arrives. Read [Packaging](../03-architecture/packaging.md) first for what a
 port and a package are, and [How KDOS is built](../05-developer/how-kdos-is-built.md) for what the
@@ -71,7 +71,7 @@ carries a typo or an aside, or does not plainly say what the software is.
 
 ## Counts
 
-Counted from the five `packages.txt` files and the 2,027 `kpkgbuild` files. "Named" counts the
+Counted from the five `packages.txt` files and the 2,025 `kpkgbuild` files. "Named" counts the
 non-comment lines of a list; "catalogued here" counts the ports whose first listing is in that
 phase.
 
@@ -79,18 +79,18 @@ phase.
 |---|---|---|
 | Phases 0 and 1 (scripts) | none | 1 |
 | [Phase 2: the self-hosting bootstrap](#phase-2-the-self-hosting-bootstrap) | 8 | 8 |
-| [Phase 3: toolchain and core libraries](#phase-3-toolchain-and-core-libraries) | 98 | 90 |
+| [Phase 3: toolchain and core libraries](#phase-3-toolchain-and-core-libraries) | 97 | 89 |
 | [Phase 4: userland, the Wayland base and the applications](#phase-4-userland-the-wayland-base-and-the-applications) | 1,687 | 1,656 |
 | [The desktop phase](#the-desktop-phase) | 22 | 21 |
 | [The kernel phase](#the-kernel-phase) | 1 | 1 |
 | [Installed as dependencies](#installed-as-dependencies) | none | 244 |
-| [Not installed](#not-installed) | none | 6 |
-| Total | 1,816 | 2,027 |
+| [Not installed](#not-installed) | none | 5 |
+| Total | 1,815 | 2,025 |
 
-The five lists name 1,776 distinct ports in 1,816 lines; 38 ports are named in more than
-one list. Following `depends =` from those 1,776 names reaches 2,020 ports: all
-1,776 listed ports and 244 more. With `kdos-installer`, which phase 1 builds by script,
-that leaves 6 recipes in `ports/core` that no phase installs.
+The five lists name 1,775 distinct ports in 1,815 lines; 38 ports are named in more than
+one list. Following `depends =` from those 1,775 names reaches 2,019 ports: all
+1,775 listed ports and 244 more. With `kdos-installer`, which phase 1 builds by script,
+that leaves 5 recipes in `ports/core` that no phase installs.
 
 Ports per list group, counting each port under its first listing only:
 
@@ -99,7 +99,7 @@ Ports per list group, counting each port under its first listing only:
 | Phase 2 | (unheaded) | 8 |
 | Phase 3 | Build Toolchain | 7 |
 | Phase 3 | Modern Build Systems | 3 |
-| Phase 3 | Languages & Runtimes | 23 |
+| Phase 3 | Languages & Runtimes | 22 |
 | Phase 3 | Alternative compilers / linkers | 9 |
 | Phase 3 | Essential Utilities | 12 |
 | Phase 3 | Network & Security | 6 |
@@ -289,7 +289,6 @@ build system, language runtime and library needed to rebuild KDOS from KDOS. It 
 | `cabal-install` | 3.18.1.0 | The cabal command — builds and installs Haskell packages |
 | `cargo-c` | 0.10.25 | Cargo subcommand to build and install C-ABI-compatible dynamic and static libraries |
 | `cbindgen` | 0.29.4 | A project for generating C bindings from Rust code |
-| `cython3` | 3.3.0 | C-Extensions for Python3 |
 | `ghc` | 9.12.4 | The Glasgow Haskell Compiler, its libraries and GHCi |
 | `go` | 1.27.1 | The Go programming language toolchain (with bootstrap) |
 | `help2man` | 1.49.3 | Turns a program's own --help into a man page |
@@ -967,7 +966,7 @@ libraries it links against; `numpy`, for example, depends on `openblas`, and `ng
 |---|---|---|
 | `brltty` | 6.9.1 | Braille display and console speech — the screen reader |
 | `caddy` | 2.11.4 | Web server with built-in TLS certificate management |
-| `coreutils` | 9.12 | The GNU core utilities, for the commands toybox implements too narrowly, such as expr |
+| `coreutils` | 9.12 | The GNU core utilities, for the commands toybox implements too narrowly: expr and ln |
 | `hurl` | 8.0.1 | Runs HTTP requests and their assertions from a plain-text file |
 | `liblouis` | 3.39.0 | Braille translation — contracted and uncontracted tables for well over a hundred languages |
 | `postgresql` | 18.6 | PostgreSQL relational database server |
@@ -1478,7 +1477,7 @@ libraries (`aml`, `neatvnc`, `wayvnc`), `weechat`, `whois`, `passt`, `libedit`, 
 | `qt6-qtquick3d` | 6.11.2 | Qt 6 Quick 3D — 3D scenes in QML |
 | `qt6-qtremoteobjects` | 6.11.2 | Qt 6 Remote Objects — QObjects shared between processes |
 | `qt6-qtscxml` | 6.11.2 | Qt 6 SCXML and StateMachine — state charts compiled or interpreted |
-| `qt6-qtsensors` | 6.11.2 | Qt 6 Sensors — accelerometer, gyroscope and light sensors through iio-sensor-proxy |
+| `qt6-qtsensors` | 6.11.2 | Qt 6 Sensors — accelerometer, gyroscope and light sensors through iio-sensor-proxy (no sensor daemon is ported) |
 | `qt6-qtserialport` | 6.11.2 | Qt 6 SerialPort — serial and USB-serial device access |
 | `qt6-qtshadertools` | 6.11.2 | Qt 6 shader tools — qsb, the GLSL/HLSL/MSL/SPIR-V baker Qt Quick and Qt RHI shaders are compiled with |
 | `qt6-qtspeech` | 6.11.2 | Qt 6 TextToSpeech — speech synthesis through speech-dispatcher |
@@ -2968,7 +2967,7 @@ the grouping is this chapter's, not the tree's.
 
 ## Not installed
 
-Nothing in any list reaches these 6 recipes through `depends =`, and no phase script builds
+Nothing in any list reaches these 5 recipes through `depends =`, and no phase script builds
 them, so none is on the image. Their sources are fetched and checked like any other port's, and
 each builds on request with `kpkg install <name>` wherever the ports tree is on `PORT_REPO`, as it
 is inside the build chroot.
@@ -2980,7 +2979,6 @@ is inside the build chroot.
 | `musl-locales` | 20260425 | A locale command and message catalogues for musl |
 | `perl-xml-simple` | 2.25 | Perl module that reads and writes XML as nested data structures (config files especially) |
 | `setconf` | 0.7.7 | Utility for changing settings in configuration files |
-| `stemmer` | 3.1.1 | Stemming library supporting several languages |
 
 ## See also
 

@@ -25,8 +25,9 @@ patch -p1 -i "$PORT_SRC/swig-4.5.patch"
 # IFC4X3_ADD2) are compiled: every other schema adds a generated source of
 # several hundred thousand lines. CGAL is off because the svgfill module it
 # brings needs the svgpp submodule, which the tag archive leaves empty; the
-# OpenCASCADE kernel is the one geometry backend. OpenCOLLADA, USD, PROJ and
-# RocksDB are not ports. IfcGeomServer serves only Blender's add-on. Headers
+# OpenCASCADE kernel is the one geometry backend. OpenCOLLADA, USD and
+# RocksDB are not ports; PROJ only adds Earth-centred glTF output and stays
+# off. IfcGeomServer serves only Blender's add-on. Headers
 # go under include/ifcopenshell, since upstream installs top-level
 # directories named ifcparse, ifcgeom and serializers.
 cmake -S cmake -B build -G Ninja -Wno-dev \

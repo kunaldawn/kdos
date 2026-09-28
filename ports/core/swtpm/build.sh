@@ -21,12 +21,16 @@
 #
 # swtpm_setup signs the TPM's endorsement certificates through swtpm_localca,
 # which runs gnutls's certtool. The shipped /etc/swtpm_setup.conf points it at
-# the CA in /var/lib/swtpm-localca, which the package installs root-owned, so a
-# user's first swtpm_setup with the certificate flags stops on "Need read/write
-# rights on statedir". --create-config-files writes ~/.config/swtpm_setup.conf
-# and a CA of the user's own under ~/.config/var/lib/swtpm-localca, and
-# swtpm_setup reads that file ahead of /etc whenever it exists. Without the
-# certificate flags no CA is involved; a Windows 11 guest does not need them. The CUSE interface is off: it creates a
+# the CA in /var/lib/swtpm-localca, and swtpm_localca refuses a statedir it
+# cannot read and write ("Need read/write rights on statedir"). libvirt runs
+# swtpm_setup as tss with the certificate flags for every system-mode guest
+# with an emulated TPM, so the postinstall hook gives the directory to tss at
+# 0750: upstream's install step does that only when DESTDIR is empty. Any
+# other user's swtpm_setup with the certificate flags is refused there;
+# --create-config-files writes ~/.config/swtpm_setup.conf and a CA of the
+# user's own under ~/.config/var/lib/swtpm-localca, and swtpm_setup reads that
+# file ahead of /etc whenever it exists. Without the certificate flags no CA is
+# involved; a Windows 11 guest does not need them. The CUSE interface is off: it creates a
 # /dev/vtpm character device for a host program, which qemu does not use.
 # SELinux is not on this system. The test suite installs itself under
 # /usr/lib/installed-tests even with --disable-tests, and is removed.

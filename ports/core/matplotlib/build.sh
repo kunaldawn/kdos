@@ -9,10 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# AGG AND NOTHING ELSE. MPLBACKEND is pinned in the profile: matplotlib's
-# first import otherwise probes for GUI toolkits, and on this host the ones it
-# looks for must not exist. A plot is a PNG, and libsixel is what puts it in a
-# terminal.
+# AGG IS THE DEFAULT BACKEND, set at build time by rcParams-backend: plt.show()
+# draws nothing and a plot is saved as a PNG, which libsixel puts in a terminal.
+# An application that embeds matplotlib selects its own backend with
+# matplotlib.use(), which this default does not stop.
 
 # NO VENDOR BUNDLE, for numpy's reason: mesonpy, pybind11 and setuptools_scm
 # are ports and --no-build-isolation reaches them.
@@ -38,8 +38,9 @@ export SETUPTOOLS_SCM_PRETEND_VERSION=$version
 # build after freetype and the libraqm/harfbuzz wraps. Each one only appears
 # once the previous is answered.
 #
-# rcParams-backend=Agg is the same decision as MPLBACKEND, made at BUILD time
-# so a machine with no matplotlibrc still cannot reach for a GUI toolkit.
+# rcParams-backend=Agg is written into the installed matplotlibrc, so a
+# machine with no matplotlibrc of its own starts on Agg rather than probing
+# for a GUI toolkit.
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr . \
 	--config-settings=setup-args=-Dsystem-freetype=true \
 	--config-settings=setup-args=-Dsystem-libraqm=true \

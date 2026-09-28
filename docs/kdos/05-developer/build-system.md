@@ -95,12 +95,12 @@ and `mtdev`, which only `wlroots` pulls in. The kernel is the last port built be
 ### Port lists, groups and the dependency closure
 
 A `packages.txt` names only the ports a phase wants; each port's `depends =` line pulls in the rest,
-and `kpkg` installs dependencies first. The five lists hold 1,816 names between them, 1,776 of them
+and `kpkg` installs dependencies first. The five lists hold 1,815 names between them, 1,775 of them
 distinct: 38 ports are named in more than one list. All 8 phase-2 ports appear again in `03_phase3`,
 2 of those also in `04_phase4`, 29 further phase-3 ports appear again in `04_phase4`, and
 `xcb-util-wm` is named in both `04_phase4` and `05_desktop`. A port already installed from the same
 recipe is skipped when a later list names it again. A reading of every recipe's `depends =` lines
-reaches 1,997 of the 2,003 ports under `ports/core` from the lists. [The ports
+reaches 1,996 of the 2,001 ports under `ports/core` from the lists. [The ports
 catalogue](../06-reference/ports-catalogue.md) lists every port by phase and list group, and those
 named more than once. The comment headings inside a list, such as "Core Services" or "Modern CLI
 tools" in phase 4, divide it into list groups for the reader; the orchestrator ignores them. List
@@ -663,7 +663,7 @@ filter, and `Enter` or `Esc` returns to the plan. It holds every directory with 
 `ports/core` and `src/packages`, plus every name in any phase's `packages.txt`; that last source is
 what puts the `src/desktop` recipes on it, since each is named in `script/05_desktop/packages.txt`,
 and it keeps a listed name that has no recipe visible. A name is listed once, and a `packages.txt`
-entry records its phase beside it. The list holds up to 4096 names; this repository gives it 2,027.
+entry records its phase beside it. The list holds up to 4096 names; this repository gives it 2,025.
 
 ## kdosbuild
 

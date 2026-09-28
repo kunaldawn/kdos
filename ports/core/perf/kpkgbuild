@@ -15,4 +15,4 @@ source      = $name-$version.tar.xz::https://cdn.kernel.org/pub/linux/kernel/v${
 sha256      = 4ac34c47db2540ffb2713943f8d891ff1702e0ba6934525a493b7d1cad43145a  perf-7.2.7.tar.xz
 description = The kernel's own profiler: sampling, counters, tracepoints and BPF
 homepage    = https://perf.wiki.kernel.org/
-depends     = elfutils zlib slang libtraceevent libbpf capstone zstd xz openssl python3 clang llvm flex bison asciidoc xmlto perl
+depends     = elfutils zlib slang libtraceevent libbpf capstone numactl zstd xz openssl python3 clang llvm flex bison asciidoc xmlto perl

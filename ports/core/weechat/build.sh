@@ -12,7 +12,7 @@
 # EVERY SCRIPTING BACKEND IS A HARD CONFIGURE DEPENDENCY, not a feature that
 # degrades. `find_package(... REQUIRED)` sits in each plugin's CMakeLists, so a
 # backend switched on without its interpreter stops cmake before a line is
-# compiled. Python, Perl, Lua, Ruby and Tcl are ports and are on; Guile, PHP
+# compiled. Python, Perl, Lua, Ruby, Tcl and Guile are ports and are on; PHP
 # and JavaScript (v8) are not ports.
 #
 # RUBY IS 4.0 and the plugin links libruby, which the ruby port builds shared.
@@ -75,7 +75,7 @@ cmake .. \
 	-DTCL_LIBRARY=/usr/lib/libtcl9.0.so \
 	-DTCL_INCLUDE_PATH=/usr/include \
 	-DENABLE_RUBY=ON \
-	-DENABLE_GUILE=OFF \
+	-DENABLE_GUILE=ON \
 	-DENABLE_PHP=OFF \
 	-DENABLE_JAVASCRIPT=OFF \
 	-DENABLE_SPELL=ON \

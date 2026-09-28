@@ -273,6 +273,8 @@ static const struct {
 	{ "babel", "udp dport 6696 accept", "Babel mesh routing (31_babeld)" },
 	{ "nut",   "tcp dport 3493 accept",
 	  "UPS status for other machines (56_nut)" },
+	{ "snmp",  "udp dport 161 accept",
+	  "SNMP queries of this machine (71_snmpd)" },
 	/* Voice runs over UDP and falls back to the TCP control channel, so
 	 * both halves are one rule, in the concatenated form `syncthing` uses. */
 	{ "mumble",
@@ -303,6 +305,18 @@ static const struct {
 	{ "syncthing",
 	  "meta l4proto . th dport { tcp . 22000, udp . 22000, udp . 21027 } accept",
 	  "syncthing discovery and sync" },
+	/* KDE Connect listens, and a phone announces itself, on the first free
+	 * port of this range over both TCP and UDP (1716 in practice); file
+	 * transfers take further ports from the same range. */
+	{ "kdeconnect",
+	  "meta l4proto { tcp, udp } th dport 1714-1764 accept",
+	  "KDE Connect with a phone on the LAN" },
+	/* wayvnc binds 127.0.0.1 unless its config or command line names an
+	 * address, so this opens nothing until it is told to listen wider. */
+	{ "vnc",   "tcp dport 5900 accept",
+	  "this desktop over VNC (wayvnc)" },
+	{ "xonotic", "udp dport 26000 accept",
+	  "hosting a Xonotic game for the LAN" },
 };
 #define FW_N ((int)(sizeof(FW) / sizeof(FW[0])))
 

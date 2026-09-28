@@ -11,8 +11,10 @@
 
 # The skeleton /etc/retroarch.cfg a first run copies names the system
 # directories the data and core ports install into: cores in
-# /usr/lib/libretro, and assets, core info, databases, cheats and controller
-# profiles under /usr/share/libretro. Without it every one of them resolves
+# /usr/lib/libretro, and assets, core info, databases and controller profiles
+# under /usr/share/libretro. The cheat path is left to its per-user default:
+# libretro-database ships no cheat collection, and the online updater
+# downloads cheats into that directory. Without it every one of them resolves
 # under the player's own configuration directory, which is empty.
 patch -p1 -i "$PORT_SRC/config.patch"
 patch -p1 -i "$PORT_SRC/database-path.patch"

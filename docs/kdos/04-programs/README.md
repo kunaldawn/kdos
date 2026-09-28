@@ -30,7 +30,7 @@ directories:
 | Directory | Holds | Built by |
 |---|---|---|
 | `src/desktop/` | The compositor, the panel, the terminal, the resource monitor, the lock screen, the root daemons, the portal backend and the screen recorder | The `05_desktop` phase, the only phase whose port search path includes this directory |
-| `src/packages/` | The system tools, the package manager, the installer, the box manager and its helpers, the splash, the theme generator and the demo | The `04_phase4` phase, with three exceptions: `kdos-pack` is built by `05_desktop`, and `kdos-kpkg` (`kpkg`) and `kdos-installer` (`kinstall`) are compiled by steps 12 and 13 of `01_phase1` and appear in no package list |
+| `src/packages/` | The system tools, the package manager, the installer, the box manager and its helpers, the splash, the theme generator and the demo | The `04_phase4` phase, with two exceptions: `kdos-kpkg` (`kpkg`) and `kdos-installer` (`kinstall`) are compiled by steps 12 and 13 of `01_phase1` and appear in no package list. `05_desktop` names `kdos-pack` too, but `04_phase4` has already built it as a dependency of `kdos-tools` |
 | `src/build/kdosbuild/` | The build orchestrator | `script/kdosbuild.sh`, on the build host, at the start of every `make build` |
 | `src/tools/kdos-portup/` | The upstream version checker | `ports/update`, on the build host, on demand |
 

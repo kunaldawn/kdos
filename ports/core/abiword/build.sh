@@ -42,6 +42,27 @@ autoreconf -fi
 make
 make DESTDIR=$PKG install
 
+# UPSTREAM'S ENTRY IS REPLACED with a MimeType naming AbiWord's own format
+# only: LibreOffice is the word processor that claims the shared office types
+# (Word, OpenDocument, RTF, WordPerfect), and a second claim would open them in
+# whichever entry sorted first.
+cat > "$PKG/usr/share/applications/abiword.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=AbiWord
+GenericName=Word Processor
+Comment=Compose, edit and view documents
+TryExec=abiword
+Exec=abiword %U
+Icon=abiword
+Terminal=false
+StartupNotify=true
+Categories=Office;WordProcessor;GTK;
+MimeType=application/x-abiword;
+Keywords=word;processor;document;doc;rtf;odt;abiword;
+DESKTOP
+chmod 644 "$PKG/usr/share/applications/abiword.desktop"
+
 # Every interface translation is a .strings file installed whatever configure
 # is told, so all but the English ones are removed from the package: bundled
 # data is English only.

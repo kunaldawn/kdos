@@ -44,18 +44,22 @@
 # on another machine; libpulse is the client library only, so it adds no second
 # server beside pipewire-pulse. -Dlibmysofa=enabled is the filter-chain's
 # `sofa` spatializer, which places a source around a listener on headphones
-# from a SOFA head-related transfer function file.
+# from a SOFA head-related transfer function file. -Debur128=enabled is the
+# filter-graph's EBU R128 loudness meter and normaliser, and -Dlv2=enabled
+# lets a filter-chain host LV2 plugins through lilv.
 #
 # Every other `auto` feature is named, and each one pinned off has one of these
 # reasons:
-#   - its library is not a port: libebur128, onnxruntime, libffado,
-#     roc-toolkit, lv2 (lilv), libcanberra, lc3plus, the LDAC decoder, spandsp;
+#   - its library is not a port: libffado, roc-toolkit, lc3plus, the LDAC
+#     decoder, spandsp;
 #   - it is excluded by rule: every systemd and logind option, and SELinux,
 #     which this image does not use;
-#   - it serves an X session, which this desktop is not: x11 and x11-xfixes;
+#   - it serves an X session, which this desktop is not: x11, x11-xfixes and
+#     libcanberra, which feeds only module-x11-bell;
 #   - it has no consumer here: vulkan builds only the SPA compute source and
-#     blit filters, which no graph or session config on this image loads; sdl2
-#     only the examples (which are off); gsettings only the
+#     blit filters, which no graph or session config on this image loads;
+#     onnxruntime only the filter-graph's neural model node, which no graph
+#     here loads; sdl2 only the examples (which are off); gsettings only the
 #     GNOME schema that module-gsettings reads, and flatpak and snap only the
 #     sandbox detection for those two packagers.
 
@@ -107,14 +111,14 @@ meson setup build \
 	-Dvulkan=disabled \
 	-Droc=disabled \
 	-Dlibcamera=enabled \
-	-Dlv2=disabled \
+	-Dlv2=enabled \
 	-Dsndfile=enabled \
 	-Dpw-cat=enabled \
 	-Davahi=enabled \
 	-Draop=enabled \
 	-Decho-cancel-webrtc=enabled \
 	-Dlibmysofa=enabled \
-	-Debur128=disabled \
+	-Debur128=enabled \
 	-Donnxruntime=disabled \
 	-Dlibffado=disabled \
 	-Dlibsystemd=disabled \

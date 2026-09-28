@@ -54,7 +54,7 @@ own tools.
 Five terms recur throughout:
 
 - A **port** is the recipe for one piece of software: a `kpkgbuild` file of metadata and a
-  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 2,003 of them;
+  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 2,001 of them;
   KDOS's own programs have theirs under `src/packages/` and `src/desktop/`.
 - A **package** is what building a port produces: a compressed archive that the package manager,
   `kpkg`, installs and records in its database.

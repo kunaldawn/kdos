@@ -302,6 +302,7 @@ main(int argc, char *argv[])
 	kdos_lid_init(); /* KDOS: lid switch -> lid_close policy */
 	kdos_a11y_init(); /* KDOS: keyboard aids, dwell, pointer size */
 	kdos_a11ymon_init(); /* KDOS: org.freedesktop.a11y.KeyboardMonitor */
+	kdos_screensaver_init(); /* KDOS: org.freedesktop.ScreenSaver idle inhibitors */
 	server_start();
 
 	struct theme theme = { 0 };
@@ -324,6 +325,7 @@ main(int argc, char *argv[])
 	 * dispatched there would act on a session that is already over */
 	kdos_cmd_finish(); /* KDOS */
 	kdos_a11ymon_finish(); /* KDOS: before the keyboards go */
+	kdos_screensaver_finish(); /* KDOS: before kdos_idle_finish */
 	kdos_a11y_finish(); /* KDOS */
 	kdos_crt_powerdown(); /* KDOS: the collapse-to-a-dot, deadline-bounded */
 	kdos_wallpaper_finish(); /* KDOS: before the scene dies with the server */

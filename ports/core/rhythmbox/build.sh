@@ -14,9 +14,11 @@
 # gudev finds MTP players and Android phones (libmtp); libnotify posts the
 # now-playing notification; libsecret keeps service passwords; Brasero's
 # library burns a playlist to audio CD; libgpod syncs iPods; lirc's client
-# library takes infrared remotes. The Python plugins (context pane, replay
-# gain, the Python console and the online services) load through PyGObject;
-# the Vala toolchain builds the Vala plugin bindings.
+# library takes infrared remotes. The Python plugins (replay gain, the Python
+# console, lyrics, cover search and the online services) load through
+# PyGObject; upstream builds no context pane. The Vala toolchain builds the
+# Vala plugin bindings. gst-libav is the AAC decoder: without it an .m4a or
+# .aac file in the library does not play.
 #
 # DAAP sharing needs libdmapsharing and Grilo its media-source framework,
 # neither a port. The online plugins (Last.fm and ListenBrainz scrobbling,

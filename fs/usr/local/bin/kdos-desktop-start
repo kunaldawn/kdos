@@ -107,6 +107,17 @@ if command -v fcitx5 >/dev/null 2>&1; then
 	) &
 fi
 
+# Déjà Dup's scheduler. Upstream starts it from /etc/xdg/autostart, which
+# nothing here reads, and without it "Back up automatically" never backs up.
+# The monitor does nothing unless periodic backups are enabled, and a missing
+# binary is silence.
+if [ -x /usr/libexec/deja-dup/deja-dup-monitor ]; then
+	(
+		_wait_wayland || exit 0
+		exec /usr/libexec/deja-dup/deja-dup-monitor >/dev/null 2>&1
+	) &
+fi
+
 # Everything the session does ONCE, after the compositor exists: the login
 # sound, the first-run keybind card, the pending-applications offer, the
 # per-user timers, and the session restore.

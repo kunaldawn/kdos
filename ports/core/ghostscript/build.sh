@@ -42,6 +42,3 @@ make so
 make
 make DESTDIR=$PKG install
 make DESTDIR=$PKG soinstall
-# The interpreter is also what `gs` means to every script written in the last
-# forty years; upstream installs the versioned name only from soinstall.
-install -d "$PKG/usr/share/ghostscript"

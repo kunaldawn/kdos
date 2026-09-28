@@ -9,8 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# X11 IS OFF: there is no X server on this image, so an X11 video driver could
-# never open a display. Wayland is the one video driver built.
+# X11 IS OFF: every SDL program has a Wayland path, so SDL never needs
+# Xwayland, and a program that forces SDL_VIDEODRIVER=x11 fails to open a
+# window. Wayland is the one video driver built.
 #
 # KMSDRM IS OFF, SO SDL FAILS CLEANLY INSTEAD OF WINNING. A KMSDRM program takes
 # the card and the input devices from the compositor already drawing on them,

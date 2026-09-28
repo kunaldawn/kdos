@@ -37,8 +37,10 @@
 # -DENABLE_BOOST=ON uses boost's headers for the Splash rasteriser's small
 # containers; nothing links boost at run time.
 #
-# pdfsig verifies and signs through the GPG backend (gpgmepp). The NSS backend
-# stays off because nss is not a port.
+# pdfsig verifies and signs through the GPG backend (gpgmepp), and it is the
+# only signature backend built so that it is also the default: with NSS on as
+# well, poppler makes NSS, the first backend it adds, the default for pdfsig
+# and every reader that signs.
 #
 # BUILD_TESTING is not a poppler option; BUILD_CPP_TESTS, BUILD_MANUAL_TESTS
 # and one BUILD_<binding>_TESTS per binding (GTK, QT6) are what gate its test

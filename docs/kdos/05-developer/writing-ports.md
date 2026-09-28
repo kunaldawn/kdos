@@ -2,7 +2,7 @@
 
 This chapter is the reference for the recipe format: how a piece of upstream software is described
 so that KDOS can fetch it, verify it, build it offline and package it. A
-[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 2,003 of them
+[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 2,001 of them
 under `ports/core`, and KDOS's own 24 programs under `src/packages` and `src/desktop` are written in
 the same format. The chapter is for anyone adding a port, changing one, or bumping one to a new
 upstream release. Read [How KDOS is built](how-kdos-is-built.md) for where ports sit in the build,
@@ -45,17 +45,17 @@ upstream (see [Where sources come from](developing.md#where-sources-come-from)).
 change a source, [publish it](#publishing-sources) so other checkouts can fetch it.
 
 A few ports keep other files in git beside the recipe. Leaving out `kpkgbuild`, `build.sh`,
-`postinstall.sh` and `*.patch`, git tracks 43 files under `ports/core`. Thirty-six of them are named
+`postinstall.sh` and `*.patch`, git tracks 41 files under `ports/core`. Thirty-five of them are named
 by a `sha256 =` line: small inputs that are part of the source, such as `bash`'s and `readline`'s
 upstream patch-level files and the IANA registries under `iana-etc`. A hashed file cannot change
 without its `sha256 =` line changing, so an edit to it changes the recipe and rebuilds the port.
-The other seven are not hashed, and the [recipe hash](../06-reference/glossary.md) does not see
+The other six are not hashed, and the [recipe hash](../06-reference/glossary.md) does not see
 them:
 
 | File | Read by |
 |---|---|
 | `linux/kdos.config`, `linux/kdos-logo-mono.pbm` | `build.sh`, from `$PORT_SRC` |
-| `doxx/doxx.desktop`, `epy/epy.desktop` | `build.sh`, from `$PORT_SRC` |
+| `epy/epy.desktop` | `build.sh`, from `$PORT_SRC` |
 | `pandoc/cabal.project.freeze` | `ports/fetch`, when it generates the vendor bundle |
 | `linux/genlogo-mono.py` | nothing in the build; it regenerates the `.pbm` on the host |
 | `ffmpeg/LICENSE.notice` | nothing in the build; it is a record kept beside the recipe |
@@ -500,7 +500,7 @@ The recipe does not choose the backend at run time; the session does, from
 | `QT_QPA_PLATFORM` | `wayland;xcb` | Qt uses Wayland, and falls back to Xwayland only when its Wayland plugin cannot start |
 | `GDK_BACKEND` | unset | GDK tries Wayland first by itself, and an X11-only program's own `GDK_BACKEND=x11` is not overridden |
 | `GTK_USE_PORTAL` | `1` | GTK's file chooser, print dialog and settings go through the portals, so a GTK application opens the desktop's file chooser |
-| `QT_QPA_PLATFORMTHEME` | `kde` | A Qt 6 application reads the `~/.config/kdeglobals` that `kdos theme` writes, and follows the desktop's colours |
+| `QT_QPA_PLATFORMTHEME` | `kde` | A Qt 6 application reads the `~/.config/kdeglobals` that `kdos theme` writes, and a Qt 5 application the qt5ct files it writes, and both follow the desktop's colours |
 | `SDL_VIDEODRIVER`, `CLUTTER_BACKEND` | `wayland` | The same preference for SDL and Clutter programs |
 
 A few habits recur in the tree's application recipes, and a new one should follow them:
@@ -586,7 +586,7 @@ to the section that explains it.
    `no sha256 for <file> in the recipe`. Add the line (`sha256 = <hash>  <file>`) straight away:
    `kpkg` refuses to extract an unhashed source, and nothing else can verify it. For a port with
    `vendoring =`, the same run generates `<name>-vendor-<version>.tar.xz`; hash and record that
-   file too. `make fetch` takes no port name and walks all 2,003 ports, so use `ports/fetch <port>`
+   file too. `make fetch` takes no port name and walks all 2,001 ports, so use `ports/fetch <port>`
    here.
 4. **Write `build.sh`** from the [canonical shape](#canonical-build-shapes) for its build system,
    applying any [patches](#patches) before it configures.
@@ -928,12 +928,24 @@ expand while the recipe runs rather than while the script does.
 `postinstall.sh` is an optional hook that runs on the target machine each time the package is
 installed. It travels inside the package as `.POSTINSTALL`, a bash script that begins with the
 recipe's keys and helpers as variable assignments and then carries the hook verbatim, so a hook can
-read `$name` and `$version`. Thirteen ports have one:
+read `$name` and `$version`. Twenty-six ports have one:
 
-- `avahi`, `geoclue`, `mosquitto`, `networkmanager-openvpn`, `pcsc-lite`, `polkit`, `postgresql`,
-  `prosody` and `tcpdump` create their system accounts. `avahi` makes two, `avahi` and
-  `avahi-autoipd`. `prosody` and `postgresql` also give their data directories to their accounts,
-  and `networkmanager-openvpn` gives its chroot to its account.
+- `avahi`, `clamav`, `geoclue`, `gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`, `minidlna`,
+  `mosquitto`, `mumble`, `networkmanager-openvpn`, `ngircd`, `nut`, `pcsc-lite`, `polkit`,
+  `postgresql`, `prosody`, `radicale`, `tcpdump` and `usbmuxd` create their system accounts.
+  `avahi` makes two, `avahi` and `avahi-autoipd`; `mumble`'s is `mumble-server`, `usbmuxd`'s is
+  `usbmux`, the account its udev rule starts `usbmuxd` as, and `nut`'s is also in `dialout`.
+  `clamav`, `kolibri`, `maddy`, `prosody`, `postgresql` and `radicale` also give their `/var/lib`
+  directories to their accounts; `gnuhealth` gives `/var/lib/gnuhealth` and its `attach/`
+  directory to its account; `minidlna` gives `/var/lib/minidlna` and `/var/log/minidlna`;
+  `mumble` gives `/var/lib/mumble-server` to its account and `mumble-server.ini` to its group; and
+  `networkmanager-openvpn` gives its chroot to its account. `gnuhealth`, `maddy`, `mumble`,
+  `postgresql` and `radicale` set that directory's mode as well, because `kpkgadd` creates
+  every directory 0755.
+- `libvirt` creates the `libvirt` group its polkit rule admits, and a `qemu` account in `kvm`.
+- `swtpm` gives `/var/lib/swtpm-localca` to `tss` at mode `0750`: libvirt runs `swtpm_setup` as
+  `tss`, and `swtpm_localca` refuses a CA directory it cannot write, so without the hook a
+  system-mode guest with an emulated TPM never starts.
 - `linux` removes the module trees of other kernels. It keeps the running kernel's and those of
   every kernel on the ESP, runs `depmod`, and builds the new kernel's initramfs into the root as
   `/boot/initramfs-kdos.cpio.gz`. Installing into the running system, it then puts both into the
@@ -994,9 +1006,10 @@ removed and rebuild each index whose directory it touched, once, from what is th
 | `/usr/share/man/` | `makewhatis`, the `mandoc.db` that `apropos` and `whatis` search |
 | `/usr/share/fonts/` | `mkfontdir`, the `fonts.dir` of every subdirectory holding PCF or BDF faces, which Xwayland's core font path reads |
 | `/usr/share/texmf-dist/`, `/usr/share/texmf-local/` | `mktexlsr` over those two trees and `/usr/share/texmf-var`, the `ls-R` files through which every TeX program finds a file |
+| `/usr/share/applications/` | `update-desktop-database`, the `mimeinfo.cache` that `kdos-appbox open` and the shell's Open With read for a type no `mimeapps.list` names |
 
-A port therefore installs its schema, loader, MIME XML, font, info page, hwdb file, manual page or
-TeX file and does nothing else. A per-port hook would rebuild the index only when that port is installed,
+A port therefore installs its schema, loader, MIME XML, font, info page, hwdb file, manual page,
+TeX file or desktop entry and does nothing else. A per-port hook would rebuild the index only when that port is installed,
 not when the next one adds to it or the last one leaves.
 
 A missing tool is skipped: the index is written when the package carrying the tool arrives,

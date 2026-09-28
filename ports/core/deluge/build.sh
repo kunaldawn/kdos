@@ -19,8 +19,9 @@ mkdir -p vendor
 tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 
 # THE CLOSURE IS IN THE BUNDLE, except where a module is already a port.
-# chardet and ifaddr are left out: both are optional here, and calibre's
-# bundle already owns their paths in site-packages.
+# chardet and ifaddr are optional imports and are left out: ifaddr's paths in
+# site-packages belong to cura's bundle, and without chardet a tracker page in
+# an undeclared character set is decoded as UTF-8 or Latin-1.
 #
 # BUILD ISOLATION IS OFF, so each sdist builds with its backend installed.
 # hatch-fancy-pypi-readme and incremental are Twisted's build plugins, and

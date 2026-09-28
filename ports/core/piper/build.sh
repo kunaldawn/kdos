@@ -21,6 +21,13 @@
 # espeak-ng-data is copied into the package beside the module, which is where
 # piper looks for it.
 patch -p1 -i "$PORT_SRC/espeak-ng-local-archive.patch"
+
+# Without -f, piper speaks by piping raw samples to a player. Upstream's player
+# is ffplay, which the ffmpeg port does not build (it is built without SDL), so
+# every plain invocation would write output.wav into the current directory
+# instead of speaking. The patch pipes the same s16 mono stream to pipewire's
+# pw-play and makes the availability check look for pw-play.
+patch -p1 -i "$PORT_SRC/pw-play-playback.patch"
 _espeak_tar=espeak-ng-$_espeak.tar.gz
 for d in "$PORT_SRC" "$SOURCE_DIR"; do
 	[ -f "$d/$_espeak_tar" ] && break

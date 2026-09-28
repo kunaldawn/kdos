@@ -449,7 +449,7 @@ is the environment it was last built with. The files differ: `script/phase2.env.
 compiler, while `phase3.env.sh` onwards set `CC=gcc` and `CXX=g++`, and `src/packages` is on
 `PORT_REPO` only from `phase4.env.sh` on (`phase4`, `phase5` and `desktop`).
 
-An eighth of the ports in `ports/core` are named in no `packages.txt` (250 of 2,003); almost all of
+An eighth of the ports in `ports/core` are named in no `packages.txt` (249 of 2,001); almost all of
 them are installed because a listed port depends on them. For those, the second command finds the
 phase, or use the phase of the first listed port that depends on it.
 

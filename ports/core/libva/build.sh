@@ -9,11 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Wayland and DRM only, no X11 backend.
-#
-# libva's x11 backend needs libX11, libXext and libXfixes; nothing on this host
-# may pull in an X11 client chain for its own sake, and the only consumer here
-# is ffmpeg, which reaches VA-API through DRM.
+# Wayland and DRM only, no X11 or GLX backend. Consumers reach VA-API through
+# a DRM render node or a Wayland display: ffmpeg through DRM, mpv with
+# -Dvaapi-x11=disabled, kodi on its wayland platform, and chromium, whose
+# VA-API wrapper loads libva and libva-drm alone. A program running under
+# Xwayland that wants libva-x11 gets no hardware decode; the X11 backend
+# would add libX11, libXext and libXfixes to this port's depends.
 #
 # The option spelling is not symmetric: DRM is `disable_drm`, a boolean
 # defaulting to false, while the rest are `with_*` combos. meson rejects an

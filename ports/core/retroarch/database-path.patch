@@ -8,4 +8,4 @@
 +content_database_path = /usr/share/libretro/database/rdb
  
  # Path to cheat database directory.
- cheat_database_path = /usr/share/libretro/database/cht
+ # cheat_database_path =

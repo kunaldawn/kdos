@@ -28,7 +28,7 @@
 # would drop -fPIC and the shared library would not link.
 mkdir -p compat/ncursesw
 ln -sf /usr/include/ncurses.h compat/ncursesw/ncurses.h
-export CFLAGS="-I$PWD/compat -D_XOPEN_SOURCE_EXTENDED"
+export CFLAGS="$CFLAGS -I$PWD/compat -D_XOPEN_SOURCE_EXTENDED"
 
 # libdir is joined to prefix by the Makefile, so it is a leaf and not a path.
 #

@@ -1,0 +1,11 @@
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -2843,7 +2843,7 @@
+ install-exec-hook:
+ @BUILD_TOOLS_TRUE@	for tool in insmod lsmod rmmod depmod modprobe modinfo; do \
+ @BUILD_TOOLS_TRUE@		$(MKDIR_P) $(DESTDIR)$(sbindir); \
+-@BUILD_TOOLS_TRUE@		$(LN_S) --force --relative $(DESTDIR)$(bindir)/kmod $(DESTDIR)$(sbindir)/$$tool; \
++@BUILD_TOOLS_TRUE@		ln -sf ../../bin/kmod $(DESTDIR)$(sbindir)/$$tool; \
+ @BUILD_TOOLS_TRUE@	done
+ 
+ uninstall-hook:

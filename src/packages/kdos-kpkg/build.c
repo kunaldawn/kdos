@@ -463,6 +463,16 @@ static void strip_info_dir(const char *pkg)
 	free(dir);
 }
 
+/* mimeinfo.cache is an index over every package's desktop entries; kpkgadd
+ * writes it from what is installed (triggers.c). Staged, it lists one package,
+ * and removing that package deletes the system's copy. */
+static void strip_desktop_cache(const char *pkg)
+{
+	char *f = kb_path_join(pkg, "usr/share/applications/mimeinfo.cache");
+	unlink(f);
+	free(f);
+}
+
 /* The same for each font directory's fonts.dir: X.Org's font packages write
  * one at install time listing only their own faces, and two of them share
  * `misc/`. kpkgadd writes it from the directory (triggers.c). */
@@ -586,6 +596,7 @@ int build_main(int argc, char **argv)
 	write_postinstall(decl, portdir, pkg);
 	strip_la(pkg);
 	strip_info_dir(pkg);
+	strip_desktop_cache(pkg);
 	strip_font_dirs(pkg);
 
 	kb_mkdir_p(c.package_dir);

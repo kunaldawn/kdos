@@ -49,6 +49,31 @@ make
 # The install rules race each other under a parallel make.
 make -j1 DESTDIR=$PKG install
 
-# NOTHING STARTS snmpd. /etc/snmp/snmpd.conf does not exist until the
-# administrator writes one; the agent then runs as `snmpd -f`.
 install -d -m 700 "$PKG/var/lib/net-snmp"
+
+# snmpd IS SKIPPED UNTIL CONFIGURED. /etc/snmp/snmpd.conf does not exist until
+# the administrator writes one, and an agent with no access lines answers
+# nobody. It stays in the foreground under the supervisor and logs to syslog's
+# daemon facility. snmptrapd has no script.
+install -d "$PKG/etc/init.d"
+cat > "$PKG/etc/init.d/71_snmpd.sh" <<'KDOS_SH'
+#!/bin/bash
+. /etc/init.d/service_helper
+
+NAME="snmpd"
+DAEMON="/usr/sbin/snmpd"
+CONF="/etc/snmp/snmpd.conf"
+
+case "$1" in
+    start)
+        [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
+        [ -s "$CONF" ] || { echo "[SKIP] $NAME: no $CONF"; exit 0; }
+        echo "[KDOS] Starting $NAME..."
+        supervise "$NAME" "$DAEMON" -f -Lsd
+        ;;
+    stop)   stop_service "$NAME" ;;
+    status) check_status "$NAME" ;;
+    *)      echo "Usage: $0 {start|stop|status}"; exit 1 ;;
+esac
+KDOS_SH
+chmod 755 "$PKG/etc/init.d/71_snmpd.sh"

@@ -115,8 +115,7 @@ cp -r $WORKSPACE/fs/* $SYSROOT/
 # arriving 644 meant kdos-oomd never started and nothing said so. Replay the
 # execute bit — 755/644 is exactly what cp itself produces for a NEW file
 # under the umask this build runs with, so a first sync and a re-sync agree.
-# Regular files only: chmod follows a symlink, and every alien-app shim in
-# usr/local/bin points at kdos-appbox.
+# Regular files only: chmod follows a symlink.
 ( cd "$WORKSPACE/fs" && find . -type f ) | while IFS= read -r rel; do
     rel="${rel#./}"
     [ -f "$SYSROOT/$rel" ] || continue

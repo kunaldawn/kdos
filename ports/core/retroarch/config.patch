@@ -34,8 +34,7 @@ Disable online updater as libretro cores are built for glibc.
  # content_database_path =
  
  # Path to cheat database directory.
--# cheat_database_path =
-+cheat_database_path = /usr/share/libretro/database/cht
+ # cheat_database_path =
  
  # Defines a directory where CPU-based video filters are kept.
  # video_filter_dir =

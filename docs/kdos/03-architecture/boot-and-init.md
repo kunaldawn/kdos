@@ -924,7 +924,9 @@ the installed path does not, and `01_udev` starts a `udevd` from the real root e
 On the live medium the init mounts `system.sfs` read-only through a loop device and puts an
 overlay on top of it as the new root. `system.sfs` is the whole root filesystem, xz-compressed by
 `mksquashfs` at packaging time, with the pseudo-filesystem mount points recreated empty. The
-overlay's writable upper layer decides whether the session survives a power-off:
+contents of `/var/cache` and `/var/log` are left out, and both directories are recreated empty too,
+because a daemon makes its own directory under them with a single `mkdir` that needs the parent.
+The overlay's writable upper layer decides whether the session survives a power-off:
 
 - A filesystem labelled `KDOS_PERSIST` is used as the upper layer when one is present, in `upper/`
   and `work/` directories on it. `kdos persist` creates such a store, as an ext4 partition in the
@@ -1131,11 +1133,14 @@ Ports install more beside them, each from its `build.sh`:
 |---|---|
 | `31_babeld` | `babeld` |
 | `43_boltd` | `bolt` |
+| `51_lsmd` | `libstoragemgmt` |
 | `56_nut` | `nut` |
 | `62_virtlogd` | `libvirt` |
 | `63_gssd` | `nfs-utils` |
 | `63_libvirtd` | `libvirt` |
+| `64_lircd` | `lirc` |
 | `65_brltty` | `brltty` |
+| `71_snmpd` | `net-snmp` |
 | `72_nfsd` | `nfs-utils` |
 | `73_mosquitto` | `mosquitto` |
 | `74_prosody` | `prosody` |
@@ -1147,6 +1152,7 @@ Ports install more beside them, each from its `build.sh`:
 | `83_samba` | `samba` |
 | `84_minidlna` | `minidlna` |
 | `85_gnuhealth` | `gnuhealth` |
+| `89_step-ca` | `step-ca` |
 
 A package installed later can add its own, so `ls /etc/init.d` on the running machine is the
 complete list.

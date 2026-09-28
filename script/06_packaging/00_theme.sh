@@ -95,3 +95,13 @@ if command -v glib-compile-schemas >/dev/null 2>&1 &&
     glib-compile-schemas /usr/share/glib-2.0/schemas
     test -s /usr/share/glib-2.0/schemas/gschemas.compiled
 fi
+
+# The desktop entries fs/ ships (the kdos-* handlers) reach `kdos-appbox open`
+# and the shell's Open With only through
+# /usr/share/applications/mimeinfo.cache. kpkg's desktop trigger
+# writes it when a package touches the directory, which an fs/-only rebuild
+# never does, so it is rebuilt here too.
+if command -v update-desktop-database >/dev/null 2>&1 &&
+   [ -d /usr/share/applications ]; then
+    update-desktop-database -q /usr/share/applications
+fi

@@ -10,11 +10,16 @@
 # ---------------------------------
 
 
-# The plugin answers QT_QPA_PLATFORMTHEME=qt5ct and =qt6ct, and qt6ct's
-# answers both too, so one value themes Qt 5 and Qt 6 programs alike. D-Bus
+# kde-key.patch makes the plugin answer QT_QPA_PLATFORMTHEME=kde as well as
+# =qt5ct and =qt6ct. The session exports kde, and no other Qt 5 platform theme
+# answers it, so this is how every Qt 5 program reads the qt5ct files `kdos
+# theme` writes. Qt 5 searches only its own platformthemes directory, so the
+# key cannot shadow plasma-integration's Qt 6 plugin. qt5-qtwayland gives the
+# settings window its Wayland platform plugin. D-Bus
 # stays on: it carries the portal file dialogs and the StatusNotifierItem tray
 # icon. Translations are compiled into the program by lrelease, which is why
 # qt5-qttools is a build dependency.
+patch -p1 -i "$PORT_SRC/kde-key.patch"
 cmake -B build -G Ninja -Wno-dev \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

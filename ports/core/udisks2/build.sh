@@ -17,8 +17,9 @@
 #
 # The LVM2, Btrfs and LSM modules are built. The LSM module (RAID volume
 # data and the drive identify and fault LEDs) connects to lsmd over
-# /var/run/lsm when it loads; with no lsmd answering it fails to load, logs
-# the error and leaves the other modules loaded. iSCSI needs the libiscsi of
+# /var/run/lsm when it loads, and lsmd is started by libstoragemgmt's
+# 51_lsmd init script; with no lsmd answering the module fails to load and
+# the other modules stay loaded. iSCSI needs the libiscsi of
 # a patched open-iscsi, not the libiscsi port, and is off. Mounts go under
 # /run/media/<user>.
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \

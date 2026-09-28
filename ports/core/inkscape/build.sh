@@ -16,9 +16,10 @@ for p in poppler-26.05 poppler-26.06 poppler-26.07 poppler-version-check poppler
 	patch -p1 -i "$PORT_SRC/$p.patch"
 done
 
-# lib2geom is the port, not the bundled copy. Magick is off both ways: the
-# ImageMagick++ probe accepts ImageMagick 6 only, and GraphicsMagick is not a
-# port, so the raster extensions are absent. gspell, gtksourceview, the
+# lib2geom is the port, not the bundled copy. Magick++ comes from
+# GraphicsMagick: the ImageMagick++ probe accepts ImageMagick 6 only, so
+# WITH_IMAGE_MAGICK stays off and the raster effects (Extensions > Raster)
+# link GraphicsMagick++; without it they are absent. gspell, gtksourceview, the
 # CorelDRAW, Visio and WordPerfect importers, readline for the shell mode and
 # OpenMP are each skipped silently upstream when absent, and each is in
 # depends. X11 is the Xwayland half of GTK 3. WITH_NLS is off: bundled data
@@ -36,7 +37,7 @@ cmake -S . -B build -G Ninja \
 	-D ENABLE_POPPLER_CAIRO=ON \
 	-D ENABLE_LCMS=ON \
 	-D WITH_IMAGE_MAGICK=OFF \
-	-D WITH_GRAPHICS_MAGICK=OFF \
+	-D WITH_GRAPHICS_MAGICK=ON \
 	-D WITH_LIBCDR=ON \
 	-D WITH_LIBVISIO=ON \
 	-D WITH_LIBWPG=ON \

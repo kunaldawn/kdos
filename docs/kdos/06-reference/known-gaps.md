@@ -83,11 +83,14 @@ surface offers enrolment. For an account with a fingerprint enrolled, `sudo` ove
 machine's reader before asking for the password: the only remote-login test the module has without
 logind is `PAM_RHOST`, which `sudo` never sets.
 
-### X11 applications get no input method
+### X11 and Qt 5 applications get no input method
 
 Xwayland gives its X clients no text-input protocol, and fcitx5 is built without the XIM frontend
-that X clients use, so CJK input works in Wayland clients only, host or boxed. See
-[the session](../03-architecture/session.md#input-methods).
+that X clients use. Qt 5's Wayland plugin (qtwayland 5.15) speaks only text-input-unstable-v2, and
+`kdos-comp` serves text-input-v3, so a Qt 5 application on Wayland gets no input method either;
+there is no `fcitx5-qt` port that would give Qt 5 a direct route. CJK input and the on-screen
+keyboard's automatic raise therefore reach GTK 3, GTK 4 and Qt 6 applications on Wayland, host or
+boxed. See [the session](../03-architecture/session.md#input-methods).
 
 ### There is no input-method configuration tool
 
@@ -337,6 +340,16 @@ ask: `kdos-mount browse` is an mDNS query plus a NetBIOS one, and a machine that
 another subnet, or behind a router that does not forward broadcasts is missing from it. It can still
 be reached by name.
 
+The file managers' `network://` view is the same: `gvfs` is built without its WS-Discovery (`wsdd`)
+backend, because `wsdd` is not a port, so it lists only the hosts Avahi finds. A Windows machine,
+which announces itself over WS-Discovery rather than mDNS, is reached by typing `smb://host`.
+
+### An NFSv3 mount needs `-o nolock`
+
+NFSv4 mounts and the v4-only server (`72_nfsd`) work. There is no `rpcbind` port, so `rpc.statd`
+cannot register, and a `vers=3` mount that wants locking is refused. Mounting with `-o nolock`
+works and keeps locks local to this machine.
+
 ### Kerberos is built and has never been given a ticket
 
 `kinit`, `cifs.upcall` and the `request-key` rule that joins them are on the image, and
@@ -423,6 +436,14 @@ The previews need Qt 5's WebEngine, which is not a port, so `quassel` is configu
 `scrcpy` is not a port: its device-side server is a jar that cannot be built here, and shipping
 upstream's prebuilt one was declined. `adb` and `fastboot` from `android-tools` are on the host.
 
+### A phone cannot drive the pointer or keyboard through KDE Connect
+
+KDE Connect's remote input, the phone as a touchpad and keyboard, asks the RemoteDesktop portal for
+an EIS connection (`ConnectToEIS`). No backend on KDOS answers RemoteDesktop:
+`xdg-desktop-portal-wlr` does not implement it, `xdg-desktop-portal-kdos` does not either, and
+`kdos-portals.conf` routes it nowhere, so the request is refused. Pairing, notifications, the
+clipboard, file transfer and the other plugins do not use the portal.
+
 ### The local model and translation programs ship without models or pages
 
 `llama-server` serves its OpenAI-compatible API and no web page: the page is a Svelte application
@@ -504,13 +525,6 @@ root, answers.
 They arrive as keys, which the compositor's `rc.xml` binds. There is no acpid, and nothing below the
 session listens for them, so at a text login or on the console desktop the power button does
 nothing. Neither binding has been pressed on real hardware.
-
-### udisks2's LSM module does not load
-
-The `udisks2` recipe enables its LSM module, for RAID volume data and a drive's identify and fault
-LEDs, and the module connects to `lsmd` over `/var/run/lsm` when it loads. `lsmd` is installed by
-`libstoragemgmt` and nothing starts it, so the module fails to load and logs why; the LVM2 and Btrfs
-modules do not depend on it. Neither port has been through a build.
 
 ### A USB modem that first appears as a storage device is not switched into a modem
 
@@ -845,9 +859,9 @@ check for one push.
 For a port that names a `source =`, the recipe hash covers `kpkgbuild`, `build.sh`,
 `postinstall.sh` and every `.patch`, and each other file in the directory is expected to be checked
 by its own `sha256 =` line. A file committed beside the recipe that no such line names is in
-neither. Seven are, counted as the git-tracked files under `ports/core/*/` that are not one of the
+neither. Six are, counted as the git-tracked files under `ports/core/*/` that are not one of the
 four recipe kinds and that no `sha256 =` line names: `linux/kdos.config`,
-`linux/kdos-logo-mono.pbm`, `linux/genlogo-mono.py`, `doxx/doxx.desktop`, `epy/epy.desktop`,
+`linux/kdos-logo-mono.pbm`, `linux/genlogo-mono.py`, `epy/epy.desktop`,
 `ffmpeg/LICENSE.notice` and `pandoc/cabal.project.freeze`. Editing one of them changes nothing the
 build compares, so under `KPKG_STRICT_RECIPE=1` the installed package counts as current and keeps
 the old file. Bump the port's `release` in the same change. See

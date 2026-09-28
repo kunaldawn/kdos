@@ -63,3 +63,18 @@ patch -p1 -i "$PORT_SRC/ffmpeg8.patch"
 	CONFIG_CDDB=n CONFIG_DISCID=n
 make
 make DESTDIR=$PKG install
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/cmus.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Music (cmus)
+GenericName=Music Player
+Comment=Browse and play a music library
+Exec=cmus
+Icon=folder-music
+Terminal=true
+Categories=AudioVideo;Player;
+Keywords=music;audio;player;library;playlist;cmus;
+DESKTOP
+chmod 644 "$PKG/usr/share/applications/cmus.desktop"

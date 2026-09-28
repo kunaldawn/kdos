@@ -59,8 +59,8 @@ rm -rf "$PKG$_home/share"
 # ONE LAUNCHER. It puts the prefix's site directories ahead of any
 # PYTHONPATH the caller set, resolved through sysconfig so it names no python
 # version, and runs the entry point pip wrote. SDL_APP_ID is the Wayland
-# app_id and the X11 class SDL3 gives the window; unset, it is the python
-# interpreter's name, which no menu entry can match.
+# app_id SDL3 gives the window; unset, it is the python interpreter's name,
+# which no menu entry can match.
 install -d "$PKG/usr/bin"
 cat > "$PKG/usr/bin/sideband" <<'KDOS_SH'
 #!/bin/sh

@@ -28,9 +28,11 @@
 #                   -annotate; without it Arabic and Indic text come out as
 #                   unjoined glyphs.
 #   --with-fftw     the -fft and -ift operators.
+#   --with-djvu     DjVu — what scanned books and papers are published in.
+#   --with-jbig     JBIG — bi-level fax and scanner images.
 #
-# --without-djvu, --without-lqr and --without-uhdr: djvulibre, liblqr and
-# libultrahdr are not ports. --without-dmr: MagickCache is not a port.
+# --without-lqr and --without-uhdr: liblqr and libultrahdr are not ports.
+# --without-dmr: MagickCache is not a port.
 #
 # --with-dejavu-font-dir names where ttf-dejavu installs, so type-dejavu.xml
 # gives the Sans/Serif/Mono names a font without a fontconfig lookup.
@@ -71,13 +73,13 @@
 	--without-x \
 	--without-perl \
 	--with-fftw \
-	--without-djvu \
+	--with-djvu \
 	--without-dmr \
 	--without-fpx \
 	--without-gslib \
 	--without-gvc \
 	--with-heic \
-	--without-jbig \
+	--with-jbig \
 	--with-jxl \
 	--with-lcms \
 	--without-lqr \

@@ -77,6 +77,26 @@ DESTDIR=$PKG ninja -C build install
 # strings.
 rm -rf "$PKG/usr/share/PrusaSlicer/localization"
 
+# Open With matches an entry's MimeType against the canonical type the glob
+# table names, and resolves no alias: upstream's entry claims .3mf and .obj
+# by their aliases (application/vnd.ms-3mfdocument,
+# application/prs.wavefront-obj), which would leave PrusaSlicer off the list
+# for its own project format. The entry claims model/3mf and model/obj.
+cat > "$PKG/usr/share/applications/PrusaSlicer.desktop" <<'EOF'
+[Desktop Entry]
+Name=PrusaSlicer
+GenericName=3D Printing Software
+Icon=PrusaSlicer
+Exec=prusa-slicer %F
+Terminal=false
+Type=Application
+MimeType=model/stl;model/3mf;model/obj;application/x-amf;
+Categories=Graphics;3DGraphics;Engineering;
+Keywords=3D;Printing;Slicer;slice;3D;printer;convert;gcode;stl;obj;amf;SLA
+StartupNotify=false
+StartupWMClass=prusa-slicer
+EOF
+
 test -x "$PKG/usr/bin/prusa-slicer"
 test -e "$PKG/usr/lib/OCCTWrapper.so"
 test -f "$PKG/usr/share/applications/PrusaSlicer.desktop"

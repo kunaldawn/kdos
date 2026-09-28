@@ -8,10 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# NOTE: Upstream ltrace is somewhat dormant; musl support has historically
-# needed patches. Verify build in chroot.
-
 name        = ltrace
 version     = 0.8.1
 release     = 1

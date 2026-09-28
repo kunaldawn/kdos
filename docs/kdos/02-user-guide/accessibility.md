@@ -17,6 +17,7 @@ to, and [The desktop](desktop.md) explains the desktop's keyboard routes.
 | Larger text | A font size for the desktop's chrome, per-window sizes in the terminals, a larger pointer | [Larger text](#larger-text) |
 | Typing with limited movement | Sticky, slow and bounce keys | [Keyboard aids](#keyboard-aids) |
 | Clicking with limited movement | Dwell click: resting the pointer clicks | [Dwell click](#dwell-click) |
+| Pointing without a mouse | Keyboard Pointer (`wl-kbptr`) in the menu: labelled screen regions, typed to move and click; `wl-kbptr -o modes=floating,click -o mode_floating.source=detect` finds the clickable regions itself | [Applications](applications.md#accessibility) |
 | Typing without a keyboard | An on-screen keyboard, shown by key or whenever a text field has the focus | [The on-screen keyboard](#the-on-screen-keyboard) |
 | A screen reader hearing the keyboard | The compositor's keyboard monitor, the interface a reader such as Orca uses on Wayland | [The keyboard monitor](#the-keyboard-monitor) |
 | Contrast | Eight colour schemes held to fixed contrast floors, one of them light | [Colour and contrast](#colour-and-contrast) |

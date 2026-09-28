@@ -17,4 +17,4 @@ sha256      = c2689074539bf23d81e8add5f2beeac1b69d5586d69d93d44f6f6b195076bbaf  
 sha256      = 3eda3080ab87940fca5e4dcd22b8e041dc1d9e65bfe9177bff68383e9bd58a10  srb2-assets-2.2.15.zip
 description = Sonic Robo Blast 2 — a 3D Sonic fan game on a heavily modified Doom Legacy engine, with its game data
 homepage    = https://www.srb2.org
-depends     = cmake ninja pkgconf unzip sdl2-compat sdl2-mixer libglvnd mesa libpng zlib curl libgme miniupnpc
+depends     = cmake ninja pkgconf unzip sdl2-compat sdl2-mixer libglvnd mesa libpng zlib curl libgme miniupnpc libopenmpt

@@ -20,9 +20,12 @@ patch -p1 -i "$PORT_SRC/rpath-origin.patch"
 # C runtime, so no MinGW toolchain or headers are involved. CROSSCFLAGS
 # replaces upstream's "-g -O2", so the DLLs carry no debug information.
 #
-# Both display drivers are built: winewayland is the default where
-# WAYLAND_DISPLAY is set, and winex11 serves a program that needs X11 through
-# Xwayland. Wine reads the CPU topology from sysfs; its hwloc path is FreeBSD's.
+# Both display drivers are built. Wine tries x11 before wayland and the
+# session always sets DISPLAY, so winex11 under Xwayland is the default, and
+# a Vulkan surface there needs the loader's xcb and xlib platforms.
+# winewayland is chosen per prefix with Graphics=wayland under
+# HKCU\Software\Wine\Drivers, or for one run by starting wine with DISPLAY
+# unset. Wine reads the CPU topology from sysfs; its hwloc path is FreeBSD's.
 # OSS, CAPI and CoreAudio are not on this system. The Samba NetAPI library is
 # not used. The regression tests are not built.
 export CROSSCFLAGS="-O2 -pipe"

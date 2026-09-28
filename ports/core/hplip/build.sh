@@ -23,9 +23,9 @@ done
 # this image does not carry.
 # --disable-imageProcessor-build: libImageProcessor is a prebuilt closed
 # object in the tarball; with it on, hpcups links it.
-# --disable-network-build: the network half of hpmud needs net-snmp, which is
-# not a port. Network printers print through cups' own ipp and socket backends
-# with the hpcups PPDs.
+# --enable-network-build: the network half of hpmud (the hp:/net backend and
+# network hpaio scanning) links net-snmp for device status and avahi-client
+# for mDNS discovery; configure stops without either.
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--with-docdir=/usr/share/doc/hplip \
 	--disable-doc-build \
@@ -34,7 +34,7 @@ done
 	--disable-qt3 --disable-qt4 --disable-qt5 \
 	--disable-policykit \
 	--disable-imageProcessor-build \
-	--disable-network-build \
+	--enable-network-build \
 	--enable-scan-build \
 	--enable-dbus-build \
 	--enable-hpcups-install \

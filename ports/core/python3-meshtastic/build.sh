@@ -32,8 +32,9 @@ tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 # setuptools-scm and poetry-core. pypubsub declares `setuptools<77`,
 # which no setuptools a port ships satisfies, and an isolated build would try
 # to find one in the bundle and fail. With isolation off pip consults no
-# declaration. requests, urllib3, idna, charset-normalizer and certifi are ports
-# and are not installed from the bundle.
+# declaration. requests, urllib3, idna, charset-normalizer, certifi and
+# protobuf are ports and are not installed from the bundle: a second copy of
+# google/protobuf in site-packages is a path two packages own.
 SKIP_CYTHON=1 pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
 	--root=$PKG --prefix=/usr \
-	protobuf pypubsub bleak dbus-fast tabulate .
+	pypubsub bleak dbus-fast tabulate .

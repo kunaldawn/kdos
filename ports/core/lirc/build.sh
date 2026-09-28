@@ -39,9 +39,43 @@ make DESTDIR=$PKG install
 # host's /proc/version names Ubuntu, and that file belongs to the host kernel
 # the chroot runs on. No unit belongs on this system. The install also makes
 # /var/run/lirc, a path through the /var/run link that a package cannot own;
-# lircd does not create its socket directory, so whatever starts it makes
-# /run/lirc first.
+# lircd does not create its socket directory, so 64_lircd makes /run/lirc
+# before starting it.
 rm -rf "$PKG/lib/systemd" "$PKG/usr/lib/systemd" "$PKG/var/run"
+
+# lircd RUNS UNDER ksvc WHEN A RECEIVER IS PRESENT: a /dev/lirc* node or an
+# rc-core device, which is what the devinput driver in lirc_options.conf reads.
+# With neither there is nothing to decode and the daemon would only log.
+# Its socket, /run/lirc/lircd, is where every liblirc_client program connects.
+install -d "$PKG/etc/init.d"
+cat > "$PKG/etc/init.d/64_lircd.sh" <<'KDOS_SH'
+#!/bin/bash
+. /etc/init.d/service_helper
+
+NAME="lircd"
+DAEMON="/usr/sbin/lircd"
+
+case "$1" in
+    start)
+        [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
+        found=
+        for d in /dev/lirc* /sys/class/rc/rc*; do
+            [ -e "$d" ] && found=1
+        done
+        if [ -z "$found" ]; then
+            echo "[SKIP] $NAME: no infrared receiver"
+            exit 0
+        fi
+        install -d -m 755 /run/lirc
+        echo "[KDOS] Starting $NAME..."
+        supervise "$NAME" "$DAEMON" --nodaemon
+        ;;
+    stop)   stop_service "$NAME" ;;
+    status) check_status "$NAME" ;;
+    *)      echo "Usage: $0 {start|stop|status}"; exit 1 ;;
+esac
+KDOS_SH
+chmod 755 "$PKG/etc/init.d/64_lircd.sh"
 
 # lirc-setup is a GTK 3 configuration wizard whose remote and driver lists
 # come from lirc-remotes.sourceforge.net, so offline it has nothing to offer.

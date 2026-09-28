@@ -86,7 +86,7 @@ it exports:
 | `QT_QPA_PLATFORM` | `wayland;xcb`: Qt uses Wayland and falls back to Xwayland only when its Wayland plugin cannot start |
 | `GDK_BACKEND` | Not set. GDK tries Wayland first on its own, and an X11-only application that sets `GDK_BACKEND=x11` for itself is not overridden |
 | `GTK_USE_PORTAL` | `1`: a GTK application opens `kdos-pick` through the FileChooser portal and prints through the Print portal ([Portals](#portals)) |
-| `QT_QPA_PLATFORMTHEME` | `kde`: plasma-integration's Qt 6 platform theme, which reads the `~/.config/kdeglobals` that `kdos theme` writes. Qt reads one name here, so a Qt 5 application finds no plugin by that name and falls back to its platform's own theme |
+| `QT_QPA_PLATFORMTHEME` | `kde`: plasma-integration's Qt 6 platform theme, which reads the `~/.config/kdeglobals` that `kdos theme` writes. Qt reads one name here, and a Qt 5 application finds the `qt5ct` port's plugin under it, which also answers `kde` and reads the qt5ct files `kdos theme` writes |
 | `_JAVA_AWT_WM_NONREPARENTING` | `1`: Swing and AWT run under Xwayland and otherwise draw blank or misplaced windows. `kdos-comp` sets the same default for what it starts |
 | `MOZ_ENABLE_WAYLAND` | `1`: Firefox ESR, LibreWolf and Thunderbird use their Wayland backend |
 | `SDL_VIDEODRIVER` | `wayland`: SDL applications open a Wayland window rather than an X11 one |
@@ -557,6 +557,7 @@ filter a request carries is applied, because `kdos-pick` takes one pattern list.
 | | `color-scheme` | `prefer-dark`, whatever the accent |
 | | `font-name` | `Noto Sans 10` |
 | | `monospace-font-name` | `Noto Sans Mono 10` |
+| | `gtk-im-module` | Empty: GTK 4 picks its Wayland text-input context, the one fcitx5 and the on-screen keyboard reach. Left out, GTK 4 falls back to `simple`, which reaches no input method |
 
 The `org.gnome.desktop.interface` keys are GSettings key names, which GTK maps onto its own
 `gtk-theme-name` and `gtk-icon-theme-name` properties. For any key the portal does not send, GTK
@@ -662,10 +663,10 @@ exists and `vp8enc` otherwise. It records video only. The `pipewiresrc` element 
 the PipeWire port is built with `-Dgstreamer=enabled`.
 
 **Choosing the screen is done by a person.** On this compositor the ScreenCast backend is
-`xdg-desktop-portal-wlr`, whose chooser is `slurp`, configured in
-`~/.config/xdg-desktop-portal-wlr/config` (seeded from `/etc/skel`) as
-`chooser_cmd=slurp -f %o -or` with `chooser_type=simple`: it covers the screen and waits for an
-output to be picked. The three portal calls therefore have different deadlines:
+`xdg-desktop-portal-wlr`, whose chooser is `fuzzel`, configured in
+`~/.config/xdg-desktop-portal-wlr/config` (seeded from `/etc/skel`) with `chooser_type=dmenu`: it
+lists the screens and, when the request allows windows, the open windows, and waits for one to be
+picked. The three portal calls therefore have different deadlines:
 
 | Call | Deadline | Why |
 |---|---|---|
@@ -834,7 +835,9 @@ The engine is `fcitx5`, with the Chinese (`fcitx5-chinese-addons`), Anthy (Japan
 `fcitx5-anthy`) and Hangul (Korean, `fcitx5-hangul`) add-ons. It is built Wayland-only and
 started by `kdos-desktop-start` as `fcitx5 -d`, not by an autostart entry, because KDOS runs no
 autostart agent (the port is built `ENABLE_XDGAUTOSTART=Off`). If fcitx5 is not installed the
-session starts without it and prints nothing. The engines available for switching are set in
+session starts without it and prints nothing. `kdos-desktop-start` starts Déjà Dup's backup
+scheduler, `deja-dup-monitor`, the same way in place of its autostart entry, when Déjà Dup is
+installed. The engines available for switching are set in
 `~/.config/fcitx5/profile`, which the image seeds from `/etc/skel`.
 
 The same text-input activation drives the on-screen keyboard: with `osk = auto`, the compositor
@@ -856,6 +859,11 @@ provides only when built with X11 support. The port is built `ENABLE_X11=Off`, w
 dependencies; the cost is this missing route for X11 applications. The compositor starts
 Xwayland rootless, when the first X11 client connects; see
 [kdos-comp](../04-programs/kdos-comp.md#xwayland).
+
+**Neither has a Qt 5 application.** Qt 5's Wayland plugin speaks text-input-unstable-v2 and the
+compositor serves text-input-v3, so the route above covers GTK 3, GTK 4 and Qt 6 clients.
+`QT_IM_MODULE` is never set to `fcitx` on the host, because that would take Qt 6 off
+text-input-v3.
 
 **The candidate window is drawn by KDOS.** `kdos-ime` owns the `org.kde.impanel` bus name, and
 fcitx5's kimpanel module has a higher priority than fcitx5's own interface and takes over as soon

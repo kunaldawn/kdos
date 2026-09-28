@@ -22,4 +22,4 @@ sha256      = e7881abd9544100f2aa66fcee80e92f18a15b74455c33334613d8c965922c53d  
 sha256      = 1a3a79b80fc6f0b0cc155e28b954a598e0ddfa2db64e2afa8466be88c476fa55  miniaudio-9634bedb5b5a2ca38c1ee7108a9358a4e233f14d.tar.gz
 description = Real-time 3D space simulator — fly through the solar system, the stars and the galaxies
 homepage    = https://celestiaproject.space/
-depends     = cmake ninja pkgconf qt6-qtbase qt6-qtwayland sdl2-compat libglvnd libepoxy eigen fmt libpng libjpeg-turbo lua freetype2 icu boost gperf ffmpeg libavif imagemagick ttf-dejavu celestia-content
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtwayland sdl2-compat libglvnd libepoxy eigen fmt libpng libjpeg-turbo lua freetype2 icu boost gperf ffmpeg libavif imagemagick ttf-dejavu celestia-content cspice

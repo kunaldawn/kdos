@@ -26,7 +26,10 @@ grep -q '^postgres:' "$root/etc/passwd" 2>/dev/null || \
 
 # chown resolves a name against the running root's passwd, so the ids are read
 # out of PKG_ROOT's.
+# The mode is set as well: kpkgadd creates every directory 0755, whatever mode
+# it was packaged with, because the package carries no group to give it.
 while IFS=: read -r n _ uid gid _; do
 	[ "$n" = postgres ] || continue
 	chown "$uid:$gid" "$root/var/lib/postgres"
+	chmod 700 "$root/var/lib/postgres"
 done < "$root/etc/passwd"

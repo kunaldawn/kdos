@@ -34,9 +34,9 @@ make DESTDIR=$PKG "${MDADM_MAKE[@]}" install
 # this ships is the empty file its absence would make noisy: mdadm warns on
 # every invocation when /etc/mdadm.conf is missing.
 install -d "$PKG/etc"
-cat > "$PKG/etc/mdadm.conf" <<'KDOS_SH'
+cat > "$PKG/etc/mdadm.conf" <<'EOF'
 # Arrays are found by scanning rather than by being listed here: a machine
 # whose disks moved is a machine whose listed device paths are wrong, and the
 # superblock on each member already carries the array's identity.
 DEVICE partitions
-KDOS_SH
+EOF

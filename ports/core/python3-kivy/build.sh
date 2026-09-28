@@ -19,9 +19,8 @@
 patch -p1 -i "$PORT_SRC/python314-ast-str.patch"
 
 # Kivy draws everything itself with OpenGL in one SDL2 window. SDL2 here is
-# sdl2-compat over SDL3, so the window is a Wayland surface, or an X11 one
-# under Xwayland when SDL_VIDEO_DRIVER says so; Kivy's own X11 and EGL window
-# providers are not built, and neither is the GStreamer audio and video
+# sdl2-compat over SDL3, built without an X11 video driver, so the window is a
+# Wayland surface; Kivy's own X11 and EGL window providers are not built, and neither is the GStreamer audio and video
 # provider (SDL2_mixer plays sound). Pango text is off: SDL2_ttf is the text
 # provider. Each switch is set, because setup.py otherwise decides by what
 # pkg-config happens to find in the build root.

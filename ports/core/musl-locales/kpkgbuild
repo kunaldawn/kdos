@@ -16,4 +16,4 @@ source      = $name-$version.tar.gz::https://gitlab.com/rilian-la-te/$name/-/arc
 sha256      = 360e04585ed8e7707fe67d7ca4219ee239011ec0087a94f55df5c8a63f45dfc6  musl-locales-20260425.tar.gz
 description = A locale command and message catalogues for musl
 homepage    = https://gitlab.com/rilian-la-te/musl-locales
-depends     = cmake gettext
+depends     = cmake ninja gettext

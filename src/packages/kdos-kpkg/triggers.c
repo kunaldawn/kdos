@@ -61,6 +61,7 @@ enum {
 	T_MAN,
 	T_XFONTS,
 	T_TEXMF,
+	T_DESKTOP,
 	T_COUNT
 };
 
@@ -81,6 +82,7 @@ static const char *const t_dir[T_COUNT][T_MAXDIRS] = {
 	[T_MAN] = { "usr/share/man/" },
 	[T_XFONTS] = { "usr/share/fonts/" },
 	[T_TEXMF] = { "usr/share/texmf-dist/", "usr/share/texmf-local/" },
+	[T_DESKTOP] = { "usr/share/applications/" },
 };
 
 static const char *const t_tool[T_COUNT] = {
@@ -94,6 +96,7 @@ static const char *const t_tool[T_COUNT] = {
 	[T_MAN] = "makewhatis",
 	[T_XFONTS] = "mkfontdir",
 	[T_TEXMF] = "mktexlsr",
+	[T_DESKTOP] = "update-desktop-database",
 };
 
 #define MAN_DIR "usr/share/man/"
@@ -365,6 +368,13 @@ static int run_one(const KpTriggers *t, int i, const char *root, int rooted)
 		break;
 	case T_MIME:
 		path = kb_path_join(root, "usr/share/mime");
+		break;
+	case T_DESKTOP:
+		/* mimeinfo.cache: the MIME-type-to-application table
+		 * that `kdos-appbox open` (xdg-open) and the shell's
+		 * Open With read for a type no mimeapps.list names. */
+		kb_argv_add(&a, "-q");
+		path = kb_path_join(root, "usr/share/applications");
 		break;
 	case T_PIXBUF:
 		kb_argv_add(&a, "--update-cache");

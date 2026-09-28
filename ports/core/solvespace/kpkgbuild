@@ -16,4 +16,4 @@ source      = $name-$version.tar.xz::https://github.com/solvespace/solvespace/re
 sha256      = d93e816667b6c6f05fabc3f3cb6d783fad2a3805c46d24e28f2ebd91bc36de76  solvespace-3.2.tar.xz
 description = Parametric 2D and 3D CAD with a constraint solver (Qt 6 interface)
 homepage    = https://solvespace.com/
-depends     = cmake ninja pkgconf qt6-qtbase eigen zlib libpng freetype2 fontconfig cairo pixman mesa libglvnd
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtwayland eigen zlib libpng freetype2 fontconfig cairo pixman mesa libglvnd

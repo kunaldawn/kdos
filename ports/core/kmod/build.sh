@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-sed -i 's|\$(LN_S) --force --relative .*kmod|ln -sf ../../bin/kmod|' Makefile.in
+patch -p1 -i "$PORT_SRC/relative-tool-links.patch"
 
 # --without-openssl KEEPS libcrypto OUT OF THE INITRAMFS. configure adds it to
 # the global LIBS, so libkmod links it as well as kmod, and the initramfs

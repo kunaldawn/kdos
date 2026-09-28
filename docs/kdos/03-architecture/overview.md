@@ -48,10 +48,10 @@ first field is `app`):
 
 | Where | Count |
 |---|---|
-| `ports/core` | 2,003 recipes |
+| `ports/core` | 2,001 recipes |
 | `src/packages` | 11 recipes |
 | `src/desktop` | 13 recipes |
-| All port repositories | 2,027 recipes |
+| All port repositories | 2,025 recipes |
 | Catalogue `app` rows (outer ring) | 73 |
 
 `src/packages/` and `src/desktop/` are port repositories in their own right and use the same
@@ -249,15 +249,15 @@ init (PID 1, toybox)
  │   ├─ 30 network   35 chrony   40 dbus   41 polkitd
  │   ├─ 42 modemmanager   42 networkmanager   45 avahi   45 seatd
  │   ├─ 47 pcscd   50 alsa   52 smartd   55 tlp   60 bluetooth
- │   ├─ 62 virtlogd   63 libvirtd
+ │   ├─ 51 lsmd   62 virtlogd   63 libvirtd
  │   ├─ 70 sshd   80 cups   81 cups-browsed   82 ipp-usb
  │   ├─ skipped when there is nothing to manage: 43 boltd   51 mdmonitor
- │   │    53 xfs_healer   54 thermald
+ │   │    53 xfs_healer   54 thermald   64 lircd
  │   ├─ skipped until configured: 31 babeld   46 hostapd   56 nut
- │   │    63 gssd   65 brltty   72 nfsd   73 mosquitto   74 prosody
+ │   │    63 gssd   65 brltty   71 snmpd   72 nfsd   73 mosquitto   74 prosody
  │   │    75 mumble-server   76 postgresql   77 radicale   78 maddy
  │   │    79 ngircd   83 samba   84 minidlna   85 gnuhealth
- │   │    86 kiwix-serve   87 kolibri   88 llama-server
+ │   │    86 kiwix-serve   87 kolibri   88 llama-server   89 step-ca
  │   └─ the KDOS root daemons:
  │        55 kdos-powerd    /run/kdos-powerd.sock    power, and system settings
  │        56 kdos-energyd   /run/kdos-energyd.sock   per-application energy

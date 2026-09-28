@@ -10,8 +10,9 @@
 # ---------------------------------
 
 
-# ModemManager is started by D-Bus activation of org.freedesktop.ModemManager1;
-# the activation file and the bus policy are the only wiring it installs.
+# /etc/init.d/42_modemmanager starts ModemManager at boot, after polkitd and
+# before NetworkManager. The D-Bus activation file it installs is never the
+# path that starts it: a User=root activation hangs off the setuid launch helper.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --localstatedir=/var \
 	--buildtype=release \

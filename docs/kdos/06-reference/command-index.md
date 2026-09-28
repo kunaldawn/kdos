@@ -59,8 +59,7 @@ the binary is started under is taken as an application **shim**: a symlink in `/
 named after the application and pointing at `kdos-appbox`, which is what makes `scribus` an ordinary
 command. The build writes one such link per application in a pack the medium carries
 (`script/06_packaging/00_launchers.sh`, through `kdos-appbox genlaunchers`); the default medium
-carries no packs, so it ships none, and the same step sweeps the links committed under
-`fs/usr/local/bin/`. An application you install gets its shim in `~/.local/bin` instead. See
+carries no packs, so it ships none. An application you install gets its shim in `~/.local/bin` instead. See
 [the program map](../04-programs/README.md#binaries-that-answer-to-several-names).
 
 ## The `kdos` command

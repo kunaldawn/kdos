@@ -56,31 +56,6 @@
 #define NAME_MAX_LEN 64
 #define EXEC_MAX_LEN 256
 
-/*
- * GNOME 2's Applications submenus, in its order.
- *
- * The `match` list is the freedesktop Categories a `.desktop` file may carry;
- * the FIRST bucket that matches wins, so the order here is also the priority.
- * An entry matching nothing lands in Accessories, which is what that category
- * has always been for — an app with no home is still an app you have to be
- * able to launch.
- */
-static const struct {
-	const char *name;
-	const char *match[8];
-} GROUPS[] = {
-	{ "Accessories",  { "Utility", "Accessibility", "Core", NULL } },
-	{ "Games",        { "Game", NULL } },
-	{ "Graphics",     { "Graphics", "Photography", "Scanning", NULL } },
-	{ "Internet",     { "Network", "WebBrowser", "Email", NULL } },
-	{ "Office",       { "Office", "TextEditor", "Spreadsheet", NULL } },
-	{ "Programming",  { "Development", "IDE", NULL } },
-	{ "Sound & Video",{ "AudioVideo", "Audio", "Video", "Player", NULL } },
-	{ "System Tools", { "System", "Settings", "Emulator", "Security", NULL } },
-	{ "Education",    { "Education", "Science", "Engineering", NULL } },
-};
-#define NGROUPS ((int)(sizeof(GROUPS) / sizeof(GROUPS[0])))
-
 struct item {
 	char name[NAME_MAX_LEN];
 	char exec[EXEC_MAX_LEN];
@@ -92,7 +67,7 @@ struct item {
 	 * "/run/media/kdos/My Disk" into two bogus argv entries — a mount with
 	 * a space in its name then cannot be opened at all. */
 	char path[256];
-	int group;			/* index into GROUPS, or -1 */
+	int group;			/* a sh_app_group_for() index, or -1 */
 	int submenu;			/* -1, or the group this row opens */
 	int terminal;			/* Terminal=true — run it in one     */
 	char term[24];			/* X-KDOS-Term: which emulator       */
@@ -108,31 +83,6 @@ static struct item items[MAX_ITEMS];
 static int nitems;
 
 /* ── reading the applications ──────────────────────────────────────────── */
-
-static int group_for(const char *categories)
-{
-	if (!categories)
-		return 0;
-	for (int g = 0; g < NGROUPS; g++)
-		for (int m = 0; GROUPS[g].match[m]; m++) {
-			const char *p = strstr(categories, GROUPS[g].match[m]);
-			/*
-			 * Bounded on both sides, because Categories is a
-			 * semicolon-separated list and a substring test alone
-			 * puts "Settings" into anything tagged "TextSettings"
-			 * — and, worse, matches "Audio" inside "AudioVideo"
-			 * for whichever bucket comes first.
-			 */
-			if (!p)
-				continue;
-			size_t n = strlen(GROUPS[g].match[m]);
-			bool left = p == categories || p[-1] == ';';
-			bool right = p[n] == '\0' || p[n] == ';';
-			if (left && right)
-				return g;
-		}
-	return 0;				/* Accessories */
-}
 
 static int have_id(const char *id)
 {
@@ -187,7 +137,7 @@ static void add_desktop_file(const char *path)
 	snprintf(it->id, sizeof(it->id), "%s", id);
 	kb_strlcpy(it->term, kl.term, sizeof(it->term));
 	kb_strlcpy(it->size, kl.size, sizeof(it->size));
-	it->group = group_for(kxdg_get(&e, "Categories", NULL));
+	it->group = sh_app_group_for(kxdg_get(&e, "Categories", NULL));
 	it->submenu = -1;
 	it->terminal = kl.terminal;
 	it->floating = kl.floating;
@@ -509,7 +459,7 @@ static void build_view(struct view *v, int which, int group)
 
 	if (which == 0 && group < 0) {
 		snprintf(v->title, sizeof(v->title), "Applications");
-		for (int g = 0; g < NGROUPS; g++) {
+		for (int g = 0; g < sh_app_ngroups(); g++) {
 			/* A group with nothing in it is not shown. An empty
 			 * submenu is a promise the menu cannot keep. */
 			int any = 0;
@@ -523,7 +473,7 @@ static void build_view(struct view *v, int which, int group)
 	}
 	if (which == 0) {
 		snprintf(v->title, sizeof(v->title), "Applications / %s",
-			 GROUPS[group].name);
+			 sh_app_group_name(group));
 		for (int i = 0; i < nitems; i++)
 			if (items[i].group == group)
 				v->rows[v->n++] = i;
@@ -614,8 +564,8 @@ static void draw(const struct view *v)
 
 		if (row <= -2) {			/* a group */
 			int g = -row - 2;
-			ktui_draw_text(2, 1 + r, w - 6, GROUPS[g].name, fg, bg,
-				       KT_A_NONE);
+			ktui_draw_text(2, 1 + r, w - 6, sh_app_group_name(g),
+				       fg, bg, KT_A_NONE);
 			ktui_draw_text(w - 3, 1 + r, 1, ktui_glyph[KT_G_RIGHT],
 				       fg, bg, KT_A_NONE);
 		} else if (items[row].submenu == -2) {	/* a separator */
@@ -647,7 +597,7 @@ static const char *row_label(const struct view *v, int i)
 		return "";
 	int row = v->rows[i];
 	if (row <= -2)
-		return GROUPS[-row - 2].name;
+		return sh_app_group_name(-row - 2);
 	if (items[row].submenu == -2)
 		return "";
 	return items[row].name;

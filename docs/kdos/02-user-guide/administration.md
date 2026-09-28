@@ -95,6 +95,7 @@ are absent if that package is removed.
 | `47_pcscd` | Smart cards and security keys: the PC/SC daemon, with readers arriving through udev |
 | `50_alsa` | Saves and restores the sound card's mixer levels |
 | `51_mdmonitor` | `mdadm --monitor --scan --syslog`: a failed member, a degraded array or a missing spare is written to the system log. Skipped when `/proc/mdstat` lists no array; a `MAILADDR` or `PROGRAM` line in `/etc/mdadm.conf` adds a route of your own |
+| `51_lsmd` *(libstoragemgmt)* | The libstoragemgmt plugin daemon, which udisks2's LSM module and `lsmcli` reach over `/run/lsm/ipc`; plugins that do not need root run as the `libstoragemgmt` account |
 | `52_smartd` | Disk health: `smartd` polls every disk that answers SMART every half hour and logs a failing health check, bad sectors, drive errors and failed self-tests. Where no disk answers SMART — any virtual machine — it logs why and stops |
 | `53_xfs_healer` | One `xfs_healer` per XFS filesystem mounted at boot. It logs the metadata damage the kernel reports and, where the filesystem's `autofsck` property asks for it, has it repaired online. Skipped on a kernel without the XFS health monitor |
 | `54_thermald` | Intel thermal management |
@@ -109,15 +110,17 @@ are absent if that package is removed.
 | `62_virtlogd` *(libvirt)* | libvirt's log daemon, which keeps each guest's console log |
 | `63_gssd` *(nfs-utils)* | `rpc.gssd`, the Kerberos half of an NFS client, which a `sec=krb5` mount needs. It mounts `rpc_pipefs` at `/var/lib/nfs/rpc_pipefs` first. Skipped until `/etc/krb5.keytab` exists |
 | `63_libvirtd` *(libvirt)* | libvirt's management daemon for `qemu:///system`. Its polkit rule lets members of the `libvirt` group manage guests |
+| `64_lircd` *(lirc)* | The infrared remote daemon, skipped until a receiver is present (a `/dev/lirc*` node or an rc-core device). Its socket `/run/lirc/lircd` is what Kodi, VLC and other LIRC clients read |
 | `65_brltty` *(brltty)* | The console screen reader, skipped until `/etc/brltty.conf` exists. Its speech goes straight to the sound card, so it cannot speak while a desktop session's PipeWire holds the card. See [Accessibility](accessibility.md) |
 | `70_sshd` | The SSH server. Before the first start it generates every missing host key type with `ssh-keygen -A`. The shipped firewall blocks port 22 until you open `ssh` |
+| `71_snmpd` *(net-snmp)* | The SNMP agent, as root, skipped until a non-empty `/etc/snmp/snmpd.conf` exists; it logs to syslog. Open the `snmp` firewall name for other machines |
 | `72_nfsd` *(nfs-utils)* | The NFSv4 server, skipped until `/etc/exports` names a share. It loads `nfsd`, supervises `nfsdcld` (the client records a restarted server needs) and `nfsv4.exportd`, runs `exportfs -r`, then starts the kernel threads with `rpc.nfsd -N 3 -V 4`. NFSv3 is off, so no portmapper, `rpc.mountd` or lock daemon runs. After editing `/etc/exports`, run `sudo exportfs -r`. Open the `nfs` firewall name for other machines |
 | `73_mosquitto` *(mosquitto)* | The MQTT broker, as the `mosquitto` account, skipped until `/etc/mosquitto/mosquitto.conf` exists. With no configuration the broker listens on loopback only; a `listener 1883` line there, plus the `mqtt` firewall name, lets devices on the LAN reach it |
 | `74_prosody` *(prosody)* | The XMPP chat server, as the `prosody` account, skipped until it has an account: `sudo prosodyctl adduser <user>@<host>` makes the first. Clients are refused until the host has a certificate; `sudo prosodyctl cert generate <host>` makes a self-signed one. Open the `xmpp` firewall name for other machines |
 | `75_mumble-server` *(mumble)* | The Mumble voice server, as the `mumble-server` account, skipped until its database exists: running `mumble-server -supw <password>` as that account makes it. Open the `mumble` firewall name for other machines |
 | `76_postgresql` *(postgresql)* | One shared PostgreSQL server, as the `postgres` account, skipped until a cluster exists: `sudo -u postgres initdb -D /var/lib/postgres/data` makes it. It listens on loopback and on a socket in `/tmp` |
 | `77_radicale` *(radicale)* | Radicale, the CalDAV and CardDAV server, as the `radicale` account, skipped until `/etc/radicale/users` has an account line (`name:` followed by a hash from `openssl passwd -6`). Open the `caldav` firewall name for other machines |
-| `78_maddy` *(maddy)* | The maddy mail server, as the `maddy` account, skipped until `/var/lib/maddy/credentials.db` holds an account (`maddy creds create` makes one). Open the `mail` firewall name for other machines |
+| `78_maddy` *(maddy)* | The maddy mail server, as the `maddy` account, skipped until `/var/lib/maddy/credentials.db` holds an account (running `maddy creds create <address>` and `maddy imap-acct create <address>` as the `maddy` account, with `sudo -u maddy`, makes one). Open the `mail` firewall name for other machines |
 | `79_ngircd` *(ngircd)* | The ngIRCd chat server, as the `ngircd` account, skipped until a non-empty `/etc/ngircd.conf` exists; `/usr/share/doc/ngircd/sample-ngircd.conf` is the template. Open the `irc` firewall name for other machines |
 | `80_cups` | Printing |
 | `81_cups-browsed` | Printers shared on the network, added to CUPS as they appear |
@@ -128,6 +131,7 @@ are absent if that package is removed.
 | `86_kiwix-serve` | The offline library on `127.0.0.1:8080`, skipped until `/var/lib/kiwix/library.xml` lists an archive — see [The local servers](../03-architecture/boot-and-init.md#the-local-servers) |
 | `87_kolibri` | Kolibri, the offline curriculum, on `127.0.0.1:8081`, skipped until a channel is installed |
 | `88_llama-server` | The local language-model server on `127.0.0.1:8082`, skipped until a `.gguf` model is under `/usr/share/llama.cpp/models` |
+| `89_step-ca` *(step-ca)* | The step-ca certificate authority, as root, from `/etc/step-ca`. Skipped until `/etc/step-ca/config/ca.json` (from `sudo STEPPATH=/etc/step-ca step ca init`) and `/etc/step-ca/password.txt` (the CA password, mode 600) both exist. Open the `https` firewall name for other machines when the CA listens on 443 |
 
 ### Shutdown
 
@@ -573,6 +577,7 @@ kdos-power firewall ssh off
 | `nfs` | TCP 2049 |
 | `babel` | UDP 6696 (Babel mesh routing, `babeld`) |
 | `nut` | TCP 3493 (UPS status for other machines) |
+| `snmp` | UDP 161 (the SNMP agent, `snmpd`) |
 | `mumble` | TCP and UDP 64738 (a Mumble voice server) |
 | `caldav` | TCP 5232 (Radicale's calendars and contacts) |
 | `mail` | TCP 25, 143, 465, 587 and 993 (Maddy) |
@@ -582,6 +587,9 @@ kdos-power firewall ssh off
 | `caddy` | TCP 8443 (the shipped `Caddyfile`'s site) |
 | `mosh` | UDP 60000–61000; also needs `ssh` |
 | `syncthing` | TCP and UDP 22000, and UDP 21027 for discovery |
+| `kdeconnect` | TCP and UDP 1714–1764 (KDE Connect with a phone) |
+| `vnc` | TCP 5900 (`wayvnc`; it binds 127.0.0.1 unless given an address) |
+| `xonotic` | UDP 26000 (hosting a Xonotic game) |
 
 Turning a name on or off needs membership of `wheel`. The meaning of each name is fixed inside
 `kdos-powerd`, not in the tool you click, so no client can open a port that is not on this list.

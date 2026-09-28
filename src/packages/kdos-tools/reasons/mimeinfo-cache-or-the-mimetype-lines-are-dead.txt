@@ -4,8 +4,10 @@ port: kdos-appbox
 port: shared-mime-info
 
 No alien app appears in any "Open with" dialog and none can be a default
-handler. The cache is written by genlaunchers rather than by
-update-desktop-database because the host has no desktop-file-utils.
+handler. genlaunchers writes the cache beside the box launchers, because
+that directory is not /usr/share/applications and no package install touches
+it. kpkg's shared-index trigger writes the host's
+/usr/share/applications/mimeinfo.cache.
 
 The other half is the database itself: shared-mime-info builds
 -D update-mimedb=false, so the package carries packages/freedesktop.org.xml

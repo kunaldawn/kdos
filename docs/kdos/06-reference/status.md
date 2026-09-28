@@ -86,7 +86,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,027 recipes, listed by group in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses and every dependency resolves |
+| The ports tree | Stable | 2,025 recipes, listed by group in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses and every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata` and `XZ_OPT=-T0`, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream. `kdosbuild --selftest` separately asserts the view geometry and the log classifier |
@@ -98,7 +98,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,027 recipes, 989 are the native applications' stacks, applications
+- **The ports tree.** Of the 2,025 recipes, 989 are the native applications' stacks, applications
   and dependencies, which have been fetched and hashed and have not been built.
   `testing/preflight.sh` checks that every recipe parses as metadata, declares
   a name, version and release, has a `build.sh` that parses, carries the KDOS banner and names a
@@ -232,8 +232,8 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,027 | `find ports/core src/packages src/desktop -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 2,003 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 2,025 | `find ports/core src/packages src/desktop -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 2,001 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/packages` | 11 | `find src/packages -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 13 | `find src/desktop -name kpkgbuild \| wc -l` |
 | Archived source files | 1,678 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |

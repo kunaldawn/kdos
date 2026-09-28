@@ -9,10 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# WITH_X11=OFF: remote input goes through libei on Wayland; the X11 path
-# needs libfakekey. BLUETOOTH_ENABLED=ON builds the Bluetooth link provider
-# on QtBluetooth from qt6-qtconnectivity, which reaches bluetoothd over
-# D-Bus; the LAN provider is built either way.
+# WITH_X11=OFF: the X11 path needs libfakekey. The mousepad plugin is then
+# Wayland-only and asks the RemoteDesktop portal for an EIS socket; no portal
+# backend here answers RemoteDesktop, so remote input from the phone is
+# refused. BLUETOOTH_ENABLED=ON builds the Bluetooth link provider on
+# QtBluetooth from qt6-qtconnectivity, which reaches bluetoothd over D-Bus;
+# the LAN provider is built either way.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \

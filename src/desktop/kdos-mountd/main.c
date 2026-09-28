@@ -13,10 +13,11 @@
  *     $ kdos-mount mount 0
  *     /media/kdos/KDOS
  *
- * Plugging a stick into this machine did NOTHING. Not "opened the wrong
- * program" — nothing at all: there is no udisks here, mounting is root's, and
- * the desktop is not root. That is the most visible gap on the KDE comparison
- * and it is the only one on it that genuinely needs a privileged daemon.
+ * Mounting is root's and the desktop is not root. udisks2 serves the toolkit
+ * applications (D-Bus activated, wheel's grants in 50-kdos.rules) and mounts
+ * under /run/media/<user>; this daemon is the route kdos-shell takes, and a
+ * device either one mounted shows here as mounted, because both read
+ * /proc/mounts.
  *
  * THE CLIENT NEVER NAMES A PATH. It asks for an INDEX out of a list the daemon
  * itself published, and the daemon decides the device, the mountpoint and the

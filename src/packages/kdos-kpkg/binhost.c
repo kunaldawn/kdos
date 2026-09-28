@@ -79,7 +79,11 @@ typedef struct {
 } Stanza;
 
 /* Alpine's shape: `K:value` lines, a blank line between stanzas. Sixty lines of
- * parser and no library, which is the whole reason for choosing it. */
+ * parser and no library, which is the whole reason for choosing it.
+ *
+ * Stores at most `max` stanzas and returns how many the index holds, so a
+ * caller seeing more than `max` knows it was handed a partial list; stopping
+ * silently at `max` would make every package past it look absent. */
 static int index_parse(const char *data, Stanza *out, int max)
 {
 	Stanza cur = {0};
@@ -97,8 +101,11 @@ static int index_parse(const char *data, Stanza *out, int max)
 		line = nl ? nl + 1 : NULL;
 
 		if (!buf[0]) {			/* stanza boundary */
-			if (have && n < max)
-				out[n++] = cur;
+			if (have) {
+				if (n < max)
+					out[n] = cur;
+				n++;
+			}
 			memset(&cur, 0, sizeof(cur));
 			have = 0;
 			continue;
@@ -120,8 +127,11 @@ static int index_parse(const char *data, Stanza *out, int max)
 		default: break;
 		}
 	}
-	if (have && n < max)
-		out[n++] = cur;
+	if (have) {
+		if (n < max)
+			out[n] = cur;
+		n++;
+	}
 	return n;
 }
 
@@ -341,8 +351,16 @@ int kp_cmd_index(const KpConf *c, int argc, char **argv)
 		 * package's own bytes.
 		 */
 		int sidecars = 0;
-		Stanza st[KP_MAX_INDEX];
+		static Stanza st[KP_MAX_INDEX];
 		int ns = index_parse(b.p, st, KP_MAX_INDEX);
+		if (ns > KP_MAX_INDEX) {
+			kp_err("index holds %d entries, more than KP_MAX_INDEX "
+			       "(%d)", ns, KP_MAX_INDEX);
+			memset(seed, 0, sizeof(seed));
+			free(out);
+			kb_buf_free(&b);
+			return 1;
+		}
 		for (int i = 0; i < ns; i++) {
 			/* Not the deltas. A delta is verified by the checksum
 			 * of what it RECONSTRUCTS — which the signed index
@@ -549,6 +567,11 @@ int kp_cmd_binhost(const KpConf *c, int argc, char **argv)
 	int n = index_parse(data, st, KP_MAX_INDEX);
 	free(data);
 	free(idx);
+	if (n > KP_MAX_INDEX) {
+		kp_err("index holds %d entries, more than KP_MAX_INDEX (%d)",
+		       n, KP_MAX_INDEX);
+		return 2;
+	}
 
 	/* What THIS machine would build. */
 	char arch[32], bhash[65], ehash[65] = "";

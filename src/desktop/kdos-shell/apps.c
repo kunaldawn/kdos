@@ -56,15 +56,19 @@ static struct sh_app apps[SH_MAX_APPS];
 static int napps;
 
 /*
- * GNOME 2's Applications submenus, in its order — the same table menu.c has
- * always used, moved here so the Start menu and the menu bar cannot disagree
- * about which bucket GIMP is in.
+ * GNOME 2's Applications submenus, in its order. The Start menu and the menu
+ * bar (menu.c) both read this one table, so they cannot disagree about which
+ * bucket GIMP is in.
  *
- * The `match` list is the freedesktop Categories a `.desktop` file may carry;
- * the FIRST bucket that matches wins, so the order here is also the priority.
- * An entry matching nothing lands in Accessories, which is what that category
- * has always been for — an app with no home is still an app you have to be
- * able to launch.
+ * The `match` list is the freedesktop Categories a `.desktop` file may carry,
+ * and Categories is compared as whole `;`-separated tokens: "Network" inside
+ * "X-GNOME-NetworkSettings" is no match, and a later bare "Network" still is.
+ * A freedesktop main category other than Utility decides first, in table
+ * order, so "Development;Utility" is Programming. Without one, the first bucket
+ * in table order that matches any listed category wins, so
+ * "Utility;TextEditor" stays in Accessories. An entry matching nothing lands in
+ * Accessories, which is what that category has always been for — an app with
+ * no home is still an app you have to be able to launch.
  */
 static const struct {
 	const char *name;
@@ -93,28 +97,54 @@ const char *sh_app_group_name(int g)
 	return g >= 0 && g < NGROUPS ? GROUPS[g].name : "";
 }
 
+/* Whether `cats`, a `;`-separated Categories value, holds `want` as a whole
+ * token. A substring test would put "Settings" into anything tagged
+ * "TextSettings" and "Audio" inside "AudioVideo". */
+static int has_category(const char *cats, const char *want)
+{
+	size_t n = strlen(want);
+
+	for (const char *p = cats; *p;) {
+		size_t len = strcspn(p, ";");
+
+		if (len == n && !strncmp(p, want, n))
+			return 1;
+		p += len;
+		if (*p)
+			p++;
+	}
+	return 0;
+}
+
+/* The freedesktop main categories, less Utility, which says only that an
+ * application is small. */
+static int is_main_category(const char *c)
+{
+	static const char *const MAIN[] = {
+		"AudioVideo", "Audio", "Video", "Development", "Education",
+		"Game", "Graphics", "Network", "Office", "Science",
+		"Settings", "System", NULL
+	};
+
+	for (int i = 0; MAIN[i]; i++)
+		if (!strcmp(MAIN[i], c))
+			return 1;
+	return 0;
+}
+
 int sh_app_group_for(const char *categories)
 {
 	if (!categories)
 		return 0;
-	for (int g = 0; g < NGROUPS; g++)
-		for (int m = 0; GROUPS[g].match[m]; m++) {
-			const char *p = strstr(categories, GROUPS[g].match[m]);
-			/*
-			 * Bounded on both sides, because Categories is a
-			 * semicolon-separated list and a substring test alone
-			 * puts "Settings" into anything tagged "TextSettings"
-			 * — and, worse, matches "Audio" inside "AudioVideo"
-			 * for whichever bucket comes first.
-			 */
-			if (!p)
-				continue;
-			size_t n = strlen(GROUPS[g].match[m]);
-			int left = p == categories || p[-1] == ';';
-			int right = p[n] == '\0' || p[n] == ';';
-			if (left && right)
+	for (int g = 1; g < NGROUPS; g++)
+		for (int m = 0; GROUPS[g].match[m]; m++)
+			if (is_main_category(GROUPS[g].match[m]) &&
+			    has_category(categories, GROUPS[g].match[m]))
 				return g;
-		}
+	for (int g = 0; g < NGROUPS; g++)
+		for (int m = 0; GROUPS[g].match[m]; m++)
+			if (has_category(categories, GROUPS[g].match[m]))
+				return g;
 	return 0;				/* Accessories */
 }
 

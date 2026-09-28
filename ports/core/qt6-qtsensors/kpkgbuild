@@ -10,11 +10,11 @@
 
 name        = qt6-qtsensors
 version     = 6.11.2
-release     = 1
+release     = 2
 _module     = qtsensors
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
 sha256      = 68c8e44dfb32e8e2182f63f5544c2f462089b1bb049574f1d504ee2648903119  qt6-qtsensors-6.11.2.tar.xz
-description = Qt 6 Sensors — accelerometer, gyroscope and light sensors through iio-sensor-proxy
+description = Qt 6 Sensors — accelerometer, gyroscope and light sensors through iio-sensor-proxy (no sensor daemon is ported)
 homepage    = https://www.qt.io
 depends     = cmake ninja qt6-qtbase qt6-qtdeclarative
 group       = qt6

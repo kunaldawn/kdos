@@ -1067,6 +1067,12 @@ static int append_setting(sd_bus_message *reply, const char *ns, const char *key
 		return sd_bus_message_append(reply, "v", "s", UI_FONT);
 	if (!strcmp(key, "monospace-font-name"))
 		return sd_bus_message_append(reply, "v", "s", MONO_FONT);
+	/* Empty, never absent: for a key the portal leaves out GTK 4 uses its
+	 * own fallback, and gtk-im-module's is "simple", the one context that
+	 * reaches no input method. Empty names no module, so GTK picks its
+	 * Wayland text-input context the way an unset GTK_IM_MODULE does. */
+	if (!strcmp(key, "gtk-im-module"))
+		return sd_bus_message_append(reply, "v", "s", "");
 	return -ENOENT;
 }
 
@@ -1086,6 +1092,7 @@ static const struct {
 	{ NS_INTERFACE,  "color-scheme" },
 	{ NS_INTERFACE,  "font-name" },
 	{ NS_INTERFACE,  "monospace-font-name" },
+	{ NS_INTERFACE,  "gtk-im-module" },
 };
 
 static int method_settings_read(sd_bus_message *m, void *userdata,

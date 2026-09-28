@@ -11,7 +11,7 @@
 
 name        = maddy
 version     = 0.9.5
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/foxcpp/maddy/archive/refs/tags/v$version.tar.gz
 sha256      = c5670ff64930a4d69053557cdf252527b54c32bff882c33d120bd208f34a6e19  maddy-0.9.5.tar.gz
 sha256      = a65f56720cb97808b3fac7453249aa591fc41599543bb71c691d3d4708e2895a  maddy-vendor-0.9.5.tar.xz

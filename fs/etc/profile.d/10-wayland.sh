@@ -83,8 +83,9 @@ export _JAVA_AWT_WM_NONREPARENTING=1
 # application opens kdos-pick instead of drawing its own dialog. The `kde`
 # platform theme (plasma-integration, Qt 6 only) reads the ~/.config/kdeglobals
 # that `kdos theme` writes; without it a Qt 6 application paints Qt's built-in
-# light palette under every KDOS theme. Qt takes one name here, not a list: a
-# Qt 5 application finds no `kde` plugin for its version and falls back to the
-# platform's own theme.
+# light palette under every KDOS theme. Qt takes one name here, not a list, and
+# each Qt major version searches only its own plugin directory: a Qt 5
+# application finds the qt5ct plugin under `kde` (the qt5ct port adds the key)
+# and reads the ~/.config/qt5ct files `kdos theme` writes.
 export GTK_USE_PORTAL=1
 export QT_QPA_PLATFORMTHEME=kde

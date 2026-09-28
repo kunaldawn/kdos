@@ -12,8 +12,11 @@
 # Every library is the system's. The standard library links dynamically:
 # upstream's static default needs every dependency static too. musl has no
 # execinfo, so the crash backtrace is off. GME adds the chiptune formats to
-# SDL_mixer's Ogg; libopenmpt is not in the tree and its tracker music is
-# left out. curl carries the add-on downloads of a network game. The
+# SDL_mixer's Ogg, libopenmpt the tracker modules (MOD, XM, IT, S3M) and
+# miniupnpc the router port mapping of a hosted game. Upstream looks each of
+# the three up QUIET and builds without it silently, so each is required by
+# name and a missing one fails configure. curl carries the add-on downloads of
+# a network game. The
 # executable is named outright: left empty, the name is derived from the
 # git branch, and a release tarball has no repository to ask.
 mkdir build && cd build
@@ -30,7 +33,9 @@ cmake .. -G Ninja \
 	-DSRB2_CONFIG_USE_GME=ON \
 	-DSRB2_CONFIG_ERRORMODE=OFF \
 	-DSRB2_CONFIG_DEV_BUILD=OFF \
-	-DCMAKE_DISABLE_FIND_PACKAGE_libopenmpt=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_libopenmpt=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_libgme=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_miniupnpc=ON \
 	-DCMAKE_DISABLE_FIND_PACKAGE_SDL2_mixer_ext=ON
 ninja
 cd ..

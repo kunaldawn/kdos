@@ -467,7 +467,7 @@ confused with `phosphor`, one of the eight *accents*. See
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-three port repositories in one format, holding 2,027 recipes: 2,003 upstream ports in `ports/core/`,
+three port repositories in one format, holding 2,025 recipes: 2,001 upstream ports in `ports/core/`,
 11 of KDOS's own in `src/packages/` and 13 in `src/desktop/`. (The twelfth directory in
 `src/packages/`, `kdos-kpkg`, has no recipe; phase 1 compiles it by script.) See [Writing
 ports](../05-developer/writing-ports.md) and [The ports catalogue](ports-catalogue.md).

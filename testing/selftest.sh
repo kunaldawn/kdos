@@ -770,7 +770,8 @@ fi
 # labwc.h + wlroots headers, which is where version drift would bite.
 # libxml2, cairo, pango and glib are in the list because labwc.h reaches
 # rcxml.h and font.h, which include them, and basu because the keyboard
-# monitor (kdos-a11ymon.c) is a session-bus service. Without their include
+# monitor (kdos-a11ymon.c) and the ScreenSaver inhibitor (kdos-screensaver.c)
+# are session-bus services. Without their include
 # paths the graft files fail to COMPILE, and on a host that has wlroots that
 # is a hard stop rather than a skip — the guard has to name every header the
 # compile needs, not only the libraries the object would link.
@@ -1479,6 +1480,7 @@ install -Dm644 /dev/null "$PKG/etc/udev/hwdb.d/60-feed.hwdb"
 install -Dm644 /dev/null "$PKG/usr/share/man/man1/feed.1"
 install -Dm644 /dev/null "$PKG/etc/fonts/conf.d/60-feed.conf"
 install -Dm644 /dev/null "$PKG/usr/share/texmf-dist/tex/latex/feed/feed.sty"
+install -Dm644 /dev/null "$PKG/usr/share/applications/feed.desktop"
 EOF
 mkdir -p "$TR/ports/page"
 cat > "$TR/ports/page/kpkgbuild" <<'EOF'
@@ -1490,14 +1492,17 @@ EOF
 cat > "$TR/ports/page/build.sh" <<'EOF'
 install -Dm644 /dev/null "$PKG/usr/share/man/man1/page.1"
 EOF
-# The MIME stub leaves a generated file behind, as the real tool does: that is
-# what keeps the database directory alive after the last XML is removed. The
-# makewhatis stub writes the database, which is what the trigger measures.
-for t in update-mime-database install-info udevadm makewhatis fc-cache mktexlsr; do
+# The MIME and desktop-database stubs leave a generated file behind, as the
+# real tools do: that is what keeps each directory alive after the last XML or
+# desktop entry is removed. The makewhatis stub writes the database, which is
+# what the trigger measures.
+for t in update-mime-database install-info udevadm makewhatis fc-cache mktexlsr \
+         update-desktop-database; do
     printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\n' "$t" "$TR" > "$TR/bin/$t"
     chmod +x "$TR/bin/$t"
 done
 printf ': > "$1/globs"\n' >> "$TR/bin/update-mime-database"
+printf ': > "$2/mimeinfo.cache"\n' >> "$TR/bin/update-desktop-database"
 printf 'd=$1; [ "$1" = -d ] && d=$2; echo db > "$d/mandoc.db"\n' \
     >> "$TR/bin/makewhatis"
 ktrig() {
@@ -1526,6 +1531,8 @@ grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
     || { echo "  a first manual page did not build the whole manual index"; exit 1; }
 grep -qx "mktexlsr --quiet $TR/root/usr/share/texmf-dist" "$TR/calls" \
     || { echo "  installing a TeX file did not rebuild ls-R, or named a tree that does not exist"; exit 1; }
+grep -qx "update-desktop-database -q $TR/root/usr/share/applications" "$TR/calls" \
+    || { echo "  installing a desktop entry did not rebuild mimeinfo.cache"; exit 1; }
 : > "$TR/calls"
 ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/page-1.0-1.tar.xz" >/dev/null \
     || { echo "  the synthetic page package did not install"; exit 1; }
@@ -1539,7 +1546,9 @@ grep -qx "udevadm hwdb --update --root $TR/root" "$TR/calls" \
     || { echo "  removing a hwdb.d file left its entries in the trie"; exit 1; }
 grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
     || { echo "  removing a manual page did not rebuild the whole manual index"; exit 1; }
-echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index and ls-R"
+grep -qx "update-desktop-database -q $TR/root/usr/share/applications" "$TR/calls" \
+    || { echo "  removing a desktop entry left mimeinfo.cache naming it"; exit 1; }
+echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index, ls-R and desktop database"
 
 echo
 
@@ -4594,9 +4603,12 @@ PROMPT
 
     # The keys a toolkit reads besides the colours. A font key left out is
     # GTK's schema default, Cantarell, which KDOS does not ship; `contrast`
-    # is the key libadwaita reads to pick its high-contrast style.
+    # is the key libadwaita reads to pick its high-contrast style;
+    # gtk-im-module left out is GTK 4's fallback "simple", which disables
+    # every input method.
     for k in "org.gnome.desktop.interface font-name" \
              "org.gnome.desktop.interface monospace-font-name" \
+             "org.gnome.desktop.interface gtk-im-module" \
              "org.freedesktop.appearance contrast"; do
         DBUS_SESSION_BUS_ADDRESS="$PORTAL_ADDR" timeout 2 busctl \
             --address="$PORTAL_ADDR" call \
@@ -4656,9 +4668,9 @@ PROMPT
     grep -q "^v u 1$" "$OUT/portal-set.out" || {
         echo "  color-scheme is not 'prefer dark': $(cat "$OUT/portal-set.out")"
         exit 1; }
-    printf 'v s "Noto Sans 10"\nv s "Noto Sans Mono 10"\nv u 0\n' |
+    printf 'v s "Noto Sans 10"\nv s "Noto Sans Mono 10"\nv s ""\nv u 0\n' |
         cmp -s - "$OUT/portal-keys.out" || {
-        echo "  the font and contrast keys are not what the theme names:"
+        echo "  the font, input-method and contrast keys are not what the theme names:"
         cat "$OUT/portal-keys.out"; exit 1; }
     # And the deferred reply really is the chooser's answer.
     grep -q "file:///tmp/chosen.txt" "$OUT/portal-open.out" || {

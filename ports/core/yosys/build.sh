@@ -37,9 +37,10 @@ cd unpacked
 # a feature compiled out. The generated yosys_config.h is checked instead, so a
 # missing readline, zlib, libffi or tcl stops the build here rather than
 # shipping a yosys without gzip input, DPI-C, line editing or SDC parsing.
-# The `show` pass renders with graphviz's `dot` (`-format svg`) or opens xdot
-# (no -format); graphviz is not a port and xdot is a GTK viewer, so both fail
-# and `show -format dot` — the .dot file alone — is what works here.
+# The `show` pass renders through graphviz's `dot` (`-format svg`,
+# `-format png`), which is in depends; with no -format it opens xdot, a GTK
+# viewer that is not a port, so a bare `show` fails and `-viewer` names the
+# program that opens the rendered file instead.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

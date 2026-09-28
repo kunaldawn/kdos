@@ -10,8 +10,9 @@
 # ---------------------------------
 
 # Both front ends are named: left blank, the list is autodetected and a
-# missing Qt Quick drops the second without a word. spdlog is not a port and
-# only adds debug logging, so it is not searched for.
+# missing Qt Quick drops the second without a word. spdlog only adds debug
+# logging, so KDDockWidgets_NO_SPDLOG keeps it out whether or not the spdlog
+# port is installed.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \

@@ -11,6 +11,8 @@
 
 # The in-process loaders are named rather than probed, and --wrap-mode keeps a
 # missing libpng or libjpeg from being answered by the wraps the tarball ships.
+# others defaults to disabled and carries the BMP, ICO, ANI, PNM, TGA, XPM,
+# XBM, ICNS and QTIF loaders; without it no GTK program opens those formats.
 #
 # introspection is on: GdkPixbuf-2.0.gir is included by GTK's, libnotify's and
 # librsvg's GIRs. It is generated against the GLib GIRs that
@@ -22,6 +24,7 @@ meson setup build \
 	-D jpeg=enabled \
 	-D tiff=enabled \
 	-D gif=enabled \
+	-D others=enabled \
 	-D glycin=disabled \
 	-D introspection=enabled \
 	-D documentation=false \

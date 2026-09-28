@@ -63,7 +63,6 @@ bindgen
 yasm
 nasm
 swig
-cython3
 # Additional languages (kpkgbuild scaffolds — verify build in chroot):
 go
 zig

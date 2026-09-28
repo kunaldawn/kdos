@@ -18,10 +18,14 @@ export CXXFLAGS="$CXXFLAGS -DLOGURU_STACKTRACES=0"
 
 # Render windows: X11 and EGL are both built and chosen at run time, so a
 # consumer gets an X11 window under Xwayland and an EGL context offscreen.
-# External libraries are this tree's ports wherever one exists. hdf5 stays
-# bundled and symbol-mangled (vtkhdf5_*): VTK 9.5 is written against the 1.x
-# API, the hdf5 port is 2.x, and the mangled copy cannot clash with it. The
-# other bundled ones have no port here, or are VTK's own fork (libharu).
+# External libraries are this tree's ports wherever one exists, with three
+# exceptions. hdf5 stays bundled and symbol-mangled (vtkhdf5_*): VTK 9.5 is
+# written against the 1.x API, the hdf5 port is 2.x, and the mangled copy
+# cannot clash with it.
+# gl2ps and utf8 have ports but stay bundled the same way: VTK's gl2ps is
+# mangled to vtkgl2ps_* and draws through VTK's own glad, and its utfcpp sits
+# in a renamed namespace, so neither can clash with the port in one process.
+# The other bundled ones have no port here, or are VTK's own fork (libharu).
 # Python wrapping is on: FreeCAD's FEM post-processing filters are VTK Python
 # objects, and without it FreeCAD builds FEM without them.
 mkdir -p build && cd build

@@ -19,7 +19,7 @@ cp -a "$SRC_ROOT/miniaudio-$_miniaudio/." thirdparty/miniaudio/
 # hardware and software rendering. FFmpeg gives movie capture and video
 # overlays, libavif AVIF textures. Lua is the tree's lua, not LuaJIT, whatever
 # the build root holds. ENABLE_NLS=OFF: bundled data is English only. SPICE
-# ephemerides need the CSPICE toolkit, which is not a port.
+# orbits and rotations, which spacecraft add-ons use, link the cspice port.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
@@ -31,7 +31,7 @@ cmake -S . -B build -G Ninja \
 	-D ENABLE_LIBAVIF=ON \
 	-D ENABLE_MINIAUDIO=ON \
 	-D ENABLE_NLS=OFF \
-	-D ENABLE_SPICE=OFF \
+	-D ENABLE_SPICE=ON \
 	-D ENABLE_TOOLS=OFF \
 	-D ENABLE_TESTS=OFF \
 	-D ENABLE_GLES=OFF \

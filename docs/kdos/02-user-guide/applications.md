@@ -136,7 +136,7 @@ In a terminal, `aerc` reads mail over a local `notmuch` index, `profanity` is an
 
 `ifuse`, over `usbmuxd`, mounts an iPhone's or iPad's documents as a directory; Android File
 Transfer shows an Android phone's storage in a window. KDE Connect, above, links a phone over the
-network.
+network once the `kdeconnect` firewall name is on ([Administration](administration.md#opening-a-service)).
 
 ### Office, documents and reading
 
@@ -262,7 +262,7 @@ are simpler burners, on GTK. From a prompt, `cdrdao` writes audio CDs disc-at-on
 | KeePassXC | A password manager for KeePass databases, with one-time codes |
 | VeraCrypt | Encrypted volumes and containers |
 | Kleopatra | OpenPGP and S/MIME certificates, over GnuPG |
-| ClamAV | Virus scanning |
+| ClamAV | Virus scanning. It ships no signature database: run `sudo freshclam` once, with a network, before the first scan |
 | ImHex | A hex editor for reverse engineering |
 | Resources | A system monitor for processors, memory, GPUs, disks and network |
 
@@ -385,7 +385,8 @@ client and GNU Health run a clinic's records.
 ### Accessibility
 
 Orca is the screen reader, Dasher enters text by steering a pointer or a switch, `wvkbd` is an
-on-screen keyboard, and `wl-kbptr` and `wtype` move the pointer and type from the keyboard. What
+on-screen keyboard, and `wl-kbptr` (the menu's Keyboard Pointer) and `wtype` move the pointer and
+type from the keyboard. What
 each can and cannot reach on this desktop is in [Accessibility](accessibility.md).
 
 ### Windows programs

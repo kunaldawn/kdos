@@ -189,7 +189,7 @@ applications that run in boxes, is not a port repository; it is the catalogue fi
 
 | Directory | Holds | Recipes | What decides a port goes here |
 |---|---|---|---|
-| `ports/core/` | Upstream software | 2,003 | It is somebody else's source |
+| `ports/core/` | Upstream software | 2,001 | It is somebody else's source |
 | `src/packages/` | KDOS's own software that is not the desktop | 11 | It is written for KDOS, and it is not a desktop component |
 | `src/desktop/` | The desktop | 13 | It is written for KDOS, and it draws or serves the session |
 

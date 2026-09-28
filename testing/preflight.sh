@@ -68,14 +68,19 @@ done
 echo
 echo
 echo "==> ports built from one tarball agree on its version"
-# `perf` is tools/perf/ inside the kernel tree, so it fetches the SAME archive
-# as `linux` and carries its own copy of the version and hash. A mismatch does
-# not fail the build and does not fail at runtime either: perf loads, and then
-# reports unknown record types for every event the running kernel added after
-# the source it was built from. That is a bug nobody attributes to a version
-# skew, so it is caught here instead.
+# Each pair fetches the same upstream archive, and each recipe carries its own
+# copy of the version and hash. A bump of one without the other does not fail
+# the build. It ships two halves of different releases: perf reports unknown
+# record types for every event the running kernel added after its source;
+# python3-tkinter builds _tkinter against another release's libpython; clang,
+# lld and the other LLVM parts link a different LLVM. The skew is caught here
+# instead.
 shared=0
-for pair in "linux perf"; do
+for pair in "linux perf" "python3 python3-tkinter" "gettext libintl" \
+            "glib glib-introspection" "webkitgtk webkitgtk6" "qca qca-qt5" \
+            "qscintilla python3-qscintilla" "qwt qwt-qt5" "mgba libretro-mgba" \
+            "llvm clang" "llvm lld" "llvm lldb" "llvm compiler-rt" \
+            "llvm libunwind" "llvm openmp" "llvm libclc"; do
     set -- $pair
     a=$1; b=$2
     av=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "ports/core/$a/kpkgbuild" 2>/dev/null | head -1)
@@ -95,16 +100,34 @@ done
 [ "$shared" = 0 ] && note "shared-tarball ports" "none declared"
 
 echo "==> every packages.txt resolves to a dependency order"
+# Each phase resolves with its own env file's PORT_REPO (kpkg.conf's
+# /ports/core when it sets none), and kpkgdepends passes an unknown name
+# through as if it were a port. A dependency outside the phase's repos
+# therefore resolves here and fails the build with no port found.
 for f in script/*/packages.txt; do
     pkgs=$(grep -v '^#' "$f" | grep -v '^$' | tr '\n' ' ')
     [ -z "$pkgs" ] && continue
-    out=$("$SP/kpkgdepends" $pkgs 2>"$SP/err")
+    ph=$(basename "$(dirname "$f")")
+    repo=$(sed -n 's/^export PORT_REPO="\(.*\)"$/\1/p' "script/${ph#*_}.env.sh" 2>/dev/null)
+    repo=${repo:-/ports/core}
+    repo=$(printf '%s' "$repo" | sed "s|/kdos/src/|$PWD/src/|g; s|^/ports/core|$PWD/ports/core|")
+    out=$(PORT_REPO="$repo" "$SP/kpkgdepends" $pkgs 2>"$SP/err")
+    miss=
+    for t in $out; do
+        h=
+        for r in $repo; do
+            [ -f "$r/$t/kpkgbuild" ] && { h=1; break; }
+        done
+        [ -z "$h" ] && { miss=$t; break; }
+    done
     if [ -s "$SP/err" ]; then
         bad "$f" "kpkgdepends wrote to stderr: $(head -1 "$SP/err")"
     elif [ -z "$out" ]; then
         bad "$f" "kpkgdepends returned nothing"
     elif printf '%s' "$out" | tr ' ' '\n' | grep -qvE '^[A-Za-z0-9][A-Za-z0-9._+-]*$'; then
         bad "$f" "a resolved token is not a package name"
+    elif [ -n "$miss" ]; then
+        bad "$f" "resolves $miss, which this phase's PORT_REPO does not carry"
     else
         note "$f" "$(echo "$out" | wc -w) packages"
     fi
@@ -720,9 +743,8 @@ for f in script/*.sh script/*/*.sh fs/etc/init.d/* \
          ports/core/*/postinstall.sh src/packages/*/postinstall.sh \
          fs/etc/profile fs/etc/profile.d/* fs/usr/local/bin/* \
          fs/usr/local/lib/kdos/* fs/etc/skel/.config/notmuch/default/hooks/*; do
-    # A SYMLINK IS NOT A SCRIPT. /usr/local/bin is almost entirely links to
-    # kdos-appbox, and `bash -n` on one would read a binary that is not even
-    # in this tree. Regular files whose first line names a shell, and nothing
+    # A SYMLINK IS NOT A SCRIPT: `bash -n` on one reads whatever it points
+    # at, which need not be in this tree. Regular files whose first line names a shell, and nothing
     # else — which is also what keeps a config file out of the loop.
     [ -f "$f" ] || continue
     [ -L "$f" ] && continue

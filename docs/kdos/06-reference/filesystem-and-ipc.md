@@ -100,8 +100,7 @@ Holds `kdos` and the other session-side names of the `ksvc` binary, `kdos-appbox
 *shim*, a symbolic link to `kdos-appbox` named after a boxed application. Running a shim runs
 `kdos-appbox`, which dispatches on the name it was called by. The build writes one shim per
 application in a pack the medium carries (`kdos-appbox genlaunchers`, from
-`script/06_packaging/00_launchers.sh`); the default medium carries no packs, so it has none, and
-the same step removes the links committed under `fs/usr/local/bin/`. An application you install
+`script/06_packaging/00_launchers.sh`); the default medium carries no packs, so it has none. An application you install
 gets its shim in `~/.local/bin` instead.
 
 ### `/var/lib/kpkg/` — the host package database

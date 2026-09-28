@@ -2522,8 +2522,9 @@ static void write_kde(const KcolScheme *sc)
  * qt5ct AND qt6ct: the Qt side for a process with no KDE platform theme.
  *
  * Under QT_QPA_PLATFORMTHEME=kde a Qt 6 application reads kdeglobals above,
- * through plasma-integration. That plugin has no Qt 5 build, so a Qt 5
- * application is themed through qt5ct or not at all, and a Qt 6 one started
+ * through plasma-integration. That plugin has no Qt 5 build; the qt5ct port's
+ * Qt 5 plugin also answers the key `kde`, so under the same variable a Qt 5
+ * application reads the qt5ct files written here, and a Qt 6 one started
  * under `qt6ct` reads qt6ct's file instead of kdeglobals. Both are written, so
  * whichever platform theme the session names, the application wears the
  * accent.

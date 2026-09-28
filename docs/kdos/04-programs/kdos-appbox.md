@@ -608,8 +608,8 @@ preceded by how many packs were read.
 | The name-to-command table, `alien-apps` | A shim cannot find what to run |
 | A shim per application | The application is not a command |
 
-The MIME cache is written here rather than by `update-desktop-database`, because the host carries no
-desktop-file utilities.
+The MIME cache is written here because this directory is not `/usr/share/applications`, whose cache
+`kpkg`'s shared-index trigger writes, and no package install touches it.
 
 The table is tab-separated, `name`, `command` and an optional third field naming the pack, under a
 `#` header line. Readers split at the second tab, so a two-field row still parses.
@@ -630,10 +630,9 @@ The system tree is reconciled at image-build time, in the
 `script/06_packaging/00_launchers.sh`, which
 runs `kdos-appbox genlaunchers --packs-dir "$KDOS_PACK_EXTRACT" /` (default
 `/var/tmp/kdos-pack-extract`, created empty when absent) and then fails the build if alien desktop
-entries survive a run whose table has no rows. The alien desktop entries and the table are not under
-`fs/`, so nothing else would remove them. `fs/usr/local/bin` does carry 90 committed shim links,
-relative links to `kdos-appbox` named after boxed applications; this step's sweep removes them, so
-the image carries none unless a pack is baked. The step runs before `00_user.sh`, which copies
+entries survive a run whose table has no rows. The alien desktop entries, the table and the
+`/usr/local/bin` shims are not under `fs/`, so nothing else would remove them, and the image
+carries none unless a pack is baked. The step runs before `00_user.sh`, which copies
 `/etc/skel` into every home; a skeleton cleaned after that step would leave stale launchers in
 `/home/kdos`, which the Start menu reads first.
 

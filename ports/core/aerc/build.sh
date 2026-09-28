@@ -139,8 +139,8 @@ chmod 755 "$PKG/usr/libexec/aerc/filters/kdos-part"
 # /usr/bin/xdg-open find an entry by scheme, and that script runs the entry's
 # Exec directly — the word `Terminal` does not occur anywhere in it — so aerc
 # would be started without a terminal and die on `open /dev/tty: no such
-# device`. The row that names this client is in /etc/xdg/mimeapps.list, read by
-# openers that do honour `Terminal=`.
+# device`. The mailto: default is Thunderbird's, in /etc/xdg/kdos-mimeapps.list,
+# and aerc is run by name.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/aerc.desktop" <<'EOF'
 [Desktop Entry]

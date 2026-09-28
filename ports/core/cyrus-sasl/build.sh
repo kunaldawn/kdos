@@ -9,16 +9,15 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# A CLIENT LIBRARY AND A PLUGIN LOADER, AND NOTHING THAT AUTHENTICATES ANYBODY
-# TO THIS MACHINE.
+# A LIBRARY AND A PLUGIN LOADER, WITH NO PASSWORD STORE OF ITS OWN.
 #
-# The one consumer is mbsync, which calls sasl_client_* and takes whichever
-# mechanism a plugin in /usr/lib/sasl2 provides — so what this port exists for
-# is the loader, and the mechanism that matters arrives in
-# ports/core/cyrus-sasl-xoauth2. Nothing on this image is a SASL *server*:
-# saslauthd, the sasldb password store and the auxprop backends would be a
-# second account database beside /etc/passwd, authenticating logins nothing
-# here offers.
+# Clients (isync, libetpan, openldap, qca, gtk-vnc, spice-gtk, wlvncc) and the
+# VNC, SPICE and remote-libvirt servers in qemu, spice and libvirt all load
+# their mechanisms from /usr/lib/sasl2; mbsync's XOAUTH2 arrives in
+# ports/core/cyrus-sasl-xoauth2. saslauthd, the sasldb password store and the
+# auxprop backends are not built, so a server here that is configured to
+# require SASL has no account to check a password against: none is, and one
+# that must needs its own auxprop.
 #
 # WHICH IS WHY THE MECHANISM LIST IS SHORT AND EXPLICIT. Every one of these is
 # off by a flag rather than by a missing library, so a build host that happens

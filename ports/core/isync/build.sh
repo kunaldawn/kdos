@@ -40,11 +40,12 @@ patch -p1 -i "$PORT_SRC/openssl4.patch"
 # `imaps+oauthbearer://` in its own Go code, and sent through msmtp, which
 # reports `Authentication library: built-in` with both methods.
 #
-# NO mdconvert. It needs Berkeley DB >= 4.1, which configure probes for by
-# linking rather than by a flag, and this tree builds no libdb — so the program
-# is not built and USE_DB stays undefined. That costs nothing: the Maildir
-# driver's only use of it is the legacy uid map.
-./configure \
+# NO mdconvert. configure links Berkeley DB >= 4.1 whenever db_create links,
+# with no flag, so ac_cv_berkdb4=no pins it off rather than letting whether the
+# db port was built first decide; the program is not built and USE_DB stays
+# undefined. That costs nothing: the Maildir driver's only use of it is the
+# legacy uid map.
+./configure ac_cv_berkdb4=no \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--with-ssl \

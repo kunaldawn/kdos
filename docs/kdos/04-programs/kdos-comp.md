@@ -572,7 +572,10 @@ back on is retried at the next input.
 The idle policy stops completely while any program holds an idle inhibitor (a video player, for
 example) or while the `stay-awake` toggle is on (`kdos toggle stay-awake`, bound to
 `Super+Ctrl+i`). The toggle is read every time the timer is re-armed, so it takes effect without a
-reload.
+reload. An inhibitor is either the Wayland idle-inhibit protocol, which a native client such as mpv
+uses, or a cookie from `org.freedesktop.ScreenSaver`'s `Inhibit`, which `kdos-comp` serves on the
+session bus at `/ScreenSaver` and `/org/freedesktop/ScreenSaver` for X11 clients under Xwayland,
+such as VLC. A program that leaves the bus without calling `UnInhibit` has its cookies returned.
 
 The dim is a black layer at 55 per cent opacity raised over everything, with the lock screen raised
 above it; it does not touch gamma, which some backends cannot set and which would stay applied if
@@ -1054,6 +1057,7 @@ The fastest-first mode selection (see [Choosing the mode](#choosing-the-mode)) i
 | `kdos-winpos.c` | [Window memory](#window-groups-and-window-memory): reopening windows where they were |
 | `kdos-a11y.c` | [Accessibility](#accessibility): the keyboard aids, dwell click, the pointer size and the on-screen keyboard |
 | `kdos-a11ymon.c` | [The keyboard monitor](#the-keyboard-monitor) on the session bus, and the toggle notifications |
+| `kdos-screensaver.c` | `org.freedesktop.ScreenSaver` on the session bus: the idle inhibitor for X11 clients under Xwayland ([Idle, dim, lock and lid](#idle-dim-lock-and-lid)) |
 
 The box lookup itself (`kdos_view_box()` and the `/proc` read for X11 windows) lives in the
 upstream `view.c`, beside the security-context lookup it extends.

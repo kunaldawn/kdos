@@ -39,8 +39,10 @@ install -dm750 "$PKG/var/lib/maddy"
 # create it under /run.
 #
 # IT SKIPS UNTIL AN ACCOUNT EXISTS. `maddy creds create <address>` writes
-# the first one into credentials.db; before that there is no mailbox to
-# deliver to and nobody to let in.
+# the first one into credentials.db and `maddy imap-acct create <address>` its
+# mailbox into imapsql.db; before that there is no mailbox to deliver to and
+# nobody to let in. Both run as the maddy account: a database they create as
+# root is root's, and the daemon can then read it but never write to it.
 install -d "$PKG/etc/init.d"
 cat > "$PKG/etc/init.d/78_maddy.sh" <<'KDOS_SH'
 #!/bin/bash
@@ -58,7 +60,7 @@ case "$1" in
             exit 0
         fi
         if [ ! -s /var/lib/maddy/credentials.db ]; then
-            echo "[SKIP] $NAME: no account yet (maddy creds create makes one)"
+            echo "[SKIP] $NAME: no account yet (run maddy creds create and maddy imap-acct create as the maddy account)"
             exit 0
         fi
         install -d -o maddy -g maddy -m 750 /run/maddy

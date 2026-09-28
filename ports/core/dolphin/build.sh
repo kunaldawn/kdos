@@ -44,3 +44,12 @@ fi
 if [ -d "$PKG/usr/share/man" ]; then
 	find "$PKG/usr/share/man" -mindepth 1 -maxdepth 1 ! -name 'man*' -exec rm -rf {} +
 fi
+
+# THE MENU ICON: the entry names org.kde.dolphin, which Dolphin does not ship;
+# Breeze draws it as system-file-manager, in SVG, and the panel reads only
+# hicolor PNGs.
+for s in 48 64 128; do
+	install -d "$PKG/usr/share/icons/hicolor/${s}x${s}/apps"
+	rsvg-convert -w $s -h $s /usr/share/icons/breeze/apps/48/system-file-manager.svg \
+		-o "$PKG/usr/share/icons/hicolor/${s}x${s}/apps/org.kde.dolphin.png"
+done

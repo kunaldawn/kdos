@@ -52,3 +52,13 @@ DESTDIR=$PKG cmake --install build
 rm -f "$PKG/usr/bin/clamsubmit" "$PKG/usr/share/man/man1/clamsubmit.1"
 
 install -d "$PKG/var/lib/clamav"
+
+# freshclam refuses to start without a configuration, and upstream installs
+# only the .sample files, which are never read; with no database clamscan and
+# clamd refuse to scan. `freshclam` run once as root with a network fetches it,
+# dropping to the clamav account postinstall.sh creates.
+install -Dm644 /dev/stdin "$PKG/etc/clamav/freshclam.conf" <<'CONF'
+DatabaseDirectory /var/lib/clamav
+DatabaseOwner clamav
+DatabaseMirror database.clamav.net
+CONF

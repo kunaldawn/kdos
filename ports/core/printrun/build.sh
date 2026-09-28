@@ -14,22 +14,26 @@
 # library under it.
 #
 # A RULE-7 PATCH: settings.py imports wx at module scope and pronsole imports
-# settings, so the CONSOLE client refuses to start without wxPython — which is
-# a GUI toolkit that is not a port. No flag defers an import.
+# settings, so the CONSOLE client refuses to start without wxPython, which this
+# port does not depend on because it ships no wx front end. No flag defers an
+# import.
 patch -p1 -i "$PORT_SRC/no-wx-on-console.patch"
 
 # --no-deps because requirements.txt is the GUI's: wxPython, pyglet, numpy,
-# lxml and dbus-python are what pronterface needs and pronsole does not. Of the
-# five things the console path really imports, serial, platformdirs and psutil
-# are ports and in `depends` (psutil is how pronsole raises its priority while
-# printing); dbus, for the sleep inhibit, is not a port and sits inside a
-# try/except with a working fallback. --no-build-isolation because the build
+# lxml, puremagic and dbus-python are what pronterface needs and pronsole does
+# not. Of the five things the console path really imports, serial,
+# platformdirs and psutil are in `depends` (psutil is how pronsole raises its
+# priority while printing); dbus, for the sleep inhibit through
+# org.freedesktop.ScreenSaver, sits inside a try/except with a working
+# fallback, and python3-dbus is not in `depends`, so a print does not hold
+# off the idle lock. --no-build-isolation because the build
 # dependencies, setuptools and cython, are ports.
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
 
-# pronterface and plater are the wx front ends and cannot run here; leaving
-# their scripts installed would put two commands on the PATH that die on an
-# import. They install with a .py suffix, which is what setup.py's `scripts`
+# pronterface and plater are the wx front ends and cannot run here: their 3D
+# and projector views import pyglet and puremagic, which are not ports, so
+# leaving their scripts installed would put two commands on the PATH that die
+# on an import. They install with a .py suffix, which is what setup.py's `scripts`
 # list names them.
 rm -f $PKG/usr/bin/pronterface.py $PKG/usr/bin/plater.py
 rm -f $PKG/usr/bin/__pycache__/pronterface.*.pyc $PKG/usr/bin/__pycache__/plater.*.pyc
