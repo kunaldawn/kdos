@@ -20,7 +20,7 @@
 # installs for it. libvips consults poppler-glib only when pdfium is absent, so
 # poppler is pinned off rather than left as a second loader nothing would use.
 #
-# cgif, libuhdr, matio, nifti, openslide, spng and quantizr are not ports.
+# cgif, libuhdr, nifti, openslide, spng and quantizr are not ports.
 #
 # imagequant is GPL-3.0-or-later, so the libvips built here is GPL-3 as
 # distributed.
@@ -34,7 +34,7 @@ meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Dopenexr=enabled -Dopenjpeg=enabled -Djpeg-xl=enabled \
 	-Dimagequant=enabled -Dhighway=enabled \
 	-Dorc=disabled -Dpdfium=enabled -Dpoppler=disabled \
-	-Dcgif=disabled -Duhdr=disabled -Dmatio=disabled -Dnifti=disabled \
+	-Dcgif=disabled -Duhdr=disabled -Dmatio=enabled -Dnifti=disabled \
 	-Dopenslide=disabled -Dspng=disabled -Dquantizr=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

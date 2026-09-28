@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-nbconvert
+version     = 7.17.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/n/nbconvert/nbconvert-$version.tar.gz
+sha256      = 34d0d0a7e73ce3cbab6c5aae8f4f468797280b01fd8bd2ca746da8569eddd7d2  python3-nbconvert-7.17.1.tar.gz
+sha256      = 165bd3f6a3e80b7cdae6242fdb48f625875312994b6bc4eb44523e7794200420  python3-nbconvert-vendor-7.17.1.tar.xz
+description = nbconvert — notebooks to HTML, PDF, Markdown and scripts, with nbformat and nbclient
+homepage    = https://jupyter.org/
+depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-hatchling python3-hatch-vcs python3-hatch-nodejs-version python3-flit-core python3-poetry-core python3-calver python3-trove-classifiers python3-jupyter-core python3-jupyter-client python3-jupyterlab-pygments python3-jsonschema python3-jsonschema-specifications python3-referencing python3-rpds-py python3-attrs python3-jinja2 python3-markupsafe python3-pygments python3-tinycss2 python3-webencodings python3-beautifulsoup4 python3-soupsieve python3-defusedxml python3-packaging python3-platformdirs python3-typing-extensions ipython
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = nbclient:0.11.0 nbformat:5.11.1 fastjsonschema:2.22.2 mistune:3.3.4
+pypackages  = bleach:6.4.0 pandocfilters:1.5.1

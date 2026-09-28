@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyemf3
+version     = 3.3
+release     = 1
+source      = https://github.com/jeremysanders/pyemf3/archive/refs/tags/v$version.tar.gz
+sha256      = 59dde1609ac1bb586c6fccaf47183ba8cb46d9d7570d51f1cba19aada82a0cf4  python3-pyemf3-3.3.tar.gz
+description = pyemf3 — pure-Python Enhanced Metafile writer, for Veusz's EMF export
+homepage    = https://github.com/jeremysanders/pyemf3
+depends     = python3 python3-pip python3-setuptools

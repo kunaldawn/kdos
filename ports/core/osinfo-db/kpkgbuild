@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = osinfo-db
+version     = 20260812
+release     = 1
+source      = https://gitlab.com/api/v4/projects/libosinfo%2Fosinfo-db/packages/generic/release-assets/v$version/osinfo-db-$version.tar.xz
+sha256      = f13ed6e1e480b5266d39cad7f0010febdf0265dfc45579de2fb34543bc6b35de  osinfo-db-20260812.tar.xz
+description = The osinfo database: every operating system, installer and virtual device libosinfo knows
+homepage    = https://libosinfo.org
+depends     = osinfo-db-tools

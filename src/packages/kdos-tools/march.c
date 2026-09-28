@@ -340,9 +340,9 @@ static int cmd_report(void)
 	free(data);
 
 	/*
-	 * The summary line the roadmap asks for by name: "tried v3 on 40 ports,
-	 * kept 22, reverted 18". A list of winners alone would be a sales
-	 * pitch; the reverts are the evidence that the measuring is real.
+	 * The summary counts every outcome: "22 kept, 18 reverted". A list of
+	 * winners alone would hide the reverts, and the reverts are the
+	 * evidence that the measuring is real.
 	 */
 	printf("\n%d kept, %d reverted, %d unmeasurable\n", kept, reverted,
 	       unmeasured);

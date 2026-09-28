@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = nng
+version     = 1.12.4
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/nanomsg/nng/archive/refs/tags/v$version.tar.gz
+sha256      = 93b177727ec5ea38af5c88ab297f732ef71ddc4700d2407c4f9c999b3a7310a0  nng-1.12.4.tar.gz
+description = nng — nanomsg-next-gen, brokerless pub/sub, request/reply and pipeline messaging
+homepage    = https://nng.nanomsg.org/
+depends     = cmake ninja asciidoctor

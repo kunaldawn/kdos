@@ -5,7 +5,8 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-backup — what is in the repository, and one key to add to it
+ *   kdos-backup — what is in the repository, one key to add to it, and the
+ *   way back out of it
  *
  *   ╔═ backup ════════════════════════════════════════════════════════╗
  *   ║ /var/backup/kdos — 2 snapshots, newest 1 day ago                ║
@@ -13,15 +14,27 @@
  *   ║ ▶ e399cdcf  2026-09-07 03:17  nightly   /home/kdos /etc         ║
  *   ║   a818ff96  2026-09-01 03:17            /home/kdos              ║
  *   ╟─────────────────────────────────────────────────────────────────╢
- *   ║ b back up now   r refresh   Esc Close                           ║
+ *   ║ Enter open   b back up now   r refresh   Esc Close              ║
  *   ╚═════════════════════════════════════════════════════════════════╝
  *
- * restic DOES THE BACKUP. This lists what is in the repository and starts one;
- * it does not deduplicate, encrypt, prune or restore, because restic already
- * does all four and a surface that reimplemented any of them would be a second
- * answer that drifts. Restoring is `restic restore` at a terminal on purpose —
- * it is the operation you do once, under pressure, and it wants the full
- * command's options rather than a button whose defaults you cannot see.
+ * restic DOES THE BACKUP AND THE RESTORE. This lists what is in the
+ * repository, starts a backup, and — in the restore view a snapshot opens —
+ * lists that snapshot's folders and restores one entry. It does not
+ * deduplicate, encrypt or prune, because restic already does all three and a
+ * surface that reimplemented any of them would be a second answer that
+ * drifts.
+ *
+ * A RESTORE NEVER WRITES OVER THE ORIGINAL. It lands in
+ * `~/Restored/<snapshot>/` with the entry's full path beneath it, so what is
+ * restored sits beside what is there now and the person compares and moves.
+ * A button that put last week's file over this week's would be the one
+ * control on this surface that can lose work, and it is the one the person
+ * presses under pressure.
+ *
+ * THE ENTRY IS AN `--include` PATTERN, ESCAPED. restic reads the argument as a
+ * glob, so a file named `a*b` would otherwise restore every file it matches;
+ * `*`, `?`, `[` and `\` are escaped with a backslash, which restic's matcher
+ * honours.
  *
  * THE PASSWORD IS A FILE AND NEVER AN ARGUMENT. `--password-file` is restic's
  * own flag; /proc/<pid>/cmdline is world-readable, so `--password` would put
@@ -398,6 +411,332 @@ static void backup_now(void)
 	set_status("backing up — the snapshot appears when it finishes%s", "");
 }
 
+/* ── the restore view ──────────────────────────────────────────────────── */
+
+#define BK_ENT 512
+
+struct ent {
+	char name[128];
+	char path[512];
+	long long size;		/* -1 for a folder                         */
+	char when[17];		/* YYYY-MM-DD HH:MM                         */
+};
+
+static struct ent ents[BK_ENT];
+static int nent;
+static int browsing;		/* the restore view is up                  */
+static int bsnap;		/* which snapshot it shows                 */
+static char cwd[512];		/* the folder inside the snapshot          */
+static KtuiTable etbl;
+static ShJob job;
+static char job_target[512];
+
+/*
+ * One string value out of one JSON record, UNESCAPED. A file name is the one
+ * field here that may carry any character at all — a quote, a backslash, a
+ * non-ASCII letter restic writes as `\\u00e9` — and the path it yields is
+ * handed back to restic, so a name read short would restore something else.
+ * `\\uXXXX` becomes UTF-8; a surrogate pair becomes one code point.
+ */
+static int jget(const char *rec, const char *key, char *out, size_t n)
+{
+	char pat[48];
+	const char *q;
+	size_t k = 0;
+
+	out[0] = '\0';
+	snprintf(pat, sizeof(pat), "\"%s\":\"", key);
+	if (!(q = strstr(rec, pat)))
+		return 0;
+	for (q += strlen(pat); *q && *q != '"' && k + 5 < n; q++) {
+		unsigned cp;
+
+		if (*q != '\\') {
+			out[k++] = *q;
+			continue;
+		}
+		q++;
+		switch (*q) {
+		case 'n': out[k++] = '\n'; break;
+		case 't': out[k++] = '\t'; break;
+		case 'r': out[k++] = '\r'; break;
+		case 'b': out[k++] = '\b'; break;
+		case 'f': out[k++] = '\f'; break;
+		case 'u':
+			if (sscanf(q + 1, "%4x", &cp) != 1)
+				return 0;
+			q += 4;
+			if (cp >= 0xd800 && cp < 0xdc00 && q[1] == '\\' &&
+			    q[2] == 'u') {
+				unsigned lo;
+
+				if (sscanf(q + 3, "%4x", &lo) == 1 &&
+				    lo >= 0xdc00 && lo < 0xe000) {
+					cp = 0x10000 + ((cp - 0xd800) << 10) +
+					     (lo - 0xdc00);
+					q += 6;
+				}
+			}
+			if (cp < 0x80) {
+				out[k++] = (char)cp;
+			} else if (cp < 0x800) {
+				out[k++] = (char)(0xc0 | (cp >> 6));
+				out[k++] = (char)(0x80 | (cp & 0x3f));
+			} else if (cp < 0x10000) {
+				out[k++] = (char)(0xe0 | (cp >> 12));
+				out[k++] = (char)(0x80 | ((cp >> 6) & 0x3f));
+				out[k++] = (char)(0x80 | (cp & 0x3f));
+			} else {
+				out[k++] = (char)(0xf0 | (cp >> 18));
+				out[k++] = (char)(0x80 | ((cp >> 12) & 0x3f));
+				out[k++] = (char)(0x80 | ((cp >> 6) & 0x3f));
+				out[k++] = (char)(0x80 | (cp & 0x3f));
+			}
+			break;
+		case '\0':
+			return 0;
+		default:
+			out[k++] = *q;	/* \" \\ \/ */
+			break;
+		}
+	}
+	out[k] = '\0';
+	/* A value cut short is refused rather than used: it names a path
+	 * that is not in the snapshot. */
+	return *q == '"';
+}
+
+/* The folder a path is in: `/home/kdos` for `/home/kdos/notes.txt`, `/` for
+ * `/home`. */
+static void parent_of(const char *path, char *out, size_t n)
+{
+	const char *sl = strrchr(path, '/');
+
+	if (!sl || sl == path)
+		snprintf(out, n, "/");
+	else
+		snprintf(out, n, "%.*s", (int)(sl - path), path);
+}
+
+static int ent_cmp(const void *a, const void *b)
+{
+	const struct ent *x = a, *y = b;
+
+	/* Folders first, then by name — the order a file manager keeps, so
+	 * the eye finds a folder where it expects one. */
+	if ((x->size < 0) != (y->size < 0))
+		return x->size < 0 ? -1 : 1;
+	return strcmp(x->name, y->name);
+}
+
+/*
+ * THE CHILDREN OF `cwd`, AND NOTHING ELSE. `restic ls <id> <dir>` answers
+ * the folder itself and its children, and the recorded fixture is the whole
+ * tree, so one filter — a record's parent is `cwd` — serves both and a
+ * recording cannot pass where the live listing would not.
+ */
+static void scan_dir(void)
+{
+	KbBuf out = { 0 };
+	char *buf = NULL;
+	const struct snap *s = &snaps[bsnap];
+
+	nent = 0;
+	status[0] = '\0';
+	if (fixture) {
+		char path[512];
+
+		snprintf(path, sizeof(path), "%s/ls-%s.json", fixture, s->id);
+		buf = kb_read_whole(path, NULL);
+		if (!buf) {
+			snprintf(status, sizeof(status), "no recording at %.120s",
+				 path);
+			return;
+		}
+	} else {
+		KbArgv a = { 0 };
+
+		if (!password_ok()) {
+			snprintf(status, sizeof(status), "%s", why);
+			return;
+		}
+		kb_argv_add(&a, "restic");
+		kb_argv_add(&a, "-r");
+		kb_argv_add(&a, repo);
+		kb_argv_add(&a, "--password-file");
+		kb_argv_add(&a, pwfile);
+		kb_argv_add(&a, "ls");
+		kb_argv_add(&a, "--json");
+		kb_argv_add(&a, s->id);
+		kb_argv_add(&a, cwd);
+		kb_argv_end(&a);
+		if (kb_run_capture_buf(&a, &out) < 0 || !out.p) {
+			snprintf(status, sizeof(status), "restic listed nothing "
+							 "for %.100s", cwd);
+			kb_buf_free(&out);
+			return;
+		}
+		buf = out.p;
+	}
+	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp);
+	     ln && nent < BK_ENT; ln = strtok_r(NULL, "\n", &sp)) {
+		struct ent *e = &ents[nent];
+		char type[16], dir[512], iso[48];
+		const char *sz;
+
+		if (!strstr(ln, "\"struct_type\":\"node\"") ||
+		    !jget(ln, "path", e->path, sizeof(e->path)) ||
+		    !jget(ln, "name", e->name, sizeof(e->name)))
+			continue;
+		parent_of(e->path, dir, sizeof(dir));
+		if (strcmp(dir, cwd) || !strcmp(e->path, cwd))
+			continue;
+		jget(ln, "type", type, sizeof(type));
+		e->size = -1;
+		if (strcmp(type, "dir")) {
+			sz = strstr(ln, "\"size\":");
+			e->size = sz ? atoll(sz + 7) : 0;
+		}
+		jget(ln, "mtime", iso, sizeof(iso));
+		snprintf(e->when, sizeof(e->when), "%.16s", iso);
+		if (strlen(e->when) == 16)
+			e->when[10] = ' ';
+		nent++;
+	}
+	free(buf);
+	qsort(ents, (size_t)nent, sizeof(ents[0]), ent_cmp);
+	etbl.sel = 0;
+	etbl.top = 0;
+}
+
+static void browse_open(int which)
+{
+	if (which < 0 || which >= nsnap)
+		return;
+	bsnap = which;
+	browsing = 1;
+	/* A snapshot of one folder opens IN it — that is where every file
+	 * is. One of several opens at the root, where all of them are. */
+	if (!strchr(snaps[which].paths, ' ') && snaps[which].paths[0] == '/')
+		snprintf(cwd, sizeof(cwd), "%s", snaps[which].paths);
+	else
+		snprintf(cwd, sizeof(cwd), "/");
+	scan_dir();
+}
+
+static int browse_up(void *user)
+{
+	(void)user;
+	return browsing;
+}
+
+static void browse_close(void *user)
+{
+	(void)user;
+	browsing = 0;
+	status[0] = '\0';
+}
+
+static void browse_parent(void)
+{
+	char up[512];
+
+	if (!strcmp(cwd, "/"))
+		return;
+	parent_of(cwd, up, sizeof(up));
+	snprintf(cwd, sizeof(cwd), "%s", up);
+	scan_dir();
+}
+
+static void browse_enter(void)
+{
+	const struct ent *e = etbl.sel >= 0 && etbl.sel < nent
+				      ? &ents[etbl.sel] : NULL;
+
+	if (e && e->size < 0) {
+		snprintf(cwd, sizeof(cwd), "%s", e->path);
+		scan_dir();
+	}
+}
+
+/* `*`, `?`, `[` and `\` are glob syntax to restic's `--include`; each gets
+ * the backslash its matcher reads as "this character, literally". */
+static void glob_escape(const char *in, char *out, size_t n)
+{
+	size_t k = 0;
+
+	for (; *in && k + 2 < n; in++) {
+		if (strchr("*?[\\", *in))
+			out[k++] = '\\';
+		out[k++] = *in;
+	}
+	out[k] = '\0';
+}
+
+/*
+ * RESTORE THE SELECTED ENTRY — a file, or a folder and everything in it —
+ * into `~/Restored/<snapshot>/`. restic recreates the entry's full path under
+ * that folder, so two restores of different entries from one snapshot land
+ * side by side and neither overwrites anything that was there before.
+ *
+ * It runs as a job the window keeps drawing past: a folder of photographs is
+ * minutes, and restic's own last line is the progress.
+ */
+static void restore_selected(void)
+{
+	static char pat[1100];
+	const struct ent *e = etbl.sel >= 0 && etbl.sel < nent
+				      ? &ents[etbl.sel] : NULL;
+	const char *home = getenv("HOME");
+	const char *av[16];
+	int n = 0;
+
+	if (!e || job.running)
+		return;
+	if (fixture) {
+		snprintf(status, sizeof(status), "a recording restores nothing");
+		return;
+	}
+	if (!password_ok()) {
+		snprintf(status, sizeof(status), "%s", why);
+		return;
+	}
+	snprintf(job_target, sizeof(job_target), "%s/Restored/%s",
+		 home ? home : "", snaps[bsnap].id);
+	glob_escape(e->path, pat, sizeof(pat));
+	av[n++] = "restic";
+	av[n++] = "-r";
+	av[n++] = repo;
+	av[n++] = "--password-file";
+	av[n++] = pwfile;
+	av[n++] = "restore";
+	av[n++] = snaps[bsnap].id;
+	av[n++] = "--target";
+	av[n++] = job_target;
+	av[n++] = "--include";
+	av[n++] = pat;
+	av[n] = NULL;
+	job.line = NULL;
+	if (sh_job_start(&job, av, NULL) != 0) {
+		snprintf(status, sizeof(status), "%s", job.last[0] ? job.last
+					: "restic will not start");
+		return;
+	}
+	snprintf(status, sizeof(status), "restoring %.60s into %.80s", e->name,
+		 job_target);
+}
+
+/* What a finished restore says: where the files are, or restic's reason. */
+static void job_finished(void)
+{
+	if (job.status == 0)
+		snprintf(status, sizeof(status), "restored into %.120s",
+			 job_target);
+	else
+		snprintf(status, sizeof(status), "restic stopped: %.120s",
+			 job.last[0] ? job.last : "no reason given");
+}
+
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 static const KtuiCol BK_COL[] = { { NULL, 0 } };
@@ -420,6 +759,48 @@ static void bk_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 	ktui_draw_text(43, y, list_w - 45, s->paths, fg, bg, KT_A_NONE);
 }
 
+static const KtuiCol EN_COL[] = { { "NAME", 0 }, { "SIZE", 9 },
+				  { "MODIFIED", 17 } };
+#define EN_NCOL 3
+
+static void en_cell(int idx, int col, int x, int y, int w, int fg, int bg,
+		    void *user)
+{
+	const struct ent *e = &ents[idx];
+	int on = bg == KT_ACCENT;
+	char sz[16];
+
+	(void)user;
+	switch (col) {
+	case 0:
+		ktui_draw_textf(x, y, w, e->size < 0 && !on ? KT_ACCENT : fg,
+				bg, KT_A_NONE, "%s%s", e->name,
+				e->size < 0 ? "/" : "");
+		break;
+	case 1:
+		if (e->size < 0)
+			snprintf(sz, sizeof(sz), "-");
+		else
+			snprintf(sz, sizeof(sz), "%s",
+				 kb_human_size((unsigned long long)e->size));
+		ktui_draw_text_right(x, y, w - 1, sz, on ? KT_SURFACE : KT_MID,
+				     bg, KT_A_NONE);
+		break;
+	default:
+		ktui_draw_text(x, y, w, e->when, on ? KT_SURFACE : KT_MID, bg,
+			       KT_A_NONE);
+		break;
+	}
+}
+
+/* The snapshot list draws its own columns from the frame's edge; the restore
+ * view is a table with a header, inset like every other one. */
+static KRect list_rect(void)
+{
+	return browsing ? krect(2, 3, ktui_w - 4, ktui_h - 6)
+			: krect(1, 3, ktui_w - 2, ktui_h - 6);
+}
+
 static void draw_frame(void)
 {
 	int w = ktui_w, h = ktui_h;
@@ -431,26 +812,43 @@ static void draw_frame(void)
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 	sh_frame(w, h, "backup", KT_ACCENT, KT_BG, 1);
 
-	if (why[0])
+	if (browsing)
+		snprintf(sub, sizeof(sub), "%s  %s — %d entr%s", snaps[bsnap].id,
+			 cwd, nent, nent == 1 ? "y" : "ies");
+	else if (why[0])
 		snprintf(sub, sizeof(sub), "%s", why);
 	else if (nsnap)
 		snprintf(sub, sizeof(sub), "%s — %d snapshot%s, newest %s",
 			 repo, nsnap, nsnap == 1 ? "" : "s", snaps[0].when);
 	else
 		snprintf(sub, sizeof(sub), "%s — no snapshots yet", repo);
-	ktui_draw_text(2, 1, w - 4, sub, why[0] ? KT_ERR : KT_MID, KT_BG,
-		       KT_A_NONE);
+	ktui_draw_text(2, 1, w - 4, sub, !browsing && why[0] ? KT_ERR : KT_MID,
+		       KT_BG, KT_A_NONE);
 	ktui_draw_hline(1, 2, w - 2, KT_G_HL, KT_DIM, KT_BG);
 
-	ktui_table_draw(krect(1, 3, w - 2, h - 6), &tbl, nsnap, BK_COL, 1,
-			bk_cell, NULL, &list_w, -1);
+	if (browsing)
+		ktui_table_draw(list_rect(), &etbl, nent, EN_COL, EN_NCOL,
+				en_cell, NULL, NULL, -1);
+	else
+		ktui_table_draw(list_rect(), &tbl, nsnap, BK_COL, 1, bk_cell,
+				NULL, &list_w, -1);
 
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
 	if (status[0]) {
 		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
 		ktui_draw_text(2, h - 2, w - 4, status, KT_MID, KT_BG,
 			       KT_A_NONE);
+	} else if (browsing) {
+		const struct ent *e = etbl.sel >= 0 && etbl.sel < nent
+					      ? &ents[etbl.sel] : NULL;
+
+		ktui_hint_if(e && e->size < 0, "Enter", "open");
+		ktui_hint_if(e != NULL, "t", "restore");
+		ktui_hint_if(strcmp(cwd, "/") != 0, "Backspace", "up");
+		ktui_hint("Esc", ktui_esc_verb(&keys));
+		ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_BG);
 	} else {
+		ktui_hint_if(nsnap > 0, "Enter", "open");
 		ktui_hint("b", "back up now");
 		ktui_hint("r", "refresh");
 		ktui_hint("Esc", ktui_esc_verb(&keys));
@@ -461,9 +859,52 @@ static void draw_frame(void)
 
 /* ── main ──────────────────────────────────────────────────────────────── */
 
+static void on_key(int k)
+{
+	int rows = ktui_h > 6 ? ktui_h - 6 : 1;
+
+	if (browsing) {
+		switch (k) {
+		case KT_K_ENTER:
+		case KT_K_RIGHT:
+			browse_enter();
+			break;
+		case KT_K_BACKSPACE:
+		case KT_K_LEFT:
+			browse_parent();
+			break;
+		case 't':
+			restore_selected();
+			break;
+		case 'r':
+			scan_dir();
+			break;
+		default:
+			ktui_table_key(&etbl, nent, rows, k, NULL, NULL);
+			break;
+		}
+		return;
+	}
+	switch (k) {
+	case KT_K_ENTER:
+		browse_open(tbl.sel);
+		break;
+	case 'b':
+		backup_now();
+		break;
+	case 'r':
+		scan_snaps();
+		break;
+	default:
+		ktui_table_key(&tbl, nsnap, rows, k, NULL, NULL);
+		break;
+	}
+}
+
 int backup_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	const char *open_id = NULL, *open_dir = NULL;
 	int dump = 0, once = 0;
 
 	for (int i = 1; i < argc; i++) {
@@ -478,9 +919,16 @@ int backup_main(int argc, char **argv)
 			font = argv[++i];
 		else if (!strcmp(argv[i], "--fixture") && i + 1 < argc)
 			fixture = argv[++i];
+		/* The restore view on a snapshot, and a folder inside it —
+		 * what a golden of that view is drawn from. */
+		else if (!strcmp(argv[i], "--open") && i + 1 < argc)
+			open_id = argv[++i];
+		else if (!strcmp(argv[i], "--dir") && i + 1 < argc)
+			open_dir = argv[++i];
 		else {
 			fprintf(stderr, "usage: kdos-backup [--font NAME] "
-					"[--fixture DIR] [--once] [--dump]\n");
+					"[--fixture DIR] [--open SNAPSHOT "
+					"[--dir PATH]] [--once] [--dump]\n");
 			return 2;
 		}
 	}
@@ -524,7 +972,17 @@ int backup_main(int argc, char **argv)
 	keys.doc = "backup";
 	keys.help = sh_help;
 	ktui_keys_layer(&keys, "Close", NULL, NULL, NULL);
+	ktui_keys_layer(&keys, "Back", browse_up, browse_close, NULL);
 	scan_snaps();
+	if (open_id) {
+		for (int i = 0; i < nsnap; i++)
+			if (!strcmp(snaps[i].id, open_id))
+				browse_open(i);
+		if (browsing && open_dir) {
+			snprintf(cwd, sizeof(cwd), "%s", open_dir);
+			scan_dir();
+		}
+	}
 
 	if (dump) {
 		sh_theme_from_cache();
@@ -559,11 +1017,20 @@ int backup_main(int argc, char **argv)
 			sh_theme_from_cache();
 			ktui_draw_invalidate();
 		}
+		if (job.running && sh_job_pump(&job)) {
+			if (job.running)
+				snprintf(status, sizeof(status), "%.150s",
+					 job.last);
+			else
+				job_finished();
+		}
 		draw_frame();
 
 		KtuiEvent ev;
 
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
+		/* A quarter-second tick while restic is running, so its
+		 * progress moves; a second otherwise. */
+		if (!ktui_backend()->poll_event(&ev, job.running ? 250 : 1000)) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();
@@ -574,48 +1041,47 @@ int backup_main(int argc, char **argv)
 		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			break;
 		if (ev.type == KT_EVT_MOUSE) {
+			int rows = ktui_h > 6 ? ktui_h - 6 : 1;
+			int r;
+
 			/*
-			 * A DETENT SCROLLS THE TABLE. It is answered before
-			 * anything below, because a wheel tick arrives as a
-			 * press with no release and would otherwise fall into
-			 * the button arm and run whichever row it passed over.
+			 * ONE POINTER RULE: a press moves the caret, a press
+			 * on the row it is already on opens it, the wheel
+			 * walks and the right button is Back — which in the
+			 * restore view is the folder above, and at a
+			 * snapshot's top the list.
 			 */
-			if (ev.btn == KT_MB_WHEEL_UP ||
-			    ev.btn == KT_MB_WHEEL_DOWN) {
-				ktui_table_key(&tbl, nsnap, ktui_h > 6 ? ktui_h - 6 : 1,
-					       ev.btn == KT_MB_WHEEL_UP ? KT_K_UP
-									: KT_K_DOWN,
-					       NULL, NULL);
+			if (browsing) {
+				r = ktui_table_event(list_rect(), &etbl, nent,
+						     rows, EN_NCOL, EN_COL, &ev,
+						     NULL, NULL);
+				if (r == KTUI_TABLE_PICKED)
+					browse_enter();
+				else if (r == KTUI_TABLE_CLOSE) {
+					if (strcmp(cwd, "/") && strcmp(cwd,
+					    snaps[bsnap].paths))
+						browse_parent();
+					else
+						browse_close(NULL);
+				}
 				continue;
 			}
-			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_RIGHT)
+			r = ktui_table_event(list_rect(), &tbl, nsnap, rows, 1,
+					     BK_COL, &ev, NULL, NULL);
+			if (r == KTUI_TABLE_PICKED)
+				browse_open(tbl.sel);
+			else if (r == KTUI_TABLE_CLOSE)
 				break;
-			int hit = ktui_table_hit(krect(1, 3, ktui_w - 2,
-						       ktui_h - 6),
-						 &tbl, nsnap, 1, BK_COL,
-						 ev.mx, ev.my);
-
-			if (hit >= 0)
-				ktui_table_pick(&tbl, nsnap, hit, NULL, NULL);
 			continue;
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
-		status[0] = '\0';
-		switch (ev.key) {
-		case 'b':
-			backup_now();
-			break;
-		case 'r':
-			scan_snaps();
-			break;
-		default:
-			ktui_table_key(&tbl, nsnap,
-				       ktui_h > 6 ? ktui_h - 6 : 1, ev.key,
-				       NULL, NULL);
-			break;
-		}
+		if (!job.running)
+			status[0] = '\0';
+		on_key(ev.key);
 	}
+	/* A restore in flight is left to finish: the window closing is not
+	 * the person changing their mind about the files. */
 	kdisp_shutdown();
 	return 0;
 }

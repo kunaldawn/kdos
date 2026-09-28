@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cspice
+version     = 67.0.0.git20260416
+release     = 1
+_commit     = 507caedbf6bf2768e6a3ff0b0db75a7074d5eb54
+source      = $name-$version.tar.gz::https://github.com/srcejon/cspice-cmake/archive/$_commit.tar.gz
+sha256      = 50be48ccaf94d8cd29caf3f8b4db10b6d9dbdfd981ba5c0643217062ccd394ce  cspice-67.0.0.git20260416.tar.gz
+description = CSPICE N0067 — NASA NAIF's SPICE toolkit for planetary ephemerides and observation geometry, as a shared C library
+homepage    = https://naif.jpl.nasa.gov/naif/toolkit.html
+depends     = cmake ninja

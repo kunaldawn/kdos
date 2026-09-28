@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = spooles
+version     = 2.2
+release     = 1
+source      = $name-$version.tgz::https://www.netlib.org/linalg/spooles/spooles.$version.tgz
+sha256      = a84559a0e987a1e423055ef4fdf3035d55b65bbe4bf915efaa1a35bef7f8c5dd  spooles-2.2.tgz
+description = SPOOLES — sparse direct solver library (LU and Cholesky factorisation, serial and threaded), the default solver of CalculiX
+homepage    = https://www.netlib.org/linalg/spooles/spooles.2.2.html
+depends     = perl

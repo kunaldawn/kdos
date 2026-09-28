@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cpp-utilities
+version     = 5.37.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Martchus/cpp-utilities/archive/refs/tags/v$version.tar.gz
+sha256      = 9e212e8c873b2de410bb9e23a7fcf65ddbae3ba5484cd52992ed66eefa30e608  cpp-utilities-5.37.0.tar.gz
+description = Martchus's C++ utility library: argument parsing, conversions, I/O and the CMake modules his programs build with
+homepage    = https://github.com/Martchus/cpp-utilities
+depends     = cmake ninja pkgconf

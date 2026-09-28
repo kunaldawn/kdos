@@ -170,6 +170,7 @@ labwc_deps = [
   png,
   dependency('glesv2'), # KDOS: the CRT pass does its own GLES2 blit
   dependency('egl'), # KDOS
+  dependency('basu'), # KDOS: the a11y keyboard monitor's session bus
 ]
 if have_rsvg
   labwc_deps += [

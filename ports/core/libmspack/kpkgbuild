@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libmspack
+version     = 0.11alpha
+release     = 1
+source      = https://www.cabextract.org.uk/libmspack/$name-$version.tar.gz
+sha256      = 70dd1fb2f0aecc36791b71a1e1840e62173079eadaa081192d1c323a0eeea21b  libmspack-0.11alpha.tar.gz
+description = Library for Microsoft compression formats — CAB, CHM, HLP, LIT, KWAJ, SZDD
+homepage    = https://www.cabextract.org.uk/libmspack/

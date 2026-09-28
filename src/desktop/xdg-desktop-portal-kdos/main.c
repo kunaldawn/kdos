@@ -8,12 +8,10 @@
  *   xdg-desktop-portal-kdos — FileChooser, Settings, AppChooser and Access
  *
  * THE GAP THIS CLOSES. xdg-desktop-portal-wlr implements ScreenCast and
- * Screenshot and nothing else, and the usual second backend is
- * xdg-desktop-portal-gtk — which cannot exist here, because there is no GTK on
- * the host. So `kdos-portals.conf` said `default=none` and every boxed
- * application's Open and Save dialog fell back to whatever the toolkit inside
- * the container shipped: a rounded, antialiased GTK dialog in the middle of a
- * text-mode desktop, every single time anybody opened a file.
+ * Screenshot and nothing else, and the usual second backend,
+ * xdg-desktop-portal-gtk, draws GTK's own dialog. Without this backend every
+ * application's Open and Save dialog is whatever its toolkit ships: a rounded,
+ * antialiased GTK dialog in the middle of a text-mode desktop.
  *
  * This is the backend half of the portal — the `org.freedesktop.impl.portal.*`
  * side, which the main xdg-desktop-portal daemon calls into. It does no
@@ -909,8 +907,10 @@ static int pending_read(struct pending *pend)
  * `org.freedesktop.appearance` is what libadwaita and every current toolkit
  * reads: `color-scheme` is always 1 — "prefer dark", because KDOS has no light
  * palette and a toolkit told "no preference" picks its own light theme and
- * stands out from everything around it — and `accent-color` is a (ddd) of
- * doubles in 0..1.
+ * stands out from everything around it — `accent-color` is a (ddd) of
+ * doubles in 0..1, and `contrast` is 0, "no preference": KDOS has no
+ * high-contrast switch for it to report, and every accent already holds the
+ * contrast floors libkcolor's self-test asserts.
  *
  * `org.gnome.desktop.interface` is what GTK3 reads through a portal, and it is
  * the ONLY thing that retints a GTK3 application that is already running: the
@@ -922,7 +922,17 @@ static int pending_read(struct pending *pend)
  *
  * Everything here is read from the same one-word file kdos-shell and kdos-comp
  * read, so an application wears the accent the desktop is wearing.
+ *
+ * The two font names are the faces fontconfig already puts at the head of
+ * `sans-serif` and `monospace` (noto-fonts' 56-noto-preferred.conf). The same
+ * names are in `kdos theme`'s kdeglobals and qt5ct/qt6ct writer and in
+ * /usr/share/glib-2.0/schemas/90_kdos.gschema.override; a change here that
+ * misses them gives GTK and Qt different faces. Left out, GTK applies the
+ * schema default — Cantarell, which KDOS does not ship.
  */
+#define UI_FONT   "Noto Sans 10"
+#define MONO_FONT "Noto Sans Mono 10"
+
 /* The accent table is KCOL_SCHEMES expanded at compile time — the X-macro,
  * not libkcolor's object code, so this process still links sd-bus and nothing
  * else. The previous version carried a hand-copied table and two of its four
@@ -1028,21 +1038,35 @@ static int append_setting(sd_bus_message *reply, const char *ns, const char *key
 				return r;
 			return sd_bus_message_close_container(reply);
 		}
+		if (!strcmp(key, "contrast"))
+			return sd_bus_message_append(reply, "v", "u",
+						     (uint32_t)0);
 		return -ENOENT;
 	}
 
 	if (strcmp(ns, NS_INTERFACE))
 		return -ENOENT;
-	if (!strcmp(key, "gtk-theme-name")) {
+	/* GSettings key names, not GtkSettings property names: GTK maps
+	 * `gtk-theme` onto its `gtk-theme-name` property and ignores a key it
+	 * does not know, and for every key the portal leaves out it applies its
+	 * own default — Adwaita, 24/32 px — over settings.ini. */
+	if (!strcmp(key, "gtk-theme")) {
 		theme_name(buf, sizeof(buf));
 		return sd_bus_message_append(reply, "v", "s", buf);
 	}
-	if (!strcmp(key, "icon-theme-name"))
+	if (!strcmp(key, "icon-theme"))
 		return sd_bus_message_append(reply, "v", "s", "KDOS");
 	if (!strcmp(key, "cursor-theme"))
 		return sd_bus_message_append(reply, "v", "s", "KDOS-cursors");
+	/* The size /etc/profile.d/10-wayland.sh exports as XCURSOR_SIZE. */
+	if (!strcmp(key, "cursor-size"))
+		return sd_bus_message_append(reply, "v", "i", (int32_t)24);
 	if (!strcmp(key, "color-scheme"))
 		return sd_bus_message_append(reply, "v", "s", "prefer-dark");
+	if (!strcmp(key, "font-name"))
+		return sd_bus_message_append(reply, "v", "s", UI_FONT);
+	if (!strcmp(key, "monospace-font-name"))
+		return sd_bus_message_append(reply, "v", "s", MONO_FONT);
 	return -ENOENT;
 }
 
@@ -1054,10 +1078,14 @@ static const struct {
 } SETTINGS[] = {
 	{ NS_APPEARANCE, "color-scheme" },
 	{ NS_APPEARANCE, "accent-color" },
-	{ NS_INTERFACE,  "gtk-theme-name" },
-	{ NS_INTERFACE,  "icon-theme-name" },
+	{ NS_APPEARANCE, "contrast" },
+	{ NS_INTERFACE,  "gtk-theme" },
+	{ NS_INTERFACE,  "icon-theme" },
 	{ NS_INTERFACE,  "cursor-theme" },
+	{ NS_INTERFACE,  "cursor-size" },
 	{ NS_INTERFACE,  "color-scheme" },
+	{ NS_INTERFACE,  "font-name" },
+	{ NS_INTERFACE,  "monospace-font-name" },
 };
 
 static int method_settings_read(sd_bus_message *m, void *userdata,

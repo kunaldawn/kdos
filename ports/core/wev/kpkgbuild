@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wev
+version     = 1.1.0
+release     = 1
+source      = $name-$version.tar.gz::https://git.sr.ht/~sircmpwn/wev/archive/$version.tar.gz
+sha256      = 89b8d9bc756631795ee91c99a0d5b0877c9f5c3acfe81f77a2b69ecfc15daf16  wev-1.1.0.tar.gz
+description = Wayland event viewer — print every input event a window receives
+homepage    = https://git.sr.ht/~sircmpwn/wev
+depends     = pkgconf wayland wayland-protocols libxkbcommon scdoc

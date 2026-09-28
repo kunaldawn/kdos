@@ -1,0 +1,10 @@
+--- a/src/urh/main.py
++++ b/src/urh/main.py
+@@ -129,6 +129,7 @@
+         os.environ["QT_QPA_PLATFORMTHEME"] = "fusion"
+ 
+     app = QApplication(["URH"] + sys.argv[1:])
++    app.setDesktopFileName("urh")
+     app.setWindowIcon(QIcon(":/icons/icons/appicon.png"))
+ 
+     try:

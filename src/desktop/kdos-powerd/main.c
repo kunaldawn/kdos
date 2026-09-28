@@ -263,13 +263,33 @@ static const struct {
 	 * ships a reason for. */
 	{ "kiwix", "tcp dport 8080 accept", "kiwix-serve" },
 	{ "mdns",  "udp dport 5353 accept", "mDNS beyond the default rule" },
-	/* The three LAN servers whose ports ship a service script: each is
+	/* The LAN servers whose ports ship a service script: each is
 	 * unreachable from another machine until its name is on, whatever its
 	 * own configuration says it listens on. */
 	{ "mqtt",  "tcp dport { 1883, 8883 } accept",
 	  "an MQTT broker for LAN devices (73_mosquitto)" },
 	{ "xmpp",  "tcp dport 5222 accept", "XMPP clients (74_prosody)" },
 	{ "nfs",   "tcp dport 2049 accept", "sharing files over NFSv4 (72_nfsd)" },
+	{ "babel", "udp dport 6696 accept", "Babel mesh routing (31_babeld)" },
+	{ "nut",   "tcp dport 3493 accept",
+	  "UPS status for other machines (56_nut)" },
+	/* Voice runs over UDP and falls back to the TCP control channel, so
+	 * both halves are one rule, in the concatenated form `syncthing` uses. */
+	{ "mumble",
+	  "meta l4proto . th dport { tcp . 64738, udp . 64738 } accept",
+	  "a Mumble voice server (75_mumble-server)" },
+	{ "caldav", "tcp dport 5232 accept",
+	  "shared calendars and contacts (77_radicale)" },
+	{ "mail",  "tcp dport { 25, 143, 465, 587, 993 } accept",
+	  "a LAN mail server (78_maddy)" },
+	{ "irc",   "tcp dport { 6667, 6697 } accept",
+	  "an IRC server (79_ngircd)" },
+	/* SSDP discovery on 1900 is how a player finds the server; 8200 is
+	 * where it then fetches the media. */
+	{ "dlna",  "meta l4proto . th dport { tcp . 8200, udp . 1900 } accept",
+	  "a DLNA media server (84_minidlna)" },
+	{ "tryton", "tcp dport 8000 accept",
+	  "Tryton clients of GNU Health (85_gnuhealth)" },
 	/* The shipped /etc/caddy/Caddyfile's listener, in front of kiwix. */
 	{ "caddy", "tcp dport 8443 accept", "caddy's shipped site (HTTPS)" },
 	/* mosh-server binds the first free port of this range, one per session,

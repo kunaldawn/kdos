@@ -769,12 +769,13 @@ fi
 # gate here, because they are the KDOS-owned code and each includes
 # labwc.h + wlroots headers, which is where version drift would bite.
 # libxml2, cairo, pango and glib are in the list because labwc.h reaches
-# rcxml.h and font.h, which include them. Without their include paths the graft
-# files fail to COMPILE, and on a host that has wlroots that is a hard stop
-# rather than a skip — the guard has to name every header the compile needs,
-# not only the libraries the object would link.
+# rcxml.h and font.h, which include them, and basu because the keyboard
+# monitor (kdos-a11ymon.c) is a session-bus service. Without their include
+# paths the graft files fail to COMPILE, and on a host that has wlroots that
+# is a hard stop rather than a skip — the guard has to name every header the
+# compile needs, not only the libraries the object would link.
 if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 \
-        libdrm libpng libxml-2.0 cairo pango glib-2.0 2>/dev/null; then
+        libdrm libpng libxml-2.0 cairo pango glib-2.0 basu 2>/dev/null; then
     KC=src/desktop/kdos-comp
     #
     # wlr_layer_shell_v1.h includes a GENERATED protocol header, which a meson
@@ -795,13 +796,13 @@ if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 \
             -I"$KC/include" -I"$OUT/compconf" -I"$PROTO" \
             -Isrc/libs/libkcolor -Isrc/libs/libkbase \
             $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server \
-                pixman-1 libdrm libpng libxml-2.0 cairo pango glib-2.0) \
+                pixman-1 libdrm libpng libxml-2.0 cairo pango glib-2.0 basu) \
             -o "$OUT/comp-$(basename "$f" .c).o" "$f"
     done
     echo "  kdos-comp grafts ($(ls "$KC"/src/kdos-*.c | wc -l) files)"
 
 else
-    echo "  kdos-comp grafts (skipped — wlroots-0.20, glesv2, egl, libxml2, cairo or pango not on this host)"
+    echo "  kdos-comp grafts (skipped — wlroots-0.20, glesv2, egl, libxml2, cairo, pango or basu not on this host)"
 fi
 
 # kdos-boxsock is the enforcement half of N1: it is what hands a box a socket
@@ -1477,6 +1478,7 @@ printf 'stale\n' > "$PKG/usr/share/info/dir"
 install -Dm644 /dev/null "$PKG/etc/udev/hwdb.d/60-feed.hwdb"
 install -Dm644 /dev/null "$PKG/usr/share/man/man1/feed.1"
 install -Dm644 /dev/null "$PKG/etc/fonts/conf.d/60-feed.conf"
+install -Dm644 /dev/null "$PKG/usr/share/texmf-dist/tex/latex/feed/feed.sty"
 EOF
 mkdir -p "$TR/ports/page"
 cat > "$TR/ports/page/kpkgbuild" <<'EOF'
@@ -1491,7 +1493,7 @@ EOF
 # The MIME stub leaves a generated file behind, as the real tool does: that is
 # what keeps the database directory alive after the last XML is removed. The
 # makewhatis stub writes the database, which is what the trigger measures.
-for t in update-mime-database install-info udevadm makewhatis fc-cache; do
+for t in update-mime-database install-info udevadm makewhatis fc-cache mktexlsr; do
     printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\n' "$t" "$TR" > "$TR/bin/$t"
     chmod +x "$TR/bin/$t"
 done
@@ -1522,6 +1524,8 @@ grep -qx "fc-cache -s --sysroot $TR/root" "$TR/calls" \
     || { echo "  installing fontconfig configuration did not rebuild the font cache"; exit 1; }
 grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
     || { echo "  a first manual page did not build the whole manual index"; exit 1; }
+grep -qx "mktexlsr --quiet $TR/root/usr/share/texmf-dist" "$TR/calls" \
+    || { echo "  installing a TeX file did not rebuild ls-R, or named a tree that does not exist"; exit 1; }
 : > "$TR/calls"
 ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/page-1.0-1.tar.xz" >/dev/null \
     || { echo "  the synthetic page package did not install"; exit 1; }
@@ -1535,7 +1539,7 @@ grep -qx "udevadm hwdb --update --root $TR/root" "$TR/calls" \
     || { echo "  removing a hwdb.d file left its entries in the trie"; exit 1; }
 grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
     || { echo "  removing a manual page did not rebuild the whole manual index"; exit 1; }
-echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache and manual index"
+echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index and ls-R"
 
 echo
 
@@ -2236,6 +2240,15 @@ rb /tmp --dry-run "$OUT/rb" >/dev/null 2>&1 \
     && { echo "  a directory that is not a KDOS tree was accepted"; exit 1; }
 rb "$PWD" --dry-run "$RBW" >/dev/null 2>&1 \
     || { echo "  this repo was not recognised as a KDOS tree"; exit 1; }
+# A tree without the fs/ overlay builds a root with no configuration.
+RBT="$OUT/rb-tree"
+mkdir -p "$RBT/script" "$RBT/ports/core" "$RBT/src/build/kdosbuild"
+: > "$RBT/script/kdosbuild.sh"
+rb "$RBT" --dry-run "$RBW" >/dev/null 2>&1 \
+    && { echo "  a tree with no fs/ overlay was accepted"; exit 1; }
+mkdir -p "$RBT/fs/etc"
+rb "$RBT" --dry-run "$RBW" >/dev/null 2>&1 \
+    || { echo "  a tree with every part was not recognised"; exit 1; }
 # /dev/shm is tmpfs on any Linux that has it, which is the case this exists for.
 if [ -d /dev/shm ]; then
     rb "$PWD" --dry-run /dev/shm/kdos-rebuild-check >/dev/null 2>&1 \
@@ -3448,7 +3461,7 @@ while [ ! -S "$W/p.sock" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
 fail() { echo "  $1"; exit 1; }
 "$B/kdos-power" firewall list > "$W/l1" || fail "firewall list failed"
 [ "$(tail -n1 "$W/l1")" = ok ] || fail "the list does not end in ok"
-[ "$(grep -c "	" "$W/l1")" -ge 13 ] || fail "the list lost rows past the first read"
+[ "$(grep -c "	" "$W/l1")" -ge 21 ] || fail "the list lost rows past the first read"
 grep -q "^mosh	off	" "$W/l1" || fail "mosh is not listed off"
 "$B/kdos-power" firewall mosh on > "$W/t1" || fail "firewall mosh on failed"
 grep -q "^ok mosh on" "$W/t1" || fail "the toggle reply is not on stdout"
@@ -3807,7 +3820,7 @@ rm -f "$OUT/km.uevent"; mkfifo "$OUT/km.uevent"
 mkdir -p "$OUT/media"
 KDOS_MOUNTD_SOCKET="$KMSOCK" KDOS_MOUNTD_MOUNTS="$MF/mounts-live" \
 KDOS_MOUNTD_CONF="$OUT/mountd.conf" KDOS_MOUNTD_UEVENT="$OUT/km.uevent" \
-KDOS_MOUNTD_MEDIA="$OUT/media" \
+KDOS_MOUNTD_MEDIA="$OUT/media" KDOS_MOUNTD_SINK="$OUT/km.sink" \
     "$OUT/kdos-mountd" --fixture-serve "$MF/sys" "$MF/dev" > "$OUT/km.exec" 2>&1 &
 KMPID=$!
 for _i in $(seq 1 50); do [ -S "$KMSOCK" ] && break; sleep 0.1; done
@@ -3947,6 +3960,71 @@ if grep -q 'correct horse' "$OUT/km.exec" 2>/dev/null; then
 else
     echo "  ok    and it appears in no argument vector"
 fi
+# ── AN IMAGE OVER A WHOLE DISK ────────────────────────────────────────────
+#
+# `write` is the verb that replaces everything on a stick, and the image
+# crosses the socket as an OPEN DESCRIPTOR, never as a path: a root daemon that
+# opened a named file would copy one the caller cannot read onto a stick the
+# caller can. Under --fixture-serve the "disk" is $KDOS_MOUNTD_SINK, so the
+# copy and the read-back both really run and nothing that looks like a device
+# is touched.
+cat > "$OUT/kmwrite.py" <<'KMWRITEEOF'
+import array, os, socket, sys
+sock, line, path = sys.argv[1], sys.argv[2], sys.argv[3]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sock)
+anc = []
+if path != '-':
+    anc = [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+            array.array('i', [os.open(path, os.O_RDONLY)]))]
+s.sendmsg([line.encode()], anc)
+s.shutdown(socket.SHUT_WR)
+b = b''
+while True:
+    d = s.recv(4096)
+    if not d:
+        break
+    b += d
+sys.stdout.write(b.decode(errors='replace'))
+KMWRITEEOF
+kmwrite() {  # <request> <image or -> <expected substring> <what it proves>
+    _got=$(python3 "$OUT/kmwrite.py" "$KMSOCK" "$1" "$2")
+    case "$_got" in
+    *"$3"*) echo "  ok    $4" ;;
+    *) echo "  FAIL  $4"; echo "        got:  $_got"; echo "        want: $3"
+       mountd_fail=1 ;;
+    esac
+}
+head -c 3000000 /dev/urandom > "$OUT/km.img"
+rm -f "$OUT/km.sink"
+kmwrite 'write 0 3
+sdb' "$OUT/km.img" 'write is off' "write is refused until mountd.conf opts in"
+printf 'format = yes\nwrite = yes\n' > "$OUT/mountd.conf"
+kmwrite 'write 0 3
+sdb' - 'travels as a descriptor' "a write with no descriptor attached is refused"
+kmwrite 'write 0 4
+sdb1' "$OUT/km.img" 'type sdb to confirm' \
+    "the confirmation is the DISK's name, not the partition's"
+kmwrite 'write 2 3
+sdd' "$OUT/km.img" 'booted from' "the live medium's disk is refused whole"
+kmwrite 'write 0 3
+sdb' "$OUT" 'not a file' "a directory is not an image"
+kmwrite 'write 0 3
+sdb' "$OUT/km.img" 'ok sdb 3000000 verified' "an image is written and read back"
+if cmp -s "$OUT/km.img" "$OUT/km.sink"; then
+    echo "  ok    and the disk holds the image, byte for byte"
+else
+    echo "  FAIL  the sink does not hold the image"; mountd_fail=1
+fi
+# A descriptor sent with any other verb is closed, not kept: a daemon that
+# held every file a client passed it would run out of descriptors.
+kmwrite 'list
+' "$OUT/km.img" 'sdb1' "a descriptor sent with another verb is ignored"
+_kmfd=$(ls /proc/$KMPID/fd 2>/dev/null | wc -l)
+[ "$_kmfd" -le 6 ] && echo "  ok    and the daemon holds no image afterwards" \
+    || { echo "  FAIL  the daemon kept $_kmfd descriptors"
+         ls -l /proc/$KMPID/fd; mountd_fail=1; }
+
 # ── A SHARE ON ANOTHER MACHINE ────────────────────────────────────────────
 #
 # `mount.cifs` builds its option string by concatenation and escapes nothing
@@ -4514,6 +4592,19 @@ PROMPT
     t1=$(date +%s%N)
     took=$(( (t1 - t0) / 1000000 ))
 
+    # The keys a toolkit reads besides the colours. A font key left out is
+    # GTK's schema default, Cantarell, which KDOS does not ship; `contrast`
+    # is the key libadwaita reads to pick its high-contrast style.
+    for k in "org.gnome.desktop.interface font-name" \
+             "org.gnome.desktop.interface monospace-font-name" \
+             "org.freedesktop.appearance contrast"; do
+        DBUS_SESSION_BUS_ADDRESS="$PORTAL_ADDR" timeout 2 busctl \
+            --address="$PORTAL_ADDR" call \
+            org.freedesktop.impl.portal.desktop.kdos \
+            /org/freedesktop/portal/desktop \
+            org.freedesktop.impl.portal.Settings Read ss $k
+    done > "$OUT/portal-keys.out" 2>&1
+
     # OpenURI — "open this on the host for me", which is what a containerised
     # application asks when a link or a downloaded file is clicked. There was no
     # backend for it at all, so the click did nothing, silently. It must answer
@@ -4565,6 +4656,10 @@ PROMPT
     grep -q "^v u 1$" "$OUT/portal-set.out" || {
         echo "  color-scheme is not 'prefer dark': $(cat "$OUT/portal-set.out")"
         exit 1; }
+    printf 'v s "Noto Sans 10"\nv s "Noto Sans Mono 10"\nv u 0\n' |
+        cmp -s - "$OUT/portal-keys.out" || {
+        echo "  the font and contrast keys are not what the theme names:"
+        cat "$OUT/portal-keys.out"; exit 1; }
     # And the deferred reply really is the chooser's answer.
     grep -q "file:///tmp/chosen.txt" "$OUT/portal-open.out" || {
         echo "  the deferred OpenFile reply lost the URI"
@@ -4644,7 +4739,8 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     # one missing from it is a LINK failure that skips every golden below.
     # fav.c is the favourites store several of them write;
     # mountd.c is the one kdos-mountd client kdos-devices and kdos-disks both
-    # call. None is a front end, so all belong in the base set rather than in
+    # call; job.c is the long-child runner kdos-backup, kdos-burn and
+    # kdos-verify share. None is a front end, so all belong in the base set rather than in
     # the candidate loop — a surface that uses one would otherwise fail to
     # LINK, which the harness reports as "the new front ends do not link" and
     # which reads as a defect in those files.
@@ -4670,6 +4766,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
              src/desktop/kdos-shell/fav.c src/desktop/kdos-shell/cells.c
              src/desktop/kdos-shell/logo.c
              src/desktop/kdos-shell/mountd.c
+             src/desktop/kdos-shell/job.c
              src/desktop/kdos-shell/osd.c
              src/libs/libkchrome/kch_chrome.c
              src/libs/libkchrome/kch_tone.c"
@@ -4722,7 +4819,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
              find pix rec chars disks print timezone users update firewall \
              netagent backup theme palette contacts store \
              run prompt notifyd desk connect traymenu \
-             about calc note ime mediad display; do
+             about calc note ime mediad display burn verify; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -5465,6 +5562,13 @@ if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have backup; then
     for _bs in 80x24 56x24 132x43; do
         golden backup "$_bs" backup --fixture "$_bkf" --dump
     done
+    # THE RESTORE VIEW, over a recorded `restic ls` of the newer snapshot. It
+    # opens at the root because that snapshot holds two paths, and one level
+    # down is the folder whose file name carries a space — the entry a restore
+    # that split on spaces would get wrong.
+    golden backup-restore 80x24 backup --fixture "$_bkf" --open e399cdcf --dump
+    golden backup-restore-dir 80x24 backup --fixture "$_bkf" --open e399cdcf \
+        --dir /home/kdos/Documents --dump
 
     # THE MODE REFUSAL, WHICH IS THE SECURITY LINE OF THIS SURFACE. A password
     # file the group or the world can read hands the key to every backup on the
@@ -5492,6 +5596,28 @@ if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have backup; then
     echo "  a group-readable password file is refused before it is used"
 else
     echo "  the kdos-backup goldens are skipped (it did not link)"
+fi
+
+# kdos-burn's drives are the host's /sys/block/sr*, so its golden reads a
+# recorded /sys instead: one drive, and one disk beside it that is not a drive
+# and must not be listed. The sources are files the shell fixture already
+# holds, named relative to it so the frame carries no host path.
+if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have burn; then
+    _bnf="$PWD/testing/fixtures/burn/sys"
+    golden burn        80x24  burn --fixture "$_bnf" tree --dump
+    golden burn        56x24  burn --fixture "$_bnf" tree --dump
+    golden burn-image  80x24  burn --fixture "$_bnf" pix/one.png --dump
+    golden burn-none   80x24  burn --fixture /nonexistent-kdos-sys --dump
+fi
+
+# kdos-verify RUNS THE CHECKER for its golden: `sha256sum -c` over a list with
+# one file that matches and one that does not. Both verdict lines are the same
+# in coreutils and busybox, and the warning each prints to stderr in its own
+# words is not a row, so the frame is the same wherever the suite runs.
+if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have verify; then
+    golden verify       80x24  verify ../verify/SHA256SUMS --dump
+    golden verify       132x43 verify ../verify/SHA256SUMS --dump
+    golden verify-none  80x24  verify --dump
 fi
 
 # kdos-devices' SCANNER SECTION, WITHOUT A GOLDEN FOR THE SURFACE. The rest of

@@ -29,9 +29,9 @@
 # -Defi_os_dir=kdos puts the loader beside the kernel in EFI/kdos on the ESP
 # rather than wherever os-release and a directory probe would guess.
 #
-# esp-mount-path.patch: fwupd finds the ESP through udisks, which this host
-# does not run, so without the patch the uefi-capsule plugin reports no ESP and
-# no capsule is ever staged. The patch describes the FAT filesystem mounted at
+# esp-mount-path.patch: fwupd finds the ESP only through udisks, so without the
+# patch the uefi-capsule plugin reports no ESP whenever udisks does not answer
+# for it, and no capsule is staged. The patch describes the FAT filesystem mounted at
 # EspLocation (set below) from sysfs and the udev database instead — partition
 # number, offset, size, UUID and type, which the BootNext entry for the loader
 # is built from. A path that is not a FAT mount point is refused, so the live

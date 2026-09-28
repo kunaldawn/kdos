@@ -38,11 +38,11 @@ follow from where that line is drawn.
 | Core userland | GNU coreutils, util-linux | toybox 0.8.14, with util-linux, procps-ng and a few GNU tools where toybox falls short |
 | Init | systemd | toybox `init`, numbered shell scripts, and `ksvc` as the supervisor |
 | Display | Wayland and Xorg, a display manager | Wayland only, rootless Xwayland for X11 clients, no display manager |
-| Host toolkits | GTK and Qt | None; every KDOS surface is a grid of character cells |
+| Toolkits | GTK and Qt under the desktop and its applications | None under the desktop, whose every surface is a grid of character cells; any toolkit for applications |
 | Desktop | GNOME, KDE Plasma, Xfce and others | One desktop written for KDOS, on a frozen fork of the labwc compositor |
-| Packages | Prebuilt binaries from an archive | Compiled from 1,038 recipes: on a build host for the installation image, on the machine itself for updates |
+| Packages | Prebuilt binaries from an archive | Compiled from 2,027 recipes: on a build host for the installation image, on the machine itself for updates |
 | Sources | Fetched from the archive's mirrors | Pinned by sha256, held in a content-addressed archive, built offline |
-| Graphical applications | Distribution packages, Flatpak or Snap | Debian packages in rootless podman containers, built on demand |
+| Graphical applications | Distribution packages, Flatpak or Snap | Native ports carried on the medium, plus Debian packages in rootless podman containers, built on demand |
 | Updates | A package manager against a remote archive | A newer ports tree, compiled locally or matched against a binary host ([binhost](../06-reference/glossary.md)) you run yourself, optionally into a second root slot |
 | Architectures | Several | x86-64 only |
 | Support | Vendor or community, with a hardware matrix | None; whoever runs it is the integrator |
@@ -111,13 +111,13 @@ uses the Shepherd. Linux From Scratch offers a System V init edition and a syste
 
 KDOS uses no systemd component. Its PID 1 is toybox's `init`, configured by `/etc/inittab`, which
 runs `/etc/init.d/rcS` at boot and `rcK` at shutdown. `rcS` runs the numbered scripts in
-`/etc/init.d/` in order: 37 of them ship in the system files, from `01_udev.sh` to `82_ipp-usb.sh`,
-and a few more are installed by their ports and do nothing until configured. A script is a service
-table entry in shell. It starts its daemon under `ksvc`, a small supervisor written in C for KDOS,
-which restarts the daemon when it exits and, when the service is stopped, stops everything the
-daemon started. A service is disabled by creating a file named after it in
-`/etc/service.disabled/`. Each of the other jobs systemd does, from device management to logging
-and timers, is done by a separate program that does only that job;
+`/etc/init.d/` in order: 40 of them ship in the system files, from `01_udev.sh` to
+`88_llama-server.sh`, and a few more are installed by their ports and do nothing until configured. A
+script is a service table entry in shell. It starts its daemon under `ksvc`, a small supervisor
+written in C for KDOS, which restarts the daemon when it exits and, when the service is stopped,
+stops everything the daemon started. A service is disabled by creating a file named after it in
+`/etc/service.disabled/`. Each of the other jobs systemd does, from device management to logging and
+timers, is done by a separate program that does only that job;
 [Principles](principles.md#no-systemd) lists them.
 
 This is the same trade OpenRC, runit and s6 users make, and KDOS keeps it smaller still: there is
@@ -141,38 +141,42 @@ the choice to you, and Xorg is one of the options.
 
 KDOS has no Xorg server port, no display manager and nothing X on the login path; the system files
 contain no `/etc/X11/` directory. The graphical session is Wayland only. Xwayland is the single
-exception: the compositor runs it rootlessly so that X11-only applications inside containers keep
-working, and the X client libraries on the host exist only to build it. Mesa and Xwayland are
-built without GLX, so an X11 client that draws through GLX gets no OpenGL; one that draws through
-EGL is unaffected.
+exception: the compositor runs it rootlessly for X11-only applications, both those inside
+containers and host applications with no Wayland path. The host carries the X client libraries
+those applications link, and Mesa and Xwayland are both built with GLX, so an X11 client that
+asks for OpenGL through GLX finds it under Xwayland.
 
 In place of a display manager, `tty1` logs in through `agetty`: automatically on the live image,
 and with a password prompt on an installed system unless automatic login was chosen at install
 time. That login shell's profile starts the desktop.
 
 The reason is size and a single path. One display protocol means one way a window reaches the
-screen, one input path and one security model for clients. The costs are that an application that
-needs GLX does not get it, a workflow built on a remote X display has nowhere to run, and a
+screen, one input path and one security model for clients. The costs are that an X11-only
+application runs through Xwayland, a workflow built on a remote X display has nowhere to run, and a
 machine that wants a graphical greeter has none. See
 [Principles](principles.md#no-xorg-server-and-one-carve-out).
 
-## Toolkits on the host
+## Toolkits
 
 On a mainstream desktop the base system carries GTK and usually Qt, because the desktop and its
-applications are written in them. KDOS carries neither on the host.
+applications are written in them. On KDOS the desktop uses neither, and applications use whichever
+they are written in.
 
-Every surface KDOS draws, from the panel to the installer, is a grid of character cells drawn by
-C libraries written for it; the boot splash, which runs before any of them, draws pixels straight
-to the framebuffer. The compositor's window titlebars and menus are drawn with pango at a size
-that lines up with the cell grid. Applications that need GTK or Qt run in containers, where both
-toolkits are installed and themed through the shared home directory. The rule reaches libraries
-too: a dependency that would pull a toolkit onto the host is built without it.
+Every surface KDOS draws, from the panel to the installer, is a grid of character cells drawn by C
+libraries written for it; the boot splash, which runs before any of them, draws pixels straight to
+the framebuffer. The compositor's window titlebars and menus are drawn with pango at a size that
+lines up with the cell grid. Applications on the host are ported with their own toolkit (GTK 3 and
+4, libadwaita, WebKitGTK, Qt 5 and 6, QtWebEngine, KDE Frameworks, wxWidgets, FLTK or Tk). Every
+toolkit is built with its Wayland and its X11 backend, Wayland is the default at run time, and GTK
+and Qt 6 applications take their colours from the desktop's palette. The containers carry the same
+toolkits for the catalogue's applications. A library's toolkit front end is built where a ported
+application uses it.
 
-The reason is that the two toolkits together are larger than the rest of the host, and leaving
-them out is what keeps the host small enough to compile in one sitting and to read. The cost is
-that the host has no widget toolkit: anything a KDOS surface wants to show has to be expressible in
-cells, and anything that is not goes in a box. See
-[Principles](principles.md#no-gtk-and-no-qt-on-the-host).
+The reason is that the toolkits together are larger than the rest of the host, and keeping them
+out of the desktop is what keeps the desktop small enough to compile in one sitting and to read,
+while a machine with no network still needs a browser, an office suite and an image editor on its
+medium. The cost is that anything a KDOS surface wants to show has to be expressible in cells. See
+[Principles](principles.md#toolkits-are-for-applications-not-the-desktop).
 
 ## The desktop
 
@@ -189,11 +193,12 @@ beside `foot`, which is the default terminal, the resource monitor `kdos-res`, t
 share one palette of colour slots, one set of keys and pointer gestures, and one [design
 language](../03-architecture/design-language.md).
 
-The reason is that the cell grid is the project's identity, and a desktop from elsewhere would
-bring the toolkits the previous section keeps out. KDE's applications are in the application
-catalogue; Plasma is not on the host. The cost is that the desktop is one person's design, with
-fewer features than GNOME or Plasma, and a fix upstream labwc makes has to be read and applied by
-hand. See [Decisions](decisions.md#no-kde-gnome-or-any-existing-desktop-on-the-host) and
+The reason is that the cell grid is the project's identity, and a desktop from elsewhere would bring
+its toolkit into the desktop itself, which the previous section keeps out. KDE's and GNOME's
+applications run on it, natively or in boxes; Plasma and GNOME Shell are not on the host. The cost
+is that the desktop is one person's design, with fewer features than GNOME or Plasma, and a fix
+upstream labwc makes has to be read and applied by hand. See
+[Decisions](decisions.md#no-kde-gnome-or-any-existing-desktop-on-the-host) and
 [Decisions](decisions.md#the-compositor-is-a-frozen-fork-of-labwc).
 
 ## Packages and recipes
@@ -220,8 +225,8 @@ description = Compression library implementing the deflate compression method
 
 The package manager, `kpkg`, is written for KDOS in C. It builds a port into a compressed tar
 archive, records every path the package owns, removes files an upgrade drops, and resolves
-dependencies from the `depends` lines. There are 1,014 recipes under `ports/core` for upstream
-software and 24 under `src/` for KDOS's own, 1,038 in all, and all of them use the same format.
+dependencies from the `depends` lines. There are 2,003 recipes under `ports/core` for upstream
+software and 24 under `src/` for KDOS's own, 2,027 in all, and all of them use the same format.
 [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by group.
 
 The closest relatives are Arch's `PKGBUILD` and CRUX's `Pkgfile`, with the metadata pulled out so
@@ -245,12 +250,12 @@ first place that holds a copy with the right hash: the port directory, a local c
 source archive, and finally the upstream URL. The source archive is a set of GitHub releases in
 which each file is stored under its own hash and never replaced or removed, so a checkout from
 years ago still finds the exact bytes it names after upstream has moved them. The recipes name
-1,232 distinct files, about 8.3 GiB.
+2,489 distinct files, about 38.6 GiB.
 
 `make build` then runs its build container with `--network none`. A recipe that tries to download
 anything during its build therefore fails on the machine that added it. Language ecosystems that
 fetch their dependencies at build time (Rust, Go, Python, Haskell) get a vendor bundle, a
-reproducible tarball of those dependencies that is itself hashed and archived; 124 ports carry one.
+reproducible tarball of those dependencies that is itself hashed and archived; 164 ports carry one.
 
 This is the Nix and Guix model of hash-pinned inputs applied to a conventional ports tree. The cost
 falls on whoever adds a port: vendoring, publishing new sources to the archive before pushing, and
@@ -275,12 +280,13 @@ they need inside a chroot, a directory tree the build enters as its root, using 
 so everything from phase 3 onwards is built by a compiler KDOS produced. The finished image keeps
 gcc, clang, Rust, Go, the build tools and `kpkg`, so any single port, the kernel included, can be
 rebuilt on the machine itself and offline; `kdos update apply` does that for every package that is
-behind. [`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild) is meant to drive the whole
-build on a running machine, but it does not yet complete there.
+behind. [`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild) runs the whole build on a
+booted machine; no run of it from the install medium has been taken through every phase (see
+[Known gaps](../06-reference/known-gaps.md#an-offline-kdos-rebuild-from-the-medium-has-not-been-run-to-the-end)).
 
-KDOS does not attempt Guix's reduced-seed bootstrap. Four compilers written in themselves (Rust,
-Go, Zig and GHC) start from upstream bootstrap binaries that are pinned by hash and never
-installed, and the first compilers come from Alpine. See
+KDOS does not attempt Guix's reduced-seed bootstrap. Six compilers written in themselves (Rust,
+Go, Zig, GHC, OpenJDK and OCaml) start from upstream bootstrap binaries or images that are pinned
+by hash and never installed, and the first C compilers come from Alpine. See
 [Why KDOS](why-kdos.md), [How KDOS is built](../05-developer/how-kdos-is-built.md) and the
 [build system](../05-developer/build-system.md).
 
@@ -327,15 +333,18 @@ behalf); Snap as compressed images from Canonical's store, confined with AppArmo
 installs graphical applications as Flatpaks and uses Toolbx containers for command-line work.
 Gentoo and Arch users build or install applications into the base system like everything else.
 
-KDOS never installs a graphical application into the host. Its catalogue lists 180 applications
-over 7 shared runtimes, each application declared as a chain of Debian trixie packages. Installing
-one makes podman build a container image on the machine that asked, layer by layer over the shared
-runtime, pinned to a snapshot of the Debian archive, and creates a rootless container, a *box*,
-over the top image. The application then behaves like native software: it has a launcher entry, a
-command on your `PATH`, file-type associations and the desktop's theme, and it reaches the host
-through portals. A set of built applications can be exported as signed packs, read-only images
-in EROFS, a compressed read-only filesystem format, that another machine imports without a
-network; the pack daemon checks each pack's hash and signature when it installs it.
+KDOS ports graphical applications natively, so that a machine installed from its media has a
+browser, an office suite, media and graphics tools, maps and an offline library with no network.
+They are ordinary recipes in the ports tree, grouped by purpose in the phase 4 package list; [The
+ports catalogue](../06-reference/ports-catalogue.md) lists them. Beside them, the catalogue of boxed
+applications lists 73 applications over 7 shared runtimes, each declared as a chain of Debian trixie
+packages. Installing one makes podman build a container image on the machine that asked, layer by
+layer over the shared runtime, pinned to a snapshot of the Debian archive, and creates a rootless
+container, a *box*, over the top image. The application then behaves like native software: it has a
+launcher entry, a command on your `PATH`, file-type associations and the desktop's theme, and it
+reaches the host through portals. A set of built applications can be exported as signed packs,
+read-only images in EROFS, a compressed read-only filesystem format, that another machine imports
+without a network; the pack daemon checks each pack's hash and signature when it installs it.
 
 Compared with Flatpak, the model is similar in shape (shared runtimes, per-application artefacts,
 portals) and different in three ways. The packages come from Debian's archive rather than from a
@@ -353,7 +362,7 @@ fuse-overlayfs, but it is held in memory and lost at power-off unless the sessio
 store; an imported pack box's writable layer is always held in memory there. And the box is a
 packaging and desktop boundary, not a jail for a malicious application. See [Packs and
 boxes](../03-architecture/packs-and-boxes.md) and
-[Decisions](decisions.md#a-store-that-builds-and-a-medium-that-carries-nothing).
+[Decisions](decisions.md#native-applications-on-the-medium-a-store-that-builds-the-rest).
 
 ## Updates
 
@@ -395,7 +404,7 @@ signed, and their security teams publish advisories and ship fixes.
 KDOS is a single-user workstation, and its security model is narrower and explicit about it. It
 defends against applications misbehaving, against tampered artefacts, against escalation through the
 few privileged programs, and against catastrophic mistakes made through its own interfaces.
-Graphical applications run in rootless containers whose compositor access is filtered to an
+Boxed applications run in rootless containers whose compositor access is filtered to an
 allowlist of Wayland protocols, widened for one box only by an explicit grant in its profile. The
 root daemons obey callers by their credentials and never accept a path from them. Host sources are
 verified by the hash in their recipe, prebuilt packages by the signed index, imported packs by a
@@ -441,7 +450,8 @@ it suits.
 - [Decisions](decisions.md) — the close choices and the alternatives that lost
 - [Architecture overview](../03-architecture/overview.md) — the running system as a whole
 - [Packaging](../03-architecture/packaging.md) — recipes, `kpkg`, the binhost and updates in depth
-- [How KDOS is built](../05-developer/how-kdos-is-built.md) — the build from checkout to ISO, told end to end
+- [How KDOS is built](../05-developer/how-kdos-is-built.md) — the build from checkout to ISO, told
+  end to end
 - [The ports catalogue](../06-reference/ports-catalogue.md) — every port, by group
 - [Packs and boxes](../03-architecture/packs-and-boxes.md) — how applications are built and run
 - [The security model](../03-architecture/security-model.md) — what is protected and what is not

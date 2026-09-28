@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = font-manager
+version     = 0.9.4
+release     = 1
+source      = https://github.com/FontManager/font-manager/releases/download/$version/font-manager-$version.tar.xz
+sha256      = 6a0899ac753f50d0779751828c62fa6220024213ebd2179b6f64a3a9bff51f96  font-manager-0.9.4.tar.xz
+description = Font Manager and Font Viewer: browse, compare, preview and enable fonts, for GTK 4
+homepage    = https://fontmanager.github.io/
+depends     = meson ninja pkgconf vala gettext python3 glib gobject-introspection gtk4 pango json-glib libxml2 sqlite fontconfig freetype2 harfbuzz libarchive librsvg hicolor-icon-theme

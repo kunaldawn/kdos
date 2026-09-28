@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = celestia-content
+version     = 1.7.0.git20260923
+release     = 1
+_commit     = 3ed5836133901114a9cb4a2ea35751b274a464a1
+source      = $name-$version.tar.gz::https://github.com/CelestiaProject/CelestiaContent/archive/$_commit.tar.gz
+sha256      = a70518c43875d7c7fd6734aec677330f31fccd7d98c27a962ce806272e69ca68  celestia-content-1.7.0.git20260923.tar.gz
+description = Celestia's universe — star and deep-sky catalogues, planet textures, models and orbits
+homepage    = https://github.com/CelestiaProject/CelestiaContent
+depends     = cmake ninja imagemagick

@@ -1,0 +1,14 @@
+--- a/src/osdep/amiberry_update.cpp
++++ b/src/osdep/amiberry_update.cpp
+@@ -672,10 +672,7 @@
+ #if defined(__ANDROID__) || defined(LIBRETRO) || defined(AMIBERRY_IOS)
+ 	return UpdateMethod::DISABLED;
+ #elif defined(__linux__)
+-	if (getenv("FLATPAK_ID")) {
+-		return UpdateMethod::DISABLED;
+-	}
+-	return UpdateMethod::NOTIFY_ONLY;
++	return UpdateMethod::DISABLED;
+ #elif defined(_WIN32)
+ 	return UpdateMethod::SELF_UPDATE;
+ #elif defined(AMIBERRY_MACOS)

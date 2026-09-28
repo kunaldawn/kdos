@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ocaml
+version     = 5.5.1
+release     = 1
+source      = https://caml.inria.fr/pub/distrib/ocaml-${version%.*}/ocaml-$version.tar.xz
+sha256      = cd0a97bdbfc99f00f53f4ee48491964c73627afb09ed8e4de230ba4488a3d6b9  ocaml-5.5.1.tar.xz
+description = OCaml — the native and bytecode compilers, runtime and standard library
+homepage    = https://ocaml.org/
+depends     = gcc binutils

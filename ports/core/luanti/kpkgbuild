@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = luanti
+version     = 5.17.0
+release     = 1
+_mtg        = 5.8.0
+source      = https://github.com/luanti-org/luanti/archive/refs/tags/$version.tar.gz
+source      = minetest_game-$_mtg.tar.gz::https://github.com/luanti-org/minetest_game/archive/refs/tags/$_mtg.tar.gz
+sha256      = 52e7dd315ae0e5c3868a23231e691578cd694bcca5af627fc57c03f32bdc846f  luanti-5.17.0.tar.gz
+sha256      = 33a3bb43b08497a0bdb2f49f140a2829e582d5c16c0ad52be1595c803f706912  minetest_game-5.8.0.tar.gz
+description = Luanti (formerly Minetest) — voxel game engine, with Minetest Game for offline play
+homepage    = https://www.luanti.org/
+depends     = cmake ninja pkgconf sdl3 mesa libglvnd freetype2 libjpeg-turbo libpng zlib zstd sqlite luajit gmp jsoncpp openal-soft libogg libvorbis openssl

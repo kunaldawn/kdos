@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = nomadnet
+version     = 1.4.3
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/n/nomadnet/nomadnet-$version.tar.gz
+sha256      = c256bb5ef88dfa3de45b6fa02a2af2e0e313b7b0c34c9c510395f0418976299d  nomadnet-1.4.3.tar.gz
+description = Nomad Network — messages, pages and files over a Reticulum mesh, in a terminal
+homepage    = https://github.com/markqvist/NomadNet
+depends     = python3 python3-setuptools python3-pip python3-rns python3-lxmf python3-urwid python3-qrcode

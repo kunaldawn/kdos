@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = smplayer
+version     = 26.8.29
+release     = 1
+source      = https://github.com/smplayer-dev/$name/releases/download/v$version/$name-$version.tar.bz2
+sha256      = 64a04328396069b4d8e1c1bca9aebf11f771707a4a1cb49125377d3ecca68450  smplayer-26.8.29.tar.bz2
+description = Qt front end for mpv that remembers where every file stopped
+homepage    = https://www.smplayer.info/
+depends     = qt6-qtbase qt6-qtsvg qt6-qt5compat qt6-qttools qt6-qtwayland libX11 zlib mpv

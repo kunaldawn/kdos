@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = openttd
+version     = 15.3
+release     = 1
+source      = https://cdn.openttd.org/openttd-releases/$version/openttd-$version-source.tar.xz
+sha256      = 5ea21eea7d59c78a42071924ac18c6bc0116088f2e96b14cfee9369175973be7  openttd-15.3.tar.xz
+description = Transport Tycoon Deluxe engine — build rail, road, air and sea networks
+homepage    = https://www.openttd.org/
+depends     = cmake ninja pkgconf sdl2-compat mesa libglvnd freetype2 fontconfig harfbuzz icu fluidsynth opusfile libpng zlib xz lzo curl openttd-opengfx openttd-opensfx openttd-openmsx

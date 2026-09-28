@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libspatialaudio
+version     = 0.4.1
+release     = 1
+source      = https://github.com/videolabs/libspatialaudio/archive/refs/tags/$version.tar.gz
+sha256      = 1c3fe135daaedce468a716afa795749e4b1bb77c9df8108203a6ffe6440532de  libspatialaudio-0.4.1.tar.gz
+description = Ambisonic and object audio rendering to speakers or headphones — the spatial audio behind MLT and VLC
+homepage    = https://github.com/videolabs/libspatialaudio
+depends     = meson ninja pkgconf libmysofa

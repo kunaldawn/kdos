@@ -1,0 +1,11 @@
+--- a/deluge/core/preferencesmanager.py	2026-09-28 03:24:02.921084659 +0530
++++ b/deluge/core/preferencesmanager.py	2026-09-28 03:24:02.956046196 +0530
+@@ -102,7 +102,7 @@
+     'path_chooser_accelerator_string': 'Tab',
+     'path_chooser_max_popup_rows': 20,
+     'path_chooser_show_hidden_files': False,
+-    'new_release_check': True,
++    'new_release_check': False,
+     'proxy': {
+         'type': 0,
+         'hostname': '',

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-orjson
+version     = 3.12.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/o/orjson/orjson-$version.tar.gz
+sha256      = d14203fb1aae2ad9b3d52f8a0e82aeb10197ef1c9bc61da7f358bd70b00123d5  python3-orjson-3.12.0.tar.gz
+description = orjson — fast JSON for Python, in Rust
+homepage    = https://github.com/ijl/orjson
+depends     = python3 python3-pip python3-maturin rust

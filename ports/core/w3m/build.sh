@@ -53,7 +53,7 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/w3m.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Web Browser
+Name=Web Browser (w3m)
 GenericName=Web Browser
 Comment=Browse the web on the grid
 Exec=w3m %u

@@ -1,0 +1,7 @@
+testing/fixtures/burn — the optical drives kdos-burn would list
+
+`sys/` is a /sys/block tree: one drive, `sr0`, whose vendor and model are
+space-padded the way a SCSI inquiry pads them, and one disk, `sda`, that is
+not a drive and must not be listed.
+
+    kdos-burn --fixture testing/fixtures/burn/sys tree --dump

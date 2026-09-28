@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = flxmlrpc
+version     = 1.0.1
+release     = 1
+source      = https://downloads.sourceforge.net/project/fldigi/$name/$name-$version.tar.gz
+sha256      = aac5d3a7def56f7f56164667b5fd78edeb49aa1bf69ec4d0bd0e097a05f98fd5  flxmlrpc-1.0.1.tar.gz
+description = flxmlrpc — the XML-RPC library shared by fldigi, flmsg and flamp
+homepage    = https://sourceforge.net/projects/fldigi/
+depends     = pkgconf

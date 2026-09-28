@@ -9,17 +9,19 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Aspell is the one provider, with aspell-en as its dictionary. Every other
-# provider is named off, so the set does not depend on what the chroot holds:
-# hunspell, nuspell, hspell and voikko are not ports, and the rest are other
-# operating systems'.
+# Hunspell and Aspell are the providers: hunspell reads hunspell-en's
+# dictionaries from /usr/share/hunspell, and aspell reads aspell-en. Both are
+# named with --with, which makes a provider whose library is missing a failed
+# configure rather than a quietly smaller set. Every other provider is named
+# off, so the set does not depend on what the chroot holds: nuspell, hspell and
+# voikko are not ports, and the rest are other operating systems'.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--libdir=/usr/lib \
 	--disable-static \
 	--with-aspell \
-	--without-hunspell \
+	--with-hunspell \
 	--without-nuspell \
 	--without-hspell \
 	--without-voikko \

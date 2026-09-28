@@ -1,0 +1,11 @@
+diff -ru a/cmake/BuildOpus.cmake b/cmake/BuildOpus.cmake
+--- a/cmake/BuildOpus.cmake	2026-09-28 04:06:55.385789039 +0530
++++ b/cmake/BuildOpus.cmake	2026-09-28 04:06:55.412979190 +0530
+@@ -1,6 +1,6 @@
+ message(STATUS "Will build opus with FARGAN")
+ 
+-set(CONFIGURE_COMMAND ./autogen.sh && ./configure --with-pic --enable-osce --enable-dred --disable-shared --disable-doc --disable-extra-programs)
++set(CONFIGURE_COMMAND autoreconf -isf && ./configure --with-pic --enable-osce --enable-dred --disable-shared --disable-doc --disable-extra-programs)
+ 
+ if (CMAKE_CROSSCOMPILING)
+ set(CONFIGURE_COMMAND ${CONFIGURE_COMMAND} --host=${CMAKE_C_COMPILER_TARGET} --target=${CMAKE_C_COMPILER_TARGET})

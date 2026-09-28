@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libvirt
+version     = 12.7.0
+release     = 1
+source      = https://download.libvirt.org/libvirt-$version.tar.xz
+sha256      = 7ec1a04e7e4f4069353d4daac117bbe869287f5b202695de61fe1b079efb6cb6  libvirt-12.7.0.tar.xz
+description = Virtualisation API and the libvirtd daemon, driving QEMU/KVM guests, networks and storage; virsh
+homepage    = https://libvirt.org
+depends     = meson ninja pkgconf python3 perl python3-docutils libxml2 libxslt glib gnutls libtirpc rpcsvc-proto json-c libnl libpcap libpciaccess eudev util-linux attr acl libcap-ng cyrus-sasl libssh2 readline polkit lvm2 parted qemu dnsmasq nftables iptables iproute2 dmidecode libiscsi libnbd nbdkit

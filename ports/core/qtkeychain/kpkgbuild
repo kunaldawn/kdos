@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qtkeychain
+version     = 0.17.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/$version.tar.gz
+sha256      = 3b85c3929034b0a99da777130c34d99f006fcd3a9d56564159399a33fee0e504  qtkeychain-0.17.0.tar.gz
+description = Qt 6 API for storing passwords in the Secret Service, KWallet or a plain file
+homepage    = https://github.com/frankosterfeld/qtkeychain
+depends     = cmake ninja pkgconf qt6-qtbase libsecret glib

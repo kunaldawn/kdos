@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = draco
+version     = 1.5.7
+release     = 1
+source      = https://github.com/google/draco/archive/refs/tags/$version.tar.gz
+sha256      = bf6b105b79223eab2b86795363dfe5e5356050006a96521477973aba8f036fe1  draco-1.5.7.tar.gz
+description = Draco — Google's compressed geometry and point-cloud format, library and codec tools
+homepage    = https://google.github.io/draco/
+depends     = cmake ninja

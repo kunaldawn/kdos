@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gtk-vnc
+version     = 1.5.0
+release     = 1
+source      = https://download.gnome.org/sources/gtk-vnc/${version%.*}/gtk-vnc-$version.tar.xz
+sha256      = c0beb4747528ad931da43acc567c6a0190f7fc624465571ed9ccece02c34dd23  gtk-vnc-1.5.0.tar.xz
+description = VNC client library and GTK 3 viewer widget, with its PulseAudio bridge — virt-manager's VNC console
+homepage    = https://gitlab.gnome.org/GNOME/gtk-vnc
+depends     = meson ninja pkgconf python3 perl gettext glib gtk3 gdk-pixbuf cairo libX11 gnutls gmp zlib cyrus-sasl libpulse gobject-introspection vala

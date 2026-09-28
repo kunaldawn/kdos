@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libosmo-dsp
+version     = 0.5.0
+release     = 1
+source      = https://downloads.osmocom.org/releases/libosmo-dsp/libosmo-dsp-$version.tar.bz2
+sha256      = 33c1b072cb67ae03ca668f59396ee670baa8a2659f68815b5e519d6e13a9e9d2  libosmo-dsp-0.5.0.tar.bz2
+description = libosmo-dsp — Osmocom complex-vector DSP and I/Q imbalance estimation
+homepage    = https://osmocom.org/projects/libosmo-dsp
+depends     = pkgconf fftw

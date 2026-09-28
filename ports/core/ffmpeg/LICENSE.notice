@@ -56,6 +56,7 @@ COMPONENT LICENCES
   tesseract  Apache-2.0           ports/core/tesseract
   qrencode   LGPL-2.1-or-later    ports/core/qrencode
   librsvg    LGPL-2.1-or-later    ports/core/librsvg
+  vid.stab   GPL-2.0-or-later     ports/core/vidstab
 
 PATENTS
 

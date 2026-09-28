@@ -12,12 +12,9 @@
 # THE ENGINE WITHOUT A LANGUAGE FILE DOES NOTHING, AND THAT IS THE TRAP. A
 # tesseract install with no `.traineddata` starts, accepts an image and exits
 # with "Failed loading language 'eng'" — which reads as a broken build. The
-# data is a separate download upstream and on this distro that means it has to
-# be a `source =` line, which it is: `tessdata_fast`'s English model, ~4 MB.
-#
-# fast rather than `tessdata_best`: best is four times the size for a few
-# points of accuracy on clean scans, and on a stick the size is the point.
-# Other languages are files somebody drops into /usr/share/tessdata later.
+# models are the tessdata-eng port, a dependency of this one, which installs the
+# English and script-detection models into /usr/share/tessdata; another
+# language is one more file there.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -43,10 +40,6 @@ for def in HAVE_TIFFIO_H HAVE_LIBARCHIVE HAVE_LIBCURL; do
 done
 ninja
 DESTDIR=$PKG ninja install
-
-# A non-archive source is not unpacked into $SRC_ROOT — it stays where kpkg
-# fetched it, which is the port directory.
-install -Dm644 $PORT_SRC/tessdata-eng-4.1.0.traineddata $PKG/usr/share/tessdata/eng.traineddata
 
 # The CMake build installs no manual pages; upstream renders them only from its
 # autotools build, with `asciidoctor -b manpage`, which is the command used here.

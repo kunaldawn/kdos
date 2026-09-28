@@ -134,9 +134,9 @@ static const char *box_wayland_socket(void)
 /*
  * Accessibility, opt-in.
  *
- * The host runs no at-spi registry and nothing answers org.a11y.Bus on the
- * session bus, so by default every boxed GTK app is told not to look — that is
- * a startup probe that can only time out. It is a DEFAULT and not a policy:
+ * By default every boxed GTK app is told not to probe org.a11y.Bus: the host's
+ * at-spi registry serves native applications, and a box that has not opted in
+ * would only pay for the probe at startup. It is a DEFAULT and not a policy:
  * a user who wants the box's own stack (the image carries at-spi2-core, and a
  * screen reader running inside the box can reach it) opts in by creating
  * ~/.config/kdos/a11y — an empty file is enough — or by exporting KDOS_A11Y=1
@@ -214,9 +214,9 @@ static int store_env(const Profile *prof, KbArgv *a)
  *   GSETTINGS_BACKEND=keyfile  no dconf-service is reachable over the (host)
  *                              session bus; keyfile keeps GNOME app settings
  *                              persistent instead of silently dropped
- *   NO_AT_BRIDGE / GTK_A11Y    no accessibility stack is reachable on the host;
- *                              stop every GTK app probing org.a11y.Bus at
- *                              startup — unless the user opted in, see
+ *   NO_AT_BRIDGE / GTK_A11Y    stop every boxed GTK app probing
+ *                              org.a11y.Bus at startup — unless the
+ *                              user opted in, see
  *                              a11y_wanted()
  *   QT_QPA_PLATFORMTHEME       how a Qt app finds a palette: `kde` when the
  *                              image has the KDE segment (it reads the

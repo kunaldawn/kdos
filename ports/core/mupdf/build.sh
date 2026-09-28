@@ -18,8 +18,8 @@
 # gumbo-parser and mujs are mupdf's own maintained forks with no upstream to be
 # a port of, and lcms2mt is a forked variant of lcms2 that mupdf itself says is
 # strongly preferred. The rest — freetype, harfbuzz, jbig2dec, libjpeg,
-# openjpeg, zlib, curl, brotli, leptonica, tesseract, libarchive and zxing-cpp
-# — are ports and come from the system.
+# openjpeg, zlib, curl, brotli, leptonica, tesseract, libarchive, zxing-cpp
+# and freeglut — are ports and come from the system.
 #
 # barcode=yes is `mutool barcode`: decoding QR codes and barcodes out of a PDF
 # page or an image, and drawing new ones, through zxing-cpp. It stops the build
@@ -31,13 +31,19 @@
 # HAVE_LIBCRYPTO=yes is PDF signing and signature checks: left unset it is a
 # pkg-config probe that drops them without a word when openssl is absent.
 #
-# The X11 and GLUT viewers are out — no Xorg server, and mupdf-gl is GLUT over
-# X11 rather than Wayland. What ships is mutool and the shared library, which
-# is the half a scriptable machine wants.
+# BOTH VIEWERS ARE BUILT, AND BOTH ARE X11 CLIENTS that run under Xwayland.
+# mupdf-gl is the full one — search, annotations, forms, a file dialog when
+# started with no document — drawn through GLUT and GLX; HAVE_GLUT=yes makes
+# a missing gl, x11, xrandr or glut a link error rather than a skipped viewer.
+# Built against the freeglut port rather than mupdf's own fork, it has no
+# clipboard and reads the keyboard as Latin-1 characters: both need the fork's
+# GLUT API version 6, and freeglut declares 4. mupdf-x11 is the plain Xlib
+# viewer, the lighter of the two. mutool and the shared library ship beside
+# them.
 MUPDF_SYS="USE_SYSTEM_LIBS=yes USE_SYSTEM_GUMBO=no USE_SYSTEM_MUJS=no \
-	USE_SYSTEM_ZXINGCPP=yes USE_SYSTEM_LCMS2=no"
+	USE_SYSTEM_ZXINGCPP=yes USE_SYSTEM_LCMS2=no USE_SYSTEM_GLUT=yes"
 MUPDF_OPT="tesseract=yes archive=yes barcode=yes HAVE_LIBCRYPTO=yes \
-	HAVE_X11=no HAVE_GLUT=no HAVE_OBJCOPY=yes"
+	HAVE_X11=yes HAVE_GLUT=yes HAVE_OBJCOPY=yes"
 
 # THE HYPHENATION ZIPS ARE REBUILT FROM THE TEXT PATTERNS beside them, so what
 # is linked into libmupdf is made from source this archive carries rather than
@@ -64,3 +70,25 @@ PY
 make $MUPDF_SYS $MUPDF_OPT build=release prefix=/usr shared=yes
 make $MUPDF_SYS $MUPDF_OPT build=release prefix=/usr shared=yes \
 	DESTDIR=$PKG install
+
+# The menu entry is mupdf-gl's. freeglut sets no WM_CLASS on its window, so
+# there is no class for StartupWMClass to name. No MimeType: kdos-peek holds
+# PDF, and mimeapps.list chooses the default. The icons are upstream's PNGs.
+for s in 16 24 32 48 72 128 256 512; do
+	install -Dm644 docs/logo/mupdf-icon-$s.png \
+		"$PKG/usr/share/icons/hicolor/${s}x$s/apps/mupdf.png"
+done
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/mupdf-gl.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=PDF Viewer (MuPDF)
+GenericName=Document Viewer
+Comment=Read, search and annotate PDF, EPUB, XPS and comic book files
+Exec=mupdf-gl %f
+Icon=mupdf
+Terminal=false
+Categories=Office;Viewer;Graphics;
+Keywords=pdf;epub;xps;cbz;document;reader;annotate;mupdf;
+DESKTOP
+chmod 644 "$PKG/usr/share/applications/mupdf-gl.desktop"

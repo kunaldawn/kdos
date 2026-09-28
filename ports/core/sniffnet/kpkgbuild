@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sniffnet
+version     = 1.5.1
+release     = 1
+source      = https://github.com/GyulyVGC/sniffnet/archive/refs/tags/v$version.tar.gz
+sha256      = 20a5ce502119be22251dd119e41a2bc069454ac1f2c553caccbace6912487180  sniffnet-1.5.1.tar.gz
+sha256      = 7958488bc1e87c7566a2bda63776b7f25e67efd1b395c3022007eb9e3ec83855  sniffnet-vendor-1.5.1.tar.xz
+description = Watch network traffic by host, service, program and country, in a GPU-drawn window
+homepage    = https://sniffnet.net
+depends     = rust cmake pkgconf libpcap alsa-lib libxkbcommon wayland vulkan-loader mesa
+vendoring   = rust

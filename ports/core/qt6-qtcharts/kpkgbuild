@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtcharts
+version     = 6.11.2
+release     = 1
+_module     = qtcharts
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 5069e53b81d125509e937c6379cba6d664c562d5a1e5ed28dd383690d4b6fb29  qt6-qtcharts-6.11.2.tar.xz
+description = Qt 6 Charts — chart widgets and QML chart types
+homepage    = https://www.qt.io
+depends     = cmake ninja qt6-qtbase qt6-qtdeclarative
+group       = qt6

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = glfw
+version     = 3.5.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/glfw/glfw/archive/refs/tags/$version.tar.gz
+sha256      = 5234f4f29473e9a06bc7847d8371858dd135d38466eeeaa652fdc9f8f9ff0c20  glfw-3.5.1.tar.gz
+description = A window, a GL or Vulkan context and input — Wayland first, X11 under Xwayland as the fallback
+homepage    = https://www.glfw.org/
+depends     = cmake ninja pkgconf wayland libxkbcommon libdecor libglvnd mesa vulkan-loader libX11 libXrandr libXinerama libXcursor libXi libXext libXrender libXxf86vm

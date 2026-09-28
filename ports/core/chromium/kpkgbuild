@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = chromium
+version     = 154.0.8037.57
+release     = 1
+_copium     = 154.2
+_rollup     = 4.60.4
+source      = https://github.com/chromium-linux-tarballs/chromium-tarballs/releases/download/$version/$name-$version-linux.tar.xz
+source      = copium-$_copium.tar.gz::https://codeberg.org/selfisekai/copium/archive/$_copium.tar.gz
+source      = rollup-wasm-node-$_rollup.tgz::https://registry.npmjs.org/@rollup/wasm-node/-/wasm-node-$_rollup.tgz
+sha256      = 2b2c55e73cbf9ce4103f8f87829d0b9ce61916152e3deb1596d451d5e291deae  chromium-154.0.8037.57.tar.xz
+sha256      = 077b3d9a86de7e1a5353d25bfd0658655ca437c24e8c84aa0cff91e3a7ba9419  copium-154.2.tar.gz
+sha256      = a70354216d534b0b7cba485954570eea539389459bdf1a4cf02c9514607c74e6  rollup-wasm-node-4.60.4.tgz
+description = Chromium web browser, on GTK 3 with Wayland and X11
+homepage    = https://www.chromium.org/Home
+depends     = clang lld compiler-rt rust bindgen nodejs python3 gn ninja gperf bison flex perl go esbuild pkgconf gtk3 glib at-spi2-core dbus nss nspr cups krb5 alsa-lib libpulse pipewire libva libdrm mesa wayland libxkbcommon libX11 libxcb xcb-proto libXcomposite libXdamage libXext libXfixes libXrandr libXtst libXi libXrender libxshmfence libffi fontconfig freetype2 harfbuzz brotli dav1d double-conversion flac libjpeg-turbo libsecret libusb libwebp opus zlib zstd pciutils eudev libcap curl minizip

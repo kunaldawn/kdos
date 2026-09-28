@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dcmtk
+version     = 3.7.0
+release     = 1
+source      = https://dicom.offis.de/download/dcmtk/dcmtk${version//./}/dcmtk-$version.tar.gz
+sha256      = f103df876040a4f904f01d2464f7868b4feb659d8cd3f46a5f1f61aa440be415  dcmtk-3.7.0.tar.gz
+description = DCMTK — the OFFIS DICOM toolkit: medical image conversion, network storage and query tools
+homepage    = https://dicom.offis.de/dcmtk
+depends     = cmake ninja zlib libpng libtiff libxml2 openjpeg openssl

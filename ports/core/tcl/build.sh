@@ -14,8 +14,7 @@ cd unix
 # IT IS HERE TO BE EMBEDDED, by yosys and by weechat. yosys's command language
 # is Tcl and its `tcl` command — which is how a synthesis script does anything
 # conditional — needs a real interpreter linked in; weechat's tcl plugin is the
-# same library loaded into the IRC client. There is no Tk and there will not
-# be: that is a GUI toolkit and the hard rule covers it.
+# same library loaded into the IRC client. Tk, the GUI half, is not built here.
 #
 # --disable-static because both consumers link the shared library, and a
 # static libtcl in each binary is 4 MB nothing else can share.

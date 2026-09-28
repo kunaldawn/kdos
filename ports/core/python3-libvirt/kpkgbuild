@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-libvirt
+version     = 12.7.0
+release     = 1
+source      = https://download.libvirt.org/python/libvirt_python-$version.tar.gz
+sha256      = 03a6800a3cc7657267e2516f579ce95c93d6351182caf03f92a49556685bf8bf  python3-libvirt-12.7.0.tar.gz
+description = Python binding of the libvirt API — what virt-manager and virt-install drive libvirt through
+homepage    = https://libvirt.org/python.html
+depends     = python3 python3-setuptools python3-pip pkgconf libvirt

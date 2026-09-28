@@ -95,6 +95,7 @@ lists everything preflight checks.
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
 | `'fenv_t' has not been declared`, then `Cannot compile std module`, in phase one | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
+| `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
 | A missing type, from an empty generated header | [A stream-editor extension that is not there](#a-stream-editor-extension-that-is-not-there) |
@@ -645,6 +646,15 @@ iconv in libc and there is no library of that name.
 without the library, which is right for a system that ships no message catalogues. The `libintl`
 port builds only the runtime library from the same tarball and version, so a caller's header and
 library cannot describe two different gettexts.
+
+### A kernel ioctl request missing on musl
+
+A request such as `TCGETS2` or `TCSETS2` is undeclared, although `configure` found the structure it
+reads (`struct termios2`, from `<asm/termbits.h>`). glibc's `<sys/ioctl.h>` includes the kernel's
+`<asm/ioctls.h>`; musl's defines its own list of requests and leaves out the ones glibc gets from
+the kernel. Add the kernel header rather than turning the feature off:
+`CPPFLAGS="$CPPFLAGS -include asm/ioctls.h"` on the `configure` line. The `libmodbus` port does
+this, and keeps the serial rates only `termios2` can set.
 
 ### The wide curses API
 

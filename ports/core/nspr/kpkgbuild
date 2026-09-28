@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = nspr
+version     = 4.40
+release     = 1
+source      = https://ftp.mozilla.org/pub/nspr/releases/v$version/src/nspr-$version.tar.gz
+sha256      = c0c1884c627f3db7a783f7c7314c695226b2043696791d15519e7e0578c19bdc  nspr-4.40.tar.gz
+description = Netscape Portable Runtime — the platform layer under NSS
+homepage    = https://firefox-source-docs.mozilla.org/nspr/index.html
+depends     =

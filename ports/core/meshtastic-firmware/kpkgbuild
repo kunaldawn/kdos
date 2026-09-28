@@ -1,0 +1,37 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = meshtastic-firmware
+version     = 2.7.26
+release     = 1
+_rev        = 54e0d8d
+_url        = https://github.com/meshtastic/firmware/releases/download/v$version.$_rev
+source      = $name-esp32-$version.zip::$_url/firmware-esp32-$version.$_rev.zip
+source      = $name-esp32c3-$version.zip::$_url/firmware-esp32c3-$version.$_rev.zip
+source      = $name-esp32c6-$version.zip::$_url/firmware-esp32c6-$version.$_rev.zip
+source      = $name-esp32s3-$version.zip::$_url/firmware-esp32s3-$version.$_rev.zip
+source      = $name-nrf52840-$version.zip::$_url/firmware-nrf52840-$version.$_rev.zip
+source      = $name-rp2040-$version.zip::$_url/firmware-rp2040-$version.$_rev.zip
+source      = $name-rp2350-$version.zip::$_url/firmware-rp2350-$version.$_rev.zip
+source      = $name-stm32-$version.zip::$_url/firmware-stm32-$version.$_rev.zip
+source      = $name-$version.json::$_url/firmware-$version.$_rev.json
+sha256      = 507898c53b605bc23fc8fc0d62feefb180c8e9bd094e5a1fbf0441a688b5cd0e  meshtastic-firmware-2.7.26.json
+sha256      = 67f94bb2f0fe32c0f64d34429527e89fcb3d3c84fa444965987e297ce80745d1  meshtastic-firmware-esp32-2.7.26.zip
+sha256      = 5ebb8ac56b539b5bea38534e2179e2a6f4160b77344535f7547413ff53112c0c  meshtastic-firmware-esp32c3-2.7.26.zip
+sha256      = bc61afe18de65cea2b7cecd67c6ede4adb35a1d022e3fe789f51121ca7973ff8  meshtastic-firmware-esp32c6-2.7.26.zip
+sha256      = 339650ced8b8c859751f04be69c6af845fea96baca1327518f199afd2595a9d4  meshtastic-firmware-esp32s3-2.7.26.zip
+sha256      = 69ae5c1f38474e32d815dc8bc54291944fb1eb2bf0c3bd0abf5513cb078de5b2  meshtastic-firmware-nrf52840-2.7.26.zip
+sha256      = 1f23e6135e0aca332c259650eb0b8faaf1c3c739287b18ff2aceaabdab12c19e  meshtastic-firmware-rp2040-2.7.26.zip
+sha256      = 9b42460eb1abd886bdded30834fd4306d7892ca1cef562f9edf64eab5805976c  meshtastic-firmware-rp2350-2.7.26.zip
+sha256      = 629dc883d8741dd4e834d452c38302f58da4279a85d30278ad9bea2e4e72c9da  meshtastic-firmware-stm32-2.7.26.zip
+description = Meshtastic radio firmware images, to flash a LoRa node with no network
+homepage    = https://meshtastic.org/
+depends     = unzip python3-esptool

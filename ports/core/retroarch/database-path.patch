@@ -1,0 +1,11 @@
+--- a/retroarch.cfg
++++ b/retroarch.cfg
+@@ -850,7 +850,7 @@
+ libretro_info_path = /usr/share/libretro/info
+ 
+ # Path to content database directory.
+-# content_database_path =
++content_database_path = /usr/share/libretro/database/rdb
+ 
+ # Path to cheat database directory.
+ cheat_database_path = /usr/share/libretro/database/cht

@@ -1,0 +1,31 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# The UPS's power-off, the last `::shutdown` entry in /etc/inittab.
+#
+# When NUT's upsmon shuts this machine down on a low battery it leaves its
+# POWERDOWNFLAG (/etc/killpower) behind, and `upsmon -K` answers 0 while the
+# flag is there. Then the UPS itself has to be told to cut the power once its
+# off-delay runs out; otherwise it keeps the machine powered on the last of the
+# battery, and when mains returns before the battery is flat the machine never
+# sees the power drop and stays off.
+#
+# AFTER umount, NOT IN rcK. The UPS cuts the power a few seconds after this
+# command whatever the machine is doing, so every filesystem is already
+# read-only by then. The name has no NN_ prefix, so rcS never starts it.
+#
+# A machine with no NUT, or one whose shutdown was not upsmon's, does nothing.
+
+[ -x /usr/sbin/upsmon ] && [ -x /usr/sbin/upsdrvctl ] || exit 0
+/usr/sbin/upsmon -K >/dev/null 2>&1 || exit 0
+echo "[KDOS] UPS: telling the UPS to cut the power"
+/usr/sbin/upsdrvctl shutdown
+exit 0

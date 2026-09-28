@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = groff
+version     = 1.24.1
+release     = 1
+source      = https://ftp.gnu.org/gnu/groff/groff-$version.tar.gz
+sha256      = 74e2819795b6aff431aeac983d63a9c8968eeaba2a2eba7df8ba4c7b41e7cfd8  groff-1.24.1.tar.gz
+description = GNU roff — troff, nroff, eqn, tbl, pic and the PDF, PostScript and HTML output devices
+homepage    = https://www.gnu.org/software/groff/
+depends     = perl m4 bison texinfo zlib uchardet ghostscript mandoc

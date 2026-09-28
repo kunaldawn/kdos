@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = audacious-plugins
+version     = 4.6.1
+release     = 1
+source      = https://distfiles.audacious-media-player.org/$name-$version.tar.bz2
+sha256      = 22e58a8a2c3f3caa9687434353618c822963cc8846cd239de36d4e8e5bd166a6  audacious-plugins-4.6.1.tar.bz2
+description = Audacious decoders, outputs, effects and the Qt interface — without them the player opens no window and plays nothing
+homepage    = https://audacious-media-player.org/
+depends     = meson ninja pkgconf gettext audacious glib qt6-qtbase zlib libxml2 libsamplerate soxr alsa-lib pipewire ffmpeg flac libvorbis libogg opusfile mpg123 faad2 wavpack libsndfile libmodplug fluidsynth libcdio libcdio-paranoia lame libnotify gdk-pixbuf libcue libsidplayfp libresidfp libopenmpt adplug libbinio libbs2b lirc

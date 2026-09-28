@@ -32,8 +32,11 @@
 #include "kbase.h"
 
 #define KP_MAX_REPOS 8
-#define KP_MAX_DEPS  64
-#define KP_MAX_ORDER 2048
+/* KP_MAX_DEPS bounds ONE recipe's `depends` line: kp_depends stops reading at
+ * it, so a recipe naming more loses the rest from its build closure. The
+ * largest recipes (vlc, chromium, libreoffice) name 60-75. */
+#define KP_MAX_DEPS  128
+#define KP_MAX_ORDER 4096
 
 typedef struct {
 	char conf[512];		/* $KPKG_CONF, default /etc/kpkg.conf      */

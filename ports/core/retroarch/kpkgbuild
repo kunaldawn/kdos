@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = retroarch
+version     = 1.22.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libretro/RetroArch/archive/v$version.tar.gz
+sha256      = 245ef18c8fa8fbd9fbb5eb25cf43e17c6aace2f95c1ed99873cbd794012bb232  retroarch-1.22.2.tar.gz
+description = RetroArch — the libretro frontend: one window, one menu and one set of controls for every emulator core
+homepage    = https://www.retroarch.com
+depends     = pkgconf librsvg mesa libglvnd wayland wayland-protocols libxkbcommon libdecor libdrm vulkan-loader vulkan-headers alsa-lib libpulse pipewire eudev libusb sdl2-compat freetype2 zlib retroarch-assets libretro-core-info libretro-database retroarch-joypad-autoconfig

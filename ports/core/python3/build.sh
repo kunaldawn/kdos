@@ -19,9 +19,11 @@
 # The rest pins what configure would otherwise decide from whatever happens to
 # be installed. libmpdec is not a port, so _decimal uses the copy CPython
 # carries. Bluetooth sockets need bluez's headers, and bluez is built long
-# after this bootstrap. _tkinter needs Tk, which is X11, so the Tk-only
-# stdlib — tkinter, turtle, idlelib, turtledemo and the idle3 launchers — is
-# removed below: every one of them fails on import. --disable-test-modules
+# after this bootstrap, and so is Tk: _tkinter and the tkinter package are the
+# python3-tkinter port, built from this same source once tk exists. The rest
+# of the Tk-only stdlib — turtle, idlelib, turtledemo and the idle3 launchers
+# — is removed below with tkinter, because this package cannot depend on Tk and
+# none of them imports without it. --disable-test-modules
 # drops the _test* and xx* extension modules, which only the test suite this
 # package does not ship imports; the PGO training run skips what needs them.
 #

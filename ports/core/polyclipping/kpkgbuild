@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = polyclipping
+version     = 6.4.2
+release     = 1
+source      = https://downloads.sourceforge.net/polyclipping/clipper_ver$version.zip
+sha256      = a14320d82194807c4480ce59c98aa71cd4175a5156645c4e2b3edd330b930627  polyclipping-6.4.2.zip
+description = Clipper 1 — polygon clipping and offsetting library, the API libnest2d and CuraEngine link
+homepage    = https://sourceforge.net/projects/polyclipping/
+depends     = cmake unzip

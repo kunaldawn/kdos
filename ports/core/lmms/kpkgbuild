@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lmms
+version     = 1.2.2
+release     = 1
+source      = https://github.com/LMMS/lmms/releases/download/v$version/lmms_$version.tar.xz
+sha256      = b185507fb64ecfd8e31145135b58ab244b637f9efc09c4176caf70aa3cbaae1e  lmms-1.2.2.tar.xz
+description = LMMS — pattern-based music production: sequencer, synthesizers, samples and LADSPA effects (Qt 5)
+homepage    = https://lmms.io/
+depends     = cmake ninja pkgconf qt5-qtbase qt5-qttools qt5-qtwayland libsndfile libsamplerate fftw alsa-lib libpulse portaudio lame libvorbis libogg fluidsynth libgig stk libsoundio sdl12-compat fltk zlib perl

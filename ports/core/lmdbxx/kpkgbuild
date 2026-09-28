@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lmdbxx
+version     = 1.0.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/hoytech/lmdbxx/archive/refs/tags/$version.tar.gz
+sha256      = 3ae81209dbcf274002309c538f0cace34f3cb51e75568b2f64aaa30f0d50ac28  lmdbxx-1.0.2.tar.gz
+description = C++17 header-only wrapper for the LMDB database library
+homepage    = https://github.com/hoytech/lmdbxx
+depends     = lmdb

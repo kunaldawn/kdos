@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ardour
+version     = 9.8.0
+release     = 1
+source      = https://community.ardour.org/src/Ardour-$version.tar.bz2
+sha256      = 1f1a0ae658fb3b10e3fa6f9cab952ab6500955594c3773c5e9421f5e42b23d59  ardour-9.8.0.tar.bz2
+description = Ardour — digital audio workstation: multitrack recording, editing, mixing and LV2 plugins (YTK, X11)
+homepage    = https://ardour.org/
+depends     = python3 pkgconf boost glib glibmm2.66 cairomm1.14 pangomm2.46 libsigc++2 cairo pango fontconfig freetype2 libpng libjpeg-turbo libX11 libXext libXrandr libXinerama libXi libsndfile libsamplerate fftw flac libogg curl libarchive liblo taglib vamp-sdk rubberband aubio lrdf lv2 serd sord sratom lilv suil libxml2 libusb hidapi eudev alsa-lib libpulse dbus readline

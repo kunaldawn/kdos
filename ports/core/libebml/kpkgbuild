@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libebml
+version     = 1.4.7
+release     = 1
+source      = https://dl.matroska.org/downloads/$name/$name-$version.tar.xz
+sha256      = 5b08214f929ee54c6187c370f84235fc9d0f2a2258c4d320d68eae6e2bdfd3f7  libebml-1.4.7.tar.xz
+description = EBML container library — the layer under libmatroska
+homepage    = https://github.com/Matroska-Org/libebml
+depends     = cmake ninja

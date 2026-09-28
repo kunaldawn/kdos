@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = klog
+version     = 2.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ea4k/klog/archive/refs/tags/$version.tar.gz
+sha256      = c4419963f9d5cfb87fd0aaf78524ae21534c77f07c50fc7979142496ca13c102  klog-2.6.tar.gz
+description = KLog — amateur radio logbook with DXCC and award tracking, ADIF, LoTW and a DX cluster
+homepage    = https://www.klog.xyz/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtwayland qt6-qtdeclarative qt6-qtcharts qt6-qtlocation qt6-qtpositioning qt6-qtserialport hamlib librsvg

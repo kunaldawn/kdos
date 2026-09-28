@@ -1,0 +1,26 @@
+Author: Thomas Viehmann <tv@beamnet.de>
+Date: Thu, 8 Dec 2022 12:23:15 +0800
+Subject: Fix segfault due to uninitialized imgui in wxwidgets3.2
+
+Bug-Debian: https://bugs.debian.org/1022234
+From: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1022234#15
+Forwarded: no
+---
+ src/slic3r/GUI/HintNotification.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/slic3r/GUI/HintNotification.cpp b/src/slic3r/GUI/HintNotification.cpp
+index e88947d..1ca52e0 100644
+--- a/src/slic3r/GUI/HintNotification.cpp
++++ b/src/slic3r/GUI/HintNotification.cpp
+@@ -560,7 +560,9 @@ void HintDatabase::clear_used()
+ 
+ void NotificationManager::HintNotification::count_spaces()
+ {
+-	//determine line width 
++	ImGuiWrapper& imgui = *wxGetApp().imgui();
++	imgui.new_frame();
++	//determine line width
+ 	m_line_height = ImGui::CalcTextSize("A").y;
+ 
+ 	

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = remmina
+version     = 1.4.43
+release     = 1
+source      = $name-$version.tar.gz::https://gitlab.com/Remmina/Remmina/-/archive/v$version/Remmina-v$version.tar.gz
+sha256      = 16533f8a806daff524649bb45ae51e51f61685da94846006018b3c279ebe7035  remmina-1.4.43.tar.gz
+description = Remmina (GTK 3) — remote desktop client for RDP, VNC, SPICE and SSH
+homepage    = https://remmina.org/
+depends     = cmake ninja pkgconf libintl gtk3 glib cairo pango json-glib curl pcre2 openssl libsodium libgcrypt libsecret freerdp libvncserver gnutls libssh vte3 spice-gtk cups zlib libjpeg-turbo libX11 shared-mime-info hicolor-icon-theme libayatana-appindicator

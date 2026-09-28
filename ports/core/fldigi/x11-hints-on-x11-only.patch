@@ -1,0 +1,22 @@
+diff -ru a/src/flarq-src/flarq.cxx b/src/flarq-src/flarq.cxx
+--- a/src/flarq-src/flarq.cxx	2026-09-28 04:13:05.346460869 +0530
++++ b/src/flarq-src/flarq.cxx	2026-09-28 04:13:05.347582271 +0530
+@@ -1967,11 +1967,13 @@
+ 
+ #ifdef USE_X
+ 
+-	XWMHints* hints = XGetWMHints(fl_display, fl_xid(arqwin));
+-	hints->flags |= IconMaskHint; // ensure transparency mask is enabled for the XPM icon
+-	hints->icon_mask |= IconPixmapHint;
+-	XSetWMHints(fl_display, fl_xid(arqwin), hints);
+-	XFree(hints);
++	if (fl_x11_display()) {
++		XWMHints* hints = XGetWMHints(fl_display, fl_xid(arqwin));
++		hints->flags |= IconMaskHint; // ensure transparency mask is enabled for the XPM icon
++		hints->icon_mask |= IconPixmapHint;
++		XSetWMHints(fl_display, fl_xid(arqwin), hints);
++		XFree(hints);
++	}
+ 
+ #endif
+ 

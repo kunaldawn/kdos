@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = zenity
+version     = 4.2.2
+release     = 1
+source      = https://download.gnome.org/sources/zenity/${version%.*}/zenity-$version.tar.xz
+sha256      = 019186a996096ef4fc356e21577b5673f5baa3a29ac8e3d608b753371c18018d  zenity-4.2.2.tar.xz
+description = Zenity — GTK dialog boxes from the command line, and the file chooser other programs call
+homepage    = https://gitlab.gnome.org/GNOME/zenity
+depends     = meson ninja pkgconf glib gtk4 libadwaita gettext itstool help2man

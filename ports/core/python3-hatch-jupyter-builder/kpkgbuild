@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-hatch-jupyter-builder
+version     = 0.10.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/h/hatch-jupyter-builder/hatch_jupyter_builder-$version.tar.gz
+sha256      = 144f6a7afd7f837071eca81141313d736643be4f6734b45f30661bcb922bd80a  python3-hatch-jupyter-builder-0.10.0.tar.gz
+description = hatch-jupyter-builder — the hatchling hook that builds and checks Jupyter front-end assets
+homepage    = https://github.com/jupyterlab/hatch-jupyter-builder
+depends     = python3 python3-pip python3-hatchling

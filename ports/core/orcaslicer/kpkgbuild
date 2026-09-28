@@ -1,0 +1,50 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = orcaslicer
+version     = 2.4.2
+release     = 1
+_wx         = 88f3483ca546fbf4ad732e1acd94cc930935077a
+_openvdb    = a68fd58d0e2b85f01adeb8b13d7555183ab10aa5
+source      = $name-$version.tar.gz::https://github.com/OrcaSlicer/OrcaSlicer/archive/refs/tags/v$version.tar.gz
+source      = Orca-deps-wxWidgets-$_wx.tar.gz::https://github.com/SoftFever/Orca-deps-wxWidgets/archive/$_wx.tar.gz
+source      = orcadeps-Boost-boost-1.84.0.tar.gz::https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost-1.84.0.tar.gz
+source      = orcadeps-TBB-v2021.5.0.zip::https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.5.0.zip
+source      = orcadeps-Eigen-eigen-5.0.1.zip::https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.zip
+source      = orcadeps-GMP-gmp-6.2.1.tar.bz2::https://github.com/SoftFever/OrcaSlicer_deps/releases/download/gmp-6.2.1/gmp-6.2.1.tar.bz2
+source      = orcadeps-MPFR-mpfr-4.2.2.tar.bz2::https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.bz2
+source      = orcadeps-CGAL-CGAL-5.6.3.zip::https://github.com/CGAL/cgal/releases/download/v5.6.3/CGAL-5.6.3.zip
+source      = orcadeps-Blosc-v1.17.0_tm.zip::https://github.com/tamasmeszaros/c-blosc/archive/refs/heads/v1.17.0_tm.zip
+source      = orcadeps-OpenEXR-v2.5.5.zip::https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v2.5.5.zip
+source      = orcadeps-OpenVDB-$_openvdb.zip::https://github.com/tamasmeszaros/openvdb/archive/$_openvdb.zip
+source      = orcadeps-OCCT-V7_6_0.zip::https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_6_0.zip
+source      = orcadeps-NLopt-v2.5.0.tar.gz::https://github.com/stevengj/nlopt/archive/v2.5.0.tar.gz
+source      = orcadeps-libnoise-1.0.zip::https://github.com/SoftFever/Orca-deps-libnoise/archive/refs/tags/1.0.zip
+source      = orcadeps-Draco-1.5.7.zip::https://github.com/google/draco/archive/refs/tags/1.5.7.zip
+source      = orcadeps-OpenCV-4.6.0.tar.gz::https://github.com/opencv/opencv/archive/refs/tags/4.6.0.tar.gz
+sha256      = d97244baf15eb9377aa86714cb042d537ff3b1db13b7c2657cf865b820701cf0  orcaslicer-2.4.2.tar.gz
+sha256      = d81d9b8cfa0fa0f19d78578c6c235a76d173b6d8282b03270c21cd3c7d30c215  Orca-deps-wxWidgets-88f3483ca546fbf4ad732e1acd94cc930935077a.tar.gz
+sha256      = 4d27e9efed0f6f152dc28db6430b9d3dfb40c0345da7342eaa5a987dde57bd95  orcadeps-Boost-boost-1.84.0.tar.gz
+sha256      = 83ea786c964a384dd72534f9854b419716f412f9d43c0be88d41874763e7bb47  orcadeps-TBB-v2021.5.0.zip
+sha256      = 0dbb1f9e3aaad66f352c03227d8c983f6f0b49e0b07e71a7300f4abcc01aee12  orcadeps-Eigen-eigen-5.0.1.zip
+sha256      = eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c  orcadeps-GMP-gmp-6.2.1.tar.bz2
+sha256      = 9ad62c7dc910303cd384ff8f1f4767a655124980bb6d8650fe62c815a231bb7b  orcadeps-MPFR-mpfr-4.2.2.tar.bz2
+sha256      = 5d577acb4a9918ccb960491482da7a3838f8d363aff47e14d703f19fd84733d4  orcadeps-CGAL-CGAL-5.6.3.zip
+sha256      = dcb48bf43a672fa3de6a4b1de2c4c238709dad5893d1e097b8374ad84b1fc3b3  orcadeps-Blosc-v1.17.0_tm.zip
+sha256      = 0307a3d7e1fa1e77e9d84d7e9a8694583fbbbfd50bdc6884e2c96b8ef6b902de  orcadeps-OpenEXR-v2.5.5.zip
+sha256      = f353e7b99bd0cbfc27ac9082de51acf32a8bc0b3e21ff9661ecca6f205ec1d81  orcadeps-OpenVDB-a68fd58d0e2b85f01adeb8b13d7555183ab10aa5.zip
+sha256      = 28334f0e98f1b1629799783e9b4d21e05349d89e695809d7e6dfa45ea43e1dbc  orcadeps-OCCT-V7_6_0.zip
+sha256      = c6dd7a5701fff8ad5ebb45a3dc8e757e61d52658de3918e38bab233e7fd3b4ae  orcadeps-NLopt-v2.5.0.tar.gz
+sha256      = 96ffd6cc47898dd8147aab53d7d1b1911b507d9dbaecd5613ca2649468afd8b6  orcadeps-libnoise-1.0.zip
+sha256      = 27b72ba2d5ff3d0a9814ad40d4cb88f8dc89a35491c0866d952473f8f9416b77  orcadeps-Draco-1.5.7.zip
+sha256      = 1ec1cba65f9f20fe5a41fda1586e01c70ea0c9a6d7b67c9e13edf0cfe2239277  orcadeps-OpenCV-4.6.0.tar.gz
+description = OrcaSlicer — G-code slicer for FDM printers with calibration tools and a wide printer-profile library
+homepage    = https://orcaslicer.com/
+depends     = cmake ninja pkgconf git autoconf automake libtool m4 gtk3 webkitgtk gstreamer gst-plugins-base libsecret glib dbus curl openssl zlib libpng libjpeg-turbo expat freetype2 fontconfig pcre2 libwebp mesa libglvnd glu glew glfw cereal qhull eudev libX11 wayland libxkbcommon

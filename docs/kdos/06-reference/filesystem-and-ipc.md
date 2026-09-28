@@ -45,7 +45,7 @@ subcommands always use the home directory.
 | `timers.d/` | The system's periodic jobs, plus a `README` | yes: `10-update-check.timer` and `20-fstrim.timer`; the `fwupd` package adds `30-fwupd-refresh.timer` |
 | `keys/` | Trusted keys for host packages and the binhost index | yes, with no keys: only a `README` stating the policy |
 | `keys/packs/` | Trusted keys for application packs | yes, one key: `kdos-packs.pub` |
-| `mountd.conf` | Removable-media options, including `format = yes`, without which the media daemon refuses to format | no: create it |
+| `mountd.conf` | Removable-media options, including `format = yes` and `write = yes`, without which the media daemon refuses to format a device or write an image over one | no: create it |
 | `update.conf` | The binhost `kdos update` installs from | no: create it |
 | `accent` | The accent name, so the boot splash can repaint in it before anyone logs in | no: written by `kdos-powerd` when `kdos theme` runs |
 
@@ -356,10 +356,11 @@ daemon's own decision or it does not happen.
 ### `/run/kdos-mountd.sock`
 
 Removable media, encrypted volumes, network shares and drive health, from `kdos-mountd`; the client
-is `kdos-mount`. Root, and members of `seat` or `wheel`. Fifteen verbs. Removable media are mounted
+is `kdos-mount`. Root, and members of `seat` or `wheel`. Sixteen verbs. Removable media are mounted
 under `/media`.
 
-Three verbs carry a secret as a *second frame*; see [Secrets](#secrets).
+Four verbs carry a second frame; see [Secrets](#secrets). One, `write`, also carries an open file
+descriptor.
 
 | Verb | Argument | Answers |
 |---|---|---|
@@ -371,6 +372,7 @@ Three verbs carry a secret as a *second frame*; see [Secrets](#secrets).
 | `smart` | An index | The drive's own health summary |
 | `unlock` | An index and a byte count | The name of the unlocked device; the passphrase follows as a second frame |
 | `format` | An index, a filesystem and a byte count | The device's kernel name, typed back, follows as a second frame. Refused unless `/etc/kdos/mountd.conf` says `format = yes` |
+| `write` | An index and a byte count | Writes an image over the whole disk the row is on and reads it back. The disk's name, typed back, follows as a second frame, and the image is attached to the request as an open descriptor (`SCM_RIGHTS`), never named. The connection stays open for `progress write\|verify <done> <total>` lines and ends `ok <disk> <bytes> verified`. Refused unless `/etc/kdos/mountd.conf` says `write = yes` |
 | `cifs` | A server, a share, a username, a domain and a byte count | The mountpoint; the password follows as a second frame |
 | `krb5` | A server, a share, a username or `-`, and a domain or `-` | The mountpoint. Uses your Kerberos ticket; no second frame |
 | `shares` | none | The mounted network shares, with an index each |
@@ -391,8 +393,8 @@ mounted, and any device whose node differs from the one the scan recorded.
 
 #### Secrets
 
-`unlock`, `format` and `cifs` carry their secret as a *second frame*: the request line ends with a
-byte count, and exactly that many bytes follow the newline. A secret is never a word on the request
+`unlock`, `format`, `write` and `cifs` carry their secret or confirmation as a *second frame*: the
+request line ends with a byte count, and exactly that many bytes follow the newline. A secret is never a word on the request
 line, because that line is split on whitespace and a passphrase may contain some. The byte count
 may not be zero. The daemon holds the secret in one buffer and wipes it on every way out of the
 request.

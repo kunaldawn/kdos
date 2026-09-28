@@ -9,24 +9,26 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE ONE MEDIA PLAYER THAT NEEDS NO TOOLKIT, which is why it is a native port
-# on a distro that boxes every other application. mpv draws with its own
-# OpenGL/Vulkan renderer straight onto a Wayland surface — no GTK, no Qt, no
-# widget set — so it is the only way to watch something without starting a
-# container, and on a laptop that difference is a container's worth of memory
-# and 18 seconds of cold start.
+# A MEDIA PLAYER THAT NEEDS NO TOOLKIT. mpv draws with its own OpenGL/Vulkan
+# renderer straight onto a Wayland surface — no GTK, no Qt, no widget set — so
+# it plays video on the lightest machine and under llvmpipe, and libmpv is the
+# engine the toolkit front ends (Haruna) draw over.
 #
 # -Dsixel=enabled is the terminal video output. The Wayland path needs a
 # compositor, and `--vo=sixel` is how a video reaches a terminal that answered
 # the DA reply — a serial line, an ssh login, or a terminal on tty2. Without it
 # mpv there has no video output at all and plays the sound of a film.
 #
-# -Dx11=disabled is the hard rule, and every X11 sub-option (egl-x11, gl-x11,
-# vaapi-x11, vdpau, xv, x11-clipboard) is named off with it so none can come
-# back through a stray libX11 in the chroot. -Dgl=enabled -Degl=enabled with
-# egl-wayland, egl-drm, gbm and dmabuf-wayland is what makes the Wayland and
-# KMS paths work at all; vaapi with its drm and wayland halves is hardware
-# decode through libva.
+# Wayland is the default output, and -Dx11=enabled is the second one: a front
+# end that embeds mpv by window id (SMPlayer runs as an xcb client and passes
+# --wid) needs an X11 window to draw into, and without one it plays the sound
+# with no picture. egl-x11 is OpenGL on that window through Mesa's EGL, and
+# x11-clipboard is the clipboard there. gl-x11 (GLX), xv and vdpau stay off, as
+# does vaapi-x11, which needs a libva built with its X11 backend.
+#
+# -Dgl=enabled -Degl=enabled with egl-wayland, egl-drm, gbm and dmabuf-wayland
+# is what makes the Wayland and KMS paths work at all; vaapi with its drm and
+# wayland halves is hardware decode through libva.
 #
 # -Dlua=luajit is the scripting layer, and with it the on-screen controller,
 # the stats overlay and the console: all three are Lua scripts built into the
@@ -47,8 +49,8 @@
 #
 # The optical drive: libbluray is bd:// (an unencrypted disc or a backup, with
 # no BD-J menus), dvdnav is dvd:// (titles and chapters; mpv has no DVD menus,
-# which are GStreamer's rsndvdbin, and a CSS-encrypted disc needs libdvdcss,
-# which is not a port), and cdda is cdda:// through
+# which are GStreamer's rsndvdbin; libdvdread opens a CSS-encrypted disc
+# through libdvdcss), and cdda is cdda:// through
 # libcdio-paranoia. mpv builds the last two only as a GPL build, which this
 # one is (-Dgpl defaults to true).
 #
@@ -68,14 +70,14 @@ meson setup build \
 	-Dcplayer=true \
 	-Dbuild-date=false \
 	-Dcplugins=enabled \
-	-Dx11=disabled \
-	-Degl-x11=disabled \
+	-Dx11=enabled \
+	-Degl-x11=enabled \
 	-Dgl-x11=disabled \
 	-Dvaapi-x11=disabled \
 	-Dvdpau=disabled \
 	-Dvdpau-gl-x11=disabled \
 	-Dxv=disabled \
-	-Dx11-clipboard=disabled \
+	-Dx11-clipboard=enabled \
 	-Dwayland=enabled \
 	-Dgl=enabled \
 	-Degl=enabled \

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libbs2b
+version     = 3.1.0
+release     = 1
+source      = https://downloads.sourceforge.net/sourceforge/bs2b/$name-$version.tar.gz
+sha256      = 6aaafd81aae3898ee40148dd1349aab348db9bfae9767d0e66e0b07ddd4b2528  libbs2b-3.1.0.tar.gz
+description = Bauer stereophonic-to-binaural crossfeed library, with the bs2bconvert and bs2bstream commands
+homepage    = https://bs2b.sourceforge.net/
+depends     = pkgconf libsndfile

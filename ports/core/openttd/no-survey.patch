@@ -1,0 +1,12 @@
+diff -ru a/src/network/network_survey.h b/src/network/network_survey.h
+--- a/src/network/network_survey.h
++++ b/src/network/network_survey.h
+@@ -36,7 +36,7 @@
+ 
+ 	constexpr static bool IsSurveyPossible()
+ 	{
+-		return true;
++		return false;
+ 	}
+ 
+ private:

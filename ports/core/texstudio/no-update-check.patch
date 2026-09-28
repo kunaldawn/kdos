@@ -1,0 +1,11 @@
+--- a/src/configmanager.cpp
++++ b/src/configmanager.cpp
+@@ -512,7 +512,7 @@
+     registerOption("Macros/RepositoryURL", &URLmacroRepository, "https://api.github.com/repos/texstudio-org/texstudio-macro/contents/", nullptr);
+ 
+ 	//updates
+-	registerOption("Update/AutoCheck", &autoUpdateCheck, true, &pseudoDialog->checkBoxAutoUpdateCheck);
++	registerOption("Update/AutoCheck", &autoUpdateCheck, false, &pseudoDialog->checkBoxAutoUpdateCheck);
+ 	registerOption("Update/UpdateLevel", &updateLevel, 0, &pseudoDialog->comboBoxUpdateLevel);
+ 	registerOption("Update/AutoCheckInvervalDays", &autoUpdateCheckIntervalDays, 7, &pseudoDialog->spinBoxAutoUpdateCheckIntervalDays);
+ 	registerOption("Update/LastCheck", &lastUpdateCheck, QDateTime());

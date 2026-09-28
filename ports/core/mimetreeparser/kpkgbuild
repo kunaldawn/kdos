@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mimetreeparser
+version     = 26.08.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = b81506a5876039c0aa9969f7bd71040880b171b53014a76a8bbaed02287cc5f9  mimetreeparser-26.08.1.tar.xz
+description = KDE PIM library that parses and renders signed and encrypted MIME messages
+homepage    = https://invent.kde.org/pim/mimetreeparser
+depends     = cmake ninja extra-cmake-modules qt6-qtbase ki18n kcalendarcore kcolorscheme kwidgetsaddons kmime kmbox libkleo gpgmepp

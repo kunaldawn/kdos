@@ -81,6 +81,7 @@ build: check-iso-free
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \
 		-e KDOS_PACK_KDOS="$(KDOS_PACK_KDOS)" \
+		-e KDOS_MAKE_BINHOST="$(KDOS_MAKE_BINHOST)" \
 		-v $$(pwd)/build:/workspace/build \
 		-v $$(pwd)/src:/workspace/src:ro \
 		-v $$(pwd)/fs:/workspace/fs:ro \

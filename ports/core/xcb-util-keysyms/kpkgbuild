@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = xcb-util-keysyms
+version     = 0.4.1
+release     = 1
+source      = https://www.x.org/releases/individual/xcb/$name-$version.tar.xz
+sha256      = 7c260a5294412aed429df1da2f8afd3bd07b7cba3fec772fba15a613a6d5c638  xcb-util-keysyms-0.4.1.tar.xz
+description = XCB keysym and keycode conversion library (libxcb-keysyms)
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libxcb-keysyms
+depends     = libxcb xorgproto

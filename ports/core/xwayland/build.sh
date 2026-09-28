@@ -9,6 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# glx is the server side of GLX: without it an X11 client's glXChooseVisual
+# finds no GLX extension and the program exits. It needs mesa's dri.pc and
+# libglvnd's gl.pc.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
@@ -20,7 +23,7 @@ meson setup build \
 	-Dxselinux=false \
 	-Dglamor=true \
 	-Ddri3=true \
-	-Dglx=false \
+	-Dglx=true \
 	-Dsha1=libcrypto \
 	-Dxkb_dir=/usr/share/X11/xkb \
 	-Dxkb_output_dir=/var/lib/xkb \

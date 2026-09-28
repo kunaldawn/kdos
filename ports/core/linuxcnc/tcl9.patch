@@ -1,0 +1,526 @@
+diff --git a/lib/python/rs274/OpenGLTk.py b/lib/python/rs274/OpenGLTk.py
+index 40c4c58bc..d768ec29e 100755
+--- a/lib/python/rs274/OpenGLTk.py
++++ b/lib/python/rs274/OpenGLTk.py
+@@ -380,8 +380,8 @@ http://www.yorvic.york.ac.uk/~mjh/
+         self.activate()
+ 
+     def zoomwheel(self, event):
+-        if event.delta > 0: self.zoomin(event)
+-        else: self.zoomout(event)
++        if event.delta > 0: self.zoomin()
++        else: self.zoomout()
+ 
+     def tkStartZoom(self, event):
+         self.startZoom(event.y)
+diff --git a/share/axis/tcl/axis.tcl b/share/axis/tcl/axis.tcl
+index 2e77f0d14..fb546f4c1 100644
+--- a/share/axis/tcl/axis.tcl
++++ b/share/axis/tcl/axis.tcl
+@@ -1963,26 +1963,26 @@ set metric 0
+ set max_speed 1
+ set queued_mdi_commands 0
+ set max_queued_mdi_commands 10
+-trace variable taskfile w update_title
+-trace variable machine w update_title
+-trace variable taskfile w queue_update_state
+-trace variable task_state w queue_update_state
+-trace variable task_mode w queue_update_state
+-trace variable task_paused w queue_update_state
+-trace variable optional_stop w queue_update_state
+-trace variable block_delete w queue_update_state
+-trace variable interp_pause w queue_update_state
+-trace variable interp_state w queue_update_state
+-trace variable running_line w queue_update_state
+-trace variable highlight_line w queue_update_state
+-trace variable spindledir w queue_update_state
+-trace variable coord_type w queue_update_state
+-trace variable display_type w queue_update_state
+-trace variable motion_mode w queue_update_state
+-trace variable kinematics_type w queue_update_state
+-trace variable on_any_limit w queue_update_state
+-trace variable motion_mode w joint_mode_switch
+-trace variable queued_mdi_commands  w queue_update_state
++trace add variable taskfile write update_title
++trace add variable machine write update_title
++trace add variable taskfile write queue_update_state
++trace add variable task_state write queue_update_state
++trace add variable task_mode write queue_update_state
++trace add variable task_paused write queue_update_state
++trace add variable optional_stop write queue_update_state
++trace add variable block_delete write queue_update_state
++trace add variable interp_pause write queue_update_state
++trace add variable interp_state write queue_update_state
++trace add variable running_line write queue_update_state
++trace add variable highlight_line write queue_update_state
++trace add variable spindledir write queue_update_state
++trace add variable coord_type write queue_update_state
++trace add variable display_type write queue_update_state
++trace add variable motion_mode write queue_update_state
++trace add variable kinematics_type write queue_update_state
++trace add variable on_any_limit write queue_update_state
++trace add variable motion_mode write joint_mode_switch
++trace add variable queued_mdi_commands write queue_update_state
+ 
+ set editor_deleted 0
+ 
+diff --git a/share/axis/tcl/combobox.tcl b/share/axis/tcl/combobox.tcl
+index aa30ce098..998eb51f3 100644
+--- a/share/axis/tcl/combobox.tcl
++++ b/share/axis/tcl/combobox.tcl
+@@ -27,7 +27,7 @@
+ #
+ # ... and many others over the years.
+ 
+-package require Tk 8.0
++package require Tk
+ package provide combobox 2.2
+ 
+ namespace eval ::combobox {
+diff --git a/src/configure.ac b/src/configure.ac
+index 58979305b..ac96a879b 100644
+--- a/src/configure.ac
++++ b/src/configure.ac
+@@ -699,6 +699,7 @@ if test "xyes" = "x$RUN_IN_PLACE"; then
+     EMC2_HELP_DIR=$EMC2_HOME/docs/help
+     EMC2_RTLIB_DIR=$EMC2_HOME/rtlib
+     LINUXCNC_CONFIG_PATH="~/linuxcnc/configs:$EMC2_HOME/configs"
++    LINUXCNC_CONFIG_PATH_TCL="$::env(HOME)/linuxcnc/configs:$EMC2_HOME/configs"
+     EMC2_NCFILES_DIR=$EMC2_HOME/nc_files
+     REALTIME=$EMC2_HOME/scripts/realtime
+     EMC2_IMAGE_DIR=$EMC2_HOME
+@@ -721,6 +722,7 @@ else
+ 	*) EMC2_RTLIB_DIR=$MODULE_DIR/linuxcnc
+     esac
+     LINUXCNC_CONFIG_PATH="~/linuxcnc/configs:/usr/local/etc/linuxcnc/configs:"$(eval echo $EMC2_HELP_DIR)"/examples/sample-configs"
++    LINUXCNC_CONFIG_PATH_TCL="$::env(HOME)/linuxcnc/configs:/usr/local/etc/linuxcnc/configs:"$(eval echo $EMC2_HELP_DIR)"/examples/sample-configs"
+     EMC2_NCFILES_DIR=${prefix}/share/linuxcnc/ncfiles
+     REALTIME=${prefix}/lib/linuxcnc/realtime
+     EMC2_IMAGE_DIR=$(fe "$datadir")/linuxcnc
+@@ -744,6 +746,7 @@ AC_SUBST([EMC2_HELP_DIR])
+ AC_SUBST([EMC2_RTLIB_DIR])
+ AC_SUBST([EMC2_LANG_DIR])
+ AC_SUBST([LINUXCNC_CONFIG_PATH])
++AC_SUBST([LINUXCNC_CONFIG_PATH_TCL])
+ AC_SUBST([EMC2_NCFILES_DIR])
+ AC_SUBST([REALTIME])
+ AC_SUBST([EMC2_IMAGE_DIR])
+@@ -1383,9 +1386,9 @@ if test -z "$TKCONFIG"; then
+ fi
+ if (test "x$TKCONFIG" = "x"); then
+     # search for tkConfig.sh
+-    TKCONFIG=$(find /usr/lib -maxdepth 2 -name tkConfig.sh | sort -r | head -n1)
++    TKCONFIG=$(find /usr/lib* -maxdepth 2 -name tkConfig.sh | sort -r | head -n1)
+     if (test "x$TKCONFIG" = "x"); then
+-	TKCONFIG=$(find /usr/local/lib -maxdepth 2 -name tkConfig.sh | head -n1)
++	TKCONFIG=$(find /usr/local/lib* -maxdepth 2 -name tkConfig.sh | head -n1)
+     fi
+ fi
+ 
+@@ -1409,6 +1412,14 @@ Tcl $TCL_VERSION and Tk $TK_VERSION.  You can use --with-tkConfig= and --with-tc
+ to override the autodetected versions.])
+ fi
+ 
++if test -z "$TCL_MAJOR_VERSION" || test -z "$TCL_MINOR_VERSION" ; then
++    AC_MSG_ERROR([tclConfig was not found or did not export TCL_MAJOR_VERSION/TCL_MINOR_VERSION. Cannot determine exact Tcl version.])
++fi
++
++if test "(" "$TCL_MAJOR_VERSION" -lt 8 ")" -o "(" "(" "$TCL_MAJOR_VERSION" -eq 8 ")" -a "(" "$TCL_MINOR_VERSION" -lt 4 ")" ")" ; then
++    AC_MSG_ERROR([Tcl version must be 8.4 or better. Your Tcl version ${TCL_MAJOR_VERSION}.${TCL_MINOR_VERSION} is too old.])
++fi
++
+ if test -f $TCL_EXEC_PREFIX/bin/wish$TCL_VERSION; then
+     WISH=$TCL_EXEC_PREFIX/bin/wish$TCL_VERSION
+ elif test -f $TCL_EXEC_PREFIX/bin/wish; then
+@@ -1453,13 +1464,16 @@ if test "$RUNTIME_CHECK" = "yes"; then
+         AC_MSG_RESULT([not found])
+     fi
+ 
+-    AC_MSG_CHECKING([for tclX using $TCLSH])
+-    if (unset DISPLAY; echo ["catch { package require Tclx }; exit [expr [lsearch [package names] Tclx] == -1]"] | $TCLSH); then
+-        AC_MSG_RESULT([found])
+-    else
+-        AC_MSG_RESULT(no)
+-        AC_MSG_ERROR([Tclx not found!
+-    install with "sudo apt-get install tclx"])
++    # Don't need tclX anymore in Tcl9
++    if test "$TCL_MAJOR_VERSION" -lt 9; then
++        AC_MSG_CHECKING([for tclX using $TCLSH])
++        if (unset DISPLAY; echo ["catch { package require Tclx }; exit [expr [lsearch [package names] Tclx] == -1]"] | $TCLSH); then
++            AC_MSG_RESULT([found])
++        else
++            AC_MSG_RESULT(no)
++            AC_MSG_ERROR([Tclx not found!
++        install with "sudo apt-get install tclx"])
++        fi
+     fi
+ 
+     AC_MSG_CHECKING([for python pango module])
+diff --git a/src/emc/usr_intf/axis/extensions/_toglmodule.c b/src/emc/usr_intf/axis/extensions/_toglmodule.c
+index 32b5582d3..68448ec17 100644
+--- a/src/emc/usr_intf/axis/extensions/_toglmodule.c
++++ b/src/emc/usr_intf/axis/extensions/_toglmodule.c
+@@ -32,12 +32,12 @@ PyObject *install(PyObject *s, PyObject *arg) {
+         PyErr_SetString(PyExc_TypeError, "get_interpreter() returned NULL");
+         return NULL;
+     }
+-    if (Tcl_InitStubs(trp, "8.1", 0) == NULL) 
++    if (Tcl_InitStubs(trp, TCL_VERSION, 0) == NULL)
+     {
+         PyErr_SetString(PyExc_RuntimeError, "Tcl_InitStubs returned NULL");
+         return NULL;
+     }
+-    if (Tk_InitStubs(trp, "8.1", 0) == NULL) 
++    if (Tk_InitStubs(trp, TK_VERSION, 0) == NULL)
+     {
+         PyErr_SetString(PyExc_RuntimeError, "Tk_InitStubs returned NULL");
+         return NULL;
+diff --git a/src/emc/usr_intf/axis/extensions/togl.c b/src/emc/usr_intf/axis/extensions/togl.c
+index 793963674..d7595f9e2 100644
+--- a/src/emc/usr_intf/axis/extensions/togl.c
++++ b/src/emc/usr_intf/axis/extensions/togl.c
+@@ -78,7 +78,7 @@
+ #undef Tcl_InitHashTable
+ #define Tcl_InitHashTable (tclStubsPtr->tcl_InitHashTable)
+ #endif
+-#if (TK_MAJOR_VERSION>=8 && TK_MINOR_VERSION>=4)
++#if TK_MAJOR_VERSION * 100 + TK_MINOR_VERSION >= 804
+ #  define HAVE_TK_SETCLASSPROCS
+ #endif
+ 
+@@ -87,6 +87,14 @@
+  * (this is needed for Tcl ver =< 8.4a3)
+  */
+ 
++#ifndef _ANSI_ARGS_
++#define _ANSI_ARGS_(x)	x
++#endif
++
++#ifndef Tk_Offset
++#define Tk_Offset	offsetof
++#endif
++
+ typedef int (TkBindEvalProc) _ANSI_ARGS_((ClientData clientData,
+ 	Tcl_Interp *interp, XEvent *eventPtr, Tk_Window tkwin,
+ 	KeySym keySym));
+@@ -700,10 +708,10 @@ int Togl_Init(Tcl_Interp *interp)
+    int major,minor,patchLevel,releaseType;
+ 
+ #ifdef USE_TCL_STUBS
+-   if (Tcl_InitStubs(interp, "8.1", 0) == NULL) {return TCL_ERROR;}
++   if (Tcl_InitStubs(interp, TCL_VERSION, 0) == NULL) {return TCL_ERROR;}
+ #endif
+ #ifdef USE_TK_STUBS
+-   if (Tk_InitStubs(interp, "8.1", 0) == NULL) {return TCL_ERROR;}
++   if (Tk_InitStubs(interp, TK_VERSION, 0) == NULL) {return TCL_ERROR;}
+ #endif
+ 
+    /* Skip all this on Tcl/Tk 8.0 or older.  Seems to work */
+@@ -711,7 +719,7 @@ int Togl_Init(Tcl_Interp *interp)
+    Tcl_GetVersion(&major,&minor,&patchLevel,&releaseType);
+ 
+ #ifndef HAVE_TK_SETCLASSPROCS
+-   if (major >= 8 && minor >= 4) {
++   if (major * 100 + minor >= 804) {
+      TCL_ERR(interp,"Sorry, this instance of Togl was not compiled to work with Tcl/Tk 8.4 or higher.");
+    }
+ #endif
+@@ -1049,13 +1057,26 @@ int Togl_Configure(Tcl_Interp *interp, struct Togl *togl,
+    int oldStencilSize = togl->StencilSize;
+    int oldAuxNumber   = togl->AuxNumber;
+ 
+-#ifndef CONST84
+-#define CONST84
++#if TK_MAJOR_VERSION >= 9
++   // Version 9+ uses Tcl_Obj* array as config whereas older uses a char* array
++   Tcl_Obj **optr = calloc(argc+1, sizeof(*optr));  // argc+1 to terminate list with a NULL pointer
++   for(int u = 0; u < argc; u++) {
++      optr[u] = Tcl_NewStringObj(argv[u], -1);
++   }
++#else
++   char **optr = argv;
+ #endif
+    if (Tk_ConfigureWidget(interp, togl->TkWin, configSpecs,
+-                          argc, (CONST84 char**)argv, (char *)togl, flags) == TCL_ERROR) {
++                          argc, (void *)optr, (char *)togl, flags) == TCL_ERROR) {
+       return(TCL_ERROR);
+    }
++#if TK_MAJOR_VERSION >= 9
++   for(int u = 0; u < argc; u++) {
++      Tcl_DecrRefCount(optr[u]);
++   }
++   free(optr);
++#endif
++
+ #ifndef USE_OVERLAY
+    if (togl->OverlayFlag) {
+      TCL_ERR(interp,"Sorry, overlay was disabled");
+@@ -1126,7 +1147,7 @@ int Togl_Widget(ClientData clientData, Tcl_Interp *interp,
+       return TCL_ERROR;
+    }
+ 
+-   Tk_Preserve((ClientData)togl);
++   Tcl_Preserve((ClientData)togl);
+ 
+    if (!strncmp(argv[1], "configure", MAX(1, strlen(argv[1])))) {
+       if (argc == 2) {
+@@ -1237,12 +1258,10 @@ int Togl_Widget(ClientData clientData, Tcl_Interp *interp,
+       }
+    }
+ 
+-   Tk_Release((ClientData)togl);
++   Tcl_Release((ClientData)togl);
+    return result;
+ }
+ 
+-
+-
+ /*
+  * Togl_Cmd
+  *
+@@ -1421,7 +1440,7 @@ static int Togl_Cmd(ClientData clientData, Tcl_Interp *interp,
+ 
+    /* If defined, setup timer */
+    if (togl->TimerProc){
+-      Tk_CreateTimerHandler( togl->TimerInterval, Togl_Timer, (ClientData)togl );
++      Tcl_CreateTimerHandler( togl->TimerInterval, Togl_Timer, (ClientData)togl );
+    }
+ 
+    Tcl_AppendResult(interp, Tk_PathName(tkwin), NULL);
+@@ -2153,7 +2172,11 @@ static void ToglCmdDeletedProc( ClientData clientData )
+  * Gets called when an Togl widget is destroyed.
+  */
+ #if (TK_MAJOR_VERSION * 100 + TK_MINOR_VERSION) >= 401
++#if TK_MAJOR_VERSION >= 9
++static void Togl_Destroy( void *clientData )
++#else
+ static void Togl_Destroy( char *clientData )
++#endif
+ #else
+ static void Togl_Destroy( ClientData clientData )
+ #endif
+@@ -2284,7 +2307,7 @@ void Togl_PostRedisplay( struct Togl *togl )
+ {
+    if (!togl->UpdatePending) {
+       togl->UpdatePending = GL_TRUE;
+-      Tk_DoWhenIdle( Togl_Render, (ClientData) togl );
++      Tcl_DoWhenIdle( Togl_Render, (ClientData) togl );
+    }
+ }
+ 
+@@ -2863,7 +2886,7 @@ void Togl_PostOverlayRedisplay( struct Togl *togl )
+ {
+    if (!togl->OverlayUpdatePending
+        && togl->OverlayWindow && togl->OverlayDisplayProc) {
+-      Tk_DoWhenIdle( RenderOverlay, (ClientData) togl );
++      Tcl_DoWhenIdle( RenderOverlay, (ClientData) togl );
+       togl->OverlayUpdatePending = 1;
+    }
+ }
+diff --git a/src/emc/usr_intf/axis/scripts/axis.py b/src/emc/usr_intf/axis/scripts/axis.py
+index ccb7ebe59..1eda523df 100755
+--- a/src/emc/usr_intf/axis/scripts/axis.py
++++ b/src/emc/usr_intf/axis/scripts/axis.py
+@@ -1660,7 +1660,7 @@ class _prompt_float:
+         self.buttons = f = Tkinter.Frame(t)
+         self.ok = Tkinter.Button(f, text=_("OK"), command=self.do_ok, width=10,height=1,padx=0,pady=.25, default="active")
+         self.cancel = Tkinter.Button(f, text=_("Cancel"), command=self.do_cancel, width=10,height=1,padx=0,pady=.25, default="normal")
+-        v.trace("w", self.check_valid)
++        v.trace_add("write", self.check_valid)
+         t.wm_protocol("WM_DELETE_WINDOW", self.cancel.invoke)
+         t.bind("<Return>", lambda event: (self.ok.flash(), self.ok.invoke()))
+         t.bind("<KP_Enter>", lambda event: (self.ok.flash(), self.ok.invoke()))
+@@ -1773,7 +1773,7 @@ class _prompt_touchoff(_prompt_float):
+         f = Frame(t)
+         self.c = c = StringVar(t)
+         c.set(defaultsystem)
+-        c.trace_variable("w", self.change_system)
++        c.trace_add("write", self.change_system)
+         if not tool_only:
+             l = Label(f, text=_("Coordinate System:"))
+             mb = OptionMenu(f, c, *systems)
+@@ -4246,7 +4246,7 @@ else:
+ 
+ set_motion_teleop(0) # start in joint mode
+ 
+-root_window.tk.call("trace", "variable", "metric", "w", "update_units")
++root_window.tk.call("trace", "add", "variable", "metric", "write", "update_units")
+ install_help(root_window)
+ 
+ widgets.numbers_text.bind("<Configure>", commands.redraw_soon)
+diff --git a/src/emc/usr_intf/emcsh.cc b/src/emc/usr_intf/emcsh.cc
+index 672906e22..2452da842 100644
+--- a/src/emc/usr_intf/emcsh.cc
++++ b/src/emc/usr_intf/emcsh.cc
+@@ -39,6 +39,10 @@
+ 
+ #define setresult(t,s) Tcl_SetObjResult((t), Tcl_NewStringObj((s),-1))
+ 
++#ifndef CONST
++#define CONST const
++#endif
++
+ /*
+   Using tcl package Linuxcnc:
+   Using emcsh:
+@@ -3552,7 +3556,7 @@ extern "C"
+ int Linuxcnc_Init(Tcl_Interp * interp);
+ int Linuxcnc_Init(Tcl_Interp * interp)
+ {
+-    if (Tcl_InitStubs(interp, "8.1", 0) == NULL)
++    if (Tcl_InitStubs(interp, TCL_VERSION, 0) == NULL)
+     {
+         return TCL_ERROR;
+     }
+diff --git a/src/hal/utils/halsh.c b/src/hal/utils/halsh.c
+index e90cbec47..e9e977cf5 100644
+--- a/src/hal/utils/halsh.c
++++ b/src/hal/utils/halsh.c
+@@ -92,7 +92,7 @@ int Hal_Init(Tcl_Interp *interp) {
+ 	return TCL_ERROR;
+     }
+ 
+-    if (Tcl_InitStubs(interp, "8.1", 0) == NULL)
++    if (Tcl_InitStubs(interp, TCL_VERSION, 0) == NULL)
+     {
+         return TCL_ERROR;
+     }
+diff --git a/tcl/bin/halshow.tcl b/tcl/bin/halshow.tcl
+index 24441abf6..19e59f02a 100755
+--- a/tcl/bin/halshow.tcl
++++ b/tcl/bin/halshow.tcl
+@@ -42,8 +42,8 @@ if {[info exists ::env(CONFIG_DIR)]} {
+     set ::INIDIR "${config_path}"
+     set ::INIFILE "${config_path}halshow.preferences"
+ } else {
+-    set ::INIDIR "~"
+-    set ::INIFILE "~/.halshow_preferences"
++    set ::INIDIR "$::env(HOME)"
++    set ::INIFILE "$::env(HOME)/.halshow_preferences"
+ }
+ # puts stderr "Halshow inifile: $::INIFILE"
+ 
+diff --git a/tcl/bin/pickconfig.tcl b/tcl/bin/pickconfig.tcl
+index a4de6d088..a4d54b8bf 100755
+--- a/tcl/bin/pickconfig.tcl
++++ b/tcl/bin/pickconfig.tcl
+@@ -100,7 +100,7 @@ proc initialize_config {} {
+         exit
+         destroy .
+     } else {
+-        if {[catch {open ~/.linuxcncrc} programin]} {
++        if {[catch {open $::env(HOME)/.linuxcncrc} programin]} {
+             return 
+         } else {
+             set rcstring [read $programin]
+@@ -660,7 +660,7 @@ proc prompt_copy configname {
+     set ncfiles [file normalize [file join $::myconfigs_node ../nc_files]]
+     file mkdir [file join $::myconfigs_node]
+ 
+-    set obsoletedir [file normalize [file join ~ emc2]]
++    set obsoletedir [file normalize [file join $::env(HOME) emc2]]
+     if [file isdir $obsoletedir] {
+       tk_messageBox -title "Copy Configuration Notice" \
+         -message "A directory named:\n \
+@@ -891,11 +891,11 @@ while {1} {
+         # test for ~/.linuxcncrc file and modify if needed.
+         # or make this file and add the var.
+ 
+-        if {[file exists ~/.linuxcncrc]} {
++        if {[file exists $::env(HOME)/.linuxcncrc]} {
+             if {$::inifile == $::last_ini} {
+                 exit
+             } else {
+-                if {[catch {open ~/.linuxcncrc} programin]} {
++                if {[catch {open $::env(HOME)/.linuxcncrc} programin]} {
+                     return 
+                 } else {
+                     set rcstring [read $programin]
+@@ -903,8 +903,8 @@ while {1} {
+                 }
+                 set ret [setVal $rcstring PICKCONFIG LAST_CONFIG $::inifile ]
+                 catch {file copy -force $name $name.bak}
+-                if {[catch {open ~/.linuxcncrc w} fileout]} {
+-                    puts stdout [msgcat::mc "can't save %s" ~/.linuxcncrc ]
++                if {[catch {open $::env(HOME)/.linuxcncrc w} fileout]} {
++                    puts stdout [msgcat::mc "can't save %s" $::env(HOME)/.linuxcncrc ]
+                     exit
+                 }
+                 puts $fileout $ret
+@@ -914,8 +914,8 @@ while {1} {
+         }
+         set newfilestring "# .linuxcncrc is a startup configuration file for LinuxCNC. \n# format is INI like. \n# \[SECTION_NAME\] \n# VARNAME = varvalue \n# where section name is the name of the system writing to this file \n\n# written by pickconfig.tcl \n\[PICKCONFIG\]\nLAST_CONFIG = $::inifile\n"
+                 
+-        if {[catch {open ~/.linuxcncrc w+} fileout]} {
+-            puts stderr [msgcat::mc "can't save %s" ~/.linuxcncrc ]
++        if {[catch {open $::env(HOME)/.linuxcncrc w+} fileout]} {
++            puts stderr [msgcat::mc "can't save %s" $::env(HOME)/.linuxcncrc ]
+             exit
+         }
+ 
+diff --git a/tcl/linuxcnc.tcl.in b/tcl/linuxcnc.tcl.in
+index 613568137..aee4d0c7b 100644
+--- a/tcl/linuxcnc.tcl.in
++++ b/tcl/linuxcnc.tcl.in
+@@ -24,14 +24,15 @@ namespace eval linuxcnc {
+     variable TCL_SCRIPT_DIR @EMC2_TCL_DIR@/scripts
+     variable HELP_DIR @EMC2_HELP_DIR@
+     variable RTLIB_DIR @EMC2_RTLIB_DIR@
+-    variable CONFIG_PATH {@LINUXCNC_CONFIG_PATH@}
++    variable CONFIG_PATH {@LINUXCNC_CONFIG_PATH_TCL@}
+     variable NCFILES_DIR @EMC2_NCFILES_DIR@
+     variable LANG_DIR @EMC2_LANG_DIR@
+     variable IMAGEDIR @EMC2_IMAGE_DIR@
+     variable REALTIME @REALTIME@
+     variable RTS @RTS@
+     variable CONFIG_DIR {}
+-    foreach _dir  [split {@LINUXCNC_CONFIG_PATH@} :] {
++    variable _dir
++    foreach _dir  [split {@LINUXCNC_CONFIG_PATH_TCL@} :] {
+ 	lappend CONFIG_DIR [file normalize $_dir]
+     }
+     unset _dir
+@@ -46,7 +47,7 @@ if {[string first $::linuxcnc::BIN_DIR: $env(PATH)] != 0} {
+ }
+ 
+ proc linuxcnc::image_search i {
+-    set paths "$linuxcnc::IMAGEDIR $linuxcnc::HOME $linuxcnc::HOME/etc/linuxcnc /etc/linuxcnc ."
++    set paths "$::linuxcnc::IMAGEDIR $::linuxcnc::HOME $::linuxcnc::HOME/etc/linuxcnc /etc/linuxcnc ."
+     foreach f $paths {
+         if [file exists $f/$i] {
+             return [image create photo -file $f/$i]
+diff --git a/tcl/tooledit.tcl b/tcl/tooledit.tcl
+index 6267bfa9f..cdc83efb8 100755
+--- a/tcl/tooledit.tcl
++++ b/tcl/tooledit.tcl
+@@ -62,9 +62,9 @@ if {"" == [info command "_"]} {
+ 
+ 
+ proc ::tooledit::init { {columns ""} } {
+-  if [file readable ~/.tooleditrc] {
+-    if [catch {source ~/.tooleditrc} msg] {
+-      puts stderr "[_ "Problem reading ~/.tooleditrc"]:\n$msg"
++  if [file readable $::env(HOME)/.tooleditrc] {
++    if [catch {source $::env(HOME)/.tooleditrc} msg] {
++      puts stderr "[_ "Problem reading $::env(HOME)/.tooleditrc"]:\n$msg"
+     }
+     if [info exists geometry] {
+       set ::te(top,restore,geometry) $geometry
+@@ -961,7 +961,7 @@ proc ::tooledit::bye {} {
+ 
+   catch {after cancel $::te(afterid)}
+ 
+-  if ![file exists ~/.tooleditrc] {
++  if ![file exists $::env(HOME)/.tooleditrc] {
+     # first time use presumed, instruct for configuring columns
+     set used ""
+     foreach item $::te(items) {
+@@ -1001,7 +1001,7 @@ proc ::tooledit::bye {} {
+   }
+ 
+   if [winfo exists $::te(top)] {
+-    set fd [open ~/.tooleditrc w]
++    set fd [open $::env(HOME)/.tooleditrc w]
+     set time [clock format [clock seconds] -format %Y%m%d.%H.%M.%S]
+     puts $fd   "# $time [format [_ "Created by %s"] [file normalize $::argv0]]"
+     puts $fd "\n# [_ "Saved geometry (updated on program termination)"]:"

@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = stockfish
+version     = 19
+release     = 1
+_net        = nn-1a298aa575a0
+source      = $name-$version.tar.gz::https://github.com/official-stockfish/Stockfish/archive/refs/tags/sf_$version.tar.gz
+source      = https://tests.stockfishchess.org/api/nn/$_net.nnue
+sha256      = 1a298aa575a085434d29027978dc36867fe9c5bcea9376654b7a8eba1e52dfc2  nn-1a298aa575a0.nnue
+sha256      = 519b653d0d1ffb96531d982ccbe5c6a19425e8388e0e3c2f70f34b424ab32d76  stockfish-19.tar.gz
+description = Stockfish — the UCI chess engine, with its evaluation network built in
+homepage    = https://stockfishchess.org/
+depends     = binutils

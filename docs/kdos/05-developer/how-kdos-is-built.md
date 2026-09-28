@@ -54,7 +54,7 @@ own tools.
 Five terms recur throughout:
 
 - A **port** is the recipe for one piece of software: a `kpkgbuild` file of metadata and a
-  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 1,014 of them;
+  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 2,003 of them;
   KDOS's own programs have theirs under `src/packages/` and `src/desktop/`.
 - A **package** is what building a port produces: a compressed archive that the package manager,
   `kpkg`, installs and records in its database.
@@ -114,24 +114,26 @@ any copy that hashes to it is the right file, wherever it came from. For each fi
 5. **Regeneration**, for a port's own vendor bundle only (below).
 
 The archive is asked before upstream because it cannot disappear when an upstream host does. It is
-append-only: nothing in it is ever replaced or removed. `ports/sources.idx` names 1,678 files, 1,000
-in `sources-001` and 678 in `sources-002`, which is more than the current recipes need because it
-also holds every file older recipes named. For example, it carries both `pv-1.12.0.tar.gz`, which
-the current `pv` recipe names, and `pv-1.7.24.tar.gz`, so a checkout written against the older
-version can still be built. A complete cache holds 1,192 files; its size is in
-[What a build costs](#what-a-build-costs).
+append-only: nothing in it is ever replaced or removed, so it also holds every file an older recipe
+named. For example, it carries both `pv-1.12.0.tar.gz`, which the current `pv` recipe names, and
+`pv-1.7.24.tar.gz`, so a checkout written against the older version can still be built.
+`ports/sources.idx` names 1,678 files, 1,000 in `sources-001` and 678 in `sources-002`. The current
+recipes name 2,489 distinct files; 39 of them are carried in git, and of the 2,450 that are fetched,
+1,191 have a line in the index. The rest are fetched from upstream. A complete cache holds those
+2,450 files; its size is in [What a build costs](#what-a-build-costs).
 
-**Vendor bundles.** Rust, Go, Python and Haskell software usually downloads its own dependencies
+**Vendor bundles.** Rust, Go, Python, Haskell and Node software usually downloads its own dependencies
 while it builds, which a build with no network cannot allow. For those ports the dependencies are
 collected in advance into a *vendor bundle*, `<name>-vendor-<version>.tar.xz`, made by the
-language's own package manager and held to its own `sha256 =` line like any other source. 123
-recipes in `ports/core` declare one with a `vendoring =` key: 60 Rust, 34 Go, 25 Python and 4
-Haskell. One more, `pdfium`, names a vendor bundle with no `vendoring =` key, so 124 ports carry
-one in all. A bundle is normally fetched from the archive like everything else. When none of the first
-four locations has it, `ports/fetch` generates it inside a separate container, `kdos-fetch`, whose
-toolchains are pinned to the versions this tree compiles with, and builds the tarball reproducibly
-so the result matches its recipe hash. How to write such a recipe is in
-[Vendoring](writing-ports.md#vendoring).
+language's own package manager and held to its own `sha256 =` line like any other source. 159
+recipes in `ports/core` declare one with a `vendoring =` key: 71 Rust, 38 Go, 45 Python, 4 Haskell
+and 1 Node. Five more name a vendor bundle with no `vendoring =` key (`python3-lsp-ruff` through its
+`pypackages` line, and the hand-made bundles of `pdfium`, `libreoffice`, `librepcb` and `surfer`),
+so 164 ports carry one in all. A bundle is normally fetched from the archive like everything else.
+When none of the first four locations has it, `ports/fetch` generates it inside a separate
+container, `kdos-fetch`, whose toolchains are pinned to the versions this tree compiles with, and
+builds the tarball reproducibly so the result matches its recipe hash. How to write such a recipe is
+in [Vendoring](writing-ports.md#vendoring).
 
 After `make fetch`, `make build` finds every upstream source in the port directories and uses no
 network. A tree fetched once builds offline for as long as its recipes stay the same.
@@ -382,18 +384,22 @@ change depending on which ports happened to be installed.
 
 ## Phase 4: the userland
 
-`04_phase4` is the bulk of the system: 697 ports named, and an order of 980 once dependencies are
-followed. Its environment adds `src/packages` to the repositories `kpkg` searches, so KDOS's own
-tools, theme, icons, splash, box launcher and `kdos-bb` are built here as ordinary ports alongside
-upstream software. The file's own header lists what the phase installs: the core build and runtime
-utilities and ISO tooling; the services every distribution has (clock, logs, manual pages); service
-and authorisation infrastructure (D-Bus, polkit, NetworkManager); the command-line tools; the
-container layer (podman and distrobox) that runs applications in boxes; and the Wayland base and
-Xwayland, but not the desktop. A **box** is a rootless podman container that one application, or
-one working environment, runs in, which is how KDOS keeps GTK and Qt off the host; the box
-launcher, `kdos-appbox`, starts and manages them.
+`04_phase4` is the bulk of the system: 1,687 ports named, and an order of 1,992 once dependencies
+are followed, against the 4,096 packages one `kpkg` order can hold. Its environment adds
+`src/packages` to the repositories `kpkg` searches, so KDOS's own tools, theme, icons, splash, box
+launcher and `kdos-bb` are built here as ordinary ports alongside upstream software. The file's own
+header lists what the phase installs: the core build and runtime utilities and ISO tooling; the
+services every distribution has (clock, logs, manual pages); service and authorisation
+infrastructure (D-Bus, polkit, NetworkManager); the command-line tools; the container layer (podman
+and distrobox) that runs applications in boxes; the Wayland base and Xwayland, but not the desktop;
+and the graphical stacks (the X11 client libraries, GTK, Qt, KDE Frameworks, WebKitGTK and
+wxWidgets) with the native applications built on them. Those toolkits serve applications only: each
+is built with its Wayland backend as the default and its X11 backend compiled in for Xwayland, and
+none of them is linked by the desktop that `05_desktop` builds. A **box** is a rootless podman
+container that one application, or one working environment, runs in, which is how the catalogue's
+applications run without being ported; the box launcher, `kdos-appbox`, starts and manages them.
 
-The list is divided into 50 list groups. A list group is a block of related ports under a
+The list is divided into 90 list groups. A list group is a block of related ports under a
 three-line comment heading: a rule, a title, a rule. List groups exist for the person reading the
 list; the build ignores them, and a port belongs to a list group only by where it is written.
 Ordering within the file does matter, because `kpkgdepends` walks the names in order and installs
@@ -404,14 +410,15 @@ file explains why the ports that take back names toybox overlaps must follow it 
 Only that three-line comment, after the file's banner, heads a list group. The banner's own
 rule-bracketed lines (the KDOS name and the phase title, "Phase 4: User-space + Wayland base") are
 not list groups, and a one-line heading such as "Something to play" introduces a comment block, not
-a list group. The list groups run from "Core Build Utilities (host-side)" (54 ports) to "Colour
-management and codecs" (41). The largest are "Core Build Utilities (host-side)", "Wayland base"
-(48), "Media & Imaging" (48) and "The python numeric stack" (43). Counting the non-comment lines
-under each heading, the list groups sum to 697. The ports of KDOS's own software named in this list
-(`kdos-splash`, `kdos-tools`, `kdos-theme`, `kdos-icons`, `kdos-cursors`, `kdos-gtk-theme`,
-`kdos-appbox` and `kdos-boxinit`) sit under the last heading, and `kdos-bb` sits under "ASCII art
-(aa-project)", after `aalib` and `libmikmod`, which it links. Every list group, with its ports, is in
-[The ports catalogue](../06-reference/ports-catalogue.md#phase-4-userland-and-the-wayland-base).
+a list group. The 90 list groups run from "Core Build Utilities (host-side)" (54 ports) to "Data
+the applications read" (9). The largest are "KDE Frameworks 6" (73), "CAD, electronics, 3D
+printing and 3D" (61), "Games" (58) and "Science, data and development" (56). Counting the
+non-comment lines under each heading, the list groups sum to 1,687. The ports of KDOS's own
+software named in this list (`kdos-splash`, `kdos-tools`, `kdos-theme`, `kdos-icons`,
+`kdos-cursors`, `kdos-gtk-theme`, `kdos-appbox` and `kdos-boxinit`) sit at the end of the file,
+under the last heading, and `kdos-bb` sits under "ASCII art (aa-project)", after `aalib` and
+`libmikmod`, which it links. Every list group, with its ports, is in
+[The ports catalogue](../06-reference/ports-catalogue.md#phase-4-userland-the-wayland-base-and-the-applications).
 
 List groups are distinct from the `group =` key a recipe may carry, which only the
 upstream version checker reads, to offer related version bumps together; see
@@ -543,7 +550,7 @@ These figures come from the chapters that measure them:
 
 | Cost | Figure | Source |
 |---|---|---|
-| Upstream sources, fetched once | About 8.9 GB (8.3 GiB), each file held once in `ports/.srccache` | [Developing](developing.md#what-a-development-machine-needs) |
+| Upstream sources, fetched once | About 41.5 GB (38.6 GiB), each file held once in `ports/.srccache` | [Developing](developing.md#what-a-development-machine-needs) |
 | A build from nothing | Most of a day | [Building from scratch](developing.md#building-from-scratch) |
 | A complete set of phase snapshots | About 84 GB, of which packaging alone is about 59 GB | [Snapshots](build-system.md#snapshots), [Developing](developing.md#what-a-development-machine-needs) |
 | One program rebuilt, with packaging | About seven and a half minutes, five and a half of them writing the ISO | [The fast loop](testing.md#the-fast-loop) |

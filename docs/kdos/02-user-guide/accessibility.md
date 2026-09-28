@@ -11,9 +11,14 @@ to, and [The desktop](desktop.md) explains the desktop's keyboard routes.
 | Need | What KDOS offers | Where |
 |---|---|---|
 | A screen reader on the desktop | Nothing. The panel, menus, settings and every other KDOS window are invisible to a screen reader | [The desktop itself is not read](#the-desktop-itself-is-not-read) |
+| A screen reader for the native applications | Orca, started by running `orca` | [Known gaps](../06-reference/known-gaps.md#a-screen-reader-reads-the-applications-not-the-desktops-own-windows) |
 | Braille or speech | BRLTTY, at a text console only: the login prompt, a shell on `tty2`, the installer | [Braille and speech at a text console](#braille-and-speech-at-a-text-console) |
-| Magnification | The compositor's magnifier, which ships with no key bound to it | [The magnifier](#the-magnifier) |
+| Magnification | The compositor's magnifier, on `Super+=` | [The magnifier](#the-magnifier) |
 | Larger text | A font size for the desktop's chrome, per-window sizes in the terminals, a larger pointer | [Larger text](#larger-text) |
+| Typing with limited movement | Sticky, slow and bounce keys | [Keyboard aids](#keyboard-aids) |
+| Clicking with limited movement | Dwell click: resting the pointer clicks | [Dwell click](#dwell-click) |
+| Typing without a keyboard | An on-screen keyboard, shown by key or whenever a text field has the focus | [The on-screen keyboard](#the-on-screen-keyboard) |
+| A screen reader hearing the keyboard | The compositor's keyboard monitor, the interface a reader such as Orca uses on Wayland | [The keyboard monitor](#the-keyboard-monitor) |
 | Contrast | Eight colour schemes held to fixed contrast floors, one of them light | [Colour and contrast](#colour-and-contrast) |
 | An application read aloud | A boxed application's own toolkit support, off by default and turned on by `~/.config/kdos/a11y` | [A containerised application can be read](#a-containerised-application-can-be-read) |
 
@@ -24,12 +29,16 @@ on Linux through the AT-SPI accessibility bus. Each object describes one control
 what it is called and what it is set to. KDOS builds no such tree. Every KDOS window draws its own
 grid of character cells and hands the compositor, `kdos-comp`, an ordinary picture of it. The
 compositor's own window decorations, root menu and window switcher are drawn as pixels in the same
-way. Nothing on either path tells a reader what a control is, and the host runs no AT-SPI registry
-for a reader to ask. The host carries no GTK or Qt, whose toolkits would publish such a tree; see
-[How KDOS differs](../01-philosophy/how-kdos-differs.md#toolkits-on-the-host).
+way. Nothing on either path tells a reader what a control is. The desktop links no GUI toolkit,
+whose accessibility bridge would publish such a tree; see
+[How KDOS differs](../01-philosophy/how-kdos-differs.md#toolkits).
+
+The native applications are the other case. GTK, Qt and the other toolkits they link publish their
+tree on the accessibility bus, which at-spi2-core's launcher starts on demand, and Orca reads it;
+see [Known gaps](../06-reference/known-gaps.md#a-screen-reader-reads-the-applications-not-the-desktops-own-windows).
 
 `libktui`, the toolkit KDOS's own windows are built on, records what each control would announce,
-but nothing reads that record; see [What would have to change](#what-would-have-to-change).
+but nothing reads that record; see [The announcement record](#the-announcement-record).
 
 ## Braille and speech at a text console
 
@@ -107,7 +116,9 @@ sound card and is not affected.
 
 In a terminal inside the desktop, the synthesiser is reachable directly through PipeWire:
 `espeak-ng "text"` speaks a line, and `spd-say "text"` does the same through Speech Dispatcher.
-Speech Dispatcher is built with ALSA output and `espeak-ng` as its only synthesiser.
+Speech Dispatcher is built with ALSA output and `espeak-ng` as its only synthesiser. Its Python
+module, `speechd`, is installed with it, and so is `spd-conf`, which writes a per-user
+configuration and runs Speech Dispatcher's own diagnostics.
 
 ### Contracted braille
 
@@ -121,12 +132,14 @@ contraction-table louis:en-ueb-g2.ctb
 ```
 
 or pass `-c louis:en-ueb-g2.ctb` on BRLTTY's command line. A table name without the prefix names
-one of BRLTTY's own, smaller set of contraction tables.
+one of BRLTTY's own, smaller set of contraction tables. A Python program reaches the same tables
+through the `louis` module, which is installed with liblouis.
 
 ### Programs that talk to BRLTTY
 
 A program reaches a running BRLTTY through BrlAPI, BRLTTY's client interface. `brltty-clip`, which
-shares a clipboard with the braille display, is one such client. BrlAPI admits a client through
+shares a clipboard with the braille display, is one such client, and a Python program is another
+through the `brlapi` module installed with BRLTTY. BrlAPI admits a client through
 *polkit*, the system service other daemons ask whether a user may perform an action. The action is
 `org.a11y.brlapi.write-display`, and the rule installed with BRLTTY grants it to members of the
 `brlapi` group and to nobody else. The rule tests group membership and not an active session:
@@ -157,9 +170,17 @@ drive it:
 | `ZoomIn` | Magnify more by one `increment`. If the magnifier is off, turn it on at one step above no magnification |
 | `ZoomOut` | Magnify less by one `increment`. A step that would reach no magnification turns it off |
 
-No key is bound to any of them in the shipped configuration, so on a fresh install the magnifier
-exists but nothing reaches it. Add bindings of your own to `~/.config/kdos-comp/rc.xml`, inside its
-`<keyboard>` section and after the `<default />` line:
+The shipped `~/.config/kdos-comp/rc.xml` binds them:
+
+| Keys | Action |
+|---|---|
+| `Super+=` | `ToggleMagnify` |
+| `Super+Alt+=` | `ZoomIn` |
+| `Super+Alt+-` | `ZoomOut` |
+
+An account's `rc.xml` is copied from `/etc/skel` once, when the account is created, and is not
+updated afterwards. If an account's file lacks these bindings, add the same lines to its
+`<keyboard>` section, after the `<default />` line:
 
 ```xml
 <keybind key="W-equal"><action name="ToggleMagnify"/></keybind>
@@ -167,9 +188,7 @@ exists but nothing reaches it. Add bindings of your own to `~/.config/kdos-comp/
 <keybind key="W-A-minus"><action name="ZoomOut"/></keybind>
 ```
 
-That gives `Super+=` to toggle, and `Super+Alt+=` and `Super+Alt+-` to zoom. None of the 118
-bindings in the shipped file uses these chords, and neither do the compositor's built-in defaults.
-If you choose others, check them against the file and against
+To move them to other chords, check the new ones against the file and against
 [the desktop's keyboard shortcuts](desktop.md#keyboard-shortcuts); the rules for editing the file
 are in [Changing the bindings](desktop.md#changing-the-bindings). To load the edited file, run
 `kdos-comp -r` (`--reconfigure`). The desktop's right-click menu has no reload entry; the
@@ -250,21 +269,110 @@ without touching either size. See [Theming](theming.md#fonts).
 
 ### The pointer size
 
-The compositor draws the pointer from the `KDOS-cursors` theme at the size in `XCURSOR_SIZE`,
-which it reads when it starts; `/etc/profile.d/10-wayland.sh` sets it to 24. The theme holds each
-shape at 24, 32, 48, 64 and 96 pixels. To choose a larger one, put the variable in the
-compositor's environment file, `~/.config/kdos-comp/environment`, which it reads at start-up and
-which overrides the value from the profile:
+The compositor draws the pointer from the `KDOS-cursors` theme, which holds each shape at 24, 32,
+48, 64 and 96 pixels. `Super+Alt+C` switches between the ordinary pointer and a large one, and a
+notification says which is on. Two keys in `~/.config/kdos/comp.conf` set the sizes:
 
 ```ini
-XCURSOR_SIZE=48
+cursor_size = 32          # the ordinary pointer; 0 keeps the session's XCURSOR_SIZE, 24 as shipped
+large_cursor_size = 64    # what Super+Alt+C switches to; 48 unless set
+large_cursor = yes        # start every session with the large one
 ```
 
-Log out and back in for it to take effect. KDOS's own windows ask the compositor for a named
-pointer shape rather than drawing one, so they follow this size. A boxed GTK application draws
-its own pointer at `gtk-cursor-theme-size` in `~/.config/gtk-3.0/settings.ini` and
-`~/.config/gtk-4.0/settings.ini`, which `kdos theme` writes as 24 each time it runs and overwrites
-any edit, so boxed GTK applications keep a 24-pixel pointer.
+Both apply as soon as the compositor reloads (`kdos-comp -r`). The compositor also sets
+`XCURSOR_SIZE` to the size it draws, so a program started afterwards draws its own pointer at the
+same size; a program already running keeps the size it started with. KDOS's own windows ask the
+compositor for a named pointer shape rather than drawing one, so they follow the switch at once.
+
+A GTK application, native or boxed, draws its own pointer and keeps it at 24 pixels. The settings
+portal answers GTK's `cursor-size` question with 24, and `kdos theme` writes
+`gtk-cursor-theme-size` as 24 into `~/.config/gtk-3.0/settings.ini` and
+`~/.config/gtk-4.0/settings.ini` each time it runs, overwriting any edit.
+
+## Keyboard aids
+
+Three aids change how the keys of a physical keyboard are read. All three are off until you turn
+them on. `Super+Alt` with a letter switches each one for the session, and a notification says
+which way it went, because an aid switched on by accident otherwise leaves a keyboard that
+misbehaves with nothing on the screen to say why.
+
+| Aid | Switch | What it does |
+|---|---|---|
+| Sticky keys | `Super+Alt+S` | Press and release `Shift`, `Ctrl`, `Alt`, `Super` or `AltGr` on its own and it applies to the next key. Press it twice and it stays on until you press it a third time |
+| Slow keys | `Super+Alt+L` | A key counts only once it has been held down for a moment, 300 ms unless set. A key brushed and released sooner is ignored |
+| Bounce keys | `Super+Alt+B` | A second press of the same key within 300 ms of letting it go is ignored, so a hand that shakes does not type a letter twice |
+
+To have them on from the start of every session, or to change the delays, set them in
+`~/.config/kdos/comp.conf`:
+
+```ini
+sticky_keys = yes
+slow_keys = yes
+slow_keys_delay = 500       # milliseconds, 100 to 5000
+bounce_keys = yes
+bounce_keys_delay = 400     # milliseconds, 100 to 5000
+```
+
+A change there applies when the compositor reloads. A reload takes a switch from the file only when
+its line has changed, so the reload every colour-scheme change sends does not undo a switch made by
+key.
+
+Sticky keys works for the desktop's own shortcuts as well as for windows: `Super`, released, then
+`D` opens the launcher. Holding a modifier while pressing another key still works as a normal
+chord and latches nothing.
+
+Slow and bounce keys do not delay or drop the modifier keys or the lock keys (`Caps Lock`,
+`Num Lock`) themselves, and none of the three touches the on-screen keyboard or any other program
+that types for you.
+
+## Dwell click
+
+Dwell click clicks the left button wherever the pointer comes to rest, for anyone who can move a
+pointer but not press a button reliably. `Super+Alt+D` switches it on and off, or set it in
+`comp.conf`:
+
+```ini
+dwell_click = yes
+dwell_click_delay = 1200    # milliseconds of rest before the click, 100 to 5000
+```
+
+A pointer that moves by less than 4 pixels counts as resting. After a click, the pointer has to
+move 16 pixels before it can click again, so leaving it still clicks once rather than repeatedly.
+Pressing a real button cancels a pending dwell click. There is no countdown on the screen, and dwell
+click gives no right click, double click or drag.
+
+## The on-screen keyboard
+
+`wvkbd`, an on-screen keyboard, types into whichever window has the keyboard focus. The compositor
+starts it when `osk` in `~/.config/kdos/comp.conf` asks for it:
+
+| `osk` | What happens |
+|---|---|
+| `off` | Not started. This is the default |
+| `manual` | Started hidden; `Super+Alt+K` shows it and hides it |
+| `auto` | As `manual`, and also shown whenever a text field has the keyboard focus, then hidden once none has |
+
+`osk` is read when the session starts, so log out and back in after changing it. In `auto` the
+keyboard follows the text fields that tell the compositor they want text, which a window does only
+while an input method is running; the session starts `fcitx5` for that. A program running under
+Xwayland does not tell the compositor, so its fields do not raise the keyboard; use `Super+Alt+K`.
+
+## The keyboard monitor
+
+A screen reader has to hear keys typed into other windows, to echo them and to answer its own
+shortcuts. On Wayland a window receives keys only while it has the focus, so the compositor offers
+the reader a route of its own: the `org.freedesktop.a11y.KeyboardMonitor` interface on the session
+bus, the one at-spi2-core's device layer and Orca use. A reader can watch every key, or take its own
+shortcuts so the window with the focus never receives them. When the reader's own modifier is
+`Caps Lock`, pressing it twice quickly still toggles Caps Lock. The interface is described in
+[kdos-comp](../04-programs/kdos-comp.md#the-keyboard-monitor).
+
+Three limits apply:
+
+- **Only a reader that has claimed the name `org.gnome.Orca.KeyboardMonitor` may use it.** Orca's
+  client library claims it before its first call.
+- **Nothing is sent while the screen is locked**, because a password is typed there.
+- **Keys typed on the on-screen keyboard are not passed on**, only those of a physical keyboard.
 
 ## Colour and contrast
 
@@ -294,14 +402,13 @@ and blue towards a white of about 3400 K and leaving red untouched. See
 
 Inside a *box*, the container a graphical application from the catalogue runs in (see the
 [glossary](../06-reference/glossary.md)), the ordinary Linux accessibility stack applies. An
-application's toolkit publishes its tree of accessible objects on the box's own accessibility bus,
-and a screen reader running in the same box can read it. The catalogue ships no screen reader,
-BRLTTY or `espeak-ng`, so you install a reader into the box yourself; `kdos-box enter <box>` opens
+application's toolkit publishes its tree of accessible objects on the accessibility bus, and a
+screen reader connected to that bus reads it. The catalogue ships no screen reader, BRLTTY or
+`espeak-ng`; to run a reader inside a box, install it there yourself. `kdos-box enter <box>` opens
 a shell inside it.
 
-This is off by default. Nothing on the host answers on the accessibility bus, so with it on, every
-boxed GTK application would probe at start-up for a service that is not there and wait for the
-probe to time out. Off means `kdos-appbox` puts two variables in the box's environment:
+This is off by default, so that a boxed GTK application does not look for the accessibility bus
+when it starts. Off means `kdos-appbox` puts two variables in the box's environment:
 `NO_AT_BRIDGE=1` and `GTK_A11Y=none`.
 
 To turn it on for every box, create an empty file:
@@ -313,8 +420,8 @@ touch ~/.config/kdos/a11y
 To turn it on for one launch, set `KDOS_A11Y` in front of the command:
 
 ```sh
-KDOS_A11Y=1 gimp                         # the command on your PATH
-KDOS_A11Y=1 kdos-appbox -b app.gimp run gimp
+KDOS_A11Y=1 hugin                        # the command on your PATH
+KDOS_A11Y=1 kdos-appbox -b app.hugin run hugin
 ```
 
 `KDOS_A11Y=0` turns it off for that launch even when the file exists; any other non-empty value
@@ -324,7 +431,7 @@ keeps the environment it started with.
 What this gives you is whatever the application's own toolkit offers. It does not reach the panel,
 the Start menu, the file chooser or anything else KDOS draws.
 
-## What would have to change
+## The announcement record
 
 `libktui` keeps a per-frame record of what each control would announce, filled in through
 `ktui_announce()`. Ten kinds of control write to it: buttons, check boxes, radio buttons, text
@@ -349,18 +456,18 @@ Nothing on the system reads that record except the library's own self-test
 (`src/libs/selftest.c`). The programming interface is described in
 [The C libraries](../05-developer/c-libraries.md#libktui).
 
-For a screen reader to work on the KDOS desktop, two things would have to be built. First, the
-record would have to leave the program that made it, over a socket, a bus interface or a bridge to
-AT-SPI; it has none of these. Second, a reader program would have to exist, with a defined limit
-on what it may do. A reader that could also type into other windows would be indistinguishable
-from a keylogger, so whatever carries the announcements has to grant less than the interface a
-window manager uses.
-
-Neither is built. The gap is recorded in [Known gaps](../06-reference/known-gaps.md).
+The record does not leave the program that made it: there is no socket, bus interface or bridge
+to AT-SPI that carries it, and no reader program that would receive it. Any such channel has a
+security constraint: a reader that could also type into other windows would be indistinguishable
+from a keylogger, so the channel must grant less than the interface a window manager uses. The
+gap is recorded in [Known gaps](../06-reference/known-gaps.md).
 
 ## See also
 
 - [Configuration](../06-reference/configuration.md#configkdosa11y) — the `~/.config/kdos/a11y` file
+- [Configuration](../06-reference/configuration.md#configkdoscompconf) — every accessibility key in `comp.conf`
+- [kdos-comp](../04-programs/kdos-comp.md#accessibility) — how the keyboard aids, dwell click, the
+  on-screen keyboard and the keyboard monitor are built
 - [kdos-appbox](../04-programs/kdos-appbox.md) — how a box's environment is built
 - [The C libraries](../05-developer/c-libraries.md#libktui) — `ktui_announce()`, and what a widget says
 - [Administration](administration.md#services) — starting, stopping and disabling `65_brltty`

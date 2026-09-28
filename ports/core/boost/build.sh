@@ -13,33 +13,45 @@
 # lib/cmake — libime does find_package(Boost CONFIG), so that config file is the
 # whole point of installing rather than pointing at a source tree.
 #
-# Eight compiled components, and the list is deliberate.
-#
-# `iostreams` is what libime — the input-method engine behind pinyin — links.
-# The other seven are what the rest of the Boost-using catalogue asks for, and
-# each one is named by a `find_package(... REQUIRED)` somewhere: ledger wants
-# `date_time filesystem iostreams regex unit_test_framework`, prjtrellis wants
-# `filesystem program_options system thread`, nextpnr wants
-# `program_options iostreams thread`. A missing one is a configure error naming
-# `boost_<x>Config.cmake` rather than anything about boost. Everything else
-# stays header-only, which is most of Boost.
+# The compiled components are the union of what the Boost-using catalogue
+# names in a `find_package(... REQUIRED)`, and nothing else; everything else
+# stays header-only, which is most of Boost. A missing one is a configure error
+# naming `boost_<x>Config.cmake` rather than anything about boost:
+#   - iostreams: libime, the input-method engine behind pinyin;
+#   - date_time filesystem regex test: ledger;
+#   - program_options thread: prjtrellis, nextpnr and FreeCAD;
+#   - atomic charconv chrono container locale: GnuCash;
+#   - random coroutine context graph: Wesnoth, which also takes charconv and
+#     process when they are there;
+#   - chrono: gr-osmosdr, and with it Gqrx;
+#   - log (log and log_setup): WSJT-X, PrusaSlicer and OrcaSlicer;
+#   - nowide: PrusaSlicer and OrcaSlicer;
+#   - serialization: UHD;
+#   - stacktrace (stacktrace_basic): Inkscape's crash report. The
+#     stacktrace_backtrace variant is named off: it builds whenever a
+#     libbacktrace happens to be found, and libbacktrace is not a port;
+#   - python: libtorrent-rasterbar's Python binding, which Deluge imports, and
+#     LinuxCNC, which links libboost_python3NN.
+# system is a stub library Boost keeps for the consumers that still name it.
 #
 # THE LIST MUST BE ON BOTH LINES. bootstrap decides what b2 CAN build; b2's own
 # --with- flags decide what it DOES. With the list on bootstrap alone, exactly
-# one component is built and every consumer of the other seven fails at
+# one component is built and every consumer of the others fails at
 # find_package with the library sitting uninstalled in the work tree.
 #
 # Changing this list rebuilds Boost and forces a libime rebuild
 # with it, because libime's link line depends on what is built here.
 #
-# --with-icu=/usr GIVES Boost.Regex ITS UNICODE SIDE (u32regex). Left to
-# itself bootstrap turns ICU on when it happens to find the headers, so the
-# regex library's link line would follow build order; icu is in `depends`.
-# Boost.Python is not built: ledger builds with its Python binding off and
-# nextpnr binds its Python through pybind11.
+# --with-icu=/usr GIVES Boost.Regex ITS UNICODE SIDE (u32regex) and Boost.Locale
+# its ICU backend. Left to itself bootstrap turns ICU on when it happens to find
+# the headers, so both link lines would follow build order; icu is in `depends`.
+# --with-python names the interpreter Boost.Python is built for. Boost.Python
+# also builds boost_numpy whenever `import numpy` works in the build root, so
+# numpy is in `depends` for the same reason.
 ./bootstrap.sh --prefix=/usr --libdir=/usr/lib \
 	--with-icu=/usr \
-	--with-libraries=iostreams,system,filesystem,regex,date_time,test,program_options,thread
+	--with-python=/usr/bin/python3 \
+	--with-libraries=iostreams,system,filesystem,regex,date_time,test,program_options,thread,atomic,charconv,chrono,container,locale,random,coroutine,context,graph,process,log,nowide,serialization,stacktrace,python
 ./b2 \
 	--prefix=$PKG/usr \
 	--libdir=$PKG/usr/lib \
@@ -51,6 +63,22 @@
 	--with-test \
 	--with-program_options \
 	--with-thread \
+	--with-atomic \
+	--with-charconv \
+	--with-chrono \
+	--with-container \
+	--with-locale \
+	--with-random \
+	--with-coroutine \
+	--with-context \
+	--with-graph \
+	--with-process \
+	--with-log \
+	--with-nowide \
+	--with-serialization \
+	--with-stacktrace \
+	--with-python \
+	boost.stacktrace.backtrace=off \
 	variant=release \
 	link=shared \
 	threading=multi \

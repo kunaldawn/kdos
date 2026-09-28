@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-qscintilla
+version     = 2.14.1
+release     = 1
+source      = qscintilla-$version.tar.gz::https://www.riverbankcomputing.com/static/Downloads/QScintilla/$version/QScintilla_src-$version.tar.gz
+sha256      = dfe13c6acc9d85dfcba76ccc8061e71a223957a6c02f3c343b30a9d43a4cdd4d  qscintilla-2.14.1.tar.gz
+description = PyQt6.Qsci — QScintilla for Python, for QGIS's console and script editor
+homepage    = https://www.riverbankcomputing.com/software/qscintilla/
+depends     = python3 python3-sip python3-pyqt-builder python3-pyqt6 python3-pyqt6-sip qt6-qtbase qscintilla
+group       = qscintilla

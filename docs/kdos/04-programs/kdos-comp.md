@@ -23,7 +23,7 @@ desktop compares with those of other distributions in
 `kdos-comp` is a hard fork of the [labwc](https://labwc.github.io/) 0.20.0 Wayland compositor,
 built on wlroots (the `wlroots` port, version 0.20.2). A *hard fork* here means the source tree is
 labwc's own, renamed and extended in place, and upstream changes are not merged into it. The KDOS
-additions live in files of their own (sixteen `kdos-*.c` sources, a shared header and the
+additions live in files of their own (eighteen `kdos-*.c` sources, a shared header and the
 application-first switcher); upstream files carry only small, marked hooks into them (see
 [Finding the KDOS additions](#finding-the-kdos-additions)).
 
@@ -46,11 +46,13 @@ The program has four parts. labwc's core does the window management: placement, 
 and resizing, workspaces, bindings, menus and decorations. The KDOS additions sit beside it:
 [the phosphor pass](#the-phosphor-pass), [the wallpaper](#the-wallpaper),
 [idle, dim, lock and lid](#idle-dim-lock-and-lid),
-[window groups and window memory](#window-groups-and-window-memory) and
-[box identity](#box-identity). Seven [supervised children](#supervised-children) (the panel, the
-desktop icons, the dockapp column and four small session daemons) are started and restarted by the
-compositor. Two sockets let other KDOS programs talk to it:
-[the command socket](#the-command-socket) and [the frames socket](#the-frames-socket).
+[window groups and window memory](#window-groups-and-window-memory),
+[box identity](#box-identity) and [accessibility](#accessibility). Eight
+[supervised children](#supervised-children) (the panel, the desktop icons, the dockapp column, four
+small session daemons and the on-screen keyboard) are started and restarted by the compositor. Two
+sockets let other KDOS programs talk to it: [the command socket](#the-command-socket) and
+[the frames socket](#the-frames-socket). A screen reader talks to it over the session bus, through
+[the keyboard monitor](#the-keyboard-monitor).
 
 ### How labwc's documentation applies
 
@@ -62,7 +64,8 @@ keys and menus all behave as labwc's documentation describes. The differences ar
   `~/.config/kdos-comp/`, and that is also where labwc's `environment`, `autostart` and `shutdown`
   files go. None of the three is shipped. Themes are still looked up under
   `themes/<name>/labwc/`, as upstream does.
-- **Additions.** Three actions for window groups (see [KDOS actions](#kdos-actions)), an `apps`
+- **Additions.** Nine actions, three for window groups and six accessibility switches (see
+  [KDOS actions](#kdos-actions)), an `apps`
   style for the window switcher (see [The app-first window switcher](#the-app-first-window-switcher)),
   and a `flat kdos` title-bar fill in the theme (see [Decorations](#decorations)).
 - **The prompt command runs without a shell.** See [The prompt command](#the-prompt-command).
@@ -153,6 +156,16 @@ These take effect when the compositor reloads, which happens on `SIGHUP`, `kdos-
 | `idle_off` | `900` | 0–86400 s | Seconds before the screens are powered off; `0` is never |
 | `lid_close` | `suspend` | `suspend`, `lock`, `off` | What closing a laptop lid does; any other value is refused by name |
 | `window_memory` | `yes` | yes/no | Whether an application opens where its window last was |
+| `sticky_keys` | `no` | yes/no | [Sticky keys](#the-keyboard-aids) |
+| `slow_keys` | `no` | yes/no | [Slow keys](#the-keyboard-aids) |
+| `slow_keys_delay` | `300` | 100–5000 ms | How long a key must be held before slow keys accepts it |
+| `bounce_keys` | `no` | yes/no | [Bounce keys](#the-keyboard-aids) |
+| `bounce_keys_delay` | `300` | 100–5000 ms | How soon after its release a second press of the same key is ignored |
+| `dwell_click` | `no` | yes/no | [Dwell click](#dwell-click) |
+| `dwell_click_delay` | `1200` | 100–5000 ms | How long the pointer rests before the click |
+| `cursor_size` | `0` | 0–256 px | The [pointer size](#the-pointer-size); `0` keeps `XCURSOR_SIZE` from the session |
+| `large_cursor` | `no` | yes/no | Whether the pointer is drawn at `large_cursor_size` |
+| `large_cursor_size` | `48` | 16–256 px | The size `large_cursor` and `ToggleLargeCursor` switch to |
 
 Three limits apply to the phosphor keys, because two decisions about the pass are made once, when
 the compositor starts:
@@ -190,6 +203,7 @@ compositor never believes a setting that the panel on screen is not using.
 | `icons` | `yes` | yes/no | Whether the panel and the desktop draw pictures at all |
 | `chrome_font` | `Terminus:pixelsize=32` | a fontconfig pattern | The font of every [supervised child](#supervised-children) except the panel: the desktop icons, the slit and the session daemons. The panel does not pass it on to the menus and popups it opens, which draw in `libkwl`'s default |
 | `clock_format` | `%H:%M` | a `strftime` format | The panel clock |
+| `osk` | `off` | `off`, `manual`, `auto` | [The on-screen keyboard](#the-on-screen-keyboard): not started, started hidden, or also shown while a text field has the focus |
 
 `chrome_font` and `clock_format` are empty in the compositor when unset, and the defaults shown are
 what the receiving programs use in that case: the `Terminus:pixelsize=32` of `libkwl` (the
@@ -267,10 +281,31 @@ file with a real XML parser for this reason. Run `xmllint --noout rc.xml` after 
 
 ### KDOS actions
 
-Besides labwc's actions, the fork adds three for [window groups](#window-groups-and-window-memory),
-usable in any binding or menu: `AddToTabGroup`, `RemoveFromTabGroup` and `NextInTabGroup`. The
-shipped `rc.xml` does not bind them. To reach them, add bindings after `<default />`; `Super+g`,
-`Super+Ctrl+g` and `Super+Alt+g` are free in the shipped file:
+Besides labwc's actions, the fork adds nine, usable in any binding or menu and through
+`kdos hey run`. Six are the [accessibility](#accessibility) switches, bound in the shipped `rc.xml`
+beside labwc's magnifier actions:
+
+| Action | Shipped binding | Does |
+|---|---|---|
+| `ToggleStickyKeys` | `Super+Alt+S` | Sticky keys on or off for the session |
+| `ToggleSlowKeys` | `Super+Alt+L` | Slow keys on or off |
+| `ToggleBounceKeys` | `Super+Alt+B` | Bounce keys on or off |
+| `ToggleDwellClick` | `Super+Alt+D` | Dwell click on or off |
+| `ToggleLargeCursor` | `Super+Alt+C` | Switch the pointer between its size and `large_cursor_size` |
+| `ToggleOnScreenKeyboard` | `Super+Alt+K` | Show or hide the on-screen keyboard; with `osk = off` a notification says so |
+| `ToggleMagnify` (labwc's) | `Super+=` | The magnifier on or off |
+| `ZoomIn`, `ZoomOut` (labwc's) | `Super+Alt+=`, `Super+Alt+-` | Magnify more or less |
+
+Each of the six switches posts a notification saying which way it went, such as `Sticky keys on`. A
+keyboard aid switched on by accident otherwise leaves a keyboard that misbehaves with nothing on the
+screen to say why. A switch lasts for the session. A reload changes it only when the value
+`comp.conf` gives it has changed since the last load, because every `kdos theme` is a reload and an
+accent switch must not undo a keyboard aid somebody has just switched on.
+
+The other three are for [window groups](#window-groups-and-window-memory): `AddToTabGroup`,
+`RemoveFromTabGroup` and `NextInTabGroup`. The shipped `rc.xml` does not bind them. To reach them,
+add bindings after `<default />`; `Super+g`, `Super+Ctrl+g` and `Super+Alt+g` are free in the
+shipped file:
 
 ```xml
 <keybind key="W-g"><action name="AddToTabGroup"/></keybind>
@@ -724,11 +759,128 @@ session](../03-architecture/session.md#granting-a-box-more-than-the-allowlist). 
 read once, on its first request, and re-read after a reload; a client that is already running keeps
 what it bound.
 
+## Accessibility
+
+The compositor is where input arrives, so the aids that change what a key or the pointer does live
+in it (`kdos-a11y.c`), and so does the interface a screen reader uses to hear the keyboard
+(`kdos-a11ymon.c`). The user's side of all of this is in
+[Accessibility](../02-user-guide/accessibility.md).
+
+### The keyboard aids
+
+| Aid | Key | What it does |
+|---|---|---|
+| Sticky keys | `sticky_keys` | A modifier pressed and released on its own applies to the next key; pressed twice it stays on until pressed a third time |
+| Slow keys | `slow_keys`, `slow_keys_delay` | A key counts only once it has been held for the delay. Released sooner, it never happened |
+| Bounce keys | `bounce_keys`, `bounce_keys_delay` | A second press of the same key within the delay after its release is dropped, with its release |
+
+All three start off, take a changed value on a reload, and are flipped for the session by
+[their actions](#kdos-actions). They share three rules:
+
+- **They act on physical keyboards only.** A virtual keyboard (the on-screen keyboard, the input
+  method re-sending a key it did not use, a remote-desktop server) is a program typing on purpose,
+  and delaying or dropping its keys would break it.
+- **Slow and bounce keys leave the modifiers and the lock keys alone.** wlroots updates the
+  keyboard's modifier state after the compositor has seen a key, whatever the compositor does with
+  it, so a dropped `Shift` press would still reach the focused window as a held `Shift`, and a
+  dropped `Caps Lock` would still turn Caps Lock on. The keys passed through are `Shift`, `Ctrl`,
+  `Alt`, `Super`, `AltGr`, `Caps Lock`, `Shift Lock` and `Num Lock`.
+- **Sticky keys works through the keyboard's own state.** A latched modifier goes into xkb's latched
+  mask and a locked one into its locked mask, on one member of the keyboard group, which wlroots
+  copies to the rest. So the focused window and the compositor's own bindings both see it:
+  `Super`, released, then `D` opens the launcher. A modifier held while another key is pressed is
+  a chord and latches nothing. The mask is rewritten from an idle callback after the key, because
+  wlroots updates the state after the compositor's key handler returns and would otherwise
+  overwrite it.
+
+Slow keys holds one key at a time. A second key pressed before the first has been held long enough
+replaces it, and the first stays swallowed until it is released. A key it accepts reaches the
+window stamped with the time it was accepted, not the time it went down.
+
+### Dwell click
+
+With `dwell_click` on, the pointer resting for `dwell_click_delay` clicks the left button where it
+rests. Motion within 4 pixels of where the count started does not restart it, because a resting hand
+still moves a mouse a pixel or two. After a click the pointer has to travel 16 pixels before it can
+click again, so a pointer left alone clicks once. A real button press cancels the count, no dwell
+click fires while a button is held, and none fires during an interactive move or resize, where a
+click would end it. There is no visual countdown. The click goes through the same path as any
+emulated button, so window bindings, menus and the root menu all answer it.
+
+### The pointer size
+
+`cursor_size` sets the pointer's size, and `large_cursor` (or `ToggleLargeCursor`) switches it to
+`large_cursor_size`. The `KDOS-cursors` theme draws 24, 32, 48, 64 and 96 pixels. `cursor_size = 0`
+keeps the size the session started with, which is `XCURSOR_SIZE` (24, from
+`/etc/profile.d/10-wayland.sh`, or whatever `~/.config/kdos-comp/environment` sets). The chosen
+size is written back into the compositor's own `XCURSOR_SIZE`, so a program started after the
+change inherits it; one already running keeps the size it read. A change applies at once.
+
+### The on-screen keyboard
+
+`osk` decides whether the compositor runs `wvkbd-deskintl`, the on-screen keyboard, as a
+[supervised child](#supervised-children). It is started with `--hidden` and shown and hidden by
+signal: `SIGUSR2` shows it and `SIGUSR1` hides it.
+
+| `osk` | Does |
+|---|---|
+| `off` | The keyboard is not started. `ToggleOnScreenKeyboard` posts a notification saying so |
+| `manual` | Started hidden; `ToggleOnScreenKeyboard` (`Super+Alt+K`) shows and hides it |
+| `auto` | As `manual`, and also shown whenever a text field has the keyboard focus and hidden when none does |
+
+`auto` follows the text-input protocol: the keyboard is shown when a window's text field enables
+text input and hidden 300 ms after the last one disables it, so moving from one field to the next
+does not drop the keyboard and raise it again. A window is told about text input only while an
+input method is running, so `auto` needs `fcitx5`, which the session starts (see
+[Input methods](../03-architecture/session.md#input-methods)). An X11 window under Xwayland does not
+speak the protocol, and `auto` never shows the keyboard for it.
+
+`wvkbd` types through the virtual-keyboard protocol as an ordinary host program. It is not passed
+`chrome_font`: it names its font with `-fn`, and handed `--font` it would exit with a usage error
+at every start.
+
+### The keyboard monitor
+
+A Wayland window receives keys only while it has the focus, so a screen reader in a window of its
+own can neither echo what is typed elsewhere nor answer its own shortcuts. The compositor therefore
+owns `org.freedesktop.a11y.Manager` on the session bus and serves
+`org.freedesktop.a11y.KeyboardMonitor` at `/org/freedesktop/a11y/Manager`, the interface
+at-spi2-core's `AtspiDeviceA11yManager` uses and Orca reaches through it:
+
+| Member | Does |
+|---|---|
+| `WatchKeyboard`, `UnwatchKeyboard` | Every key reaches the caller as a `KeyEvent` and the focused window as well |
+| `GrabKeyboard`, `UngrabKeyboard` | Every key reaches the caller and nothing else |
+| `SetKeyGrabs(au modifiers, a(uu) keystrokes)` | `modifiers` are keysyms the caller uses as its own modifier, such as the Orca key: each is grabbed, and so is every key pressed while one is held. Pressed twice within the key-repeat delay with no other key between, the second press and its release go through as an ordinary key, so Caps Lock as the Orca key still toggles Caps Lock. `keystrokes` are keysym and modifier-state pairs, grabbed when the state matches exactly |
+| signal `KeyEvent(b released, u state, u keysym, u unichar, q keycode)` | Sent to each interested caller alone, never broadcast. `state` is the modifier mask before the key, `keysym` the first translated keysym, `keycode` the xkb code (the evdev code plus 8) |
+
+A grabbed key reaches no window. That includes the lock it would toggle: xkb has already flipped
+Caps Lock or Num Lock by the time the key is seen, so the flip is put back. A caller's grabs end when
+it leaves the bus, because a reader that crashed never calls `UngrabKeyboard`.
+
+Only a caller that owns one of the allowed well-known names may call; anything else is answered
+`org.freedesktop.DBus.Error.AccessDenied`. The one allowed name is `org.gnome.Orca.KeyboardMonitor`,
+which the client library requests for Orca before its first call. Boxes share the session bus (see
+[The security model](../03-architecture/security-model.md)), and a program in a box could request
+the same name while no reader holds it. The name check keeps an ordinary program from subscribing
+to keystrokes by accident; it does not stop a hostile one. While the session is locked nothing is
+sent and nothing is grabbed, because a password is typed there.
+
+The monitor hears physical keyboards only, and it hears each key after the keyboard aids have had
+it, so a reader announces what slow and bounce keys let through. The input method re-sends the keys
+it does not use through a virtual keyboard, and passing those on as well would give a reader every
+key twice; the price is that keys typed on the on-screen keyboard are not announced.
+
+The compositor connects to the session bus when it starts. With no session bus it logs
+`a11y monitor: no session bus` and runs without the monitor; if the bus goes away during the
+session the monitor is switched off for the rest of it. The toggle notifications travel over the
+same connection, to `org.freedesktop.Notifications`, and are not sent without it.
+
 ## Supervised children
 
-The compositor starts seven programs from a table in `kdos-child.c` and restarts them when they
-exit. Three run once per output; four own a single bus name, socket or subscription and run once
-for the session.
+The compositor starts eight programs from a table in `kdos-child.c` and restarts them when they
+exit. Three run once per output; five run once for the session, four of them because they own a
+single bus name, socket or subscription.
 
 | Child | Per output | Started when |
 |---|---|---|
@@ -739,6 +891,7 @@ for the session.
 | `kdos-netagent` (Wi-Fi and VPN passwords) | no | always |
 | `kdos-mediad` (removable media) | no | always |
 | `kdos-clip` (clipboard history) | no | `clipboard` |
+| `wvkbd-deskintl` (on-screen keyboard) | no | `osk` is not `off` |
 
 The single-instance children are single for concrete reasons:
 
@@ -750,23 +903,26 @@ The single-instance children are single for concrete reasons:
   device twice.
 - `kdos-clip` owns one socket in `$XDG_RUNTIME_DIR` and keeps the history in memory, so a second
   would be a second history nobody could reach.
+- `wvkbd-deskintl` types into the one keyboard focus, and it is supervised so that the signals that
+  show and hide it always reach the live process.
 
 The per-output children are per output because a layer surface (a surface that a program places
 on a screen layer above or below the windows, through the wlr layer-shell protocol) without a named
 output is placed on one screen only, and the libraries these programs draw with hold a single
 cell buffer, so a second screen needs a second process. Each is started with `--output <name>`.
 When an output goes away, its children are sent `SIGTERM` and not restarted. The table holds 40
-children: the four session-wide ones plus three per output, which is twelve outputs' worth.
+children: the five session-wide ones plus three per output, which is eleven outputs' worth.
 
 The children receive their settings from `comp.conf` on their command line, which is why those keys
 apply at the next login:
 
 - every child gets `--font` with `chrome_font` when it is set, except the panel, which gets
-  `panel_font` instead;
+  `panel_font` instead, and the on-screen keyboard, which gets no font;
 - the panel also gets `--top` or `--bottom`, `--cells`, `--margin`, `--opacity`, and `--clock` and
   `--autohide` when those are set;
 - the panel and the desktop icons get `--no-icons` when `icons = no`. No other child is given it,
-  because a child that does not parse a flag exits with a usage error and would never start.
+  because a child that does not parse a flag exits with a usage error and would never start;
+- the on-screen keyboard gets `--hidden`.
 
 ### When a child keeps crashing
 
@@ -788,11 +944,13 @@ The session start-up around these children is in
 
 ## Xwayland
 
-The compositor runs Xwayland rootless, so X11-only applications in boxes work. Xwayland starts
+The compositor runs Xwayland rootless, and it is the one X server on the system: it serves
+X11-only applications in boxes and host applications that have no Wayland path. Xwayland starts
 when the first X11 client connects, unless `rc.xml` asks for it to persist. It is built with
-glamor and DRI3 but without GLX, because the graphics stack is built without X11 platform support.
-An X11 client that draws through GLX therefore gets no OpenGL; one that draws through EGL uses its
-box's Mesa and is unaffected. See [Principles](../01-philosophy/principles.md).
+glamor, DRI3 and GLX (`-Dglx=true` in `ports/core/xwayland/build.sh`), and Mesa is built with the
+X11 platform and `-D glx=dri` behind libglvnd, so an X11 client on the host that draws through GLX
+gets OpenGL. An X11 client in a box draws with its box's Mesa. See
+[Principles](../01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
 
 The compositor sets `DISPLAY` only in the environment of programs it starts itself. A launcher run
 from elsewhere may not have it, so `kdos-appbox` finds the X socket in `/tmp/.X11-unix` on its own
@@ -825,10 +983,11 @@ Several additions are too small for a section of their own:
 this order:
 
 1. the command socket, so no `kdos hey run` can act on a session that is ending;
-2. the power-down animation (see [The phosphor pass](#the-phosphor-pass)), limited to 600 ms;
-3. the wallpaper, the frames socket, window memory, window groups, box chips, the lid, peek and the
+2. the keyboard monitor's bus connection and the accessibility timers;
+3. the power-down animation (see [The phosphor pass](#the-phosphor-pass)), limited to 600 ms;
+4. the wallpaper, the frames socket, window memory, window groups, box chips, the lid, peek and the
    idle policy;
-4. the phosphor pass;
+5. the phosphor pass;
 
 and then the server itself. The panel and the notification daemon notice the compositor has gone
 and exit on their own.
@@ -860,14 +1019,14 @@ This section is for someone changing the compositor's code rather than configuri
 
 ### Finding the KDOS additions
 
-The KDOS code lives in sixteen `src/desktop/kdos-comp/src/kdos-*.c` files, one shared header,
+The KDOS code lives in eighteen `src/desktop/kdos-comp/src/kdos-*.c` files, one shared header,
 `src/desktop/kdos-comp/include/kdos.h`, through which every addition enters, and one further
 source file, `src/cycle/osd-apps.c`, the application-first switcher. Upstream files carry only
-small hooks, each marked with a comment containing `KDOS`. Most begin `/* KDOS`: there are 107
-such comments across 29 upstream files (23 sources and 6 headers), 29 of them in `main.c`. Some
-hooks sit inside a longer comment whose line begins ` * KDOS:`, and four files carry only that form
-or the `LAB_GRADIENT_KDOS_RULE` fill: `include/theme.h`, `include/buffer.h`,
-`src/input/keyboard.c` and `src/ssd/ssd-button.c`. Grep for `KDOS` rather than `/* KDOS` to find
+small hooks, each marked with a comment containing `KDOS`. Most begin `/* KDOS`: there are 133
+such comments across 32 upstream files (25 sources and 7 headers), 33 of them in `main.c`. Some
+hooks sit inside a longer comment whose line begins ` * KDOS:`, and three files carry only that form
+or the `LAB_GRADIENT_KDOS_RULE` fill: `include/theme.h`, `include/buffer.h` and
+`src/ssd/ssd-button.c`. Grep for `KDOS` rather than `/* KDOS` to find
 them all. The three `meson.build` files mark their changes with `# KDOS`.
 
 Three kinds of change carry no marker. The calls into `libkwm` (see below) are found by grepping
@@ -893,6 +1052,8 @@ The fastest-first mode selection (see [Choosing the mode](#choosing-the-mode)) i
 | `kdos-group.c` | [Window groups](#window-groups-and-window-memory) (tabbed stacks) |
 | `kdos-layerfocus.c` | Closing menus and other on-demand surfaces when you click elsewhere |
 | `kdos-winpos.c` | [Window memory](#window-groups-and-window-memory): reopening windows where they were |
+| `kdos-a11y.c` | [Accessibility](#accessibility): the keyboard aids, dwell click, the pointer size and the on-screen keyboard |
+| `kdos-a11ymon.c` | [The keyboard monitor](#the-keyboard-monitor) on the session bus, and the toggle notifications |
 
 The box lookup itself (`kdos_view_box()` and the `/proc` read for X11 windows) lives in the
 upstream `view.c`, beside the security-context lookup it extends.
@@ -931,7 +1092,7 @@ Three checks cover it without a full build:
 
 - `testing/selftest.sh` compiles every `kdos-*.c` file against the installed wlroots headers,
   where the host has pkg-config entries for `wlroots-0.20`, GLES2, EGL, wayland-server, pixman,
-  libdrm, libpng, libxml2, cairo, pango and glib; elsewhere it reports the step as skipped.
+  libdrm, libpng, libxml2, cairo, pango, glib and basu; elsewhere it reports the step as skipped.
 - `testing/preflight.sh` checks the shipped `rc.xml` for well-formed XML and `<default />`, and
   that every command named in `rc.xml` and `menu.xml` exists.
 - `testing/quick.sh kdos-comp` rebuilds the port and patches it into a booted ISO for a screenshot;

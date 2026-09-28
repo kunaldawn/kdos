@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = candle2
+version     = 2.4
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Schildkroet/Candle2/archive/refs/tags/V$version.tar.gz
+sha256      = b6128b8a5b33aa5dc501f285aad1e32fd1936d404febddd15e48ac86cb74f931  candle2-2.4.tar.gz
+description = Candle2 — GRBL CNC and laser controller with a G-code visualiser, height maps and jogging (Qt 5)
+homepage    = https://github.com/Schildkroet/Candle2
+depends     = qt5-qtbase qt5-qtserialport qt5-qtwayland mesa libglvnd

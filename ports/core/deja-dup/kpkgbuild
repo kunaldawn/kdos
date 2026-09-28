@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = deja-dup
+version     = 50.2
+release     = 1
+source      = https://gitlab.gnome.org/World/deja-dup/-/archive/$version/$name-$version.tar.bz2
+sha256      = 956664cff547757a64127395a47f7e30b0c764b8265eeef253ede4ca47a7be88  deja-dup-50.2.tar.bz2
+description = Déjà Dup — scheduled, encrypted backups to a disk or folder over restic
+homepage    = https://apps.gnome.org/DejaDup/
+depends     = meson ninja pkgconf gettext glib gtk4 libadwaita json-glib libsecret libsoup3 vala blueprint-compiler itstool librsvg gsettings-desktop-schemas glib-networking restic rclone fuse

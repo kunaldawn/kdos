@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libretro-database
+version     = 1.22.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libretro/libretro-database/archive/v$version.tar.gz
+sha256      = c23d5929e4a71562c6330d82c08836a9e75e59d3302a17b24549568780e980b2  libretro-database-1.22.1.tar.gz
+description = libretro game databases — the checksums RetroArch's scanner names a game by, and the cursors that query them
+homepage    = https://github.com/libretro/libretro-database
+depends     = coreutils

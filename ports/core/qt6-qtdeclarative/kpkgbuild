@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtdeclarative
+version     = 6.11.2
+release     = 1
+_module     = qtdeclarative
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 215b7b70517e380123eabc6b92243f3c47b6f016a91d126057dbe53551c6b430  qt6-qtdeclarative-6.11.2.tar.xz
+description = Qt 6 QML and Qt Quick — the language, the engine, Qt Quick Controls and the qml tools
+homepage    = https://www.qt.io/
+depends     = cmake ninja pkgconf python3 qt6-qtbase qt6-qtshadertools qt6-qtsvg qt6-qtlanguageserver qt6-qtimageformats
+group       = qt6

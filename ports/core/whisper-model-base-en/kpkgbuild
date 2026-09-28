@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = whisper-model-base-en
+version     = 20241029
+release     = 1
+_rev        = 5359861c739e955e79d9a303bcbc70fb988958b1
+source      = ggml-base.en-$version.bin::https://huggingface.co/ggerganov/whisper.cpp/resolve/$_rev/ggml-base.en.bin
+sha256      = a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002  ggml-base.en-20241029.bin
+description = The Whisper base.en speech model in ggml form, for whisper.cpp and kdos-rec
+homepage    = https://huggingface.co/ggerganov/whisper.cpp

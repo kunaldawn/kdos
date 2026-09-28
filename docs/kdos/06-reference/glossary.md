@@ -28,7 +28,8 @@ choose its palette; the colours themselves are compiled in. See
 ### alien app
 
 A graphical application that is not compiled by this repository. It is built on your machine from a
-*catalogue* row, or imported as *packs*, and runs in a *box*. See
+*catalogue* row, or imported as *packs*, and runs in a *box*. The opposite is a *native
+application*. See
 [Applications](../02-user-guide/applications.md).
 
 ### appbox
@@ -257,9 +258,12 @@ A word with two meanings in the ports tree, which the book keeps apart.
 - The **`group =` key** in a recipe is read only by the upstream version checker, `ports/update`,
   which offers the members of one group as a single bump, and only when every member has the same
   newer version available. Without the key, the checker derives a group from the source URL's
-  organisation on GitHub, Codeberg, sr.ht or a GitLab instance, together with the version. Four
-  recipes in `ports/core` set the key: `glib` and `glib-introspection` (`group = glib`), and
-  `gcc-arm-none-eabi` and `libstdcxx-arm-none-eabi` (`group = gcc-arm-none-eabi`).
+  organisation on GitHub, Codeberg, sr.ht or a GitLab instance, together with the version. The
+  recipes that set the key are pairs built from one upstream release, such as `glib` and
+  `glib-introspection` (`group = glib`) or `gcc-arm-none-eabi` and `libstdcxx-arm-none-eabi`
+  (`group = gcc-arm-none-eabi`), and the Qt modules (`group = qt6`, `group = qt5`), which
+  `download.qt.io` releases together; [The ports catalogue](ports-catalogue.md#how-the-catalogue-is-organised)
+  lists them all.
 
 Both are explained in [Packaging](../03-architecture/packaging.md#phases-package-lists-and-groups),
 and [The ports catalogue](ports-catalogue.md) lists every port under its package-list group. A
@@ -401,6 +405,17 @@ The C library the host is compiled against; the build's target is `x86_64-kdos-l
 application in a box uses its base's C library instead, which is glibc in the Debian base. See
 [Decisions](../01-philosophy/decisions.md#musl-as-the-host-c-library).
 
+### native application
+
+A graphical application compiled by this repository as a *port* and installed on the *host*, such
+as Firefox ESR, LibreOffice, GIMP or Kate. It links the host's toolkits (GTK, Qt, KDE Frameworks,
+wxWidgets, FLTK, Tk or SDL), which are ports too. Each toolkit that has a Wayland backend is
+built with it as the run-time default and its X11 backend compiled in beside it; Tk has only X11,
+so a Tk window is an *Xwayland* client. It runs with no *box*, next to
+KDOS's own *surfaces*, which link none of those toolkits. The opposite is an *alien app*. Most are named in
+`script/04_phase4/packages.txt`; see [The ports catalogue](ports-catalogue.md) and
+[Decisions](../01-philosophy/decisions.md#native-applications-on-the-medium-a-store-that-builds-the-rest).
+
 ### overlay
 
 The Linux overlay filesystem (overlayfs), which presents a writable upper layer over one or more
@@ -452,7 +467,7 @@ confused with `phosphor`, one of the eight *accents*. See
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-three port repositories in one format, holding 1,038 recipes: 1,014 upstream ports in `ports/core/`,
+three port repositories in one format, holding 2,027 recipes: 2,003 upstream ports in `ports/core/`,
 11 of KDOS's own in `src/packages/` and 13 in `src/desktop/`. (The twelfth directory in
 `src/packages/`, `kdos-kpkg`, has no recipe; phase 1 compiles it by script.) See [Writing
 ports](../05-developer/writing-ports.md) and [The ports catalogue](ports-catalogue.md).
@@ -702,10 +717,10 @@ installed packs are kept. See [Applications](../02-user-guide/applications.md#th
 ### surface
 
 One window or popup of the desktop drawn by KDOS: the panel, the Start menu, the control centre and
-so on. `kdos-shell` is one binary that answers to 53 names, which reach 52 programs: most of them
+so on. `kdos-shell` is one binary that answers to 55 names, which reach 54 programs: most of them
 surfaces, and two helpers with no surface of their own: the media watcher `kdos-mediad`, whose
 toasts `kdos-notifyd` draws, and the filter `kdos-ascii`, which writes text to standard output.
-[kdos-shell](../04-programs/kdos-shell.md) uses the word in a wider sense that covers all 52
+[kdos-shell](../04-programs/kdos-shell.md) uses the word in a wider sense that covers all 54
 programs, helpers included. See [kdos-shell](../04-programs/kdos-shell.md).
 
 ### target tree
@@ -751,7 +766,7 @@ Hackage packages), named `<name>-vendor-<version>.tar.xz`, so that the build nee
 fetch` takes it from the port directory, the *source cache* or the *source archive* like any other
 source, and generates it, by default in the `kdos-fetch` container, only when none of them has it.
 It is generated reproducibly, so it has a stable *source hash*. A recipe asks for one with the
-`vendoring =` key; 123 ports in `ports/core` set it (60 Rust, 34 Go, 25 Python, 4 Haskell). See
+`vendoring =` key; 159 ports in `ports/core` set it (71 Rust, 38 Go, 45 Python, 4 Haskell, 1 Node). See
 [Writing ports](../05-developer/writing-ports.md#vendoring).
 
 ### warmup
@@ -784,9 +799,9 @@ the window that asked. See [The session](../03-architecture/session.md#the-kdos-
 ### Xwayland
 
 An X server that runs as a Wayland client. The compositor runs it rootless, starting it when the
-first X11 client connects, so X11-only applications in boxes work. It is built without GLX, so an
-X11 client that draws through GLX gets no OpenGL; X11 clients that use EGL are unaffected. It is the
-one X server permitted on the host. See [kdos-comp](../04-programs/kdos-comp.md#xwayland) and
+first X11 client connects, so X11-only applications, native or in boxes, work. It serves GLX
+through Mesa's `libGLX_mesa` behind `libglvnd`, so an X11 client that draws through GLX gets
+OpenGL; Wayland clients draw through EGL. It is the one X server permitted on the host. See [kdos-comp](../04-programs/kdos-comp.md#xwayland) and
 [Principles](../01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
 
 ## Words this book avoids
@@ -822,4 +837,4 @@ promise something the text cannot support.
 <!-- book-nav -->
 ---
 
-*Part VI — Reference, chapter 46.* Previous: [45. Status](status.md) · [Contents](../README.md)
+*Part VI — Reference, chapter 45.* Previous: [44. Status](status.md) · [Contents](../README.md)

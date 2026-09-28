@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libsigc++2
+version     = 2.12.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/libsigc++/${version%.*}/libsigc++-$version.tar.xz
+sha256      = a9dbee323351d109b7aee074a9cb89ca3e7bcf8ad8edef1851f4cf359bd50843  libsigc++2-2.12.1.tar.xz
+description = Typesafe callback framework for C++, the 2.x API (sigc++-2.0) that gtkmm 3 builds on
+homepage    = https://libsigcplusplus.github.io/libsigcplusplus/
+depends     = meson python3
+series      = 2.12

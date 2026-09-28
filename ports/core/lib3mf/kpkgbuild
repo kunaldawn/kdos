@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lib3mf
+version     = 2.5.0
+release     = 1
+_ffver      = 6.0.0
+source      = $name-$version.tar.gz::https://github.com/3MFConsortium/lib3mf/archive/refs/tags/v$version.tar.gz
+source      = fast_float-$_ffver.tar.gz::https://github.com/fastfloat/fast_float/archive/refs/tags/v$_ffver.tar.gz
+sha256      = 66772c95359d70012a3e97c3aadfb40564cc2cbcf8a5d4bc64d8144c4cb20fb2  lib3mf-2.5.0.tar.gz
+sha256      = 7e98671ef4cc7ed7f44b3b13f80156c8d2d9244fac55deace28bd05b0a2c7c8e  fast_float-6.0.0.tar.gz
+description = lib3mf — reference implementation of the 3D Manufacturing Format (3MF) for reading and writing 3D print files
+homepage    = https://github.com/3MFConsortium/lib3mf
+depends     = cmake ninja pkgconf libzip zlib

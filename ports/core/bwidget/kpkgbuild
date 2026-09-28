@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = bwidget
+version     = 1.10.1
+release     = 1
+source      = https://downloads.sourceforge.net/tcllib/bwidget-$version.tar.gz
+sha256      = 4aea02f38cf92fa4aa44732d4ed98648df839e6537d6f0417c3fe18e1a34f880  bwidget-1.10.1.tar.gz
+description = BWidget — high-level Tk widgets written in pure Tcl: trees, notebooks, combo boxes, dialogs
+homepage    = https://core.tcl-lang.org/bwidget/
+depends     = tcl tk

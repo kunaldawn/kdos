@@ -9,8 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# tests link against libGL's legacy immediate-mode symbols, which mesa
-# does not export here; the library itself builds fine.
+# glx=yes resolves glX* through libglvnd's libGL.so.1 at run time, which
+# dispatches to mesa's libGLX_mesa; EGL goes through libglvnd's libEGL.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Degl=yes \
 	-Dglx=yes \

@@ -613,6 +613,16 @@ static struct row rows[] = {
 	  "what is attached, what is mounted and what is full. Every privileged "
 	  "step is a kdos-mountd verb; partitioning is `cfdisk` in a terminal",
 	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-burn",
+	  "Burn a disc…", NULL, 0, 0, 0, 0,
+	  "a folder or an image onto a CD, DVD or Blu-ray, through `xorriso`, "
+	  "and the disc read back and compared",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-verify",
+	  "Verify files…", NULL, 0, 0, 0, 0,
+	  "files against a checksum list or a par2 set; `sha256sum -c`, "
+	  "`b3sum -c` and `par2` decide, and par2 repairs",
+	  "", "" },
 	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-print",
 	  "Printers…", NULL, 0, 0, 0, 0,
 	  "queues and jobs, over `lpstat` and `lpadmin`. The `lpadmin` group is "
@@ -647,9 +657,8 @@ static struct row rows[] = {
 	  "", "" },
 	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-backup",
 	  "Backup…", NULL, 0, 0, 0, 0,
-	  "what is in the restic repository. It restores nothing: `restic "
-	  "restore` is the operation you do once under pressure and it wants "
-	  "the full command",
+	  "what is in the restic repository, and one file or folder of a "
+	  "snapshot restored into ~/Restored — never over the original",
 	  "", "" },
 	{ CAT_SYSTEM, FT_NOTE, ST_NONE, SC_NONE, NULL, "what is not here",
 	  NULL, 0, 0, 0, 0,

@@ -64,7 +64,7 @@ and `psf2limine.py`, and `hooks/`, which holds the git
 | `01_phase1` | Base Userland | Container | 16 scripts, `00_file_system.sh` to `13_kinstall.sh`: the `fs/` overlay, kernel headers, musl, libstdc++, ncurses, xz, gzip, tar, toybox, readline, bash, binutils, gcc, make, kpkg, kinstall | `cross fs mark` |
 | `02_phase2` | Self-Hosting Bootstrap | Chroot | `packages.txt`, 8 ports: tar, musl, zlib, binutils, diffutils, m4, gawk and gcc, rebuilt inside the chroot | `fs` |
 | `03_phase3` | Toolchain & Core Libraries | Chroot | `packages.txt`, 98 ports: compilers, build systems, interpreters, base libraries | `fs` |
-| `04_phase4` | Userland & GUI Sliver | Chroot | `packages.txt`, 697 ports: system tools, services, firmware, the network stack, fonts, the Wayland base, Xwayland, the container layer, codecs, and KDOS's own theme, icons, splash and tools | `fs` |
+| `04_phase4` | Userland & GUI Sliver | Chroot | `packages.txt`, 1,687 ports: system tools, services, firmware, the network stack, fonts, the Wayland base, Xwayland, the container layer, codecs, the application toolkits and the natively ported applications built on them, and KDOS's own theme, icons, splash and tools | `fs` |
 | `05_desktop` | Desktop | Chroot | `packages.txt`, 22 ports: wlroots, `kdos-comp`, `kdos-shell`, `kdos-term`, `kdos-lock`, `kdos-res`, the daemons, the pack tools, fcitx5 and its engines, the portals, `kdos-record` | `fs` |
 | `05_phase5` | Kernel | Chroot | `packages.txt`, 1 port: `linux` | `fs` |
 | `06_packaging` | Packaging | Chroot | 10 scripts: see [The packaging steps](#the-packaging-steps) | `fs iso_root iso-build initramfs initramfs.cpio.gz` |
@@ -87,7 +87,7 @@ same chroot.
 `05_desktop` sorts before `05_phase5` by name (`d` before `p`), so the desktop is built before the
 kernel. The desktop is a phase of its own for two reasons. It is the only phase whose package
 search path includes `src/desktop`, which holds the compositor, the shell and the daemons that no
-earlier phase could build. And it gives the 697-port phase 4 a snapshot of its own below the
+earlier phase could build. And it gives the 1,687-port phase 4 a snapshot of its own below the
 desktop, so work on a desktop program restores phase 4 and re-runs only what the desktop adds: the
 ports its list names and the dependencies no earlier phase installs, such as `libinput`, `libwacom`
 and `mtdev`, which only `wlroots` pulls in. The kernel is the last port built before packaging.
@@ -95,16 +95,17 @@ and `mtdev`, which only `wlroots` pulls in. The kernel is the last port built be
 ### Port lists, groups and the dependency closure
 
 A `packages.txt` names only the ports a phase wants; each port's `depends =` line pulls in the rest,
-and `kpkg` installs dependencies first. The five lists hold 826 names between them, 787 of them
-distinct: 37 ports are named in more than one list. All 8 phase-2 ports appear again in
-`03_phase3`, 2 of those also in `04_phase4`, and 29 further phase-3 ports appear again in
-`04_phase4`. A port already installed from the same recipe is skipped when a later list names it
-again. A reading of every recipe's `depends =` lines reaches 1,000 of the 1,014 ports under
-`ports/core` from the lists. [The ports catalogue](../06-reference/ports-catalogue.md) lists every
-port by phase and list group, and those named more than once. The comment headings inside a list,
-such as "Core Services" or "Modern CLI tools" in phase 4, divide it into list groups for the
-reader; the orchestrator ignores them. List groups, and the recipe's own `group =` key, are
-explained in [Packaging](../03-architecture/packaging.md#phases-package-lists-and-groups).
+and `kpkg` installs dependencies first. The five lists hold 1,816 names between them, 1,776 of them
+distinct: 38 ports are named in more than one list. All 8 phase-2 ports appear again in `03_phase3`,
+2 of those also in `04_phase4`, 29 further phase-3 ports appear again in `04_phase4`, and
+`xcb-util-wm` is named in both `04_phase4` and `05_desktop`. A port already installed from the same
+recipe is skipped when a later list names it again. A reading of every recipe's `depends =` lines
+reaches 1,997 of the 2,003 ports under `ports/core` from the lists. [The ports
+catalogue](../06-reference/ports-catalogue.md) lists every port by phase and list group, and those
+named more than once. The comment headings inside a list, such as "Core Services" or "Modern CLI
+tools" in phase 4, divide it into list groups for the reader; the orchestrator ignores them. List
+groups, and the recipe's own `group =` key, are explained in
+[Packaging](../03-architecture/packaging.md#phases-package-lists-and-groups).
 
 Where `kpkg` looks for a recipe is set per phase by `PORT_REPO` in the phase environment:
 
@@ -161,8 +162,8 @@ error separately, and `script/chroot_exec.sh` sends its own diagnostics to `buil
 Every token read back must look like a package name (it starts with a letter or digit and holds
 only letters, digits, `.`, `_`, `+` and `-`), so stray output fails the phase instead of being
 installed as a package. Resolution also fails when `kpkgdepends` exits non-zero, prints nothing, or
-resolves more than 2048 packages, the most one package phase may hold and the most `kpkg`'s
-resolver returns; a phase that silently built only the first 2048 would report success. A resolution
+resolves more than 4096 packages, the most one package phase may hold and the most `kpkg`'s
+resolver returns; a phase that silently built only the first 4096 would report success. A resolution
 failure is written to `build/logs/<phase>/expansion.log`.
 
 A phase whose `packages.txt` names no ports, or whose plan selects none of its scripts, finishes at
@@ -662,7 +663,7 @@ filter, and `Enter` or `Esc` returns to the plan. It holds every directory with 
 `ports/core` and `src/packages`, plus every name in any phase's `packages.txt`; that last source is
 what puts the `src/desktop` recipes on it, since each is named in `script/05_desktop/packages.txt`,
 and it keeps a listed name that has no recipe visible. A name is listed once, and a `packages.txt`
-entry records its phase beside it. The list holds up to 2048 names; this repository gives it 1038.
+entry records its phase beside it. The list holds up to 4096 names; this repository gives it 2,027.
 
 ## kdosbuild
 

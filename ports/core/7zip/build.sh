@@ -18,3 +18,7 @@ export CXXFLAGS_BASE2="$CXXFLAGS"
 cd CPP/7zip/Bundles/Alone2
 make -f ../../cmpl_gcc.mak
 install -Dm755 b/g/7zz "$PKG/usr/bin/7zz"
+
+# 7z is the name front ends run: Ark's cli7z plugin execs `7z`, and 7zz takes
+# the same commands and switches, so a link is all that name needs.
+ln -s 7zz "$PKG/usr/bin/7z"

@@ -443,6 +443,8 @@ FRONT_END(update_main);
 FRONT_END(store_main);
 FRONT_END(firewall_main);
 FRONT_END(backup_main);
+FRONT_END(burn_main);
+FRONT_END(verify_main);
 FRONT_END(theme_main);
 FRONT_END(palette_main);
 /* The five that had no dump at all. Each is a surface somebody looks at every
@@ -495,6 +497,8 @@ static const struct {
 	{ "store",	store_main },
 	{ "firewall",	firewall_main },
 	{ "backup",	backup_main },
+	{ "burn",	burn_main },
+	{ "verify",	verify_main },
 	{ "theme",	theme_main },
 	{ "palette",	palette_main },
 	{ "shell",	panel_main },

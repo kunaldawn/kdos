@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = freeipmi
+version     = 1.6.19
+release     = 1
+source      = https://ftp.gnu.org/gnu/freeipmi/freeipmi-$version.tar.gz
+sha256      = f95c2b73797c4a0341a42a7b3c43efb60954c4130d082ad348fd40da554b4e85  freeipmi-1.6.19.tar.gz
+description = IPMI tools and libraries — sensors, event log, power control and serial-over-LAN for server BMCs and IPMI power supplies
+homepage    = https://www.gnu.org/software/freeipmi/
+depends     = pkgconf libgcrypt libgpg-error argp-standalone

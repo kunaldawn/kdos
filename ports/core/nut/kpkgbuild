@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = nut
+version     = 2.8.5
+release     = 1
+_series     = 2.8
+source      = https://networkupstools.org/source/$_series/nut-$version.tar.gz
+sha256      = 18bf32e59eb764b13da3c4fa70384926d7fa584cb31d2fe7f137a570633eeec1  nut-2.8.5.tar.gz
+description = Network UPS Tools — watch a UPS or inverter and shut down before the battery does
+homepage    = https://networkupstools.org/
+depends     = pkgconf openssl libusb libmodbus libgpiod i2c-tools avahi libtool eudev net-snmp neon freeipmi powerman

@@ -82,6 +82,7 @@ are absent if that package is removed.
 | `20_dmesg`, `22_syslog` | Kernel and system logging. `20_dmesg` lowers the console log level to 3, so only kernel errors reach the screen. `22_syslog` runs `syslogd`, whose `/etc/syslog.conf` sets `secure_mode 2`, so it opens no network socket: it neither accepts messages from other hosts nor forwards to one. `secure_mode 1` allows forwarding to an `@host` action without listening. See [Logs](#logs) |
 | `25_nftables` | The firewall, loaded before the network comes up — see [The firewall](#the-firewall) |
 | `30_network` | `dhcpcd`, the fallback DHCP client. It stays down when NetworkManager is installed and not disabled, because NetworkManager's own DHCP client does not defer to it: two clients on one link means two leases, two default routes and two writers of `/etc/resolv.conf` |
+| `31_babeld` *(babeld)* | Babel mesh routing, skipped until a non-empty `/etc/babeld.conf` exists. Open the `babel` firewall name for the neighbours |
 | `35_chrony` | Time synchronisation |
 | `40_dbus` | The system message bus. On its first start it generates `/var/lib/dbus/machine-id` and links `/etc/machine-id` to it |
 | `41_polkitd` | polkit, the privilege broker. It starts before NetworkManager, which asks it on its first privileged call |
@@ -100,21 +101,33 @@ are absent if that package is removed.
 | `55_powerd` | `kdos-powerd`: suspend, power-off and reboot for the desktop, and a few system settings (time zone, accent, autologin, firewall names) |
 | `55_tlp` | Laptop power management: `tlp init start` at boot and `tlp init stop` at shutdown, which apply the startup and shutdown radio settings in `/etc/tlp.d`. `kdos-powerd` runs `tlp suspend` and `tlp resume` around a suspend |
 | `56_energyd` | Per-application energy use |
+| `56_nut` *(nut)* | The UPS tools: the drivers, `upsd` and `upsmon`, or `upsmon` alone as a network client. Skipped unless `MODE` in `/etc/nut/nut.conf` is `standalone`, `netserver` or `netclient`. Open the `nut` firewall name to serve UPS status to other machines |
 | `57_oomd` | Memory-pressure protection: ends the heaviest application before the machine stalls, sparing the desktop itself |
 | `58_mountd` | Removable media for the desktop |
 | `59_packd` | `kdos-packd`, which mounts application *packs*: signed EROFS images holding an application, runtime, base or dataset, which boxes are built over. See [Packs and boxes](../03-architecture/packs-and-boxes.md) |
 | `60_bluetooth` | Bluetooth |
+| `62_virtlogd` *(libvirt)* | libvirt's log daemon, which keeps each guest's console log |
 | `63_gssd` *(nfs-utils)* | `rpc.gssd`, the Kerberos half of an NFS client, which a `sec=krb5` mount needs. It mounts `rpc_pipefs` at `/var/lib/nfs/rpc_pipefs` first. Skipped until `/etc/krb5.keytab` exists |
+| `63_libvirtd` *(libvirt)* | libvirt's management daemon for `qemu:///system`. Its polkit rule lets members of the `libvirt` group manage guests |
 | `65_brltty` *(brltty)* | The console screen reader, skipped until `/etc/brltty.conf` exists. Its speech goes straight to the sound card, so it cannot speak while a desktop session's PipeWire holds the card. See [Accessibility](accessibility.md) |
 | `70_sshd` | The SSH server. Before the first start it generates every missing host key type with `ssh-keygen -A`. The shipped firewall blocks port 22 until you open `ssh` |
 | `72_nfsd` *(nfs-utils)* | The NFSv4 server, skipped until `/etc/exports` names a share. It loads `nfsd`, supervises `nfsdcld` (the client records a restarted server needs) and `nfsv4.exportd`, runs `exportfs -r`, then starts the kernel threads with `rpc.nfsd -N 3 -V 4`. NFSv3 is off, so no portmapper, `rpc.mountd` or lock daemon runs. After editing `/etc/exports`, run `sudo exportfs -r`. Open the `nfs` firewall name for other machines |
 | `73_mosquitto` *(mosquitto)* | The MQTT broker, as the `mosquitto` account, skipped until `/etc/mosquitto/mosquitto.conf` exists. With no configuration the broker listens on loopback only; a `listener 1883` line there, plus the `mqtt` firewall name, lets devices on the LAN reach it |
 | `74_prosody` *(prosody)* | The XMPP chat server, as the `prosody` account, skipped until it has an account: `sudo prosodyctl adduser <user>@<host>` makes the first. Clients are refused until the host has a certificate; `sudo prosodyctl cert generate <host>` makes a self-signed one. Open the `xmpp` firewall name for other machines |
+| `75_mumble-server` *(mumble)* | The Mumble voice server, as the `mumble-server` account, skipped until its database exists: running `mumble-server -supw <password>` as that account makes it. Open the `mumble` firewall name for other machines |
 | `76_postgresql` *(postgresql)* | One shared PostgreSQL server, as the `postgres` account, skipped until a cluster exists: `sudo -u postgres initdb -D /var/lib/postgres/data` makes it. It listens on loopback and on a socket in `/tmp` |
+| `77_radicale` *(radicale)* | Radicale, the CalDAV and CardDAV server, as the `radicale` account, skipped until `/etc/radicale/users` has an account line (`name:` followed by a hash from `openssl passwd -6`). Open the `caldav` firewall name for other machines |
+| `78_maddy` *(maddy)* | The maddy mail server, as the `maddy` account, skipped until `/var/lib/maddy/credentials.db` holds an account (`maddy creds create` makes one). Open the `mail` firewall name for other machines |
+| `79_ngircd` *(ngircd)* | The ngIRCd chat server, as the `ngircd` account, skipped until a non-empty `/etc/ngircd.conf` exists; `/usr/share/doc/ngircd/sample-ngircd.conf` is the template. Open the `irc` firewall name for other machines |
 | `80_cups` | Printing |
 | `81_cups-browsed` | Printers shared on the network, added to CUPS as they appear |
 | `82_ipp-usb` | Driverless printing and scanning over USB: each IPP-over-USB device is served on localhost as it is plugged in |
 | `83_samba` *(samba)* | `smbd`, skipped until a non-empty `/etc/samba/smb.conf` exists. Open the `smb` firewall name for other machines |
+| `84_minidlna` *(minidlna)* | MiniDLNA, the media server for televisions and players on the LAN, skipped until a non-empty `/etc/minidlna.conf` exists; the template is in `/usr/share/doc/minidlna`. Open the `dlna` firewall name for other machines |
+| `85_gnuhealth` *(gnuhealth)* | The GNU Health server (`trytond`), as the `gnuhealth` account, skipped until `/etc/gnuhealth/trytond.conf` names a database `uri`. Open the `tryton` firewall name for other machines |
+| `86_kiwix-serve` | The offline library on `127.0.0.1:8080`, skipped until `/var/lib/kiwix/library.xml` lists an archive — see [The local servers](../03-architecture/boot-and-init.md#the-local-servers) |
+| `87_kolibri` | Kolibri, the offline curriculum, on `127.0.0.1:8081`, skipped until a channel is installed |
+| `88_llama-server` | The local language-model server on `127.0.0.1:8082`, skipped until a `.gguf` model is under `/usr/share/llama.cpp/models` |
 
 ### Shutdown
 
@@ -356,6 +369,7 @@ change that:
 |---|---|
 | `exec = yes` | Mount removable media without `noexec`, so programs on them can run |
 | `format = yes` | Allow formatting a removable device |
+| `write = yes` | Allow writing a disk image over a whole removable disk |
 
 The daemon never offers an internal disk, a filesystem the kernel cannot mount, anything already
 mounted, anything named in `/etc/fstab`, or the medium the system booted from. Members of `seat` or
@@ -369,15 +383,28 @@ kdos-mount list              # the removable devices, one numbered row each
 kdos-mount mount 0           # mount row 0; prints the mount point
 kdos-mount unmount 0
 kdos-mount smart 0           # the disk's SMART health verdict (smartctl -H)
+kdos-mount write 0 kdos.iso sdb   # kdos.iso over all of sdb, read back and compared
 kdos-mount shares            # the network shares connected now
 kdos-mount browse            # file servers that answered an mDNS or NetBIOS broadcast
 ```
 
 The same daemon unlocks a LUKS-encrypted stick, formats a device when `format = yes` allows it,
-and connects SMB shares, including with a Kerberos ticket from `kinit`
+writes an image over a whole stick when `write = yes` allows it (the image is opened as you and
+handed to the daemon open, and the disk's name is typed back to confirm), and connects SMB shares,
+including with a Kerberos ticket from `kinit`
 (`kdos-mount krb5 <server> <share> <user|-> <domain|->`). The passphrase or share password is
 typed into `kdos-disks` or `kdos-connect`, never on a command line. Every verb and refusal is in
 [The daemons](../04-programs/daemons.md#kdos-mountd).
+
+**Disks in the native applications.** The applications ported natively (Dolphin's device list,
+GNOME Disks, K3b, the Impression image writer, the file choosers of GTK and Qt) do not use
+`kdos-mountd`. They reach disks through udisks2, with gvfs on top for GTK. `udisksd` has no
+service script: the system bus starts it on the first request. It mounts under
+`/run/media/<user>`, and every request is decided by polkit, whose rule in
+`/etc/polkit-1/rules.d/50-kdos.rules` grants mounting, unlocking, ejecting, formatting and raw
+device access to members of `wheel` without a password. With no authentication agent to ask for a
+password, an account outside `wheel` is refused. `kdos-mountd` remains the authority for the panel
+and `kdos-devices`.
 
 ## Networking
 
@@ -544,6 +571,14 @@ kdos-power firewall ssh off
 | `mqtt` | TCP 1883 and 8883 |
 | `xmpp` | TCP 5222 |
 | `nfs` | TCP 2049 |
+| `babel` | UDP 6696 (Babel mesh routing, `babeld`) |
+| `nut` | TCP 3493 (UPS status for other machines) |
+| `mumble` | TCP and UDP 64738 (a Mumble voice server) |
+| `caldav` | TCP 5232 (Radicale's calendars and contacts) |
+| `mail` | TCP 25, 143, 465, 587 and 993 (Maddy) |
+| `irc` | TCP 6667 and 6697 (ngIRCd) |
+| `dlna` | TCP 8200, and UDP 1900 for discovery (MiniDLNA) |
+| `tryton` | TCP 8000 (the GNU Health server) |
 | `caddy` | TCP 8443 (the shipped `Caddyfile`'s site) |
 | `mosh` | UDP 60000–61000; also needs `ssh` |
 | `syncthing` | TCP and UDP 22000, and UDP 21027 for discovery |
@@ -633,13 +668,14 @@ gives that group the device. Neither works alone. The KDOS rules live in `/etc/u
 |---|---|---|
 | `70-kdos-serial.rules` | USB serial adapters — FTDI, CP210x, CH341, CDC-ACM | `dialout` |
 | `70-kdos-debug.rules` | In-circuit debuggers and programmers, raw USB and HID: CMSIS-DAP from any vendor, ST-Link, J-Link, Atmel-ICE, PICkit, USBasp, USB-Blaster, XDS110, Nu-Link, KitProg and the rest of openocd's and openFPGALoader's cables | `dialout` |
-| `70-kdos-sdr.rules` | Software-defined radio front ends, including every RTL2832U stick librtlsdr knows | `dialout` |
+| `70-kdos-sdr.rules` | Software-defined radio front ends: every RTL2832U stick librtlsdr knows, HackRF, Airspy, bladeRF, SDRplay and Mirics, LimeSDR, the USRP B-series, ADALM-Pluto, the FUNcube Dongles (their HID node too), Perseus, RFNM and Fobos | `dialout` |
 | `70-kdos-usbtmc.rules` | USB Test & Measurement: scopes, meters, function generators — `/dev/usbtmc*` and the raw USB device pyvisa-py opens | `dialout` |
 | `70-kdos-sigrok.rules` | Every logic analyser, scope and meter libsigrok's `60-libsigrok.rules` marks | `dialout` |
 | `70-kdos-gpio.rules` | `/dev/gpiochip*`, for libgpiod's tools and the GPIO cables of openocd and openFPGALoader | `dialout` |
 | `70-kdos-fido.rules` | FIDO2/U2F security keys, for `ssh-keygen -t ed25519-sk` and the `fido2-*` tools | `dialout` |
 | `70-kdos-camera.rules` | PTP/MTP cameras, for gphoto2 | `dialout` |
 | `70-kdos-scanner.rules` | Flatbed and sheet-fed scanners, for SANE | `dialout` |
+| `70-kdos-ptouch.rules` | Brother P-touch label printers, which `ptouch-print` drives over raw USB | `lpadmin` |
 | `70-kdos-gamepad.rules` | Game controllers' raw HID, for SDL's HIDAPI drivers | `input` |
 | `70-kdos-i2c.rules` | The DDC/CI line of a display controller, for `ddcutil` | `video` |
 | `70-kdos-backlight.rules` | The panel's brightness for `kdos-osd`, and the keyboard backlight where there is one | `video` |
@@ -758,17 +794,18 @@ capsule — is applied at the next boot. fwupd places the capsule on the EFI sys
 it expects at `/boot/efi` (`EspLocation` in `/etc/fwupd/fwupd.conf`, matching the installer's
 `fstab`). Then either the firmware picks it up from disk, or the machine boots once into
 `fwupdx64.efi` (from `fwupd-efi`, placed in `EFI/kdos` beside the kernel), which hands it over.
-fwupd's usual way of finding that partition needs udisks, which KDOS does not run; the `fwupd`
-package is patched to read it from sysfs and the udev database instead. The live image mounts no
-EFI partition, so there only devices updated over USB are offered. The loader is unsigned, which is
+fwupd's usual way of finding that partition is to ask udisks; the `fwupd` package is patched to
+describe the FAT filesystem mounted at `EspLocation` from sysfs and the udev database instead. The
+live image mounts no EFI partition, so there only devices updated over USB are offered. The loader is unsigned, which is
 no extra restriction, since KDOS already requires Secure Boot to be off (see
 [Known gaps](../06-reference/known-gaps.md#hardware-and-platform)).
 
 **Phones.** `libmtp` recognises a phone and gives its USB device to `dialout`. To browse its
-storage, unlock the phone, set it to file transfer, and run `aft-mtp-mount ~/Phone` (from
-`android-file-transfer`); any file manager can then read `~/Phone`, and `fusermount3 -u ~/Phone`
-unmounts it. `kdos-mountd` does not offer MTP devices, so this is always by hand. libmtp's own
-`mtp-*` tools reach files by numeric ID only. `gphoto2` and `libgphoto2` cover still cameras in PTP
+storage, unlock the phone, set it to file transfer, and open Android File Transfer from the Start
+menu, which copies to and from the phone with no mount. For a directory instead, run
+`aft-mtp-mount ~/Phone` (from `android-file-transfer`); any file manager can then read `~/Phone`,
+and `fusermount3 -u ~/Phone` unmounts it. `kdos-mountd` does not offer MTP devices, so this is
+always by hand. libmtp's own `mtp-*` tools reach files by numeric ID only. `gphoto2` and `libgphoto2` cover still cameras in PTP
 mode.
 
 **Smart cards.** `pcscd` and `ccid` reach the reader, and `opensc-pkcs11.so` speaks PIV, CAC,
@@ -1308,7 +1345,7 @@ Cloud pinyin is compiled out: it would send what you type to a remote service.
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md) — why services, packages and settings are arranged this way
 - [Security model](../03-architecture/security-model.md) — what `wheel` means and what is not protected
 - [Installation](installation.md) — the services, accounts and swap the installer sets up
-- [Known gaps](../06-reference/known-gaps.md) — what does not exist yet
+- [Known gaps](../06-reference/known-gaps.md) — what does not exist
 
 <!-- book-nav -->
 ---

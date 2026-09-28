@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = openimageio
+version     = 3.1.17.0
+release     = 1
+_robinmap   = 1.4.1
+source      = $name-$version.tar.gz::https://github.com/AcademySoftwareFoundation/OpenImageIO/archive/refs/tags/v$version.tar.gz
+source      = robin-map-$_robinmap.tar.gz::https://github.com/Tessil/robin-map/archive/refs/tags/v$_robinmap.tar.gz
+sha256      = 92a26c0af4ffc6676d72d9dfe0e991eb45fdf3192abee3d0855a24d6c721b013  openimageio-3.1.17.0.tar.gz
+sha256      = 0e3f53a377fdcdc5f9fed7a4c0d4f99e82bbb64175233bd13427fef9a771f4a1  robin-map-1.4.1.tar.gz
+description = OpenImageIO: image reading, writing and processing for film pipelines — Blender's image I/O, with oiiotool
+homepage    = https://openimageio.org/
+depends     = cmake ninja pkgconf zlib bzip2 imath openexr libjpeg-turbo libpng libtiff libdeflate libjxl libwebp openjpeg giflib libheif libraw freetype2 ffmpeg opencolorio onetbb openvdb pugixml fmt python3 python3-pybind11 numpy

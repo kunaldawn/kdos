@@ -1,0 +1,12 @@
+diff -ru a/bCNC/__main__.py b/bCNC/__main__.py
+--- a/bCNC/__main__.py
++++ b/bCNC/__main__.py
+@@ -150,7 +150,7 @@
+         elif opt == "--run":
+             run = True
+ 
+-    application = bmain.Application(className=f"  {Utils.__prg__}  ")
++    application = bmain.Application(className=Utils.__prg__)
+ 
+     palette = {"background": application.cget("background")}
+ 

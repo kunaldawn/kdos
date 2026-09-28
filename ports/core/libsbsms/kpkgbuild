@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libsbsms
+version     = 2.3.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/claytonotey/libsbsms/archive/refs/tags/$version.tar.gz
+sha256      = 4f88d152bc06fedbda9d5d65517d40254a7310c9050601a93122309d45afd2c9  libsbsms-2.3.0.tar.gz
+description = Subband sinusoidal modeling time stretch and pitch shift library
+homepage    = https://github.com/claytonotey/libsbsms
+depends     = cmake

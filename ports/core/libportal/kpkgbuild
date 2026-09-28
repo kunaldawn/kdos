@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libportal
+version     = 0.11.0
+release     = 1
+source      = https://github.com/flatpak/$name/releases/download/$version/$name-$version.tar.xz
+sha256      = abb9e452a1c372133bd3eb8f0bb30d07b2d0a8fb02001c4155cf287555db4040  libportal-0.11.0.tar.xz
+description = Client library for the XDG desktop portals, with GTK 3 and GTK 4 parent windows
+homepage    = https://github.com/flatpak/libportal
+depends     = meson glib gtk3 gtk4 gobject-introspection glib-introspection vala

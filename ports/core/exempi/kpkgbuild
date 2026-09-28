@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = exempi
+version     = 2.6.6
+release     = 1
+source      = https://libopenraw.freedesktop.org/download/$name-$version.tar.xz
+sha256      = 900fb9957be2095c78e5111b99c49378adac58161a358f52f93c55126f34eb8f  exempi-2.6.6.tar.xz
+description = XMP metadata library and the exempi tool, from Adobe's XMP SDK
+homepage    = https://libopenraw.freedesktop.org/exempi/
+depends     = expat zlib

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ft2-clone
+version     = 2.24
+release     = 1
+source      = https://github.com/8bitbubsy/ft2-clone/archive/refs/tags/v$version.tar.gz
+sha256      = 27ad12f1fb86fe87bc669a66c8c1c9517f7bcac3af9f716db4a5b91856b05436  ft2-clone-2.24.tar.gz
+description = Fasttracker II clone — the XM tracker, pixel for pixel, on SDL2
+homepage    = https://16-bits.org/ft2.php
+depends     = cmake ninja pkgconf sdl2-compat alsa-lib musl-fts

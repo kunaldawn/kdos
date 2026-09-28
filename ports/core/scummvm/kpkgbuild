@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = scummvm
+version     = 2026.3.0
+release     = 1
+source      = https://downloads.scummvm.org/frs/scummvm/$version/scummvm-$version.tar.xz
+sha256      = b863a81e1598df8bc4aa0c33e3d9b1c8bbede1879d94d91568a4f200057677e7  scummvm-2026.3.0.tar.xz
+description = ScummVM — runs classic point-and-click adventure and role-playing games from their original data files
+homepage    = https://www.scummvm.org
+depends     = pkgconf librsvg sdl2-compat mesa libglvnd alsa-lib fluidsynth speech-dispatcher libogg libvorbis flac libmad faad2 libtheora libvpx libjpeg-turbo libpng giflib freetype2 fribidi zlib libmpeg2 a52dec libopenmpt

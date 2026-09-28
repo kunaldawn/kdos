@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qmapshack
+version     = 1.21.1
+release     = 1
+_asmjit     = 0bd5787b54b575ed94bf32ac452153b34385c514
+_blend2d    = def0d1238c3e5d0983bb848e5676049d829e435b
+source      = $name-$version.tar.gz::https://github.com/Maproom/qmapshack/archive/refs/tags/V_$version.tar.gz
+source      = asmjit-$_asmjit.tar.gz::https://github.com/asmjit/asmjit/archive/$_asmjit.tar.gz
+source      = blend2d-$_blend2d.tar.gz::https://github.com/blend2d/blend2d/archive/$_blend2d.tar.gz
+sha256      = e6e18fc22a9d14ae774f67e2fce0e5f73b2d2617b10681aa77ee88ab580f92c2  qmapshack-1.21.1.tar.gz
+sha256      = 8d642612b05d0fd932beee8bdb8c9559c675cb4d2db2946b9636a1fef32b3fb9  asmjit-0bd5787b54b575ed94bf32ac452153b34385c514.tar.gz
+sha256      = fac3fc318d5236b6cfeec9124995f3e5866166cad37febb520517ebdc97cd100  blend2d-def0d1238c3e5d0983bb848e5676049d829e435b.tar.gz
+description = QMapShack: offline topographic maps, elevation models, GPS tracks and route planning with Routino
+homepage    = https://github.com/Maproom/qmapshack
+depends     = cmake ninja git python3 qt6-qtbase qt6-qt5compat qt6-qttools qt6-qtdeclarative qt6-qtsvg qt6-qtwebengine gdal proj libjpeg-turbo routino udisks2 hicolor-icon-theme

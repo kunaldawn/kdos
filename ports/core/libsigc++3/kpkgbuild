@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libsigc++3
+version     = 3.6.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/libsigc++/${version%.*}/libsigc++-$version.tar.xz
+sha256      = c3d23b37dfd6e39f2e09f091b77b1541fbfa17c4f0b6bf5c89baef7229080e17  libsigc++3-3.6.0.tar.xz
+description = Typesafe callback framework for C++, the 3.x API (sigc++-3.0) that gtkmm 4 builds on
+homepage    = https://libsigcplusplus.github.io/libsigcplusplus/
+depends     = meson python3
+devseries   = odd-minor

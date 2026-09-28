@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wlvncc
+version     = 0.1.0.20260429
+release     = 1
+_commit     = cc0abf87c37920540f2439a556e6a480c28f8f46
+source      = $name-$version.tar.gz::https://github.com/any1/wlvncc/archive/$_commit.tar.gz
+sha256      = 0576997905b57399fb678b590bf14fdb21941b9f4d25d1f579769418ec602b36  wlvncc-0.1.0.20260429.tar.gz
+description = Wayland-native VNC client drawing through EGL/GLES2, with H.264 decoding by FFmpeg
+homepage    = https://github.com/any1/wlvncc
+depends     = meson ninja pkgconf wayland wayland-protocols libxkbcommon pixman libdrm mesa ffmpeg aml libgcrypt gnutls cyrus-sasl libjpeg-turbo libpng lzo zlib

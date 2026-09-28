@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libretro-genesis-plus-gx
+version     = 20260912
+release     = 1
+_commit     = c2838c7dc4236fc2fe94e5dbd08b41486067918e
+source      = $name-$version.tar.gz::https://github.com/libretro/Genesis-Plus-GX/archive/$_commit.tar.gz
+sha256      = 7ba2eab9d6dae71bb42e8208573300ad3475a4263e860178c4d19c36d85fc92b  libretro-genesis-plus-gx-20260912.tar.gz
+description = Genesis Plus GX as a libretro core — Mega Drive, Mega-CD, Master System and Game Gear (non-commercial licence)
+homepage    = https://github.com/libretro/Genesis-Plus-GX

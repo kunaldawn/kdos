@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = python3-html5lib
+version     = 1.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/h/html5lib/html5lib-$version.tar.gz
+sha256      = b2e5b40261e20f354d198eae92afc10d750afb487ed5e50f9c4eaf07c184146f  python3-html5lib-1.1.tar.gz
+description = An HTML parser following the WHATWG HTML specification, for Python
+homepage    = https://github.com/html5lib/html5lib-python
+depends     = python3 python3-pip python3-setuptools python3-six python3-webencodings

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ki18n
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = dfbfc8af89b3bc68810b094bf87746db87c3eeb35b75caeb1882681ebed563bd  ki18n-6.30.0.tar.xz
+description = KDE Frameworks: gettext-based translation for Qt programs
+homepage    = https://api.kde.org/frameworks/ki18n/html/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative gettext python3 iso-codes

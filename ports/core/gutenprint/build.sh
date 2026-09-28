@@ -13,8 +13,8 @@
 # gutenprint is what makes ~5000 older USB inkjets and dye-subs produce the
 # colours they were sold with.
 #
-# The two GUI halves are off by rule — libgutenprintui2 is GTK and the gimp
-# plugin needs GIMP, neither of which exists on this host. What ships is the
+# The two GUI halves are off — libgutenprintui2 is GTK and the gimp plugin
+# needs GIMP, and neither has a consumer here. What ships is the
 # driver, the CUPS backend and the PPD generator. The dye-sub backend
 # (gutenprint53+usb) is built only when configure finds libusb-1.0, which is
 # why libusb is a dependency. readline gives escputil's interactive head

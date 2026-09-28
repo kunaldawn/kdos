@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = flare-engine
+version     = 1.15
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/flareteam/flare-engine/archive/refs/tags/v$version.tar.gz
+sha256      = 642db16111487bf8a3fb7ebadcfc635909c7eaf91df7723ee22fae1caac9fe93  flare-engine-1.15.tar.gz
+description = FLARE — the engine of the Flare isometric action RPG, run by the game data of flare-game or any other mod
+homepage    = https://flarerpg.org
+depends     = cmake ninja sdl2-compat sdl2-image sdl2-mixer sdl2-ttf

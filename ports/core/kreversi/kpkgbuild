@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kreversi
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 251810115e224275e2c2bd16fc21f2d92e7a28b9c6d968d16bc93eeed2305fca  kreversi-26.08.1.tar.xz
+description = KReversi — the reversi board game against the computer or a second player
+homepage    = https://apps.kde.org/kreversi/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland qt6-qtdeclarative qt6-qtsvg kcolorscheme kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes kjobwidgets kio kxmlgui kwidgetsaddons libkdegames

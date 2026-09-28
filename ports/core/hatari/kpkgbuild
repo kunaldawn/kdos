@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hatari
+version     = 2.6.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/hatari/hatari/archive/refs/tags/v$version.tar.gz
+sha256      = 75f09c8deddb511b8c1574b84c507743097db9abc6edbb078f942efa8677547e  hatari-2.6.1.tar.gz
+description = Hatari — Atari ST, STE, TT and Falcon emulator, with the Hatari UI configuration front end
+homepage    = https://www.hatari-emu.org/
+depends     = cmake ninja pkgconf sdl2-compat zlib libpng readline portmidi capstone eudev python3 python3-gobject gtk3

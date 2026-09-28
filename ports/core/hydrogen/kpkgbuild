@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hydrogen
+version     = 1.2.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/hydrogen-music/hydrogen/archive/refs/tags/$version.tar.gz
+sha256      = efba32610498acde76fa2e147017c91b20c13ec945e05e348cd4183fd1613be1  hydrogen-1.2.6.tar.gz
+description = Pattern-based drum machine and sequencer with sample drum kits
+homepage    = https://hydrogen-music.org/
+depends     = cmake ninja pkgconf librsvg qt6-qtbase qt6-qtsvg qt6-qttools qt6-qtwayland libsndfile libarchive alsa-lib libpulse ladspa lrdf liblo

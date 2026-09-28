@@ -14,8 +14,7 @@ tree or a device tree), a script run on a booted image, or daily use. Where the 
 than the verdict suggests, the row says so. Other terms, such as *lane* and *rig*, are defined in
 the [Glossary](glossary.md).
 
-Two companion chapters cover what this one does not: [Known gaps](known-gaps.md) lists what does
-not exist at all, and [Roadmap](roadmap.md) says where work is heading.
+The companion chapter [Known gaps](known-gaps.md) lists what does not exist at all.
 
 ## Release line
 
@@ -44,7 +43,6 @@ The verdicts, from most to least mature:
 | Beta | Complete and exercised under real conditions, but not across the range of cases it must handle |
 | In progress | Works, and is incomplete or unexercised in the places the row names |
 | Experimental | Present, and not to be relied upon |
-| Not started | Named in the tree, with nothing behind the name |
 
 ## Overall maturity
 
@@ -54,7 +52,7 @@ produced by it. Its least exercised piece is the source archive, whose scripts a
 checked for soundness but are not exercised end to end by any harness.
 
 The desktop is stable in daily use. Its libraries are well covered. Its surfaces are covered by
-goldens rather than by interaction tests, and 14 of the shell's 52 are covered by neither; 3 of
+goldens rather than by interaction tests, and 14 of the shell's 54 are covered by neither; 3 of
 those have no offscreen dump at all.
 
 The pack lane (see the [Glossary](glossary.md)), from an installed pack to a composed box, works
@@ -65,13 +63,20 @@ The least mature parts of the desktop are the terminal `kdos-term`, the input-me
 `kdos-ime`, touch input, and drag and drop, all rated Experimental below. The resource daemons sit
 between these and the stable core: their arithmetic is asserted against recorded state, and
 `kdos-oomd` has made its one irreversible decision on a live machine once, with a single obvious
-candidate. Nothing has been built for aarch64 or for a phone.
+candidate. KDOS builds for x86_64 only.
 
-Screen reading of the desktop has no row, because there is nothing to rate: no screen reader can
-read this desktop, since a KDOS surface exposes no tree of accessible objects. `libktui` records
-what each focused control is, once per frame; nothing carries that record out of the process or
-reads it outside the library's self-test. See [Known gaps](known-gaps.md#desktop) and
-[Accessibility](../02-user-guide/accessibility.md).
+The natively ported applications are the least proved part: 989 recipes for the graphical
+stacks, the applications and what they need are written, with every source fetched and hashed,
+and wired into the build through phase 4's package list, and none of them has been through a
+build. Of the recipes that do build, 73 carry changes that no build has carried out, among them
+`pinentry` drawing a Qt dialog and `libdvdread` linking `libdvdcss`. See
+[Applications and boxes](#applications-and-boxes) below.
+
+Screen reading of KDOS's own windows has no row, because there is nothing to rate: a KDOS surface
+exposes no tree of accessible objects, so Orca, which reads the native applications, reads none of
+the desktop's own windows. `libktui` records what each focused control is, once per frame; nothing
+carries that record out of the process or reads it outside the library's self-test. See
+[Known gaps](known-gaps.md#desktop) and [Accessibility](../02-user-guide/accessibility.md).
 
 ## Host and packaging
 
@@ -81,19 +86,21 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 1,038 recipes, listed by group in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses and every dependency resolves |
+| The ports tree | Stable | 2,027 recipes, listed by group in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses and every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata` and `XZ_OPT=-T0`, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream. `kdosbuild --selftest` separately asserts the view geometry and the log classifier |
 | Snapshots and plans | Stable | Used by every incremental build, and by the synthetic-tree run above |
 | Upstream sources | In progress | 1,678 files archived. Preflight checks the scripts and the index; no harness publishes to or fetches from the archive |
 | The pack format | Stable | Malformed footers, both footer formats, signature states and a flipped payload byte are each asserted by the library self-test |
-| The binary host | In progress | Signing, the index and deltas are asserted against a synthetic port. No public binary host exists: the mechanism is complete and unused |
-| The application catalogue | Stable | 180 applications and 2 datasets over 7 runtimes and 2 base packs, offered in 7 groups (21 `group` lines). Preflight checks the catalogue's rows against the tree. Applications are built on demand on the machine; the image carries the catalogue and no applications |
+| The binary host | In progress | Signing, the index and deltas are asserted against a synthetic port. `make build KDOS_MAKE_BINHOST=1` writes a signed one to `build/binhost/`; no public binary host exists |
+| The application catalogue | Stable | 73 applications and 2 datasets over 7 runtimes and 2 base packs, offered in 7 groups (17 `group` lines). Preflight checks the catalogue's rows against the tree. Applications are built on demand on the machine; the image carries the catalogue and no applications |
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** `testing/preflight.sh` checks that every recipe parses as metadata, declares
+- **The ports tree.** Of the 2,027 recipes, 989 are the native applications' stacks, applications
+  and dependencies, which have been fetched and hashed and have not been built.
+  `testing/preflight.sh` checks that every recipe parses as metadata, declares
   a name, version and release, has a `build.sh` that parses, carries the KDOS banner and names a
   hash for every source; that every `depends` names a port that exists; and that every
   `packages.txt` resolves to a dependency order.
@@ -140,7 +147,7 @@ See [The session](../03-architecture/session.md) and the chapters of
 | Subsystem | Status | Evidence |
 |---|---|---|
 | The compositor | Stable | A frozen fork of labwc 0.20.0, in daily use. Its 16 KDOS files are less exercised than the labwc base |
-| kdos-shell | Stable | 52 surfaces under 53 names. 38 of them have committed goldens, the panel and the desktop included. The 14 without are `kdos-ascii`, `kdos-cal`, `kdos-mediad`, `kdos-about`, `kdos-calc`, `kdos-time`, `kdos-users`, `kdos-note`, `kdos-slit`, `kdos-audio`, `kdos-bt`, `kdos-devices`, `kdos-clip` and `kdos-ime`; of those, `kdos-ascii`, `kdos-mediad` and `kdos-ime` have no offscreen dump at all. A surface that fails to compile drops out of the golden run with a line naming it; a link failure in any candidate drops every candidate surface and prints a NOTE naming each, so neither passes unnoticed; see [Testing](../05-developer/testing.md#how-the-dump-harness-is-built) |
+| kdos-shell | Stable | 54 surfaces under 55 names. 40 of them have committed goldens, the panel and the desktop included. The 14 without are `kdos-ascii`, `kdos-cal`, `kdos-mediad`, `kdos-about`, `kdos-calc`, `kdos-time`, `kdos-users`, `kdos-note`, `kdos-slit`, `kdos-audio`, `kdos-bt`, `kdos-devices`, `kdos-clip` and `kdos-ime`; of those, `kdos-ascii`, `kdos-mediad` and `kdos-ime` have no offscreen dump at all. A surface that fails to compile drops out of the golden run with a line naming it; a link failure in any candidate drops every candidate surface and prints a NOTE naming each, so neither passes unnoticed; see [Testing](../05-developer/testing.md#how-the-dump-harness-is-built) |
 | kdos-res | Stable | Eleven pages, each with goldens at three sizes, plus the detail page, taken against a recorded system state |
 | The phosphor pass | Stable | On by default (`crt` in the compositor's configuration). Its input and output can be dumped to image files without a screen through `KDOS_CRT_DUMP`. It appears in no photograph from the [rig](../05-developer/testing.md) (the QEMU harness that boots a real image and photographs it), because the rig's virtual display puts the compositor on software rendering, where the pass switches itself off |
 | The `kdos` command | In progress | The self-test compiles `kdos-tools` and runs 10 of the 31 subcommands against fixtures: `app`, `clone`, `cve`, `doctor`, `march`, `rebuild`, `remind`, `stutter`, `theme` and `thumb`. `share` is exercised under its other name, `kdos-share`, with `croc` stubbed. `hey` is run on a booted machine by `testing/packlane.sh` and `testing/appsweep.sh`, and `notify` by `testing/usability.sh`. The remaining 18 are not run by any harness. See [The kdos command](../04-programs/kdos-command.md) |
@@ -188,6 +195,7 @@ See [Packs and boxes](../03-architecture/packs-and-boxes.md) and
 | kdos-packd | Beta | The self-test runs `kdos-packd --fixture`, which solves and composes without mounting: it asserts the lowerdir order (application, runtime, base), signature verification, and the refusal to compose a data pack into a box root. On a booted machine that already holds packs, `testing/packlane.sh` installs a pack, mounts it read-only, composes a box and reports each skip with its reason. The image carries no packs, so they must be imported before that harness can pass. Rollback is not exercised by any harness |
 | Boxes | Stable | One box per application, in daily use. The self-test asserts that a box profile prints the podman flag behind every key, reports an unknown key by name, and says which keys it cannot enforce rather than reporting success |
 | kdos-appbox | Stable | Every application launcher on the system goes through it. The self-test asserts launcher generation from an image's desktop entries, that a second box's launcher cannot collide with the default's, and that `kdos-appbox open` resolves a path to the program that opens it |
+| Native applications | Experimental | 989 recipes, from the X11 client libraries, GTK, Qt 6 and 5, QtWebEngine, KDE Frameworks 6, WebKitGTK and wxWidgets up to the browsers, office suites, creative, science, radio and CAD applications, games and emulators, each named in `script/04_phase4/packages.txt` and grouped there by what it is for. Every source is fetched and its hash recorded; the published source archive holds almost none of them. No recipe has been through a build and no application has been started on an image. See [Known gaps](known-gaps.md#the-native-applications-have-not-been-built) |
 | kdos-boxsock | Stable | Every boxed client is tagged through it with the `security-context-v1` protocol (which marks a Wayland connection as coming from a sandbox), and the compositor grants a box an interface only when its profile names it. The self-test compiles it against the protocol |
 
 ## Daemons
@@ -206,10 +214,9 @@ See [The daemons](../04-programs/daemons.md).
 | Subsystem | Status | Evidence |
 |---|---|---|
 | The C libraries | Stable | 17 libraries, compiled with warnings as errors, with one shared assertion program (`src/libs/selftest.c`) and a check that every consumer still compiles against them. The suite can be run under the address and undefined-behaviour sanitizers with `CC="cc -fsanitize=address,undefined -g" testing/selftest.sh`; see [The C libraries](../05-developer/c-libraries.md) |
-| The test harness | Stable | 48 preflight checks, 193 committed goldens, 38 recorded fixture sets |
+| The test harness | Stable | 49 preflight checks, 202 committed goldens, 40 recorded fixture sets |
 | The QEMU rig | Stable | Drives a real session, photographs it, and runs scripts inside the guest |
 | The documentation | In progress | This book. Structural facts are taken from the tree; some measurements, such as the `kdos-oomd` run above, are quoted rather than re-taken. See [Known gaps](known-gaps.md#documentation) |
-| aarch64 and mobile | Not started | `script-mobile/` holds seven phase-environment files, a wrapper (`kdosbuild.sh`) that compiles the shared orchestrator and runs it against that directory, and one port helper (`util/port.sh`). There are no phase steps, no build root, no port overlay, no `chroot_exec.sh` and no `Makefile` target, and nothing has been built for the architecture. See [Roadmap](roadmap.md#aarch64-and-mobile) |
 
 Five shipped programs carry no verdict here, because no harness exercises their behaviour: the
 screen locker `kdos-lock`, whose client half and setuid helper `kdos-checkpass` the self-test
@@ -225,21 +232,21 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 1,038 | `find ports/core src/packages src/desktop -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 1,014 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 2,027 | `find ports/core src/packages src/desktop -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 2,003 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/packages` | 11 | `find src/packages -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 13 | `find src/desktop -name kpkgbuild \| wc -l` |
 | Archived source files | 1,678 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |
-| Catalogue applications | 180 | `grep -c '^app ' src/packages/kdos-appbox/catalogue` |
+| Catalogue applications | 73 | `grep -c '^app ' src/packages/kdos-appbox/catalogue` |
 | Catalogue datasets | 2 | `grep -c '^data ' src/packages/kdos-appbox/catalogue` |
 | Catalogue runtimes | 7 | `grep -c '^runtime ' src/packages/kdos-appbox/catalogue` |
 | Catalogue base packs | 2 | `grep -c '^base ' src/packages/kdos-appbox/catalogue` |
-| Catalogue `group` lines | 21 | `grep -c '^group ' src/packages/kdos-appbox/catalogue` |
+| Catalogue `group` lines | 17 | `grep -c '^group ' src/packages/kdos-appbox/catalogue` |
 | Catalogue groups | 7 | `awk '$1=="group"{print $2}' src/packages/kdos-appbox/catalogue \| sort -u \| wc -l` |
 | Kernel | 7.2.7 | `grep '^version' ports/core/linux/kpkgbuild` |
 | C libraries written here | 17 | `ls -d src/libs/*/ \| wc -l` |
-| Names `kdos-shell` answers to | 53 | the `TOOLS[]` table in `src/desktop/kdos-shell/main.c` |
-| Distinct `kdos-shell` surfaces | 52 | the distinct entry points in that table |
+| Names `kdos-shell` answers to | 55 | the `TOOLS[]` table in `src/desktop/kdos-shell/main.c` |
+| Distinct `kdos-shell` surfaces | 54 | the distinct entry points in that table |
 | `kdos` subcommands | 31 | the dispatch in `kdos_main()`, `src/packages/kdos-tools/kdos.c`, counting `help` |
 | Names `kdos-tools` answers to | 12 | the `TOOLS[]` table in `src/packages/kdos-tools/main.c` |
 | Names `kpkg` answers to | 5 | the `TOOLS[]` table in `src/packages/kdos-kpkg/main.c` |
@@ -247,14 +254,14 @@ a clean checkout and you should get the same number.
 | Control-centre pages | 9 | the `CAT_NAMES[]` table in `src/desktop/kdos-shell/settings.c` |
 | Accents | 8 | the `KCOL_SCHEMES` macro in `src/libs/libkcolor/kcolor.h` |
 | Build phases | 8 | `ls -d script/0*/ \| wc -l` |
-| Preflight checks | 48 | `grep -c '==>' testing/preflight.sh`, less the one that builds `kpkg` |
-| Committed goldens | 193 | `ls testing/goldens/*.txt \| wc -l` |
+| Preflight checks | 49 | `grep -c '==>' testing/preflight.sh`, less the one that builds `kpkg` |
+| Committed goldens | 202 | `ls testing/goldens/*.txt \| wc -l` |
 | — cell frames | 9 | `ls testing/goldens/cells-*.txt \| wc -l` |
 | — `libkvt` replays | 9 | `ls testing/goldens/vt-*.txt \| wc -l` |
 | — `kdos-term` frames | 4 | `ls testing/goldens/term-*.txt \| wc -l` |
 | — `kdos-res` frames | 36 | `ls testing/goldens/res-*.txt \| wc -l` |
-| Recorded fixture sets | 38 | `ls -d testing/fixtures/*/ \| wc -l` |
-| Distinct `KDOS_*` variables read | 128 | the command below |
+| Recorded fixture sets | 40 | `ls -d testing/fixtures/*/ \| wc -l` |
+| Distinct `KDOS_*` variables read | 131 | the command below |
 
 The variable count is the union of `getenv("KDOS_*")` calls under `src/` and `$KDOS_*` references in
 the build scripts, the sources, the root filesystem, the harnesses, the source-archive scripts and
@@ -270,7 +277,6 @@ the `Makefile`:
 ## See also
 
 - [Known gaps](known-gaps.md) — what does not exist at all
-- [Roadmap](roadmap.md) — where work is heading
 - [Testing](../05-developer/testing.md) — what each harness proves, and what it cannot
 - [Why KDOS](../01-philosophy/why-kdos.md) — the trade this chapter measures
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md) — the choices whose maturity this chapter rates
@@ -280,4 +286,4 @@ the `Makefile`:
 <!-- book-nav -->
 ---
 
-*Part VI — Reference, chapter 45.* Previous: [44. Roadmap](roadmap.md) · [Contents](../README.md) · Next: [46. Glossary](glossary.md)
+*Part VI — Reference, chapter 44.* Previous: [43. Known gaps](known-gaps.md) · [Contents](../README.md) · Next: [45. Glossary](glossary.md)

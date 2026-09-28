@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = optipng
+version     = 7.9.1
+release     = 1
+source      = https://downloads.sourceforge.net/project/$name/OptiPNG/$name-$version/$name-$version.tar.gz
+sha256      = c2579be58c2c66dae9d63154edcb3d427fef64cb00ec0aff079c9d156ec46f29  optipng-7.9.1.tar.gz
+description = Lossless PNG optimiser
+homepage    = https://optipng.sourceforge.net/
+depends     = cmake ninja libpng zlib

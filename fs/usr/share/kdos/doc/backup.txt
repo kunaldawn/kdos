@@ -1,16 +1,33 @@
 KDOS BACKUP
 
-What is in the restic repository, newest first, and one key to add to it.
+What is in the restic repository, newest first, one key to add to it, and
+the way back out of it.
 
+  Enter     opens the selected snapshot in the restore view.
   b         backs up now. It does not wait: a first run over a home directory
             is minutes to hours, and the snapshot appears in the list when it
             finishes.
   r         re-reads the repository.
 
-This window does not restore. `restic restore <snapshot> --target <dir>` is the
-command, and it is deliberately a command: restoring is what you do once, under
-pressure, and it wants the options in front of you rather than a button whose
-defaults you cannot see. `restic help restore` lists them.
+Restoring
+
+  The restore view lists one folder of the snapshot at a time.
+
+  Enter     opens the selected folder.
+  Backspace goes up one folder.
+  t         restores the selected file or folder.
+  Esc       goes back to the list of snapshots.
+
+  A restore lands in ~/Restored/<snapshot>/, with the entry's whole path
+  recreated beneath it: /home/kdos/Documents/notes.txt from snapshot e399cdcf
+  comes back as ~/Restored/e399cdcf/home/kdos/Documents/notes.txt. It never
+  writes over the original, so you compare the two and move what you want.
+  restic's last line shows while it runs, and closing the window does not
+  stop it.
+
+  `restic restore` at a terminal does everything this does and more — a
+  restore to another place, a whole snapshot, a pattern. `restic help restore`
+  lists the options.
 
 Configuration
 

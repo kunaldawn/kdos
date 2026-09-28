@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pioneer
+version     = 20260907
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/pioneerspacesim/pioneer/archive/refs/tags/$version.tar.gz
+sha256      = 11d1fbf745f5fc710f30cce02065b60e5aeb05f7c79b2cfdde8b4c64ec132491  pioneer-20260907.tar.gz
+description = Pioneer — open-ended space trading and combat across a procedurally generated Milky Way, with Newtonian flight
+homepage    = https://pioneerspacesim.net
+depends     = cmake ninja pkgconf python3 sdl2-compat sdl2-image assimp libsigc++2 libvorbis freetype2 glew libglvnd mesa openal-soft

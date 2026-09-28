@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kitemmodels
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = f807e5b37aa913d2563ee1a21b2bce7d34495f32f38c7f35f16262d736bdfd55  kitemmodels-6.30.0.tar.xz
+description = KDE Frameworks: proxy and helper item models for Qt
+homepage    = https://api.kde.org/frameworks/kitemmodels/html/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative

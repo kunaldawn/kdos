@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kseexpr
+version     = 6.0.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://invent.kde.org/graphics/kseexpr/-/archive/v$version/kseexpr-v$version.tar.gz
+sha256      = 60f84d26f922b65951a81cfb37323040927c5f01101a60f9563573016e0a52b8  kseexpr-6.0.0.0.tar.gz
+description = Krita fork of the SeExpr expression language, the Qt 6 build
+homepage    = https://invent.kde.org/graphics/kseexpr
+depends     = cmake ninja extra-cmake-modules qt6-qtbase bison flex

@@ -69,6 +69,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <linux/fs.h>		/* BLKFLSBUF, BLKRRPART — the image write */
+#include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <sys/socket.h>
 #include <sys/sysmacros.h>	/* major(), minor() — the device check */
@@ -2074,6 +2076,389 @@ static int do_format(int idx, const char *fstype, const char *confirm,
 	return 0;
 }
 
+/* ── writing an image ──────────────────────────────────────────────────
+ *
+ * `write` puts a disk image — an installer, a live system — over the whole of
+ * a removable disk, and then reads the disk back and compares it with the
+ * image. It is the most destructive verb this daemon has, and every clause
+ * below is a refusal that stands between a person and the wrong disk.
+ * ────────────────────────────────────────────────────────────────────── */
+
+/* OPT-IN ON A SHIPPED IMAGE, for `format`'s reason: it replaces everything on
+ * the disk, and a default that offered it on every machine is one mis-click
+ * from unrecoverable. A key of its own, because a person who turned on
+ * formatting a stick has not thereby said anything about overwriting one. */
+static bool write_allowed(void)
+{
+	char *s = kb_read_all(conf_path(), NULL);
+	bool yes = false;
+
+	if (!s)
+		return false;
+	yes = strstr(s, "write = yes") != NULL ||
+	      strstr(s, "write=yes") != NULL;
+	free(s);
+	return yes;
+}
+
+/*
+ * WHERE THE FIXTURE'S BYTES GO. Under `--fixture` a "disk" is a scratch file
+ * and nothing is written to anything that looks like a device: the image is
+ * copied into the file this names, and the verify reads it back from there,
+ * so the copy and the comparison are both exercised with no disk to lose.
+ * Gated like every other root here — a variable inherited from an init
+ * environment names nothing.
+ */
+static const char *sink_path(void)
+{
+	const char *p = km_fixture ? getenv("KDOS_MOUNTD_SINK") : NULL;
+	return p && *p ? p : NULL;
+}
+
+/*
+ * A PARTITION THAT IS NOT A ROW IS STILL ON THE DISK. The list leaves out
+ * whatever /etc/fstab names and whatever the system runs from, because those
+ * are not this daemon's to hand out — and a write replaces them along with
+ * every row. So every partition of the disk, and the disk's own node, is
+ * probed here, and one the list would have hidden refuses the whole write.
+ * O_EXCL catches what is mounted; this catches what is not mounted now and is
+ * still somebody's.
+ */
+static bool km_disk_foreign(const char *disk, char *out, size_t nout)
+{
+	char path[512], node[256], label[KM_NAME], fstype[32];
+	char **parts;
+	int pn = 0;
+	bool foreign = false;
+
+	snprintf(node, sizeof(node), "%s/%s", devroot(), disk);
+	probe_fs(node, label, sizeof(label), fstype, sizeof(fstype));
+	if (in_fstab(node, label) || is_boot_medium(node, fstype)) {
+		snprintf(out, nout, "%.31s is in /etc/fstab or holds the "
+				    "running system", disk);
+		return true;
+	}
+	snprintf(path, sizeof(path), "%s/block/%s", sysroot(), disk);
+	parts = kb_listdir(path, &pn);
+	for (int k = 0; parts && k < pn && !foreign; k++) {
+		if (strncmp(parts[k], disk, strlen(disk)))
+			continue;
+		snprintf(path, sizeof(path), "%s/block/%s/%s/partition",
+			 sysroot(), disk, parts[k]);
+		if (access(path, F_OK) != 0)
+			continue;
+		snprintf(node, sizeof(node), "%s/%s", devroot(), parts[k]);
+		probe_fs(node, label, sizeof(label), fstype, sizeof(fstype));
+		if (in_fstab(node, label) || is_boot_medium(node, fstype)) {
+			snprintf(out, nout, "%.31s is in /etc/fstab or holds "
+					    "the running system", parts[k]);
+			foreign = true;
+		}
+	}
+	kb_strv_free(parts);
+	return foreign;
+}
+
+/* The whole disk's size in bytes, from /sys. A partition row carries its
+ * partition's size, and an image is measured against the disk it replaces. */
+static unsigned long long km_disk_bytes(const char *disk)
+{
+	char path[512], *sz;
+	unsigned long long v;
+
+	snprintf(path, sizeof(path), "%s/block/%s/size", sysroot(), disk);
+	sz = read_trim(path);
+	v = sz ? strtoull(sz, NULL, 10) * 512ULL : 0;
+	free(sz);
+	return v;
+}
+
+/*
+ * THE WHOLE-DISK NODE, opened for writing and checked to BE that disk.
+ *
+ * O_NOFOLLOW and the `st_rdev` comparison are km_node_is()'s, for the whole
+ * disk rather than the row. O_EXCL IS THE LOCK: on a block device it is the
+ * kernel's exclusive claim, which fails with EBUSY while any partition of the
+ * disk is mounted, mapped or claimed by another writer — and, held for the
+ * length of the write, makes a mount, a format or a second write refuse in
+ * turn. A check of /proc/mounts alone would race the next request.
+ */
+static int km_open_disk(const char *disk, char *out, size_t nout)
+{
+	char node[512], path[512], *txt;
+	unsigned maj = 0, min = 0;
+	struct stat st;
+	int fd;
+
+	snprintf(node, sizeof(node), "%s/%s", devroot(), disk);
+	if (km_fixture) {
+		const char *sink = sink_path();
+
+		printf("write %s\n", node);
+		fflush(stdout);
+		if (!sink) {
+			snprintf(out, nout, "no sink for the fixture");
+			return -1;
+		}
+		fd = open(sink, O_RDWR | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (fd < 0)
+			snprintf(out, nout, "the sink will not open");
+		return fd;
+	}
+	snprintf(path, sizeof(path), "%s/block/%s/dev", sysroot(), disk);
+	txt = read_trim(path);
+	if (!txt || sscanf(txt, "%u:%u", &maj, &min) != 2) {
+		free(txt);
+		snprintf(out, nout, "%s is gone", disk);
+		return -1;
+	}
+	free(txt);
+	fd = open(node, O_RDWR | O_EXCL | O_NOFOLLOW | O_CLOEXEC);
+	if (fd < 0) {
+		snprintf(out, nout, errno == EBUSY
+			 ? "%s is in use — unmount and close everything on it"
+			 : "%s will not open", disk);
+		return -1;
+	}
+	if (fstat(fd, &st) != 0 || !S_ISBLK(st.st_mode) ||
+	    major(st.st_rdev) != maj || minor(st.st_rdev) != min) {
+		close(fd);
+		snprintf(out, nout, "%.31s is not the device it was", disk);
+		return -1;
+	}
+	return fd;
+}
+
+/* One line to the client, never blocking on it and never killed by it: the
+ * surface that asked may have been closed, and the write goes on without it. */
+static void km_say(int c, const char *fmt, ...)
+	__attribute__((format(printf, 2, 3)));
+static void km_say(int c, const char *fmt, ...)
+{
+	char line[256];
+	va_list ap;
+	int n;
+
+	va_start(ap, fmt);
+	n = vsnprintf(line, sizeof(line), fmt, ap);
+	va_end(ap);
+	if (n > 0)
+		(void)!send(c, line, (size_t)n < sizeof(line) ? (size_t)n
+				: sizeof(line) - 1, MSG_NOSIGNAL);
+}
+
+#define KM_CHUNK (1 << 20)
+
+/*
+ * THE COPY AND THE READ-BACK, in a process of its own.
+ *
+ * An image is gigabytes and a stick writes at tens of megabytes a second, so
+ * this runs for minutes — and the daemon that forked it keeps answering every
+ * other client meanwhile. Progress is `progress write|verify <done> <total>`,
+ * one line per step of about one per cent; the last line is `ok` or `err`
+ * like every other verb's.
+ *
+ * THE VERIFY READS THE DISK, NOT THE PAGE CACHE. The data is synced, then the
+ * cached pages of the device are dropped (`BLKFLSBUF`), so the comparison sees
+ * what the stick hands back and not what this process just wrote. A stick
+ * that lies about its size — the counterfeit kind that wraps writes past its
+ * real capacity — fails here rather than on the first boot.
+ */
+static void km_write_worker(int c, int img, int dev, unsigned long long size,
+			    const char *disk)
+{
+	char *a = malloc(KM_CHUNK), *b = malloc(KM_CHUNK);
+	unsigned long long off, step = size / 100, last = 0;
+	struct timeval tv = { .tv_sec = 5, .tv_usec = 0 };
+
+	setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+	if (step < KM_CHUNK)
+		step = KM_CHUNK;
+	if (!a || !b) {
+		km_say(c, "err out of memory\n");
+		return;
+	}
+	for (off = 0; off < size;) {
+		size_t want = size - off < KM_CHUNK ? (size_t)(size - off)
+						    : KM_CHUNK;
+		ssize_t r = pread(img, a, want, (off_t)off);
+
+		if (r <= 0) {
+			km_say(c, "err the image could not be read at byte "
+				  "%llu\n", off);
+			return;
+		}
+		for (ssize_t done = 0; done < r;) {
+			ssize_t w = pwrite(dev, a + done, (size_t)(r - done),
+					   (off_t)(off + (size_t)done));
+
+			if (w <= 0) {
+				km_say(c, "err %s refused a write at byte %llu: "
+					  "%s\n", disk, off + (size_t)done,
+				       w < 0 ? strerror(errno) : "no room");
+				return;
+			}
+			done += w;
+		}
+		off += (unsigned long long)r;
+		if (off - last >= step || off == size) {
+			last = off;
+			km_say(c, "progress write %llu %llu\n", off, size);
+		}
+	}
+	if (fdatasync(dev) != 0) {
+		km_say(c, "err %s did not take the data: %s\n", disk,
+		       strerror(errno));
+		return;
+	}
+	if (!km_fixture)
+		(void)!ioctl(dev, BLKFLSBUF, 0);
+	posix_fadvise(dev, 0, 0, POSIX_FADV_DONTNEED);
+
+	for (off = 0, last = 0; off < size;) {
+		size_t want = size - off < KM_CHUNK ? (size_t)(size - off)
+						    : KM_CHUNK;
+		ssize_t r = pread(img, a, want, (off_t)off);
+		ssize_t q = pread(dev, b, want, (off_t)off);
+
+		if (r != (ssize_t)want || q != (ssize_t)want ||
+		    memcmp(a, b, want) != 0) {
+			km_say(c, "err verify failed: %s does not hold the "
+				  "image at byte %llu\n", disk, off);
+			return;
+		}
+		off += want;
+		if (off - last >= step || off == size) {
+			last = off;
+			km_say(c, "progress verify %llu %llu\n", off, size);
+		}
+	}
+	/* The table the image carried is the disk's now; ask the kernel to
+	 * read it, which is what makes the new partitions appear — and the
+	 * uevent that follows is what tells every subscriber the list moved. */
+	if (!km_fixture)
+		(void)!ioctl(dev, BLKRRPART, 0);
+	km_say(c, "ok %s %llu verified\n", disk, size);
+}
+
+/*
+ * THE IMAGE ARRIVES AS A DESCRIPTOR, never as a path.
+ *
+ * The client opened it, as itself, and passed the open file over the socket
+ * (`SCM_RIGHTS`). A root daemon that took a path would open it as root, and
+ * `write 0 /etc/shadow` would put a file the caller cannot read onto a stick
+ * the caller can. A descriptor carries exactly the access its sender already
+ * had, so the question of what the caller may read is answered by the kernel
+ * when the caller opened it, and never here.
+ *
+ * IT MUST BE A REGULAR FILE. A pipe or a socket has no size to check against
+ * the disk and no second read for the verify, and a block device is a disk
+ * copy this verb does not offer.
+ *
+ * THE CONFIRMATION IS THE DISK'S NAME — `sdb`, not the row's `sdb1` — because
+ * the disk is what is replaced. It is compared the way `format`'s is: an
+ * exact length and memcmp against the string this daemon derived.
+ *
+ * On success the reply is the worker's, and this returns 1: the dispatch
+ * writes nothing more and closes only its own copy of the socket.
+ */
+static int do_write(int idx, int img, const char *confirm, size_t nconfirm,
+		    int c, char *out, size_t nout)
+{
+	struct kmdev *d;
+	struct stat st;
+	unsigned long long bytes;
+	int dev;
+	pid_t pid;
+
+	if (!write_allowed()) {
+		snprintf(out, nout, "write is off; set `write = yes` in "
+				    "/etc/kdos/mountd.conf");
+		goto refuse;
+	}
+	if (img < 0) {
+		snprintf(out, nout, "no image: the file travels as a "
+				    "descriptor, not a name");
+		goto refuse;
+	}
+	if (km_writable(idx, out, nout) != 0)
+		goto refuse;
+	d = &devs[idx];
+	/* Every row on the disk, and not only the one picked: the disk is what
+	 * is replaced, and a mounted sibling or an open mapping on it would be
+	 * written out from under whatever is using it. */
+	for (int i = 0; i < ndev; i++) {
+		if (strcmp(devs[i].disk, d->disk))
+			continue;
+		if (devs[i].mnt[0]) {
+			snprintf(out, nout, "unmount %.31s first",
+				 devs[i].kname);
+			goto refuse;
+		}
+		if (!strncmp(devs[i].kname, "kdos-", 5)) {
+			snprintf(out, nout, "close %.31s first", devs[i].kname);
+			goto refuse;
+		}
+	}
+	if (km_disk_foreign(d->disk, out, nout))
+		goto refuse;
+	if (nconfirm != strlen(d->disk) ||
+	    memcmp(confirm, d->disk, nconfirm) != 0) {
+		snprintf(out, nout, "type %.31s to confirm", d->disk);
+		goto refuse;
+	}
+	if (fstat(img, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0) {
+		snprintf(out, nout, "the image is not a file with something "
+				    "in it");
+		goto refuse;
+	}
+	bytes = km_disk_bytes(d->disk);
+	if ((unsigned long long)st.st_size > bytes) {
+		snprintf(out, nout, "the image is %.1fG and %.31s is %.1fG",
+			 (double)st.st_size / 1073741824.0, d->disk,
+			 (double)bytes / 1073741824.0);
+		goto refuse;
+	}
+	if ((dev = km_open_disk(d->disk, out, nout)) < 0)
+		goto refuse;
+
+	/*
+	 * DOUBLE-FORKED, so the daemon neither waits for a write that takes
+	 * minutes nor collects it. The grandchild keeps three descriptors —
+	 * the client, the image and the disk — and closes every other one it
+	 * inherited: the listener and the subscribers are the daemon's, and a
+	 * worker holding them would keep a socket alive past a restart.
+	 */
+	pid = fork();
+	if (pid == 0) {
+		if (fork() == 0) {
+			long max = sysconf(_SC_OPEN_MAX);
+
+			if (max < 0 || max > 4096)
+				max = 4096;
+			for (int fd = 3; fd < max; fd++)
+				if (fd != c && fd != img && fd != dev)
+					close(fd);
+			km_write_worker(c, img, dev, (unsigned long long)
+					st.st_size, d->disk);
+			_exit(0);
+		}
+		_exit(0);
+	}
+	close(dev);
+	close(img);
+	if (pid < 0) {
+		snprintf(out, nout, "could not start the write");
+		return -1;
+	}
+	waitpid(pid, NULL, 0);
+	return 1;
+refuse:
+	if (img >= 0)
+		close(img);
+	return -1;
+}
+
 static void reply_list(int c)
 {
 	char line[512];
@@ -2283,19 +2668,55 @@ static int serve(void)
 		/*
 		 * ── TWO FRAMES ─────────────────────────────────────────
 		 *
-		 * Frame 1 is one line: a verb and up to three tokens.
-		 * Frame 2 exists only for `unlock` and `format` and is the
-		 * exact byte count frame 1 declared — a passphrase or a typed
-		 * device name. It is a SEPARATE FRAME so a secret is never a
+		 * Frame 1 is one line: a verb and up to five tokens.
+		 * Frame 2 exists only for `unlock`, `format`, `write` and
+		 * `cifs` and is the exact byte count frame 1 declared — a
+		 * passphrase, a password or a typed device name. It is a
+		 * SEPARATE FRAME so a secret is never a
 		 * token: a tokeniser splits on spaces, and a passphrase may
 		 * contain them.
 		 *
 		 * The first read may already hold some of frame 2, so what
 		 * follows the newline is kept rather than discarded.
+		 *
+		 * `write` also carries a DESCRIPTOR, the image, attached to
+		 * frame 1 as `SCM_RIGHTS`. The first read is a recvmsg so that
+		 * it is not lost — a plain read() drops the control message —
+		 * and one descriptor is kept at most: the kernel closes any
+		 * that did not fit, and one that arrives with any other verb
+		 * is closed below, before the verb is looked at.
 		 */
 		char buf[KM_MAX + KM_SECRET_MAX + 2] = {0};
-		ssize_t n = read(c, buf, sizeof(buf) - 1);
+		union {
+			struct cmsghdr h;
+			char b[CMSG_SPACE(sizeof(int))];
+		} cm;
+		struct iovec iov = { .iov_base = buf,
+				     .iov_len = sizeof(buf) - 1 };
+		struct msghdr mh = { .msg_iov = &iov, .msg_iovlen = 1,
+				     .msg_control = cm.b,
+				     .msg_controllen = sizeof(cm.b) };
+		int passed = -1;
+		ssize_t n = recvmsg(c, &mh, MSG_CMSG_CLOEXEC);
+
+		for (struct cmsghdr *h = n > 0 ? CMSG_FIRSTHDR(&mh) : NULL; h;
+		     h = CMSG_NXTHDR(&mh, h)) {
+			if (h->cmsg_level != SOL_SOCKET ||
+			    h->cmsg_type != SCM_RIGHTS)
+				continue;
+			int *fds = (int *)(void *)CMSG_DATA(h);
+			size_t k = (h->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+
+			for (size_t i = 0; i < k; i++) {
+				if (passed < 0)
+					passed = fds[i];
+				else
+					close(fds[i]);
+			}
+		}
 		if (n <= 0) {
+			if (passed >= 0)
+				close(passed);
 			close(c);
 			continue;
 		}
@@ -2307,6 +2728,8 @@ static int serve(void)
 		char line[KM_MAX] = {0};
 
 		if (linelen >= sizeof(line)) {
+			if (passed >= 0)
+				close(passed);
 			(void)!write(c, "err too long\n", 13);
 			close(c);
 			continue;
@@ -2314,7 +2737,7 @@ static int serve(void)
 		memcpy(line, buf, linelen);
 		line[strcspn(line, "\r")] = '\0';
 
-		/* At most four tokens, and the count is fixed per verb below.
+		/* At most six tokens, and the count is fixed per verb below.
 		 * A trailing token nobody named is a request this daemon does
 		 * not understand, not one it silently ignores. */
 		/*
@@ -2334,9 +2757,15 @@ static int serve(void)
 		     t && ntok < KM_TOK; t = strtok_r(NULL, " \t", &sp))
 			tok[ntok++] = t;
 		if (ntok >= KM_TOK) {
+			if (passed >= 0)
+				close(passed);
 			(void)!write(c, "err too many arguments\n", 23);
 			close(c);
 			continue;
+		}
+		if (passed >= 0 && !(ntok == 3 && !strcmp(tok[0], "write"))) {
+			close(passed);
+			passed = -1;
 		}
 
 		/* The list is re-read on EVERY request, not cached: a stick
@@ -2445,6 +2874,7 @@ static int serve(void)
 				dprintf(c, "err %s\n",
 					msg[0] ? msg : "no such share");
 		} else if ((ntok == 3 && !strcmp(verb, "unlock")) ||
+			   (ntok == 3 && !strcmp(verb, "write")) ||
 			   (ntok == 4 && !strcmp(verb, "format")) ||
 			   (ntok == 6 && !strcmp(verb, "cifs"))) {
 			int want = km_count(tok[ntok - 1]);
@@ -2456,6 +2886,8 @@ static int serve(void)
 			 */
 			idx = strcmp(verb, "cifs") ? km_index(tok[1]) : 0;
 			if (idx < 0 || want < 0) {
+				if (passed >= 0)
+					close(passed);
 				(void)!write(c, "err bad request\n", 16);
 				close(c);
 				continue;
@@ -2471,12 +2903,27 @@ static int serve(void)
 
 			if (got < 0) {
 				explicit_bzero(secret, sizeof(secret));
+				if (passed >= 0)
+					close(passed);
 				(void)!write(c, "err short frame\n", 16);
 				close(c);
 				continue;
 			}
 			int rc;
 
+			if (!strcmp(verb, "write")) {
+				/* do_write owns the descriptor from here,
+				 * and closes it on every path. */
+				rc = do_write(idx, passed, secret, (size_t)got,
+					      c, msg, sizeof(msg));
+				passed = -1;
+				explicit_bzero(secret, sizeof(secret));
+				if (rc < 0)
+					dprintf(c, "err %s\n",
+						msg[0] ? msg : "refused");
+				close(c);
+				continue;
+			}
 			if (ntok == 3)
 				rc = do_unlock(idx, secret, (size_t)got, msg,
 					       sizeof(msg));
@@ -2536,6 +2983,75 @@ static int ask(const char *word)
 	return 0;
 }
 
+/*
+ * `write`, from the command line: the image is opened HERE, as the person
+ * running this, and only the open descriptor crosses the socket. The daemon
+ * never learns the path and could not open it as root if it did.
+ */
+static int ask_write(const char *row, const char *image, const char *disk)
+{
+	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	int img = open(image, O_RDONLY | O_CLOEXEC);
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	char msg[256], buf[4096];
+	union {
+		struct cmsghdr h;
+		char b[CMSG_SPACE(sizeof(int))];
+	} cm;
+	struct iovec iov;
+	struct msghdr mh = { 0 };
+	ssize_t n;
+	int len;
+
+	if (img < 0) {
+		fprintf(stderr, "kdos-mount: %s: %s\n", image, strerror(errno));
+		if (fd >= 0)
+			close(fd);
+		return 2;
+	}
+	len = snprintf(msg, sizeof(msg), "write %d %zu\n%s", atoi(row),
+		       strlen(disk), disk);
+	if (fd < 0 || len < 0 || (size_t)len >= sizeof(msg)) {
+		close(img);
+		if (fd >= 0)
+			close(fd);
+		return 2;
+	}
+	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sock_path());
+	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		fprintf(stderr, "kdos-mount: no kdos-mountd on %s (%s)\n",
+			sock_path(), strerror(errno));
+		close(img);
+		close(fd);
+		return 2;
+	}
+	memset(&cm, 0, sizeof(cm));
+	iov.iov_base = msg;
+	iov.iov_len = (size_t)len;
+	mh.msg_iov = &iov;
+	mh.msg_iovlen = 1;
+	mh.msg_control = cm.b;
+	mh.msg_controllen = sizeof(cm.b);
+	CMSG_FIRSTHDR(&mh)->cmsg_level = SOL_SOCKET;
+	CMSG_FIRSTHDR(&mh)->cmsg_type = SCM_RIGHTS;
+	CMSG_FIRSTHDR(&mh)->cmsg_len = CMSG_LEN(sizeof(int));
+	memcpy(CMSG_DATA(CMSG_FIRSTHDR(&mh)), &img, sizeof(int));
+	n = sendmsg(fd, &mh, MSG_NOSIGNAL);
+	close(img);
+	if (n != len) {
+		close(fd);
+		return 2;
+	}
+	shutdown(fd, SHUT_WR);
+	while ((n = read(fd, buf, sizeof(buf) - 1)) > 0) {
+		buf[n] = '\0';
+		fputs(buf, stdout);
+		fflush(stdout);
+	}
+	close(fd);
+	return 0;
+}
+
 static int usage(void)
 {
 	fprintf(stderr,
@@ -2543,6 +3059,7 @@ static int usage(void)
 		"       kdos-mount mount <index>\n"
 		"       kdos-mount unmount <index>\n"
 		"       kdos-mount smart <index>\n"
+		"       kdos-mount write <index> <image> <disk>\n"
 		"       kdos-mount shares\n"
 		"       kdos-mount browse\n"
 		"       kdos-mount krb5 <server> <share> <user|-> <domain|->\n"
@@ -2560,7 +3077,12 @@ static int usage(void)
 		"of \"no domain\".\n"
 		"\n`subscribe` writes `changed` whenever the list moves and\n"
 		"never exits; it names no device, because a row number is only\n"
-		"true of the list it came with. Ask again with `list`.\n");
+		"true of the list it came with. Ask again with `list`.\n"
+		"\n`write` puts <image> over the whole DISK the row is on and\n"
+		"reads it back to compare. <disk> is that disk's name typed\n"
+		"back (`sdb` for a row on `sdb1`). The image is opened as you\n"
+		"and handed over open; it needs `write = yes` in\n"
+		"/etc/kdos/mountd.conf.\n");
 	return 2;
 }
 
@@ -2640,6 +3162,8 @@ int main(int argc, char **argv)
 		}
 		return ask(word);
 	}
+	if (!strcmp(argv[1], "write") && argc == 5)
+		return ask_write(argv[2], argv[3], argv[4]);
 	if ((!strcmp(argv[1], "mount") || !strcmp(argv[1], "unmount") ||
 	     !strcmp(argv[1], "smart")) && argc > 2) {
 		char word[64];

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = srb2
+version     = 2.2.15
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/STJr/SRB2/archive/refs/tags/SRB2_release_$version.tar.gz
+source      = srb2-assets-$version.zip::https://github.com/STJr/SRB2/releases/download/SRB2_release_$version/SRB2-v${version//./}-Full.zip
+sha256      = c2689074539bf23d81e8add5f2beeac1b69d5586d69d93d44f6f6b195076bbaf  srb2-2.2.15.tar.gz
+sha256      = 3eda3080ab87940fca5e4dcd22b8e041dc1d9e65bfe9177bff68383e9bd58a10  srb2-assets-2.2.15.zip
+description = Sonic Robo Blast 2 — a 3D Sonic fan game on a heavily modified Doom Legacy engine, with its game data
+homepage    = https://www.srb2.org
+depends     = cmake ninja pkgconf unzip sdl2-compat sdl2-mixer libglvnd mesa libpng zlib curl libgme miniupnpc

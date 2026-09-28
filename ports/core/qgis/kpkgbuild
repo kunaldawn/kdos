@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qgis
+version     = 3.44.15
+release     = 1
+source      = https://download.qgis.org/downloads/qgis-$version.tar.bz2
+sha256      = 1b508175a27272c68ca0f71f27d2b14711ab47b8ee2c003b56e36138420a75bc  qgis-3.44.15.tar.bz2
+description = QGIS — the desktop geographic information system, with PyQGIS and Processing
+homepage    = https://qgis.org/
+depends     = cmake ninja bison flex python3 python3-sip python3-pyqt-builder python3-pyqt6 python3-pyqt6-sip python3-qscintilla qscintilla qwt qca qtkeychain qt6-qtbase qt6-qtsvg qt6-qttools qt6-qt5compat qt6-qtpositioning qt6-qtserialport qt6-qtwebengine qt6-qtdeclarative qt6-qt3d gdal geos proj sqlite libspatialite libspatialindex pdal draco libzip expat protobuf zlib zstd exiv2 postgresql gsl hdf5 netcdf-c libxml2 nlohmann-json ocl-icd opencl-headers python3-yaml python3-jinja2 python3-pygments python3-httplib2 python3-lxml python3-dateutil python3-requests matplotlib numpy python3-psycopg2 python3-owslib

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kholidays
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 02bfbc33296fe86b364491f6d5cad9d83360bb4fdd2923386a325b309eac0b9b  kholidays-6.30.0.tar.xz
+description = KDE Frameworks: public holiday, season and astronomical calendars
+homepage    = https://api.kde.org/frameworks/kholidays/html/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative flex bison

@@ -1,0 +1,10 @@
+--- a/misc/org.kde.filelight.desktop	2026-09-28 02:54:14.498796433 +0530
++++ b/misc/org.kde.filelight.desktop	2026-09-28 02:54:14.498937051 +0530
+@@ -223,6 +223,6 @@
+ Keywords[uk]=disk;drive;space;storage;usage;диск;пристрій;місце;зберігання;сховище;використання;вжиток;
+ Keywords[zh_CN]=disk;drive;space;storage;usage;磁盘;驱动器;存储;空间;容量;占用;使用率;占用率;空间占用;剩余空间;cipan;qudongqi;cunchu;kongjian;rongliang;zhanyong;shiyonglv;zhanyonglv;kongjianzhanyong;shengyukongjian;
+ Keywords[zh_TW]=disk;drive;space;storage;usage;磁碟用量;硬碟用量;
+-MimeType=inode/directory;
++StartupWMClass=org.kde.filelight
+ X-DocPath=filelight/index.html
+ Categories=Qt;KDE;Utility;

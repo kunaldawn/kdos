@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = js8call
+version     = 3.0.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/JS8Call-improved/JS8Call-improved/archive/refs/tags/v$version.tar.gz
+sha256      = 34385006bb026c387afeaafcb714315b76a35f2beb38e5ae104a85d6961e21a3  js8call-3.0.3.tar.gz
+description = JS8Call — weak-signal keyboard-to-keyboard and store-and-forward messaging for HF amateur radio
+homepage    = https://github.com/JS8Call-improved/JS8Call-improved
+depends     = cmake ninja pkgconf boost fftw hamlib qt6-qtbase qt6-qtwayland qt6-qtmultimedia qt6-qtserialport librsvg

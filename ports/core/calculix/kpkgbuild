@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = calculix
+version     = 2.23
+release     = 1
+source      = $name-$version.tar.bz2::https://www.dhondt.de/ccx_$version.src.tar.bz2
+sha256      = 9c88385c10fb04f5dc6c4e98027a51bebdd8aee3920e05190d6c1dd08357d6e7  calculix-2.23.tar.bz2
+description = CalculiX CrunchiX (ccx) — three-dimensional structural and thermal finite element solver with an Abaqus-style input deck
+homepage    = https://www.calculix.de/
+depends     = gcc spooles arpack-ng openblas

@@ -60,7 +60,7 @@ tested by building the distribution with them.
 
 ## preflight.sh
 
-Preflight checks the tree's wiring without building anything. It runs 48 checks:
+Preflight checks the tree's wiring without building anything. It runs 49 checks:
 
 ```sh
 testing/preflight.sh
@@ -72,8 +72,9 @@ headed by a `==>` line. It exits 0 when every check passes and 1 when any fails,
 failure with the file to look at, and ends with either `preflight clean` or the number of problems
 found.
 
-Nine checks read the built tree under `build/fs`. Five of them skip entirely without one: orphaned
-packages, the built `kinstall`, icon names, chrome glyphs and desktop entries. Four run a reduced
+Ten checks read the built tree under `build/fs`. Six of them skip entirely without one: orphaned
+packages, the built `kinstall`, icon names, chrome glyphs, desktop entries, and the libraries the
+desktop's own programs link (which also skips on a host with no `readelf`). Four run a reduced
 check and say what they left out: the programs a recipe's embedded scripts name, the programs
 `fs/etc/inittab` names, the `mimeapps` rows (only the `kdos-*` handlers are checked, against `fs/`
 and `src/`), and the check on the build tree's root (its udev grants, daemon accounts and group
@@ -92,7 +93,7 @@ check that finds its directory there reports what is missing from it.
 | Shipped configuration | The shipped compositor configuration keeps labwc's default bindings; every command it, the menus and `menu.conf`'s routes name exists; every program `fs/etc/inittab` names is on the image; every filesystem the installer offers, the initramfs can mount; the ISO step builds every boot path (BIOS and UEFI, disc and written stick); the built `kinstall` is the installer in this tree |
 | Permissions and accounts | `/etc/shadow` on the built tree is mode 600 or 640 and the file-system step narrows it; the polkit and udev rule directories and files are owned by root; no udev rule sets `GROUP=`, `MODE=` or `OWNER=` on a device class that has no node, and every group a rule grants is one the desktop user is in; every account a shipped daemon drops to exists in `fs/etc/passwd`; the desktop user is in the groups its surfaces need |
 | Shell | All shipped and build shell is syntactically valid; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
-| Consistency | The build tree's root carries nothing but a root filesystem; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
+| Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/desktop` or `src/packages` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
 | Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load |
 | Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; every icon name a surface asks for resolves on the image; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=` |
 
@@ -278,14 +279,14 @@ and the stale binary survives. Delete them from a container rather than with `su
 ## Goldens
 
 A **golden** is a committed reference frame: a surface rendered offscreen and compared byte for
-byte. There are 193 of them under `testing/goldens/`. They cover the shell's surfaces, all eleven
+byte. There are 202 of them under `testing/goldens/`. They cover the shell's surfaces, all eleven
 resource-monitor pages plus its detail page, the terminal, the cell-level frames, and nine replayed
 terminal streams. Text frames are committed at twelve different sizes. `testing/goldens/README`
 states the rules for adding one.
 
 | Kind | Catches | Count |
 |---|---|---|
-| Text frames (`--dump`) | Geometry: overflow, misalignment, a control drawn past its rectangle | 175 |
+| Text frames (`--dump`) | Geometry: overflow, misalignment, a control drawn past its rectangle | 184 |
 | Cell frames (`--dump-cells`, `cells-*.txt`) | Colour-slot and attribute drift as well | 9 |
 | Replayed streams (`vt-*.txt`) | A change in the terminal's state machine, against bytes real programs wrote: the characters, the attributes, the cells that named a colour of their own, the hyperlinks and the prompt marks | 9 |
 
@@ -387,7 +388,8 @@ candidates. A file that is sometimes linked and sometimes stubbed collides on ex
 where the harness otherwise works.
 
 A shared helper belongs in the base source list. `mountd.c` is the one `kdos-mountd` client that
-both `kdos-devices` and `kdos-disks` use. Leaving it out of the base list makes those surfaces fail
+both `kdos-devices` and `kdos-disks` use, and `job.c` is the long-child runner `kdos-backup`,
+`kdos-burn` and `kdos-verify` share. Leaving either out of the base list makes those surfaces fail
 to link, which reads as a defect in them and skips every candidate's golden.
 
 A surface that needs a library the harness lacks is skipped by name. `kdos-peek` and `kdos-pix`
@@ -501,7 +503,7 @@ The image must carry a font and GNU `tar`, and must have the Wayland development
 A **fixture** is recorded system state that a program can be pointed at instead of the live
 machine. It is what makes a monitor, an attribution engine or a kill-selection policy testable at
 all. The seam is the same everywhere: the process and system filesystems sit behind a movable root,
-or a variable moves one directory walk. There are 38 fixture directories under
+or a variable moves one directory walk. There are 40 fixture directories under
 `testing/fixtures/`.
 
 | Fixture | Records | Makes testable |
@@ -522,6 +524,8 @@ or a variable moves one directory walk. There are 38 fixture directories under
 | `shell` | The dump harness, its stubs, and a frozen home and configuration | Every surface's layout |
 | `shell/rec` | Two PCM lines (one playback-only, one with a capture stream), 25,600 bytes of raw signed 16-bit audio (four ticks at half full scale, then four of zeros), and a stand-in speech model | That the input list is *filtered* rather than merely listed, and that the level is computed from the samples. The recorder's `--meter` prints one line per tick and `--write` produces a WAV compared byte for byte against `shell/Recordings/2026-01-01-000000.wav` |
 | `print`, `devices`, `display`, `firewall`, `backup` | Recorded command output | The printers, devices, display, firewall and backup surfaces, without the host's own state |
+| `burn` | A `/sys/block` tree with one optical drive, its vendor and model space-padded as a SCSI inquiry pads them, and one disk that is not a drive | That `kdos-burn` lists the drive and not the disk |
+| `verify` | A `SHA256SUMS` naming one file that matches its line and one that does not | A row of each verdict in `kdos-verify`'s frame |
 | `vt` | What `vim`, `htop`, `mc`, `less` and `tmux` wrote to an 80×24 terminal, four hand-written streams, the recorder `record.py` and the replayer `vtrender.c` | That the terminal's state machine still produces the same screen |
 | `img` | Valid, truncated, zero-length, oversized and malformed images in each decoded format, and `fuzz.c` beside them | `libkimg`: every fixture decoded, then mutated and truncated |
 | `catalogue` | A small catalogue with every row type | The catalogue parser |
@@ -1032,7 +1036,7 @@ any GL or GLES client, with no extra software and no change to the program:
 GALLIUM_HUD=fps es2gears_wayland
 GALLIUM_HUD=fps+frametime glmark2-es2-wayland     # both curves in one pane
 GALLIUM_HUD=simple,fps es2gears_wayland           # text, no graph
-GALLIUM_HUD=csv+fps+frametime vkgears             # values to stdout, for a script
+GALLIUM_HUD=csv+fps+frametime es2gears_wayland    # values to stdout, for a script
 GALLIUM_HUD=help es2gears_wayland                 # every name this driver can draw
 ```
 
@@ -1068,60 +1072,46 @@ render rate by construction and is comparable between machines rather than betwe
 | The same for Vulkan | `vkgears`, or `vkcube` for a swapchain whose present mode can be chosen |
 | Does this machine have a Vulkan driver, and which | `vulkaninfo --summary`. Run it first under an emulator, because a Vulkan tool falls back to lavapipe on the CPU without saying so |
 | Which EGL renderer, extensions and configs a client gets | `eglinfo` |
-| What an X11 client sees through Xwayland | `es2gears_x11`, which exists only in a box; `glxinfo` there reports that the X server has no GLX |
+| What an X11 client sees through Xwayland | `glxinfo`, `glxgears` and `es2gears_x11`, which exist only in a box |
 
 `es2gears_wayland`, `eglinfo` and `vkgears` come from the `mesa-demos` port, the six `glmark2`
 flavours from `glmark2`, and `vulkaninfo` and `vkcube` from `vulkan-tools`.
 
 ### Desktop GL and GLX
 
-Desktop GL is reached through EGL, never GLX. `glmark2-wayland` binds `EGL_OPENGL_API` and then
-opens the GL entry-point library by a legacy name, `libGL.so` first and `libGL.so.1` second, and
-prints `Error loading GL library` if neither answers. `libglvnd` is built `glx=disabled`, so it
-builds no `libGL`; its recipe adds `libGL.so` as a filename alias of `libOpenGL.so.0`, which
-carries the same dispatch table and every `gl*` entry point.
+A Wayland client reaches desktop GL through EGL, never GLX. `glmark2-wayland` binds
+`EGL_OPENGL_API` and then opens the GL entry-point library by name, `libGL.so` first and
+`libGL.so.1` second, and prints `Error loading GL library` if neither answers.
 
-Three facts about that alias, each checkable:
+`libglvnd` is built with `x11` and `glx` enabled, so it installs `libGL`, `libGLX`, `libOpenGL`,
+`libEGL` and `libGLES` with their `gl.pc` and `glx.pc`. `libGLX` dispatches to mesa's
+`libGLX_mesa`. mesa is built `-D glx=dri -D platforms=wayland,x11`, which is what an X11 client
+under Xwayland draws with: `libGLX_mesa` behind glvnd's `libGL` and `libGLX`, and the Vulkan X11
+WSI. Xwayland is built `-Dglx=true` (with `-Dglamor=true` and `-Ddri3=true`), so an X11 client's
+`glXChooseVisual` finds the GLX extension. libepoxy is built `-Dglx=yes` and resolves `glX*`
+through `libGL.so.1` at run time. A Wayland client never loads `libGLX_mesa`, but `libEGL_mesa`
+and the Vulkan drivers link `libxcb` and `libX11` for their X11 platform, so the X client libraries
+are on the host either way.
 
-- **It is a filename, not a SONAME.** `libOpenGL.so.0.0.0` has `SONAME libOpenGL.so.0`, and no
-  library records `libGL.so` as a dependency. `-lGL` therefore *links*: `ld` finds the alias and
-  records `DT_NEEDED libOpenGL.so.0`, which runs. A link that wants `glX*` fails naming the symbol,
-  which is the correct answer.
-- **`libGL.so.1` must not exist.** libepoxy treats any `libGL.so.1` it can open as the GLX provider
-  and resolves `glXGetCurrentContext` from it, aborting when it is missing. Pointing `.1` at
-  glvnd's `libOpenGL` kills the process on the second entry point a client resolves:
-  `glXGetCurrentContext() not found: … undefined symbol`, `SIGABRT`, exit 134. On this image
-  `Xwayland` is what links libepoxy. It reproduces on any machine with libepoxy and EGL: make a
-  desktop-GL context current, call `glGetString` then `glGetIntegerv` through epoxy, and run it
-  with `LD_LIBRARY_PATH` pointing at a directory holding `libGL.so.1 -> libOpenGL.so.0`.
-- **Two programs on the image ask for the unsuffixed name, and both are served.**
-  `glmark2-wayland` wants exactly this. `eglinfo`'s bundled loader lists `libGL.so.1` then
-  `libGL.so` but is never reached, because `eglinfo` loads through
-  `gladLoadGLLoader(eglGetProcAddress)`. `libgstgl` and libepoxy name only `libGL.so.1`, so they
-  see no desktop GL library on this host and have nothing to mis-resolve.
-
-The alias is not a GLX provider, and there is no GLX provider on this host.
-
-To confirm an image carries the alias:
+To confirm what an image carries:
 
 ```sh
-unsquashfs -ll build/iso_root/system.sfs | grep -E 'libGL|libOpenGL'
-ls build/fs/usr/lib/libGL.so                 # the same question of the build tree
+unsquashfs -ll build/iso_root/system.sfs | grep -E 'libGL|libOpenGL|libGLX'
+ls build/fs/usr/lib/libGL.so*                # the same question of the build tree
 ```
 
-mesa is built `-D glx=disabled -D platforms=wayland`: no GLX and no X11 EGL platform, so `glxgears`
-and `glxinfo` cannot be linked on this host at all. Xwayland is the single X exception, and those
-two programs live in a box. Xwayland itself is built `-Dglx=false` (with `-Dglamor=true` and
-`-Ddri3=true`), so from the box `glxgears` cannot draw and `glxinfo` reports that the X server has
-no GLX extension. The box's `es2gears_x11`, which draws through EGL, is the X11 path that works.
-The `app.mesa-utils` catalogue row puts `glxgears`, `glxinfo` and `es2gears_x11` on the host's
-path as shims; any other program in the box is reached with `kdos-appbox -b app.mesa-utils run`:
+The `mesa-demos` port is built for Wayland alone (`-Dx11=disabled`), so `glxgears`, `glxinfo` and
+the X11 EGL demos are not on the host. They come from a box: the `app.mesa-utils` catalogue row
+builds Debian's `mesa-utils` on the base image and puts `glxgears`, `glxinfo` and `es2gears_x11` on
+the host's path as shims. Those three names are the ones the host does not carry, so a shim never
+shadows a host binary; any other program in the box is reached with
+`kdos-appbox -b app.mesa-utils run`:
 
 ```sh
 kdos app install app.mesa-utils
-es2gears_x11                                  # draws, through EGL and Xwayland
-glxinfo                                       # reports no GLX extension on the X server
-glxgears                                      # cannot draw, for the same reason
+es2gears_x11                                  # through EGL and Xwayland
+glxinfo                                       # the GLX extension Xwayland serves
+glxgears                                      # through GLX and Xwayland
 kdos-appbox -b app.mesa-utils run eglinfo     # the boxed copy, not the host's
 ```
 
@@ -1149,7 +1139,7 @@ stock ISO:
   refuses to sweep with exit status 2;
 - `packlane.sh` looks for packs on the medium at `/mnt/iso/packs`, or in the store at
   `/var/lib/kdos/packs` when there is no medium, and reports every check that needs one (a base,
-  `rt-gtk`, the index, `app.keepassxc` (`PACKLANE_APP`) and `app.gimp` (`PACKLANE_QTAPP`)) as
+  `rt-gtk`, the index, `app.vorta` (`PACKLANE_APP`) and `app.meld` (`PACKLANE_QTAPP`)) as
   failed;
 - `install-to-disk.sh` asks the installer for `app.zathura app.kcalc alpine` unless
   `INSTALL_PACKS` names others.
@@ -1208,7 +1198,7 @@ The pack lane (the [import lane](../06-reference/glossary.md), exercised by `pac
 application packs into it. Nothing tests the lane until someone provides packs, and nothing tests a
 pack rollback on a booted machine; see [The other harnesses](#the-other-harnesses).
 
-Of the 53 names `kdos-shell` answers to, fourteen have no committed frame: `about`, `ascii`,
+Of the 55 names `kdos-shell` answers to, fourteen have no committed frame: `about`, `ascii`,
 `audio`, `bt`, `cal`, `calc`, `clip`, `devices`, `ime`, `mediad`, `note`, `slit`, `time` and
 `users`. `ascii`, `ime` and `mediad` have no dump at all. `clip` cannot be linked into the dump
 harness, because it wants a protocol the harness does not generate. Most of the rest draw something

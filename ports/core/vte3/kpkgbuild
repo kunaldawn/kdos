@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = vte3
+version     = 0.84.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/vte/${version%.*}/vte-$version.tar.xz
+sha256      = aca1caa8478aebcdbb1d67897fb3511eb7601debae6810e16a15b6fa25f31ac8  vte3-0.84.1.tar.xz
+description = Terminal emulator widget for GTK 3 and GTK 4
+homepage    = https://gitlab.gnome.org/GNOME/vte
+depends     = meson ninja pkgconf python3 gtk3 gtk4 glib pango cairo pcre2 lz4 fmt fribidi gnutls icu gobject-introspection glib-introspection vala

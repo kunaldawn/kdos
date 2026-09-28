@@ -28,9 +28,10 @@
 
 # WHAT THIS READS BY DEFAULT IS /dev/vcsa, so it covers tty1 and the
 # installer — both grids of cells it takes verbatim, with none of the guessing
-# a screen reader does over a toolkit's accessibility tree. It does not reach
-# the graphical session, which is Wayland and publishes no accessibility tree
-# at all.
+# a screen reader does over a toolkit's accessibility tree. It does not read
+# the graphical session itself: its AtSpi2 screen driver is not built, and the
+# graphical session's reader is Orca, which reaches a braille display through
+# BrlAPI and the Python binding below.
 #
 # THE DRIVER NAME IS `eSpeak-NG`, spelled exactly as the directory under
 # Drivers/Speech — configure matches it case-sensitively and answers anything
@@ -95,15 +96,19 @@
 # where grade 2 and every other contracted braille comes from; without it
 # only brltty's own few contraction tables exist. GPM is not on this image.
 #
-# espeak-ng is what turns that into speech. STATED LIMIT: boxed GUI
-# applications remain unreachable — they have no cells and there is no at-spi
-# registry on this host. docs/kdos/02-user-guide/accessibility.md is the
-# statement of record.
+# espeak-ng is what turns that into speech.
+# docs/kdos/02-user-guide/accessibility.md is the statement of record for what
+# is and is not read.
 #
-# --disable-x: the hard rule, and BRLTTY's X support exists to read an X screen
-# this system does not have. The API server stays on because it is how
-# anything else on the machine asks BRLTTY to speak. The Java, OCaml, Tcl,
-# Python, Lua, Emacs and Lisp bindings are off: nothing here consumes them.
+# --disable-x: BRLTTY's X support exists to read an X desktop's screen, and
+# this desktop is not one. The API server stays on because it is how
+# anything else on the machine asks BRLTTY to speak. THE PYTHON BINDING IS ON:
+# the brlapi module is what Orca drives a braille display through. It is
+# Cython, compiled with the python3-cython port and installed by setuptools,
+# and configure drops it with a warning rather than an error when either is
+# missing, so the check after the install is what makes a missing module a
+# failed build. The Java, OCaml, Tcl, Lua, Emacs and Lisp bindings are off:
+# nothing here consumes them.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -113,7 +118,7 @@
 	--disable-java-bindings \
 	--disable-ocaml-bindings \
 	--disable-tcl-bindings \
-	--disable-python-bindings \
+	--enable-python-bindings \
 	--disable-lua-bindings \
 	--disable-emacs-bindings \
 	--disable-lisp-bindings \
@@ -152,6 +157,10 @@ make
 # the command does not exist; musl's loader reads no cache, so there is nothing
 # for it to do.
 make install INSTALL_ROOT=$PKG CONFLIBDIR=:
+compgen -G "$PKG/usr/lib/python3*/site-packages/brlapi*.so" >/dev/null || {
+	echo 'brltty: the Python brlapi module was not built; Orca would have no braille' >&2
+	exit 1
+}
 
 # BrlAPI's default authorisation is `keyfile:/etc/brlapi.key+polkit`, and
 # neither half exists after `make install`: the key is generated only by an

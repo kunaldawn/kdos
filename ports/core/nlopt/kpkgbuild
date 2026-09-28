@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = nlopt
+version     = 2.11.0
+release     = 1
+source      = https://github.com/stevengj/nlopt/archive/v$version/nlopt-$version.tar.gz
+sha256      = 53e552d83e9294d67db37f0f4a23f15933a9ef698485301a18b98b40004cf0de  nlopt-2.11.0.tar.gz
+description = NLopt — nonlinear optimisation library used by slicers and nesting tools
+homepage    = https://nlopt.readthedocs.io/
+depends     = cmake

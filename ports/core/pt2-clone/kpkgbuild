@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pt2-clone
+version     = 1.92
+release     = 1
+source      = https://github.com/8bitbubsy/pt2-clone/archive/refs/tags/v$version.tar.gz
+sha256      = 21a27f87f44aef6421f7cfa6fc9925e783dba88c6c2270c1170360639ed8d620  pt2-clone-1.92.tar.gz
+description = ProTracker 2 clone — the Amiga MOD tracker, pixel for pixel, on SDL2
+homepage    = https://16-bits.org/pt2.php
+depends     = cmake ninja pkgconf sdl2-compat

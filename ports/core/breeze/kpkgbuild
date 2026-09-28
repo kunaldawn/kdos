@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = breeze
+version     = 6.7.5
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = aa05c0c31c852ed5b137327e7798fd763a54c643875d5d8070625475e0af6976  breeze-6.7.5.tar.xz
+description = Breeze widget style and colour schemes for Qt 6 applications
+homepage    = https://invent.kde.org/plasma/breeze
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtdeclarative kcolorscheme kconfig kconfigwidgets kcoreaddons kguiaddons ki18n kiconthemes kwindowsystem kcmutils frameworkintegration

@@ -5,7 +5,11 @@ invoked, where it is installed and which chapter describes it in depth. It is fo
 met a `kdos-*` command and wants to know what it does, and for contributors looking for the program
 that owns a piece of behaviour. Software in `ports/core/` comes from upstream projects and is
 documented by them; nothing here repeats a manual page that already exists elsewhere, and
-[The ports catalogue](../06-reference/ports-catalogue.md) lists every such port by phase and group. Read the
+[The ports catalogue](../06-reference/ports-catalogue.md) lists every such port by phase and group.
+That includes the graphical applications ported natively with GTK, Qt, KDE Frameworks, wxWidgets,
+FLTK or Tk: they are upstream programs, and [Applications](../02-user-guide/applications.md)
+describes how to use them. The programs in this part draw with KDOS's own cell libraries and link
+no toolkit. Read the
 [Architecture overview](../03-architecture/overview.md) first if you want to see how these programs
 fit together before meeting them one by one.
 
@@ -57,8 +61,8 @@ one that runs in a box.
 
 | Command | What it is | Documented in |
 |---|---|---|
-| `kdos-comp` | The compositor: a frozen hard fork of labwc 0.20.0; its KDOS additions live mainly in sixteen `src/kdos-*.c` files | [kdos-comp](kdos-comp.md) |
-| `kdos-shell` | The panel and 51 further surfaces: 53 names in all, since `kdos-launcher` and `kdos-palette` open the same surface. See [below](#kdos-shell--53-names) | [kdos-shell](kdos-shell.md) |
+| `kdos-comp` | The compositor: a frozen hard fork of labwc 0.20.0; its KDOS additions live mainly in eighteen `src/kdos-*.c` files | [kdos-comp](kdos-comp.md) |
+| `kdos-shell` | The panel and 53 further surfaces: 55 names in all, since `kdos-launcher` and `kdos-palette` open the same surface. See [below](#kdos-shell--55-names) | [kdos-shell](kdos-shell.md) |
 | `kdos-res` | The resource monitor. The same binary runs as a text program on a virtual terminal and as a window on the desktop | [kdos-res](kdos-res.md) |
 | `kdos-term` | A terminal with three inline-picture protocols: sixel, iTerm2's and kitty's. It ships beside `foot`, which remains the default terminal | [kdos-term](kdos-term.md) |
 | `kdos-lock` | The lock screen, an `ext-session-lock-v1` client: the compositor keeps the screen locked if the client dies | [The daemons](daemons.md#kdos-lock) |
@@ -174,10 +178,10 @@ installed is a program nothing can reach. Run under a name missing from its tabl
 application to launch (an application shim, described below). Three root daemons also answer to a
 second name; see [Root daemons](#root-daemons).
 
-### `kdos-shell` — 53 names
+### `kdos-shell` — 55 names
 
 The panel and every surface reachable from it or from a key chord. One name, `kdos-launcher`,
-opens the same surface as `kdos-palette`, so the 53 names resolve to 52 distinct programs. All are
+opens the same surface as `kdos-palette`, so the 55 names resolve to 54 distinct programs. All are
 installed in `/usr/bin`, and each is described in [kdos-shell](kdos-shell.md).
 
 | | | | |
@@ -195,7 +199,7 @@ installed in `/usr/bin`, and each is described in [kdos-shell](kdos-shell.md).
 | `kdos-audio` | `kdos-net` | `kdos-bt` | `kdos-devices` |
 | `kdos-clip` | `kdos-status` | `kdos-tip` | `kdos-ime` |
 | `kdos-trash` | `kdos-peek` | `kdos-find` | `kdos-pix` |
-| `kdos-rec` | | | |
+| `kdos-rec` | `kdos-burn` | `kdos-verify` | |
 
 ### `ksvc` — 12 names
 
@@ -248,7 +252,7 @@ back to it by absolute path when nothing it knows claims the type.
 Any other name the binary is invoked under is treated as an application shim: it launches the
 application of that name in its box. The image build writes one such link in `/usr/local/bin` for
 each application in a pack the medium carries, and the default medium carries none. Installing an
-application writes its shim in `~/.local/bin`, so after `kdos app install app.gimp`, `gimp` on
+application writes its shim in `~/.local/bin`, so after `kdos app install app.hugin`, `hugin` on
 your `PATH` is `kdos-appbox` dispatching on that name. `kdos-appbox genlaunchers` rewrites the
 system set, and `kdos-box export` adds a `<app>@<box>` shim in `~/.local/bin` for an application in a
 box other than the default one. See

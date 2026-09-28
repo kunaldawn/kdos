@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = black-hole-solver
+version     = 1.14.0
+release     = 1
+_pathtiny   = 0.150
+source      = https://fc-solve.shlomifish.org/downloads/fc-solve/$name-$version.tar.xz
+source      = https://cpan.metacpan.org/authors/id/D/DA/DAGOLDEN/Path-Tiny-$_pathtiny.tar.gz
+sha256      = ff20713d1a14d257af9c78209001f40dc177e4b9d1496115cbd8726d577946c7  Path-Tiny-0.150.tar.gz
+sha256      = 5c47bd093dbb160f4b090fd670ab7c12b4371d39b17b3bbd8c6c4a12975557c0  black-hole-solver-1.14.0.tar.xz
+description = Solver for the Black Hole, All in a Row and Golf patience games
+homepage    = https://www.shlomifish.org/open-source/projects/black-hole-solitaire-solver/
+depends     = cmake ninja perl python3 rinutils

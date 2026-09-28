@@ -185,8 +185,9 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-traymenu"
 ln -s kdos-shell "$PKG/usr/bin/kdos-contacts"
 # The disks window. Every privileged operation on it is a kdos-mountd verb and
 # this binary opens no block device: what it does is draw a list the daemon
-# published and send back a row number. Partitioning is `cfdisk` in a terminal
-# and is not reimplemented.
+# published and send back a row number — and, for an image write, the image
+# opened as the user and passed to the daemon as a descriptor. Partitioning is
+# `cfdisk` in a terminal and is not reimplemented.
 ln -s kdos-shell "$PKG/usr/bin/kdos-disks"
 # Printers, over `lpstat`, `lpinfo` and `lpadmin` rather than libcups: those
 # three are what the CUPS documentation tells a person to type and are the
@@ -213,10 +214,17 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-store"
 # that could name a port could open any port, so kdos-powerd owns the names
 # and this asks for them.
 ln -s kdos-shell "$PKG/usr/bin/kdos-firewall"
-# What is in the restic repository, and one key to add to it. It restores
-# nothing: `restic restore` is the operation you do once under pressure and it
-# wants the full command rather than a button whose defaults you cannot see.
+# What is in the restic repository, one key to add to it, and a restore view
+# that puts one file or folder back into ~/Restored/<snapshot> — never over
+# the original. restic does all of it; this forks it by name.
 ln -s kdos-shell "$PKG/usr/bin/kdos-backup"
+# A folder or an image onto an optical disc, over `xorriso`, and the disc read
+# back and compared. The drive is `cdrom`'s and the user is in `cdrom`, so no
+# daemon stands in front of it.
+ln -s kdos-shell "$PKG/usr/bin/kdos-burn"
+# Files against a checksum list or a par2 set. `sha256sum -c`, `b3sum -c` and
+# `par2` decide; this draws their answer and offers par2's repair.
+ln -s kdos-shell "$PKG/usr/bin/kdos-verify"
 ln -s kdos-shell "$PKG/usr/bin/kdos-note"
 ln -s kdos-shell "$PKG/usr/bin/kdos-run"
 # kdos-comp's <core><promptCommand> — the yes/no dialog labwc's If/prompt

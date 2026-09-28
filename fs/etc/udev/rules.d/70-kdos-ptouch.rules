@@ -1,0 +1,35 @@
+# KDOS — Brother P-touch label printers, for ptouch-print.
+#
+# ptouch-print drives the printer over raw USB through libusb, never through
+# CUPS, so the /dev/bus/usb node needs a grant. Upstream's rule tags these ids
+# `uaccess`, which only logind acts on; here they go to lpadmin, the group
+# that already administers this machine's printers. The ids are upstream's
+# list, every model ptouch-print knows.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2001", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2002", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2004", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2007", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2011", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2019", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="201f", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="202c", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="202d", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2030", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2031", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2041", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="205e", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="205f", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2060", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2061", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2062", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2064", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2065", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2073", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2074", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2085", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="20af", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="20df", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="20e0", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="20e1", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2201", GROUP="lpadmin", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2203", GROUP="lpadmin", MODE="0660"

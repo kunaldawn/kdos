@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kleopatra
+version     = 26.08.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f05abd1f28c5c61b0c58d96a31ffcf8a005c0f4264aac6d8661a6687688fc756  kleopatra-26.08.1.tar.xz
+description = Certificate manager and graphical front end to GnuPG — OpenPGP and S/MIME keys, signing and encryption
+homepage    = https://apps.kde.org/kleopatra/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcodecs kcolorscheme kconfig kcoreaddons kcrash ki18n kiconthemes kitemmodels kio kwidgetsaddons kwindowsystem kxmlgui kdoctools kmime libkleo mimetreeparser kdsingleapplication gpgmepp qgpgme libassuan libgpg-error gnupg pinentry

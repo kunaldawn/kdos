@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = sdl2-mixer
+version     = 2.8.2
+release     = 1
+series      = 2
+source      = $name-$version.tar.gz::https://github.com/libsdl-org/SDL_mixer/releases/download/release-$version/SDL2_mixer-$version.tar.gz
+sha256      = 938dff531d00ace2296557a6599abe6f34599e2f34f0a4a08a397e2ccac8b8f7  sdl2-mixer-2.8.2.tar.gz
+description = Play music and sound effects from SDL2 programs: Ogg, Opus, FLAC, MP3, WavPack, MOD, MIDI and chiptunes
+homepage    = https://github.com/libsdl-org/SDL_mixer
+depends     = cmake ninja pkgconf sdl2-compat flac libogg libvorbis opus opusfile mpg123 wavpack libxmp libgme fluidsynth

@@ -24,7 +24,7 @@ Read the map below before touching anything.
 | Where a window goes, tiling, snapping, workspaces | [`03-architecture/window-model.md`](docs/kdos/03-architecture/window-model.md) |
 | **Drawing anything** — colour, chrome, the pointer contract, glyph tiers | [`03-architecture/design-language.md`](docs/kdos/03-architecture/design-language.md) |
 | The compositor and its grafts | [`04-programs/kdos-comp.md`](docs/kdos/04-programs/kdos-comp.md) |
-| The panel and its 52 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
+| The panel and its 54 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
 | The resource monitor | [`04-programs/kdos-res.md`](docs/kdos/04-programs/kdos-res.md) |
 | The terminal, its keys and clipboards, and pictures in one | [`04-programs/kdos-term.md`](docs/kdos/04-programs/kdos-term.md) |
 | Launching boxed apps, launcher generation, box profiles | [`04-programs/kdos-appbox.md`](docs/kdos/04-programs/kdos-appbox.md) |
@@ -82,11 +82,19 @@ stale-pessimistic one makes them re-verify something that already works.
    replacements and what the choice costs.
 
 4. **No Xorg server.** No `xorg-server`, no display manager, nothing X on the
-   login path, and `fs/etc/X11/` must never exist. Xwayland is the single
-   carve-out; a recipe that wants the X client libraries for anything else gets
-   pushed back.
+   login path, and `fs/etc/X11/` must never exist. Xwayland is the one X
+   server: it serves boxed applications and host applications that have no
+   Wayland path. X client libraries may be linked by any application that
+   needs them.
 
-5. **No GTK and no Qt on the host.** Graphical applications go in a box.
+5. **Toolkits are for applications, never for the desktop.** Applications may
+   be ported natively with GTK 3/4, libadwaita, Qt 5/6, KDE Frameworks,
+   wxWidgets, FLTK or Tk, built with their Wayland backend as the run-time
+   default. The desktop itself (`kdos-comp`, `kdos-shell`, the daemons and
+   portals) draws cells and links no toolkit, and there is no Plasma or GNOME
+   shell. Why, and what is ported, is in
+   [`principles.md`](docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)
+   and [`applications.md`](docs/kdos/02-user-guide/applications.md).
 
 6. **No rationale comments in a recipe.** Banner header plus the metadata keys.
    Reasoning belongs in a commit message or in the book.

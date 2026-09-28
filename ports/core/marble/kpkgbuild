@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = marble
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = a8d5fbfb6b8cc4a8517df6e75143afcdaebcd7995f88f7a459d6b17c9bae1a98  marble-26.08.1.tar.xz
+description = Marble: virtual globe and world atlas, with offline Atlas, satellite and OpenStreetMap vector views
+homepage    = https://marble.kde.org/
+depends     = cmake ninja extra-cmake-modules librsvg qt6-qtbase qt6-qtsvg qt6-qtdeclarative qt6-qt5compat qt6-qtwebengine qt6-qtwebchannel qt6-qtpositioning qt6-qtserialport kcoreaddons ki18n kconfig kcrash kparts kio kdoctools kirigami kirigami-addons protobuf abseil-cpp zlib gpsd shapelib shared-mime-info hicolor-icon-theme

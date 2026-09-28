@@ -4,9 +4,10 @@ cannot be built here at all: talk-llama's CMakeLists `FetchContent`s llama.cpp
 from github AT CONFIGURE TIME, and this distribution builds with no network by
 rule, so the whole configure step ends in `Could not resolve host`.
 
-There is no flag for it. `WHISPER_USE_SYSTEM_LLAMA` is the only escape and it
-wants a llama port this tree does not have, so the subdirectory list is what
-has to change.
+There is no flag that drops it. `WHISPER_USE_SYSTEM_LLAMA` only swaps the
+download for the llama.cpp port, and that still builds talk-llama, a chat
+front end nothing on this desktop opens, so the subdirectory list is what has
+to change.
 
 The other three go with it rather than being built and then deleted: a chat
 front end, a voice-command demo, a language-server demo and a chess board are

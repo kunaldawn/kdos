@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libxdg-basedir
+version     = 1.2.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/devnev/libxdg-basedir/archive/$name-$version.tar.gz
+sha256      = ff30c60161f7043df4dcc6e7cdea8e064e382aa06c73dcc3d1885c7d2c77451d  libxdg-basedir-1.2.3.tar.gz
+description = A small C library for the XDG Base Directory specification
+homepage    = https://github.com/devnev/libxdg-basedir
+depends     = autoconf automake libtool

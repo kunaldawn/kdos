@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lagrange
+version     = 1.21.1
+release     = 1
+source      = https://github.com/skyjake/lagrange/releases/download/v$version/lagrange-$version.tar.gz
+sha256      = 49389240e34fb9e79cebb9566af24723ae15f9ba2ca8e8933ffdd5c3e034953c  lagrange-1.21.1.tar.gz
+description = Gemini, Gopher, Spartan and Finger browser, with a terminal build (clagrange) beside the SDL one
+homepage    = https://gmi.skyjake.fi/lagrange/
+depends     = cmake ninja pkgconf zip sdl2-compat openssl zlib pcre2 libunistring harfbuzz fribidi mpg123 libwebp libjxl opusfile ncurses

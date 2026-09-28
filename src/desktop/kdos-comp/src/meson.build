@@ -15,6 +15,8 @@ labwc_sources = files(
   'kdos-peek.c', # KDOS
   'kdos-thumb.c', # KDOS
   'kdos-crt.c', # KDOS
+  'kdos-a11y.c', # KDOS
+  'kdos-a11ymon.c', # KDOS
   'action.c',
   'buffer.c',
   'debug.c',

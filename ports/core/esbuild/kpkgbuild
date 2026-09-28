@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = esbuild
+version     = 0.25.1
+release     = 1
+series      = 0.25.1
+source      = $name-$version.tar.gz::https://github.com/evanw/esbuild/archive/v$version/esbuild-$version.tar.gz
+sha256      = 5e84e44d7d2c2751f0b67e8cf909def3b0189b8e9549bcd663cadab582ab2947  esbuild-0.25.1.tar.gz
+sha256      = 092b1e71b92060854cc0f2d9b0b02a52018228026c4b87058de8bb47e122304c  esbuild-vendor-0.25.1.tar.xz
+description = JavaScript and TypeScript bundler and minifier
+homepage    = https://esbuild.github.io/
+depends     = go
+vendoring   = go

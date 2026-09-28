@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = yaml-cpp
+version     = 0.9.0
+release     = 1
+source      = https://github.com/jbeder/yaml-cpp/archive/refs/tags/$name-$version.tar.gz
+sha256      = 25cb043240f828a8c51beb830569634bc7ac603978e0f69d6b63558dadefd49a  yaml-cpp-0.9.0.tar.gz
+description = YAML 1.2 parser and emitter for C++
+homepage    = https://github.com/jbeder/yaml-cpp
+depends     = cmake ninja

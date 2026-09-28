@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qtwayland
+version     = 5.15.19
+release     = 1
+_module     = qtwayland
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+sha256      = 9efee6413514986353faace0415ad238b5ab00f8ecb0693381f563076e95ec93  qt5-qtwayland-5.15.19.tar.xz
+description = Qt 5 Wayland platform plugin, so Qt 5 programs run as native Wayland clients, and the QtWaylandCompositor module
+homepage    = https://www.qt.io/
+depends     = qt5-qtbase qt5-qtdeclarative wayland libxkbcommon mesa libglvnd libdrm vulkan-headers
+group       = qt5
+series      = 5.15

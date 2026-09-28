@@ -100,12 +100,29 @@ mkdir -p "$CHROOT_DIR/kdos/script"
 mountpoint -q "$CHROOT_DIR/kdos/script" || mount --bind "$REPO_ROOT/script" "$CHROOT_DIR/kdos/script"
 mkdir -p "$CHROOT_DIR/kdos/src"
 mountpoint -q "$CHROOT_DIR/kdos/src" || mount --bind "$REPO_ROOT/src" "$CHROOT_DIR/kdos/src"
+# fs/ too: a medium that carries the sources copies the overlay from here, and
+# without the bind /kdos/fs is the container's empty mount point.
+mkdir -p "$CHROOT_DIR/kdos/fs"
+mountpoint -q "$CHROOT_DIR/kdos/fs" || mount --bind "$REPO_ROOT/fs" "$CHROOT_DIR/kdos/fs"
 
 cleanup() {
     unmount_all
 }
 
 trap cleanup EXIT
+
+# AT LEAST 4096 OPEN FILES, soft and hard. QtWebEngine's configure writes a
+# linker wrapper that runs `ulimit -n 4096` before its bfd link, and that call
+# fails, and the link with it, when the hard limit is lower. Root may raise
+# the hard limit; a limit already at or above 4096 is left alone.
+_nofile=$(ulimit -Hn)
+if [ "$_nofile" != unlimited ] && [ "$_nofile" -lt 4096 ]; then
+    ulimit -Hn 4096 2>/dev/null || log_mount "warning: hard open-files limit stays at $_nofile"
+fi
+_nofile=$(ulimit -Sn)
+if [ "$_nofile" != unlimited ] && [ "$_nofile" -lt 4096 ]; then
+    ulimit -Sn 4096 2>/dev/null || log_mount "warning: soft open-files limit stays at $_nofile"
+fi
 
 # Execute command inside chroot
 # We cd to /kdos to maintain relative path assumptions for scripts
@@ -114,12 +131,14 @@ trap cleanup EXIT
 # KDOS_REPLAY is forwarded: it tells a step that the developer picked it
 # deliberately, so mark-file guards ("already built, exit 0") stand down.
 #
-# SO ARE THE TWO OPT-IN PACKAGING KNOBS, and they have to be named here for the
-# same reason: `env -i` clears the environment, so a variable the Makefile
+# SO ARE THE THREE OPT-IN PACKAGING KNOBS, and they have to be named here for
+# the same reason: `env -i` clears the environment, so a variable the Makefile
 # passes into the container reaches every step that runs on the HOST and none
-# that runs in the chroot. 06_packaging is a chroot phase, which is where both
-# of these are read — a `make build KDOS_ISO_SOURCES=1` that arrives here
+# that runs in the chroot. 06_packaging is a chroot phase, which is where all
+# three are read — a `make build KDOS_ISO_SOURCES=1` that arrives here
 # unnamed produces an ordinary stick and says nothing about why.
+# KDOS_MAKE_BINHOST=1 also becomes KPKG_KEEP_CACHE=1, so every chroot
+# `kpkg install` keeps the package it built for 06_packaging to index.
 #
 # /usr/local/bin is LAST, unlike fs/etc/profile which puts it first. Our own
 # tools install there — kdos, kdos-appbox — and 06_packaging calls kdos-appbox
@@ -134,5 +153,7 @@ chroot "$CHROOT_DIR" /usr/bin/env -i \
     KDOS_REPLAY="${KDOS_REPLAY:-0}" \
     KDOS_ISO_SOURCES="${KDOS_ISO_SOURCES:-0}" \
     KDOS_PACK_KDOS="${KDOS_PACK_KDOS:-0}" \
+    KDOS_MAKE_BINHOST="${KDOS_MAKE_BINHOST:-0}" \
+    KPKG_KEEP_CACHE="${KDOS_MAKE_BINHOST:-0}" \
     PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"

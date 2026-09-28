@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-iminuit
+version     = 2.33.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/i/iminuit/iminuit-$version.tar.gz
+sha256      = 275f3daa1d4f8c33579b96276d7c5fb680a7cfb6fb8bea9a4245a1500d5d328b  python3-iminuit-2.33.0.tar.gz
+description = iminuit — Minuit2 minimiser and error analysis from Python, for Veusz's fitting
+homepage    = https://scikit-hep.org/iminuit/
+depends     = python3 python3-pip python3-scikit-build-core python3-pybind11 cmake ninja numpy

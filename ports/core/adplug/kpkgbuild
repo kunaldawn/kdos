@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = adplug
+version     = 2.4
+release     = 1
+source      = https://github.com/adplug/adplug/releases/download/$name-$version/$name-$version.tar.bz2
+sha256      = de18463bf7c0cb639a3228ad47e69eb7f78a5a197802d325f3a5ed7e1c56d57f  adplug-2.4.tar.bz2
+description = AdLib/OPL2 sound player library for DOS-era game and tracker music, with the adplugdb database tool
+homepage    = https://adplug.github.io/
+depends     = pkgconf libbinio

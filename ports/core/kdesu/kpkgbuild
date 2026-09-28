@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdesu
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 9bf244884b09ce38ad84d00e5879e798b02e1610ec8f3d9ee6c93e7502b356e2  kdesu-6.30.0.tar.xz
+description = KDE Frameworks: running programs as another user through sudo
+homepage    = https://invent.kde.org/frameworks/kdesu
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons ki18n kpty libX11 sudo

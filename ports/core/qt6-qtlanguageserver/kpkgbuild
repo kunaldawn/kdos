@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtlanguageserver
+version     = 6.11.2
+release     = 1
+_module     = qtlanguageserver
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 38bc4272ecf4ca0eb1927227053e52be6b2e05733f46d03422306aace511fc5e  qt6-qtlanguageserver-6.11.2.tar.xz
+description = Qt 6 Language Server Protocol and JSON-RPC library, used by qmlls
+homepage    = https://www.qt.io/
+depends     = cmake ninja pkgconf qt6-qtbase
+group       = qt6

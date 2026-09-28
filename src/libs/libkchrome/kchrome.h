@@ -214,7 +214,10 @@ uint32_t kch_slot_rgb(int slot);
  * See chrome.c for what these are for and why they are not four copies.
  * ──────────────────────────────────────────────────────────────────────── */
 
-#define SH_MAX_BTN 6
+/* The most buttons one bar carries. The disks window has seven — its verbs
+ * and Close — and a bar asked for more than this silently loses the rest from
+ * the right. */
+#define SH_MAX_BTN 8
 
 struct kch_button {
 	const char *label;

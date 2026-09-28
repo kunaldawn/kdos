@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sgp4
+version     = 3.0
+release     = 1
+_gtest      = 1.14.0
+source      = $name-$version.tar.gz::https://github.com/dnwrnr/sgp4/archive/refs/tags/v$version.tar.gz
+source      = googletest-$_gtest.tar.gz::https://github.com/google/googletest/archive/refs/tags/v$_gtest.tar.gz
+sha256      = 53a1ab9c2ce860af15dd8397cb4a7a1904560d72c7a78c748a34ce2755b0f301  sgp4-3.0.tar.gz
+sha256      = 8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7  googletest-1.14.0.tar.gz
+description = SGP4 — C++ library for satellite orbit propagation from two-line element sets
+homepage    = https://github.com/dnwrnr/sgp4
+depends     = cmake ninja

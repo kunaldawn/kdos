@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = splix
+version     = 2.0.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/OpenPrinting/splix/archive/refs/tags/$version.tar.gz
+sha256      = 182af811aad4d610de0094a83e69037c67c45fa5fdd5ca1b4e93d34dbfd4fa89  splix-2.0.2.tar.gz
+description = CUPS driver for Samsung, Xerox, Dell and Lexmark SPL2/SPLc laser printers
+homepage    = https://openprinting.github.io/splix/
+depends     = cups cups-filters ghostscript jbigkit pkgconf

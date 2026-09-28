@@ -141,6 +141,12 @@ struct action_arg_list {
 	X(ADD_TO_TAB_GROUP, "AddToTabGroup") /* KDOS */ \
 	X(REMOVE_FROM_TAB_GROUP, "RemoveFromTabGroup") /* KDOS */ \
 	X(NEXT_IN_TAB_GROUP, "NextInTabGroup") /* KDOS */ \
+	X(TOGGLE_STICKY_KEYS, "ToggleStickyKeys") /* KDOS */ \
+	X(TOGGLE_SLOW_KEYS, "ToggleSlowKeys") /* KDOS */ \
+	X(TOGGLE_BOUNCE_KEYS, "ToggleBounceKeys") /* KDOS */ \
+	X(TOGGLE_DWELL_CLICK, "ToggleDwellClick") /* KDOS */ \
+	X(TOGGLE_LARGE_CURSOR, "ToggleLargeCursor") /* KDOS */ \
+	X(TOGGLE_ON_SCREEN_KEYBOARD, "ToggleOnScreenKeyboard") /* KDOS */ \
 	X(WARP_CURSOR, "WarpCursor") \
 	X(HIDE_CURSOR, "HideCursor") \
 	X(DEBUG_TOGGLE_KEY_STATE_INDICATOR, "DebugToggleKeyStateIndicator")
@@ -1604,6 +1610,24 @@ run_action(struct view *view, struct action *action,
 		if (view) {
 			kdos_group_next(view);
 		}
+		break;
+	case ACTION_TYPE_TOGGLE_STICKY_KEYS: /* KDOS */
+		kdos_a11y_toggle(KDOS_A11Y_STICKY_KEYS);
+		break;
+	case ACTION_TYPE_TOGGLE_SLOW_KEYS: /* KDOS */
+		kdos_a11y_toggle(KDOS_A11Y_SLOW_KEYS);
+		break;
+	case ACTION_TYPE_TOGGLE_BOUNCE_KEYS: /* KDOS */
+		kdos_a11y_toggle(KDOS_A11Y_BOUNCE_KEYS);
+		break;
+	case ACTION_TYPE_TOGGLE_DWELL_CLICK: /* KDOS */
+		kdos_a11y_toggle(KDOS_A11Y_DWELL_CLICK);
+		break;
+	case ACTION_TYPE_TOGGLE_LARGE_CURSOR: /* KDOS */
+		kdos_a11y_toggle(KDOS_A11Y_LARGE_CURSOR);
+		break;
+	case ACTION_TYPE_TOGGLE_ON_SCREEN_KEYBOARD: /* KDOS */
+		kdos_a11y_toggle(KDOS_A11Y_OSK);
 		break;
 	case ACTION_TYPE_WARP_CURSOR: {
 		const char *to = action_get_str(action, "to", "output");

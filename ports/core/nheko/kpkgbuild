@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = nheko
+version     = 0.12.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Nheko-Reborn/nheko/archive/refs/tags/v$version.tar.gz
+sha256      = 81cc613ee2420b1289c9cc7aeee81cae69a153971fd3112225e48d1c7b224ea5  nheko-0.12.1.tar.gz
+description = Matrix chat client (Qt 6) — rooms, end-to-end encryption, voice and video calls
+homepage    = https://nheko-reborn.github.io/
+depends     = cmake ninja pkgconf asciidoctor qt6-qtbase qt6-qtdeclarative qt6-qtmultimedia qt6-qtsvg qt6-qttools qt6-qtimageformats qt6-qtwayland qtkeychain kdsingleapplication mtxclient coeurl olm spdlog fmt lmdb lmdbxx cmark nlohmann-json re2 openssl libevent curl zlib gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad libnice hicolor-icon-theme

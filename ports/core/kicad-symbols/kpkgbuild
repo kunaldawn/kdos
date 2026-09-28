@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kicad-symbols
+version     = 10.0.6
+release     = 1
+source      = https://gitlab.com/kicad/libraries/kicad-symbols/-/archive/$version/kicad-symbols-$version.tar.gz
+sha256      = 5587f5cb4a779d287e49c4ba069a6b42c27b55cbe4c5b6241e39d91878abe571  kicad-symbols-10.0.6.tar.gz
+description = KiCad's official schematic symbol library, with the global sym-lib-table template
+homepage    = https://www.kicad.org/libraries/
+depends     = cmake ninja python3

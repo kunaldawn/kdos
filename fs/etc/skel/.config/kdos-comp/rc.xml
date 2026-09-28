@@ -433,6 +433,21 @@
          moves, so it must be hard to press by accident. -->
     <keybind key="W-C-S-space"><action name="Execute" command="kdos-style"/></keybind>
 
+    <!-- Accessibility. The magnifier on Super+= and its zoom on Super+Alt
+         with = and -; the rest are Super+Alt with a letter, and each switch
+         puts up a notification saying which way it went, because a keyboard
+         aid switched on by accident is a keyboard that misbehaves for no
+         visible reason. comp.conf sets where each one starts. -->
+    <keybind key="W-equal"><action name="ToggleMagnify"/></keybind>
+    <keybind key="W-A-equal"><action name="ZoomIn"/></keybind>
+    <keybind key="W-A-minus"><action name="ZoomOut"/></keybind>
+    <keybind key="W-A-s"><action name="ToggleStickyKeys"/></keybind>
+    <keybind key="W-A-l"><action name="ToggleSlowKeys"/></keybind>
+    <keybind key="W-A-b"><action name="ToggleBounceKeys"/></keybind>
+    <keybind key="W-A-d"><action name="ToggleDwellClick"/></keybind>
+    <keybind key="W-A-c"><action name="ToggleLargeCursor"/></keybind>
+    <keybind key="W-A-k"><action name="ToggleOnScreenKeyboard"/></keybind>
+
 
     <!-- media keys: keysyms that exist only on those keys, safe unmodified.
          These REPLACE the defaults, which shell out to pactl and

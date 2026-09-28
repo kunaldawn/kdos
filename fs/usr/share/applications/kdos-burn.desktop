@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Burn
+GenericName=Disc Burner
+Comment=A folder or an image onto a CD, DVD or Blu-ray
+Exec=kdos-burn %f
+Icon=media-optical
+Terminal=false
+NoDisplay=true
+MimeType=application/x-cd-image;application/vnd.efi.iso;
+Categories=System;
+StartupWMClass=kdos-burn

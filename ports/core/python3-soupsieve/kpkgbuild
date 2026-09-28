@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-soupsieve
+version     = 2.10
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/s/soupsieve/soupsieve-$version.tar.gz
+sha256      = 49e9380d7d2905463583bafe285e818c7366a9ed7b3aee221c1ac79c905d8bc0  python3-soupsieve-2.10.tar.gz
+description = Soup Sieve — CSS selectors for Beautiful Soup
+homepage    = https://facelessuser.github.io/soupsieve/
+depends     = python3 python3-pip python3-hatchling

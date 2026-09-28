@@ -122,6 +122,8 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$KDOS_SOURCES_BASE" ] || die "KDOS_SOURCES_BASE is empty; there is no archive to publish to"
+# Uploads go to the release; a directory base could not confirm one landed.
+src_base_local && die "KDOS_SOURCES_BASE is a local directory; publish checks the published archive"
 
 GIT_DIR_ABS=$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir) || die "not a git checkout"
 KDOS_LFS_STORE="${KDOS_LFS_STORE:-$GIT_DIR_ABS/lfs/objects}"

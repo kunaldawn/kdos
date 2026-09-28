@@ -36,7 +36,7 @@
  * KP_MAX_ORDER rather than a fraction of KB_MAX_STEPS: kpkgdepends cannot
  * return more than that, so a phase that reaches this has already been
  * truncated upstream and the build must say so rather than carry on. */
-#define KB_MAX_PKGS    2048
+#define KB_MAX_PKGS    4096
 #define KB_MAX_LOG     2000	/* lines kept per step                      */
 #define KB_MAX_NOTICE  50
 

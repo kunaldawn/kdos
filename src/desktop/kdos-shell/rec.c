@@ -57,11 +57,13 @@
  * stop leaves a file no player will open whenever the machine goes away
  * mid-recording — which in the rig is every run.
  *
- * THE WORDS HAVE NEVER BEEN READ BACK. No speech model ships, so the gate,
- * the argv, the spawn and the exit status are what this surface proves about
- * transcription. Nothing here claims more.
+ * THE HARNESS NEVER READS THE WORDS BACK. It builds this with the packaged
+ * model's directory pointed at nothing, so the gate, the argv, the spawn and
+ * the exit status are what a test proves about transcription. Nothing here
+ * claims more.
  *
- * AND THE BUTTON FETCHES ONE WHEN THERE IS NONE. `Get model` opens a terminal
+ * AND THE BUTTON FETCHES ONE WHEN THERE IS NONE, which on the image means the
+ * packaged base.en has been removed. `Get model` opens a terminal
  * on `kdos speech get`, which names a model out of a table, checks its sha256
  * and writes it where find_model() looks; the loop below keeps looking while
  * there is nothing, so the button turns into `Transcribe` on its own.
@@ -103,7 +105,7 @@
 #define RC_TICK_MS 100
 #define RC_TICK_SAMPLES (RC_RATE * RC_TICK_MS / 1000)
 
-/* Where a packaged model would land. Overridable so the harness can point it
+/* Where the packaged model lands. Overridable so the harness can point it
  * at a path that does not exist: a build host that happens to carry models
  * would otherwise draw a different frame than the committed golden. */
 #ifndef KDOS_WHISPER_DIR
@@ -669,8 +671,8 @@ static void rec_finish(void)
  * whisper's guess, and `-np -nt` drop the progress bar and the timestamps that
  * a pane of prose does not want.
  *
- * THE EXIT STATUS IS THE RESULT. What the words say is not checked here and
- * has never been checked on this tree, because no model ships.
+ * THE EXIT STATUS IS THE RESULT. What the words say is not checked here, and
+ * no test reads them back.
  */
 static void transcribe(void)
 {

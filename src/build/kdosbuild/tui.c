@@ -770,9 +770,9 @@ int screen_plan(Manager *m, KbuildPlan *out)
 			step_on[i][k] = 1;
 	}
 
-	KbuildPkgRef *pkg = kb_calloc(2048, sizeof(*pkg));
+	KbuildPkgRef *pkg = kb_calloc(KB_MAX_PKGS, sizeof(*pkg));
 	int npkg = kbuild_package_index(m->phase, m->nphase, m->repo_root, pkg,
-					2048);
+					KB_MAX_PKGS);
 	char (*rebuild)[64] = kb_calloc(KBUILD_MAX_REBUILD, sizeof(*rebuild));
 	int nrebuild = 0;
 

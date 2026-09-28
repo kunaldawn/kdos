@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = udisks2
+version     = 2.11.2
+release     = 1
+source      = https://github.com/storaged-project/udisks/releases/download/udisks-$version/udisks-$version.tar.bz2
+sha256      = 18630a8aad806bea0bc626ce97e71e50ec82c742956ac1c834a4275f8f22207b  udisks2-2.11.2.tar.bz2
+description = Disk management daemon and D-Bus API for toolkit applications
+homepage    = https://github.com/storaged-project/udisks
+depends     = glib gobject-introspection glib-introspection polkit libgudev eudev util-linux acl libblockdev libatasmart lvm2 btrfs-progs libstoragemgmt libconfig dbus gettext libxslt docbook-xsl docbook-xml

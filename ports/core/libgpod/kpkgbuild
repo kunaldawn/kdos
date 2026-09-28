@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libgpod
+version     = 0.8.3
+release     = 1
+source      = https://downloads.sourceforge.net/project/gtkpod/libgpod/libgpod-0.8/$name-$version.tar.bz2
+sha256      = 638a7959d04e95f1e62abad02bd33702e4e8dfef98485ac7d9d50395c37e955d  libgpod-0.8.3.tar.bz2
+description = Library to read and write the music database of an iPod classic, nano and shuffle
+homepage    = https://sourceforge.net/projects/gtkpod/
+depends     = glib sqlite libplist libimobiledevice libxml2 gdk-pixbuf libusb zlib intltool gettext pkgconf

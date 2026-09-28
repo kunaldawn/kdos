@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libfobos
+version     = 2.4.1.git20260618
+release     = 1
+_commit     = 1e0fab3d361ee553faa88f67d2ef0ae502483151
+source      = $name-$version.tar.gz::https://github.com/rigexpert/libfobos/archive/$_commit.tar.gz
+sha256      = 919b5fd75fff0379dcc42527011ea91691d076528a4ea673618130c81a0563ec  libfobos-2.4.1.git20260618.tar.gz
+description = libfobos — driver library and fobos_* tools for the RigExpert Fobos SDR receiver
+homepage    = https://github.com/rigexpert/libfobos
+depends     = cmake pkgconf libusb

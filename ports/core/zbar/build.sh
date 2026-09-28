@@ -11,12 +11,19 @@
 
 autoreconf -f -i
 
-# EVERY GUI FRONT END IS OFF. zbar ships GTK, Qt, Java and Python bindings and
-# an X overlay; the host has none of those by rule, and what is wanted here is
-# zbarimg and zbarcam — a file or a camera in, text out. `--with-x=no` matters
-# even with the toolkits off, or configure links the X overlay for zbarcam;
-# --without-xshm and --without-xv stop the X extension probes, which link
-# libXext and libXv whenever their headers are present.
+# THE X OVERLAY IS zbarcam's VIEWFINDER, and it is the one front end built.
+# Without it zbarcam runs only with --nodisplay and the user aims a camera
+# blind; with it the camera picture is an X window under Xwayland while the
+# decoded text goes to standard output. X is detected rather than required,
+# so the config.h check below makes a missing libX11 a failed build. MIT-SHM
+# (libXext) is named so the picture is not copied through the socket; XVideo
+# is off, because the XImage path already draws it and Xv under Xwayland
+# depends on the GPU driver.
+#
+# THE WIDGETS ARE OFF. zbar's Qt 6 widget is marked broken by upstream, and
+# its Qt 5 and GTK widgets draw the same X overlay into an X window id, which
+# a Wayland-native Qt or GTK window does not have. Java and Python bindings
+# have no consumer here.
 #
 # LIBV4L2 IS FORCED ON. zbarcam reads a camera through libv4l2 when configure
 # finds libv4l2.h, which converts the pixel formats many webcams deliver and
@@ -48,8 +55,8 @@ export XML_CATALOG_FILES=/etc/xml/catalog
 	--without-qt \
 	--without-java \
 	--without-python \
-	--without-x \
-	--without-xshm \
+	--with-x \
+	--with-xshm \
 	--without-xv \
 	--enable-video \
 	--with-imagemagick \
@@ -61,5 +68,26 @@ export XML_CATALOG_FILES=/etc/xml/catalog
 	--enable-nls \
 	XMLTO=xmlto \
 	ac_cv_header_libv4l2_h=yes
+if grep -q '^#define X_DISPLAY_MISSING' include/config.h; then
+	echo "zbar: libX11 not found, zbarcam would have no window" >&2
+	exit 1
+fi
 make
 make DESTDIR=$PKG install
+
+# zbarcam prints each code it reads, so the entry runs it in a terminal: the
+# camera picture is its own window and the text lands where it can be copied.
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/zbarcam.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Barcode Scanner
+GenericName=QR and Barcode Reader
+Comment=Read QR codes and barcodes held up to the camera
+Exec=zbarcam
+Icon=camera-web
+Terminal=true
+Categories=Utility;Video;
+Keywords=qr;barcode;scan;camera;zbar;
+DESKTOP
+chmod 644 "$PKG/usr/share/applications/zbarcam.desktop"

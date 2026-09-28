@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-cloudpickle
+version     = 3.1.2
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/cloudpickle/cloudpickle-$version.tar.gz
+sha256      = 7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414  python3-cloudpickle-3.1.2.tar.gz
+description = cloudpickle — pickling of functions and classes, which Spyder's kernel sends variables with
+homepage    = https://github.com/cloudpipe/cloudpickle
+depends     = python3 python3-pip python3-flit-core

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = celluloid
+version     = 0.30
+release     = 1
+source      = https://github.com/celluloid-player/$name/releases/download/v$version/$name-$version.tar.xz
+sha256      = 7fef96431842c24e5ae78a9c42bc6523818a6c45213f23ceb146d037d6ec8559  celluloid-0.30.tar.xz
+description = Simple GTK 4 video player over libmpv
+homepage    = https://celluloid-player.github.io/
+depends     = meson ninja pkgconf gettext glib gtk4 libadwaita libepoxy mpv gsettings-desktop-schemas librsvg desktop-file-utils

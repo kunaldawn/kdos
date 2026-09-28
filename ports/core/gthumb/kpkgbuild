@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gthumb
+version     = 4.0
+release     = 1
+source      = https://download.gnome.org/sources/gthumb/$version/gthumb-$version.tar.xz
+sha256      = a24aaa72b5637f49097dedc9c141a33615da770d029315f3285ebf2156cf7b61  gthumb-4.0.tar.xz
+description = gThumb: browse, view, tag and edit photos and videos, for GTK 4 and libadwaita
+homepage    = https://gitlab.gnome.org/GNOME/gthumb
+depends     = meson ninja pkgconf vala gettext glib gtk4 libadwaita libportal libpng libjpeg-turbo zlib lcms2 exiv2 libwebp librsvg libheif libjxl libtiff giflib libraw gstreamer gst-plugins-base gst-plugins-good gst-libav hicolor-icon-theme

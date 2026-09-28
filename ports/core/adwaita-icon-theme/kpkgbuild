@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = adwaita-icon-theme
+version     = 51.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/adwaita-icon-theme/${version%.*}/adwaita-icon-theme-$version.tar.xz
+sha256      = ba561cf3c96305a47179fa5605856ad695c9238ea07f7093aebd9ba80c4e323b  adwaita-icon-theme-51.0.tar.xz
+description = GNOME's Adwaita icon and cursor theme — the symbolic-icon fallback GTK applications expect
+homepage    = https://gitlab.gnome.org/GNOME/adwaita-icon-theme
+depends     = meson gtk3 hicolor-icon-theme

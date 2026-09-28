@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = opencv
+version     = 4.14.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/opencv/opencv/archive/refs/tags/$version.tar.gz
+source      = opencv_contrib-$version.tar.gz::https://github.com/opencv/opencv_contrib/archive/refs/tags/$version.tar.gz
+sha256      = ee8fb9b30eb60850431b4656447080e3737b56e45719c92b67f245950609f86e  opencv-4.14.0.tar.gz
+sha256      = 4f17abd1bc7f88e19c3380c8de7cbf2d863aced5b5ee8d8934cc7902b67d42c9  opencv_contrib-4.14.0.tar.gz
+description = OpenCV — computer vision and machine-learning library, with the tracking, optical-flow and extended image-processing contrib modules and Python bindings
+homepage    = https://opencv.org/
+depends     = cmake ninja pkgconf python3 numpy zlib libjpeg-turbo libpng libtiff libwebp openjpeg openexr libavif libjxl ffmpeg gstreamer gst-plugins-base libva onetbb eigen openblas qt6-qtbase

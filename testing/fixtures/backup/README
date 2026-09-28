@@ -9,3 +9,11 @@ the fourth day.
 TWO SNAPSHOTS, DIFFERENT SHAPES. One has no `tags` key at all and one path; the
 other has a tag and two. A parser that assumed `tags` was always present, or
 that a snapshot covered one path, gets one of the two wrong.
+
+`ls-e399cdcf.json` is `restic ls --json --recursive e399cdcf /` from a
+repository holding the same two paths, edited the same way: the times, the
+inode numbers and the owner are fixed, and the snapshot record's id is the
+fixture's. The restore view reads it for a snapshot's listing and keeps the
+entries whose parent is the folder it is showing, which is the filter it
+applies to a live `restic ls` too. One file name carries a space, because a
+restore that split a path on one would restore two things that do not exist.

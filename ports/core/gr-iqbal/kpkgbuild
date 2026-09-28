@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gr-iqbal
+version     = 0.38.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/osmocom/gr-iqbal/archive/refs/tags/v$version.tar.gz
+sha256      = dc1a25ec95c15335135776887e4a3127fb583123ff2b092b5113965bd099c53e  gr-iqbal-0.38.3.tar.gz
+description = gr-iqbal — GNU Radio blocks that estimate and correct I/Q imbalance, used by gr-osmosdr
+homepage    = https://osmocom.org/projects/gr-iqbal
+depends     = cmake ninja pkgconf gnuradio boost fftw libosmo-dsp python3 python3-pybind11 numpy

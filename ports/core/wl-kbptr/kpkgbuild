@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wl-kbptr
+version     = 0.4.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/moverest/wl-kbptr/archive/refs/tags/v$version.tar.gz
+sha256      = 03ac52afa42d7aa88f909f96b2c0e57f5706a11d5d0ff451f6052927571e0624  wl-kbptr-0.4.1.tar.gz
+description = Move and click the pointer from the keyboard — labelled screen regions over a layer-shell overlay
+homepage    = https://github.com/moverest/wl-kbptr
+depends     = meson ninja pkgconf wayland wayland-protocols libxkbcommon cairo

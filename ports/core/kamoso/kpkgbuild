@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kamoso
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = fd36a3fb681b943c4defc4b6acd4c4390aacf373adcb3df0d4c4f17143207d02  kamoso-26.08.1.tar.xz
+description = KDE webcam booth — take pictures and record videos from a camera
+homepage    = https://apps.kde.org/kamoso/
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtwayland kconfig kio ki18n knotifications purpose kirigami kirigami-addons kdoctools gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad pipewire glib

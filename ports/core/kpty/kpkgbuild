@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kpty
+version     = 6.30.0
+release     = 1
+source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = ad66149c20470de29d483f0ccdcb057d42ccf778f3f8cc8e68aefca5380bace7  kpty-6.30.0.tar.xz
+description = KDE Frameworks: pseudo-terminal devices for terminal emulators
+homepage    = https://invent.kde.org/frameworks/kpty
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons ki18n gettext

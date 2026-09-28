@@ -23,7 +23,7 @@
 # KDOS surface rather than the default grey.
 #
 # WHAT IS OFF, and each for a reason rather than by omission:
-# icons-and-clipboard is GTK, which the host does not have by rule;
+# icons-and-clipboard is GTK, for a tray icon a terminal client does not need;
 # xscreensaver is X11; and otr needs libotr, which is not a port.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Dpgp=enabled -Dpython-plugins=enabled -Dc-plugins=enabled \

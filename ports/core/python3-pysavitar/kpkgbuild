@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pysavitar
+version     = 5.12.0
+release     = 1
+_commit     = 74cbe2bd365c6f3397b385e879139b012059c487
+source      = $name-$version.tar.gz::https://github.com/Ultimaker/pySavitar/archive/$_commit.tar.gz
+sha256      = 784aabbd0b4388603eab7bbf8363be8ea83eaec967ee52ef26952a9c19bf47b8  python3-pysavitar-5.12.0.tar.gz
+description = pySavitar — Python bindings for Savitar, Cura's 3MF reader and writer
+homepage    = https://github.com/Ultimaker/pySavitar
+depends     = python3 python3-pip python3-sip python3-setuptools libsavitar pugixml

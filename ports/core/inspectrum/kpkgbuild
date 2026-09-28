@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = inspectrum
+version     = 0.4.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/miek/inspectrum/archive/refs/tags/v$version.tar.gz
+sha256      = a11214070c0aa3379e6ffd1728aa9528bf1dd722b8b72218ea1b872471b50c65  inspectrum-0.4.0.tar.gz
+description = inspectrum — inspect recorded radio signals: spectrogram, cursors, and demodulated traces
+homepage    = https://github.com/miek/inspectrum
+depends     = cmake ninja qt6-qtbase qt6-qtwayland fftw liquid-dsp

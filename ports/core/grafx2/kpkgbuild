@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = grafx2
+version     = 2.9
+release     = 1
+_recoil     = 6.4.2
+source      = $name-$version.tar.gz::https://gitlab.com/GrafX2/grafX2/-/archive/v$version/grafX2-v$version.tar.gz
+source      = https://downloads.sourceforge.net/project/recoil/recoil/$_recoil/recoil-$_recoil.tar.gz
+source      = https://github.com/redcode/6502/releases/download/v0.1/6502-v0.1.tar.xz
+sha256      = 343d3c39cf89a60617858e0c7311bd261d90e28b8ae8794ae177edf6fc1b1556  grafx2-2.9.tar.gz
+sha256      = 23dec191a766b55d6057a8886285cee9defcccecb141ae777f4245a6dc63e3dc  recoil-6.4.2.tar.gz
+sha256      = bba50f327163d40b1014f5affc8042137f37b200dae50a4f0fe56b5769b3940f  6502-v0.1.tar.xz
+description = Pixel-art paint program in the Deluxe Paint tradition, on SDL2 with no toolkit
+homepage    = http://grafx2.eu
+depends     = pkgconf sdl2-compat sdl2-image sdl2-ttf lua54 libpng libtiff zlib fontconfig freetype2 librsvg

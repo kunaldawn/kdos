@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-referencing
+version     = 0.37.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/r/referencing/referencing-$version.tar.gz
+sha256      = 44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8  python3-referencing-0.37.0.tar.gz
+description = JSON reference resolution across JSON Schema dialects, under jsonschema
+homepage    = https://github.com/python-jsonschema/referencing
+depends     = python3 python3-pip python3-hatchling python3-hatch-vcs python3-setuptools-scm python3-attrs python3-rpds-py python3-typing-extensions

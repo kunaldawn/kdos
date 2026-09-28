@@ -12,9 +12,11 @@
 # A MIDI FILE IS A SCORE, NOT A RECORDING, and nothing else on this machine can
 # perform one. It is a few kilobytes of "which note, how hard, when" — which is
 # why a decades-old archive of them is tiny and why it is worthless without a
-# synthesiser. fluidsynth is that, and it needs a SoundFont: none is shipped
-# (they are tens to hundreds of megabytes and picking one is picking a sound),
-# and `fluidsynth -a alsa file.sf2 tune.mid` is the whole interface.
+# synthesiser. fluidsynth is that, and it needs a SoundFont: fluidr3-gm-sf3
+# provides /usr/share/soundfonts/default.sf2, the DEFAULT_SOUNDFONT
+# cmake_admin/DefaultDirs.cmake compiles in, so `fluidsynth -a alsa tune.mid`
+# plays with no SoundFont named, and `fluidsynth -a alsa other.sf2 tune.mid`
+# plays through another.
 #
 # -Denable-pipewire=ON as well as ALSA, because the desktop session runs
 # pipewire while tty1 does not — the same split kdos-bb's audio notes describe.

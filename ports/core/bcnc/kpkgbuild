@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = bcnc
+version     = 0.9.16
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/b/bcnc/bcnc-$version.tar.gz
+sha256      = a87929a050f8adf2fae6a441e95461c2233d97f74de967bbf3a3c12e77b2bcf5  bcnc-0.9.16.tar.gz
+sha256      = 9a953c1a2c2dc3282b0b66f074c6583c88324f50074a4eeddc7cac7b8513b1d3  bcnc-vendor-0.9.16.tar.xz
+description = bCNC — GRBL CNC controller and G-code sender with an editor, probing, auto-levelling and CAM tools (Tk)
+homepage    = https://github.com/vlachoudis/bCNC
+depends     = python3 python3-pip python3-setuptools python3-wheel python3-tkinter tk numpy python3-pillow python3-pyserial
+vendoring   = python
+pypackages  = svgelements:1.9.6 shxparser:0.0.2

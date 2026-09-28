@@ -13,10 +13,13 @@
 # leaks tracer's stack-traces-flags walk the stack with; musl has no
 # backtrace(), so without it both print nothing. libdw adds the source file and
 # line to each frame. Both are named, so a missing one fails setup.
+# introspection installs Gst-1.0 and the GstBase, GstCheck, GstController and
+# GstNet GIRs, which every other GStreamer GIR includes and which Python
+# programs load through gi.require_version('Gst', '1.0').
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	--buildtype=release \
-	-Dintrospection=disabled \
+	-Dintrospection=enabled \
 	-Ddoc=disabled \
 	-Dexamples=disabled \
 	-Dtests=disabled \

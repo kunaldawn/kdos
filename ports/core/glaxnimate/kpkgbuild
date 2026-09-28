@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = glaxnimate
+version     = 0.6.0
+release     = 1
+source      = https://download.kde.org/stable/glaxnimate/$version/glaxnimate-$version.tar.xz
+sha256      = 4fe5e4d48124d499aab318c932884e3e98da2fd279399c3ba3c6a4d1e07de94a  glaxnimate-0.6.0.tar.xz
+description = Glaxnimate: vector animation and motion design, Lottie, SVG and video export, for Qt 6
+homepage    = https://glaxnimate.org/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qttools ki18n kcoreaddons kwidgetsaddons kxmlgui karchive kcompletion kiconthemes kconfig kcrash breeze-icons potrace ffmpeg libarchive zlib python3 librsvg hicolor-icon-theme

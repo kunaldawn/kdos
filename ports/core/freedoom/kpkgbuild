@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = freedoom
+version     = 0.13.0
+release     = 1
+source      = https://github.com/freedoom/freedoom/archive/refs/tags/v$version.tar.gz
+sha256      = 860edb005bcf0b2acf29d10fd9130c91025301764a4d0d6dcffc503fdf8d2c77  freedoom-0.13.0.tar.gz
+description = Free game data for Doom engines — Phase 1, Phase 2 and FreeDM IWADs built from their lumps
+homepage    = https://freedoom.github.io/
+depends     = deutex python3 python3-pillow asciidoc docbook-xsl libxslt

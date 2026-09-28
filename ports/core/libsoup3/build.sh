@@ -15,6 +15,9 @@
 # carries it instead, and without it every https request fails at the
 # handshake with "TLS/SSL support not available".
 #
+# introspection installs Soup-3.0.gir, which WebKitGTK's GIRs include. The
+# vapi stays off: nothing here is written in Vala.
+#
 # NTLM is off because it is a helper, `ntlm_auth` from Samba, and that is not a
 # port. GSSAPI is on: krb5 is a port and Negotiate is what a Kerberos realm's
 # web services answer with. Every other option is named so the result does not
@@ -26,7 +29,7 @@ meson setup build \
 	-Dntlm=disabled \
 	-Dbrotli=enabled \
 	-Dtls_check=false \
-	-Dintrospection=disabled \
+	-Dintrospection=enabled \
 	-Dvapi=disabled \
 	-Ddocs=disabled \
 	-Dtests=false \

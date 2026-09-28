@@ -64,8 +64,11 @@ Three things on the screen are not cells:
 - **The pixel layer under the cells.** A surface with a Wayland backend may record plates, rules
   and rounded ends that are painted beneath its cells. Layout, hit testing and every dump stay in
   cells. See [The pixel layer under the cells](#the-pixel-layer-under-the-cells).
-- **A boxed application** (one running in a container) draws whatever its toolkit draws, inside a
-  frame this desktop owns.
+- **An application.** A natively ported application (one built from a recipe with GTK, Qt,
+  KDE Frameworks, wxWidgets, FLTK or Tk) and a boxed application (one running in a container)
+  each draw whatever their toolkit draws. The compositor frames such a window with its own title
+  bar and border unless the application asks to draw its own decoration, as GTK applications with
+  a header bar do; the compositor grants what the application asks for.
 
 No KDOS surface is drawn by another toolkit. The input-method candidate window shows how far that
 goes. An input-method engine normally draws its own candidate list with its own renderer, which on
@@ -113,7 +116,7 @@ two diverge.
 |---|---|
 | `kch_header` | The two-row accent band across the top, with an optional icon, title and subtitle, and a rule under it; returns the first body row |
 | `kch_group` | A heading inside the body, followed by a rule to the right margin |
-| `kch_buttons` | The verb bar: a row of buttons (at most six), dropped from the right when narrow |
+| `kch_buttons` | The verb bar: a row of buttons (at most eight), dropped from the right when narrow |
 | `kch_button_at`, `kch_hover` | Which button the last frame drew under a cell, and where the pointer is, so a button lights under it |
 | `kch_list_wheel`, `kch_list_clamp` | The scrolling rule for a list |
 | `kch_scrollbar` and `kch_scrollbar_press` / `_drag` / `_release` / `_grabbed` | A scrollbar that can be dragged; up to four per surface |
@@ -931,7 +934,7 @@ If `grep -c KT_EVT_MOUSE` on a new source file returns zero, line 4 has not been
 - [Testing](../05-developer/testing.md) — goldens and the dump harness
 - [kdos-shell](../04-programs/kdos-shell.md) — the largest set of surfaces following this chapter
 - [kdos-comp](../04-programs/kdos-comp.md) — the compositor that draws the generated frame
-- [How KDOS differs](../01-philosophy/how-kdos-differs.md#toolkits-on-the-host) — why the host has no widget toolkit, so every surface is cells
+- [How KDOS differs](../01-philosophy/how-kdos-differs.md#toolkits) — why the desktop links no widget toolkit, so every surface is cells
 - [The window model](window-model.md) — where the windows those frames surround go
 - [Glossary](../06-reference/glossary.md) — surface, slot, sprite, golden and the other terms used here
 

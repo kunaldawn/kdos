@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = librfnm
+version     = 0.2.0.git20240716
+release     = 1
+_commit     = aa305290a9e8e6af13806275d0c21a0b580d8e23
+source      = $name-$version.tar.gz::https://github.com/rfnm/librfnm/archive/$_commit.tar.gz
+sha256      = 9b53bc906d3feae2256ea91e409c49430b2198fe6472043f2bb25c5c3fa62930  librfnm-0.2.0.git20240716.tar.gz
+description = librfnm — host library and rfnm_info for RFNM software-defined radio boards
+homepage    = https://github.com/rfnm/librfnm
+depends     = cmake ninja pkgconf spdlog fmt libusb

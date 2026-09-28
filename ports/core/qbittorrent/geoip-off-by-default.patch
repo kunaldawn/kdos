@@ -1,0 +1,11 @@
+--- a/src/base/preferences.cpp	2026-09-28 03:18:53.815989313 +0530
++++ b/src/base/preferences.cpp	2026-09-28 03:18:53.829820932 +0530
+@@ -1377,7 +1377,7 @@
+ 
+ bool Preferences::resolvePeerCountries() const
+ {
+-    return value(u"Preferences/Connection/ResolvePeerCountries"_s, true);
++    return value(u"Preferences/Connection/ResolvePeerCountries"_s, false);
+ }
+ 
+ void Preferences::resolvePeerCountries(const bool resolve)

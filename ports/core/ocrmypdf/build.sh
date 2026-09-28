@@ -16,9 +16,10 @@
 # --no-deps, AND THE PART OF THE CLOSURE NO OTHER PROGRAM IMPORTS NAMED ONE BY
 # ONE. The compiled dependencies — pillow, pillow-heif, pikepdf, lxml,
 # cryptography, pypdfium2, pydantic-core, uharfbuzz — and pluggy, packaging,
-# pygments, fonttools, rich, typing-extensions and charset-normalizer are ports
-# in `depends`. What is left is pure python that exists only to be imported:
-# pydantic and its typing helpers, fpdf2, img2pdf and pdfminer.six. A resolving
+# pygments, fonttools, rich, typing-extensions, charset-normalizer and
+# defusedxml are ports in `depends`. What is left is pure python that exists
+# only to be imported: pydantic and its typing helpers, fpdf2, img2pdf and
+# pdfminer.six. A resolving
 # install would leave out whichever of those another package had already put in
 # the build root, so what this package owns would follow build order. pydantic
 # is pinned in `pypackages` to the release that names python3-pydantic-core's
@@ -50,4 +51,4 @@ test -s src/ocrmypdf/data/Occulta.ttf
 # installed for their sake; --no-index with --find-links is what makes an
 # isolated environment offline.
 pip3 install --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr \
-	annotated-types defusedxml fpdf2 img2pdf pdfminer.six pydantic typing-inspection .
+	annotated-types fpdf2 img2pdf pdfminer.six pydantic typing-inspection .

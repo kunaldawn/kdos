@@ -31,13 +31,15 @@
 #   sndfile    sfdec, the formats libsndfile reads (upstream builds no encoder)
 #   openexr    OpenEXR decode
 #   bz2        bzip2 decode and encode
+#   chromaprint  audio fingerprints, for taggers that look a track up
+#   openmpt    tracker modules (MOD, XM, IT, S3M) through libopenmpt
 #
 # aom is off: svt-av1 is this tree's AV1 encoder, and a second encoder for one
 # format earns nothing. The Bluetooth codecs are off because PipeWire owns
 # Bluetooth audio, and libde265 because gst-libav already decodes HEVC.
 # srt stays off until srt is a port.
-# introspection stays off: every GStreamer GIR includes Gst-1.0 and the
-# GstBase GIRs, and gstreamer and gst-plugins-base are built without them.
+# introspection is on: its GIRs include Gst-1.0 and the GstBase GIRs, so
+# gstreamer and gst-plugins-base are built with introspection too.
 
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
@@ -46,7 +48,7 @@ meson setup build \
 	-Dexamples=disabled \
 	-Dtests=disabled \
 	-Dnls=disabled \
-	-Dintrospection=disabled \
+	-Dintrospection=enabled \
 	-Dx11=disabled \
 	-Dgtk3=disabled \
 	-Dorc=enabled \
@@ -74,6 +76,8 @@ meson setup build \
 	-Dsndfile=enabled \
 	-Dopenexr=enabled \
 	-Dbz2=enabled \
+	-Dchromaprint=enabled \
+	-Dopenmpt=enabled \
 	-Dva=enabled \
 	-Dudev=enabled \
 	-Ddrm=enabled \
@@ -107,7 +111,6 @@ meson setup build \
 	-Dsrt=disabled \
 	-Davtp=disabled \
 	-Dbs2b=disabled \
-	-Dchromaprint=disabled \
 	-Ddc1394=disabled \
 	-Ddirectfb=disabled \
 	-Ddts=disabled \
@@ -137,7 +140,6 @@ meson setup build \
 	-Dopenal=disabled \
 	-Dopencv=disabled \
 	-Dopenh264=disabled \
-	-Dopenmpt=disabled \
 	-Dopenni2=disabled \
 	-Drtmp=disabled \
 	-Dsoundtouch=disabled \

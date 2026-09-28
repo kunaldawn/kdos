@@ -15,6 +15,16 @@
 # element, and playbin falls back to curlhttpsrc and plugins-bad's older
 # demuxers. libsoup3 is in depends for that reason, and carries
 # glib-networking, without which every https URL fails at the handshake.
+#
+# qt6 builds qml6glsink, the org.freedesktop.gstreamer.Qt6GLVideoItem QML
+# type that Kamoso and Nheko draw camera and call video into; without it their
+# windows show no picture. Only its Wayland winsys is built: qt-x11 needs GLX
+# in gstreamer-gl, which gst-plugins-base does not build, and qt-egl is EGLFS,
+# which qtbase does not build. qt-method is pinned to qmake, so the tools are
+# found where qmake6 reports them: qt6-qtshadertools' qsb in QT_HOST_BINS
+# (/usr/lib/qt6/bin), and moc, rcc and uic in QT_HOST_LIBEXECS.
+#
+# twolame is twolamemp2enc, MPEG-1 layer 2 audio encode.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	--buildtype=release \
@@ -25,7 +35,11 @@ meson setup build \
 	-Dximagesrc=disabled \
 	-Dgtk3=disabled \
 	-Dqt5=disabled \
-	-Dqt6=disabled \
+	-Dqt6=enabled \
+	-Dqt-method=qmake \
+	-Dqt-wayland=enabled \
+	-Dqt-x11=disabled \
+	-Dqt-egl=disabled \
 	-Drpicamsrc=disabled \
 	-Dv4l2=enabled \
 	-Dv4l2-libv4l2=enabled \
@@ -55,7 +69,7 @@ meson setup build \
 	-Dshout2=disabled \
 	-Dspeex=disabled \
 	-Dtaglib=disabled \
-	-Dtwolame=disabled \
+	-Dtwolame=enabled \
 	-Ddv=disabled \
 	-Ddv1394=disabled \
 	-Damrnb=disabled \

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libstoragemgmt
+version     = 1.11.0
+release     = 1
+source      = https://github.com/libstorage/libstoragemgmt/releases/download/$version/$name-$version.tar.gz
+sha256      = 07fd9c8e498a052b7ed201c56936120910ec4992fa1f3ade88a0c66e088bdc93  libstoragemgmt-1.11.0.tar.gz
+description = Storage array and local disk management library, the lsmd plugin daemon and lsmcli
+homepage    = https://libstorage.github.io/libstoragemgmt-doc/
+depends     = glib sqlite eudev python3 libconfig perl pkgconf bash-completion

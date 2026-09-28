@@ -1,0 +1,98 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = logisim-evolution
+version     = 5.0.0
+release     = 1
+
+_maven      = https://repo1.maven.org/maven2
+_javahelp   = 2.0_05
+_rsta       = 4.0.1
+_colorpick  = 2.0.1
+_swingx     = 1.6.8
+_mis        = 1.11
+_cbtree     = 1.0.2
+_slf4j      = 2.0.19
+_flatlaf    = 3.7.2
+_cli        = 1.11.0
+_flexmark   = 0.64.8
+_jbannot    = 24.1.0
+_text       = 1.15.0
+_lang3      = 3.20.0
+_sx         = $_maven/at/swimmesberger
+_fm         = $_maven/com/vladsch/flexmark
+
+source      = $name-$version.tar.gz::https://github.com/logisim-evolution/logisim-evolution/archive/refs/tags/v$version.tar.gz
+source      = javahelp-$_javahelp.tar.gz::https://github.com/javaee/javahelp/archive/refs/tags/$_javahelp.tar.gz
+source      = $_maven/com/fifesoft/rsyntaxtextarea/$_rsta/rsyntaxtextarea-$_rsta-sources.jar
+source      = $_maven/org/drjekyll/colorpicker/$_colorpick/colorpicker-$_colorpick-sources.jar
+source      = $_sx/swingx-core/$_swingx/swingx-core-$_swingx-sources.jar
+source      = $_sx/swingx-common/$_swingx/swingx-common-$_swingx-sources.jar
+source      = $_sx/swingx-plaf/$_swingx/swingx-plaf-$_swingx-sources.jar
+source      = $_sx/swingx-painters/$_swingx/swingx-painters-$_swingx-sources.jar
+source      = $_sx/swingx-action/$_swingx/swingx-action-$_swingx-sources.jar
+source      = $_sx/swingx-graphics/$_swingx/swingx-graphics-$_swingx-sources.jar
+source      = $_sx/swingx-autocomplete/$_swingx/swingx-autocomplete-$_swingx-sources.jar
+source      = $_sx/swingx-mavensupport/$_swingx/swingx-mavensupport-$_swingx-sources.jar
+source      = $_maven/org/kohsuke/metainf-services/metainf-services/$_mis/metainf-services-$_mis-sources.jar
+source      = $_maven/org/scijava/swing-checkbox-tree/$_cbtree/swing-checkbox-tree-$_cbtree-sources.jar
+source      = $_maven/org/slf4j/slf4j-api/$_slf4j/slf4j-api-$_slf4j-sources.jar
+source      = $_maven/org/slf4j/slf4j-simple/$_slf4j/slf4j-simple-$_slf4j-sources.jar
+source      = $_maven/com/formdev/flatlaf/$_flatlaf/flatlaf-$_flatlaf-sources.jar
+source      = $_maven/commons-cli/commons-cli/$_cli/commons-cli-$_cli-sources.jar
+source      = $_fm/flexmark/$_flexmark/flexmark-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-ast/$_flexmark/flexmark-util-ast-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-builder/$_flexmark/flexmark-util-builder-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-collection/$_flexmark/flexmark-util-collection-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-data/$_flexmark/flexmark-util-data-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-dependency/$_flexmark/flexmark-util-dependency-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-format/$_flexmark/flexmark-util-format-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-html/$_flexmark/flexmark-util-html-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-misc/$_flexmark/flexmark-util-misc-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-sequence/$_flexmark/flexmark-util-sequence-$_flexmark-sources.jar
+source      = $_fm/flexmark-util-visitor/$_flexmark/flexmark-util-visitor-$_flexmark-sources.jar
+source      = $_maven/org/jetbrains/annotations/$_jbannot/annotations-$_jbannot-sources.jar
+source      = $_maven/org/apache/commons/commons-text/$_text/commons-text-$_text-sources.jar
+source      = $_maven/org/apache/commons/commons-lang3/$_lang3/commons-lang3-$_lang3-sources.jar
+sha256      = 0590a3ec06b522b4aae684ddb63c063cd11bd547fd9baaa5e71f6b020e2a7df4  annotations-24.1.0-sources.jar
+sha256      = 79f310f4ffb7eea5845a71dcb573980bb12ebd0e6a093a1d5bac9fee65b445bc  colorpicker-2.0.1-sources.jar
+sha256      = c65b544468eafd3e1036671fb22fd9ba4c3f67c03f76298e8aaeb6943755a70b  commons-cli-1.11.0-sources.jar
+sha256      = eec245e820ec2800a1780cf756aefb427c1c6170e06902e67ac15b6910ce6335  commons-lang3-3.20.0-sources.jar
+sha256      = 6fa2f1db12dc4147094be928a5b54d567cea287df54e4c76b7dfb6096c05439d  commons-text-1.15.0-sources.jar
+sha256      = f3c232cde899335b3fc342e9fbd0e584bfe4bc24e20eddc415858d0d2d7cda10  flatlaf-3.7.2-sources.jar
+sha256      = 41740277308867e41377ef4f60331ebbe03ab7b2f49362de80d18c6b8798773a  flexmark-0.64.8-sources.jar
+sha256      = 4e36e21ec7a4ac9e976ae35a6c09544585c24f5fe7682178014e53f755aa3456  flexmark-util-ast-0.64.8-sources.jar
+sha256      = e1250a03bf9f478193094e25c8e8193d64a5290c8dfacd2322a8d277d90d03e9  flexmark-util-builder-0.64.8-sources.jar
+sha256      = a1484f5cb100b2a8a9f732748bf6d4ee75f72892e3915900d901c134403dedcf  flexmark-util-collection-0.64.8-sources.jar
+sha256      = 12dbc4e9e5fa92c20113ad6381fdc9ed2f4eed4ee3f6c29eb12b911e17a99b45  flexmark-util-data-0.64.8-sources.jar
+sha256      = 6606ced6643520748893fa39186705c9f99406178240fa06a08f131e06c139f6  flexmark-util-dependency-0.64.8-sources.jar
+sha256      = e5200a49b80877159ce13e1ea588f315d0f62e27ae05685dc9420ba2d3660649  flexmark-util-format-0.64.8-sources.jar
+sha256      = 88fabc24d8c94f9ef27204f8c9cf679daeff61ae970c71eafd5a9a94891fdec9  flexmark-util-html-0.64.8-sources.jar
+sha256      = 93d87943c488545fa7e4ec5f6d7a1869febeb9ab781852afa51930c3d67628fb  flexmark-util-misc-0.64.8-sources.jar
+sha256      = d83ac60aff8c7f55b2dff38ea89c2cc8c57b8a36db91943136f355303cb73f14  flexmark-util-sequence-0.64.8-sources.jar
+sha256      = ac98028eb53715db30ae025e90394e8ad6c276e26dfe47b77d6c18369873673e  flexmark-util-visitor-0.64.8-sources.jar
+sha256      = f72641b8b602c9f740ce0f4e8e3c41e68f2a1e24bd9c67b38ea69b8afce93c02  javahelp-2.0_05.tar.gz
+sha256      = f988340da25e65ae3e8e8b29e6b16b4014661ed730a8952fc5c618337828f9ca  logisim-evolution-5.0.0.tar.gz
+sha256      = f12680d9a598797a0197f88117d2bfbf49b48c65f9bdb6596286e68f18bec983  metainf-services-1.11-sources.jar
+sha256      = 52d5368b78b84ee27d8b278891e613e6620b85c7336966efd1ea276e38a0a5c1  rsyntaxtextarea-4.0.1-sources.jar
+sha256      = 5653861a44b3865dd6a2d42c0a7c953568c06c4e36a9b172328d0341e9aaab41  slf4j-api-2.0.19-sources.jar
+sha256      = 9038025c69aa15c89ad9149ad43a6ad0e8e61c624f6f60ca7d454fe5875985ba  slf4j-simple-2.0.19-sources.jar
+sha256      = 7917ec585ea038d3d7045867de09ee81b7eb38431dab4e3e085a0384c104cae5  swing-checkbox-tree-1.0.2-sources.jar
+sha256      = 6972c1a7fdeeb4372145532edf54fb166f061d28e63a072ce5ca0d5c2f254420  swingx-action-1.6.8-sources.jar
+sha256      = a0cba2a8558e5e24322eb28267b1f2c3e1201e62f40f4d4b51fe57a31ec56476  swingx-autocomplete-1.6.8-sources.jar
+sha256      = e288a2d7ad34a59f6ce132bdc1be0e93b185397907c3c8b84e6d2b8c18417bc9  swingx-common-1.6.8-sources.jar
+sha256      = 1cbf375b8439eda3fbf17a16f4e9416c55519743440e74d64f881e53f5d93172  swingx-core-1.6.8-sources.jar
+sha256      = 8351711e954684e2ce48fecc216f547cb1eaeb3487ed2e4775ed10d52a48717c  swingx-graphics-1.6.8-sources.jar
+sha256      = b12d97728795c87693a08c65d600ea2bd71cf51b0a8eb05e507c8d86470f861c  swingx-mavensupport-1.6.8-sources.jar
+sha256      = 9c68fb36fa1d391b7d8fdcaa74055dcbd2f59e08f5a2caf5ee8d772a48a3b264  swingx-painters-1.6.8-sources.jar
+sha256      = 9bed7d230eb3a400e066916ed437d91e9305a34a250bedee5ccd5cea8bd990f3  swingx-plaf-1.6.8-sources.jar
+description = Logisim-evolution — digital logic designer and simulator with FPGA synthesis export (Java Swing)
+homepage    = https://github.com/logisim-evolution/logisim-evolution
+depends     = openjdk unzip

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = sdl2-gfx
+version     = 1.0.4
+release     = 1
+source      = $name-$version.tar.gz::https://www.ferzkopp.net/Software/SDL2_gfx/SDL2_gfx-$version.tar.gz
+sha256      = 63e0e01addedc9df2f85b93a248f06e8a04affa014a835c2ea34bfe34e576262  sdl2-gfx-1.0.4.tar.gz
+description = Lines, circles, polygons, rotation, zoom and a frame limiter for SDL2 programs
+homepage    = https://www.ferzkopp.net/wordpress/2016/01/02/sdl_gfx-sdl2_gfx/
+depends     = pkgconf sdl2-compat

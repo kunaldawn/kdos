@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wsjtx
+version     = 3.0.1
+release     = 1
+source      = $name-$version.tar.gz::https://downloads.sourceforge.net/project/wsjt/$name-$version/$name-$version-src.tar.gz
+sha256      = d73fb815e370af68b5f8928b6c588bea4aa7160a0734035939624613638216c4  wsjtx-3.0.1.tar.gz
+description = WSJT-X — FT8, FT4, JT65, Q65, WSPR and other weak-signal digital modes for amateur radio
+homepage    = https://wsjt.sourceforge.io/wsjtx.html
+depends     = cmake ninja pkgconf gcc boost fftw hamlib libusb qt5-qtbase qt5-qtwayland qt5-qtserialport qt5-qtmultimedia qt5-qtwebsockets qt5-qttools asciidoctor asciidoc docbook-xsl docbook-xml libxslt

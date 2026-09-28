@@ -1,0 +1,25 @@
+diff -ru a/plugins/builtin/source/content/init_tasks.cpp b/plugins/builtin/source/content/init_tasks.cpp
+--- a/plugins/builtin/source/content/init_tasks.cpp
++++ b/plugins/builtin/source/content/init_tasks.cpp
+@@ -140,6 +140,5 @@
+     void addInitTasks() {
+         ImHexApi::System::addStartupTask("Load Window Settings", false, loadWindowSettings);
+         ImHexApi::System::addStartupTask("Configuring UI scale", false, configureUIScale);
+-        ImHexApi::System::addStartupTask("Checking for updates", true, checkForUpdates);
+     }
+ }
+\ No newline at end of file
+diff -ru a/plugins/builtin/source/content/welcome_screen.cpp b/plugins/builtin/source/content/welcome_screen.cpp
+--- a/plugins/builtin/source/content/welcome_screen.cpp
++++ b/plugins/builtin/source/content/welcome_screen.cpp
+@@ -107,10 +107,6 @@
+                                 }
+                             }
+ 
+-                            TaskManager::createBackgroundTask("hex.builtin.task.uploading_crash", [path = m_logFilePath, data](auto&){
+-                                HttpRequest request("POST", ImHexApiURL + std::string("/crash_upload"));
+-                                request.uploadFile(std::vector<u8>(data.begin(), data.end()), "file", path.filename()).wait();
+-                            });
+                         }
+                     }
+ 

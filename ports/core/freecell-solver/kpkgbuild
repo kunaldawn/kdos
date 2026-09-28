@@ -1,0 +1,39 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = freecell-solver
+version     = 6.16.0
+release     = 1
+_moo        = 2.005005
+_roletiny   = 2.002005
+_cmm        = 2.15
+_subquote   = 2.006009
+_pathtiny   = 0.150
+_tt         = 3.106
+_pysolcards = 0.24.0
+source      = https://fc-solve.shlomifish.org/downloads/fc-solve/$name-$version.tar.xz
+source      = https://cpan.metacpan.org/authors/id/H/HA/HAARG/Moo-$_moo.tar.gz
+source      = https://cpan.metacpan.org/authors/id/H/HA/HAARG/Role-Tiny-$_roletiny.tar.gz
+source      = https://cpan.metacpan.org/authors/id/E/ET/ETHER/Class-Method-Modifiers-$_cmm.tar.gz
+source      = https://cpan.metacpan.org/authors/id/H/HA/HAARG/Sub-Quote-$_subquote.tar.gz
+source      = https://cpan.metacpan.org/authors/id/D/DA/DAGOLDEN/Path-Tiny-$_pathtiny.tar.gz
+source      = https://cpan.metacpan.org/authors/id/T/TO/TODDR/Template-Toolkit-$_tt.tar.gz
+source      = https://files.pythonhosted.org/packages/source/p/pysol_cards/pysol_cards-$_pysolcards.tar.gz
+sha256      = 65cd85bfe475d066e9186f7a8cc636070985b30b0ebb1cde8681cf062c2e15fc  Class-Method-Modifiers-2.15.tar.gz
+sha256      = fb5a2952649faed07373f220b78004a9c6aba387739133740c1770e9b1f4b108  Moo-2.005005.tar.gz
+sha256      = ff20713d1a14d257af9c78209001f40dc177e4b9d1496115cbd8726d577946c7  Path-Tiny-0.150.tar.gz
+sha256      = 4618ec524618c104dc28a8cc86af129a00cad282aea7f4c75060ba05d4c8f4d7  Role-Tiny-2.002005.tar.gz
+sha256      = 967282d54d2d51b198c67935594f93e4dea3e54d1e5bced158c94e29be868a4b  Sub-Quote-2.006009.tar.gz
+sha256      = c7474050be80201f1fb55f0a569b9c0ab6c1c3f0cebbd7e601bda9b4046eec85  Template-Toolkit-3.106.tar.gz
+sha256      = 71b8882e68f1be62529069018d0c732b75078669077c96348279575849f34313  freecell-solver-6.16.0.tar.xz
+sha256      = a985492da81aa1588dfc056d9a7c6ca83f66254c0b90f25afc682a70713d4d4b  pysol_cards-0.24.0.tar.gz
+description = Solver for Freecell, Simple Simon and related patience games, as a library and a command
+homepage    = https://fc-solve.shlomifish.org/
+depends     = cmake ninja perl python3 python3-six gperf gmp rinutils

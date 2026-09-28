@@ -1,0 +1,70 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = rnode-firmware
+version     = 1.86
+release     = 1
+_url        = https://github.com/markqvist/RNode_Firmware/releases/download/$version
+source      = $name-$version.json::$_url/release.json
+source      = $name-console-$version.bin::$_url/console_image.bin
+source      = $name-esp32_generic-$version.zip::$_url/rnode_firmware_esp32_generic.zip
+source      = $name-featheresp32-$version.zip::$_url/rnode_firmware_featheresp32.zip
+source      = $name-heltec32v2-$version.zip::$_url/rnode_firmware_heltec32v2.zip
+source      = $name-heltec32v3-$version.zip::$_url/rnode_firmware_heltec32v3.zip
+source      = $name-heltec32v4pa-$version.zip::$_url/rnode_firmware_heltec32v4pa.zip
+source      = $name-heltec_t114-$version.zip::$_url/rnode_firmware_heltec_t114.zip
+source      = $name-lora32v10-$version.zip::$_url/rnode_firmware_lora32v10.zip
+source      = $name-lora32v20-$version.zip::$_url/rnode_firmware_lora32v20.zip
+source      = $name-lora32v20_extled-$version.zip::$_url/rnode_firmware_lora32v20_extled.zip
+source      = $name-lora32v21-$version.zip::$_url/rnode_firmware_lora32v21.zip
+source      = $name-lora32v21_extled-$version.zip::$_url/rnode_firmware_lora32v21_extled.zip
+source      = $name-lora32v21_tcxo-$version.zip::$_url/rnode_firmware_lora32v21_tcxo.zip
+source      = $name-ng20-$version.zip::$_url/rnode_firmware_ng20.zip
+source      = $name-ng21-$version.zip::$_url/rnode_firmware_ng21.zip
+source      = $name-rak4631-$version.zip::$_url/rnode_firmware_rak4631.zip
+source      = $name-t3s3-$version.zip::$_url/rnode_firmware_t3s3.zip
+source      = $name-t3s3_sx127x-$version.zip::$_url/rnode_firmware_t3s3_sx127x.zip
+source      = $name-t3s3_sx1280_pa-$version.zip::$_url/rnode_firmware_t3s3_sx1280_pa.zip
+source      = $name-tbeam-$version.zip::$_url/rnode_firmware_tbeam.zip
+source      = $name-tbeam_supreme-$version.zip::$_url/rnode_firmware_tbeam_supreme.zip
+source      = $name-tbeam_sx1262-$version.zip::$_url/rnode_firmware_tbeam_sx1262.zip
+source      = $name-tdeck-$version.zip::$_url/rnode_firmware_tdeck.zip
+source      = $name-techo-$version.zip::$_url/rnode_firmware_techo.zip
+source      = $name-xiao_esp32s3-$version.zip::$_url/rnode_firmware_xiao_esp32s3.zip
+sha256      = 92e688ae0940f14bc44ced8da7c06814ad1f0a96b859386219bb470962781301  rnode-firmware-1.86.json
+sha256      = 22600e61dc70d68f9c9985fbb2f52a9edf4816f9a0a979aadcde735146b33219  rnode-firmware-console-1.86.bin
+sha256      = b6fd5f8d6a21b0d9b49db8092a83b3236d3f317fe8b3c8062a869eaa861f9bf0  rnode-firmware-esp32_generic-1.86.zip
+sha256      = 7b1cc3e37e2fd8def02ce64d4b8474739260f2dd39c00b3dfca53e7608688e11  rnode-firmware-featheresp32-1.86.zip
+sha256      = 7f24e01c76c2fa62393f85fb233fc6e36ef4943b3fe77fe79dacc17f1e5722bc  rnode-firmware-heltec32v2-1.86.zip
+sha256      = 4bfbcb7c82bd37a2369f627f40667e33936b50f19971900d68d39c9e547ae8aa  rnode-firmware-heltec32v3-1.86.zip
+sha256      = 75ed47d6a4259e9d073cda680b7323eda420659e117ca4ce42c119b2c9513805  rnode-firmware-heltec32v4pa-1.86.zip
+sha256      = 49a2d31841d5f7cc678a81d597e2c99b4400041f6ecf26f22ba922e670816a22  rnode-firmware-heltec_t114-1.86.zip
+sha256      = ec04cf97d270e45204d933126665493d0c0af52e33d13ab6df02ae1753e15ae6  rnode-firmware-lora32v10-1.86.zip
+sha256      = fe3be73232430128dc5587d77040834e25758f024ab713427ff2bcfd7ae9aac2  rnode-firmware-lora32v20-1.86.zip
+sha256      = 571e62d4dbba65b3c76b3714df1c36b208f8d4fcb9f5ac36395a6844075dab1a  rnode-firmware-lora32v20_extled-1.86.zip
+sha256      = e51c748169d25d2234a69c1e6a0ea1266fac8dd714de68f8f7b647794016c843  rnode-firmware-lora32v21-1.86.zip
+sha256      = 7d4d90e8e0fea67912bcd6d78e1dab805d9d87f145ab362a4fd7e95698da75d5  rnode-firmware-lora32v21_extled-1.86.zip
+sha256      = ccc6c0193cd0fc305be263150f930e28262f916c97415fe88645f8d53db4c56f  rnode-firmware-lora32v21_tcxo-1.86.zip
+sha256      = 289de470ab4ce48d669a282c7fe0685dd5c96af5d8223388136734afb2bdd39f  rnode-firmware-ng20-1.86.zip
+sha256      = 615e934d779fda562211214a6a9f4265ee412d5e6ff35996e0980b7c965b3d90  rnode-firmware-ng21-1.86.zip
+sha256      = 99cae226cca349a1f567f0a6c0c9a0fd4cc9500ec079a631b18b8d4c29e7aa9c  rnode-firmware-rak4631-1.86.zip
+sha256      = f9b1199e5593652a3aeb8c16b9f11ae714bf43b2f65bb463577023aec69b5f05  rnode-firmware-t3s3-1.86.zip
+sha256      = 7167f1c15eb27834c1c5abcc5e182d62af15868f8d9ad89feb38b3dbf3b54252  rnode-firmware-t3s3_sx127x-1.86.zip
+sha256      = 0109f505a84cc8a12cf9f2a39b3dfa9a6052ab27bc433b04c526942df4f0d2b5  rnode-firmware-t3s3_sx1280_pa-1.86.zip
+sha256      = bf9dd9a73bd69b334a1e7018b9316dc4526306099bb08906a79aec4978b963b6  rnode-firmware-tbeam-1.86.zip
+sha256      = ba79e43f1b555e40157ad99505ba096a431fc96f3f903b10901044edc0e8cdfa  rnode-firmware-tbeam_supreme-1.86.zip
+sha256      = 874b45c31717891e405bb36dac69102ab27f6979a7ea6b62ef7133ed9c23fa50  rnode-firmware-tbeam_sx1262-1.86.zip
+sha256      = 3721b3e8616c837e7cde5700cb43034e0931efe51dabe2bcf28a4d8c631af1a5  rnode-firmware-tdeck-1.86.zip
+sha256      = 31824f9202fde735f408a3efdbeaeca31703c61f2f1e4a8dc3517131df89c111  rnode-firmware-techo-1.86.zip
+sha256      = 6c25700fcf891c93c1851f9dbd674290ee52b02e8e7621674df1edd1bf921793  rnode-firmware-xiao_esp32s3-1.86.zip
+description = RNode LoRa radio firmware images, for rnodeconf to flash with no network
+homepage    = https://unsigned.io/rnode_firmware/
+depends     = python3-rns python3-adafruit-nrfutil

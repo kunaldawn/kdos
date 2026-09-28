@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = purpose
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 4fda64d235927e3cc230416d5c9304f5d3e040dc2553b77b2c69bf54c6f04862  purpose-6.30.0.tar.xz
+description = KDE Frameworks: the share menu and its local share targets
+homepage    = https://invent.kde.org/frameworks/purpose
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcmutils kconfig kcoreaddons ki18n kio kirigami kitemmodels knotifications kservice prison

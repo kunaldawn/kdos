@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libcerf
+version     = 3.8
+release     = 1
+source      = https://jugit.fz-juelich.de/mlz/libcerf/-/archive/v$version/libcerf-v$version.tar.gz
+sha256      = 451c07f9639055d340f473bdf4a4deef286e6eda52a395facce4280742430224  libcerf-3.8.tar.gz
+description = libcerf — complex error, Faddeeva, Voigt and Dawson functions
+homepage    = https://jugit.fz-juelich.de/mlz/libcerf
+depends     = cmake ninja perl

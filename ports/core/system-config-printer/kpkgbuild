@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = system-config-printer
+version     = 1.5.18
+release     = 1
+source      = https://github.com/OpenPrinting/system-config-printer/releases/download/v$version/$name-$version.tar.xz
+sha256      = b1a69e1b4ec2add569a87aeca811a37c5361ee6ae327ec852b79e64223e34bee  system-config-printer-1.5.18.tar.xz
+description = Printer configuration tool for CUPS — add, configure and manage print queues (GTK 3)
+homepage    = https://github.com/OpenPrinting/system-config-printer
+depends     = autoconf automake gettext pkgconf cups glib glib-introspection gtk3 libnotify python3 python3-gobject python3-cairo python3-dbus python3-cups python3-requests python3-setuptools desktop-file-utils xmlto docbook-xml docbook-xsl libxslt

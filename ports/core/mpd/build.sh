@@ -35,15 +35,18 @@
 # ffmpeg is the catch-all decoder. mpg123 is named ahead of it for MP3 because
 # it is gapless and reads the LAME header; libid3tag supplies MP3 tags and
 # ReplayGain; mikmod plays tracker modules, which this ffmpeg has no libopenmpt
-# for; fluidsynth plays MIDI through a SoundFont the user supplies with
-# `soundfont` in the decoder block, since none is shipped. mad, faad and
+# for; fluidsynth plays MIDI through /usr/share/sounds/sf2/FluidR3_GM.sf2, the
+# plugin's default, which fluidr3-gm-sf3 provides and `soundfont` in the
+# decoder block overrides. mad, faad and
 # wavpack are off because ffmpeg decodes the same files. libsamplerate is the
 # resampler mpd uses when mpd.conf names none; soxr is the one a `resampler`
 # block with `plugin "soxr"` selects.
 # cdio_paranoia is the cdda:// input, an audio CD played from the drive through
 # libcdio-paranoia's error-correcting reads; iso9660 opens an .iso as a
 # directory of music files.
-# lame and vorbisenc are the recorder output's encoders. ICU collates and folds
+# lame, vorbisenc and twolame (MP2) are the recorder output's encoders.
+# chromaprint is the `getfingerprint` command, an AcoustID fingerprint of a
+# song that a tagging client looks up. ICU collates and folds
 # case in the library, which also leaves iconv unused.
 #
 # The manual pages, mpd(1) and mpd.conf(5), are Sphinx output; the HTML manual
@@ -88,10 +91,10 @@ meson setup build \
 	-Dsidplay=disabled \
 	-Dtremor=disabled \
 	-Dwildmidi=disabled \
-	-Dchromaprint=disabled \
+	-Dchromaprint=enabled \
 	-Dlame=enabled \
 	-Dvorbisenc=enabled \
-	-Dtwolame=disabled \
+	-Dtwolame=enabled \
 	-Dshine=disabled \
 	-Dsoxr=enabled \
 	-Dlibsamplerate=enabled \

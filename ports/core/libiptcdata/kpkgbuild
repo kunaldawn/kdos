@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libiptcdata
+version     = 1.0.5
+release     = 1
+_tag        = release_${version//./_}
+source      = https://github.com/ianw/libiptcdata/releases/download/$_tag/$name-$version.tar.gz
+sha256      = c094d0df4595520f194f6f47b13c7652b7ecd67284ac27ab5f219bc3985ea29e  libiptcdata-1.0.5.tar.gz
+description = IPTC photo metadata library and the iptc tool
+homepage    = https://github.com/ianw/libiptcdata
+depends     = gettext

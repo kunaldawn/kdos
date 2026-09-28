@@ -15,7 +15,7 @@
 #
 # A RULE-7 PATCH: settings.py imports wx at module scope and pronsole imports
 # settings, so the CONSOLE client refuses to start without wxPython — which is
-# a GUI toolkit this host does not have by rule. No flag defers an import.
+# a GUI toolkit that is not a port. No flag defers an import.
 patch -p1 -i "$PORT_SRC/no-wx-on-console.patch"
 
 # --no-deps because requirements.txt is the GUI's: wxPython, pyglet, numpy,

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = chocolate-doom
+version     = 3.1.1
+release     = 1
+source      = https://github.com/chocolate-doom/chocolate-doom/archive/refs/tags/chocolate-doom-$version.tar.gz
+sha256      = 1edcc41254bdc194beb0d33e267fae306556c4d24110a1d3d3f865717f25da23  chocolate-doom-3.1.1.tar.gz
+description = Doom engine faithful to the DOS original — Doom, Heretic, Hexen and Strife
+homepage    = https://www.chocolate-doom.org/
+depends     = autoconf automake pkgconf python3 python3-pillow sdl2-compat sdl2-mixer sdl2-net libsamplerate libpng fluidsynth freedoom

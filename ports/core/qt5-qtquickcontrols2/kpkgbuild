@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qtquickcontrols2
+version     = 5.15.19
+release     = 1
+_module     = qtquickcontrols2
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+sha256      = eb8e76d3b5f811e96cc80328dc173b97d045734d956712c96834f7b73a95687b  qt5-qtquickcontrols2-5.15.19.tar.xz
+description = Qt 5 Quick Controls 2 — the QML control set with its Fusion, Material, Universal and Imagine styles
+homepage    = https://www.qt.io/
+depends     = qt5-qtbase qt5-qtdeclarative qt5-qtgraphicaleffects
+group       = qt5
+series      = 5.15

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = spice-gtk
+version     = 0.43
+release     = 1
+source      = https://gitlab.freedesktop.org/-/project/64/uploads/88f5d31a961da9921add46ca3f0be904/spice-gtk-$version.tar.xz
+sha256      = cee26e5b2d22909f35b40a94398d1e863ca3962ee46494ca97aab206abc3203b  spice-gtk-0.43.tar.xz
+description = SPICE client library and GTK 3 widget — the VM console of virt-manager — with spicy and the USB redirection
+homepage    = https://www.spice-space.org/spice-gtk.html
+depends     = meson ninja pkgconf python3 python3-pyparsing perl gettext glib gtk3 libepoxy libX11 wayland wayland-protocols spice-protocol pixman openssl libjpeg-turbo zlib json-glib opus lz4 cyrus-sasl gstreamer gst-plugins-base gst-plugins-good gst-libav usbredir libusb phodav libcacard hwdata gobject-introspection vala

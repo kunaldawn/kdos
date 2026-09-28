@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = okular
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 7eb26c37ee42b6657526aeddd1bce71c5556e3865772a677f49b68deb46885d6  okular-26.08.1.tar.xz
+description = Universal document viewer — PDF, PostScript, DjVu, EPUB, XPS, comics, Markdown
+homepage    = https://okular.kde.org/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtspeech karchive kbookmarks kcolorscheme kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdoctools ki18n kiconthemes kio kparts kservice ktextwidgets kwallet kwidgetsaddons kwindowsystem kxmlgui purpose threadweaver phonon zlib freetype2 libtiff poppler libspectre libkexiv2 djvulibre ebook-tools discount

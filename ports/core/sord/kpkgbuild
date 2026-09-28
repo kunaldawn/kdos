@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sord
+version     = 0.16.22
+release     = 1
+source      = https://download.drobilla.net/$name-$version.tar.xz
+sha256      = bb23b34b216579136795d518cffa73d91cf205594ce9accebfd408afb839173f  sord-0.16.22.tar.xz
+description = In-memory RDF quad store over serd, used by lilv to query LV2 plugin data
+homepage    = https://drobilla.net/software/sord.html
+depends     = meson ninja pkgconf serd zix pcre2

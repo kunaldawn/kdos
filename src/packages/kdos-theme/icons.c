@@ -337,7 +337,7 @@ static int install_marks(const char *marks, const char *out)
  * hand: the marks alone create eight <size>/apps directories, and an icon in
  * a directory index.theme does not list is invisible.
  */
-static int write_index(const char *out)
+static int write_index(const char *out, const KcolScheme *sc)
 {
 	KbBuf dirs = {0}, body = {0}, full = {0};
 	int n = 0;
@@ -386,15 +386,31 @@ static int write_index(const char *out)
 	}
 	kb_strv_free(entries);
 
+	/*
+	 * The papirus art names the icons a desktop shell asks for, and a KDE
+	 * or GNOME application asks for hundreds more: breeze answers the KDE
+	 * names and Adwaita the GNOME ones, before hicolor, which holds the
+	 * applications' own icons and whose index.theme comes from
+	 * hicolor-icon-theme. A parent that is not installed — breeze and
+	 * Adwaita on a system without them, every one of them inside a box —
+	 * is skipped by the toolkits' lookup, so the list costs nothing where
+	 * it cannot help.
+	 *
+	 * breeze's monochrome action icons are drawn for ONE ground: `breeze`
+	 * is dark glyphs for a light window and `breeze-dark` light ones for a
+	 * dark window. The wrong one on this scheme is a toolbar of invisible
+	 * buttons, so the pick follows which end the scheme's ground is at.
+	 * breeze-dark inherits breeze itself.
+	 */
+	const char *breeze = kcol_lum(sc->deep) < kcol_lum(sc->text)
+				     ? "breeze-dark" : "breeze";
+
 	kb_buf_str(&full,
 		   "[Icon Theme]\n"
 		   "Name=KDOS\n"
-		   "Comment=KDOS phosphor icon theme\n"
-		   /* hicolor supplies the applications' own icons, and the
-		    * index.theme that makes the lookup work at all comes from
-		    * hicolor-icon-theme. */
-		   "Inherits=hicolor\n"
-		   "Directories=");
+		   "Comment=KDOS phosphor icon theme\n");
+	kb_buf_printf(&full, "Inherits=%s,Adwaita,hicolor\n", breeze);
+	kb_buf_str(&full, "Directories=");
 	kb_buf_add(&full, dirs.p ? dirs.p : "", dirs.n);
 	kb_buf_str(&full, "\n\n");
 	kb_buf_add(&full, body.p ? body.p : "", body.n);
@@ -431,7 +447,7 @@ int gen_icons(const char *art, const char *marks, const char *out,
 
 	int napp = recolor_apps(out, sc);
 	int nmark = install_marks(marks, out);	/* after apps: the tux wins */
-	int ndirs = write_index(out);
+	int ndirs = write_index(out, sc);
 
 	printf("kdos-icons: %d icons, %d aliases, %d apps, %d marks, "
 	       "%d directories -> %s\n", files, links, napp, nmark, ndirs, out);

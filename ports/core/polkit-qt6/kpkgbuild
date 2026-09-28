@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = polkit-qt6
+version     = 0.201.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/polkit-qt-1/polkit-qt-1-$version.tar.xz
+sha256      = 95d8e2cae530c546d9437459deb8a1bea38d572f0f9772cc2860dc143637f256  polkit-qt6-0.201.1.tar.xz
+description = Qt 6 wrapper around the polkit client and agent libraries
+homepage    = https://invent.kde.org/libraries/polkit-qt-1
+depends     = cmake ninja pkgconf qt6-qtbase polkit glib

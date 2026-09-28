@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtwayland
+version     = 6.11.2
+release     = 1
+_module     = qtwayland
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 8eb7615e39332a10f506e8dd70f02d5954bb5949ff54f6dcbf8bd6168222f9df  qt6-qtwayland-6.11.2.tar.xz
+description = Qt 6 Wayland compositor library and the client decoration and shell plugins
+homepage    = https://www.qt.io/
+depends     = cmake ninja pkgconf wayland mesa libdrm qt6-qtbase qt6-qtdeclarative qt6-qtsvg
+group       = qt6

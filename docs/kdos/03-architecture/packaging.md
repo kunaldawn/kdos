@@ -16,7 +16,8 @@ installed package. It then covers what a build checks, how the build decides wha
 packages are made reproducible, the signed binary host, binary deltas, updating a running machine,
 and vulnerability tracking.
 
-Applications such as browsers and office suites are not packaged this way. They ship as
+The natively ported graphical applications, Chromium and LibreOffice among them, are ports like any
+other and are packaged this way. The applications in the box catalogue are not: they ship as
 read-only images run in a sandbox, a separate system described in
 [Packs and boxes](packs-and-boxes.md).
 
@@ -65,11 +66,11 @@ There are three port repositories, all in the same format, searched in this orde
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 1,014 | Upstream software |
+| `/ports/core` | `ports/core/` | 2,003 | Upstream software |
 | `/kdos/src/packages` | `src/packages/` | 11 | KDOS's own tools, theme, installer and packer |
 | `/kdos/src/desktop` | `src/desktop/` | 13 | KDOS's own compositor, shell, terminal, daemons and portal |
 
-That is 1,038 recipes in all (counted as directories holding a `kpkgbuild`). When two repositories
+That is 2,027 recipes in all (counted as directories holding a `kpkgbuild`). When two repositories
 hold a port of the same name, the first one in the search order wins.
 
 `PORT_REPO` lists the repositories `kpkg` may resolve against. Its default, from
@@ -122,19 +123,19 @@ system or in what order they are built. That is the job of the **phase package l
 |---|---|---|
 | `script/02_phase2/packages.txt` | 8 | none: the self-hosting bootstrap, rebuilt inside the chroot |
 | `script/03_phase3/packages.txt` | 98 | 9, from "Build Toolchain" to "Documentation & Spec Tooling" |
-| `script/04_phase4/packages.txt` | 697 | 50, from "Core Build Utilities (host-side)" to "Colour management and codecs" |
+| `script/04_phase4/packages.txt` | 1,687 | 90, from "Core Build Utilities (host-side)" to "Data the applications read" |
 | `script/05_desktop/packages.txt` | 22 | 1: "The resource monitor" (see below) |
 | `script/05_phase5/packages.txt` | 1 | none: the kernel, `linux` |
 
-"Names" counts the non-comment lines. Between them the five lists name 787 distinct ports.
+"Names" counts the non-comment lines. Between them the five lists name 1,776 distinct ports.
 The desktop list opens with an unnamed block under its banner, which titles the list "Phase 5:
 The desktop": `xcb-util-wm`, `wlroots`, the compositor, the box socket, the shell, the terminal
 and the lock screen. Its one named group, "The resource monitor", holds `kdos-res` and everything
 after it: the root daemons, the pack tools, the input method, the two portals and the recorder.
 
-A list names only the ports a phase wants; each port's `depends =` pulls in the rest. Following
-the `depends =` lines from the 787 names reaches 1,023 ports: 1,000 of the 1,014 in `ports/core`, and
-every recipe under `src/` except `kdos-installer`, which phase 1 builds by name. The 14 `ports/core`
+A list names only the ports a phase wants; each port's `depends =` pulls in the rest. Following the
+`depends =` lines from the 1,776 names reaches 2,020 ports: 1,997 of the 2,003 in `ports/core`, and
+every recipe under `src/` except `kdos-installer`, which phase 1 builds by name. The 6 `ports/core`
 recipes nothing reaches are built only on request.
 
 A list is a plain file: one port name per line, with `#` comments. The comments do two jobs. After
@@ -146,6 +147,16 @@ ports, such as "Core Services", "Network / SSH / Audio / Bluetooth / Print" or "
 belongs to its list group only by where it is written in the file. Other comments state the
 constraint that pins a port's position, such as the block after `toybox` in phase 4 described in
 [toybox and the tools it overlaps](#toybox-and-the-tools-it-overlaps).
+
+The second half of the phase 4 list holds the natively ported graphical applications and what they
+link. The toolkit groups come first, from "GTK 3, GTK 4 and libadwaita" through "WebKitGTK",
+"Qt 6", "Qt 5", "KDE Frameworks 6", "QtWebEngine", "wxWidgets" and "OpenGL helpers, FLTK and Tk",
+followed by the libraries the applications share. The applications themselves are grouped by what
+a person does with them, from "Phones, remote desktops and virtual machines" through "Internet and
+communication", "Documents and office" and "Pictures" to "Games" and "Emulators", and the list
+ends with "Data the applications read". These toolkits serve applications only; the desktop's own
+programs, which phase 5 builds, link none of them (see
+[Principles](../01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)).
 
 Order within a list matters. The orchestrator hands the whole list to `kpkgdepends`, which walks
 each name in turn and emits its dependencies before it, so a name written earlier is installed
@@ -166,9 +177,14 @@ group, and keeping a set of ports that must move in step together is left to the
 
 Most ports need no key. Without one, the checker derives a group from the first `source =` URL: two
 ports whose sources come from the same organisation on GitHub, Codeberg, sr.ht or a GitLab
-instance, at the same version, fall into one group. The key overrides that derivation. Four recipes
-in `ports/core` set it: `glib` and `glib-introspection` carry `group = glib`, and
-`gcc-arm-none-eabi` and `libstdcxx-arm-none-eabi` carry `group = gcc-arm-none-eabi`.
+instance, at the same version, fall into one group. The key overrides that derivation. In
+`ports/core`, 60 recipes carry it, naming twelve groups between them. Most
+are pairs taken from one upstream release: `glib` and `glib-introspection` carry
+`group = glib`, `python3` and `python3-tkinter` carry `group = python3`, `webkitgtk` and
+`webkitgtk6` carry `group = webkitgtk`, and the same holds for `gcc-arm-none-eabi`, `mgba`, `qca`,
+`qscintilla`, `qwt`, `supertuxkart` and `texlive`. The other two are families released together
+from a host the derivation does not read: the Qt modules and PySide, fetched from `download.qt.io`,
+carry `group = qt6` (29 recipes) or `group = qt5` (11).
 [Writing ports](../05-developer/writing-ports.md) covers the key and the review it feeds.
 
 ## Where sources come from
@@ -193,7 +209,7 @@ at the first copy that verifies, looking in this order:
 5. for a port's own vendor bundle only, generating it again.
 
 A **vendor bundle** is a port's language dependencies (Go modules, Rust crates, Python or Haskell
-packages) packed as `<name>-vendor-<version>.tar.xz`; 124 ports carry one. It has a `sha256 =`
+packages) packed as `<name>-vendor-<version>.tar.xz`; 164 ports carry one. It has a `sha256 =`
 line but no `source =` URL, so when no copy exists anywhere it is generated rather than downloaded,
 inside the `kdos-fetch` container that `ports/Containerfile.fetch` describes.
 
@@ -205,10 +221,11 @@ limit GitHub places on one release), each asset named by its bare hash; nothing 
 or removed. The committed index `ports/sources.idx` has one line per file,
 `<hash> <NNN> <port>/<file>`, and each release's notes list what it holds. A checkout years old
 therefore finds the exact bytes it was written against even after the upstream host has gone. The
-index names 1,678 files: 1,000 in `sources-001` and 678 in `sources-002`. That is more than the
-current recipes need, because the archive also holds files older recipes named. The current
-`ports/core` recipes name 1,232 distinct hashed files. 40 of them are small files git tracks beside
-their recipes, and the other 1,192, about 8.3 GiB, are fetched. Stored by hash, a file several
+index names 1,678 files: 1,000 in `sources-001` and 678 in `sources-002`. The current `ports/core`
+recipes name 2,489 distinct hashed files. 39 of them are small files git tracks beside their
+recipes, and the other 2,450, about 38.6 GiB, are fetched. 1,191 of those are in the archive; the
+other 1,259 are not, so `make fetch` takes them from upstream. The remaining 487 files the index
+names are ones no current recipe names. Stored by hash, a file several
 ports use is one asset; the LLVM monorepo tarball, for example, is shared by eight ports.
 
 The commands and settings:
@@ -438,7 +455,7 @@ that is present beside the recipe or in `kpkg`'s source directory (`SOURCE_DIR`,
 `/var/cache/kpkg/sources`), and refuses on any mismatch.
 
 That is wider than the `source =` list on purpose, because of vendor bundles (see [Where sources
-come from](#where-sources-come-from)). 124 ports carry a vendor bundle, most of them Go, Rust,
+come from](#where-sources-come-from)). 164 ports carry a vendor bundle, most of them Go, Rust,
 Python or Haskell programs, with pdfium among the rest, and each unpacks it in `build.sh` itself. A
 vendor bundle is declared with a hash but named by no `source =` line, so a check that walked
 `source =` alone would compile those ports from bytes nothing had looked at.
@@ -458,7 +475,7 @@ their URL's basename, and `file::url` names a file explicitly.
 
 ## Deciding what to rebuild
 
-The build must not recompile 1,038 ports on every run, and must not skip one whose recipe changed.
+The build must not recompile 2,027 ports on every run, and must not skip one whose recipe changed.
 Two hashes decide, and they are the same two the binary host uses.
 
 ### `E:` — the recipe hash
@@ -536,7 +553,7 @@ command line and miss every *dependency* whose recipe changed.
 ## Reproducible packages
 
 A package built twice from the same tree is byte-identical. That is a property of one function, the
-archive roller inside `kpkg`, rather than of 1,038 recipes, which is why `kpkg` rolls the archive
+archive roller inside `kpkg`, rather than of 2,027 recipes, which is why `kpkg` rolls the archive
 itself instead of letting each `build.sh` do it.
 
 Each setting removes one source of difference between two builds:

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = konsole
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 64d8aaba741f4412ede26ffbbbe3824523e941b725d3046ec27f510fd42d82e6  konsole-26.08.1.tar.xz
+description = KDE terminal emulator — tabs, split views, profiles, SSH manager
+homepage    = https://konsole.kde.org/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtmultimedia kbookmarks kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools kglobalaccel kguiaddons ki18n kiconthemes kio knewstuff knotifications knotifyconfig kparts kpty kservice ktextwidgets kwidgetsaddons kwindowsystem kxmlgui icu libssh

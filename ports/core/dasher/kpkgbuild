@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dasher
+version     = 5.0.0.beta.20200420
+release     = 1
+_commit     = 0ec7d646dbaadf06b8eebfc11b784738a20e75af
+source      = $name-$version.tar.gz::https://github.com/dasher-project/dasher/archive/$_commit.tar.gz
+sha256      = 9181bffe9fa4842dd159a855b935dff1f871fa5412213663b84c534c1a486242  dasher-5.0.0.beta.20200420.tar.gz
+description = Dasher — text entry by steering a pointer, eye tracker or switch through a predictive language model
+homepage    = https://github.com/dasher-project/dasher
+depends     = autoconf automake libtool gettext pkgconf glib gtk3 cairo at-spi2-core expat libX11 xorgproto speech-dispatcher

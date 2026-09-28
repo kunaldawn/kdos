@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-h5py
+version     = 3.16.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/h/h5py/h5py-$version.tar.gz
+sha256      = a0dbaad796840ccaa67a4c144a0d0c8080073c34c76d5a6941d6818678ef2738  python3-h5py-3.16.0.tar.gz
+description = h5py — HDF5 files from Python as numpy arrays, for Veusz's HDF5 import
+homepage    = https://www.h5py.org/
+depends     = python3 python3-pip python3-setuptools python3-cython python3-packaging python3-pkgconfig numpy hdf5

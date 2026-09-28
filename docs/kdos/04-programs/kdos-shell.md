@@ -31,11 +31,11 @@ the complete option reference.
 
 ## Invocation
 
-`kdos-shell` is one binary that answers to 53 command names. It is installed once at
-`/usr/bin/kdos-shell` and symbolically linked under its other 52 names (`/usr/bin/kdos-start`,
+`kdos-shell` is one binary that answers to 55 command names. It is installed once at
+`/usr/bin/kdos-shell` and symbolically linked under its other 54 names (`/usr/bin/kdos-start`,
 `/usr/bin/kdos-settings`, and so on). A *surface* on this page means one of those programs: one
 window, popup or daemon. The [glossary](../06-reference/glossary.md#terms) keeps the word for a
-window or popup and calls the windowless programs helpers; this chapter counts every one of the 52,
+window or popup and calls the windowless programs helpers; this chapter counts every one of the 54,
 because they share one dispatch table, one build and one set of conventions.
 
 When it starts, it takes the file name it was run under (the basename of `argv[0]`) and looks it
@@ -52,15 +52,15 @@ The fallback never applies to `kdos-shell` itself. `kdos-shell` is in the table 
 so `kdos-shell kdos-launcher` starts the panel, which rejects the unknown argument with its usage
 line and exit status 2.
 
-The 53 names reach 52 distinct surfaces: `kdos-launcher` and `kdos-palette` are the same search
+The 55 names reach 54 distinct surfaces: `kdos-launcher` and `kdos-palette` are the same search
 program, which reads the name it was started under and shows applications only when it is
 `kdos-launcher`. One program means one matcher and one idea of ranking.
 
 A name in the table with no matching entry point fails to link, so it is caught at compile time. A
 name the build creates no link for is a program nothing can start; `build.sh` installs the binary
-and creates one link for each of the other 52 names in the table.
+and creates one link for each of the other 54 names in the table.
 
-One binary instead of fifty-two has a reason beyond disk space. Every surface shares the font
+One binary instead of fifty-four has a reason beyond disk space. Every surface shares the font
 cache, the palette and the whole cell-grid toolkit, so two surfaces cannot drift into two
 different pictures of the same desktop. The binary links the libraries it uses (`libkwl`,
 `libkdisp`, `libkcell`, `libktui`, `libkcolor`, `libkbase`, `libkxdg`, `libkicon`, `libkchrome`,
@@ -84,7 +84,7 @@ different pictures of the same desktop. The binary links the libraries it uses (
 | `kdos-bt` | Bluetooth | [kdos-bt](#kdos-bt) |
 | `kdos-audio` | Audio outputs and Bluetooth audio devices | [kdos-audio](#kdos-audio) |
 | `kdos-devices` | Cameras, microphones, scanners, removable media | [kdos-devices](#kdos-devices) |
-| `kdos-disks` | Disks: mount, unlock, SMART, format | [kdos-disks](#kdos-disks) |
+| `kdos-disks` | Disks: mount, unlock, SMART, write an image, format | [kdos-disks](#kdos-disks) |
 | `kdos-connect` | A folder on another machine, over SMB | [kdos-connect](#kdos-connect) |
 | `kdos-print` | Printers: what is set up, what is on the network | [kdos-print](#kdos-print) |
 | `kdos-notifyd` | The notification daemon | [Notifications](#notifications) |
@@ -118,7 +118,9 @@ different pictures of the same desktop. The binary links the libraries it uses (
 | `kdos-users` | The accounts, and which one tty1 logs in | [The system surfaces](#the-system-surfaces) |
 | `kdos-update` | What is behind, what is vulnerable, which slot is live | [The system surfaces](#the-system-surfaces) |
 | `kdos-firewall` | Which services answer the network | [The system surfaces](#the-system-surfaces) |
-| `kdos-backup` | What is in the restic repository, and adding to it | [The system surfaces](#the-system-surfaces) |
+| `kdos-backup` | What is in the restic repository, adding to it, and restoring from it | [The system surfaces](#the-system-surfaces) |
+| `kdos-burn` | A folder or an image onto an optical disc, and the disc checked | [The system surfaces](#the-system-surfaces) |
+| `kdos-verify` | Files against a checksum list or a par2 set | [The system surfaces](#the-system-surfaces) |
 | `kdos-openwith` | Choose a handler for one file | [The small dialogs](#the-small-dialogs) |
 | `kdos-run` | The run box | [The small dialogs](#the-small-dialogs) |
 | `kdos-prompt` | Yes/no by exit status; `--input` asks for a line | [The small dialogs](#the-small-dialogs) |
@@ -181,7 +183,7 @@ because they name the one function each surface must go through.
 
 ### The key contract
 
-Thirty-eight of these surfaces answer the same key contract, and the bottom row of each says what
+Forty of these surfaces answer the same key contract, and the bottom row of each says what
 the rest of its keys do at that moment. `Esc` steps back one level and only then closes; `F1` opens
 the surface's page in `kdos-doc` where it has one. The layers `Esc` steps back through (a
 confirmation, a search, a selection) are declared by each surface and form its *Esc ladder*; each
@@ -403,13 +405,13 @@ Any surface can be asked to draw one frame into memory and print it instead of o
 This is how the test suite checks layouts, and it is handy for a contributor: you can see what a
 surface draws from a plain terminal, with no compositor running.
 
-Forty-eight of the 52 surfaces support it. The four that do not are `kdos-ascii`, which is a
+Fifty of the 54 surfaces support it. The four that do not are `kdos-ascii`, which is a
 filter with no frame of its own, and `kdos-mediad`, `kdos-netagent` and `kdos-ime`, whose windows
 exist only in response to something arriving on a bus.
 
 | Flag | Produces | Offered by |
 |---|---|---|
-| `--dump` | The cell buffer as plain text | All 48 |
+| `--dump` | The cell buffer as plain text | All 50 |
 | `--dump-cells` | One line per painted, non-blank cell: `row col U+XXXX fg bg attr` | `kdos-start`, `kdos-menu`, `kdos-pick`, `kdos-settings`, `kdos-find`, `kdos-keys`, `kdos-doc`, `kdos-openwith`, `kdos-teams` |
 | `--dump-size WxH` | Render at that size | `kdos-settings`, `kdos-keys`, `kdos-doc`, `kdos-openwith`, `kdos-teams`; `kdos-desk` takes the two numbers as separate arguments, `--dump-size W H` |
 | `--dump-width N` | Render the panel at that width | `kdos-shell` (the panel) |
@@ -674,7 +676,8 @@ found by its id first and then by the window-class field, which is what an X11 c
 Xwayland needs.
 
 The box appears in a label only when it disambiguates, which is where the same application runs in
-two boxes. A badge on every button on a machine where every application is boxed says nothing.
+two boxes. A box name on every button would lengthen each label without helping anyone pick a
+window.
 
 Applications can put a count badge or a progress bar on their button through the launcher-entry
 interface, which `unity.c` implements.
@@ -1304,8 +1307,9 @@ a photograph because they paint their own `KT_BG` rather than letting the ground
 ## kdos-pick
 
 The file chooser, and with a browse flag the file manager. This is the dialog every boxed
-application reaches through the portal, so it is the one surface on the system that other people's
-software puts in front of you.
+application reaches through the portal, and so does a native GTK application on the host, because
+`/etc/profile.d/10-wayland.sh` exports `GTK_USE_PORTAL=1`. That makes it the one surface on the
+system that other people's software puts in front of you.
 
 As a browser, opening a file hands it to the system's open resolution and the dialog stays up: a
 browser that closed after one file would be a chooser under another name.
@@ -1637,12 +1641,13 @@ selection steps over them rather than landing where nothing would happen.
 ### kdos-disks
 
 `kdos-disks` is the surface for the `kdos-mountd` verbs: `mount`, `unmount`, `unlock`, `close`,
-`format` and `smart`. Ejecting is offered by the removable-media toast (`kdos-mediad`) rather than
-here.
+`format`, `smart` and `write`. Ejecting is offered by the removable-media toast (`kdos-mediad`)
+rather than here.
 
 Every privileged operation is a daemon verb and this program runs as the user. It opens no block
 device, forks no `mkfs` and holds no capability; what it does is draw a list the daemon published
-and send back a row number. A disks window that needed root would be a setuid binary with a text
+and send back a row number, and for an image write, the image, opened as the user and handed to the
+daemon as an open descriptor. A disks window that needed root would be a setuid binary with a text
 editor's attack surface.
 
 Partitioning is `cfdisk` in a terminal and is not reimplemented. A partition editor is a program in
@@ -1657,6 +1662,16 @@ volume first.
 
 Erase asks for the device's own name to be typed, which is the daemon's rule rather than this
 surface's decoration.
+
+**Write image** (`w`) puts a disk image over the whole disk the selected row is on. It asks for the
+image first (type a path, or drop the file on the window, which opens the prompt with the path
+filled in), checks that it is a file, and then asks for the disk's name: `sdb` for a row on `sdb1`,
+because the disk, partition table and all, is what is replaced. The daemon's worker reports as it
+goes, and the prompt row becomes a bar reading `writing <done> of <total>` and then
+`verifying <done> of <total>`; the window keeps drawing and may be closed without stopping the
+write. The end is `written: sdb <bytes> verified` or `not written:` and the daemon's reason. The
+verb is refused unless `/etc/kdos/mountd.conf` says `write = yes`; every refusal is in
+[the daemons](daemons.md#writing-an-image).
 
 ### kdos-connect
 
@@ -1876,9 +1891,9 @@ missing.
 ## kdos-peek
 
 What is in a file, without starting the application that owns it. *Peek* in the file verbs, `k` on
-`mc`'s `F2`, and the default handler for the three page formats nothing else on this image
-renders: PDF, CBZ and XPS. It draws two more document types, EPUB and FB2, when asked, but
-their default handler is `epy`.
+`mc`'s `F2`, and the default handler for the two page formats no desktop application is the
+default for: CBZ and XPS. It draws PDF, EPUB and FB2 too when asked, but their default handlers
+are Okular and Calibre's viewer ([Opening a file](../02-user-guide/desktop.md#opening-a-file)).
 
 Four kinds and one decision, taken in this order because the cheap and certain tests come first:
 
@@ -1918,9 +1933,11 @@ searching and line wrapping, and the one on the machine is better than the one t
 grow. `--dump` never forks it: it draws what it would have done, the same split between measuring
 and acting the panel keeps.
 
-Peek is not the default handler for a book. `epy` is: a reader keeps a position, a table of
-contents and a search, which is the difference between reading an epub and glancing at a page of
-one. The Peek verb still shows any of the five, because it asks no handler table at all.
+Peek is not the default handler for a book or a PDF, because a reader keeps a position, a table of
+contents and a search, which is the difference between reading one and glancing at a page of it.
+The Peek verb still shows any of the five, because it asks no handler table at all. On a bare
+virtual terminal, where the desktop's defaults have no compositor to open in, `kdos-peek` and
+`epy` are run by name.
 
 ## kdos-pix
 
@@ -2061,7 +2078,8 @@ frozen in a reference frame and a button that changed shade with the host's pack
 one. The three model locations, `$KDOS_WHISPER_MODEL`'s exclusive semantics and the four-byte magic
 test are in [configuration](../06-reference/configuration.md#speech-to-text-models).
 
-KDOS ships no speech model. Press *Get model*, or run `kdos speech get`, before transcribing.
+KDOS ships the `base.en` model in `/usr/share/whisper.cpp/models`, which *Transcribe* uses unless
+you have one of your own. `kdos speech get` fetches another.
 
 This surface transcribes a file. `whisper-stream` on the image transcribes a live microphone and is
 a terminal program with no desktop verb in front of it: it opens SDL's audio device, which raises
@@ -2139,10 +2157,10 @@ picture-character here, so the swatch is still a swatch on a terminal with no UT
 
 A preview is half a theme. `kdos theme --preview` writes the accent state file and signals the
 session, and generates none of the GTK, icon, cursor or foreign-configuration artefacts, which take
-seconds and are read by programs that are not running, so the desktop moves and a boxed
-application does not, and `Enter` runs the real switch. Leaving any other way, including a
-`SIGTERM`, puts the original back, because a picker killed halfway would otherwise leave the
-desktop in an accent no other artwork had been regenerated for.
+seconds and are read by programs that are not running, so the desktop moves and a GTK or Qt
+application, boxed or native, does not, and `Enter` runs the real switch. Leaving any other way,
+including a `SIGTERM`, puts the original back, because a picker killed halfway would otherwise leave
+the desktop in an accent no other artwork had been regenerated for.
 
 The window sizes itself from the scheme table, so an accent added to `kcolor.h` needs no edit here.
 
@@ -2250,12 +2268,12 @@ exits saying so, with the candidate window then drawn by a process nothing is fe
 `kdos-desktop-start` takes the name rather than asking for it, and kills its own panel again when
 the compositor exits.
 
-The engines a key can reach are a shipped file, `~/.config/fcitx5/profile` from `/etc/skel`,
-because the configuration tool upstream ships is built on a toolkit this host does not have. Its
-group names `keyboard-us` first (a login types Latin), then `pinyin`, `anthy` and `hangul`, which
-are the engines the image installs. fcitx5 started with no such file has a group holding nothing
-but the keyboard layout: `fcitx5-remote -s pinyin` then silently does nothing, every keystroke
-arrives as Latin, and no candidate window is ever asked for.
+The engines a key can reach are a shipped file, `~/.config/fcitx5/profile` from `/etc/skel`, because
+the configuration tool upstream ships, `fcitx5-configtool`, is a separate project that is not a
+port. Its group names `keyboard-us` first (a login types Latin), then `pinyin`, `anthy` and
+`hangul`, which are the engines the image installs. fcitx5 started with no such file has a group
+holding nothing but the keyboard layout: `fcitx5-remote -s pinyin` then silently does nothing, every
+keystroke arrives as Latin, and no candidate window is ever asked for.
 
 There is no configuration surface for the engines themselves. See
 [known gaps](../06-reference/known-gaps.md).
@@ -2324,7 +2342,9 @@ when something happens, and the small dialogs other programs open.
 | `kdos-users` | The accounts, split by privilege, with the surface saying which side each row is on. Reading `/etc/passwd` and `/etc/group` is anybody's; creating an account, changing a password and editing group membership are root's, and this program does none of them. An `Add user` button that answered "permission denied" would read as a fault in the machine rather than as the boundary it is. `passwd`, `adduser`, `deluser` and `usermod` are on the image and are what a person changing accounts uses. The one thing it does change is the autologin, through `kdos-powerd`, because `/etc/kdos/login.conf` is a KDOS file and "is this person administering the machine" is the question that daemon already answers. Off is a commented key rather than an empty one, because `kdos-login` asks for a password when it finds no key and `autologin =` with nothing after it would name an account called `""`. The list is `kb_users()`, and the daemon validates against the same call |
 | `kdos-update` | What is behind, what is vulnerable and which slot is live; `--security` opens on the vulnerability page. It computes nothing: `kdos update check --json`, `kdos cve --json` and `kdos-bootctl status` already answer these three, and the version comparison in particular is the packaging system's and is subtle. It applies nothing either: `kdos update apply` compiles packages, can take hours, and on an A/B machine writes the other slot, so a button behind a one-line status would be a progress bar over an unattended build with no way to see what it was doing. The surface says what to type and shows which slot it will land in. The security table's age is on the screen beside the count, because a table three months stale reporting nothing to fix is worse than no answer. The JSON is read by a bounded key scan rather than a parser: both producers are in this tree and their shape is fixed |
 | `kdos-firewall` | Which of this machine's services answer the network. It carries no table of ports — `kdos-powerd` owns the names, because a client that could name a port could open any port. It edits `/etc/nftables.d/50-kdos-services.nft` and only that; the daemon rewrites that file whole, so anything hand-written belongs in another file beside it, said on the surface as well as in the file. It is not a firewall editor: the shipped policy is a workstation's, and the only question here is which of a short list may be reached from outside. The default is drawn on the screen under the list, because every row is an exception to it and a list of exceptions with the rule missing reads as the whole policy. `open` is drawn in the warning slot rather than the accent — a port answering the network is the state worth noticing |
-| `kdos-backup` | What is in the restic repository, and one key to add to it. `--once` backs up and exits with no window, which is what a scheduled job runs. It restores nothing: `restic restore` is the operation you do once under pressure and it wants the full command rather than a button whose defaults you cannot see. `F1` opens its page |
+| `kdos-backup` | What is in the restic repository, one key to add to it, and the way back out of it. `--once` backs up and exits with no window, which is what a scheduled job runs. `Enter` (or a press on the selected row) opens a snapshot in the restore view: its folders one level at a time, `Enter` into a folder and `Backspace` back up, with each entry's size and modified time from `restic ls --json`. `t` restores the selected file or folder into `~/Restored/<snapshot>/`, with its full path recreated beneath that, through `restic restore <snapshot> --target … --include <path>`; the path is escaped because restic reads `--include` as a glob. A restore never writes over the original: what comes back sits beside what is there now. restic's last line is the status while it runs, and closing the window does not stop it. `F1` opens its page |
+| `kdos-burn` | A folder or an image onto a CD, DVD or Blu-ray, over `xorriso`. The drives are `/sys/block/sr*` with the vendor and model the drive reports; the source is the first argument, a typed path (`s`) or a file dropped on the window. A folder is burnt as one new ISO 9660 session named after the folder (`xorriso -outdev <drive> -blank as_needed -volid <NAME> -map <folder> / -commit -compare_r <folder> /`), and the same run reads every file back and compares it. xorriso reports a difference as the line `Differences detected.` and still exits 0, so that line is what the window reads as a failed comparison. An image is written as it is (`xorriso -as cdrecord -v dev=<drive> blank=as_needed -eject padsize=300k <image>`) and ejected, because the kernel does not see a disc libburn wrote until the tray has been opened; `v` then reads the reloaded disc and compares the image's length byte for byte (`kdos-burn --compare IMAGE DEVICE`, this program). `blank=as_needed` blanks a rewritable disc that holds data, so Burn asks for a second `Enter` naming the drive. No daemon stands in front of the drive: it belongs to `cdrom`, and the desktop user is in `cdrom`. A burn outlives its window |
+| `kdos-verify` | Files against a checksum list or a par2 set. The checker is chosen by the list's name, in any case: `.par2` is `par2 verify`; a name ending `.b3` or containing `b3sum` or `blake3` is `b3sum -c`; one containing `sha512` is `sha512sum -c`; anything else is `sha256sum -c`. It runs in the list's folder, since every such list names its files relative to itself. Each verdict line becomes a row (`OK`, or `FAILED` and the checker's reason; for par2, `found`, `damaged` or `missing`), and the status line counts them. After a par2 verify that says a repair is possible, `p` runs `par2 repair`, which rewrites the damaged files and keeps each old one as `<name>.1`. The list is the first argument, a typed path (`l`) or a dropped file. `b3sum` is not a port on this image, so a BLAKE3 list answers that `b3sum` is not on this machine |
 
 ### Background services
 
@@ -2390,7 +2410,9 @@ which exits 254 as a cancel.
 | `kdos-doc` | `[<doc>\|port:<name>\|reason:<name>] [--dump\|--dump-cells] [--dump-size WxH] [--font NAME]` |
 | `kdos-time` | `[--font NAME] [--no-icons] [--dump] [QUERY]` |
 | `kdos-update` | `[--font NAME] [--no-icons] [--security] [--dump]` |
-| `kdos-backup` | `[--font NAME] [--fixture DIR] [--once] [--dump]` |
+| `kdos-backup` | `[--font NAME] [--fixture DIR] [--open SNAPSHOT [--dir PATH]] [--once] [--dump]` — `--open` starts in the restore view on that snapshot, and `--dir` in one folder of it |
+| `kdos-burn` | `[--font NAME] [--no-icons] [--fixture SYS] [--dump] [FOLDER\|IMAGE]`; `--compare IMAGE DEVICE` compares and exits, 0 on a match |
+| `kdos-verify` | `[--font NAME] [--no-icons] [--dump] [LIST]`. With `--dump` the check runs to the end before the frame is drawn |
 | `kdos-openwith` | `<path> \| --mime <type>`, `[--print] [--dump\|--dump-cells] [--dump-size WxH] [--font NAME]` — `--print` lists the MIME type, the default and every candidate entry, tab separated, and launches nothing |
 | `kdos-prompt` | `--message TEXT [--yes LABEL] [--no LABEL] [--font NAME] [--dump]`; `--input --message TEXT [--placeholder TEXT]` |
 | `kdos-slit` | `[--output NAME] [--font NAME] [--config PATH] [--dump]` |
@@ -2416,8 +2438,8 @@ prints the usage line and exits 254, so a malformed call reads as a cancel and n
   `kdos-disks`, `kdos-connect`, `kdos-time`, `kdos-users` and `kdos-firewall`
 - [Testing](../05-developer/testing.md) — the dump harness and the goldens the surfaces are
   checked against
-- [How KDOS differs](../01-philosophy/how-kdos-differs.md#toolkits-on-the-host) — why the desktop is one cell-grid
-  toolkit of its own rather than GTK or Qt on the host
+- [How KDOS differs](../01-philosophy/how-kdos-differs.md#toolkits) — why the desktop is one cell-grid
+  toolkit of its own rather than GTK or Qt under its surfaces
 - [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-05_desktop) — where the `kdos-shell` port is built
   in the desktop phase, and how its links reach the image
 

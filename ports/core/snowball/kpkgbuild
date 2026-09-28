@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = snowball
+version     = 3.1.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/snowballstem/snowball/archive/refs/tags/v$version.tar.gz
+sha256      = d8714aa91ed4333654708472a7a98b529c867a8f99b05c5e66febf4ca72c44c7  snowball-3.1.1.tar.gz
+description = Snowball stemming compiler and libstemmer, the stemmers for 30 languages
+homepage    = https://snowballstem.org/
+depends     = perl

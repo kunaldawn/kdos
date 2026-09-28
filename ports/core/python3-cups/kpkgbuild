@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-cups
+version     = 2.0.4
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pycups/pycups-$version.tar.gz
+sha256      = 843e385c1dbf694996ca84ef02a7f30c28376035588f5fbeacd6bae005cf7c8d  python3-cups-2.0.4.tar.gz
+description = pycups — libcups from Python, for system-config-printer
+homepage    = https://github.com/OpenPrinting/pycups
+depends     = python3 python3-setuptools python3-pip cups

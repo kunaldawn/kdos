@@ -33,8 +33,8 @@ set -u
 OUT=/tmp/packlane
 mkdir -p "$OUT"
 
-APP=${PACKLANE_APP:-app.keepassxc}    # 27 MB, recommended, wants rt-qt
-QTAPP=${PACKLANE_QTAPP:-app.gimp}     # 129 MB, recommended, wants rt-gtk
+APP=${PACKLANE_APP:-app.vorta}        # 33 MB, wants rt-qt
+QTAPP=${PACKLANE_QTAPP:-app.meld}     # 27 MB, wants rt-gtk
 BOXBASE=${PACKLANE_BOXBASE:-alpine}   # 4.8 MB: the smallest real userland here
 BOX=${PACKLANE_BOX:-packlane}
 USER_NAME=${PACKLANE_USER:-kdos}
@@ -123,11 +123,11 @@ run 'printf "status\n" | nc -U /run/kdos-packd.sock 2>/dev/null || kdos app sour
 run 'kdos app sources'
 run 'kdos app list'
 run 'kdos app list --all | head -40'
-run "kdos app search keepassxc"
+run "kdos app search vorta"
 run "kdos app show $APP"
 
 check "the catalogue is not empty"      'test "$(kdos app list --all 2>/dev/null | wc -l)" -ge 4'
-check "search finds it"                 "kdos app search keepassxc 2>&1 | grep -q ."
+check "search finds it"                 "kdos app search vorta 2>&1 | grep -q ."
 
 # ── 2b. the keyring, because a refusal here stops every verb below ─────────
 #
@@ -189,12 +189,12 @@ say "4. launchers"
 
 run "asuser 'kdos-appbox genlaunchers --packs /' 2>&1 | tail -20"
 run "asuser 'grep -c . ~/.local/share/kdos/alien-apps 2>/dev/null || echo 0'"
-run "grep -i keepassxc /usr/share/kdos/alien-apps 2>/dev/null | head -3"
+run "grep -i vorta /usr/share/kdos/alien-apps 2>/dev/null | head -3"
 run "ls /home/$USER_NAME/.local/share/applications/ 2>/dev/null | head -20"
 
-check "the app table names it"          "grep -qi keepassxc /usr/share/kdos/alien-apps"
-check "the table names its pack"        "grep -i keepassxc /usr/share/kdos/alien-apps | grep -q '$APP'"
-check "the shim was written"            "test -L /usr/local/bin/keepassxc"
+check "the app table names it"          "grep -qi vorta /usr/share/kdos/alien-apps"
+check "the table names its pack"        "grep -i vorta /usr/share/kdos/alien-apps | grep -q '$APP'"
+check "the shim was written"            "test -L /usr/local/bin/vorta"
 check "kdos-box survived genlaunchers"  "test -x /usr/local/bin/kdos-box"
 check "no launcher was dropped"         "! kdos-appbox genlaunchers --packs / 2>&1 | grep -q 'the rest are ignored'"
 

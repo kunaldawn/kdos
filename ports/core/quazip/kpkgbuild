@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = quazip
+version     = 1.7.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/stachenov/quazip/archive/refs/tags/v$version.tar.gz
+sha256      = 5240f4a3475648773ba10af8b0ebe549cbfc5d6de00470a517330a80068a4f78  quazip-1.7.2.tar.gz
+description = Qt 6 C++ wrapper for zip archives
+homepage    = https://github.com/stachenov/quazip
+depends     = cmake ninja qt6-qtbase qt6-qt5compat zlib bzip2

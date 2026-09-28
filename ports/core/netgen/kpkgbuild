@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = netgen
+version     = 6.2.2604
+release     = 1
+_commit     = 3ee489c7d58f
+source      = $name-$version.tar.gz::https://github.com/NGSolve/netgen/archive/refs/tags/v$version.tar.gz
+sha256      = 0a614193ee6106c0c276a1516639bef872f2f2371dec159e1b1f6ffcb425954c  netgen-6.2.2604.tar.gz
+description = Netgen — automatic 3D tetrahedral mesh generator (nglib, OpenCASCADE geometry and the Python module FreeCAD's FEM drives)
+homepage    = https://ngsolve.org/
+depends     = cmake ninja python3 python3-pybind11 numpy opencascade zlib

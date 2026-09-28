@@ -1,0 +1,43 @@
+--- a/services/metricsservice.cpp
++++ b/services/metricsservice.cpp
+@@ -49,10 +49,12 @@
+ }
+ 
+ void MetricsService::sendVisit(const QString &path, const QString &actionName) {
++    return;
+     _piwikTracker->sendVisit(path, actionName);
+ }
+ 
+ void MetricsService::sendVisitIfEnabled(const QString &path, const QString &actionName) {
++    return;
+     SettingsService settings;
+     if (!settings.value(QStringLiteral("appMetrics/disableTracking")).toBool()) {
+         sendVisit(path, actionName);
+@@ -62,6 +64,7 @@
+ void MetricsService::sendEventIfEnabled(const QString &path, const QString &eventCategory,
+                                         const QString &eventAction, const QString &eventName,
+                                         int eventValue) {
++    return;
+     SettingsService settings;
+     if (!settings.value(QStringLiteral("appMetrics/disableTracking")).toBool()) {
+         _piwikTracker->sendEvent(path, eventCategory, eventAction, eventName, eventValue);
+@@ -72,6 +75,7 @@
+  * Sends a heartbeat if not disabled
+  */
+ void MetricsService::sendHeartbeat() {
++    return;
+     SettingsService settings;
+     if (!settings.value(QStringLiteral("appMetrics/disableAppHeartbeat")).toBool()) {
+         // send a normal event the first time
+--- a/services/updateservice.cpp
++++ b/services/updateservice.cpp
+@@ -22,6 +22,9 @@
+ 
+ void UpdateService::checkForUpdates(UpdateMode updateMode) {
+     this->updateMode = updateMode;
++    if (updateMode != Manual) {
++        return;
++    }
+ 
+     SettingsService settings;
+     if (updateMode != Manual) {

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = unifdef
+version     = 2.12
+release     = 1
+source      = https://dotat.at/prog/unifdef/unifdef-$version.tar.xz
+sha256      = 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400  unifdef-2.12.tar.xz
+description = Selectively remove C preprocessor conditionals
+homepage    = https://dotat.at/prog/unifdef/
+depends     = make

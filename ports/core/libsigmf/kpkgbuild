@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libsigmf
+version     = 20260606
+release     = 1
+_commit     = 877b069e5abdd0c12fdc9e192a47e9026628c14b
+_fb         = 25.12.19
+source      = $name-$version.tar.gz::https://github.com/f4exb/libsigmf/archive/$_commit.tar.gz
+source      = flatbuffers-$_fb.tar.gz::https://github.com/google/flatbuffers/archive/refs/tags/v$_fb.tar.gz
+sha256      = c40d6821477c4c18050da9f3e89eaee5d981aa721904a9b2202d6012f221df32  libsigmf-20260606.tar.gz
+sha256      = f81c3162b1046fe8b84b9a0dbdd383e24fdbcf88583b9cb6028f90d04d90696a  flatbuffers-25.12.19.tar.gz
+description = libsigmf — C++ reader and writer for SigMF signal recordings, with the SDRangel namespace
+homepage    = https://github.com/f4exb/libsigmf
+depends     = cmake ninja nlohmann-json

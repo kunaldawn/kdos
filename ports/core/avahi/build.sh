@@ -19,9 +19,14 @@
 # on by name, as are expat for the service files, gdbm for the service-type
 # database, and the glib main-loop adapter cups-browsed builds on together with
 # the gobject wrapper that comes with glib.
-# The bindings, the toolkits and introspection are off: none of them is on the
-# host, and avahi-discover et al are python. Every one of them is named, on or
-# off, so the result does not depend on what else was built first.
+# --enable-compat-libdns_sd is Apple's dns_sd.h API over the same daemon:
+# libdns_sd and avahi-compat-libdns_sd.pc, which Mumble and its server
+# murmur need for LAN server discovery and stop at configure without.
+# The bindings, the toolkits and introspection are off. avahi-ui-gtk3 cannot
+# be built here: GTK 3 depends on CUPS, which depends on avahi, so it would be
+# a dependency cycle. avahi-discover et al are python. Every one of them is
+# named, on or off, so the result does not depend on what else was built
+# first.
 #
 # --with-distro=none stops it installing an init script for someone else's
 # init system, and --with-systemdsystemunitdir=no stops it asking pkg-config
@@ -63,7 +68,7 @@ autoreconf -fi
 	--disable-libevent \
 	--disable-libsystemd \
 	--disable-doxygen-doc \
-	--disable-compat-libdns_sd \
+	--enable-compat-libdns_sd \
 	--disable-compat-howl \
 	--disable-tests \
 	--enable-libdaemon

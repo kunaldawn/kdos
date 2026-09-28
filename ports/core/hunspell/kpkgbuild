@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hunspell
+version     = 1.7.4
+release     = 1
+source      = https://github.com/hunspell/hunspell/releases/download/v$version/hunspell-$version.tar.gz
+sha256      = 66ec82a577395fe9d471504267e6dd04615c76517c61af7c6b9c19e5e34e73c8  hunspell-1.7.4.tar.gz
+description = Spell checker and morphological analyser — the library LibreOffice, Firefox and enchant check through
+homepage    = https://hunspell.github.io/
+depends     = gettext ncurses readline

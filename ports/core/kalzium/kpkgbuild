@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kalzium
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 7b5773311010665ed1da7f8782a14baed95dec11484115c420b84edb699803c3  kalzium-26.08.1.tar.xz
+description = KDE periodic table of the elements — properties, isotopes, spectra and a molar mass calculator
+homepage    = https://apps.kde.org/kalzium/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qt5compat qt6-qtscxml qt6-qtdeclarative karchive kconfig kconfigwidgets kcoreaddons kcrash kdoctools ki18n kitemviews kio kplotting kunitconversion kwidgetsaddons ktextwidgets kxmlgui knewstuff openbabel avogadrolibs eigen ocaml ocaml-facile gettext

@@ -13,6 +13,7 @@
 #include "config/rcxml.h"
 #include "cycle.h"
 #include "idle.h"
+#include "kdos.h" /* KDOS */
 #include "input/ime.h"
 #include "input/key-state.h"
 #include "labwc.h"
@@ -639,18 +640,14 @@ keyboard_cancel_all_keybind_repeats(struct seat *seat)
 	}
 }
 
-static void
-handle_key(struct wl_listener *listener, void *data)
+/* KDOS: the half of handle_key() after the accessibility filters, which
+ * slow keys calls again for a press it held back */
+void
+keyboard_key_deliver(struct keyboard *keyboard,
+		struct wlr_keyboard_key_event *event)
 {
-	/* This event is raised when a key is pressed or released. */
-	struct keyboard *keyboard = wl_container_of(listener, keyboard, key);
 	struct seat *seat = keyboard->base.seat;
-	struct wlr_keyboard_key_event *event = data;
 	struct wlr_seat *wlr_seat = seat->wlr_seat;
-
-	key_state_indicator_update(seat);
-
-	idle_manager_notify_activity(seat->wlr_seat);
 
 	/* any new press/release cancels current keybind repeat */
 	keyboard_cancel_keybind_repeat(keyboard);
@@ -677,6 +674,24 @@ handle_key(struct wl_listener *listener, void *data)
 		wlr_seat_keyboard_notify_key(wlr_seat, event->time_msec,
 			event->keycode, event->state);
 	}
+}
+
+static void
+handle_key(struct wl_listener *listener, void *data)
+{
+	/* This event is raised when a key is pressed or released. */
+	struct keyboard *keyboard = wl_container_of(listener, keyboard, key);
+	struct seat *seat = keyboard->base.seat;
+	struct wlr_keyboard_key_event *event = data;
+
+	key_state_indicator_update(seat);
+
+	idle_manager_notify_activity(seat->wlr_seat);
+
+	if (kdos_a11y_key(keyboard, event)) { /* KDOS */
+		return;
+	}
+	keyboard_key_deliver(keyboard, event); /* KDOS */
 }
 
 void

@@ -33,6 +33,9 @@ mkdir -p build && cd build
 # DESTDIR. numpy is what builds osgeo.gdal_array, which gdal_calc.py and most
 # raster scripting import; GDAL skips that module without an error when numpy
 # is missing, so the check after the install is what makes it fail.
+#
+# GDAL_USE_FREEXL=ON is the XLS driver, which reads an old Excel workbook's
+# sheets as vector layers.
 cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
@@ -75,7 +78,8 @@ cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DGDAL_USE_LIBXML2=ON \
 	-DGDAL_USE_OPENSSL=ON \
 	-DGDAL_USE_JSONC=ON \
-	-DGDAL_USE_QHULL=ON
+	-DGDAL_USE_QHULL=ON \
+	-DGDAL_USE_FREEXL=ON
 ninja
 DESTDIR=$PKG ninja install
 ls "$PKG"/usr/lib/python3*/site-packages/osgeo/_gdal_array*.so >/dev/null 2>&1 || {

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libkdcraw
+version     = 26.08.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = cf49479043a75557f82b0213019c45291d612267e454b66d939f04b189c4f182  libkdcraw-26.08.1.tar.xz
+description = Qt 6 wrapper around LibRaw for decoding camera raw files
+homepage    = https://invent.kde.org/graphics/libkdcraw
+depends     = cmake ninja extra-cmake-modules qt6-qtbase libraw

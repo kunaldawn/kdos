@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = avogadrolibs
+version     = 2.0.0
+release     = 1
+source      = https://github.com/OpenChemistry/avogadrolibs/archive/refs/tags/$version.tar.gz
+source      = avogadro-molecules-$version.tar.gz::https://github.com/OpenChemistry/molecules/archive/refs/tags/$version.tar.gz
+source      = avogadro-crystals-$version.tar.gz::https://github.com/OpenChemistry/crystals/archive/refs/tags/$version.tar.gz
+source      = avogadro-fragments-$version.tar.gz::https://github.com/OpenChemistry/fragments/archive/refs/tags/$version.tar.gz
+sha256      = 08adefeb8122cf018587fc12872ed470bbf92b72fb73f0af1861ab58031cadfd  avogadrolibs-2.0.0.tar.gz
+sha256      = bb7377f254932ccd4156035eabfc5b1ed9f551359b520ed86b51064a114a1d99  avogadro-molecules-2.0.0.tar.gz
+sha256      = 2747a70fab3d5f32ead0622229189fc74732aa0eadf4ea60b80f75368fb0b442  avogadro-crystals-2.0.0.tar.gz
+sha256      = e9a4ba1dd1b357bef94188dbf8fb7f60219dba7854b69be767e28a4fb1938ce9  avogadro-fragments-2.0.0.tar.gz
+description = Avogadro libraries — molecular data, file formats, OpenGL rendering and Qt widgets for chemistry programs
+homepage    = https://two.avogadro.cc/
+depends     = cmake ninja eigen glew libglvnd mesa qt6-qtbase qt6-qtsvg nlohmann-json pugixml tomlplusplus python3

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qalculate-qt
+version     = 5.12.0
+release     = 1
+source      = https://github.com/Qalculate/qalculate-qt/releases/download/v$version/$name-$version.tar.gz
+sha256      = 8eee50aff8c266365d5e455e913133162ea96ae4ce5be5977c3d12fbeaf5d0e4  qalculate-qt-5.12.0.tar.gz
+description = Qalculate! desktop calculator (Qt) — units, currencies, symbolic algebra, plots
+homepage    = https://qalculate.github.io/
+depends     = qt6-qtbase qt6-qttools qt6-qtwayland libqalculate pkgconf gnuplot

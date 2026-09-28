@@ -9,10 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# introspection installs the GstAudio, GstVideo, GstPbutils, GstGL and sibling
+# GIRs, which gst-plugins-bad's GIRs and WebKitGTK's media code include.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	--buildtype=release \
-	-Dintrospection=disabled \
+	-Dintrospection=enabled \
 	-Ddoc=disabled \
 	-Dexamples=disabled \
 	-Dtests=disabled \

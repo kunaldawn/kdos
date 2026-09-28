@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = net-snmp
+version     = 5.9.5.2
+release     = 1
+source      = https://downloads.sourceforge.net/net-snmp/net-snmp-$version.tar.gz
+sha256      = 16707719f833184a4b72835dac359ae188123b06b5e42817c00790d7dc1384bf  net-snmp-5.9.5.2.tar.gz
+description = SNMP library, tools and agent — read network UPS cards, switches and printers (snmpget, snmpwalk, snmpd)
+homepage    = http://www.net-snmp.org/
+depends     = pkgconf openssl libnl

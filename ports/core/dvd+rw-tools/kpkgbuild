@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dvd+rw-tools
+version     = 7.1
+release     = 1
+source      = https://dev.alpinelinux.org/archive/$name/$name-$version.tar.gz
+sha256      = f8d60f822e914128bcbc5f64fbe3ed131cbff9045dca7e12c5b77b26edde72ca  dvd+rw-tools-7.1.tar.gz
+description = growisofs and friends — DVD and Blu-ray writing, formatting and media inspection
+homepage    = https://fy.chalmers.se/~appro/linux/DVD+RW/
+depends     = m4 perl

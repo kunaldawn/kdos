@@ -22,14 +22,14 @@
 # THE INTERFACE IS A TERMINAL MENU AND THE PICTURE IS A WINDOW. baresip drives
 # itself from the terminal it was started in; the far end's video goes in a
 # window of its own, under the compositor. The gtk menu and every other toolkit
-# front end stay off by rule.
+# front end stay off: the terminal menu is the interface.
 #
 # THE PICTURE HAS A PLACE TO GO, AND `sdl2-compat` IN `depends` IS THE WHOLE OF
 # IT. `modules/sdl` builds itself whenever pkg-config answers for `sdl2` and
 # returns silently when it does not, so naming the port is what turns a call
 # that could send your camera and not show you theirs into one that can do
-# both. `x11` is left out of MODULES by rule — no X client library outside
-# Xwayland — and `fakevideo` and `vidbridge` remain what they are, a null sink
+# both. `x11` is left out of MODULES — `sdl` already puts the picture on the
+# Wayland desktop — and `fakevideo` and `vidbridge` remain what they are, a null sink
 # and a loopback.
 #
 # CAPTURE IS v4l2.so, BECAUSE THAT IS WHAT THE GENERATED CONFIG NAMES: its
@@ -64,7 +64,7 @@ patch -p1 -i "$PORT_SRC/default-modules.patch"
 # (ctrl_dbus and its gdbus-codegen), libsndfile (call recording), libpng
 # (snapshot), fdk-aac (AAC-LD) and v4l-utils (libv4l2, the camera).
 #
-# Left out: x11 by rule; gtk by rule; pulse and jack, because pipewire is the
+# Left out: x11 and gtk, because sdl and the terminal menu cover both; pulse and jack, because pipewire is the
 # native path; gst, because aufile already plays a file into a call; mqtt, a
 # network control surface; aptx, which wants libopenaptx and not the
 # libfreeaptx that is ported; and amr, av1, codec2, g722, g7221, gzrtp,

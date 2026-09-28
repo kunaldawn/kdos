@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = resources
+version     = 1.10.2
+release     = 1
+vendorsync  = lib/process_data/Cargo.toml
+source      = $name-$version.tar.gz::https://github.com/nokyan/resources/archive/refs/tags/v$version.tar.gz
+sha256      = 120aa520cf6b9cf957958c12a84b562db742114d41aeea59ad6b6caa63f34654  resources-1.10.2.tar.gz
+sha256      = 38e6ec544148447ebe5c37b47388832cb6616ea2bb6478798ca24a45f03f5d7b  resources-vendor-1.10.2.tar.xz
+description = Resources — system monitor for CPU, memory, GPU, NPU, disks, network, battery and processes (GTK 4)
+homepage    = https://apps.gnome.org/Resources/
+depends     = meson ninja pkgconf rust gettext glib gtk4 libadwaita librsvg polkit dmidecode
+vendoring   = rust

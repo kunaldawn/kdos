@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dosbox-x
+version     = 2026.08.31
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/joncampbell123/dosbox-x/archive/refs/tags/dosbox-x-v$version.tar.gz
+sha256      = 992ea538ea858f9fb196b39de2276ce3048c731965e144e6288202abed109782  dosbox-x-2026.08.31.tar.gz
+description = DOSBox-X — x86 PC emulator for DOS, Windows 3.x/9x, PC-98 and PCjr/Tandy software
+homepage    = https://dosbox-x.com/
+depends     = autoconf automake pkgconf librsvg sdl2-compat sdl2-net libglvnd mesa freetype2 libpng zlib alsa-lib fluidsynth libslirp libpcap ffmpeg

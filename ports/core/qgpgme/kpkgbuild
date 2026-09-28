@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qgpgme
+version     = 2.2.0
+release     = 1
+source      = https://gnupg.org/ftp/gcrypt/qgpgme/$name-$version.tar.xz
+sha256      = 3c6290ff5bfeab981bb48b2951703761f1dbea640cb637beb3560d5fefb0e0b3  qgpgme-2.2.0.tar.xz
+description = QGpgME — the Qt 6 binding to GnuPG Made Easy
+homepage    = https://www.gnupg.org/software/gpgme/
+depends     = cmake ninja pkgconf qt6-qtbase libgpg-error gpgme gpgmepp

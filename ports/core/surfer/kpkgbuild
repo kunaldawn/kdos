@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = surfer
+version     = 0.7.0
+release     = 1
+_f128       = e60de395f0d6454c1dc546b87f06a6358425b6b6
+_idecoder   = 02bdcbfd5663a72e4a0b1b9d54519412d417fab1
+source      = $name-$version.tar.gz::https://gitlab.com/surfer-project/surfer/-/archive/v$version/surfer-v$version.tar.gz
+source      = surfer-f128-${_f128:0:7}.tar.gz::https://github.com/jkarns275/f128/archive/$_f128.tar.gz
+source      = surfer-instruction-decoder-${_idecoder:0:7}.tar.gz::https://github.com/ics-jku/instruction-decoder/archive/$_idecoder.tar.gz
+sha256      = 32652e576113fa98fd714aadd91455991aa61a036cb94604264faa74719b119d  surfer-0.7.0.tar.gz
+sha256      = e43e3ae7a6d24ac51aaa4203b932762d4a37e75e7e65ffe02825e80b0ad6e9d0  surfer-f128-e60de39.tar.gz
+sha256      = 4667363a946eb903c509bbc407de56e731c9d8bcc24935a32de2cd3a53b6bc17  surfer-instruction-decoder-02bdcbf.tar.gz
+sha256      = ad908f696d9bcedf95717d016944f0629c17ebaecaf9bb054a63acef627e51dd  surfer-vendor-0.7.0.tar.xz
+description = Waveform viewer for VCD, FST and GHW simulation traces, drawn with egui
+homepage    = https://surfer-project.org
+depends     = rust cmake pkgconf libxkbcommon wayland mesa libglvnd

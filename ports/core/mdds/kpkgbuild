@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mdds
+version     = 3.2.1
+release     = 1
+source      = https://gitlab.com/api/v4/projects/mdds%2Fmdds/packages/generic/source/$version/mdds-$version.tar.xz
+sha256      = 673f5bb94612dbba581fc92b99b5e5dd1a53e29496a5dbc936432f6b0687c112  mdds-3.2.1.tar.xz
+description = mdds — header-only multi-dimensional data structures for ixion and orcus
+homepage    = https://gitlab.com/mdds/mdds
+depends     = boost

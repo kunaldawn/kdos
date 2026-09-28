@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fltk
+version     = 1.4.5
+release     = 1
+source      = https://github.com/fltk/fltk/releases/download/release-$version/$name-$version-source.tar.gz
+sha256      = eede1fb2b8e9c2e581e77082e15252145855c79aad30070ee3b24aabe2f926f1  fltk-1.4.5.tar.gz
+description = The Fast Light Toolkit — a small C++ GUI library, Wayland first with an X11 fallback, and FLUID
+homepage    = https://www.fltk.org/
+depends     = cmake ninja pkgconf wayland wayland-protocols libxkbcommon libdecor dbus cairo pango glib fontconfig freetype2 libX11 libXext libXft libXrender libXfixes libXcursor libXinerama libglvnd mesa glu libjpeg-turbo libpng zlib

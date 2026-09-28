@@ -21,9 +21,8 @@ tar -xf "$PORT_SRC/$name-$version.tar.zst" --strip-components=1
 cp "$PORT_SRC/$_pytable" "$PORT_SRC/$_pystroke" modules/pinyinhelper/
 
 # ENABLE_GUI is the configuration tool and it is Qt — Qt Widgets, and with
-# ENABLE_BROWSER also QtWebEngine. Both are off because there is no Qt on this
-# host; fcitx5's own config file is text and `fcitx5-configtool` was never going
-# to run here anyway.
+# ENABLE_BROWSER also QtWebEngine. Both are off: fcitx5's own config file is
+# text, and `fcitx5-configtool` is a separate project that is not a port.
 #
 # ENABLE_CLOUDPINYIN is off for a different reason and it is not about size:
 # cloud pinyin sends what you are typing to a remote service to be completed.

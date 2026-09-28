@@ -1,0 +1,22 @@
+--- a/3rd_party/bergamot-translator/3rd_party/marian-dev/CMakeLists.txt
++++ b/3rd_party/bergamot-translator/3rd_party/marian-dev/CMakeLists.txt
+@@ -322,7 +322,7 @@
+   set(DISABLE_GLOBALLY "-Wno-unused-result ${CLANG_IGNORE_UNKNOWN_CUDA} ${CLANG_IGNORE_UNUSED_VALUES} ${CLANG_IGNORE_CONSTEXPR_CONVERSION} ${ARM_WARNINGS}") # This needs to appear here as well to appease clang11+ on linux
+ 
+   # These are used in src/CMakeLists.txt on a per-target basis
+-  list(APPEND ALL_WARNINGS -Wall; -Werror; -Wextra; -Wno-unused-result; -Wno-deprecated;
++  list(APPEND ALL_WARNINGS -Wall; -Wextra; -Wno-unused-result; -Wno-deprecated;
+     -Wno-pragmas; -Wno-unused-parameter; -Wno-unused-function;
+     -Wno-unused-value; -Wno-unknown-pragmas; -Wno-sign-compare;
+     -Wno-missing-field-initializers; -Wno-use-after-free; -Wno-restrict; ${CLANG_IGNORE_UNUSED_PRIVATE_FIELD})
+--- a/3rd_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/intgemm/CMakeLists.txt
++++ b/3rd_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/intgemm/CMakeLists.txt
+@@ -13,7 +13,7 @@
+ if(MSVC)
+   add_compile_options(/W4 /WX)
+ else()
+-  add_compile_options(-Wall -Wextra -pedantic -Werror -Wno-unknown-pragmas)
++  add_compile_options(-Wall -Wextra -pedantic -Wno-unknown-pragmas)
+   if (COMPILE_WASM)
+     # Disabling Pthreads + memory growth warning to be an error for WASM
+     # Pthreads + memory growth causes JS accessing the wasm memory to be slow

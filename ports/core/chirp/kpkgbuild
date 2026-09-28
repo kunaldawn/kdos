@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = chirp
+version     = 20260927
+release     = 1
+_commit     = 53b126048593e1042af9fa04afcfc3fef2d34370
+source      = $name-$version.tar.gz::https://github.com/kk7ds/chirp/archive/$_commit.tar.gz
+sha256      = 348e29f1e6d48e63df464932450dd02dad2de79072c857d8cebe95ff12b29580  chirp-20260927.tar.gz
+sha256      = 2dab482ebeb142da34e3c658a8724e5bae15e8faa513b9983a983f6c96951fba  chirp-vendor-20260927.tar.xz
+description = CHIRP — program the memory channels of hundreds of amateur radios, with a wxPython interface and the chirpc CLI
+homepage    = https://chirpmyradio.com/
+depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-wheel python3-wxpython python3-pyserial python3-requests python3-lark librsvg
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = yattag:1.16.1 suds-community:1.2.0

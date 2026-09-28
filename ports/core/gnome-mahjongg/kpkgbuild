@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gnome-mahjongg
+version     = 51.1
+release     = 1
+_series     = ${version%%.*}
+source      = https://download.gnome.org/sources/$name/$_series/$name-$version.tar.xz
+sha256      = 2ef9a1cd246d8ccc9ccd27fa435f972a81def9cf3eccc4c880cbb8929ffb8821  gnome-mahjongg-51.1.tar.xz
+description = GNOME Mahjongg — match pairs of tiles until the board is clear
+homepage    = https://gitlab.gnome.org/GNOME/gnome-mahjongg
+depends     = meson ninja vala glib gtk4 libadwaita librsvg gettext

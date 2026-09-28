@@ -20,7 +20,9 @@ export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/dev/* fs/proc/* fs/sys/* fs/run/* fs/k
 
 export KDOS_TARGET=x86_64-kdos-linux-musl
 
-export WORKSPACE=/workspace
+# The build container mounts the tree at /workspace; `kdos rebuild` builds a
+# copy elsewhere and names it in KDOS_WORKSPACE.
+export WORKSPACE="${KDOS_WORKSPACE:-/workspace}"
 export BUILD_DIR=$WORKSPACE/build
 export SYSROOT=$BUILD_DIR/fs
 export CROSS_SYSROOT=$BUILD_DIR/cross

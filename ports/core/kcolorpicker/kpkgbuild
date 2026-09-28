@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcolorpicker
+version     = 0.3.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ksnip/kColorPicker/archive/refs/tags/v$version.tar.gz
+sha256      = e78c785ec4a8a22a48a91835c97601f5704b5076b154415353b0d2697dc0b4f7  kcolorpicker-0.3.1.tar.gz
+description = Qt colour picker button with a palette popup, used by kImageAnnotator
+homepage    = https://github.com/ksnip/kColorPicker
+depends     = cmake ninja qt6-qtbase

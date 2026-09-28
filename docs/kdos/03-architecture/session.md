@@ -77,6 +77,25 @@ from a password prompt or over ssh stays in the root cgroup, where podman accept
 does not enforce them. A box built from an OCI image is given neither limit, whichever way the
 session started ([Containers](security-model.md#containers)).
 
+**Native applications take their toolkit settings from the login shell.**
+`/etc/profile.d/10-wayland.sh` is read by that shell, so everything the session starts inherits what
+it exports:
+
+| Variable | Value, and what it does |
+|---|---|
+| `QT_QPA_PLATFORM` | `wayland;xcb`: Qt uses Wayland and falls back to Xwayland only when its Wayland plugin cannot start |
+| `GDK_BACKEND` | Not set. GDK tries Wayland first on its own, and an X11-only application that sets `GDK_BACKEND=x11` for itself is not overridden |
+| `GTK_USE_PORTAL` | `1`: a GTK application opens `kdos-pick` through the FileChooser portal and prints through the Print portal ([Portals](#portals)) |
+| `QT_QPA_PLATFORMTHEME` | `kde`: plasma-integration's Qt 6 platform theme, which reads the `~/.config/kdeglobals` that `kdos theme` writes. Qt reads one name here, so a Qt 5 application finds no plugin by that name and falls back to its platform's own theme |
+| `_JAVA_AWT_WM_NONREPARENTING` | `1`: Swing and AWT run under Xwayland and otherwise draw blank or misplaced windows. `kdos-comp` sets the same default for what it starts |
+| `MOZ_ENABLE_WAYLAND` | `1`: Firefox ESR, LibreWolf and Thunderbird use their Wayland backend |
+| `SDL_VIDEODRIVER` | `wayland`: SDL applications open a Wayland window rather than an X11 one |
+| `CLUTTER_BACKEND` | `wayland`: Clutter-based applications use Wayland |
+| `XCURSOR_THEME`, `XCURSOR_SIZE` | `KDOS-cursors` at `24`: the pointer an application draws over its own window matches the compositor's |
+
+A box receives none of these; `kdos-appbox` states a box's environment itself ([the environment a
+box receives](#the-environment-a-box-receives)).
+
 ### The shared bring-up: `session-common.sh`
 
 Both start scripts source `/usr/local/lib/kdos/session-common.sh`. It is sourced, never
@@ -418,6 +437,8 @@ org.freedesktop.impl.portal.ScreenCast=wlr
 org.freedesktop.impl.portal.Screenshot=wlr
 org.freedesktop.impl.portal.FileChooser=kdos
 org.freedesktop.impl.portal.Settings=kdos
+org.freedesktop.impl.portal.Print=gtk
+org.freedesktop.impl.portal.Email=gtk
 org.freedesktop.impl.portal.AppChooser=kdos
 org.freedesktop.impl.portal.Access=kdos
 ```
@@ -428,7 +449,8 @@ org.freedesktop.impl.portal.Access=kdos
 | FileChooser, Settings, AppChooser, Access | `xdg-desktop-portal-kdos` |
 | OpenURI | The front end itself, using AppChooser |
 | Camera, Location | The front end itself, gated by Access |
-| Everything else (Print, Email, Wallpaper, …) | None |
+| Print, Email | `xdg-desktop-portal-gtk` (1.15.3) |
+| Everything else (Wallpaper, Inhibit, Notification, …) | None |
 
 Without this file the front end would fall back on each backend's own `UseIn=` line. The KDOS
 backend's names `KDOS`, but `xdg-desktop-portal-wlr`'s names other compositors, so screen capture
@@ -438,10 +460,15 @@ Each interface names exactly one backend. A list such as `wlr;kdos` would not fa
 backend that D-Bus can activate always counts as available, so the front end would pick `wlr` and
 fail.
 
-`default=none` is deliberate. The backend other desktops fall back to,
-`xdg-desktop-portal-gtk`, is a GTK program, and there is no GTK on this host, so Print, Email,
-Wallpaper and the rest have nobody to serve them. A portal that could only ever fail is not
-advertised. Printing from a box still works through the application's own print dialog and the
+`default=none` is deliberate: an interface the file does not name has no backend, and a portal
+that could only ever fail is not advertised. `xdg-desktop-portal-gtk` is on the host, but it is
+the backend other desktops fall back to, and as the default it would put GTK's own file chooser
+and access dialog in front of the KDOS ones. It is named for two interfaces only.
+**Print** is the print dialog an application with `GTK_USE_PORTAL=1` routes through the portal,
+drawn by the GTK backend and sent to CUPS. **Email** is the "compose a mail with this attached"
+request; the backend hands it to the `x-scheme-handler/mailto` default in
+[`mimeapps.list`](../06-reference/configuration.md). Wallpaper, Inhibit, Notification and the
+rest have no backend. A boxed application can also print through its own print dialog and the
 shared CUPS socket (see [the environment a box receives](#the-environment-a-box-receives)).
 
 `kdos-desktop-start` sets `XDG_CURRENT_DESKTOP` for a graphical session (see [what
@@ -522,10 +549,32 @@ filter a request carries is applied, because `kdos-pick` takes one pattern list.
 |---|---|---|
 | `org.freedesktop.appearance` | `color-scheme` | 1, "prefer dark", whatever the accent, including the light `paper` scheme |
 | | `accent-color` | The current accent's primary colour, as three doubles; libadwaita reads it |
-| `org.gnome.desktop.interface` | `gtk-theme-name` | `KDOS-<accent>` |
-| | `icon-theme-name` | `KDOS` |
+| | `contrast` | 0, "no preference": KDOS has no high-contrast switch, and every accent already holds the contrast floors in [Accessibility](../02-user-guide/accessibility.md#colour-and-contrast) |
+| `org.gnome.desktop.interface` | `gtk-theme` | `KDOS-<accent>` |
+| | `icon-theme` | `KDOS` |
 | | `cursor-theme` | `KDOS-cursors` |
+| | `cursor-size` | 24, the size `/etc/profile.d/10-wayland.sh` exports as `XCURSOR_SIZE` |
 | | `color-scheme` | `prefer-dark`, whatever the accent |
+| | `font-name` | `Noto Sans 10` |
+| | `monospace-font-name` | `Noto Sans Mono 10` |
+
+The `org.gnome.desktop.interface` keys are GSettings key names, which GTK maps onto its own
+`gtk-theme-name` and `gtk-icon-theme-name` properties. For any key the portal does not send, GTK
+applies its built-in default (Adwaita, and a 24 or 32 pixel cursor) over `settings.ini`, so the
+portal sends every key the KDOS theme depends on. The two fonts are the faces fontconfig already
+puts first for `sans-serif` and `monospace`, so naming them changes no glyph; left unnamed, GTK asks
+for its schema default, Cantarell, which KDOS does not ship. `kdos theme` writes the same two names
+into `kdeglobals` and the qt5ct and qt6ct files, so GTK and Qt draw in the same faces.
+
+A GTK application that does not read the portal reads GSettings instead, and once
+`gsettings-desktop-schemas` is installed an unset key there is the schema's default, Adwaita and
+Cantarell. `/usr/share/glib-2.0/schemas/90_kdos.gschema.override` sets the defaults to the
+portal's answers for the same keys, with the fixed theme name `KDOS`, the link `kdos theme` points
+at the accent in force. A value set with `gsettings set` is stored in the user's dconf database and
+wins over it. An application reading GSettings does not restyle on an accent switch, which only the
+portal announces. The override reaches GTK once `glib-compile-schemas` has read it into
+`gschemas.compiled`: kpkg rebuilds that index whenever a package installs into the directory, and
+`06_packaging/00_theme.sh` rebuilds it again for the image.
 
 The accent is read from `${XDG_CACHE_HOME:-~/.cache}/kdos/theme`, the same one-word file the
 panel and the compositor read. A missing file or an unknown name means the first scheme in the
@@ -677,11 +726,13 @@ Which chrome a session gets is decided by `~/.config/kdos/comp.conf`:
 | `kdos-netagent` (Wi-Fi passphrase prompts) | no | always |
 | `kdos-mediad` (removable-media offers) | no | always |
 | `kdos-clip` (clipboard history) | no | `clipboard = yes` (default) |
+| `wvkbd-deskintl` (the on-screen keyboard, started hidden) | no | `osk = manual` or `auto` (default `off`) |
 
 These switches are read once, when the compositor starts: a program switched off is not started by
 a reconfigure, only by the next login. The compositor also passes the panel its edge, font, cell
 height, clock format, margin, opacity and autohide setting from the same file, and `--no-icons` to
-the panel and the desktop when `icons = no`; the keys are listed in
+the panel and the desktop when `icons = no`, and `--hidden` to the on-screen keyboard, which it
+then shows and hides by signal; the keys are listed in
 [kdos-comp](../04-programs/kdos-comp.md).
 
 The per-output programs are started with `--output <name>`, one process per screen, because a
@@ -786,6 +837,11 @@ autostart agent (the port is built `ENABLE_XDGAUTOSTART=Off`). If fcitx5 is not 
 session starts without it and prints nothing. The engines available for switching are set in
 `~/.config/fcitx5/profile`, which the image seeds from `/etc/skel`.
 
+The same text-input activation drives the on-screen keyboard: with `osk = auto`, the compositor
+shows `wvkbd` while an application's text input is active and hides it when none is (see
+[kdos-comp](../04-programs/kdos-comp.md#the-on-screen-keyboard)). An application is told about text
+input only while an engine is connected, so without fcitx5 the keyboard is never raised on its own.
+
 A boxed application reaches the engine through the compositor, never directly. Inside a box
 `QT_IM_MODULE=wayland` is set; the GTK equivalent is deliberately not set at all, because GTK
 on Wayland chooses the right route by itself when it is unset, and setting it is how a working
@@ -795,9 +851,11 @@ exist.
 
 **An X11 application has no input method**, on the host or in a box. Xwayland passes no text
 input to its X clients, and the only route an X client has to an engine is XIM, which fcitx5
-provides only when built with X11 support. The port is built `ENABLE_X11=Off`, because that would
-need the X client libraries the host does not carry. The compositor starts Xwayland rootless,
-when the first X11 client connects; see [kdos-comp](../04-programs/kdos-comp.md#xwayland).
+provides only when built with X11 support. The port is built `ENABLE_X11=Off`, which keeps
+`xcb-imdkit`, `cairo-xcb`, `xkbfile` and seven further xcb components out of fcitx5's
+dependencies; the cost is this missing route for X11 applications. The compositor starts
+Xwayland rootless, when the first X11 client connects; see
+[kdos-comp](../04-programs/kdos-comp.md#xwayland).
 
 **The candidate window is drawn by KDOS.** `kdos-ime` owns the `org.kde.impanel` bus name, and
 fcitx5's kimpanel module has a higher priority than fcitx5's own interface and takes over as soon
@@ -837,13 +895,15 @@ through the portal only when it believes it is sandboxed, which it decides from 
 (`/.flatpak-info`) or from this variable, and a container has neither. Without it, FileChooser
 and Settings exist, answer, and are never called: every boxed application draws its own GTK file
 dialog instead of `kdos-pick`. Firefox's default file-picker setting consults the same variable.
-The cost is that GTK's Print dialog also goes to the portal, which has no Print backend; the
-application's own print dialog, through `CUPS_SERVER`, still works.
+GTK's Print dialog also goes to the portal, which `xdg-desktop-portal-gtk` answers on the host;
+the application's own print dialog, through `CUPS_SERVER`, works as well.
 
-**Accessibility is a default, not a policy.** The host runs no accessibility registry, so every
-boxed GTK application would spend its startup waiting for one; that justifies turning the probe
-off. It does not justify hard-disabling accessibility in every application, since a screen reader
-running *inside* the box can reach the box's own registry. To turn it back on:
+**Accessibility is a default, not a policy.** On the host, at-spi2-core's launcher starts the
+accessibility bus on demand, by D-Bus activation of `org.a11y.Bus`, for the native applications and
+Orca. `kdos-appbox` turns a boxed GTK application's accessibility bridge off by default, so the
+application does not look for that bus when it starts. It is only a default, because a screen
+reader running *inside* the box can reach the box's own registry once the bridge is on. To turn it
+back on:
 
 - for every launch, create `~/.config/kdos/a11y` (an empty file is enough);
 - for one launch, set `KDOS_A11Y=1` (`KDOS_A11Y=0` forces it off).

@@ -14,7 +14,7 @@
 # tools are what make it a store-and-forward network rather than a beacon.
 #
 # NO X: --without-xutils, because --with-xutils would build the FLTK and GL
-# front ends, which this host has by rule none of.
+# front ends, and the command-line tools are what this recipe is for.
 #
 # A RULE-7 PATCH DROPPING TWO SUBDIRS, and the reason it is a patch rather than
 # a `make SUBDIRS=` override is that automake's SUBDIRS is RECURSIVE: an

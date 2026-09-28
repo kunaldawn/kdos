@@ -49,6 +49,8 @@ refuse() {
 }
 
 [ -n "$KDOS_SOURCES_BASE" ] || refuse "KDOS_SOURCES_BASE is empty, so no source can be confirmed archived"
+# A directory holds a copy of the archive, and a push needs the published one.
+src_base_local && refuse "KDOS_SOURCES_BASE is a local directory, so no source can be confirmed published"
 
 LFS_POINTER='^version https://git-lfs.github.com/spec/v1'
 

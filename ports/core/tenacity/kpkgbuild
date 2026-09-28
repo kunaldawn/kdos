@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tenacity
+version     = 1.3.5
+release     = 1
+source      = $name-$version.tar.gz::https://codeberg.org/tenacityteam/tenacity/releases/download/v$version/tenacity-$version-src.tar.gz
+sha256      = 0446e14e09046a0c72d0fdfbbf3823a2ba3451204de7b93f715cc4fe2333e781  tenacity-1.3.5.tar.gz
+description = Multitrack audio editor on wxWidgets — the Audacity 3 lineage with the network code removed
+homepage    = https://tenacityaudio.org/
+depends     = cmake ninja pkgconf gettext wxwidgets gtk3 glib zlib expat lame libsndfile soxr sqlite portaudio libid3tag libmad libogg libvorbis flac soundtouch libsbsms vamp-sdk lv2 lilv suil portmidi portsmf libmatroska libebml twolame

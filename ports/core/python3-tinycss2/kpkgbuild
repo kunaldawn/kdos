@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-tinycss2
+version     = 1.5.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/t/tinycss2/tinycss2-$version.tar.gz
+sha256      = d339d2b616ba90ccce58da8495a78f46e55d4d25f9fd71dfd526f07e7d53f957  python3-tinycss2-1.5.1.tar.gz
+description = CSS parser for Python — Inkscape's extension library reads style with it
+homepage    = https://pypi.org/project/tinycss2/
+depends     = python3 python3-pip python3-flit-core python3-webencodings

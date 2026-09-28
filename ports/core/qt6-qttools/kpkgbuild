@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qttools
+version     = 6.11.2
+release     = 1
+_module     = qttools
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 9ea75af35c512f7e09e61c8c3af3997f13b4d43bb099cf43fcec470126b4041e  qt6-qttools-6.11.2.tar.xz
+description = Qt 6 tools — Designer, Linguist, Assistant, Qt Help, UiTools, lrelease, qdbus and qtdiag
+homepage    = https://www.qt.io/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtdeclarative sqlite
+group       = qt6

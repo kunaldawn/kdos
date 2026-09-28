@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libpwquality
+version     = 1.4.5
+release     = 1
+source      = https://github.com/libpwquality/libpwquality/releases/download/$name-$version/$name-$version.tar.bz2
+sha256      = 6fcf18b75d305d99d04d2e42982ed5b787a081af2842220ed63287a2d6a10988  libpwquality-1.4.5.tar.bz2
+description = Password quality checking and random password generation library, over cracklib
+homepage    = https://github.com/libpwquality/libpwquality
+depends     = cracklib

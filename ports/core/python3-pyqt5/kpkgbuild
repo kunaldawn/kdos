@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyqt5
+version     = 5.15.11
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/P/PyQt5/PyQt5-$version.tar.gz
+sha256      = fda45743ebb4a27b4b1a51c6d8ef455c4c1b5d610c90d2934c7802b5c1557c52  python3-pyqt5-5.15.11.tar.gz
+description = PyQt5 — the Qt 5 bindings GNU Radio's gr-qtgui and the Qt 5 Python tools are written in
+homepage    = https://www.riverbankcomputing.com/software/pyqt/
+depends     = python3 python3-sip python3-pyqt-builder python3-pyqt5-sip python3-dbus dbus pkgconf qt5-qtbase qt5-qtdeclarative qt5-qtsvg qt5-qttools qt5-qtmultimedia qt5-qtserialport qt5-qtwebsockets qt5-qtx11extras

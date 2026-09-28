@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gqrx
+version     = 2.17.7
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/gqrx-sdr/gqrx/archive/refs/tags/v$version.tar.gz
+sha256      = 4aaab8a3c185cd99d6dda56d95b8f1b20128a6acfd2e86e0349d432a5fdcbce4  gqrx-2.17.7.tar.gz
+description = Gqrx — software radio receiver with a spectrum and waterfall, over GNU Radio and gr-osmosdr
+homepage    = https://gqrx.dk/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtsvg qt6-qtwayland gnuradio gr-osmosdr boost libvolk libpulse librsvg

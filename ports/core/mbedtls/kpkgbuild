@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = mbedtls
+version     = 3.6.7
+release     = 1
+series      = 3.6
+source      = https://github.com/Mbed-TLS/mbedtls/releases/download/$name-$version/$name-$version.tar.bz2
+sha256      = a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6  mbedtls-3.6.7.tar.bz2
+description = Mbed TLS: a small TLS and cryptography library, the 3.6 long-term line
+homepage    = https://www.trustedfirmware.org/projects/mbed-tls/
+depends     = cmake ninja

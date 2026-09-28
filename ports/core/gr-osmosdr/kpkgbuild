@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gr-osmosdr
+version     = 0.2.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/osmocom/gr-osmosdr/archive/refs/tags/v$version.tar.gz
+sha256      = c50514d42be5a56a5b6b26fc12a8539ea9a433c28a3b96506084bd646879f91f  gr-osmosdr-0.2.6.tar.gz
+description = GNU Radio source and sink blocks for RTL-SDR, HackRF, Airspy, bladeRF, SoapySDR and network radios
+homepage    = https://osmocom.org/projects/gr-osmosdr/wiki
+depends     = cmake ninja pkgconf python3 python3-pybind11 gnuradio boost libvolk rtl-sdr hackrf airspy bladerf airspyhf libmirisdr uhd gr-funcube gr-iqbal soapysdr python3-pyqt5

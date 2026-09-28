@@ -2,9 +2,9 @@
 
 This chapter covers how KDOS looks and how to change it: the colour scheme (called an *accent*),
 the fonts, the phosphor shader that gives the screen its CRT look, the wallpaper, and how the same
-colours reach the boot menu, the text consoles and applications running in boxes (the rootless
-containers graphical applications run in, each with its own distribution but sharing your home
-directory; see [Applications](applications.md)). It is written for
+colours reach the boot menu, the text consoles and the applications: those ported natively to the
+host, and those running in boxes (rootless containers, each with its own distribution but sharing
+your home directory; see [Applications](applications.md)). It is written for
 anyone using the desktop; the last sections describe the generators that write the theme files, for
 anyone who wants to audit or rebuild them. [The desktop](desktop.md) introduces the panel and the
 menus this chapter refers to, and [The design language](../03-architecture/design-language.md)
@@ -177,13 +177,15 @@ different moment:
 | `~/.config/yazi/theme.toml` | yazi | Next start |
 | `~/.local/share/mc/skins/kdos.ini` | mc, selected by `skin = kdos` under `[Midnight-Commander]` in `~/.config/mc/ini` | Next start |
 | `~/.config/kdos/ls-colors` | `ls`, through `$LS_COLORS`, loaded by `.bashrc` | In the next shell |
-| `~/.themes/KDOS-<accent>/` | GTK3 applications in boxes | At once, in windows already open |
+| `~/.themes/KDOS-<accent>/` | GTK3 applications, native and in boxes | At once, in windows already open |
 | `~/.config/gtk-{3,4}.0/settings.ini` | GTK, when the settings portal cannot be reached | The application's next launch |
 | `~/.config/gtk-4.0/gtk.css` | libadwaita applications | The application's next launch |
 | `~/.icons/KDOS/` | Every toolkit, on the host and in boxes | The application's next launch |
 | `~/.icons/KDOS-cursors/` | Cursors inside boxes | The application's next launch |
 | `~/.config/kdeglobals` | Qt applications using the KDE platform theme | The application's next launch |
 | `~/.local/share/color-schemes/KDOS.colors` | KDE's own appearance settings, as a scheme you can choose | The application's next launch |
+| `~/.config/qt5ct/qt5ct.conf`, `~/.config/qt5ct/colors/KDOS.conf` | Qt 5 applications under the `qt5ct` platform theme | The application's next launch |
+| `~/.config/qt6ct/qt6ct.conf`, `~/.config/qt6ct/colors/KDOS.conf` | Qt 6 applications under the `qt6ct` platform theme | The application's next launch |
 | `/etc/kdos/accent` | The boot splash, retinted during startup | The next boot |
 | `/boot/efi/limine.conf` | The boot menu | The next boot |
 | `/etc/vtrgb` | Every text console: the login prompt, `/etc/issue`, the login banner | The next login prompt |
@@ -197,7 +199,7 @@ theme changes, so rewriting a stylesheet under the same name would reach only th
 `~/.themes/KDOS-<accent>`, deletes the directories for every other accent, and points the symlink
 `~/.themes/KDOS` at it. The settings portal announces the new theme name (see
 [Theming applications inside boxes](#theming-applications-inside-boxes)), and every running GTK3
-application in a box repaints.
+application that reads the portal repaints, on the host and in a box.
 
 Everything else picks up the change when you next start it. GTK does not re-read icons or a user
 stylesheet when those files change, and no toolkit offers a way to force it from outside.
@@ -205,11 +207,11 @@ stylesheet when those files change, and no toolkit offers a way to force it from
 ### Files you may edit, and files you may not
 
 Never edit a generated file: every file in the table above is rewritten on each accent switch, and
-most of them carry a header saying so. Each is replaced whole, apart from `starship.toml` and
-`kdeglobals`, which are merged (see below), and `limine.conf`, of which only the lines describing
-the menu's look change. Most of the files in your home directory are *selected* by a second file
-that ships once and then belongs to you. Change these freely; `kdos theme` does not touch them,
-apart from the starship palette block noted in the table:
+most of them carry a header saying so. Each is replaced whole, apart from the files that are merged
+(see below) and `limine.conf`, of which only the lines describing the menu's look change. Most of
+the files in your home directory are *selected* by a second file that ships once and then belongs
+to you. Change these freely; `kdos theme` does not touch them, apart from the starship palette
+block noted in the table:
 
 | Program | File | The line that selects the KDOS theme |
 |---|---|---|
@@ -247,10 +249,12 @@ Two programs cannot take an exact colour:
   `config.yml` you edit. `kdos theme` does not write lazygit colours at all, because doing so
   would mean taking over that file and discarding your other settings.
 
-Three files are merged rather than replaced: `~/.config/starship.toml` (only the block between its
+Five files are merged rather than replaced: `~/.config/starship.toml` (only the block between its
 markers), `~/.config/kdeglobals` (see
-[Theming applications inside boxes](#theming-applications-inside-boxes)) and `~/.config/mc/ini`
-(only the `skin` key).
+[Theming applications inside boxes](#theming-applications-inside-boxes)), `~/.config/mc/ini`
+(only the `skin` key), and `~/.config/qt5ct/qt5ct.conf` and `~/.config/qt6ct/qt6ct.conf` (only
+the palette, icon theme, style, dialog and font keys; the rest is what the qt5ct and qt6ct
+programs saved for you).
 
 One file of yours is removed rather than kept: `~/.config/gtk-3.0/gtk.css` is deleted on every
 accent switch, because GTK3 loads it once and it would hold the old accent for the life of every
@@ -528,6 +532,21 @@ If the list is empty, the page says so and names the two keys. That means either
 no monospace font installed, or the picker is running on a display that does not offer fonts,
 such as a terminal that controls its own font.
 
+## Theming native applications
+
+The applications ported natively run on the host and read the same files in your home directory
+as boxed ones, through two variables that `/etc/profile.d/10-wayland.sh` exports for every login:
+
+| Variable | Effect |
+|---|---|
+| `GTK_USE_PORTAL=1` | GTK reads its theme, icon, cursor and font names from the settings portal, and opens the portal's file chooser instead of its own dialog, so a running GTK3 application restyles on an accent switch |
+| `QT_QPA_PLATFORMTHEME=kde` | A Qt 6 application loads KDE's platform theme (the `plasma-integration` port) and reads the palette, fonts and icons from `~/.config/kdeglobals` |
+
+The variable names one platform theme, not a list. A Qt 5 application finds no `kde` plugin for
+its version and falls back to Qt's own; set `QT_QPA_PLATFORMTHEME=qt5ct` for it to read the
+generated `qt5ct` files instead, which are described under
+[Theming applications inside boxes](#theming-applications-inside-boxes).
+
 ## Theming applications inside boxes
 
 A box has its own `/usr`, from its own distribution, so the host's `/usr/share/themes` and
@@ -543,6 +562,7 @@ is written into `$HOME`:
 | `~/.icons/KDOS/` | Every toolkit |
 | `~/.icons/KDOS-cursors/` | Cursors |
 | `~/.config/kdeglobals` | Qt, under the KDE platform theme |
+| `~/.config/qt5ct/`, `~/.config/qt6ct/` | Qt, under the qt5ct or qt6ct platform theme |
 
 A box created with `home = private` has a home of its own and sees none of these files; see
 [kdos-appbox](../04-programs/kdos-appbox.md).
@@ -557,12 +577,21 @@ GTK theme name (`KDOS-<accent>`), the icon theme (`KDOS`), the cursor theme (`KD
 the accent colour, all read from the same accent file the desktop reads. It watches that file and
 announces each change, which is what lets a running GTK3 application restyle (see
 [What changes when](#what-changes-when)). It reports a preference for a dark colour scheme for
-every accent, including `paper`, and so does the generated `settings.ini`.
+every accent, including `paper`, and so does the generated `settings.ini`. It also names the
+fonts, `Noto Sans 10` and `Noto Sans Mono 10`, the faces fontconfig already uses for `sans-serif`
+and `monospace`, and answers `contrast` with "no preference". The full list of keys is in
+[The session](../03-architecture/session.md#the-kdos-backend).
+
+A GTK application on the host started without `GTK_USE_PORTAL` reads GSettings instead, and the
+image ships `/usr/share/glib-2.0/schemas/90_kdos.gschema.override`, which makes the same theme,
+icon, cursor, colour-scheme and font answers the GSettings defaults. It names the theme `KDOS`, the
+link that always points at the current accent, so such an application wears the accent it started
+in and changes at its next launch. A value you set yourself with `gsettings set` wins over the file.
 
 The GTK theme is a recoloured `adw-gtk3`. GTK3's own Adwaita theme has literal colour values in
-nearly every rule, so redefining its named colours reaches only a few widgets. `adw-gtk3` is the libadwaita stylesheet ported to GTK3 and uses named
-colours throughout, so rewriting the palette recolours every widget, and GTK3 applications end up
-looking the same as GTK4 ones.
+nearly every rule, so redefining its named colours reaches only a few widgets. `adw-gtk3` is the
+libadwaita stylesheet ported to GTK3 and uses named colours throughout, so rewriting the palette
+recolours every widget, and GTK3 applications look the same as GTK4 ones.
 
 **Qt** has two routes, and which one an application takes depends on what its
 [runtime](../06-reference/glossary.md) (a layer shared by many applications that holds a toolkit)
@@ -580,7 +609,26 @@ applications fall back to Qt's defaults instead of the accent. The catalogue's o
 [The environment a box gets](../04-programs/kdos-appbox.md#the-environment-a-box-gets).
 
 **`kdeglobals` is merged, not overwritten.** KDE applications save their own settings in that
-file, so only the sections the theme owns are replaced and everything else is kept.
+file, so only what the theme owns is replaced and everything else is kept. The theme owns the
+`[Colors:*]` and `[WM]` sections, and six keys elsewhere: `ColorScheme` and `Name`, the fonts
+`font` (`Noto Sans,10`) and `fixed` (`Noto Sans Mono,10`) under `[General]`, `widgetStyle=Breeze`
+under `[KDE]`, and `Theme=KDOS` under `[Icons]`.
+
+**Qt without the KDE platform theme.** The KDE platform theme is built for Qt 6 only, so a Qt 5
+application cannot read `kdeglobals`. `kdos theme` also writes the files of qt5ct and qt6ct, the
+platform themes an application loads when `QT_QPA_PLATFORMTHEME` is `qt5ct` or `qt6ct`: in each
+tool's directory, `colors/KDOS.conf` holds the palette, with a selected row in the same colours as
+GTK's, and `qt5ct.conf` or `qt6ct.conf` selects it with `custom_palette=true`, sets the `KDOS` icon
+theme, the portal's file chooser and the two Noto fonts, and names the style: `Fusion` for Qt 5,
+because the Breeze style is built for Qt 6 only, and `Breeze` for Qt 6. The palette path is
+written as `~/.config/...`, so a copy seeded from `/etc/skel` points into each user's own home.
+
+**Icons the KDOS set does not have.** The generated `~/.icons/KDOS/index.theme` inherits from
+`breeze-dark`, `Adwaita` and `hicolor` in that order, or from `breeze` instead of `breeze-dark`
+under `paper`, the one light accent: breeze's monochrome icons are drawn for one background, and
+the other one leaves them invisible. A KDE or GNOME application that asks for an icon the KDOS set
+lacks gets the Breeze or Adwaita one before the application's own. A parent theme that is not
+installed, on the host or in a box's own `/usr`, is skipped.
 
 ## How the theme is generated
 
@@ -635,8 +683,8 @@ accent.
 
 **Application icons.** The copied icon set has no application icons, so the generator builds them
 by scanning every size directory of `/usr/share/icons/hicolor`, not only `scalable/`. It takes only
-icons whose names start with `kdos.`. The image build installs the boxed applications' own
-icons into the same directory, and those belong to their projects: a Firefox logo recoloured into
+icons whose names start with `kdos.`. Applications, native and boxed, install their own icons
+into the same directory, and those belong to their projects: a Firefox logo recoloured into
 the accent would stop being Firefox's own mark, so it is left alone.
 
 ### Auditing what is installed
@@ -649,10 +697,10 @@ kdos theme --audit amber    # what would switching to amber change?
 The audit runs the same generators, with `$HOME` and the XDG directories pointed at a scratch
 directory under `$TMPDIR` (default `/tmp`), and compares the results byte for byte with what is
 installed, symlinks included. It first copies in the files that are merged rather than written
-(`starship.toml`, `kdeglobals`, `mc/ini`) and any saved style lines, so your own settings in them
-are not reported as differences. For each generated file or tree it prints `matches the palette`,
-`not generated on this machine`, or `DRIFTED` with counts of files that differ, are missing, or
-are present but not generated. Anything reported as different is different from what your palette
+(`starship.toml`, `kdeglobals`, `mc/ini`, `qt5ct/qt5ct.conf`, `qt6ct/qt6ct.conf`) and any saved
+style lines, so your own settings in them are not reported as differences. For each generated
+file or tree it prints `matches the palette`, `not generated on this machine`, or `DRIFTED` with
+counts of files that differ, are missing, or are present but not generated. Anything reported as different is different from what your palette
 produces.
 
 The audit covers the files in your home directory. It does not check the wallpaper cache, the

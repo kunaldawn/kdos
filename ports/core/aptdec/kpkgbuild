@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = aptdec
+version     = 1.7.0.git20250920
+release     = 1
+_commit     = d037f77cfaff946318e39293ae97fc2e68595f0f
+source      = $name-$version.tar.gz::https://github.com/srcejon/aptdec/archive/$_commit.tar.gz
+sha256      = e1ff9a23480c284b0dfdd7dde65549e15679662e2b6ed4556589e51279fbe939  aptdec-1.7.0.git20250920.tar.gz
+description = libapt — NOAA APT weather-satellite image decoding library, the libaptdec branch SDRangel's APT demodulator links
+homepage    = https://github.com/srcejon/aptdec
+depends     = cmake ninja

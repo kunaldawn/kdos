@@ -106,17 +106,18 @@ command -v nvim >/dev/null 2>&1 && { alias vi='nvim'; alias vim='nvim'; export E
 [ -n "$EDITOR" ] || export EDITOR=nano
 export VISUAL="$EDITOR"
 
-# gpg-agent's pinentry is the curses one, and it draws on the terminal GPG_TTY
-# names. Per shell, because each terminal is its own tty: without it a caller
+# gpg-agent's pinentry draws a Qt dialog when the session has a display, and
+# otherwise its curses prompt on the terminal GPG_TTY names. Per shell, because
+# each terminal is its own tty: without it, on a console or over ssh, a caller
 # whose stdin is not the terminal (`git commit -S`, `pass`) gets "Inappropriate
 # ioctl for device" instead of a passphrase prompt.
 GPG_TTY=$(tty 2>/dev/null) && export GPG_TTY || unset GPG_TTY
 
-# gnuplot has no window here (no Qt, wx or X11), so with no GNUTERM its
-# terminal is `unknown` and `plot` draws nothing. Only where the terminal is
-# known to decode sixel — kdos-term, which names itself in TERM_PROGRAM, and
-# foot — because on the console or over ssh the stream is a screenful of junk;
-# there, `set term dumb` is the answer.
+# With no GNUTERM, gnuplot's terminal is `qt`, a window of its own. Where the
+# terminal is known to decode sixel — kdos-term, which names itself in
+# TERM_PROGRAM, and foot — the plot is drawn inline instead. Nowhere else: on
+# the console or over ssh a sixel stream is a screenful of junk and qt has no
+# display to open a window on, and `set term dumb` is the answer there.
 if [ -z "${GNUTERM:-}" ] && command -v gnuplot >/dev/null 2>&1; then
     case "${TERM_PROGRAM:-}:${TERM:-}" in
         kdos-term:*|*:foot*) export GNUTERM=sixelgd ;;

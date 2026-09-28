@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = piper
+version     = 1.8.0
+release     = 1
+_espeak     = 724808c5a83f9ef95fdd0db886ba7ba537ff224a
+source      = $name-$version.tar.gz::https://github.com/OHF-Voice/piper1-gpl/archive/refs/tags/v$version.tar.gz
+source      = espeak-ng-$_espeak.tar.gz::https://github.com/espeak-ng/espeak-ng/archive/$_espeak.tar.gz
+sha256      = 0a22987a6157f14e2fb7cf4aa702b547467fd0448bea9f233abd503c3ff4a0e1  piper-1.8.0.tar.gz
+sha256      = 7d8ebd78201923a443245362a928999977d1721c3eeba596eafc6ea8db7e243c  espeak-ng-724808c5a83f9ef95fdd0db886ba7ba537ff224a.tar.gz
+description = Piper: fast neural text to speech on the CPU, with the voice model on the disk and nothing sent anywhere
+homepage    = https://github.com/OHF-Voice/piper1-gpl
+depends     = cmake ninja patch python3 numpy onnxruntime python3-pathvalidate

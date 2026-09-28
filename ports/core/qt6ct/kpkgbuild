@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt6ct
+version     = 0.11
+release     = 1
+source      = https://www.opencode.net/trialuser/qt6ct/-/archive/$version/qt6ct-$version.tar.gz
+sha256      = 32cd06cb4e801362676194ec6c3378498c81eb9484c57870fee3f7d5952ebe1f  qt6ct-0.11.tar.gz
+description = Qt 6 appearance settings — the palette, style, fonts and icon theme of every Qt 6 program, as a platform theme plugin
+homepage    = https://www.opencode.net/trialuser/qt6ct
+depends     = cmake ninja qt6-qtbase qt6-qtsvg breeze-icons librsvg

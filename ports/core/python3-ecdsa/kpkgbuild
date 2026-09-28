@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-ecdsa
+version     = 0.19.2
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/e/ecdsa/ecdsa-$version.tar.gz
+sha256      = 62635b0ac1ca2e027f82122b5b81cb706edc38cd91c63dda28e4f3455a2bf930  python3-ecdsa-0.19.2.tar.gz
+description = Pure-python ECDSA and EdDSA signatures — adafruit-nrfutil signs nRF52 firmware packages with it
+homepage    = https://github.com/tlsfuzzer/python-ecdsa
+depends     = python3 python3-setuptools python3-pip python3-six

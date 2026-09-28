@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = baloo-widgets
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = b4af5cc65d886ab9d2a807254e11295e585d7cedd993d2b3b78f2f17e3a7f544  baloo-widgets-26.08.1.tar.xz
+description = Baloo widgets — the file metadata panel, tag and rating editors used by Dolphin
+homepage    = https://invent.kde.org/libraries/baloo-widgets
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kio ki18n kfilemetadata baloo kservice kcoreaddons kwidgetsaddons

@@ -13,7 +13,7 @@
  * format is two of them being wrong the day a column is added.
  *
  * A SHORT CONNECTION PER REQUEST. One line per connection is the daemon's own
- * rule, `subscribe` excepted, and it is what makes an index safe: a row number
+ * rule, `subscribe` and `write` excepted, and it is what makes an index safe: a row number
  * is only true of the list it came with, so a caller that acts on one must
  * have asked for that list in the same breath.
  *
@@ -23,7 +23,11 @@
  * ---------------------------------
  */
 
-#define _POSIX_C_SOURCE 200809L
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE	/* MSG_NOSIGNAL, CMSG_* — the image write */
+#endif
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -231,4 +235,139 @@ int sh_mountd_do(int idx, const char *verb, char *out, size_t nout)
 	/* `ok ` and `err ` are the daemon's whole vocabulary, and a caller
 	 * that read only the message could not tell them apart. */
 	return strncmp(buf, "ok", 2) == 0 ? 0 : -1;
+}
+
+/*
+ * AN IMAGE WRITE, which is the one verb that is not answered in a second.
+ *
+ * The image is opened HERE, as the person, and handed to the daemon as an open
+ * descriptor (`SCM_RIGHTS`) on the request itself: the daemon is root and
+ * never learns a path it could open as root. The socket then stays open and
+ * carries the worker's progress, so it is left non-blocking and read a line at
+ * a time by sh_mountd_write_pump() from the surface's own loop.
+ */
+int sh_mountd_write_start(ShMountWrite *w, int idx, const char *image,
+			  const char *disk)
+{
+	int fd, img;
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	const char *path = getenv("KDOS_MOUNTD_SOCKET");
+	char msg[160];
+	union {
+		struct cmsghdr h;
+		char b[CMSG_SPACE(sizeof(int))];
+	} cm;
+	struct iovec iov;
+	struct msghdr mh = { 0 };
+	int len;
+
+	memset(w, 0, sizeof(*w));
+	w->fd = -1;
+	len = snprintf(msg, sizeof(msg), "write %d %zu\n%s", idx, strlen(disk),
+		       disk);
+	if (len < 0 || (size_t)len >= sizeof(msg) || !disk[0]) {
+		snprintf(w->msg, sizeof(w->msg), "type the disk's name");
+		return -1;
+	}
+	if ((img = open(image, O_RDONLY | O_CLOEXEC)) < 0) {
+		snprintf(w->msg, sizeof(w->msg), "%.100s: %s", image,
+			 strerror(errno));
+		return -1;
+	}
+	fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s",
+		 path && *path ? path : SH_MOUNTD_SOCKET);
+	if (fd < 0 || connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		snprintf(w->msg, sizeof(w->msg), "kdos-mountd is not running");
+		if (fd >= 0)
+			close(fd);
+		close(img);
+		return -1;
+	}
+	memset(&cm, 0, sizeof(cm));
+	iov.iov_base = msg;
+	iov.iov_len = (size_t)len;
+	mh.msg_iov = &iov;
+	mh.msg_iovlen = 1;
+	mh.msg_control = cm.b;
+	mh.msg_controllen = sizeof(cm.b);
+	CMSG_FIRSTHDR(&mh)->cmsg_level = SOL_SOCKET;
+	CMSG_FIRSTHDR(&mh)->cmsg_type = SCM_RIGHTS;
+	CMSG_FIRSTHDR(&mh)->cmsg_len = CMSG_LEN(sizeof(int));
+	memcpy(CMSG_DATA(CMSG_FIRSTHDR(&mh)), &img, sizeof(int));
+	if (sendmsg(fd, &mh, MSG_NOSIGNAL) != len) {
+		snprintf(w->msg, sizeof(w->msg), "kdos-mountd did not take it");
+		close(img);
+		close(fd);
+		return -1;
+	}
+	/* The descriptor is the daemon's now; this copy is not needed. */
+	close(img);
+	shutdown(fd, SHUT_WR);
+	fcntl(fd, F_SETFL, O_NONBLOCK);
+	w->fd = fd;
+	w->running = 1;
+	snprintf(w->msg, sizeof(w->msg), "starting");
+	return 0;
+}
+
+/* One line from the worker: `progress write|verify <done> <total>`, or the
+ * `ok`/`err` that ends it. */
+static void write_line(ShMountWrite *w, const char *ln)
+{
+	char phase[16];
+	unsigned long long d, t;
+
+	if (sscanf(ln, "progress %15s %llu %llu", phase, &d, &t) == 3) {
+		w->verifying = !strcmp(phase, "verify");
+		w->done = d;
+		w->total = t;
+		return;
+	}
+	if (!strncmp(ln, "ok", 2)) {
+		w->running = 0;
+		w->ok = 1;
+		snprintf(w->msg, sizeof(w->msg), "%s", ln[2] ? ln + 3 : "done");
+	} else if (!strncmp(ln, "err", 3)) {
+		w->running = 0;
+		w->ok = 0;
+		snprintf(w->msg, sizeof(w->msg), "%s", ln[3] ? ln + 4 : "failed");
+	}
+}
+
+/* Drain what has arrived. Returns 1 when something changed. A connection that
+ * ends with no `ok` or `err` is a worker that died, and is said as one. */
+int sh_mountd_write_pump(ShMountWrite *w)
+{
+	char buf[1024];
+	ssize_t r;
+	int moved = 0;
+
+	if (w->fd < 0)
+		return 0;
+	while ((r = read(w->fd, buf, sizeof(buf))) > 0) {
+		for (ssize_t i = 0; i < r; i++) {
+			if (buf[i] != '\n') {
+				if (w->npart + 1 < sizeof(w->part))
+					w->part[w->npart++] = buf[i];
+				continue;
+			}
+			w->part[w->npart] = '\0';
+			write_line(w, w->part);
+			w->npart = 0;
+		}
+		moved = 1;
+	}
+	if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+		if (w->running) {
+			w->running = 0;
+			w->ok = 0;
+			snprintf(w->msg, sizeof(w->msg),
+				 "the write stopped without an answer");
+		}
+		close(w->fd);
+		w->fd = -1;
+		moved = 1;
+	}
+	return moved;
 }

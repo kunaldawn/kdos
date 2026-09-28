@@ -12,8 +12,9 @@
 # The in-process loaders are named rather than probed, and --wrap-mode keeps a
 # missing libpng or libjpeg from being answered by the wraps the tarball ships.
 #
-# introspection=disabled: the typelib is generated against glib's own GIRs,
-# and the glib port is built without them. glycin is not a port.
+# introspection is on: GdkPixbuf-2.0.gir is included by GTK's, libnotify's and
+# librsvg's GIRs. It is generated against the GLib GIRs that
+# glib-introspection installs. glycin is not a port.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--wrap-mode=nodownload \
@@ -22,7 +23,7 @@ meson setup build \
 	-D tiff=enabled \
 	-D gif=enabled \
 	-D glycin=disabled \
-	-D introspection=disabled \
+	-D introspection=enabled \
 	-D documentation=false \
 	-D man=true \
 	-D tests=false \

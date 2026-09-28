@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = soundtouch
+version     = 2.4.1
+release     = 1
+source      = https://www.surina.net/soundtouch/$name-$version.tar.gz
+sha256      = e07abf20ce8f95850c280132e1f61ad400fc1f4011b7fac698a503de6aab6733  soundtouch-2.4.1.tar.gz
+description = Tempo, pitch and playback-rate changer for audio streams
+homepage    = https://www.surina.net/soundtouch/
+depends     = cmake

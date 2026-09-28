@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = milkytracker
+version     = 1.06
+release     = 1
+source      = https://github.com/milkytracker/MilkyTracker/archive/refs/tags/v$version.tar.gz
+sha256      = 6e70590dfed324e6d6ac813e33d9f9dcfaa13b2f57fdec9e178e9dda05538cb0  milkytracker-1.06.tar.gz
+description = Fast Tracker II–style music tracker for XM and MOD files, on SDL2
+homepage    = https://milkytracker.org
+depends     = cmake ninja pkgconf sdl2-compat alsa-lib rtmidi zlib lhasa zziplib

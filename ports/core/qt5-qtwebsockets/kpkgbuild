@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qtwebsockets
+version     = 5.15.19
+release     = 1
+_module     = qtwebsockets
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+sha256      = f22879348b2e3409f2d1204ebea7f75adcbf0087b4d8e79f344830013c5b53e6  qt5-qtwebsockets-5.15.19.tar.xz
+description = Qt 5 WebSocket client and server, from C++ and QML
+homepage    = https://www.qt.io/
+depends     = qt5-qtbase qt5-qtdeclarative
+group       = qt5
+series      = 5.15

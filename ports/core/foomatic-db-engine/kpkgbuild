@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = foomatic-db-engine
+version     = 4.0.13
+release     = 1
+source      = https://www.openprinting.org/download/foomatic/$name-$version.tar.gz
+sha256      = b5c89027aa26967d2e6db62e2af7db0c4039d2480d4fbf2476a6ddcf609a5faf  foomatic-db-engine-4.0.13.tar.gz
+description = Foomatic PPD generator — builds CUPS PPDs from the foomatic-db printer database
+homepage    = https://github.com/OpenPrinting/foomatic-db-engine
+depends     = perl libxml2 cups cups-filters ghostscript file

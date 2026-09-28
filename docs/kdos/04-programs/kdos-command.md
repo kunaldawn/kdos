@@ -280,10 +280,14 @@ Everything else a theme switch writes is for software that is not KDOS's and can
 Setting an accent regenerates those files for your user and then repaints the running desktop, in
 this order:
 
-1. The generators rewrite the GTK stylesheet, icons, cursors, the KDE colour file, the
-   window-frame theme (`~/.config/kdos-comp/themerc-override`), and the configuration of foot,
-   `kdos-term`, bat, micro, helix, neovim, delta, newsboat, aerc, fzf, tmux, btop, mc, yazi,
-   starship and `LS_COLORS`.
+1. The generators rewrite the GTK stylesheet, icons, cursors, the KDE colour file and the
+   palette, style, icon and font keys of `~/.config/kdeglobals`, the qt5ct and qt6ct palettes
+   and settings, the window-frame theme (`~/.config/kdos-comp/themerc-override`), and the
+   configuration of foot, `kdos-term`, bat, micro, helix, neovim, delta, newsboat, aerc, fzf,
+   tmux, btop, mc, yazi, starship and `LS_COLORS`. The files applications also write into
+   (`kdeglobals`, `qt5ct.conf`, `qt6ct.conf`, mc's `ini`, `starship.toml`) are merged, keeping
+   every key the theme does not own;
+   [Theming](../02-user-guide/theming.md#files-you-may-edit-and-files-you-may-not) lists which.
 2. The shipped wallpaper is retinted into `~/.cache/kdos/wallpaper.png`.
 3. The accent's name is written to `~/.cache/kdos/theme`, atomically.
 4. `SIGHUP` goes to each long-lived KDOS surface by exact name: `kdos-shell`, `kdos-desk`,
@@ -315,12 +319,12 @@ retinted default. `wallpaper = none` is never overridden.
 
 #### Previews
 
-`--preview <accent>` does only steps 3 and 4: it writes the state file and sends the signal. No
-GTK stylesheet, icons, cursors or foreign configuration files are generated. Those take seconds
-and are read by programs that are not running, so a preview repaints every KDOS surface at once
-and leaves boxed applications in the old accent. It is what the arrow keys in the `kdos-theme`
-picker run, and it is why that picker restores the accent it opened on unless you tell it to keep
-one.
+`--preview <accent>` does only steps 3 and 4: it writes the state file and sends the signal. No GTK
+stylesheet, icons, cursors or foreign configuration files are generated. Those take seconds and are
+read by programs that are not running, so a preview repaints every KDOS surface at once and leaves
+GTK and Qt applications, boxed or native, in the old accent. It is what the arrow keys in the
+`kdos-theme` picker run, and it is why that picker restores the accent it opened on unless you tell
+it to keep one.
 
 #### Style files
 
@@ -716,7 +720,7 @@ guide is [Applications](../02-user-guide/applications.md), and the program that 
 
 | Verb | Does |
 |---|---|
-| `list` | What is installed. `--all` lists the whole catalogue: 182 entries, the 180 applications and 2 datasets, which would bury the handful you have |
+| `list` | What is installed. `--all` lists the whole catalogue: 75 entries, the 73 applications and 2 datasets, which would bury the handful you have |
 | `search` | Entries whose id, name, category or tagline contain the text, ignoring case; exit 1 when none do |
 | `info` | One entry: name, category, state, the row it is built on, and its size labelled an estimate |
 | `groups` | The catalogue's named groups, which `install`, `remove` and `export` accept in place of an id |
@@ -926,7 +930,7 @@ doing at that moment. It runs until you stop it.
 ```
 14:02:31  7 frames dropped on eDP-1 (133 ms)
           the compositor's own render took 2.1 ms of a 16.7 ms frame, cpu pressure 12%, io 48%
-          busiest just then: tracker-miner (waiting on the disk), gimp (appbox app.gimp) (92% of a core)
+          busiest just then: tracker-miner (waiting on the disk), hugin (appbox app.hugin) (92% of a core)
 ```
 
 It joins three sources, none of which is an answer alone:
@@ -1137,7 +1141,7 @@ from `/kdos` onto the medium's ISO 9660 filesystem beside the system image, unde
 together with the `Makefile`, `Dockerfile` and `CLAUDE.md` when they are present. The sources
 cost the installed system nothing and are readable at `/mnt/iso/sources` as soon as the live
 system is up. The option is off by default because a medium that carried `ports/` would roughly
-double in size: `ports/` is about 8 GB of archives that are already compressed (`du -sh
+double in size: `ports/` is about 39 GB of archives that are already compressed (`du -sh
 ports/core` with every source fetched). The fetch cache `ports/.srccache` is left off, because
 each port directory already holds its own copy of the bytes. A `SOURCES` stamp records the port
 count, size and build time, and `kdos rebuild` prints it before it starts; the port count is
@@ -1150,10 +1154,9 @@ is a non-recursive bind of the build container's `/workspace`, and `script/chroo
 empty mount point, and `ports/` arrives on the medium empty, so `kdos rebuild` finds no
 `ports/core` and stops before copying anything. The build container mounts only `build/`,
 `src/`, `fs/`, `script/` and `ports/`, so the three top-level files are not there to copy, and
-the step does not copy `fs/`. With a complete tree supplied through `$KDOS_SOURCES`, a full
-rebuild still stops in phase 1: that phase's file-system step copies the `fs/` overlay from
-`$WORKSPACE/fs`, with `WORKSPACE` fixed at `/workspace` in `script/phase1.env.sh`, and the medium
-carries neither `/workspace` nor `fs/`.
+the step does not copy `fs/`. A complete tree supplied through `$KDOS_SOURCES` must carry `fs/`
+as well: `kdos rebuild` names its copy in `KDOS_WORKSPACE`, and phase 1's file-system step copies
+the overlay from `$WORKSPACE/fs`, which `script/phase1.env.sh` takes from that variable.
 
 ### kdos persist
 
@@ -1271,15 +1274,18 @@ compared, and a failed verify prints both.
 ### kdos speech
 
 ```sh
-kdos speech list            # what there is, and which are here (the default verb)
+kdos speech list            # what there is, which are yours and which shipped (the default verb)
 kdos speech get [NAME]      # fetch one; base.en when no name is given
-kdos speech where           # the directory searched, and what is in it
+kdos speech where           # both directories searched, and what is in each
 kdos speech remove NAME
 ```
 
-Manages the speech-to-text model that `whisper-cli` and `kdos-rec`'s Transcribe button need. The
-image carries `whisper-cli` but no model: models range from 32 MB to 3.1 GB, and language and
-size are a personal choice.
+Manages the speech-to-text models that `whisper-cli` and `kdos-rec`'s Transcribe button use. The
+image carries `whisper-cli` and one model, `base.en`, in `/usr/share/whisper.cpp/models` (the
+`whisper-model-base-en` port). The others range from 32 MB to 3.1 GB, and language and size are a
+personal choice, so they are fetched rather than shipped. `list` marks a model in your own
+directory `installed` and the shipped one `shipped`; `where` prints your directory, then
+`/usr/share/whisper.cpp/models`, each followed by the models in it.
 
 | Model | Size |
 |---|---|

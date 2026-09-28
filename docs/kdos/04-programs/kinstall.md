@@ -623,7 +623,7 @@ The installer reads the catalogue from the first of these that exists:
 With no catalogue, the page says that nothing can be chosen and the Packs step is skipped.
 
 **It lists groups, not applications.** Seven named bundles is something to read during an
-install; the shipped catalogue's 180 applications is not. The catalogue
+install; the shipped catalogue's 73 applications is not. The catalogue
 (`src/packages/kdos-appbox/catalogue`) defines these groups:
 
 | Group | Description |
@@ -645,7 +645,7 @@ The base system and the runtimes are not choices, and the page says so in one li
 offering them as rows. Each application pulls in the runtime it needs, so leaving a runtime out
 could only produce applications that cannot start.
 
-In an answer file, `apps` names group ids. An application id such as `app.krita` matches no group
+In an answer file, `apps` names group ids. An application id such as `app.scribus` matches no group
 and is ignored, and if nothing on the line matches, the selection is `essential`. With no `apps`
 key the selection is `essential`. The page's selection logic runs before planning on every path
 that plans without walking the wizard (`--dump plan` and `--unattended`), because the selection is

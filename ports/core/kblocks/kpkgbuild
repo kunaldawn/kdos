@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kblocks
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = cc25b631cf44c6d70d0e6e6938eb52b447b22b3e2db4fee4916b5ff8c39184c1  kblocks-26.08.1.tar.xz
+description = KBlocks — the falling-blocks game, against the clock or a computer player
+homepage    = https://apps.kde.org/kblocks/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland qt6-qtsvg kconfig kconfigwidgets kcoreaddons kcrash kdoctools kdbusaddons ki18n kwidgetsaddons kxmlgui kiconthemes libkdegames

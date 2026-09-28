@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = opencolorio
+version     = 2.5.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v$version.tar.gz
+sha256      = 722601e01b78b7a12da4829cb450674935f404b0e508f3f20046fa77570e3272  opencolorio-2.5.2.tar.gz
+description = OpenColorIO colour management for visual effects and animation
+homepage    = https://opencolorio.org/
+depends     = cmake ninja pkgconf expat yaml-cpp pystring imath zlib minizip-ng lcms2 openexr libglvnd mesa glu glew freeglut

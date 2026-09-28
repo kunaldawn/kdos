@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kmime
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 2969a5ef484e98f91bf78e88c98a9d613bdd3bb86ac154ceece0557b70f373bc  kmime-6.30.0.tar.xz
+description = KDE Frameworks: MIME message parsing and assembly
+homepage    = https://invent.kde.org/frameworks/kmime
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcodecs

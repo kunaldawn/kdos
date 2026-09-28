@@ -10,7 +10,7 @@
 
 name        = avahi
 version     = 0.9rc5
-release     = 1
+release     = 2
 
 _tag        = v${version/rc/-rc}
 

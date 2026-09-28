@@ -36,6 +36,17 @@ enum kdos_lid_close {
 	KDOS_LID_SUSPEND,
 };
 
+/*
+ * The on-screen keyboard: off (not started), manual (started hidden, shown
+ * by ToggleOnScreenKeyboard), auto (also shown while a text field has the
+ * keyboard focus and hidden when none does).
+ */
+enum kdos_osk {
+	KDOS_OSK_OFF = 0,
+	KDOS_OSK_MANUAL,
+	KDOS_OSK_AUTO,
+};
+
 struct kdos_conf {
 	/*
 	 * The CRT pass, percentages. crt = 0 is off. ON by default at the
@@ -196,6 +207,40 @@ struct kdos_conf {
 	 * and the fills stay ink.
 	 */
 	int panel_opacity;
+
+	/*
+	 * The keyboard aids (kdos-a11y.c), each OFF by default: a filter that
+	 * nobody asked for eats keystrokes, and the person who needs one is
+	 * the person least able to find what is eating them. A changed value
+	 * applies on a reconfigure; the ToggleStickyKeys family of actions
+	 * flips them for the session without touching this file.
+	 *
+	 * sticky_keys: a modifier pressed and released alone latches for the
+	 *   next key; pressed twice it locks; a third time it releases.
+	 * slow_keys: a key counts only once held for slow_keys_ms.
+	 * bounce_keys: a second press of the same key within bounce_keys_ms
+	 *   of its release is dropped.
+	 */
+	bool sticky_keys, slow_keys, bounce_keys;
+	int slow_keys_ms, bounce_keys_ms;
+
+	/* Dwell click: the pointer held still for dwell_click_ms clicks the
+	 * left button where it rests. Off by default. */
+	bool dwell_click;
+	int dwell_click_ms;
+
+	/*
+	 * The pointer size. cursor_size = 0 keeps whatever XCURSOR_SIZE the
+	 * session was started with; large_cursor switches to
+	 * large_cursor_size, and ToggleLargeCursor flips between the two.
+	 */
+	int cursor_size;
+	bool large_cursor;
+	int large_cursor_size;
+
+	/* The on-screen keyboard (enum kdos_osk). Startup-only: it is a
+	 * supervised child, like the chrome. */
+	int osk;
 };
 
 extern struct kdos_conf kdos_conf;
@@ -405,5 +450,60 @@ const char *kdos_view_instance(struct view *view);
  */
 bool kdos_box_grant(const char *box, const char *iface);
 void kdos_grant_reload(void);
+
+/*
+ * ACCESSIBILITY (kdos-a11y.c): the keyboard aids, dwell click, the pointer
+ * size and the on-screen keyboard.
+ *
+ * kdos_a11y_key() is the first thing handle_key() does with a key after
+ * the idle notify, and it takes every key it can index: it drops it (a
+ * filter), holds it back (slow keys), lets an assistive technology grab it
+ * through the keyboard monitor, or passes it on itself through
+ * keyboard_key_deliver(). False — a keycode past KEY_MAX — leaves
+ * handle_key() to deliver it unfiltered.
+ */
+struct keyboard;
+struct wlr_keyboard;
+struct wlr_keyboard_key_event;
+enum kdos_a11y_switch {
+	KDOS_A11Y_STICKY_KEYS,
+	KDOS_A11Y_SLOW_KEYS,
+	KDOS_A11Y_BOUNCE_KEYS,
+	KDOS_A11Y_DWELL_CLICK,
+	KDOS_A11Y_LARGE_CURSOR,
+	KDOS_A11Y_OSK,
+};
+void kdos_a11y_init(void);
+void kdos_a11y_finish(void);
+/* After kdos_conf_reload(): a switch whose comp.conf value changed takes
+ * it; the others keep what a Toggle* action set. */
+void kdos_a11y_reconfigure(void);
+void kdos_a11y_toggle(enum kdos_a11y_switch which);
+bool kdos_a11y_key(struct keyboard *keyboard,
+	struct wlr_keyboard_key_event *event);
+/* From both motion handlers and the button handler in cursor.c. */
+void kdos_a11y_pointer_motion(struct seat *seat);
+void kdos_a11y_pointer_button(struct seat *seat, bool pressed);
+/* From update_active_text_input(): whether a text field is active now. */
+void kdos_a11y_text_input(bool active);
+/* Re-assert the lock bits (Caps/Num) a grabbed key toggled in xkb. */
+void kdos_a11y_restore_locks(unsigned int mask, unsigned int value);
+
+/*
+ * org.freedesktop.a11y.KeyboardMonitor on the session bus (kdos-a11ymon.c),
+ * the interface a screen reader uses to see and grab keys on Wayland.
+ * _key() is told every key the aids above let through; true means an
+ * assistive technology grabbed it and it must not reach the client. It is
+ * silent and grabs nothing while the session is locked.
+ */
+void kdos_a11ymon_init(void);
+void kdos_a11ymon_finish(void);
+bool kdos_a11ymon_key(struct wlr_keyboard *kb, unsigned int evdev_keycode,
+	bool pressed);
+/* A toast through org.freedesktop.Notifications; nothing without a bus. */
+void kdos_a11ymon_notify(const char *summary);
+
+/* A supervised session-wide child's pid by command name, or 0. */
+pid_t kdos_child_pid(const char *cmd);
 
 #endif /* KDOS_H */

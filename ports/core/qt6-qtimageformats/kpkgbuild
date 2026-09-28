@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtimageformats
+version     = 6.11.2
+release     = 1
+_module     = qtimageformats
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = cecd8900f34b6550076309bc94f62f828008b633a4239e0a08c86788f41001f8  qt6-qtimageformats-6.11.2.tar.xz
+description = Qt 6 image format plugins — TIFF, WebP, ICNS, TGA and WBMP
+homepage    = https://www.qt.io/
+depends     = cmake ninja pkgconf qt6-qtbase libtiff libwebp
+group       = qt6

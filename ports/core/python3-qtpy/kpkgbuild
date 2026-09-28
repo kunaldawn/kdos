@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-qtpy
+version     = 2.4.3
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/q/qtpy/qtpy-$version.tar.gz
+sha256      = db744f7832e6d3da90568ba6ccbca3ee2b3b4a890c3d6fbbc63142f6e4cdf5bb  python3-qtpy-2.4.3.tar.gz
+description = QtPy — one Qt import layer over PyQt6, for git-cola and Spyder
+homepage    = https://github.com/spyder-ide/qtpy
+depends     = python3 python3-setuptools python3-pip python3-packaging python3-pyqt6

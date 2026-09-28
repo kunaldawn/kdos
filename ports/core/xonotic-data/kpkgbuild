@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = xonotic-data
+version     = 0.8.6
+release     = 1
+source      = $name-$version.zip::https://dl.xonotic.org/xonotic-$version.zip
+sha256      = 50850f8d800e7499722f6ea61e478e96464a375494b5a24da93aa0598cbe964d  xonotic-data-0.8.6.zip
+description = Xonotic's game data — maps, models, textures, sounds and music, about 1.2 GB
+homepage    = https://xonotic.org
+depends     = unzip

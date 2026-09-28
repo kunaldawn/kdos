@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = freerdp
+version     = 3.32.0
+release     = 1
+source      = https://github.com/FreeRDP/FreeRDP/releases/download/$version/freerdp-$version.tar.gz
+sha256      = 855645e886f9749a485cb6630ffe934aa717d7b18cf716699ab1fc8864633210  freerdp-3.32.0.tar.gz
+description = Remote Desktop Protocol library and the SDL3 client sdl-freerdp; the RDP engine of Remmina
+homepage    = https://www.freerdp.com
+depends     = cmake ninja pkgconf openssl zlib libjpeg-turbo libpng libwebp ffmpeg sdl3 sdl3-ttf sdl3-image wayland wayland-protocols alsa-lib libpulse cups krb5 icu json-c uriparser fuse opus fdk-aac soxr libusb pcsc-lite

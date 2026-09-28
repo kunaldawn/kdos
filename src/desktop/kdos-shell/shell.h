@@ -357,6 +357,51 @@ typedef struct {
  * `why` is set only where the daemon could not be reached. */
 int sh_mountd_browse(ShServerRow *out, int max, char *why, size_t nwhy);
 
+/* AN IMAGE WRITE IN FLIGHT. The request carries the image as an open
+ * descriptor and the connection stays up for the worker's progress, so the
+ * surface owns this for as long as `running` is set and pumps it from its
+ * loop. `msg` is the daemon's last word — its refusal, or `sdb <bytes>
+ * verified`. */
+typedef struct {
+	int fd;
+	int running, ok, verifying;
+	unsigned long long done, total;
+	char msg[160];
+	char part[256];
+	size_t npart;
+} ShMountWrite;
+
+/* 0 when the request went out; -1 with `msg` set when it could not. `disk`
+ * is the disk's name as the person typed it — the daemon compares it. */
+int sh_mountd_write_start(ShMountWrite *w, int idx, const char *image,
+			  const char *disk);
+int sh_mountd_write_pump(ShMountWrite *w);
+
+/* ── a long child (job.c) ───────────────────────────────────────────────
+ * One program a surface runs and keeps drawing past: its stdout and stderr on
+ * one non-blocking pipe, read a line at a time by sh_job_pump() from the
+ * surface's loop. `line`, when set, is called with every line as it lands;
+ * `last` always holds the newest. */
+typedef struct {
+	pid_t pid;
+	int fd;
+	int running;
+	int status;		/* the exit status once finished; -1 by signal */
+	void (*line)(const char *ln, void *user);
+	void *user;
+	char last[256];
+	char part[1024];
+	size_t npart;
+} ShJob;
+
+/* -1 with `last` saying why when the program is not installed or will not
+ * start. `cwd` is where it runs, or NULL for here. */
+int sh_job_start(ShJob *j, const char *const argv[], const char *cwd);
+/* 1 when something arrived or the child finished. */
+int sh_job_pump(ShJob *j);
+/* To the end, for a `--dump` that draws the finished state. */
+int sh_job_wait(ShJob *j);
+
 int calc_main(int argc, char **argv);		/* kdos-calc     */
 int chars_main(int argc, char **argv);		/* kdos-chars    */
 int connect_main(int argc, char **argv);	/* kdos-connect  */
@@ -370,6 +415,8 @@ int update_main(int argc, char **argv);		/* kdos-update   */
 int store_main(int argc, char **argv);		/* kdos-store    */
 int firewall_main(int argc, char **argv);	/* kdos-firewall */
 int backup_main(int argc, char **argv);		/* kdos-backup   */
+int burn_main(int argc, char **argv);		/* kdos-burn     */
+int verify_main(int argc, char **argv);		/* kdos-verify   */
 int note_main(int argc, char **argv);		/* kdos-note     */
 int slit_main(int argc, char **argv);		/* kdos-slit     */
 int doc_main(int argc, char **argv);		/* kdos-doc      */

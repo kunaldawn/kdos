@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gtk3
+version     = 3.24.52
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/gtk/${version%.*}/gtk-$version.tar.xz
+sha256      = 80931fa472a77b9a164f6740e3c0b444fac6770054632d35a7ff9d679e5e7b9f  gtk3-3.24.52.tar.xz
+description = GTK 3 widget toolkit, with the Wayland and X11 backends
+homepage    = https://www.gtk.org/
+depends     = meson glib gobject-introspection glib-introspection cairo pango harfbuzz fribidi gdk-pixbuf librsvg libepoxy at-spi2-core libxkbcommon wayland wayland-protocols libX11 libXext libXrender libXi libXrandr libXcursor libXdamage libXfixes libXcomposite libXinerama fontconfig freetype2 cups iso-codes shared-mime-info hicolor-icon-theme libxslt docbook-xml docbook-xsl
+series      = 3.24

@@ -214,7 +214,10 @@ for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
     t="$d$(first_source_file "$d")"
     case "$t" in *.tar.*|*.tgz|*.tbz2|*.txz) ;; *) continue ;; esac
     [ -f "$t" ] || continue
-    first=$(tar tf "$t" 2>/dev/null | head -1)
+    # A lone `./` entry says nothing about the members: Mozilla's tarballs
+    # open with one and write every member after it as `firefox-<v>/…`, which
+    # the strip unpacks correctly. The first member other than the dot decides.
+    first=$(tar tf "$t" 2>/dev/null | awk '$0 != "./" && $0 != "." { print; exit }')
     case "$first" in
     ./*)
         dotp=$((dotp + 1))
@@ -254,7 +257,8 @@ for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
     t="$d$(first_source_file "$d")"
     case "$t" in *.tar.*|*.tgz|*.tbz2|*.txz) ;; *) continue ;; esac
     [ -f "$t" ] || continue
-    tops=$(tar tf "$t" 2>/dev/null | head -300 | awk -F/ 'NF>1 || $1!="" {print $1}' | sort -u | wc -l)
+    # The dot of a lone `./` entry is not a top-level entry of its own.
+    tops=$(tar tf "$t" 2>/dev/null | head -300 | awk -F/ '(NF>1 || $1!="") && $1!="." {print $1}' | sort -u | wc -l)
     [ "$tops" -le 1 ] && continue
     flatp=$((flatp + 1))
     grep -qE '^[[:space:]]*tar x[a-z]* +"?\$(PORT_SRC|\{PORT_SRC\})' "$d/build.sh" \
@@ -304,12 +308,12 @@ for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
                    'meson_options.txt' 'meson.options' \
                2>/dev/null | tr '\n' ' ' || true)
         defined="$defined
-$(printf '%s' "$flat" | grep -oE "option\([[:space:]]*'[a-zA-Z0-9_-]+" \
+$(printf '%s' "$flat" | grep -oE "option[[:space:]]*\([[:space:]]*'[a-zA-Z0-9_-]+" \
           | sed "s/.*'//" || true)"
         deftypes="$deftypes
 $(printf '%s' "$flat" \
-          | grep -oE "option\([[:space:]]*'[a-zA-Z0-9_-]+'[[:space:]]*,[[:space:]]*type[[:space:]]*:[[:space:]]*'[a-z]+'" \
-          | sed -E "s/option\([[:space:]]*'([a-zA-Z0-9_-]+)'.*'([a-z]+)'\$/\\1\t\\2/" || true)"
+          | grep -oE "option[[:space:]]*\([[:space:]]*'[a-zA-Z0-9_-]+'[[:space:]]*,[[:space:]]*type[[:space:]]*:[[:space:]]*'[a-z]+'" \
+          | sed -E "s/option[[:space:]]*\([[:space:]]*'([a-zA-Z0-9_-]+)'.*'([a-z]+)'\$/\\1\t\\2/" || true)"
     done
     # No options file at all means the port defines none; every -D it is
     # handed then has to be a built-in, which the same comparison covers.
@@ -321,7 +325,8 @@ $(printf '%s' "$flat" \
     # — and reading that as something this port passes reports a defect in the
     # port that documented the fix. `install -Dm644` is not a meson option
     # either, and `option(` may be followed by a NEWLINE before its name, which
-    # fcft does, so the option file is flattened before it is read.
+    # fcft does, so the option file is flattened before it is read; `option (`
+    # with a space, which Impression writes, is the same call.
     #
     # A COMPILER FLAG IS NOT A MESON OPTION EITHER. `-D` names a preprocessor
     # macro in a CFLAGS assignment and a project option on a meson line, and
@@ -827,7 +832,9 @@ for gone in fs/usr/local/bin/kdos fs/usr/local/bin/kdos-banner \
     [ -e "$gone" ] && bad "$gone" "should have been removed"
 done
 # Only things that would INVOKE the removed tools count. A C file naming one in
-# a comment is documenting what it replaced, which is the point.
+# a comment is documenting what it replaced, which is the point. The script
+# name is the token straight after `python3`: a `depends` line that names
+# python3 and then wavpack or libmspack invokes nothing.
 # THE ARCHIVES ARE EXCLUDED BY NAME, NOT BY A grep FLAG. `ports` holds the
 # fetched tarballs beside the recipes and the baked packs beside their build
 # scripts — 31 GB of them — and grep reads a compressed file whole before it
@@ -838,7 +845,7 @@ done
 hits=$(find script ports fs Makefile -type f \
         ! -name '*.kpack' ! -name '*.tar.*' ! -name '*.tgz' ! -name '*.tbz2' \
         ! -name '*.txz' ! -name '*.zip' ! -name '*.lz' 2>/dev/null |
-       xargs grep -l 'python3 .*genlaunchers\|python3 .*pack \|python3 .*assemble\|python3 .*gengtk\|python3 .*genicons\|python3 .*gencursors' \
+       xargs grep -l 'python3 [^ ]*genlaunchers\|python3 [^ ]*pack \|python3 [^ ]*assemble\|python3 [^ ]*gengtk\|python3 [^ ]*genicons\|python3 [^ ]*gencursors' \
         2>/dev/null || true)
 [ -z "$hits" ] && note "no stale invocations" "ok" || bad "stale invocations" "$hits"
 
@@ -895,6 +902,46 @@ else
     else
         note "orphaned packages" "none"
     fi
+fi
+
+# ── the desktop's own programs link no toolkit and no Xlib ────────────────
+#
+# Applications may link GTK, Qt, wxWidgets, FLTK, Tk and the X11 client
+# libraries; the desktop itself may not. Every ELF that a package built from
+# src/desktop or src/packages installs is read for its NEEDED entries, and a
+# toolkit or an Xlib library among them fails: a compositor, panel or daemon
+# that pulls one in makes the session depend on a stack an application is
+# free to leave out. libxcb is not on the list. kdos-comp speaks XCB to
+# Xwayland, the one X carve-out, and loads no Xlib.
+#
+# Skipped, not failed, when there is no build tree or no readelf.
+echo
+echo "==> the desktop's own programs link no GUI toolkit and no Xlib"
+if [ ! -d build/fs/var/lib/kpkg/db ]; then
+    note "desktop ELF links" "skipped — no build tree"
+elif ! command -v readelf >/dev/null 2>&1; then
+    note "desktop ELF links" "skipped — no readelf on this host"
+else
+    _elf_re='^(libgtk-|libgdk-|libadwaita-|libwebkit|libjavascriptcoregtk|libQt[0-9]|libKF[0-9]|libwx_|libfltk|libtk[0-9]|libX[A-Za-z0-9_-]*\.so)'
+    _elfn=0 _elfp=0 _elfbad=0
+    for _d in src/desktop/*/ src/packages/*/; do
+        _pkg=$(sed -n 's/^name[[:space:]]*=[[:space:]]*//p' "$_d/kpkgbuild" 2>/dev/null | head -1)
+        [ -n "$_pkg" ] && [ -f "build/fs/var/lib/kpkg/db/$_pkg" ] || continue
+        _elfp=$((_elfp + 1))
+        while IFS= read -r _f; do
+            _f=build/fs/${_f#./}
+            [ -f "$_f" ] && [ ! -L "$_f" ] || continue
+            [ "$(head -c4 "$_f" 2>/dev/null | od -An -c | tr -d ' \n')" = '177ELF' ] || continue
+            _elfn=$((_elfn + 1))
+            _hit=$(readelf -d "$_f" 2>/dev/null \
+                   | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | grep -E "$_elf_re" | paste -sd' ')
+            [ -z "$_hit" ] && continue
+            bad "desktop ELF links" "$_pkg: ${_f#build/fs} links $_hit"
+            _elfbad=$((_elfbad + 1))
+        done < <(tail -n +2 "build/fs/var/lib/kpkg/db/$_pkg")
+    done
+    [ "$_elfbad" != 0 ] ||
+        note "desktop ELF links" "$_elfn ELF file(s) in $_elfp package(s), none links a toolkit or Xlib"
 fi
 
 echo

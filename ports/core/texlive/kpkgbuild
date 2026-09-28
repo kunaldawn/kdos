@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = texlive
+version     = 20260301
+release     = 1
+group       = texlive
+_year       = ${version:0:4}
+_mirror     = https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/$_year
+source      = $_mirror/$name-$version-source.tar.xz
+source      = $_mirror/$name-$version-texmf.tar.xz
+source      = $name-installer-$version.tar.gz::$_mirror/install-tl-unx.tar.gz
+source      = $name-tlpdb-$version.tar.xz
+sha256      = cb120d314d3ceb23ac608af17ddd2c623afcf02331f400a0f25eead5b8ac1d70  texlive-20260301.tar.xz
+sha256      = 349eb7c5c2c15333d77490a52934b053c6dcb88834f2224978f7a4edf67940e7  texlive-20260301-texmf.tar.xz
+sha256      = 5cc0703d6fe49f00a2932c4e3bcee37a11cc0a969ae9fcbf9cad6f0d984d6363  texlive-installer-20260301.tar.gz
+sha256      = ab2893e0fd26af7d87892a809947eff084c3d82d13ad16278e632b7afa8bdfe1  texlive-tlpdb-20260301.tar.xz
+description = TeX Live 2026 — TeX, LaTeX, pdfTeX, XeTeX, LuaTeX, MetaPost, BibTeX and dvips, with a curated texmf tree
+homepage    = https://tug.org/texlive/
+depends     = perl ghostscript pkgconf zlib libpng freetype2 fontconfig gmp mpfr cairo pixman libgd potrace libpaper icu zziplib perl-yaml-tiny perl-file-homedir

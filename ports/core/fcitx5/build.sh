@@ -13,7 +13,7 @@
 tar -xf "$PORT_SRC/$name-$version.tar.zst" --strip-components=1
 cp "$PORT_SRC/$_endict" src/modules/spell/
 
-# ENABLE_X11=Off is the hard rule, not a size choice: X11 support here would
+# ENABLE_X11=Off is not a size choice: X11 support here would
 # pull xcb-imdkit, cairo-xcb, xkbfile and seven xcb components onto the host for
 # an XIM frontend. The cost is that an X11 application under Xwayland, host or
 # boxed, has no input method: Xwayland carries no text-input for its X

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = clipper2
+version     = 2.0.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/AngusJohnson/Clipper2/archive/refs/tags/Clipper2_$version.tar.gz
+sha256      = 2a3693aceab4aed3e39b743e038d87701acc53cf05ed7b2013aab3e0aec5287e  clipper2-2.0.1.tar.gz
+description = Polygon clipping and offsetting library
+homepage    = https://www.angusj.com/clipper2/Docs/Overview.htm
+depends     = cmake

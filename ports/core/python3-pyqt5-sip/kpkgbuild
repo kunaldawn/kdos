@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyqt5-sip
+version     = 12.19.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pyqt5-sip/pyqt5_sip-$version.tar.gz
+sha256      = 71cacf1879da2cd3e50cb239e21673cfe02d358af70ab6768817c960428868c3  python3-pyqt5-sip-12.19.0.tar.gz
+description = PyQt5.sip — the runtime module every PyQt5 extension is linked through
+homepage    = https://github.com/Python-SIP/sip
+depends     = python3 python3-setuptools python3-pip

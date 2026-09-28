@@ -1,0 +1,9 @@
+--- a/src/ifcopenshell-python/ifcopenshell/__init__.py
++++ b/src/ifcopenshell-python/ifcopenshell/__init__.py
+@@ -388,5 +388,5 @@
+ 
+ 
+ version_core = ifcopenshell_wrapper.version()
+-__version__ = version = "0.0.0"
++__version__ = version = "0.8.5"
+ get_log = ifcopenshell_wrapper.get_log

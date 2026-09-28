@@ -16,7 +16,8 @@
 # reads samples without knowing which box produced them.
 #
 # --disable-cxx and the rest: the bindings need swig and a C++ ABI, and
-# sigrok-cli is C. PulseView is the GUI and is Qt, so it is not here.
+# sigrok-cli is C. PulseView, the Qt GUI, links the C++ binding and is not a
+# port.
 #
 # Each --with-<lib> turns a missing library into a configure error. Left to
 # detection, a missing one drops every driver that needs it and the build still

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pdal
+version     = 2.10.2
+release     = 1
+source      = https://github.com/PDAL/PDAL/releases/download/$version/PDAL-$version-src.tar.bz2
+sha256      = 882b97aa3ae5db682c3b2dc8edef4e29bcc7ecea51c70592e71bc1f34112ad00  pdal-2.10.2.tar.bz2
+description = PDAL — point cloud translation and processing: LAS/LAZ, E57, Draco, HDF and the pdal tool
+homepage    = https://pdal.io/
+depends     = cmake ninja pkgconf gdal proj libgeotiff curl libxml2 zlib zstd xz hdf5 postgresql draco xerces-c ceres-solver eigen

@@ -121,6 +121,10 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 	 * ignored by every version while an unknown flag is not. */
 	const char *ov = getenv("KPKG_OVERWRITE");
 	int overwrite = ov && *ov && strcmp(ov, "0");
+	/* The same, for a build that keeps every package it makes to write a
+	 * binhost from. */
+	const char *kc = getenv("KPKG_KEEP_CACHE");
+	keep_cache = kc && *kc && strcmp(kc, "0");
 
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--force"))

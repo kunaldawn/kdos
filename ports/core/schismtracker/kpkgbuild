@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = schismtracker
+version     = 20260524
+release     = 1
+source      = https://github.com/schismtracker/schismtracker/archive/refs/tags/$version.tar.gz
+sha256      = 1e567e7ce5d9c68aac7b348e03b4cdb652d23fc4652b0089b83238e62d8925de  schismtracker-20260524.tar.gz
+description = Impulse Tracker clone — compose and play IT, S3M, XM and MOD music, on SDL3
+homepage    = https://schismtracker.org
+depends     = autoconf automake pkgconf perl sdl3 alsa-lib utf8proc flac ffmpeg zlib bzip2 xz zstd

@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qtbase
+version     = 5.15.19
+release     = 1
+_module     = qtbase
+_openssl    = 3.5.8
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+source      = openssl3-$_openssl.tar.gz::https://openssl.org/source/openssl-$_openssl.tar.gz
+sha256      = 51e91c73abacab81e64efd01bf95794e79c0e605ad80947a024769f0dd620a32  qt5-qtbase-5.15.19.tar.xz
+sha256      = a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2  openssl3-3.5.8.tar.gz
+description = Qt 5 core, GUI, widgets, network, SQL, D-Bus and printing, with the X11 platform plugin, for programs not yet on Qt 6
+homepage    = https://www.qt.io/
+depends     = perl pkgconf zlib zstd pcre2 icu glib double-conversion harfbuzz freetype2 fontconfig libpng libjpeg-turbo sqlite dbus openssl3 at-spi2-core cups eudev libinput mtdev mesa libglvnd vulkan-headers vulkan-loader libxkbcommon libxcb libX11 xcb-util xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm shared-mime-info xdg-utils hicolor-icon-theme
+group       = qt5
+series      = 5.15

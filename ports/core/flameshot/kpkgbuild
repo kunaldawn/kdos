@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = flameshot
+version     = 14.0.0
+release     = 1
+_qcw        = 5d52e907e50dc88cf969b41cea44665ff6c475b1
+source      = $name-$version.tar.gz::https://github.com/flameshot-org/flameshot/archive/refs/tags/v$version.tar.gz
+source      = https://gitlab.com/mattbas/Qt-Color-Widgets/-/archive/$_qcw/Qt-Color-Widgets-$_qcw.tar.gz
+sha256      = 810c399f3b9fbfd72e24e61417ede24243925f9c0d03040a8aba0d4866676d93  flameshot-14.0.0.tar.gz
+sha256      = 99edd39dca0367b1cfd388bf031c4915137580bd73f87c65f7720b8a4af14efa  Qt-Color-Widgets-5d52e907e50dc88cf969b41cea44665ff6c475b1.tar.gz
+description = Screenshot tool with an annotation editor, capturing through the Screenshot portal
+homepage    = https://flameshot.org/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qttools qt6-qtwayland kguiaddons kdsingleapplication

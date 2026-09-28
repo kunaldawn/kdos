@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libarcus
+version     = 5.11.1
+release     = 1
+_commit     = 339c85a1abc7554e6c19bd36bbbc4c2d6f9f40b6
+_index      = c4077fc3e719b436d1cdc2032bf3f851b6f089bb
+source      = $name-$version.tar.gz::https://github.com/Ultimaker/libArcus/archive/$_commit.tar.gz
+source      = conan-ultimaker-index-$_index.tar.gz::https://github.com/Ultimaker/conan-ultimaker-index/archive/$_index.tar.gz
+sha256      = 556b4ef12c401963553b804092035103070a1cb1428c705ce50de6ac1cdf23d9  libarcus-5.11.1.tar.gz
+sha256      = b35b9b112085c299ee5e9e5e15612e5e065d07220d0c9954b776b15cfa5095b5  conan-ultimaker-index-c4077fc3e719b436d1cdc2032bf3f851b6f089bb.tar.gz
+description = Arcus — the protobuf message socket between Cura and CuraEngine
+homepage    = https://github.com/Ultimaker/libArcus
+depends     = cmake ninja protobuf abseil-cpp

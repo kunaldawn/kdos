@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = jupyterlab
+version     = 4.6.4
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/j/jupyterlab/jupyterlab-$version.tar.gz
+sha256      = 404f49b081819378524886c9db66dba57a5565981eff885830df1baba3a17df5  jupyterlab-4.6.4.tar.gz
+sha256      = ac2f032e60001f93ddf36a71b1660ca07fed68b1d56c8d9339cb0f9ed5718a93  jupyterlab-vendor-4.6.4.tar.xz
+description = JupyterLab and Jupyter Notebook — computational notebooks served locally to the web browser
+homepage    = https://jupyter.org/
+depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-hatchling python3-hatch-vcs python3-hatch-jupyter-builder python3-hatch-nodejs-version python3-flit-core python3-poetry-core python3-scikit-build-core python3-calver python3-trove-classifiers python3-ipykernel python3-jupyter-core python3-jupyter-client python3-nbconvert python3-tornado python3-pyzmq python3-rpds-py python3-attrs python3-idna python3-certifi python3-cffi python3-jinja2 python3-markupsafe python3-packaging python3-psutil python3-yaml python3-requests python3-dateutil python3-six python3-typing-extensions python3-pygments python3-lark python3-send2trash ipython argon2 librsvg
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = anyio argon2-cffi argon2-cffi-bindings arrow async-lru babel fqdn h11
+pypackages  = httpcore httpx isoduration json5 jsonpointer jupyter-builder
+pypackages  = jupyter-events jupyter-lsp jupyter-server:2.21.1
+pypackages  = jupyter-server-terminals jupyterlab-server notebook:7.6.3
+pypackages  = notebook-shim prometheus-client python-json-logger rfc3339-validator
+pypackages  = rfc3986-validator rfc3987-syntax terminado uri-template
+pypackages  = webcolors websocket-client

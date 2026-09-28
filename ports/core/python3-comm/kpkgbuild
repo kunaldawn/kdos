@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-comm
+version     = 0.2.3
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/comm/comm-$version.tar.gz
+sha256      = 2dc8048c10962d55d7ad693be1e7045d891b7ce8d999c97963a5e3e99c055971  python3-comm-0.2.3.tar.gz
+description = comm — the Jupyter comm protocol for kernel-side widgets
+homepage    = https://github.com/ipython/comm
+depends     = python3 python3-pip python3-hatchling ipython

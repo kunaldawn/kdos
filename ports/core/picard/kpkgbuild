@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = picard
+version     = 3.0.0rc4
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/$name/$name-$version.tar.gz
+sha256      = 57e8b332706ce2f8fbe154f0661a60ca16421886f5ccbe8342290c6832fdbb1d  picard-3.0.0rc4.tar.gz
+sha256      = 4154442b93cf52c9b2244a7877a453e222ab5fe2c84c6fa79f6c828658d152e1  picard-vendor-3.0.0rc4.tar.xz
+description = MusicBrainz Picard — tag and rename music files from the MusicBrainz database
+homepage    = https://picard.musicbrainz.org/
+depends     = python3 python3-pip python3-setuptools python3-wheel gettext python3-pyqt6 qt6-qtbase qt6-qtsvg qt6-qtimageformats qt6-qtmultimedia qt6-qtwayland python3-yaml python3-charset-normalizer python3-tomlkit libdiscid
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = mutagen discid markdown pyjwt

@@ -10,8 +10,8 @@
 # ---------------------------------
 
 # scons, not make, and every option is named because gpsd's default build turns
-# on Qt bindings, an X11 test client and a systemd unit — all three are the
-# hard rule here. fs/etc/udev/rules.d/70-kdos-serial.rules grants the serial
+# on Qt bindings, an X11 test client and a systemd unit, and nothing here
+# uses any of the three. fs/etc/udev/rules.d/70-kdos-serial.rules grants the serial
 # classes a receiver arrives on; the rules below are what start the daemon.
 # dbus_export, bluez, usb and ncurses are named yes, but SConscript drops each
 # one silently when its library is missing rather than failing, so it is the

@@ -16,7 +16,7 @@ Read three things first:
 - The table of libraries in [The C libraries](c-libraries.md). Everything here is built on
   `libktui`, `libkdisp`, `libkwl`, `libkchrome`, `libkicon` and `libkcell`, and that chapter holds
   the detail this one leaves out.
-- An existing surface of the same shape. [kdos-shell](../04-programs/kdos-shell.md) holds 52 of
+- An existing surface of the same shape. [kdos-shell](../04-programs/kdos-shell.md) holds 54 of
   them, and [kdos-res](../04-programs/kdos-res.md) is a complete window with charts.
 
 A finished surface draws the same at a prompt, in a window and in a test, is reachable from the
@@ -46,9 +46,15 @@ monitor, the terminal and the lock screen, each handed to `kdos-comp` as an ordi
 surface. The installer (`src/packages/kdos-installer`) and the build screen
 (`src/build/kdosbuild`) are the same grids drawn on a terminal. Two things on the screen are not
 grids. The compositor draws its own chrome with Pango (window titlebars, the root menu and the
-window-switcher OSD) at a size matched to the cell grid, and an application in a box draws
-whatever its toolkit draws. The frame around your window is therefore not yours to lay out, and
-the pixels inside another program's window are not cells.
+window-switcher OSD) at a size matched to the cell grid, and an application, whether natively
+ported or running in a box, draws whatever its toolkit draws. The frame around your window is
+therefore not yours to lay out, and the pixels inside another program's window are not cells.
+
+The toolkits the applications use (GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK
+and Tk) are not available to a surface. A program under `src/desktop/` or `src/packages/` draws
+through the `libk*` libraries and links no GUI toolkit and no Xlib; `testing/preflight.sh` reads the
+`NEEDED` entries of every ELF file those ports install and fails the run when one names such a
+library.
 
 Most new surfaces are a new front end inside `kdos-shell` (see
 [Adding a name to kdos-shell](#adding-a-name-to-kdos-shell)). A program with a separate life of its
@@ -317,7 +323,7 @@ int left = kch_buttons(w, h - 3, buttons, nbuttons, focus);  /* its own left edg
 ```
 
 `kch_header()` draws the band in rows 1 to 3 of a boxed window and returns the first body row.
-`kch_buttons()` draws at most six buttons (`SH_MAX_BTN`), right-aligned; when the bar is too wide
+`kch_buttons()` draws at most eight buttons (`SH_MAX_BTN`), right-aligned; when the bar is too wide
 for the window it drops whole buttons from the right, so callers order them most useful first. It
 returns its left edge because the status line shares that row: draw the bar first and clip the
 status text to what it left.
@@ -385,7 +391,7 @@ next `Esc`. `ktui_esc_verb()` returns the verb of the topmost open layer, or "Cl
 `ktui_hint_row()` must run on every path that draws, including `--dump`. It clears the pool of
 pushed hints as its first act, before it measures the rectangle, so a zero-width rectangle is the
 right way to drain a frame where a message owns the row. A frame that skips it carries its hints
-into the next one, and `kdos-shell` is one binary with 52 front ends sharing that pool. It draws
+into the next one, and `kdos-shell` is one binary with 54 front ends sharing that pool. It draws
 nothing in a window shorter than eight rows or too narrow for one whole hint. Both strings passed
 to `ktui_hint()` are copied, so their lifetime is the caller's concern for the length of the call
 only.
@@ -758,7 +764,7 @@ several places, and most of them fail silently.
    line to an error stream nobody reads and exits before a surface exists, so the symptom is a
    control that silently does nothing.
 8. If it opens files by type, give it a desktop entry. The `kdos-shell` front ends that have one,
-   `kdos-peek` and `kdos-pix`, ship it under `fs/usr/share/applications/` with `NoDisplay=true`
+   `kdos-peek`, `kdos-pix` and `kdos-burn`, ship it under `fs/usr/share/applications/` with `NoDisplay=true`
    and a `MimeType=` line, so a file of that type can be opened with it while the menu does not
    list it. The entry's file name is the front end's `app_id` plus `.desktop`.
 

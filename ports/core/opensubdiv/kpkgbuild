@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = opensubdiv
+version     = 3.7.0
+release     = 1
+_tag        = v${version//./_}
+source      = $name-$version.tar.gz::https://github.com/PixarAnimationStudios/OpenSubdiv/archive/refs/tags/$_tag.tar.gz
+sha256      = f843eb49daf20264007d807cbc64516a1fed9cdb1149aaf84ff47691d97491f9  opensubdiv-3.7.0.tar.gz
+description = Pixar's OpenSubdiv: subdivision surface evaluation on the CPU and in GLSL — Blender's Subdivision modifier
+homepage    = https://graphics.pixar.com/opensubdiv/
+depends     = cmake ninja onetbb libglvnd mesa

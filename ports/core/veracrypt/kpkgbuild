@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = veracrypt
+version     = 1.26.29
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/veracrypt/VeraCrypt/archive/refs/tags/VeraCrypt_$version.tar.gz
+sha256      = 5141f046e90c8d7660d1eef7d492c4a0ee15283500f092ebb2b72d5260779229  veracrypt-1.26.29.tar.gz
+description = VeraCrypt — create and mount encrypted volumes and containers, TrueCrypt-compatible
+homepage    = https://veracrypt.io/
+depends     = pkgconf yasm wxwidgets gtk3 fuse pcsc-lite lvm2 util-linux sudo

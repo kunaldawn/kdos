@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qtmultimedia
+version     = 5.15.19
+release     = 1
+_module     = qtmultimedia
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+sha256      = dbfa442dff7d8204b23fbfa71389bdcc92fbc9f84036d5220d9c9fdbf9a5fb35  qt5-qtmultimedia-5.15.19.tar.xz
+description = Qt 5 multimedia — audio, video and camera through GStreamer, PulseAudio and ALSA
+homepage    = https://www.qt.io/
+depends     = qt5-qtbase qt5-qtdeclarative gstreamer gst-plugins-base gst-plugins-bad gst-plugins-good gst-libav libpulse alsa-lib mesa libglvnd
+group       = qt5
+series      = 5.15

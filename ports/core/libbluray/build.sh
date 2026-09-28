@@ -12,9 +12,10 @@
 # An unencrypted disc or a backup plays through mpv's bd:// and ffmpeg's
 # bluray: protocol. An AACS-encrypted disc needs libaacs, which is not a port.
 #
-# -Dbdj_jar=disabled: BD-J menus are Java, and the jar needs a JDK to build and
-# a JVM to run, neither on the host. A disc then plays its titles without the
-# Java menu. freetype and fontconfig draw the text subtitles, and libxml2 reads
+# -Dbdj_jar=disabled: BD-J menus are Java, and the jar is built with Apache
+# Ant, which is not a port, and a javac from openjdk, which would put the JDK
+# under ffmpeg and everything that links it. A disc then plays its titles
+# without the Java menu. freetype and fontconfig draw the text subtitles, and libxml2 reads
 # the disc's metadata.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Ddefault_library=shared \

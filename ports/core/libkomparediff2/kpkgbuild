@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libkomparediff2
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/libkomparediff2-$version.tar.xz
+sha256      = d222901b0a90f853f21e86bf08db73c3edb65e8d4bbf820626512df82c8430c2  libkomparediff2-26.08.1.tar.xz
+description = libkomparediff2 — diff parsing and models, for KDevelop's patch review
+homepage    = https://invent.kde.org/sdk/libkomparediff2
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons kconfig kxmlgui ki18n kio

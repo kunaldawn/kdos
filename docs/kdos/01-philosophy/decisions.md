@@ -19,11 +19,11 @@ decisions that look like missing features.
 | Decision | Conclusion |
 |---|---|
 | [The compositor](#the-compositor-is-a-frozen-fork-of-labwc) | A frozen hard fork of labwc 0.20.0, never merged from again |
-| [Application delivery](#a-store-that-builds-and-a-medium-that-carries-nothing) | The medium carries a catalogue; podman builds what is asked for |
+| [Application delivery](#native-applications-on-the-medium-a-store-that-builds-the-rest) | The medium carries native ports; podman builds catalogue applications on request |
 | [Application packaging](#one-pack-per-application-not-one-image) | One artefact per application over shared runtimes, never one image |
 | [The base distribution in boxes](#debian-inside-boxes-not-alpine) | Debian trixie, with Alpine carried as a scratch base |
 | [The host C library](#musl-as-the-host-c-library) | musl, which forecloses runtime CPU dispatch |
-| [The host desktop](#no-kde-gnome-or-any-existing-desktop-on-the-host) | A desktop written for this system; KDE's applications, never Plasma |
+| [The host desktop](#no-kde-gnome-or-any-existing-desktop-on-the-host) | A desktop written for this system; KDE's and GNOME's applications, never their shells |
 | [Where upstream sources live](#upstream-archives-are-content-addressed-release-assets) | Release assets named by their sha256, fetched by `make fetch` |
 | [CPU optimisation](#-march-measured-per-machine-not-chosen-for-a-population) | Measured per machine by `kdos march`, never a shipped feature level |
 | [The vulnerability database](#alpines-security-database-not-nvd-or-osv) | A vendored, pruned copy of Alpine's secdb, answered offline |
@@ -38,7 +38,7 @@ decisions that look like missing features.
 
 KDOS runs a frozen hard fork of the labwc 0.20.0 Wayland compositor. `src/desktop/kdos-comp` is
 upstream's source, imported whole, renamed, and never merged from again. `KDOS-FORK` at its root
-records the upstream tarball and its sha256. KDOS's additions live in sixteen files named
+records the upstream tarball and its sha256. KDOS's additions live in eighteen files named
 `src/kdos-*.c`, and the upstream files carry small hooks marked `/* KDOS */` (or `# KDOS` in a
 `meson.build`), so `grep` finds every point where the fork touches upstream code.
 
@@ -65,22 +65,27 @@ by hand. That is accepted; the alternative is maintaining a compositor outright.
 
 See [kdos-comp](../04-programs/kdos-comp.md) for the fork as built.
 
-## A store that builds, and a medium that carries nothing
+## Native applications on the medium, a store that builds the rest
 
-The installation medium carries a catalogue, and podman builds what somebody asks for. A catalogue
-row is a parent chain of apt packages: installing a row builds a podman image per row in its chain,
-each `FROM` the one below, and creates a [box](../06-reference/glossary.md) (a rootless podman
-container one application runs in) over the top one. The catalogue file installs to
+The installation medium carries native ports of the applications a machine needs with no network: a
+browser, an office suite, media and graphics tools, maps, an offline library, and specialist tools
+for CAD, electronics, software radio, science and amateur radio. A machine that never sees a network
+has only what its media carry, so these are compiled like every other port and ship in the root
+filesystem; [The ports catalogue](../06-reference/ports-catalogue.md) lists them by group. For
+everything else, the medium carries a catalogue, and podman builds what somebody asks for. A
+catalogue row is a parent chain of apt packages: installing a row builds a podman image per row in
+its chain, each `FROM` the one below, and creates a [box](../06-reference/glossary.md) (a rootless
+podman container one application runs in) over the top one. The catalogue file installs to
 `/usr/share/kdos/appstore/catalogue`, and it is what the store, kinstall (the installer) and `kdos
 app` all read, so adding an application to KDOS is one line in a text file. `kdos-store`, the
 panel's graphical catalogue, and kinstall both offer the catalogue by group — seven of them, from
-`essential` at five applications to `games` at thirteen — so choosing the thirteen games is one
-choice rather than thirteen.
+one application each in `essential`, `creative`, `make` and `games` to six in `science` — so
+choosing the six science applications is one choice rather than six.
 
-Carrying every application prebuilt on the ISO, as [packs](../06-reference/glossary.md#pack) (the
-application images described below), was rejected: it puts every application on every medium
-whether or not it is ever launched, costs an hour of building to add one row, and needs a release
-channel to push the whole set through.
+Carrying every catalogue application prebuilt on the ISO, as
+[packs](../06-reference/glossary.md#pack) (the application images described below), was rejected: it
+puts every application on every medium whether or not it is ever launched, costs an hour of building
+to add one row, and needs a release channel to push the whole set through.
 
 The choice has three costs.
 
@@ -117,7 +122,7 @@ catalogue row when the store builds it, and a [pack](../06-reference/glossary.md
 set is exported. Installing an application disturbs nothing else, and a shared runtime's layers are
 stored once however many applications sit on it.
 
-The question was how the catalogue's 180 applications (the `app` rows in
+The question was how the catalogue's 73 applications (the `app` rows in
 `src/packages/kdos-appbox/catalogue`) reach a machine: as one container image, or as separate
 artefacts.
 
@@ -188,20 +193,22 @@ The host runs a desktop written for it, in which every surface KDOS paints is a 
 grid: the panel and all its surfaces, the file chooser, the resource monitor, the terminal, the
 lock screen, the installer, the boot splash and `tty1`. The compositor is the one place with pixels
 of its own. It links `cairo` and `pangocairo` and draws titlebars, the root menu and the
-window-switcher display with pango, at a size matched to the grid. An application in a box draws
-whatever its toolkit draws.
+window-switcher display with pango, at a size matched to the grid. An application, native or in a
+box, draws whatever its toolkit draws.
 
 The question was why KDOS does not run one of the complete desktops that exist. It has two
-reasons: the cell grid is the project's identity, and keeping it keeps both large toolkits off the
-host, which is what makes compiling the whole host from source in one sitting tractable.
+reasons: the cell grid is the project's identity, and keeping it keeps every large toolkit out of
+the desktop itself, which is what makes compiling and reading the desktop in one sitting tractable.
 
-KDE Plasma on the host was the serious alternative. It was rejected because it would bring Qt, and
-with it a body of code larger than the rest of the host combined, into the ring that is meant to be
-compiled and understood here.
+KDE Plasma on the host was the serious alternative. It was rejected because it would put Qt and
+KDE Frameworks, a body of code larger than the rest of the host combined, under the desktop's own
+surfaces, and bring a second session with its own daemons, portals and lock screen.
 
-This does not reject KDE's applications. Dolphin, Kate, Okular, Gwenview, Digikam and others are in
-the catalogue on the shared `rt-kde` runtime, because they are strong in their segments and none of
-them needs Plasma running. See [Packs and boxes](../03-architecture/packs-and-boxes.md).
+This does not reject KDE's or GNOME's applications. Dolphin, Kate, Okular, Kdenlive, GIMP and
+others are ported natively with their toolkits and run as ordinary clients of `kdos-comp`, and the
+catalogue carries more on the shared `rt-kde` and `rt-gtk` runtimes. None of them needs Plasma or
+GNOME Shell running. See [Principles](principles.md#toolkits-are-for-applications-not-the-desktop)
+and [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
 ## Upstream archives are content-addressed release assets
 
@@ -217,13 +224,15 @@ committed file `ports/sources.idx` records which release holds each hash, so a f
 https://github.com/kunaldawn/kdos/releases/download/sources-<NNN>/<hash>
 ```
 
-The current recipes name 1,192 distinct archived files, 8.3 GiB in total. Twelve of them exceed the
-100 MiB a push to github.com refuses; they appear 24 times across the port directories, because the
-LLVM source tarball alone serves eight ports. The largest, `linux-firmware`, is 632 MiB. The index
-names 1,678 files: every file the current recipes use and the older versions that earlier commits
-name. `KDOS_SOURCES_REPO` names a different archive repository, and `KDOS_SOURCES_BASE` a different
-download base; setting `KDOS_SOURCES_BASE` empty makes `make fetch` skip the archive and go from the
-local cache straight to upstream.
+The current recipes name 2,489 distinct files, 38.6 GiB in total: 39 that git carries, and 2,450
+that belong in the archive, of which the index names 1,191. Sixty of them exceed the 100 MiB a push
+to github.com refuses; they appear 74 times across the port directories, because a file such as the
+LLVM source tarball serves several ports. The largest, `texlive`'s texmf tree, is 4.6 GiB. In all
+the index names 1,678 files. A file enters it when `ports/publish` uploads it, and no line is ever removed, so
+the index also names the older versions that earlier commits use. `KDOS_SOURCES_REPO` names a
+different archive repository, and `KDOS_SOURCES_BASE` a different download base; setting
+`KDOS_SOURCES_BASE` empty makes `make fetch` skip the archive and go from the local cache straight
+to upstream.
 
 The hash is the identity and the URL is advisory. A recipe names contents, not a location, so a
 file that verifies is the file the recipe meant whether it came from the archive, from upstream or
@@ -270,13 +279,13 @@ wrote it and nowhere else. The pre-push hook in `script/hooks/` enforces this by
 whose recipes name a hash the archive cannot be shown to hold. See
 [Writing ports](../05-developer/writing-ports.md#publishing-sources) for the procedure.
 
-Git LFS would make a clone the whole input to a build, and it is not used because the sources do
-not fit in it. A free account has 10 GiB of LFS storage and 10 GiB of monthly bandwidth, shared
-across every repository the account owns. The current sources take 8.3 GiB of that storage on
-their own, before any older version the history names, and a single clone uses most of a month's
-bandwidth. Past the allowance LFS reads are blocked outright, not slowed, so a repository that
-depends on LFS stops checking out. Release assets carry no total-size or bandwidth limit and allow
-2 GiB per file. Plain git objects are not possible at all, since twelve of the files exceed the
+Git LFS would make a clone the whole input to a build, and it is not used because the sources do not
+fit in it. A free account has 10 GiB of LFS storage and 10 GiB of monthly bandwidth, shared across
+every repository the account owns. The current sources take 38.6 GiB, nearly four times that
+storage, on their own, before any older version the history names, and a single clone uses most of a
+month's bandwidth. Past the allowance LFS reads are blocked outright, not slowed, so a repository
+that depends on LFS stops checking out. Release assets carry no total-size or bandwidth limit and
+allow 2 GiB per file. Plain git objects are not possible at all, since sixty of the files exceed the
 push limit.
 
 ## `-march` measured per machine, not chosen for a population
@@ -395,9 +404,9 @@ and two logo beats carry KDOS's mark; and the closing text turns its own pages i
 last module. Every contributor line and every Special Thanks in the credits is upstream's,
 unchanged.
 
-A demo written from scratch is not planned. `bb` is a set of scenes paced against the three tracker
-modules it ships with, and reaching that from nothing would be a project of its own; the frozen
-fork is the whole of the plan. See [kdos-bb](../04-programs/kdos-bb.md).
+A demo written from scratch was the alternative. `bb` is a set of scenes paced against the three
+tracker modules it ships with, and reaching that from nothing would be a project of its own, where
+the fork needed only the changes listed above. See [kdos-bb](../04-programs/kdos-bb.md).
 
 ## Forking libtsm rather than writing a terminal
 

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gwenview
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 638a43a74e3a4d3881b846c167e8f42423558df314d124d1c82cef98d29d7ba1  gwenview-26.08.1.tar.xz
+description = Image viewer and browser — RAW, annotation, slideshow and a camera importer
+homepage    = https://apps.kde.org/gwenview/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtmultimedia qt6-qtwayland qt6-qtimageformats wayland wayland-protocols kio kitemmodels ki18n kparts kwindowsystem kiconthemes knotifications kguiaddons kwidgetsaddons kcrash kdoctools baloo libkdcraw kimageannotator kcolorpicker kimageformats libjpeg-turbo libpng libtiff exiv2 lcms2 cfitsio libX11

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-hatch-nodejs-version
+version     = 0.4.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/h/hatch-nodejs-version/hatch_nodejs_version-$version.tar.gz
+sha256      = 2428ea398dd053f019d2b7ac949dd6b690ca8e826b6d433ad13c5b6c475ae91b  python3-hatch-nodejs-version-0.4.0.tar.gz
+description = hatch-nodejs-version — hatchling plugins that read version and metadata from package.json
+homepage    = https://github.com/agoose77/hatch-nodejs-version
+depends     = python3 python3-pip python3-hatchling

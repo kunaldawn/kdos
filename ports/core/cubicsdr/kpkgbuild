@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cubicsdr
+version     = 0.2.7
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/cjcliffe/CubicSDR/archive/refs/tags/$version.tar.gz
+sha256      = 790f851e08f1068081a8593dfd4a149c7414e7d70c1f5cafd287331df493b811  cubicsdr-0.2.7.tar.gz
+description = CubicSDR — software radio receiver with an OpenGL spectrum and waterfall, over SoapySDR and liquid-dsp
+homepage    = https://cubicsdr.com/
+depends     = cmake ninja pkgconf wxwidgets gtk3 mesa libglvnd liquid-dsp soapysdr hamlib libpulse

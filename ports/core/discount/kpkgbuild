@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = discount
+version     = 3.0.2.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Orc/discount/archive/v$version.tar.gz
+sha256      = 99f6db36d3fff6c99acd21d4c6096176d4ac8785eab319d0faf77ad995b8b7c5  discount-3.0.2.0.tar.gz
+description = Markdown to HTML library and converter — libmarkdown and markdown
+homepage    = https://www.pell.portland.or.us/~orc/Code/discount/

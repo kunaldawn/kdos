@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = homebank
+version     = 5.10.3
+release     = 1
+source      = https://www.gethomebank.org/public/sources/$name-$version.tar.gz
+sha256      = 9597b4f30ffa71fefe49613fabbd1513725ab21185ff327716cef6274999227d  homebank-5.10.3.tar.gz
+description = Personal finance manager — accounts, budgets, reports, QIF and CSV import
+homepage    = https://www.gethomebank.org/
+depends     = pkgconf intltool perl-xml-parser gettext glib gtk3 libsoup3

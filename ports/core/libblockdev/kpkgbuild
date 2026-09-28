@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libblockdev
+version     = 3.5.0
+release     = 1
+source      = https://github.com/storaged-project/libblockdev/releases/download/$version/$name-$version.tar.gz
+sha256      = bccd30e6b5d11504de60d9889ff6a2a25b07a4ec8f04070f2387e168301b3e3a  libblockdev-3.5.0.tar.gz
+description = Library for manipulating block devices: partitions, filesystems, LVM, MD RAID, crypto, NVMe
+homepage    = https://github.com/storaged-project/libblockdev
+depends     = python3 glib gobject-introspection glib-introspection eudev kmod util-linux e2fsprogs cryptsetup keyutils nss volume_key lvm2 yaml json-glib libbytesize libnvme libatasmart smartmontools btrfs-progs mdadm dosfstools exfatprogs xfsprogs f2fs-tools ntfs-3g ndctl

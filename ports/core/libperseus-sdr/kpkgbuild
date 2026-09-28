@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libperseus-sdr
+version     = 0.8.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Microtelecom/libperseus-sdr/releases/download/v$version/libperseus_sdr-$version.tar.gz
+sha256      = 07e4b106374cf0d946f1df17a94eccbef7533d6320e528d9c7b60ac8d39e0d38  libperseus-sdr-0.8.2.tar.gz
+description = libperseus-sdr — driver library and perseustest for the Microtelecom Perseus HF receiver
+homepage    = https://github.com/Microtelecom/libperseus-sdr
+depends     = pkgconf libusb

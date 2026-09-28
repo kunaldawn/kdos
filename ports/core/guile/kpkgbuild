@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = guile
+version     = 3.0.11
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.xz
+sha256      = 818c79d236657a7fa96fb364137cc7b41b3bdee0d65c6174ca03769559579460  guile-3.0.11.tar.xz
+description = GNU Guile 3.0 — the Scheme implementation GnuCash and Aisleriot embed, with guild
+homepage    = https://www.gnu.org/software/guile/
+depends     = pkgconf bdwgc gmp libffi libunistring readline ncurses

@@ -11,21 +11,20 @@
 
 # THE CLOSURE IS IN THE BUNDLE, except where a module is already a port.
 # `pypackages` names the part of toot's runtime set that no other program here
-# imports: beautifulsoup4, soupsieve and pysocks. click, python-dateutil,
-# requests (with certifi, charset-normalizer, idna and urllib3), tomlkit,
-# typing-extensions (which beautifulsoup4 imports), urwid and wcwidth come from
-# their python3-* ports: a module two packages each
-# installed would be a path both own, and which of them the image kept would
-# follow build order.
+# imports: pysocks. beautifulsoup4, soupsieve, click, python-dateutil, requests
+# (with certifi, charset-normalizer, idna and urllib3), tomlkit,
+# typing-extensions, urwid and wcwidth come from their python3-* ports: a
+# module two packages each installed would be a path both own, and which of
+# them the image kept would follow build order.
 mkdir -p vendor
 tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 
 # BUILD ISOLATION IS OFF, so each sdist builds with the backend already
-# installed: hatchling for beautifulsoup4 and soupsieve, setuptools for pysocks,
-# and setuptools-scm for toot itself — all ports in `depends`.
+# installed: setuptools for pysocks and setuptools-scm for toot itself, both
+# ports in `depends`.
 pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
 	--root=$PKG --prefix=/usr \
-	beautifulsoup4 soupsieve pysocks .
+	pysocks .
 
 # `toot tui` AND NOT `toot`. The bare command prints its usage and exits, so a
 # menu row on it would open a terminal to show a help page and close — the TUI

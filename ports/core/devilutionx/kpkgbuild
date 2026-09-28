@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = devilutionx
+version     = 1.5.5
+release     = 1
+source      = $name-$version.tar.xz::https://github.com/diasurgical/DevilutionX/releases/download/$version/devilutionx-src-fully-vendored.tar.xz
+sha256      = f42379cdf098a351a2020d9e6de1840c76e09113c792f73c6df34dec26818b04  devilutionx-1.5.5.tar.xz
+description = DevilutionX — the Diablo and Hellfire engine, for a player's own copy of the game data
+homepage    = https://github.com/diasurgical/DevilutionX
+depends     = cmake ninja pkgconf sdl2-compat sdl2-image libpng zlib bzip2 libsodium

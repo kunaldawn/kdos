@@ -1,0 +1,12 @@
+diff -ru a/JS8_UI/Configuration.cpp b/JS8_UI/Configuration.cpp
+--- a/JS8_UI/Configuration.cpp	2026-09-28 03:58:37.659900813 +0530
++++ b/JS8_UI/Configuration.cpp	2026-09-28 03:58:37.676044967 +0530
+@@ -2301,7 +2301,7 @@
+     spot_to_aprs_relay_ = settings_->value("APRSISRelay", false).toBool();
+     write_logs_ = settings_->value("WriteLogs", true).toBool();
+     reset_activity_ = settings_->value("ResetActivity", false).toBool();
+-    check_for_updates_ = settings_->value("CheckForUpdates", true).toBool();
++    check_for_updates_ = settings_->value("CheckForUpdates", false).toBool();
+     tx_qsy_allowed_ = settings_->value("TxQSYAllowed", false).toBool();
+     use_dynamic_info_ = settings_->value("AutoGrid", false).toBool();
+ 

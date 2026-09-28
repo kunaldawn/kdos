@@ -22,17 +22,26 @@
 # (x86_64), the boards this tree already cross-compiles for (aarch64), and the
 # ISA its FPGA and embedded ring targets (riscv64).
 #
-# EVERY GRAPHICAL FRONT END IS OFF and there is no loss: --enable-curses gives
-# a text console on the cell grid, and --enable-vnc means a guest with a real
-# framebuffer is watched over VNC — on this desktop from the boxed Remmina
-# (app.remmina, which carries its VNC plugin) at localhost:5900, from another
-# machine's viewer, or by this project's own testing/vnc-shot.py, which drives
-# a VM exactly that way. GTK is the hard rule. SDL is off
-# because meson.build looks up x11 with no option to stop it and links libX11
-# into the SDL front end whenever that library is installed, which it is for
-# Xwayland. --disable-opengl because with GTK, SDL and virglrenderer (not a
-# port) off, GL adds only the egl-headless display and GL scanout on the D-Bus
-# display, and costs mesa plus libepoxy, whose port depends on libX11.
+# THE GUEST'S SCREEN. --enable-gtk is the window qemu opens by default, a
+# Wayland client through GTK 3, and --enable-vte gives that window its text
+# tabs: without vte the monitor and the serial console have nowhere to appear
+# in it. --enable-sdl is `-display sdl` through sdl2-compat. meson links libX11
+# into both for the keymap an X11 session reports, and has no option to stop
+# it: it is required once GTK's X11 backend is found and taken whenever it is
+# installed, so it is in depends. --enable-opengl is libepoxy on Mesa's EGL: GL scanout in the
+# GTK and SDL windows and on the D-Bus display, and the egl-headless display.
+# A guest's own 3D (virtio-vga-gl) needs virglrenderer, which is not a port, so
+# it stays off with rutabaga, and a guest renders in software.
+#
+# --enable-curses is a text console on the cell grid, and --enable-vnc is a
+# guest watched from any VNC viewer, or by this project's own
+# testing/vnc-shot.py, which drives a VM exactly that way. --enable-spice with
+# spice-protocol is the SPICE display that remote-viewer and virt-manager
+# (spice-gtk) attach to, with a shared clipboard. --enable-usb-redir is the
+# usb-redir device, which takes a USB device redirected from spice-gtk or
+# usbredirect; --enable-smartcard is the emulated CCID reader (libcacard) a
+# host smart card is passed through. --enable-libiscsi is the iscsi:// block
+# driver, which opens a LUN with no kernel initiator.
 #
 # --disable-docs because docs/conf.py requires sphinx_rtd_theme even for the
 # man pages, and that theme is not a port.
@@ -130,7 +139,7 @@
 	--disable-selinux \
 	--disable-numa \
 	--disable-mpath \
-	--disable-libiscsi \
+	--enable-libiscsi \
 	--disable-libnfs \
 	--disable-libssh \
 	--disable-rbd \
@@ -147,11 +156,11 @@
 	--disable-qatzip \
 	--disable-af-xdp \
 	--disable-igvm \
-	--disable-usb-redir \
-	--disable-smartcard \
+	--enable-usb-redir \
+	--enable-smartcard \
 	--disable-u2f \
 	--disable-canokey \
-	--disable-spice-protocol \
+	--enable-spice-protocol \
 	--disable-rutabaga-gfx \
 	--disable-oss \
 	--disable-sparse \
@@ -167,13 +176,13 @@
 	--enable-pipewire \
 	--disable-jack \
 	--disable-sndio \
-	--disable-gtk \
-	--disable-sdl \
+	--enable-gtk \
+	--enable-vte \
+	--enable-sdl \
 	--disable-sdl-image \
-	--disable-opengl \
+	--enable-opengl \
 	--disable-virglrenderer \
-	--disable-spice \
-	--disable-vte \
+	--enable-spice \
 	--disable-xen \
 	--disable-docs \
 	--disable-guest-agent \

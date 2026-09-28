@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = firefox-esr
+version     = 153.3.0
+release     = 1
+series      = 153
+_ver        = ${version}esr
+source      = $name-$version.tar.xz::https://archive.mozilla.org/pub/firefox/releases/$_ver/source/firefox-$_ver.source.tar.xz
+sha256      = 69f1335e78d2a340fc13fcf265c0a72bdce2df8774c9d4d49ee77d1726236df5  firefox-esr-153.3.0.tar.xz
+description = Firefox Extended Support Release web browser, on GTK 3 with Wayland and X11
+homepage    = https://www.firefox.com/
+depends     = clang lld llvm rust cbindgen nodejs python3 nasm unzip pkgconf gtk3 glib pango fontconfig freetype2 dbus wayland libxkbcommon mesa libdrm libX11 libxcb libXext libXfixes libXrandr libXcomposite libXcursor libXdamage libXi libICE libSM at-spi2-core nss nspr icu libevent libffi libjpeg-turbo libvpx libwebp zlib pixman pipewire libpulse alsa-lib ffmpeg pciutils hunspell-en

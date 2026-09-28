@@ -34,7 +34,7 @@ export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
 	--with-mad \
 	--with-id3tag \
 	--with-lame \
-	--without-twolame \
+	--with-twolame=yes \
 	--with-mp3=yes \
 	--with-oggvorbis=yes \
 	--with-opus=yes \

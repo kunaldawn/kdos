@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = xonotic
+version     = 0.8.6
+release     = 1
+source      = $name-$version.zip::https://dl.xonotic.org/xonotic-$version-source.zip
+sha256      = 8b92ac781cff4ae89c121a23eacd7dec05a2aabedaccc23a19d1a0958b4012a8  xonotic-0.8.6.zip
+description = Xonotic — the fast arena first-person shooter on the DarkPlaces engine: SDL client and dedicated server
+homepage    = https://xonotic.org
+depends     = unzip pkgconf sdl2-compat libjpeg-turbo libpng zlib libogg libvorbis libtheora curl gmp xonotic-data

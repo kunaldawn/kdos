@@ -118,7 +118,8 @@ Every child starts on a pseudo-terminal of its own, in a new session, with this 
 | `COLUMNS`, `LINES` | Removed | A stale size inherited from the parent would override the real one |
 
 The shipped `/etc/bash.bashrc` reads `TERM_PROGRAM`: where `GNUTERM` is unset and `gnuplot` is
-installed, it sets `GNUTERM=sixelgd` in `kdos-term` (and in `foot`), so gnuplot draws sixel pictures.
+installed, it sets `GNUTERM=sixelgd` in `kdos-term` (and in `foot`), so gnuplot draws sixel pictures
+inline rather than in its own `qt` window.
 The same file emits the prompt marks described in [Prompt marks](#prompt-marks).
 
 ## Selection and the two clipboards

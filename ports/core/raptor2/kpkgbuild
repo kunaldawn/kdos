@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = raptor2
+version     = 2.0.16
+release     = 1
+source      = https://download.librdf.org/source/$name-$version.tar.gz
+sha256      = 089db78d7ac982354bdbf39d973baf09581e6904ac4c92a98c5caadb3de44680  raptor2-2.0.16.tar.gz
+description = Raptor RDF syntax library — RDF/XML, Turtle and N-Triples parsers and serialisers
+homepage    = https://librdf.org/raptor/
+depends     = pkgconf libxml2 yajl icu

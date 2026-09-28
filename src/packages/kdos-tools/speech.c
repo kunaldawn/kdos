@@ -5,18 +5,18 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   `kdos speech` — the transcription model, which the image does not carry
+ *   `kdos speech` — the transcription models beyond the one the image carries
  *
  *   kdos speech list            what there is, and which one is here
  *   kdos speech get base.en     fetch one into the user's own data directory
- *   kdos speech where           the directory, and the model that would be used
+ *   kdos speech where           the directories searched, and the models in each
  *   kdos speech remove NAME     delete one
  *
- * NO MODEL SHIPS. The smallest useful one is 32 MB and the one most people
- * want is 148 MB, against an image measured in hundreds; and a speech model
- * is the single most personal choice in the catalogue — language, size and
- * the trade between the two. So the image carries `whisper-cli` and this
- * carries the way to get a model for it.
+ * ONE MODEL SHIPS: base.en, from the whisper-model-base-en port, in
+ * /usr/share/whisper.cpp/models. Every other one is a personal choice —
+ * language, size and the trade between the two, from 32 MB to 3 GB — so the
+ * image carries the English default and this carries the way to get the
+ * rest.
  *
  * IT WRITES TO THE USER'S DATA DIRECTORY AND NEVER TO /usr. `kdos-rec`
  * searches $KDOS_WHISPER_MODEL, then $XDG_DATA_HOME/whisper.cpp/models, then
@@ -108,8 +108,11 @@ static const struct model *find_model(const char *name)
 /*
  * $XDG_DATA_HOME/whisper.cpp/models, or $HOME/.local/share/... — kdos-rec's
  * second search path, spelled the same way it spells it. NOT the third:
- * /usr/share is root's and a model is a per-user choice.
+ * /usr/share is root's and a model is a per-user choice. The third is only
+ * read, so `list` and `where` report the model the image carries.
  */
+#define SYSTEM_MODEL_DIR "/usr/share/whisper.cpp/models"
+
 static char *model_dir(void)
 {
 	const char *dh = getenv("XDG_DATA_HOME");
@@ -123,13 +126,21 @@ static char *model_dir(void)
 	return NULL;
 }
 
-static char *model_path(const char *name)
+static char *model_path_in(const char *dir, const char *name)
 {
-	char *dir = model_dir();
 	char leaf[128];
 
 	snprintf(leaf, sizeof(leaf), "ggml-%s.bin", name);
 	return kb_path_join(dir, leaf);
+}
+
+static char *model_path(const char *name)
+{
+	char *dir = model_dir();
+	char *p = model_path_in(dir, name);
+
+	free(dir);
+	return p;
 }
 
 static int is_ggml(const char *path)
@@ -162,13 +173,15 @@ static int cmd_list(void)
 	printf("Models for whisper.cpp, in %s\n\n", dir);
 	for (int i = 0; i < NMODELS; i++) {
 		char *p = model_path(MODELS[i].name);
+		char *sp = model_path_in(SYSTEM_MODEL_DIR, MODELS[i].name);
 		char sz[32];
-		int here = is_ggml(p);
+		int here = is_ggml(p), shipped = is_ggml(sp);
 
 		human(MODELS[i].bytes, sz, sizeof(sz));
 		printf("  %-16s %9s  %s\n", MODELS[i].name, sz,
-		       here ? "installed" : "");
+		       here ? "installed" : shipped ? "shipped" : "");
 		free(p);
+		free(sp);
 	}
 	printf("\n  kdos speech get %s\n", DEFAULT_MODEL);
 	free(dir);
@@ -186,13 +199,19 @@ static int cmd_where(void)
 		       "answer: no directory is searched behind it\n");
 		return is_ggml(env) ? 0 : 1;
 	}
-	printf("%s\n", dir);
-	for (int i = 0; i < NMODELS; i++) {
-		char *p = model_path(MODELS[i].name);
+	/* In kdos-rec's order: any model in the first directory is used
+	 * before every model in the second. */
+	const char *dirs[2] = { dir, SYSTEM_MODEL_DIR };
 
-		if (is_ggml(p))
-			printf("  %s\n", p);
-		free(p);
+	for (int d = 0; d < 2; d++) {
+		printf("%s\n", dirs[d]);
+		for (int i = 0; i < NMODELS; i++) {
+			char *p = model_path_in(dirs[d], MODELS[i].name);
+
+			if (is_ggml(p))
+				printf("  %s\n", p);
+			free(p);
+		}
 	}
 	free(dir);
 	return 0;
@@ -311,13 +330,14 @@ static int usage(void)
 	       "\n"
 	       "  list             every model this knows, and which are here\n"
 	       "  get NAME         download one into your own data directory\n"
-	       "  where            the directory searched, and what is in it\n"
+	       "  where            the directories searched, and what is in each\n"
 	       "  remove NAME      delete one\n"
 	       "\n"
-	       "No speech model ships with KDOS. `whisper-cli` does, and\n"
-	       "kdos-rec's Transcribe is greyed until one of these is here.\n"
+	       "KDOS ships %s in " SYSTEM_MODEL_DIR ", which\n"
+	       "kdos-rec's Transcribe uses when none of yours is here.\n"
+	       "Any other model is one `get` away:\n"
 	       "\n"
-	       "  kdos speech get %s\n", DEFAULT_MODEL);
+	       "  kdos speech get small.en-q5_1\n", DEFAULT_MODEL);
 	return 0;
 }
 

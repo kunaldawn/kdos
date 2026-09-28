@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = keepassxc
+version     = 2.7.12
+release     = 1
+source      = https://github.com/keepassxreboot/keepassxc/releases/download/$version/$name-$version-src.tar.xz
+sha256      = be34eeb297881adea4f894c7c6e4a1835bd7927f8043ddea495040df4792a7de  keepassxc-2.7.12.tar.xz
+description = Password manager — KeePass databases, TOTP, SSH agent, browser integration and the Secret Service
+homepage    = https://keepassxc.org/
+depends     = cmake ninja qt5-qtbase qt5-qtsvg qt5-qttools qt5-qtx11extras qt5-qtwayland libX11 libXi libXtst botan argon2 zlib minizip qrencode readline pcsc-lite libusb asciidoctor

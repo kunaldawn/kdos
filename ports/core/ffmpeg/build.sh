@@ -36,6 +36,8 @@
 # (/etc/profile.d/50-opencl.sh), and `-init_hw_device opencl` fails with no
 # device where it names none. libtesseract is the `ocr` filter, libqrencode the
 # `qrencode` filter and `qrencodesrc` source, and librsvg decodes SVG input.
+# libvidstab is the two-pass `vidstabdetect` and `vidstabtransform`
+# stabiliser, GPL-only like the DVD pair below.
 #
 # libbluray is the bluray: protocol and libdvdnav with libdvdread the dvdvideo
 # demuxer, so `ffmpeg -f dvdvideo -i /dev/sr0` rips a title with its chapters.
@@ -95,6 +97,7 @@
 	--enable-libtesseract \
 	--enable-libqrencode \
 	--enable-librsvg \
+	--enable-libvidstab \
 	--enable-manpages \
 	--disable-htmlpages \
 	--disable-txtpages \

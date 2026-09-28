@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = skanlite
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 7ab83ff5c3d5bfe5e3534a77a5423de88a0ea43850a6a5666551f2e684d87bb2  skanlite-26.08.1.tar.xz
+description = Image scanning application — preview, select and save scans through SANE
+homepage    = https://apps.kde.org/skanlite/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland kcoreaddons ki18n kio kxmlgui kcrash kdoctools libksane ksanecore sane-backends librsvg

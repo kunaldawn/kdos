@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libvolk
+version     = 3.3.0
+release     = 1
+_cpufeatures = 0.9.0
+source      = $name-$version.tar.gz::https://github.com/gnuradio/volk/archive/refs/tags/v$version.tar.gz
+source      = cpu_features-$_cpufeatures.tar.gz::https://github.com/google/cpu_features/archive/refs/tags/v$_cpufeatures.tar.gz
+sha256      = bdb3484de8297c49b59955c3b22dba834401bc2df984ef5cfc17acbe69c5018e  cpu_features-0.9.0.tar.gz
+sha256      = 4face7e38011225fad23b4ad1dcd30bc3e03db26aada6a65fb41a1de21272d89  libvolk-3.3.0.tar.gz
+description = Vector-Optimized Library of Kernels — runtime-dispatched SIMD kernels for GNU Radio and SDR tools
+homepage    = https://www.libvolk.org/
+depends     = cmake python3 python3-mako orc fmt

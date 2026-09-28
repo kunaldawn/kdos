@@ -59,9 +59,10 @@ Three things are not on that grid:
 
 - **The compositor's own chrome**: title bars, the compositor's menus and the window-switcher
   display, drawn as text sized to one cell; see [Windows](#windows).
-- **Applications running in a box.** A *box* is the container a graphical application runs in (see
-  the [glossary](../06-reference/glossary.md)). Such an application draws whatever its own toolkit
-  draws.
+- **Applications.** A graphical application draws whatever its own toolkit draws, whether it is
+  built natively or runs in a *box*, the container a boxed application runs in (see the
+  [glossary](../06-reference/glossary.md)). Only its window frame and its file dialogs are the
+  desktop's.
 - **Pictures**, such as icons and window previews, which occupy whole cells.
 
 [The design language](../03-architecture/design-language.md) explains why the desktop looks like
@@ -280,10 +281,10 @@ once, with no arrows and no `Enter`. The shipped favorites are:
 | `org.xfce.mousepad`, a text editor | `ED` |
 | `gimp` | `IM` |
 
-The last three run in boxes and appear only once they are installed. At most eight pinned
-applications are shown: the first eight entries whose application is installed. An entry with
-nothing installed behind it is skipped and does not use up a place. The panel's pinned launchers
-read the same file.
+Firefox ESR and GIMP are native applications. Mousepad runs in a box and appears only once it is
+installed from the catalogue. At most eight pinned applications are shown: the first eight
+entries whose application is installed. An entry with nothing installed behind it is skipped and
+does not use up a place. The panel's pinned launchers read the same file.
 
 ### Terminal programs
 
@@ -522,6 +523,23 @@ The list is used only when `~/.config/kdos/session-restore` exists: create that 
 (`touch ~/.config/kdos/session-restore`) and your boxed applications are started again at the next
 login, two seconds apart. Programs that are not boxed are recorded but not restarted.
 
+### Accessibility
+
+| Shortcut | Does |
+|---|---|
+| `Super+=` | The magnifier, on or off |
+| `Super+Alt+=`, `Super+Alt+-` | Magnify more, or less |
+| `Super+Alt+S` | Sticky keys, on or off |
+| `Super+Alt+L` | Slow keys, on or off |
+| `Super+Alt+B` | Bounce keys, on or off |
+| `Super+Alt+D` | Dwell click, on or off |
+| `Super+Alt+C` | The large pointer, on or off |
+| `Super+Alt+K` | Show or hide the on-screen keyboard, when `osk` in `comp.conf` starts one |
+
+Each switch puts up a notification saying which way it went. What each aid does, and the
+`comp.conf` keys that set them for every session, are in
+[Accessibility](accessibility.md).
+
 ### Pointer bindings
 
 | Action | Does |
@@ -657,14 +675,16 @@ what was deleted, when and from where. `Enter` puts the selected file back where
 
 ### The file browser
 
-The file browser is `kdos-pick --browse`. The same program is the Open and Save dialog that boxed
-applications get through the file-chooser *portal* (the desktop service through which a boxed
-application asks the host to choose a file, share the screen or open a link), so Open and Save in
-Firefox or GIMP are drawn on this grid rather than by their own toolkit.
+The file browser is `kdos-pick --browse`. The same program is the Open and Save dialog that
+applications get through the file-chooser *portal* (the desktop service through which an
+application asks the host to choose a file, share the screen or open a link). Boxed applications
+always go through the portal; native GTK applications are sent there by `GTK_USE_PORTAL=1` in the
+login profile, and Firefox ESR by its shipped preferences. Open and Save in Firefox or GIMP are
+therefore drawn on this grid rather than by their own toolkit.
 
 Two things are called Files. The Start menu's **Files** row opens `kdos-pick --browse`, while
-`Super+E`, the System menu's Files entry and a double-clicked folder open `mc`, the file manager,
-in a terminal.
+`Super+E` and the System menu's Files entry open `mc`, the file manager, in a terminal. A
+double-clicked folder opens in Dolphin.
 
 ### Opening a file
 
@@ -675,20 +695,28 @@ Some of the shipped defaults:
 
 | You open | It goes to |
 |---|---|
-| A folder | `mc` |
-| A `.pdf` | `kdos-peek` |
-| An `.epub` | `epy` |
-| A `.7z` or `.rar` archive | `kdos-openarchive` |
-| A `.csv` file | `visidata`, whose desktop entry claims `text/csv` |
-| A spreadsheet (`.xlsx`) | Nothing by default: no installed entry claims the type, so neither a double-click nor **Open With** offers a handler. Run `sc-im file.xlsx` or `vd file.xlsx` from a prompt; both read `.xlsx`, and sc-im also writes it |
-| A `mailto:` link | `aerc` |
-| A web page, `http:` or `https:` link | `w3m` |
+| A folder | Dolphin |
+| A `.pdf` | Okular |
+| An `.epub`, `.mobi` or `.fb2` book | Calibre's e-book viewer |
+| A `.zim` archive | Kiwix |
+| A text file, Markdown, JSON or a shell script | Kate |
+| A picture (PNG, JPEG, GIF, WebP, BMP, TIFF, SVG, AVIF, HEIF, JPEG XL) | Gwenview |
+| A video | Haruna |
+| A music file | Strawberry |
+| A `.zip`, `.tar.*` or `.7z` archive | Ark |
+| A `.rar` archive, or a comic book packed as 7z or rar | `kdos-openarchive` |
+| A `.csv` file | No default: `visidata`, Gnumeric and LibreOffice Calc all claim `text/csv`, so **Open With** asks |
+| A `mailto:` link, an `.eml` message or an `.ics` calendar | Thunderbird |
+| A web page, `http:` or `https:` link | Firefox ESR |
 
-The system-wide defaults are in two files. `/etc/xdg/kdos-mimeapps.list` is searched first and holds
-the choices that need a window (images to `imv`, text to `nvim`). `/etc/xdg/mimeapps.list` is the
-layer under it and holds the folder, document, archive, mail and web rows in the table above, which
-answer the same way on `tty1` as on the desktop; that is why web links go to `w3m`. Your own choices
-go in `~/.config/mimeapps.list`, which ships empty.
+The system-wide defaults are in two files, and a type is named in only one of them.
+`/etc/xdg/kdos-mimeapps.list` is searched first and holds every choice that needs a window, which is
+every row in the table above except the `kdos-openarchive` row and the `.csv` row.
+`/etc/xdg/mimeapps.list` is the layer under it and holds the types whose handler draws in a
+terminal: rar and comic-book archives, and the XPS and zipped comic-book pages `kdos-peek` shows.
+Both tables are read on `tty1` too, where there is no compositor for Firefox or Okular to open in;
+run `w3m`, `aerc`, `epy`, `mc` or `kdos-peek` by name there. Your own choices go in
+`~/.config/mimeapps.list`, which ships empty, and outrank both.
 
 A browser you install in a box registers itself as a candidate handler; use `kdos-openwith` to make
 it the default. A link clicked on the desktop or in a terminal program goes through `xdg-open`,
@@ -791,8 +819,12 @@ Removable disks are always mounted `nosuid,nodev`, and `noexec` by default. The 
 `/media/<user>/<label>`, or the device name when the filesystem has no label; it is created readable
 only by you and removed on unmount, and characters other than letters, digits, `.`, `_` and `-` are
 removed from the label. `/etc/kdos/mountd.conf` does not exist by default. Create it with the line
-`exec = yes` to allow programs on removable disks to run, and with `format = yes` to allow the
-disks tool, `kdos-disks` (the `system.disks` route), to format one.
+`exec = yes` to allow programs on removable disks to run, with `format = yes` to allow the disks
+tool, `kdos-disks` (the `system.disks` route), to format one, and with `write = yes` to allow it to
+write a disk image, such as an installer, over a whole stick. **Write image** asks for the image
+(type its path, or drop the file on the window) and then for the disk's name, `sdb` for a row on
+`sdb1`, because the whole disk is replaced. The bar shows the write and then the read-back that
+checks it; the window can be closed while it runs.
 
 The service offers only a disk that is removable or attached over USB, and never:
 
@@ -849,7 +881,8 @@ check `panel` in `comp.conf`.
 - [kdos-shell](../04-programs/kdos-shell.md): every surface on this page, in detail
 - [kdos-comp](../04-programs/kdos-comp.md): frames, the phosphor pass, and the configuration keys
 - [The window model](../03-architecture/window-model.md): where a window goes, snapping and workspaces
-- [Applications](applications.md): installing and launching boxed software
+- [Applications](applications.md): the native applications, and installing and launching boxed
+  software
 - [Theming](theming.md): accents, the shader, the wallpaper and fonts
 - [Accessibility](accessibility.md): the magnifier and what does not exist
 - [Configuration](../06-reference/configuration.md): every key on this page, with defaults

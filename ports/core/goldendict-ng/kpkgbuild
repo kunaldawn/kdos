@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = goldendict-ng
+version     = 26.8.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/xiaoyifang/goldendict-ng/archive/refs/tags/v$version.tar.gz
+sha256      = 181534c827ca7939cb310df2013b084e4274b64f621821a4f825219f2dc888e3  goldendict-ng-26.8.0.tar.gz
+description = Dictionary lookup — StarDict, DSL, MDict, ZIM, Babylon and hunspell morphology, offline
+homepage    = https://xiaoyifang.github.io/goldendict-ng/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qt5compat qt6-qttools qt6-qtmultimedia qt6-qtwebengine qt6-qtsvg qt6-qtspeech qt6-qtwayland hunspell xz lzo opencc tomlplusplus libvorbis xapian-core zlib bzip2 fmt libzim libX11 libXtst

@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tryton
+version     = 7.0.44
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/t/tryton/tryton-$version.tar.gz
+sha256      = ceb3ba429b352565eb87fca0000291221f61d8cd33f600e3844a4bf8606fdf55  tryton-7.0.44.tar.gz
+sha256      = f5507e406516c8cb61960b26b53ba88124a9eae3cc985087b12f799bfff64792  tryton-vendor-7.0.44.tar.xz
+description = Tryton — desktop client for the Tryton business platform and GNU Health, in GTK 3
+homepage    = https://www.tryton.org/
+depends     = python3 python3-setuptools python3-pip python3-wheel python3-hatchling python3-gobject python3-cairo python3-dateutil gtk3 pango gdk-pixbuf librsvg hicolor-icon-theme
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = goocalendar:1.0.0 hatch-tryton:0.1.1

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-ipykernel
+version     = 6.31.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/i/ipykernel/ipykernel-$version.tar.gz
+sha256      = 2372ce8bc1ff4f34e58cafed3a0feb2194b91fc7cad0fc72e79e47b45ee9e8f6  python3-ipykernel-6.31.0.tar.gz
+description = ipykernel — the IPython kernel for Jupyter, under JupyterLab and Spyder
+homepage    = https://ipython.org/
+depends     = python3 python3-pip python3-hatchling ipython python3-comm python3-jupyter-client python3-jupyter-core python3-nest-asyncio python3-packaging python3-psutil python3-pyzmq python3-tornado python3-debugpy

@@ -24,8 +24,12 @@
 #
 # The audio back end is loaded with plain dlopen, not libltdl.
 #
-# The Python side stays off: spd-conf imports pyxdg at start-up, and with no
-# port providing it the tool would ship and fail on its first line.
+# THE PYTHON SIDE IS ON: the speechd module is how Orca speaks, and spd-conf
+# is the configuration and diagnosis tool. Both are pure python. spd-conf
+# imports pyxdg at start-up, and its manual page is help2man's capture of
+# spd-conf --help, so python3-pyxdg is needed to build as well as to run.
+# --enable-python makes a missing python3 a failed configure rather than a
+# package without the module.
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--disable-static \
 	--disable-ltdl \
@@ -46,6 +50,6 @@
 	--without-oss \
 	--without-systemdsystemunitdir \
 	--without-systemduserunitdir \
-	--disable-python
+	--enable-python
 make
 make DESTDIR=$PKG install

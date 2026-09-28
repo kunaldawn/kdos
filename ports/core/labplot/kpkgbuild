@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = labplot
+version     = 2.12.1
+release     = 1
+source      = https://download.kde.org/stable/labplot/labplot-$version.tar.xz
+sha256      = e28155bfddf40e5b6f7c4791313556d1e48138044f216f210d515b9f6d6c106a  labplot-2.12.1.tar.xz
+description = LabPlot — data visualisation and analysis: plots, fits, FFT, spreadsheets and live data
+homepage    = https://labplot.org/
+depends     = cmake ninja extra-cmake-modules bison qt6-qtbase qt6-qtsvg qt6-qtserialport karchive kcompletion kconfig kconfigwidgets kcoreaddons kcrash ki18n kiconthemes kio ktextwidgets kwidgetsaddons kxmlgui knewstuff kdoctools kservice kparts purpose syntax-highlighting gsl poppler fftw hdf5 netcdf-c cfitsio discount eigen zlib lz4 zstd cantor libcerf matio liborcus libixion qt6-qtmqtt

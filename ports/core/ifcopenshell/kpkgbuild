@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ifcopenshell
+version     = 0.8.5
+release     = 1
+_tag        = ifcopenshell-python-$version
+source      = $name-$version.tar.gz::https://github.com/IfcOpenShell/IfcOpenShell/archive/refs/tags/$_tag.tar.gz
+sha256      = 185b97d79c800603685c60abd1497df242050dbb117dcaccbaebdec0cdf25dd5  ifcopenshell-0.8.5.tar.gz
+description = IfcOpenShell — IFC (BIM) toolkit: the C++ parser and OpenCASCADE geometry, IfcConvert and the ifcopenshell Python module FreeCAD's BIM workbench imports
+homepage    = https://ifcopenshell.org/
+depends     = cmake ninja swig python3 boost eigen opencascade hdf5 libxml2 nlohmann-json zlib numpy python3-lark python3-dateutil python3-typing-extensions python3-isodate python3-shapely

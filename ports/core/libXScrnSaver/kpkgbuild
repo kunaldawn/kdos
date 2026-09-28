@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libXScrnSaver
+version     = 1.2.5
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = 5057365f847253e0e275871441e10ff7846c8322a5d88e1e187d326de1cd8d00  libXScrnSaver-1.2.5.tar.xz
+description = X11 MIT-SCREEN-SAVER extension client library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libxscrnsaver
+depends     = libX11 libXext xorgproto

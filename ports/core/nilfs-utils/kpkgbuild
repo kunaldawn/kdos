@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = nilfs-utils
+version     = 2.3.1
+release     = 1
+source      = https://nilfs.sourceforge.io/download/nilfs-utils-$version.tar.bz2
+sha256      = bf89d7ff4579c0df294b3493ed412cd4970b0a1eaaecb658e8f6c730153f0148  nilfs-utils-2.3.1.tar.bz2
+description = NILFS2 filesystem utilities — mkfs.nilfs2, the cleaner daemon, nilfs-resize and snapshot tools
+homepage    = https://nilfs.sourceforge.io/
+depends     = util-linux

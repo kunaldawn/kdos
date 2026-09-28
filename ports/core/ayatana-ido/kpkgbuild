@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ayatana-ido
+version     = 0.10.4
+release     = 1
+source      = https://github.com/AyatanaIndicators/ayatana-ido/archive/$version/ayatana-ido-$version.tar.gz
+sha256      = bd59abd5f1314e411d0d55ce3643e91cef633271f58126be529de5fb71c5ab38  ayatana-ido-0.10.4.tar.gz
+description = Ayatana Indicator Display Objects — the GTK 3 menu widgets indicator menus are built from
+homepage    = https://github.com/AyatanaIndicators/ayatana-ido
+depends     = cmake ninja pkgconf glib gtk3 gobject-introspection glib-introspection vala

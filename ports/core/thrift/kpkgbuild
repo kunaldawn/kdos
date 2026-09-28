@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = thrift
+version     = 0.24.0
+release     = 1
+source      = https://archive.apache.org/dist/thrift/$version/thrift-$version.tar.gz
+sha256      = e0fa5839a4c5c1d631b0931cf2c554ebbfa4e2fee3a9fb3ffd4f82ce4396c6e4  thrift-0.24.0.tar.gz
+description = Apache Thrift — the IDL compiler, the C++ library and the Python module; GNU Radio's ControlPort transport
+homepage    = https://thrift.apache.org/
+depends     = cmake ninja pkgconf boost openssl zlib libevent flex bison python3 python3-setuptools python3-wheel python3-pip

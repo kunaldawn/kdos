@@ -75,3 +75,23 @@ test -s /etc/skel/.icons/KDOS-cursors/cursors/default
 # home, and a skel without it hands every new user a grey KDE.
 test -s /etc/skel/.config/kdeglobals
 test -s /etc/skel/.local/share/color-schemes/KDOS.colors
+# The Qt side for a process with no KDE platform theme: every Qt 5 application,
+# and a Qt 6 one started under qt6ct. Each file's palette is the colour file
+# beside it, named with a `~` so it resolves in the reading user's home.
+test -s /etc/skel/.config/qt5ct/qt5ct.conf
+test -s /etc/skel/.config/qt5ct/colors/KDOS.conf
+test -s /etc/skel/.config/qt6ct/qt6ct.conf
+test -s /etc/skel/.config/qt6ct/colors/KDOS.conf
+
+# The GSettings defaults (fs/usr/share/glib-2.0/schemas/90_kdos.gschema.override)
+# reach GTK only through gschemas.compiled. kpkg's schemas trigger writes it
+# when a package touches the directory, which an fs/-only rebuild never does,
+# so it is rebuilt here from whatever the directory holds now. No glib means
+# no GSettings reader, and no schema means nothing for the override to set:
+# glib-compile-schemas then writes no index at all, and the check below would
+# stop packaging.
+if command -v glib-compile-schemas >/dev/null 2>&1 &&
+   compgen -G '/usr/share/glib-2.0/schemas/*.gschema.xml' >/dev/null; then
+    glib-compile-schemas /usr/share/glib-2.0/schemas
+    test -s /usr/share/glib-2.0/schemas/gschemas.compiled
+fi

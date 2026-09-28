@@ -60,6 +60,7 @@ enum {
 	T_HWDB,
 	T_MAN,
 	T_XFONTS,
+	T_TEXMF,
 	T_COUNT
 };
 
@@ -79,6 +80,7 @@ static const char *const t_dir[T_COUNT][T_MAXDIRS] = {
 		     "lib/udev/hwdb.d/" },
 	[T_MAN] = { "usr/share/man/" },
 	[T_XFONTS] = { "usr/share/fonts/" },
+	[T_TEXMF] = { "usr/share/texmf-dist/", "usr/share/texmf-local/" },
 };
 
 static const char *const t_tool[T_COUNT] = {
@@ -91,6 +93,7 @@ static const char *const t_tool[T_COUNT] = {
 	[T_HWDB] = "udevadm",
 	[T_MAN] = "makewhatis",
 	[T_XFONTS] = "mkfontdir",
+	[T_TEXMF] = "mktexlsr",
 };
 
 #define MAN_DIR "usr/share/man/"
@@ -288,6 +291,40 @@ static int run_xfonts(const char *root)
 	return rc;
 }
 
+/* ls-R, per texmf tree. kpathsea searches the distribution and local trees
+ * through ls-R ONLY: a file a later package adds under either is invisible to
+ * every TeX program until its tree's ls-R lists it. texmf-var is not watched
+ * — nothing a package ships goes there — but its ls-R names the formats, and
+ * rewriting all three together costs one run. A tree that does not exist is
+ * not named, so the tool never creates one. */
+static int run_texmf(const char *root)
+{
+	static const char *const tree[] = { "usr/share/texmf-dist",
+					    "usr/share/texmf-local",
+					    "usr/share/texmf-var" };
+	char *dirs[sizeof(tree) / sizeof(*tree)];
+	int n = 0, rc = 0;
+	KbArgv a = {0};
+
+	kb_argv_add(&a, t_tool[T_TEXMF]);
+	kb_argv_add(&a, "--quiet");
+	for (size_t i = 0; i < sizeof(tree) / sizeof(*tree); i++) {
+		char *d = kb_path_join(root, tree[i]);
+		if (!kb_is_dir(d)) {
+			free(d);
+			continue;
+		}
+		dirs[n++] = d;
+		kb_argv_add(&a, d);
+	}
+	kb_argv_end(&a);
+	if (n)
+		rc = kb_run(&a);
+	for (int i = 0; i < n; i++)
+		free(dirs[i]);
+	return rc;
+}
+
 /* Under `--root`, inside the root: the root's own tool, which writes the
  * cache path it was compiled with, relative to the root it runs in. */
 static int run_pixbuf_rooted(const char *root)
@@ -311,6 +348,8 @@ static int run_one(const KpTriggers *t, int i, const char *root, int rooted)
 		return run_man(t, root);
 	if (i == T_XFONTS)
 		return run_xfonts(root);
+	if (i == T_TEXMF)
+		return run_texmf(root);
 	if (i == T_PIXBUF && rooted)
 		return run_pixbuf_rooted(root);
 

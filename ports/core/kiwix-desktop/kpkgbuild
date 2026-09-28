@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kiwix-desktop
+version     = 2.5.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/kiwix/kiwix-desktop/archive/refs/tags/$version.tar.gz
+sha256      = 30936feca234addcf7dbc58961750a0efe87023284a4a2f0fe36adeb44daaf91  kiwix-desktop-2.5.1.tar.gz
+description = Kiwix: an offline reader for ZIM libraries such as Wikipedia, with search, tabs and a reading list
+homepage    = https://kiwix.org/
+depends     = qt6-qtbase qt6-qtwebengine qt6-qtwebchannel qt6-qtsvg qt6-qtimageformats qt6-qtspeech libkiwix libzim pkgconf hicolor-icon-theme shared-mime-info

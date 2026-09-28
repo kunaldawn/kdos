@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = portmidi
+version     = 2.0.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/PortMidi/portmidi/archive/refs/tags/v$version.tar.gz
+sha256      = f21201d4cc233638d7bb6ee29ee6dece54f6c9c1aeb7989bc978001caaf2f666  portmidi-2.0.8.tar.gz
+description = Portable real-time MIDI input and output library over ALSA sequencer
+homepage    = https://github.com/PortMidi/portmidi
+depends     = cmake alsa-lib

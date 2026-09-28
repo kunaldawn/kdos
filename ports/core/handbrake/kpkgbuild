@@ -1,0 +1,36 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = handbrake
+version     = 1.11.2
+release     = 1
+_hbc        = https://github.com/HandBrake/HandBrake-contribs/releases/download/contribs2
+source      = $name-$version.tar.bz2::https://github.com/HandBrake/HandBrake/releases/download/$version/HandBrake-$version-source.tar.bz2
+source      = $_hbc/ffmpeg-8.0.2.tar.bz2
+source      = $_hbc/x265-snapshot-20260216-13309.tar.gz
+source      = $_hbc/SVT-AV1-v4.1.0.tar.gz
+source      = $_hbc/dav1d-1.5.3.tar.bz2
+source      = $_hbc/zimg-snapshot-20250624.tar.gz
+source      = $_hbc/libdvdread-7.0.1.tar.bz2
+source      = $_hbc/libdvdnav-7.0.0.tar.bz2
+source      = $_hbc/libbluray-1.4.0.tar.xz
+sha256      = 12b046350f2422dc28783ff94229aff4ba5fe5e683431e057355d36163b2593a  handbrake-1.11.2.tar.bz2
+sha256      = 2a8b8840c0bc78f5ed1576f98eba7df00c05f87fd6d07fad16efcd9333016edf  ffmpeg-8.0.2.tar.bz2
+sha256      = a0882bb90826da62a96676c1a7cb7a7beb7f1db901f2775299cbeed03c3eb2a2  x265-snapshot-20260216-13309.tar.gz
+sha256      = 6c4c0c44ff0ba3d136d6f57f3a707f9de8e9c866f50f809c1d22a43f0d8c9583  SVT-AV1-v4.1.0.tar.gz
+sha256      = e099f53253f6c247580c554d53a13f1040638f2066edc3c740e4c2f15174ce22  dav1d-1.5.3.tar.bz2
+sha256      = 19a96cdc266466be58be86a9271bedb1f080bf4cc14f5ed58ac39dc5b970fd17  zimg-snapshot-20250624.tar.gz
+sha256      = b69f74d9ceea1ed173b579deba99f669c2cb42f3fd06d7d23b33ff222aa63763  libdvdread-7.0.1.tar.bz2
+sha256      = 1363cdfaf6e92c0b574579299b5480f5867fb32989451468a28f3f402ec48787  libdvdnav-7.0.0.tar.bz2
+sha256      = 77937baf07eadda4b2b311cf3af4c50269d2ea3165041f5843d96476c4c92777  libbluray-1.4.0.tar.xz
+description = HandBrake video transcoder: the GTK 4 application and HandBrakeCLI
+homepage    = https://handbrake.fr/
+depends     = python3 meson ninja cmake nasm autoconf automake libtool m4 patch pkgconf gettext glib gtk4 libxml2 libass harfbuzz fribidi freetype2 fontconfig jansson libjpeg-turbo libogg libvorbis libtheora x264 lame opus speex libvpx numactl bzip2 xz zlib

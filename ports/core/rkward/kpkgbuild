@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rkward
+version     = 0.8.3
+release     = 1
+source      = https://download.kde.org/stable/rkward/$version/rkward-$version.tar.gz
+sha256      = 40d2a6b6ddc77cb226ccd97037350235ca12d3a422f31b1f9ae3c01be427f5e5  rkward-0.8.3.tar.gz
+description = RKWard — a KDE front end to R: data editor, plots, dialogs and R Markdown
+homepage    = https://rkward.kde.org/
+depends     = cmake ninja extra-cmake-modules gettext R qt6-qtbase qt6-qtdeclarative qt6-qtwebengine kcoreaddons kdoctools ki18n kxmlgui ktexteditor kwidgetsaddons kparts kconfig knotifications kwindowsystem karchive kcrash breeze-icons kdsingleapplication

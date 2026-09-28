@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libretro-nestopia
+version     = 20260925
+release     = 1
+_commit     = 8f00f500912a847062de432e38765c7285483e62
+source      = $name-$version.tar.gz::https://github.com/libretro/nestopia/archive/$_commit.tar.gz
+sha256      = 82aa1624189dad4302abe5af6cc6eee3821f34be346430566b3cab2904ce171b  libretro-nestopia-20260925.tar.gz
+description = Nestopia UE as a libretro core — Nintendo Entertainment System and Famicom Disk System emulator
+homepage    = https://github.com/libretro/nestopia

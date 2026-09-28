@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = zeromq
+version     = 4.3.5
+release     = 1
+source      = https://github.com/zeromq/libzmq/releases/download/v$version/zeromq-$version.tar.gz
+sha256      = 6653ef5910f17954861fe72332e68b03ca6e4d9c7160eb3a8de5a5a913bfab43  zeromq-4.3.5.tar.gz
+description = ZeroMQ — the message sockets Jupyter kernels talk over
+homepage    = https://zeromq.org/
+depends     = libsodium pkgconf

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name       = opencascade
+version     = 7.9.3
+release     = 1
+_tag        = V${version//./_}
+source      = $name-$version.tar.gz::https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/$_tag.tar.gz
+sha256      = 5ecf094ec6b12d5413dfb851d8c3590c354058aee556e32e408bdfbf8c357d57  opencascade-7.9.3.tar.gz
+description = Open CASCADE Technology, the B-rep CAD kernel with STEP, IGES and glTF exchange
+homepage    = https://dev.opencascade.org/
+depends     = cmake ninja freetype2 fontconfig rapidjson draco mesa libglvnd

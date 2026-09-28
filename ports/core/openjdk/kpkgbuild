@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = openjdk
+version     = 25.0.4.1
+release     = 1
+
+_build      = 1
+_feature    = ${version%%.*}
+_seed       = 25.0.4.1
+_seedbuild  = 1
+
+source      = https://github.com/openjdk/jdk${_feature}u/archive/refs/tags/jdk-$version-ga.tar.gz
+source      = https://github.com/adoptium/temurin${_feature}-binaries/releases/download/jdk-${_seed}%2B${_seedbuild}/OpenJDK${_feature}U-jdk_x64_alpine-linux_hotspot_${_seed}_${_seedbuild}.tar.gz
+sha256      = f18648ee5ce45261f50dc9493fdae7ddebaa2a7a857cafda3e2a448a79c03dee  OpenJDK25U-jdk_x64_alpine-linux_hotspot_25.0.4.1_1.tar.gz
+sha256      = 1e5908f90d732e0ed3f737aac7603863c2cc157e464e036ac0accadb87af4391  openjdk-25.0.4.1.tar.gz
+description = OpenJDK, the Java Development Kit: the JVM, the compiler and the class library (LTS)
+homepage    = https://openjdk.org/
+depends     = bash autoconf zip unzip file pandoc alsa-lib cups fontconfig freetype2 harfbuzz giflib lcms2 libjpeg-turbo libpng zlib libX11 libXext libXrender libXi libXtst libXrandr libXt xorgproto

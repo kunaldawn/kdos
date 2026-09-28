@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kbookmarks
+version     = 6.30.0
+release     = 1
+source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 680120f09929d51da0a65e96a1f7d20ffbbdd2795a165719b0d07e00475e77c4  kbookmarks-6.30.0.tar.xz
+description = KDE Frameworks: bookmark storage and menus
+homepage    = https://invent.kde.org/frameworks/kbookmarks
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons kwidgetsaddons

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libsoundio
+version     = 2.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/andrewrk/libsoundio/archive/refs/tags/$version.tar.gz
+sha256      = 67a8fc1c9bef2b3704381bfb3fb3ce99e3952bc4fea2817729a7180fddf4a71e  libsoundio-2.0.0.tar.gz
+description = Cross-backend real-time audio input and output, through PulseAudio or ALSA
+homepage    = http://libsound.io/
+depends     = cmake ninja alsa-lib libpulse

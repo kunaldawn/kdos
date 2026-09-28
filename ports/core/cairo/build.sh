@@ -11,6 +11,10 @@
 
 export XML_CATALOG_FILES=/etc/xml/catalog
 
+# xlib, xcb and xlib-xcb install cairo-xlib.pc and cairo-xcb.pc. GTK 3 and 4
+# build their X11 backend against cairo-xlib and stop at setup without it, and
+# FLTK, cairomm and Ardour draw on Xlib surfaces under Xwayland.
+
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-D fontconfig=enabled \
@@ -20,9 +24,9 @@ meson setup build \
 	-D lzo=enabled \
 	-D glib=enabled \
 	-D tee=enabled \
-	-D xlib=disabled \
-	-D xcb=disabled \
-	-D xlib-xcb=disabled \
+	-D xlib=enabled \
+	-D xcb=enabled \
+	-D xlib-xcb=enabled \
 	-D dwrite=disabled \
 	-D quartz=disabled \
 	-D spectre=disabled \

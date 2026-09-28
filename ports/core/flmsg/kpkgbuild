@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = flmsg
+version     = 4.0.24
+release     = 1
+source      = https://downloads.sourceforge.net/project/fldigi/$name/$name-$version.tar.gz
+sha256      = 93340798d0f9ccafc7cb8d19d1146cb67279c79723c436b1d25da276399e0694  flmsg-4.0.24.tar.gz
+description = flmsg — amateur radio message forms (ICS, Radiogram, Red Cross) sent through fldigi
+homepage    = http://www.w1hkj.org/
+depends     = pkgconf fltk libX11 flxmlrpc imagemagick

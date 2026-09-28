@@ -55,6 +55,21 @@ KDOS_SOURCES_REPO="${KDOS_SOURCES_REPO:-kunaldawn/kdos}"
 # Empty means upstream only — no archive is consulted.
 KDOS_SOURCES_BASE="${KDOS_SOURCES_BASE-https://github.com/$KDOS_SOURCES_REPO/releases/download}"
 
+# A BASE WITH NO SCHEME IS A DIRECTORY: an archive disk, or any copy of the
+# release assets laid out as <dir>/sources-NNN/<hash>. It is made absolute and
+# served as a file:// URL, so every caller reads it through the same curl call
+# as the network archive — a relative path would follow each caller's later cd.
+case $KDOS_SOURCES_BASE in
+    ""|*://*) ;;
+    /*) KDOS_SOURCES_BASE="file://$KDOS_SOURCES_BASE" ;;
+    *) KDOS_SOURCES_BASE="file://$PWD/$KDOS_SOURCES_BASE" ;;
+esac
+
+# src_base_local — true when the archive is a directory on this machine.
+src_base_local() {
+    [[ $KDOS_SOURCES_BASE == file://* ]]
+}
+
 SRCLIB_PORTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRCLIB_ROOT="$(dirname "$SRCLIB_PORTS")"
 

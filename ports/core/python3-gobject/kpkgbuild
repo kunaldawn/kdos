@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-gobject
+version     = 3.58.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pygobject/pygobject-$version.tar.gz
+sha256      = 45068697de3ffe46840ca369705f23118b34db4f7deb63f6eff079a6734ddcca  python3-gobject-3.58.0.tar.gz
+description = PyGObject — GLib, GTK and every introspected library, from Python
+homepage    = https://pygobject.gnome.org/
+depends     = python3 meson ninja pkgconf glib glib-introspection gobject-introspection libffi cairo python3-cairo

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = suil
+version     = 0.10.26
+release     = 1
+source      = https://download.drobilla.net/$name-$version.tar.xz
+sha256      = 62808916602c47d201a1ec2d246323a8048243f2bf972f859f0db1db4662ee43  suil-0.10.26.tar.xz
+description = Embeds LV2 plugin user interfaces in GTK 3, Qt 6 and X11 hosts
+homepage    = https://drobilla.net/software/suil.html
+depends     = meson ninja pkgconf lv2 gtk3 qt6-qtbase libX11

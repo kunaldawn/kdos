@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gnuhealth
+version     = 5.0.7
+release     = 1
+source      = https://codeberg.org/gnuhealth/his/archive/$version.tar.gz
+sha256      = 12d5c10c82797bcedefc2a90147331b4018fc8a540a33fba08a136bd4c8a13c6  gnuhealth-5.0.7.tar.gz
+sha256      = 6a8a23e0690f2be83914b774e0f11067ce7b6c5edc2b7fd147494a5da0678e86  gnuhealth-vendor-5.0.7.tar.xz
+description = GNU Health — hospital and clinic information system: patients, labs, pharmacy, imaging and stock, on Tryton
+homepage    = https://www.gnuhealth.org/
+depends     = python3 python3-setuptools python3-setuptools-scm python3-pip python3-wheel python3-poetry-core python3-flit-core python3-hatchling postgresql python3-psycopg2 python3-lxml python3-dateutil python3-pytz python3-six python3-pillow python3-markupsafe python3-packaging python3-psutil python3-qrcode matplotlib util-linux
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = defusedxml genshi passlib polib proteus:7.0.3 puremagic pycountry pydicom python-barcode python-sql python-stdnum pywebdav3-gnuhealth relatorio simpleeval trytond:7.0.57 trytond-account:7.0.28 trytond-account-invoice:7.0.18 trytond-account-product:7.0.3 trytond-company:7.0.4 trytond-country:7.0.1 trytond-currency:7.0.1 trytond-party:7.0.7 trytond-product:7.0.6 trytond-stock:7.0.20 trytond-stock-lot:7.0.7 vobject:0.9.8 werkzeug gnuhealth-control:5.0.4

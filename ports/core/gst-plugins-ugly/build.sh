@@ -23,7 +23,9 @@
 #
 # cdio is cdiocddasrc, an audio CD as a source (`cdda://`), and dvdread is
 # dvdreadsrc, a DVD title without its menus; rsndvdbin in gst-plugins-bad is
-# the one with menus. dvdread is GPL and rides on -Dgpl=enabled with x264.
+# the one with menus. a52dec is AC-3 decode and mpeg2dec is MPEG-1/2 video
+# decode, the two a DVD title needs. dvdread, a52dec and mpeg2dec are GPL and
+# ride on -Dgpl=enabled with x264.
 
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
@@ -35,10 +37,10 @@ meson setup build \
 	-Dx264=enabled \
 	-Dorc=enabled \
 	-Dorc-compiler=disabled \
-	-Da52dec=disabled \
+	-Da52dec=enabled \
 	-Dcdio=enabled \
 	-Ddvdread=enabled \
-	-Dmpeg2dec=disabled \
+	-Dmpeg2dec=enabled \
 	-Dsidplay=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

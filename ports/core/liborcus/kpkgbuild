@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = liborcus
+version     = 0.20.2
+release     = 1
+source      = https://gitlab.com/api/v4/projects/orcus%2Forcus/packages/generic/source/$version/liborcus-$version.tar.xz
+sha256      = 85fb0af34042108f2b6aa8e7f3994fe972fd79efe3f1cd01dc7a49b0ffc5ca13  liborcus-0.20.2.tar.xz
+description = orcus — import filters for ODS, XLSX, Excel 2003 XML, Gnumeric, CSV, JSON and YAML
+homepage    = https://gitlab.com/orcus/orcus
+depends     = boost mdds libixion zlib python3

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = twolame
+version     = 0.4.0
+release     = 1
+source      = https://github.com/njh/twolame/releases/download/$version/$name-$version.tar.gz
+sha256      = cc35424f6019a88c6f52570b63e1baf50f62963a3eac52a03a800bb070d7c87d  twolame-0.4.0.tar.gz
+description = MPEG Audio Layer 2 (MP2) encoder library and command-line encoder
+homepage    = https://www.twolame.org/
+depends     = libsndfile

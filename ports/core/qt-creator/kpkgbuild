@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt-creator
+version     = 20.0.2
+release     = 1
+_series     = ${version%.*}
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qtcreator/$_series/$version/qt-creator-opensource-src-$version.tar.xz
+sha256      = f0505278792454d8fa1af029d05878b112773dc9d67503c8f9671cb67b07bfea  qt-creator-20.0.2.tar.xz
+description = Qt Creator — the Qt IDE for C++, QML and Python, with a clangd code model
+homepage    = https://www.qt.io/product/development-tools
+depends     = cmake ninja python3 llvm clang libarchive yaml-cpp elfutils zstd qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qttools qt6-qt5compat qt6-qtserialport qt6-qtshadertools qt6-qtwayland gdb

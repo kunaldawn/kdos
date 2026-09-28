@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qsstv
+version     = 9.5.8
+release     = 1
+source      = https://www.qsl.net/o/on4qz/$name/downloads/${name}_$version.tar.gz
+sha256      = c03f7fa5c680ced8fd331c25ff3e47440c9aedb48ec7b66255c6aa0ed88e7a68  qsstv-9.5.8.tar.gz
+description = QSSTV — slow-scan television and digital image modes (HamDRM) for amateur radio
+homepage    = https://www.qsl.net/on4qz/qsstv/
+depends     = pkgconf qt5-qtbase qt5-qtwayland openjpeg alsa-lib libpulse fftw hamlib v4l-utils imagemagick

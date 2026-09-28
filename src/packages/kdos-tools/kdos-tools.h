@@ -163,9 +163,9 @@ int kdt_trash(int argc, char **argv);
 int kdt_places(int argc, char **argv);
 int kdt_thumb(int argc, char **argv);
 /*
- * `kdos speech` — the transcription model. No speech model ships, so this is
- * the way one arrives: a named catalogue, a checksummed download into the
- * user's own data directory, and the directory kdos-rec searches.
+ * `kdos speech` — the transcription models. The image carries base.en; this
+ * is the way any other arrives: a named catalogue, a checksummed download into
+ * the user's own data directory, and the directories kdos-rec searches.
  */
 int kdt_speech(int argc, char **argv);
 

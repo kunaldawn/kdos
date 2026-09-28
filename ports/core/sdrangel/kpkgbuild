@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sdrangel
+version     = 7.27.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/f4exb/sdrangel/archive/refs/tags/v$version.tar.gz
+sha256      = eec945efc55d743cc9b0c6e7a8a9e20c9d289d4a70dfb907c3b923a6b555a8ff  sdrangel-7.27.2.tar.gz
+description = SDRangel — software radio receiver, transmitter and analyser with decoders for ADS-B, AIS, APRS, FT8, DATV and more
+homepage    = https://www.sdrangel.org/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtwayland qt6-qtsvg qt6-qtdeclarative qt6-qtwebsockets qt6-qtmultimedia qt6-qtpositioning qt6-qtlocation qt6-qtcharts qt6-qtserialport qt6-qtscxml qt6-qtspeech mesa libglvnd boost fftw libusb hidapi opus flac zlib ffmpeg codec2 libunwind-nongnu airspy bladerf hackrf rtl-sdr soapysdr airspyhf limesuite libiio libmirisdr libperseus-sdr uhd libfobos cm256cc dsdcc mbelib serialdv libdab faad2 sgp4 aptdec cspice ggmorse libinmarsatc rnnoise libsigmf opencv librsvg

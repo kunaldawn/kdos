@@ -1,0 +1,60 @@
+diff -ru a/cmake/BuildRADE.cmake b/cmake/BuildRADE.cmake
+--- a/cmake/BuildRADE.cmake	2026-09-28 04:06:44.642712757 +0530
++++ b/cmake/BuildRADE.cmake	2026-09-28 04:06:44.690406271 +0530
+@@ -2,16 +2,20 @@
+     set(RADE_CMAKE_ARGS ${RADE_CMAKE_ARGS} -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+ endif()
+ 
+-set(RADE_CMAKE_ARGS ${RADE_CMAKE_ARGS} -DBUILD_OSX_UNIVERSAL=${BUILD_OSX_UNIVERSAL} -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DOPUS_URL=https://github.com/xiph/opus/archive/940d4e5af64351ca8ba8390df3f555484c567fbb.zip)
++if(NOT DEFINED OPUS_URL)
++    set(OPUS_URL https://github.com/xiph/opus/archive/940d4e5af64351ca8ba8390df3f555484c567fbb.zip)
++endif()
++if(NOT DEFINED RADE_C_URL)
++    set(RADE_C_URL https://github.com/freedv/rade_c/archive/refs/heads/main.zip)
++endif()
++
++set(RADE_CMAKE_ARGS ${RADE_CMAKE_ARGS} -DBUILD_OSX_UNIVERSAL=${BUILD_OSX_UNIVERSAL} -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DOPUS_URL=${OPUS_URL})
+ 
+ include(ExternalProject)
+ ExternalProject_Add(build_rade
+    SOURCE_DIR rade_src
+    BINARY_DIR rade_build
+-   GIT_REPOSITORY https://github.com/freedv/rade_c
+-   GIT_TAG main
+-   GIT_SUBMODULES ""
+-   GIT_SUBMODULES_RECURSE NO
++   URL ${RADE_C_URL}
+    CMAKE_ARGS ${RADE_CMAKE_ARGS}
+    CMAKE_CACHE_ARGS -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_OSX_DEPLOYMENT_TARGET:STRING=${CMAKE_OSX_DEPLOYMENT_TARGET} -DCMAKE_OSX_ARCHITECTURES:STRING=${CMAKE_OSX_ARCHITECTURES}
+    INSTALL_COMMAND ""
+diff -ru a/cmake/BuildRNNoise.cmake b/cmake/BuildRNNoise.cmake
+--- a/cmake/BuildRNNoise.cmake	2026-09-28 04:06:44.642778232 +0530
++++ b/cmake/BuildRNNoise.cmake	2026-09-28 04:06:44.690665224 +0530
+@@ -1,12 +1,15 @@
+ message(STATUS "Will build RNNoise")
+ 
+-set(CONFIGURE_COMMAND ./autogen.sh && ./configure --with-pic --disable-examples --disable-doc --disable-shared)
++set(CONFIGURE_COMMAND autoreconf -isf && ./configure --with-pic --disable-examples --disable-doc --disable-shared)
+ 
+ if (CMAKE_CROSSCOMPILING)
+ set(CONFIGURE_COMMAND ${CONFIGURE_COMMAND} --host=${CMAKE_C_COMPILER_TARGET} --target=${CMAKE_C_COMPILER_TARGET})
+ endif (CMAKE_CROSSCOMPILING)
+ 
+ set(RNNOISE_REPO https://github.com/xiph/rnnoise.git)
++if(NOT DEFINED RNNOISE_URL)
++    set(RNNOISE_URL https://github.com/xiph/rnnoise/archive/refs/heads/main.zip)
++endif()
+ 
+ include(ExternalProject)
+ 
+@@ -80,9 +83,7 @@
+     CONFIGURE_COMMAND ${CONFIGURE_COMMAND}
+     BUILD_COMMAND $(MAKE)
+     INSTALL_COMMAND ""
+-    GIT_REPOSITORY ${RNNOISE_REPO}
+-    GIT_TAG main
+-    UPDATE_DISCONNECTED 1
++    URL ${RNNOISE_URL}
+ )
+ 
+ ExternalProject_Get_Property(build_rnnoise BINARY_DIR)

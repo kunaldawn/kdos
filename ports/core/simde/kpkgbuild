@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = simde
+version     = 0.8.2
+release     = 1
+source      = https://github.com/simd-everywhere/simde/archive/refs/tags/v$version.tar.gz
+sha256      = ed2a3268658f2f2a9b5367628a85ccd4cf9516460ed8604eed369653d49b25fb  simde-0.8.2.tar.gz
+description = Portable implementations of SIMD intrinsics, header-only
+homepage    = https://github.com/simd-everywhere/simde
+depends     = meson

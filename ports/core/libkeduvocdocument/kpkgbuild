@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libkeduvocdocument
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 2928b62af21d08de2f4ffd5efe055e007b321bf2c675045b6defb6799097898e  libkeduvocdocument-26.08.1.tar.xz
+description = KDE vocabulary document library — reads and writes the KVTML files of Parley and KWordQuiz
+homepage    = https://invent.kde.org/education/libkeduvocdocument
+depends     = cmake ninja extra-cmake-modules qt6-qtbase ki18n karchive kio

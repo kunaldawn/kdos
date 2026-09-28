@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = dosbox-staging
+version     = 0.83.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/dosbox-staging/dosbox-staging/archive/refs/tags/v$version.tar.gz
+sha256      = 9b36be5a666784adaeffa560bd0950691f851a76bdb97e7ae3c989561e91caf3  dosbox-staging-0.83.0.tar.gz
+description = DOSBox Staging — a DOS PC emulator for games and old software
+homepage    = https://www.dosbox-staging.org
+depends     = cmake ninja pkgconf sdl2-compat sdl2-image iir1 libpng mesa libglvnd libmt32emu fluidsynth alsa-lib speexdsp zlib-ng opusfile libslirp

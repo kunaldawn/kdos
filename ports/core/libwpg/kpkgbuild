@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libwpg
+version     = 0.3.4
+release     = 1
+source      = $name-$version.tar.xz::https://dev-www.libreoffice.org/src/libwpg-$version.tar.xz
+sha256      = b55fda9440d1e070630eb2487d8b8697cf412c214a27caee9df69cec7c004de3  libwpg-0.3.4.tar.xz
+description = WordPerfect Graphics import library
+homepage    = https://libwpg.sourceforge.net/
+depends     = pkgconf librevenge libwpd

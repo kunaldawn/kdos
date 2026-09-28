@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = love
+version     = 11.5
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/love2d/love/releases/download/$version/love-$version-linux-src.tar.gz
+sha256      = 066e0843f71aa9fd28b8eaf27d41abb74bfaef7556153ac2e3cf08eafc874c39  love-11.5.tar.gz
+description = LÖVE — the Lua 2D game framework, and the runtime that opens a .love game
+homepage    = https://love2d.org
+depends     = pkgconf sdl2-compat luajit openal-soft freetype2 libmodplug libvorbis libtheora mpg123 libgme zlib librsvg

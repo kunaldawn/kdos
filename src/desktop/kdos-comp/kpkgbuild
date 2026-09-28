@@ -13,4 +13,4 @@ version     = 0.20.0
 release     = 3
 description = The KDOS compositor — a hard fork of labwc 0.20.0
 homepage    = https://github.com/kunaldawn/kdos
-depends     = wlroots wayland wayland-protocols libxkbcommon pixman libdrm mesa libglvnd libpng libxml2 glib cairo pango libinput xcb-util-wm
+depends     = wlroots wayland wayland-protocols libxkbcommon pixman libdrm mesa libglvnd libpng libxml2 glib cairo pango libinput xcb-util-wm basu

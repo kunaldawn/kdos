@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = wxwidgets
+version     = 3.2.9
+release     = 1
+source      = https://github.com/wxWidgets/wxWidgets/releases/download/v$version/wxWidgets-$version.tar.bz2
+sha256      = fb90f9538bffd6a02edbf80037a0c14c2baf9f509feac8f76ab2a5e4321f112b  wxwidgets-3.2.9.tar.bz2
+description = wxWidgets on GTK 3 — the native-widget C++ toolkit under KiCad, PrusaSlicer, FileZilla, VeraCrypt and wxPython
+homepage    = https://www.wxwidgets.org/
+depends     = cmake ninja pkgconf gtk3 glib pango cairo gdk-pixbuf harfbuzz fontconfig freetype2 libX11 libXext libXtst libxkbcommon wayland mesa libglvnd glu webkitgtk libsoup3 gstreamer gst-plugins-base gst-plugins-bad libnotify gspell libsecret sdl2-compat curl expat libjpeg-turbo libpng libtiff zlib pcre2 xz libmspack
+series      = 3.2

@@ -102,32 +102,34 @@ fi
 # tarballs that are already compressed, and squashing them again buys nothing.
 # `make build KDOS_ISO_SOURCES=1` is a developer stick, not the default one.
 #
-# The copy reads /kdos, and inside the chroot /kdos is a non-recursive bind of
-# the build container's /workspace: script/ and src/ are bound back over it,
-# ports/ is bound at /ports instead, so /kdos/ports is the empty mount point and
-# the medium's ports/ arrives empty. fs/ is not copied, and the three top-level
-# files are not mounted into the container. A stick made here therefore carries
-# no tree `kdos rebuild` can build from; reading /ports and copying fs/ are
-# both needed before it does. ports/.srccache is left off: each port directory
-# holds its own hard link to the bytes, and the cache can carry every version
-# any branch of this checkout ever fetched.
+# The copy reads the tree where the chroot mounts it: ports/ at /ports, and
+# src/, script/ and fs/ bound back over /kdos, whose own bind of the build
+# container's /workspace is non-recursive and shows each of them as an empty
+# mount point. The three top-level files are not mounted into the container
+# and are copied only when present. Of ports/ everything but its
+# dot-directories travels, every fetched source beside its recipe: those are
+# the fetch cache, whose bytes each port directory already holds by hard link,
+# and compiled host helpers. A binhost this build wrote (KDOS_MAKE_BINHOST=1) goes
+# beside the tree as sources/binhost.
 if [ "${KDOS_ISO_SOURCES:-0}" = "1" ]; then
     echo "Copying the sources onto the ISO (this is the big one)..."
-    mkdir -p $ISO_ROOT/sources
-    for d in ports src script; do
+    mkdir -p $ISO_ROOT/sources/ports
+    for d in src script fs; do
         cp -a /kdos/$d $ISO_ROOT/sources/
+    done
+    for f in /ports/*; do
+        cp -a "$f" $ISO_ROOT/sources/ports/
     done
     for f in Makefile Dockerfile CLAUDE.md; do
         [ -f /kdos/$f ] && cp -a /kdos/$f $ISO_ROOT/sources/
     done
-    # Build artefacts are not sources, and the appbox image chunks are already
-    # in the payload the live system carries.
-    rm -rf $ISO_ROOT/sources/ports/.portup-tools $ISO_ROOT/sources/ports/.kpkg-meta \
-           $ISO_ROOT/sources/ports/.update-cache.json $ISO_ROOT/sources/ports/.srccache
+    if [ -f /kdos/build/binhost/PACKAGES ]; then
+        cp -a /kdos/build/binhost $ISO_ROOT/sources/binhost
+    fi
     # A stamp, so `kdos rebuild` can say what it is about to rebuild FROM.
     cat > $ISO_ROOT/sources/SOURCES <<EOS
 # The KDOS tree that built this image.
-ports    $(ls /ports/core | wc -l) ports
+ports    $(ls $ISO_ROOT/sources/ports/core | wc -l) ports
 size     $(du -sh $ISO_ROOT/sources 2>/dev/null | cut -f1)
 built    $(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOS

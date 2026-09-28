@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gexiv2
+version     = 0.14.7
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/gexiv2/${version%.*}/gexiv2-$version.tar.xz
+sha256      = 373b67b24f1a7b5c0606aaf0ea00b352f9511751e21deba0bac650bd5159c93d  gexiv2-0.14.7.tar.xz
+description = GObject wrapper around exiv2 image metadata, the 0.14 API GIMP links
+homepage    = https://gitlab.gnome.org/GNOME/gexiv2
+depends     = meson ninja pkgconf exiv2 glib gobject-introspection glib-introspection vala python3 python3-gobject
+series      = 0.14

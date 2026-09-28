@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = openscad
+version     = 2026.09.27
+release     = 1
+_commit     = cc19000e0f9c9ea761fdefd826e4811c8d55c738
+_sancommit  = bcb1fc68616e9645ca5acea2992412606373ab04
+_micommit   = 30b2d9d89099bee08e9f67a1ffb3e12e7ba45227
+_mcadcommit = 1ea402208c3127ffb443931e9bb1681c191dacca
+source      = $name-$version.tar.gz::https://github.com/openscad/openscad/archive/$_commit.tar.gz
+source      = sanitizers-cmake-$_sancommit.tar.gz::https://github.com/arsenm/sanitizers-cmake/archive/$_sancommit.tar.gz
+source      = mimalloc-$_micommit.tar.gz::https://github.com/microsoft/mimalloc/archive/$_micommit.tar.gz
+source      = MCAD-$_mcadcommit.tar.gz::https://github.com/openscad/MCAD/archive/$_mcadcommit.tar.gz
+sha256      = d465b52ef63ffef7cf537278e9f1cfcdacd49296e3091b871713b358dd11f531  openscad-2026.09.27.tar.gz
+sha256      = 98f25152be7305263189e1167c7b65a79328b335d1cf4861f592318a36d031ae  sanitizers-cmake-bcb1fc68616e9645ca5acea2992412606373ab04.tar.gz
+sha256      = 7ced84a659a95454ce08b725af56331164e6b8673310e5a9a5c612576145456f  mimalloc-30b2d9d89099bee08e9f67a1ffb3e12e7ba45227.tar.gz
+sha256      = 3d04077d369814638c3f018fecc39439011a47f545026f43c1a465bce1773f57  MCAD-1ea402208c3127ffb443931e9bb1681c191dacca.tar.gz
+description = The programmer's solid 3D CAD modeller: models written as scripts, rendered with Manifold and CGAL
+homepage    = https://openscad.org/
+depends     = cmake ninja pkgconf flex bison gettext boost eigen gmp mpfr cgal manifold clipper2 onetbb opencsg harfbuzz fontconfig freetype2 glib double-conversion libzip libxml2 openssl cairo hidapi libspnav lib3mf zlib font-liberation mesa libglvnd libX11 qt6-qtbase qt6-qt5compat qt6-qtmultimedia qt6-qtsvg qt6-qtwayland qscintilla

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wtype
+version     = 0.4
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/atx/wtype/archive/refs/tags/v$version.tar.gz
+sha256      = da91786d828b6a6e29b884bc510473939eda052658ebef87d7bdeafa6a8746f9  wtype-0.4.tar.gz
+description = xdotool type for Wayland — types text and presses keys through the virtual-keyboard protocol
+homepage    = https://github.com/atx/wtype
+depends     = meson ninja pkgconf wayland wayland-protocols libxkbcommon

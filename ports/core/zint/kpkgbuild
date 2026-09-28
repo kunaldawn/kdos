@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = zint
+version     = 2.16.0
+release     = 1
+source      = $name-$version.tar.gz::https://downloads.sourceforge.net/zint/zint-$version-src.tar.gz
+sha256      = 37e767afada2403bb9ae49b93a19eb0a9e944a0c278d9f23522746b3d08a3c4b  zint-2.16.0.tar.gz
+description = Zint — barcode encoder for over 50 symbologies, with a CLI and the Zint Barcode Studio GUI
+homepage    = https://zint.org.uk/
+depends     = cmake ninja zlib libpng qt6-qtbase qt6-qtsvg qt6-qttools qt6-qtwayland hicolor-icon-theme

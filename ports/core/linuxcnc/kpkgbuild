@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = linuxcnc
+version     = 2.9.10
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/LinuxCNC/linuxcnc/archive/refs/tags/v$version.tar.gz
+sha256      = 9d1f7a9177ab133de340dcdc9036c9f225eb48aabfcbc87a3df3c78dcd226f24  linuxcnc-2.9.10.tar.gz
+description = LinuxCNC — CNC machine controller for mills, lathes, routers and plasma: HAL, G-code interpreter and the AXIS GUI
+homepage    = https://linuxcnc.org/
+depends     = autoconf automake pkgconf gettext libintl intltool asciidoc docbook-xsl libxslt python3 python3-yapps python3-tkinter python3-gobject python3-cairo python3-configobj python3-opengl python3-xlib python3-dbus python3-pillow numpy tcl tk bwidget boost libtirpc libedit readline libmodbus libusb libgpiod eudev glib gtk3 mesa libglvnd glu libX11 libXmu libXinerama procps-ng psmisc util-linux

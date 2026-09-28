@@ -1,0 +1,11 @@
+diff -ru a/jhMaster/JavaHelp/src/new/javax/help/plaf/basic/BasicFavoritesNavigatorUI.java b/jhMaster/JavaHelp/src/new/javax/help/plaf/basic/BasicFavoritesNavigatorUI.java
+--- a/jhMaster/JavaHelp/src/new/javax/help/plaf/basic/BasicFavoritesNavigatorUI.java
++++ b/jhMaster/JavaHelp/src/new/javax/help/plaf/basic/BasicFavoritesNavigatorUI.java
+@@ -65,7 +65,6 @@
+ import java.awt.geom.AffineTransform;
+ import java.awt.datatransfer.*;
+ import java.awt.dnd.*;
+-import java.awt.dnd.peer.*;
+ import java.io.IOException;
+ 
+ /**

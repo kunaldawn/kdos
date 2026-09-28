@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = chromaprint
+version     = 1.6.1
+release     = 1
+source      = https://github.com/acoustid/chromaprint/releases/download/v$version/$name-$version.tar.gz
+sha256      = 3368805af0ee47b9df74df10b5001a44569e01df2844dab520031720dde9ad23  chromaprint-1.6.1.tar.gz
+description = AcoustID audio fingerprinting library and the fpcalc tool
+homepage    = https://acoustid.org/chromaprint
+depends     = cmake ninja fftw ffmpeg

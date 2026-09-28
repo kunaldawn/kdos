@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sdrpp
+version     = 1.3.0.dev.20260704
+release     = 1
+_commit     = 8c9f5ee8fe405775bfcd62c8c8f8c0fc928a64af
+source      = $name-$version.tar.gz::https://github.com/AlexandreRouma/SDRPlusPlus/archive/$_commit.tar.gz
+sha256      = c3d884bb146957792823068cea62c78d11f33eda3d537f12b0c31484bde1eb67  sdrpp-1.3.0.dev.20260704.tar.gz
+description = SDR++ — a fast software radio receiver with its own GPU-drawn interface, no toolkit
+homepage    = https://www.sdrpp.org/
+depends     = cmake ninja pkgconf glfw mesa libglvnd fftw libvolk zstd rtaudio airspy hackrf bladerf rtl-sdr soapysdr codec2 airspyhf limesuite libiio libad9361 librfnm libperseus-sdr uhd zenity

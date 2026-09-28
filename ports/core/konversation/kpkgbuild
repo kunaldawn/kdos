@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = konversation
+version     = 26.08.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/konversation-$version.tar.xz
+sha256      = 0ee0926868f312379f5a51e9f81897f1a8b122d01207733393b3804a8f9ef886  konversation-26.08.1.tar.xz
+description = Konversation — IRC client (Qt 6, KDE Frameworks) with TLS, DCC transfers and Blowfish-encrypted channels
+homepage    = https://konversation.kde.org/
+depends     = cmake ninja pkgconf extra-cmake-modules qt6-qtbase qt6-qtmultimedia qt6-qttools qt6-qt5compat qt6-qtwayland karchive kbookmarks kcodecs kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons ki18n kidletime kitemviews kio knewstuff knotifications knotifyconfig kparts kstatusnotifieritem ktextwidgets kwallet kwidgetsaddons kwindowsystem kglobalaccel kdoctools qca hicolor-icon-theme

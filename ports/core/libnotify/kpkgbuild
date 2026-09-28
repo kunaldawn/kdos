@@ -16,4 +16,4 @@ source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$vers
 sha256      = 23420ef619dc2cb5aebad613f4823a2fa41c07e5a1d05628d40f6ec4b35bfddd  libnotify-0.8.8.tar.xz
 description = Desktop notification client library and notify-send
 homepage    = https://gitlab.gnome.org/GNOME/libnotify
-depends     = meson glib gdk-pixbuf libxslt docbook-xsl
+depends     = meson glib gdk-pixbuf libxslt docbook-xsl gobject-introspection glib-introspection

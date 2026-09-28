@@ -1,0 +1,11 @@
+--- a/share/linux/org.keepassxc.KeePassXC.desktop.in	2026-09-28 03:00:20.198663084 +0530
++++ b/share/linux/org.keepassxc.KeePassXC.desktop.in	2026-09-28 03:00:20.198817829 +0530
+@@ -38,7 +38,7 @@
+ Exec=keepassxc %f
+ TryExec=keepassxc
+ Icon=@APP_ICON_NAME@
+-StartupWMClass=keepassxc
++StartupWMClass=org.keepassxc.KeePassXC
+ StartupNotify=false
+ Terminal=false
+ Type=Application

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libgig
+version     = 4.6.0
+release     = 1
+source      = https://download.linuxsampler.org/packages/libgig-$version.tar.bz2
+sha256      = fc331202210919e3172c4d36ab24231dea3667d8722141f0c7939ca545119d01  libgig-4.6.0.tar.bz2
+description = Gigasampler, DLS, SoundFont 2 and KORG sample-library file access, with the gigextract and dlsdump tools
+homepage    = https://www.linuxsampler.org/libgig/
+depends     = libsndfile util-linux pkgconf

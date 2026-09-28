@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pdf4qt
+version     = 1.6.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/JakubMelka/PDF4QT/archive/refs/tags/v$version.tar.gz
+sha256      = a5f9952723acbb8a2431207cf76e53a17941292fbd003a2ed1b79503677ab2ec  pdf4qt-1.6.0.0.tar.gz
+description = PDF viewer and editor — annotate, redact, sign, compare, split and merge pages
+homepage    = https://jakubmelka.github.io/
+depends     = cmake ninja qt6-qtbase qt6-qtsvg qt6-qtspeech qt6-qttools qt6-qtwayland openssl zlib freetype2 openjpeg libjpeg-turbo libpng lcms2 blend2d onetbb sane-backends

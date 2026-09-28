@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = android-tools
+version     = 37.0.0
+release     = 1
+source      = https://github.com/nmeum/android-tools/releases/download/$version/android-tools-$version.tar.xz
+sha256      = 2725d09f892a3a38e534429f47a321f58ecf6a3169caa42c915fb2cb7d46be0e  android-tools-37.0.0.tar.xz
+description = Android platform tools — adb, fastboot, and the sparse-image and boot-image utilities
+homepage    = https://github.com/nmeum/android-tools
+depends     = cmake ninja pkgconf libusb protobuf abseil-cpp fmt brotli lz4 zstd pcre2 gtest python3

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = speex
+version     = 1.2.1
+release     = 1
+source      = https://downloads.xiph.org/releases/speex/$name-$version.tar.gz
+sha256      = 4b44d4f2b38a370a2d98a78329fefc56a0cf93d1c1be70029217baae6628feea  speex-1.2.1.tar.gz
+description = Speex speech codec library, with the speexenc and speexdec tools
+homepage    = https://www.speex.org/
+depends     = pkgconf libogg speexdsp

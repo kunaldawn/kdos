@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = brlaser
+version     = 6.2.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Owl-Maintain/brlaser/archive/refs/tags/v$version.tar.gz
+sha256      = 16dae855aa7fff0eef0c05398fab37678243d7d610fa5f9af0d3a2cc9bf08cb0  brlaser-6.2.8.tar.gz
+description = CUPS driver for Brother monochrome laser printers
+homepage    = https://github.com/Owl-Maintain/brlaser
+depends     = cups cmake ninja

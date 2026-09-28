@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = sdl2-ttf
+version     = 2.24.0
+release     = 1
+series      = 2
+source      = $name-$version.tar.gz::https://github.com/libsdl-org/SDL_ttf/releases/download/release-$version/SDL2_ttf-$version.tar.gz
+sha256      = 0b2bf1e7b6568adbdbc9bb924643f79d9dedafe061fa1ed687d1d9ac4e453bfd  sdl2-ttf-2.24.0.tar.gz
+description = Render TrueType and OpenType text into SDL2 surfaces, shaped by HarfBuzz
+homepage    = https://github.com/libsdl-org/SDL_ttf
+depends     = cmake ninja pkgconf sdl2-compat freetype2 harfbuzz

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = ndctl
+version     = 85
+release     = 1
+source      = https://github.com/pmem/ndctl/archive/v$version.tar.gz
+sha256      = 69039ee12c75c44f67b5fa3f1abb61d1c38ff9303021e50cec0b45801cc93b2e  ndctl-85.tar.gz
+description = Userspace tools and libraries for NVDIMM, DAX and CXL devices (ndctl, daxctl, cxl)
+homepage    = https://github.com/pmem/ndctl
+depends     = meson ninja pkgconf kmod eudev util-linux json-c keyutils iniparser libtraceevent libtracefs asciidoctor bash-completion

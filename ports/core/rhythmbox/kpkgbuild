@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rhythmbox
+version     = 3.5.1
+release     = 1
+source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$version.tar.xz
+sha256      = 8ee7d1714481956023b464264ebe0bd50217d4b472b1c5b3a6254ff8da924093  rhythmbox-3.5.1.tar.xz
+description = GNOME music player and library organiser
+homepage    = https://gitlab.gnome.org/GNOME/rhythmbox
+depends     = meson ninja pkgconf gettext itstool glib gobject-introspection gtk3 cairo pango gdk-pixbuf gstreamer gst-plugins-base gst-plugins-good json-glib libpeas libsoup3 libxml2 tdb totem-pl-parser libgudev libsecret libmtp libnotify brasero libX11 python3 python3-gobject vala librsvg libgpod lirc

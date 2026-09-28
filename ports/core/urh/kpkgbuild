@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = urh
+version     = 2.10.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/jopohl/urh/archive/refs/tags/v$version.tar.gz
+sha256      = 95bf54f9234dd2570ec9706bb632c3df4f24517f52b5ae6ccacd7194f960ff21  urh-2.10.0.tar.gz
+description = Universal Radio Hacker — record, demodulate, decode and replay wireless protocols
+homepage    = https://github.com/jopohl/urh
+depends     = python3 python3-setuptools python3-pip python3-cython numpy python3-psutil python3-pyqt6 qt6-qtwayland airspy bladerf hackrf rtl-sdr limesuite libiio uhd librsvg

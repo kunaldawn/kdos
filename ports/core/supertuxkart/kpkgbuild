@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = supertuxkart
+version     = 1.5
+release     = 1
+group       = supertuxkart
+source      = https://github.com/supertuxkart/stk-code/releases/download/$version/SuperTuxKart-$version-src.tar.gz
+sha256      = 33cf8841e4ff4082d80b9248014295bbbea61d14683e86dff100e3ab8f7b27cb  supertuxkart-1.5.tar.gz
+description = SuperTuxKart — 3D kart racing with story mode, grand prix, battles and soccer
+homepage    = https://supertuxkart.net/
+depends     = cmake ninja pkgconf sdl2-compat mesa libglvnd shaderc openal-soft libogg libvorbis freetype2 harfbuzz libjpeg-turbo libpng zlib curl openssl sqlite stk-assets

@@ -194,6 +194,10 @@ static const struct {
 	{ A_CONFIG, "starship.toml",            "starship palette"   },
 	{ A_CONFIG, "kdos/ls-colors",           "LS_COLORS"          },
 	{ A_CONFIG, "kdeglobals",               "KDE palette"        },
+	{ A_CONFIG, "qt5ct/qt5ct.conf",         "qt5ct settings"     },
+	{ A_CONFIG, "qt5ct/colors/KDOS.conf",   "qt5ct palette"      },
+	{ A_CONFIG, "qt6ct/qt6ct.conf",         "qt6ct settings"     },
+	{ A_CONFIG, "qt6ct/colors/KDOS.conf",   "qt6ct palette"      },
 	{ A_CONFIG, "mc/ini",                   "mc skin selection"  },
 	{ A_DATA,   "mc/skins/kdos.ini",        "mc skin"            },
 	{ A_CONFIG, "yazi/theme.toml",          "yazi"               },
@@ -280,7 +284,7 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 	}
 
 	/*
-	 * Two artefacts are EDITED rather than written, and both have to be
+	 * These artefacts are EDITED rather than written, and each has to be
 	 * copied in before the generators run or the comparison asks the wrong
 	 * question.
 	 *
@@ -291,6 +295,9 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 	 *                   it drift on every machine that has ever run dolphin
 	 *   mc/ini          the same merge rule — mc keeps real user state there
 	 *                   and the generator only sets `skin`
+	 *   qt5ct.conf,     the same again: the qt5ct and qt6ct programs save a
+	 *   qt6ct.conf      person's choices there and the generator sets only
+	 *                   its own keys
 	 *
 	 * kdos/style-themerc is carried for a different reason: it is an INPUT
 	 * to write_themerc, not an artefact of it. Regenerating without it
@@ -304,7 +311,8 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 	char *cfg = kb_path_join(root, ".config");
 	kb_mkdir_p(cfg);
 	static const char *const CARRIED[] = {
-		"starship.toml", "kdeglobals", "mc/ini", "kdos/style-themerc"
+		"starship.toml", "kdeglobals", "mc/ini", "kdos/style-themerc",
+		"qt5ct/qt5ct.conf", "qt6ct/qt6ct.conf"
 	};
 	for (size_t i = 0; i < sizeof(CARRIED) / sizeof(CARRIED[0]); i++) {
 		char *live = kdt_cfg_home(CARRIED[i]);

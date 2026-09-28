@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = ngircd
+version     = 28
+release     = 1
+source      = https://ngircd.barton.de/pub/ngircd/$name-$version.tar.xz
+sha256      = b48ba320a931d445ae335c47f88a9406a20f5c71c623bee5f7755d0522d435ee  ngircd-28.tar.xz
+description = An IRC server small enough for one room — chat on a LAN with no internet
+homepage    = https://ngircd.barton.de/
+depends     = openssl zlib util-linux

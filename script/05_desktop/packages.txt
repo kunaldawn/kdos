@@ -82,8 +82,10 @@ kdos-energyd
 # socket for `kdos doctor`.
 kdos-oomd
 
-# Removable media. Plugging a stick into this machine did nothing at all —
-# there is no udisks here, mounting is root's and the desktop is not root.
+# Removable media for kdos-shell: mounting is root's and the desktop is not
+# root. udisks2, listed in phase 4, serves the toolkit applications (K3b,
+# Dolphin's devices, the image writers) beside it; this daemon stays the
+# authority for the shell.
 # Same shape as kdos-powerd: root, foreground under ksvc, an SO_PEERCRED
 # socket, and a protocol whose only argument is a row number out of a list the
 # daemon published, so a client can never name a device or a mountpoint.
@@ -110,18 +112,18 @@ fcitx5-chinese-addons
 fcitx5-anthy
 fcitx5-hangul
 
-# The screen-capture portal. A boxed OBS or browser reaches the screen only
-# through xdg-desktop-portal, which has no capture code of its own — the wlr
-# backend is what turns the compositor's ext-image-copy-capture and
+# The screen-capture portal. OBS or a browser, native or boxed, reaches the
+# screen only through xdg-desktop-portal, which has no capture code of its own
+# — the wlr backend is what turns the compositor's ext-image-copy-capture and
 # wlr-screencopy globals into a ScreenCast session. Screenshot comes with it.
 # Phase 4 installs the main portal; this is the half that knows about wlroots.
 xdg-desktop-portal-wlr
 
-# The FileChooser portal. Nothing else can serve it: xdg-desktop-portal-wlr does
-# ScreenCast and Screenshot only, and the backend every other desktop falls back
-# to is xdg-desktop-portal-gtk — impossible here, because there is no GTK on the
-# host. Without this, a boxed app's Open and Save dialog is whatever its own
-# toolkit draws, carrying none of the desktop's palette, chrome or file roots.
+# The FileChooser portal. xdg-desktop-portal-wlr does ScreenCast and
+# Screenshot only, and xdg-desktop-portal-gtk, the backend other desktops fall
+# back to, draws GTK's own dialog. Without this, an app's Open and Save dialog
+# is whatever its own toolkit draws, carrying none of the desktop's palette,
+# chrome or file roots.
 # Settings comes with it and hands out the accent.
 xdg-desktop-portal-kdos
 

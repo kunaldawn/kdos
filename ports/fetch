@@ -30,7 +30,8 @@
 #   1. the port directory      a file already there
 #   2. the cache               ports/.srccache/sha256-XX/<hash>, hard-linked in
 #   3. the archive             $KDOS_SOURCES_BASE/sources-NNN/<hash>, NNN from
-#                              ports/sources.idx; a hash it does not name skips this
+#                              ports/sources.idx; a hash it does not name skips this.
+#                              The base is a URL or a directory (an archive disk)
 #   4. the recipe's `source =` the URL that names this filename, if one does
 #   5. regeneration            only for the port's own vendor bundle
 #
@@ -46,9 +47,10 @@
 # hold it, and reaching for our own copy of an unverifiable file would be
 # trusting the wrong thing entirely. A vendor bundle with no hash is generated.
 #
-# Set KDOS_SOURCES_BASE empty to skip the archive; KDOS_SRCCACHE moves the
-# cache; KDOS_SOURCES_INDEX names another index. All are read by
-# ports/srclib.sh.
+# Set KDOS_SOURCES_BASE empty to skip the archive, or to a directory laid out
+# as sources-NNN/<hash> to read the archive from a disk with no network;
+# KDOS_SRCCACHE moves the cache; KDOS_SOURCES_INDEX names another index. All
+# are read by ports/srclib.sh.
 
 set -e
 
@@ -359,14 +361,24 @@ gen_vendor() {
             return 1
         }
 
+        # `npmflags =` is an ordinary recipe helper, word-split onto npm's
+        # command line: a project that upstream resolves with Yarn can hold
+        # a peer pin npm's strict check refuses, and `--legacy-peer-deps`
+        # is then the only way npm resolves it at all. build.sh passes the
+        # same flags to its own offline npm calls. The lock file npm writes
+        # rides in the bundle, because an offline `npm prune` or `npm ci`
+        # needs it and cannot write one without the registry.
         pushd "$tmp_dir" >/dev/null
-        npm install --ignore-scripts --no-audit --no-fund || {
+        # shellcheck disable=SC2086
+        npm install --ignore-scripts --no-audit --no-fund ${npmflags:-} || {
             echo "✗  $port: npm install failed"
             popd >/dev/null
             rm -rf "$tmp_dir"
             return 1
         }
-        vendor_tar "$out" node_modules || {
+        local nlock=()
+        [ -f package-lock.json ] && nlock=(package-lock.json)
+        vendor_tar "$out" node_modules "${nlock[@]}" || {
             echo "✗  $port: Failed to create $vendor_file"
             popd >/dev/null
             rm -rf "$tmp_dir"
@@ -640,7 +652,7 @@ fetch_port() {
     fi
 
     local name="" version="" release="" source="" sha256="" vendoring="" pypackages=""
-    local vendordir="" vendorsync="" pyrequirements="" pyruntime="" hsplan="" meta
+    local vendordir="" vendorsync="" pyrequirements="" pyruntime="" hsplan="" npmflags="" meta
     meta=$(cd "$portdir" && "$KPKG" meta . 2>/dev/null) || { unreadable; return 1; }
     eval "$meta"
 
@@ -814,6 +826,10 @@ in_container() {
 
     mkdir -p "$KDOS_SRCCACHE"
     KDOS_SRCCACHE=$(cd "$KDOS_SRCCACHE" && pwd)
+    # A directory archive is mounted at its own path, read-only, so the
+    # file:// base srclib.sh made names the same files inside.
+    local base_mount=()
+    src_base_local && base_mount=(-v "${KDOS_SOURCES_BASE#file://}:${KDOS_SOURCES_BASE#file://}:ro")
     case $KDOS_SRCCACHE in
         "$REPO_ROOT"/*) cache_in="/kdos/${KDOS_SRCCACHE#"$REPO_ROOT"/}" ;;
         *) cache_in=/srccache; cache_mount=(-v "$KDOS_SRCCACHE":/srccache) ;;
@@ -837,6 +853,7 @@ in_container() {
         --user "$(id -u):$(id -g)" \
         -v "$REPO_ROOT":/kdos \
         "${cache_mount[@]}" \
+        "${base_mount[@]}" \
         -e KDOS_FETCH_INNER=1 \
         -e HOME=/kdos/build/fetch-home \
         -e CARGO_HOME=/kdos/build/fetch-home/cargo \

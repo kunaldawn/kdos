@@ -1122,20 +1122,31 @@ The base filesystem ships these service scripts in `/etc/init.d/`:
 46_hostapd  47_pcscd  50_alsa  51_mdmonitor  52_smartd  53_xfs_healer
 54_thermald  55_powerd  55_tlp  56_energyd  57_oomd  58_mountd  59_packd
 60_bluetooth  70_sshd  80_cups  81_cups-browsed  82_ipp-usb
+86_kiwix-serve  87_kolibri  88_llama-server
 ```
 
-Ports on the image install more beside them:
+Ports install more beside them, each from its `build.sh`:
 
 | Script | Installed by |
 |---|---|
+| `31_babeld` | `babeld` |
 | `43_boltd` | `bolt` |
+| `56_nut` | `nut` |
+| `62_virtlogd` | `libvirt` |
 | `63_gssd` | `nfs-utils` |
+| `63_libvirtd` | `libvirt` |
 | `65_brltty` | `brltty` |
 | `72_nfsd` | `nfs-utils` |
 | `73_mosquitto` | `mosquitto` |
 | `74_prosody` | `prosody` |
+| `75_mumble-server` | `mumble` |
 | `76_postgresql` | `postgresql` |
+| `77_radicale` | `radicale` |
+| `78_maddy` | `maddy` |
+| `79_ngircd` | `ngircd` |
 | `83_samba` | `samba` |
+| `84_minidlna` | `minidlna` |
+| `85_gnuhealth` | `gnuhealth` |
 
 A package installed later can add its own, so `ls /etc/init.d` on the running machine is the
 complete list.
@@ -1151,6 +1162,24 @@ The conventions for the scripts themselves, and the reason `ksvc` exists rather 
 supervisor, are in [Administration](../02-user-guide/administration.md#services) and
 [The daemons](../04-programs/daemons.md).
 
+### The local servers
+
+Three shipped scripts serve offline data to this machine alone. Each binds `127.0.0.1`, so the
+firewall never sees it, and each is skipped with a `[SKIP]` line, not failed, until there is data
+for it to serve; a data pack or a mounted library medium supplies it, and the next boot, or
+`sudo /etc/init.d/<script> start`, starts the server.
+
+| Script | Serves | Address | Starts when | Runs as |
+|---|---|---|---|---|
+| `86_kiwix-serve` | The ZIM archives listed in `/var/lib/kiwix/library.xml`, which `kiwix-manage` writes. `--monitorLibrary` picks up an archive added later | `http://127.0.0.1:8080` | The library file lists at least one archive | `nobody` |
+| `87_kolibri` | Kolibri, with `KOLIBRI_HOME=/var/lib/kolibri` | `http://127.0.0.1:8081` | A channel database is in `/var/lib/kolibri/content/databases`, and the `kolibri` account exists (the `kolibri` package's `postinstall.sh` makes it) | `kolibri` |
+| `88_llama-server` | Every `.gguf` model under `/usr/share/llama.cpp/models`, through llama-server's router: a model is loaded on the first request that names it, one at a time | `http://127.0.0.1:8082`, an OpenAI-compatible API | At least one `.gguf` file is there | `nobody`, in `render` so the Vulkan backend can reach a GPU |
+
+`8080` is also the port the `kiwix` [firewall](../04-programs/daemons.md) name opens and the port
+the shipped Caddyfile proxies, so serving the library to the network is Caddy's route, not a
+change to this script. Each is disabled like any other service, with a marker named `kiwix-serve`,
+`kolibri` or `llama-server`.
+
 ### Shutdown
 
 When `reboot`, `poweroff` or `kdos-powerd` signals it, toybox's `init` runs the `::shutdown` entries
@@ -1161,6 +1190,14 @@ scripts `rcS` would run (executable, no marker under `/etc/service.disabled`) an
 action still has a writable filesystem to save to; `50_alsa` storing the mixer levels is the
 plainest case. A stop that fails, such as a service that was skipped at boot answering "not
 running", does not end the walk.
+
+The last entry is `/etc/init.d/killpower`. When NUT's `upsmon` shut the machine down on a low
+battery it leaves its flag file, `/etc/killpower`; `upsmon -K` reports it, and the script then runs
+`upsdrvctl shutdown`, which tells the UPS to cut the power once its off-delay runs out. Without it
+a UPS keeps the halted machine powered on the last of the battery, and if mains returns first the
+machine never sees the power drop and stays off. It runs after `umount -a -r` because the UPS cuts
+the power seconds later whatever state the disks are in. With no NUT installed, or no flag, it does
+nothing.
 
 `25_nftables` is the one script `rcK` leaves out. Its stop deletes the firewall's `inet filter`
 table, and it would run after the network scripts while the interfaces are still configured,
@@ -1382,7 +1419,7 @@ the prompt below it, or the banner prints plainly instead of animating.
 - [Configuration](../06-reference/configuration.md): `fstab`, `inittab`, `login.conf` and the rest
 - [The ports catalogue](../06-reference/ports-catalogue.md): every port by phase and group,
   including `limine` and `toybox`
-- [Known gaps](../06-reference/known-gaps.md): what the boot path does not do yet
+- [Known gaps](../06-reference/known-gaps.md): what the boot path does not do
 
 <!-- book-nav -->
 ---

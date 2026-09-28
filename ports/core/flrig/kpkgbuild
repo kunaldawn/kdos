@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = flrig
+version     = 2.0.12
+release     = 1
+source      = https://downloads.sourceforge.net/project/fldigi/$name/$name-$version.tar.gz
+sha256      = c16dc007b68e7be5dab363381085d0bc5c8842906116ecd9e16ee75c9d5accbf  flrig-2.0.12.tar.gz
+description = flrig — transceiver control over CAT for amateur radio, and the rig server fldigi talks to
+homepage    = http://www.w1hkj.org/
+depends     = pkgconf fltk libX11 libgpiod imagemagick

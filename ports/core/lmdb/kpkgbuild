@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lmdb
+version     = 0.9.36
+release     = 1
+source      = $name-$version.tar.gz::https://git.openldap.org/openldap/openldap/-/archive/LMDB_$version/openldap-LMDB_$version.tar.gz
+sha256      = 90a595ea500074af61b213464452d8d212405261094667a686357467ae7b57b9  lmdb-0.9.36.tar.gz
+description = Lightning Memory-Mapped Database: an embedded B+tree key-value store, and its mdb_* tools
+homepage    = https://www.symas.com/mdb
+depends     = make

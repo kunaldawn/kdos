@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kio-extras
+version     = 26.08.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 8050c3dd33fed06a60dda8205f4e0134d3aac95f0647b1d9c05419845341397c  kio-extras-26.08.1.tar.xz
+description = Extra KIO workers and thumbnailers: archives, man pages, MTP and iOS devices, file previews
+homepage    = https://invent.kde.org/network/kio-extras
+depends     = cmake ninja extra-cmake-modules gperf qt6-qtbase qt6-qtsvg karchive kcodecs kconfig kcoreaddons kdbusaddons kdoctools ki18n kio kwidgetsaddons solid syntax-highlighting libmtp libimobiledevice libplist openexr taglib libkexiv2 libX11 libXcursor djvulibre shared-mime-info

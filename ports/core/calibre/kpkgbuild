@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = calibre
+version     = 9.15.0
+release     = 1
+_html5parser = 0.4.12
+source      = https://download.calibre-ebook.com/$version/$name-$version.tar.xz
+source      = https://files.pythonhosted.org/packages/source/h/html5-parser/html5-parser-$_html5parser.tar.gz
+sha256      = 9f02d36decaf46b176a1bef74349232508bcc2b4b06d1662bbd1fd426c57d559  calibre-9.15.0.tar.xz
+sha256      = 3d7f89841aa48b976311f43863178c34c141abcf1dd45b67a7339e61cffe5306  html5-parser-0.4.12.tar.gz
+sha256      = 607097f931b078e2b5f338f893bc676a0072a708a65c016b4c342cc9295eb92a  calibre-vendor-9.15.0.tar.xz
+description = E-book library manager, converter, viewer and editor
+homepage    = https://calibre-ebook.com/
+depends     = python3 python3-pip python3-setuptools python3-wheel python3-hatchling python3-flit-core python3-poetry-core python3-cython python3-setuptools-scm python3-sip python3-pyqt-builder python3-pyqt6 python3-pyqt6-sip python3-pyqt6-webengine python3-lxml python3-pillow python3-psutil python3-pygments python3-dateutil python3-six python3-html5lib python3-webencodings python3-typing-extensions fonttools pkgconf cmake qt6-qtbase qt6-qtsvg qt6-qtimageformats qt6-qtwebengine qt6-qtspeech qt6-qtwayland hunspell hyphen icu sqlite snowball uchardet openssl freetype2 fontconfig libmtp libusb podofo ffmpeg libxml2 poppler libjpeg-turbo xxhash udisks2 xdg-utils chmlib optipng brotli
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = css-parser:1.1.1 jeepney:0.9.0 dnspython:2.8.0 mechanize:0.4.10 feedparser-sgmllib:2.0.1 feedparser:6.0.14 markdown:3.10.0 html2text:2025.4.15 soupsieve:2.9 beautifulsoup4:4.14.3 regex:2025.11.3 chardet:5.2.0 msgpack:1.2.1 pycryptodome:3.23.0 apsw:3.53.2.0 netifaces:0.11.0 ifaddr:0.2.0 zeroconf:0.149.16 lxml-html-clean:0.4.5 xxhash:3.6.0 tzlocal:5.4.4 pystache:0.6.8 pychm:0.8.6 py7zr:1.1.3 pykakasi:2.3.0
+pypackages  = texttable pycryptodomex pyppmd pybcj multivolumefile inflate64 jaconv deprecated wrapt

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mupen64plus
+version     = 2.6.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/mupen64plus/mupen64plus-core/releases/download/$version/mupen64plus-bundle-src-$version.tar.gz
+sha256      = 297e17180cd76a7b8ea809d1a1be2c98ed5c7352dc716965a80deb598b21e131  mupen64plus-2.6.0.tar.gz
+description = Mupen64Plus — Nintendo 64 emulator: core, console front end, SDL audio and input, HLE RSP, Rice and Glide64mk2 video
+homepage    = https://mupen64plus.org/
+depends     = pkgconf nasm sdl2-compat zlib minizip libpng freetype2 libglvnd mesa glu vulkan-loader vulkan-headers libsamplerate speexdsp

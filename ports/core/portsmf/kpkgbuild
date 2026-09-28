@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = portsmf
+version     = 239
+release     = 1
+source      = $name-$version.tar.gz::https://codeberg.org/tenacityteam/portsmf/archive/$version.tar.gz
+sha256      = fe7aee61453e398aa360608fe34bc26a6af612bce987cdacbc0fc40b18e01d58  portsmf-239.tar.gz
+description = Standard MIDI File and Allegro score reader and writer library
+homepage    = https://codeberg.org/tenacityteam/portsmf
+depends     = cmake ninja

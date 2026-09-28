@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wine
+version     = 11.0
+release     = 1
+source      = https://dl.winehq.org/wine/source/$version/wine-$version.tar.xz
+sha256      = c07a6857933c1fc60dff5448d79f39c92481c1e9db5aa628db9d0358446e0701  wine-11.0.tar.xz
+description = Wine — runs Windows programs on Linux, 64- and 32-bit, on Wayland or X11
+homepage    = https://www.winehq.org/
+depends     = clang lld llvm bison flex perl gettext pkgconf alsa-lib libpulse cups dbus eudev fontconfig freetype2 gnutls krb5 gstreamer gst-plugins-base ffmpeg libgphoto2 libpcap libusb pcsc-lite sane-backends sdl2-compat v4l-utils libunwind-nongnu mesa libglvnd vulkan-loader vulkan-headers ocl-icd opencl-headers wayland wayland-protocols libxkbcommon libX11 libXext libXcomposite libXcursor libXfixes libXi libXinerama libXrandr libXrender libXxf86vm xorgproto librsvg wine-mono wine-gecko

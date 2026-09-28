@@ -15,8 +15,12 @@
 # It carries no drivers of its own — it dlopens libSDL3.so.0 at SDL_Init, so a
 # program built against it gets exactly the backends the sdl3 port chose.
 #
-# SDL2COMPAT_X11 IS OFF: on, it is `find_package(X11 REQUIRED)` for the X11
-# window hooks, and this image carries no X client libraries.
+# SDL2COMPAT_X11 IS OFF because the sdl3 port is built without its X11 video
+# driver: the X11 window hooks it would compile in (SDL_GetWindowWMInfo's x11
+# member, SDL_VIDEO_DRIVER_X11 in the headers) could never be filled, and a
+# program that tests the define would take an X11 path that cannot run.
+# Turning it on belongs with SDL_X11 in sdl3, and is `find_package(X11
+# REQUIRED)` here.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \

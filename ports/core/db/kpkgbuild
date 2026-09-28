@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = db
+version     = 5.3.28
+release     = 1
+source      = https://download.oracle.com/berkeley-db/db-$version.tar.gz
+sha256      = e0a992d740709892e81f9d93f06daf305cf73fb81b545afe72478043172c3628  db-5.3.28.tar.gz
+description = Berkeley DB — the embedded key/value database library, with its C++ binding and db_* utilities
+homepage    = https://www.oracle.com/database/technologies/related/berkeleydb.html

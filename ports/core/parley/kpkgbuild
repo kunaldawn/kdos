@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = parley
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f75ad6da8d9b867ed24d7275333902269983d094d06a32971d6c929cd6523306  parley-26.08.1.tar.xz
+description = KDE vocabulary trainer — spaced repetition over KVTML word lists, with themes and HTML export
+homepage    = https://apps.kde.org/parley/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtmultimedia kdoctools kcoreaddons kconfig kcrash ki18n kio knewstuff sonnet ktextwidgets kxmlgui knotifications libkeduvocdocument libxslt libxml2

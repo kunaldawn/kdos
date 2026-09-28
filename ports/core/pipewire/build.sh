@@ -42,14 +42,17 @@
 # without it the convolver runs on its bundled pffft. -Dlibpulse=enabled builds
 # module-pulse-tunnel, the one module that sends a stream to a PulseAudio server
 # on another machine; libpulse is the client library only, so it adds no second
-# server beside pipewire-pulse.
+# server beside pipewire-pulse. -Dlibmysofa=enabled is the filter-chain's
+# `sofa` spatializer, which places a source around a listener on headphones
+# from a SOFA head-related transfer function file.
 #
 # Every other `auto` feature is named, and each one pinned off has one of these
 # reasons:
-#   - its library is not a port: libmysofa, libebur128, onnxruntime, libffado,
+#   - its library is not a port: libebur128, onnxruntime, libffado,
 #     roc-toolkit, lv2 (lilv), libcanberra, lc3plus, the LDAC decoder, spandsp;
-#   - it is excluded by rule: every systemd and logind option, x11 and
-#     x11-xfixes, and SELinux, which this image does not use;
+#   - it is excluded by rule: every systemd and logind option, and SELinux,
+#     which this image does not use;
+#   - it serves an X session, which this desktop is not: x11 and x11-xfixes;
 #   - it has no consumer here: vulkan builds only the SPA compute source and
 #     blit filters, which no graph or session config on this image loads; sdl2
 #     only the examples (which are off); gsettings only the
@@ -110,7 +113,7 @@ meson setup build \
 	-Davahi=enabled \
 	-Draop=enabled \
 	-Decho-cancel-webrtc=enabled \
-	-Dlibmysofa=disabled \
+	-Dlibmysofa=enabled \
 	-Debur128=disabled \
 	-Donnxruntime=disabled \
 	-Dlibffado=disabled \

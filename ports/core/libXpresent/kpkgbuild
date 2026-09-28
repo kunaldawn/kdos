@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libXpresent
+version     = 1.0.2
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = 4e5b21b4812206a4b223013606ae31170502c1043038777a1ef8f70c09d37602  libXpresent-1.0.2.tar.xz
+description = X11 Present extension client library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libxpresent
+depends     = libX11 libXext libXfixes libXrandr xorgproto

@@ -35,8 +35,15 @@ export RUSTFLAGS="-C prefer-dynamic"
 
 # Every probed dependency that has a switch is pinned: an option left on auto
 # turns a feature on or off by whatever happens to be installed when mesa
-# builds. libudev has no switch and is linked whenever found, so eudev is in
-# depends.
+# builds. libudev and xcb-keysyms have no switch and are linked whenever found,
+# so eudev and xcb-util-keysyms are in depends.
+# The x11 platform and glx=dri are what an X11 client under Xwayland draws
+# with: libGLX_mesa.so behind libglvnd's libGL and libGLX, and the Vulkan X11
+# WSI. glx=dri needs libXxf86vm for direct rendering, and xlib-lease (Vulkan's
+# VK_EXT_acquire_xlib_display) needs libXrandr; it is pinned because on auto it
+# turns on with the x11 platform. A Wayland client never loads libGLX_mesa,
+# but libEGL_mesa and the Vulkan drivers link libxcb and libX11 for their X11
+# platform, so the X client libraries are on the host either way.
 # nouveau in vulkan-drivers is NVK, and it is what the six vendored crates
 # above are for. gallium-rusticl installs /etc/OpenCL/vendors/rusticl.icd,
 # which only ocl-icd's loader reads. libunwind is off: it serves only mesa's
@@ -56,10 +63,11 @@ meson setup build \
 	-D gbm=enabled \
 	-D gles1=disabled \
 	-D gles2=enabled \
-	-D glx=disabled \
+	-D glx=dri \
 	-D gallium-drivers=zink,crocus,iris,nouveau,r300,r600,radeonsi,svga,llvmpipe,softpipe,virgl,i915 \
 	-D gallium-rusticl=true \
-	-D platforms=wayland \
+	-D platforms=wayland,x11 \
+	-D xlib-lease=enabled \
 	-D vulkan-drivers=amd,intel,intel_hasvk,nouveau,swrast,virtio \
 	-D vulkan-layers=device-select,intel-nullhw,overlay,anti-lag \
 	-D video-codecs=all \

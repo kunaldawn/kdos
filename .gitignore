@@ -47,6 +47,17 @@ ports/.srccache/
 /ports/core/*/*.zip
 /ports/core/*/*.7z
 /ports/core/*/*.part
+/ports/core/*/*.jar
+/ports/core/*/*.rcc
+/ports/core/*/*.onnx
+/ports/core/*/*.traineddata
+/ports/core/*/*.sf3
+/ports/core/*/*.nnue
+/ports/core/*/*.bin
+/ports/core/digikam/*.jpeg
+/ports/core/fluidr3-gm-sf3/*.md
+/ports/core/meshtastic-firmware/*.json
+/ports/core/rnode-firmware/*.json
 __pycache__/
 ports-archived/
 port-archive.sh

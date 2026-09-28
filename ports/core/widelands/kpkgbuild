@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = widelands
+version     = 1.3.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/widelands/widelands/archive/refs/tags/v$version.tar.gz
+sha256      = e6f3e8f4fcafd367962dbacde80e26fc63afad38cfe26fadba9c92d4a01bd687  widelands-1.3.1.tar.gz
+description = Widelands — real-time strategy about building an economy and its roads, in the line of The Settlers II
+homepage    = https://www.widelands.org
+depends     = cmake ninja pkgconf python3 sdl2-compat sdl2-image sdl2-mixer sdl2-ttf glew libglvnd mesa libpng zlib icu minizip asio libintl gettext

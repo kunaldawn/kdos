@@ -1,0 +1,142 @@
+diff -ru a/src/emc/rs274ngc/interp_o_word.cc b/src/emc/rs274ngc/interp_o_word.cc
+--- a/src/emc/rs274ngc/interp_o_word.cc
++++ b/src/emc/rs274ngc/interp_o_word.cc
+@@ -26,6 +26,15 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <dirent.h>
++#ifndef __GLIBC__
++/* The GNU basename(): the part after the last slash, argument untouched. */
++static inline const char *gnu_basename(const char *path)
++{
++    const char *slash = strrchr(path, '/');
++    return slash ? slash + 1 : path;
++}
++#define basename gnu_basename
++#endif
+ #include <new>
+ #include "rs274ngc.hh"
+ #include "rs274ngc_return.hh"
+diff -ru a/src/emc/task/backtrace.cc b/src/emc/task/backtrace.cc
+--- a/src/emc/task/backtrace.cc
++++ b/src/emc/task/backtrace.cc
+@@ -39,8 +39,7 @@
+     name_buf[readlink("/proc/self/exe", name_buf, 511)]=0;
+     int child_pid = fork();
+     if (!child_pid) {
+-	fclose(stderr);
+-	stderr = freopen(filename, "a", stderr);
++	freopen(filename, "a", stderr);
+         dup2(2,1); // child: redirect output to stderr
+         fprintf(stdout,"stack trace for %s pid=%s signal=%d\n",name_buf,pid_buf, signo);
+         execlp("gdb", "gdb", "--batch", "-n", "-ex", "thread", "-ex", "bt", name_buf, pid_buf, NULL);
+diff -ru a/src/hal/drivers/mesa-hostmot2/hm2_eth.c b/src/hal/drivers/mesa-hostmot2/hm2_eth.c
+--- a/src/hal/drivers/mesa-hostmot2/hm2_eth.c
++++ b/src/hal/drivers/mesa-hostmot2/hm2_eth.c
+@@ -531,7 +531,7 @@
+     struct ifaddrs *ifa, *it;
+ 
+     socklen_t addrlen = sizeof(srcaddr);
+-    int res = getsockname(sockfd, &srcaddr, &addrlen);
++    int res = getsockname(sockfd, (struct sockaddr *)&srcaddr, &addrlen);
+     if(res < 0) return NULL;
+ 
+     if(getifaddrs(&ifa) < 0) {
+@@ -595,11 +595,11 @@
+     char srchost[16], dsthost[16]; // enough for 255.255.255.255\0
+ 
+     socklen_t addrlen = sizeof(srcaddr);
+-    int res = getsockname(sockfd, &srcaddr, &addrlen);
++    int res = getsockname(sockfd, (struct sockaddr *)&srcaddr, &addrlen);
+     if(res < 0) return -errno;
+ 
+     addrlen = sizeof(dstaddr);
+-    res = getpeername(sockfd, &dstaddr, &addrlen);
++    res = getpeername(sockfd, (struct sockaddr *)&dstaddr, &addrlen);
+     if(res < 0) return -errno;
+ 
+     res = install_iptables_rule(
+diff -ru a/src/hal/drivers/mesa-hostmot2/hm2_rpspi.c b/src/hal/drivers/mesa-hostmot2/hm2_rpspi.c
+--- a/src/hal/drivers/mesa-hostmot2/hm2_rpspi.c
++++ b/src/hal/drivers/mesa-hostmot2/hm2_rpspi.c
+@@ -20,6 +20,7 @@
+ /* Without Source Tree */
+ #undef WOST
+ 
++#include <endian.h>
+ #include <ctype.h>
+ #include <fcntl.h>
+ #include <string.h>
+diff -ru a/src/hal/drivers/mesa-hostmot2/spix_rpi3.c b/src/hal/drivers/mesa-hostmot2/spix_rpi3.c
+--- a/src/hal/drivers/mesa-hostmot2/spix_rpi3.c
++++ b/src/hal/drivers/mesa-hostmot2/spix_rpi3.c
+@@ -20,6 +20,7 @@
+  * NOTE: This driver will detect and drive both Raspberry Pi 3 and 4 variants
+  */
+ 
++#include <endian.h>
+ #include <unistd.h>
+ #include <string.h>
+ #include <fcntl.h>
+diff -ru a/src/hal/drivers/mesa-hostmot2/spix_spidev.c b/src/hal/drivers/mesa-hostmot2/spix_spidev.c
+--- a/src/hal/drivers/mesa-hostmot2/spix_spidev.c
++++ b/src/hal/drivers/mesa-hostmot2/spix_spidev.c
+@@ -16,6 +16,7 @@
+  * this program; if not, see <https://www.gnu.org/licenses/>.
+  */
+ 
++#include <endian.h>
+ #include <unistd.h>
+ #include <string.h>
+ #include <fcntl.h>
+diff -ru a/src/hal/user_comps/xhc-whb04b-6/usb.h b/src/hal/user_comps/xhc-whb04b-6/usb.h
+--- a/src/hal/user_comps/xhc-whb04b-6/usb.h
++++ b/src/hal/user_comps/xhc-whb04b-6/usb.h
+@@ -21,6 +21,7 @@
+ 
+ // system includes
+ #include <stdint.h>
++#include <sys/time.h>
+ #include <ostream>
+ 
+ // forward declarations
+diff -ru a/src/libnml/buffer/tcpmem.cc b/src/libnml/buffer/tcpmem.cc
+--- a/src/libnml/buffer/tcpmem.cc
++++ b/src/libnml/buffer/tcpmem.cc
+@@ -21,6 +21,7 @@
+ extern "C" {
+ #endif
+ #include <stdlib.h>		// strtol()
++#include <sys/types.h>		// u_short
+ #include <unistd.h>
+ #include <string.h>		// strstr()
+ #include <errno.h>		// errno, strerror()
+diff -ru a/src/rtapi/uspace_rtapi_app.cc b/src/rtapi/uspace_rtapi_app.cc
+--- a/src/rtapi/uspace_rtapi_app.cc
++++ b/src/rtapi/uspace_rtapi_app.cc
+@@ -705,7 +705,7 @@
+     res = mlockall(MCL_CURRENT | MCL_FUTURE);
+     if(res < 0) perror("mlockall");
+ 
+-#ifdef __linux__
++#if defined(__linux__) && defined(__GLIBC__)
+     /* Turn off malloc trimming.*/
+     if (!mallopt(M_TRIM_THRESHOLD, -1)) {
+         rtapi_print_msg(RTAPI_MSG_WARN,
+@@ -1071,8 +1071,16 @@
+ #endif
+           CPU_ZERO(&cpuset);
+           CPU_SET(rt_cpu_number, &cpuset);
++#if defined(__GLIBC__) || defined(__FreeBSD__)
+           if((ret = pthread_attr_setaffinity_np(&attr, sizeof(cpuset), &cpuset)) != 0)
+                return -ret;
++#else
++          if((ret = pthread_create(&task->thr, &attr, &wrapper, reinterpret_cast<void*>(task))) != 0)
++              return -ret;
++          if((ret = pthread_setaffinity_np(task->thr, sizeof(cpuset), &cpuset)) != 0)
++              return -ret;
++          return 0;
++#endif
+       }
+   }
+   if((ret = pthread_create(&task->thr, &attr, &wrapper, reinterpret_cast<void*>(task))) != 0)

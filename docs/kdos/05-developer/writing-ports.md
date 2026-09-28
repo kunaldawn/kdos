@@ -2,7 +2,7 @@
 
 This chapter is the reference for the recipe format: how a piece of upstream software is described
 so that KDOS can fetch it, verify it, build it offline and package it. A
-[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 1,014 of them
+[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 2,003 of them
 under `ports/core`, and KDOS's own 24 programs under `src/packages` and `src/desktop` are written in
 the same format. The chapter is for anyone adding a port, changing one, or bumping one to a new
 upstream release. Read [How KDOS is built](how-kdos-is-built.md) for where ports sit in the build,
@@ -148,7 +148,7 @@ recipe helper (see [Recipe helpers](#recipe-helpers)).
 | `description` | | | One line. `kpkg info` prints it and the binary-package index carries it; it is not a comment |
 | `homepage` | | | Upstream's home page. The version checker reads it |
 | `depends` | | | One line of space-separated port names. The solver, which decides build order, reads the first `depends` line and ignores any other |
-| `vendoring` | | | `rust`, `go`, `python` or `haskell`, and `node`, which `ports/fetch` supports and no port uses. See [Vendoring](#vendoring) |
+| `vendoring` | | | `rust`, `go`, `python`, `haskell` or `node`. See [Vendoring](#vendoring) |
 | `pypackages` | | yes | An explicit list of Python packages to vendor: the package and everything it depends on, directly or indirectly |
 | `secdb` | | | The name the security database uses, when it differs from ours. `kdos cve` reads it |
 | `bench` | | | A command `kdos march` times |
@@ -179,6 +179,7 @@ them to `build.sh`), but another tool gives each a defined meaning:
 | `vendorsync` | `ports/fetch` | Further Cargo manifests, relative to `vendordir`, whose crates go into the same Rust bundle; see [Where the bundle goes](#where-the-bundle-goes) |
 | `pyrequirements` | `ports/fetch` | `no`: a requirements file is *not* the dependency set here |
 | `pyruntime` | `ports/fetch` | `no`: do not vendor the runtime dependencies |
+| `npmflags` | `ports/fetch` | Words added to the `npm install` that writes a node bundle, such as `--legacy-peer-deps`; see [Vendoring](#vendoring) |
 | `group` | `ports/update` | Override the derived version-check grouping; see [Outcomes](#outcomes) |
 | `devseries` | `ports/update` | Upstream's development-series convention: `odd-minor`, `preview-minor`, or both; see [Filtering](#filtering) |
 | `series` | `ports/update` | The line the port stays on, as a version prefix matched on whole components: `21` for `llvm21`, `5.4` for `lua54`; see [Filtering](#filtering) |
@@ -347,8 +348,8 @@ A recipe therefore does not delete `.la` files, write an info `dir`, or pack any
 
 Each build system has one shape that works on this tree. Start from it and change only what the
 project needs; most of the failures in [Build troubleshooting](build-troubleshooting.md) come from
-leaving one of these flags out. Of the recipes under `ports/core`, 376 run a `configure` script,
-147 run CMake, 137 run meson and 52 run `cargo build`.
+leaving one of these flags out. Of the recipes under `ports/core`, about 580 run a `configure`
+script, 600 run CMake, 240 run meson and 57 run `cargo build`.
 
 ### meson
 
@@ -436,6 +437,35 @@ whose upstream builds through a makefile passes the vendor flag through it:
 the example). Build into an output name that is not also a directory in the source, or `go build`
 writes the binary inside that directory.
 
+### java
+
+No Ant, Maven or Gradle is a port, so a Java program is compiled with `javac` and packed with
+`jar` directly. Each dependency is a recipe source: its `-sources.jar` from Maven Central, or its
+repository's tarball when no sources jar is published.
+
+```bash
+mkdir -p build/depsrc build/classes
+for j in <dep>-<ver>; do
+	unzip -q -o "$j-sources.jar" -d build/depsrc
+done
+rm -rf build/depsrc/META-INF
+find src/main/java -name '*.java' | LC_ALL=C sort > build/sources.list
+javac -encoding UTF-8 -nowarn -proc:none -implicit:class -d build/classes \
+	-sourcepath "build/depsrc:src/main/java" @build/sources.list
+cp -r src/main/resources/. build/classes/
+( cd build/classes && find . -type f | LC_ALL=C sort | sed 's/.*/"&"/' > ../classes.list )
+( cd build/classes && jar --create --file ../<program>.jar --manifest ../manifest.txt \
+	--date="$(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ')" @../classes.list )
+install -Dm644 build/<program>.jar $PKG/usr/share/<program>/<program>.jar
+```
+
+The program's own sources are the list; the dependencies sit on the source path, so `javac`
+compiles only the classes the program reaches (`-implicit:class`), and an optional integration
+that would need a library nobody ships is never compiled. `--date` stamps every jar entry with the
+tree's pinned time, and the sorted list fixes their order, so two builds write the same jar. The
+manifest names `Main-Class`, and a launcher script in `/usr/bin` runs `java -jar` on it. `digital`,
+`josm` and `logisim-evolution` are the examples; each depends on `openjdk`.
+
 ### make-only
 
 ```bash
@@ -449,6 +479,47 @@ command line beats both the environment and the makefile's own assignment, which
 of that precedence for flags: a makefile's own definitions are its *configuration* (architecture
 width, installation paths, feature constants). Passing flags as arguments discards those, and the
 build then fails somewhere else, on an undeclared constant that reads like a missing header.
+
+### A graphical application
+
+An application with a window of its own is ported natively the same way as any other program, with
+the shape of its build system above. The toolkits it may build on are ports in phase 4: GTK 3 and
+4 (`gtk3`, `gtk4`), `libadwaita`, WebKitGTK (`webkitgtk`, `webkitgtk6`), Qt 5 and 6
+(`qt5-qtbase`, `qt6-qtbase` and their modules), KDE Frameworks 6, `wxwidgets`, `fltk` and `tk`.
+Each toolkit that has a Wayland backend is built with it as the default and with its X11 backend as
+well, so a program that has only an X11 path runs under Xwayland with no change to the recipe. Tk
+has one windowing system on Linux, X11, so every Tk window is an Xwayland client. These toolkits are
+for applications only; KDOS's own desktop programs link none of them (see
+[Writing desktop software](writing-desktop-software.md)).
+
+The recipe does not choose the backend at run time; the session does, from
+`fs/etc/profile.d/10-wayland.sh`:
+
+| Variable | Value | Effect |
+|---|---|---|
+| `QT_QPA_PLATFORM` | `wayland;xcb` | Qt uses Wayland, and falls back to Xwayland only when its Wayland plugin cannot start |
+| `GDK_BACKEND` | unset | GDK tries Wayland first by itself, and an X11-only program's own `GDK_BACKEND=x11` is not overridden |
+| `GTK_USE_PORTAL` | `1` | GTK's file chooser, print dialog and settings go through the portals, so a GTK application opens the desktop's file chooser |
+| `QT_QPA_PLATFORMTHEME` | `kde` | A Qt 6 application reads the `~/.config/kdeglobals` that `kdos theme` writes, and follows the desktop's colours |
+| `SDL_VIDEODRIVER`, `CLUTTER_BACKEND` | `wayland` | The same preference for SDL and Clutter programs |
+
+A few habits recur in the tree's application recipes, and a new one should follow them:
+
+- **Pin every optional dependency.** An option left on auto turns a feature on or off according to
+  whatever happens to be installed when the port builds. A meson recipe sets each feature option
+  explicitly; a CMake recipe names what it wants with `CMAKE_REQUIRE_FIND_PACKAGE_<Name>=ON` and
+  what it must not pick up with `CMAKE_DISABLE_FIND_PACKAGE_<Name>=ON` (127 build scripts use one
+  or both).
+- **KDE applications install into Qt's own paths.** `-D KDE_INSTALL_USE_QT_SYS_PATHS=ON` with
+  `-D BUILD_TESTING=OFF` is the shape `kate`, `dolphin`, `okular` and 132 other build scripts use.
+- **Ship a desktop entry and an icon the launcher can draw.** A graphical program with no entry
+  cannot be started from the Start menu; see
+  [Desktop entries belong to the port](#desktop-entries-belong-to-the-port). `celluloid`'s recipe
+  writes its own entry and rasterises its SVG icon to 48, 64 and 128 pixel PNGs under
+  `/usr/share/icons/hicolor`.
+
+The phase 4 list names these applications in its own list groups, after the toolkits and libraries
+they need; [The ports catalogue](../06-reference/ports-catalogue.md) lists them by group.
 
 ## Worked example: frotz
 
@@ -515,7 +586,7 @@ to the section that explains it.
    `no sha256 for <file> in the recipe`. Add the line (`sha256 = <hash>  <file>`) straight away:
    `kpkg` refuses to extract an unhashed source, and nothing else can verify it. For a port with
    `vendoring =`, the same run generates `<name>-vendor-<version>.tar.xz`; hash and record that
-   file too. `make fetch` takes no port name and walks all 1,014 ports, so use `ports/fetch <port>`
+   file too. `make fetch` takes no port name and walks all 2,003 ports, so use `ports/fetch <port>`
    here.
 4. **Write `build.sh`** from the [canonical shape](#canonical-build-shapes) for its build system,
    applying any [patches](#patches) before it configures.
@@ -616,15 +687,16 @@ Everything the host installs and runs on its own processor is compiled here from
 Debian packages in boxes are outside the rule. A recipe that installs a program, a library, a
 module or a shared object it did not compile breaks the claim the whole tree makes: the binary
 cannot be read, cannot be rebuilt by `kdos rebuild`, and carries whatever its builder put in it.
-Four classes of payload are exempt, and each is exempt for a reason the next recipe has to be able
+Five classes of payload are exempt, and each is exempt for a reason the next recipe has to be able
 to name.
 
 | Class | What it covers | Why it cannot be compiled here |
 |---|---|---|
-| Code for another processor | `linux-firmware`, `intel-ucode`, `sof-firmware`; the closed EU kernels `intel-media-driver` compiles in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; the assembled i965 shader kernels `libva-intel-driver` includes from `src/shaders`; the SOF coefficient `.bin` files in `alsa-ucm-conf`; the flasher stubs and flash algorithms inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`; the riscv64 EDK2 image `qemu` installs from its `pc-bios/` (every other guest firmware it ships is compiled from its `roms/`) | It runs on a DSP, a GPU, a microcontroller or a guest, not on the host, and for most of it no source is published |
-| Compiled font data | `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`; the faces bundled inside `mupdf`, `matplotlib` and `seqkit` | Upstream publishes the built face, and the sources compile through a toolchain or a source tree this one does not carry. A face whose upstream build runs on ports is compiled: `ttf-dejavu`, `terminus-ttf` and `noto-emoji` |
-| Compiler bootstrap seeds | The `rust` stage-0 `rustc`, `rust-std` and `cargo`; the `go` bootstrap toolchain; `zig`'s `stage1/zig1.wasm`; the upstream musl GHC `ghc` builds with | A compiler written in its own language needs a working one first. Each seed is used only to build, and never ships |
-| Data with no other source form | The `tesseract` English model, the `perl-xml-parser` `.enc` encoding maps, the JavaScript in `libkiwix`'s skin, the `fcitx5-chinese-addons` pinyin and stroke tables, `john`'s `.chr` files, the RP2350 boot-ROM tails `picotool` embeds from `model/`, and recorded audio such as the `speaker-test` samples in `alsa-utils` | The file is the form upstream maintains; there is nothing earlier to build it from |
+| Code for another processor | `linux-firmware`, `intel-ucode`, `sof-firmware`; the closed EU kernels `intel-media-driver` compiles in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; the assembled i965 shader kernels `libva-intel-driver` includes from `src/shaders`; the SOF coefficient `.bin` files in `alsa-ucm-conf`; the flasher stubs and flash algorithms inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`; the riscv64 EDK2 image `qemu` installs from its `pc-bios/` (every other guest firmware it ships is compiled from its `roms/`); the radio firmware images `meshtastic-firmware` and `rnode-firmware` install for flashing; the Perseus FX2 firmware and FPGA bitstreams `libperseus-sdr` compiles in; the guest ROMs and programs the emulators install (`fuse-emulator`'s Spectrum ROMs, `vice`'s Commodore ROMs, `openmsx`'s C-BIOS, `amiberry`'s AROS Kickstart and WHDLoad boot binaries, `dosbox-staging`'s DOS utilities and FreeDOS keyboard drivers), and the replacement console BIOSes compiled in as byte arrays (`libretro-melonds`'s `FreeBIOS.h`; `mgba`'s and `libretro-mgba`'s `hle-bios.c`); `wine-mono` and `wine-gecko`, the Windows .NET runtime and HTML engine Wine installs into a prefix | It runs on a DSP, a GPU, a microcontroller, a radio or a guest (an emulated machine, or a Windows program under Wine), not as a host program. For most of it no source is published; the rest needs a cross toolchain this tree does not carry (an ARM assembler for the GBA BIOS, MinGW and a .NET SDK for Wine's two) |
+| Compiled font data | `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`, `font-carlito`, `font-caladea`; the Type 1, OpenType and TFM files in `texlive`'s texmf tree; the faces bundled inside `mupdf`, `matplotlib`, `seqkit`, `kodi`, `koreader`, `qcad`, `freecad`, `solvespace`, `stellarium`, `mupen64plus`, `ppsspp`, `dosbox-x`, `retroarch-assets`, `uosc`, and `vice`'s HTML manual; the Fork Awesome face `qtforkawesome` compiles into its library | Upstream publishes the built face, and the sources compile through a toolchain or a source tree this one does not carry. A face whose upstream build runs on ports is compiled: `ttf-dejavu`, `terminus-ttf`, `noto-emoji`, `font-liberation`, and the X.org bitmap fonts (`font-adobe-75dpi`, `font-cursor-misc`, `font-misc-misc`) from BDF |
+| Bootstrap seeds | The `rust` stage-0 `rustc`, `rust-std` and `cargo`; the `go` bootstrap toolchain; `zig`'s `stage1/zig1.wasm`; the upstream musl GHC `ghc` builds with; the Adoptium musl JDK `openjdk` boots from; `ocaml`'s `boot/ocamlc` bytecode image; the Apache Groovy and Commons jars `kodi`'s add-on binding generator runs on | A compiler written in its own language needs a working one first, and Kodi's generator is a Groovy script, which is not a port. Each seed is used only to build, and never ships |
+| Data with no other source form | The `tessdata-eng` OCR models for `tesseract`, `whisper-model-base-en`'s speech model, `fluidr3-gm-sf3`'s SoundFont, the `perl-xml-parser` `.enc` encoding maps, the `fcitx5-chinese-addons` pinyin and stroke tables, `john`'s `.chr` files, the RP2350 boot-ROM tails `picotool` embeds from `model/`, recorded audio such as the `speaker-test` samples in `alsa-utils`; trained network weights (`digikam`'s face models, `piper`'s diacritisation models, `stockfish`'s NNUE network, `rnnoise`'s `rnnoise_data.c`, `freedv-gui`'s Opus, RNNoise and RADE weights); map and lookup data (`organicmaps`' world maps and style tables, `sniffnet`'s country and ASN databases, `josm`'s tag2link index, `koreader`'s certifi CA bundle); game and learning content (`gcompris`' word, voice and music archives, `openttd-opengfx`, `openttd-opensfx` and `openttd-openmsx`, `xonotic-data`, `stk-assets`, `devilutionx.mpq`, `retroarch-assets`); the PDF manuals `texlive-doc` ships | The file is the form upstream maintains, or the tool that made it (a trainer, a map generator, nml and grfcodec, a 3D map compiler, each package's own TeX setup) is not something this tree runs; there is nothing earlier to build it from here |
+| Built JavaScript | The JavaScript of `libkiwix`'s server skin; the web clients `transmission` (`web/public_html`), `deluge` (its ExtJS library), `kolibri` (its webpack bundles), `pat` (`web/dist`) and `kodi` (`webinterface.default`) ship; `yarn`'s `cli-dist` bundle, which inlines an emscripten build of libzip | Each is the output of a JavaScript toolchain over an npm dependency tree. Rebuilding one takes a node vendor bundle of its own (`cncjs` is the port that carries one) and upstream's bundler, so each ships as upstream released it |
 
 Every exempt payload is still a `source =` line with a `sha256`, so the offline build and the
 checksum hold for it exactly as for a tarball of C.
@@ -636,7 +708,12 @@ What follows for a recipe:
   race detector's runtime and the BoringCrypto module; `john` deletes the `ztex` bitstreams and
   controller image, which no program it builds can load. Shipping it makes the package contain a
   binary nobody here compiled.
-- **A new exemption names its class.** A payload that needs one of the four goes in the table
+- **A Java library is compiled from its published sources.** Maven Central's `-sources.jar` for
+  each dependency is a `source =` line like a tarball, and `javac` compiles it on the source path
+  with the program (see [java](#java)). A binary `.jar` is class files somebody else compiled; the
+  only class files the tree fetches are `kodi`'s build-time seeds above, which never reach `$PKG`
+  (`josm`'s tag2link jar is a JSON index packed as a jar, and only the index is taken from it).
+- **A new exemption names its class.** A payload that needs one of the five goes in the table
   above and in the [inventory](../01-philosophy/why-kdos.md#what-is-not-built-from-source) in the
   same change, or the list of exceptions is incomplete and cannot be relied on.
 - **A bootstrap seed never reaches `$PKG`.** What ships is what the seed built. A recipe that
@@ -650,10 +727,10 @@ into `$PKG/usr/share/applications/`. A package owns its entry, so installing the
 row and removing the port takes it away; the same file under `fs/` is owned by nothing and outlives
 the program it names.
 
-Three entries are under `fs/usr/share/applications/`, all `NoDisplay=true` handlers that exist for
+Four entries are under `fs/usr/share/applications/`, all `NoDisplay=true` handlers that exist for
 their `MimeType=` line. `kdos-openarchive.desktop` names a script that is itself under `fs/`
 (`fs/usr/local/bin/kdos-openarchive`), so entry and program have the same lifetime.
-`kdos-peek.desktop` and `kdos-pix.desktop` name front ends that the `kdos-shell` port installs as
+`kdos-peek.desktop`, `kdos-pix.desktop` and `kdos-burn.desktop` name front ends that the `kdos-shell` port installs as
 links to `kdos-shell`; they are the exception to this rule, and without `kdos-shell` they would
 name programs that are not there.
 
@@ -760,9 +837,10 @@ that needs a generator that is not a port, such as `ronn`, is not generated.
 A build that looks for `asciidoctor` on `$PATH` uses it whenever it is there, so a recipe that
 does not name it ships a different package once any other port pulls it into the chroot. Name it
 in `depends` and set the documentation switches explicitly. Where upstream has no switch for the
-manual pages alone, build the pages' own targets (`newsboat`, `git-lfs`), run upstream's page
-script (`ccache`), or remove the HTML the install adds (`wireshark`): the package carries the pages
-and no HTML manual.
+manual pages alone, build the pages' own targets (`newsboat`, `git-lfs`) or run upstream's page
+script (`ccache`): the package carries the pages and no HTML manual. An HTML manual ships only
+where the program opens it itself: `wireshark`'s Help menu reads the HTML form of each page, so
+that package carries both forms.
 
 Markdown pages come in two dialects, and each has its converter:
 
@@ -915,9 +993,10 @@ removed and rebuild each index whose directory it touched, once, from what is th
 | `/etc/udev/hwdb.d/`, `/usr/lib/udev/hwdb.d/`, `/lib/udev/hwdb.d/` | `udevadm hwdb --update`, into `/etc/udev/hwdb.bin` |
 | `/usr/share/man/` | `makewhatis`, the `mandoc.db` that `apropos` and `whatis` search |
 | `/usr/share/fonts/` | `mkfontdir`, the `fonts.dir` of every subdirectory holding PCF or BDF faces, which Xwayland's core font path reads |
+| `/usr/share/texmf-dist/`, `/usr/share/texmf-local/` | `mktexlsr` over those two trees and `/usr/share/texmf-var`, the `ls-R` files through which every TeX program finds a file |
 
-A port therefore installs its schema, loader, MIME XML, font, info page, hwdb file or manual page
-and does nothing else. A per-port hook would rebuild the index only when that port is installed,
+A port therefore installs its schema, loader, MIME XML, font, info page, hwdb file, manual page or
+TeX file and does nothing else. A per-port hook would rebuild the index only when that port is installed,
 not when the next one adds to it or the last one leaves.
 
 A missing tool is skipped: the index is written when the package carrying the tool arrives,
@@ -928,7 +1007,10 @@ would have no cache. A failing tool is a warning, not a failed install. The buil
 [What kpkg does around build.sh](#what-kpkg-does-around-buildsh)): each is the index, and two
 packages each shipping one conflict, as `font-misc-misc` and `font-cursor-misc` would, both
 installing into `misc/`. A font directory left with no bitmap face loses its `fonts.dir`, and with
-it the directory.
+it the directory. kpathsea searches the TeX distribution and local trees through `ls-R` only, so a
+file another port adds under either is invisible to TeX until the trigger has run; `texlive` ships
+the `ls-R` files it writes at build time, and every later install or removal under those trees
+rewrites them in place.
 
 The manual index is the one that is merged rather than rebuilt, and only when nothing was removed.
 Two packages in three carry manual pages, and reading every page on the system again for each one
@@ -948,8 +1030,8 @@ The build has no network, so a program whose language fetches its dependencies a
 (Rust crates, Go modules, Python packages, Hackage packages) needs them downloaded in advance. That
 is vendoring: `ports/fetch` runs the language's own tool against the port's source and packs what
 it downloads into `<name>-vendor-<version>.tar.xz` beside the tarball. `build.sh` unpacks that
-bundle and builds offline. Set `vendoring =` in the recipe to ask for it; 123 ports do (60 Rust,
-34 Go, 25 Python, 4 Haskell).
+bundle and builds offline. Set `vendoring =` in the recipe to ask for it; 159 ports do (71 Rust,
+38 Go, 45 Python, 4 Haskell, 1 Node).
 
 A bundle with a `sha256 =` line is an archived source like any other: `ports/fetch` takes it from
 the port directory, the cache or the source archive first, and generates it only when none of them
@@ -967,10 +1049,16 @@ instead.
 | `go` | The module `vendor/` tree, from `go mod vendor` | `go build -mod=vendor` |
 | `python` | Source distributions only (`pip download --no-binary :all:`), including each one's build requirements, followed recursively | Install from the local directory |
 | `haskell` | Hackage source tarballs and their revised `.cabal` files, as a local repository | `cabal v2-install` against that repository alone, or upstream's bootstrap script |
-| `node` | `node_modules/`, from `npm install --ignore-scripts` | Supported by `ports/fetch`; no port uses it |
+| `node` | `node_modules/` and the `package-lock.json` npm writes, from `npm install --ignore-scripts` plus the recipe's `npmflags` | `npm` with `--offline` and the same `npmflags`; `cncjs` is the example |
 
 A recipe with `pypackages` gets a Python bundle whether or not it sets `vendoring`. A Python fetch
 that ends with an empty `vendor/` is a failure, not an empty bundle.
+
+`npmflags` is a recipe helper whose words are added to the `npm install` that writes a node bundle
+(`npmflags = --legacy-peer-deps` for `cncjs`, whose upstream resolves with Yarn and holds a peer
+pin npm's strict check refuses). The lock file rides in the bundle because an offline `npm prune`
+or `npm ci` needs one and cannot write it without the registry, and `build.sh` passes the same
+flags to its own offline `npm` calls, or npm resolves the tree differently from the bundle.
 
 ### Where the bundle goes
 
@@ -980,9 +1068,9 @@ reads a configuration placed next to the manifest, and every crate in the bundle
 *missing* while sitting in the vendor directory.
 
 `vendordir` is the other half: it says where the vendoring tool must run, which is beside the
-manifest. The two directories are not always the same place. Four ports set it: `gopls`
-(`gopls`), `lnav` (`src/third-party/lnav-rs-ext`), `python3-cryptography` (`src/rust`) and `ghc`
-(`hadrian/bootstrap`).
+manifest. The two directories are not always the same place. Five ports set it: `gopls`
+(`gopls`), `lnav` (`src/third-party/lnav-rs-ext`), `python3-bcrypt` (`src/_bcrypt`),
+`python3-cryptography` (`src/rust`) and `ghc` (`hadrian/bootstrap`).
 
 `vendorsync` names every other Cargo manifest the build runs, space-separated and relative to
 `vendordir`. A helper crate outside the workspace, such as an `xtask` that generates a manual page,
@@ -1001,17 +1089,17 @@ name, plus their build requirements. Three keys narrow that.
 convention with no defined meaning, and projects often use it for the *optional* list: `visidata`'s
 reaches pandas, scipy and a Fortran compiler, for a program whose actual dependency is a single date
 library. With the key set, the source distribution's own metadata is vendored instead, and the
-fetch prints that it skipped the file. 13 ports set it.
+fetch prints that it skipped the file. 31 ports set it.
 
 `pypackages` is an explicit closure: space-separated PyPI names, each optionally pinned as
 `name:version` (`pypackages = ruamel.yaml vobject:0.9.8`). It is downloaded without resolving
 dependencies, because that key *is* the closure the recipe wants. Letting the tool resolve from
 there drags in every dependency that is already a port and builds each one's metadata to find that
-out. 10 ports set it.
+out. 31 ports set it.
 
 `pyruntime = no` says the runtime dependencies are all ports already, so only what the *build*
 needs is vendored. Without it, downloading a runtime dependency such as `numpy` can drag in that
-package's own build chain. It has no effect alongside `pypackages`. 11 ports set it.
+package's own build chain. It has no effect alongside `pypackages`. 27 ports set it.
 
 What a bundle installs into `site-packages` is named, and installed `--no-deps`. pip skips a
 requirement that is already installed in the build root, so a resolving install packages whatever
@@ -1138,6 +1226,17 @@ types and carry no version tag. `delta` refuses to build unless its vendored bat
 installed, and a bump of `bat` or `presenterm` checks that both `Cargo.lock` files name the same
 syntect.
 
+Five more bundles are made by hand, each packed with the flag set above, recorded by its hash and
+published with `ports/publish <port>` on every version bump:
+
+| Bundle | What it is, and how to rebuild it |
+|---|---|
+| `texlive-tlpdb-<version>.tar.xz` | `tlpkg/texlive.tlpdb` at the `texlive-<year>.0` svn tag, the package database the texmf tarball was cut from, which `texlive` and `texlive-doc` read to select their files. tug.org answers the download with 406 unless the request carries `Accept-Encoding: zstd` |
+| `koreader-thirdparty-<version>.tar.xz` | Every `base/thirdparty/*/build/downloads` directory after `make TARGET= KODEBUG= download-all`, run in the `kdos-fetch` container with stand-ins for `meson` and `nasm` on `PATH`, leaving out `thirdparty/fonts`, tesseract's `eng.traineddata` and every `*.lock` file, packed with `--mode=go-w` as well |
+| `surfer-vendor-<version>.tar.xz` | `cargo vendor` run by the fetch container's cargo over the tag tree with the `f128` and `instruction-decoder` submodule tarballs unpacked in place; `ports/fetch` vendors from the first source alone, where those path dependencies are missing |
+| `libreoffice-vendor-<version>.tar.xz` | Every file LibreOffice's `download.lst` names, at the name and sha256 it gives, fetched from `dev-www.libreoffice.org/src` or `/extern` into `externals/` and packed with `--mode=go-w` as well. `--with-external-tar` points the build at them and `--disable-fetch-external` makes a missing one an error; the `--with-system-*` flags decide which are unpacked |
+| `librepcb-vendor-<version>.tar.xz` | `cargo vendor --sync libs/slint/Cargo.toml`, run in `libs/librepcb/rust-core` by the fetch container's cargo, one bundle for both Cargo workspaces; `ports/fetch` unpacks only tarballs, and LibrePCB's source is a zip |
+
 ### Archives preflight accepts
 
 `testing/preflight.sh` accepts an archive in a port directory if a `source =` line resolves to it,
@@ -1175,12 +1274,16 @@ headers are in `include/lua5.4`, the library is `liblua5.4` and the pkg-config f
 `lua5.4.pc`. This works when the upstream build lets every name be chosen.
 
 **The runtime only.** `openssl3` installs `libssl.so.3` and `libcrypto.so.3` and nothing else: no
-headers, no `libssl.so` link, no pkg-config file, no `openssl` program and no manual pages. Every
-port in the tree builds against `openssl`, which is 4.x and whose sonames end in `.4`, so nothing
-here links the slot. It exists for a binary built elsewhere against OpenSSL 3 (an AppImage, a
-vendor tool, a `.so` a program loads), which the loader otherwise refuses for want of
-`libssl.so.3`. It follows the 3.5 long-term line (`series = 3.5`), so a binary that needs a symbol
-added in 3.6 still fails to load. It is built `no-module`, so the legacy provider is inside
+headers, no `libssl.so` link, no pkg-config file, no `openssl` program and no manual pages. Ports
+build against `openssl`, which is 4.x and whose sonames end in `.4`. The slot exists for code that
+cannot: a binary built elsewhere against OpenSSL 3 (an AppImage, a vendor tool, a `.so` a program
+loads), which the loader otherwise refuses for want of `libssl.so.3`, and `qt5-qtbase`, whose
+QtNetwork does not compile against OpenSSL 4's const-corrected accessors. That port generates the
+OpenSSL 3.5 headers itself, from the same release and with the slot's own configuration, and links
+`libssl.so.3` and `libcrypto.so.3` by path. Nothing else QtNetwork links may bring OpenSSL 4 into
+the process: musl's loader has one symbol namespace, so with both `libcrypto` sonames loaded each
+resolves the other's calls. It follows the 3.5 long-term line (`series = 3.5`), so a binary that
+needs a symbol added in 3.6 still fails to load. It is built `no-module`, so the legacy provider is inside
 `libcrypto.so.3` and the slot never loads OpenSSL 4's `ossl-modules/legacy.so`, and it reads the
 same `/etc/ssl/openssl.cnf` and certificate store as `openssl`.
 
@@ -1247,7 +1350,14 @@ offered alone. Its meson options are the first port's, except the one being turn
 A port that builds introspection data from a glib library names both `gobject-introspection` and
 `glib-introspection` in `depends`: `g-ir-scanner` comes from the first, and every GIR it writes
 includes `GLib-2.0`, `GObject-2.0` or `Gio-2.0` from the second. `libqrtr-glib`, `libmbim`,
-`libqmi` and `modemmanager` do.
+`libqmi`, `modemmanager` and `poppler` do.
+
+`python3` is split the same way for Tk. It is built before `tk`, so `_tkinter` is off and the
+Tk-only standard library is removed from its package. `python3-tkinter` configures the same
+tarball again once `tk` is installed, builds only `_tkinter`, and packages that module with the
+`tkinter` package. It carries `python3-$version.tar.xz` with `python3`'s checksum, its `version`
+must equal `python3`'s because the module is compiled for that interpreter's ABI, and both recipes
+carry `group = python3`.
 
 The arm-none-eabi C++ runtime is split the same way. `gcc-arm-none-eabi` is built with no C
 library and installs only the compiler and `libgcc`; `picolibc-arm-none-eabi` is compiled with
@@ -1351,7 +1461,7 @@ Most ports need nothing: the checker works from the recipe's first `source` URL 
 | `watch` | Upstream lists its releases somewhere nothing reached from the source URL leads: a forge repository, or a page, listing, JSON index or manifest naming the release files. See [Discovery](#discovery) |
 | `series` | The port stays on one line (`21` for `llvm21`, `5.4` for `lua54`), so a release past it is never offered. See [Filtering](#filtering) |
 | `devseries` | Upstream marks development releases by number: `odd-minor`, `preview-minor`, or both. See [Filtering](#filtering) |
-| `group` | Ports the derived grouping would not join must be bumped together, as the two pairs in [A second build of the same source](#a-second-build-of-the-same-source). See [Outcomes](#outcomes) |
+| `group` | Ports the derived grouping would not join must be bumped together: the pairs in [A second build of the same source](#a-second-build-of-the-same-source), the Qt modules, and the other pairs built from one release (`qca`, `qwt`, `qscintilla`, `mgba`, `supertuxkart`, `webkitgtk`, `texlive`). See [Outcomes](#outcomes) |
 
 ### Outcomes
 
@@ -1384,8 +1494,10 @@ writes it.
 Ports are grouped so that a release family is offered as one bump. The grouping key is the forge
 organisation plus the current version, not a name prefix: a name rule misses the member of a
 family whose repository is named differently, while all of them resolve to the same organisation
-and version. A `group` key overrides the derived one; four recipes set it, as the two pairs in
-[A second build of the same source](#a-second-build-of-the-same-source).
+and version. A `group` key overrides the derived one. The pairs in
+[A second build of the same source](#a-second-build-of-the-same-source) set it, and so does a
+family released from a host the derivation does not read, such as the Qt modules from
+`download.qt.io`.
 
 The reasons behind each outcome are under [How the checker decides](#how-the-checker-decides).
 
@@ -1560,7 +1672,7 @@ keeping those shaped like the pin.
   (an odd second number is a development series, as in GLib and Perl) and `preview-minor` (a
   second number of 90 or more previews the next major: Pango 1.90 is Pango 2).
   `gstreamer.freedesktop.org` is `odd-minor` without asking. `download.gnome.org` is not: libxml2
-  2.15 and librsvg 2.63 are stable there, so its odd-minor projects carry the key. 15 ports set it.
+  2.15 and librsvg 2.63 are stable there, so its odd-minor projects carry the key. 25 ports set it.
 - **Series.** A port that stays on one line declares it with the `series` key: a version prefix,
   matched on whole components, so `21` holds `21.1.8` and not `210.1`, and `5.4` holds `5.4.9` and
   not `5.5.0`. A release past it is never a candidate, and a directory walk skips a sibling that

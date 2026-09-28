@@ -16,8 +16,8 @@ price it charges.
 | Principle | What it prevents | What it costs |
 |---|---|---|
 | [No systemd](#no-systemd) | One component owning init, logins, devices, logging and the network | Container resource limits need a hand-built cgroup delegation |
-| [No Xorg server](#no-xorg-server-and-one-carve-out) | A second display stack on the login path | X clients get no GLX |
-| [No GTK and no Qt on the host](#no-gtk-and-no-qt-on-the-host) | A host too large to build in one sitting or read in full | The host has no widget toolkit |
+| [No Xorg server](#no-xorg-server-and-one-carve-out) | A second display stack on the login path | X-only applications run through Xwayland |
+| [Toolkits are for applications](#toolkits-are-for-applications-not-the-desktop) | A desktop that cannot be built in one sitting or read in full | Every desktop surface has to be expressible in cells |
 | [Built from source](#everything-that-runs-on-the-host-is-built-from-source) | Binaries nobody can read or rebuild | Features that exist only as upstream binaries are absent |
 | [Offline by construction](#offline-by-construction) | Builds that work once and fail a year later | Every dependency a build would download must be bundled with the sources in advance |
 | [Reproducible by construction](#reproducible-by-construction) | Signatures and deltas over packages nobody can re-derive | A recipe never rolls its own archive |
@@ -87,65 +87,91 @@ path. An Xorg server would be a second complete display stack, with its own inpu
 own drivers and its own privileges, to build, secure and keep consistent with the first. See
 [How KDOS differs](how-kdos-differs.md#the-display-stack) for how other distributions carry both.
 
-Xwayland is the single exception. The compositor runs it rootlessly so that X11-only applications
-inside boxes (the rootless containers graphical applications run in) work, and it pulls in a
-client-side chain of X ports that exists only to satisfy it: `xorgproto`, `xtrans`, `libXau`,
-`libXdmcp`, `xcb-proto`, `libxcb`, `libX11`, `libxkbfile`, `xkbcomp`, `libxshmfence`, `libfontenc`,
-`libXfont2`, `libxcvt` and `libepoxy`. Two of the five `xcb-util` ports are built: `xcb-util-wm`,
-which `script/05_desktop/packages.txt` names because Xwayland's window manager needs ICCCM and EWMH,
-and `xcb-util-renderutil`, which arrives through the `depends` line of `wlroots`. `xcb-util`,
-`xcb-util-image` and `xcb-util-cursor` are recipes that no phase list or dependency reaches, so
-nothing builds them. A recipe that wants any of these libraries for a reason other than Xwayland is
-rejected.
+Xwayland is the single exception, and the one X server. The compositor runs it rootlessly for
+every X11 client: applications inside boxes (the rootless containers the catalogue's applications
+run in) and host applications that have no Wayland path, such as Xastir, VLC 3 and programs written
+in Motif, Tk or Java's Swing. Any application may link the X client libraries it needs, and the
+host carries them: `script/04_phase4/packages.txt` has an "X11 client libraries" group (`libXext`,
+`libXi`, `libXrandr`, `libXt`, `libXft`, `motif` and the rest) that the X11 backends of Mesa, GTK,
+Qt and mpv are built against beside their Wayland ones. Xwayland itself depends on `xorgproto`,
+`xtrans`, `libXau`, `libXdmcp`, `libX11`, `libxkbfile`, `xkbcomp`, `libxshmfence`, `libXfont2`,
+`libxcvt` and `libepoxy`. All six `xcb-util` ports are built: `xcb-util-keysyms` and
+`xcb-util-wm` are named in the phase lists, `xcb-util-renderutil` arrives through the `depends`
+line of `wlroots`, and `xcb-util`, `xcb-util-image` and `xcb-util-cursor` through those of Qt's
+base modules. What stays out is a
+second X server, a display manager and anything X on the login path.
 
-Two consequences follow, and both matter when planning work around X clients.
+Two consequences follow for X clients.
 
-- **X clients get no GLX.** Mesa is built with `-D glx=disabled -D platforms=wayland`, and
-  Xwayland with `-Dglx=false`. Enabling GLX means rebuilding Mesa with GLX and the X11 platform,
-  and adding the X client libraries those need, none of which is a port. An X11 client in a box
-  that draws through EGL uses the box's own Mesa over Xwayland's DRI3 and is unaffected.
+- **GLX comes from Mesa and Xwayland together.** Mesa is built with `-D glx=dri` and
+  `-D platforms=wayland,x11`, which installs `libGLX_mesa.so` behind libglvnd's `libGL`, and
+  Xwayland with `-Dglx=true`, which is the server side of the extension. An X11 client that asks
+  for GLX finds it, and a Wayland client never loads the GLX library. An X11 client in a box uses
+  the box's own Mesa over Xwayland's DRI3.
 - **The X core fonts are host ports.** `font-misc-misc`, `font-adobe-75dpi` and
   `font-cursor-misc` are in `script/04_phase4/packages.txt`, and the tools that build them
   (`bdftopcf`, `font-util`, `mkfontscale` and `encodings`) arrive through their `depends` lines.
-  A boxed Xt or Motif program asks the host's Xwayland for `-misc-fixed` or `-adobe-helvetica`,
-  and a font directory inside the box is invisible to a server running outside it.
+  A Motif or Xt program, native or boxed, asks the host's Xwayland for `-misc-fixed` or
+  `-adobe-helvetica`, and a font directory inside a box is invisible to a server running outside
+  it.
 
-## No GTK and no Qt on the host
+## Toolkits are for applications, not the desktop
 
-Neither toolkit is a host port. Every surface KDOS draws is a grid of character cells produced by
-[libraries written for it](../05-developer/c-libraries.md), which need neither: the panel and all
-its surfaces, the file chooser, the resource monitor, the terminal, the lock screen, the installer
-and `tty1`. `libktui` composes the cells and knows nothing about where they go. `libkwl` paints
-them into a `wl_shm` buffer as an ordinary Wayland surface, and a terminal receives them as escape
-sequences. The boot splash, `kdos-splash`, runs from the initramfs before any of that exists and
-links none of the libraries: its own code writes PSF glyphs and pixels straight to `/dev/fb0`,
-taking only the colour table from the `libkcolor` header.
+The desktop links no widget toolkit: not `kdos-comp`, not `kdos-shell`, not the root daemons and not
+the portal. Every surface KDOS draws is a grid of character cells produced by [libraries written for
+it](../05-developer/c-libraries.md), which link no toolkit either: the panel and all its surfaces,
+the file chooser, the resource monitor, the terminal, the lock screen, the installer and `tty1`.
+`libktui` composes the cells and knows nothing about where they go. `libkwl` paints them into a
+`wl_shm` buffer as an ordinary Wayland surface, and a terminal receives them as escape sequences.
+The boot splash, `kdos-splash`, runs from the initramfs before any of that exists and links none of
+the libraries: its own code writes PSF glyphs and pixels straight to `/dev/fb0`, taking only the
+colour table from the `libkcolor` header.
 
 The compositor is the one exception inside the desktop. `kdos-comp`, a fork of labwc, links `cairo`
 and `pangocairo` and draws its own chrome (titlebars, the root menu and the on-screen window
 switcher) with pango rather than with cells. It draws in `Terminus (TTF)` at a size that makes a
 titlebar one cell tall, because pango cannot render the bitmap Terminus the cell surfaces use. See
-[The design language](../03-architecture/design-language.md#the-compositors-decoration-is-part-of-the-set)
-and [Theming](../02-user-guide/theming.md#fonts) for the fonts each part of the desktop draws in and
-the keys that set them.
+[The design
+language](../03-architecture/design-language.md#the-compositors-decoration-is-part-of-the-set) and
+[Theming](../02-user-guide/theming.md#fonts) for the fonts each part of the desktop draws in and the
+keys that set them.
 
-Graphical applications live in [boxes](../03-architecture/packs-and-boxes.md), where both toolkits
-are present and themed through the shared home directory, and an application in a box draws
-whatever its toolkit draws.
+Applications are different. A graphical application on the host is ported with the toolkit it is
+written in: GTK 3 or 4, libadwaita, WebKitGTK, Qt 5 or 6, QtWebEngine, KDE Frameworks, wxWidgets,
+FLTK or Tk. Each toolkit is built with both its Wayland and its X11 backend, and Wayland is the
+run-time default. `/etc/profile.d/10-wayland.sh` sets `QT_QPA_PLATFORM="wayland;xcb"`, so Qt falls
+back to Xwayland only when its Wayland plugin cannot start, and leaves `GDK_BACKEND` unset, because
+GTK already tries Wayland first and a value there would override the `GDK_BACKEND=x11` that an
+X11-only application sets for itself. There is no Plasma or GNOME shell: a KDE or GNOME application
+is one more client of `kdos-comp`. It takes the KDOS palette through `~/.config/kdeglobals`, which
+`kdos theme` writes and the `kde` platform theme reads, through the GTK stylesheets, and through the
+Settings portal, and `GTK_USE_PORTAL=1` sends a GTK application's file chooser to the desktop's own.
 
-The rule reaches dependencies as well as applications. A library or tool that would pull a toolkit
-in is built without it: `avahi` and `ghostscript` are configured with `--disable-gtk`, `gnuplot`
-with `--without-qt`, `android-file-transfer` with `-DBUILD_QT_UI=OFF`, and `fontforge` without its
-GTK editor window.
+The ported applications are recipes under `ports/core` like any other, listed in
+`script/04_phase4/packages.txt` after the toolkits they need. The list groups them by purpose:
+"Internet and communication" (Firefox ESR, Chromium, Thunderbird and others), "Documents and
+office" (LibreOffice, Okular, Kate), "Pictures" (GIMP, Inkscape, Krita, darktable), "Sound, video
+and discs", "Knowledge and learning offline", "CAD, electronics, 3D printing and 3D", "Science,
+data and development", "Games" and more; [The ports catalogue](../06-reference/ports-catalogue.md)
+lists every group. They are ported because a box is built from Debian packages over the network,
+and a machine that never sees a network has only what its medium carries. The
+[boxes](../03-architecture/packs-and-boxes.md) remain for software KDOS does not carry, and an
+application in a box draws whatever its toolkit draws.
 
-This keeps the host small enough to compile from source in one sitting and to reason about in full.
-The cost is that the host has no widget toolkit: anything a KDOS surface draws has to be
-expressible in cells, and anything that is not goes in a box.
+A library's toolkit front end is built where a ported application uses it and switched off where
+none does, so what a library installs does not depend on what happened to be built before it.
+`fontforge`'s GTK editor window, `android-file-transfer`'s Qt window and `wireshark`'s Qt interface
+are built. `ghostscript` is configured with `--disable-gtk`, and `avahi` with every toolkit off:
+its GTK 3 front end cannot be built at all, because GTK 3 depends on CUPS, which depends on avahi.
+
+The line keeps the desktop small enough to compile in one sitting and to reason about in full,
+whatever the applications above it weigh. The cost is that anything a KDOS surface draws has to be
+expressible in cells.
 
 ## Everything that runs on the host is built from source
 
 Every program, library and module that the host installs and runs on its own processor is compiled
-in this tree from pinned source: 1,038 recipes, 1,014 under `ports/core` for upstream software,
+in this tree from pinned source: 2,027 recipes, 2,003 under `ports/core` for upstream software,
 each pinned by hash, and 24 under `src/` for the software kept in this repository, most of it
 written for KDOS. [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of
 them by phase and group, and [How KDOS is built](../05-developer/how-kdos-is-built.md) follows the
@@ -157,27 +183,34 @@ A binary taken on trust cannot be read, cannot be rebuilt from the source tree b
 [`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild), and carries whatever its builder put
 in it. A single prebuilt binary on the host is enough to make end-to-end inspection impossible.
 
-Four classes are exempt, and nothing outside them is:
+Five classes are exempt, and nothing outside them is:
 
 - **Firmware and code for another processor.** `linux-firmware`, `intel-ucode`, `sof-firmware`,
   the GPU kernels in `intel-media-driver` and `libva-intel-driver`, the SOF coefficient files in
   `alsa-ucm-conf`, the device stubs uploaded by `espflash`, `probe-rs`, `python3-esptool` and
-  `openfpgaloader`, and the riscv64 EDK2 image that `qemu` installs from its tarball. This code
-  runs on a DSP, a GPU, a microcontroller or a virtual machine guest, and most of it has no
-  published source.
-- **Compiled font data.** `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`, and
-  the fonts bundled inside `mupdf`, `matplotlib` and `seqkit`. Their sources compile through
+  `openfpgaloader`, the riscv64 EDK2 image that `qemu` installs from its tarball, the radio
+  firmware in `meshtastic-firmware`, `rnode-firmware` and `libperseus-sdr`, the guest ROMs and
+  replacement BIOSes the emulators carry, and `wine-mono` and `wine-gecko`. This code runs on a
+  DSP, a GPU, a microcontroller, a radio or a guest (an emulated machine, or a Windows program
+  under Wine), and most of it has no published source.
+- **Compiled font data.** `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`,
+  `font-carlito`, `font-caladea`, the fonts of `texlive`'s texmf tree, and the fonts bundled inside
+  applications such as `mupdf`, `matplotlib`, `kodi` and `freecad`. Their sources compile through
   toolchains this tree does not carry. A face whose upstream build runs on ports is compiled here:
-  `ttf-dejavu`, `terminus-ttf` and `noto-emoji`.
-- **Compiler bootstrap seeds.** The `rust` stage-0 toolchain, the `go` bootstrap toolchain,
-  `zig1.wasm` inside the `zig` source, and the upstream musl GHC that `ghc` builds with. A compiler
-  written in its own language needs a working copy first; the seed is used by the build and never
-  installed.
-- **Data with no other source form.** The `tesseract` English model, the `perl-xml-parser`
-  encoding maps, the JavaScript of `libkiwix`'s server skin, the `fcitx5-chinese-addons` tables,
-  `john`'s `.chr` files, the RP2350 boot-ROM copies in `picotool`, the recorded voice samples
-  in `alsa-utils`, and the Alpine security database that `kdos-tools` ships as
-  `/usr/share/kdos/secdb.txt`.
+  `ttf-dejavu`, `terminus-ttf`, `noto-emoji`, `font-liberation` and the X.org bitmap fonts.
+- **Bootstrap seeds.** The `rust` stage-0 toolchain, the `go` bootstrap toolchain, `zig1.wasm`
+  inside the `zig` source, the upstream musl GHC that `ghc` builds with, the musl JDK that
+  `openjdk` boots from, `ocaml`'s `boot/ocamlc`, and the Groovy jars `kodi`'s binding generator
+  runs on. A compiler written in its own language needs a working copy first; the seed is used by
+  the build and never installed.
+- **Data with no other source form.** The `tessdata-eng` OCR models, the Whisper and SoundFont
+  data ports, the `perl-xml-parser` encoding maps, the `fcitx5-chinese-addons` tables, `john`'s
+  `.chr` files, the RP2350 boot-ROM copies in `picotool`, the recorded voice samples in
+  `alsa-utils`, trained network weights, map databases, game and learning content, and the Alpine
+  security database that `kdos-tools` ships as `/usr/share/kdos/secdb.txt`.
+- **Built JavaScript.** The JavaScript of `libkiwix`'s server skin, the web clients of
+  `transmission`, `deluge`, `kolibri`, `pat` and `kodi`, and `yarn`'s release bundle, each the
+  output of a JavaScript toolchain over an npm dependency tree that ships as upstream released it.
 
 Each exemption is pinned in the tree, by a hashed `source =` line or, for the `kdos-tools`
 security database, as a file committed under `src/`, so the offline build holds for it. A
@@ -194,7 +227,7 @@ shipped.
 
 ## Offline by construction
 
-The build runs with no network, and this is enforced rather than intended: `make build` starts the
+The build runs with no network, and this is enforced, not a convention: `make build` starts the
 build container with `docker run --network none`. A dependency that reaches out fails immediately
 and visibly, instead of working on the machine that added it and failing everywhere else a year
 later.
@@ -221,16 +254,17 @@ resolving a system tool from PyPI. Each has a standard fix in
 The cost lands on whoever adds a port. A language ecosystem that downloads its dependencies at
 build time needs a *vendor bundle*: a reproducible tarball of those dependencies, produced by
 `make fetch` and then held in the archive like any other source. A recipe asks for one with
-`vendoring =`, and 123 recipes in `ports/core` do: 60 Rust, 34 Go, 25 Python and 4 Haskell. One
-more, `pdfium`, carries a bundle that no tool writes, assembled by hand from the Chromium
-checkouts it needs, so 124 ports carry a vendor bundle in all. A build with network access would
+`vendoring =`, and 159 recipes in `ports/core` do: 71 Rust, 38 Go, 45 Python, 4 Haskell and 1
+Node. `python3-lsp-ruff` gets a Python bundle from its `pypackages` line alone, and four more
+(`pdfium`, `libreoffice`, `librepcb` and `surfer`) carry bundles no tool writes, assembled by hand,
+so 164 ports carry a vendor bundle in all. A build with network access would
 fetch these dependencies itself. See [Writing ports](../05-developer/writing-ports.md#vendoring)
 and [A bundle no tool writes](../05-developer/writing-ports.md#a-bundle-no-tool-writes).
 
 ## Reproducible by construction
 
 A package built twice from the same tree is byte-identical. That is a property of one function
-rather than of 1,038 recipes: `roll_package()` in `kpkg`, the package manager
+rather than of 2,027 recipes: `roll_package()` in `kpkg`, the package manager
 (`src/packages/kdos-kpkg/build.c`), runs tar with `--sort=name`, `--format=gnu`,
 `--owner=0 --group=0 --numeric-owner`, an `--mtime` taken from `SOURCE_DATE_EPOCH`, and
 `xz -9 -T1` as a pinned compressor. The build also sets its umask to `022` before a recipe runs.
@@ -318,11 +352,11 @@ Where the machine does not publish a value, the interface says so. It does not s
 
 A `0` in place of an unavailable reading reports a sensor that does not exist as a machine that is
 idle, which is worse than an empty cell because it looks like information.
-[`kdos-res`](../04-programs/kdos-res.md#missing-and-discontinuous-readings) renders `-` for any reading
-it cannot take, leaves out a GPU line (memory, clock, sensors) that the driver does not publish,
-and draws a counter that went backwards as a gap rather than as a spike. Where a driver has no
-utilisation counter, as `i915` and `xe` do not, it shows engine time labelled as such and does not
-convert it into a percentage.
+[`kdos-res`](../04-programs/kdos-res.md#missing-and-discontinuous-readings) renders `-` for any
+reading it cannot take, leaves out a GPU line (memory, clock, sensors) that the driver does not
+publish, and draws a counter that went backwards as a gap rather than as a spike. Where a driver has
+no utilisation counter, as `i915` and `xe` do not, it shows engine time labelled as such and does
+not convert it into a percentage.
 
 The same rule governs what a measurement is allowed to claim.
 [`kdos-energy`](../04-programs/daemons.md#kdos-energyd) reports relative shares of attributable CPU

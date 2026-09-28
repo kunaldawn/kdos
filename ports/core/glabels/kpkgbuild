@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = glabels
+version     = 3.4.1
+release     = 1
+source      = https://download.gnome.org/sources/glabels/${version%.*}/glabels-$version.tar.xz
+sha256      = 18e457298abb1c617187361109eeae769317686303fc07726af31e11519c5938  glabels-3.4.1.tar.xz
+description = gLabels — labels, business cards and envelopes, with barcodes and mail merge
+homepage    = https://github.com/j-evins/glabels-gtk
+depends     = pkgconf gettext intltool perl-xml-parser itstool libxml2 glib gtk3 cairo pango librsvg qrencode shared-mime-info hicolor-icon-theme

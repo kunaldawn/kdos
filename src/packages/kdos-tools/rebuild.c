@@ -22,8 +22,8 @@
  *     meson, ninja, python3 and kpkg
  *   - packages are reproducible (P12), so a rebuild can be COMPARED to what it
  *     was built from rather than merely produced
- *   - and now: `make build KDOS_ISO_SOURCES=1` puts ports/, src/ and script/ on
- *     the ISO beside system.sfs
+ *   - and now: `make build KDOS_ISO_SOURCES=1` puts ports/ with every fetched
+ *     source, src/, script/ and fs/ on the ISO beside system.sfs
  *
  * What this command is: the honest front door to that. It finds the sources,
  * checks the machine can actually do the work, copies the tree somewhere
@@ -67,6 +67,11 @@ static int looks_like_tree(const char *dir)
 	if (!kb_path_exists(p))
 		return 0;
 	snprintf(p, sizeof(p), "%s/ports/core", dir);
+	if (!kb_is_dir(p))
+		return 0;
+	/* Phase 1 copies the fs/ overlay into the new root; a tree without it
+	 * builds a system with no configuration and stops there. */
+	snprintf(p, sizeof(p), "%s/fs/etc", dir);
 	if (!kb_is_dir(p))
 		return 0;
 	snprintf(p, sizeof(p), "%s/src/build/kdosbuild", dir);
@@ -353,6 +358,16 @@ int rebuild_main(int argc, char **argv)
 		fprintf(stderr, "kdos: cannot enter %s\n", tree);
 		return 1;
 	}
+	/* The phase environments root the build at /workspace, where the build
+	 * container mounts the tree, unless this names the copy instead. The
+	 * name is absolute: the work directory may be given relative, and a
+	 * relative root would resolve against whatever directory a step is in. */
+	char here[4096];
+	if (!getcwd(here, sizeof(here))) {
+		fprintf(stderr, "kdos: cannot name %s\n", tree);
+		return 1;
+	}
+	setenv("KDOS_WORKSPACE", here, 1);
 
 	KbArgv a = {0};
 	kb_argv_add(&a, bin);

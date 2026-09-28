@@ -8,9 +8,10 @@ contents. Every chapter it lists describes the system as it is in this source tr
 ## Preface
 
 KDOS is a Linux distribution for x86_64 machines, compiled in this repository from upstream source
-with a musl C library, no systemd, no Xorg server and no GTK or Qt on the host. Its desktop is its
-own, every surface of it drawn as a grid of character cells, and the large graphical applications
-people expect run beside that desktop in containers called *boxes*.
+with a musl C library, no systemd and no Xorg server. Its desktop is its own, every surface of it
+drawn as a grid of character cells with no GUI toolkit under it. The graphical applications people
+expect are ported natively on top of it, each with the toolkit it is written in (GTK, Qt, KDE
+Frameworks, wxWidgets, FLTK or Tk), or run beside it in containers called *boxes*.
 
 The book is written for people: anyone deciding whether to try KDOS, installing it, looking after a
 machine that runs it, or building and changing it. It assumes a working knowledge of Linux (a
@@ -47,7 +48,7 @@ front to back. The shortest route that still covers the whole system is:
 4. Ch 12, [Architecture overview](03-architecture/overview.md), then chapters 13 to 19 in order
 5. Ch 20, [The programs](04-programs/README.md), and any program chapter that interests you
 6. Ch 30, [How KDOS is built](05-developer/how-kdos-is-built.md)
-7. Ch 45, [Status](06-reference/status.md), and ch 43, [Known gaps](06-reference/known-gaps.md)
+7. Ch 44, [Status](06-reference/status.md), and ch 43, [Known gaps](06-reference/known-gaps.md)
 
 ### Installing and using KDOS
 
@@ -57,7 +58,8 @@ For someone who wants an image on hardware and a working desktop:
 2. Ch 5, [Getting started](02-user-guide/getting-started.md): build an image, write a medium, boot it
 3. Ch 6, [Installation](02-user-guide/installation.md): the installer, page by page
 4. Ch 7, [The desktop](02-user-guide/desktop.md): panel, menus, windows and keyboard shortcuts
-5. Ch 8, [Applications](02-user-guide/applications.md): the catalogue and the boxes behind it
+5. Ch 8, [Applications](02-user-guide/applications.md): which applications are native, and the
+   catalogue and boxes for the rest
 6. Ch 9, [Theming](02-user-guide/theming.md), and ch 11, [Accessibility](02-user-guide/accessibility.md)
 7. Ch 43, [Known gaps](06-reference/known-gaps.md): what does not exist, before you depend on it
 
@@ -91,7 +93,7 @@ For a developer who builds the distribution, adds or changes a port, or writes d
 
 ## Contents
 
-Forty-six chapters in six parts.
+Forty-five chapters in six parts.
 
 ### Part I — Introduction
 
@@ -108,8 +110,8 @@ chapters stay at the level of ideas and link to the chapters that describe each 
 3. [Principles](01-philosophy/principles.md): the rules that constrain every change, each with the
    failure it prevents and the price it charges
 4. [Decisions](01-philosophy/decisions.md): the choices where an alternative was reasonable (the
-   compositor fork, the catalogue, packs, musl, the source archive, `-march` and more), and why
-   the alternative lost
+   compositor fork, native applications beside the catalogue, packs, musl, the source archive,
+   `-march` and more), and why the alternative lost
 
 ### Part II — Using KDOS
 
@@ -124,8 +126,9 @@ are written for the person at the keyboard and name the file behind each behavio
    encryption, A/B root slots, unattended installs and every file the installer writes
 7. [The desktop](02-user-guide/desktop.md): the panel, the Start menu, windows, keyboard
    shortcuts, notifications, files, the clipboard, locking, displays and removable media
-8. [Applications](02-user-guide/applications.md): finding, installing, launching, updating and
-   removing boxed applications, carrying a set to another machine, and managing boxes
+8. [Applications](02-user-guide/applications.md): which applications are ported natively, then
+   finding, installing, launching, updating and removing boxed applications, carrying a set to
+   another machine, and managing boxes
 9. [Theming](02-user-guide/theming.md): the eight accents, fonts, the phosphor pass, wallpaper,
    the boot menu and consoles, and theming inside a box
 10. [Administration](02-user-guide/administration.md): services, users, storage, networking, the
@@ -175,7 +178,7 @@ these chapters cover only what this repository writes.
 21. [kdos-comp](04-programs/kdos-comp.md): the compositor: configuration, bindings, decorations,
     frame pacing, the phosphor pass, idle and lock, its sockets, box identity and working on its
     code
-22. [kdos-shell](04-programs/kdos-shell.md): one binary under 53 names and 52 surfaces: the panel,
+22. [kdos-shell](04-programs/kdos-shell.md): one binary under 55 names and 54 surfaces: the panel,
     the Start menu, the file chooser, settings, device managers, notifications, the store and the
     small surfaces
 23. [kdos-res](04-programs/kdos-res.md): the resource monitor: its eleven pages, keys, acting on a
@@ -220,8 +223,8 @@ failures that recur, the C libraries, desktop software and the test harnesses.
 ### Part VI — Reference
 
 Lookup tables and statements of state: every port, command, configuration key, path and socket,
-the layout of the source tree, what does not exist, where the work is heading, how mature each part
-is, and the vocabulary of the book.
+the layout of the source tree, what does not exist, how mature each part is, and the vocabulary of
+the book.
 
 38. [The ports catalogue](06-reference/ports-catalogue.md): every port KDOS can build, by phase
     and group, with the ports installed only as dependencies and those not installed
@@ -236,11 +239,9 @@ is, and the vocabulary of the book.
     ignores
 43. [Known gaps](06-reference/known-gaps.md): what KDOS does not do, or has not been shown to do,
     and what to do instead
-44. [Roadmap](06-reference/roadmap.md): aarch64 and mobile, the stated directions, and what is not
-    planned, kept separate from what ships
-45. [Status](06-reference/status.md): the maturity of each subsystem and the evidence behind each
+44. [Status](06-reference/status.md): the maturity of each subsystem and the evidence behind each
     verdict
-46. [Glossary](06-reference/glossary.md): the vocabulary the book uses, defined once, and the words
+45. [Glossary](06-reference/glossary.md): the vocabulary the book uses, defined once, and the words
     it avoids
 
 ## Conventions

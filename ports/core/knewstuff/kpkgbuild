@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = knewstuff
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 85408768b5c3f4b0b51ee6a14ae73fea263f451404e266e286c55e0c17e44037  knewstuff-6.30.0.tar.xz
+description = KDE Frameworks: downloading and installing add-on content
+homepage    = https://invent.kde.org/frameworks/knewstuff
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative attica karchive kconfig kcoreaddons ki18n kirigami kpackage kwidgetsaddons

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = knotifyconfig
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 4a133decdb0d3731dbaa1d3625b30f057089e5c59c8326ff88a047cef35b2efb  knotifyconfig-6.30.0.tar.xz
+description = KDE Frameworks: configuration dialog for desktop notifications
+homepage    = https://invent.kde.org/frameworks/knotifyconfig
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtmultimedia kcompletion kconfig ki18n kio

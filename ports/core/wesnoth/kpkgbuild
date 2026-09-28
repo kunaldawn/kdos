@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wesnoth
+version     = 1.18.8
+release     = 1
+_series     = ${version%.*}
+source      = https://downloads.sourceforge.net/project/wesnoth/wesnoth-$_series/wesnoth-$version/wesnoth-$version.tar.bz2
+sha256      = fce3bd71d4ed32c9d11c0f707d19743cec6adf5c34761fab94ab72754aaedd89  wesnoth-1.18.8.tar.bz2
+description = Battle for Wesnoth — turn-based fantasy strategy with campaigns, skirmishes and a map editor
+homepage    = https://www.wesnoth.org/
+depends     = cmake ninja pkgconf boost icu openssl curl libvorbis fontconfig sdl2-compat sdl2-image sdl2-mixer cairo pango readline dbus

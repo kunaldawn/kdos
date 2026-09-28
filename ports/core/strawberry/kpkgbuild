@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = strawberry
+version     = 1.2.30
+release     = 1
+source      = https://files.strawberrymusicplayer.org/$name-$version.tar.xz
+sha256      = 30fea0fdfc2f9c5449ac30d78ac2f5429fb5e1d025a4d1d3473d10f2abe1ef2a  strawberry-1.2.30.tar.xz
+description = Music player and collection organiser — tags, playlists, loudness normalisation, CD and MTP devices
+homepage    = https://www.strawberrymusicplayer.org/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtwayland kdsingleapplication glib gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav sqlite taglib boost icu openssl alsa-lib libpulse fftw libebur128 sparsehash libcdio libmtp chromaprint libgpod gdk-pixbuf

@@ -42,8 +42,8 @@ kdos/
 │   ├── core/<name>/       one directory per upstream port
 │   │   ├── kpkgbuild          declarative metadata — parsed, never sourced
 │   │   ├── build.sh           the build; bash, run in the unpacked source
-│   │   ├── postinstall.sh     optional install-time hook (13 ports have one)
-│   │   ├── *.patch            optional patches, tracked (90 files)
+│   │   ├── postinstall.sh     optional install-time hook (24 ports have one)
+│   │   ├── *.patch            optional patches, tracked (425 files)
 │   │   ├── other support files  configuration, data files, single-file sources — tracked
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
 │   ├── Containerfile.fetch    the image that generates vendor bundles, pinning this tree's toolchains
@@ -79,7 +79,7 @@ kdos/
 │   │
 │   ├── desktop/           the desktop — a port repository, 13 recipes
 │   │   ├── kdos-comp/         the compositor; KDOS additions in src/kdos-*.c
-│   │   ├── kdos-shell/        the panel and every other surface: one binary under 53 names
+│   │   ├── kdos-shell/        the panel and every other surface: one binary under 55 names
 │   │   ├── kdos-res/          the resource monitor, and its setuid helper kdos-resctl
 │   │   ├── kdos-lock/         the lock screen, and the setuid password checker kdos-checkpass
 │   │   ├── kdos-term/         the terminal
@@ -127,10 +127,6 @@ kdos/
 │   ├── chroot_exec.sh, chroot_enter.sh   the chroot
 │   └── hooks/pre-push                    refuses a push naming an unarchived source (opt-in)
 │
-├── script-mobile/         the aarch64 phase tree — seven environment files, an
-│                          orchestrator wrapper and util/port.sh, and no phase
-│                          directories, so a run finds nothing to build
-│
 ├── testing/
 │   ├── preflight.sh          compiles kpkg, then checks the tree's wiring (packages resolve,
 │   │                         recipes parse, scripts are valid) without building a port
@@ -138,8 +134,8 @@ kdos/
 │   ├── docscheck.sh          the book: dead links, history, the page contract
 │   ├── barcheck.c, boxcheck.c   checks selftest.sh compiles and runs
 │   ├── hostcheck.sh          in a booted guest: is the binary each name resolves to the right one
-│   ├── fixtures/             recorded system state, 38 directories
-│   ├── goldens/              committed reference frames: 193 files and a README
+│   ├── fixtures/             recorded system state, 40 directories
+│   ├── goldens/              committed reference frames: 202 files and a README
 │   ├── vnc-shot.py           drive and photograph a real session
 │   ├── rig-image.sh          builds kdos-qemu-py, the image vnc-shot.py runs in
 │   ├── quick.sh, quickpatch.sh   one port, patched into a booted ISO's RAM overlay
@@ -193,7 +189,7 @@ applications that run in boxes, is not a port repository; it is the catalogue fi
 
 | Directory | Holds | Recipes | What decides a port goes here |
 |---|---|---|---|
-| `ports/core/` | Upstream software | 1,014 | It is somebody else's source |
+| `ports/core/` | Upstream software | 2,003 | It is somebody else's source |
 | `src/packages/` | KDOS's own software that is not the desktop | 11 | It is written for KDOS, and it is not a desktop component |
 | `src/desktop/` | The desktop | 13 | It is written for KDOS, and it draws or serves the session |
 
@@ -272,7 +268,7 @@ mounting only the directories the build reads:
 | `build/` | `/workspace/build` | read-write |
 | `src/`, `fs/`, `script/`, `ports/` | `/workspace/src`, `/workspace/fs`, `/workspace/script`, `/workspace/ports` | read-only |
 
-`docs/`, `testing/`, `script-mobile/` and the root files are not mounted, so nothing in them can
+`docs/`, `testing/` and the root files are not mounted, so nothing in them can
 change what a build produces. The build writes only under `build/`; `build/fs/` is the target root
 filesystem it grows phase by phase.
 
@@ -308,7 +304,7 @@ Five files in the tree make this work:
 | `ports/srclib.sh` | The archive's addressing and hash checks, and the on-demand build of the recipe reader; sourced by `ports/fetch`, `ports/publish` and the hook |
 | `ports/sources.idx` | One line per archived file, `<sha256> <NNN> <port>/<file>`: the file is asset `<sha256>` of release `sources-<NNN>`. Written by `ports/publish`, read by `ports/fetch` and the pre-push hook; append-only, and committed with the recipe that needs it |
 | `ports/fetch` | Resolves every recipe hash from the port directory, `ports/.srccache/`, the archive, or the recipe's `source =` URL, in that order, and generates a port's own vendor bundle when none of those holds it. `make fetch` runs it; `make fetch-check` runs `ports/fetch --check`, which is offline |
-| `ports/publish` | Uploads sources the archive does not hold yet (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `ports/publish` | Uploads sources the archive does not hold (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
 | `script/hooks/pre-push` | Refuses a `git push` whose recipes name a hash the archive does not hold |
 
 The hook runs only in a clone that has opted in:
@@ -333,7 +329,6 @@ included, stops running in that clone.
 | Path | Ignored by git | Notes |
 |---|---|---|
 | `build/` | entirely | The root filesystem, logs, snapshots, the ISO, signing keys, frozen source lists, and `build/podman/`, a podman container store that `script/kdosbuild.sh` leaves owned by root |
-| `build-mobile/` | entirely | The mobile build root; firmware blobs land under it |
 | `build_test/` | entirely | Where `testing/prepare_base.py` builds the minimal root filesystem that `testing/test_runner.py` builds ports against |
 | `ports/core/*/*.tar`, `*.tar.*`, `*.tgz`, `*.tbz2`, `*.txz`, `*.zip`, `*.7z`, `*.part` | yes | Upstream archives, vendor bundles and partial downloads, put there by `make fetch`. A patch or configuration file a recipe hashes is tracked and unaffected, and the archive fixtures under `testing/fixtures/` stay tracked |
 | `ports/.srccache/` | yes | The source cache, `sha256-XX/<hash>`. Plain data: it survives `make clean` and `make cleanbuild` |
@@ -385,8 +380,9 @@ After changing `kdos.png`, regenerate the four in the table on the host (and cop
 
 ## What must never exist
 
-`fs/etc/X11/`. There is no X server on this system. The one carve-out is Xwayland, a rootless X
-server the compositor runs for X11 clients inside boxes, and it needs nothing in that directory. See
+`fs/etc/X11/`. There is no Xorg server on this system and nothing X on the login path. The one X
+server is Xwayland, a rootless X server the compositor starts for X11 clients: boxed applications,
+and host applications that have no Wayland path. It needs nothing in that directory. See
 [Principles](../01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
 
 ## See also

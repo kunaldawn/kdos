@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tdb
+version     = 1.4.15
+release     = 1
+source      = https://www.samba.org/ftp/$name/$name-$version.tar.gz
+sha256      = fba09d8df1f1b9072aeae8e78b2bd43c5afef20b2f6deefa633aa14a377a8dd2  tdb-1.4.15.tar.gz
+description = Trivial database library — Rhythmbox's metadata cache
+homepage    = https://tdb.samba.org/
+depends     = python3 pkgconf
