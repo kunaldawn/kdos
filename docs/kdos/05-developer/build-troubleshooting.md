@@ -896,7 +896,7 @@ than naming a standard in `CXXFLAGS`, which pins one the code may outgrow:
 ./configure --prefix=/usr ac_cv_prog_cxx_cxx11=
 ```
 
-The `rdfind` port does this.
+The `rdfind` and `pinentry` ports do this.
 
 ### Newer-compiler diagnostics as errors
 
