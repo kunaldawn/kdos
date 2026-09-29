@@ -306,11 +306,11 @@ static void do_named(const char *flag, const char *what)
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 static const KtuiCol PRN_COL[] = {
-	{ "PRINTER", 0 }, { "STATE", 14 }, { "DEFAULT", 9 }
+	{ "PRINTER", 0, 0 }, { "STATE", 14, 0 }, { "DEFAULT", 9, 0 }
 };
 #define PRN_NCOL 3
 
-static const KtuiCol FND_COL[] = { { "HOW", 10 }, { "DEVICE", 0 } };
+static const KtuiCol FND_COL[] = { { "HOW", 10, 0 }, { "DEVICE", 0, 0 } };
 #define FND_NCOL 2
 
 static void prn_cell(int idx, int col, int x, int y, int w, int fg, int bg,
@@ -449,140 +449,108 @@ static int on_key(int k)
 	return 0;
 }
 
+static int pr_arg(int argc, char **argv, int *i)
+{
+	if (!strcmp(argv[*i], "--no-icons"))
+		icons_on = 0;
+	else if (!strcmp(argv[*i], "--found"))
+		page = PG_FOUND;
+	else if (!strcmp(argv[*i], "--fixture") && *i + 1 < argc)
+		fixture = argv[++*i];
+	else
+		return 0;
+	return 1;
+}
+
+/* After the grid exists: the tables clamp against its height. */
+static void pr_ready(void)
+{
+	refresh();
+}
+
+static int pr_event(KtuiEvent *ev)
+{
+	if (ev->type == KT_EVT_MOUSE) {
+		/*
+		 * A DETENT SCROLLS THE TABLE. It is answered before anything
+		 * below, because a wheel tick arrives as a press with no
+		 * release and would otherwise fall into the button arm and run
+		 * whichever row it passed over.
+		 */
+		if (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN) {
+			ktui_table_key(cur_table(), cur_count(), ktui_h - 8,
+				       ev->btn == KT_MB_WHEEL_UP ? KT_K_UP
+								 : KT_K_DOWN,
+				       NULL, NULL);
+			return SH_EV_TAKEN;
+		}
+		if (ev->press == KT_MP_DRAG) {
+			kch_hover(ev->mx, ev->my);
+			return SH_EV_TAKEN;
+		}
+		if (ev->press != KT_MP_PRESS)
+			return SH_EV_PASS;
+
+		switch (kch_button_at(ev->mx, ev->my)) {
+		case PB_CLOSE:
+			return SH_EV_CLOSE;
+		case PB_ADD:
+			do_add();
+			return SH_EV_TAKEN;
+		case PB_DEFAULT:
+			do_named("-d", "default is");
+			return SH_EV_TAKEN;
+		case PB_REMOVE:
+			do_named("-x", "removed");
+			return SH_EV_TAKEN;
+		case PB_REFRESH:
+			refresh();
+			return SH_EV_TAKEN;
+		}
+
+		int t = ktui_tabs_hit(krect(2, 4, ktui_w - 4, 1), PAGES, PG_N,
+				      0, ev->mx, ev->my);
+
+		if (t >= 0) {
+			page = t;
+			return SH_EV_TAKEN;
+		}
+		int idx = ktui_table_hit(krect(2, 5, ktui_w - 4, ktui_h - 9),
+					 cur_table(), cur_count(),
+					 page == PG_PRINTERS ? PRN_NCOL
+							     : FND_NCOL,
+					 page == PG_PRINTERS ? PRN_COL
+							     : FND_COL,
+					 ev->mx, ev->my);
+		ktui_table_pick(cur_table(), cur_count(), idx, NULL, NULL);
+		return SH_EV_TAKEN;
+	}
+	if (ev->type != KT_EVT_KEY)
+		return SH_EV_PASS;
+	return on_key(ev->key) ? SH_EV_CLOSE : SH_EV_TAKEN;
+}
+
 int print_main(int argc, char **argv)
 {
-	const char *font = NULL;
-	int dump = 0;
-
-	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--font") && i + 1 < argc)
-			font = argv[++i];
-		else if (!strcmp(argv[i], "--dump"))
-			dump = 1;
-		else if (!strcmp(argv[i], "--no-icons"))
-			icons_on = 0;
-		else if (!strcmp(argv[i], "--found"))
-			page = PG_FOUND;
-		else if (!strcmp(argv[i], "--fixture") && i + 1 < argc)
-			fixture = argv[++i];
-		else {
-			fprintf(stderr, "usage: kdos-print [--font NAME] "
-					"[--no-icons] [--found] "
-					"[--fixture DIR] [--dump]\n");
-			return 2;
-		}
-	}
-
-	KDispConfig cfg = {
-		.role = KDISP_ROLE_TOPLEVEL,
-		.cols = PR_COLS,
-		.rows = PR_ROWS,
-		.min_cols = 56,
-		.min_rows = 12,
-		.title = "Printers",
-		.app_id = "kdos-print",
-		.font = font,
-		.keyboard = 1,
+	static const ShSurface s = {
+		.cfg = {
+			.role = KDISP_ROLE_TOPLEVEL,
+			.cols = PR_COLS,
+			.rows = PR_ROWS,
+			.min_cols = 56,
+			.min_rows = 12,
+			.title = "Printers",
+			.app_id = "kdos-print",
+			.keyboard = 1,
+		},
+		.usage = "[--font NAME] [--no-icons] [--found] [--fixture DIR] "
+			 "[--dump]",
+		.keys = &keys,
+		.arg = pr_arg,
+		.ready = pr_ready,
+		.draw = draw,
+		.event = pr_event,
 	};
 
-	sh_theme_from_cache();
-	if (dump) {
-		ktui_offscreen_init(PR_COLS, PR_ROWS);
-		ktui_draw_init();
-		refresh();
-		draw();
-		ktui_draw_dump();
-		return 0;
-	}
-	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-		fprintf(stderr, "kdos-print: no display server\n");
-		return 1;
-	}
-	ktui_draw_init();
-	refresh();
-
-	while (!kdisp_should_close()) {
-		draw();
-		ktui_draw_flush();
-
-		KtuiEvent ev;
-
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
-			if (ktui_resized) {
-				ktui_resized = 0;
-				ktui_draw_resize();
-				ktui_draw_invalidate();
-			}
-			continue;
-		}
-		if (ev.type == KT_EVT_MOUSE) {
-			/*
-			 * A DETENT SCROLLS THE TABLE. It is answered before
-			 * anything below, because a wheel tick arrives as a
-			 * press with no release and would otherwise fall into
-			 * the button arm and run whichever row it passed over.
-			 */
-			if (ev.btn == KT_MB_WHEEL_UP ||
-			    ev.btn == KT_MB_WHEEL_DOWN) {
-				ktui_table_key(cur_table(), cur_count(), ktui_h - 8,
-					       ev.btn == KT_MB_WHEEL_UP ? KT_K_UP
-									: KT_K_DOWN,
-					       NULL, NULL);
-				continue;
-			}
-			if (ev.press == KT_MP_DRAG) {
-				kch_hover(ev.mx, ev.my);
-				continue;
-			}
-			if (ev.press != KT_MP_PRESS)
-				continue;
-
-			int bi = kch_button_at(ev.mx, ev.my);
-
-			if (bi == PB_CLOSE)
-				break;
-			switch (bi) {
-			case PB_ADD:
-				do_add();
-				continue;
-			case PB_DEFAULT:
-				do_named("-d", "default is");
-				continue;
-			case PB_REMOVE:
-				do_named("-x", "removed");
-				continue;
-			case PB_REFRESH:
-				refresh();
-				continue;
-			}
-
-			int t = ktui_tabs_hit(krect(2, 4, ktui_w - 4, 1), PAGES,
-					      PG_N, 0, ev.mx, ev.my);
-
-			if (t >= 0) {
-				page = t;
-				continue;
-			}
-			int idx = ktui_table_hit(krect(2, 5, ktui_w - 4,
-						       ktui_h - 9),
-						 cur_table(), cur_count(),
-						 page == PG_PRINTERS ? PRN_NCOL
-								     : FND_NCOL,
-						 page == PG_PRINTERS ? PRN_COL
-								     : FND_COL,
-						 ev.mx, ev.my);
-			ktui_table_pick(cur_table(), cur_count(), idx, NULL,
-					NULL);
-			continue;
-		}
-		if (ev.type != KT_EVT_KEY)
-			continue;
-		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
-			break;
-		if (on_key(ev.key))
-			break;
-	}
-
-	kdisp_shutdown();
-	return 0;
+	return sh_run(&s, argc, argv);
 }

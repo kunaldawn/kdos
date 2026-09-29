@@ -70,7 +70,7 @@ kdos/
 │   │   ├── libkpkg/           the package database, the ports tree, the solver
 │   │   ├── libkproc/          reads system state from /proc and /sys, or from a fixture root
 │   │   ├── libksig/           Ed25519 — Monocypher, the one third-party source carried unmodified
-│   │   ├── libktui/           the terminal toolkit: cell buffer, widgets, charts
+│   │   ├── libktui/           the terminal toolkit: cell buffer, widgets, charts, motion
 │   │   ├── libkvt/            the terminal state machine — forked from libtsm, maintained here
 │   │   ├── libkwl/            the toolkit's Wayland backend
 │   │   ├── libkwm/            the window model, taken out of the compositor that obeys it
@@ -189,7 +189,7 @@ applications that run in boxes, is not a port repository; it is the catalogue fi
 
 | Directory | Holds | Recipes | What decides a port goes here |
 |---|---|---|---|
-| `ports/core/` | Upstream software | 2,001 | It is somebody else's source |
+| `ports/core/` | Upstream software | 1,999 | It is somebody else's source |
 | `src/packages/` | KDOS's own software that is not the desktop | 11 | It is written for KDOS, and it is not a desktop component |
 | `src/desktop/` | The desktop | 13 | It is written for KDOS, and it draws or serves the session |
 
@@ -250,7 +250,7 @@ not draw pixels never compiles it in or links its dependencies:
 | Library | Links |
 |---|---|
 | `libkwl` | fcft, fontconfig, pixman, xkbcommon and the Wayland client libraries |
-| `libkcell` | fcft and pixman |
+| `libkcell` | fcft, fontconfig and pixman |
 | `libkicon` | pixman and libpng |
 | `libkimg` | pixman, plus whichever of libpng, libjpeg, libwebp, libnsgif and libsixel the consumer enables with a `KIMG_HAVE_*` flag |
 | `libkchrome` | pixman directly, plus everything `libkcell`, `libkicon` and `libkwl` link, since it is built on them |

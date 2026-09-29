@@ -378,7 +378,7 @@ static int compare_main(const char *img, const char *node)
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
-static const KtuiCol BN_COL[] = { { "DRIVE", 10 }, { "MODEL", 0 } };
+static const KtuiCol BN_COL[] = { { "DRIVE", 10, 0 }, { "MODEL", 0, 0 } };
 #define BN_NCOL 2
 
 static void bn_cell(int idx, int col, int x, int y, int w, int fg, int bg,

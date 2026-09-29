@@ -27,6 +27,18 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	cursor-shape-v1-protocol.c
 "$SCANNER" private-code  "$PROTO/unstable/tablet/tablet-unstable-v2.xml" \
 	tablet-unstable-v2-protocol.c
+# viewporter and fractional-scale: libkwl draws at a fractional output scale
+# through the pair, and kwl.c references both unconditionally.
+"$SCANNER" client-header "$PROTO/stable/viewporter/viewporter.xml" \
+	viewporter-client-protocol.h
+"$SCANNER" private-code  "$PROTO/stable/viewporter/viewporter.xml" \
+	viewporter-protocol.c
+"$SCANNER" client-header \
+	"$PROTO/staging/fractional-scale/fractional-scale-v1.xml" \
+	fractional-scale-v1-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/staging/fractional-scale/fractional-scale-v1.xml" \
+	fractional-scale-v1-protocol.c
 # primary-selection: libkwl includes the header unconditionally for the paste
 # path, so the lock screen generates it too — and the private-code with it, or
 # the zwp_primary_selection_* interface symbols are missing at link.
@@ -77,8 +89,9 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
 	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
-# fontconfig is libkwl's: kwl_font.c enumerates the monospace families with
-# FcFontList, and fcft carries fontconfig as a Requires.private, so
+# fontconfig is libkwl's and libkcell's: kwl_font.c enumerates the monospace
+# families with FcFontList, kcell_font.c asks FcFontMatch which strike a bitmap
+# face is drawn from, and fcft carries fontconfig as a Requires.private, so
 # `pkg-config --libs fcft` alone does not link it.
 PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client"
 

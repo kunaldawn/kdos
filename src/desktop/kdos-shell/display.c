@@ -105,9 +105,10 @@ static struct {
 static int snap_order[MAX_HEADS];
 static int snap_n;			/* heads that existed at snapshot time */
 
-/* The scales offered. Integer-ish and few on purpose: libkwl draws a cell grid
- * and the compositor scales it, so 1.5 is already a compromise and 3 is a
- * screen nobody has. */
+/* The scales offered, few on purpose. 1 and 2 draw the chrome's 16x32 cell
+ * exactly and exactly doubled; 1.5 draws the same font at the device size in an
+ * exact 24x48 cell (libkwl's fractional path), not a doubled grid shrunk; 3 is
+ * a screen nobody has. */
 static const double SCALES[] = { 1.0, 1.5, 2.0 };
 #define NSCALES ((int)(sizeof(SCALES) / sizeof(SCALES[0])))
 

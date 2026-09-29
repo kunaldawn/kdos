@@ -120,6 +120,7 @@ fails with "kinstall must run as root" instead.
 | F1 | Show or hide the key help |
 | L | The full log, on the Install page (an unattended run only; see [The pages](#the-pages)) |
 | Ctrl+U | Clear a text field |
+| Ctrl+W, Ctrl+Backspace | Delete the word before the caret; Ctrl+Left and Ctrl+Right move by word |
 | Ctrl+Q, Ctrl+C | Quit the installer. It asks first, and while an install is running it warns that stopping leaves the target half written |
 
 Alt+Left, Alt+Right and Esc do nothing on the Install and Done pages, which have no navigation
@@ -961,6 +962,16 @@ The sidebar is drawn before the page. If its rows took ordinary focus positions,
 every page would move down the Tab order and the cursor would start on a decoration, where typing
 does nothing. The sidebar's rows register as *chrome*, in a separate range that never joins the
 Tab order.
+
+### Fields that come and go
+
+Some controls exist only while a box above them is ticked: the passphrase pair under *Encrypt the
+root filesystem*, the swap size while there is swap, the root password while root is not locked.
+A control's focus position is otherwise its place on the page, so ticking the box would renumber
+every control after the group. The focus would land elsewhere, and the new passphrase field would
+take the swap size field's cursor. Each such group is drawn in its own named id scope
+(`ktui_id_push`), which keeps every control after it where it was. Tab still visits the group's
+fields in the order they are drawn.
 
 ## See also
 

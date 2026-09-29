@@ -33,6 +33,23 @@
       reads: 0 yes, 1 no, 254 cancelled.
     -->
     <promptCommand>kdos-prompt --message '%m' --no '%n' --yes '%y'</promptCommand>
+    <!--
+      Variable refresh and tearing, for a fullscreen window only. On an
+      output that reports VRR, adaptiveSync turns it on while a view is
+      fullscreen and off again when none is, so the desktop never runs at a
+      wandering rate. allowTearing lets a fullscreen window that asks for
+      tearing (wp_tearing_control, which games and Proton send) flip
+      without waiting for vblank; a window that does not ask is unchanged,
+      and `fullscreenForced` would tear every fullscreen window.
+
+      Tearing reaches only frames that leave the CRT pass out, which is
+      what crt_fullscreen = off in ~/.config/kdos/comp.conf does for a
+      fullscreen window: with it on (the default), those frames go through
+      the pass and flip on vblank. A display or driver that supports
+      neither refuses the request and the output keeps a fixed rate.
+    -->
+    <adaptiveSync>fullscreen</adaptiveSync>
+    <allowTearing>fullscreen</allowTearing>
   </core>
 
   <!--

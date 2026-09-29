@@ -39,6 +39,21 @@ void res_sensor_prepare(void)
 	g_nsen = kpr_sensors_list(&g_sen);
 }
 
+/* The hottest, as the headline names it, in the unit `fahrenheit` asks for. */
+const char *res_sensor_figure(void)
+{
+	static char s[24];
+	double hot = -1.0;
+
+	for (int i = 0; i < g_nsen; i++)
+		if (g_sen[i].kind == KPR_SENSOR_TEMP && g_sen[i].value > hot)
+			hot = g_sen[i].value;
+	if (hot < 0)
+		return NULL;
+	snprintf(s, sizeof(s), "%s", res_temp(hot));
+	return s;
+}
+
 const char *res_sensor_headline(void)
 {
 	static char s[64];

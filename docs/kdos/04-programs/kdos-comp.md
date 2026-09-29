@@ -23,7 +23,7 @@ desktop compares with those of other distributions in
 `kdos-comp` is a hard fork of the [labwc](https://labwc.github.io/) 0.20.0 Wayland compositor,
 built on wlroots (the `wlroots` port, version 0.20.2). A *hard fork* here means the source tree is
 labwc's own, renamed and extended in place, and upstream changes are not merged into it. The KDOS
-additions live in files of their own (eighteen `kdos-*.c` sources, a shared header and the
+additions live in files of their own (twenty-three `kdos-*.c` sources, two headers and the
 application-first switcher); upstream files carry only small, marked hooks into them (see
 [Finding the KDOS additions](#finding-the-kdos-additions)).
 
@@ -47,7 +47,8 @@ and resizing, workspaces, bindings, menus and decorations. The KDOS additions si
 [the phosphor pass](#the-phosphor-pass), [the wallpaper](#the-wallpaper),
 [idle, dim, lock and lid](#idle-dim-lock-and-lid),
 [window groups and window memory](#window-groups-and-window-memory),
-[box identity](#box-identity) and [accessibility](#accessibility). Eight
+[box identity](#box-identity), [accessibility](#accessibility), [motion](#motion) and
+[render-late scheduling](#render-late-scheduling). Eight
 [supervised children](#supervised-children) (the panel, the desktop icons, the dockapp column, four
 small session daemons and the on-screen keyboard) are started and restarted by the compositor. Two
 sockets let other KDOS programs talk to it: [the command socket](#the-command-socket) and
@@ -150,12 +151,15 @@ These take effect when the compositor reloads, which happens on `SIGHUP`, `kdos-
 | `crt` | `55` | 0–100 | Strength of [the phosphor pass](#the-phosphor-pass), per cent. `0` turns the pass off |
 | `crt_scanlines` | `0` | 0–100 | Scanline depth; `60` is the strength the rest of the pass is tuned against |
 | `crt_curve` | `0` | 0–100 | Barrel distortion |
-| `crt_fullscreen` | `yes` | yes/no | Whether the pass runs over a fullscreen window |
+| `crt_fullscreen` | `yes` | yes/no | Whether the pass runs over a fullscreen window; `no` lets that window's frames [scan out directly](#fullscreen-scanout-variable-refresh-and-tearing) |
 | `idle_dim` | `300` | 0–86400 s | Seconds of inactivity before the screen dims; `0` is never |
 | `idle_lock` | `600` | 0–86400 s | Seconds before the session locks; `0` is never |
 | `idle_off` | `900` | 0–86400 s | Seconds before the screens are powered off; `0` is never |
 | `lid_close` | `suspend` | `suspend`, `lock`, `off` | What closing a laptop lid does; any other value is refused by name |
 | `window_memory` | `yes` | yes/no | Whether an application opens where its window last was |
+| `motion` | `yes` | yes/no | The desktop's reduce-motion switch; `no` makes every compositor fade a single frame. See [Motion](#motion) |
+| `window_motion` | `no` | yes/no | [Window transitions](#window-transitions); only with `motion = yes` |
+| `max_render_time` | `off` | 1–100 ms, or `off` | [Render-late scheduling](#render-late-scheduling): how long before the vertical blank each frame is composited |
 | `sticky_keys` | `no` | yes/no | [Sticky keys](#the-keyboard-aids) |
 | `slow_keys` | `no` | yes/no | [Slow keys](#the-keyboard-aids) |
 | `slow_keys_delay` | `300` | 100–5000 ms | How long a key must be held before slow keys accepts it |
@@ -167,13 +171,12 @@ These take effect when the compositor reloads, which happens on `SIGHUP`, `kdos-
 | `large_cursor` | `no` | yes/no | Whether the pointer is drawn at `large_cursor_size` |
 | `large_cursor_size` | `48` | 16–256 px | The size `large_cursor` and `ToggleLargeCursor` switch to |
 
-Three limits apply to the phosphor keys, because two decisions about the pass are made once, when
+Two limits apply to the phosphor keys, because two decisions about the pass are made once, when
 the compositor starts:
 
 - If `crt` is `0` at login, or the renderer cannot run the pass, the pass is never set up. Raising
-  `crt` afterwards takes effect at the next login, and the reload logs that.
-- Lowering `crt` to `0` during a session returns frames unprocessed, but direct scanout stays off
-  until the next login (see [How it is implemented](#how-it-is-implemented)).
+  `crt` afterwards takes effect at the next login, and the reload logs that. Lowering it to `0`
+  takes effect at once: frames go out unprocessed, and a fullscreen window may scan out.
 - A non-zero `crt_curve` at login switches the session to a software cursor, because the hardware
   cursor plane is drawn after the shader and would not follow the distortion. Turning curvature on
   during a session leaves the hardware cursor in place, and the pointer drifts away from what it
@@ -397,10 +400,12 @@ works, but variables, globbing and other shell expansion do not. The same holds 
 ## Frame pacing and the output mode
 
 Nothing in the compositor sets a frame rate. It draws only when an output's backend reports that
-the screen is ready for another frame; the handler composites once and returns. There is no timer
-and no fixed period, so the rate is the display mode's: a 144 Hz panel gets 144 frames a second for
-the same reason a 60 Hz one gets 60. An output with nothing to redraw skips the frame, which is why
-an idle desktop costs almost nothing.
+the screen is ready for another frame; the handler composites once and returns. There is no fixed
+period, so the rate is the display mode's: a 144 Hz panel gets 144 frames a second for the same
+reason a 60 Hz one gets 60. An output with nothing to redraw skips the frame, which is why an idle
+desktop costs almost nothing. The one timer in the loop is optional:
+[render-late scheduling](#render-late-scheduling) moves the composite later within the same
+refresh, and never adds a frame.
 
 Two rate limits exist, and neither holds the frame rate back. Interactive resizing sends a window
 at most one new size per refresh interval of its output (250 per second when the output reports no
@@ -427,6 +432,84 @@ example `kdos-display`) is tried exactly as asked, which is how you pin a rate. 
 `reuseOutputMode` in `rc.xml` keeps a mode that is already set ahead of any of this, which stops a
 handover from re-setting the mode of a screen that is already working.
 
+### Fullscreen: scanout, variable refresh and tearing
+
+A frame can skip compositing altogether. When the only thing visible on an output is one window's
+buffer and the display controller accepts that buffer as it is, wlroots hands it to the display
+instead of drawing it into a buffer of the compositor's. This is *direct scanout*, and it is
+decided again on every frame of every output. It is allowed on a frame the phosphor pass leaves
+alone: `crt = 0`, a renderer that cannot run the pass, a pass in its failure cooldown, and, the case
+it is for, a fullscreen window under `crt_fullscreen = no`. A frame the pass draws never scans out,
+because the pass needs a picture of the whole desktop (see
+[How it is implemented](#how-it-is-implemented)). Nor does a frame while the magnifier is on,
+because the magnified inset is drawn into the composited buffer. Setting
+`WLR_SCENE_DISABLE_DIRECT_SCANOUT=1` in the session's environment turns it off for the session.
+
+wlroots still refuses a frame it cannot scan out, and composites it as usual:
+
+- a software cursor visible on that output. A virtual machine's virtio display forces one, and so
+  does a non-zero `crt_curve` at login, so with the curve on, a fullscreen window scans out only
+  while the pointer is hidden or on another screen;
+- anything else visible over the window, such as a notification or the on-screen keyboard;
+- a buffer whose rotation, colour description or format the display cannot take, or a test commit
+  that fails;
+- night light on an output that has no hardware gamma table, since the correction is then drawn.
+
+The shipped `rc.xml` sets two upstream options in `<core>` for fullscreen windows:
+
+- **`<adaptiveSync>fullscreen</adaptiveSync>`** turns variable refresh on while a window is
+  fullscreen, on an output that reports it, and off again when none is. The desktop itself never
+  runs at a varying rate.
+- **`<allowTearing>fullscreen</allowTearing>`** lets a fullscreen window that asks to tear (through
+  the tearing-control protocol, which games send) have its frames flipped without waiting for the
+  vertical blank. A window that does not ask is unaffected, and `fullscreenForced` would tear every
+  fullscreen window. Only a frame that goes the plain way can tear. With `crt_fullscreen = yes`,
+  the default, a fullscreen window's frames go through the pass and flip on the vertical blank.
+
+A display or driver that supports neither refuses the request, and the output keeps its fixed rate.
+To see whether a frame scanned out, run the session with `KDOS_COMP_DEBUG=1`: wlroots logs
+`Direct scan-out enabled` and `disabled` on each change. The frame's cost shows as `render_ms` in
+[`kdos stutter`](kdos-command.md#kdos-stutter). The test rig cannot show either, because its virtio
+display forces a software cursor.
+
+### Render-late scheduling
+
+By default a frame is composited the moment the output's frame event arrives. On a directly driven
+display that is just after the previous frame was shown, so the finished frame then waits in the
+display for most of a refresh, and a program's buffer that arrives a moment after the composite
+waits a whole refresh more. `max_render_time = <ms>` in `comp.conf` holds the composite back until
+that many milliseconds before the next vertical blank, predicted from the last presentation and
+the refresh the display reports, so whatever programs commit in the meantime is in it. At 60 Hz
+that brings such a commit to the screen up to one refresh, about 16 ms, sooner. This is an
+estimate: the test rig has no display with a vertical blank, so it has not been measured.
+
+The budget is yours to size, and it is off by default for that reason. It must cover the composite
+and [the phosphor pass](#the-phosphor-pass) on the machine's GPU. The compositor cannot measure
+that: the `render_ms` it reports to [`kdos stutter`](kdos-command.md#kdos-stutter) is processor time
+up to the point the GL commands are submitted, not the time the GPU takes to finish them. Too small
+a budget misses the blank, and the frame is shown one refresh late, which `kdos stutter` reports
+as a miss. Start at half the refresh interval (8 at 60 Hz) and lower it while `kdos stutter` stays
+quiet.
+
+The frame is composited at once, as with the key off, whenever the moment cannot be predicted:
+
+- on an output that is not driven directly, such as a nested window or a virtual output, whose
+  frame events are not the display's blanks;
+- when nothing was presented within the last refresh, which is the first frame after the desktop
+  was idle, because a prediction from an old timestamp drifts;
+- when the display reports no refresh rate;
+- while variable refresh is on, because the blank then follows the commit;
+- for a frame that may tear (see
+  [Fullscreen: scanout, variable refresh and tearing](#fullscreen-scanout-variable-refresh-and-tearing));
+- when the wait would be under a millisecond, the timer's resolution.
+
+While the timer runs, the output reports a frame as already pending, so a program's damage does
+not start a second frame in the middle of the wait; it is picked up by the composite the timer
+starts. A commit that reaches the output some other way during the wait, such as a mode change or
+variable refresh switched on for a fullscreen window, cancels the timer, and that commit's own frame
+event decides again; one that switches the output off lowers the pending flag the wait was
+holding. The key is read on every frame, so a reload applies it at once.
+
 ### When an output appears
 
 Each new output gets its own panel, desktop icons and dockapp column
@@ -450,7 +533,8 @@ shares, so crisp two-colour text arrives striped. `crt_scanlines = 60` turns the
 The pass needs the GLES2 renderer. On software rendering, including a virtual machine with plain
 graphics, it is switched off at startup and the log says so.
 
-Two short animations belong to the pass and run only when it is active:
+Two short animations belong to the pass and run only when it is active and `motion` is on (see
+[Motion](#motion)):
 
 - **The degauss.** Every reload, and therefore every theme change, plays 400 ms of decaying
   horizontal wobble with a slight brightening, the way a CRT's degauss coil shook the picture. The
@@ -467,19 +551,44 @@ each frame, called the *scene* below) has no callback node. What it does offer i
 documented seam: the scene's build-state call accepts a custom swapchain. So the scene composites
 into a buffer of the compositor's own, and KDOS code draws that buffer into the output's real
 buffer with the effect applied. Both swapchains come from the library's own configuration call, so
-neither needs guesswork about formats or modifiers. The output buffer is committed with
-whole-output damage every frame, because the pass reads neighbouring pixels and warps the picture,
-so a one-pixel change in the scene is not a one-pixel change on screen.
+neither needs guesswork about formats or modifiers.
+
+The pass redraws only what changed whenever it can. With `crt_curve` at `0` and no degauss running,
+an output pixel depends on the scene pixel under it and the ones beside it on its row, so the
+scene's damage for the frame, grown by two columns and one row, contains what changed on screen.
+Each output keeps a *buffer-age ring* over its output buffers: for every buffer, what has changed
+since that buffer last held a picture. A frame redraws that region of the buffer it is handed, one
+scissored draw per rectangle (the region's bounding box past 16), and commits with the frame's own
+damage, which a display that supports damage clips can use to refresh only a strip. The whole
+output is redrawn, and committed as damage, instead when:
+
+- `crt_curve` is above `0`, because the curve moves every pixel;
+- the degauss is playing, and on the first frame after it ends;
+- any of the pass's settings or the phosphor colour changed since the last committed frame;
+- the screen does not hold the pass's last frame: none has gone out on this output yet, the last
+  one failed to commit, or anything other than the pass committed a frame since — the magnifier,
+  `crt_fullscreen`'s bypass, a cooldown or a scanout buffer. Such a commit consumes the scene's
+  damage record, so the pass cannot tell what changed under its own buffers, and it leaves a
+  different picture at every pixel, which a display refreshing only the damage clips would keep.
+  The first frame back on the pass is drawn even when nothing on the desktop moved, or the
+  unprocessed picture would stay up until something did.
+
+A buffer the pass has not drawn into before, after a mode change for example, is redrawn whole, but
+its commit carries only the frame's damage: the screen already holds the previous frame.
+
+The power-down always draws the whole output. The shader and the region code live in
+`kdos-crt-pass.c`, apart from everything that touches wlroots, so that `testing/selftest.sh` can run
+them offscreen (see [Working on the compositor](#working-on-the-compositor)).
 
 Five constraints shape it:
 
-- **Direct scanout is off for the whole session while the pass is on.** In that mode the scene
-  hands the display one client's buffer and a rectangle rather than a picture of the desktop, and
-  the pass would stretch, say, the panel over the whole screen. wlroots has one switch for it that
-  covers every output, the `WLR_SCENE_DISABLE_DIRECT_SCANOUT` environment variable read when the
-  scene is created, so the compositor sets it before the scene exists whenever `crt` is non-zero.
-  A foreign buffer that arrives anyway is shown unprocessed rather than mangled, and the log says
-  so once per output.
+- **Direct scanout is off for every frame the pass builds.** In that mode the scene hands the
+  display one client's buffer and a rectangle rather than a picture of the desktop, and the pass
+  would stretch, say, the panel over the whole screen. wlroots has one switch for it that covers
+  every output, a field of the scene, so the compositor writes it on every frame of every output:
+  off before the pass builds, and allowed before a frame goes the plain way (the magnifier, a
+  cooldown, `crt_fullscreen`'s bypass, `crt = 0`). A foreign buffer that reaches the pass anyway
+  is shown unprocessed rather than mangled, and the log says so once per output.
 - **The texture is imported every frame and destroyed after the pass.** Caching one per swapchain
   slot looks like an easy optimisation and deadlocks the swapchain: importing locks the buffer, a
   slot is reused only when its last lock goes, and a full set of cached textures leaves no free
@@ -511,15 +620,19 @@ running shader with the same signal that repaints the panel.
 The pass does not limit the frame rate: it runs inside the same frame event as the composite, once
 per frame that has something to draw. Its costs are these:
 
-- one extra full-screen draw per frame, with three texture reads per pixel for the bleed, so the
-  whole screen is redrawn even when only a small part of it changed;
+- one extra draw per frame, with three texture reads per pixel for the bleed, over what changed
+  since the buffer being drawn last held a picture: a typed character or a clock tick costs a
+  strip, and with `crt_curve` above `0` every frame costs the whole screen;
 - a second swapchain per output (at 3840×2160 each buffer in it is about 33 MB);
-- no direct scanout, so a fullscreen video is composited rather than handed straight to the
-  display controller.
+- no direct scanout while the pass runs, so a fullscreen video is composited and then passed over,
+  rather than handed straight to the display controller.
 
 `crt_fullscreen = no` skips the pass on an output whose topmost window on the current workspace is
-fullscreen: one render instead of two for video and games. Direct scanout stays off either way, so
-it is a battery setting rather than a frame-rate one. `crt = 0` removes the extra draw altogether.
+fullscreen, and that frame may [scan out](#fullscreen-scanout-variable-refresh-and-tearing): no
+composite at all where the display accepts the window's buffer, one instead of two where it does
+not. At 1920×1080 each full-screen pass reads and writes about 16 MB, so that is roughly 16–33 MB
+less memory traffic per frame (an estimate, not measured on hardware). `crt = 0` removes the extra
+draw everywhere.
 
 ### Inspecting it without a screen
 
@@ -629,6 +742,8 @@ record per late frame:
   follows a frame with nothing to draw is idleness, not lateness, and is not counted.
 - **`render_ms`** is the compositor's own render cost for the frame. When it is a large fraction of
   the frame budget, the desktop itself was late, which is the one causal claim the tooling makes.
+  It is timed from the start of the composite, so a [render-late](#render-late-scheduling) wait is
+  not part of it, and it is processor time up to the GPU submission, not the GPU's own time.
 
 The socket never slows the frame loop: both ends are non-blocking, and a reader that cannot keep up
 loses lines. There is no history, so a reader that connects late has missed what happened. Each
@@ -879,6 +994,92 @@ The compositor connects to the session bus when it starts. With no session bus i
 session the monitor is switched off for the rest of it. The toggle notifications travel over the
 same connection, to `org.freedesktop.Notifications`, and are not sent without it.
 
+## Motion
+
+The compositor fades three things, and a client takes no part in any of them. With
+`window_motion` on it also moves windows (see [Window transitions](#window-transitions)). (The
+phosphor pass's [degauss and power-down](#the-phosphor-pass) are its other two animations.)
+
+| What | Fade | Length |
+|---|---|---|
+| A surface on the top or overlay layer mapping: a menu, a toast, a tooltip, an on-screen display, the panel at login | from transparent to opaque | 120 ms |
+| The same surface unmapping | from where it was to transparent | 90 ms |
+| [Peek](#smaller-changes-to-upstream-behaviour) starting or ending | to 12 per cent opacity, or back | 150 ms |
+
+Each fade eases out: most of the change comes in the first frames, so a menu is legible from its
+first frame and settles rather than arrives. The client commits its buffer once and the compositor
+re-blends it at a rising or falling alpha, so the fade costs the client nothing and a surface that
+knows nothing about motion fades as well. Background and bottom layer surfaces (the wallpaper, the
+desktop icons) do not fade on map or unmap, and windows fade only with `window_motion` on.
+
+A closing surface usually exits with its window, so its close fade is drawn from a snapshot: the
+compositor copies the surface's last buffers into scene nodes of its own at unmap, keeps them alive
+until the fade ends, and lets the pointer pass through them to whatever is beneath. The snapshot
+goes with the output if the output is removed first.
+
+A surface that took the keyboard exclusively gets no close fade and disappears at once. That is a
+selection overlay such as the one `kdos-shot region` draws with `slurp`, and the screenshot taken
+straight after it would otherwise contain the overlay fading out. Nor does a surface that was not
+on screen when it closed, such as a top-layer surface under a fullscreen window, which hides the
+top layer. A screenshot taken within 90 ms of a menu closing does contain the menu's fading
+snapshot.
+
+`motion = no` in `comp.conf` makes every fade a single frame: a surface appears and disappears in
+one frame, peek jumps and windows make no transitions whatever `window_motion` says. It also skips
+the degauss on a reload and the power-down at exit. It applies on the next fade after a reload; a
+fade already running ends at once, at its end state. `motion` is the desktop's one reduce-motion
+key.
+
+What a fade costs: wlroots treats a buffer as opaque only while its opacity is exactly 1, so a fading
+surface hides nothing and everything beneath it is drawn for the length of the fade. Each fade frame
+redraws the surface's own area (and the phosphor pass redraws the same area); a fade always ends
+on exactly 1, after which the surface occludes again. A fade is timed by the clock, not by frames,
+so a dropped frame shortens a step rather than lengthening the fade.
+
+### Window transitions
+
+`window_motion = yes` in `comp.conf`, with `motion` on as well, gives windows short transitions.
+It is off by default.
+
+| What | Transition | Length |
+|---|---|---|
+| A window mapping, or coming back from being minimised | fades in from transparent while it rises 12 pixels into place | 150 ms |
+| A window unmapping, or being minimised | fades out from where it was while it sinks 12 pixels | 120 ms |
+| A workspace switch | the new workspace's windows fade in while sliding 48 pixels in from the side the switch goes towards; the old workspace's windows fade out while sliding 48 pixels the other way | 150 ms |
+
+They use the same curve and clock as every other fade. A fullscreen window fades but does not
+move, because its edge would pull away from the screen's edge. Windows shown on every workspace, and
+a window being dragged across a workspace switch, take no part in it.
+
+Every transition is a picture of a change that has already happened. The window is mapped,
+closed, minimised or on the other workspace the moment the event arrives; focus has moved, and
+keys and the pointer act on the new state at once. Nothing waits for a transition to end, so any
+of them can be cut short by the next action, and a second transition on the same window starts
+from wherever the first had got to. That holds for a window coming back while its own snapshot is
+still leaving, as on a switch straight back to the workspace just left or a minimise undone at
+once: the window takes over the snapshot's alpha and position and the snapshot goes, so it is
+never drawn twice. While a window rises into place it takes the pointer where it
+is drawn. A window that labwc places again part way through (window rules and window memory move a
+window after it maps) carries on towards its new position.
+
+A closing window is drawn from a snapshot, as a closing menu is: its buffers and its border
+rectangles are copied into nodes of the compositor's own, the pointer passes through them, and
+the copy is freed when the fade ends. The old workspace's windows leave as snapshots in the same
+way. Only position and opacity change, never size. A window is a tree of the program's buffers and
+the compositor's border rectangles, and a buffer can be drawn at another size while a rectangle
+cannot, so a scaled window would pull its border away from its contents.
+
+A live window's border does not fade: a scene rectangle has no opacity of its own, only a colour
+that the compositor rewrites as focus changes. The outline is there from the first frame and the
+contents fade in inside it, which is also what [peek](#smaller-changes-to-upstream-behaviour)
+leaves on screen. A peek ends any window transition running when it starts, and none starts while
+a peek holds the windows' opacity.
+
+What a transition costs is what a fade costs: a moving or fading window hides nothing beneath it,
+so everything under it is composited for its length, which is why it is off by default. A moving
+window is not snapped to the character grid on its way: the compositor has no single cell pitch,
+since every program chooses its own font size and scale.
+
 ## Supervised children
 
 The compositor starts eight programs from a table in `kdos-child.c` and restarts them when they
@@ -963,8 +1164,10 @@ and adds `DISPLAY` to a box's environment.
 
 Several additions are too small for a section of their own:
 
-- **Peek.** The `peek` verb on the command socket sets every window to 12 per cent opacity while the
-  pointer rests on the panel's Show Desktop button, and back when it leaves. Nothing is minimised
+- **Peek.** The `peek` verb on the command socket fades every window to 12 per cent opacity while
+  the pointer rests on the panel's Show Desktop button, and back when it leaves, each way over
+  150 ms ([Motion](#motion)). Windows on other workspaces are set as well, so a workspace switch
+  during a peek brings none back translucent. Nothing is minimised
   or unfocused, so a peek interrupted by a crash changes no window state. Labwc's own Show Desktop
   action, which minimises, is unchanged.
 - **Click-away for menus.** The desktop's menus, launcher, run box and similar front ends are
@@ -987,10 +1190,13 @@ this order:
 
 1. the command socket, so no `kdos hey run` can act on a session that is ending;
 2. the keyboard monitor's bus connection and the accessibility timers;
-3. the power-down animation (see [The phosphor pass](#the-phosphor-pass)), limited to 600 ms;
-4. the wallpaper, the frames socket, window memory, window groups, box chips, the lid, peek and the
-   idle policy;
-5. the phosphor pass;
+3. the render-late timers, so none fires inside the power-down animation;
+4. the power-down animation (see [The phosphor pass](#the-phosphor-pass)), limited to 600 ms and
+   skipped with `motion = no`;
+5. the wallpaper, the frames socket, window memory, window groups, box chips, the lid, peek, the
+   fades (any running fade ends, a moving window is put back at rest, and every snapshot is
+   freed) and the idle policy;
+6. the phosphor pass;
 
 and then the server itself. The panel and the notification daemon notice the compositor has gone
 and exit on their own.
@@ -1022,11 +1228,12 @@ This section is for someone changing the compositor's code rather than configuri
 
 ### Finding the KDOS additions
 
-The KDOS code lives in eighteen `src/desktop/kdos-comp/src/kdos-*.c` files, one shared header,
-`src/desktop/kdos-comp/include/kdos.h`, through which every addition enters, and one further
+The KDOS code lives in twenty-three `src/desktop/kdos-comp/src/kdos-*.c` files, one shared header,
+`src/desktop/kdos-comp/include/kdos.h`, through which every addition enters, the phosphor pass's
+own `include/kdos-crt-pass.h`, and one further
 source file, `src/cycle/osd-apps.c`, the application-first switcher. Upstream files carry only
-small hooks, each marked with a comment containing `KDOS`. Most begin `/* KDOS`: there are 133
-such comments across 32 upstream files (25 sources and 7 headers), 33 of them in `main.c`. Some
+small hooks, each marked with a comment containing `KDOS`. Most begin `/* KDOS`: there are 148
+such comments across 34 upstream files (27 sources and 7 headers), 37 of them in `main.c`. Some
 hooks sit inside a longer comment whose line begins ` * KDOS:`, and three files carry only that form
 or the `LAB_GRADIENT_KDOS_RULE` fill: `include/theme.h`, `include/buffer.h` and
 `src/ssd/ssd-button.c`. Grep for `KDOS` rather than `/* KDOS` to find
@@ -1043,12 +1250,16 @@ The fastest-first mode selection (see [Choosing the mode](#choosing-the-mode)) i
 | `kdos-child.c` | [Supervised children](#supervised-children) and the display-layout apply on a new output |
 | `kdos-wallpaper.c` | [The wallpaper](#the-wallpaper), as part of the scene rather than a separate program |
 | `kdos-crt.c` | [The phosphor pass](#the-phosphor-pass), the degauss and the power-down |
+| `kdos-crt-pass.c` | The pass's shader and which pixels a frame redraws: GLES2 and pixman only, so a test can link it |
 | `kdos-frames.c` | [The frames socket](#the-frames-socket), reporting late frames |
 | `kdos-idle.c` | [Idle, dim, lock and lid](#idle-dim-lock-and-lid): the idle policy and the virtual-machine test |
 | `kdos-lid.c` | The lid switch and `lid_close` |
 | `kdos-cmd.c` | [The command socket](#the-command-socket) other KDOS programs query |
 | `kdos-thumb.c` | [Window thumbnails](#window-thumbnails) for hover previews |
 | `kdos-peek.c` | Fading windows to reveal the desktop |
+| `kdos-motion.c` | [Motion](#motion): the layer surfaces' open and close fades, the moving and snapshot fades windows use, and the clock every fade shares |
+| `kdos-winmotion.c` | [Window transitions](#window-transitions): which windows move where on a map, an unmap, a minimise and a workspace switch |
+| `kdos-sched.c` | [Render-late scheduling](#render-late-scheduling): the per-output timer and its prediction |
 | `kdos-appid.c` | The ledger of application identifiers windows actually present |
 | `kdos-boxchip.c` | [The box colour chip](#box-identity) on a title bar |
 | `kdos-grant.c` | Per-box grants beyond the sandbox allowlist |
@@ -1092,11 +1303,33 @@ To rebuild only the compositor:
 make build BUILD_ARGS="--phases 05_desktop --rebuild kdos-comp"
 ```
 
-Three checks cover it without a full build:
+Six checks cover it without a full build:
 
 - `testing/selftest.sh` compiles every `kdos-*.c` file against the installed wlroots headers,
   where the host has pkg-config entries for `wlroots-0.20`, GLES2, EGL, wayland-server, pixman,
   libdrm, libpng, libxml2, cairo, pango, glib and basu; elsewhere it reports the step as skipped.
+- `testing/selftest.sh` also runs `testing/fixtures/crt/scopecheck.c` wherever EGL, GLES2, pixman
+  and wayland-server are installed, which includes the development container (software GL is
+  enough). It draws a scripted run of damage through the pass's own shader and region code and
+  wlroots' own damage ring over three output buffers, and compares every frame with a whole-output
+  draw. It also runs itself with the reach and with the buffer age switched off, and fails unless
+  both of those runs fail.
+- `testing/selftest.sh` runs `testing/fixtures/motion/motioncheck.c` where `wlroots-0.20` is
+  installed. It compiles `kdos-motion.c` against wlroots' own scene graph and plays a layer surface
+  mapping, unmapping half way through its fade, its client exiting, its output going and the
+  compositor shutting down, and checks where the snapshot stands, that it keeps and then releases
+  its buffers, that it lets the pointer through, and that every fade ends on its exact end value.
+  It plays a window's tree the same way: an open that labwc moves part way through, a close whose
+  snapshot copies the border rectangles as buffers, a workspace switch's snapshot stacked below
+  its anchor, a window taking over its own leaving snapshot, and `motion` switched off
+  mid-transition, and checks that a window always ends at rest and opaque. `kdos-winmotion.c`,
+  which decides which windows move, is covered only by the compile.
+- `testing/selftest.sh` runs `testing/fixtures/sched/schedcheck.c` under the same condition. It
+  compiles `kdos-sched.c` with a hand-built output and a real event loop, and checks the
+  prediction, that a deferred frame holds the output's pending flag for the wait and lowers it
+  before the composite, that any other commit (with a buffer, without one, or switching the output
+  off) or a refused frame event cancels the timer, that every case it cannot predict composites at
+  once, and that the timer goes with its output and at shutdown.
 - `testing/preflight.sh` checks the shipped `rc.xml` for well-formed XML and `<default />`, and
   that every command named in `rc.xml` and `menu.xml` exists.
 - `testing/quick.sh kdos-comp` rebuilds the port and patches it into a booted ISO for a screenshot;

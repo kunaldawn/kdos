@@ -1102,6 +1102,7 @@ static void draw(void)
 		draw_transcript(fl_y, fl_rows, w);
 	else {
 		kch_list_clamp(&file_top, sel_file, nfile, fl_rows, 1);
+		kch_list_view(2, fl_y, w - 4, fl_rows, file_top);
 		draw_files(fl_y, fl_rows, w);
 		kch_scrollbar(0, w - 2, fl_y, fl_rows, nfile, file_top,
 			      KT_SURFACE);

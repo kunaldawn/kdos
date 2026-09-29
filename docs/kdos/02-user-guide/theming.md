@@ -132,7 +132,8 @@ terminal (`kdos-term`). Every other KDOS window, such as an open menu or Setting
 changed file on its own. So the panel, the desktop icons, notifications on screen, window frames,
 open popups and the phosphor shader all change together. While the phosphor pass is on, the
 compositor marks the change with a brief distortion of the whole picture, like the degaussing pulse
-of an old CRT monitor.
+of an old CRT monitor, unless `motion = no` is set in `comp.conf` (see
+[Accessibility](accessibility.md#reducing-motion)).
 
 A *preview* does only that half. Moving the highlight in the picker (or running
 `kdos theme --preview <accent>`) writes the accent name and signals the session, so every KDOS
@@ -341,12 +342,17 @@ every third row does not line up with it, so text comes out striped.
 ### What it costs
 
 While the pass is on, every frame goes through the GPU twice: there is a second set of frame
-buffers per screen (a single 4K frame buffer is about 33 MB), and the shader runs over the whole
-frame however little changed. Direct scanout, where a fullscreen video's frames go straight
-to the display without being composited, is disabled for the session whenever `crt` is above `0`
-when the session starts. On battery, `crt = 0` or `crt_fullscreen = off` is the lever: either one
-hands the frame back without the shader, saving the second render. Neither restores direct scanout
-in a running session; only a session started with `crt = 0` has it.
+buffers per screen (a single 4K frame buffer is about 33 MB), and the shader runs over the part of
+the screen that changed, so a blinking cursor or a clock tick costs a strip rather than the whole
+screen. Barrel distortion moves every pixel, so with `crt_curve` above `0` the shader runs over the
+whole screen on every frame. Direct scanout, where a fullscreen video's frames go straight
+to the display without being composited, never happens on a frame the pass draws. On battery,
+`crt = 0` or `crt_fullscreen = off` is the lever, and either takes effect at once: the frame goes
+out without the shader, and a fullscreen window's frames can then go straight to the display with
+no composite at all. `crt_fullscreen = off` is also what lets a game that asks to tear do so, and
+what keeps the rest of the desktop in the pass. See
+[kdos-comp](../04-programs/kdos-comp.md#fullscreen-scanout-variable-refresh-and-tearing) for the
+cases the display still refuses.
 
 ### Changes that need a new session
 
@@ -469,12 +475,19 @@ draw in the built-in default, `Terminus:pixelsize=32`, whatever `chrome_font` sa
 
 The panel's font sets its height: a cell is half as wide as the font is tall, so the default
 20-pixel font gives a 10×20 cell and a two-row panel 40 pixels high. Terminus is a bitmap font, so
-name a size it has (12, 14, 16, 18, 20, 22, 24, 28 or 32); any other size is rounded to the nearest
-one it does have.
+name a size it has (12, 14, 16, 18, 20, 22, 24, 28 or 32); a size between them, or from 10 up to
+35, is rounded to the nearest one it does have. 64, 96 and every further multiple of 32 are the 32
+size with every pixel doubled, tripled and so on. Any other size (8, 9, and 36 upwards) is drawn
+from `Terminus (TTF)`, the scalable version of the same typeface, in a cell exactly as tall as the
+size and half as wide, rounded up at an odd size.
 
 Each key is a single pixel size for every screen. That is right on a machine with one monitor and
-wrong on two of different densities. On a 4K screen, `chrome_font = Terminus (TTF):pixelsize=64`,
-the scalable version of the same typeface, doubles the cell for the surfaces that read it.
+wrong on two of different densities. On a 4K screen left at scale 1, `chrome_font =
+Terminus:pixelsize=64` doubles the cell for the surfaces that read it. A screen given a scale in
+`displays.conf` scales every surface by itself, so the default is already right there: scale 2
+doubles it, and a fraction such as 1.5 draws it from `Terminus (TTF)` at 48 pixels rather than
+stretching the 32 size. Each surface follows the scale of the screen it is on, which is how two
+monitors of different densities are served.
 
 Several things write these two keys: the picker's Font page (see [Choosing a
 font](#choosing-a-font)) sets the family on both and keeps each size; Settings sets either one whole

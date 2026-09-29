@@ -299,6 +299,45 @@ static void resize_to_frame(void)
 	term_pic_geom();
 }
 
+/*
+ * THE CELL EVERYTHING WAS CUT TO, and what follows when it moves: a font step,
+ * or a fractional output scale, which draws the same font at the device size
+ * once the window is on its screen.
+ *
+ * A move that leaves the cell where it was costs nothing — a step a bitmap
+ * face answered with the strike it already had: the grid, the pty and every
+ * cached tile are still right for it, and the backend has already spoiled its
+ * paint baselines so the glyphs redraw whether the size moved or not.
+ */
+static int cut_cw, cut_ch;
+
+static void cell_follow(void)
+{
+	int cw = kdisp_cell_w(), ch = kdisp_cell_h();
+
+	if (cw == cut_cw && ch == cut_ch)
+		return;
+	cut_cw = cw;
+	cut_ch = ch;
+	/*
+	 * THE CELL MOVED, so everything measured in it is restated HERE and
+	 * not left to the resize. resize_to_frame() re-states the picture
+	 * geometry only when the grid really changed, and a move that happens
+	 * to keep the same number of columns would leave `kvt_term_cell_px`
+	 * and every cached tile cut for the cell before it.
+	 *
+	 * A PICTURE ALREADY ON THE SCREEN GOES BLANK until the program that
+	 * sent it sends it again. Every tile was scaled to the old cell, and
+	 * blitting one into a cell of another size draws the picture in
+	 * fragments; only the program that transmitted it can say what it
+	 * should look like at the new one.
+	 */
+	resize_to_frame();
+	ktui_sprite_clear();
+	term_pic_init();
+	ktui_draw_invalidate();
+}
+
 /* ── the terminal's own chords ─────────────────────────────────────────── */
 
 /*
@@ -372,37 +411,8 @@ static int font_chord(const KtuiEvent *ev)
 	if (!kwl_surface())
 		return 0;
 
-	int cw = kdisp_cell_w(), ch = kdisp_cell_h();
-
-	if (kwl_font_step(step) != 0)
-		return 1;
-	/*
-	 * THE CELL IS WHAT EVERYTHING ELSE WAS CUT TO, so a step a bitmap face
-	 * answered with the strike it already had costs nothing here: the
-	 * grid, the pty and every cached tile are still right for it, and the
-	 * backend has already spoiled its paint baselines so the glyphs redraw
-	 * whether the size moved or not.
-	 */
-	if (kdisp_cell_w() == cw && kdisp_cell_h() == ch)
-		return 1;
-
-	/*
-	 * THE CELL MOVED, so everything measured in it is restated HERE and
-	 * not left to the resize. resize_to_frame() re-states the picture
-	 * geometry only when the grid really changed, and a step that happens
-	 * to keep the same number of columns would leave `kvt_term_cell_px`
-	 * and every cached tile cut for the cell before it.
-	 *
-	 * A PICTURE ALREADY ON THE SCREEN GOES BLANK until the program that
-	 * sent it sends it again. Every tile was scaled to the old cell, and
-	 * blitting one into a cell of another size draws the picture in
-	 * fragments; only the program that transmitted it can say what it
-	 * should look like at the new one.
-	 */
-	resize_to_frame();
-	ktui_sprite_clear();
-	term_pic_init();
-	ktui_draw_invalidate();
+	if (kwl_font_step(step) == 0)
+		cell_follow();
 	return 1;
 }
 
@@ -619,6 +629,8 @@ int main(int argc, char **argv)
 	kvt_term_notify_cb(T.t, on_notify, NULL);
 	kvt_term_clip_cb(T.t, on_clip, NULL);
 	term_pic_init();
+	cut_cw = kdisp_cell_w();
+	cut_ch = kdisp_cell_h();
 
 	if (dump_w) {
 		settle();
@@ -645,6 +657,7 @@ int main(int argc, char **argv)
 		if (ktui_resized) {
 			ktui_resized = 0;
 			resize_to_frame();
+			cell_follow();
 		}
 
 		kvt_term_pump(T.t);
@@ -746,6 +759,7 @@ int main(int argc, char **argv)
 		while (ktui_backend()->poll_event(&ev, 0)) {
 			if (ev.type == KT_EVT_RESIZE) {
 				resize_to_frame();
+				cell_follow();
 				continue;
 			}
 			/*

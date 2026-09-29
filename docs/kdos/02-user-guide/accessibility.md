@@ -21,6 +21,7 @@ to, and [The desktop](desktop.md) explains the desktop's keyboard routes.
 | Typing without a keyboard | An on-screen keyboard, shown by key or whenever a text field has the focus | [The on-screen keyboard](#the-on-screen-keyboard) |
 | A screen reader hearing the keyboard | The compositor's keyboard monitor, the interface a reader such as Orca uses on Wayland | [The keyboard monitor](#the-keyboard-monitor) |
 | Contrast | Eight colour schemes held to fixed contrast floors, one of them light | [Colour and contrast](#colour-and-contrast) |
+| Less motion | One switch that stops the desktop's fades | [Reducing motion](#reducing-motion) |
 | An application read aloud | A boxed application's own toolkit support, off by default and turned on by `~/.config/kdos/a11y` | [A containerised application can be read](#a-containerised-application-can-be-read) |
 
 ## The desktop itself is not read
@@ -242,13 +243,14 @@ control is measured in cells. A larger font is therefore a larger desktop. Two k
 | `chrome_font` | The desktop icons, the dock-app column, notifications and the network passphrase prompt. Not the panel, and not the menus and popups the panel opens | `Terminus:pixelsize=32` |
 | `panel_font` | The panel only; an empty value is ignored and the default applies | `Terminus:pixelsize=20` |
 
-Each value is a fontconfig name with a size in pixels. `Terminus` is a bitmap font, so choose a size
-it has: 12, 14, 16, 18, 20, 22, 24, 28 or 32. A size it lacks comes back as the nearest one it has,
-silently. For anything larger, such as a doubled cell on a 4K screen, name the scalable version of
-the same typeface, which draws at any size:
+Each value is a fontconfig name with a size in pixels. `Terminus` is a bitmap font with the sizes
+12, 14, 16, 18, 20, 22, 24, 28 and 32, and a size between them comes back as the nearest one it has,
+silently. Larger sizes work too: 64 is the 32 size with every pixel doubled, which is the doubled
+cell a 4K screen at scale 1 wants, 96 is it tripled, and any other size from 36 up, such as 48, is
+drawn from `Terminus (TTF)`, the scalable version of the same typeface, in a cell exactly that tall:
 
 ```ini
-chrome_font = Terminus (TTF):pixelsize=64
+chrome_font = Terminus:pixelsize=64
 ```
 
 Both keys are read when the session starts, so log out and back in after changing them. The
@@ -398,6 +400,34 @@ Night light (`Super+Ctrl+Shift+N`) warms the colours KDOS's own surfaces draw in
 and blue towards a white of about 3400 K and leaving red untouched. See
 [Theming](theming.md#how-the-accents-are-kept-readable) for the schemes and
 [The desktop](desktop.md#notifications-and-session-switches) for the switch.
+
+## Reducing motion
+
+The compositor animates four things. Menus, notifications, tooltips and other popups fade in over
+about an eighth of a second when they open and fade out when they close. The windows fade when the
+pointer rests on the panel's Show Desktop button. With the phosphor pass on, the picture wobbles for
+under half a second after each theme change or reload, and collapses to a dot when the session
+ends. A fifth, window transitions (windows fading and sliding as they open, close, minimise and
+change workspace), is off unless `window_motion = yes` is set. One line in
+`~/.config/kdos/comp.conf` stops all of them:
+
+```ini
+motion = no
+```
+
+It takes effect at the next reload of the compositor (`kdos-comp -r`, or **Reload Configuration** in
+the desktop's right-click menu): every popup then appears and disappears in a single frame, windows
+make no transitions whatever `window_motion` says, and the picture neither wobbles nor collapses.
+The desktop's own programs read the same line each time they start an animation, so they follow it
+without a reload: the panel's launch pulse, the accent that flashes twice over a pinned button for
+about a second after a click, becomes a steady accent for that second instead, so the click is
+still acknowledged and nothing moves; the highlight in the Start menu and the other menus jumps
+to the selected row instead of sliding there; a scrolled list jumps to its new rows instead of
+gliding; and a list flicked on a touchpad stops when the finger lifts instead of coasting on.
+Programs that animate their own content, such as a terminal
+playing an animation, are not affected. See [kdos-comp](../04-programs/kdos-comp.md#motion) for what
+is faded and why, and [the design language](../03-architecture/design-language.md#motion) for the
+rule every animation follows.
 
 ## A containerised application can be read
 

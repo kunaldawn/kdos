@@ -31,6 +31,25 @@ const char *res_mem_headline(void)
 	return s;
 }
 
+/* The share in use, which the headline's two sizes leave as arithmetic. */
+const char *res_mem_figure(void)
+{
+	static char s[16];
+	unsigned long long used = R.mem.total > R.mem.available
+				  ? R.mem.total - R.mem.available : 0;
+	if (!R.mem.total || R.mem.total == KPR_UNREADABLE)
+		return NULL;
+	snprintf(s, sizeof(s), "%.0f%%", 100.0 * (double)used /
+					 (double)R.mem.total);
+	return s;
+}
+
+/* ←, → scrub the RAM chart — see res_graph_scrub(). */
+int res_mem_key(int k)
+{
+	return res_graph_scrub(2, &R.h_mem, k);
+}
+
 void res_draw_mem(int x, int y, int w, int h)
 {
 	const KprMem *m = &R.mem;
@@ -61,7 +80,7 @@ void res_draw_mem(int x, int y, int w, int h)
 		chart_h = 2;
 
 	res_graph(2, krect(x + 1, row, w - 2, chart_h), &R.h_mem,
-		  "RAM", reading);
+		  "RAM", reading, res_fmt_pct);
 	row += chart_h;
 
 	if (m->swap_total) {
@@ -71,7 +90,7 @@ void res_draw_mem(int x, int y, int w, int h)
 			 res_size(m->swap_total));
 		if (row + chart_h < bottom) {
 			res_graph(3, krect(x + 1, row, w - 2, chart_h),
-				  &R.h_swap, "swap", sw);
+				  &R.h_swap, "swap", sw, res_fmt_pct);
 			row += chart_h;
 		}
 	} else if (row < bottom - 1) {

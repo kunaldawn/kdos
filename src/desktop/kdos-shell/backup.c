@@ -739,7 +739,7 @@ static void job_finished(void)
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
-static const KtuiCol BK_COL[] = { { NULL, 0 } };
+static const KtuiCol BK_COL[] = { { NULL, 0, 0 } };
 
 static void bk_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		    void *user)
@@ -759,8 +759,8 @@ static void bk_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 	ktui_draw_text(43, y, list_w - 45, s->paths, fg, bg, KT_A_NONE);
 }
 
-static const KtuiCol EN_COL[] = { { "NAME", 0 }, { "SIZE", 9 },
-				  { "MODIFIED", 17 } };
+static const KtuiCol EN_COL[] = { { "NAME", 0, 0 }, { "SIZE", 9, 0 },
+				  { "MODIFIED", 17, 0 } };
 #define EN_NCOL 3
 
 static void en_cell(int idx, int col, int x, int y, int w, int fg, int bg,

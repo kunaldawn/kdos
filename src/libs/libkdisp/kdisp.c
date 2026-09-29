@@ -135,6 +135,21 @@ kdisp_set_backdrop(KDispBackdropFn fn)
 		cur->set_backdrop(fn);
 }
 
+int
+kdisp_px_logical(int px)
+{
+	if (cur && cur->px_logical)
+		return cur->px_logical(px);
+	return px;
+}
+
+void
+kdisp_on_scale(KDispScaleFn fn)
+{
+	if (cur && cur->on_scale)
+		cur->on_scale(fn);
+}
+
 void
 kdisp_input_cells(const KRect *rects, int n)
 {

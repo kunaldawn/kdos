@@ -23,6 +23,7 @@
 #include "labwc.h"
 #include "node.h"
 #include "output.h"
+#include "kdos.h" /* KDOS */
 
 #define LAB_LAYERSHELL_VERSION 4
 
@@ -358,6 +359,13 @@ handle_unmap(struct wl_listener *listener, void *data)
 	struct wlr_layer_surface_v1 *layer_surface =
 		layer->scene_layer_surface->layer_surface;
 
+	/* KDOS: the close fade snapshots the last buffers here, while the
+	 * scene still holds them (kdos-motion.c) */
+	kdos_motion_layer_unmap(layer->scene_layer_surface->tree,
+		layer_surface->current.layer >= ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+		layer_surface->current.keyboard_interactive
+			== ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE);
+
 	/*
 	 * If we send a configure event in unmap handler, the layer-shell
 	 * client sends ack_configure back and wlroots posts a
@@ -397,6 +405,10 @@ handle_map(struct wl_listener *listener, void *data)
 	if (wlr_output) {
 		output_update_usable_area(wlr_output->data);
 	}
+
+	/* KDOS: top and overlay surfaces fade in (kdos-motion.c) */
+	kdos_motion_layer_map(layer->scene_layer_surface->tree,
+		is_above_toplevels(layer_surface));
 
 	/*
 	 * Since moving to the wlroots scene-graph API, there is no need to

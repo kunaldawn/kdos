@@ -34,6 +34,7 @@
 
 #include "kbase.h"
 #include "kcell.h"
+#include "kicon.h"
 #include "kimg.h"
 #include "kwl.h"
 #include "shell.h"
@@ -57,10 +58,32 @@ int sh_pic_cell_h(void)
 	return h > 1 ? h : PIC_NOMINAL_CH;
 }
 
+/*
+ * THE ICONS FOLLOW THE PIXEL CELL. kicon_init() takes the cell and the scale
+ * the display answers at start-up, and a surface learns its output only once
+ * it is on a screen: a HiDPI output reports 2 after the first frame, and a
+ * fractional one keeps the scale at 1 and grows the cell to the font's at the
+ * device size. Either way every icon built before then is cut for a cell it
+ * is not drawn in, so both are read again here. The sprite budget is counted
+ * in cells of the same size and moves with it.
+ */
+static void pic_recell(int scale)
+{
+	ktui_sprite_budget(SH_PIC_BUDGET, sh_pic_cell_w(), sh_pic_cell_h());
+	kicon_recell(sh_pic_cell_w(), sh_pic_cell_h(), scale);
+}
+
 void sh_pic_backend(void)
 {
 	ktui_sprite_evictor(kcell_tile_free, NULL);
 	ktui_sprite_budget(SH_PIC_BUDGET, sh_pic_cell_w(), sh_pic_cell_h());
+	/*
+	 * Registering before kicon_init() is fine — the hook does nothing to
+	 * a library not yet initialised — and a surface with its icons off
+	 * pays one redraw per change. Tiles need no hook: kch_tile_begin()
+	 * compares the cell and the scale itself.
+	 */
+	kdisp_on_scale(pic_recell);
 }
 
 /* Something rather than nothing where there are no pixels — a tty, a dump, a

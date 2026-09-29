@@ -86,7 +86,8 @@ static int icons_on = 1;
 enum { PR_NONE, PR_PASS, PR_NAME, PR_IMAGE, PR_DISK };
 static int prompt;
 static char answer[DK_ANSWER];
-static int caret;
+/* The toolkit's field over `answer`; `secret` is set for the passphrase. */
+static KtuiField qf = { answer, sizeof(answer), 0, 0, NULL };
 /* The image a write was asked for, held between its two prompts, and the
  * write in flight. */
 static char image[DK_ANSWER];
@@ -298,8 +299,8 @@ static void write_start(const char *typed)
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 static const KtuiCol DK_COL[] = {
-	{ "DEVICE", 12 }, { "LABEL", 0 },  { "TYPE", 12 },
-	{ "SIZE", 7 },	  { "MOUNTED", 22 }
+	{ "DEVICE", 12, 0 }, { "LABEL", 0, 0 },  { "TYPE", 12, 0 },
+	{ "SIZE", 7, 0 },	  { "MOUNTED", 22, 0 }
 };
 #define DK_NCOL 5
 
@@ -392,8 +393,14 @@ static void draw(void)
 		char ask[160], disk[32];
 
 		if (prompt == PR_PASS) {
-			size_t n = strlen(answer);
+			/* One mark per CHARACTER, as the field counts them:
+			 * a mark per byte would say how many of them were not
+			 * ASCII. */
+			size_t n = 0;
 
+			for (const char *p = answer; *p; p++)
+				if (((unsigned char)*p & 0xc0) != 0x80)
+					n++;
 			if (n > sizeof(shown) - 2)
 				n = sizeof(shown) - 2;
 			memset(shown, '*', n);
@@ -415,6 +422,9 @@ static void draw(void)
 						   "%s to write:", disk, disk);
 		ktui_draw_textf(2, h - 3, w - 4, KT_TEXT, KT_BG, KT_A_NONE,
 				"%s %s", ask, shown);
+		ktui_term_caret(2 + ktui_utf8_width(ask) + 1 +
+					ktui_field_col(&qf),
+				h - 3);
 	} else if (wr.running) {
 		char lbl[64];
 		double frac = wr.total ? (double)wr.done / (double)wr.total : 0;
@@ -440,7 +450,7 @@ static void draw(void)
 	ktui_hint("Esc", prompt ? "cancel" : ktui_esc_verb(&keys));
 	ktui_hint_row(&keys, krect(2, h - 3 + (prompt || wr.running ? 1 : 0),
 				   w - 4, 1), KT_BG);
-	if (prompt)
+	if (!prompt)
 		ktui_term_caret(-1, -1);
 }
 
@@ -450,7 +460,8 @@ static void prompt_open(int which)
 {
 	prompt = which;
 	answer[0] = '\0';
-	caret = 0;
+	qf.caret = 0;
+	qf.secret = which == PR_PASS;
 	status[0] = '\0';
 }
 
@@ -478,37 +489,32 @@ static void prompt_take(void)
 	if (was == PR_DISK) {
 		write_start(answer);
 		memset(answer, 0, sizeof(answer));
-		caret = 0;
+		qf.caret = 0;
 		return;
 	}
 	send_secret(was == PR_PASS ? "unlock" : "format", answer);
 	/* THE SECRET DOES NOT OUTLIVE THE PROMPT. A passphrase left in a
 	 * surface's static buffer is one a core dump carries. */
 	memset(answer, 0, sizeof(answer));
-	caret = 0;
+	qf.caret = 0;
 }
 
-static int on_key(int k)
+static int on_key(const KtuiEvent *ev)
 {
-	if (prompt) {
-		int n = (int)strlen(answer);
+	int k = ev->key;
 
+	if (prompt) {
 		if (k == KT_K_ESC) {
 			prompt = PR_NONE;
 			memset(answer, 0, sizeof(answer));
-			caret = 0;
+			qf.caret = 0;
 		} else if (k == KT_K_ENTER) {
 			prompt_take();
-		} else if (k == KT_K_BACKSPACE) {
-			if (caret > 0) {
-				memmove(answer + caret - 1, answer + caret,
-					(size_t)(n - caret) + 1);
-				caret--;
-			}
-		} else if (k >= 0x20 && k < 0x7f && n + 1 < DK_ANSWER) {
-			memmove(answer + caret + 1, answer + caret,
-				(size_t)(n - caret) + 1);
-			answer[caret++] = (char)k;
+		} else {
+			/* Everything else is the field's, which passes an
+			 * unclaimed chord back rather than typing its
+			 * letter. */
+			ktui_field_key(&qf, ev);
 		}
 		return 0;
 	}
@@ -647,7 +653,14 @@ int disks_main(int argc, char **argv)
 
 		/* A quarter-second tick while a write reports, so the bar
 		 * moves; a second otherwise. */
-		if (!ktui_backend()->poll_event(&ev, wr.running ? 250 : 1000)) {
+		int got = ktui_backend()->poll_event(&ev,
+						     wr.running ? 250 : 1000);
+
+		/* A paste is a queue and not an event: offered on every wake
+		 * a prompt is open. */
+		if (prompt)
+			ktui_field_key(&qf, NULL);
+		if (!got) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();
@@ -665,7 +678,8 @@ int disks_main(int argc, char **argv)
 			    (prompt == PR_NONE || prompt == PR_IMAGE) &&
 			    take_drop(answer, sizeof(answer))) {
 				prompt = PR_IMAGE;
-				caret = (int)strlen(answer);
+				qf.caret = (int)strlen(answer);
+				qf.secret = 0;
 				status[0] = '\0';
 			}
 			continue;
@@ -715,12 +729,7 @@ int disks_main(int argc, char **argv)
 		 * window on the key that must abandon the passphrase. */
 		if (!prompt && ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			break;
-		/* An unhandled Ctrl or Alt chord arrives as its letter, and
-		 * must not type that letter into a prompt. */
-		if (prompt && ev.key >= 0x20 && ev.key < 0x7f &&
-		    (ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)))
-			continue;
-		if (on_key(ev.key))
+		if (on_key(&ev))
 			break;
 	}
 

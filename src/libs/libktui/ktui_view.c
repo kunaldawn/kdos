@@ -24,6 +24,7 @@
  * ---------------------------------
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "ktui.h"
@@ -184,35 +185,131 @@ int ktui_table_layout(const KtuiCol *col, int ncol, int w, int *x, int *cw)
 	return at;
 }
 
+/* The column layout a TABLE draws: the KtuiCol widths with the table's drag
+ * widths over them, shifted right by its inset. The draw, the hit test and
+ * the event all come through here, so a press is measured against the
+ * columns the person is looking at.
+ *
+ * A DRAG WIDTH IS HELD TO THE WIDTH BEING LAID OUT, not only to the width it
+ * was dragged at: a widened column in a table that has since narrowed would
+ * push the columns after it past the rect's edge, and its own edge with them,
+ * leaving nothing to drag it back by. The excess comes off the widened
+ * columns right to left, never under the width the column asks for, so the
+ * remainder keeps one cell (or a table with no remainder fits); the stored
+ * width is untouched and returns when the table widens again. */
+static void table_cols(const KtuiTable *st, const KtuiCol *col, int ncol,
+		       int w, int *x, int *cw)
+{
+	KtuiCol c[KT_TABLE_COLS] = { { 0 } };
+	int in = st->inset > 0 ? st->inset : 0;
+	int fixed = 0, elastic = 0;
+
+	if (ncol > KT_TABLE_COLS)
+		ncol = KT_TABLE_COLS;
+	for (int i = 0; i < ncol; i++) {
+		c[i] = col[i];
+		if (st->w[i] > 0 && col[i].width > 0)
+			c[i].width = st->w[i];
+		if (c[i].width > 0)
+			fixed += c[i].width + 1;
+		else if (!elastic)
+			elastic = 1;
+		else
+			fixed += 1;
+	}
+	/* The row's extent is fixed + rest with a remainder column (rest >= 1)
+	 * and fixed - 1 without one. */
+	int over = fixed + (elastic ? 1 : -1) - (w - in);
+	for (int i = ncol - 1; i >= 0 && over > 0; i--) {
+		int give = c[i].width - col[i].width;
+
+		if (col[i].width <= 0 || give <= 0)
+			continue;
+		if (give > over)
+			give = over;
+		c[i].width -= give;
+		over -= give;
+	}
+	ktui_table_layout(c, ncol, w - in, x, cw);
+	for (int i = 0; i < ncol; i++)
+		x[i] += in;
+}
+
+static int table_head(const KtuiCol *col, int ncol)
+{
+	for (int i = 0; i < ncol; i++)
+		if (col[i].title)
+			return 2;	/* the titles and the rule under them */
+	return 0;
+}
+
+void ktui_table_text(const KtuiCol *c, int x, int y, int w, const char *s,
+		     int fg, int bg)
+{
+	if (c && (c->flags & KT_COL_RIGHT))
+		ktui_draw_text_right(x, y, w, s, fg, bg, KT_A_NONE);
+	else
+		ktui_draw_text(x, y, w, s, fg, bg, KT_A_NONE);
+}
+
+/*
+ * THE SORTED COLUMN SAYS SO IN ITS TITLE: the title lifts to KT_TEXT and an
+ * arrow in the accent stands beside it — after a left-aligned title, before a
+ * right-aligned one, so it never sits on the column's aligned edge. The
+ * arrows are the running-text ones (KT_G_UP/KT_G_DOWN, `^`/`v` on the
+ * console): they state a direction, they are not a control to press.
+ */
+static void table_title(const KtuiCol *c, int x, int y, int w, int sorted,
+			int desc, int bg)
+{
+	const char *mark = ktui_glyph[desc ? KT_G_DOWN : KT_G_UP];
+	int fg = sorted ? KT_TEXT : KT_MID;
+	int tw = ktui_utf8_width(c->title);
+
+	if (!sorted || w < 3) {
+		ktui_table_text(c, x, y, w, c->title, fg, bg);
+		return;
+	}
+	if (tw > w - 2)
+		tw = w - 2;
+	if (c->flags & KT_COL_RIGHT) {
+		ktui_draw_text_right(x + 2, y, w - 2, c->title, fg, bg,
+				     KT_A_NONE);
+		ktui_draw_text(x + w - tw - 2, y, 1, mark, KT_ACCENT, bg,
+			       KT_A_NONE);
+	} else {
+		ktui_draw_text(x, y, w - 2, c->title, fg, bg, KT_A_NONE);
+		ktui_draw_text(x + tw + 1, y, 1, mark, KT_ACCENT, bg,
+			       KT_A_NONE);
+	}
+}
+
 void ktui_table_draw(KRect r, KtuiTable *st, int count, const KtuiCol *col,
 		     int ncol, KtuiTableCell cell, KtuiTableSpan span,
 		     void *user, int hover)
 {
 	int x[KT_TABLE_COLS], cw[KT_TABLE_COLS];
-	int head = 0;
+	int page = st->page;
 	int bar = 0;
 
 	if (ncol > KT_TABLE_COLS)
 		ncol = KT_TABLE_COLS;
-	for (int i = 0; i < ncol; i++)
-		if (col[i].title)
-			head = 2;	/* the titles and the rule under them */
+	int head = table_head(col, ncol);
 
 	int rows = r.h - head;
 	if (rows < 1)
 		rows = 1;
 	bar = count > rows;
 
-	ktui_table_layout(col, ncol, bar ? r.w - 1 : r.w, x, cw);
+	table_cols(st, col, ncol, bar ? r.w - 1 : r.w, x, cw);
 
 	if (head) {
-		ktui_draw_fill(krect(r.x, r.y, r.w, 1), KT_BG);
+		ktui_draw_fill(krect(r.x, r.y, r.w, 1), page);
 		for (int i = 0; i < ncol; i++)
-			if (col[i].title)
-				ktui_draw_text(r.x + x[i], r.y, cw[i],
-					       col[i].title, KT_MID, KT_BG,
-					       KT_A_NONE);
-		ktui_draw_hline(r.x, r.y + 1, r.w, KT_G_HL, KT_DIM, KT_BG);
+			if (col[i].title && cw[i] > 0)
+				table_title(&col[i], r.x + x[i], r.y, cw[i],
+					    st->sort == i + 1, st->desc, page);
+		ktui_draw_hline(r.x, r.y + 1, r.w, KT_G_HL, KT_DIM, page);
 	}
 
 	ktui_table_clamp(st, count, rows);
@@ -222,22 +319,28 @@ void ktui_table_draw(KRect r, KtuiTable *st, int count, const KtuiCol *col,
 		int y = r.y + head + i;
 
 		if (idx >= count) {
-			ktui_draw_fill(krect(r.x, y, r.w, 1), KT_BG);
+			ktui_draw_fill(krect(r.x, y, r.w, 1), page);
 			continue;
 		}
 		int kind = span ? span(idx, user) : 0;
 		/* A row the selection steps over never lights, whatever the
 		 * caller's selection happens to be resting on. */
 		int on = idx == st->sel && kind != KT_TABLE_SKIP;
-		int bg = on		? KT_ACCENT
-			 : idx == hover && kind != KT_TABLE_SKIP ? KT_MID
-					: KT_BG;
-		int fg = on ? KT_SURFACE : KT_TEXT;
+		int fg, bg;
+
+		if (st->selrule) {
+			ktui_sel_slots(on, 1, page, &fg, &bg);
+		} else {
+			bg = on ? KT_ACCENT
+			     : idx == hover && kind != KT_TABLE_SKIP ? KT_MID
+								     : page;
+			fg = on ? KT_SURFACE : KT_TEXT;
+		}
 
 		ktui_draw_fill(krect(r.x, y, bar ? r.w - 1 : r.w, 1), bg);
 		if (kind) {
 			cell(idx, -1, r.x, y, bar ? r.w - 1 : r.w,
-			     on ? KT_SURFACE : KT_ACCENT, bg, user);
+			     on ? fg : KT_ACCENT, bg, user);
 			continue;
 		}
 		for (int c = 0; c < ncol; c++)
@@ -326,6 +429,91 @@ int ktui_table_key(KtuiTable *st, int count, int rows, int k,
 	return st->sel != prev;
 }
 
+/* The header's answer to a press: a sort, or a hold on a column edge. */
+static int table_head_press(KRect r, KtuiTable *st, int count, int rows,
+			    int ncol, const KtuiCol *col, int mx, int my)
+{
+	int x[KT_TABLE_COLS], cw[KT_TABLE_COLS];
+	int w = count > rows ? r.w - 1 : r.w;
+
+	table_cols(st, col, ncol, w, x, cw);
+	for (int i = 0; i < ncol; i++) {
+		int edge = r.x + x[i] + cw[i];
+
+		if ((col[i].flags & KT_COL_RESIZE) && col[i].width > 0 &&
+		    mx == edge) {
+			st->drag = i + 1;
+			return KTUI_TABLE_NONE;
+		}
+	}
+	if (my != r.y)
+		return KTUI_TABLE_NONE;
+	for (int i = 0; i < ncol; i++) {
+		if (!(col[i].flags & KT_COL_SORT) || mx < r.x + x[i] ||
+		    mx >= r.x + x[i] + cw[i])
+			continue;
+		if (st->sort == i + 1) {
+			st->desc = !st->desc;
+		} else {
+			st->sort = i + 1;
+			st->desc = 0;
+		}
+		ktui_announce(KT_A11Y_TABLE, col[i].title,
+			      st->desc ? "sorted falling" : "sorted rising", 0,
+			      0);
+		return KTUI_TABLE_SORT;
+	}
+	return KTUI_TABLE_NONE;
+}
+
+/*
+ * A HELD EDGE FOLLOWS THE POINTER A WHOLE CELL AT A TIME, clamped so the
+ * column never goes under its title (a title cut short names nothing) and
+ * the remainder column never under one cell: past that the row would be
+ * wider than the rect and the last column would be drawn over the scrollbar.
+ */
+static int table_drag(KRect r, KtuiTable *st, int count, int rows, int ncol,
+		      const KtuiCol *col, int mx)
+{
+	int x[KT_TABLE_COLS], cw[KT_TABLE_COLS];
+	int w = count > rows ? r.w - 1 : r.w;
+	int i = st->drag - 1;
+	int elastic = -1;
+
+	if (i < 0 || i >= ncol)
+		return KTUI_TABLE_NONE;
+	table_cols(st, col, ncol, w, x, cw);
+	for (int c = 0; c < ncol; c++)
+		if (col[c].width <= 0) {
+			elastic = c;
+			break;
+		}
+
+	int used = 0;
+	for (int c = 0; c < ncol; c++)
+		used += cw[c] + (c ? 1 : 0);
+	int slack = w - (st->inset > 0 ? st->inset : 0) - used;
+	if (elastic >= 0)
+		slack += cw[elastic] - 1;
+	int lo = col[i].title ? ktui_utf8_width(col[i].title) : 1;
+
+	if (lo > col[i].width)
+		lo = col[i].width;
+	if (lo < 1)
+		lo = 1;
+	int hi = cw[i] + (slack > 0 ? slack : 0);
+	int want = mx - (r.x + x[i]);
+
+	if (want > hi)
+		want = hi;
+	if (want < lo)
+		want = lo;
+	if (want == cw[i])
+		return KTUI_TABLE_NONE;
+	st->w[i] = want;
+	return KTUI_TABLE_RESIZED;
+}
+
 /*
  * ONE POINTER RULE FOR EVERY TABLE, and it is the same rule the lists keep.
  *
@@ -348,6 +536,8 @@ int ktui_table_event(KRect r, KtuiTable *st, int count, int rows, int ncol,
 
 	if (!ev || ev->type != KT_EVT_MOUSE)
 		return KTUI_TABLE_NONE;
+	if (ncol > KT_TABLE_COLS)
+		ncol = KT_TABLE_COLS;
 
 	/* A detent is a press with no release, so it is answered before the
 	 * button arm below and never falls into it. */
@@ -358,12 +548,24 @@ int ktui_table_event(KRect r, KtuiTable *st, int count, int rows, int ncol,
 				      span, user)
 		       ? KTUI_TABLE_MOVED : KTUI_TABLE_NONE;
 
-	if (ev->press != KT_MP_PRESS)
+	if (ev->press == KT_MP_DRAG)
+		return st->drag ? table_drag(r, st, count, rows, ncol, col,
+					     ev->mx)
+				: KTUI_TABLE_NONE;
+	if (ev->press != KT_MP_PRESS) {
+		st->drag = 0;
 		return KTUI_TABLE_NONE;
+	}
+	st->drag = 0;
 	if (ev->btn == KT_MB_RIGHT)
 		return KTUI_TABLE_CLOSE;
 	if (ev->btn != KT_MB_LEFT)
 		return KTUI_TABLE_NONE;
+
+	int head = table_head(col, ncol);
+	if (head && krect_hit(r, ev->mx, ev->my) && ev->my < r.y + head)
+		return table_head_press(r, st, count, rows, ncol, col, ev->mx,
+					ev->my);
 
 	i = ktui_table_hit(r, st, count, ncol, col, ev->mx, ev->my);
 	if (i < 0)
@@ -372,6 +574,71 @@ int ktui_table_event(KRect r, KtuiTable *st, int count, int rows, int ncol,
 		return KTUI_TABLE_PICKED;
 	return ktui_table_pick(st, count, i, span, user) ? KTUI_TABLE_MOVED
 							 : KTUI_TABLE_NONE;
+}
+
+int ktui_table_sort_next(KtuiTable *st, const KtuiCol *col, int ncol)
+{
+	int from = st->sort;	/* 1-based; 0 starts before column 0 */
+
+	if (ncol > KT_TABLE_COLS)
+		ncol = KT_TABLE_COLS;
+	if (from > 0 && from <= ncol && !st->desc) {
+		st->desc = 1;
+		return 1;
+	}
+	for (int k = 1; k <= ncol; k++) {
+		int i = (from + k - 1) % ncol;	/* the column after `from` */
+
+		if (col[i].flags & KT_COL_SORT) {
+			int changed = st->sort != i + 1 || st->desc;
+
+			st->sort = i + 1;
+			st->desc = 0;
+			if (changed)
+				ktui_announce(KT_A11Y_TABLE, col[i].title,
+					      "sorted rising", 0, 0);
+			return changed;
+		}
+	}
+	return 0;
+}
+
+static KtuiTableCmp sort_cmp;
+static void *sort_user;
+static int sort_col, sort_desc;
+
+static int sort_order(const void *pa, const void *pb)
+{
+	int a = *(const int *)pa, b = *(const int *)pb;
+	int c = 0;
+
+	if (sort_col >= 0) {
+		c = sort_cmp(a, b, sort_col, sort_user);
+		if (sort_desc)
+			c = -c;
+	}
+	return c ? c : (a > b) - (a < b);
+}
+
+void ktui_table_sort(KtuiTable *st, int *order, int n, KtuiTableCmp cmp,
+		     void *user)
+{
+	int keep = st->sel >= 0 && st->sel < n ? order[st->sel] : -1;
+
+	if (n < 1)
+		return;
+	sort_cmp = cmp;
+	sort_user = user;
+	sort_col = cmp && st->sort > 0 ? st->sort - 1 : -1;
+	sort_desc = st->desc;
+	qsort(order, (size_t)n, sizeof(order[0]), sort_order);
+	if (keep < 0)
+		return;
+	for (int i = 0; i < n; i++)
+		if (order[i] == keep) {
+			st->sel = i;
+			break;
+		}
 }
 
 /* The row a click lands on, refused when it is a skipped heading. */
@@ -393,11 +660,8 @@ int ktui_table_pick(KtuiTable *st, int count, int idx, KtuiTableSpan span,
 int ktui_table_hit(KRect r, const KtuiTable *st, int count, int ncol,
 		   const KtuiCol *col, int mx, int my)
 {
-	int head = 0;
+	int head = table_head(col, ncol < KT_TABLE_COLS ? ncol : KT_TABLE_COLS);
 
-	for (int i = 0; i < ncol && i < KT_TABLE_COLS; i++)
-		if (col[i].title)
-			head = 2;
 	if (!krect_hit(r, mx, my) || my < r.y + head)
 		return -1;
 

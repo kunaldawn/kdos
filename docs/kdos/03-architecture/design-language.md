@@ -58,11 +58,13 @@ Three things on the screen are not cells:
 - **The compositor's own chrome.** Window title bars, the root menu and the window-switcher display
   are drawn by the compositor with Pango, in `Terminus (TTF)` at 24 points (set in
   `fs/etc/skel/.config/kdos-comp/rc.xml`), which is 32 pixels at 96 dpi and so one cell tall. The
-  cell grid itself is drawn from the bitmap Terminus face; Pango cannot render bitmap fonts, which
-  is why the compositor asks for the TTF conversion by its own family name. See
+  cell grid itself is drawn from the bitmap Terminus face at every size it has a bitmap for, and
+  from the same TTF conversion, in a cell exactly the asked size, at the sizes it has none (see
+  [libkcell](../05-developer/c-libraries.md#the-cells-size)); Pango cannot render bitmap fonts,
+  which is why the compositor asks for the TTF conversion by its own family name. See
   [The compositor's decoration is part of the set](#the-compositors-decoration-is-part-of-the-set).
-- **The pixel layer under the cells.** A surface with a Wayland backend may record plates, rules
-  and rounded ends that are painted beneath its cells. Layout, hit testing and every dump stay in
+- **The pixel layer under the cells.** A surface with a Wayland backend may record plates, rules,
+  rounded ends and display text that are painted beneath its cells. Layout, hit testing and every dump stay in
   cells. See [The pixel layer under the cells](#the-pixel-layer-under-the-cells).
 - **An application.** A natively ported application (one built from a recipe with GTK, Qt,
   KDE Frameworks, wxWidgets, FLTK or Tk) and a boxed application (one running in a container)
@@ -121,6 +123,7 @@ two diverge.
 | `kch_list_wheel`, `kch_list_clamp` | The scrolling rule for a list |
 | `kch_scrollbar` and `kch_scrollbar_press` / `_drag` / `_release` / `_grabbed` | A scrollbar that can be dragged; up to four per surface |
 | `kch_tile_*` | A block of cells drawn as pixels |
+| `kch_plot`, `kch_plot_draw` | An area chart, or a mirrored pair on one axis, drawn as pixels in a tile |
 | `kch_tone`, `kch_tone_alpha`, `kch_popup_alpha`, `kch_slot_rgb` | Shading and body opacity derived from the palette |
 | `kch_px_*` | The plates, rules and rounded ends a backend with pixels records under the cells |
 
@@ -132,13 +135,16 @@ second answer to a question this desktop has already settled.
 | `ktui_button`, `ktui_check`, `ktui_radio` | A verb, a flag, one of a set |
 | `ktui_slider`, `ktui_slider_*` | A number on a track: press, drag, wheel, or an end cap for one step |
 | `ktui_dropdown_*` | A choice, as a list that opens under its row |
-| `ktui_input` | A line of text with a caret |
+| `ktui_input`, `ktui_field_*` | A line of text with a caret |
 | `ktui_textarea_*` | Several lines of text with a caret |
-| `ktui_list`, `ktui_table` | Rows, and rows with columns |
+| `ktui_list`, `ktui_table` | Rows, and rows with columns; a column may sort from its title, align right, or drag wider |
 | `ktui_sel_slots`, `ktui_sel_row`, `ktui_sel_dim` | What a selected row looks like, for every surface that has one |
 | `ktui_rows_*` | Which row the pointer is on, for a surface that draws its own rows |
-| `ktui_table_event` | The same for a table: wheel, press, pick, Back |
+| `ktui_table_event` | The same for a table: wheel, press, pick, Back, and a sort or a drag in its header |
 | `ktui_tabs_*` | A strip of pages |
+| `ktui_split` | Two panes and the divider between them, dragged or moved with the arrow keys |
+| `ktui_fold_begin`, `ktui_fold_end` | A section heading that opens and shuts the section under it |
+| `ktui_lay_*` | Not a control: the rows of a page, with one label column for every field on it |
 | `KtuiMenu`, `ktui_modal_*` | A pane of verbs, and a question |
 | `ktui_progress`, `ktui_gauge`, `ktui_sparkline`, `ktui_heat` | Progress and measurements, in four shapes |
 
@@ -158,6 +164,12 @@ not vanish into the fill. On a row filled with `KT_ACCENT` the thumb is `KT_SURF
 when focused. The end caps are dropped below 14 columns (`KT_SLIDER_MIN_W`) and the number below
 ten.
 
+A divider is a `│` (or a `─` between stacked panes) in `KT_DIM` on whatever the page put under it,
+and in the accent while it has the focus. A fold's heading is a section heading with a marker in
+front of it: `►` in the accent while shut, `▼` while open (`>` and `v` on the console), the title in
+the accent and the section's rule after it; focused, the row takes the selection fill and the title
+`KT_TEXT`, as a check box does, so the marker is the state and the plate is the focus.
+
 Most controls are a `draw` / `key` / `hit` trio with one frame-level call on top. That is what
 lets a surface running its own event loop, such as `kdos-display` or `kdos-audio`, use the same
 control as one written inside the immediate-mode frame (`ktui_frame_begin()`), in which a surface
@@ -169,8 +181,11 @@ is for a screen reader (`ktui_announce`); see [Accessibility](../02-user-guide/a
 ### The pixel layer under the cells
 
 A backend with pixels can paint beneath the cell grid. While a surface draws, `libkchrome` records
-a display list of plates (`kch_px_plate`), selected-row bars (`kch_px_row`), rules and rounded
-rectangles; the Wayland backend replays it under the cells at the output's scale. The rule is
+a display list of plates (`kch_px_plate`), selected-row bars (`kch_px_row`, and `kch_px_row_anim`
+for one that slides to a new row), rules, rounded rectangles and display text (`kch_px_text`); the
+Wayland backend replays it under the cells in the pixels they are drawn in: the output's scale
+times the cell, or on a fractional scale the device pixels of a cell drawn at that size, so a plate
+edge and a glyph edge cannot drift apart. The rule is
 *pixels for paint, cells for layout*: the fallbacks, the hit maps and every `--dump` stay in cells,
 so a surface is correct without the layer and only better with it.
 
@@ -189,7 +204,32 @@ on purpose.
 `kch_px_popup()` gives a popup that body in one call, with no bright edge line, because a popup
 draws its own `╔═[ Title ]══╗` and a second border a few pixels above it reads as a fault.
 `kch_px_bare()` is the same hand-off with no body at all, for a surface that is only separate cards,
-such as a stack of notifications.
+such as a stack of notifications. `kch_px_custom()` is the hand-off for a surface that draws its
+own body; the taskbar uses it for its adaptive opacity and its edge. `kch_px_flat()` hands over a
+page that is one opaque slot, so an ordinary window gains the layer and looks exactly as it did;
+`kdos-res` uses it.
+
+All four go through one cache. The layer is rasterised once per change of what it depends on (the
+recorded list, the body's alpha and edge, the palette, the size and the scale) and kept, so a
+commit that changes only cells, such as a clock tick, a meter or a caret, repaints just those cells:
+each is laid back on its own rectangle of the cached layer and redrawn, and only those cells are
+reported to the compositor. A plate that moves, appears or vanishes re-rasterises only its own
+rectangles, and repaints and reports only the cells it left and reached; a change of the body's
+alpha or edge, of the palette, of the size or of the scale repaints the surface. A body at full opacity (the
+taskbar over a maximized window) also tells the compositor the surface is opaque, so it is copied
+rather than blended and whatever lies under it is skipped.
+
+**Display text** is a heading or a figure taller than a row of text, drawn as one op. The rule is
+that it is *whole rows of the cell tall*: text `n` rows high asks the face for `n` times the cell
+height, so on the 16×32 Terminus cell two rows are the 32-pixel strike doubled, pixel for pixel, and
+a size no strike draws exactly comes from the `Terminus (TTF)` twin (see
+[The cell's size](../05-developer/c-libraries.md#the-cells-size)). The face is the cell font's,
+never a second typeface. The rectangle's cells go blank on the slot the backdrop owns, so the text
+shows through them; a band of another slot under the text is recorded as a flat rectangle first,
+so the text sits on the band it replaces. Its colours are slots like everything else. Where there
+is no pixel layer, `kch_display_text()` draws the same string as cells on the rectangle's first
+row, which is what tty1 and every `--dump` show. A figure that only repeats what the cells already
+say, as `kdos-res`'s does, is drawn where the layer is live and not at all where it is not.
 
 ### Bars and rows
 
@@ -483,7 +523,8 @@ handling is a picture: the only way to discover that a row is a control is to cl
 |---|---|
 | Motion | Lights what is under it; on a list that follows hover, selects the row |
 | Left press | Activates. On a row that is already selected, opens it |
-| Wheel | Steps the selection while the list fits; moves the view when it does not (see [the two wheel rules](#drops-and-the-wheel)) |
+| Wheel | Steps the selection while the list fits; moves the view when it does not (see [the two wheel rules](#drops-and-the-wheel)), gliding where the display has a frame clock ([Motion](#motion)). One detent is one step, whether it arrives whole or, from a high-resolution wheel, in fractions |
+| Two fingers on a touchpad | The wheel, one step per ten units of travel; a flick coasts on after the finger lifts, slowing to a stop, and the next scroll, click or key stops it |
 | Right press | Backs out one level, then closes |
 | Scrollbar | Is dragged, and its end caps step one row |
 | Column header | Sets the sort; a second press reverses it |
@@ -603,9 +644,13 @@ Where the reversed cell is what gets drawn:
 Nothing is drawn before the first motion, since the pointer starts on no cell, so a machine with no
 pointing device does not show a pointer in its corner all session.
 
-Motion finer than a cell travels only in the raw input stream. `KtuiBackend.poll_raw` reports every
-key as a switch and every motion in the backend's own pixels, beside the cell-level queue; `libkwl`
-fills it, and nothing in the tree reads it. Nothing this desktop routes on is finer than a cell.
+Nothing this desktop routes on is finer than a cell: a pointer, a wheel step and a coast all land on
+whole rows and columns. Two things are finer, and neither reaches a surface's cells. A gliding list
+is presented a fraction of a row off for the frames of its slide, in `libkwl`'s pixels only. And
+the raw input stream, `KtuiBackend.poll_raw`, reports every key as a switch, every motion in the
+backend's own pixels and every scroll with its real distance, its `value120` and whether the device
+reversed it, beside the cell-level queue, for a consumer that is not cells; `libkwl` fills it, and
+nothing in the tree reads it.
 
 ## Touch
 
@@ -696,6 +741,11 @@ The flag that says "pull the selection into view" (`follow`) is set by everythin
 selection and by nothing that scrolls the page, or the next frame would undo the scroll. A surface
 that assigns a new view from a scrollbar drag clears its own flag for the same reason.
 
+After the clamp, a list that scrolls declares its rows and its first item with `kch_list_view()`,
+which is what lets the backend present a change of view as a glide ([Motion](#motion)). It declares
+the rows alone: a header scrolls with nothing, and a scrollbar's thumb is drawn at the new view at
+once.
+
 A list that scrolls shows a scrollbar. It is one column wide: a `▲` cap, a `▒` track in `KT_DIM`
 with a `█` thumb in `KT_MID`, and a `▼` cap, all characters every glyph tier has, so it looks the
 same on a console. A cap at the end of its travel is drawn in `KT_DIM`. Nothing is drawn when
@@ -780,6 +830,18 @@ A wide character is measured, not assumed. The toolkit computes display width wi
 not break the row layout. The console font has no wide characters, so on `tty1` a wide character is
 written as a single `?` in one cell. Chrome that must read on both stays inside the small set.
 
+### The same cell at every scale
+
+On a Wayland output the tier is rich at every scale, and a scale changes the pixels of a cell, never
+the cell. A whole-number scale draws each glyph of the 16×32 cell that many times over with
+nearest-neighbour filtering, so the letters are the `tty1` letters with every pixel doubled. A
+fractional scale draws the same face at the device size instead of a doubled grid the compositor
+shrinks: at 1.25, 1.5 and 1.75 the chrome is `Terminus (TTF)` in a cell of exactly 20×40, 24×48 and
+28×56. A surface keeps the same number of cells in the same logical room either way. The box-drawing
+and block characters are synthesised from their codepoints at whatever size the cell is, so frames
+join at every scale. See
+[The fractional scale](../05-developer/c-libraries.md#the-fractional-scale).
+
 ## Pictures are an enhancement layer
 
 A *sprite* is a picture registered in a numbered slot of the toolkit's *sprite table* (up to 4096
@@ -798,17 +860,36 @@ reference frame is the character grid, and a layout that only lines up once the 
 broken layout.
 
 A *pixel tile* (`kch_tile_*`) is a block of cells a surface paints as pixels through a canvas, such
-as the panel's Start button and its meters. Two rules apply:
+as the panel's Start button and its meters. It can be any size up to the grid: past the 16×16 cells
+one slot covers, it is a grid of slots over views of the one canvas, like a picture in a terminal
+below, and `kch_tile_draw()` writes all of its cells. Two rules apply:
 
-- **A tile owns two slots and alternates between them.** A cell encodes the slot, not the picture,
+- **A tile owns two sets of slots and alternates between them.** A cell encodes the slot, not the picture,
   so redrawing a tile's contents in place changes no cell, the comparison sees nothing, and the frame
   is never presented; a clock tile would freeze at the minute it was first drawn. Swapping slots on
-  every content change repaints exactly the rows it covers.
+  every content change repaints exactly the cells it covers.
 - **Decide the geometry before claiming the tile.** Giving up after claiming it leaves the tile
   believing it drew that content, and the next frame presents a stale slot.
 
 `kdos theme` drops every tile (`kch_tile_reset`), because each was rasterised in the palette being
 replaced.
+
+### A data trace is antialiased; chrome is not
+
+Chrome is hard-edged: plates, rules, rounded ends, gridlines and the compositor's title-bar buttons
+are whole pixels, because a smoothed edge beside a cell grid is what makes chrome look as if it came
+from another toolkit. A *data mark* is the one exception. The trace of a chart and the area under
+it (`kcell_canvas_series`), and a segment drawn with `kcell_canvas_line`, are antialiased, because
+a measurement's slope is information and a staircase at a fixed pixel pitch misstates it.
+
+Every chart on the desktop is drawn by one renderer, `kch_plot()`, in one style: a faint plate in
+`KT_DIM`, gridlines in `KT_MID` every ten seconds keyed to the sample number so they move with the
+data, a base line, the area at a third of the series' weight and the trace at full weight over it.
+A trace lying on its base is drawn at the area's weight, so an idle chart is a quiet line rather
+than a hard rule. A pair of series (receive and send, read and write) shares one axis and is
+mirrored about a midline, the first in `KT_ACCENT` above and the second in `KT_WARN` below. Every
+mark takes a slot and an alpha, never a colour. The chart is a tile, so tty1 and `--dump` draw the
+surface's cell chart instead, and a reference frame asserts that.
 
 ### Damage, for a picture that changed in place
 
@@ -903,6 +984,80 @@ everything else. It is designed to match the cell grid:
 
 Style overrides written by `kdos theme style` are kept in `~/.config/kdos/style-themerc` and
 appended after the generated block each time it is written, so they survive an accent change.
+
+## Motion
+
+Nothing on the cell grid moves. A cell is drawn or it is not, and that is what `tty1` and `--dump`
+show, so no surface's cells may depend on a clock to reach their final state. Motion lives in three
+places, all of them pixels over, under or in place of cells that are already final.
+
+The compositor re-blends pictures a surface has already finished. A surface on the top or overlay
+layer fades in when it maps and out when it unmaps, from a snapshot of its last frame; peek fades
+the windows; with `window_motion` on, a window fades and rises into place as it opens, fades and
+sinks away as it closes or is minimised, and slides sideways with a workspace switch. It changes
+position and opacity, never size. A surface needs no code to get this and cannot tell it is
+happening.
+
+A surface animates its own pixel layer with a `KtuiAnim` from `libktui`: a start time, a duration
+and a curve, read by the draw that uses it. The Wayland backend keeps the frame clock. While any
+animation in the process is running, its event wait returns a `KT_EVT_TICK` once per display frame,
+so a loop that draws on every return animates at the display's rate; when the last one ends, one
+more frame draws the end value and the loop goes back to its own timeout. An idle surface gets no
+tick, no extra commit and no shorter wait from any of this. Two surface animations are shipped:
+the panel's launch pulse, and the selection plate in the Start menu, the cascading and window
+menus and the tray menu, which slides to the row the selection moves to (`kch_px_row_anim`). Only
+the plate slides: the row's cells and its hit map are the new row from the first frame, and a list
+that scrolls under the same selection carries the plate with it at once rather than letting it
+trail the text.
+
+The Wayland backend presents a scrolled list gliding. A list declares where its rows are and which
+item is in the first of them (`kch_list_view`, beside `kch_list_clamp`), and when that item changes
+the list's pixels slide from the picture on the screen to the new one, eased out, with the frames
+in between committed by `libkwl` itself. The list's cells have already moved by whole rows: the
+pointer hits the rows the cells say, a key acts on the new view at once, and the last frame of the
+slide is the cells' own picture. A second notch while one is under way continues the slide from
+where it is. A page's worth or more is a jump, and so is a new list in the same place (a filter
+typed, a group opened), which the backend tells from the cells. The lists that declare themselves
+are the Start menu's three columns, the cascading and window menus, the tray menu, the status and
+notification centres, the clipboard picker, the file chooser, Open With, the teams list, the
+recorder's files, and `kdos-res`'s Applications, Processes and Boxes tables.
+
+A touchpad flick coasts: a finger that leaves the pad while still moving keeps the list moving,
+slowing to a stop over about a second. That is input, not animation: the backend keeps producing the
+wheel ticks the finger would have made, so every surface coasts without knowing it, cells included,
+and the next scroll, click or key stops it, as does the pointer leaving the surface. A finger
+resting on the pad without moving does not: the backend binds no gesture protocol that would say so. See
+[Input the backend cleans](../05-developer/writing-desktop-software.md#input-the-backend-cleans).
+
+| What moves | Duration | Curve | Settles on |
+|---|---|---|---|
+| A top- or overlay-layer surface opening / closing | 120 ms / 90 ms | ease-out | shown / gone |
+| Peek (Show Desktop hover) | 150 ms each way | ease-out | faded / restored |
+| A window opening, restored / closing, minimised (`window_motion`) | 150 ms / 120 ms | ease-out | in place / gone |
+| The panel's launch pulse: the accent over a pinned button, twice | 1100 ms | ease-in-out, there and back | the button at rest |
+| A menu's selection plate moving to another row | 90 ms | ease-out | the new row |
+| A list scrolled by the wheel, a touchpad or a key | 100 ms from the last step | ease-out | the new first row |
+
+Choose the curve by what the motion says. `KT_EASE_OUT` (cubic) is an arrival: fast, then
+settling. `KT_EASE_IN_OUT` is a pulse or a swap, slow at both ends. `KT_EASE_LINEAR` is for a
+progress, never for a movement. Keep an animation under a quarter of a second unless it is an
+acknowledgement that has to be seen, as the launch pulse is, and never make anything wait for one:
+keys and the pointer act on the end state at once.
+
+**The end value is the picture wherever nothing moves.** On `tty1`, under `--dump`, through a
+capture backend and with motion switched off, a `KtuiAnim` is worth its end value from the moment it
+starts, so a golden never holds a frame from the middle of one. A surface must not put anything in
+a motion that its end state does not also say.
+
+**Reduce motion is one switch.** `motion = no` in `~/.config/kdos/comp.conf` turns off both halves:
+the compositor reads it at each fade, and every Wayland surface reads it at each animation's start,
+so a change reaches a running panel without a restart. With it off, a compositor fade is a single
+frame and a surface's animation is its end value. Where the motion *is* the message, the state is
+held still instead of dropped: the launch pulse becomes a steady accent over the button for the same
+1.1 seconds, so the click is still acknowledged and nothing moves. A selection plate lands on its
+new row in the frame the selection moves, a scrolled list jumps to its new rows, and a touchpad
+flick stops when the finger lifts. What the compositor fades and what each fade costs are
+in [kdos-comp](../04-programs/kdos-comp.md#motion).
 
 ## The checklist
 

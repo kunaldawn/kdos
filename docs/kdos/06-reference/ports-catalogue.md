@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,001 recipes in `ports/core` and the
-24 recipes KDOS writes itself under `src/`, 2,025 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 1,999 recipes in `ports/core` and the
+24 recipes KDOS writes itself under `src/`, 2,023 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, and
 where in the build it arrives. Read [Packaging](../03-architecture/packaging.md) first for what a
 port and a package are, and [How KDOS is built](../05-developer/how-kdos-is-built.md) for what the
@@ -71,7 +71,7 @@ carries a typo or an aside, or does not plainly say what the software is.
 
 ## Counts
 
-Counted from the five `packages.txt` files and the 2,025 `kpkgbuild` files. "Named" counts the
+Counted from the five `packages.txt` files and the 2,023 `kpkgbuild` files. "Named" counts the
 non-comment lines of a list; "catalogued here" counts the ports whose first listing is in that
 phase.
 
@@ -80,16 +80,16 @@ phase.
 | Phases 0 and 1 (scripts) | none | 1 |
 | [Phase 2: the self-hosting bootstrap](#phase-2-the-self-hosting-bootstrap) | 8 | 8 |
 | [Phase 3: toolchain and core libraries](#phase-3-toolchain-and-core-libraries) | 97 | 89 |
-| [Phase 4: userland, the Wayland base and the applications](#phase-4-userland-the-wayland-base-and-the-applications) | 1,687 | 1,656 |
+| [Phase 4: userland, the Wayland base and the applications](#phase-4-userland-the-wayland-base-and-the-applications) | 1,685 | 1,654 |
 | [The desktop phase](#the-desktop-phase) | 22 | 21 |
 | [The kernel phase](#the-kernel-phase) | 1 | 1 |
 | [Installed as dependencies](#installed-as-dependencies) | none | 244 |
 | [Not installed](#not-installed) | none | 5 |
-| Total | 1,815 | 2,025 |
+| Total | 1,813 | 2,023 |
 
-The five lists name 1,775 distinct ports in 1,815 lines; 38 ports are named in more than
-one list. Following `depends =` from those 1,775 names reaches 2,019 ports: all
-1,775 listed ports and 244 more. With `kdos-installer`, which phase 1 builds by script,
+The five lists name 1,773 distinct ports in 1,813 lines; 38 ports are named in more than
+one list. Following `depends =` from those 1,773 names reaches 2,017 ports: all
+1,773 listed ports and 244 more. With `kdos-installer`, which phase 1 builds by script,
 that leaves 5 recipes in `ports/core` that no phase installs.
 
 Ports per list group, counting each port under its first listing only:
@@ -130,7 +130,7 @@ Ports per list group, counting each port under its first listing only:
 | Phase 4 | The python numeric stack | 44 |
 | Phase 4 | Astronomy — the sky, in the formats telescopes write | 4 |
 | Phase 4 | Sequences — the bioinformatics core | 4 |
-| Phase 4 | Synthesise, place, route and flash — the open FPGA flow, natively | 32 |
+| Phase 4 | Synthesise, place, route and flash — the open FPGA flow, natively | 30 |
 | Phase 4 | Grammars compiled here, a Rust server that can see std, and a private CA | 4 |
 | Phase 4 | Two people talking, and two machines sharing a filesystem | 5 |
 | Phase 4 | Inside the kernel, on the air, and against your own hashes | 8 |
@@ -895,7 +895,6 @@ libraries it links against; `numpy`, for example, depends on `openblas`, and `ng
 
 | Port | Version | Description |
 |---|---|---|
-| `ax25-tools` | 1.1.0 | kissattach, NET/ROM and connected-mode AX.25 links |
 | `capstone` | 5.0.9 | Disassembly engine library (rizin disassembles with it) |
 | `codec2` | 1.2.0 | Codec 2 — the open low-bitrate speech codec and FreeDV modem library, with freedv_tx and freedv_rx |
 | `direwolf` | 1.8.1 | Software TNC — AX.25, APRS and KISS over a sound card |
@@ -904,7 +903,6 @@ libraries it links against; `numpy`, for example, depends on `openblas`, and `ng
 | `hamlib` | 4.7.2 | Radio and rotator control library |
 | `icestorm` | 1.1 | The iCE40 bitstream database, packer and programmer |
 | `iverilog` | 13_0 | Event-driven Verilog simulation with real delays and X propagation |
-| `libax25` | 1.2.2 | The AX.25 socket library the tools and apps link against |
 | `libftdi` | 1.5 | Library for FTDI USB serial and JTAG bridge chips |
 | `libtommath` | 1.3.0 | Multiple-precision integers — tcl bundles a renamed copy and yosys needs the real one |
 | `nec2c` | 1.3.3 | NEC-2 antenna simulation from a card deck |
@@ -913,7 +911,7 @@ libraries it links against; `numpy`, for example, depends on `openblas`, and `ng
 | `openfpgaloader` | 1.1.1 | FPGA programming tool for the boards the FPGA flow targets |
 | `picotool` | 2.3.1 | RP2040 and RP2350 UF2 inspection and USB loading |
 | `predict` | 3.0.2 | Curses satellite tracker — passes, doppler and footprints from a TLE |
-| `prjtrellis` | 1.4 | The ECP5 bitstream database and packer |
+| `prjtrellis` | 1.4.git20260920 | The ECP5 bitstream database and packer |
 | `probe-rs` | 0.32.0 | ARM and RISC-V flash and debug over CMSIS-DAP, ST-Link and J-Link, with RTT |
 | `rizin` | 0.9.1 | Reverse-engineering framework — disassembler and binary analysis in the terminal |
 | `sdcc` | 4.6.0 | A C compiler for the 8-bit families AVR does not cover — 8051, STM8, Z80, PIC |

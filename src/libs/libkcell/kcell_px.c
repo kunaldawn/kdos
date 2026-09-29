@@ -41,9 +41,27 @@ static pixman_color_t px(uint32_t rgb, uint8_t a)
 	};
 }
 
+/* Clipped to the image here: a fill honours only a clip region set on the
+ * image, which pixman_image_create_bits() does not set, so a rect reaching
+ * past the edge — an op placed for a larger surface — would write past the
+ * end of the pixels. */
 static void band(pixman_image_t *dst, pixman_op_t op, pixman_color_t *c,
 		 int x, int y, int w, int h)
 {
+	int iw = pixman_image_get_width(dst), ih = pixman_image_get_height(dst);
+
+	if (x < 0) {
+		w += x;
+		x = 0;
+	}
+	if (y < 0) {
+		h += y;
+		y = 0;
+	}
+	if (w > iw - x)
+		w = iw - x;
+	if (h > ih - y)
+		h = ih - y;
 	if (w <= 0 || h <= 0)
 		return;
 	pixman_image_fill_rectangles(op, dst, c, 1,

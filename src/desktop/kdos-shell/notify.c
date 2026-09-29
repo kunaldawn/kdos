@@ -269,6 +269,8 @@ static void draw_frame(void)
 	kch_list_clamp(&top, sel, nrows, rows_vis, follow);
 
 	int rw = nrows > rows_vis ? w - 3 : w - 2;
+
+	kch_list_view(1, y0, rw, rows_vis, top);
 	for (int i = 0; i < rows_vis && top + i < nrows; i++) {
 		const struct nrow *r = &rows[top + i];
 		int y = y0 + i;

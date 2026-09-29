@@ -965,6 +965,15 @@ static void layout_draw(KRect b)
 	 */
 	ktui_check(b.x, y++, b.w, "Encrypt the root filesystem (LUKS2)",
 		   &cfg.luks);
+	/*
+	 * THE GROUPS THAT COME AND GO ARE SCOPED. The passphrase pair exists
+	 * only while the box is ticked and the size field only while there is
+	 * swap; drawn with positional ids, ticking the box would renumber the
+	 * size field and the buttons under it, and the size field's caret
+	 * would become the passphrase's. Inside ktui_id_push() each keeps one
+	 * id however many controls were drawn before it.
+	 */
+	ktui_id_push("luks");
 	if (cfg.luks) {
 		int fw = b.w - 20 > 32 ? 32 : b.w - 20;
 		ktui_draw_text(b.x, y, 16, "passphrase", KT_MID, KT_BG, 0);
@@ -981,7 +990,9 @@ static void layout_draw(KRect b)
 				  "recovery key and no way back in without it");
 		y += 2;
 	}
+	ktui_id_pop();
 
+	ktui_id_push("swap");
 	if (cfg.swap != SWAP_NONE) {
 		y++;
 		ktui_draw_text(b.x, y, 16, "size (MiB)", KT_MID, KT_BG, 0);
@@ -999,6 +1010,7 @@ static void layout_draw(KRect b)
 	} else {
 		y++;
 	}
+	ktui_id_pop();
 
 	if (!d)
 		return;
@@ -1223,76 +1235,82 @@ static int host_ok(const char *s)
 
 static void accounts_draw(KRect b)
 {
-	int y = b.y;
+	KtuiLay l;
+	KRect f;
 	int fw = b.w > 44 ? 34 : b.w - 18;
 
-	ktui_section(b.x, y, b.w, "MACHINE");
-	y++;
-	ktui_draw_text(b.x, y, 16, "hostname", KT_MID, KT_BG, 0);
-	ktui_input(krect(b.x + 17, y, fw, 1), cfg.hostname, sizeof(cfg.hostname), 0,
-		 "kdos");
+	/* The rows through the layout cursor: one label column for the page,
+	 * and a complaint after a field starts one cell past that field. */
+	ktui_lay_begin(&l, b);
+	ktui_lay_section(&l, "MACHINE");
+	f = ktui_lay_field(&l, "hostname", 0);
+	f.w = fw;
+	ktui_input(f, cfg.hostname, sizeof(cfg.hostname), 0, "kdos");
 	if (!host_ok(cfg.hostname))
-		ktui_draw_text(b.x + 18 + fw, y, b.w, "letters, digits and -", KT_ERR,
-			  KT_BG, 0);
-	y += 2;
+		ktui_draw_text(f.x + fw + 1, f.y, b.w, "letters, digits and -",
+			       KT_ERR, KT_BG, 0);
+	ktui_lay_gap(&l, 1);
 
-	ktui_section(b.x, y, b.w, "YOU");
-	y++;
-	ktui_draw_text(b.x, y, 16, "full name", KT_MID, KT_BG, 0);
-	ktui_input(krect(b.x + 17, y, fw, 1), cfg.fullname, sizeof(cfg.fullname), 0,
-		 "KDOS User");
-	y++;
-	ktui_draw_text(b.x, y, 16, "username", KT_MID, KT_BG, 0);
-	ktui_input(krect(b.x + 17, y, fw, 1), cfg.username, sizeof(cfg.username), 0,
-		 "kdos");
+	ktui_lay_section(&l, "YOU");
+	f = ktui_lay_field(&l, "full name", 0);
+	f.w = fw;
+	ktui_input(f, cfg.fullname, sizeof(cfg.fullname), 0, "KDOS User");
+	f = ktui_lay_field(&l, "username", 0);
+	f.w = fw;
+	ktui_input(f, cfg.username, sizeof(cfg.username), 0, "kdos");
 	if (!name_ok(cfg.username))
-		ktui_draw_text(b.x + 18 + fw, y, b.w, "lowercase, no leading digit",
-			  KT_ERR, KT_BG, 0);
-	y++;
-	ktui_draw_text(b.x, y, 16, "password", KT_MID, KT_BG, 0);
-	ktui_input(krect(b.x + 17, y, fw, 1), cfg.userpass, sizeof(cfg.userpass), 1,
-		 "required");
-	y++;
-	ktui_draw_text(b.x, y, 16, "confirm", KT_MID, KT_BG, 0);
-	ktui_input(krect(b.x + 17, y, fw, 1), cfg.userpass2, sizeof(cfg.userpass2), 1,
-		 "");
+		ktui_draw_text(f.x + fw + 1, f.y, b.w,
+			       "lowercase, no leading digit", KT_ERR, KT_BG, 0);
+	f = ktui_lay_field(&l, "password", 0);
+	f.w = fw;
+	ktui_input(f, cfg.userpass, sizeof(cfg.userpass), 1, "required");
+	f = ktui_lay_field(&l, "confirm", 0);
+	f.w = fw;
+	ktui_input(f, cfg.userpass2, sizeof(cfg.userpass2), 1, "");
 	if (cfg.userpass2[0] && strcmp(cfg.userpass, cfg.userpass2))
-		ktui_draw_text(b.x + 18 + fw, y, b.w, "does not match", KT_ERR, KT_BG,
-			  0);
-	y++;
-	ktui_pw_meter(b.x + 17, y, b.w - 17, cfg.userpass);
-	y += 2;
+		ktui_draw_text(f.x + fw + 1, f.y, b.w, "does not match", KT_ERR,
+			       KT_BG, 0);
+	f = ktui_lay_field(&l, NULL, 0);
+	ktui_pw_meter(f.x, f.y, f.w, cfg.userpass);
+	ktui_lay_gap(&l, 1);
 
-	ktui_check(b.x, y++, b.w, "Administrator (member of wheel, may use sudo)",
-		 &cfg.user_wheel);
-	y++;
+	f = ktui_lay_row(&l, 1);
+	ktui_check(f.x, f.y, f.w, "Administrator (member of wheel, may use sudo)",
+		   &cfg.user_wheel);
+	ktui_lay_gap(&l, 1);
 
-	ktui_section(b.x, y, b.w, "ROOT");
-	y++;
-	ktui_check(b.x, y++, b.w, "Lock the root account (log in as yourself, use sudo)",
-		 &cfg.root_locked);
+	ktui_lay_section(&l, "ROOT");
+	f = ktui_lay_row(&l, 1);
+	ktui_check(f.x, f.y, f.w,
+		   "Lock the root account (log in as yourself, use sudo)",
+		   &cfg.root_locked);
 
+	/* Scoped for the reason the disk page's LUKS pair is: it comes and
+	 * goes with the box above it. */
+	ktui_id_push("rootpass");
+	ktui_lay_gap(&l, 1);
 	if (!cfg.root_locked) {
-		y++;
-		ktui_draw_text(b.x, y, 16, "root password", KT_MID, KT_BG, 0);
-		ktui_input(krect(b.x + 17, y, fw, 1), cfg.rootpass,
-			 sizeof(cfg.rootpass), 1, "required");
-		y++;
-		ktui_draw_text(b.x, y, 16, "confirm", KT_MID, KT_BG, 0);
-		ktui_input(krect(b.x + 17, y, fw, 1), cfg.rootpass2,
-			 sizeof(cfg.rootpass2), 1, "");
+		f = ktui_lay_field(&l, "root password", 0);
+		f.w = fw;
+		ktui_input(f, cfg.rootpass, sizeof(cfg.rootpass), 1, "required");
+		f = ktui_lay_field(&l, "confirm", 0);
+		f.w = fw;
+		ktui_input(f, cfg.rootpass2, sizeof(cfg.rootpass2), 1, "");
 		if (cfg.rootpass2[0] && strcmp(cfg.rootpass, cfg.rootpass2))
-			ktui_draw_text(b.x + 18 + fw, y, b.w, "does not match", KT_ERR,
-				  KT_BG, 0);
-		y += 2;
+			ktui_draw_text(f.x + fw + 1, f.y, b.w, "does not match",
+				       KT_ERR, KT_BG, 0);
 	} else {
-		y++;
-		ktui_note(b.x + 4, y++, b.w,
-		     "the live image's root password is not carried over");
-		y++;
+		ktui_lay_indent(&l, 0);
+		f = ktui_lay_row(&l, 1);
+		ktui_note(f.x, f.y, b.w,
+			  "the live image's root password is not carried over");
+		ktui_lay_unindent(&l, 0);
 	}
+	ktui_lay_gap(&l, 1);
+	ktui_id_pop();
 
-	ktui_para(b.x, y, b.w,
+	f = ktui_lay_left(&l);
+	ktui_para(f.x, f.y, f.w,
 		     "The live system logs in as kdos/kdos without asking; the "
 		     "installed one asks for this password at tty1 — a machine "
 		     "with one account and no password has nothing to ask, and "

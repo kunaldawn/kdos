@@ -73,7 +73,7 @@ static int truncated;
 static const char *why;		/* why there are no rows, said on the surface */
 
 static char query[CT_QUERY];
-static int caret;
+static KtuiField qf = { query, sizeof(query), 0, 0, NULL };
 static KtuiTable tbl;
 static char note[64];
 
@@ -188,9 +188,9 @@ static void scan(void)
 }
 
 static const KtuiCol CT_COL[] = {
-	{ NULL, 18 },		/* the name                                */
-	{ NULL, 7 },		/* home, cell, work                        */
-	{ NULL, 0 }		/* the address or the number               */
+	{ NULL, 18, 0 },		/* the name                                */
+	{ NULL, 7, 0 },		/* home, cell, work                        */
+	{ NULL, 0, 0 }		/* the address or the number               */
 };
 #define CT_NCOL 3
 
@@ -263,160 +263,114 @@ static void draw(void)
 	ktui_hint("Enter", "copy");
 	ktui_hint("Esc", ktui_esc_verb(&keys));
 	ktui_hint_row(&keys, krect(2 + sw, h - 2, w - 4 - sw, 1), KT_SURFACE);
-	ktui_term_caret(2 + caret, 1);
+	ktui_term_caret(2 + ktui_field_col(&qf), 1);
+}
+
+static int ct_arg(int argc, char **argv, int *i)
+{
+	(void)argc;
+	if (argv[*i][0] == '-')
+		return 0;
+	snprintf(query, sizeof(query), "%s", argv[*i]);
+	return 1;
+}
+
+static void ct_start(int dump)
+{
+	(void)dump;
+	qf.caret = (int)strlen(query);
+	scan();
+}
+
+/* A paste is a queue and not an event: offered on every wake. */
+static void ct_wake(void)
+{
+	if (ktui_field_key(&qf, NULL) & KTUI_FIELD_CHANGED)
+		scan();
+}
+
+/*
+ * THE POINTER PICKS A CONTACT AND COPIES IT. The table's own pick moves the
+ * caret; a press on the row it is already on copies, which is the rule every
+ * list here keeps.
+ */
+static int ct_mouse(const KtuiEvent *ev)
+{
+	KRect tr = krect(2, 3, ktui_w - 4, ktui_h - 6);
+	int i;
+
+	if (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN) {
+		ktui_table_key(&tbl, nrows, ktui_h - 6,
+			       ev->btn == KT_MB_WHEEL_UP ? KT_K_UP : KT_K_DOWN,
+			       NULL, NULL);
+		return SH_EV_TAKEN;
+	}
+	if (ev->press != KT_MP_PRESS)
+		return SH_EV_PASS;
+	if (ev->btn == KT_MB_RIGHT)
+		return SH_EV_CLOSE;
+	if (ev->btn != KT_MB_LEFT)
+		return SH_EV_PASS;
+	i = ktui_table_hit(tr, &tbl, nrows, CT_NCOL, CT_COL, ev->mx, ev->my);
+	if (i < 0)
+		return SH_EV_PASS;
+	if (i == tbl.sel)
+		copy_selected();
+	else
+		ktui_table_pick(&tbl, nrows, i, NULL, NULL);
+	return SH_EV_TAKEN;
+}
+
+static int ct_event(KtuiEvent *ev)
+{
+	if (ev->type == KT_EVT_MOUSE)
+		return ct_mouse(ev);
+	if (ev->type != KT_EVT_KEY)
+		return SH_EV_PASS;
+
+	note[0] = '\0';
+	if (ev->key == KT_K_ENTER) {
+		copy_selected();
+		return SH_EV_TAKEN;
+	}
+	/*
+	 * THE FOUR LIST KEYS BELONG TO THE LIST AND HOME AND END DO NOT. There
+	 * is a text field on this surface and Home and End mean its caret; the
+	 * table answers all six, so the four are named rather than the call
+	 * being trusted to take only what this surface meant to give it.
+	 */
+	if (ev->key == KT_K_UP || ev->key == KT_K_DOWN ||
+	    ev->key == KT_K_PGUP || ev->key == KT_K_PGDN) {
+		ktui_table_key(&tbl, nrows, ktui_h - 6, ev->key, NULL, NULL);
+		return SH_EV_TAKEN;
+	}
+
+	/* Everything else is the query's, the toolkit's field. */
+	if (ktui_field_key(&qf, ev) & KTUI_FIELD_CHANGED)
+		scan();
+	return SH_EV_TAKEN;
 }
 
 int contacts_main(int argc, char **argv)
 {
-	const char *font = NULL;
-	int dump = 0;
-
-	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--font") && i + 1 < argc)
-			font = argv[++i];
-		else if (!strcmp(argv[i], "--dump"))
-			dump = 1;
-		else if (argv[i][0] != '-')
-			snprintf(query, sizeof(query), "%s", argv[i]);
-		else {
-			fprintf(stderr, "usage: kdos-contacts [--font NAME] "
-					"[--dump] [QUERY]\n");
-			return 2;
-		}
-	}
-	caret = (int)strlen(query);
-
-	scan();
-
-	KDispConfig cfg = {
-		.role = KDISP_ROLE_OVERLAY,
-		.cols = CT_COLS,
-		.rows = CT_ROWS,
-		.app_id = "kdos-contacts",
-		.font = font,
-		.keyboard = 1,
+	static const ShSurface s = {
+		.cfg = {
+			.role = KDISP_ROLE_OVERLAY,
+			.cols = CT_COLS,
+			.rows = CT_ROWS,
+			.app_id = "kdos-contacts",
+			.keyboard = 1,
+		},
+		.usage = "[--font NAME] [--dump] [QUERY]",
+		.keys = &keys,
+		.popup = 1,
+		.popup_bg = KT_SURFACE,
+		.arg = ct_arg,
+		.start = ct_start,
+		.draw = draw,
+		.event = ct_event,
+		.wake = ct_wake,
 	};
 
-	sh_theme_from_cache();
-	if (dump) {
-		ktui_offscreen_init(CT_COLS, CT_ROWS);
-		ktui_draw_init();
-		draw();
-		ktui_draw_dump();
-		return 0;
-	}
-	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-		fprintf(stderr, "kdos-contacts: no display server\n");
-		return 1;
-	}
-	ktui_draw_init();
-	kch_px_popup(KT_SURFACE);
-
-	while (!kdisp_should_close()) {
-		draw();
-		ktui_draw_flush();
-
-		KtuiEvent ev;
-
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
-			if (ktui_resized) {
-				ktui_resized = 0;
-				ktui_draw_resize();
-				ktui_draw_invalidate();
-			}
-			continue;
-		}
-		/*
-		 * THE POINTER PICKS A CONTACT AND COPIES IT. This surface drew
-		 * a `ktui_table`, which has had a hit test all along, and then
-		 * dropped every pointer event before it could be asked — so a
-		 * row could be copied with Enter and by no other means.
-		 *
-		 * The table's own pick moves the caret; a press on the row it
-		 * is already on copies, which is the rule every list here keeps.
-		 */
-		if (ev.type == KT_EVT_MOUSE) {
-			KRect tr = krect(2, 3, ktui_w - 4, ktui_h - 6);
-			int i;
-
-			if (ev.btn == KT_MB_WHEEL_UP ||
-			    ev.btn == KT_MB_WHEEL_DOWN) {
-				ktui_table_key(&tbl, nrows, ktui_h - 6,
-					       ev.btn == KT_MB_WHEEL_UP
-					       ? KT_K_UP : KT_K_DOWN, NULL, NULL);
-				continue;
-			}
-			if (ev.press != KT_MP_PRESS)
-				continue;
-			if (ev.btn == KT_MB_RIGHT)
-				break;
-			if (ev.btn != KT_MB_LEFT)
-				continue;
-			i = ktui_table_hit(tr, &tbl, nrows, CT_NCOL, CT_COL,
-					   ev.mx, ev.my);
-			if (i < 0)
-				continue;
-			if (i == tbl.sel)
-				copy_selected();
-			else
-				ktui_table_pick(&tbl, nrows, i, NULL, NULL);
-			continue;
-		}
-		if (ev.type != KT_EVT_KEY)
-			continue;
-
-		/* FIRST, above this surface's own switch. */
-		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
-			break;
-
-		note[0] = '\0';
-		if (ev.key == KT_K_ENTER) {
-			copy_selected();
-			continue;
-		}
-		/*
-		 * THE FOUR LIST KEYS BELONG TO THE LIST AND HOME AND END DO
-		 * NOT. There is a text field on this surface and Home and End
-		 * mean its caret; the table answers all six, so the four are
-		 * named rather than the call being trusted to take only what
-		 * this surface meant to give it.
-		 */
-		if (ev.key == KT_K_UP || ev.key == KT_K_DOWN ||
-		    ev.key == KT_K_PGUP || ev.key == KT_K_PGDN) {
-			ktui_table_key(&tbl, nrows, ktui_h - 6, ev.key, NULL,
-				       NULL);
-			continue;
-		}
-
-		int qn = (int)strlen(query);
-
-		if (ev.key == KT_K_BACKSPACE) {
-			if (caret > 0) {
-				memmove(query + caret - 1, query + caret,
-					(size_t)(qn - caret) + 1);
-				caret--;
-				scan();
-			}
-		} else if (ev.key == KT_K_LEFT) {
-			if (caret > 0)
-				caret--;
-		} else if (ev.key == KT_K_RIGHT) {
-			if (caret < qn)
-				caret++;
-		} else if (ev.key == KT_K_HOME) {
-			caret = 0;
-		} else if (ev.key == KT_K_END) {
-			caret = qn;
-		} else if (ev.key >= 0x20 && ev.key < 0x7f &&
-		    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
-			   qn + 1 < CT_QUERY) {
-			memmove(query + caret + 1, query + caret,
-				(size_t)(qn - caret) + 1);
-			query[caret++] = (char)ev.key;
-			scan();
-		}
-	}
-
-	kdisp_shutdown();
-	return 0;
+	return sh_run(&s, argc, argv);
 }

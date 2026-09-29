@@ -106,8 +106,8 @@ one: the panel and all its surfaces, the resource monitor, the terminal, the loc
 installer. `libktui` draws the grid and presents it through a backend: a terminal (including the
 Linux console on `tty1`), a Wayland window under the compositor, or an offscreen *dump*. Three
 things on screen are not cells: the compositor's own window chrome (see *chrome*), drawn with pango
-at a size matched to the cell; the pixel layer (plates, rules and rounded ends) a Wayland-backed
-surface may paint beneath its cells; and whatever an application in a box draws for itself. The boot
+at a size matched to the cell; the pixel layer (plates, rules, rounded ends and display text) a
+Wayland-backed surface may paint beneath its cells; and whatever an application in a box draws for itself. The boot
 *splash* is not a cell grid either: it draws pixels straight to `/dev/fb0`. See [The design
 language](../03-architecture/design-language.md).
 
@@ -129,6 +129,13 @@ names, so a build uses only the compilers, libraries and tools that earlier phas
 nothing from the build container. `script/chroot_enter.sh` is the interactive counterpart, for
 inspecting the tree by hand; the build does not use it. See [The build
 system](../05-developer/build-system.md#the-chroot).
+
+### coast
+
+The scroll that continues after a finger leaves a touchpad while still moving: `libkwl` keeps
+producing the wheel ticks the finger would have made, slowing to a stop, unless a scroll, a click, a
+key or the pointer leaving ends it first. Off with `motion = no`. See [Writing desktop
+software](../05-developer/writing-desktop-software.md#input-the-backend-cleans).
 
 ### commit
 
@@ -177,6 +184,13 @@ and leaves the comparison with the index's `C:` hash to you. See
 [Packaging](../03-architecture/packaging.md#deltas) and [Packs and
 boxes](../03-architecture/packs-and-boxes.md#deltas).
 
+### display text
+
+A heading or a figure drawn on the pixel layer in whole rows of the cell height, in the cell font's
+face, such as the number at the right of `kdos-res`'s header band. Where there is no pixel layer it
+is drawn as cells on the first row of its rectangle, or not at all when the cells already say it.
+See [Writing desktop software](../05-developer/writing-desktop-software.md#display-text).
+
 ### dockapp
 
 One gadget in the *slit*: a command re-run on an interval whose output is one line of text. See
@@ -211,7 +225,7 @@ software](../05-developer/writing-desktop-software.md#choosing-a-role).
 ### fixture
 
 Recorded system state that a program can be pointed at instead of the live machine, which is what
-makes its readings and decisions testable. There are 38 fixture directories under
+makes its readings and decisions testable. There are 49 fixture directories under
 `testing/fixtures/`. See [Testing](../05-developer/testing.md#fixtures).
 
 ### front end
@@ -219,6 +233,13 @@ makes its readings and decisions testable. There are 38 fixture directories unde
 One of the programs inside the single `kdos-shell` binary: a name with its own entry point, chosen
 by the name the binary is started under. Most new *surfaces* are a new front end. See [Writing
 desktop software](../05-developer/writing-desktop-software.md#adding-a-name-to-kdos-shell).
+
+### glide
+
+A scrolled list presented sliding to its new rows over 100 ms rather than jumping. The list's
+cells have already moved by whole rows; only the pixels of the frames in between lag behind them,
+and `libkwl` commits those frames itself. See [The design
+language](../03-architecture/design-language.md#motion).
 
 ### glyph tier
 
@@ -467,7 +488,7 @@ confused with `phosphor`, one of the eight *accents*. See
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-three port repositories in one format, holding 2,025 recipes: 2,001 upstream ports in `ports/core/`,
+three port repositories in one format, holding 2,023 recipes: 1,999 upstream ports in `ports/core/`,
 11 of KDOS's own in `src/packages/` and 13 in `src/desktop/`. (The twelfth directory in
 `src/packages/`, `kdos-kpkg`, has no recipe; phase 1 compiles it by script.) See [Writing
 ports](../05-developer/writing-ports.md) and [The ports catalogue](ports-catalogue.md).
@@ -550,7 +571,10 @@ and init](../03-architecture/boot-and-init.md#restamping-an-installed-machine).
 ### retint
 
 To re-read the theme and repaint in its colours. A running surface retints on `SIGHUP`, which `kdos
-theme` and `kdos toggle night-light` send; a program with no `SIGHUP` handler is not signalled. See
+theme` and `kdos toggle night-light` send; a program with no `SIGHUP` handler is not signalled.
+Most `kdos-shell` front ends are not sent it and poll the theme file's time instead, once per pass
+of their loop; every front end on the surface runner does. A front end that does neither keeps the
+colours it opened with until it is closed. See
 [Theming](../02-user-guide/theming.md) and [Filesystem and IPC](filesystem-and-ipc.md).
 
 ### rig
@@ -732,8 +756,8 @@ system](../05-developer/build-system.md#the-chroot).
 ### tile
 
 A block of cells drawn as pixels (`kch_tile_*`), for content that cannot be a row of text, such as
-the panel's Start button and its meters. A tile owns two sprite slots and alternates between them on
-every change of content, or the redraw would change no cell and the new content would never be
+the panel's Start button, its meters and the charts in `kdos-res`, of any size up to the grid (one
+sprite slot per 16×16 block). A tile owns two sets of slots and alternates between them on every change of content, or the redraw would change no cell and the new content would never be
 presented. See [The design
 language](../03-architecture/design-language.md#pictures-are-an-enhancement-layer).
 

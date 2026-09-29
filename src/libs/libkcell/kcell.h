@@ -36,6 +36,7 @@
 #define KCELL_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include <fcft/fcft.h>
@@ -44,13 +45,18 @@
 #include "ktui.h"
 
 /*
- * Integer scale only, and the ceiling is deliberate.
+ * The `scale` every painter here takes is a WHOLE NUMBER, and the ceiling is
+ * deliberate.
  *
- * Terminus has no 64-pixel bitmap and fontconfig would answer a request for one
- * by synthesising a blurry scale of the 32. So HiDPI here is the glyph's own
- * coverage blitted N x N, nearest neighbour, which is exactly what kdos-splash
- * already does with the console PSF. A scale above 4 is a 128-pixel cell and
- * nothing that could want one exists.
+ * At scale N a glyph is its own scale-1 coverage blitted N x N, nearest
+ * neighbour, which is exactly what kdos-splash does with the console PSF: the
+ * same letters, every pixel doubled, never a resampled blur. A scale above 4
+ * is a 128-pixel cell and nothing that could want one exists.
+ *
+ * A FRACTIONAL scale is not a multiplier here at all. It is a different font:
+ * the caller loads the cell font at the device pixel size
+ * (kcell_name_at_px()) and paints at scale 1, so a 1.5 output gets a face
+ * rasterised at 48 pixels rather than a 32-pixel one stretched by 1.5.
  */
 enum { KCELL_MAX_SCALE = 4 };
 
@@ -74,6 +80,22 @@ enum { KCELL_MAX_SCALE = 4 };
  */
 int kcell_font_load(const char *name);
 void kcell_font_free(void);
+
+/*
+ * THE SAME NAME AT ANOTHER PIXEL SIZE, for a caller that must draw the font it
+ * was given at a size it was not: `name` with every `pixelsize=` and `size=`
+ * property removed and `:pixelsize=px` appended — `monospace` when nothing is
+ * left of it. Removed and not overridden, because fontconfig appends a
+ * repeated property rather than replacing it and derives the size from the
+ * FIRST. 0 when `out` is too small or `px` is not a size.
+ *
+ * kcell_name_pixelsize() is the pixel size fontconfig resolves `name` to —
+ * its `pixelsize=` where it carries one, else what its point size (or
+ * fontconfig's default) comes to — and 0 when fontconfig cannot say. The
+ * base a scaled size is counted from.
+ */
+int kcell_name_at_px(const char *name, int px, char *out, size_t n);
+double kcell_name_pixelsize(const char *name);
 
 /* Metrics at scale 1. A caller at scale N multiplies. */
 int kcell_w(void);
@@ -123,6 +145,8 @@ pixman_color_t kcell_slot_color(int slot);
  * alpha, or every reversed cell is an opaque hole in a translucent surface.
  */
 void kcell_set_slot_alpha(int slot, uint8_t alpha);
+/* What the slot's background is filled at now — 0 for a slot a backdrop owns. */
+uint8_t kcell_slot_alpha(int slot);
 void kcell_reset_slot_alpha(void);
 bool kcell_needs_alpha(void);
 
@@ -142,7 +166,8 @@ void kcell_set_bg_preserve(bool on);
  *
  * For the three things a 10x20 cell of one colour cannot say: a softened
  * plate, a fill that varies continuously down a bar, and a one-pixel line.
- * The caller clears, then layers body, plates and rules with OVER.
+ * The caller clears, then layers body, plates and rules with OVER. Every
+ * call is clipped to `dst`, so a rect partly or wholly past its edge is safe.
  *
  * PAINT ONLY. Layout, hit maps and every --dump stay cells; a surface drawn
  * with nothing but these has left the toolkit.
@@ -223,11 +248,87 @@ bool kcell_glyph_face(uint32_t cp, int scale, int style, KCellGlyph *out);
 void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 		 int cols, int rows, int full, int scale, int dst_w, int dst_h);
 
+/*
+ * The same partial paint in two halves, for a caller that has to act on the
+ * cells BEFORE they are painted — libkwl restores a backdrop under exactly
+ * these cells first, because the painter leaves a backdrop-owned background
+ * alone and a glyph drawn over the last frame's glyph is both of them.
+ *
+ * kcell_diff_spans() writes one half-open cell span per row (x0 == x1: the row
+ * is unchanged), widened exactly as kcell_paint() widens its own, and returns
+ * how many rows changed. It is also the damage: the pixels a changed cell can
+ * reach are the cells of its span and no others. kcell_paint_spans() paints
+ * those spans and updates `prev` (which may be NULL) over them; it never pads
+ * the remainder, which only a full paint can have changed.
+ */
+typedef struct {
+	int x0, x1;
+} KCellSpan;
+
+int kcell_diff_spans(const KtuiCell *cur, const KtuiCell *prev, int cols,
+		     int rows, KCellSpan *spans);
+void kcell_paint_spans(pixman_image_t *dst, const KtuiCell *cur,
+		       KtuiCell *prev, int cols, int rows,
+		       const KCellSpan *spans, int scale, int dst_w, int dst_h);
+
+/*
+ * SCROLLING BY MOVING PIXELS, for a caller that keeps `prev` as the exact
+ * record of what `dst` holds (libkwl's per-buffer shadow).
+ *
+ * A grid that shifted vertically — a terminal taking a line of output, a list
+ * scrolled by a row — changes every row it moved, and the row diff repaints
+ * every one of them. Each row's pixels are a function of that row's cells
+ * alone, so the same pixels already stand in `dst`, one or more rows away.
+ *
+ * kcell_scroll_find() looks for the one band of whole rows of `cur` that
+ * equals a band of `prev` shifted vertically, and answers 1 with it in `s`
+ * when moving it saves enough repainting to pay for the move: at least two
+ * rows that differ from `prev` where they stand, and at least half the band.
+ * `diff` is kcell_diff_spans(cur, prev) — the caller has it already, for the
+ * paint — and is what says which rows differ where they stand, so a frame
+ * with fewer than two changed rows costs one pass over `diff` and nothing
+ * else.
+ * A row holding a shade character (U+2591..U+2593) does not join a band whose
+ * shift is not a whole period of the shade pattern, which is anchored to the
+ * destination and not to the cell.
+ *
+ * kcell_scroll_apply() moves those pixel rows inside `dst` — which is its own
+ * source, so the move is a memmove and never an overlapping composite — and
+ * moves the band's rows of `prev` with them, so `prev` still describes `dst`
+ * row for row. Only the first `dst_w` pixels of each row move: a caller whose
+ * image is wider than its grid passes the grid's width, since a strip past
+ * the last cell is no cell's pixels and must stay where it is. The rows the band left keep both their pixels and their
+ * `prev`, and the row diff that follows repaints them only where `cur`
+ * differs. A destination row whose source row was clipped by `dst_h` is
+ * marked stale, as is any row the caller marks with kcell_row_stale(). It
+ * returns -1, moving nothing, when `dst` is not 32 bits per pixel.
+ *
+ * KCELL_STALE is a `ch` no cell ever carries: a `prev` row holding it differs
+ * from any `cur` row, so the diff repaints it whole.
+ */
+typedef struct {
+	int y;		/* first destination row                       */
+	int n;		/* rows in the band                            */
+	int from;	/* the band's first row in `prev` before the move */
+} KCellScroll;
+
+#define KCELL_STALE 0xffffffffu
+
+int kcell_scroll_find(const KtuiCell *cur, const KtuiCell *prev, int cols,
+		      int rows, int scale, const KCellSpan *diff,
+		      KCellScroll *s);
+int kcell_scroll_apply(pixman_image_t *dst, KtuiCell *prev, int cols,
+		       int rows, const KCellScroll *s, int scale, int dst_w,
+		       int dst_h);
+void kcell_row_stale(KtuiCell *prev, int cols, int row);
+
 /* ── a pixel canvas that lands in the cell grid (kcell_canvas.c) ─────────
  *
  * A canvas is a pixman image exactly N x M CELLS at the output scale, drawn
- * into with fills and text at any pixel size, and handed to
- * `ktui_sprite_put()` when it is finished — so the grid keeps the layout, the
+ * into with fills, text at any pixel size and the antialiased data marks a
+ * chart is made of, under a clip, and handed to the sprite table
+ * when it is finished — whole when it is at most 16x16 cells, and as a grid of
+ * views (`kcell_canvas_view`) when it is larger — so the grid keeps the layout, the
  * row diff keeps being the damage mechanism, and a text backend keeps drawing
  * the fallback codepoint. It is what lets a control be taller than one row of
  * text without the toolkit growing a second drawing model. See the file for
@@ -249,6 +350,13 @@ void kcell_canvas_free(KCellCanvas *c);
 /* Borrowed, and valid until the canvas is freed — which the caller must not do
  * while a sprite slot still points at it. */
 pixman_image_t *kcell_canvas_image(KCellCanvas *c);
+/* A new image over the cells [cell_x, cell_x + cells_w) x [cell_y, cell_y +
+ * cells_h) of the canvas, sharing its pixels: nothing is copied, so what is
+ * drawn into the canvas is already in the view. The caller owns the one
+ * reference it is handed, and every reference must be gone before the canvas
+ * is freed. NULL for a rectangle outside the canvas. */
+pixman_image_t *kcell_canvas_view(KCellCanvas *c, int cell_x, int cell_y,
+				  int cells_w, int cells_h);
 int kcell_canvas_w(const KCellCanvas *c);
 int kcell_canvas_h(const KCellCanvas *c);
 void kcell_canvas_clear(KCellCanvas *c);
@@ -258,12 +366,79 @@ void kcell_canvas_fill(KCellCanvas *c, int x, int y, int w, int h, int slot,
 		       int alpha);
 
 /* Text at an arbitrary pixel size, drawn from its BASELINE. Returns the
- * advance. `kcell_canvas_text_width` measures without drawing. */
+ * advance. `kcell_canvas_text_width` measures without drawing. The family is
+ * the one kcell_canvas_font() named, else the cell font's (kcell_font_load),
+ * else `monospace`; a size no bitmap strike draws exactly comes from the
+ * family's `(TTF)` twin, as for the cell. */
 int kcell_canvas_text(KCellCanvas *c, int x, int baseline, int px,
 		      const char *utf8, int slot);
 int kcell_canvas_text_width(int px, const char *utf8);
 int kcell_canvas_text_ascent(int px);
 int kcell_canvas_text_height(int px);
+/*
+ * The same text into ANY 32-bit image — a backdrop, not a canvas — in `rgb`
+ * (0xRRGGBB, opaque) OVER what is there, and cut to the pixel rectangle
+ * (cx, cy, cw, ch) by each glyph's coordinates. `dst`'s own clip region is
+ * never touched, so a caller drawing under a clip of its own keeps it, and a
+ * pixel drawn under that clip is the pixel an unclipped draw puts there.
+ * Returns the advance; 0 with nothing drawn when no face answers `px`.
+ */
+int kcell_text_draw(pixman_image_t *dst, int x, int baseline, int px,
+		    const char *utf8, uint32_t rgb, int cx, int cy, int cw,
+		    int ch);
+
+/*
+ * THE DATA MARKS: a series and a line, antialiased, and a clip under both.
+ *
+ * Every call takes a SLOT and an alpha, never a colour, so a chart retints
+ * with the palette like everything else. These two are the only antialiased
+ * pixels libkcell draws: a data trace is a measurement and its slope is
+ * information, while chrome stays hard-edged (see kcell_px.c). Both are
+ * composited OVER what is already there, so a plate or a gridline drawn first
+ * stays under the trace. Both are computed in 1/256-pixel fixed point from
+ * the values handed in, so one input is one picture on every build.
+ */
+enum {
+	KCELL_SERIES_AREA   = 1,	/* the fill between the trace and its base */
+	KCELL_SERIES_LINE   = 2,	/* the trace itself                        */
+	KCELL_SERIES_BOTH   = 3,
+	KCELL_SERIES_MIRROR = 4,	/* the base is the TOP edge; grows down    */
+	KCELL_SERIES_HOLD   = 8,	/* the oldest value extends to the left    */
+};
+
+typedef struct {
+	const double *v;	/* samples, OLDEST FIRST; the newest is drawn
+				 * against the right edge                   */
+	int n;
+	double vmax;		/* the value that reaches the far edge       */
+	double step;		/* pixels per sample; <= 0 is one per pixel  */
+	int mode;		/* KCELL_SERIES_*                            */
+	int area_alpha;		/* 0..255                                    */
+	int line_alpha;
+	int rest_alpha;		/* the trace where it lies on its base; 0 is
+				 * line_alpha                                */
+	double line_w;		/* pixels; <= 0 is one                       */
+} KCellSeries;
+
+/*
+ * One series into the pixel rectangle (x, y, w, h), newest sample at the
+ * right edge, linear between sample centres. A sample above zero is never
+ * drawn lower than one pixel — "is anything happening at all" is the first
+ * question a chart is asked — and the trace is kept inside the rectangle
+ * when it lies on its base, so a series at rest is a line and not nothing.
+ */
+void kcell_canvas_series(KCellCanvas *c, int x, int y, int w, int h,
+			 const KCellSeries *s, int slot);
+/* A straight segment `w_px` wide at any slope, with square ends at the two
+ * points. Coordinates are pixel edges: (0,0) is the top-left corner. */
+void kcell_canvas_line(KCellCanvas *c, double x0, double y0, double x1,
+		       double y1, double w_px, int slot, int alpha);
+/* Narrow every later fill, text, series and line to (x, y, w, h), intersected
+ * with the clip already in force. Answers 0, or -1 when the stack is full —
+ * and a refused push must not be popped. kcell_canvas_clear() empties the
+ * stack, so a canvas reused for the next frame starts unclipped. */
+int kcell_canvas_clip_push(KCellCanvas *c, int x, int y, int w, int h);
+void kcell_canvas_clip_pop(KCellCanvas *c);
 
 /* ── a decoded picture becomes sprite tiles (kcell_tile.c) ───────────────
  *

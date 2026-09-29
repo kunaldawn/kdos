@@ -202,25 +202,60 @@ static void gather(void)
 		fact("packages", "%d", pk);
 }
 
-int about_main(int argc, char **argv)
-{
-	const char *font = NULL;
-	int dump = 0;
-	char logo[SH_LOGO_LINES][SH_LOGO_BYTES];
-	int logo_n = 0, logo_w = 0;
+static char logo[SH_LOGO_LINES][SH_LOGO_BYTES];
+static int logo_n, logo_w;
 
-	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--font") && i + 1 < argc)
-			font = argv[++i];
-		else if (!strcmp(argv[i], "--dump"))
-			dump = 1;
-		else {
-			fprintf(stderr, "usage: kdos-about [--font NAME] "
-					"[--dump]\n");
-			return 2;
+static void draw(void)
+{
+	int w = ktui_w, h = ktui_h;
+
+	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
+	ktui_draw_box(krect(0, 0, w, h), "About KDOS", KT_ACCENT, KT_SURFACE,
+		      1);
+
+	for (int i = 0; i < logo_n && 1 + i < h - 2; i++)
+		ktui_draw_text(2, 1 + i, w - 4, logo[i], KT_ACCENT, KT_SURFACE,
+			       KT_A_NONE);
+
+	int kx = 2 + (logo_w ? logo_w + 3 : 0);
+
+	for (int i = 0; i < nfacts && 1 + i < h - 2; i++) {
+		int y = 1 + i;
+
+		/* The name row carries no key and is the accent: it is the
+		 * answer to "what is this", and the rest are its details. */
+		if (!facts[i].key[0]) {
+			ktui_draw_text(kx, y, w - kx - 2, facts[i].val,
+				       KT_ACCENT, KT_SURFACE, KT_A_BOLD);
+			continue;
 		}
+		ktui_draw_text(kx, y, 10, facts[i].key, KT_MID, KT_SURFACE,
+			       KT_A_NONE);
+		ktui_draw_text(kx + 10, y, w - kx - 12, facts[i].val, KT_TEXT,
+			       KT_SURFACE, KT_A_NONE);
 	}
 
+	/*
+	 * Only Esc is named. Enter and `q` stay bound and stay unsaid: they do
+	 * the same one thing, and three keys for one verb is noise rather than
+	 * a row that follows the focus.
+	 */
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
+}
+
+static int on_event(KtuiEvent *ev)
+{
+	if (ev->type == KT_EVT_KEY && (ev->key == KT_K_ENTER || ev->key == 'q'))
+		return SH_EV_CLOSE;
+	if (ev->type == KT_EVT_MOUSE && ev->press == KT_MP_PRESS &&
+	    ev->btn == KT_MB_RIGHT)
+		return SH_EV_CLOSE;
+	return SH_EV_PASS;
+}
+
+int about_main(int argc, char **argv)
+{
 	if (sh_logo_load("/usr/share/kdos/logo.txt", logo, SH_LOGO_LINES,
 			 &logo_n, &logo_w) != 0)
 		logo_n = logo_w = 0;	/* no artwork is not a failure */
@@ -245,101 +280,23 @@ int about_main(int argc, char **argv)
 	if (rows > 27)
 		rows = 27;
 
-	KDispConfig cfg = {
-		.role = KDISP_ROLE_OVERLAY,
-		.cols = cols,
-		.rows = rows,
-		.app_id = "kdos-about",
-		.font = font,
-		.keyboard = 1,
-		/* A dialog, not a dropdown: it is read rather than picked
-		 * from, and clicking the window behind it to check something
-		 * must not take it away. */
+	/* A dialog, not a dropdown: it is read rather than picked from, and
+	 * clicking the window behind it to check something must not take it
+	 * away. */
+	const ShSurface s = {
+		.cfg = {
+			.role = KDISP_ROLE_OVERLAY,
+			.cols = cols,
+			.rows = rows,
+			.app_id = "kdos-about",
+			.keyboard = 1,
+		},
+		.keys = &keys,
+		.popup = 1,
+		.popup_bg = KT_SURFACE,
+		.draw = draw,
+		.event = on_event,
 	};
 
-	sh_theme_from_cache();
-	if (dump) {
-		ktui_offscreen_init(cols, rows);
-		ktui_draw_init();
-	} else if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-		fprintf(stderr, "kdos-about: no display server\n");
-		return 1;
-	} else {
-		ktui_draw_init();
-		kch_px_popup(KT_SURFACE);
-	}
-
-	do {
-		int w = ktui_w, h = ktui_h;
-
-		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-		ktui_draw_box(krect(0, 0, w, h), "About KDOS", KT_ACCENT,
-			      KT_SURFACE, 1);
-
-		for (int i = 0; i < logo_n && 1 + i < h - 2; i++)
-			ktui_draw_text(2, 1 + i, w - 4, logo[i], KT_ACCENT,
-				       KT_SURFACE, KT_A_NONE);
-
-		int kx = 2 + (logo_w ? logo_w + 3 : 0);
-
-		for (int i = 0; i < nfacts && 1 + i < h - 2; i++) {
-			int y = 1 + i;
-
-			/* The name row carries no key and is the accent: it is
-			 * the answer to "what is this", and the rest are its
-			 * details. */
-			if (!facts[i].key[0]) {
-				ktui_draw_text(kx, y, w - kx - 2,
-					       facts[i].val, KT_ACCENT,
-					       KT_SURFACE, KT_A_BOLD);
-				continue;
-			}
-			ktui_draw_text(kx, y, 10, facts[i].key, KT_MID,
-				       KT_SURFACE, KT_A_NONE);
-			ktui_draw_text(kx + 10, y, w - kx - 12, facts[i].val,
-				       KT_TEXT, KT_SURFACE, KT_A_NONE);
-		}
-
-		/*
-		 * BEFORE the dump, not after the flush: the dump path never
-		 * flushes, and a pool left loaded there leaks this card's hint
-		 * into the next surface drawn in the same process — kdos-shell
-		 * is one binary with thirty-odd front ends.
-		 *
-		 * Only Esc is named. Enter and `q` stay bound and stay unsaid:
-		 * they do the same one thing, and three keys for one verb is
-		 * noise rather than a row that follows the focus.
-		 */
-		ktui_hint("Esc", ktui_esc_verb(&keys));
-		ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
-
-		if (dump) {
-			ktui_draw_dump();
-			break;
-		}
-		ktui_draw_flush();
-
-		KtuiEvent ev;
-
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
-			if (ktui_resized) {
-				ktui_resized = 0;
-				ktui_draw_resize();
-				ktui_draw_invalidate();
-			}
-			continue;
-		}
-		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
-			break;
-		if (ev.type == KT_EVT_KEY &&
-		    (ev.key == KT_K_ENTER || ev.key == 'q'))
-			break;
-		if (ev.type == KT_EVT_MOUSE && ev.press == KT_MP_PRESS &&
-		    ev.btn == KT_MB_RIGHT)
-			break;
-	} while (!kdisp_should_close());
-
-	if (!dump)
-		kdisp_shutdown();
-	return 0;
+	return sh_run(&s, argc, argv);
 }

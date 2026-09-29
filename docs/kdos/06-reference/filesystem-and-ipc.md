@@ -584,7 +584,9 @@ set only between KDOS's own programs are left out.
 | `KDOS_COMP_DEBUG=1` | Raise the compositor's log level from INFO to DEBUG |
 | `KDOS_PANEL_DEBUG=1` | The panel explains its layout decisions, such as why a tile declined |
 | `KDOS_BB_DEBUG=1` | The `kdos-bb` demo reports how its audio mixer is fed |
-| `KDOS_WHEEL_DEBUG=1` | Trace every scroll-wheel event, tick and dropped duplicate in a `libkwl` surface |
+| `KDOS_WHEEL_DEBUG=1` | Trace every scroll-wheel event (discrete, high-resolution and continuous), tick, dropped duplicate and coast step in a `libkwl` surface |
+| `KDOS_PAINT_FULL=1` | Paint and damage every commit of a `libkwl` surface in full, bypassing the partial repaint, the scrolled-band move and the per-cell damage; the comparison for a surface that shows stale pixels |
+| `KDOS_INSPECT=1` | Draw a developer overlay over every `libkwl` surface: the rows each commit changed, tinted and fading; a panel of commits, stashed frames, paint time, frame-callback latency, sprite bytes and hit rects; and outlines round a frame surface's hit rects. Every commit is painted and damaged in full while it is on; no dump or golden carries it |
 | `KDOS_CRT_DUMP=<prefix>` | Write the phosphor effect's input and output images once, as `<prefix>-in.ppm` and `<prefix>-out.ppm` |
 | `KDOS_CRT_DUMP_FRAME=<n>` | Wait until frame *n* before that dump |
 | `KDOS_PACKD_VERBOSE=1` | Under `kdos-packd --fixture`, print every step rather than only the result |
@@ -618,6 +620,7 @@ honoured only where noted.
 | Variable | Points at |
 |---|---|
 | `KDOS_DUMP_SIZE=WxH` | The size the test harness's offscreen render (`--dump`) draws a surface at |
+| `KDOS_DUMP_KEYS` | A script of keys, clicks, ticks and resizes the test harness plays into a surface's own loop in place of a display, printing the frame it ends on; read by the dump harness alone (see [Writing desktop software](../05-developer/writing-desktop-software.md#looking-at-it-without-a-screen)) |
 | `KDOS_GOLDEN_UPDATE=1` | Regenerate reference frames instead of comparing against them |
 | `KDOS_RES_FIXTURE` | A recorded system state for the resource monitor's library tests; the program itself takes `kdos-res --fixture <dir>` |
 | `KDOS_PRIVACY_PROC` | A recorded process tree for the panel's privacy indicator and the devices surface |

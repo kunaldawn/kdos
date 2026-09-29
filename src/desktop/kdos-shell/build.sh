@@ -31,6 +31,18 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	cursor-shape-v1-protocol.c
 "$SCANNER" private-code  "$PROTO/unstable/tablet/tablet-unstable-v2.xml" \
 	tablet-unstable-v2-protocol.c
+# viewporter and fractional-scale: libkwl draws at a fractional output scale
+# through the pair, and kwl.c references both unconditionally.
+"$SCANNER" client-header "$PROTO/stable/viewporter/viewporter.xml" \
+	viewporter-client-protocol.h
+"$SCANNER" private-code  "$PROTO/stable/viewporter/viewporter.xml" \
+	viewporter-protocol.c
+"$SCANNER" client-header \
+	"$PROTO/staging/fractional-scale/fractional-scale-v1.xml" \
+	fractional-scale-v1-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/staging/fractional-scale/fractional-scale-v1.xml" \
+	fractional-scale-v1-protocol.c
 # primary-selection: middle-click paste is a SECOND selection with its own
 # device manager, and libkwl includes the header unconditionally. The
 # private-code is what carries the zwp_primary_selection_* interface symbols
@@ -100,8 +112,9 @@ done
 # this tree has, and asks libarchive whether a file is an archive by opening it.
 # No libsixel — a file on disk is not an escape sequence, and kdos-term is where
 # sixel arrives.
-# fontconfig is libkwl's: the face list the style picker offers is
-# `FC_SPACING == FC_MONO` out of FcFontList, and fcft carries fontconfig as a
+# fontconfig is libkwl's and libkcell's: the face list the style picker offers
+# is `FC_SPACING == FC_MONO` out of FcFontList, kcell_font.c asks FcFontMatch
+# which strike a bitmap face is drawn from, and fcft carries fontconfig as a
 # Requires.private, so `pkg-config --libs fcft` alone does not link it.
 PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libnsgif libarchive"
 

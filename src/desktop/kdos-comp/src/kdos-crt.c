@@ -23,12 +23,23 @@
  *   that OUTPUT on the plain path for a doubling cooldown (see
  *   give_up()) — this file must never be the reason for a black screen.
  *
- * - Direct scanout is off for the whole session while the pass is on
- *   (WLR_SCENE_DISABLE_DIRECT_SCANOUT before wlr_scene_create), and
- *   a foreign buffer that arrives anyway is committed unprocessed:
- *   a scanout state carries a CLIENT's buffer plus a dst box, not a
- *   picture of the desktop, so running the pass over one stretches
- *   a 13-pixel panel across the whole screen.
+ * - Direct scanout is decided per output and per frame, by this file
+ *   alone (kdos_crt_scanout()): off while the pass builds its frame,
+ *   allowed whenever the frame goes the plain way. A scanout state
+ *   carries a CLIENT's buffer plus a dst box, not a picture of the
+ *   desktop, so running the pass over one stretches a 13-pixel panel
+ *   across the whole screen; a foreign buffer that reaches the pass
+ *   anyway is committed unprocessed.
+ *
+ * - THE PASS REDRAWS ONLY WHAT CHANGED when it may: with the curve at 0
+ *   and no degauss or power-down running, an output pixel depends on
+ *   its own row and the columns beside it (kdos-crt-pass.h), so the
+ *   scene's frame damage, grown by that reach, is what changed on the
+ *   output. Each output keeps a buffer-age ring over its out_sc
+ *   buffers, and a frame draws the union of the damage since the
+ *   buffer it was handed last held a picture. Any commit of a buffer
+ *   that is not ours makes every one of them stale, because it
+ *   consumed the scene damage this frame would have been told about.
  *
  * - The accent comes from $XDG_CACHE_HOME/kdos/theme (libkcolor's
  *   KCOL_SCHEMES — there is no second copy of the phosphor green) and
@@ -55,18 +66,18 @@
 #include <wlr/render/gles2.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/render/wlr_texture.h>
+#include <wlr/types/wlr_damage_ring.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
 #include "kcolor.h"
 #include "kdos.h"
+#include "kdos-crt-pass.h"
 #include "labwc.h"
 #include "magnifier.h"
 #include "output.h"
 #include "view.h"
-
-enum { KDOS_PROG_2D = 0, KDOS_PROG_EXT = 1, KDOS_NPROG = 2 };
 
 struct kdos_prog {
 	GLuint id;
@@ -104,6 +115,27 @@ struct kdos_crt_output {
 	int64_t broken_until_ns;
 	int64_t cooldown_ns;
 	bool said, said_scanout;
+	/*
+	 * What changed on the output since each out_sc buffer last held a
+	 * picture, keyed by buffer; a buffer it has never seen is drawn
+	 * whole. `committing` marks the pass's own commit so the commit
+	 * listener can tell it from every other one.
+	 */
+	struct wlr_damage_ring ring;
+	struct wl_listener commit;
+	bool committing;
+	/*
+	 * The picture on screen is not the pass's last committed frame:
+	 * none went out yet, one failed, or someone else committed a
+	 * buffer. The next pass frame then commits whole damage as well as
+	 * drawing whole, or a display that refreshes only the damage clips
+	 * (a PSR2 panel, a nested session) keeps the other picture outside
+	 * them. Cleared only by a pass commit that went through.
+	 */
+	bool stale;
+	/* the uniforms the last committed pass frame was drawn with, the
+	 * degauss included: any difference changes every pixel */
+	float drawn[8];
 };
 
 static struct kdos_crt_gl *crt_gl;
@@ -114,76 +146,6 @@ static struct kdos_crt_gl *crt_gl;
 static bool crt_declined;
 static struct wl_list crt_outputs = { .prev = &crt_outputs,
 	.next = &crt_outputs };
-
-static const char *VERT_SRC =
-	"attribute vec2 a_pos;\n"
-	"varying vec2 v_uv;\n"
-	"void main() {\n"
-	"	v_uv = a_pos * 0.5 + 0.5;\n"
-	"	gl_Position = vec4(a_pos, 0.0, 1.0);\n"
-	"}\n";
-
-/*
- * `%s` is the sampler declaration; everything below is shared between
- * the two programs. Every magic number is a proportion of the
- * intensity knob so `crt = 0` is genuinely nothing. The curvature is
- * normalised by the corner displacement (r^2 = 2) so no value crops
- * the desktop — measured at curve = 100 before the divisor, the
- * corners went black and the panel's top row was gone.
- */
-static const char *FRAG_FMT =
-	"%s"
-	"precision highp float;\n"
-	"varying vec2 v_uv;\n"
-	"uniform vec2 u_res;\n"
-	"uniform float u_int;\n"
-	"uniform float u_scan;\n"
-	"uniform float u_curve;\n"
-	"uniform vec3 u_tint;\n"
-	/* degauss: x amplitude (UV units), y phase — both 0 when idle */
-	"uniform vec2 u_fx;\n"
-	/* power-down: vertical/horizontal sample-space scale, (1,1) live */
-	"uniform vec2 u_collapse;\n"
-	"void main() {\n"
-	"	vec2 c = v_uv * 2.0 - 1.0;\n"
-	"	float k = u_curve * 0.06;\n"
-	"	c *= (1.0 + k * dot(c, c)) / (1.0 + 2.0 * k);\n"
-	/* the collapse expands sample space, so everything off the
-	 * shrinking band lands in the black branch below */
-	"	c = vec2(c.x / u_collapse.y, c.y / u_collapse.x);\n"
-	"	vec2 uv = c * 0.5 + 0.5;\n"
-	"	uv.x += u_fx.x * sin(uv.y * 90.0 + u_fx.y);\n"
-	"	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {\n"
-	"		gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
-	"		return;\n"
-	"	}\n"
-	"	vec3 col = texture2D(u_tex, uv).rgb;\n"
-	/* three-tap horizontal bleed, weights 1/4 1/2 1/4 */
-	"	vec2 dx = vec2(1.0 / u_res.x, 0.0);\n"
-	"	vec3 bleed = texture2D(u_tex, uv + dx).rgb +\n"
-	"		     texture2D(u_tex, uv - dx).rgb;\n"
-	"	col = mix(col, 0.5 * col + 0.25 * bleed, 0.5 * u_int);\n"
-	/* scanlines every third PHYSICAL row — the splash's period */
-	"	float row = floor(uv.y * u_res.y);\n"
-	"	float line = mod(row, 3.0) < 1.0 ? 1.0 - 0.45 * u_scan : 1.0;\n"
-	"	col *= line;\n"
-	/* vignette */
-	"	vec2 v = uv * 2.0 - 1.0;\n"
-	"	col *= 1.0 - 0.15 * u_int * dot(v, v);\n"
-	/* degauss lifts the picture a little; the collapse concentrates
-	 * a screen's worth of light into the surviving band */
-	"	col *= 1.0 + 6.0 * u_fx.x\n"
-	"		+ 1.5 * (2.0 - u_collapse.x - u_collapse.y);\n"
-	/* the phosphor floor: black is never quite black */
-	"	col += u_tint * 0.02 * u_int;\n"
-	"	gl_FragColor = vec4(col, 1.0);\n"
-	"}\n";
-
-static const char *FRAG_HEAD[KDOS_NPROG] = {
-	"uniform sampler2D u_tex;\n",
-	"#extension GL_OES_EGL_image_external : require\n"
-	"uniform samplerExternalOES u_tex;\n",
-};
 
 static GLuint
 compile_one(GLenum type, const char *src)
@@ -210,12 +172,12 @@ static bool
 build_prog(struct kdos_prog *p, const char *head)
 {
 	char frag[4096];
-	if (snprintf(frag, sizeof(frag), FRAG_FMT, head)
+	if (snprintf(frag, sizeof(frag), kdos_crt_frag_fmt, head)
 			>= (int)sizeof(frag)) {
 		return false;
 	}
 
-	GLuint vs = compile_one(GL_VERTEX_SHADER, VERT_SRC);
+	GLuint vs = compile_one(GL_VERTEX_SHADER, kdos_crt_vert_src);
 	GLuint fs = compile_one(GL_FRAGMENT_SHADER, frag);
 	if (!vs || !fs) {
 		if (vs) {
@@ -299,27 +261,43 @@ gl_leave(struct kdos_egl_ctx *sv)
 }
 
 /*
- * Before wlr_scene_create(): when the pass is wanted, direct scanout
- * must be off for the session. The scene's own field is writable at
- * runtime — the magnifier flips it — but it is scene-GLOBAL while the
- * pass is decided per output and per frame, so the env var the scene
- * reads at creation is the switch this uses. The cost is stated
- * wherever the lever is: `crt = 0` after startup, and crt_fullscreen's
- * bypass, both give the frame back unprocessed and neither gives
- * scanout back.
+ * The scene's direct-scanout switch, and its only writer. The field is
+ * scene-GLOBAL while the pass is decided per output, so it is written
+ * immediately before every build that reads it: off before the pass's
+ * build (kdos_crt_frame(), the power-down), allowed before a plain
+ * frame's (handle_output_frame(), once kdos_crt_frame() has declined
+ * the frame). The last writer holds until the next build. It is never
+ * on while the magnifier is — the magnified inset is drawn into the
+ * composited buffer, which a scanned-out client buffer is not — nor
+ * when the session started with WLR_SCENE_DISABLE_DIRECT_SCANOUT set
+ * (server.direct_scanout_enabled). wlroots still has the last word per
+ * frame: a software cursor, a second visible node, a transform or a
+ * failed test commit each keep the frame composited.
+ */
+void
+kdos_crt_scanout(bool want)
+{
+	server.scene->WLR_PRIVATE.direct_scanout = want
+		&& server.direct_scanout_enabled && !magnifier_is_enabled();
+}
+
+/*
+ * Before the backend starts: wlroots reads WLR_NO_HARDWARE_CURSORS once
+ * per output, when the output is created, so the cursor plane has to
+ * be decided before the first one is.
  */
 void
 kdos_crt_early_init(void)
 {
-	if (kdos_conf.crt > 0) {
-		setenv("WLR_SCENE_DISABLE_DIRECT_SCANOUT", "1", 1);
-	}
 	/*
 	 * C6: the hardware cursor plane is composited by the display
 	 * engine AFTER our shader, so under barrel distortion it floats
 	 * unwarped over a warped desktop and drifts off the hotspot
 	 * toward the edges. Software cursor is drawn into the scene and
-	 * warps with everything else.
+	 * warps with everything else. wlroots refuses direct scanout on
+	 * an output with a visible software cursor, so with the curve on
+	 * a fullscreen client scans out only while the pointer is hidden
+	 * or on another output.
 	 */
 	if (kdos_conf.crt > 0 && kdos_conf.crt_curve > 0) {
 		setenv("WLR_NO_HARDWARE_CURSORS", "1", 1);
@@ -381,12 +359,13 @@ kdos_crt_init(void)
 	}
 
 	bool ok = build_prog(&gl->prog[KDOS_PROG_2D],
-		FRAG_HEAD[KDOS_PROG_2D]);
+		kdos_crt_frag_head[KDOS_PROG_2D]);
 	/* the external-image program is optional: without the extension
 	 * a dmabuf-backed intermediate falls back per output */
 	if (ok && wlr_gles2_renderer_check_ext(server.renderer,
 			"GL_OES_EGL_image_external")) {
-		build_prog(&gl->prog[KDOS_PROG_EXT], FRAG_HEAD[KDOS_PROG_EXT]);
+		build_prog(&gl->prog[KDOS_PROG_EXT],
+			kdos_crt_frag_head[KDOS_PROG_EXT]);
 	}
 	gl_leave(&sv);
 
@@ -417,8 +396,8 @@ kdos_crt_reload(void)
 {
 	struct kdos_crt_gl *gl = crt_gl;
 	if (!gl || !gl->ok) {
-		/* a conf reload can only tune a pass that exists — the
-		 * scanout switch is scene-creation-time */
+		/* a conf reload can only tune a pass that exists: the
+		 * shader is built once, at startup, or not at all */
 		if (kdos_conf.crt > 0) {
 			wlr_log(WLR_INFO, "%s", crt_declined
 				? "crt: on in comp.conf, but this session "
@@ -438,8 +417,12 @@ kdos_crt_reload(void)
 	wlr_log(WLR_INFO, "crt: phosphor is now #%s (%s)", hex,
 		sc ? sc->name : kcol_default()->name);
 
-	/* D7.3: the retint IS the degauss moment */
-	gl->degauss_start_ns = kdos_frames_now();
+	/* D7.3: the retint IS the degauss moment — unless motion is off:
+	 * the wobble is exactly what a reduce-motion switch is for, and the
+	 * retint itself still lands on the next frame */
+	if (kdos_conf.motion) {
+		gl->degauss_start_ns = kdos_frames_now();
+	}
 
 	/* a retint on an idle desktop must not wait for motion */
 	struct output *o;
@@ -448,20 +431,29 @@ kdos_crt_reload(void)
 	}
 }
 
+/* the ring first: its entries listen on the buffers the swapchains own */
+static void
+crt_output_free(struct kdos_crt_output *co)
+{
+	wl_list_remove(&co->destroy.link);
+	wl_list_remove(&co->commit.link);
+	wl_list_remove(&co->link);
+	wlr_damage_ring_finish(&co->ring);
+	if (co->scene_sc) {
+		wlr_swapchain_destroy(co->scene_sc);
+	}
+	if (co->out_sc) {
+		wlr_swapchain_destroy(co->out_sc);
+	}
+	free(co);
+}
+
 void
 kdos_crt_finish(void)
 {
 	struct kdos_crt_output *co, *tmp;
 	wl_list_for_each_safe(co, tmp, &crt_outputs, link) {
-		wl_list_remove(&co->destroy.link);
-		wl_list_remove(&co->link);
-		if (co->scene_sc) {
-			wlr_swapchain_destroy(co->scene_sc);
-		}
-		if (co->out_sc) {
-			wlr_swapchain_destroy(co->out_sc);
-		}
-		free(co);
+		crt_output_free(co);
 	}
 	wl_list_init(&crt_outputs);
 
@@ -489,15 +481,28 @@ handle_crt_output_destroy(struct wl_listener *listener, void *data)
 {
 	struct kdos_crt_output *co = wl_container_of(listener, co, destroy);
 	(void)data;
-	wl_list_remove(&co->destroy.link);
-	wl_list_remove(&co->link);
-	if (co->scene_sc) {
-		wlr_swapchain_destroy(co->scene_sc);
+	crt_output_free(co);
+}
+
+/*
+ * A buffer committed by anyone but the pass — the plain path under the
+ * magnifier, a cooldown or the fullscreen bypass, a scanout buffer — was
+ * built from the scene's pending damage and cleared it. The next pass
+ * frame is told only what changed after that commit, not after the
+ * picture its own buffers hold, so all of them are redrawn whole; and
+ * the screen shows that other picture at every pixel, so the next pass
+ * commit reports the whole output as damage.
+ */
+static void
+handle_crt_output_commit(struct wl_listener *listener, void *data)
+{
+	struct kdos_crt_output *co = wl_container_of(listener, co, commit);
+	const struct wlr_output_event_commit *ev = data;
+	if (!co->committing
+			&& (ev->state->committed & WLR_OUTPUT_STATE_BUFFER)) {
+		wlr_damage_ring_add_whole(&co->ring);
+		co->stale = true;
 	}
-	if (co->out_sc) {
-		wlr_swapchain_destroy(co->out_sc);
-	}
-	free(co);
 }
 
 static struct kdos_crt_output *
@@ -514,8 +519,12 @@ crt_output_get(struct output *output)
 		return NULL;
 	}
 	co->output = output;
+	co->stale = true;
+	wlr_damage_ring_init(&co->ring);
 	co->destroy.notify = handle_crt_output_destroy;
 	wl_signal_add(&output->wlr_output->events.destroy, &co->destroy);
+	co->commit.notify = handle_crt_output_commit;
+	wl_signal_add(&output->wlr_output->events.commit, &co->commit);
 	wl_list_insert(&crt_outputs, &co->link);
 	return co;
 }
@@ -616,10 +625,11 @@ give_up(struct kdos_crt_output *co, const char *why)
 
 /*
  * C11: crt_fullscreen = off means a fullscreen topmost view gets its
- * frames without the pass — one render instead of two for video and
- * games, which is the battery lever. NOT a zero-copy path: the scene's
- * direct-scanout switch is creation-time and stays off all session, so
- * the client's buffer is still composited once either way.
+ * frames without the pass, on the plain path with direct scanout
+ * allowed: a client buffer the display can take goes to the screen
+ * with no composite at all, and one it cannot is composited once
+ * instead of twice. That is the battery and latency lever for video
+ * and games, and what makes adaptiveSync and allowTearing reach them.
  */
 static bool
 output_topmost_is_fullscreen(struct output *output)
@@ -701,10 +711,28 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 		return false;
 	}
 
-	/* nothing changed: same pixels at full cost — let the plain
-	 * path take its early-out */
+	/*
+	 * Every uniform, so a frame can tell whether the picture on the
+	 * output was drawn with the same ones. The frame after the degauss
+	 * ends is such a change: it is drawn whole even on a static scene,
+	 * or the last wobbled frame stays on screen.
+	 */
+	const float u[8] = {
+		kdos_conf.crt / 100.0f,
+		kdos_conf.crt_scanlines / 100.0f,
+		kdos_conf.crt_curve / 100.0f,
+		gl->tint[0], gl->tint[1], gl->tint[2],
+		dg_amp, dg_phase,
+	};
+	bool retuned = memcmp(u, co->drawn, sizeof(u)) != 0;
+
+	/* nothing changed: nothing to draw — let the plain path take its
+	 * early-out. Not while the screen holds a picture that is not the
+	 * pass's (`stale`): after a scanned-out or plain frame, the first
+	 * frame back on the pass redraws whole even on a static scene, or
+	 * the unprocessed picture stays up until something moves. */
 	if (!wlr_scene_output_needs_frame(so)) {
-		if (dg_amp <= 0.0f) {
+		if (dg_amp <= 0.0f && !retuned && !co->stale) {
 			return false;
 		}
 		crt_damage_whole(so);
@@ -722,6 +750,7 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 	}
 
 	/* ── 1. the desktop, composited into a buffer of ours ─────── */
+	kdos_crt_scanout(false);
 	struct wlr_output_state scene_state;
 	wlr_output_state_init(&scene_state);
 	struct wlr_scene_output_state_options opts = {
@@ -736,8 +765,9 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 		wlr_output_state_finish(&scene_state);
 		return ok;
 	}
-	/* the belt to early-init's braces: a foreign (scanout) buffer
-	 * is not a picture of the desktop — commit it unprocessed */
+	/* scanout is off for this build, so this is a net: a foreign
+	 * (scanout) buffer is not a picture of the desktop — commit it
+	 * unprocessed */
 	if (!wlr_swapchain_has_buffer(co->scene_sc, scene_state.buffer)) {
 		if (!co->said_scanout) {
 			co->said_scanout = true;
@@ -762,6 +792,22 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 	bool have_ct = scene_state.committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM;
 	struct wlr_color_transform *ct = have_ct && scene_state.color_transform
 		? wlr_color_transform_ref(scene_state.color_transform) : NULL;
+	/*
+	 * What the scene redrew, in buffer pixels: its damage since the
+	 * last commit of a buffer. The whole output instead whenever a
+	 * pixel can depend on more than its neighbours (the curve, the
+	 * degauss's wobble), on something that changed for every pixel at
+	 * once (a uniform, the degauss ending), or when the screen does not
+	 * hold the pass's last committed frame (`stale`).
+	 */
+	bool whole = kdos_conf.crt_curve > 0 || dg_amp > 0.0f || retuned
+		|| co->stale
+		|| !(scene_state.committed & WLR_OUTPUT_STATE_DAMAGE);
+	pixman_region32_t scene_dmg;
+	pixman_region32_init(&scene_dmg);
+	if (!whole) {
+		pixman_region32_copy(&scene_dmg, &scene_state.damage);
+	}
 	wlr_output_state_finish(&scene_state);
 
 	struct wlr_texture *tex = wlr_texture_from_buffer(server.renderer, src);
@@ -770,14 +816,18 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 		if (ct) {
 			wlr_color_transform_unref(ct);
 		}
+		pixman_region32_fini(&scene_dmg);
 		return give_up(co, "the composited buffer will not import "
 			"as a texture");
 	}
 
-	/* one cleanup path from here on: two buffer locks must be let
-	 * go on every exit */
+	/* one cleanup path from here on: two buffer locks and three
+	 * regions must be let go on every exit */
 	const char *err = NULL;
 	struct wlr_buffer *dst = NULL;
+	pixman_region32_t frame, draw;
+	pixman_region32_init(&frame);
+	pixman_region32_init(&draw);
 
 	struct wlr_gles2_texture_attribs ta = { 0 };
 	wlr_gles2_texture_get_attribs(tex, &ta);
@@ -818,10 +868,22 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 	}
 
 	int w = dst->width, h = dst->height;
-	static const GLfloat quad[] = {
-		-1.0f, -1.0f,  1.0f, -1.0f,  -1.0f, 1.0f,
-		 1.0f, -1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,
-	};
+
+	/*
+	 * `frame` is what changed on the output since the last frame, and
+	 * what the commit reports as damage. `draw` is what changed since
+	 * dst last held a picture — frame plus every frame drawn into the
+	 * other buffers since, or all of it for a buffer the ring has not
+	 * seen — and is what gets redrawn.
+	 */
+	if (whole) {
+		pixman_region32_union_rect(&frame, &frame, 0, 0,
+			(unsigned)w, (unsigned)h);
+	} else {
+		kdos_crt_pass_scope(&frame, &scene_dmg, w, h);
+	}
+	wlr_damage_ring_add(&co->ring, &frame);
+	wlr_damage_ring_rotate_buffer(&co->ring, dst, &draw);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glViewport(0, 0, w, h);
@@ -840,18 +902,14 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 
 	glUniform1i(p->u_tex, 0);
 	glUniform2f(p->u_res, (GLfloat)w, (GLfloat)h);
-	glUniform1f(p->u_int, kdos_conf.crt / 100.0f);
-	glUniform1f(p->u_scan, kdos_conf.crt_scanlines / 100.0f);
-	glUniform1f(p->u_curve, kdos_conf.crt_curve / 100.0f);
-	glUniform3f(p->u_tint, gl->tint[0], gl->tint[1], gl->tint[2]);
-	glUniform2f(p->u_fx, dg_amp, dg_phase);
+	glUniform1f(p->u_int, u[0]);
+	glUniform1f(p->u_scan, u[1]);
+	glUniform1f(p->u_curve, u[2]);
+	glUniform3f(p->u_tint, u[3], u[4], u[5]);
+	glUniform2f(p->u_fx, u[6], u[7]);
 	glUniform2f(p->u_collapse, 1.0f, 1.0f);
 
-	glVertexAttribPointer((GLuint)p->a_pos, 2, GL_FLOAT, GL_FALSE, 0,
-		quad);
-	glEnableVertexAttribArray((GLuint)p->a_pos);
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-	glDisableVertexAttribArray((GLuint)p->a_pos);
+	kdos_crt_pass_draw((GLuint)p->a_pos, &draw, w, h);
 	glBindTexture(ta.target, 0);
 	glUseProgram(0);
 
@@ -868,27 +926,39 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 	gl_leave(&sv);
 
 	/* ── 3. scan it out ─────────────────────────────────────────
-	 * Full-output damage every frame, and that is not laziness:
-	 * the pass reads neighbours and warps the frame, so a
-	 * one-pixel scene change is not a one-pixel output change. */
+	 * The damage is `frame`: it contains the scene's own, which the
+	 * commit clears from the scene's pending damage, and it is what a
+	 * display with FB_DAMAGE_CLIPS refreshes. */
 	struct wlr_output_state st;
 	wlr_output_state_init(&st);
 	wlr_output_state_set_buffer(&st, dst);
 	if (have_ct) {
 		wlr_output_state_set_color_transform(&st, ct);
 	}
-	pixman_region32_t full;
-	pixman_region32_init_rect(&full, 0, 0, (unsigned)w, (unsigned)h);
-	wlr_output_state_set_damage(&st, &full);
-	pixman_region32_fini(&full);
+	wlr_output_state_set_damage(&st, &frame);
 
+	co->committing = true;
 	bool ok = wlr_output_commit_state(output->wlr_output, &st);
+	co->committing = false;
 	wlr_output_state_finish(&st);
-	if (!ok) {
+	if (ok) {
+		co->stale = false;
+		memcpy(co->drawn, u, sizeof(u));
+	} else {
 		err = "the output refused the frame";
 	}
 
 fail:
+	/* dst may have been rotated into the ring and not drawn: no
+	 * buffer's history can be trusted after a failed frame, and the
+	 * screen still holds whatever was there before it */
+	if (err) {
+		wlr_damage_ring_add_whole(&co->ring);
+		co->stale = true;
+	}
+	pixman_region32_fini(&scene_dmg);
+	pixman_region32_fini(&frame);
+	pixman_region32_fini(&draw);
 	wlr_texture_destroy(tex);
 	if (dst) {
 		wlr_buffer_unlock(dst);
@@ -966,10 +1036,6 @@ pd_blit(struct kdos_pd_output *pd, float vs, float hs)
 	}
 
 	int w = dst->width, h = dst->height;
-	static const GLfloat quad[] = {
-		-1.0f, -1.0f,  1.0f, -1.0f,  -1.0f, 1.0f,
-		 1.0f, -1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,
-	};
 
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glViewport(0, 0, w, h);
@@ -993,11 +1059,8 @@ pd_blit(struct kdos_pd_output *pd, float vs, float hs)
 	glUniform2f(p->u_fx, 0.0f, 0.0f);
 	glUniform2f(p->u_collapse, vs, hs);
 
-	glVertexAttribPointer((GLuint)p->a_pos, 2, GL_FLOAT, GL_FALSE, 0,
-		quad);
-	glEnableVertexAttribArray((GLuint)p->a_pos);
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-	glDisableVertexAttribArray((GLuint)p->a_pos);
+	/* the collapse moves every pixel: always the whole output */
+	kdos_crt_pass_draw((GLuint)p->a_pos, NULL, w, h);
 	glBindTexture(pd->ta.target, 0);
 	glUseProgram(0);
 	glFlush();
@@ -1026,8 +1089,14 @@ kdos_crt_powerdown(void)
 	if (!gl || !gl->ok) {
 		return;		/* GLES2-only; off is off */
 	}
+	if (!kdos_conf.motion) {
+		return;		/* the collapse is motion; reduce-motion skips it */
+	}
 
-	/* freeze the last composite of every healthy output */
+	/* freeze the last composite of every healthy output — a composite:
+	 * a scanned-out client buffer is not the desktop, and an output
+	 * whose build took one would be left out of the collapse */
+	kdos_crt_scanout(false);
 	struct kdos_pd_output pd[KDOS_PD_MAX_OUTPUTS];
 	int npd = 0;
 	struct kdos_crt_output *co;

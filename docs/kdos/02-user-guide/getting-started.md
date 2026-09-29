@@ -76,7 +76,7 @@ reads nothing but what the fetch left in the port directories and runs offline.
 ### Fetching the sources
 
 A clone carries the recipes, not the upstream source archives. Each recipe (also called a *port*: a
-directory holding a declarative `kpkgbuild` file and a `build.sh`; 2,001 live under `ports/core/`
+directory holding a declarative `kpkgbuild` file and a `build.sh`; 1,999 live under `ports/core/`
 and 24 under `src/`; see the [glossary](../06-reference/glossary.md#port)) names its source files
 with a `sha256 =` line, and `make fetch` downloads every such file that git does not carry.
 Measured across the tree, that is 2,488 file names in 1,995 ports; a further 39 named files, such

@@ -572,6 +572,7 @@ static void draw(int sel, int top)
 		return;
 	}
 
+	kch_list_view(1, 2, w - 2, rowsv, top);
 	for (int i = 0; i < rowsv && top + i < nviews; i++) {
 		const struct tview *t = &views[top + i];
 		int y = 2 + i;

@@ -38,7 +38,7 @@ decisions that look like missing features.
 
 KDOS runs a frozen hard fork of the labwc 0.20.0 Wayland compositor. `src/desktop/kdos-comp` is
 upstream's source, imported whole, renamed, and never merged from again. `KDOS-FORK` at its root
-records the upstream tarball and its sha256. KDOS's additions live in eighteen files named
+records the upstream tarball and its sha256. KDOS's additions live in twenty-three files named
 `src/kdos-*.c`, and the upstream files carry small hooks marked `/* KDOS */` (or `# KDOS` in a
 `meson.build`), so `grep` finds every point where the fork touches upstream code.
 

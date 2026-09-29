@@ -411,7 +411,7 @@ echo "  ok    a data pack is never composed into a box root"
 # absent:
 # this script's contract is that it runs on a bare host with no container and
 # no network.
-if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
+if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/null &&
    [ -n "$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)" ]; then
     PROTO="$OUT/proto"
     mkdir -p "$PROTO"
@@ -466,6 +466,15 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" client-header \
             "$(pkg-config --variable=pkgdatadir wayland-protocols)/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
             "$PROTO/xdg-foreign-unstable-v2-client-protocol.h"
+        # viewporter and fractional-scale: the fractional output scale.
+        # libkwl includes both unconditionally, so they are as mandatory
+        # here as the lock role's protocol.
+        "$SCANNER" client-header \
+            "$(pkg-config --variable=pkgdatadir wayland-protocols)/stable/viewporter/viewporter.xml" \
+            "$PROTO/viewporter-client-protocol.h"
+        "$SCANNER" client-header \
+            "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/fractional-scale/fractional-scale-v1.xml" \
+            "$PROTO/fractional-scale-v1-client-protocol.h"
         # The private-code halves. The blocks above only COMPILE, so headers
         # were enough for them; kdos-res LINKS, and an interface referenced
         # with no generated code is an undefined symbol at link rather than a
@@ -496,6 +505,12 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" private-code \
             "$_wp/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
             "$PROTO/xdg-foreign-unstable-v2-protocol.c"
+        "$SCANNER" private-code \
+            "$_wp/stable/viewporter/viewporter.xml" \
+            "$PROTO/viewporter-protocol.c"
+        "$SCANNER" private-code \
+            "$_wp/staging/fractional-scale/fractional-scale-v1.xml" \
+            "$PROTO/fractional-scale-v1-protocol.c"
         KCINC="-Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
 -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkwm"
         # libkcell first and on its OWN: it must compile with no Wayland
@@ -505,7 +520,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         for f in src/libs/libkcell/*.c; do
             $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkcell \
-                $(pkg-config --cflags fcft pixman-1) \
+                $(pkg-config --cflags fcft fontconfig pixman-1) \
                 -c -o "$OUT/$(basename "$f" .c).o" "$f"
         done
         echo "  libkcell"
@@ -525,11 +540,11 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # one would put a real `-l` on the suite that proves libktui has none.
         $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
-            $(pkg-config --cflags fcft pixman-1) \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/asciicheck" testing/fixtures/ascii/asciicheck.c \
             src/libs/libkcell/*.c src/libs/libktui/*.c \
             src/libs/libkbase/*.c \
-            $(pkg-config --libs fcft pixman-1)
+            $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/asciicheck" >/dev/null
         echo "  asciicheck (ramp monotonic, orientation distinguished)"
 
@@ -538,13 +553,98 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # libpixman's uninstrumented fill loop — see the file's header.
         $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
-            $(pkg-config --cflags fcft pixman-1) \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/clipcheck" testing/fixtures/cellclip/clipcheck.c \
             src/libs/libkcell/*.c src/libs/libktui/*.c \
             src/libs/libkbase/*.c \
-            $(pkg-config --libs fcft pixman-1)
+            $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/clipcheck" >/dev/null
         echo "  clipcheck (no writes past a ragged cell grid)"
+
+        # A TILE PAST ONE SPRITE is a grid of sprites over views of one
+        # canvas, and both ways it can break are silent: a block cut at the
+        # wrong origin shows another block's pixels, and a view the table's
+        # evictor unrefs once too often is freed while the tile still names
+        # it. The fixture reads the pixels every drawn cell resolves to and
+        # counts each view's destruction, through evictions, a cleared table,
+        # budget refusals and a reset. kch_tile.c alone from libkchrome: the
+        # display and the icon switch it asks are stubbed in the fixture.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon -Isrc/libs/libkdisp \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/tilecheck" testing/fixtures/tile/tilecheck.c \
+            src/libs/libkchrome/kch_tile.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/tilecheck" >/dev/null \
+            || { "$OUT/tilecheck"; echo "  tilecheck FAILED"; exit 1; }
+        echo "  tilecheck (a tile of any size: every block's pixels, every view freed once)"
+
+        # THE CHART'S PIXELS. Every golden is a cell frame, so the antialiased
+        # chart kdos-res and the panel draw on a real display is looked at by
+        # nothing else: the fixture checks what must hold whatever the
+        # arithmetic (the rectangle and the clip, premultiplied pixels, the
+        # rest row, the one-pixel floor, mirror and transpose symmetry, a
+        # line's area, the tile's re-raster only on new content) and digests
+        # whole canvases for fixed inputs. The marks are fixed point from one
+        # conversion per input, so the digests are the same bytes on every
+        # build; one that moves is a picture that changed.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon -Isrc/libs/libkdisp \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/plotcheck" testing/fixtures/plot/plotcheck.c \
+            src/libs/libkchrome/kch_plot.c src/libs/libkchrome/kch_tile.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/plotcheck" >/dev/null \
+            || { "$OUT/plotcheck"; echo "  plotcheck FAILED"; exit 1; }
+        echo "  plotcheck (the chart's pixels: bounds, symmetry, digests)"
+
+        # THE SELECTION PLATE THAT TRAVELS. A golden is a cell frame with the
+        # pixel layer stubbed out, so a plate in the wrong place for a few
+        # frames is invisible to every other check here. rowcheck includes
+        # kch_px.c, stubs the libkwl calls it makes and drives the clock by
+        # hand: at rest it is kch_px_row's plate, a new item slides with an
+        # ease-out and lands on time, a redirect sets out from where the
+        # plate stands, a scroll, a plate nobody saw, a new cell size, a new
+        # backdrop, no frame clock and motion off all land at once.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon -Isrc/libs/libkdisp -Isrc/libs/libkwl \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/rowcheck" testing/fixtures/rowanim/rowcheck.c \
+            src/libs/libkchrome/kch_tone.c src/libs/libkcolor/*.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/rowcheck" >/dev/null \
+            || { "$OUT/rowcheck"; echo "  rowcheck FAILED"; exit 1; }
+        echo "  rowcheck (the selection plate: slides, lands, and lands at once where it must)"
+
+        # DISPLAY TEXT, the one pixel op that is a string. A golden holds its
+        # cell form and nothing else, so textcheck includes kch_px.c and
+        # links kch_chrome.c for real: refused whole with no backdrop and
+        # drawn as cells on the rectangle's first row; recorded under one
+        # with its cells handed to the backdrop; keyed and diffed by the
+        # string and not its place in the pool; replayed with every pixel in
+        # its rectangle at scale 1 and 2, aligned, and the same under a clip
+        # as whole; and the flat body a window hands its page to.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon -Isrc/libs/libkdisp -Isrc/libs/libkwl \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/textcheck" testing/fixtures/disptext/textcheck.c \
+            src/libs/libkchrome/kch_chrome.c src/libs/libkchrome/kch_tone.c \
+            src/libs/libkcolor/*.c src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/textcheck" >/dev/null 2>&1 \
+            || { "$OUT/textcheck"; echo "  textcheck FAILED"; exit 1; }
+        echo "  textcheck (display text: cell form, the op, its key, its pixels inside its rectangle)"
 
         # AND THE SLANT NO BITMAP FACE CARRIES. An italic companion is taken
         # only where its metrics match the upright face's, which on this
@@ -553,13 +653,27 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # measured with no font and no frame.
         $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
-            $(pkg-config --cflags fcft pixman-1) \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/obliquecheck" testing/fixtures/oblique/obliquecheck.c \
             src/libs/libkcell/*.c src/libs/libktui/*.c \
             src/libs/libkbase/*.c \
-            $(pkg-config --libs fcft pixman-1)
+            $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/obliquecheck" >/dev/null
         echo "  obliquecheck (a synthesised italic leans, and leans evenly)"
+
+        # THE SIZE POLICY: which pixel sizes a bitmap face draws exactly,
+        # the `(TTF)` twin's name and how it is recognised, and the cell a
+        # scalable face is pinned to. The arithmetic is checked everywhere;
+        # the loads only where Terminus and its twin are installed, which a
+        # build container is not — the fixture says which it did.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/fontcheck" testing/fixtures/fontpolicy/fontcheck.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/fontcheck" || { echo "  fontcheck FAILED"; exit 1; }
 
         # A TRAY ITEM'S OWN PICTURE, decoded from bytes rather than found by
         # name. Every surface turns its icons OFF for a dump — a golden frame
@@ -579,11 +693,11 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkicon \
             -Isrc/libs/libkxdg \
-            $(pkg-config --cflags pixman-1 fcft libpng) \
+            $(pkg-config --cflags pixman-1 fcft fontconfig libpng) \
             -o "$OUT/iconpng" testing/fixtures/iconpng/iconpng.c \
             src/libs/libkicon/*.c src/libs/libkcell/*.c src/libs/libktui/*.c \
             src/libs/libkcolor/*.c src/libs/libkbase/*.c src/libs/libkxdg/*.c \
-            $(pkg-config --libs pixman-1 fcft libpng)
+            $(pkg-config --libs pixman-1 fcft fontconfig libpng)
         "$OUT/iconpng" 2>/dev/null \
             || { echo "  kicon_slot_png FAILED"; exit 1; }
         else
@@ -599,13 +713,105 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # kwl_font.c is HERE and not left to the two links below: it is the
         # only file in the archive that reaches fontconfig, so a name it gets
         # wrong is a compile error nothing else in this suite would show.
-        for f in src/libs/libkwl/kwl_key.c src/libs/libkwl/kwl_font.c; do
+        for f in src/libs/libkwl/kwl_key.c src/libs/libkwl/kwl_font.c \
+                 src/libs/libkwl/kwl_insp.c src/libs/libkwl/kwl_glide.c; do
             $CC $STD $WARN -c -I"$PROTO" $KCINC \
                 $(pkg-config --cflags fcft fontconfig pixman-1 xkbcommon \
                              wayland-client) \
                 -o "$OUT/$(basename "$f" .c).o" "$f"
         done
         echo "  libkwl"
+
+        # THE PARTIAL PAINT AND THE CELL DAMAGE, against the full ones. Both
+        # fail as stale pixels and never as a crash, so the fixture runs the
+        # real flush_commit under a simulated compositor that applies only
+        # the damage it is given, and every seed is run twice: once as
+        # shipped and once under KDOS_PAINT_FULL=1. The committed pixels must
+        # be the same frame for frame, and the screen must equal each buffer
+        # it was just handed. `cells` weights a run toward cell-only changes,
+        # which is the path the partial paint takes; `scroll` toward a list
+        # scrolled by lines and pages, where a band of pixels is moved rather
+        # than repainted and must come out as the full paint would draw it;
+        # `glide` toward a list declared as gliding, whose commits in between
+        # two positions must be damaged, equal under the full paint, and be
+        # the list's own picture at the position presented.
+        $CC $STD $WARN -I"$PROTO" $KCINC -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon \
+            $(pkg-config --cflags fcft fontconfig pixman-1 xkbcommon \
+                         wayland-client) \
+            -o "$OUT/paintcheck" testing/fixtures/kwl/paintcheck.c \
+            src/libs/libkwl/kwl_key.c src/libs/libkwl/kwl_font.c \
+            src/libs/libkwl/kwl_insp.c \
+            src/libs/libkdisp/*.c src/libs/libkcell/*.c \
+            src/libs/libktui/*.c src/libs/libkcolor/*.c \
+            src/libs/libkbase/*.c \
+            src/libs/libkchrome/kch_px.c src/libs/libkchrome/kch_tone.c \
+            "$PROTO"/*-protocol.c \
+            $(pkg-config --libs fcft fontconfig pixman-1 xkbcommon \
+                         wayland-client)
+        for _pc in "1 400" "2 400 cells" "3 400" "4 400 cells" \
+                   "5 400 scroll" "6 400 scroll" "7 300 glide" "8 300 glide"; do
+            # shellcheck disable=SC2086
+            "$OUT/paintcheck" $_pc > "$OUT/paint.part" 2>"$OUT/paint.err" \
+                || { cat "$OUT/paint.err"; echo "  paintcheck $_pc FAILED"; exit 1; }
+            # shellcheck disable=SC2086
+            KDOS_PAINT_FULL=1 "$OUT/paintcheck" $_pc > "$OUT/paint.full" \
+                2>"$OUT/paint.err" \
+                || { cat "$OUT/paint.err"; echo "  paintcheck $_pc (full) FAILED"; exit 1; }
+            cmp -s "$OUT/paint.part" "$OUT/paint.full" \
+                || { echo "  paintcheck $_pc: the partial paint differs from the full one"; exit 1; }
+        done
+        echo "  paintcheck (partial paint, moved bands and gliding lists == full paint, damage covers every change)"
+
+        # THE KDOS_INSPECT OVERLAY. Twice over: inspcheck drives kwl_insp.c
+        # with the clock handed in (the panel on a copy of the cells, the
+        # tint and its fade, the numbers, a refresh cadence that goes still,
+        # the hit outlines), and paintcheck runs the real flush_commit with
+        # the overlay on, where every commit must still leave the screen
+        # equal to the buffer it was handed — the overlay's pixels move where
+        # no cell did, so any commit it does not damage whole fails there.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkwl \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/inspcheck" testing/fixtures/kwl/inspcheck.c \
+            src/libs/libkwl/kwl_insp.c src/libs/libkcell/*.c \
+            src/libs/libktui/*.c src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        KDOS_INSPECT=1 "$OUT/inspcheck" >/dev/null \
+            || { KDOS_INSPECT=1 "$OUT/inspcheck"; echo "  inspcheck FAILED"; exit 1; }
+        KDOS_INSPECT=0 "$OUT/inspcheck" off \
+            || { echo "  inspcheck: KDOS_INSPECT=0 did not keep it off"; exit 1; }
+        env -u KDOS_INSPECT "$OUT/inspcheck" off \
+            || { echo "  inspcheck: the overlay is on by default"; exit 1; }
+        KDOS_INSPECT=1 "$OUT/paintcheck" 5 200 cells > /dev/null 2>"$OUT/paint.err" \
+            || { cat "$OUT/paint.err"; echo "  paintcheck under KDOS_INSPECT FAILED"; exit 1; }
+        echo "  inspcheck (KDOS_INSPECT: panel on a copy, tint and fade, numbers, still when still; paintcheck with it on)"
+
+        # THE FRAME CLOCK. tickcheck includes kwl.c like paintcheck and
+        # replaces the wire and the display socket (a pipe), so the real
+        # kwl_poll_event() runs: an idle wait must run its whole length with
+        # no commit, no frame asked for and no tick; a live animation gets
+        # one empty commit, then a KT_EVT_TICK per frame answered or per
+        # stall; one frame is owed after the window and none after that;
+        # comp.conf's `motion` reads as the compositor reads it; and the
+        # wheel and the coast run through the real pointer handlers: a
+        # detent is one tick however it arrives, a flick coasts and stops.
+        $CC $STD $WARN -I"$PROTO" $KCINC \
+            $(pkg-config --cflags fcft fontconfig pixman-1 xkbcommon \
+                         wayland-client) \
+            -o "$OUT/tickcheck" testing/fixtures/kwl/tickcheck.c \
+            src/libs/libkwl/kwl_key.c src/libs/libkwl/kwl_font.c \
+            src/libs/libkwl/kwl_insp.c src/libs/libkwl/kwl_glide.c \
+            src/libs/libkdisp/*.c src/libs/libkcell/*.c \
+            src/libs/libktui/*.c src/libs/libkcolor/*.c \
+            src/libs/libkbase/*.c \
+            "$PROTO"/*-protocol.c \
+            $(pkg-config --libs fcft fontconfig pixman-1 xkbcommon \
+                         wayland-client)
+        rm -rf "$OUT/tick.conf" && mkdir -p "$OUT/tick.conf"
+        "$OUT/tickcheck" "$OUT/tick.conf" > /dev/null 2>"$OUT/tick.err" \
+            || { cat "$OUT/tick.err"; echo "  tickcheck FAILED"; exit 1; }
+        echo "  tickcheck (frame clock: idle silent, a tick per frame while live, one owed, motion key; wheel detents, the coast)"
 
         # kdos-lock's client half draws through exactly the headers just
         # generated, so it costs one more compile and is the only gate it has.
@@ -804,6 +1010,108 @@ if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 \
 
 else
     echo "  kdos-comp grafts (skipped — wlroots-0.20, glesv2, egl, libxml2, cairo, pango or basu not on this host)"
+fi
+
+# The phosphor pass redraws only the damaged part of the output, and the result
+# must equal a whole-output pass on every frame — a stale column or a stale
+# buffer is on screen until something else repaints it, and the rig cannot see
+# the pass at all. scopecheck runs the compositor's own shader and scoping code
+# (kdos-crt-pass.c) and wlroots' own damage ring (from the port's tarball, which
+# needs no installed wlroots) on a surfaceless EGL context; llvmpipe is enough.
+# The two broken modes must FAIL, or the comparison proves nothing.
+SCW=$(ls ports/core/wlroots/wlroots-*.tar.gz 2>/dev/null | head -1)
+if [ -n "$SCW" ] && pkg-config --exists egl glesv2 pixman-1 wayland-server \
+        2>/dev/null; then
+    mkdir -p "$OUT/scwlr"
+    tar xzf "$SCW" -C "$OUT/scwlr" --strip-components=1 \
+        --wildcards '*/include/wlr/*' '*/types/wlr_damage_ring.c'
+    # wlroots builds itself with WLR_PRIVATE empty; the layout is the same
+    $CC $STD -DWLR_USE_UNSTABLE -DWLR_PRIVATE= -I"$OUT/scwlr/include" \
+        $(pkg-config --cflags pixman-1 wayland-server) \
+        -c "$OUT/scwlr/types/wlr_damage_ring.c" -o "$OUT/scring.o"
+    $CC $STD $WARN -DWLR_USE_UNSTABLE -I"$OUT/scwlr/include" \
+        -Isrc/desktop/kdos-comp/include \
+        $(pkg-config --cflags egl glesv2 pixman-1 wayland-server) \
+        -o "$OUT/scopecheck" testing/fixtures/crt/scopecheck.c \
+        src/desktop/kdos-comp/src/kdos-crt-pass.c "$OUT/scring.o" \
+        $(pkg-config --libs egl glesv2 pixman-1 wayland-server)
+    scrc=0
+    scline=$("$OUT/scopecheck") || scrc=$?
+    if [ "$scrc" = 77 ]; then
+        echo "  crt scopecheck (skipped — no surfaceless EGL/GLES2 here)"
+    elif [ "$scrc" != 0 ]; then
+        echo "$scline"
+        echo "  FAIL: the scoped phosphor pass differs from the whole one"
+        exit 1
+    else
+        for scm in no-reach no-age; do
+            scrc=0
+            "$OUT/scopecheck" "$scm" >/dev/null || scrc=$?
+            if [ "$scrc" != 1 ]; then
+                echo "  FAIL: scopecheck $scm exited $scrc — the comparison cannot fail"
+                exit 1
+            fi
+        done
+        echo "  crt scopecheck (${scline#scopecheck: }; no-reach and no-age caught)"
+    fi
+else
+    echo "  crt scopecheck (skipped — egl, glesv2, pixman-1, wayland-server or the wlroots tarball not on this host)"
+fi
+
+# The compositor's fades (kdos-motion.c) copy a closing surface into a
+# snapshot beside the output's layer tree and hold its buffers until the fade
+# ends; a snapshot inside the layer tree crashes the next arrange, one that
+# keeps no lock shows a freed buffer, and an open that ends a hair under 1
+# leaves the surface unoccluding for good. A window transition moves the
+# window's tree as well, and one that does not follow labwc placing the window
+# mid-open, or does not end exactly at rest, leaves it drawn away from where
+# input thinks it is; its snapshot copies the border rectangles as buffers
+# that refuse the pointer; a window shown again while its own snapshot still
+# leaves must take the snapshot over, or it is drawn twice. motioncheck plays
+# map, unmap, client exit, output loss, a window's open, close, workspace
+# switch and switch straight back, and teardown against
+# wlroots' real scene graph, which needs an installed wlroots — the tarball
+# alone would mean building most of it here.
+if pkg-config --exists wlroots-0.20 wayland-server pixman-1 2>/dev/null; then
+    $CC $STD $WARN -DWLR_USE_UNSTABLE -Itesting/fixtures/motion/stub \
+        -Isrc/desktop/kdos-comp/include -Isrc/desktop/kdos-comp/src \
+        -Isrc/libs/libkcolor \
+        $(pkg-config --cflags wlroots-0.20 wayland-server pixman-1) \
+        -o "$OUT/motioncheck" testing/fixtures/motion/motioncheck.c \
+        $(pkg-config --libs wlroots-0.20 wayland-server pixman-1) -lm
+    mcline=$("$OUT/motioncheck") || {
+        echo "$mcline"
+        echo "  FAIL: the compositor's fades"
+        exit 1
+    }
+    echo "  motion fades (${mcline#motioncheck: })"
+else
+    echo "  motion fades (skipped — wlroots-0.20, wayland-server or pixman-1 not on this host)"
+fi
+
+# Render-late scheduling (kdos-sched.c) holds an output's frame_pending up
+# while it waits for the moment before the vertical blank and lowers it
+# before the composite; a wait that does not hold it gets a second frame
+# event in the middle, one that does not lower it never frames again, and a
+# timer left armed across any other commit, buffer or not, composites over a
+# pending flip.
+# schedcheck plays presentations, commits, refusals, output loss and shutdown
+# through a real event loop, with the same installed-wlroots condition.
+if pkg-config --exists wlroots-0.20 wayland-server pixman-1 2>/dev/null; then
+    $CC $STD $WARN -DWLR_USE_UNSTABLE -Itesting/fixtures/motion/stub \
+        -Isrc/desktop/kdos-comp/include -Isrc/desktop/kdos-comp/src \
+        -Isrc/libs/libkcolor \
+        $(pkg-config --cflags wlroots-0.20 wayland-server pixman-1) \
+        -o "$OUT/schedcheck" testing/fixtures/sched/schedcheck.c \
+        $(pkg-config --libs wlroots-0.20 wayland-server pixman-1) -lm
+    sdline=$("$OUT/schedcheck") || {
+        echo "$sdline"
+        echo "  FAIL: render-late frame scheduling"
+        exit 1
+    }
+    echo "  render-late scheduling (${sdline#schedcheck: })"
+else
+    echo "  render-late scheduling (skipped — wlroots-0.20, wayland-server or pixman-1 not on this host)"
 fi
 
 # kdos-boxsock is the enforcement half of N1: it is what hands a box a socket
@@ -5173,7 +5481,9 @@ _furniture=" start start-route start-system menu-system traymenu traymenu-folder
 _norow=""
 for _g in testing/goldens/*-80x24.txt; do
     _n=$(basename "$_g" -80x24.txt)
-    case "$_n" in cells-*|res-*|term-*|vt-*|shell*) continue ;; esac
+    # A key drive's frame ends in the line counting the events it read, and
+    # is the same surface as a --dump golden that this loop already reads.
+    case "$_n" in cells-*|drive-*|res-*|term-*|vt-*|shell*) continue ;; esac
     case "$_furniture" in *" $_n "*) continue ;; esac
     # THE ROW ABOVE THE BOTTOM BORDER. A hint is `Key verb`, so the row must
     # hold at least two words between the frame's own columns — a blank row
@@ -5351,7 +5661,7 @@ golden() {			# <name> <WxH> <argv…>
       env LC_ALL=C TZ=UTC HOME="$PWD" \
           XDG_CACHE_HOME=/nonexistent-kdos-cache \
           XDG_CONFIG_HOME="$PWD/config" \
-          XDG_DATA_HOME=/nonexistent-kdos-data \
+          XDG_DATA_HOME="${KDOS_GOLDEN_DATA:-/nonexistent-kdos-data}" \
           XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
           XDG_RUNTIME_DIR=/nonexistent-kdos-run \
           KDOS_PANEL_ROOT="$PWD/panelroot" KDOS_PANEL_NOW=1735689600 ${KDOS_PANEL_DEBUG:+KDOS_PANEL_DEBUG=$KDOS_PANEL_DEBUG} \
@@ -5773,6 +6083,12 @@ if [ -n "${RESBIN:-}" ] && [ -x "$RESBIN" ]; then
     res_golden detail 56x24  --page processes --detail 950
     res_golden detail 80x24  --page processes --detail 950
     res_golden detail 132x43 --page processes --detail 950
+    #
+    # A chart read one sample at a time: `←` on the CPU page, which starts a
+    # scrub at the newest sample. The reading in the label row becomes that
+    # sample's age and value and the Esc hint names the scrub's own rung; the
+    # marked column is an attribute, which a text dump does not carry.
+    res_golden cpu-scrub 80x24 --page cpu --scrub 1
 else
     echo "  kdos-res goldens (skipped — the binary was not built on this host)"
 fi
@@ -6428,6 +6744,77 @@ if "$DUMPCK" --have keys; then
         && { echo "  the key card kept a row for a program no host carries"
              exit 1; }
 fi
+
+#
+# THE LOOP, DRIVEN. A --dump runs one draw and never the loop, so a golden of
+# one cannot see an event handler, the resize step, or ktui_keys() being asked
+# first. `$KDOS_DUMP_KEYS` gives the harness a display that is a script (see
+# dumpmain.c): the surface takes its live path, reads the events, and the
+# frame it last presented is the golden, followed by `-- N of M events read`.
+#
+# WHAT EACH ONE PINS. Every script ends `esc tick`: a surface that closes on
+# Esc stops one short of the total, and one where Esc closed a rung first
+# (trash's question, verify's path prompt) reads them all. Every script
+# resizes once, so the frame is drawn at the new size or the step is missing.
+# The rest walks the keys each surface answers — the table, the field, a
+# question and its cancel, a page — and not one of them runs a command the
+# harness host would answer differently: no toggle, no delete, no check.
+#
+# THE RUNNER'S OWN SURFACE IS HOW THE FRAME OPT-IN IS PINNED, because no
+# shipped surface on the runner takes it: unframed, Tab and Enter reach
+# event() and press nothing; framed, Tab walks the ring and Enter presses the
+# focused button; a Tab event() took stays put; a press lands on the button
+# drawn under it; and a button that closes ends the loop short of the script.
+#
+keydrive() {		# <name> <WxH> <script> <argv…>
+    _k_name=$1; _k_size=$2; _k_keys=$3; shift 3
+    if "$DUMPCK" --have "$1"; then
+        KDOS_DUMP_KEYS="$_k_keys" golden "drive-$_k_name" "$_k_size" "$@"
+    elif [ -f "$GOLD/drive-$_k_name-$_k_size.txt" ]; then
+        echo "  drive-$_k_name: a golden is committed but the surface no longer links"
+        golden_fail=1
+    else
+        echo "  drive-$_k_name (skipped — not linked into the harness)"
+    fi
+}
+KDOS_FIREWALL_LIST="$PWD/testing/fixtures/firewall/list.txt" \
+    keydrive firewall 80x24 "down down wheeldown:10,8 resize:60x20 esc tick" \
+    firewall
+keydrive trash 80x24 "down s d esc c n resize:70x22 esc tick" trash
+KDOS_CONTACT_LIST="$OUT/contacts.txt" \
+    keydrive contacts 80x24 "text:ada down up bs bs resize:60x20 esc tick" \
+    contacts
+keydrive chars 80x24 \
+    "text:arrow down down pgdn home bs resize:60x22 esc tick" chars
+keydrive verify 80x24 "l text:abc f1 f10 bs resize:70x20 esc tick" verify
+KDOS_UPDATE_JSON="$PWD/testing/fixtures/update/update.json" \
+KDOS_CVE_JSON="$PWD/testing/fixtures/update/cve.json" \
+KDOS_SLOT_TEXT="$PWD/testing/fixtures/update/slot.txt" \
+    keydrive update 80x24 "down tab down resize:70x22 esc tick" update
+keydrive print 80x24 "down tab down resize:70x22 esc tick" \
+    print --fixture "$PWD/testing/fixtures/print"
+# THE NOTE DRIVE SAVES, and into a data directory of its own made empty here.
+# Esc after an edit ends the loop through stop(), which writes the buffer to
+# $XDG_DATA_HOME/kdos/scratch.txt. Run as root, the fixed path golden() hands
+# every other surface is created, and the next run loads that buffer back and
+# drifts; a fresh directory under $OUT keeps the save path under test and the
+# frame independent of any earlier run.
+rm -rf "$OUT/note-data"; mkdir -p "$OUT/note-data"
+KDOS_GOLDEN_DATA="$OUT/note-data" \
+    keydrive note 60x20 \
+    "text:hello enter text:world ctrl+x resize:50x16 esc tick" note
+if "$DUMPCK" --have note &&
+   ! grep -q world "$OUT/note-data/kdos/scratch.txt" 2>/dev/null; then
+    echo "  drive-note: Esc after an edit saved nothing to \$XDG_DATA_HOME"
+    golden_fail=1
+fi
+keydrive runner       40x8 "tab enter tick"        runner
+keydrive runner-frame 40x8 "tab enter tick"        runner --frame
+keydrive runner-eat   40x8 "tab enter tick"        runner --frame --eat-tab
+keydrive runner-click 40x8 "click:15,3 tick"       runner --frame
+keydrive runner-close 40x8 "tab tab enter tick tick" runner --frame
+keydrive runner-resize 40x8 "resize:50x10 tab tick" runner --frame
+
 if [ "$golden_fail" != 0 ]; then
     echo
     echo "  A golden frame changed. If the change is intended:"

@@ -610,6 +610,8 @@ static void draw(void)
 	 */
 	int icol = 0, chordw = 0;
 
+	/* The rows, beside the scrollbar's column: a scroll glides them. */
+	kch_list_view(1, 1, w - 2, body, top);
 	for (int r = 0; r < body; r++) {
 		int idx = top + r;
 
@@ -651,9 +653,10 @@ static void draw(void)
 		 * rule: the pixel plate is the whole highlight where there is
 		 * a pixel layer, and on a character grid — a `--tty` run, and
 		 * every dump — an accent fill with the slots swapped is what
-		 * says which row Enter will take. */
+		 * says which row Enter will take. The plate slides to a new
+		 * row as the cascading menu's does. */
 		if (on) {
-			kch_px_row(1, 1 + r, w - 2, KCH_T_ACTIVE);
+			kch_px_row_anim(0, idx, 1, 1 + r, w - 2, KCH_T_ACTIVE);
 			if (!kch_px_live()) {
 				int sfg, sbg;
 

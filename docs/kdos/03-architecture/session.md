@@ -956,11 +956,14 @@ signal through its event loop and tears down in order:
 
 1. closes the command socket behind [`kdos hey`](../04-programs/kdos-command.md#kdos-hey), so no
    command acts on a session that is already over;
-2. plays the CRT power-down animation (bounded by a deadline);
+2. cancels any [render-late](../04-programs/kdos-comp.md#render-late-scheduling) frame timer, then
+   plays the CRT power-down animation (bounded by a deadline; skipped with `motion = no` in
+   `comp.conf`);
 3. stops the wallpaper, the [frames socket](../04-programs/kdos-comp.md#the-frames-socket),
    window-position memory, window groups, the
    [box chips](../04-programs/kdos-comp.md#box-identity), the lid handler, the peek view (which
-   fades every window to show the desktop) and the
+   fades every window to show the desktop), the
+   [fades](../04-programs/kdos-comp.md#motion) and the
    [idle policy](../04-programs/kdos-comp.md#idle-dim-lock-and-lid);
 4. removes the phosphor pass;
 5. runs the optional `shutdown` script and clears the variables it pushed into the bus's

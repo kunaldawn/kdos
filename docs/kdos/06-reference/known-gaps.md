@@ -33,14 +33,17 @@ narrowing rather than a gap; see [Decisions](../01-philosophy/decisions.md#narro
 directions are implemented in `libkwl`, and no test asserts either of them: nothing has been dragged
 with a pointer between a KDOS surface and a boxed application. See [Status](status.md).
 
-### KDOS's own surfaces do not scale fractionally
+### KDOS's own surfaces have not been seen at a fractional scale
 
-`libkwl` adopts the integer scale of the output a surface is on, clamped to `KCELL_MAX_SCALE`, and
-renders glyphs at that scale, so a high-density display gets a sharp grid rather than a stretched
-one. The scale it reads is `wl_output`'s, which is an integer by definition, so a fractional output
-scale is never seen as a fraction. `kdos-comp` does offer `wp_fractional_scale_manager_v1`, so a
-Wayland application that speaks it, native or boxed, is told the fractional value; the gap is in
-the toolkit, not the compositor.
+On an output scaled by a fraction, such as 1.5, `libkwl` loads the chrome font at the device size and
+hands `kdos-comp` a buffer of device pixels behind a viewport, so the panel, the menus and the other
+surfaces are drawn crisp at 1.5 rather than drawn at 2 and shrunk. What is measured is the arithmetic
+and the paint: the device cells in a build container with the image's fonts, and the real flush
+walked through fractional scales in a harness with a simulated compositor. No KDOS surface has been
+photographed on a fractional output, on the rig or on hardware, so the look of the result is
+unconfirmed. A toplevel such as `kdos-term` is told its scale only once it is on a screen, so its
+first frame is drawn with the font as named and the next at the device size. See
+[The fractional scale](../05-developer/c-libraries.md#the-fractional-scale).
 
 ### Emoji draw everywhere except the text console on `tty1`
 
@@ -144,6 +147,16 @@ disable-while-typing are libinput settings that the compositor's `<libinput>` bl
 that block commented out, as a template, and sets none of them, so the compositor's own defaults
 apply, with tap-to-click on. The control centre's Input page says where the template is and stops
 there.
+
+### A touchpad scroll is not one-to-one with the finger
+
+Every surface here scrolls in whole wheel ticks, and `libkwl` makes one tick of a touchpad's stream
+per ten axis units (libinput reports a finger's travel in units it scales like pointer motion),
+which a scrolling list spends as three rows
+(`SH_WHEEL_ROWS`). So a list moves several times further than the finger did. The movement between
+ticks glides and a flick coasts, but the ratio stays: matching it to the finger means knowing how
+far each surface moves per tick, and the feel has not been judged on a touchpad. See
+[Input the backend cleans](../05-developer/writing-desktop-software.md#input-the-backend-cleans).
 
 ### The launcher's `files` setting does nothing
 
@@ -557,6 +570,15 @@ needs the out-of-tree `xtrx_linux_pcie_drv` kernel module, and its libraries are
 SDRangel's four remote plugins (remote input, output, sink and source) are not built on x86-64:
 they need SSE3 at compile time, which the x86-64 baseline the tree compiles for does not define,
 and `cm256cc`, the library they use, needs a processor with SSSE3 there.
+
+### Packet radio has no kernel network interface
+
+Linux 7.2 carries no AX.25, NET/ROM or ROSE stack and none of the hamradio device drivers, so there
+is no `ax0` interface, no `kissattach` and no connected-mode AX.25 socket. Packet radio runs in
+userspace instead: `direwolf` is the modem, Pat reaches it through its AGW port with the
+`ax25+agwpe` transport, and Xastir through a KISS serial or network interface. A program that needs
+the kernel's AX.25 sockets, such as the `ax25-tools` and `ax25-apps` suites, a NET/ROM node or
+LinFBB, has nothing to talk to.
 
 ### Intel Quick Sync through oneVPL has no runtime
 

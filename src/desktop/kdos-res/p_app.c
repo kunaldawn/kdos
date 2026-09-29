@@ -261,6 +261,8 @@ void res_draw_apps(int x, int y, int w, int h)
 		return;
 	g_body = body;
 	kch_list_clamp(&g_top, g_sel, g_napp, body, g_follow);
+	/* The rows, beside the scrollbar's column: a scroll glides them. */
+	kch_list_view(x, row, w - 1, body, g_top);
 
 	for (int i = 0; i < body && g_top + i < g_napp; i++) {
 		const struct app *a = &g_app[g_top + i];

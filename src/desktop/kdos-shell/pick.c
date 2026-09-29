@@ -724,6 +724,7 @@ static void draw(const char *title)
 	list_w = pane_x < w ? pane_x : 1 << 20;
 	int lw = pane_x < w ? pane_x : w;
 
+	kch_list_view(1, list_top, lw - 2, list_rows, top);
 	for (int i = 0; i < list_rows; i++) {
 		int idx = top + i;
 		if (idx >= nrows)

@@ -388,8 +388,9 @@ static struct row rows[] = {
 	  "rss", "rss" },
 	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "icons", "icons",
 	  YESNO, 2, 0, 0, 0,
-	  "draw pictures beside the rows. `no` is the glyph tier, which is what "
-	  "a dump and a plain tty get anyway",
+	  "draw the page's icon in the header and the charts as antialiased "
+	  "pictures. `no` is the glyph tier, which is what a dump and a plain "
+	  "tty get anyway",
 	  "yes", "yes" },
 	{ CAT_HARDWARE, FT_TEXT, ST_RES, SC_LIVE, "sort", "sort",
 	  NULL, 0, 0, 0, 0,
@@ -853,20 +854,13 @@ static int editing, quit_armed;
 static int drag_slider;
 
 /*
- * THE EVENT THE EDITING FIELD WILL SEE.
- *
- * `ktui_input` is a frame control: it reads the event `ktui_frame_begin` was
- * given, so a key meant for the field has to reach the DRAW rather than be
- * spent in the loop. This surface hand-rolled a buffer instead — backspace and
- * printable bytes, no caret to move, no paste, and a UTF-8 value cut in half by
- * one backspace. Handing the event across is what lets the one field in the
- * toolkit be the field here too.
- *
- * Cleared by the draw that spends it: an event left standing would be applied
- * again on the next repaint, which is one keystroke typed twice.
+ * THE ROW BEING TYPED INTO, as the toolkit's field. This surface runs its own
+ * event loop, so it holds the KtuiField and calls the trio: the loop hands the
+ * field its keys and presses, the draw draws it, and the caret, the paste, the
+ * word keys and the UTF-8 boundaries are the ones every other field has.
  */
-static KtuiEvent field_ev;
 static char edit_buf[256];
+static KtuiField edit = { edit_buf, sizeof(edit_buf), 0, 0, NULL };
 
 /*
  * THREE RUNGS, INNERMOST LAST: the page under the grid, a box profile under
@@ -2124,22 +2118,11 @@ static void draw_page(void)
 				d = drop;
 			ktui_dropdown_draw(vr, &d, r->choices, r->nchoices, on);
 		} else if (on && editing) {
-			/*
-			 * THE ONE FIELD IN THE TOOLKIT, with the caret, the
-			 * arrows, Home and End, a click to place it and the
-			 * paste queue — and with UTF-8 handled in columns, so
-			 * a backspace cannot cut a character in half.
-			 *
-			 * The frame is opened and closed around this one
-			 * control because the surface has an event loop of its
-			 * own; with a single control claimed the focus is
-			 * always it.
-			 */
-			ktui_draw_fill(vr, bg);
-			ktui_frame_begin(&field_ev);
-			ktui_input(vr, edit_buf, sizeof(edit_buf), 0, NULL);
-			ktui_frame_end();
-			memset(&field_ev, 0, sizeof(field_ev));
+			/* On KT_SURFACE, the plate every field is drawn on,
+			 * rather than the row's selection fill: the field then
+			 * reads as the place being typed into, the same as it
+			 * does on every other surface. */
+			ktui_field_draw(vr, &edit, 1, KT_SURFACE);
 		} else {
 			/* AN UNSET VALUE IS THE ONE THING KT_DIM STILL SAYS
 			 * HERE, and only off the fill: KT_DIM on KT_DIM is one
@@ -2447,6 +2430,7 @@ static void activate(void)
 		}
 		editing = 1;
 		kb_strlcpy(edit_buf, sr->val, sizeof(edit_buf));
+		edit.caret = (int)sizeof(edit_buf);	/* the end */
 		note[0] = '\0';
 		return;
 	}
@@ -2470,6 +2454,7 @@ static void activate(void)
 	}
 	editing = 1;
 	kb_strlcpy(edit_buf, rows[ri].val, sizeof(edit_buf));
+	edit.caret = (int)sizeof(edit_buf);	/* the end */
 	note[0] = '\0';
 }
 
@@ -2635,7 +2620,13 @@ int settings_main(int argc, char **argv)
 		draw();
 
 		KtuiEvent ev;
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
+		int got = ktui_backend()->poll_event(&ev, 1000);
+
+		/* A paste arrives as a queue and not as an event, so the field
+		 * is offered it on every wake, whatever woke the loop. */
+		if (editing && mode == SM_PAGE)
+			ktui_field_key(&edit, NULL);
+		if (!got) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();
@@ -2803,6 +2794,13 @@ int settings_main(int argc, char **argv)
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
+				continue;
+			/* A press inside the field being typed into places its
+			 * caret, and one anywhere else leaves the edit open
+			 * with what was typed. */
+			if (editing && ev.btn == KT_MB_LEFT &&
+			    ktui_field_hit(val_rect_at(1 + sel - top), &edit,
+					   ev.mx, ev.my))
 				continue;
 			/*
 			 * AN OPEN LIST IS OVER THE ROWS AND ANSWERS FIRST.
@@ -2985,13 +2983,14 @@ int settings_main(int argc, char **argv)
 				editing = 0;
 			} else {
 				/*
-				 * EVERYTHING ELSE IS THE FIELD'S, and it is
-				 * handed across rather than acted on here —
-				 * the control reads the event the frame was
-				 * given. Escape is not excepted: `ktui_keys`
-				 * above has already taken it.
+				 * EVERYTHING ELSE IS THE FIELD'S, and what it
+				 * passes back is swallowed: Tab, Up and Down
+				 * moving the selection under an open edit
+				 * would commit nothing and strand the text.
+				 * Escape is not reached: `ktui_keys` above has
+				 * already taken it.
 				 */
-				field_ev = ev;
+				ktui_field_key(&edit, &ev);
 			}
 			continue;
 		}

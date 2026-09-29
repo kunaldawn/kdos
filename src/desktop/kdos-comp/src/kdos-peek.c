@@ -36,42 +36,78 @@
  * are what say the windows are still there. */
 #define PEEK_ALPHA 0.12f
 
+/* How long the fade takes each way, eased like every compositor fade
+ * (kdos-motion.c); `motion = no` makes it one frame. */
+#define PEEK_NS (150 * 1000000LL)
+
 static bool peeking;
 
-static void
-set_alpha(struct wlr_scene_buffer *buffer, int sx, int sy, void *data)
-{
-	float *alpha = data;
-
-	(void)sx;
-	(void)sy;
-	wlr_scene_buffer_set_opacity(buffer, *alpha);
-}
+/* The fade in flight: from `from` at `start_ns` towards `to`. `shown` is
+ * the alpha the windows carry now, which is where a reversal starts from —
+ * a pointer that leaves half way through fades back from half way. */
+static float from = 1.0f, to = 1.0f, shown = 1.0f;
+static int64_t start_ns;
+static bool running;
 
 /*
- * Every mapped view, including the ones on other workspaces — their scene
- * trees are simply not enabled, so setting an opacity on them costs a walk
- * and changes nothing visible. Filtering them out would mean a second idea
- * about which views exist, and getting THAT wrong is a window that comes back
- * from a peek still transparent.
+ * Every mapped view, including the ones on other workspaces: their scene
+ * trees are disabled, and kdos_motion_set_alpha() walks disabled trees too.
+ * Filtering them out would mean a second idea about which views exist, and
+ * getting THAT wrong is a window that comes back from a peek still
+ * transparent — a workspace switch during a peek would otherwise leave the
+ * old workspace's windows at the peek alpha.
  */
+static void
+apply(float alpha)
+{
+	struct view *view;
+
+	shown = alpha;
+	for_each_view(view, &server.views, LAB_VIEW_CRITERIA_NONE) {
+		if (view->scene_tree) {
+			kdos_motion_set_alpha(&view->scene_tree->node, alpha);
+		}
+	}
+}
+
 void
 kdos_peek_set(bool on)
 {
-	float alpha = on ? PEEK_ALPHA : 1.0f;
-	struct view *view;
-
 	if (peeking == on) {
 		return;
 	}
 	peeking = on;
+	/* a window mid-transition would fight the peek for its alpha, and
+	 * keep an offset the peek knows nothing about */
+	kdos_winmotion_settle_all();
+	from = shown;
+	to = on ? PEEK_ALPHA : 1.0f;
+	start_ns = kdos_frames_now();
+	running = true;
+	/* the first step equals where it starts and damages nothing, so
+	 * the first tick has to be asked for */
+	kdos_motion_kick();
+}
 
-	for_each_view(view, &server.views, LAB_VIEW_CRITERIA_NONE) {
-		if (!view->scene_tree) {
-			continue;
-		}
-		wlr_scene_node_for_each_buffer(&view->scene_tree->node,
-			set_alpha, &alpha);
+bool
+kdos_peek_holds(void)
+{
+	return peeking || running || shown != 1.0f;
+}
+
+/* From kdos_motion_tick(), at the top of every output frame. */
+void
+kdos_peek_tick(int64_t now_ns)
+{
+	if (!running) {
+		return;
+	}
+	bool done;
+	float alpha = kdos_motion_ease(start_ns, PEEK_NS, from, to, now_ns,
+		&done);
+	apply(alpha);
+	if (done) {
+		running = false;
 	}
 }
 
@@ -79,9 +115,14 @@ kdos_peek_set(bool on)
  * Called from the compositor's own teardown and from anywhere a peek must not
  * outlive its reason. A peek is transient by definition, and the one way it
  * could become permanent is the panel dying between the on and the off.
+ * Immediate, not eased: nothing will tick after it.
  */
 void
 kdos_peek_finish(void)
 {
-	kdos_peek_set(false);
+	peeking = false;
+	running = false;
+	if (shown != 1.0f) {
+		apply(1.0f);
+	}
 }

@@ -261,7 +261,7 @@ static void set_list(const char *path)
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
-static const KtuiCol VF_COL[] = { { "FILE", 0 }, { "RESULT", 24 } };
+static const KtuiCol VF_COL[] = { { "FILE", 0, 0 }, { "RESULT", 24, 0 } };
 #define VF_NCOL 2
 
 static void vf_cell(int idx, int col, int x, int y, int w, int fg, int bg,
@@ -441,131 +441,120 @@ static void take_drop(void)
 	}
 }
 
-int verify_main(int argc, char **argv)
-{
-	const char *font = NULL;
-	const char *first = NULL;
-	int dump = 0;
+static const char *first;
 
-	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--font") && i + 1 < argc)
-			font = argv[++i];
-		else if (!strcmp(argv[i], "--dump"))
-			dump = 1;
-		else if (!strcmp(argv[i], "--no-icons"))
-			icons_on = 0;
-		else if (argv[i][0] != '-' && !first)
-			first = argv[i];
-		else {
-			fprintf(stderr, "usage: kdos-verify [--font NAME] "
-					"[--no-icons] [--dump] [LIST]\n");
-			return 2;
-		}
+static int vf_arg(int argc, char **argv, int *i)
+{
+	(void)argc;
+	if (!strcmp(argv[*i], "--no-icons")) {
+		icons_on = 0;
+		return 1;
 	}
+	if (argv[*i][0] == '-' || first)
+		return 0;
+	first = argv[*i];
+	return 1;
+}
+
+static void vf_start(int dump)
+{
 	rows = calloc(VF_MAX, sizeof(*rows));
 	ktui_keys_layer(&keys, "Cancel", prompt_up, prompt_down, NULL);
 	if (first)
 		set_list(first);
+	/* The finished check, not the first instant of it: a golden of
+	 * "checking" would hold nothing the surface is for. */
+	if (dump && job.running) {
+		sh_job_wait(&job);
+		summarise();
+	}
+}
 
-	KDispConfig cfg = {
-		.role = KDISP_ROLE_TOPLEVEL,
-		.cols = VF_COLS,
-		.rows = VF_ROWS,
-		.min_cols = 52,
-		.min_rows = 12,
-		.title = "Verify",
-		.app_id = "kdos-verify",
-		.font = font,
-		.keyboard = 1,
-	};
+static int vf_timeout(void)
+{
+	return job.running ? 250 : 1000;
+}
 
-	sh_theme_from_cache();
-	if (dump) {
-		/* The finished check, not the first instant of it: a golden
-		 * of "checking" would hold nothing the surface is for. */
-		if (job.running) {
-			sh_job_wait(&job);
+static void vf_wake(void)
+{
+	if (job.running && sh_job_pump(&job)) {
+		if (job.running)
+			snprintf(status, sizeof(status), "%.150s", job.last);
+		else
 			summarise();
-		}
-		ktui_offscreen_init(VF_COLS, VF_ROWS);
-		ktui_draw_init();
-		draw();
-		ktui_draw_dump();
-		return 0;
 	}
-	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-		fprintf(stderr, "kdos-verify: no display server\n");
-		return 1;
+}
+
+static int vf_typing(void)
+{
+	return prompt == PR_LIST;
+}
+
+static int vf_event(KtuiEvent *ev)
+{
+	if (ev->type == KT_EVT_DROP) {
+		if (!job.running)
+			take_drop();
+		return SH_EV_TAKEN;
 	}
-	ktui_draw_init();
-
-	while (!kdisp_should_close()) {
-		if (job.running && sh_job_pump(&job)) {
-			if (job.running)
-				snprintf(status, sizeof(status), "%.150s",
-					 job.last);
-			else
-				summarise();
+	if (ev->type == KT_EVT_MOUSE) {
+		if (ev->press == KT_MP_DRAG) {
+			kch_hover(ev->mx, ev->my);
+			return SH_EV_TAKEN;
 		}
-		draw();
-		ktui_draw_flush();
+		if (ev->press == KT_MP_PRESS) {
+			int bi = kch_button_at(ev->mx, ev->my);
 
-		KtuiEvent ev;
-
-		if (!ktui_backend()->poll_event(&ev, job.running ? 250 : 1000)) {
-			if (ktui_resized) {
-				ktui_resized = 0;
-				ktui_draw_resize();
-				ktui_draw_invalidate();
+			if (bi == VB_CLOSE)
+				return SH_EV_CLOSE;
+			if (bi >= 0) {
+				prompt = PR_NONE;
+				on_button(bi);
+				return SH_EV_TAKEN;
 			}
-			continue;
 		}
-		if (ev.type == KT_EVT_DROP) {
-			if (!job.running)
-				take_drop();
-			continue;
-		}
-		if (ev.type == KT_EVT_MOUSE) {
-			if (ev.press == KT_MP_DRAG) {
-				kch_hover(ev.mx, ev.my);
-				continue;
-			}
-			if (ev.press == KT_MP_PRESS) {
-				int bi = kch_button_at(ev.mx, ev.my);
-
-				if (bi == VB_CLOSE)
-					break;
-				if (bi >= 0) {
-					prompt = PR_NONE;
-					on_button(bi);
-					continue;
-				}
-			}
-			if (ktui_table_event(list_rect(), &tbl, nrow,
-					     ktui_h - body_top - 6, VF_NCOL,
-					     VF_COL, &ev, NULL, NULL) ==
-			    KTUI_TABLE_CLOSE)
-				break;
-			continue;
-		}
-		if (ev.type != KT_EVT_KEY)
-			continue;
-		if (prompt != PR_LIST || ev.key == KT_K_ESC) {
-			int r = ktui_keys(&keys, &ev);
-
-			if (r == KTUI_KEY_CLOSE)
-				break;
-			if (r == KTUI_KEY_TAKEN)
-				continue;
-		}
-		/* An unhandled Ctrl or Alt chord arrives as its letter, and
-		 * must not type that letter into the path. */
-		if (prompt == PR_LIST && ev.key >= 0x20 && ev.key < 0x7f &&
-		    (ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)))
-			continue;
-		on_key(ev.key);
+		if (ktui_table_event(list_rect(), &tbl, nrow,
+				     ktui_h - body_top - 6, VF_NCOL, VF_COL, ev,
+				     NULL, NULL) == KTUI_TABLE_CLOSE)
+			return SH_EV_CLOSE;
+		return SH_EV_TAKEN;
 	}
-	kdisp_shutdown();
+	if (ev->type != KT_EVT_KEY)
+		return SH_EV_PASS;
+	/* An unhandled Ctrl or Alt chord arrives as its letter, and must not
+	 * type that letter into the path. */
+	if (prompt == PR_LIST && ev->key >= 0x20 && ev->key < 0x7f &&
+	    (ev->mods & (KT_MOD_CTRL | KT_MOD_ALT)))
+		return SH_EV_TAKEN;
+	on_key(ev->key);
+	return SH_EV_TAKEN;
+}
+
+int verify_main(int argc, char **argv)
+{
+	static const ShSurface s = {
+		.cfg = {
+			.role = KDISP_ROLE_TOPLEVEL,
+			.cols = VF_COLS,
+			.rows = VF_ROWS,
+			.min_cols = 52,
+			.min_rows = 12,
+			.title = "Verify",
+			.app_id = "kdos-verify",
+			.keyboard = 1,
+		},
+		.usage = "[--font NAME] [--no-icons] [--dump] [LIST]",
+		.keys = &keys,
+		.arg = vf_arg,
+		.start = vf_start,
+		.draw = draw,
+		.event = vf_event,
+		.typing = vf_typing,
+		.timeout = vf_timeout,
+		.wake = vf_wake,
+	};
+	int r = sh_run(&s, argc, argv);
+
 	free(rows);
-	return 0;
+	return r;
 }

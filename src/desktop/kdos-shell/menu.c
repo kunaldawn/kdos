@@ -534,13 +534,16 @@ static void draw(const struct view *v)
 		 * same selection the Start menu and the taskbar wear, from the
 		 * same tone table, so a highlight means one thing on this
 		 * desktop. The cells stay on the page's own slot, which the
-		 * backdrop owns, so the plate shows through under the label.
+		 * backdrop owns, so the plate shows through under the label,
+		 * and the plate slides to a new row rather than jumping
+		 * (kch_px_row_anim): the cells have already moved, so it
+		 * lags nothing a key or a click acts on.
 		 */
 		uint8_t fg = KT_TEXT;
 		uint8_t bg = KT_SURFACE;
 
 		if (sel) {
-			kch_px_row(1, 1 + r, w - 2, KCH_T_ACTIVE);
+			kch_px_row_anim(0, idx, 1, 1 + r, w - 2, KCH_T_ACTIVE);
 	/*
 	 * AND THE CELL FORM OF THE SAME FACT WHERE THERE IS NO PIXEL LAYER.
 	 * The plate is the whole highlight, so in a dump
@@ -584,6 +587,7 @@ static void draw(const struct view *v)
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
+	kch_list_view(1, 1, w - 2, rows, v->top);
 	kch_scrollbar(0, w - 1, 1, rows, v->n, v->top, KT_SURFACE);
 	ktui_draw_flush();
 }
@@ -889,7 +893,7 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 		uint8_t bg = KT_SURFACE;
 
 		if (is_sel) {
-			kch_px_row(1, 1 + r, w - 2, KCH_T_ACTIVE);
+			kch_px_row_anim(1, idx, 1, 1 + r, w - 2, KCH_T_ACTIVE);
 			/* The cell form of the same fact — see the cascading
 			 * menu above. */
 			if (!kch_px_live()) {
@@ -913,6 +917,7 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
+	kch_list_view(1, 1, w - 2, vis, top);
 	kch_scrollbar(0, w - 1, 1, vis, nrows, top, KT_SURFACE);
 	ktui_draw_flush();
 }

@@ -232,7 +232,9 @@ static void complete_scan(const char *prefix)
 	qsort(comp, (size_t)ncomp, sizeof(comp[0]), cmp_str);
 }
 
-/* Display columns in the first `nbytes` bytes — the caret's cell. */
+/* Display columns in the first `nbytes` bytes — the caret's cell. Widths and
+ * not codepoints: a wide glyph is two cells, and counting it as one puts the
+ * caret a cell short of the character it is on. */
 static int col_of(const char *s, size_t nbytes)
 {
 	const char *p = s, *end = s + nbytes;
@@ -241,7 +243,7 @@ static int col_of(const char *s, size_t nbytes)
 	while (p < end && *p) {
 		uint32_t cp;
 		p = ktui_utf8_next(p, &cp);
-		c++;
+		c += ktui_wcwidth(cp);
 	}
 	return c;
 }
@@ -259,7 +261,7 @@ static size_t cur_at_col(const char *s, int want)
 	while (*p && c < want) {
 		uint32_t cp;
 		p = ktui_utf8_next(p, &cp);
-		c++;
+		c += ktui_wcwidth(cp);
 	}
 	return (size_t)(p - s);
 }
@@ -311,11 +313,7 @@ static void run_draw(const char *cmd, size_t len, size_t cur, int *offp)
 		off = pw;
 	if (pw - off >= room)
 		off = pw - room + 1;
-	const char *shown = cmd;
-	for (int c = 0; c < off && *shown; c++) {
-		uint32_t cp;
-		shown = ktui_utf8_next(shown, &cp);
-	}
+	const char *shown = cmd + cur_at_col(cmd, off);
 	ktui_draw_text(4, 1, room, shown, KT_TEXT, KT_SURFACE, KT_A_NONE);
 	/* The caret: the cell under it with the colours swapped, or a
 	 * bare underscore when it sits past the end of the line. */
@@ -414,7 +412,8 @@ int run_main(int argc, char **argv)
 	kch_px_popup(KT_SURFACE);
 
 	char cmd[MAX_CMD] = { 0 };
-	size_t len = 0, cur = 0;	/* bytes; cur is the caret */
+	/* The toolkit's field over `cmd`; its caret is a byte offset. */
+	KtuiField f = { cmd, sizeof(cmd), 0, 0, NULL };
 	int off = 0;			/* leftmost shown column */
 	int rc = 1;
 
@@ -424,11 +423,15 @@ int run_main(int argc, char **argv)
 	int hpos = nhist;
 
 	while (!kdisp_should_close()) {
-		run_draw(cmd, len, cur, &off);
+		run_draw(cmd, strlen(cmd), (size_t)f.caret, &off);
 		ktui_draw_flush();
 
 		KtuiEvent ev;
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
+		int got = ktui_backend()->poll_event(&ev, 1000);
+
+		/* A paste is a queue and not an event: offered on every wake. */
+		ktui_field_key(&f, NULL);
+		if (!got) {
 			/* The grid follows a configure only when the loop that
 			 * owns the surface applies it — the caret window above
 			 * is computed from a width that no longer exists
@@ -471,7 +474,8 @@ int run_main(int argc, char **argv)
 				 * answer: editing the middle of a long command
 				 * meant arrowing to it. */
 				if (bi < 0 && ev.my == 1 && ev.mx >= 4)
-					cur = cur_at_col(cmd, off + ev.mx - 4);
+					f.caret = (int)cur_at_col(
+						cmd, off + ev.mx - 4);
 			}
 			continue;
 		}
@@ -494,7 +498,8 @@ int run_main(int argc, char **argv)
 			/* First token only: a run box completes the COMMAND;
 			 * an argument is a path question it does not answer. */
 			size_t tok = strcspn(cmd, " \t");
-			if (cur > tok)
+			size_t len = strlen(cmd);
+			if ((size_t)f.caret > tok)
 				continue;
 			if (ncomp < 0) {
 				char pre[MAX_CMD];
@@ -510,55 +515,9 @@ int run_main(int argc, char **argv)
 					memmove(cmd + ml, cmd + tok,
 						len - tok + 1);
 					memcpy(cmd, m, ml);
-					len += ml - tok;
-					cur = ml;
+					f.caret = (int)ml;
 				}
 			}
-			continue;
-		}
-		if (ev.key == KT_K_BACKSPACE) {
-			if (cur) {
-				size_t p = cur - 1;
-				while (p > 0 && (cmd[p] & 0xc0) == 0x80)
-					p--;
-				memmove(cmd + p, cmd + cur, len - cur + 1);
-				len -= cur - p;
-				cur = p;
-			}
-			continue;
-		}
-		if (ev.key == KT_K_DEL) {
-			if (cur < len) {
-				uint32_t cp;
-				size_t nx = (size_t)(ktui_utf8_next(cmd + cur,
-								    &cp) - cmd);
-				memmove(cmd + cur, cmd + nx, len - nx + 1);
-				len -= nx - cur;
-			}
-			continue;
-		}
-		if (ev.key == KT_K_LEFT) {
-			while (cur > 0) {
-				cur--;
-				if ((cmd[cur] & 0xc0) != 0x80)
-					break;
-			}
-			continue;
-		}
-		if (ev.key == KT_K_RIGHT) {
-			if (cur < len) {
-				uint32_t cp;
-				cur = (size_t)(ktui_utf8_next(cmd + cur, &cp) -
-					       cmd);
-			}
-			continue;
-		}
-		if (ev.key == KT_K_HOME) {
-			cur = 0;
-			continue;
-		}
-		if (ev.key == KT_K_END) {
-			cur = len;
 			continue;
 		}
 		if (ev.key == KT_K_UP || ev.key == KT_K_DOWN) {
@@ -570,38 +529,16 @@ int run_main(int argc, char **argv)
 				cmd[0] = '\0';	/* back to a fresh line */
 			else
 				snprintf(cmd, sizeof(cmd), "%s", hist[hpos]);
-			len = strlen(cmd);
-			cur = len;
+			f.caret = (int)strlen(cmd);
 			continue;
 		}
-		if ((ev.mods & KT_MOD_CTRL) &&
-		    (ev.key == 'u' || ev.key == 'U')) {	/* Ctrl+U: clear the line */
-			cmd[0] = '\0';
-			len = 0;
-			cur = 0;
-			continue;
-		}
-		if ((ev.mods & KT_MOD_CTRL) &&
-		    (ev.key == 'w' || ev.key == 'W')) {	/* Ctrl+W: the word before the caret */
-			size_t p = cur;
-			while (p && cmd[p - 1] == ' ')
-				p--;
-			while (p && cmd[p - 1] != ' ')
-				p--;
-			memmove(cmd + p, cmd + cur, len - cur + 1);
-			len -= cur - p;
-			cur = p;
-			continue;
-		}
-		/* Printable ASCII only: the command is split into argv by
-		 * bytes, and accepting multi-byte input here would let half a
-		 * codepoint end an argument. */
-		if (ev.key >= 0x20 && ev.key < 0x7f &&
-		    !(ev.mods & KT_MOD_CTRL) && len + 1 < sizeof(cmd)) {
-			memmove(cmd + cur + 1, cmd + cur, len - cur + 1);
-			cmd[cur++] = (char)ev.key;
-			len++;
-		}
+		/* Everything else is the line's, the toolkit's field: the
+		 * caret keys, Backspace and Delete, Ctrl+U and Ctrl+W, and the
+		 * text. A command line is split into arguments on ASCII
+		 * spaces and quotes, which no byte of a UTF-8 sequence can
+		 * be, so a name typed with an accent reaches the program
+		 * whole. */
+		ktui_field_key(&f, &ev);
 	}
 
 	kdisp_shutdown();

@@ -34,11 +34,11 @@ with an empty value is ignored and the default stays in force.
 |---|---|---|
 | `panel` | `bottom` | `bottom`, `top`, or `off` (`none` is accepted as `off`) |
 | `panel_cells` | `2` | Height in cells, 1 to 4. With `1` there is no second row, no meters strip, and a window button shows a name and no icon |
-| `panel_font` | `Terminus:pixelsize=20` | The bar's font, which sets its height. Name a size Terminus has: 12, 14, 16, 18, 20, 22, 24, 28 or 32; any other size is drawn at the nearest one, and the bar then sits a pixel off everything measured against it |
+| `panel_font` | `Terminus:pixelsize=20` | The bar's font, which sets its height. Name a size Terminus has: 12, 14, 16, 18, 20, 22, 24, 28 or 32; a size between them is drawn at the nearest one, and the bar then sits a pixel off everything measured against it |
 | `panel_margin` | `0` | Pixels between the bar and the screen edge, 0 to 64. A non-zero value floats the bar off three sides, and maximised windows stop at the gap |
 | `panel_opacity` | `80` | Background opacity in percent, 20 to 100. Text and icons stay opaque |
 | `panel_autohide` | `no` | `yes` shrinks the bar to a one-row strip until the pointer reaches it |
-| `chrome_font` | `Terminus:pixelsize=32` | The font of the surfaces the compositor starts: the desktop icons, the dock-app column, notifications and the Wi-Fi passphrase prompt. Menus and popups opened from the panel draw in the built-in `Terminus:pixelsize=32` whatever it says. It is a pixel size; for a 4K screen name the scalable face, `Terminus (TTF):pixelsize=64`, because bitmap Terminus stops at 32 |
+| `chrome_font` | `Terminus:pixelsize=32` | The font of the surfaces the compositor starts: the desktop icons, the dock-app column, notifications and the Wi-Fi passphrase prompt. Menus and popups opened from the panel draw in the built-in `Terminus:pixelsize=32` whatever it says. It is a pixel size; for a 4K screen at scale 1, `Terminus:pixelsize=64` is the 32 size with every pixel doubled. A size Terminus has no bitmap for, such as 48, is drawn from `Terminus (TTF)` in a cell exactly that tall |
 | `clock_format` | `%H:%M` | The panel clock, as a `strftime` format; `%a %d %H:%M` adds the day and date |
 | `desktop_icons` | `yes` | `no` turns off `kdos-desk` and leaves the wallpaper bare |
 | `icons` | `yes` | `no` draws a character glyph wherever a picture would go |
@@ -114,7 +114,10 @@ carries the same figure with a graph.
 
 Pinned launchers and running windows share one row. A pinned application that is running uses its
 pinned slot instead of appearing twice, and the underline under a button shows that it is running.
-Drag a pinned icon along the row to reorder it; the order is saved to `~/.config/kdos/favorites`.
+Starting a pinned application, with a click or a middle click, flashes the accent over its button
+twice in about a second, so the click shows as taken while the program starts; with `motion = no`
+in `comp.conf` the accent is held steady for that second instead (see
+[Reducing motion](accessibility.md#reducing-motion)). Drag a pinned icon along the row to reorder it; the order is saved to `~/.config/kdos/favorites`.
 Releasing the icon anywhere off the row cancels the drag.
 
 By default a window button is a picture with no label, which makes the panel a dock. The
@@ -153,7 +156,8 @@ Choose the meters with `meters =` in `~/.config/kdos/panel.conf`. Six are availa
 | `net` | Network received and sent, mirrored | 6 |
 | `diskio` | Disk read and written, mirrored | 6 |
 
-Sixteen cells is a fixed limit; [kdos-shell](../04-programs/kdos-shell.md) explains why. Two
+Sixteen cells is a fixed limit, the strip's share of the bar, which leaves the rest of the row to the
+window list; [kdos-shell](../04-programs/kdos-shell.md#the-meters-strip) has the detail. Two
 percentage meters and one mirrored meter add up to exactly sixteen; two mirrored meters and anything
 else do not fit. List the names in order of importance: when the set is too wide, or the bar too
 narrow, meters are dropped from the right. `meters =` with nothing after it turns the strip off.
@@ -670,7 +674,8 @@ selected, `Shift+F10` opens the wallpaper's menu; with an icon selected it opens
 Deleting from the desktop moves the file to the standard freedesktop trash, the same
 one `kdos trash <file>` uses from a prompt. Opening the Trash icon opens `kdos-trash`, which lists
 what was deleted, when and from where. `Enter` puts the selected file back where it was, `d` or
-`Delete` deletes it for good, and `c` empties the trash; both of those ask first.
+`Delete` deletes it for good, and `c` empties the trash; both of those ask first. Click a column's
+title, or press `s`, to sort by name, size, date or origin.
 
 ### The file browser
 

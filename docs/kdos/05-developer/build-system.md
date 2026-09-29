@@ -64,7 +64,7 @@ and `psf2limine.py`, and `hooks/`, which holds the git
 | `01_phase1` | Base Userland | Container | 16 scripts, `00_file_system.sh` to `13_kinstall.sh`: the `fs/` overlay, kernel headers, musl, libstdc++, ncurses, xz, gzip, tar, toybox, readline, bash, binutils, gcc, make, kpkg, kinstall | `cross fs mark` |
 | `02_phase2` | Self-Hosting Bootstrap | Chroot | `packages.txt`, 8 ports: tar, musl, zlib, binutils, diffutils, m4, gawk and gcc, rebuilt inside the chroot | `fs` |
 | `03_phase3` | Toolchain & Core Libraries | Chroot | `packages.txt`, 98 ports: compilers, build systems, interpreters, base libraries | `fs` |
-| `04_phase4` | Userland & GUI Sliver | Chroot | `packages.txt`, 1,687 ports: system tools, services, firmware, the network stack, fonts, the Wayland base, Xwayland, the container layer, codecs, the application toolkits and the natively ported applications built on them, and KDOS's own theme, icons, splash and tools | `fs` |
+| `04_phase4` | Userland & GUI Sliver | Chroot | `packages.txt`, 1,685 ports: system tools, services, firmware, the network stack, fonts, the Wayland base, Xwayland, the container layer, codecs, the application toolkits and the natively ported applications built on them, and KDOS's own theme, icons, splash and tools | `fs` |
 | `05_desktop` | Desktop | Chroot | `packages.txt`, 22 ports: wlroots, `kdos-comp`, `kdos-shell`, `kdos-term`, `kdos-lock`, `kdos-res`, the daemons, the pack tools, fcitx5 and its engines, the portals, `kdos-record` | `fs` |
 | `05_phase5` | Kernel | Chroot | `packages.txt`, 1 port: `linux` | `fs` |
 | `06_packaging` | Packaging | Chroot | 10 scripts: see [The packaging steps](#the-packaging-steps) | `fs iso_root iso-build initramfs initramfs.cpio.gz` |
@@ -87,7 +87,7 @@ same chroot.
 `05_desktop` sorts before `05_phase5` by name (`d` before `p`), so the desktop is built before the
 kernel. The desktop is a phase of its own for two reasons. It is the only phase whose package
 search path includes `src/desktop`, which holds the compositor, the shell and the daemons that no
-earlier phase could build. And it gives the 1,687-port phase 4 a snapshot of its own below the
+earlier phase could build. And it gives the 1,685-port phase 4 a snapshot of its own below the
 desktop, so work on a desktop program restores phase 4 and re-runs only what the desktop adds: the
 ports its list names and the dependencies no earlier phase installs, such as `libinput`, `libwacom`
 and `mtdev`, which only `wlroots` pulls in. The kernel is the last port built before packaging.
@@ -95,12 +95,12 @@ and `mtdev`, which only `wlroots` pulls in. The kernel is the last port built be
 ### Port lists, groups and the dependency closure
 
 A `packages.txt` names only the ports a phase wants; each port's `depends =` line pulls in the rest,
-and `kpkg` installs dependencies first. The five lists hold 1,815 names between them, 1,775 of them
+and `kpkg` installs dependencies first. The five lists hold 1,813 names between them, 1,773 of them
 distinct: 38 ports are named in more than one list. All 8 phase-2 ports appear again in `03_phase3`,
 2 of those also in `04_phase4`, 29 further phase-3 ports appear again in `04_phase4`, and
 `xcb-util-wm` is named in both `04_phase4` and `05_desktop`. A port already installed from the same
 recipe is skipped when a later list names it again. A reading of every recipe's `depends =` lines
-reaches 1,996 of the 2,001 ports under `ports/core` from the lists. [The ports
+reaches 1,994 of the 1,999 ports under `ports/core` from the lists. [The ports
 catalogue](../06-reference/ports-catalogue.md) lists every port by phase and list group, and those
 named more than once. The comment headings inside a list, such as "Core Services" or "Modern CLI
 tools" in phase 4, divide it into list groups for the reader; the orchestrator ignores them. List
@@ -260,7 +260,10 @@ underscores and hyphens turned into spaces. The snapshot keys are described in
 
 The rest of each environment file is ordinary shell that the phase's steps do source. The files for
 `03_phase3` onwards name the compiler outright (`CC=gcc`, `CXX=g++`) rather than letting configure
-scripts pick one, since some of them prefer clang once it is installed. Every file sets
+scripts pick one, since some of them prefer clang once it is installed. The same files export
+`ac_cv_prog_cxx_cxx11` empty, which stops an Autoconf `configure` lowering the C++ standard to
+C++11 (see [Build troubleshooting](build-troubleshooting.md#autoconf-lowering-the-c-standard)).
+Every file sets
 `MAKEFLAGS=-j12`; every file except `toolchain.env.sh` sets `KPKG_STRICT_RECIPE=1`; phases 4, 5 and
 the desktop set `PORT_REPO` (see the table above); and every file carries the settings that make
 packages reproducible (`SOURCE_DATE_EPOCH`, `TZ`, `LC_ALL`, `-ffile-prefix-map`,
@@ -277,7 +280,7 @@ inside it:
 |---|---|---|
 | `HOME` | `/root` | Everything |
 | `TERM` | The caller's | Everything |
-| `PATH` | `/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin` | Everything |
+| `PATH` | `/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin` | Everything |
 | `KDOS_REPLAY` | `0` or `1` | A step whose "already done" guard must stand down because a plan named it (see [Build plans](#build-plans)) |
 | `KDOS_ISO_SOURCES` | `0` or `1` | `06_packaging/02_iso.sh`, to copy the sources onto the ISO (see [The packaging steps](#the-packaging-steps)) |
 | `KDOS_PACK_KDOS` | `0` or `1` | `06_packaging/01_packs.sh`, to pack this root filesystem as the base pack `kdos`, and `02_iso.sh`, to put that pack on the ISO |
@@ -663,7 +666,7 @@ filter, and `Enter` or `Esc` returns to the plan. It holds every directory with 
 `ports/core` and `src/packages`, plus every name in any phase's `packages.txt`; that last source is
 what puts the `src/desktop` recipes on it, since each is named in `script/05_desktop/packages.txt`,
 and it keeps a listed name that has no recipe visible. A name is listed once, and a `packages.txt`
-entry records its phase beside it. The list holds up to 4096 names; this repository gives it 2,025.
+entry records its phase beside it. The list holds up to 4096 names; this repository gives it 2,023.
 
 ## kdosbuild
 

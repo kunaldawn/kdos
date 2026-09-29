@@ -66,11 +66,11 @@ There are three port repositories, all in the same format, searched in this orde
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 2,001 | Upstream software |
+| `/ports/core` | `ports/core/` | 1,999 | Upstream software |
 | `/kdos/src/packages` | `src/packages/` | 11 | KDOS's own tools, theme, installer and packer |
 | `/kdos/src/desktop` | `src/desktop/` | 13 | KDOS's own compositor, shell, terminal, daemons and portal |
 
-That is 2,025 recipes in all (counted as directories holding a `kpkgbuild`). When two repositories
+That is 2,023 recipes in all (counted as directories holding a `kpkgbuild`). When two repositories
 hold a port of the same name, the first one in the search order wins.
 
 `PORT_REPO` lists the repositories `kpkg` may resolve against. Its default, from
@@ -123,18 +123,18 @@ system or in what order they are built. That is the job of the **phase package l
 |---|---|---|
 | `script/02_phase2/packages.txt` | 8 | none: the self-hosting bootstrap, rebuilt inside the chroot |
 | `script/03_phase3/packages.txt` | 97 | 9, from "Build Toolchain" to "Documentation & Spec Tooling" |
-| `script/04_phase4/packages.txt` | 1,687 | 90, from "Core Build Utilities (host-side)" to "Data the applications read" |
+| `script/04_phase4/packages.txt` | 1,685 | 90, from "Core Build Utilities (host-side)" to "Data the applications read" |
 | `script/05_desktop/packages.txt` | 22 | 1: "The resource monitor" (see below) |
 | `script/05_phase5/packages.txt` | 1 | none: the kernel, `linux` |
 
-"Names" counts the non-comment lines. Between them the five lists name 1,775 distinct ports.
+"Names" counts the non-comment lines. Between them the five lists name 1,773 distinct ports.
 The desktop list opens with an unnamed block under its banner, which titles the list "Phase 5:
 The desktop": `xcb-util-wm`, `wlroots`, the compositor, the box socket, the shell, the terminal
 and the lock screen. Its one named group, "The resource monitor", holds `kdos-res` and everything
 after it: the root daemons, the pack tools, the input method, the two portals and the recorder.
 
 A list names only the ports a phase wants; each port's `depends =` pulls in the rest. Following the
-`depends =` lines from the 1,775 names reaches 2,019 ports: 1,996 of the 2,001 in `ports/core`, and
+`depends =` lines from the 1,773 names reaches 2,017 ports: 1,994 of the 1,999 in `ports/core`, and
 every recipe under `src/` except `kdos-installer`, which phase 1 builds by name. The 5 `ports/core`
 recipes nothing reaches are built only on request.
 
@@ -478,7 +478,7 @@ their URL's basename, and `file::url` names a file explicitly.
 
 ## Deciding what to rebuild
 
-The build must not recompile 2,025 ports on every run, and must not skip one whose recipe changed.
+The build must not recompile 2,023 ports on every run, and must not skip one whose recipe changed.
 Two hashes decide, and they are the same two the binary host uses.
 
 ### `E:` — the recipe hash
@@ -556,7 +556,7 @@ command line and miss every *dependency* whose recipe changed.
 ## Reproducible packages
 
 A package built twice from the same tree is byte-identical. That is a property of one function, the
-archive roller inside `kpkg`, rather than of 2,025 recipes, which is why `kpkg` rolls the archive
+archive roller inside `kpkg`, rather than of 2,023 recipes, which is why `kpkg` rolls the archive
 itself instead of letting each `build.sh` do it.
 
 Each setting removes one source of difference between two builds:

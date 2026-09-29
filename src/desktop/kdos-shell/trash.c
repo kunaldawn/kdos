@@ -8,8 +8,10 @@
  *   kdos-trash — what was deleted, and the way back
  *
  *   ╔═ Trash ══════════════════════════════════════════════╗
- *   ║ notes.txt              1.2K  2026-09-05  ~/Documents ║
- *   ║ old-build              4.0K  2026-09-04  ~/src       ║
+ *   ║ Name              Size  Deleted ↓   From             ║
+ *   ║──────────────────────────────────────────────────────║
+ *   ║ notes.txt         1.2K  2026-09-05  ~/Documents      ║
+ *   ║ old-build       folder  2026-09-04  ~/src            ║
  *   ╟──────────────────────────────────────────────────────╢
  *   ║ Enter put back  d delete  c empty  Esc Close         ║
  *   ╚══════════════════════════════════════════════════════╝
@@ -29,6 +31,11 @@
  * A DESTRUCTIVE ROW ASKS FIRST, and the question is a declared Esc rung rather
  * than a flag: Escape while it is up answers "no" and leaves the list exactly
  * as it was, which is what Escape means everywhere else on this desktop.
+ *
+ * THE LIST IS A ktui_table, so its columns sort from their titles (or `s`),
+ * the name column's edge drags, and a long trash gets the table's scrollbar.
+ * The table sorts an index array and never the records: `items` stays in
+ * the canonical order reload() gives it, which is what breaks every tie.
  * ---------------------------------
  */
 
@@ -45,8 +52,24 @@
 #define TR_ROWS 20
 
 static KbTrashItem *items;
-static int nitems, sel, top;
+static int *order;		/* row i draws items[order[i]]             */
+static int nitems;
 static char note[160];
+
+/*
+ * Newest first to begin with, because that is the canonical order and the
+ * header should say so. The selection rule on the surface's own slot, not
+ * the accent fill: the secondary columns lift to KT_TEXT on the selected row
+ * (ktui_sel_dim) where the accent fill would leave them muted.
+ */
+enum { COL_NAME, COL_SIZE, COL_WHEN, COL_FROM, NCOL };
+static KtuiTable tbl = {
+	.sort = COL_WHEN + 1,
+	.desc = 1,
+	.page = KT_SURFACE,
+	.selrule = 1,
+	.inset = 1,
+};
 
 /*
  * The question, and what answering yes does. One rung, because only one can be
@@ -84,19 +107,73 @@ static int cmp_when(const void *a, const void *b)
 	return c ? c : strcmp(x->name, y->name);
 }
 
+/*
+ * One column, rising; the table turns it round and breaks ties by index,
+ * which is the canonical order above. A folder has no size worth comparing
+ * (see the size column), so folders sort together: ahead of every file
+ * rising, after every file falling.
+ */
+static int cmp_col(int a, int b, int col, void *user)
+{
+	const KbTrashItem *x = &items[a], *y = &items[b];
+
+	(void)user;
+	switch (col) {
+	case COL_NAME:
+		return strcmp(x->name, y->name);
+	case COL_SIZE:
+		if (x->isdir != y->isdir)
+			return x->isdir ? -1 : 1;
+		if (x->isdir)
+			return 0;
+		return (x->bytes > y->bytes) - (x->bytes < y->bytes);
+	case COL_WHEN:
+		return strcmp(x->when, y->when);
+	default:
+		return strcmp(x->orig, y->orig);
+	}
+}
+
+static void resort(void)
+{
+	ktui_table_sort(&tbl, order, nitems, cmp_col, NULL);
+}
+
 static void reload(void)
 {
 	free(items);
+	free(order);
 	items = NULL;
+	order = NULL;
 	nitems = kb_trash_list(&items);
 	if (nitems < 0)
 		nitems = 0;
 	if (nitems > 1)
 		qsort(items, (size_t)nitems, sizeof(items[0]), cmp_when);
-	if (sel >= nitems)
-		sel = nitems ? nitems - 1 : 0;
-	if (sel < 0)
-		sel = 0;
+	if (nitems)
+		order = malloc((size_t)nitems * sizeof(*order));
+	if (!order)
+		nitems = 0;
+	for (int i = 0; i < nitems; i++)
+		order[i] = i;
+	/* A reload renumbers the records, so the selection stays on its ROW
+	 * rather than following a record index that now names another file —
+	 * after a delete, the row under the one that went. */
+	int row = tbl.sel;
+
+	tbl.sel = -1;
+	resort();
+	tbl.sel = row;
+	if (tbl.sel >= nitems)
+		tbl.sel = nitems ? nitems - 1 : 0;
+	if (tbl.sel < 0)
+		tbl.sel = 0;
+}
+
+/* The record under the selection, or NULL on an empty trash. */
+static const KbTrashItem *picked(void)
+{
+	return tbl.sel >= 0 && tbl.sel < nitems ? &items[order[tbl.sel]] : NULL;
 }
 
 /*
@@ -118,21 +195,80 @@ static const char *pretty_orig(const char *path, char *buf, size_t n)
 	return path;
 }
 
+/*
+ * The columns at this width. The name takes a third, as it always has, and
+ * the origin the remainder: the origin is the column a person reads to tell
+ * two files of the same name apart. Rebuilt every draw and every pointer
+ * event from the same width, so a press is measured against what is shown.
+ */
+static KtuiCol cols[NCOL];
+
+static void make_cols(int w)
+{
+	cols[COL_NAME] = (KtuiCol){ "Name", (w - 4) / 3,
+				    KT_COL_SORT | KT_COL_RESIZE };
+	cols[COL_SIZE] = (KtuiCol){ "Size", 6, KT_COL_SORT | KT_COL_RIGHT };
+	cols[COL_WHEN] = (KtuiCol){ "Deleted", 10, KT_COL_SORT };
+	cols[COL_FROM] = (KtuiCol){ "From", 0, KT_COL_SORT };
+}
+
+/* The table's rect: inside the frame, above the rule over the hint row. */
+static KRect list_rect(void)
+{
+	return krect(1, 1, ktui_w - 2, ktui_h - 4 > 3 ? ktui_h - 4 : 3);
+}
+
+static int list_rows(void)
+{
+	return list_rect().h - 2;	/* under the titles and their rule */
+}
+
+static void tr_cell(int idx, int col, int x, int y, int w, int fg, int bg,
+		    void *user)
+{
+	const KbTrashItem *it = &items[order[idx]];
+	int dim = ktui_sel_dim(idx == tbl.sel, 1);
+	char buf[512];
+
+	(void)user;
+	switch (col) {
+	case COL_NAME:
+		ktui_table_text(&cols[col], x, y, w, it->name, fg, bg);
+		break;
+	case COL_SIZE:
+		/* A directory's `bytes` is its inode, not a recursive total,
+		 * so it is named rather than measured — a folder reported as
+		 * 4K is a number that is wrong rather than missing. */
+		ktui_table_text(&cols[col], x, y, w,
+				it->isdir ? "folder" : kb_human_size(it->bytes),
+				dim, bg);
+		break;
+	case COL_WHEN:
+		/* TEN, which is the date and not the `T`: the record's
+		 * timestamp is ISO, and the time of day is noise in a list
+		 * sorted by it. */
+		ktui_table_text(&cols[col], x, y, w < 10 ? w : 10, it->when,
+				dim, bg);
+		break;
+	default:
+		/* One cell short of the frame, so a long path stops before
+		 * the border rather than against it. */
+		ktui_table_text(&cols[col], x, y, w - 1,
+				pretty_orig(it->orig, buf, sizeof(buf)), dim,
+				bg);
+		break;
+	}
+}
+
 static void draw(void)
 {
 	int w = ktui_w, h = ktui_h;
-	int rows = h - 4;
 
 	if (w < 24 || h < 8)
 		return;
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 	ktui_draw_box(krect(0, 0, w, h), "Trash", KT_ACCENT, KT_SURFACE, 1);
-
-	if (sel < top)
-		top = sel;
-	if (sel >= top + rows)
-		top = sel - rows + 1;
 
 	if (!nitems) {
 		/* The empty state in the middle, where somebody is already
@@ -141,33 +277,10 @@ static void draw(void)
 
 		ktui_draw_text((w - (int)strlen(msg)) / 2, h / 2 - 1,
 			       w - 2, msg, KT_MID, KT_SURFACE, KT_A_NONE);
-	}
-
-	for (int i = 0; i < rows && top + i < nitems; i++) {
-		const KbTrashItem *it = &items[top + i];
-		int y = 1 + i, on = top + i == sel;
-		int fg, bg;
-
-		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
-		char buf[512];
-		const char *orig = pretty_orig(it->orig, buf, sizeof(buf));
-
-		ktui_draw_fill(krect(1, y, w - 2, 1), bg);
-		ktui_draw_text(2, y, (w - 4) / 3, it->name, fg, bg, KT_A_NONE);
-		/* A directory's `bytes` is its inode, not a recursive total, so
-		 * it is named rather than measured — a folder reported as 4K is
-		 * a number that is wrong rather than missing. */
-		ktui_draw_text(2 + (w - 4) / 3, y, 10,
-			       it->isdir ? "folder" : kb_human_size(it->bytes),
-			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
-		/* TEN, which is the date and not the `T`: the record's
-		 * timestamp is ISO and a column that stopped one character
-		 * later would end every row on a separator. */
-		ktui_draw_text(12 + (w - 4) / 3, y, 10, it->when,
-			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
-		ktui_draw_text(24 + (w - 4) / 3, y,
-			       w - 26 - (w - 4) / 3, orig,
-			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
+	} else {
+		make_cols(w);
+		ktui_table_draw(list_rect(), &tbl, nitems, cols, NCOL, tr_cell,
+				NULL, NULL, -1);
 	}
 
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
@@ -180,11 +293,11 @@ static void draw(void)
 			ktui_draw_textf(2, h - 2, w - 4, KT_WARN, KT_SURFACE,
 					KT_A_NONE,
 					"Delete all %d for good?  y/n", nitems);
-		else if (sel < nitems)
+		else if (picked())
 			ktui_draw_textf(2, h - 2, w - 4, KT_WARN, KT_SURFACE,
 					KT_A_NONE,
 					"Delete %.40s for good?  y/n",
-					items[sel].name);
+					picked()->name);
 	} else if (note[0]) {
 		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_SURFACE);
 		ktui_draw_text(2, h - 2, w - 4, note, KT_WARN, KT_SURFACE,
@@ -194,9 +307,12 @@ static void draw(void)
 		ktui_hint_if(nitems > 0, "d", "delete");
 		ktui_hint_if(nitems > 0, "c", "empty");
 		ktui_hint("Esc", ktui_esc_verb(&keys));
+		/* After Esc, because the row stops at the first hint that does
+		 * not fit: on a narrow window the sort key, which the titles
+		 * also answer, is the one to lose. */
+		ktui_hint_if(nitems > 1, "s", "sort");
 		ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
 	}
-	ktui_draw_flush();
 }
 
 /*
@@ -207,10 +323,11 @@ static void draw(void)
 static void put_back(void)
 {
 	char to[KB_TRASH_PATH];
+	const KbTrashItem *it = picked();
 
-	if (sel >= nitems)
+	if (!it)
 		return;
-	if (kb_trash_restore(items[sel].name, to, sizeof(to)) == 0) {
+	if (kb_trash_restore(it->name, to, sizeof(to)) == 0) {
 		char pretty[512];
 
 		snprintf(note, sizeof(note), "put back to %.120s",
@@ -222,12 +339,12 @@ static void put_back(void)
 	case ENOENT:
 		snprintf(note, sizeof(note),
 			 "%.40s has no record to restore it by",
-			 items[sel].name);
+			 it->name);
 		break;
 	case EEXIST:
 		snprintf(note, sizeof(note),
 			 "something already exists where %.40s came from",
-			 items[sel].name);
+			 it->name);
 		break;
 	default:
 		snprintf(note, sizeof(note), "cannot put back: %s",
@@ -236,170 +353,134 @@ static void put_back(void)
 	}
 }
 
-int trash_main(int argc, char **argv)
+/*
+ * THE POINTER WALKS THE LIST AND PUTS A ROW BACK, by the rule every table
+ * here keeps: a press moves the caret, a press on the row it is already on
+ * picks, the wheel walks and the right button is Back. A press on a title
+ * sorts, and the name column's edge drags — motion and release come here too.
+ *
+ * NOT WHILE A QUESTION IS UP. The confirm owns the keyboard for a reason — a
+ * list that scrolled or re-sorted under it would answer it about a different
+ * row — and a pointer that could move it is the same defect through the other
+ * hand.
+ */
+static int on_mouse(KtuiEvent *ev)
 {
-	const char *font = NULL;
-	int dump = 0;
+	if (asking || !nitems)
+		return SH_EV_PASS;
+	make_cols(ktui_w);
+	switch (ktui_table_event(list_rect(), &tbl, nitems, list_rows(), NCOL,
+				 cols, ev, NULL, NULL)) {
+	case KTUI_TABLE_PICKED:
+		put_back();
+		break;
+	case KTUI_TABLE_CLOSE:
+		return SH_EV_CLOSE;
+	case KTUI_TABLE_SORT:
+		resort();
+		break;
+	default:
+		break;
+	}
+	return SH_EV_TAKEN;
+}
 
-	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--font") && i + 1 < argc)
-			font = argv[++i];
-		else if (!strcmp(argv[i], "--dump"))
-			dump = 1;
-		else {
-			fprintf(stderr, "usage: kdos-trash [--font NAME] "
-					"[--dump]\n");
-			return 2;
+/* The question owns the keyboard while it is up: a list that scrolled under an
+ * unanswered confirm would answer it about a different row. */
+static void answer(int k)
+{
+	if (k == 'y' || k == 'Y') {
+		if (asking == ASK_EMPTY) {
+			int n = kb_trash_empty();
+
+			snprintf(note, sizeof(note),
+				 n < 0 ? "could not empty the trash"
+				       : "emptied %d", n);
+		} else if (picked()) {
+			if (kb_trash_remove(picked()->name) != 0)
+				snprintf(note, sizeof(note),
+					 "cannot delete: %s", strerror(errno));
+			else
+				note[0] = '\0';
 		}
+		asking = ASK_NONE;
+		reload();
+	} else if (k == 'n' || k == 'N') {
+		asking = ASK_NONE;
+	}
+}
+
+static int on_event(KtuiEvent *ev)
+{
+	if (ev->type == KT_EVT_MOUSE)
+		return on_mouse(ev);
+	if (ev->type != KT_EVT_KEY)
+		return SH_EV_PASS;
+	if (asking) {
+		answer(ev->key);
+		return SH_EV_TAKEN;
 	}
 
+	note[0] = '\0';
+	if (ktui_table_key(&tbl, nitems, list_rows(), ev->key, NULL, NULL))
+		return SH_EV_TAKEN;
+	switch (ev->key) {
+	case 's':
+		/* A chord arrives as its letter with KT_MOD_CTRL. */
+		if (ev->mods & KT_MOD_CTRL)
+			break;
+		make_cols(ktui_w);
+		if (ktui_table_sort_next(&tbl, cols, NCOL))
+			resort();
+		break;
+	case KT_K_ENTER:
+		put_back();
+		break;
+	case 'd':
+	case KT_K_DEL:
+		if (nitems)
+			asking = ASK_DELETE;
+		break;
+	case 'c':
+		if (nitems)
+			asking = ASK_EMPTY;
+		break;
+	case 'r':
+		reload();
+		break;
+	default:
+		break;
+	}
+	return SH_EV_TAKEN;
+}
+
+static void tr_start(int dump)
+{
+	(void)dump;
 	ktui_keys_layer(&keys, "Cancel", ask_up, ask_cancel, NULL);
 	reload();
+}
 
-	KDispConfig cfg = {
-		.role = KDISP_ROLE_OVERLAY,
-		.cols = TR_COLS,
-		.rows = TR_ROWS,
-		.app_id = "kdos-trash",
-		.font = font,
-		.keyboard = 1,
+int trash_main(int argc, char **argv)
+{
+	static const ShSurface s = {
+		.cfg = {
+			.role = KDISP_ROLE_OVERLAY,
+			.cols = TR_COLS,
+			.rows = TR_ROWS,
+			.app_id = "kdos-trash",
+			.keyboard = 1,
+		},
+		.keys = &keys,
+		.popup = 1,
+		.popup_bg = KT_SURFACE,
+		.start = tr_start,
+		.draw = draw,
+		.event = on_event,
 	};
+	int r = sh_run(&s, argc, argv);
 
-	sh_theme_from_cache();
-	if (dump) {
-		ktui_offscreen_init(TR_COLS, TR_ROWS);
-		ktui_draw_init();
-		draw();
-		ktui_draw_dump();
-		return 0;
-	}
-	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-		fprintf(stderr, "kdos-trash: no display server\n");
-		return 1;
-	}
-	ktui_draw_init();
-	kch_px_popup(KT_SURFACE);
-
-	while (!kdisp_should_close()) {
-		draw();
-
-		KtuiEvent ev;
-
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
-			if (ktui_resized) {
-				ktui_resized = 0;
-				ktui_draw_resize();
-				ktui_draw_invalidate();
-			}
-			continue;
-		}
-		/*
-		 * THE POINTER WALKS THE LIST AND PUTS A ROW BACK. This
-		 * surface answered no pointer event at all, so a deleted file
-		 * could be restored with a keyboard and by no other means.
-		 * `ktui_rows_event` is the rule every list here keeps: a press
-		 * moves the caret, a press on the row it is already on picks,
-		 * the wheel walks and the right button is Back.
-		 *
-		 * NOT WHILE A QUESTION IS UP. The confirm owns the keyboard
-		 * for a reason \u2014 a list that scrolled under it would answer it
-		 * about a different row \u2014 and a pointer that could scroll it is
-		 * the same defect through the other hand.
-		 */
-		if (ev.type == KT_EVT_MOUSE) {
-			int rows = ktui_h - 4;
-			KRect lr = krect(1, 1, ktui_w - 2,
-					 rows > 0 ? rows : 1);
-
-			if (asking)
-				continue;
-			switch (ktui_rows_event(lr, &sel, &top, nitems, &ev)) {
-			case KTUI_ROWS_PICKED:
-				put_back();
-				break;
-			case KTUI_ROWS_CLOSE:
-				goto done;
-			default:
-				break;
-			}
-			continue;
-		}
-		if (ev.type != KT_EVT_KEY)
-			continue;
-
-		{
-			int r = ktui_keys(&keys, &ev);
-
-			if (r == KTUI_KEY_CLOSE)
-				goto done;
-			if (r == KTUI_KEY_TAKEN)
-				continue;
-		}
-
-		/* The question owns the keyboard while it is up: a list that
-		 * scrolled under an unanswered confirm would answer it about a
-		 * different row. */
-		if (asking) {
-			if (ev.key == 'y' || ev.key == 'Y') {
-				if (asking == ASK_EMPTY) {
-					int n = kb_trash_empty();
-
-					snprintf(note, sizeof(note),
-						 n < 0 ? "could not empty the trash"
-						       : "emptied %d", n);
-				} else if (sel < nitems) {
-					if (kb_trash_remove(items[sel].name) != 0)
-						snprintf(note, sizeof(note),
-							 "cannot delete: %s",
-							 strerror(errno));
-					else
-						note[0] = '\0';
-				}
-				asking = ASK_NONE;
-				reload();
-			} else if (ev.key == 'n' || ev.key == 'N') {
-				asking = ASK_NONE;
-			}
-			continue;
-		}
-
-		note[0] = '\0';
-		switch (ev.key) {
-		case KT_K_UP:
-			if (sel > 0)
-				sel--;
-			break;
-		case KT_K_DOWN:
-			if (sel + 1 < nitems)
-				sel++;
-			break;
-		case KT_K_HOME:
-			sel = 0;
-			break;
-		case KT_K_END:
-			sel = nitems ? nitems - 1 : 0;
-			break;
-		case KT_K_ENTER:
-			put_back();
-			break;
-		case 'd':
-		case KT_K_DEL:
-			if (nitems)
-				asking = ASK_DELETE;
-			break;
-		case 'c':
-			if (nitems)
-				asking = ASK_EMPTY;
-			break;
-		case 'r':
-			reload();
-			break;
-		default:
-			break;
-		}
-	}
-done:
 	free(items);
-	kdisp_shutdown();
-	return 0;
+	free(order);
+	return r;
 }

@@ -437,6 +437,17 @@ library has no word for. [Window memory](#window-memory) answers it in the compo
 of a neighbour. That is why ownership and tab groups are the compositor's, and why there are no tile
 groups: two windows side by side that move, resize and minimise together.
 
+### A window between two places
+
+Every rectangle in this chapter is final from the moment it is computed: a window is never
+halfway between two of them, and nothing here has a duration. With `window_motion = yes` in
+`comp.conf` the compositor draws a window on its way (rising into place as it opens, sinking as it
+closes or is minimised, sliding sideways with a workspace switch; see
+[kdos-comp](../04-programs/kdos-comp.md#window-transitions)), but that is a picture over a state
+that has already changed. Placement, snapping, the edge search, window memory and occupancy all see
+the final rectangle and the final workspace. The one thing that follows the picture is the pointer,
+which meets a window where it is drawn.
+
 ### Which workspace a window is on
 
 A workspace is a set the compositor keeps, and "on every workspace" (`ToggleOmnipresent`,

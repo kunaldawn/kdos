@@ -87,6 +87,7 @@ it.
 | `Esc` | Back a page, or close the key card |
 | `PgUp` / `PgDn`, mouse wheel | Scroll a page taller than the screen |
 | `Ctrl+U` | Clear the field you are in |
+| `Ctrl+W`, `Ctrl+Backspace` | Delete the word before the caret; `Ctrl+←` / `Ctrl+→` move by word |
 | `F1` | Show or hide the key card |
 | `L` | Toggle the full log, on the Install page |
 | `Ctrl+Q`, `Ctrl+C` | Quit. The installer always asks first, and during an install it warns that the target is left half written |

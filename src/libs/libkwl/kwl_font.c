@@ -398,6 +398,54 @@ static void line_value(const char *line, size_t len, char *out, size_t n)
 	out[l] = '\0';
 }
 
+/* ── motion ────────────────────────────────────────────────────────────── */
+
+/*
+ * comp.conf's `motion`, read the way the compositor reads it: every line, the
+ * last setting winning, a commented line a comment, and a value that is
+ * neither yes nor no leaving the default — on. See kwl_priv.h.
+ */
+int kwl_conf_motion(void)
+{
+	static int known, on = 1;
+	static struct timespec seen;
+	char path[512];
+	struct stat st;
+	char *txt;
+	size_t n;
+
+	conf_path(path, sizeof(path));
+	if (!*path || stat(path, &st) != 0) {
+		known = 0;
+		on = 1;
+		return on;
+	}
+	if (known && st.st_mtim.tv_sec == seen.tv_sec &&
+	    st.st_mtim.tv_nsec == seen.tv_nsec)
+		return on;
+	known = 1;
+	seen = st.st_mtim;
+	on = 1;
+	txt = file_read(path, &n);
+	for (char *line = txt, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		char val[16];
+
+		next = nl ? nl + 1 : line + strlen(line);
+		if (!line_is_key(line, "motion"))
+			continue;
+		line_value(line, (size_t)(next - line), val, sizeof(val));
+		if (!strcasecmp(val, "no") || !strcasecmp(val, "off") ||
+		    !strcasecmp(val, "false") || !strcmp(val, "0"))
+			on = 0;
+		else if (!strcasecmp(val, "yes") || !strcasecmp(val, "on") ||
+			 !strcasecmp(val, "true") || !strcmp(val, "1"))
+			on = 1;
+	}
+	free(txt);
+	return on;
+}
+
 /*
  * THE FAMILY INTO comp.conf, EVERYTHING ELSE IN IT UNTOUCHED.
  *

@@ -89,7 +89,8 @@ static int auth;
 
 static char field[F_N][CN_FIELD];
 static int focus;			/* which field, when the form is up */
-static int caret;
+/* The toolkit's field, pointed at whichever row has the focus. */
+static KtuiField ff = { field[0], CN_FIELD, 0, 0, NULL };
 static int mode = M_LIST;
 
 static ShShareRow rows[CN_MAX];
@@ -243,16 +244,16 @@ static void send_disconnect(void)
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 static const KtuiCol CN_COL[] = {
-	{ NULL, 30 },		/* the UNC                                 */
-	{ NULL, 0 }		/* where it is                             */
+	{ NULL, 30, 0 },		/* the UNC                                 */
+	{ NULL, 0, 0 }		/* where it is                             */
 };
 #define CN_NCOL 2
 
 /* The address is a column and not a suffix on the name: two machines with the
  * same NetBIOS name on different subnets are one row apart otherwise. */
 static const KtuiCol CN_SCOL[] = {
-	{ NULL, 32 },		/* the server's name                       */
-	{ NULL, 0 }		/* where it answered from                  */
+	{ NULL, 32, 0 },		/* the server's name                       */
+	{ NULL, 0, 0 }		/* where it answered from                  */
 };
 
 static void sv_cell(int row, int col, int x, int y, int w, int fg, int bg,
@@ -287,7 +288,13 @@ static void draw_form(int w, int top, int body)
 			snprintf(shown, sizeof(shown), "%s   (Space changes)",
 				 FAUTH[auth]);
 		} else if (i == F_PASS) {
-			size_t n = auth == 1 ? 0 : strlen(field[i]);
+			/* One mark per CHARACTER, as the field counts them:
+			 * a mark per byte would say how many were not ASCII. */
+			size_t n = 0;
+
+			for (const char *p = field[i]; auth != 1 && *p; p++)
+				if (((unsigned char)*p & 0xc0) != 0x80)
+					n++;
 
 			if (n > sizeof(shown) - 1)
 				n = sizeof(shown) - 1;
@@ -317,7 +324,7 @@ static void draw_form(int w, int top, int body)
 	if (focus == F_AUTH || (focus == F_PASS && auth == 1))
 		ktui_term_caret(-1, -1);
 	else
-		ktui_term_caret(11 + caret, top + focus);
+		ktui_term_caret(11 + ktui_field_col(&ff), top + focus);
 }
 
 static void draw(void)
@@ -389,28 +396,35 @@ static void draw(void)
 
 /* ── keys ──────────────────────────────────────────────────────────────── */
 
+/* The field follows the focus, with its caret at the end of what the row
+ * already holds. */
+static void form_focus(int to)
+{
+	focus = to;
+	ff.buf = field[focus];
+	ff.caret = CN_FIELD;
+	ff.secret = focus == F_PASS;
+}
+
 static void form_open(void)
 {
 	mode = M_FORM;
 	/* THE FIRST ROW THAT STILL WANTS AN ANSWER. A server already filled in
 	 * — by a browse row, or by the last attempt — means the password is
 	 * what is left, and on a ticket there is no password either. */
-	focus = !field[F_SERVER][0] ? F_SERVER : auth == 1 ? F_SHARE : F_PASS;
-	caret = (int)strlen(field[focus]);
+	form_focus(!field[F_SERVER][0] ? F_SERVER
+		   : auth == 1	      ? F_SHARE
+				      : F_PASS);
 	status[0] = '\0';
 }
 
 static void form_move(int by)
 {
-	focus = (focus + by + F_N) % F_N;
-	caret = (int)strlen(field[focus]);
+	form_focus((focus + by + F_N) % F_N);
 }
 
 static int form_key(const KtuiEvent *ev)
 {
-	char *f = field[focus];
-	int n = (int)strlen(f);
-
 	if (ev->key == KT_K_ENTER) {
 		send_connect();
 		return 1;
@@ -448,39 +462,10 @@ static int form_key(const KtuiEvent *ev)
 		form_move(-1);
 		return 1;
 	}
-	if (ev->key == KT_K_BACKSPACE) {
-		if (caret > 0) {
-			memmove(f + caret - 1, f + caret,
-				(size_t)(n - caret) + 1);
-			caret--;
-		}
-		return 1;
-	}
-	if (ev->key == KT_K_LEFT) {
-		if (caret > 0)
-			caret--;
-		return 1;
-	}
-	if (ev->key == KT_K_RIGHT) {
-		if (caret < n)
-			caret++;
-		return 1;
-	}
-	if (ev->key == KT_K_HOME) {
-		caret = 0;
-		return 1;
-	}
-	if (ev->key == KT_K_END) {
-		caret = n;
-		return 1;
-	}
-	if (ev->key >= 0x20 && ev->key < 0x7f &&
-	    !(ev->mods & (KT_MOD_CTRL | KT_MOD_ALT)) && n + 1 < CN_FIELD) {
-		memmove(f + caret + 1, f + caret, (size_t)(n - caret) + 1);
-		f[caret++] = (char)ev->key;
-		return 1;
-	}
-	return 1;			/* the form takes every key */
+	/* The text is the toolkit's field; what it passes back is swallowed,
+	 * because the form takes every key. */
+	ktui_field_key(&ff, ev);
+	return 1;
 }
 
 int connect_main(int argc, char **argv)
@@ -545,8 +530,14 @@ int connect_main(int argc, char **argv)
 		ktui_draw_flush();
 
 		KtuiEvent ev;
+		int got = ktui_backend()->poll_event(&ev, 1000);
 
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
+		/* A paste is a queue and not an event: offered on every wake,
+		 * to a row that takes text. */
+		if (mode == M_FORM && focus != F_AUTH &&
+		    !(focus == F_PASS && auth == 1))
+			ktui_field_key(&ff, NULL);
+		if (!got) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();

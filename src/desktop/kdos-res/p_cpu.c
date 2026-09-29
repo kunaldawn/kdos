@@ -92,6 +92,20 @@ const char *res_cpu_headline(void)
 	return s;
 }
 
+const char *res_cpu_figure(void)
+{
+	static char s[16];
+	double busy = R.h_cpu.n ? kpr_hist_at(&R.h_cpu, R.h_cpu.n - 1) : 0.0;
+	snprintf(s, sizeof(s), "%.0f%%", busy);
+	return s;
+}
+
+/* ←, → scrub the utilisation chart — see res_graph_scrub(). */
+int res_cpu_key(int k)
+{
+	return res_graph_scrub(1, &R.h_cpu, k);
+}
+
 void res_draw_cpu(int x, int y, int w, int h)
 {
 	char reading[64];
@@ -116,7 +130,7 @@ void res_draw_cpu(int x, int y, int w, int h)
 		chart_h = 3;
 
 	res_graph(1, krect(x + 1, row, w - 2, chart_h), &R.h_cpu,
-		  "utilisation", reading);
+		  "utilisation", reading, res_fmt_pct);
 	row += chart_h;
 
 	/*
@@ -191,6 +205,6 @@ void res_draw_cpu(int x, int y, int w, int h)
 			continue;
 		}
 		res_graph(100 + i, krect(cx, cy, cw - 1, ch), &R.h_core[i],
-			  lbl, NULL);
+			  lbl, NULL, res_fmt_pct);
 	}
 }

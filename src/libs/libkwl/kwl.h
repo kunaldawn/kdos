@@ -30,6 +30,7 @@
 #define KWL_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "ktui.h"
 #include "kdisp.h"
@@ -135,9 +136,12 @@ int kwl_drag_start(const char *mime, const char *data, size_t len);
  * `step` moves the size in the name by that many units of whichever key
  * carries it, `:pixelsize=N` or `:size=N`, clamped at both ends. A step of 0
  * puts back the name kwl_init() was given, which is what a reset chord
- * means. A BITMAP FACE ANSWERS WITH THE NEAREST STRIKE
- * IT CARRIES, so a step that lands between two of them reloads a face of the
- * same size and the cell does not move at all. kwl_cell_w()/kwl_cell_h() are
+ * means. A BITMAP FACE ANSWERS WITH THE NEAREST STRIKE IT CARRIES, so a
+ * step that lands between two of them reloads a face of the same size and
+ * the cell does not move at all — except where libkcell moves the size onto
+ * the face's scalable twin (Terminus past its 32 strike: see "The cell's
+ * size" in docs/kdos/05-developer/c-libraries.md), where every step moves the
+ * cell. kwl_cell_w()/kwl_cell_h() are
  * how a caller tells: everything it cut for the old cell is still right when
  * they have not changed.
  *
@@ -156,8 +160,10 @@ int kwl_drag_start(const char *mime, const char *data, size_t len);
  */
 int kwl_font_step(int step);
 
-/* Cell metrics, once the font is loaded. A panel's pixel height is
- * cells * kwl_cell_h(). */
+/* Cell metrics, once the font is loaded, in the pixels the grid is drawn in:
+ * logical on the integer path, device pixels on a fractional output scale,
+ * where the font is loaded at the device size. A position handed to another
+ * surface goes through kwl_px_logical(). */
 int kwl_cell_w(void);
 int kwl_cell_h(void);
 /*
@@ -180,21 +186,85 @@ int kwl_edge_bottom(void);
  * Called with the surface's own pixman image just before the cells go down,
  * so a caller can lay a body, a plate or a one-pixel rule where a 10x20 cell
  * of one colour cannot. `w`/`h` are the buffer in real pixels and `scale` is
- * the output's integer scale: everything the callback draws is in pixels and
- * must be multiplied by it.
+ * the whole-number scale the grid is painted at: everything the callback
+ * draws is in the pixels kwl_cell_w() counts and must be multiplied by it. On
+ * a fractional output scale those pixels are the device's and `scale` is 1.
  *
  * Two consequences the caller does not get a choice about:
  *
- *  - Setting one forces a FULL cell repaint every frame. The row diff cannot
- *    know which cells the backdrop disturbed, and half a repaint over a fresh
- *    backdrop is a bar with last frame's text on it.
+ *  - Alone, it forces a FULL cell repaint and full damage on every commit.
+ *    The row diff cannot know which cells the backdrop disturbed, and half a
+ *    repaint over a fresh backdrop is a bar with last frame's text on it.
+ *    kwl_set_backdrop_cache() below is what lifts that.
  *  - Any slot the caller cleared to alpha 0 is then LEFT ALONE by the cell
  *    painter rather than cleared, because the clear would erase what this
  *    just drew. Clear the slot the backdrop owns and no other.
  *
- * NULL removes it.
+ * NULL removes it. Setting one drops any cache installed for the last.
  */
 void kwl_set_backdrop(KDispBackdropFn fn);
+/*
+ * A BACKDROP THAT CAN BE REPAINTED IN PART, installed after kwl_set_backdrop.
+ *
+ * `key` names the whole picture the backdrop would paint now — everything it
+ * depends on except the buffer's size and scale, which libkwl compares
+ * itself — and is asked once per commit, before the paint. `band` paints the
+ * rectangle (x, y, bw, bh), in buffer pixels, of exactly that picture into
+ * `dst` and touches nothing outside it; it returns -1 when it cannot, and the
+ * commit is then painted in full. `diff`, which may be NULL, sets `out` (an
+ * initialised region) to every pixel of a w x h picture at `scale` where the
+ * picture a previous `key` answer named and the current one can differ, and
+ * returns -1 when it cannot say. `same`, which may be NULL, answers 1 when
+ * the current picture's pixel rows [y, y + n) equal its rows [from, from + n)
+ * across the whole width, and 0 when they differ or it cannot say.
+ *
+ * With `key` and `band`, a buffer whose last backdrop had the current key
+ * keeps it: only the cells that differ from that buffer's own last paint are
+ * repainted, each laid back on its band of the picture first, because the
+ * painter leaves a backdrop-owned background alone and a glyph drawn on the
+ * last glyph is both. With `diff` as well, a buffer wearing an OLDER picture
+ * does the same, with every cell the moved pixels touch added to the ones it
+ * repaints — a hover plate that moved costs the rows it left and the rows it
+ * reached. A moved pixel outside the cell grid (the rule, the remainder past
+ * the last cell) has no cell to repaint it, so that commit is painted in
+ * full. With `same` as well, a grid that scrolled moves its pixels instead of
+ * repainting them (kwl.c, scroll_blit), but only
+ * the rows whose picture is the same at both ends of the move: a body with a
+ * vertical gradient is different on every row, and a row moved across it
+ * would carry the wrong shade with it.
+ *
+ * The damage is the changed cells plus, when the picture differs from the
+ * one on the screen, what `diff` says moved between the two; without an
+ * answer it is the whole surface. A key or a diff that misses an input leaves
+ * stale pixels, so a caller derives both from the same state it draws from.
+ * `KDOS_PAINT_FULL=1` in the environment paints and damages every commit in
+ * full, for comparing the two; so does `KDOS_INSPECT=1`, which draws the rows
+ * each commit changed over the surface (kwl_insp.h).
+ *
+ * NULL for `key` or `band` removes all four.
+ */
+struct pixman_region32;
+typedef int (*KwlBackdropBandFn)(pixman_image_t *dst, int w, int h, int scale,
+				 int x, int y, int bw, int bh);
+typedef int (*KwlBackdropDiffFn)(uint64_t from, int w, int h, int scale,
+				 struct pixman_region32 *out);
+typedef int (*KwlBackdropSameFn)(int w, int h, int scale, int y, int from,
+				 int n);
+void kwl_set_backdrop_cache(uint64_t (*key)(void), KwlBackdropBandFn band,
+			    KwlBackdropDiffFn diff, KwlBackdropSameFn same);
+/*
+ * EVERY PIXEL OF THE NEXT COMMIT IS OPAQUE. The surface then carries an
+ * opaque region over its whole size, and the compositor copies it instead of
+ * blending it and skips whatever lies underneath. A backdrop surface is ARGB
+ * by construction — its body slot is alpha 0 — so this is the only way it is
+ * ever treated as opaque.
+ *
+ * Read when the next commit is made and sent with it, so the claim describes
+ * the pixels it travels with: a backdrop's key callback may make it. A claim
+ * over a pixel that is not opaque shows whatever the compositor had under it,
+ * so claim it only for a picture that covers the surface at alpha 255.
+ */
+void kwl_set_opaque(bool on);
 /*
  * SOMETHING BELOW THE GRID CHANGED ITS PIXELS, asked at FLUSH TIME.
  *
@@ -210,8 +280,8 @@ void kwl_set_backdrop(KDispBackdropFn fn);
  * commit at all" gate gone for every surface that has a backdrop. The
  * callback is asked once per flush, after the picture is complete: it answers
  * non-zero only when what the backdrop would draw now differs from what it
- * last drew, and a non-zero answer costs a full repaint of the surface. NULL
- * removes it.
+ * last drew. A non-zero answer is a commit; what it repaints is the
+ * backdrop's business (kwl_set_backdrop_cache). NULL removes it.
  */
 void kwl_set_pixels_dirty_fn(int (*fn)(void));
 /*
@@ -232,14 +302,42 @@ void kwl_set_pixels_dirty_fn(int (*fn)(void));
  */
 int kwl_frame_throttled(void);
 /*
+ * A LIST THAT GLIDES. `x`, `y`, `w`, `h` are the cells the list's rows occupy
+ * — the rows alone, with no header and no scrollbar — and `top` is the item
+ * drawn in its first row. Declared on every draw, beside kch_list_clamp();
+ * a list not declared in a frame stops gliding.
+ *
+ * When `top` changes between two commits, the list's pixels slide from the
+ * picture that was on the screen to the new one over KWL_GLIDE_MS (see
+ * kwl_glide.h), eased out, with the commits in between driven by this
+ * library's own frame callbacks. The cells never move by less than a row: the
+ * fraction exists only in the pixels, the pointer hits the rows the cells
+ * say, and the last commit is the cells' own picture. Nothing glides where
+ * motion is off (comp.conf's `motion`), under KDOS_INSPECT, or when the move
+ * is as long as the list — a page is a jump. Up to KWL_GLIDES lists a frame.
+ */
+void kwl_list_view(int x, int y, int w, int h, int top);
+/*
  * 1 when the COMPOSITOR is drawing this window's frame, so the program must
  * not draw a second one round the outside of its own content. False on a
  * terminal, a panel and every popup — see kwl.c.
  */
 int kwl_decorated(void);
-/* The integer output scale in force. Anything a consumer rasterises for itself
- * has to be produced at cell * scale — libkicon is the caller. */
+/* The whole-number scale the grid is painted at. Anything a consumer
+ * rasterises for itself has to be produced at kwl_cell_w() * scale — libkicon
+ * is the caller. 1 on a fractional output scale, where the cell is the font's
+ * at the device size instead. */
 int kwl_scale(void);
+/* A pixel counted in kwl_cell_w()'s units, as the compositor counts it:
+ * floored to the logical pixel it falls in, and the same number on the
+ * integer path. See KDispImpl.px_logical. */
+int kwl_px_logical(int px);
+/* Call `fn` with the new scale whenever the surface's pixel cell changes —
+ * the output scale, or the device cell on a fractional one. At most
+ * KWL_SCALE_FNS functions; one already registered is not added twice. See
+ * KDispImpl.on_scale. */
+enum { KWL_SCALE_FNS = 4 };
+void kwl_on_scale(KDispScaleFn fn);
 
 /*
  * The pointer's shape over this surface, via cursor-shape-v1. Sticky: it is

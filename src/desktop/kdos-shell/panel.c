@@ -501,13 +501,19 @@ struct fav {
  *
  * `fav_anim` is the LAUNCH: a click starts something that takes seconds to
  * appear, and a launcher that looks identical before and after the click is
- * one people click twice. The icon pulses for a beat and a bit, which is long
- * enough to be seen and short enough not to outlast a warm start. The panel
- * shortens its own poll while it runs — see the wait computation in the loop —
- * so an idle bar still wakes once a second and nothing here costs a frame
- * clock.
+ * one people click twice. The button's plate pulses in the accent twice over
+ * FAV_ANIM_MS, which is long enough to be seen and short enough not to outlast
+ * a warm start. It is a KtuiAnim (`fav_pulse`), so the backend's frame clock
+ * draws it at the display's rate for exactly as long as it runs and the bar
+ * goes back to waking once a second after it. With `motion = no` the plate
+ * is held still at half strength for the same time instead — the click is
+ * still acknowledged, nothing moves. Pixels only: tty1 and a `--dump` have no
+ * plate, and the end value of a pulse is the button at rest.
  */
 #define FAV_ANIM_MS 1100
+/* The accent's alpha at the top of a beat, and while held still. */
+#define FAV_PULSE_A 0x66
+#define FAV_HELD_A 0x33
 static int64_t panel_now_ms(void);	/* the meters' clock, shared */
 static int hover_fav = -1;
 /* The overflow cell. It opens the window list and had no hover at all —
@@ -530,7 +536,7 @@ static int drag_fav = -1;	/* the icon a press armed, or -1 */
 static int drag_over = -1;	/* where it would land right now  */
 static int drag_moved;		/* the pointer has left its cell  */
 static int fav_anim = -1;
-static int64_t fav_anim_at;
+static KtuiAnim fav_pulse;
 
 static struct fav favs[FAV_MAX];
 static int nfavs;
@@ -617,7 +623,7 @@ static void fav_launch(int i)
 	if (i < 0 || i >= nfavs)
 		return;
 	fav_anim = i;
-	fav_anim_at = panel_now_ms();
+	ktui_anim_start(&fav_pulse, 0.0f, 1.0f, FAV_ANIM_MS, KT_EASE_IN_OUT, 2);
 	sh_launch_id(favs[i].id, NULL, 0);
 }
 
@@ -674,18 +680,45 @@ static int px_live;
  * toplevel maximized or fullscreen, which is not an approximation of the
  * problem: a maximized window IS what puts a bright surface behind the bar.
  */
+static uint8_t panel_alpha(void)
+{
+	return px_occluded ? 255 : (uint8_t)(panel_opacity * 255 / 100);
+}
+
+/* The edge goes on the side the DESKTOP is, which for a bottom bar is its
+ * top. libkwl knows which edge the surface is anchored to, so the derivation
+ * lives there rather than being `panel_top` spelled a second way. */
+static int panel_edge(void)
+{
+	return kdisp_edge_bottom() ? KCH_EDGE_BOTTOM : KCH_EDGE_TOP;
+}
+
 static void panel_backdrop(pixman_image_t *dst, int w, int h, int scale)
 {
-	uint8_t a = px_occluded ? 255
-				: (uint8_t)(panel_opacity * 255 / 100);
-
-	/* The edge goes on the side the DESKTOP is, which for a bottom bar is
-	 * its top. libkwl knows which edge the surface is anchored to, so the
-	 * derivation lives there rather than being `panel_top` spelled a
-	 * second way. */
-	kch_px_body(dst, w, h, scale, a,
-		    kdisp_edge_bottom() ? KCH_EDGE_BOTTOM : KCH_EDGE_TOP);
+	kch_px_body(dst, w, h, scale, panel_alpha(), panel_edge());
 	kch_px_replay(dst, scale);
+}
+
+/*
+ * EVERYTHING THE BACKDROP READS BESIDES THE PLATES, from the same two
+ * functions it reads them through. The picture is cached and a buffer that
+ * already wears it repaints only its changed cells, so a salt that missed the
+ * alpha would leave the bar translucent over a window that just maximized.
+ */
+static uint64_t panel_salt(void)
+{
+	return (uint64_t)panel_alpha() << 1 | (uint64_t)(panel_edge() + 1);
+}
+
+/*
+ * AT 255 THE BAR IS A WALL, and says so: the body covers every pixel, so the
+ * compositor may copy it rather than blend it and skip the window under it.
+ * That is the maximized case, which is the one where the bar sits over a
+ * whole screen of somebody else's pixels.
+ */
+static int panel_opaque(void)
+{
+	return panel_alpha() == 255;
 }
 /*
  * Whether a window button carries its name — `task_labels` in panel.conf.
@@ -1378,6 +1411,26 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 			fav_x[c->fav] = x;
 			fav_end[c->fav] = x + per;
 		}
+		/*
+		 * THE LAUNCH ACKNOWLEDGED, over the plate and under the
+		 * picture: the accent laid on the button's own shape, pulsing
+		 * or held still (see FAV_ANIM_MS). Recorded as an op like the
+		 * plate, so each step re-rasterises and damages this button
+		 * and nothing else on the bar.
+		 */
+		if (px_live && c->fav >= 0 && c->fav == fav_anim &&
+		    ktui_anim_running(&fav_pulse)) {
+			int cw = kdisp_cell_w(), chh = kdisp_cell_h();
+			int a = fav_pulse.still
+					? FAV_HELD_A
+					: (int)(FAV_PULSE_A *
+						ktui_anim_value(&fav_pulse) + 0.5f);
+
+			if (a > 0)
+				kch_px_round(x * cw + 1, 1, (per - 1) * cw - 2,
+					     h * chh - 2, KCH_PLATE_RADIUS,
+					     kch_slot_rgb(KT_ACCENT), (uint8_t)a);
+		}
 
 		/*
 		 * THE FILL IS THE PLATE WHERE THERE IS NO PLATE.
@@ -1609,9 +1662,13 @@ static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
 		return;
 	app_id = sh->tasks[chips[ci].first].app_id;
 
+	/* An anchor is ANOTHER surface's margin, so it is logical pixels:
+	 * on a fractional output scale the cell is counted in device ones,
+	 * and every anchor this bar hands out goes through kdisp_px_logical(). */
 	snprintf(xs, sizeof(xs), "%d",
-		 (sh->task_hit_x + (ci - chip_off) * sh->task_cell_w) *
-			 kdisp_cell_w());
+		 kdisp_px_logical((sh->task_hit_x +
+				   (ci - chip_off) * sh->task_cell_w) *
+				  kdisp_cell_w()));
 	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 	/*
 	 * THE BOX GOES WITH IT. The panel groups by (app_id, box), so the
@@ -1643,7 +1700,7 @@ static void spawn_tray_menu(const struct sh_tray_item *it, int cx)
 {
 	char xs[16], ys[16];
 
-	snprintf(xs, sizeof(xs), "%d", cx * kdisp_cell_w());
+	snprintf(xs, sizeof(xs), "%d", kdisp_px_logical(cx * kdisp_cell_w()));
 	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 
 	const char *argv[] = { "kdos-traymenu", it->service, it->menu,
@@ -2424,6 +2481,7 @@ static void panel_tick(struct sh_state *sh)
 			load_favorites();
 			hover_fav = -1;
 			fav_anim = -1;
+			ktui_anim_stop(&fav_pulse);
 		}
 	}
 }
@@ -3127,19 +3185,23 @@ static int media_count(int *mounted)
  * is more accurate — a half-second CPU sample is noisier, which is what the
  * smoothing below is for — it is faster because a chart is a thing in motion.
  *
- * The displayed value is SMOOTHED and the history is NOT. A one-second CPU
- * sample genuinely jumps between 4% and 60% on an idle desktop, and a number
- * that changes completely every second is one people stop reading — so the
- * label is an exponential average. The sparkline plots the raw samples,
- * because the point of a chart is the spikes.
+ * The HISTORY is raw and each picture of it chooses its smoothing. A
+ * half-second CPU sample genuinely jumps between 4% and 60% on an idle
+ * desktop, and a number that changes completely every sample is one people
+ * stop reading — so the label is an exponential average. The glyph sparkline
+ * plots the raw samples, because the point of a chart is the spikes; the
+ * pixel chart plots a three-point mean of them, which keeps every spike at a
+ * third of its height and takes the hash off a trace a pixel wide per sample
+ * (see met_band()).
  */
 /*
- * The ring is KPR_HIST deep — a hundred and twenty-eight samples, which at two
- * a second is a little over a minute, and the number is set by the CHART
- * rather than by taste. The tile draws one sample per PIXEL, and a band is
- * around sixty pixels wide at the shipped cell size and twice that at scale 2;
- * thirty-two samples filled half of one and left the rest blank, which reads
- * as a chart that has stopped rather than as a machine that has been quiet.
+ * The ring is KPR_HIST deep — two hundred and fifty-six samples, which at two
+ * a second is a little over two minutes, and the number is set by the CHART
+ * rather than by taste. The tile draws one sample per PIXEL, and the network
+ * band is seven cells — over a hundred pixels, and twice that at scale 2; a
+ * ring shorter than the band leaves a stretch at its left that no new sample can
+ * ever reach, which reads as a chart that has stopped rather than as a
+ * machine that has been quiet.
  */
 #define MET_MS 500		/* the sample interval, in milliseconds */
 /*
@@ -3157,10 +3219,10 @@ static int media_count(int *mounted)
  */
 #define MET_GRID 20		/* samples between gridlines — ten seconds */
 /*
- * The widest a tile can be, and it is libktui's limit rather than a taste: a
- * sprite cell encodes its sub-cell coordinate in four bits each way, so
- * kch_tile_begin() refuses anything past 16x16 CELLS. MDESC's widths are
- * chosen to sum to exactly this for the default set.
+ * The strip's share of the bar, in cells. The tile could be wider —
+ * kch_tile_begin() takes any size up to the grid — so this is a layout
+ * budget: the window list and the applets need the rest of the row, and
+ * MDESC's widths are chosen to sum to exactly this for the default set.
  */
 #define MET_TILE_MAX 16
 
@@ -4096,7 +4158,7 @@ static int draw_start(struct sh_state *sh, int compact)
 		int need_px = pad + content_px + pad;
 		int tw_cells = (need_px + cell_w * scale - 1) / (cell_w * scale);
 
-		if (tw_cells >= 3 && tw_cells <= 16 && tw_cells <= ktui_w / 3) {
+		if (tw_cells >= 3 && tw_cells <= ktui_w / 3) {
 			/* Everything the picture depends on, and nothing it
 			 * does not: the accent is folded in through
 			 * kch_tile_reset() on a retint rather than here. */
@@ -4184,9 +4246,9 @@ static int draw_start(struct sh_state *sh, int compact)
 				 * owns, so the picture sits on the recorded
 				 * plate and nothing fills over it.
 				 */
-				ktui_draw_sprite(krect(0, bar_y0, tw_cells,
-						       bar_h),
-						 slot, ink, plate);
+				kch_tile_draw(SH_TILE_START,
+					      krect(0, bar_y0, tw_cells, bar_h),
+					      ink, plate);
 				sh->start_x = 0;
 				sh->start_end = tw_cells;
 				return tw_cells;
@@ -4658,9 +4720,8 @@ static const struct mdesc {
 	 * THE WIDTHS ADD UP TO EXACTLY MET_TILE_MAX, AND THAT IS THE WHOLE
 	 * CONSTRAINT.
 	 *
-	 * A sprite cell carries its sub-cell coordinate in four bits each way,
-	 * so a tile can never be wider than sixteen cells — and the set that
-	 * has to fit is the default one, `cpu ram net`. Five cells is what a
+	 * MET_TILE_MAX is the strip's budget on the bar, and the set that has
+	 * to fit in it is the default one, `cpu ram net`. Five cells is what a
 	 * percentage band needs to hold `RAM` and `100%` side by side with air
 	 * between them at this cell size (measured: 18 + 6 + 24 pixels against
 	 * a 50-pixel band); the mirrored band needs less, because its two
@@ -4850,137 +4911,74 @@ static uint64_t met_hash(void)
 }
 
 /*
- * ONE AREA CHART, and every part of this is the difference between a chart
- * that reads and one that flickers.
+ * ONE BAND OF THE STRIP, drawn by libkchrome's chart — the same renderer as
+ * every chart in kdos-res, so an area chart is one picture on this desktop.
+ * What is chosen here, and why:
  *
- * A FILLED AREA UNDER A LINE, not a row of independent bars. At one sample per
- * pixel a bar chart is grass: every column is its own object and the eye has
- * nothing to follow. The fill is the same colour at a third of its weight and
- * the line rides on top of it, which is what every system monitor of the last
- * twenty years draws and is why theirs look calm on exactly this data.
+ * ONE SAMPLE PER PIXEL, HELD TO THE LEFT EDGE. The band is a pixel wide per
+ * sample, so the chart moves a pixel every MET_MS from the very first sample.
+ * The oldest value runs out to the left edge while the ring fills: drawn only
+ * where there are samples, the left of the band would sit empty until the ring
+ * filled — over a minute on the network band — and the chart would stand still
+ * and then abruptly start to travel.
  *
- * THE PLOTTED SERIES IS SMOOTHED, the printed number is not. A one-second CPU
- * sample genuinely swings between 4% and 60% on an idle desktop; a three-point
- * mean takes the hash off the line while keeping every real excursion, because
- * a spike that lasts one second still moves a three-point mean by a third of
- * its height. Smoothing the NUMBER instead would be lying about the instant.
+ * THE PLOTTED SERIES IS SMOOTHED, the printed number is not. A half-second
+ * CPU sample genuinely swings between 4% and 60% on an idle desktop; a
+ * three-point mean takes the hash off the line while keeping every real
+ * excursion, because a spike that lasts one sample still moves the mean by a
+ * third of its height. Smoothing the NUMBER instead would be lying about the
+ * instant.
  *
  * THE SCALE IS THE CALLER'S. A chart that autoscales to its own window
  * redraws a moving axis under stationary data — see kpr_scale_step().
  *
- * THE TRACE IS CONTINUOUS, INCLUDING AT ZERO, and that is the other half of
- * what "it goes back and forth one pixel" was. A sample worth less than a pixel
- * is drawn as one — a non-zero sample is never nothing — so a link carrying a
- * few hundred bytes a second was a row of isolated dots blinking in and out as
- * they scrolled, with nothing joining them. Every column now puts the line down
- * even when the bar is empty, so an idle meter reads as a live trace lying on
- * its baseline and a dribble is a bump on it.
+ * A TRACE AT REST DRAWS AT THE FILL'S WEIGHT. It still draws — a chart with
+ * gaps in it is a chart that has stopped — but a mirrored band at rest has
+ * both traces on the midline, and at full strength an idle network meter would
+ * be three hard rules across the band, the loudest object in the strip while
+ * nothing at all is happening. The first real sample lifts off at full
+ * strength.
+ *
+ * THE PLATE IS DRAWN EVEN WHEN THE PLOT IS NOT, a shade stronger under the
+ * pointer: an area chart at six percent of a sixty-four pixel band is four
+ * pixels along the bottom edge of the screen, and without the plate an idle
+ * machine shows a label, a number and nothing else.
  */
-static void met_graph(KCellCanvas *cv, int x, int y, int w, int h,
-		      const struct meter *m, double vmax, int slot, int flip)
+static void met_band(KCellCanvas *cv, int x, int w, int h,
+		     const struct mdesc *d, double vmax)
 {
-	int n = 0;
-	const double *v = meter_series(m, &n);
+	static double sa[KPR_HIST], sb[KPR_HIST];
+	KchPlot p = {
+		.vmax = vmax,
+		.slot_a = KT_ACCENT,
+		.slot_b = KT_WARN,
+		.step = 1.0,
+		.hold = 1,
+		.line_w = 1.0,
+		.area_alpha = 90,
+		.line_alpha = 255,
+		.rest_alpha = 90,
+		.seq = met_seq,
+		.grid = MET_GRID,
+		.grid_slot = KT_MID,
+		.grid_alpha = 60,
+		.plate_slot = KT_DIM,
+		.plate_alpha = hover_meters ? 110 : 55,
+		.base_slot = KT_DIM,
+		.base_alpha = 255,
+	};
 
-	if (w <= 0 || h <= 0 || n <= 0 || vmax <= 0)
-		return;
-
-	/*
-	 * THE TRACE SPANS THE WHOLE BAND FROM THE FIRST SAMPLE.
-	 *
-	 * Drawing only the samples there are and right-aligning them leaves
-	 * the left of the band EMPTY — no fill, no line, not even a baseline —
-	 * for as long as the ring takes to fill, which on the seven-cell
-	 * network band is over a minute. Worse, nothing MOVES while that is
-	 * happening: the newest sample stays pinned to the right edge and the
-	 * picture only starts scrolling once the ring is full, so a chart sat
-	 * still and then abruptly began to travel. Reported as "the graphs do
-	 * not move smoothly".
-	 *
-	 * Column i is sample `n - w + i`, and an index before the oldest
-	 * sample there is takes the oldest one. The trace is therefore
-	 * unbroken across the band from the very first frame, and real data
-	 * enters at the right and pushes the flat stretch off the left — which
-	 * is motion, one pixel per sample, from the first sample onward.
-	 */
-	int base = n - w;
-	int prev = -1;
-
-	for (int i = 0; i < w; i++) {
-		int j = base + i;
-		if (j < 0)
-			j = 0;
-		/* Three-point mean, clamped at the ends so the newest sample
-		 * is not held back by a neighbour that does not exist yet. */
-		double a = v[j];
-		double b = j > 0 ? v[j - 1] : a;
-		double c = j + 1 < n ? v[j + 1] : a;
-		double f = (a + b + c) / 3.0 / vmax;
-		if (f > 1)
-			f = 1;
-		if (f < 0)
-			f = 0;
-
-		int bar = (int)(f * h + 0.5);
-		if (bar < 1 && a > 0)
-			bar = 1;	/* a non-zero sample is never nothing */
-		if (bar > h)
-			bar = h;
-
-		/* The area, at a third of the colour's weight. */
-		if (bar > 0)
-			kcell_canvas_fill(cv, x + i, flip ? y : y + h - bar,
-					  1, bar, slot, 90);
-		/* The line: the top pixel of this column, plus the run down to
-		 * the previous column's top so a steep edge is continuous
-		 * rather than a stack of disconnected dots. A column with no
-		 * bar draws it on the baseline instead of skipping — see the
-		 * head. */
-		int top = flip ? y + (bar > 0 ? bar - 1 : 0)
-			       : y + h - (bar > 0 ? bar : 1);
-		int lo = top, hi = top;
-		if (prev >= 0) {
-			lo = prev < top ? prev : top;
-			hi = prev < top ? top : prev;
-		}
-		/*
-		 * A COLUMN AT ZERO DRAWS AT THE FILL'S WEIGHT, not the line's.
-		 *
-		 * It still draws — the head says why, and a chart with gaps in
-		 * it is a chart that has stopped. But a mirrored band at rest
-		 * has BOTH traces sitting on the midline, so an idle network
-		 * meter came out as three hard rules across the whole band, one
-		 * of them full-strength amber, and that was the loudest object
-		 * in the meters strip while nothing at all was happening. At
-		 * the fill's weight it reads as the baseline it is, and the
-		 * first real sample lifts off it at full strength.
-		 */
-		kcell_canvas_fill(cv, x + i, lo, 1, hi - lo + 1, slot,
-				  bar > 0 ? 255 : 90);
-		prev = top;
+	p.na = d->a->h.n;
+	for (int i = 0; i < p.na; i++)
+		sa[i] = kpr_hist_smooth(&d->a->h, i);
+	p.a = sa;
+	if (d->b) {
+		p.nb = d->b->h.n;
+		for (int i = 0; i < p.nb; i++)
+			sb[i] = kpr_hist_smooth(&d->b->h, i);
+		p.b = sb;
 	}
-}
-
-/*
- * The scrolling scale — see MET_GRID. One faint column per ten seconds of
- * samples, keyed to the absolute sample number so the ticks travel left with
- * the data instead of standing still under it. Drawn UNDER the trace, which is
- * what makes it a scale rather than a decoration.
- */
-static void met_grid(KCellCanvas *cv, int x, int y, int w, int h)
-{
-	if (w <= 0 || h <= 0)
-		return;
-
-	/* The whole band, like the trace over it: a scale that stopped where
-	 * the samples ran out would say the left of the chart was outside
-	 * time. Column w-1 is the newest sample, which is `met_seq`. */
-	for (int i = 0; i < w; i++) {
-		uint64_t abs = met_seq - (uint64_t)(w - 1 - i);
-
-		if (abs % MET_GRID == 0)
-			kcell_canvas_fill(cv, x + i, y, 1, h, KT_MID, 60);
-	}
+	kch_plot_draw(cv, x, 0, w, h, &p);
 }
 
 /*
@@ -5178,32 +5176,8 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 
 			met_text(id, v1, sizeof(v1), v2, sizeof(v2));
 
-			/*
-			 * THE PLOT AREA IS DRAWN EVEN WHEN THE PLOT IS NOT.
-			 *
-			 * An area chart at six percent of a sixty-four pixel
-			 * band is four pixels along the bottom edge of the
-			 * screen, and an idle machine therefore showed a
-			 * label, a number and nothing else — the chart was
-			 * working and was invisible. Every system monitor
-			 * worth copying gives the plot its own faint backdrop
-			 * and a baseline, so the BOX is legible at a glance
-			 * and the fill inside it is read against something.
-			 */
-			kcell_canvas_fill(cv, bx, 0, bw, H, KT_DIM,
-					  hover_meters ? 110 : 55);
-			met_grid(cv, bx, 0, bw, H);
+			met_band(cv, bx, bw, H, d, met_scale[id]);
 			if (!d->b) {
-				/* The baseline goes down BEFORE the trace: at
-				 * rest the two sit on the same row, and drawn
-				 * afterwards it would paint over the very line
-				 * the chart exists to show. Without it a
-				 * flat-zero chart and a chart that is not there
-				 * look the same. */
-				kcell_canvas_fill(cv, bx, H - 1, bw, 1, KT_DIM,
-						  255);
-				met_graph(cv, bx, 0, bw, H, d->a,
-					  met_scale[id], KT_ACCENT, 0);
 				/*
 				 * THE LABEL GIVES WAY, NOT THE READING — the
 				 * same rule the mirrored band below already
@@ -5231,29 +5205,10 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 						  v1,
 						  warn ? KT_WARN : KT_TEXT);
 			} else {
-				/*
-				 * MIRRORED, on ONE shared scale: halves that
-				 * autoscaled separately would draw a trickle
-				 * and a torrent the same height. Received
-				 * above in the accent, sent below in the
-				 * secondary — two colours because two
-				 * directions.
-				 */
+				/* Each reading wears its half's colour: received
+				 * above the midline in the accent, sent below it
+				 * in the secondary. */
 				int half = H / 2;
-				/* The midline first — it is the zero line for
-				 * BOTH halves, and the sent trace lies on it
-				 * when the link is quiet. */
-				kcell_canvas_fill(cv, bx, half, bw, 1, KT_DIM,
-						  255);
-				met_graph(cv, bx, 0, bw, half, d->a,
-					  met_scale[id], KT_ACCENT, 0);
-				/* Below the midline, not on it: the sent half's
-				 * own baseline is the first row UNDER the
-				 * zero line, so a quiet link shows a dim
-				 * midline with a trace either side of it
-				 * rather than one line wearing two colours. */
-				met_graph(cv, bx, half + 1, bw, H - half - 1,
-					  d->b, met_scale[id], KT_WARN, 1);
 				int uw = kcell_canvas_text_width(fsz, v1);
 				int dw = kcell_canvas_text_width(fsz, v2);
 				/* Each number over the half it describes. */
@@ -5297,17 +5252,15 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 	 * `row` is the strip's row — the second one — because that is what the
 	 * GLYPH fallback needs: it is one row of text under the applets. A
 	 * two-row tile drawn from there hangs off the bottom of the panel, and
-	 * ktui_draw_sprite silently drops the cells that are out of bounds —
-	 * so the tile rendered its top half into the panel's lower row and
-	 * threw the other half away. The visible result was a chart that
-	 * worked, was half the height it claimed, and sat in the wrong place;
-	 * it took a plot backdrop to see at all.
+	 * the sprite cells that fall outside the grid are silently dropped —
+	 * the top half lands in the panel's lower row and the other half is
+	 * thrown away: a chart half the height it claims, in the wrong place.
 	 */
 	int top = row + 1 - rows;
 	if (top < 0)
 		top = 0;
-	ktui_draw_sprite(krect(x, top, cells, rows), slot, KT_TEXT,
-			 KT_SURFACE);
+	kch_tile_draw(SH_TILE_METERS, krect(x, top, cells, rows), KT_TEXT,
+		      KT_SURFACE);
 	sh->meter_hit_x = x;
 	sh->meter_hit_end = x + cells;
 	/*
@@ -6847,7 +6800,8 @@ static void tip_tick(struct sh_state *sh)
 	tip_shown = 1;			/* one attempt per dwell, whatever happens */
 	if (!tip_text(sh, tip_kind, tip_idx, t1, sizeof(t1), t2, sizeof(t2)))
 		return;
-	snprintf(xs, sizeof(xs), "%d", (tip_x > 0 ? tip_x : 0) * kdisp_cell_w());
+	snprintf(xs, sizeof(xs), "%d",
+		 kdisp_px_logical((tip_x > 0 ? tip_x : 0) * kdisp_cell_w()));
 	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 	/*
 	 * A WINDOW BUTTON'S TIP CARRIES THE WINDOW.
@@ -6956,7 +6910,8 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	 * plus a margin.
 	 */
 	snprintf(xs, sizeof(xs), "%d",
-		 (id >= 0 && id < SH_AP_N ? sh->ap_x[id] : 0) * kdisp_cell_w());
+		 kdisp_px_logical((id >= 0 && id < SH_AP_N ? sh->ap_x[id] : 0) *
+				  kdisp_cell_w()));
 	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 
 	if (id == SH_AP_MPRIS && btn != SH_TRAY_BTN_LEFT) {
@@ -7121,7 +7076,8 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	case SH_AP_CLIP: {
 		/* Anchored under itself, above the bar — the same trick the
 		 * clock's calendar uses. */
-		snprintf(xs, sizeof(xs), "%d", sh->ap_x[id] * kdisp_cell_w());
+		snprintf(xs, sizeof(xs), "%d",
+			 kdisp_px_logical(sh->ap_x[id] * kdisp_cell_w()));
 		snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 		const char *argv[] = { "kdos-clip", "--pick", at, xs, ys, NULL };
 		popup_toggle(id, argv);
@@ -7252,7 +7208,8 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 */
 		char mx[16], my[16];
 
-		snprintf(mx, sizeof(mx), "%d", sh->meter_hit_x * kdisp_cell_w());
+		snprintf(mx, sizeof(mx), "%d",
+			 kdisp_px_logical(sh->meter_hit_x * kdisp_cell_w()));
 		snprintf(my, sizeof(my), "%d", kdisp_popup_offset());
 		if (btn == SH_TRAY_BTN_MIDDLE) {
 			/* In a POPUP, not a terminal — see SH_AP_STUTTER. */
@@ -7316,11 +7273,13 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 				spawn_tray_menu(it, cx);
 				return;
 			}
-			/* The item is told where the pointer was in PIXELS: an
-			 * app that pops a menu at the cursor gets the cursor,
-			 * and one that ignores the argument loses nothing. */
+			/* The item is told where the pointer was in PIXELS,
+			 * logical ones as the compositor counts them: an app
+			 * that pops a menu at the cursor gets the cursor, and
+			 * one that ignores the argument loses nothing. */
 			sh_tray_activate(sh, tray_map[k], btn,
-					 cx * kdisp_cell_w(), kdisp_cell_h());
+					 kdisp_px_logical(cx * kdisp_cell_w()),
+					 kdisp_px_logical(kdisp_cell_h()));
 		}
 		return;
 	}
@@ -7373,7 +7332,8 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 * that wants stepping.
 		 */
 		char xs[16], ys[16];
-		snprintf(xs, sizeof(xs), "%d", plusn_x * kdisp_cell_w());
+		snprintf(xs, sizeof(xs), "%d",
+			 kdisp_px_logical(plusn_x * kdisp_cell_w()));
 		snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 		const char *argv[] = { "kdos-teams", panel_at_flag(), xs, ys,
 				       NULL };
@@ -7727,15 +7687,20 @@ int panel_main(int argc, char **argv)
 	/*
 	 * THE BODY BELONGS TO THE BACKDROP, so the cell painter must not touch
 	 * it. KT_SURFACE at alpha 0 means "leave these pixels alone" once a
-	 * backdrop is installed — kdisp_set_backdrop() is what flips that sense —
-	 * and every cell the bar does not draw on then shows the gradient,
-	 * the plates and the rules underneath.
+	 * backdrop is installed — kch_px_custom() installs it through libkwl,
+	 * which is what flips that sense — and every cell the bar does not
+	 * draw on then shows the gradient, the plates and the rules underneath.
+	 * It goes in through libkchrome rather than straight to the display so
+	 * the bar gets the popups' cache: a clock tick repaints the digits that
+	 * changed, not the gradient and every plate under the whole bar.
 	 *
 	 * The order matters: the slot has to be clear before the first paint,
 	 * and the backdrop has to exist before the slot is cleared, or one
 	 * frame goes out with a hole where the bar should be.
 	 */
-	kdisp_set_backdrop(panel_backdrop);
+	kch_px_custom(&(KchPxBackdrop){ .draw = panel_backdrop,
+					.salt = panel_salt,
+					.opaque = panel_opaque });
 	/* THE BACKDROP OWNS KT_SURFACE FROM HERE, so the slot is cleared and
 	 * the plates show through the cells rather than being filled over. A
 	 * display that ignored the call leaves KT_SURFACE an ordinary opaque
@@ -7801,6 +7766,9 @@ int panel_main(int argc, char **argv)
 	if (autohide)
 		ah_hide();
 
+	/* The last wake was an animation's display frame (see fav_pulse). */
+	int frame_tick = 0;
+
 	while (!kdisp_should_close()) {
 		if (sh_bar_dirty) {
 			sh_bar_dirty = 0;
@@ -7855,8 +7823,14 @@ int panel_main(int argc, char **argv)
 		/* Above the draw branch, not inside it: an autohidden panel
 		 * draws the edge and nothing else, and the low-battery warning
 		 * and the auto-suspend must not be a side effect of whether
-		 * the pointer happens to be on the bar. */
-		panel_tick(&sh);
+		 * the pointer happens to be on the bar.
+		 *
+		 * NOT ON AN ANIMATION'S FRAME. The measurements are sysfs and
+		 * /proc reads sized for a loop woken by events, and a CPU
+		 * percentage taken sixteen milliseconds after the last one is
+		 * noise; a frame tick is only asking for the next picture. */
+		if (!frame_tick)
+			panel_tick(&sh);
 		/* `ah_hidden` ALONE, never `autohide && ah_hidden`: the chord
 		 * collapses this surface to the strip whether autohide is on
 		 * or not, and a two-row taskbar painted into one cell is the
@@ -7897,17 +7871,22 @@ int panel_main(int argc, char **argv)
 		int tdue = tip_due_in();
 		if (tdue < wait)
 			wait = tdue;
-		/* A launch pulse needs a frame or two per beat, and NOTHING
-		 * ELSE on this bar does: the shortened poll lasts exactly as
-		 * long as the animation and an idle panel goes straight back
-		 * to waking once a second. */
+		/* The launch pulse's frames are the backend's ticks, which
+		 * wake this wait by themselves. Its END is a deadline all the
+		 * same: a plate held still under `motion = no` gets no tick,
+		 * and has to come off when its time is up. The frame above
+		 * may have been drawn a moment before the end, so the end is
+		 * one more draw at once rather than a plate left standing for
+		 * the rest of an idle second. */
 		if (fav_anim >= 0) {
-			int64_t left = FAV_ANIM_MS -
-				       (panel_now_ms() - fav_anim_at);
-			if (left <= 0)
+			int left = ktui_anim_left(&fav_pulse);
+
+			if (left <= 0) {
 				fav_anim = -1;
-			else if (wait > 60)
-				wait = 60;
+				wait = 0;
+			} else if (left < wait) {
+				wait = left;
+			}
 		}
 		if (autohide && ah_hide_at) {
 			int64_t rem = ah_hide_at - ah_now_ms();
@@ -7916,8 +7895,10 @@ int panel_main(int argc, char **argv)
 			if (rem < wait)
 				wait = (int)rem;
 		}
-		if (ktui_backend()->poll_event(&ev, wait) &&
-		    ev.type == KT_EVT_MOUSE) {
+		int got = ktui_backend()->poll_event(&ev, wait);
+
+		frame_tick = got && ev.type == KT_EVT_TICK;
+		if (got && ev.type == KT_EVT_MOUSE) {
 			/* Plain movement arrives as KT_MP_DRAG — libkwl's
 			 * spelling, and the same one kdos-menu reads. An
 			 * off-grid x is libkwl's pointer LEAVE. */

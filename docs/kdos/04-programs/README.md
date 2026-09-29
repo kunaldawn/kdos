@@ -61,7 +61,7 @@ one that runs in a box.
 
 | Command | What it is | Documented in |
 |---|---|---|
-| `kdos-comp` | The compositor: a frozen hard fork of labwc 0.20.0; its KDOS additions live mainly in eighteen `src/kdos-*.c` files | [kdos-comp](kdos-comp.md) |
+| `kdos-comp` | The compositor: a frozen hard fork of labwc 0.20.0; its KDOS additions live mainly in twenty-three `src/kdos-*.c` files | [kdos-comp](kdos-comp.md) |
 | `kdos-shell` | The panel and 53 further surfaces: 55 names in all, since `kdos-launcher` and `kdos-palette` open the same surface. See [below](#kdos-shell--55-names) | [kdos-shell](kdos-shell.md) |
 | `kdos-res` | The resource monitor. The same binary runs as a text program on a virtual terminal and as a window on the desktop | [kdos-res](kdos-res.md) |
 | `kdos-term` | A terminal with three inline-picture protocols: sixel, iTerm2's and kitty's. It ships beside `foot`, which remains the default terminal | [kdos-term](kdos-term.md) |

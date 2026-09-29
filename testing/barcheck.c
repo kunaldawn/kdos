@@ -21,7 +21,7 @@
  *
  * A BINARY OF ITS OWN, for the reason boxcheck has one: `selftest.c` links no
  * libkchrome, and pulling the chrome in to reach one function would bring an
- * icon atlas and a display layer with it. Two stubs are the whole cost.
+ * icon atlas and a display layer with it. Three stubs are the whole cost.
  * ---------------------------------
  */
 
@@ -37,6 +37,14 @@ int kicon_slot(const char *name, int cw, int ch)
 {
 	(void)name; (void)cw; (void)ch;
 	return -1;
+}
+/* Display text has no pixel layer here: it takes its cell form. */
+int kch_px_text(int cx, int cy, int cw, int ch, const char *s, int fg, int bg,
+		int align)
+{
+	(void)cx; (void)cy; (void)cw; (void)ch; (void)s; (void)fg; (void)bg;
+	(void)align;
+	return 0;
 }
 
 

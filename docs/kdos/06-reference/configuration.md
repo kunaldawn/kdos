@@ -82,7 +82,8 @@ name it does not recognise, and skips an unknown key without a message.
 
 The compositor's KDOS settings: the phosphor pass (the CRT-imitating shader over the whole desktop;
 see the [Glossary](glossary.md)), the idle timers, the lid, the wallpaper, the
-shape of the panel and other chrome the compositor starts, and the accessibility aids. Keyboard bindings, mouse behaviour,
+shape of the panel and other chrome the compositor starts, the accessibility aids, the desktop's
+reduce-motion switch, window transitions and frame scheduling. Keyboard bindings, mouse behaviour,
 workspaces and window rules belong to [`rc.xml`](#configkdos-comprcxml); a line of that kind here
 is reported by name and ignored.
 
@@ -93,13 +94,16 @@ The shipped file has every key commented out at its default, with an explanation
 | `wallpaper` | `/usr/share/backgrounds/kdos/default-wallpaper.png` | path or `none` | immediate | The desktop background, scaled to cover the output and centred. See the note below about the retinted copy |
 | `crt` | `55` | 0–100 | see below | Strength of the phosphor pass, in per cent. `0` turns it off. Any change is immediate except raising it from `0`, which waits for the next login. See the note on the phosphor pass below |
 | `crt_scanlines` | `0` | 0–100 | immediate | Scanline depth. `60` is the strength the rest of the pass is tuned against |
-| `crt_curve` | `0` | 0–100 | immediate | Screen curvature. Whether the pointer follows the curve is decided at login; see below |
-| `crt_fullscreen` | `yes` | yes/no | immediate | Whether the pass covers a fullscreen window. `off` skips it on an output whose topmost window on the current workspace, not counting minimised ones, is fullscreen, whether or not that window has focus |
+| `crt_curve` | `0` | 0–100 | immediate | Screen curvature. Above `0`, the pass redraws the whole screen every frame rather than what changed. Whether the pointer follows the curve is decided at login; see below |
+| `crt_fullscreen` | `yes` | yes/no | immediate | Whether the pass covers a fullscreen window. `off` skips it on an output whose topmost window on the current workspace, not counting minimised ones, is fullscreen, whether or not that window has focus, and that window's frames may then scan out and tear (see [`rc.xml`](#configkdos-comprcxml)) |
 | `idle_dim` | `300` | 0–86400 | immediate | Seconds of inactivity before the screen dims; `0` never |
 | `idle_lock` | `600` | 0–86400 | immediate | Seconds of inactivity before the session locks; `0` never |
 | `idle_off` | `900` | 0–86400 | immediate | Seconds of inactivity before the outputs power off; `0` never |
 | `lid_close` | `suspend` | `suspend`, `lock`, `off` | immediate | What closing the lid does |
 | `window_memory` | `yes` | yes/no | immediate | Whether an application opens where its window last was, per `app_id`, from `~/.local/state/kdos/winpos` |
+| `motion` | `yes` | yes/no | immediate | The desktop's reduce-motion switch. `no` makes every compositor fade a single frame: menus, toasts and other top- and overlay-layer surfaces opening and closing, peek, and window transitions. Every Wayland surface of the desktop reads it too, at each animation's start, and draws the animation's end state instead (the panel's launch pulse becomes a steady accent, a menu's selection highlight jumps to its row instead of sliding, and a scrolled list jumps to its new rows instead of gliding); a touchpad flick stops when the finger lifts instead of coasting on. See [kdos-comp](../04-programs/kdos-comp.md#motion) and [the design language](../03-architecture/design-language.md#motion) |
+| `window_motion` | `no` | yes/no | immediate | Window transitions: a window fades and rises into place as it opens or is restored, fades and sinks away as it closes or is minimised, and a workspace switch slides the windows sideways. Only with `motion = yes`. See [kdos-comp](../04-programs/kdos-comp.md#window-transitions) |
+| `max_render_time` | `off` | 1–100, or `off` | immediate | Render-late frame scheduling: each frame is composited this many milliseconds before the display's next vertical blank, so a program's frame that arrives in between is shown a refresh sooner. Too small a value misses the blank and shows the frame a refresh late, which `kdos stutter` reports. Only on a directly driven display with a fixed refresh. See [kdos-comp](../04-programs/kdos-comp.md#render-late-scheduling) |
 | `sticky_keys` | `no` | yes/no | immediate | A modifier tapped on its own applies to the next key; tapped twice it stays on until tapped again |
 | `slow_keys` | `no` | yes/no | immediate | A key counts only once held for `slow_keys_delay` |
 | `slow_keys_delay` | `300` | 100–5000 | immediate | Milliseconds a key must be held under slow keys |
@@ -129,13 +133,13 @@ The shipped file has every key commented out at its default, with an explanation
 ignored; to turn the wallpaper off, write `wallpaper = none`. `panel_opacity` stops at 20 because a
 panel much fainter than that is all but invisible, while its controls still catch the pointer.
 
-**The phosphor pass at login.** Three decisions about the pass are taken once, when the compositor
+**The phosphor pass at login.** Two decisions about the pass are taken once, when the compositor
 starts, from the `comp.conf` in force at that moment. Whether the pass exists at all: raising `crt`
-from `0` during a session logs that the pass is off until a new session and draws nothing. Direct
-scanout (a fullscreen client's buffer sent to the display without compositing) is switched off for
-the whole session while the pass is on, and lowering `crt` to `0` mid-session removes the effect but
-does not switch scanout back on. The hardware cursor: with `crt` and `crt_curve` both above `0` at
-login, the pointer is drawn in software so that it bends with the picture; turning `crt_curve` on
+from `0` during a session logs that the pass is off until a new session and draws nothing, while
+lowering it to `0` takes effect at once. Direct scanout (a fullscreen client's buffer sent to the
+display without compositing) is not one of them: it is decided per frame, off for every frame the
+pass draws and allowed for every other. The hardware cursor: with `crt` and `crt_curve` both above
+`0` at login, the pointer is drawn in software so that it bends with the picture; turning `crt_curve` on
 mid-session keeps the hardware cursor, which does not follow the distortion and drifts off its
 hotspot towards the screen edges.
 
@@ -188,9 +192,21 @@ opens, is started without `--font` and draws in the toolkit's built-in `Terminus
 whatever these keys say. A face chosen in `kdos-style`'s picker is live at once in that window
 alone.
 
-Terminus is a bitmap font with the sizes 12, 14, 16, 18, 20, 22, 24, 28 and 32. Name one of those,
-or the nearest size it does have is used instead. The sizes are pixels and there is no automatic
-HiDPI scaling: on a 4K screen, `Terminus:pixelsize=64` is the doubled cell.
+Terminus is a bitmap font with the sizes 12, 14, 16, 18, 20, 22, 24, 28 and 32. A size near one of
+those (10 to 35) is drawn from the nearest, in that size's own cell, which can be a pixel or two
+taller than asked (10 and 11 are the 12 size, 31 is the 32), and 64, 96 and every further multiple of 32 are the 32
+size with every pixel doubled, tripled and so on. Any other size is drawn from `Terminus (TTF)`, the
+same typeface in outlines, in a cell exactly as tall as the size and half as wide, rounded up at an
+odd size, so `Terminus:pixelsize=40` is a 20×40 cell and `Terminus:pixelsize=65` a 33×65 one. Naming
+`Terminus (TTF)` directly gets the same cell. On a machine without `Terminus (TTF)` such a size is
+the nearest bitmap size stretched, with uneven strokes.
+
+The sizes are logical pixels. A screen given an integer scale in `displays.conf` doubles or triples
+every surface's buffer and its glyphs, so at `scale 2000` the default 32 is already the doubled cell.
+A fractional scale draws the font at the size times the scale: at `scale 1500` the default 32 is
+drawn at 48, as `Terminus (TTF)` in a 24×48 cell, and at `scale 1250` and `scale 1750` in 20×40 and
+28×56 ones, so the screen holds as many cells as its logical size does at scale 1. On a 4K screen
+left at scale 1, `Terminus:pixelsize=64` is the doubled cell.
 
 ### `~/.config/kdos/panel.conf`
 
@@ -751,6 +767,14 @@ buttons. Put your own bindings *after* `<default />`; of two identical bindings,
 
 The title-bar font (`<theme><font>`) must name a scalable face, sized in points (24 pt is 32 px at
 96 dpi). Naming the bitmap console font resolves, and then falls back silently to a generic sans.
+
+The shipped file sets `<core><adaptiveSync>fullscreen</adaptiveSync>` (variable refresh while a
+window is fullscreen, on a display that reports it) and `<core><allowTearing>fullscreen</allowTearing>`
+(a fullscreen window that asks to tear flips without waiting for the vertical blank). `no` turns
+either off; `yes` makes variable refresh permanent, and `fullscreenForced` tears every fullscreen
+window. Tearing reaches only frames the phosphor pass does not draw, so with `crt_fullscreen = yes`
+in `comp.conf` a fullscreen window does not tear. See
+[kdos-comp](../04-programs/kdos-comp.md#fullscreen-scanout-variable-refresh-and-tearing).
 
 Applies at next login, or on reload for the parts the compositor re-reads.
 

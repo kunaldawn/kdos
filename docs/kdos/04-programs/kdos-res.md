@@ -40,6 +40,18 @@ headline reading such as `5 applications` or `11G of 16G`), the sidebar and page
 and a one-row hint line naming the keys that work at that moment, for example
 `F1 help  F10 pages | [/] page | Tab panes | Esc Close`.
 
+In a window, five pages also put their one number at the right of the band, two rows high: the CPU
+page its busy share, Memory the share in use, GPU the selected device's busy share (only where the
+driver reports one), Batteries the first battery's charge and Sensors the hottest temperature. It
+is [display text](../05-developer/writing-desktop-software.md#display-text), drawn on the pixel
+layer in the chrome's own face (two rows of the 16×32 cell are the 32-pixel Terminus strike
+doubled). The headline already says each of these in words, so the figure is drawn only where the
+pixel layer is up, and only when it clears the page name and the headline; on a terminal and in a
+dump the band is unchanged. The window hands its page to a flat backdrop (`kch_px_flat(KT_BG)` in
+[libkchrome](../05-developer/c-libraries.md#libkchrome)), painted in the same `KT_BG` the cells
+were, so everything else in the window looks as it did; the page is then opaque by declaration, and
+a scrolled list still moves its pixels rather than repainting them.
+
 The source is `src/desktop/kdos-res/`, and the recipe (`kpkgbuild` and `build.sh`) sits beside it.
 The port is built in the [`05_desktop` phase](../05-developer/how-kdos-is-built.md#the-desktop-05_desktop)
 and is listed in `script/05_desktop/packages.txt`; the same recipe builds `kdos-resctl`.
@@ -327,6 +339,8 @@ Page keys:
 | Drives, Network | `↑`, `↓` | Select a row |
 | Drives, Network | `Enter` | Open the facts page for the selected drive or interface |
 | Network | `n` | Open the network settings (`kdos-net`) |
+| CPU, Memory | `←` | Read the utilisation or RAM chart one sample at a time: the first press marks the newest sample, each further press the one before. See [The charts](#the-charts) |
+| CPU, Memory | `→` | Step the marked sample forward; past the newest, stop reading |
 | Energy | `↑`, `↓` | Scroll |
 | Energy | `g` | Ask `kdos-energyd` again |
 | Detail | `←`, `→`, `Tab` | Move between the buttons |
@@ -347,6 +361,7 @@ arrow for its direction, and the footer of the Processes page names it.
 | A confirmation | Cancels it | `Esc Cancel` |
 | A detail page | Back to the list it came from | `Esc Back` |
 | The `F10` page list | Back to the page under it | `Esc Pages` |
+| A chart read one sample at a time (`←`) | Stops reading it; the chart's reading is the value now again | `Esc Live` |
 | Nothing | Leaves the program, unless the page uses `Esc` itself (see below) | `Esc Close` |
 
 The one page that uses `Esc` itself is Processes, and only while a filter is being typed: there
@@ -363,7 +378,11 @@ selects it, and a click on the row that is already selected opens its detail pag
 column heading of the Applications, Processes or Boxes table sorts by that column, and a second
 click reverses it. The wheel scrolls those three tables while the list is longer than
 the window and moves the selection while it fits; on Drives and Network it moves the selection. The
-Applications, Processes and Boxes tables have a scrollbar that can be dragged. A click in the sidebar
+Applications, Processes and Boxes tables have a scrollbar that can be dragged, and in a window a
+scroll of those three glides to its new rows instead of jumping (see
+[Motion](../03-architecture/design-language.md#motion)). On the CPU and Memory pages the pointer
+resting on a chart reads the sample under it, as `←` does from the keyboard (see
+[The charts](#the-charts)). A click in the sidebar
 changes page, and on the detail page a click presses a button.
 
 ## The detail page
@@ -511,33 +530,87 @@ GPU read their devices each time they are drawn.
 
 ## The charts
 
-Charts are drawn as character cells. Whole rows are the full block, and the top row of each column
-is the block-ramp character for the remainder, so the resolution is the chart's height times the
-ramp's levels (eight levels a row in a full font, fewer on the console font) and the shape survives
-all three glyph tiers of the [design language](../03-architecture/design-language.md). The newest
-sample is at the right, and a chart that is still filling grows from the right edge rather than
-sliding its history sideways. A dotted gridline marks every ten seconds and moves left with the
-samples, so a flat chart still shows that the program is running. A sample too small for one ramp
-level is drawn as one level, so a trickle is not mistaken for silence.
+A chart is drawn in one of two tiers, and both show the same stretch of history: one sample per
+character column, the newest at the right, and a chart that is still filling grows from the right
+edge rather than sliding its history sideways. Gridlines mark every ten seconds and move left with
+the samples, so a flat chart still shows that the program is running. A sample too small to see is
+drawn at the smallest height the tier has, so a trickle is not mistaken for silence.
+
+- **Pixels, in a window.** Where the display has a pixel cell, a chart is an antialiased area
+  chart drawn as a [pixel tile](../05-developer/writing-desktop-software.md#pixel-tiles) over its
+  cells: a faint plate, a base line, the area at a third of the colour's weight and the trace at
+  full weight over it, a line and a half wide. It is the same renderer as the
+  [panel's meters](kdos-shell.md) (`kch_plot()` in `libkchrome`), so a chart looks the same on the
+  bar and here. The vertical resolution is the chart's height in pixels, and a pair of series is
+  mirrored about a midline.
+- **Cells, everywhere else.** On a terminal, in `--dump` and in every golden frame, and whenever a
+  tile is not up (no pixel cell, `icons = no`, no icon artwork, a full sprite table), a chart is
+  drawn as character cells. Whole rows are the full block, and the top row of each column is the
+  block-ramp character for the remainder, so the resolution is the chart's height times the ramp's
+  levels (eight levels a row in a full font, fewer on the console font) and the shape survives all
+  three glyph tiers of the [design language](../03-architecture/design-language.md). A pair is two
+  bands stacked in a fixed order, because the ramp has no downward-growing twin.
+
+**One sample, read off the chart.** On the CPU and Memory pages (the utilisation chart, the per-core
+charts, and the RAM and swap charts), the pointer resting on a chart marks the sample under it, and
+the chart's reading, top right, becomes that sample's age and value in the accent colour, as a
+percentage on all four kinds (the RAM chart's usual `11G of 16G` included): `12s ago 34%`, or
+`now 50%` for the newest. `←` does the same from the keyboard on the page's first chart
+(utilisation, or RAM): the first press marks the newest sample, each further press the one before,
+`→` steps forward and, past the newest, stops, and so does `Esc`. The marked sample is an absolute
+sample, so it moves left with its column as new samples arrive, and the reading stops when it
+scrolls out of the chart or its page is left. The pointer wins over the keyboard while it rests on
+the chart. The value is the sample as recorded, not the smoothed height the chart draws. In pixels
+the sample is marked by a line through the chart in `KT_MID`; in cells, its column is drawn
+reversed. The reading is text in both tiers, so a terminal and a dump show it; a text dump carries
+no attributes, so a golden of it shows the reading and not the marked column.
+
+A chart moves one column per sample and holds still between samples. Scrolling it smoothly between
+two samples would re-rasterise it every display frame instead of once a sample: measured on a loaded
+host, one raster of a 1120×320 chart takes 0.7–1.1 ms and of a 2240×640 one (4K at scale 2)
+2.8–4.5 ms, which at 60 frames a second is 45–70 ms and 170–270 ms of processor time a second for one
+chart, before the frame is painted and committed.
 
 Each history holds the last 256 samples. Percentage charts are pinned to 0–100; a memory chart on
 the detail page scales to its own peak. The Drives and Network charts put two series on one shared
-scale, stacked: read or received in the accent colour above, written or sent in the warning colour
-below. Scaling the two separately would draw a quiet direction as tall as a busy one.
+scale: read or received in the accent colour above, written or sent in the warning colour below.
+Scaling the two separately would draw a quiet direction as tall as a busy one.
+
+A chart's tile holds two canvases the size of the chart, which on a page-wide chart is megabytes:
+by estimate, not measurement, about 20 MB for the CPU chart at scale 2 on a 4K output. A
+chart that is not drawn in a frame, because its page is not on screen, gives its tile back once
+that frame is presented and is drawn again from its history when the page returns. The tile's
+content hash covers every sample it draws and the sample number, so it is rasterised once a sample
+and not once a frame. A theme change drops every tile and retints the header's page icon, since each was drawn in the
+old palette. A change of output scale rebuilds the page icon for the new cell and scale through
+`kdisp_on_scale()`, and each tile is cut again the next time it is drawn. On a fractional scale the
+scale stays 1 and the cell grows to the font's at the device size, so the charts are drawn in device
+pixels.
 
 ### Adding a chart
 
-A chart on these pages is drawn as cells, not as a pixel picture (a tile, described in
-[Writing desktop software](../05-developer/writing-desktop-software.md#pixel-tiles)): one tile
-covers at most 16x16 cells, and a page-wide chart is larger than that. The toolkit's
-`ktui_sparkline()` draws one row, the first of whatever band it is given, so a chart taller than
-one row is drawn by `kdos-res` itself, in `graph.c`, from the same ramp characters.
-
-To add one, keep a `KprHist` (the 256-sample history type of `libkproc`) and push to it from the
-sampler on every tick: `res_sample()` in `sample.c`, or `res_dev_sample()` in `p_dev.c` for a
-per-device series. Never push from a page's `prepare()`, for the reason given under
+Keep a `KprHist` (the 256-sample history type of `libkproc`) and push to it from the sampler on
+every tick: `res_sample()` in `sample.c`, or `res_dev_sample()` in `p_dev.c` for a per-device
+series. Never push from a page's `prepare()`, for the reason given under
 [Missing and discontinuous readings](#missing-and-discontinuous-readings). Draw it with
-`res_graph()`, or with `res_graph2()` for a read/write or receive/send pair on one scale.
+`res_graph()`, or with `res_graph2()` for a read/write or receive/send pair on one scale. Both draw
+the pixel tier where it is up and the cell tier otherwise, so there is nothing else to write. A
+`res_graph()` handed a formatter (`res_fmt_pct` for a percentage) answers the pointer and a scrub
+with that formatter's reading of one sample; handed NULL it answers neither. A page that wants the
+keyboard scrub passes `←` and `→` to `res_graph_scrub()` with its chart's id from its key handler,
+as `res_cpu_key()` and `res_mem_key()` do.
+
+The first argument is the chart's id, and it names the chart's tile: it must be stable for that
+chart and unique among the charts the program draws, and the program holds at most 24 tiles
+(`TILE_MAX`). The ids in use are 1 to 3 (CPU and Memory), 100 to 115 (the per-core grid, which
+stops at 16 cores), and 900, 901, 910 and 911 (the detail page, Drives and Network). Two limits
+follow from the sweep. An outgoing page holds its tiles through the incoming page's first frame, so
+any two pages together must fit in 24 tiles, or some of the new page's charts draw as cells for one
+frame. And `graph.c` records at most 32 ids (`GRAPH_TILES`); an id past that is never swept and
+keeps its canvases until the next theme change.
+
+The toolkit's `ktui_sparkline()` draws one row, the first of whatever band it is given, so the cell
+tier of a chart taller than one row is drawn by `kdos-res` itself, in `graph.c`.
 
 ## Configuration
 
@@ -558,7 +631,7 @@ start.
 | `kernel_threads` | boolean | `no` | Show kernel threads in the process table |
 | `virtual_drives` | boolean | `no` | Show loop, `ram`, `zram` and device-mapper devices on Drives |
 | `virtual_net` | boolean | `no` | Show loopback and interfaces with no backing device on Network |
-| `icons` | boolean | `yes` | Draw the page's icon in the header band |
+| `icons` | boolean | `yes` | Draw the page's icon in the header band and the charts as pixels; `no` keeps the whole window character cells |
 | `sort` | a column name | `cpu` | Initial sort column. Processes: `cpu`, `memory`, `pid`, `name`, `disk`. Applications and Boxes: `name`, `cpu`, `memory`, `disk`, `procs`. A name a page does not have leaves that page on its own default |
 | `columns` | column list | empty | Read and stored; no page consults it |
 
@@ -594,7 +667,7 @@ one of the colour schemes compiled into the program. See [Theming](../02-user-gu
 
 ```text
 kdos-res [--page ID] [--tty | --gui] [--fixture DIR] [--interval MS]
-         [--detail PID] [--font NAME]
+         [--detail PID] [--scrub N] [--font NAME]
          [--dump | --dump-cells] [--dump-size WxH] [--json]
          [--version] [--help]
 ```
@@ -609,6 +682,7 @@ kdos-res [--page ID] [--tty | --gui] [--fixture DIR] [--interval MS]
 | `--fixture DIR` | Read a recorded system state instead of the live one. See [Fixtures and reference frames](#fixtures-and-reference-frames) |
 | `--interval MS` | Sampling period in milliseconds, overriding the configuration. A value below 200 is raised to 200; zero or a non-number is ignored. A `SIGHUP` re-reads `res.conf`, and an `interval` there then replaces this value |
 | `--detail PID` | With `--dump`, draw the detail page for that process. A PID not in the sample draws the page named by `--page` |
+| `--scrub N` | With `--dump`, press `←` N times on the page before drawing it, so a chart's sample reading has a golden. See [The charts](#the-charts) |
 | `--font NAME` | The font for the window, as a fontconfig name |
 | `--dump` | Sample twice, render once offscreen at the dump size and write the cells to standard output |
 | `--dump-cells` | The same as `--dump` |
@@ -646,7 +720,9 @@ under `conmon`, a worn battery, and an `i915` device beside an `amdgpu` one. Its
 one and what it catches.
 
 Goldens are committed in `testing/goldens/` for all eleven pages plus the detail page (the fixture's
-boxed `firefox-esr`, PID 950), at three sizes: 36 files named `res-<page>-<size>.txt`.
+boxed `firefox-esr`, PID 950), at three sizes: 36 files named `res-<page>-<size>.txt`. A 37th,
+`res-cpu-scrub-80x24.txt`, is the CPU page with `--scrub 1`: the utilisation chart's reading of its
+newest sample, and the `Esc Live` hint.
 
 | Size | Sidebar |
 |---|---|

@@ -142,158 +142,130 @@ static void draw(void)
 	ktui_hint_row(&keys, krect(2 + sw, h - 2, w - 4 - sw, 1), KT_SURFACE);
 }
 
+static time_t last_save;
+
+static void nt_start(int dump)
+{
+	(void)dump;
+	note_load();
+}
+
+static void nt_ready(void)
+{
+	last_save = time(NULL);
+}
+
+/* Every thirty seconds, so a session that ends badly loses at most half a
+ * minute of scratch. */
+static void nt_tick(void)
+{
+	if (time(NULL) - last_save >= 30) {
+		last_save = time(NULL);
+		note_save();
+	}
+}
+
+/*
+ * THE POINTER PLACES THE CARET AND SCROLLS, so a word in the middle of a
+ * paragraph is reached where it is and not arrowed to from wherever the caret
+ * was. The caret is set in LINES AND COLUMNS of the area's own rectangle,
+ * which is what `KtuiTextArea` holds; the widget's draw clamps both against
+ * the text on the next frame.
+ */
+static int nt_mouse(const KtuiEvent *ev)
+{
+	KRect ar = krect(2, 1, ktui_w - 4, ktui_h - 3);
+
+	if (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN) {
+		ta.cy += ev->btn == KT_MB_WHEEL_UP ? -3 : 3;
+		if (ta.cy < 0)
+			ta.cy = 0;
+		if (ta.cy >= nlines)
+			ta.cy = nlines ? nlines - 1 : 0;
+		return SH_EV_TAKEN;
+	}
+	if (ev->press != KT_MP_PRESS || ev->btn != KT_MB_LEFT)
+		return SH_EV_PASS;
+	if (!krect_hit(ar, ev->mx, ev->my))
+		return SH_EV_PASS;
+	ta.cy = ta.top + (ev->my - ar.y);
+	if (ta.cy < 0)
+		ta.cy = 0;
+	if (ta.cy >= nlines)
+		ta.cy = nlines ? nlines - 1 : 0;
+	ta.cx = ev->mx - ar.x;
+	if (ta.cx < 0)
+		ta.cx = 0;
+	return SH_EV_TAKEN;
+}
+
+/*
+ * THE EDITOR, ON THE SAME FILE. This surface is a scratch pad and stops where
+ * an editor starts; the pad is saved first so the editor opens what is on the
+ * screen rather than what was there last time.
+ */
+static void open_editor(void)
+{
+	char path[512];
+	char id[64];
+	const char *av[10];
+	int n = 0;
+
+	note_save();
+	if (!note_path(path, sizeof(path)))
+		return;
+	/* The terminal follows the desktop — sh_term_argv() is the one place
+	 * that decides which one and what identity it wears. */
+	n = sh_term_argv(av, 0, (int)(sizeof(av) / sizeof(*av)), "micro", id,
+			 sizeof(id));
+	av[n++] = "micro";
+	av[n++] = path;
+	av[n] = NULL;
+	sh_spawn(av);
+}
+
+static int nt_event(KtuiEvent *ev)
+{
+	if (ev->type == KT_EVT_MOUSE)
+		return nt_mouse(ev);
+	if (ev->type != KT_EVT_KEY)
+		return SH_EV_PASS;
+
+	if ((ev->mods & KT_MOD_CTRL) && (ev->key == 'o' || ev->key == 'O')) {
+		open_editor();
+		return SH_EV_CLOSE;
+	}
+
+	/* A Ctrl or Alt chord is a chord, not text: the key arrives as its
+	 * letter with the modifier, so an unhandled one would be typed into
+	 * the pad. */
+	if (!(ev->mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
+	    ktui_textarea_key(&ta, buf[0], &nlines, NOTE_LINES,
+			      sizeof(buf[0]), ev->key))
+		changed = 1;
+	return SH_EV_TAKEN;
+}
+
 int note_main(int argc, char **argv)
 {
-	const char *font = NULL;
-	int dump = 0;
-
-	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--font") && i + 1 < argc)
-			font = argv[++i];
-		else if (!strcmp(argv[i], "--dump"))
-			dump = 1;
-		else {
-			fprintf(stderr, "usage: kdos-note [--font NAME] "
-					"[--dump]\n");
-			return 2;
-		}
-	}
-
-	note_load();
-
-	KDispConfig cfg = {
-		.role = KDISP_ROLE_OVERLAY,
-		.cols = NOTE_COLS,
-		.rows = NOTE_ROWS,
-		.app_id = "kdos-note",
-		.font = font,
-		.keyboard = 1,
+	static const ShSurface s = {
+		.cfg = {
+			.role = KDISP_ROLE_OVERLAY,
+			.cols = NOTE_COLS,
+			.rows = NOTE_ROWS,
+			.app_id = "kdos-note",
+			.keyboard = 1,
+		},
+		.keys = &keys,
+		.popup = 1,
+		.popup_bg = KT_SURFACE,
+		.start = nt_start,
+		.ready = nt_ready,
+		.draw = draw,
+		.event = nt_event,
+		.tick = nt_tick,
+		.stop = note_save,
 	};
 
-	sh_theme_from_cache();
-	if (dump) {
-		ktui_offscreen_init(NOTE_COLS, NOTE_ROWS);
-		ktui_draw_init();
-		draw();
-		ktui_draw_dump();
-		return 0;
-	}
-	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-		fprintf(stderr, "kdos-note: no display server\n");
-		return 1;
-	}
-	ktui_draw_init();
-	kch_px_popup(KT_SURFACE);
-
-	time_t last_save = time(NULL);
-
-	while (!kdisp_should_close()) {
-		draw();
-		ktui_draw_flush();
-
-		KtuiEvent ev;
-
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
-			/* Every thirty seconds, so a session that ends badly
-			 * loses at most half a minute of scratch. */
-			if (time(NULL) - last_save >= 30) {
-				last_save = time(NULL);
-				note_save();
-			}
-			if (ktui_resized) {
-				ktui_resized = 0;
-				ktui_draw_resize();
-				ktui_draw_invalidate();
-			}
-			continue;
-		}
-		/*
-		 * THE POINTER PLACES THE CARET AND SCROLLS. A scratch pad that
-		 * dropped every pointer event was a text area a person could
-		 * only walk with the arrows — so putting a word in the middle of
-		 * a paragraph meant arrowing there from wherever the caret was.
-		 *
-		 * The caret is set in LINES AND COLUMNS of the area's own
-		 * rectangle, which is what `KtuiTextArea` holds; the widget's
-		 * draw clamps both against the text on the next frame.
-		 */
-		if (ev.type == KT_EVT_MOUSE) {
-			KRect ar = krect(2, 1, ktui_w - 4, ktui_h - 3);
-
-			if (ev.btn == KT_MB_WHEEL_UP ||
-			    ev.btn == KT_MB_WHEEL_DOWN) {
-				ta.cy += ev.btn == KT_MB_WHEEL_UP ? -3 : 3;
-				if (ta.cy < 0)
-					ta.cy = 0;
-				if (ta.cy >= nlines)
-					ta.cy = nlines ? nlines - 1 : 0;
-				continue;
-			}
-			if (ev.press != KT_MP_PRESS || ev.btn != KT_MB_LEFT)
-				continue;
-			if (!krect_hit(ar, ev.mx, ev.my))
-				continue;
-			ta.cy = ta.top + (ev.my - ar.y);
-			if (ta.cy < 0)
-				ta.cy = 0;
-			if (ta.cy >= nlines)
-				ta.cy = nlines ? nlines - 1 : 0;
-			ta.cx = ev.mx - ar.x;
-			if (ta.cx < 0)
-				ta.cx = 0;
-			continue;
-		}
-		if (ev.type != KT_EVT_KEY)
-			continue;
-
-		/* FIRST, above this surface's own switch. */
-		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
-			goto done;
-
-		if ((ev.mods & KT_MOD_CTRL) &&
-		    (ev.key == 'o' || ev.key == 'O')) {
-			/*
-			 * THE EDITOR, ON THE SAME FILE. This surface is a scratch
-			 * pad and stops where an editor starts; the pad is saved
-			 * first so the editor opens what is on the screen rather
-			 * than what was there last time.
-			 */
-			note_save();
-			{
-				char path[512];
-				char id[64];
-				const char *av[10];
-				int n = 0;
-
-				if (note_path(path, sizeof(path))) {
-					/* The terminal follows the desktop —
-					 * sh_term_argv() is the one place that
-					 * decides which one and what identity it
-					 * wears. */
-					n = sh_term_argv(av, 0,
-							 (int)(sizeof(av) /
-							       sizeof(*av)),
-							 "micro", id,
-							 sizeof(id));
-					av[n++] = "micro";
-					av[n++] = path;
-					av[n] = NULL;
-					sh_spawn(av);
-				}
-			}
-			goto done;
-		}
-
-		/* A Ctrl or Alt chord is a chord, not text: the key arrives as
-		 * its letter with the modifier, so an unhandled one would be
-		 * typed into the pad. */
-		if (!(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
-		    ktui_textarea_key(&ta, buf[0], &nlines, NOTE_LINES,
-				      sizeof(buf[0]), ev.key))
-			changed = 1;
-	}
-done:
-	note_save();
-	kdisp_shutdown();
-	return 0;
+	return sh_run(&s, argc, argv);
 }

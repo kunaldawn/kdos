@@ -35,11 +35,12 @@ static int g_focus_sidebar;
 static int g_modal;		/* the F10 page list, for the narrow band */
 
 /*
- * THREE RUNGS, INNERMOST LAST: the page list over the body, a detail view
- * over its list, a question over everything. Each is declared rather than
- * written into an Esc arm, so the hint row can name what Escape does HERE —
- * and the question's rung answers it rather than clearing a flag, because a
- * dialog left unanswered is one whose caller is still waiting.
+ * FOUR RUNGS, INNERMOST LAST: a chart's scrub on the page, the page list over
+ * the body, a detail view over its list, a question over everything. Each is
+ * declared rather than written into an Esc arm, so the hint row can name what
+ * Escape does HERE — and the question's rung answers it rather than clearing
+ * a flag, because a dialog left unanswered is one whose caller is still
+ * waiting.
  */
 static KtuiKeys g_keys;
 
@@ -172,11 +173,25 @@ static void res_help(const char *doc, void *user)
 	}
 }
 
-/* Registered once, from main, INNERMOST LAST. */
+static int scrub_up(void *user)
+{
+	(void)user;
+	return res_graph_scrubbing();
+}
+
+static void scrub_end(void *user)
+{
+	(void)user;
+	res_graph_scrub_end();
+}
+
+/* Registered once, from main, INNERMOST LAST. A chart's scrub is the page's
+ * own and the outermost rung: anything opened over the page answers first. */
 void res_keys_init(void)
 {
 	g_keys.doc = "res";
 	g_keys.help = res_help;
+	ktui_keys_layer(&g_keys, "Live", scrub_up, scrub_end, NULL);
 	ktui_keys_layer(&g_keys, "Pages", modal_up, modal_close, NULL);
 	ktui_keys_layer(&g_keys, "Back", detail_up, detail_back, NULL);
 	ktui_keys_layer(&g_keys, "Cancel", confirm_up, confirm_refuse, NULL);
@@ -384,12 +399,42 @@ static void frame_inside(int w, int h, int *in_x, int *in_w, int *in_h)
 	*in_h = h - 1 - res_hint_rows();
 }
 
+/*
+ * THE PAGE'S FIGURE, two rows high at the right of the band — only where the
+ * pixel layer can draw it, and only where it clears the title and the
+ * headline, which already say it in words. Nothing is drawn in its place
+ * otherwise, so the band's cells are the same with or without it.
+ */
+static void draw_figure(int w, const ResPage *pg, const char *sub)
+{
+	const char *fig;
+	int cols, left, tw, sw;
+
+	if (!pg->figure || !kch_display_live())
+		return;
+	fig = pg->figure();
+	cols = fig ? kch_display_cols(fig, 2) : 0;
+	if (cols <= 0)
+		return;
+	tw = ktui_utf8_width(pg->name);
+	sw = sub ? ktui_utf8_width(sub) : 0;
+	/* Where kch_header starts its text: after the icon when one can be
+	 * drawn, and past it either way when it cannot tell. */
+	left = (RC.icons ? 5 : 2) + (tw > sw ? tw : sw) + 2;
+	if (w - 2 - cols < left)
+		return;
+	kch_display_text(krect(w - 2 - cols, 1, cols, 2), fig, KT_SURFACE,
+			 KT_ACCENT, KCH_ALIGN_RIGHT);
+}
+
 void res_draw_frame(void)
 {
 	int w = ktui_w, h = ktui_h;
 	if (w <= 0 || h <= 0)
 		return;
 
+	/* Every frame re-records its pixel ops from nothing; see kch_px.c. */
+	kch_px_reset();
 	ktui_draw_clear();
 
 	int in_w;
@@ -445,6 +490,8 @@ void res_draw_frame(void)
 			   RC.icons);
 	if (g_top < 1 || g_top >= g_in_h)
 		g_top = g_in_h > 1 ? 1 : 0;
+	if (g_top >= 3)
+		draw_figure(w, pg, sub);
 
 	draw_sidebar(w, g_top, g_in_h);
 
@@ -676,6 +723,9 @@ void res_frame_release(void)
 void res_frame_motion(int mx, int my)
 {
 	int i = my - g_top;
+
+	/* The charts read the pointer where it rests, on any page. */
+	res_graph_pointer(mx, my);
 
 	g_hover = (g_side_w && mx >= g_in_x && mx < g_in_x + g_side_w &&
 		   i >= 0 && i < RP_NPAGES) ? i : -1;

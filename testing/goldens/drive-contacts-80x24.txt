@@ -1,0 +1,21 @@
++=[ contacts ]=============================================+
+| a                                                        |
+|----------------------------------------------------------|
+| Ada Lovelace       home    ada@example.org               |
+| Ada Lovelace       cell    +44 7700 900123               |
+| Grace Brewster Mur work    g.hopper@example.mil          |
+|                                                          |
+|                                                          |
+|                                                          |
+|                                                          |
+|                                                          |
+|                                                          |
+|                                                          |
+|                                                          |
+|                                                          |
+|                                                          |
+|                                                          |
+|                                                          |
+| 3   Enter copy | Esc Close                               |
++==========================================================+
+-- 9 of 10 events read

@@ -3,9 +3,9 @@
  * KDOS-only configuration: ~/.config/kdos/comp.conf, `key = value` lines,
  * PARSED, never sourced. Only the keys the graft layer owns are read here
  * (the phosphor pass, idle and lid, wallpaper, the chrome's command line,
- * window memory, the accessibility aids); `bind`, `startup` and the rest
- * of what rc.xml owns are named in the log as rc.xml's and otherwise
- * ignored.
+ * window memory, motion, frame scheduling, the accessibility aids); `bind`,
+ * `startup` and the rest of what rc.xml owns are named in the log as
+ * rc.xml's and otherwise ignored.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <ctype.h>
@@ -220,6 +220,23 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 		set_bool(path, lineno, value, &c->panel_autohide);
 	} else if (!strcmp(key, "window_memory")) {
 		set_bool(path, lineno, value, &c->window_memory);
+	} else if (!strcmp(key, "motion")) {
+		set_bool(path, lineno, value, &c->motion);
+	} else if (!strcmp(key, "window_motion")) {
+		set_bool(path, lineno, value, &c->window_motion);
+	} else if (!strcmp(key, "max_render_time")) {
+		/*
+		 * Milliseconds before the vertical blank, or off. 1 is the
+		 * timer's own resolution; above 100 no display's refresh is
+		 * long enough to leave anything to wait for, so the value is
+		 * a typo.
+		 */
+		if (!strcasecmp(value, "off")) {
+			c->max_render_time = 0;
+		} else {
+			set_int(path, lineno, value, 0, 100,
+				&c->max_render_time);
+		}
 	} else if (!strcmp(key, "sticky_keys")) {
 		set_bool(path, lineno, value, &c->sticky_keys);
 	} else if (!strcmp(key, "slow_keys")) {
@@ -317,6 +334,9 @@ kdos_conf_load(void)
 	c->desktop_icons = true;
 	c->panel_autohide = false;
 	c->window_memory = true;
+	c->motion = true;
+	c->window_motion = false;
+	c->max_render_time = 0;		/* off: composite at the frame event */
 	c->chrome_font[0] = '\0';	/* libkwl's Terminus:pixelsize=32 */
 	/* A 10x20 cell: two rows is a 40px bar. */
 	snprintf(c->panel_font, sizeof(c->panel_font), "Terminus:pixelsize=20");
@@ -378,8 +398,9 @@ kdos_conf_load(void)
 }
 
 /*
- * SIGHUP/Reconfigure. The CRT knobs are per-frame uniforms and the lid
- * policy is read at event time, so re-parsing IS applying them; idle,
+ * SIGHUP/Reconfigure. The CRT knobs are per-frame uniforms, and the lid
+ * policy, `motion`, `window_motion` and `max_render_time` are read at event
+ * time, so re-parsing IS applying them; idle,
  * wallpaper and the accessibility switches need their modules told. The
  * chrome keys are a child's argv and stay what they were — logged,
  * because a key that silently does nothing is the bug this file's comments

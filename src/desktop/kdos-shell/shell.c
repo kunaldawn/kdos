@@ -1248,3 +1248,165 @@ void sh_frame(int w, int h, const char *title, int fg, int bg, int dbl)
 	}
 	ktui_draw_box(krect(0, 0, w, h), title, fg, bg, dbl);
 }
+
+/* ── the surface runner ────────────────────────────────────────────────── */
+
+static int run_closing;
+
+void sh_run_close(void)
+{
+	run_closing = 1;
+}
+
+/*
+ * THE CONTRACT KEYS, THEN THE SURFACE. ktui_keys() is asked about every event
+ * and not only keys, because a surface with a menu routes the pointer into it
+ * there too; without a menu it passes the pointer untouched. While a field
+ * owns the keyboard only Esc reaches it, so a letter typed into a path is a
+ * letter and not a key the contract answers.
+ */
+static int run_dispatch(const ShSurface *s, KtuiEvent *ev)
+{
+	if (s->keys && (!s->typing || !s->typing() ||
+			(ev->type == KT_EVT_KEY && ev->key == KT_K_ESC))) {
+		switch (ktui_keys(s->keys, ev)) {
+		case KTUI_KEY_CLOSE:
+			return SH_EV_CLOSE;
+		case KTUI_KEY_TAKEN:
+			return SH_EV_TAKEN;
+		case KTUI_KEY_MENU:
+			if (s->menu)
+				s->menu(s->keys->menu_id);
+			return SH_EV_TAKEN;
+		default:
+			break;
+		}
+	}
+	return s->event ? s->event(ev) : SH_EV_PASS;
+}
+
+/*
+ * One draw. Inside a frame when the surface asked for frames, with `ev` as
+ * the frame's event (NULL for none); the dump takes the same path, so the
+ * golden is the frame a live surface settles on.
+ */
+static int run_pass(const ShSurface *s, KtuiEvent *ev)
+{
+	KtuiEvent none = { .type = KT_EVT_NONE };
+	int r = SH_EV_PASS;
+
+	if (!s->frame) {
+		if (ev)
+			r = run_dispatch(s, ev);
+		if (r != SH_EV_CLOSE && !run_closing)
+			s->draw();
+		return r;
+	}
+	ktui_frame_begin(ev ? ev : &none);
+	if (ev) {
+		r = run_dispatch(s, ev);
+		if (r == SH_EV_TAKEN)
+			ktui_consume();
+	}
+	if (r != SH_EV_CLOSE && !run_closing)
+		s->draw();
+	ktui_frame_end();
+	return r;
+}
+
+int sh_run(const ShSurface *s, int argc, char **argv)
+{
+	KDispConfig cfg = s->cfg;
+	const char *name = cfg.app_id ? cfg.app_id : "kdos-shell";
+	int dump = 0;
+
+	run_closing = 0;
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "--font") && i + 1 < argc)
+			cfg.font = argv[++i];
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
+		else if (!s->arg || !s->arg(argc, argv, &i)) {
+			fprintf(stderr, "usage: %s %s\n", name,
+				s->usage ? s->usage : "[--font NAME] [--dump]");
+			return 2;
+		}
+	}
+
+	if (s->start)
+		s->start(dump);
+	sh_theme_from_cache();
+
+	/* NO DISPLAY IS TOUCHED ON THIS PATH, and the draw is the live one:
+	 * that is what makes a golden a picture of the real surface. */
+	if (dump) {
+		ktui_offscreen_init(cfg.cols, cfg.rows);
+		ktui_draw_init();
+		if (s->ready)
+			s->ready();
+		run_pass(s, NULL);
+		ktui_draw_dump();
+		return 0;
+	}
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
+		fprintf(stderr, "%s: no display server\n", name);
+		return 1;
+	}
+	ktui_draw_init();
+	if (s->popup)
+		kch_px_popup(s->popup_bg);
+	if (s->ready)
+		s->ready();
+
+	KtuiEvent ev;
+	int got = 0;
+
+	while (!kdisp_should_close() && !run_closing) {
+		sh_theme_poll();
+		/* A framed event is followed by a frame with none: the first
+		 * frame is where a control acts, and what it changed — a focus
+		 * Tab moved, a page a button opened — is only drawn by the
+		 * next. An event loop that waited for another event to show it
+		 * would show every change one keystroke late. */
+		if (got && run_pass(s, &ev) == SH_EV_CLOSE)
+			break;
+		if (run_closing)
+			break;
+		if (!got || s->frame)
+			run_pass(s, NULL);
+		ktui_draw_flush();
+
+		got = ktui_backend()->poll_event(&ev,
+						 s->timeout ? s->timeout()
+							    : 1000);
+		/* A display frame for an animation (see KtuiAnim): the next
+		 * pass draws it with no event, and it is not a timeout — a
+		 * tick() counting timeouts as elapsed time would run at the
+		 * display's rate while anything moved. */
+		int frame_tick = got && ev.type == KT_EVT_TICK;
+
+		if (frame_tick)
+			got = 0;
+		if (!got && kdisp_should_close())
+			break;
+		if (s->wake)
+			s->wake();
+		if (!got) {
+			if (s->tick && !frame_tick)
+				s->tick();
+			/* THE RESIZE IS APPLIED HERE OR NOWHERE. The backend
+			 * only raises the flag; a pass drawn before the
+			 * buffer follows draws against the old size, fails
+			 * its own bounds checks and paints nothing. */
+			if (ktui_resized) {
+				ktui_resized = 0;
+				ktui_draw_resize();
+				ktui_draw_invalidate();
+			}
+		}
+	}
+	if (s->stop)
+		s->stop();
+	kdisp_shutdown();
+	return 0;
+}

@@ -594,12 +594,121 @@ typedef struct {
 	 * kilobytes.
 	 */
 	const char *(*keymap)(unsigned *gen);
+	/*
+	 * DOES THIS BACKEND KEEP A FRAME CLOCK: 1 when poll_event answers a
+	 * KT_EVT_TICK once per display frame for as long as ktui_anim_live()
+	 * holds, and 0 or NULL when it does not.
+	 *
+	 * IT IS WHAT MAKES AN ANIMATION MOVE AT ALL. Where it answers no — the
+	 * terminal, a `--dump`, a capture backend swapped in for a golden —
+	 * every KtuiAnim reads its end value from the moment it starts, so a
+	 * frame is the settled picture and never one caught half way. A
+	 * backend that answered yes without the ticks would start animations
+	 * that stand still at their first frame until something else woke the
+	 * loop.
+	 */
+	int (*animates)(void);
 } KtuiBackend;
 
 /* NULL selects the built-in tty backend. A backend must outlive the library's
  * use of it; libkwl hands over a pointer to a static. */
 void ktui_backend_set(const KtuiBackend *b);
 const KtuiBackend *ktui_backend(void);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Motion (ktui_anim.c)
+ *
+ * A VALUE THAT MOVES FROM ONE NUMBER TO ANOTHER OVER A FIXED TIME, read by
+ * the draw that uses it. Nothing here draws and nothing here keeps a list: a
+ * KtuiAnim is a start time and a curve, and the draw asks it what it is worth
+ * NOW. The frame clock is the backend's — see KtuiBackend.animates — so a
+ * surface whose loop draws on every return of poll_event animates at the
+ * display's rate and goes back to its own timeout when the last one ends.
+ *
+ * THE END VALUE IS THE PICTURE WHEREVER NOTHING MOVES. On the terminal, under
+ * `--dump`, on a capture backend and with motion switched off, an animation
+ * is worth its end value from the moment it starts. So a golden never holds a
+ * frame from the middle of one, tty1 draws the settled state, and a surface
+ * must not put anything in a motion that its end state does not also say.
+ *
+ * MOTION OFF IS comp.conf's `motion = no`, the compositor's own switch, asked
+ * through ktui_anim_set_motion_fn() at every start: a backend that can read
+ * it registers the question, and one that registers nothing moves.
+ *
+ * LIBC ONLY, like the rest of this library: the clock is CLOCK_MONOTONIC and
+ * every curve is a polynomial, so nothing links libm.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum {
+	KT_EASE_OUT = 0,	/* cubic: fast, then settling — an arrival   */
+	KT_EASE_IN_OUT,		/* cubic: slow at both ends — a pulse, a swap */
+	KT_EASE_LINEAR,		/* even — a progress, never a movement       */
+};
+
+typedef struct {
+	int64_t t0;		/* ktui_anim_now() at the start; 0 never ran */
+	int dur_ms;
+	float from, to;
+	unsigned char ease;	/* KT_EASE_*                                 */
+	/*
+	 * 0 goes from `from` to `to` once. n goes there AND BACK n times and
+	 * ends where it started, on `from`: a pulse, whose settled state is
+	 * the one it interrupted.
+	 */
+	unsigned char beats;
+	/* Started where nothing moves: its value was the end from the start. */
+	unsigned char still;
+} KtuiAnim;
+
+/* Milliseconds on the clock every animation in the process reads. */
+int64_t ktui_anim_now(void);
+/*
+ * Start `a` now. Where nothing moves (see above) it is marked still and reads
+ * its end value at once; otherwise the process's live window is stretched to
+ * cover it, and the backend ticks until then.
+ */
+void ktui_anim_start(KtuiAnim *a, float from, float to, int dur_ms, int ease,
+		     int beats);
+/* The value now: the eased one while it runs and moves, the end value
+ * otherwise. An animation never started (zeroed) is worth its end value. */
+float ktui_anim_value(const KtuiAnim *a);
+/* The same at a given time, for a caller that holds its own clock. */
+float ktui_anim_value_at(const KtuiAnim *a, int64_t now);
+/* Where it settles: `to`, or `from` for a pulse. */
+float ktui_anim_end(const KtuiAnim *a);
+/* Still inside its time, whether or not it is moving. A surface that shows a
+ * STATE for as long as an animation lasts (a launch acknowledged) asks this;
+ * one that draws only the motion asks ktui_anim_value(). */
+int ktui_anim_running(const KtuiAnim *a);
+/* Milliseconds until it ends, 0 once it has: the deadline a loop with no
+ * frame clock folds into its wait so the settled frame is drawn on time. */
+int ktui_anim_left(const KtuiAnim *a);
+/* Settle it now. The live window is not shortened: it is a process-wide
+ * deadline, and a tick or two past a cancelled animation draws nothing new. */
+void ktui_anim_stop(KtuiAnim *a);
+/* A curve on its own, t in [0, 1] clamped: 0 at 0 and 1 at 1. */
+float ktui_ease(int ease, float t);
+/*
+ * WHETHER AN ANIMATION STARTED NOW WOULD MOVE: a backend with a frame clock
+ * is installed and motion is on. The panel's launch acknowledgement asks it
+ * to choose between a pulse and a plate held still.
+ */
+int ktui_anim_moving(void);
+/*
+ * WHETHER ANY ANIMATION IN THIS PROCESS IS STILL MOVING — the one question a
+ * backend with a frame clock asks. It is a deadline and not a count: an
+ * animation that is dropped rather than stopped cannot leave the clock
+ * running, because nothing has to be released.
+ */
+int ktui_anim_live(void);
+/*
+ * THE REDUCE-MOTION QUESTION, asked at every ktui_anim_start: 1 moves, 0
+ * settles at once. NULL (the default) moves. libkwl registers comp.conf's
+ * `motion` here.
+ */
+void ktui_anim_set_motion_fn(int (*fn)(void));
+/* Replace the clock (a test drives time by hand). NULL is CLOCK_MONOTONIC. */
+void ktui_anim_set_clock(int64_t (*now)(void));
 
 int ktui_draw_init(void);
 /* Render with no terminal at all: allocate the cell buffer at a fixed size and
@@ -795,6 +904,14 @@ enum {
 	KT_EVT_KEY,
 	KT_EVT_MOUSE,
 	KT_EVT_RESIZE,
+	/*
+	 * NOTHING HAPPENED; DRAW IF YOU MOVE. The terminal backend answers it
+	 * with a return of 0 when the wait ran out. A backend with a frame
+	 * clock (KtuiBackend.animates) also answers it with a return of 1,
+	 * once per display frame while ktui_anim_live() — an event and not a
+	 * timeout, so a loop that counts timeouts as elapsed time is not
+	 * sped up by an animation.
+	 */
 	KT_EVT_TICK,
 	KT_EVT_TOUCH,
 	KT_EVT_DROP
@@ -1098,17 +1215,68 @@ int ktui_input_mouse_visible(int *x, int *y);
  * ──────────────────────────────────────────────────────────────────────── */
 
 /* Hit ids for mouse-only chrome — a sidebar, a tab bar, a title button.
- * Far above anything ktui_id() hands out, so clicking one is recognised
- * without it joining the Tab ring or dragging the page scroll after it. */
+ * Far above any positional id, so clicking one is recognised without it
+ * joining the Tab ring or dragging the page scroll after it. */
 #define KTUI_ID_CHROME 10000
+/* Hashed ids — ktui_id_str(), and ktui_id() inside a pushed scope — sit from
+ * here up, clear of both the positional and the chrome range. */
+#define KTUI_ID_HASHED 0x40000000
 
 void ktui_frame_begin(KtuiEvent *ev);
 void ktui_frame_end(void);
 int ktui_id(void);		/* claim the next focus id                 */
 int ktui_id_base(void);		/* the next id; restarts outside a frame   */
+
+/*
+ * ── IDS THAT DO NOT MOVE ────────────────────────────────────────────
+ *
+ * ktui_id() at depth 0 is POSITIONAL: the n-th control of the frame is id n.
+ * A control drawn only some of the time — the passphrase fields under an
+ * "Encrypt" box — therefore renumbers every control after it, and the focus
+ * and the per-id state go with the numbers. Wrap such a group:
+ *
+ *     ktui_id_push("luks");
+ *     ktui_input(...);  ktui_input(...);
+ *     ktui_id_pop();
+ *
+ * Inside the scope ktui_id() is a hash of the scope and a counter local to it,
+ * and the positional counter outside does not advance, so what follows keeps
+ * its ids whether the group was drawn or not. Scopes nest (16 deep);
+ * ktui_id_push_int() names a scope by a number, for rows of data.
+ * ktui_id_str() is one control named outright. The id stack is emptied by
+ * ktui_frame_begin(); a push left open at the end of a frame ends there.
+ *
+ * TAB WALKS THE IDS IN THE ORDER THEY WERE CLAIMED THIS FRAME, whatever their
+ * kind, so a scoped group sits in the ring exactly where it is drawn. A focus
+ * the ring does not hold at ktui_frame_end() goes to whatever now stands where
+ * it last stood.
+ */
+int ktui_id_str(const char *s);
+void ktui_id_push(const char *s);
+void ktui_id_push_int(int n);
+void ktui_id_pop(void);
+
+/*
+ * A SMALL RECORD KEPT PER ID, zeroed the first time and handed back on every
+ * later call with the same id and size; ktui_input() keeps its caret here.
+ * A record not asked for in 600 frames may be reclaimed. NULL when `n` is
+ * over KTUI_STATE_MAX or all 256 slots are live — the caller must work
+ * without it. The pointer stays valid while the id keeps asking for it.
+ */
+#define KTUI_STATE_MAX 64
+void *ktui_state(int id, size_t n);
 void ktui_hit(KRect r, int id);
 void ktui_hit_chrome(KRect r, int id);	/* id is caller-local, 0..N        */
 int ktui_chrome_clicked(int id);
+/*
+ * THE HIT RECTS OF THE LAST FRAME ENDED, for a developer overlay to outline
+ * (libkwl's KDOS_INSPECT). Only a frame control registers one — a surface
+ * that runs its own loop and tests the rect it was given has none, and reads
+ * 0 here — and the list is dropped by the second ktui_frame_begin() after
+ * the frame that made it. ktui_hit_at() is 0 past the end.
+ */
+int ktui_hit_count(void);
+int ktui_hit_at(int i, KRect *r, int *id);
 int ktui_focused(int id);
 int ktui_activated(int id, KRect r);	/* Enter on focus, or a click      */
 
@@ -1343,13 +1511,59 @@ int ktui_rows_event(KRect r, int *sel, int *top, int count,
 /* Scroll `top` so `sel` is on screen, which a keyboard caret needs too. */
 void ktui_rows_follow(KRect r, int sel, int *top, int count);
 
+/* ── A LINE OF TEXT ───────────────────────────────────────────────────
+ *
+ *     ▸ hello wor█d
+ *
+ * DRAW / KEY / HIT, AND ONE FRAME CONTROL ON TOP OF THEM — the slider's shape,
+ * for the slider's reason: a surface with an event loop of its own holds a
+ * KtuiField and calls the three, a surface inside ktui_frame_begin() calls
+ * ktui_input(), and both are the same field. A surface that edits a buffer
+ * with its own Backspace and printable arms is a field without the caret
+ * walk, the paste, the secret masking or the UTF-8 boundaries this one has.
+ *
+ * `caret` is a BYTE offset and the caller may set it to anything: every call
+ * clamps it onto the text and back to a sequence boundary first, so loading a
+ * new value and setting the caret past it is how a caller says "the end".
+ *
+ * `secret` draws a bullet per codepoint, and its words are the whole line:
+ * Ctrl+Left, Ctrl+Right and Ctrl+W stopping at its spaces would show where
+ * they are.
+ */
+typedef struct {
+	char *buf;		/* NUL-terminated UTF-8, the caller's        */
+	size_t cap;		/* bytes of `buf`, terminator included       */
+	int caret;		/* a byte offset into `buf`                  */
+	int secret;
+	const char *placeholder;	/* drawn while empty and unfocused   */
+} KtuiField;
+
+enum {
+	KTUI_FIELD_PASS = 0,	/* not the field's: the surface acts on it  */
+	KTUI_FIELD_USED = 1,	/* the event was the field's                */
+	KTUI_FIELD_CHANGED = 2	/* the text changed (an edit or a paste)    */
+};
+
+/* `bg` is the row's background, as ktui_slider_draw takes one. The marker
+ * column is r.x, the text starts at r.x + 2, and the view follows the caret. */
+void ktui_field_draw(KRect r, const KtuiField *f, int focus, int bg);
+/* Left and Right (by word with Ctrl), Home, End, Backspace, Delete, Ctrl+U
+ * (the whole line), Ctrl+W and Ctrl+Backspace (the word before the caret), and
+ * every printable key that is not a chord. Takes the pending paste first,
+ * whatever `ev` is — pass every event while the field has the focus, and
+ * NULL on a wake that carried none. Returns KTUI_FIELD_* bits; Enter, Esc,
+ * Tab, Up, Down, every Alt chord and every Ctrl chord not listed come back
+ * PASS. */
+int ktui_field_key(KtuiField *f, const KtuiEvent *ev);
+/* A press at (mx, my): 1 and the caret placed under it when it is inside `r`. */
+int ktui_field_hit(KRect r, KtuiField *f, int mx, int my);
+/* The caret's display column from the start of the text, for a surface that
+ * draws its own line and places ktui_term_caret() itself. */
+int ktui_field_col(const KtuiField *f);
+/* The frame control: focus, keys, paste and click in one call. 1 when the
+ * text changed; Enter is not an edit and returns 0. */
 int ktui_input(KRect r, char *buf, size_t cap, int secret,
 	       const char *placeholder);
-/* Queue pasted text; the focused ktui_input inserts it at the caret on its
- * next pass. Control characters are stripped and newlines become spaces, so a
- * multi-line paste cannot fake an Enter. libkwl calls this when an async
- * clipboard receive completes; the tty backend has no paste channel and
- * simply never calls it. */
 /*
  * WHERE THE CARET IS, said once by every surface that has one.
  *
@@ -1365,6 +1579,11 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret,
  */
 void ktui_term_caret(int x, int y);
 
+/* Queue pasted text; the focused field inserts it at the caret on its next
+ * ktui_field_key() or ktui_input(). Control characters are stripped and
+ * newlines become spaces, so a multi-line paste cannot fake an Enter. libkwl
+ * calls this when an async clipboard receive completes, and the tty decoder
+ * when a bracketed paste ends. */
 void ktui_paste_push(const char *utf8, size_t len);
 
 /* Take the pending paste instead, for a consumer with no text field to insert
@@ -1453,9 +1672,18 @@ int ktui_tabs_hit(KRect r, const KtuiTab *t, int n, int vertical, int mx,
 
 #define KT_TABLE_COLS 8
 
+/* What a column lets the pointer do, and how its text sits. A zero flags
+ * field is a column that does none of it. */
+enum {
+	KT_COL_SORT = 1,	/* a press on its title sorts by it          */
+	KT_COL_RIGHT = 2,	/* title and ktui_table_text() end at its edge */
+	KT_COL_RESIZE = 4	/* its right edge in the header can be dragged */
+};
+
 typedef struct {
 	const char *title;	/* NULL in every column: no header row       */
 	int width;		/* cells; <= 0 asks for the remainder        */
+	int flags;		/* KT_COL_*                                  */
 } KtuiCol;
 
 /* Paint one cell of one row. The table has filled the row and chosen the
@@ -1470,17 +1698,44 @@ typedef void (*KtuiTableCell)(int idx, int col, int x, int y, int w, int fg,
 enum { KT_TABLE_HEAD = 1, KT_TABLE_SKIP = 2 };
 typedef int (*KtuiTableSpan)(int idx, void *user);
 
+/*
+ * EVERY FIELD'S ZERO CHANGES NOTHING: a `static KtuiTable t;` is an
+ * unsorted, unresized table on KT_BG with the accent selection.
+ *
+ * `sort` is ONE PLUS the column sorted on, because column 0 is a real column
+ * and a zeroed table is unsorted. `w[i]` is a width a drag gave column i and
+ * replaces the width its KtuiCol asked for; the remainder column cannot be
+ * dragged, since it is what absorbs the difference. `page` is the background
+ * the rows are drawn on, for a table inside a KT_SURFACE window. `selrule`
+ * draws the selected row by the selection rule (ktui_sel_slots: a KT_DIM fill
+ * and KT_TEXT) with no hover plate, instead of the accent fill. `inset` is
+ * the cells between the rect's left edge and the first column: the fill
+ * covers them, the columns start after them.
+ */
 typedef struct {
 	int sel;
 	int top;
+	int sort;		/* 1 + the column sorted on; 0 unsorted      */
+	int desc;		/* the sort runs high to low                 */
+	int w[KT_TABLE_COLS];	/* a dragged width; 0 is the column's own    */
+	int drag;		/* 1 + the column whose edge is held; 0 none */
+	int page;		/* background slot; 0 is KT_BG               */
+	int selrule;		/* selection by ktui_sel_slots               */
+	int inset;		/* cells before the first column             */
 } KtuiTable;
 
 /* Column origins and widths for a table `w` cells wide; returns the cells
  * used. The FIRST column asking for the remainder gets it and the rest keep
  * what they asked for — two elastic columns would need a distribution rule,
  * and every table here has exactly one field that should absorb a wider
- * window. */
+ * window. This is the layout of the KtuiCol array alone; a table's own drag
+ * widths and inset are applied by the draw, the hit test and the event. */
 int ktui_table_layout(const KtuiCol *col, int ncol, int w, int *x, int *cw);
+/* `s` in one cell of column `c`: from the left, or ending at the column's
+ * edge for a KT_COL_RIGHT column. For the cell callback, so a number column
+ * lines up under its title. */
+void ktui_table_text(const KtuiCol *c, int x, int y, int w, const char *s,
+		     int fg, int bg);
 /* `hover` is the row under the pointer or -1; it is an ARGUMENT rather than a
  * field of KtuiTable because a zeroed struct would then light row 0 on a
  * surface that never tracks the pointer at all. */
@@ -1510,12 +1765,153 @@ enum {
 	KTUI_TABLE_NONE = 0,
 	KTUI_TABLE_MOVED,
 	KTUI_TABLE_PICKED,
-	KTUI_TABLE_CLOSE
+	KTUI_TABLE_CLOSE,
+	KTUI_TABLE_SORT,	/* st->sort/desc changed: re-sort, redraw     */
+	KTUI_TABLE_RESIZED	/* st->w changed: redraw                     */
 };
 
+/*
+ * THE HEADER ANSWERS THE POINTER TOO. A left press on the title of a
+ * KT_COL_SORT column sorts by it, and a second press on the same title turns
+ * the order round. A left press on the cell just right of a KT_COL_RESIZE
+ * column, on either header row, takes hold of that edge: every motion until
+ * the release moves it, a whole cell at a time, between its title's width
+ * (or the width it asked for, if that is less) and the width that leaves the
+ * remainder column one cell. A surface that
+ * passes motion and release events here gets the drag; one that passes only
+ * presses gets the sort.
+ */
 int ktui_table_event(KRect r, KtuiTable *st, int count, int rows, int ncol,
 		     const KtuiCol *col, const KtuiEvent *ev,
 		     KtuiTableSpan span, void *user);
+
+/*
+ * THE KEYBOARD'S WAY TO THE SAME SORT, for the key a surface binds to it:
+ * unsorted → the first sortable column rising → the same falling → the next
+ * sortable column rising, round again. 1 when it changed anything.
+ */
+int ktui_table_sort_next(KtuiTable *st, const KtuiCol *col, int ncol);
+
+/*
+ * PUT `order` IN THE TABLE'S SORT. `order` holds the caller's record indices
+ * and the caller draws row i from record order[i]; `cmp` compares two records
+ * on one column, rising. Equal records keep the order of their indices, so
+ * the caller's own canonical order is what breaks every tie, and an unsorted
+ * table is that order. The selection follows its record.
+ *
+ * qsort underneath and a comparison held in file statics while it runs, so
+ * `cmp` must not sort another table.
+ */
+typedef int (*KtuiTableCmp)(int a, int b, int col, void *user);
+void ktui_table_sort(KtuiTable *st, int *order, int n, KtuiTableCmp cmp,
+		     void *user);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Laying out a page — a cursor down a rect (ktui_layout.c)
+ *
+ * A FORM IS A COLUMN OF ROWS, and every form page here kept its own `y` and
+ * its own label column: `b.x + 17` written out at every field is a column
+ * that one edit can move for one row and not the next. The cursor holds the
+ * row, the indent and the label column, and every call below takes the next
+ * row from it and moves it on — so the labels line up because there is one
+ * place their column is, not because every row agreed.
+ *
+ * RECT ARITHMETIC AND NOTHING ELSE. No call here claims an id or reads the
+ * frame, so the cursor serves a frame page and a page with its own loop
+ * alike, and a page laid out through it draws the same cells as one that
+ * wrote the numbers by hand.
+ *
+ * A ROW PAST THE RECT IS STILL HANDED OUT, at its real `y`: clipping is the
+ * draw calls' business, and a cursor that stopped at the bottom would give a
+ * scrolled page nothing to scroll. ktui_lay_left() is how a page asks what
+ * room is left.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define KTUI_LAY_LABEL 16	/* ktui_kv's key column, so the two align    */
+#define KTUI_LAY_INDENT 4	/* a check box's `[■] `: a note under it     */
+
+typedef struct {
+	KRect r;		/* the page                                  */
+	int y;			/* the next row                              */
+	int indent;		/* cells in from r.x                         */
+	int bg;			/* the slot labels stand on; 0 is KT_BG      */
+} KtuiLay;
+
+void ktui_lay_begin(KtuiLay *l, KRect r);
+/* The next `h` rows at the indent, the rest of the width; `h` < 1 is 1. */
+KRect ktui_lay_row(KtuiLay *l, int h);
+/* `n` blank rows. */
+void ktui_lay_gap(KtuiLay *l, int n);
+/* The next row as ktui_section() draws it. */
+void ktui_lay_section(KtuiLay *l, const char *title);
+/*
+ * THE NEXT ROW AS A LABELLED FIELD: `label` in KT_MID in the first
+ * `label_w` cells (KTUI_LAY_LABEL for 0 or less), and the rect after it and
+ * one blank cell back for the control — the rest of the row, one high, which
+ * a control that wants less narrows. A NULL label draws nothing and still
+ * starts the control in the column, for a meter or a note under a field.
+ */
+KRect ktui_lay_field(KtuiLay *l, const char *label, int label_w);
+/*
+ * THE NEXT `h` ROWS CUT INTO COLUMNS by ktui_table_layout()'s rule: each
+ * KtuiCol width is kept, a single cell between columns, and the first column
+ * asking for the remainder (width <= 0) takes it. `out` gets `n` rects, at
+ * most KT_TABLE_COLS; returns how many were written. Titles and flags are
+ * ignored.
+ */
+int ktui_lay_cols(KtuiLay *l, const KtuiCol *col, int n, int h, KRect *out);
+/* Move the rows after this in by `n` cells, or out again;
+ * KTUI_LAY_INDENT for 0 or less. The indent never goes below 0 or past
+ * the page's width. */
+void ktui_lay_indent(KtuiLay *l, int n);
+void ktui_lay_unindent(KtuiLay *l, int n);
+/* What is left of the page below the cursor, at the indent: `h` is 0 once
+ * the cursor has reached the bottom. */
+KRect ktui_lay_left(const KtuiLay *l);
+
+/*
+ * ── A SPLITTER AND A FOLD — frame controls with state ─────────────────
+ *
+ * BOTH ARE NAMED, NOT COUNTED. Each claims ktui_id_str(name) and keeps what
+ * the hand did to it — the divider's place, whether the fold is open — in
+ * ktui_state() under that id, so a control drawn above it coming and going
+ * does not hand a fold's openness to the next fold down. Two of either with
+ * one name in one id scope are one control; wrap repeats in
+ * ktui_id_push_int().
+ *
+ * A FULL STATE STORE LEAVES EACH AT ITS DEFAULT and unmovable: drawn, and
+ * reachable by Tab, but a press or a key changes nothing that frame.
+ */
+
+/* Side by side (a vertical divider moved with Left/Right) or stacked (a
+ * horizontal one moved with Up/Down). */
+enum { KT_SPLIT_SIDE = 0, KT_SPLIT_STACK = 1 };
+
+/*
+ * `r` CUT IN TWO BY A ONE-CELL DIVIDER the pointer drags and the keyboard
+ * moves a cell at a time; Home puts it back at its default. `at` is the
+ * first pane's size in cells, or — negative — the second pane's, so a side
+ * panel that belongs to the right keeps its width as the window grows; a
+ * moved divider keeps the size of that same pane. Each pane keeps at least
+ * `min` cells while the rect has room for both; the stored place is kept as
+ * the rect narrows and comes back as it widens. The divider is KT_DIM on the
+ * background of the cell it stands on, and KT_ACCENT while it has the focus,
+ * which a press on it gives. `a` and `b` get the panes. Returns 1 when the
+ * divider moved.
+ */
+int ktui_split(KRect r, const char *name, int stack, int at, int min,
+	       KRect *a, KRect *b);
+/*
+ * A SECTION HEADING THAT OPENS AND CLOSES: its marker (KT_G_ARROW_R shut,
+ * KT_G_ARROW_DOWN open), the title, and the section rule after it, on one
+ * row. A press, Enter or Space toggles it; Right opens and Left shuts.
+ * `open` is how it starts. Returns 1 while it is open, and THEN ONLY the
+ * caller draws the body and calls ktui_fold_end() after it: the body is
+ * drawn inside an id scope the fold pushed, so its controls come and go
+ * without moving an id after the fold.
+ */
+int ktui_fold_begin(int x, int y, int w, const char *title, int open);
+void ktui_fold_end(void);
 
 typedef struct {
 	int sel;

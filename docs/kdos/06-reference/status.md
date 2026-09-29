@@ -86,7 +86,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,025 recipes, listed by group in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses and every dependency resolves |
+| The ports tree | Stable | 2,023 recipes, listed by group in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses and every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata` and `XZ_OPT=-T0`, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream. `kdosbuild --selftest` separately asserts the view geometry and the log classifier |
@@ -98,7 +98,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,025 recipes, 989 are the native applications' stacks, applications
+- **The ports tree.** Of the 2,023 recipes, 989 are the native applications' stacks, applications
   and dependencies, which have been fetched and hashed and have not been built.
   `testing/preflight.sh` checks that every recipe parses as metadata, declares
   a name, version and release, has a `build.sh` that parses, carries the KDOS banner and names a
@@ -146,27 +146,32 @@ See [The session](../03-architecture/session.md) and the chapters of
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The compositor | Stable | A frozen fork of labwc 0.20.0, in daily use. Its 16 KDOS files are less exercised than the labwc base |
+| The compositor | Stable | A frozen fork of labwc 0.20.0, in daily use. Its twenty-three KDOS source files are less exercised than the labwc base |
 | kdos-shell | Stable | 54 surfaces under 55 names. 40 of them have committed goldens, the panel and the desktop included. The 14 without are `kdos-ascii`, `kdos-cal`, `kdos-mediad`, `kdos-about`, `kdos-calc`, `kdos-time`, `kdos-users`, `kdos-note`, `kdos-slit`, `kdos-audio`, `kdos-bt`, `kdos-devices`, `kdos-clip` and `kdos-ime`; of those, `kdos-ascii`, `kdos-mediad` and `kdos-ime` have no offscreen dump at all. A surface that fails to compile drops out of the golden run with a line naming it; a link failure in any candidate drops every candidate surface and prints a NOTE naming each, so neither passes unnoticed; see [Testing](../05-developer/testing.md#how-the-dump-harness-is-built) |
 | kdos-res | Stable | Eleven pages, each with goldens at three sizes, plus the detail page, taken against a recorded system state |
-| The phosphor pass | Stable | On by default (`crt` in the compositor's configuration). Its input and output can be dumped to image files without a screen through `KDOS_CRT_DUMP`. It appears in no photograph from the [rig](../05-developer/testing.md) (the QEMU harness that boots a real image and photographs it), because the rig's virtual display puts the compositor on software rendering, where the pass switches itself off |
+| The phosphor pass | Stable | On by default (`crt` in the compositor's configuration). Its input and output can be dumped to image files without a screen through `KDOS_CRT_DUMP`, and the self-test checks offscreen that redrawing only the damaged part gives the same picture as redrawing the whole screen. It appears in no photograph from the [rig](../05-developer/testing.md) (the QEMU harness that boots a real image and photographs it), because the rig's virtual display puts the compositor on software rendering, where the pass switches itself off |
 | The `kdos` command | In progress | The self-test compiles `kdos-tools` and runs 10 of the 31 subcommands against fixtures: `app`, `clone`, `cve`, `doctor`, `march`, `rebuild`, `remind`, `stutter`, `theme` and `thumb`. `share` is exercised under its other name, `kdos-share`, with `croc` stubbed. `hey` is run on a booted machine by `testing/packlane.sh` and `testing/appsweep.sh`, and `notify` by `testing/usability.sh`. The remaining 18 are not run by any harness. See [The kdos command](../04-programs/kdos-command.md) |
 | The theme system | Stable | `kdos theme --audit` re-runs the generators and compares; the self-test generates a themed home directory, requires it to audit clean, then requires an edited file, a deleted file, a stray file and a re-pointed alias each to be caught and repaired by re-running the accent. The tone ladder that gives the panel a legible middle tone is asserted in all eight accents |
 | The portal backend | Stable | Every boxed application's file dialog goes through `xdg-desktop-portal-kdos`, and the dialog opens over the window that asked: `parent_window` is imported through `xdg-foreign` (the Wayland protocol that lets one client name another's window) and the compositor centres the dialog on its parent. The self-test asserts that the FileChooser portal keeps serving while a dialog is open |
 | kdos-term | Experimental | Four goldens of its own and nine replay goldens of its state machine. `foot` is the default terminal; `kdos-term` has not been used as one day to day |
 | The window model | In progress | `libkwm` reproduces a 106-row contract taken by reading the compositor line by line (`testing/fixtures/wm/geometry.txt`), replayed by the self-test. `kdos-comp` calls eight of its entries: `kwm_place`, `kwm_tile_geom`, `kwm_tile_next`, `kwm_ws_adjacent`, `kwm_edge_check`, `kwm_edge_best`, `kwm_clip_add` and `kwm_clip_sub`. That a window lands where a person expects is asserted against the fixture and has never been photographed |
-| The display interface | In progress | `libkdisp` is the one place a program picks a display server. 62 C source and header files across `kdos-shell`, `kdos-res`, `kdos-lock` and `kdos-term` name it (and the four ports' build scripts link it), with 57 `kdisp_init()` call sites and 38 distinct `kdisp_*` names between them. One implementation is registered, `kwl_impl` in `libkwl`; the interface is what keeps a second one a matter of linking rather than a branch in every surface |
+| The display interface | In progress | `libkdisp` is the one place a program picks a display server. 65 C source and header files across `kdos-shell`, `kdos-res`, `kdos-lock` and `kdos-term` name it (and the four ports' build scripts link it), with 50 `kdisp_init()` call sites and 38 distinct `kdisp_*` names between them; ten `kdos-shell` front ends reach it through the one call in `sh_run()`. One implementation is registered, `kwl_impl` in `libkwl`; the interface is what keeps a second one a matter of linking rather than a branch in every surface |
 | kdos-ime | Experimental | The input-method candidate window. fcitx5 has never been run against it; it has no golden and no offscreen dump |
 | Touch | Experimental | One gesture recogniser in `libktui` — tap, long press, drag, scroll, pinch, edge swipe — asserted against driven sequences with the timestamps supplied, so a long press is tested without waiting for one. `libkwl` binds `wl_touch` and feeds it. It has never run against a real touchscreen, and no rig pass uses a virtual touch device |
+| Surface motion | Experimental | `KtuiAnim` in `libktui` and the frame clock in `libkwl`. The self-test drives the curves, the end value on the terminal, a capture backend and with `motion = no`, and the clock itself through the real `kwl_poll_event()` under a simulated compositor: silent when idle, a tick per frame while something moves, one more after it ends. Three animations are shipped, the panel's launch pulse, the menus' sliding selection plate (`kch_px_row_anim`, whose slide, landing rules and eviction the self-test drives with the clock in hand) and the gliding list (`kwl_list_view`, whose every frame in between the self-test checks against the list painted independently at the position presented, through the real flush); a touchpad flick's coast is driven by the self-test through the real pointer handlers. None has been seen on a display, and the coast has not been felt on a touchpad: the rig cannot time a one-second pulse or a 100 ms slide without shots taken mid-flight, and has no touchpad. See [the design language](../03-architecture/design-language.md#motion) |
 | Drag and drop | Experimental | Both directions are implemented in `libkwl`: `kwl_drag_start` offers a data source of the one MIME type its caller names, and the receiving side ranks an offer's types `text/uri-list`, then `text/plain;charset=utf-8`, then `text/plain`, and reads the best after the drop. No test asserts either direction, nothing has been dragged with a pointer, and no rig pass covers it |
 
 What the shortened rows above rest on:
 
-- **The compositor.** `kdos-comp` is a frozen fork of labwc 0.20.0. The KDOS additions are the 16
+- **The compositor.** `kdos-comp` is a frozen fork of labwc 0.20.0. The KDOS additions are the 23
   files `src/desktop/kdos-comp/src/kdos-*.c`: per-box sandbox grants, the box chip (a small square in
   the box's colour at the left of a window's title), window grouping and position memory, the phosphor
-  pass, supervised chrome, the idle and lid policy, thumbnails and the command socket. The
-  self-test compiles them where wlroots is installed. Preflight checks that the shipped `rc.xml`
+  pass, supervised chrome, the idle and lid policy, thumbnails, the command socket, the fades and
+  window transitions, and render-late frame scheduling. The self-test compiles them where wlroots is
+  installed, and there also plays the fades, the window transitions and the scheduler against
+  wlroots itself. Window transitions and render-late scheduling are off by default and have not
+  been seen on a real display: the rig cannot time a 150 ms transition without shots taken
+  mid-flight, and has no vertical blank for the scheduler to aim at. Preflight checks that the shipped `rc.xml`
   keeps labwc's default bindings and that every command in it exists. See
   [kdos-comp](../04-programs/kdos-comp.md).
 - **kdos-term.** One binary that opens as a Wayland window under the compositor, runs on a text
@@ -232,8 +237,8 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,025 | `find ports/core src/packages src/desktop -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 2,001 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 2,023 | `find ports/core src/packages src/desktop -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 1,999 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/packages` | 11 | `find src/packages -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 13 | `find src/desktop -name kpkgbuild \| wc -l` |
 | Archived source files | 1,678 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |

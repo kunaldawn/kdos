@@ -260,7 +260,7 @@ main(int argc, char *argv[])
 
 	rcxml_read(rc.config_file);
 	kdos_conf_load(); /* KDOS: ~/.config/kdos/comp.conf */
-	kdos_crt_early_init(); /* KDOS: scanout switch, before the scene */
+	kdos_crt_early_init(); /* KDOS: cursor plane, before any output */
 
 	/*
 	 * Set environment variable LABWC_PID to the pid of the compositor
@@ -327,6 +327,7 @@ main(int argc, char *argv[])
 	kdos_a11ymon_finish(); /* KDOS: before the keyboards go */
 	kdos_screensaver_finish(); /* KDOS: before kdos_idle_finish */
 	kdos_a11y_finish(); /* KDOS */
+	kdos_sched_finish(); /* KDOS: no render-late timer inside the collapse */
 	kdos_crt_powerdown(); /* KDOS: the collapse-to-a-dot, deadline-bounded */
 	kdos_wallpaper_finish(); /* KDOS: before the scene dies with the server */
 	kdos_frames_finish(); /* KDOS */
@@ -335,6 +336,7 @@ main(int argc, char *argv[])
 	kdos_boxchip_finish(); /* KDOS */
 	kdos_lid_finish(); /* KDOS */
 	kdos_peek_finish(); /* KDOS */
+	kdos_motion_finish(); /* KDOS: snapshots hold buffer locks */
 	kdos_idle_finish(); /* KDOS */
 	kdos_crt_finish(); /* KDOS */
 	session_shutdown();

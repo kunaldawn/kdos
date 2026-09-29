@@ -45,6 +45,38 @@
  * memory pressure being survived — and the cap is rearmed on a timer, or a
  * tile whose content never changes would sit on the glyph layout for the rest
  * of the session after two refusals that have long since cleared.
+ *
+ * A TILE OF ANY SIZE, AS A GRID OF VIEWS.
+ *
+ * One sprite covers at most 16x16 cells: a sprite cell carries its sub-cell
+ * coordinate in four bits each way. A larger tile is published as a grid of
+ * sprites, one per 16x16 block, under libktui's tiled-key scheme (the half's
+ * key XOR block index x KTUI_TILE_STRIDE, the keys ktui_sprite_tile_at()
+ * answers for). Each block's picture is a VIEW onto the canvas — the canvas's
+ * own pixels at the block's origin, at the canvas's stride — made once when
+ * the tile is made, so a commit is table inserts and never a pixel copy. A
+ * tile that fits one sprite is one view of the whole canvas and publishes the
+ * key it always had, so the cells it draws are the same codepoints.
+ *
+ * THE TABLE HOLDS A REFERENCE OF ITS OWN ON EVERY VIEW IT NAMES, taken after
+ * it accepts the put and given back by whoever makes it stop naming the view:
+ * this file on a drop, the evictor on an eviction. The evictor is one per
+ * process and belongs to whichever owner registered it — the shell's picture
+ * path registers kcell_tile_free, which UNREFS — so a view the table held
+ * without a reference would be freed under this file by the first eviction of
+ * a half that is not on the screen, and the next commit would publish freed
+ * memory. That is also why a commit is this file's own loop over
+ * ktui_sprite_put() and not ktui_sprite_put_tiled(): the latter hands a
+ * refused picture to the evictor even when the table goes on naming it, which
+ * for a picture its owner keeps is one unref too many.
+ *
+ * AN EVICTED HALF IS PUBLISHED AGAIN, NOT TRUSTED. The half on the screen is
+ * referenced by the cells and cannot be evicted while it is drawn; one that
+ * stopped being drawn for a frame can, and its slot can be handed to someone
+ * else's picture. "Already showing this" therefore asks the table whether
+ * every block of the published half is still there under its key and view,
+ * and puts back what is not — the canvas still holds the pixels, so that is
+ * inserts, not a raster.
  * ---------------------------------
  */
 
@@ -57,20 +89,26 @@
 #include "kicon.h"
 #include "kchrome.h"
 
-/* Small on purpose: the Start button and the meters strip are the two that
- * exist, and a bar with a dozen pixel-rendered blocks on it would be a bar
- * that had stopped being a character grid. */
-#define TILE_MAX 8
+/* How many tiles one program holds at once. Past it kch_tile_begin() answers
+ * NULL and the caller draws its cells, so this is a bound on memory and on
+ * sprite slots rather than on what can be drawn: each tile holds two canvases,
+ * and a large one is megabytes. */
+#define TILE_MAX 24
+
+/* Cells per sprite, each way — the four bits of sub-cell coordinate. */
+#define TILE_SPR 16
 
 struct tile {
 	int used;
 	int id;			/* the caller's, stable for the tile's life  */
 	int cw, ch;		/* cells                                     */
 	int pw, ph, pscale;	/* the pixel cell the canvases were cut to   */
+	int cols, rows;		/* 16x16 blocks, one sprite each             */
 	KCellCanvas *cv[2];
+	pixman_image_t **view[2];	/* cols*rows views onto each canvas  */
 	uint64_t key[2];
 	int flip;		/* which half is currently published         */
-	int slot;		/* the published slot, or -1                 */
+	int slot;		/* block 0's published slot, or -1           */
 	uint64_t content;	/* the last content a canvas was handed out for */
 	uint64_t shown;		/* the content of the published picture      */
 	int tries;		/* puts attempted for `content`              */
@@ -146,6 +184,112 @@ static struct tile *find(int id)
 	return NULL;
 }
 
+static int blocks(const struct tile *t)
+{
+	return t->cols * t->rows;
+}
+
+static uint64_t block_key(const struct tile *t, int k, int i)
+{
+	return t->key[k] ^ ((uint64_t)i * KTUI_TILE_STRIDE);
+}
+
+/* Block i's cell rectangle inside the tile. */
+static void block_rect(const struct tile *t, int i, int *x, int *y, int *w,
+		       int *h)
+{
+	*x = (i % t->cols) * TILE_SPR;
+	*y = (i / t->cols) * TILE_SPR;
+	*w = t->cw - *x < TILE_SPR ? t->cw - *x : TILE_SPR;
+	*h = t->ch - *y < TILE_SPR ? t->ch - *y : TILE_SPR;
+}
+
+/* The slot naming block i of half k, or -1 when the table no longer names
+ * THIS view under that key — dropped, evicted, or the slot given away. */
+static int block_slot(const struct tile *t, int k, int i)
+{
+	int slot = ktui_sprite_find(block_key(t, k, i));
+	const KtuiSprite *s = ktui_sprite_get(slot);
+
+	return s && s->pix == t->view[k][i] ? slot : -1;
+}
+
+/*
+ * Take half k out of the table, giving back the reference the table held on
+ * each view it still named. A block the table already evicted gave its
+ * reference back through the evictor, which is why the answer is asked per
+ * block rather than assumed.
+ */
+static void unpublish(struct tile *t, int k)
+{
+	if (!t->view[k])
+		return;
+	for (int i = 0; i < blocks(t); i++)
+		if (block_slot(t, k, i) >= 0) {
+			ktui_sprite_drop(block_key(t, k, i));
+			pixman_image_unref(t->view[k][i]);
+		}
+}
+
+/*
+ * Put every block of half k. Returns block 0's slot, or -1 with the half
+ * taken out again: all or nothing, because a half missing a block draws a
+ * hole where that block's cells are.
+ *
+ * The reference is taken only for a put the table ACCEPTED and only when it
+ * did not already name this view — a re-put of a view it holds replaces
+ * nothing and hands nothing back. And the half is checked whole AFTER the
+ * loop: making room under the byte budget can evict a block this same loop
+ * put a moment ago, since nothing draws the half yet.
+ */
+static int publish(struct tile *t, int k)
+{
+	int first = -1;
+
+	for (int i = 0; i < blocks(t); i++) {
+		int bx, by, bw, bh;
+		int had = block_slot(t, k, i) >= 0;
+
+		block_rect(t, i, &bx, &by, &bw, &bh);
+		int slot = ktui_sprite_put(block_key(t, k, i), t->view[k][i],
+					   bw, bh, ' ');
+		if (slot < 0) {
+			unpublish(t, k);
+			return -1;
+		}
+		if (!had)
+			pixman_image_ref(t->view[k][i]);
+		if (i == 0)
+			first = slot;
+	}
+	for (int i = 0; i < blocks(t); i++)
+		if (block_slot(t, k, i) < 0) {
+			unpublish(t, k);
+			return -1;
+		}
+	return first;
+}
+
+/*
+ * The slots must go BEFORE the pixels: a view has no pixels of its own, so
+ * one the table still names after its canvas is freed composites out of freed
+ * memory.
+ */
+static void tile_free(struct tile *t)
+{
+	for (int k = 0; k < 2; k++) {
+		unpublish(t, k);
+		if (t->view[k]) {
+			for (int i = 0; i < blocks(t); i++)
+				if (t->view[k][i])
+					pixman_image_unref(t->view[k][i]);
+			free(t->view[k]);
+		}
+		kcell_canvas_free(t->cv[k]);
+	}
+	memset(t, 0, sizeof(*t));
+}
+
 /*
  * Drop everything. `kdos theme <accent>` retints the palette, and every tile
  * was rasterised in the old one — the same reason kicon_retint() exists, and
@@ -153,18 +297,39 @@ static struct tile *find(int id)
  */
 void kch_tile_reset(void)
 {
-	for (int i = 0; i < TILE_MAX; i++) {
-		struct tile *t = &tiles[i];
-		if (!t->used)
-			continue;
-		for (int k = 0; k < 2; k++) {
-			/* The slot must go BEFORE the pixels: the table holds
-			 * a borrowed pointer and nothing reference-counts it. */
-			ktui_sprite_drop(t->key[k]);
-			kcell_canvas_free(t->cv[k]);
+	for (int i = 0; i < TILE_MAX; i++)
+		if (tiles[i].used)
+			tile_free(&tiles[i]);
+}
+
+/* Both canvases, and a view per block of each. 0 when any of it will not
+ * allocate, with whatever did left for tile_free(). */
+static int tile_make(struct tile *t)
+{
+	for (int k = 0; k < 2; k++) {
+		t->cv[k] = kcell_canvas_new(t->cw, t->ch, t->pw, t->ph,
+					    t->pscale);
+		/* The key carries the tile and the half, so the two halves
+		 * are two sets of slots and swapping between them is what the
+		 * row diff notices. */
+		t->key[k] = ((uint64_t)0x71 << 56) |
+			    ((uint64_t)(unsigned)t->id << 8) | (uint64_t)k;
+		if (!t->cv[k])
+			return 0;
+		t->view[k] = calloc((size_t)blocks(t), sizeof(*t->view[k]));
+		if (!t->view[k])
+			return 0;
+		for (int i = 0; i < blocks(t); i++) {
+			int bx, by, bw, bh;
+
+			block_rect(t, i, &bx, &by, &bw, &bh);
+			t->view[k][i] =
+				kcell_canvas_view(t->cv[k], bx, by, bw, bh);
+			if (!t->view[k][i])
+				return 0;
 		}
-		memset(t, 0, sizeof(*t));
 	}
+	return 1;
 }
 
 /*
@@ -187,7 +352,10 @@ KCellCanvas *kch_tile_begin(int id, int cw, int ch, uint64_t content)
 
 	if (!tiles_on || !kicon_enabled())
 		return NULL;
-	if (cw < 1 || ch < 1 || cw > 16 || ch > 16)
+	/* No larger than the grid it is drawn into: past that the cells that
+	 * would show it do not exist, and the canvases would be pixels nobody
+	 * sees. The canvas refuses what its fills cannot address. */
+	if (cw < 1 || ch < 1 || cw > ktui_w || ch > ktui_h)
 		return NULL;
 	tile_cell(&pw, &ph, &pscale);
 
@@ -196,11 +364,7 @@ KCellCanvas *kch_tile_begin(int id, int cw, int ch, uint64_t content)
 		/* A resize is a different picture in every cell, and so is the
 		 * same cells at a different pixel size; there is nothing worth
 		 * keeping either way. */
-		for (int k = 0; k < 2; k++) {
-			ktui_sprite_drop(t->key[k]);
-			kcell_canvas_free(t->cv[k]);
-		}
-		memset(t, 0, sizeof(*t));
+		tile_free(t);
 		t = NULL;
 	}
 	if (!t) {
@@ -217,30 +381,39 @@ KCellCanvas *kch_tile_begin(int id, int cw, int ch, uint64_t content)
 		t->pw = pw;
 		t->ph = ph;
 		t->pscale = pscale;
+		t->cols = (cw + TILE_SPR - 1) / TILE_SPR;
+		t->rows = (ch + TILE_SPR - 1) / TILE_SPR;
 		t->slot = -1;
-		for (int k = 0; k < 2; k++) {
-			t->cv[k] = kcell_canvas_new(cw, ch, pw, ph, pscale);
-			/* The key carries the tile and the half, so the two
-			 * halves are two slots and swapping between them is
-			 * what the row diff notices. */
-			t->key[k] = ((uint64_t)0x71 << 56) |
-				    ((uint64_t)(unsigned)id << 8) |
-				    (uint64_t)k;
-			if (!t->cv[k]) {
-				for (int j = 0; j <= k; j++)
-					kcell_canvas_free(t->cv[j]);
-				memset(t, 0, sizeof(*t));
-				return NULL;
-			}
+		if (!tile_make(t)) {
+			tile_free(t);
+			return NULL;
 		}
 	}
 
 	if (t->have && t->shown == content && t->slot >= 0) {
-		/* Already up. The memo follows, so a content that comes back
-		 * after a refused one is not rasterised again for nothing. */
-		t->content = content;
-		t->tries = 0;
-		return NULL;
+		int up = 1;
+
+		/* Still in the table, block for block — see the file's
+		 * header. What was evicted goes back from the pixels the
+		 * canvas still holds; what cannot go back is a tile that is
+		 * no longer up, and it rasterises like one. */
+		for (int i = 0; i < blocks(t) && up; i++)
+			if (block_slot(t, t->flip, i) < 0)
+				up = 0;
+		if (!up) {
+			t->slot = publish(t, t->flip);
+			up = t->slot >= 0;
+			if (!up)
+				t->have = 0;
+		}
+		if (up) {
+			/* Already up. The memo follows, so a content that
+			 * comes back after a refused one is not rasterised
+			 * again for nothing. */
+			t->content = content;
+			t->tries = 0;
+			return NULL;
+		}
 	}
 	if (t->content != content)
 		t->tries = 0;			/* a new picture, a new budget */
@@ -272,8 +445,7 @@ int kch_tile_commit(int id)
 	if (!t)
 		return -1;
 	next = t->flip ^ 1;
-	int slot = ktui_sprite_put(t->key[next], kcell_canvas_image(t->cv[next]),
-				   t->cw, t->ch, ' ');
+	int slot = publish(t, next);
 	if (slot < 0) {
 		t->fail_at = now_ms();
 		return t->slot;			/* keep whatever was up */
@@ -285,10 +457,57 @@ int kch_tile_commit(int id)
 	return slot;
 }
 
-/* What the last commit published, or -1 if this tile has never drawn. */
+/* What the last commit published — block 0's slot — or -1 if this tile has
+ * never drawn or a block of it has left the table. Asked whole, so a caller
+ * that lays out around a slot it was given can count on kch_tile_draw(). */
 int kch_tile_slot(int id)
 {
 	struct tile *t = find(id);
 
-	return t && t->have ? t->slot : -1;
+	if (!t || !t->have || t->slot < 0)
+		return -1;
+	for (int i = 0; i < blocks(t); i++)
+		if (block_slot(t, t->flip, i) < 0)
+			return -1;
+	return t->slot;
+}
+
+/*
+ * Write the published tile's cells at `r`, block by block, clipped to `r`.
+ * -1, and nothing written, when the tile is not up or a block of it has left
+ * the table since it was published: a tile drawn with a block missing shows
+ * whatever those cells held, so the caller draws its cells instead.
+ */
+int kch_tile_draw(int id, KRect r, int fg, int bg)
+{
+	struct tile *t = find(id);
+
+	if (kch_tile_slot(id) < 0)
+		return -1;
+	for (int i = 0; i < blocks(t); i++) {
+		int bx, by, bw, bh;
+
+		block_rect(t, i, &bx, &by, &bw, &bh);
+		if (bw > r.w - bx)
+			bw = r.w - bx;
+		if (bh > r.h - by)
+			bh = r.h - by;
+		if (bw > 0 && bh > 0)
+			ktui_draw_sprite(krect(r.x + bx, r.y + by, bw, bh),
+					 block_slot(t, t->flip, i), fg, bg);
+	}
+	return 0;
+}
+
+/*
+ * One tile, gone: its slots out of the table, then its canvases. The slots go
+ * first for tile_free()'s reason. The frame being composed must not still
+ * draw it — its cells would name slots the table has given back.
+ */
+void kch_tile_drop(int id)
+{
+	struct tile *t = find(id);
+
+	if (t)
+		tile_free(t);
 }

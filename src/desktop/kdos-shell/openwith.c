@@ -638,6 +638,7 @@ static void draw(void)
 	}
 	ktui_draw_hline(1, 2, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 
+	kch_list_view(1, list_top, w - 2, list_rows, top);
 	for (int i = 0; i < list_rows; i++) {
 		int idx = top + i;
 		if (idx >= nrows())

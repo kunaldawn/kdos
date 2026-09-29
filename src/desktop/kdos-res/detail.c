@@ -376,14 +376,14 @@ void res_detail_draw(int x, int y, int w, int h)
 				 D.h_cpu.n ? kpr_hist_at(&D.h_cpu,
 							 D.h_cpu.n - 1) : 0.0);
 			res_graph(900, krect(x + 1, row, w - 2, ch - 1),
-				  &D.h_cpu, "cpu", rd);
+				  &D.h_cpu, "cpu", rd, NULL);
 			row += ch;
 			res_graph(901, krect(x + 1, row, w - 2, ch - 1),
 				  &D.h_mem, "memory",
 				  res_size(D.h_mem.n
 					   ? (unsigned long long)kpr_hist_at(
 						     &D.h_mem, D.h_mem.n - 1)
-					   : 0));
+					   : 0), NULL);
 		}
 	}
 

@@ -48,10 +48,10 @@ first field is `app`):
 
 | Where | Count |
 |---|---|
-| `ports/core` | 2,001 recipes |
+| `ports/core` | 1,999 recipes |
 | `src/packages` | 11 recipes |
 | `src/desktop` | 13 recipes |
-| All port repositories | 2,025 recipes |
+| All port repositories | 2,023 recipes |
 | Catalogue `app` rows (outer ring) | 73 |
 
 `src/packages/` and `src/desktop/` are port repositories in their own right and use the same

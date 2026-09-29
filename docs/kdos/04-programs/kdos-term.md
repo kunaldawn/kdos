@@ -221,6 +221,9 @@ fontconfig name by one:
 
 A scalable face changes on every step. A bitmap face answers with the nearest size it has, so a step
 that lands between two of its sizes changes nothing on screen until a step reaches the next one.
+Terminus goes on past its sizes: at 8 and 9 and from 36 each step is drawn from `Terminus (TTF)`,
+the same typeface in outlines, in a cell exactly the stepped size tall and half as wide, rounded up
+at an odd size. The one exception in the range is 64, which is the 32 size with every pixel doubled.
 
 A different cell size means a different number of columns and rows, so the grid is recut and the
 child is told its new size, exactly as when the window is resized. A picture already on the screen
@@ -671,7 +674,7 @@ window.
 |---|---|
 | [`libkvt`](../05-developer/c-libraries.md) | The VT100–VT520 state machine, the child on a pseudo-terminal, the screen as cells, selection, links and prompt marks |
 | `libkdisp` | Which display server to use, decided once at startup |
-| `libkwl` | The Wayland window: the only display implementation `kdos-term` links |
+| `libkwl` | The Wayland window: the only display implementation `kdos-term` links. A screen that scrolls has its rows' pixels moved inside the window's buffer rather than repainted |
 | `libktui` | The cell grid, the sprite table and its budget, the paste filter, the one dialog |
 | `libkcell` | The font painter, and the one scale-and-cut from a decoded picture into sprite tiles |
 | `libkimg` | The one place untrusted image bytes become a picture |

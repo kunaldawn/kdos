@@ -54,7 +54,7 @@ own tools.
 Five terms recur throughout:
 
 - A **port** is the recipe for one piece of software: a `kpkgbuild` file of metadata and a
-  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 2,001 of them;
+  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 1,999 of them;
   KDOS's own programs have theirs under `src/packages/` and `src/desktop/`.
 - A **package** is what building a port produces: a compressed archive that the package manager,
   `kpkg`, installs and records in its database.
@@ -384,7 +384,7 @@ change depending on which ports happened to be installed.
 
 ## Phase 4: the userland
 
-`04_phase4` is the bulk of the system: 1,687 ports named, and an order of 1,992 once dependencies
+`04_phase4` is the bulk of the system: 1,685 ports named, and an order of 1,990 once dependencies
 are followed, against the 4,096 packages one `kpkg` order can hold. Its environment adds
 `src/packages` to the repositories `kpkg` searches, so KDOS's own tools, theme, icons, splash, box
 launcher and `kdos-bb` are built here as ordinary ports alongside upstream software. The file's own
@@ -413,7 +413,7 @@ not list groups, and a one-line heading such as "Something to play" introduces a
 a list group. The 90 list groups run from "Core Build Utilities (host-side)" (54 ports) to "Data
 the applications read" (9). The largest are "KDE Frameworks 6" (73), "CAD, electronics, 3D
 printing and 3D" (61), "Games" (58) and "Science, data and development" (56). Counting the
-non-comment lines under each heading, the list groups sum to 1,687. The ports of KDOS's own
+non-comment lines under each heading, the list groups sum to 1,685. The ports of KDOS's own
 software named in this list (`kdos-splash`, `kdos-tools`, `kdos-theme`, `kdos-icons`,
 `kdos-cursors`, `kdos-gtk-theme`, `kdos-appbox` and `kdos-boxinit`) sit at the end of the file,
 under the last heading, and `kdos-bb` sits under "ASCII art (aa-project)", after `aalib` and

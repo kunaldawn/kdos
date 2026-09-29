@@ -2,7 +2,7 @@
 
 This chapter is the reference for the recipe format: how a piece of upstream software is described
 so that KDOS can fetch it, verify it, build it offline and package it. A
-[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 2,001 of them
+[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 1,999 of them
 under `ports/core`, and KDOS's own 24 programs under `src/packages` and `src/desktop` are written in
 the same format. The chapter is for anyone adding a port, changing one, or bumping one to a new
 upstream release. Read [How KDOS is built](how-kdos-is-built.md) for where ports sit in the build,
@@ -586,7 +586,7 @@ to the section that explains it.
    `no sha256 for <file> in the recipe`. Add the line (`sha256 = <hash>  <file>`) straight away:
    `kpkg` refuses to extract an unhashed source, and nothing else can verify it. For a port with
    `vendoring =`, the same run generates `<name>-vendor-<version>.tar.xz`; hash and record that
-   file too. `make fetch` takes no port name and walks all 2,001 ports, so use `ports/fetch <port>`
+   file too. `make fetch` takes no port name and walks all 1,999 ports, so use `ports/fetch <port>`
    here.
 4. **Write `build.sh`** from the [canonical shape](#canonical-build-shapes) for its build system,
    applying any [patches](#patches) before it configures.

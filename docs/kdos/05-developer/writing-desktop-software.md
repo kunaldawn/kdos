@@ -103,9 +103,10 @@ into a program, and it is the one line that changes when a display server is add
 test seam: the *dump harness* (`testing/fixtures/shell/dumpmain.c`, the test build that links
 every front end and records its goldens) replaces the `kdisp_*` entry points so that
 `kdisp_init()` answers −1 and every front end takes its offscreen path with no compositor and no
-display libraries. In `src/desktop/kdos-shell` alone there are 54 calls to `kdisp_init()`;
-branching on the display server at each of them would be the same decision written 54 times in
-one program and again in the next, which is why the lifecycle is an interface.
+display libraries. In `src/desktop/kdos-shell` alone there are 47 calls to `kdisp_init()`, one of
+them the surface runner's on behalf of ten front ends; branching on the display server at each of
+them would be the same decision written 47 times in one program and again in the next, which is
+why the lifecycle is an interface.
 
 A cell dump does not go through `libkdisp`. `--dump-cells` installs its own `KtuiBackend` with
 `ktui_backend_set()`: most front ends use the backend that `sh_cells_backend()` in
@@ -142,7 +143,19 @@ backend the surface was initialised with, and `poll_event` is the one entry poin
 implements. It returns 0 on a timeout, which is also where a surface with a clock or a meter does
 its periodic work.
 
-Four rules hold:
+A `kdos-shell` front end need not write this loop. `sh_run()` in `shell.c` owns it, together with
+the argument pass, the theme and the dump branch, and a front end on it states only what it draws
+and how it answers (see [A minimal surface](#a-minimal-surface)). The loop above is for a program
+of its own, and for the front ends whose loop has a shape of its own: the panel, the desktop, the
+savers, the bezels and anything that holds two surfaces.
+
+The loop above runs no immediate-mode frame, and a surface drawn with draw, key and hit functions
+of its own needs none. A surface drawn with the immediate-mode controls (`ktui_button()`, a Tab
+ring, `ktui_modal`) wraps each event and the draw that follows it in `ktui_frame_begin(&ev)` and
+`ktui_frame_end()`, which is where a press is matched to a control and Tab walks the ring. The
+installer's loop does this; on the runner it is the descriptor's `.frame` flag.
+
+Five rules hold:
 
 - The frame state is private. A surface consumes an event, queries focus, takes a wheel notch and
   reads the focus rectangle through accessors (`ktui_consume()`, `ktui_focus_get()`,
@@ -151,14 +164,21 @@ Four rules hold:
   rectangle as they draw, and `ktui_frame_begin()` swaps the hit lists before it dispatches the
   event, so the press lands on what the person saw.
 - Mouse-only chrome, such as a sidebar entry, a tab or a title button, registers with
-  `ktui_hit_chrome()`, whose identifiers start at `KTUI_ID_CHROME` (10000), far above anything
-  `ktui_id()` hands out. These never join the Tab ring and never drag the page scroll. Claiming
+  `ktui_hit_chrome()`, whose identifiers start at `KTUI_ID_CHROME` (10000), far above any
+  positional id. These never join the Tab ring and never drag the page scroll. Claiming
   ordinary identifiers for chrome pushes every real control down the ring and parks the caret on a
   decoration.
+- A group of controls drawn only some of the time goes between `ktui_id_push("name")` and
+  `ktui_id_pop()`. Outside a scope a control's id is its place in the frame, so a group that
+  appears renumbers everything after it: the focus lands on a different control and a field takes
+  another field's caret. Inside a scope the ids are hashed from the name, and the controls after
+  the group keep theirs. The installer's passphrase pair under *Encrypt the root filesystem* is
+  drawn this way. Tab follows the order the controls were drawn in, scoped or not.
 - A resize is not applied until the loop applies it. The backend sets `ktui_resized`; the cell
   buffer follows only when the loop calls `ktui_draw_resize()` and `ktui_draw_invalidate()`, as
-  above. Every loop that owns a surface owns this step. A loop that omits it draws against the old
-  dimensions after a resize, fails its own bounds checks and paints nothing.
+  above. Every loop that owns a surface owns this step, and on the runner the step is the
+  runner's. A loop that omits it draws against the old dimensions after a resize, fails its own
+  bounds checks and paints nothing.
 
 ## Choosing a role
 
@@ -293,9 +313,9 @@ How a finished frame reaches the compositor is `libkwl`'s concern; see
 `libktui` carries one control of each shape (see
 [the design language](../03-architecture/design-language.md#the-chrome-primitives) for the table),
 and they are the reason a surface is usable with a mouse without your writing any pointer code. A
-number is `ktui_slider_*`, a choice is `ktui_dropdown_*`, a line of text is `ktui_input()`, several
-lines are `ktui_textarea_*`. A value the surface prints and changes with `Left` and `Right` is a
-value nobody with a pointer can set at all.
+number is `ktui_slider_*`, a choice is `ktui_dropdown_*`, a line of text is `ktui_field_*` (or
+`ktui_input()` inside a frame), several lines are `ktui_textarea_*`. A value the surface prints and
+changes with `Left` and `Right` is a value nobody with a pointer can set at all.
 
 A surface that draws its own rows still uses the toolkit's pointer rule. `ktui_rows_event()` for a
 list and `ktui_table_event()` for a table answer the same four things: the wheel walks, a press
@@ -304,10 +324,75 @@ Each returns `MOVED`, `PICKED`, `CLOSE` or `NONE` (`KTUI_ROWS_*`, `KTUI_TABLE_*`
 rule `kdos-pick` keeps. A surface that writes its own answer ends up with a pointer rule different
 from the rest of the desktop, often one that ignores the event.
 
+A list with columns is a `ktui_table`, and its header is part of that rule. Mark a column
+`KT_COL_SORT` and a press on its title returns `KTUI_TABLE_SORT`. Answer it with
+`ktui_table_sort()` over an index array that your cell callback reads the records through, and
+bind a key to `ktui_table_sort_next()` so the keyboard reaches the same orders. Mark a number column
+`KT_COL_RIGHT` and draw its cells with `ktui_table_text()` so they line up under the title. Mark a
+column `KT_COL_RESIZE` and pass motion and release events as well as presses, and its edge drags.
+A table on a `KT_SURFACE` window sets `page`, and one that should select by the selection rule sets
+`selrule`. `kdos-trash` is the worked example: four sortable columns, a resizable name, sizes
+right-aligned.
+
 Each control is a `draw`/`key`/`hit` trio with a frame call on top. A surface that runs
 `ktui_frame_begin()` calls the one-line frame call; a surface with its own event loop, such as
 `kdos-display` or `kdos-audio`, calls the three and routes the press and the key itself. Both reach
 the same code, so neither is a second implementation.
+
+A text field in a surface with its own loop is a `KtuiField` over the surface's buffer. Act on the
+keys that are the surface's (Enter, Esc, the list keys) and hand every other key to
+`ktui_field_key()`; a paste arrives as a queue rather than as an event, so also call it with NULL on
+every wake while the field has the focus. A surface with a buffer and its own Backspace and printable
+arms is a field without the caret keys, the paste, the secret masking, the chord guard or the UTF-8
+boundaries.
+
+### Laying out a page
+
+A form is a column of rows, and a page that keeps its own `y` and writes its label column out at
+every field (`b.x + 17`) has a column one edit can move for one row and not the next. Take the rows
+from a `KtuiLay` instead:
+
+```c
+KtuiLay l;
+KRect f;
+
+ktui_lay_begin(&l, body);
+ktui_lay_section(&l, "YOU");
+f = ktui_lay_field(&l, "username", 0);     /* label in KT_MID, control after it */
+f.w = 34;
+ktui_input(f, cfg.username, sizeof(cfg.username), 0, "kdos");
+f = ktui_lay_field(&l, NULL, 0);           /* the same column, no label */
+ktui_pw_meter(f.x, f.y, f.w, cfg.userpass);
+ktui_lay_gap(&l, 1);
+f = ktui_lay_row(&l, 1);
+ktui_check(f.x, f.y, f.w, "Administrator", &cfg.user_wheel);
+ktui_lay_indent(&l, 0);                    /* a note under the box, by its mark */
+f = ktui_lay_row(&l, 1);
+ktui_note(f.x, f.y, f.w, "may use sudo");
+ktui_lay_unindent(&l, 0);
+```
+
+The label column is 16 cells, the key column `ktui_kv()` uses, so a form and a key/value list
+beside it align; pass another width where a page needs one. A row with several controls side by
+side is `ktui_lay_cols()` over a `KtuiCol` array, with the table's rule: fixed widths kept, one
+cell between, the first zero-width column takes the rest. `ktui_lay_left()` is what is left for a
+paragraph or a list at the bottom. The cursor only does arithmetic and draws labels through the
+calls you would have made, so moving a page onto it changes no cell; the installer's *Accounts*
+page is the worked example. It is not a frame control and needs no frame.
+
+Two frame controls go with it, both named rather than counted, so each keeps its state in
+`ktui_state()` whatever is drawn above it:
+
+- `ktui_split(r, "name", KT_SPLIT_SIDE, at, min, &a, &b)` cuts `r` with a divider the pointer drags
+  and the arrow keys move; `Home` restores it. A negative `at` sizes the second pane, which is what
+  a side panel on the right wants: it keeps its width as the window grows.
+- `if (ktui_fold_begin(x, y, w, "Advanced", 0)) { ...; ktui_fold_end(); }` is a section heading
+  that opens and shuts. Call `ktui_fold_end()` only when it returned 1. The body is drawn inside an
+  id scope the fold pushed, so its controls come and go without moving any id after it: a fold is
+  the scoping rule under [The frame protocol](#the-frame-protocol) done for you.
+
+Two of either with one name in one id scope are one control; wrap repeats in
+`ktui_id_push_int()`.
 
 ## Chrome
 
@@ -430,6 +515,19 @@ wheel moves the viewport by three rows (`SH_WHEEL_ROWS`) and the cursor stays on
 its `follow` flag is set. Set that flag from everything that moves the cursor and from nothing that
 scrolls the page, or the next frame undoes the scroll.
 
+After the clamp, `kch_list_view(x, y, w, h, top)` declares where the rows are and which item is in
+the first of them: the rows' cells alone, with no header and no scrollbar column. It is called on
+every draw, and a list not declared in a frame stops gliding. Where the display has a frame clock
+and motion is on, a change of `top` is then presented as the list gliding there: `libkwl` slides the
+list's pixels from the picture on the screen to the new one over 100 ms (`KWL_GLIDE_MS`), eased out,
+committing the frames in between itself, so a wheel notch's three rows arrive as a slide rather than
+a jump and a second notch continues the slide from wherever it is. Nothing about the list moves by
+less than a row: `top`, the hit map, the pointer's row and every dump are whole rows, and the last
+frame of a glide is the cells' own picture. A move as long as the list or longer is a jump, and so
+is a change of `top` that is not a move — a filter typed, a group opened — which `libkwl` tells from
+the cells: at least half the rows the two frames share must be the same rows shifted. On a terminal
+and in a dump the call does nothing.
+
 `kch_scrollbar()` draws a draggable bar (up to `KCH_SCROLLBARS`, four, per surface) and nothing at
 all when everything fits. Call it every frame, including frames where the list fits, so that a bar
 which has stopped being drawn stops being grabbable.
@@ -461,15 +559,16 @@ never changes an icon's aspect.
 
 ### Pixel tiles
 
-For content that cannot be a row of text, such as a chart or a control with text at a size other
-than the cell's, draw a canvas and hand it to the toolkit as a sprite through `libkchrome`'s tiles:
+For content that cannot be a row of text, such as a chart or a control that mixes text at a size
+other than the cell's with drawing of its own, draw a canvas and hand it to the toolkit as a sprite through `libkchrome`'s tiles:
 `kch_tile_begin()` returns a `KCellCanvas` to draw into (or `NULL`), `kch_tile_commit()` publishes
-it and `kch_tile_slot()` returns the slot to draw. Four rules apply:
+it, `kch_tile_slot()` says whether it is up (a slot, or -1) and `kch_tile_draw()` writes its cells
+into a rectangle of the grid. Four rules apply:
 
 - Two slots per tile, alternating. A sprite cell encodes the *slot* and the sub-cell coordinate, not
   the picture, so redrawing a canvas in place changes no cell, the comparison sees nothing and the
   frame is never presented; a clock tile would freeze at the minute it was first drawn. The tile
-  swaps slots on every content change, which repaints exactly the rows it covers, where
+  swaps slots on every content change, which repaints exactly the cells it covers, where
   `ktui_draw_invalidate()` would repaint the whole surface once a second for a small chart.
 - Draw the tile before asking for its slot. `kch_tile_slot()` answers -1 until the tile's first
   `kch_tile_commit()`, so code that draws a tile only when a slot already exists never draws it
@@ -479,9 +578,66 @@ it and `kch_tile_slot()` returns the slot to draw. Four rules apply:
 - A tile is never required, and its content hash leaves out the accent colour, because a theme
   change drops every tile through `kch_tile_reset()` at the same moment the icons are retinted.
 
-A tile is at most 16×16 cells, because the sub-cell coordinate is four bits each way, and a surface
-has at most eight tiles. A page-wide chart is past that limit and is drawn as cells; see
-[kdos-res](../04-programs/kdos-res.md#the-charts).
+A tile can be any size up to the grid. One sprite covers at most 16×16 cells, because the sub-cell
+coordinate is four bits each way, so a larger tile is published as a grid of sprites, one per 16×16
+block, each a view onto the same canvas: publishing it copies no pixels, and `kch_tile_draw()` writes
+every block's cells. That is why a tile is drawn with `kch_tile_draw()` and not with
+`ktui_draw_sprite()` on the slot, which covers the first block only. A program holds at most 24
+tiles (`TILE_MAX`), and each tile's two halves take one sprite slot per block out of the table's
+4,096 (`KTUI_MAX_SPRITES`). A tile that stops being drawn keeps its two canvases until
+`kch_tile_drop()`; drop it only once a frame that does not draw it is flushed, and invalidate
+the next frame, for the reason given in [libkchrome](c-libraries.md#libkchrome).
+
+A chart is not drawn by hand. `kch_plot()` draws an area chart, or a mirrored pair on one axis, as
+a tile of its own and answers -1 where the caller must draw its cells; `kch_plot_draw()` draws the
+same chart into part of a canvas the caller already holds. Both follow the style in
+[the design language](../03-architecture/design-language.md#a-data-trace-is-antialiased-chrome-is-not),
+and the marks they are built from, `kcell_canvas_series()` and `kcell_canvas_line()`, are there for
+anything else that plots data. The panel's meters and the charts in `kdos-res` are both drawn this
+way, each with a cell chart for the -1 answer; see [kdos-res](../04-programs/kdos-res.md#the-charts).
+
+A program that draws tiles turns its pixel tier on after `kdisp_init()`, because the cell size and
+the output scale are the display's: `kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale())`,
+which refuses a display with no pixel cell and so leaves every tile off, and
+`kch_tile_enable()` from the program's `icons` setting. The cell and scale answered then are the
+font's at 1 until the surface is on a screen: a whole-number output moves the scale and a
+fractional one moves the cell, to the font's at the device size. So the program also registers a
+function with `kdisp_on_scale()` that calls `kicon_recell()` with the cell read again, which rebuilds
+the icons when either arrives or changes; in `kdos-shell`, `sh_pic_backend()` does it. Tiles follow
+both by themselves. A pixel position handed to another surface, such as a popup's anchor, is a
+logical one and goes through `kdisp_px_logical()`; see
+[The output scale](c-libraries.md#the-output-scale). A dump never makes the call, so its frame is
+the cell layout. On a theme change such a program calls `kicon_retint()` and `kch_tile_reset()`
+before it redraws: icons are tinted when they are loaded and tiles are rasterised in the palette in
+force, and both are cached by what they show, not by palette, so a program that skips either comes
+up in the new theme wearing the old accent.
+
+### Display text
+
+A heading or a figure that is only text, taller than a row, is not a tile. Draw it with
+`kch_display_text()`:
+
+```c
+/* in the draw, after kch_px_reset() */
+kch_display_text(krect(x, y, cols, 2), "62%", KT_SURFACE, KT_ACCENT, KCH_ALIGN_RIGHT);
+```
+
+It is one op on the pixel layer, `rows` of the cell tall (two rows of a 16×32 cell are Terminus
+doubled, pixel for pixel), in the cell font's face, cut to its rectangle and aligned in it. The
+rectangle's cells go blank on the slot the backdrop owns and `bg`, when it is another slot, is laid
+under the text as a flat rectangle, so the text sits on whatever band the cells were. It costs no
+sprite slot and no canvas; a changed string re-rasterises and repaints only its own rectangle.
+
+It needs a backdrop, and a slot cleared for the backdrop to show through. A popup has one
+(`kch_px_popup()`); an ordinary window hands its page to `kch_px_flat(page_slot)` after
+`kdisp_init()`, which paints the page in the same slot, opaque, so nothing on screen changes. Where
+it cannot draw, `kch_display_text()` fills the rectangle with `bg` and draws the string as cells
+on the rectangle's first row and answers 0; that is the frame tty1 and every `--dump` show, so lay
+the rectangle out so that its cell form reads on its own. A figure that only repeats what the cells
+already say is drawn where `kch_display_live()` answers 1 and not at all otherwise, as `kdos-res`
+draws the number in its band; size its rectangle with `kch_display_cols(s, rows)`. The strings of
+one frame share a 2048-byte pool and the list's 256 ops are shared with the plates, and a string
+that does not fit takes its cell form.
 
 ## Colour
 
@@ -514,10 +670,11 @@ code or a units suffix left muted vanishes exactly when the row is selected.
 
 ## A minimal surface
 
-The pieces above fit together in one entry point. This is the shape of a boxed `kdos-shell` window
-with a `--dump` path, reduced from `src/desktop/kdos-shell/firewall.c` (354 lines, one of the
+The pieces above fit together in one descriptor. This is the shape of a boxed `kdos-shell` window
+with a `--dump` path, reduced from `src/desktop/kdos-shell/firewall.c` (326 lines, one of the
 smallest complete windows in the tree and a reasonable file to copy). The `kdos_disp` array is
-defined once per program, in `kdos-shell`'s `main.c`, and declared in `shell.h`.
+defined once per program, in `kdos-shell`'s `main.c`, and declared in `shell.h`, where `ShSurface`
+and `sh_run()` are declared too.
 
 ```c
 static KtuiKeys keys;
@@ -527,69 +684,71 @@ static void draw(void)
         int w = ktui_w, h = ktui_h;
 
         ktui_draw_fill(krect(0, 0, w, h), KT_BG);
-        ktui_draw_box(krect(0, 0, w, h), " Thing ", KT_ACCENT, KT_BG, 1);
+        sh_frame(w, h, "Thing", KT_ACCENT, KT_BG, 1);
         /* … the content, the header band, the button bar … */
         ktui_hint("Esc", ktui_esc_verb(&keys));
         ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_BG);   /* last */
 }
 
+static int on_event(KtuiEvent *ev)     /* after ktui_keys() passed it */
+{
+        if (ev->type == KT_EVT_KEY && ev->key == 'q')
+                return SH_EV_CLOSE;
+        /* the surface's own keys and pointer handling */
+        return SH_EV_TAKEN;
+}
+
 int thing_main(int argc, char **argv)
 {
-        int dump = 0;
+        static const ShSurface s = {
+                .cfg = { .role = KDISP_ROLE_TOPLEVEL, .cols = 68, .rows = 16,
+                         .title = "Thing", .app_id = "kdos-thing", .keyboard = 1 },
+                .keys = &keys,           /* keys.doc stays NULL: no help page */
+                .draw = draw,
+                .event = on_event,
+        };
 
-        for (int i = 1; i < argc; i++) {
-                if (!strcmp(argv[i], "--dump"))
-                        dump = 1;
-                else {
-                        fprintf(stderr, "usage: kdos-thing [--dump]\n");
-                        return 2;
-                }
-        }
-        keys.help = sh_help;           /* keys.doc stays NULL: no help page */
-
-        if (dump) {                    /* no display: one frame, as text */
-                ktui_offscreen_init(68, 16);
-                ktui_draw_init();
-                draw();
-                ktui_draw_dump();
-                return 0;
-        }
-
-        KDispConfig cfg = { .role = KDISP_ROLE_TOPLEVEL, .cols = 68, .rows = 16,
-                            .title = "Thing", .app_id = "kdos-thing", .keyboard = 1 };
-        if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-                fprintf(stderr, "kdos-thing: no display server\n");
-                return 1;
-        }
-        ktui_draw_init();
-
-        while (!kdisp_should_close()) {
-                draw();
-                ktui_draw_flush();
-
-                KtuiEvent ev;
-                if (!ktui_backend()->poll_event(&ev, 1000)) {
-                        if (ktui_resized) {
-                                ktui_resized = 0;
-                                ktui_draw_resize();
-                                ktui_draw_invalidate();
-                        }
-                        continue;
-                }
-                int r = ktui_keys(&keys, &ev);                   /* first */
-                if (r == KTUI_KEY_CLOSE)
-                        break;
-                if (r == KTUI_KEY_TAKEN)
-                        continue;
-                /* the surface's own keys and pointer handling */
-        }
-        kdisp_shutdown();
-        return 0;
+        return sh_run(&s, argc, argv);
 }
 ```
 
-The dump branch runs before `kdisp_init()` and draws through the same `draw()` as the live loop,
-which is what makes the golden a picture of the real surface.
+`sh_run()` does the rest, in this order, and a front end on it cannot leave any of it out:
+
+1. It reads `--font NAME` and `--dump`, hands every other word to the descriptor's `arg()` and
+   prints `usage: <app_id> <usage>` with exit status 2 for one that nobody takes.
+2. It calls `start(dump)`, where the surface reads what it shows, and then applies the theme.
+3. With `--dump` it draws one frame offscreen at `.cols` × `.rows` through the same `draw()` and
+   prints it, before `kdisp_init()` is reached. That is what makes the golden a picture of the real
+   surface.
+4. Otherwise it calls `kdisp_init()`, or prints `<app_id>: no display server` and exits 1, puts the
+   popup plate under an overlay that asks for one (`.popup`, `.popup_bg`) and calls `ready()`.
+5. Each pass polls the theme file and draws; the poll waits `timeout()` milliseconds (1000 without
+   one), and `wake()` runs after it whether an event came or not. A timeout runs `tick()` and then
+   the resize step; an animation's frame tick runs the resize step alone, and the next pass draws. An event goes to `ktui_keys()` first, where `CLOSE` ends the loop, `TAKEN`
+   goes no further and a menu pick goes to `menu(id)`, and then to `event()`.
+6. When the loop ends it calls `stop()`, where a surface saves what it holds, and
+   `kdisp_shutdown()`. Neither runs on the dump or the no-display path.
+
+`event()` answers `SH_EV_PASS`, `SH_EV_TAKEN` or `SH_EV_CLOSE`, and `sh_run_close()` ends the loop
+from anywhere else, such as a control drawn inside a frame. While `typing()` answers 1, a text
+field owns the keyboard: `ktui_keys()` is asked about `Esc` alone, so `F1` and `F10` do nothing
+there. A surface that sizes itself from what it found (`kdos-about`) fills `.cols` and `.rows` in
+before it calls `sh_run()`, and cleanup that holds on every path goes after the call.
+
+`.frame = 1` puts every event and the draw after it inside a `ktui_frame_begin()` and
+`ktui_frame_end()` pair, then draws once more with no event so that what the event changed (a
+focus Tab moved, a page a button opened) is on the screen without waiting for the next key. The
+dump draws inside a frame too. It is off by default because it changes three things a surface
+with draw, key and hit functions of its own relies on: `ktui_frame_end()` walks the Tab ring on
+any Tab that `event()` did not answer `SH_EV_TAKEN`; `ktui_id_base()` stops restarting the id
+counter, so a group that points the focus at its own members counts from the page's ids; and the
+hit lists swap once per frame. No shipped front end on the runner takes it yet; the runner's own
+test surface in the dump harness pins what it does.
+
+Ten front ends run on `sh_run()`: `kdos-about`, `kdos-chars`, `kdos-contacts`, `kdos-firewall`,
+`kdos-note`, `kdos-print`, `kdos-trash`, `kdos-update`, `kdos-users` and `kdos-verify`. The rest
+keep the loop in [The frame protocol](#the-frame-protocol), written out with the same steps in the
+same order; a new front end starts on the runner unless its loop has a shape of its own.
 
 ## What libkwl and libkcell do for a surface
 
@@ -659,19 +818,35 @@ the loop happened to poll at. A key held when the focus leaves stops repeating.
 
 A wheel tick is not an axis event, and the two sources behave differently:
 
-- A wheel is already quantised: one event per detent, with a discrete count. Running that through
-  an accumulator leaves a remainder, so the next notch crosses the threshold twice and a list jumps
-  two rows.
+- A wheel is already quantised: a count of detents with each event. Running that through an
+  accumulator leaves a remainder, so the next notch crosses the threshold twice and a list jumps two
+  rows.
 - A touchpad is not quantised, and sends a stream of small continuous values from which ticks are
-  synthesised: one tick per 10 units, at most five per pointer frame.
+  synthesised: one tick per 10 units (`KWL_AXIS_TICK`), at most five per pointer frame.
 
-The `axis_source` field says which is which. On the discrete path one pointer frame is one detent:
-a front end that turns one host scroll into two delivers a single frame carrying a count of two,
-and honouring the count would move a list twice as far. The count is discarded and one tick emitted
-per frame. When the same doubling arrives as two frames, a rate limit catches it: a second tick in
-the same direction within 20 ms of the last (`KWL_WHEEL_MIN_MS`, overridden by
-`$KDOS_WHEEL_MIN_MS`) is dropped, and a change of direction always passes. `KDOS_WHEEL_DEBUG=1`
-prints what the compositor actually sends.
+The `axis_source` field says which is which. `libkwl` binds `wl_seat` at the lower of what the
+compositor offers and version 9. From version 8 the count arrives as `axis_value120`, in 120ths of a
+detent, and a wheel with a high-resolution mode sends one detent as several fractions: they add up
+across frames, a whole detent is one tick, and a reversal starts the count again. Below version 8
+the count is `axis_discrete`, whole detents. On either path one pointer frame is at most one tick: a
+front end that turns one host scroll into two delivers a single frame carrying a count of two, and
+honouring the count would move a list twice as far, so the rest of the frame's count is discarded.
+When the same doubling arrives as two frames, a rate limit catches it: a second tick in the same
+direction within 20 ms of the last (`KWL_WHEEL_MIN_MS`, overridden by `$KDOS_WHEEL_MIN_MS`) is
+dropped, and a change of direction always passes. The limit is for detents: a finger has none, and
+a touchpad crossing the tick threshold in two frames 15 ms apart is a fast scroll, so finger and
+continuous sources are never gated. `KDOS_WHEEL_DEBUG=1` prints what the compositor actually sends.
+
+A finger that leaves the touchpad while still moving *coasts*. `libkwl` measures the release speed
+over the finger's last 100 ms of vertical samples; above 0.3 units a millisecond it keeps feeding
+ticks as though the finger were still moving, slowing by a factor of 0.996 every millisecond (a time
+constant of 250 ms), until the speed falls under one tick every half second or three seconds have
+passed. A finger held still before it lifts measures nothing in that window and does not coast. The
+next scroll, a button press, a key or the pointer leaving the surface stops a coast, and nothing
+coasts where motion is off. The coast's steps ride the caller's wait in pieces, as the overlay's
+refreshes do, so a loop never sees its own timeout early. The constants are one `#define` each in
+`kwl.c` and were set by reading the protocol rather than on a touchpad; the coast is not fed into
+the raw stream, where a pixel guest gets the finger's own end of gesture and runs its own kinetics.
 
 A *serial* is the number the compositor attaches to an input event, which a later request must
 quote to show it answers that event. A serial must be retained from key, button, enter and touch
@@ -691,7 +866,42 @@ buffer holds so that it redraws only what changed; with two buffers alternating 
 record, the rows that changed while the *other* buffer was in flight would never be redrawn in it.
 Each buffer carries its own shadow, and a full repaint is forced whenever a buffer has none or has
 been resized. The damage reported to the compositor is still the global comparison with what is on
-screen; only the paint is per buffer.
+screen, cut to the changed span of each changed row rather than the row's width; only the paint is
+per buffer.
+
+A grid that scrolled is moved, not repainted. When a band of rows equals the buffer's shadow
+shifted up or down (a terminal taking a line of output, a list stepped by the wheel), the band's
+pixels are moved inside the buffer and the shadow with them, and the paint covers only the rows
+the band exposed. Nothing is asked of the surface: it draws its cells as always, and the row
+comparison finds the shift. See
+[Scrolling by moving pixels](c-libraries.md#scrolling-by-moving-pixels).
+
+A surface with a backdrop (pixel chrome under the cells, see
+[libkchrome](c-libraries.md#libkchrome)) is held to the same rule only when the backdrop can be
+repainted in part. Each buffer records the key of the backdrop it was last painted over. When the
+backdrop's current key is the same, only the changed cells are repainted. When it differs but the
+backdrop can say which pixels moved since that key (a plate that moved, appeared or vanished), the
+cells over those pixels are repainted as well. Either way each repainted cell is laid back on its
+own rectangle of the cached backdrop first. The damage is the changed cells plus the pixels that
+moved between the picture on screen and the new one. A commit whose backdrop changed its alpha, its
+edge, the palette, the size or the scale, or moved a pixel no cell covers (the rule, the remainder
+past the last cell), is painted and damaged in full. A scrolled band over a backdrop is moved only
+where the picture is the same at both ends of the move: over the bare body that is every row no
+plate or other drawing op reaches, and over the graded popup and taskbar bodies it is none, so a list in a popup is
+repainted as it scrolls.
+`KDOS_PAINT_FULL=1` forces that full path for every commit of every surface, which is the
+comparison to make when a surface shows stale pixels.
+
+`KDOS_INSPECT=1` shows it. Every row whose cells a commit changed is tinted in the accent and fades
+over a second, so a row that repaints on every frame stays lit; a panel in the top right corner
+gives commits and stashed frames a second, the paint time, the frame callback's latency, what the
+last commit changed, the sprite bytes and the hit rects; and each hit rect of a frame surface is
+outlined, the focused one in the accent. It is the answer to "why is this surface busy" without a
+rig photograph: a clock that lights its whole row every second, a list that repaints when nothing
+moved, a surface throttled because it draws faster than the display. The overlay makes every commit
+whole, so under it the paint time is a full paint's; read the rows lit, not the damage, and compare
+the paint time with `KDOS_PAINT_FULL=1` rather than with an uninspected run. See
+[libkwl](c-libraries.md#libkwl).
 
 The scale and the resized buffer must land in one commit. Split them and the compositor sees a
 buffer whose size disagrees with its declared scale for a frame.
@@ -700,20 +910,62 @@ An unchanged frame is not committed at all, and a frame callback the compositor 
 occluded surface, an output that is off) is given up on after 100 ms, so an idle surface costs
 nothing and a hidden one does not freeze.
 
+### Animating
+
+Something that moves on a surface is a `KtuiAnim` read by the draw, never a timer the loop runs.
+Start it when the thing happens and ask it for its value where it is drawn:
+
+```c
+static KtuiAnim glow;
+
+/* on the click */
+ktui_anim_start(&glow, 0.0f, 1.0f, 1100, KT_EASE_IN_OUT, 2);
+
+/* in the draw, on the pixel layer */
+if (kch_px_live() && ktui_anim_running(&glow))
+        kch_px_round(x, y, w, h, KCH_PLATE_RADIUS, kch_slot_rgb(KT_ACCENT),
+                     (uint8_t)(0x66 * ktui_anim_value(&glow)));
+```
+
+The loop needs nothing more if it draws on every return of `poll_event`, as `sh_run()` and the
+panel do. While an animation runs, `libkwl` returns a `KT_EVT_TICK` as
+an event once per display frame, so the draw happens at the display's rate; one more follows the
+end, which draws the end value, and then the loop is back on its own timeout. A loop that treats
+every return of 1 as input, or runs periodic work on every pass, must tell a tick apart by its type:
+the panel skips its sysfs measurements on one, and `sh_run()` never calls `tick()` for one. A loop
+that waits on the display descriptor itself gets no ticks, and its animations stand at their first
+frame.
+
+A selected row that should slide rather than jump needs no animation of its own: draw it with
+`kch_px_row_anim(key, item, cx, cy, cw, KCH_T_ACTIVE)` instead of `kch_px_row()`, with one key per
+list and the selected index as the item, and keep the cell form of the selection for where
+`kch_px_live()` is false. The plate eases to a new item's row and lands at once when the same item
+has only moved with the page; see [libkchrome](c-libraries.md#libkchrome).
+
+Put the motion on the pixel layer, over or under cells that are already final, and give it an end
+value that says everything the motion said: on `tty1`, under `--dump` and with `motion = no` in
+`comp.conf` the value is the end from the start, and a golden is always the settled picture. Where
+the motion is the whole message, show a state for as long as it lasts instead: `ktui_anim_running()`
+is still true with motion off, and `KtuiAnim.still` says the value will not move. Durations and
+curves are in [the design language](../03-architecture/design-language.md#motion).
+
 ### Loading a font at a given size
 
-`libkcell` handles both of these rules when it loads a font for a canvas. Any new code that asks
-fontconfig for a sized face has to keep them too.
+`libkcell` handles both of these rules when it loads a font for a canvas or for display text. Any
+new code that asks fontconfig for a sized face has to keep them too.
 
 A repeated fontconfig property appends; it does not replace. The chrome font is
 `Terminus:pixelsize=32`, and appending `:pixelsize=39` to it yields a pattern carrying two sizes,
 of which the first wins, so every canvas would come out at the cell's own size while the text
 still renders. Strip the size the name carries before appending yours.
 
-A bitmap font cannot be asked for an arbitrary size; it answers with the nearest strike it has.
-Measure the result: `libkcell` retries a face that came back shorter than three quarters of the
-requested height with `:scalable=true` and keeps whichever is closer. A machine with no scalable
-face keeps the bitmap, which is the correct answer for a minimal install.
+A bitmap font cannot be asked for an arbitrary size: fontconfig answers with the nearest strike,
+scaled by nearest neighbour where it is more than a fifth away, and a fractional scale draws uneven
+strokes. `libkcell` asks fontconfig which strike and which factor it chose, and where the bitmap is
+not exact it takes the family's outline twin, `Terminus (TTF)`, at the requested size (see
+[libkcell](c-libraries.md#the-cells-size)). A face still more than a tenth short is retried with
+`:scalable=true`, keeping whichever is closer. A machine with no scalable face keeps the bitmap,
+which is the correct answer for a minimal install.
 
 ## Adding a name to kdos-shell
 
@@ -721,7 +973,8 @@ face keeps the bitmap, which is the correct answer for a minimal install.
 `argv[0]` with a table and calls the matching entry point. A new front end is therefore wired in
 several places, and most of them fail silently.
 
-1. Add `src/desktop/kdos-shell/<x>.c` with an entry point `int <x>_main(int argc, char **argv)`.
+1. Add `src/desktop/kdos-shell/<x>.c` with an entry point `int <x>_main(int argc, char **argv)`,
+   which fills an `ShSurface` and returns `sh_run()` (see [A minimal surface](#a-minimal-surface)).
 2. Add a `{ "kdos-<x>", <x>_main }` row to the `TOOLS` table in `main.c`.
 3. Declare the entry point in `shell.h`. The table names it and the header is how every other file
    learns of it.
@@ -742,8 +995,8 @@ several places, and most of them fail silently.
    opens nothing, and none of those four fails at build time. `testing/preflight.sh` checks that
    every command `menu.conf` names exists, and checks all four places for `kdos-store`; for any
    other name, keeping them together is your responsibility.
-6. Give it `--dump` and commit goldens. That is four more edits, and the suite passes with none of
-   them:
+6. Give it `--dump` and commit goldens. That is four more edits, and a fifth where the loop is
+   worth pinning, and the suite passes with none of them:
    - add `<x>` to the `for s in …` candidate list in `testing/selftest.sh`, so the file is compiled
      into the dump harness;
    - add **both** `FRONT_END(<x>_main);` and a `{ "<short name>", <x>_main }` row to
@@ -755,14 +1008,19 @@ several places, and most of them fail silently.
    - add a fixture if the surface reads anything the host owns. `--fixture <dir>` replaying recorded
      output is the idiom: `kdos-print` over recorded `lpstat` and `lpinfo` output, `kdos-store` over a
      recorded catalogue, and `kdos-disks` pointed at a `kdos-mountd` socket that does not exist.
-     Without one the golden records the machine that wrote it and fails everywhere else.
+     Without one the golden records the machine that wrote it and fails everywhere else;
+   - add a `keydrive <name> <WxH> "<script>" <argv…>` call to `testing/selftest.sh` for a surface
+     with a loop worth pinning. It runs the surface's live path over a scripted display (see
+     [Looking at it without a screen](#looking-at-it-without-a-screen)) and commits the frame it
+     ends on as `drive-<name>-<WxH>.txt`.
 
    Every one of those omissions reads as a pass. `ls testing/goldens/ | grep <name>` after the run
    is what tells a covered surface from an uncovered one; the exit code cannot.
 7. If another tool starts it, check the flags. `testing/preflight.sh` verifies that every flag one
    `kdos-shell` tool passes another is one the target accepts. An unknown argument prints a usage
    line to an error stream nobody reads and exits before a surface exists, so the symptom is a
-   control that silently does nothing.
+   control that silently does nothing. A front end on `sh_run()` takes `--font` and `--dump` in
+   `shell.c`, and the check reads that file for them.
 8. If it opens files by type, give it a desktop entry. The `kdos-shell` front ends that have one,
    `kdos-peek`, `kdos-pix` and `kdos-burn`, ship it under `fs/usr/share/applications/` with `NoDisplay=true`
    and a `MimeType=` line, so a file of that type can be opened with it while the menu does not
@@ -865,6 +1123,27 @@ surface at the vt tier (see
 [the glyph tiers](../03-architecture/design-language.md#the-glyph-tiers)) before believing it reads
 on a console. `testing/preflight.sh` checks every chrome glyph against the shipped console font.
 
+A `--dump` never runs the loop, so no dump shows an event handler, the resize step or `ktui_keys()`
+being asked first. The dump harness can also run a surface's live path: with `$KDOS_DUMP_KEYS`
+set, `kdisp_init()` there answers with a display that reads the variable as a script of events,
+and the frame the surface last presented is printed when it shuts down, followed by
+`-- N of M events read`. A surface that closed itself stops short of the total. The script is
+whitespace-separated steps:
+
+| Step | Is |
+|---|---|
+| `up` `down` `left` `right` `home` `end` `pgup` `pgdn` `ins` `del` `tab` `btab` `enter` `esc` `bs` `space` `f1` … `f12` | That key |
+| `ctrl+K`, `alt+K`, `shift+K` | A named key or one character with that modifier |
+| One character | That character |
+| `text:WORD` | One key event per character of `WORD` |
+| `click:X,Y`, `rclick:X,Y` | A press and its release at that cell, left or right button |
+| `wheelup:X,Y`, `wheeldown:X,Y` | One detent |
+| `tick` | A poll that times out |
+| `resize:WxH` | The grid changes size, and the poll times out |
+
+The grid is `$KDOS_DUMP_SIZE`, else the size the surface asked for. Only the dump harness reads the
+variable; `testing/selftest.sh` commits these frames through `keydrive` as `drive-*` goldens.
+
 Goldens are committed and compared by `testing/selftest.sh`; `KDOS_GOLDEN_UPDATE=1` rewrites them.
 Regenerating them is described in [Testing](testing.md#regenerating).
 
@@ -879,10 +1158,15 @@ standard error. `libkwl` prints:
 | `kwl: the compositor closed the surface before it was configured` | The surface was closed during the handshake; `kdisp_init()` fails rather than returning success for a window nobody will see |
 | `kwl: layer-shell v<N> has no on-demand keyboard; …` | The compositor offers a layer shell older than version 4; see [above](#bind-the-layer-shell-at-the-right-version) |
 
-Two environment variables trace what the libraries see. `KDOS_WHEEL_DEBUG=1` prints every discrete
-and continuous axis event and every pointer frame's result. `KDOS_PANEL_DEBUG=1` makes the panel
+Four environment variables trace what the libraries see. `KDOS_WHEEL_DEBUG=1` prints every discrete,
+high-resolution and continuous axis event, every pointer frame's result and every coast step. `KDOS_PANEL_DEBUG=1` makes the panel
 say why a pixel tile declined and print one line per meter sample with its scale and value, and
-makes `kdos-tip` print the size and position it was placed at.
+makes `kdos-tip` print the size and position it was placed at. `KDOS_PAINT_FULL=1` paints and damages every
+commit in full (see [Presenting a frame](#presenting-a-frame)): a defect that goes away under it is
+in the partial repaint or the damage, and one that stays is in the drawing. `KDOS_INSPECT=1` draws
+the changed rows, the frame timing and the hit rects over the surface itself (see
+[Presenting a frame](#presenting-a-frame)); a frame surface that is on screen but not answering a
+click shows there whether it registered a hit rect where the click landed.
 
 ## The checklist
 
@@ -898,7 +1182,7 @@ restated as a procedure:
 | 5 | A hit map recorded from the draw | Resize the window and click the top row |
 | 6 | Dump at two sizes and commit both goldens | `testing/devdeps-image.sh` |
 | 7 | Read it at the vt tier, and use no glyph the console font lacks | `--dump`; `testing/preflight.sh` reads the shipped font |
-| 8 | One `KtuiKeys`; `ktui_keys()` first, `ktui_hint_row()` last, on every path | `grep -c ktui_hint_row`; the dump path counts |
+| 8 | One `KtuiKeys`; `ktui_keys()` first (on the runner, `.keys` names it), `ktui_hint_row()` last, on every path | `grep -c ktui_hint_row`; the dump path counts |
 | 9 | Every raised state a declared layer, never an `Esc` branch | `grep KT_K_ESC`; a remaining case is one the ladder should own |
 | 10 | A help page in `fs/usr/share/kdos/doc/` if `keys.doc` names one, and `doc` left `NULL` if not | `testing/preflight.sh` |
 

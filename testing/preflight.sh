@@ -1490,6 +1490,30 @@ else
 fi
 
 echo
+echo "==> kdos-comp's direct-scanout switch has one writer"
+#
+# The scene's direct_scanout field covers every output, while the phosphor pass
+# is decided per output and per frame, so kdos_crt_scanout() writes it before
+# every build that reads it: off for the pass's own build, allowed for a plain
+# frame. Any other writer holds for the frames after it: an upstream toggle
+# (the magnifier has one) lets the pass build from a scanned-out client buffer
+# or keeps scanout from the frames it was meant for, and the environment
+# variable set in code takes scanout from every frame of the session.
+KC=src/desktop/kdos-comp/src
+if [ -d "$KC" ]; then
+    { grep -rnE 'WLR_PRIVATE\.direct_scanout[[:space:]]*=([^=]|$)' "$KC" |
+          grep -v "^$KC/kdos-crt\.c:"
+      grep -rnF 'WLR_SCENE_DISABLE_DIRECT_SCANOUT"' "$KC" | grep -F 'setenv'
+    } > "$SP/scanout-writers"
+    if [ -s "$SP/scanout-writers" ]; then
+        bad "direct-scanout writers" \
+            "only kdos_crt_scanout() may set it: $(cut -d: -f1,2 "$SP/scanout-writers" | tr '\n' ' ')"
+    else
+        note "direct-scanout writers" "kdos_crt_scanout() only"
+    fi
+fi
+
+echo
 echo "==> every program fs/etc/inittab names is on the image"
 #
 # THE WHOLE LOGIN PATH IS IN THIS ONE FILE, and nothing reads it until an ISO
@@ -1568,6 +1592,12 @@ for name, fn in tools.items():
         if re.search(r'\b(int\s+)?%s_main\s*\(' % re.escape(fn), body):
             text.setdefault(name, "")
             text[name] += body
+# A front end on sh_run() takes `--font` and `--dump` in shell.c, not in its own
+# file, so the runner's source is part of the text its flags are looked for in.
+runner = open(os.path.join(SRC, "shell.c")).read()
+for name in text:
+    if re.search(r'\bsh_run\s*\(', text[name]):
+        text[name] += runner
 
 # kdos-res is a separate binary rather than a TOOLS[] name, and the panel and
 # the compositor's keybind both spawn it. Its whole source is the text a flag

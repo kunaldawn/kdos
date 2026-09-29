@@ -179,7 +179,8 @@ Other chords in the same file start programs that are not this binary, among the
 The rules in this section hold for every surface, so a person who has learnt one window has learnt
 how the others behave. The key contract and places matter to anyone using the desktop; launching,
 opening a terminal, popup anchoring and offscreen rendering are mostly of interest to contributors,
-because they name the one function each surface must go through.
+because they name the one function each surface must go through. The surface runner is the one
+loop ten of the surfaces share rather than write.
 
 ### The key contract
 
@@ -398,6 +399,18 @@ close the surface during its own appearance. There is no "unfocused menu" state 
 The panel lights the word the pointer is over. Whether a menu is open is never known in the panel,
 because the menu is a separate process and does not report back. Hover is what the bar actually
 knows, and it is what makes three words read as three buttons.
+
+### The surface runner
+
+Ten surfaces have no event loop of their own: `kdos-about`, `kdos-chars`, `kdos-contacts`,
+`kdos-firewall`, `kdos-note`, `kdos-print`, `kdos-trash`, `kdos-update`, `kdos-users` and
+`kdos-verify` each describe what they draw and how they answer, and `sh_run()` in `shell.c` runs
+them. It reads `--font` and `--dump`, applies the theme, draws the offscreen frame, opens the
+window, applies a resize, asks the key contract before the surface's own keys, and follows an
+accent change while the window is open. Those steps are therefore the same on all ten, and a
+surface on the runner cannot leave one out. The other surfaces write the same loop out
+themselves. How to put a surface on it is in
+[Writing desktop software](../05-developer/writing-desktop-software.md#a-minimal-surface).
 
 ### Rendering one frame with no display
 
@@ -625,8 +638,10 @@ pinned from a menu, which appends a bare identifier. The file's format is in
 [Configuration](../06-reference/configuration.md#configkdosfavorites).
 
 Hover is a fill behind the icon, never a tint of the icon, because tinting changes what the
-application looks like. A launch pulses the fill for about a second, and the panel shortens its own
-poll only while one is running.
+application looks like. A launch lays the accent over the button and pulses it twice in 1.1
+seconds, drawn at the display's rate by the backend's frame clock; the panel wakes that often only
+while it runs and goes back to its once-a-second wait after it. With `motion = no` in `comp.conf` the accent is held
+still for the same time instead. It is pixels only, so `tty1` and `--dump` show the button at rest.
 
 Dragging reorders, and the order is written back. The button is what is remembered across events,
 because plain and dragged motion are indistinguishable in the protocol; the launch therefore
@@ -687,9 +702,10 @@ interface, which `unity.c` implements.
 The meters strip is a row of live graphs drawn as one pixel tile on the second row. `meters =` in
 `panel.conf` selects which, and the order is the order of importance, because a narrow bar drops
 them from the right. Six kinds exist; the default selection is `cpu ram net`, which is 16 cells
-wide. Sixteen cells is also the most the strip can ever be, because a picture tile addresses its
-cells with four bits each way, so a selection wider than that loses meters from the right even on a
-wide screen.
+wide. Sixteen cells is also the most the strip can ever be (`MET_TILE_MAX`). That is the strip's
+share of the bar, not a limit of the tile, which can be any size up to the grid: the window list and
+the status wing need the rest of the row. A selection wider than sixteen cells loses meters from the
+right even on a wide screen.
 
 | Meter | Cells | Source |
 |---|---|---|
@@ -709,13 +725,18 @@ Seven rules make the charts readable, not merely present.
   returns early, finds the deadline not due, and waits a full second again, so samples land
   irregularly, and a chart draws one sample per pixel.
 - The interval is half a second, not because it is more accurate but because a chart is a thing in
-  motion. The label is a smoothed average; the chart plots the raw samples, because the point of a
-  chart is the spikes.
+  motion. The label is a smoothed average. The chart plots a three-point mean of the samples, which
+  keeps every spike at a third of its height and takes the hash off a trace one pixel per sample;
+  the glyph sparkline a terminal draws plots the raw samples.
 - The axis snaps to a ladder of round numbers and grows as soon as a sample does not fit, since a
   clipped chart is a lie, but shrinks only well below the current rung. One threshold in each
   direction oscillates for a stream sitting on the boundary.
 - A filled area under a line, not a row of bars. At one sample per pixel, bars turn into a field
-  of one-pixel spikes that no eye can follow.
+  of one-pixel spikes that no eye can follow. The line is antialiased, the plate, gridlines and base
+  are hard-edged, and a trace lying on its base is drawn at the area's weight, so an idle meter is a
+  quiet line rather than a hard rule. The strip is drawn by `kch_plot_draw()`, the chart renderer
+  `kdos-res` uses too (see
+  [the design language](../03-architecture/design-language.md#a-data-trace-is-antialiased-chrome-is-not)).
 - A flat band still shows time passing: a faint gridline every ten seconds keyed to the absolute
   sample number, so it marches left with the samples. Without it an idle link renders a still image.
 - Every series is pushed on every tick, carrying the last value forward when a reading is
@@ -723,8 +744,9 @@ Seven rules make the charts readable, not merely present.
   creep out of step for the rest of the session. A series with no sample at all is left empty rather
   than held at zero.
 
-The trace spans the whole band from the first sample, so the picture moves from the first sample
-onward rather than staying pinned to the right edge until the ring fills.
+The trace spans the whole band from the first sample, the oldest value held out to the left edge,
+so the picture moves from the first sample onward rather than staying pinned to the right edge
+until the ring fills.
 
 A left click on the strip opens `btop` in a terminal. Middle opens the stutter attribution and right
 opens the energy report, each in a `kdos-status` popup.
@@ -956,7 +978,7 @@ says what it is and what its three buttons do.
 
 It is a separate process, because the toolkit has one cell buffer per process, and it takes no
 input at all, or it would eat the click aimed at the thing it describes. The panel shortens its own
-poll to the dwell deadline, exactly as it does for the meters and the launch pulse.
+poll to the dwell deadline, exactly as it does for the meters and for the end of a launch pulse.
 
 A window button's tooltip carries a live picture of the window, which is the only way to tell three
 terminals apart.
@@ -991,6 +1013,14 @@ under the cell grid: the body, the edge against the desktop, a button's plate, t
 two segments and a meter's gradient. It costs no columns and no rows, which is why the bar can
 be two rows and still look like chrome.
 
+The body is laid at `panel_opacity`, and at full opacity while any window is maximized or
+fullscreen and not minimized: over a bright window a translucent bar loses the difference between
+its rest, hover and focused plates. At full opacity the bar tells the compositor it is opaque, so
+the compositor copies it instead of blending it. The backdrop goes in through `kch_px_custom()`,
+so the bar's picture is cached like a popup's: a clock tick or a meter sample repaints the cells
+that changed, a plate that moves repaints the cells it left and reached, and only a change of
+opacity or a retint repaints the bar.
+
 Every picture on the bar is registered for, and drawn into, the content rows, never the surface's
 full height. The edge row is stamped across every column after the layout, so a sprite that claimed
 the whole surface would lose its top row of tiles to the double horizontal, and what was left of
@@ -1000,8 +1030,15 @@ the picture would sit high in the rows that remain.
 and everything the frame calls reads them. A function that worked the row out from the surface
 height instead would draw into the edge row.
 
-`sh_pic_backend()` installs the sprite table's evictor and budget, and `sh_pic_cell_w()` is the
-nominal cell the budget is computed in; both are what a surface passes to `kicon_init()`.
+`sh_pic_backend()` installs the sprite table's evictor and budget and registers a function with
+`kdisp_on_scale()` that moves both to the cell in force (`kicon_recell()` and the budget), so the
+icons are rebuilt when the output's scale arrives or changes when the window moves to another
+screen; on a fractional scale it is the cell that grows, to the font's at the device size.
+`sh_pic_cell_w()` is the nominal cell the budget is computed in, and it and `kdisp_scale()` are what a
+surface passes to `kicon_init()`. Every popup anchor the panel hands out (`--at` and `--at-bottom`
+for a menu, a tray menu, a tooltip, an applet) and a tray item's click position are converted with
+`kdisp_px_logical()`, because another surface's margin is logical pixels and the panel's cells are
+device pixels on a fractional scale.
 `kdisp_cell_w()` is 1 on a display with no pixel size of its own, and `libkicon` refuses a cell
 under four pixels, so a surface that hands it the backend's cell gets no pictures at all.
 `icons_drawable()` is the one place that asks whether a picture can be drawn, so no control spends
@@ -1082,7 +1119,14 @@ accent left edge is the desktop's one selection, from the tone table the taskbar
 menu share; `kch_px_live()` is what says whether a recorded pixel op can reach a screen at all,
 which needs a backdrop installed, and an offscreen dump never has one. Where it cannot, the row
 draws the accent fill with its slots swapped instead. Without that a dumped menu has no visible
-cursor, and the cursor is the only thing saying what Enter will do.
+cursor, and the cursor is the only thing saying what Enter will do. On a display the plate slides
+to the row the selection moves to, across into the other column and stretched to its width when
+the selection changes column, in 90 ms; the cascading menu, the window menu and the tray menu
+slide theirs the same way. Only the plate moves, so Enter and a click act on the new row at once,
+and a scroll that carries the same selection elsewhere puts the plate there without a slide: the
+scroll itself glides, each column on its own, the plate travelling with its row (see
+[Motion](../03-architecture/design-language.md#motion)). With `motion = no` the plate lands and
+the scroll jumps in the same frame.
 
 Search reaches the fixed rows too. Every one carries synonyms, so typing `wifi` finds the network
 manager, and the hits are appended under a rule. A search over the application index alone would
@@ -1408,10 +1452,9 @@ value, and the wheel turns the control it is over and scrolls the page everywher
 dropdown owns the pointer and the keyboard while it is down, because it is drawn over the rows
 beneath it and a press tested against those rows would pick whatever the list is covering.
 
-A text value is `ktui_input`, the toolkit's own field. It is a frame control, so the key is handed
-to the draw rather than spent in the loop; clicking inside the field places the caret, and clicking
-away keeps what was typed, because clicking away from a field is not how anybody means to discard
-it.
+A text value is the toolkit's own field, a `KtuiField` the loop hands its keys and presses to. A
+press inside the field places the caret, and a press anywhere else leaves the edit open with what
+was typed, because clicking away from a field is not how anybody means to discard it.
 
 The volume control is a slider. A progress bar drawn where a control belongs is a control the
 pointer cannot find, and this is the one surface a person opens because they want to change the
@@ -1864,6 +1907,13 @@ path is `kdos app export <file>` or `kdos app import <file>` at a prompt, and
 
 What was deleted, when, and where it came from: one row per item, newest first, with `Enter`
 putting a row back where it was. The Trash icon on the desktop opens it.
+
+The list is a table with four titled columns: *Name*, *Size*, *Deleted* and *From*. A press on a
+title sorts by that column and a second press reverses it; `s` steps through the same orders from
+the keyboard, and the sorted title carries the direction arrow. Rows that tie keep newest-first,
+then name order. The name column's right edge, on the title or the rule under it, drags wider or
+narrower. Sizes end at the column's right edge so their digits line up. `PgUp`, `PgDn`, `Home` and
+`End` walk the list, and a trash longer than the window gets a scroll bar.
 
 Its main purpose is *Put back*: without it, moving a file to the trash would be a slower delete. The
 desktop's *Move to Trash* and
@@ -2358,7 +2408,7 @@ when something happens, and the small dialogs other programs open.
 |---|---|
 | `kdos-openwith` | Choose a handler, and optionally always use it. The chosen entry is launched through `sh_launch()` with the file as its document — the difference between a chooser and a launcher is which entry is picked and nothing else, so `%f` lands where the entry put it and a quoted argument survives. The *Other command…* row is a `verbatim` launch: the typed words become an argument vector, so a `;` in the box is an argument rather than a second program, and the path follows as a trailing argument. A plain command cannot be made the default, because `mimeapps.list` records an entry and inventing one would leave a file in the user's applications directory nobody asked for |
 | `kdos-run` | The run box, on `Alt+F2`. A click places the caret, and the button bar is on the surface because *In Terminal* is a modifier and a modifier nothing draws is a feature nobody finds. It is a `verbatim` `sh_launch()`: quoting is read, so `mpv "my film.mkv"` is two arguments, and a `%` reaches the program as typed. *In Terminal* wraps it in this desktop's emulator; without it the program is spawned as it was typed |
-| `kdos-prompt` | Yes or no, answering by exit status, which is what the compositor reads. `--input` is a second shape: one row with a text box, the typed line on standard output, 0 for an answer and 254 for Escape or an empty box. A mode rather than a third button, because the yes/no shape's status is `kdos-comp`'s contract and must not gain a second meaning. It is a loop of its own, because the input widget is immediate-mode and wants the event inside `ktui_frame_begin()`, which is the opposite of the yes/no loop's hand-written key switch |
+| `kdos-prompt` | Yes or no, answering by exit status, which is what the compositor reads. `--input` is a second shape: one row with a text box, the typed line on standard output, 0 for an answer and 254 for Escape or an empty box; `Enter` answers. A mode rather than a third button, because the yes/no shape's status is `kdos-comp`'s contract and must not gain a second meaning. Both shapes are the same hand-written loop: the text box is the toolkit's field, handed every key the dialog does not answer itself |
 | `kdos-slit` | The dockapp column, off by default: a slit nobody configured is a column of marks. `slit = yes` in `comp.conf` starts it, and it reads `~/.config/kdos/slit.conf` |
 | `kdos-ascii` | A picture, as characters. A filter with no display and no keyboard |
 

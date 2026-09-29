@@ -40,7 +40,7 @@ follow from where that line is drawn.
 | Display | Wayland and Xorg, a display manager | Wayland only, rootless Xwayland for X11 clients, no display manager |
 | Toolkits | GTK and Qt under the desktop and its applications | None under the desktop, whose every surface is a grid of character cells; any toolkit for applications |
 | Desktop | GNOME, KDE Plasma, Xfce and others | One desktop written for KDOS, on a frozen fork of the labwc compositor |
-| Packages | Prebuilt binaries from an archive | Compiled from 2,025 recipes: on a build host for the installation image, on the machine itself for updates |
+| Packages | Prebuilt binaries from an archive | Compiled from 2,023 recipes: on a build host for the installation image, on the machine itself for updates |
 | Sources | Fetched from the archive's mirrors | Pinned by sha256, held in a content-addressed archive, built offline |
 | Graphical applications | Distribution packages, Flatpak or Snap | Native ports carried on the medium, plus Debian packages in rootless podman containers, built on demand |
 | Updates | A package manager against a remote archive | A newer ports tree, compiled locally or matched against a binary host ([binhost](../06-reference/glossary.md)) you run yourself, optionally into a second root slot |
@@ -225,8 +225,8 @@ description = Compression library implementing the deflate compression method
 
 The package manager, `kpkg`, is written for KDOS in C. It builds a port into a compressed tar
 archive, records every path the package owns, removes files an upgrade drops, and resolves
-dependencies from the `depends` lines. There are 2,001 recipes under `ports/core` for upstream
-software and 24 under `src/` for KDOS's own, 2,025 in all, and all of them use the same format.
+dependencies from the `depends` lines. There are 1,999 recipes under `ports/core` for upstream
+software and 24 under `src/` for KDOS's own, 2,023 in all, and all of them use the same format.
 [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by group.
 
 The closest relatives are Arch's `PKGBUILD` and CRUX's `Pkgfile`, with the metadata pulled out so

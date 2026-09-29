@@ -20,7 +20,7 @@
  * this struct's shape, and no such caller survives a change to it. */
 typedef struct {
 	int focus;		/* id of the focused control               */
-	int nfocus;		/* focusables seen this frame              */
+	int nfocus;		/* positional ids claimed this frame       */
 	int clicked;		/* control id clicked this frame, -1 none  */
 	int dblclick;
 	int wheel;		/* -1 up, +1 down, 0 none                  */
@@ -51,7 +51,7 @@ static KtuiUi ui = {
 };
 
 #define MAX_HITS 512
-#define MAX_IDS 512
+#define MAX_RING 512
 
 typedef struct {
 	KRect r;
@@ -64,9 +64,107 @@ static int na, nb;
 static Hit *cur_hits = hits_a, *prev_hits = hits_b;
 static int *cur_n = &na, *prev_n = &nb;
 
-static int caret[MAX_IDS];	/* text cursor, per control id             */
 static double last_click_t;
 static int last_click_id = -1;
+
+/* The hit list of the last frame ENDED, for ktui_hit_at(). It is the array
+ * that frame filled; the next ktui_frame_begin() makes it `prev_hits`, which
+ * nothing writes, and the one after that refills it — so it is dropped there. */
+static const Hit *done_hits;
+static int done_n;
+
+/*
+ * THE TAB RING IS THE IDS CLAIMED THIS FRAME, IN THE ORDER THEY WERE CLAIMED.
+ * Positional ids happen to be their own ring positions; a hashed id is not a
+ * position at all, so Tab walks this list and never does arithmetic on an id.
+ * A control claimed past MAX_RING is drawn and clickable but Tab never
+ * reaches it.
+ *
+ * `focus_at` is where the focused id stood in the ring the last time it was
+ * seen. A focused control that stops being drawn hands the focus to whatever
+ * now stands in its place rather than to the top of the page.
+ */
+static int ring[MAX_RING];
+static int nring;
+static int focus_at;
+static unsigned long frame_no;	/* frames begun; ages the state store */
+
+/*
+ * THE ID STACK. Inside a pushed scope ktui_id() hashes the scope's seed with a
+ * counter local to the scope, and the positional counter outside it does not
+ * move — so a group drawn only some of the time leaves every id after it
+ * where it was. Deeper than ID_DEPTH, pushes are counted (a pop still pairs
+ * with its push) but share the deepest seed.
+ */
+#define ID_DEPTH 16
+typedef struct {
+	uint32_t seed;
+	int n;
+} IdScope;
+static IdScope idstk[ID_DEPTH + 1];	/* [0] is unused: depth 0 is positional */
+static int iddepth;
+
+#define FNV_BASIS 2166136261u
+#define FNV_PRIME 16777619u
+
+/* A tag byte starts every piece hashed in, and a string piece keeps its
+ * terminator: without both, push("ab") + id_str("c") and push("a") +
+ * id_str("bc") would be one id, and so would a string and a counter that
+ * happen to share bytes. */
+static uint32_t fnv(uint32_t h, char tag, const void *p, size_t n)
+{
+	const unsigned char *b = p;
+
+	h = (h ^ (unsigned char)tag) * FNV_PRIME;
+	for (size_t i = 0; i < n; i++)
+		h = (h ^ b[i]) * FNV_PRIME;
+	return h;
+}
+
+static uint32_t id_seed(void)
+{
+	int d = iddepth < ID_DEPTH ? iddepth : ID_DEPTH;
+
+	return d ? idstk[d].seed : FNV_BASIS;
+}
+
+/* Above the chrome range and never negative, because -1 is "none". */
+static int id_hashed(uint32_t h)
+{
+	return (int)(KTUI_ID_HASHED | (h & 0x3fffffffu));
+}
+
+static int id_is_chrome(int id)
+{
+	return id >= KTUI_ID_CHROME && id < KTUI_ID_HASHED;
+}
+
+static void ring_add(int id)
+{
+	if (nring < MAX_RING)
+		ring[nring++] = id;
+}
+
+static int ring_find(int id)
+{
+	for (int i = 0; i < nring; i++)
+		if (ring[i] == id)
+			return i;
+	return -1;
+}
+
+/* The ring position for a focus the ring does not hold: where it last
+ * stood, clamped onto the ring. */
+static int ring_fallback(void)
+{
+	int i = focus_at;
+
+	if (i >= nring)
+		i = nring - 1;
+	if (i < 0)
+		i = 0;
+	return i;
+}
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
@@ -115,6 +213,8 @@ void ktui_frame_begin(KtuiEvent *ev)
 	cur_n = prev_n;
 	prev_n = tn;
 	*cur_n = 0;
+	if (done_hits == cur_hits)
+		done_n = 0;
 
 	na11y = 0;
 	ui.ev = *ev;
@@ -127,6 +227,9 @@ void ktui_frame_begin(KtuiEvent *ev)
 	ui.focus_seen = 0;
 	ui.drag = -1;
 	ui.in_frame = 1;
+	nring = 0;
+	iddepth = 0;
+	frame_no++;
 
 	if (ev->type == KT_EVT_MOUSE) {
 		ui.mx = ev->mx;
@@ -158,7 +261,7 @@ void ktui_frame_begin(KtuiEvent *ev)
 				/* Chrome ids are not focus ids — clicking the
 				 * sidebar must not throw the caret at whatever
 				 * control happens to sit last on the page. */
-				if (prev_hits[i].id < KTUI_ID_CHROME)
+				if (!id_is_chrome(prev_hits[i].id))
 					ui.focus = prev_hits[i].id;
 				double t = kb_now_s();
 				if (last_click_id == ui.clicked && t - last_click_t < 0.4)
@@ -173,8 +276,32 @@ void ktui_frame_begin(KtuiEvent *ev)
 	}
 }
 
+/*
+ * THE FOCUS IS RESOLVED ONTO THE RING BEFORE TAB STEPS FROM IT. A focus the
+ * ring does not hold — a control that stopped being drawn, or an id set
+ * before its control existed — lands on whatever stands where it last stood,
+ * so Tab never steps from a position nobody can see.
+ */
+static void focus_resolve(void)
+{
+	int i;
+
+	if (!nring) {
+		if (ui.focus < 0)
+			ui.focus = 0;
+		return;
+	}
+	i = ring_find(ui.focus);
+	if (i < 0) {
+		i = ring_fallback();
+		ui.focus = ring[i];
+	}
+	focus_at = i;
+}
+
 void ktui_frame_end(void)
 {
+	focus_resolve();
 	if (ui.ev.type == KT_EVT_KEY && !ui.consumed) {
 		if (ui.ev.key == KT_K_TAB && !(ui.ev.mods & KT_MOD_SHIFT)) {
 			ktui_focus_next(1);
@@ -185,44 +312,185 @@ void ktui_frame_end(void)
 			ui.consumed = 1;
 		}
 	}
-	if (ui.nfocus && ui.focus >= ui.nfocus)
-		ui.focus = ui.nfocus - 1;
-	if (ui.focus < 0)
-		ui.focus = 0;
 	ui.in_frame = 0;
+	done_hits = cur_hits;
+	done_n = *cur_n;
 }
 
+int ktui_hit_count(void)
+{
+	return done_n;
+}
+
+int ktui_hit_at(int i, KRect *r, int *id)
+{
+	if (i < 0 || i >= done_n)
+		return 0;
+	*r = done_hits[i].r;
+	*id = done_hits[i].id;
+	return 1;
+}
+
+/*
+ * THREE KINDS OF ID, IN THREE RANGES. Positional ids count up from 0 at
+ * depth 0 and stay below KTUI_ID_CHROME; chrome ids sit from KTUI_ID_CHROME;
+ * hashed ids (ktui_id_str, and ktui_id inside a pushed scope) sit from
+ * KTUI_ID_HASHED. A positional id is its control's place in the page, so a
+ * control drawn only some of the time moves every positional id after it —
+ * and focus, and the state keyed by them, move with the ids. Such a group is
+ * wrapped in ktui_id_push()/ktui_id_pop().
+ */
 int ktui_id(void)
 {
-	int id = ui.nfocus++;
-	if (id >= MAX_IDS)
-		id = MAX_IDS - 1;
+	int id;
+
+	if (iddepth) {
+		IdScope *s = &idstk[iddepth < ID_DEPTH ? iddepth : ID_DEPTH];
+
+		id = id_hashed(fnv(s->seed, 'n', &s->n, sizeof(s->n)));
+		s->n++;
+	} else {
+		id = ui.nfocus++;
+		if (id >= KTUI_ID_CHROME)
+			id = KTUI_ID_CHROME - 1;
+	}
+	ring_add(id);
 	return id;
+}
+
+/* An id named by the caller, the same on every frame whatever else was drawn
+ * before it. It claims a place in the Tab ring as ktui_id() does. */
+int ktui_id_str(const char *s)
+{
+	int id = id_hashed(fnv(id_seed(), 's', s ? s : "", s ? strlen(s) + 1 : 1));
+
+	ring_add(id);
+	return id;
+}
+
+static void id_push(uint32_t seed)
+{
+	iddepth++;
+	if (iddepth <= ID_DEPTH) {
+		idstk[iddepth].seed = seed;
+		idstk[iddepth].n = 0;
+	}
+}
+
+void ktui_id_push(const char *s)
+{
+	id_push(fnv(id_seed(), 'S', s ? s : "", s ? strlen(s) + 1 : 1));
+}
+
+void ktui_id_push_int(int n)
+{
+	id_push(fnv(id_seed(), 'I', &n, sizeof(n)));
+}
+
+void ktui_id_pop(void)
+{
+	if (iddepth > 0)
+		iddepth--;
 }
 
 /*
  * The id the next control will claim, for a group that has to point the focus
- * at one of its own members before drawing them.
+ * at one of its own members before drawing them. `ktui_id_base() + k` names
+ * the k-th control of the group at depth 0 only: inside a pushed scope the
+ * next id is a hash, and the one after it is not the next integer.
  *
- * Outside a frame the counter is restarted first. ktui_frame_begin() is what
- * resets it, and a surface that runs its own event loop and calls a
- * draw/key pair never begins one, so its ids would climb with every repaint
- * until they all clamped to MAX_IDS - 1 and every control in the group
- * answered to the same id. Inside a frame the counter belongs to the page and
- * is only read — restarting it there would hand two controls one id.
+ * Outside a frame the counter, the ring and the id stack are restarted first.
+ * ktui_frame_begin() is what resets them, and a surface that runs its own
+ * event loop and calls a draw/key pair never begins one, so its ids would
+ * climb with every repaint until they all clamped to the top of the range
+ * and every control in the group answered to the same id. Inside a frame the
+ * counter belongs to the page and is only read — restarting it there would
+ * hand two controls one id.
  */
 int ktui_id_base(void)
 {
-	if (!ui.in_frame)
+	if (!ui.in_frame) {
 		ui.nfocus = 0;
+		nring = 0;
+		iddepth = 0;
+	}
+	if (iddepth) {
+		IdScope *s = &idstk[iddepth < ID_DEPTH ? iddepth : ID_DEPTH];
+
+		return id_hashed(fnv(s->seed, 'n', &s->n, sizeof(s->n)));
+	}
 	return ui.nfocus;
+}
+
+/*
+ * ────────────────────────────────────────────────────────────────────────
+ * Per-id state
+ *
+ * A FIXED TABLE OF SMALL RECORDS, NEVER ALLOCATED: libktui is libc-only and a
+ * frame caller holds nothing but its own values. Open addressing with linear
+ * probing; a slot, once used, is never emptied, only taken over — a record
+ * unseen for STATE_TTL frames is stale and the next new id to probe past it
+ * claims it — so no probe chain is ever broken by an eviction.
+ *
+ * A record asked for at a different size is another life of its id and comes
+ * back zeroed. NULL means the size is over KTUI_STATE_MAX or every slot is
+ * live; a caller keeps working on a fallback of its own.
+ * ────────────────────────────────────────────────────────────────────────
+ */
+#define STATE_SLOTS 256
+#define STATE_TTL 600
+
+typedef struct {
+	int used;
+	int id;
+	size_t n;
+	unsigned long seen;
+	unsigned char d[KTUI_STATE_MAX];
+} StateSlot;
+
+static StateSlot store[STATE_SLOTS];
+
+void *ktui_state(int id, size_t n)
+{
+	unsigned h = ((unsigned)id * 2654435761u) >> 24;	/* 8 bits */
+	StateSlot *take = NULL;
+
+	if (!n || n > KTUI_STATE_MAX)
+		return NULL;
+	for (int i = 0; i < STATE_SLOTS; i++) {
+		StateSlot *s = &store[(h + (unsigned)i) % STATE_SLOTS];
+
+		if (!s->used) {
+			if (!take)
+				take = s;
+			break;
+		}
+		if (s->id == id) {
+			if (s->n != n) {
+				memset(s->d, 0, sizeof(s->d));
+				s->n = n;
+			}
+			s->seen = frame_no;
+			return s->d;
+		}
+		if (!take && frame_no - s->seen > STATE_TTL)
+			take = s;
+	}
+	if (!take)
+		return NULL;
+	take->used = 1;
+	take->id = id;
+	take->n = n;
+	take->seen = frame_no;
+	memset(take->d, 0, sizeof(take->d));
+	return take->d;
 }
 
 void ktui_hit(KRect r, int id)
 {
 	/* Remembering where the focused control ended up is what lets the
 	 * page scroll itself to follow the Tab key. */
-	if (id == ui.focus && id < KTUI_ID_CHROME) {
+	if (id == ui.focus && !id_is_chrome(id)) {
 		ui.focus_rect = r;
 		ui.focus_seen = 1;
 	}
@@ -252,16 +520,27 @@ int ktui_focused(int id)
 	return ui.focus == id;
 }
 
+/* A positional id names a ring position too, so a focus set to one the page
+ * does not reach resolves to the last control, as a count would clamp it.
+ * Any other id not drawn this frame resolves to the first. */
 void ktui_focus_set(int id)
 {
 	ui.focus = id;
+	focus_at = id >= 0 && id < KTUI_ID_CHROME ? id : 0;
 }
 
 void ktui_focus_next(int dir)
 {
-	if (!ui.nfocus)
+	int i;
+
+	if (!nring)
 		return;
-	ui.focus = (ui.focus + dir + ui.nfocus) % ui.nfocus;
+	i = ring_find(ui.focus);
+	if (i < 0)
+		i = ring_fallback();
+	i = ((i + dir) % nring + nring) % nring;
+	ui.focus = ring[i];
+	focus_at = i;
 }
 
 int ktui_activated(int id, KRect r)
@@ -546,9 +825,9 @@ int ktui_radio(int x, int y, int w, const char *label, int *val, int on)
 	return 0;
 }
 
-/* Pasted text waiting for the focused input. One queue for the process: a
- * frame has at most one focused input, and the first one drawn after the push
- * takes the lot. */
+/* Pasted text waiting for the focused field. One queue for the process: a
+ * surface has at most one focused field, and the first ktui_field_key() after
+ * the push takes the lot. */
 static char paste_buf[4096];
 static size_t paste_len;
 static double paste_at;
@@ -593,9 +872,9 @@ void ktui_paste_push(const char *utf8, size_t len)
 /*
  * Take the pending paste, for a consumer that is not a text field. A terminal
  * is the case: its "caret" is a child process on a pty, so it cannot go
- * through ktui_input and has to be handed the bytes.
+ * through a KtuiField and has to be handed the bytes.
  *
- * The same TTL as the input path, and the same filter: newlines arrived as
+ * The same TTL as the field path, and the same filter: newlines arrived as
  * spaces, so a paste cannot press Enter in a shell any more than it can in a
  * field. Returns the length and clears the queue — a paste is taken once.
  */
@@ -680,124 +959,221 @@ static int in_insert(char *buf, size_t cap, int *cur, int len,
 	return 1;
 }
 
-int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placeholder)
+/*
+ * THE CARET IS THE CALLER'S TO SET, so every entry point puts it back on the
+ * text before using it. A caller that loads a new value and leaves the caret
+ * where the old one ended, or one that says "the end" with any large number,
+ * would otherwise hand memmove an offset past the terminator — and a caret
+ * that lands inside a sequence would split it on the next insert.
+ */
+static int field_caret(const char *buf, int caret)
 {
-	int id = ktui_id();
-	int focus = ktui_focused(id);
 	int len = (int)strlen(buf);
-	int *cur = &caret[id];
-	int changed = 0;
 
-	if (*cur > len)
-		*cur = len;
-	/* A caret restored from another life of this id can land mid-sequence. */
-	while (*cur > 0 && ((unsigned char)buf[*cur] & 0xc0) == 0x80)
-		(*cur)--;
+	if (caret > len)
+		caret = len;
+	if (caret < 0)
+		caret = 0;
+	while (caret > 0 && ((unsigned char)buf[caret] & 0xc0) == 0x80)
+		caret--;
+	return caret;
+}
 
-	/* Expired rather than held: in a process with no focused input when the
-	 * paste arrived — the panel, the desktop, a chooser whose list has the
-	 * focus — the text would otherwise sit in the queue and be injected
-	 * into whatever field is drawn next, seconds later and somewhere the
-	 * user was not aiming. */
+/*
+ * The first column shown. It follows the caret and nothing else, so the draw
+ * and the press compute the same window from the same field and a click lands
+ * on the character it was aimed at without either keeping a scroll position.
+ * In display COLUMNS, converted to a byte offset for the draw — byte
+ * arithmetic here is exactly the CJK-corrupts-the-row bug.
+ */
+static int field_scroll(KRect r, const char *buf, int caret, int secret,
+			int *sbyte)
+{
+	int room = r.w - 2;
+	int ccol = in_col_at(buf, caret, secret);
+	int scol = ccol > room - 1 ? ccol - room + 1 : 0;
+	int sb = in_byte_at(buf, scol, secret);
+
+	if (sb)
+		scol = in_col_at(buf, sb, secret);	/* wide-glyph straddle */
+	*sbyte = sb;
+	return scol;
+}
+
+int ktui_field_col(const KtuiField *f)
+{
+	return in_col_at(f->buf, field_caret(f->buf, f->caret), f->secret);
+}
+
+/* A word is a run of anything but spaces. A SECRET FIELD IS ONE WORD: where
+ * its spaces are is part of the secret, and a Ctrl+Left that stopped at each
+ * would read them back to anybody watching the caret. */
+static int field_word_left(const KtuiField *f, int at)
+{
+	if (f->secret)
+		return 0;
+	while (at > 0 && f->buf[at - 1] == ' ')
+		at--;
+	while (at > 0 && f->buf[at - 1] != ' ')
+		at = in_prev_bound(f->buf, at);
+	return at;
+}
+
+static int field_word_right(const KtuiField *f, int at, int len)
+{
+	if (f->secret)
+		return len;
+	while (at < len && f->buf[at] == ' ')
+		at++;
+	while (at < len && f->buf[at] != ' ')
+		at = in_next_bound(f->buf, at);
+	return at;
+}
+
+static int field_cut(KtuiField *f, int from, int to, int len)
+{
+	if (from >= to)
+		return 0;
+	memmove(f->buf + from, f->buf + to, (size_t)(len - to + 1));
+	f->caret = from;
+	return KTUI_FIELD_CHANGED;
+}
+
+static int ctrl_letter(const KtuiEvent *ev, int c)
+{
+	return (ev->mods & KT_MOD_CTRL) && (ev->key == c || ev->key == c - 32);
+}
+
+int ktui_field_key(KtuiField *f, const KtuiEvent *ev)
+{
+	int rc = 0;
+	int len = (int)strlen(f->buf);
+
+	f->caret = field_caret(f->buf, f->caret);
+
+	/*
+	 * THE PASTE FIRST, AND WHATEVER THE EVENT IS. A paste reaches this
+	 * process as a queue and not as a key, so the field that has the focus
+	 * takes it on its next call — which is why a caller passes every
+	 * event, and NULL on a wake that carried none.
+	 *
+	 * Expired rather than held: in a process with no focused field when
+	 * the paste arrived — the panel, the desktop, a chooser whose list has
+	 * the focus — the text would otherwise sit in the queue and be
+	 * injected into whatever field is drawn next, seconds later and
+	 * somewhere the user was not aiming.
+	 */
 	if (paste_len && kb_now_s() - paste_at > PASTE_TTL)
 		paste_len = 0;
-
-	if (focus && paste_len) {
-		if (in_insert(buf, cap, cur, len, paste_buf, paste_len))
-			changed = 1;
+	if (paste_len) {
+		if (in_insert(f->buf, f->cap, &f->caret, len, paste_buf,
+			      paste_len))
+			rc |= KTUI_FIELD_CHANGED;
 		paste_len = 0;
-		len = (int)strlen(buf);
+		len = (int)strlen(f->buf);
 	}
 
-	if (focus && !ui.consumed && ui.ev.type == KT_EVT_KEY) {
-		int k = ui.ev.key;
-		if (k == KT_K_LEFT) {
-			*cur = in_prev_bound(buf, *cur);
-			ui.consumed = 1;
-		} else if (k == KT_K_RIGHT) {
-			if (*cur < len)
-				*cur = in_next_bound(buf, *cur);
-			ui.consumed = 1;
-		} else if (k == KT_K_HOME) {
-			*cur = 0;
-			ui.consumed = 1;
-		} else if (k == KT_K_END) {
-			*cur = len;
-			ui.consumed = 1;
-		} else if (k == KT_K_BACKSPACE) {
-			if (*cur > 0) {
-				int p = in_prev_bound(buf, *cur);
-				memmove(buf + p, buf + *cur,
-					(size_t)(len - *cur + 1));
-				*cur = p;
-				changed = 1;
-			}
-			ui.consumed = 1;
-		} else if (k == KT_K_DEL) {
-			if (*cur < len) {
-				int nx = in_next_bound(buf, *cur);
-				memmove(buf + *cur, buf + nx,
-					(size_t)(len - nx + 1));
-				changed = 1;
-			}
-			ui.consumed = 1;
-		} else if (k == ('u' - 'a' + 1) && (ui.ev.mods & KT_MOD_CTRL)) {
-			buf[0] = 0;
-			*cur = 0;
-			changed = 1;
-			ui.consumed = 1;
-		} else if (k >= 0x20 && k != 0x7f && k < KT_K_SPECIAL) {
-			char enc[4];
-			int el = ktui_utf8_encode((uint32_t)k, enc);
-			if ((size_t)(len + el) < cap) {
-				memmove(buf + *cur + el, buf + *cur,
-					(size_t)(len - *cur + 1));
-				memcpy(buf + *cur, enc, (size_t)el);
-				*cur += el;
-				changed = 1;
-			}
-			ui.consumed = 1;
+	/* Alt is never the field's, arrows included: Alt+Left and Alt+Right
+	 * are page navigation on the surfaces that have pages, and a field
+	 * that took them would trap the focus on its page. */
+	if (!ev || ev->type != KT_EVT_KEY || (ev->mods & KT_MOD_ALT))
+		return rc;
+
+	int k = ev->key;
+	int ctrl = (ev->mods & KT_MOD_CTRL) != 0;
+
+	if (k == KT_K_LEFT) {
+		f->caret = ctrl ? field_word_left(f, f->caret)
+				: in_prev_bound(f->buf, f->caret);
+	} else if (k == KT_K_RIGHT) {
+		if (f->caret < len)
+			f->caret = ctrl ? field_word_right(f, f->caret, len)
+					: in_next_bound(f->buf, f->caret);
+	} else if (k == KT_K_HOME) {
+		f->caret = 0;
+	} else if (k == KT_K_END) {
+		f->caret = len;
+	} else if (k == KT_K_BACKSPACE && !ctrl) {
+		if (f->caret > 0)
+			rc |= field_cut(f, in_prev_bound(f->buf, f->caret),
+					f->caret, len);
+	} else if (k == KT_K_DEL) {
+		if (f->caret < len)
+			rc |= field_cut(f, f->caret,
+					in_next_bound(f->buf, f->caret), len);
+	} else if (ctrl_letter(ev, 'u')) {
+		rc |= field_cut(f, 0, len, len);
+	} else if (ctrl_letter(ev, 'w') || (k == KT_K_BACKSPACE && ctrl)) {
+		rc |= field_cut(f, field_word_left(f, f->caret), f->caret,
+				len);
+	} else if (k >= 0x20 && k != 0x7f && k < KT_K_SPECIAL && !ctrl) {
+		/*
+		 * A CHORD IS NEVER TEXT. Every backend delivers Ctrl+S as the
+		 * letter with KT_MOD_CTRL, so a field that inserted every
+		 * printable key would type an `s` for a chord the surface
+		 * meant to act on. It is passed back instead.
+		 */
+		char enc[4];
+		int el = ktui_utf8_encode((uint32_t)k, enc);
+
+		if ((size_t)(len + el) < f->cap) {
+			memmove(f->buf + f->caret + el, f->buf + f->caret,
+				(size_t)(len - f->caret + 1));
+			memcpy(f->buf + f->caret, enc, (size_t)el);
+			f->caret += el;
+			rc |= KTUI_FIELD_CHANGED;
 		}
-		len = (int)strlen(buf);
+	} else {
+		return rc;
 	}
+	return rc | KTUI_FIELD_USED;
+}
 
-	int bg = KT_SURFACE;
+void ktui_field_draw(KRect r, const KtuiField *f, int focus, int bg)
+{
+	const char *buf = f->buf;
+	int len = (int)strlen(buf);
+	int cur = field_caret(buf, f->caret);
+	int secret = f->secret;
+	/* On the selection fill KT_DIM is the fill itself, so the marker and
+	 * the placeholder step up one slot rather than vanish into it. */
+	int quiet = bg == KT_DIM ? KT_MID : KT_DIM;
 	int fg = focus ? KT_TEXT : KT_MID;
+	int room = r.w - 2;
+	int sbyte;
+	int scol;
+
+	if (r.w < 1 || r.h < 1)
+		return;
+	r.h = 1;
+	scol = field_scroll(r, buf, cur, secret, &sbyte);
+
 	ktui_draw_fill(r, bg);
 	ktui_draw_text(r.x, r.y, 1, focus ? ktui_glyph[KT_G_RIGHT] : " ",
-		  focus ? KT_ACCENT : KT_DIM, bg, 0);
+		       focus ? KT_ACCENT : quiet, bg, 0);
 
-	/* Scrolling is in display COLUMNS, converted to a byte offset for the
-	 * draw — byte arithmetic here is exactly the CJK-corrupts-the-row bug. */
-	int field = r.w - 2;
-	int ccol = in_col_at(buf, *cur, secret);
-	int scol = 0;
-	if (ccol > field - 1)
-		scol = ccol - field + 1;
-	int sbyte = in_byte_at(buf, scol, secret);
-	if (sbyte)
-		scol = in_col_at(buf, sbyte, secret);	/* wide-glyph straddle */
-
-	if (!len && placeholder && !focus) {
-		ktui_draw_text(r.x + 2, r.y, field, placeholder, KT_DIM, bg, 0);
+	if (!len && f->placeholder && !focus) {
+		ktui_draw_text(r.x + 2, r.y, room, f->placeholder, quiet, bg,
+			       0);
 	} else if (secret) {
 		int glyphs = in_col_at(buf, len, 1);
-		for (int i = 0; i < glyphs - scol && i < field; i++)
-			ktui_draw_text(r.x + 2 + i, r.y, 1, ktui_glyph[KT_G_BULLET], fg, bg, 0);
+		for (int i = 0; i < glyphs - scol && i < room; i++)
+			ktui_draw_text(r.x + 2 + i, r.y, 1,
+				       ktui_glyph[KT_G_BULLET], fg, bg, 0);
 	} else {
-		ktui_draw_text(r.x + 2, r.y, field, buf + sbyte, fg, bg, 0);
+		ktui_draw_text(r.x + 2, r.y, room, buf + sbyte, fg, bg, 0);
 	}
 
 	if (focus) {
-		int cx = r.x + 2 + (ccol - scol);
+		int cx = r.x + 2 + (in_col_at(buf, cur, secret) - scol);
 		if (cx < r.x + r.w) {
 			uint32_t under = ' ';
-			if (*cur < len) {
+			if (cur < len) {
 				if (secret) {
 					under = 0x2022;
 				} else {
 					uint32_t cp;
-					ktui_utf8_next(buf + *cur, &cp);
+					ktui_utf8_next(buf + cur, &cp);
 					under = cp;
 				}
 			}
@@ -810,14 +1186,60 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placehold
 					       KT_BG, KT_ACCENT, 0);
 		}
 	}
+}
 
-	ktui_hit(r, id);
-	if (ui.clicked == id) {
-		int col = ui.mx - (r.x + 2) + scol;
-		if (col < 0)
-			col = 0;
-		*cur = in_byte_at(buf, col, secret);
+int ktui_field_hit(KRect r, KtuiField *f, int mx, int my)
+{
+	int sbyte, scol, col;
+
+	if (r.w < 1 || r.h < 1 || !krect_hit(krect(r.x, r.y, r.w, 1), mx, my))
+		return 0;
+	/* The window the press was aimed at is the one the LAST draw showed,
+	 * and that window is a function of the caret the press is about to
+	 * move — so it is computed before the caret changes. */
+	scol = field_scroll(r, f->buf, field_caret(f->buf, f->caret),
+			    f->secret, &sbyte);
+	col = mx - (r.x + 2) + scol;
+	if (col < 0)
+		col = 0;
+	f->caret = in_byte_at(f->buf, col, f->secret);
+	return 1;
+}
+
+/*
+ * THE FRAME CONTROL IS THE TRIO WITH THE FOCUS RING AROUND IT. The caret is
+ * kept in the per-id state store, because a frame caller holds only the
+ * buffer; a surface with its own loop holds a KtuiField and keeps the caret
+ * itself. A field whose id moves takes another field's caret, clamped onto
+ * its own text — which is why a conditional group is drawn inside
+ * ktui_id_push().
+ */
+int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placeholder)
+{
+	int id = ktui_id();
+	int focus = ktui_focused(id);
+	static int spare;	/* the caret when the store has no room */
+	int *caret = ktui_state(id, sizeof(int));
+	KtuiField f;
+	int changed = 0;
+
+	if (!caret)
+		caret = &spare;
+	f = (KtuiField){ buf, cap, *caret, secret, placeholder };
+
+	if (focus) {
+		int rc = ktui_field_key(&f, ui.consumed ? NULL : &ui.ev);
+
+		if (rc & KTUI_FIELD_USED)
+			ui.consumed = 1;
+		changed = (rc & KTUI_FIELD_CHANGED) != 0;
 	}
+
+	ktui_field_draw(r, &f, focus, KT_SURFACE);
+	ktui_hit(r, id);
+	if (ui.clicked == id)
+		ktui_field_hit(r, &f, ui.mx, ui.my);
+	*caret = field_caret(buf, f.caret);
 
 	/*
 	 * A SECRET FIELD ANNOUNCES THAT IT IS ONE AND NEVER ITS CONTENTS. The
