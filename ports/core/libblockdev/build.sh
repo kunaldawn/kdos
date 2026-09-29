@@ -21,6 +21,14 @@ export CFLAGS="$CFLAGS -Wno-error"
 # their ports at run time, which is why those ports are dependencies.
 # lvm_dbus talks to lvmdbusd, which lvm2 does not ship here. The smart plugin
 # reads smartmontools' drive database for its attribute names.
+# toybox-mktemp.patch: configure's header checks make their test file with
+# `mktemp --tmpdir XXXXX.c`, and toybox's mktemp takes a template only when it
+# ends in X's. It fails, the check compiles no file, and configure reports
+# libvolume_key.h and keyutils.h missing beside both installed headers. The
+# patch asks for a name ending in X's and adds .c to it. Only the shipped
+# configure is patched: a newer acinclude.m4 would send automake's rebuild
+# rules to regenerate it.
+patch -p1 -i "$PORT_SRC/toybox-mktemp.patch"
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib --disable-static \
 	--enable-introspection=yes \
 	--disable-tests \
