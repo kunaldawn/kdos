@@ -9,6 +9,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# The man pages go through xsltproc, and smb.conf.5 nests the docbook
+# stylesheet's string.subst deeper than libxslt's default of 3000 templates:
+# the task stops on "potential infinite template recursion" with every binary
+# built. It needs about 6000. waf takes XSLTPROC from the environment and splits
+# it as a command line, so the limit is raised here rather than in the source.
+export XSLTPROC="xsltproc --maxdepth 10000"
+
 # --without-ad-dc HALVES IT, and the thing being given up is a domain
 # controller nobody on an island network is going to run. What remains is the
 # half that matters here: smbd serving a share, and the client libraries

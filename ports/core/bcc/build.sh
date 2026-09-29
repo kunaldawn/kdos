@@ -85,6 +85,12 @@ DESTDIR=$PKG ninja install
 # USE_BLAZESYM=0 because blazesym is a Rust crate the Makefile builds with a
 # networked cargo whenever cargo is on the PATH. argp is libc on glibc and a
 # separate library on musl, hence argp-standalone and -largp.
+#
+# The Makefile sets its own CFLAGS with -Wmissing-field-initializers -Werror
+# and hands them to the bundled libbpf, whose btf_iter.c fills struct
+# btf_field_desc positionally; GCC 16 reports the fields left out, and -Werror
+# stops the build. EXTRA_CFLAGS is appended after them, so it demotes that one.
+export EXTRA_CFLAGS=-Wno-error=missing-field-initializers
 export EXTRA_LDFLAGS=-largp
 _mk=(USE_BLAZESYM=0 BPFTOOL=/usr/sbin/bpftool prefix=/usr APP_PREFIX=bpf-)
 make -C ../libbpf-tools "${_mk[@]}"
