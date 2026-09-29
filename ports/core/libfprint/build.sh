@@ -20,6 +20,11 @@
 # image will never get it from. Without it a reader is not autosuspended and
 # holds the USB bus awake, which is a laptop that does not reach its deeper
 # idle states.
+# meson-foreach-dict.patch: with introspection off, tests/meson.build walks the
+# drivers_tests dict with one loop variable, which this meson rejects at setup
+# ("Foreach expects exactly 2 variables"). The patch gives it the two the
+# introspection branch of the same file already uses.
+patch -p1 -i "$PORT_SRC/meson-foreach-dict.patch"
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
 	-Dudev_rules=enabled \
