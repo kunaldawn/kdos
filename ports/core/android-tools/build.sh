@@ -15,6 +15,14 @@
 # can stop on unresolved absl:: symbols.
 export LDFLAGS="$LDFLAGS -Wl,--copy-dt-needed-entries"
 
+# protobuf-36-absl-log-macros.patch is Arch's, proposed upstream as
+# nmeum/android-tools#213. protobuf's descriptor.h includes absl/log/log.h,
+# whose LOG and VLOG replace adb's when a protobuf header comes after
+# adb_trace.h, and adb's LOG(DEBUG) then names a severity abseil does not
+# have. The patch includes protobuf first, so adb's macros are the last ones
+# defined. Its paths are relative to the adb tree.
+patch -p1 -d vendor/adb -i "$PORT_SRC/protobuf-36-absl-log-macros.patch"
+
 # -DANDROID_TOOLS_PATCH_VENDOR=OFF: the release tarball carries the vendored
 # AOSP trees already patched, and the patch step runs `git submodule` and
 # `git am`, which have no repository here to act on.
