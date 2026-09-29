@@ -147,6 +147,11 @@ fi
 # the image ships launchers for packs it does not carry. Appending fixes that
 # without letting a /usr/local/bin binary shadow a /usr/bin one during a
 # port's configure, which is a different bug and a much harder one to see.
+#
+# /usr/bin comes before /bin. /bin is a link to usr/bin, but CMake turns each
+# PATH entry into a search prefix: with /bin first it finds a package's CMake
+# config under /lib/cmake, and a config that computes its prefix from its own
+# location (harfbuzz, Qt) then answers / and points at //include and //share.
 chroot "$CHROOT_DIR" /usr/bin/env -i \
     HOME=/root \
     TERM="$TERM" \
@@ -155,5 +160,5 @@ chroot "$CHROOT_DIR" /usr/bin/env -i \
     KDOS_PACK_KDOS="${KDOS_PACK_KDOS:-0}" \
     KDOS_MAKE_BINHOST="${KDOS_MAKE_BINHOST:-0}" \
     KPKG_KEEP_CACHE="${KDOS_MAKE_BINHOST:-0}" \
-    PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin \
+    PATH=/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"
