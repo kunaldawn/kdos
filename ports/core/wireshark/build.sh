@@ -31,7 +31,7 @@
 #
 # EVERY OPTIONAL LIBRARY IS NAMED, ON OR OFF. Upstream's ws_find_package() is
 # a probe that quietly drops a feature whose library is missing, so an ON here
-# is a request, not a guarantee; the cmakeconfig.h check after configure is
+# is a request, not a guarantee; the config.h check after configure is
 # what turns a missing library into a failed build. sbc and opus decode
 # captured RTP into sound for the GUI's RTP player; minizip is the GUI's
 # profile import and export, through zlib's minizip rather than minizip-ng.
@@ -89,7 +89,7 @@ for have in HAVE_LIBPCAP HAVE_LUA HAVE_KERBEROS HAVE_LIBGNUTLS \
 	HAVE_GNUTLS_PKCS11 HAVE_NGHTTP2 HAVE_NGHTTP3 HAVE_BROTLI HAVE_ZLIB \
 	HAVE_ZSTD HAVE_LZ4 HAVE_XXHASH HAVE_LIBNL HAVE_LIBCAP HAVE_MINIZIP \
 	HAVE_SBC HAVE_OPUS; do
-	grep -q "^#define $have 1" cmakeconfig.h || {
+	grep -q "^#define $have 1" config.h || {
 		echo "wireshark: $have not found at configure" >&2
 		exit 1
 	}
