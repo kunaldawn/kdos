@@ -107,13 +107,29 @@ perf_make=(
 # The same argument list installs, or make re-runs every feature probe with a
 # different answer and relinks the whole tool at install time.
 #
-# `install` chains try-install-man, which renders the AsciiDoc manuals with
-# asciidoc and xmlto and derives their include graph with perl's
-# build-docdep.perl. All three are in depends because the documentation build
-# only WARNS for a tool it cannot find: drop one and the port still builds,
-# with `perf help record` opening nothing and 41 manuals gone with no error
-# anywhere.
-"${perf_make[@]}" DESTDIR="$PKG" install
+# `install` is install-bin, then try-install-man, which renders the AsciiDoc
+# manuals and derives their include graph with perl's build-docdep.perl. The
+# manuals are made here instead, with USE_ASCIIDOCTOR, which renders each one
+# straight to a man page. The asciidoc and xmlto route goes through DocBook and
+# xsltproc, and perf-c2c's page nests the stylesheet's string.subst past
+# libxslt's 3000-template limit, which xmlto gives no way to raise.
+#
+# Documentation/ is run directly because its ASCIIDOC_EXTRA has to be given
+# whole: the Makefile appends asciidoc's --unsafe and -f asciidoc.conf to it
+# even on the Asciidoctor route, and asciidoctor refuses them, while
+# Makefile.perf passes the variable on unquoted and so splits a value with
+# spaces. The value is the Asciidoctor options that route adds. Called from
+# Makefile.perf the directory would inherit PERF_VERSION; called directly it
+# is named, and KBUILD_BUILD_TIMESTAMP dates the pages rather than git.
+#
+# install-man, unlike the try-install-man that `install` runs, stops when
+# asciidoctor is missing instead of warning and installing no manuals.
+"${perf_make[@]}" DESTDIR="$PKG" install-bin
+make -C tools/perf/Documentation prefix=/usr DESTDIR="$PKG" \
+	USE_ASCIIDOCTOR=1 PERF_VERSION="$version" \
+	KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH" \
+	ASCIIDOC_EXTRA="-a compat-mode -I. -rasciidoctor-extensions -a mansource=perf -a manmanual=perf\\ Manual" \
+	install-man
 
 # install-tests copies Windows PE binaries in beside the shell tests, for a
 # `perf test` case about reading PE build ids. Nothing on this system runs
