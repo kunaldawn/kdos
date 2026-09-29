@@ -16,7 +16,10 @@
 # GraphicsMagick: configure refuses ImageMagick 7 as too new, so ImageMagick
 # is off. GeoTIFF maps come through libgeotiff and libtiff, and downloaded
 # map tiles are cached in Berkeley DB. Vector maps (shapefiles, dbfawk) need
-# only shapelib. festival is a speech server no port carries.
+# only shapelib. festival is a speech server no port carries. --without-ax25:
+# that interface is the kernel's AX.25 sockets, which this kernel does not
+# have; a TNC is reached through the KISS serial and network interfaces,
+# direwolf's included.
 autoreconf -fi
 ./configure \
 	--prefix=/usr \
@@ -25,7 +28,7 @@ autoreconf -fi
 	--with-nominatim \
 	--with-libproj \
 	--with-shapelib \
-	--with-ax25 \
+	--without-ax25 \
 	--with-gpsman \
 	--without-festival \
 	--with-geotiff \

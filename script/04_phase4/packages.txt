@@ -1067,11 +1067,10 @@ nec2c
 # something it can read. A satellite tracker beside it, honest about TLE age.
 splat
 predict
-# A soundcard TNC and the network above it: direwolf is the modem, libax25 and
-# ax25-tools are what turn its KISS output into an interface the kernel routes.
-libax25
+# A soundcard TNC: direwolf is the modem, and Pat and Xastir reach it over its
+# KISS and AGW ports. The kernel carries no AX.25 stack, so packet radio stays
+# in userspace.
 direwolf
-ax25-tools
 # The SMT solver a formal proof over yosys is actually answered by.
 yices2
 # And the front end that turns a SystemVerilog assertion into a problem for it.

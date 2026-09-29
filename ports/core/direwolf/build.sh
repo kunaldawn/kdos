@@ -10,8 +10,8 @@
 
 # A $200 HARDWARE TNC REPLACED BY A CABLE. direwolf demodulates AX.25 in
 # software off the sound card, so an APRS station or a KISS TNC is a radio, an
-# audio cable and this — and the ax25-tools beside it turn that into a real
-# network interface.
+# audio cable and this. Its KISS and AGW ports are how Pat and Xastir reach the
+# radio: the kernel carries no AX.25 stack.
 # Every optional backend is a bare find_package() that quietly drops the
 # feature when it misses; the CMAKE_REQUIRE_FIND_PACKAGE_ switches turn each
 # one into a configure failure, so gpsd, hamlib, GPIO and CM108 PTT and the

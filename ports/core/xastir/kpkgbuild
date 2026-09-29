@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/Xastir/Xastir/archive/re
 sha256      = cc521b8590bacc8d1f1f99a6596660c46174f7c809d6ecbbbf4b8dfa57a68419  xastir-2.2.4.tar.gz
 description = Xastir — APRS mapping and messaging over TNCs, AX.25 and APRS-IS (Motif, under Xwayland)
 homepage    = https://xastir.org/
-depends     = autoconf automake libtool pkgconf motif libX11 libXext libXt libXpm curl cjson proj shapelib pcre2 libax25 librsvg graphicsmagick libgeotiff libtiff db
+depends     = autoconf automake libtool pkgconf motif libX11 libXext libXt libXpm curl cjson proj shapelib pcre2 librsvg graphicsmagick libgeotiff libtiff db
