@@ -52,6 +52,13 @@ export TZ=UTC
 export LC_ALL=C
 export CFLAGS="$CFLAGS -ffile-prefix-map=/var/cache/kpkg/work=/build"
 export CXXFLAGS="$CXXFLAGS -ffile-prefix-map=/var/cache/kpkg/work=/build"
+
+# Autoconf's C++11 probe assigns a u8"" literal to a const char *, which GCC's
+# default of C++20 rejects, so every autoconf configure would add -std=gnu++11
+# to CXX and C++17 code (every Qt 6 program) would stop compiling. Set and
+# empty, the cache variable records that no option is needed, and the compiler
+# keeps its own default.
+export ac_cv_prog_cxx_cxx11=
 export LDFLAGS="$LDFLAGS -Wl,--build-id=sha1"
 export MAKEFLAGS="-j12"
 export TERM=dumb

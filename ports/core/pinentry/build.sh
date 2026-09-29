@@ -23,13 +23,7 @@
 # system prompt, which only a GNOME session answers; EFL and FLTK are not
 # ports. Most default to `maybe`, and would otherwise appear the moment their
 # toolkit happened to be installed.
-#
-# autoconf's C++11 probe converts a u8 literal to const char*, which GCC's
-# default C++20 rejects, so configure answers by adding -std=gnu++11 to CXX
-# and Qt 6's headers, which need C++17, refuse to compile. The empty cache
-# value records that no option is needed.
 ./configure --prefix=/usr \
-	ac_cv_prog_cxx_cxx11= \
 	--enable-pinentry-curses \
 	--enable-pinentry-tty \
 	--enable-pinentry-qt \
