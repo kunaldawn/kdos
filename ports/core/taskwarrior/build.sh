@@ -25,7 +25,11 @@ export CARGO_NET_OFFLINE=true
 
 # libsqlite3-sys links the system sqlite through pkg-config when this is set,
 # even with taskchampion's `bundled` feature on; without it the crate compiles
-# a private sqlite into the binary.
+# a private sqlite into the binary. The crate then asks rustc for -lsqlite3,
+# but corrosion hands CMake only the static archive and its
+# native-static-libs, which do not carry it, so every C++ executable (task,
+# calc, lex) fails to link on sqlite3_*. CMAKE_CXX_STANDARD_LIBRARIES puts
+# the library at the end of each link line, after the archive that needs it.
 export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
 
 # CXXBRIDGE COMES FROM THE VENDOR BUNDLE. corrosion_add_cxxbridge() accepts a
@@ -56,6 +60,7 @@ cmake .. -G Ninja \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DENABLE_WASM=OFF \
 	-DSYSTEM_CORROSION=ON \
+	-DCMAKE_CXX_STANDARD_LIBRARIES=-lsqlite3 \
 	-DINSTALLED_CXXBRIDGE="$SRC_ROOT/cxxbridge/bin/cxxbridge"
 ninja
 DESTDIR=$PKG ninja install
