@@ -11,12 +11,16 @@
 
 patch -p1 -i $PORT_SRC/musl-stdio-freopen.patch
 
-# THE THIN AND CACHE TOOLS ARE A DEPENDENCY, NOT A PROBE. Their paths are
-# named rather than searched for, and configure still runs thin_check -V and
-# cache_check -V to decide on --needs-check, dropping it when the tool is
-# absent — so without thin-provisioning-tools installed first the result
-# would change with build order. Thin and cache LVs refuse to activate
-# without these tools.
+# THE THIN AND CACHE TOOLS ARE NAMED, NOT PROBED. thin-provisioning-tools
+# links this port's libdevmapper, so it is built after lvm2 and cannot be
+# asked for its version here. Every path is given and --needs-check is
+# enabled outright: thin_check takes the flag from 0.3 and cache_check from
+# 0.5.4, and the port is 1.3. THIN_CONFIGURE_WARN and CACHE_CONFIGURE_WARN,
+# set, make configure skip its `thin_check -V` and `cache_check -V` probes,
+# which would find no tool and turn --needs-check off. Its closing warning
+# that the tools are missing then describes the build machine, not the image.
+# Thin and cache LVs refuse to activate without the tools; the phase list
+# installs them.
 # dmeventd is what makes lvm.conf's monitoring work: thin-pool autoextend and
 # RAID repair. systemd and selinux have no port and are pinned off.
 # EVENT ACTIVATION IS OFF, and its udev rule, 69-dm-lvm.rules, is not
@@ -25,6 +29,7 @@ patch -p1 -i $PORT_SRC/musl-stdio-freopen.patch
 # does nothing but run `lvm pvscan` on every block device event.
 # /etc/init.d/03_lvm.sh activates the groups at boot, and the initramfs before
 # it on a disk boot.
+THIN_CONFIGURE_WARN=y CACHE_CONFIGURE_WARN=y \
 CONFIG_SHELL=/bin/bash  \
 ./configure --prefix=/usr \
 	--libdir=/usr/lib \

@@ -14,6 +14,10 @@
 # `thin_check_executable = "/usr/sbin/thin_check"` — so the install location
 # is not a preference. LVM shells out to thin_check before it will activate a
 # thin pool and refuses the pool when the call fails.
+#
+# thin_migrate talks to the kernel's device-mapper through the devicemapper
+# crate, which links lvm2's libdevmapper found by pkg-config as devmapper, so
+# lvm2 is built first.
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CARGO_HOME="$SRC_ROOT/.cargo"
 export RUSTFLAGS="-C target-feature=-crt-static"
