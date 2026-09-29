@@ -38,7 +38,10 @@ cd unix
 	--with-system-libtommath \
 	--with-tzdata=no \
 	--disable-static
-make
+# The bundled packages' configure (thread's zipfs check) runs unix/tclsh, whose
+# only rpath is /usr/lib, where no libtcl9.0.so exists yet: the loader must be
+# pointed at this directory or the check finds no usable Tcl 9 and stops.
+LD_LIBRARY_PATH="$PWD${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" make
 make DESTDIR=$PKG install
 
 # The header set lands under a version directory that consumers do not look
