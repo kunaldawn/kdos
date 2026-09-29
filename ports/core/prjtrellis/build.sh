@@ -13,7 +13,9 @@
 # EMPTY, so `database/` installs as nothing at all. Nothing here notices —
 # prjtrellis builds and installs cleanly — and nextpnr then dies generating its
 # ECP5 chipdb on `/usr/share/trellis/database/devices.json: cannot open file`.
-# The revision is the one the 1.4 tag records for the submodule.
+# The revision is the one the source commit records for the submodule. The 1.4
+# tag's is older than the MachXO2, MachXO3 and MachXO3D timing data, and
+# nextpnr's machxo2 chipdb generator reads every speed grade's cells.json.
 #
 # BEFORE `cd libtrellis`: the install rule is `install(DIRECTORY ../database)`
 # relative to libtrellis/, so the tree belongs at the TOP of $SRC. Unpacked
