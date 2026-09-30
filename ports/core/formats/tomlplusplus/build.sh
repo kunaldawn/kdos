@@ -11,7 +11,7 @@
 
 # build_lib: the parser is compiled once into libtomlplusplus rather than into
 # every consumer, and the pkg-config file then names the library.
-meson setup build --prefix=/usr --libdir=lib --buildtype=release -Db_ndebug=if-release \
+meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Dbuild_lib=true \
 	-Dbuild_examples=false \
 	-Dbuild_tests=false \

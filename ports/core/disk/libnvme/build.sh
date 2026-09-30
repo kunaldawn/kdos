@@ -14,7 +14,6 @@ meson setup build \
 	--sysconfdir=/etc \
 	--libdir=lib \
 	--buildtype=release \
-	-Db_ndebug=if-release \
 	-Ddocs=man \
 	-Dtests=false \
 	-Dexamples=false \

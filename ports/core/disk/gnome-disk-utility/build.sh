@@ -17,7 +17,6 @@
 # that kpkg rebuilds on install.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release --wrap-mode=nodownload \
-	-Db_ndebug=if-release \
 	-Dlogind=none \
 	-Dgsd_plugin=false \
 	-Dman=true

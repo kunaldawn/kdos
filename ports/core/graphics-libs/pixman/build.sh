@@ -9,10 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+export CFLAGS="$CFLAGS -frandom-seed=pixman"
 meson setup build \
 	--prefix=/usr \
 	--libdir=lib \
 	--buildtype=release \
+	-D b_lto=true \
 	-D mmx=enabled \
 	-D sse2=enabled \
 	-D ssse3=enabled \

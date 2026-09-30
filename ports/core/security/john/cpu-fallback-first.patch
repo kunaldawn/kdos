@@ -1,0 +1,18 @@
+--- a/src/john.c
++++ b/src/john.c
+@@ -2006,6 +2006,15 @@
+ {
+ 	char *name;
+ 
++#if CPU_DETECT && CPU_FALLBACK && defined(JOHN_SYSTEMWIDE_EXEC)
++	/*
++	 * Test the CPU before anything else runs: sig_preinit() and path_init()
++	 * are compiled for this build's instruction set, and on a CPU without
++	 * it they die of SIGILL before the fallback below is ever reached.
++	 */
++	CPU_detect_or_fallback(argv, 0);
++#endif
++
+ 	sig_preinit(); /* Mitigate race conditions */
+ #ifdef __DJGPP__
+ 	if (--argc <= 0) return 1;

@@ -23,7 +23,7 @@
 #
 # pciutils and libnl are `required: false` upstream with no option, so the
 # `depends` line is what keeps device names and the wireless tunables in.
-meson setup build --prefix=/usr --libdir=lib --buildtype=release -Db_ndebug=if-release \
+meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Dnls=false \
 	-Dtest-framework=false \
 	-Denable-tests=false

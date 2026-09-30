@@ -23,7 +23,6 @@ meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--libexecdir=lib/gvfs \
 	--buildtype=release \
-	-Db_ndebug=if-release \
 	-Dsystemduserunitdir=no \
 	-Dtmpfilesdir=no \
 	-Dbusy_processes_command=lsof \

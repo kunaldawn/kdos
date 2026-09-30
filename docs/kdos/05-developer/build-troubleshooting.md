@@ -807,8 +807,11 @@ CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
 
 The bare-metal compilers take nothing from the host's flags. `gcc-arm-none-eabi`, `gcc-avr`,
 `gcc-riscv64-unknown-elf` and `libstdcxx-arm-none-eabi` pass
-`-O2 -pipe -ffunction-sections -fdata-sections` as `CFLAGS_FOR_TARGET` (and, for libstdc++,
-`CXXFLAGS_FOR_TARGET`), as Alpine's `gcc-cross-embedded` does: `-fPIC` and
+`-Os -pipe -ffunction-sections -fdata-sections` as `CFLAGS_FOR_TARGET` (and, for libstdc++,
+`CXXFLAGS_FOR_TARGET`), as Alpine's `gcc-cross-embedded` does. `-Os` because every byte of
+`libgcc` and `libstdc++` a firmware links lands in the part's flash, which is kilobytes on an AVR
+and rarely more than a megabyte on a Cortex-M; the host tree's `-O2` would grow each image for
+speed a microcontroller seldom needs. `-fPIC` and
 `-fstack-clash-protection` would make every microcontroller's `libgcc` position-independent and
 probed, and the per-function sections let `--gc-sections` drop what a firmware image does not
 call. The picolibc ports `unset CFLAGS CXXFLAGS LDFLAGS` before `meson setup` for the same reason:

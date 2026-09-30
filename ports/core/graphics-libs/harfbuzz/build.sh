@@ -13,7 +13,8 @@
 # it would be a cycle. graphite2 stays off until it is a port. icu builds
 # libharfbuzz-icu, which WebKitGTK requires. introspection installs
 # HarfBuzz-0.0.gir, which pango's GIR includes.
-meson setup build --buildtype=release \
+export CFLAGS="$CFLAGS -frandom-seed=harfbuzz" CXXFLAGS="$CXXFLAGS -frandom-seed=harfbuzz"
+meson setup build --buildtype=release -D b_lto=true \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-D glib=enabled \
 	-D gobject=enabled \

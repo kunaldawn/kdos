@@ -28,7 +28,6 @@ meson setup build \
 	--prefix=/usr --libdir=lib \
 	--buildtype=release \
 	-Dwerror=false \
-	-Db_ndebug=true \
 	-Dbuild_rs=true \
 	-Dbuild_c=false \
 	-Dtests=false \

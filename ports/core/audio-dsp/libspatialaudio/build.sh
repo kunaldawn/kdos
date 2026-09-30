@@ -13,7 +13,6 @@
 # rendering needs no data file; SOFA HRTF files load through libmysofa. Both
 # switches are named, so neither follows what the build root holds.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
-	-Db_ndebug=if-release \
 	-Dlibmysofa=enabled \
 	-Dmit_hrtf=enabled
 meson compile -C build

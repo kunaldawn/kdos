@@ -14,7 +14,6 @@
 # Xfce libraries from another language.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
-	-Db_ndebug=if-release \
 	-Dgtk-doc=false \
 	-Dintrospection=false \
 	-Dvala=disabled \

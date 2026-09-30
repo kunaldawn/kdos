@@ -21,7 +21,7 @@
 # reasons rather than by omission: the bindings each want another toolchain,
 # `dbus` and `systemd` want a session daemon and a unit file this distro does
 # not have, and `introspection` is gobject-introspection for those bindings.
-meson setup build --prefix=/usr --libdir=lib --buildtype=release -Db_ndebug=if-release \
+meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Dtools=enabled -Dgpioset-interactive=enabled \
 	-Dtests=disabled -Dexamples=disabled \
 	-Dbindings-cxx=disabled -Dbindings-python=disabled \

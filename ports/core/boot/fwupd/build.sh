@@ -52,7 +52,6 @@ patch -p1 -i "$PORT_SRC/esp-mount-path.patch"
 
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib --localstatedir=/var \
 	--buildtype=release \
-	-Db_ndebug=if-release \
 	--wrap-mode=nodownload \
 	-Dtests=false \
 	-Ddocs=disabled \

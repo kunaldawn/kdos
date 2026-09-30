@@ -13,7 +13,6 @@
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
-	-Db_ndebug=if-release \
 	-Dcollection=full \
 	-Dfirmware_update=true \
 	-Dmbim_qmux=true \

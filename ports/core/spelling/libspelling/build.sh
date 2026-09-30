@@ -12,7 +12,7 @@
 # Dictionaries come from enchant's providers, as for gspell.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release -Db_ndebug=if-release \
+	--buildtype=release \
 	--wrap-mode=nodownload \
 	-Denchant=enabled \
 	-Dintrospection=enabled \

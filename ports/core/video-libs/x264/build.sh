@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export CFLAGS="${CFLAGS/-O2/-O3}"
+export CFLAGS="${CFLAGS/-O2/-O3} -frandom-seed=x264"
 
 # The licence is the point of this comment.
 #
@@ -25,6 +25,7 @@ export CFLAGS="${CFLAGS/-O2/-O3}"
 	--libdir=/usr/lib \
 	--enable-shared \
 	--enable-pic \
+	--enable-lto \
 	--disable-cli \
 	--disable-opencl
 make

@@ -17,6 +17,8 @@
 #
 # --as=nasm: the default picks yasm over nasm whenever yasm is installed, so the
 # assembler would follow build order; nasm is the one declared.
+export CFLAGS="$CFLAGS -flto=auto -frandom-seed=libvpx" CXXFLAGS="$CXXFLAGS -flto=auto -frandom-seed=libvpx"
+export LDFLAGS="$LDFLAGS -flto=auto"
 ./configure \
 	--prefix=/usr \
 	--as=nasm \

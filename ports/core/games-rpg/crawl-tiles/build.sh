@@ -9,6 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# musl has no <execinfo.h>: the crash handler writes its stack trace only
+# where the header exists, and says it cannot anywhere else.
+patch -p1 -i "$PORT_SRC/musl-execinfo.patch"
+
 cd source
 
 # The tiles build, with sound. Every library is the system's: pkgconf finds

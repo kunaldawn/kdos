@@ -16,7 +16,6 @@
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
-	-Db_ndebug=if-release \
 	-Dversion-tag=$version \
 	-Dsystemd=disabled \
 	-Ddocs=enabled \

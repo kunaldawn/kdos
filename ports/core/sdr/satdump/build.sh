@@ -13,6 +13,15 @@
 # asked; the patch names both satdump, which the entry's StartupWMClass names.
 patch -p1 -i "$PORT_SRC/satdump-app-id.patch"
 
+# The DVB plugin compiles its decoders with -msse4.1 and, on a CPU without
+# SSE4.1, declines to load, so DVB-S and DVB-S2 vanish on a baseline x86-64
+# machine. There is no flag short of dropping SSE4.1 for the simd_sse41
+# plugin as well: FindSSE41's one cache variable serves both. The patch adds a
+# second build of the same sources without the flag, libdvb_support_generic,
+# which registers the modules only on a CPU the SSE4.1 build refuses. Plugins
+# are opened RTLD_LOCAL, so the two copies' symbols never bind to each other.
+patch -p1 -i "$PORT_SRC/satdump-dvb-generic.patch"
+
 # Every decoder plugin is built (PLUGINS_ALL). Radios: RTL-SDR, Airspy,
 # HackRF, bladeRF, MiriSDR and RFNM (their drivers are built in over libusb),
 # and the network sources: rtl_tcp, SpyServer, SDR++ server, a raw network
@@ -94,6 +103,7 @@ chmod 644 "$PKG/usr/share/applications/satdump.desktop"
 
 test -x "$PKG/usr/bin/satdump-ui"
 test -x "$PKG/usr/bin/satdump"
-for p in rtlsdr_sdr_support hackrf_sdr_support portaudio_audio_sink meteor_support; do
+for p in rtlsdr_sdr_support hackrf_sdr_support portaudio_audio_sink meteor_support \
+	dvb_support dvb_support_generic; do
 	test -f "$PKG/usr/lib/satdump/plugins/lib$p.so"
 done

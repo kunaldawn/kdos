@@ -14,7 +14,6 @@ meson setup build \
 	--sysconfdir=/etc \
 	--libdir=lib \
 	--buildtype=release \
-	-D b_ndebug=if-release \
 	-D cairo=disabled \
 	-D doctool=disabled \
 	-D gtk_doc=false \

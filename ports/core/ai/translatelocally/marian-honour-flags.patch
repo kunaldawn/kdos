@@ -1,0 +1,20 @@
+--- a/3rd_party/bergamot-translator/3rd_party/marian-dev/CMakeLists.txt
++++ b/3rd_party/bergamot-translator/3rd_party/marian-dev/CMakeLists.txt
+@@ -364,7 +364,7 @@
+                                               --post-js ${CMAKE_SOURCE_DIR}/wasm/post-module.js \
+                                               --shell-file ${CMAKE_SOURCE_DIR}/wasm/custom_shell.html")
+   else(COMPILE_WASM)
+-    set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS} ${BUILD_WIDTH}")
++    set(CMAKE_CXX_FLAGS                 "${CMAKE_CXX_FLAGS} -std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS} ${BUILD_WIDTH}")
+     set(CMAKE_CXX_FLAGS_RELEASE         "-O3 ${BUILD_WIDTH} -funroll-loops")
+     set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
+     set(CMAKE_CXX_FLAGS_SLIM            "-O3 ${BUILD_WIDTH} -funroll-loops -DNDEBUG")
+@@ -374,7 +374,7 @@
+     set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fprofile-use -fprofile-correction")
+ 
+     # these need to be set separately
+-    set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
++    set(CMAKE_C_FLAGS                 "${CMAKE_C_FLAGS} -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+     set(CMAKE_C_FLAGS_RELEASE         "-O3 ${BUILD_WIDTH} -funroll-loops")
+     set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
+     set(CMAKE_C_FLAGS_SLIM            "-O3 ${BUILD_WIDTH} -funroll-loops -DNDEBUG")

@@ -36,7 +36,7 @@
 # under src/shaders/ is GENERATED from a template at build time. libplacebo
 # vendors jinja and markupsafe in 3rdparty/, which a release archive carries
 # empty, so the system one is what answers `import jinja2`.
-meson setup build --prefix=/usr --libdir=lib --buildtype=release -Db_ndebug=if-release \
+meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Dvulkan=enabled -Dvk-proc-addr=enabled \
 	-Dvulkan-registry=/usr/share/vulkan/registry/vk.xml \
 	-Dglslang=enabled -Dshaderc=disabled \

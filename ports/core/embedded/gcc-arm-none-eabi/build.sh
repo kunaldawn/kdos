@@ -50,7 +50,7 @@ mkdir -p build && cd build
 	--without-isl \
 	--with-multilib-list=rmprofile \
 	--with-pkgversion="KDOS" \
-	CFLAGS_FOR_TARGET="-O2 -pipe -ffunction-sections -fdata-sections"
+	CFLAGS_FOR_TARGET="-Os -pipe -ffunction-sections -fdata-sections"
 make all-gcc all-target-libgcc
 make DESTDIR=$PKG install-gcc install-target-libgcc
 # The info manuals and the man7 licence pages carry the host gcc's own names

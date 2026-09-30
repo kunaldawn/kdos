@@ -26,7 +26,7 @@ decisions that look like missing features.
 | [The host desktop](#no-kde-gnome-or-any-existing-desktop-on-the-host) | A desktop written for this system; KDE's and GNOME's applications, never their shells |
 | [Where upstream sources live](#upstream-archives-are-content-addressed-release-assets) | Release assets named by their sha256, fetched by `make fetch` |
 | [CPU optimisation](#-march-measured-per-machine-not-chosen-for-a-population) | Measured per machine by `kdos march`, never a shipped feature level |
-| [Compiler flags](#one-release-flag-set-raised-per-port) | `-O2` with hardening for every port; `-O3` and LTO only per port, on precedent |
+| [Compiler flags](#one-release-flag-set-raised-per-port) | `-O2` with hardening for every port; `-O3` per port on precedent; LTO only for a listed set of hot libraries |
 | [The vulnerability database](#alpines-security-database-not-nvd-or-osv) | A vendored, pruned copy of Alpine's secdb, answered offline |
 | [Recipe format](#the-build-shell-lives-beside-the-recipe) | Two files: parsed metadata, plus ordinary bash |
 | [The ports tree](#ports-are-shelved-by-subject-identity-is-the-bare-name) | 102 subject shelves under `ports/core`; a port is its bare name, unique across the tree |
@@ -330,9 +330,12 @@ is `-Os` with `-O2` for hot code; both raise single packages rather than the who
 across every port means larger code and more exposure to undefined behaviour in code nobody here
 has tested at that level, for a gain that is mostly vectorisation, which on the baseline SSE2
 target is small. So `-O3`, LTO and PGO are per port: a recipe raises its own level where upstream's
-default or Alpine's recipe does, and uses LTO only for the hot interpreters and codecs Alpine also
-builds that way. CMake's Release `-O3` is left in place, because it is the configuration upstream
-tests.
+default or Alpine's recipe does, and LTO is for a short list of hot code only: the media codecs
+and ffmpeg, zstd and lz4, pipewire, pixman, cairo and harfbuzz, python and Pillow, and cmake's own
+build. The list is in [Writing ports](../05-developer/writing-ports.md#every-port). CMake's
+Release `-O3` is left in place, because it is the configuration upstream tests. The one level below `-O2` is in the bare-metal cross compilers: the `libgcc` and `libstdc++`
+they build for a microcontroller are compiled `-Os`, as Alpine's are, because that code is linked
+into flash measured in kilobytes.
 
 The global `-fPIC` keeps static archives linkable into shared libraries, but under it GCC may not
 inline an exported function into a caller in the same file, since a preloaded library could replace
@@ -344,11 +347,14 @@ What is ruled out, and why:
 
 - **No feature level above x86-64 v1**, in any language: that is
   [`kdos march`'s](#-march-measured-per-machine-not-chosen-for-a-population) question, per machine.
-- **No `-Ofast` or `-ffast-math`**: they break IEEE and `errno` semantics that numerical, database
-  and audio code depends on.
+- **No `-Ofast` or `-ffast-math` from the tree**: they break IEEE and `errno` semantics that
+  numerical, database and audio code depends on. Where upstream chose one for its own code, as
+  goxel, Hydrogen, Sauerbraten and Routino do, the recipe keeps upstream's choice after the
+  exported flags: that is the configuration upstream tests.
 - **No global `-DNDEBUG`**: some headers change a structure's layout under it, so a library and its
-  consumer built with different settings would disagree. Each build system's release mode sets it
-  for its own project.
+  consumer built with different settings would disagree. CMake's Release sets it for its own
+  project; a meson port keeps its assertions unless it is one of the few hot ones listed in
+  [Writing ports](../05-developer/writing-ports.md#meson).
 - **No global `RUSTFLAGS`**: it replaces a project's own `.cargo/config` flags. No global
   `panic=abort`, which changes what `catch_unwind` does.
 - **No global `-Werror`** of any kind: it gains nothing at run time and fails ports hours into a

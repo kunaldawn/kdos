@@ -13,7 +13,6 @@
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
-	-Db_ndebug=if-release \
 	-Dintrospection=true \
 	-Dgtk_doc=false
 meson compile -C build

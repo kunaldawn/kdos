@@ -16,7 +16,6 @@
 meson setup build \
 	--prefix=/usr --libdir=lib \
 	--buildtype=release \
-	-Db_ndebug=if-release \
 	-Ddefault_library=shared \
 	-Dwith_INIReader=true \
 	-Ddistro_install=true

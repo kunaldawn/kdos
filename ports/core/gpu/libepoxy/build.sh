@@ -11,7 +11,7 @@
 
 # glx=yes resolves glX* through libglvnd's libGL.so.1 at run time, which
 # dispatches to mesa's libGLX_mesa; EGL goes through libglvnd's libEGL.
-meson setup build --buildtype=release -Db_ndebug=if-release --prefix=/usr --sysconfdir=/etc --libdir=lib \
+meson setup build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Degl=yes \
 	-Dglx=yes \
 	-Dx11=true \

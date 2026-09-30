@@ -24,6 +24,6 @@ meson setup build \
 	--prefix=/usr/arm-none-eabi \
 	-Dsysroot-install=true \
 	-Dtests=false \
-	--buildtype=release -Db_ndebug=if-release
+	--buildtype=release
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

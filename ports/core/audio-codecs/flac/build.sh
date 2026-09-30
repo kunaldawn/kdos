@@ -9,7 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
+lto="-flto=auto -frandom-seed=flac"
+export CFLAGS="${CFLAGS/-O2/-O3} $lto" CXXFLAGS="${CXXFLAGS/-O2/-O3} $lto"
+export LDFLAGS="$LDFLAGS -flto=auto"
 
 # The `flac` and `metaflac` commands are kept: they are what a terminal user
 # reaches for. The examples and doxygen output are not consumed by anything

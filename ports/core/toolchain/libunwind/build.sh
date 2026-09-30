@@ -16,6 +16,9 @@
 # The two own the same file names and only the nongnu one unwinds another
 # process, so this one installs where no compiler or linker searches by
 # default, and a consumer that wants it names the prefix.
+#
+# LIBUNWIND_ENABLE_ASSERTIONS defaults to ON whatever the build type, and adds
+# -UNDEBUG after the Release flags, so assert() stays in without it.
 cmake -S runtimes -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=$_prefix \
 	-D CMAKE_BUILD_TYPE=Release \
@@ -26,6 +29,7 @@ cmake -S runtimes -B build -G Ninja \
 	-D LLVM_INCLUDE_TESTS=OFF \
 	-D LIBUNWIND_INCLUDE_TESTS=OFF \
 	-D LIBUNWIND_INSTALL_HEADERS=ON \
+	-D LIBUNWIND_ENABLE_ASSERTIONS=OFF \
 	-Wno-dev
 
 cmake --build build

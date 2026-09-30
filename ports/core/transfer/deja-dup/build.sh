@@ -20,7 +20,6 @@
 # org.freedesktop.secrets.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
-	-Db_ndebug=if-release \
 	-Dpackagekit=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

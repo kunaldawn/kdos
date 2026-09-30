@@ -29,9 +29,15 @@ cp -a "$SRC_ROOT/sentencepiece-$_spm/." "$_m/src/3rd_party/sentencepiece/"
 # build; the warnings themselves stay on.
 patch -p1 -i "$PORT_SRC/marian-musl-no-execinfo.patch"
 patch -p1 -i "$PORT_SRC/no-werror.patch"
+# marian sets CMAKE_CXX_FLAGS and CMAKE_C_FLAGS outright, and bergamot hands
+# them up to everything it builds: without the patch the exported flags reach
+# no object. The patch puts them first; marian's own flags and its Release -O3
+# -funroll-loops follow them.
+patch -p1 -i "$PORT_SRC/marian-honour-flags.patch"
 
 # BUILD_ARCH defaults to native, which tunes to the build machine and would
-# SIGILL elsewhere; x86-64-v2 (SSE4.2) is marian's floor, and intgemm
+# SIGILL elsewhere. marian passes it to -march, and any other value adds
+# -msse4.1, marian's floor; x86-64 names no level above that floor. intgemm
 # compiles its AVX2 and AVX-512 kernels regardless and picks one at run time.
 # The float products go to OpenBLAS (MKL off) through marian's FindCBLAS,
 # whose link test is the cblas_openblas_WORKS entry: without it marian
@@ -44,7 +50,7 @@ cmake -S . -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
-	-DBUILD_ARCH=x86-64-v2 \
+	-DBUILD_ARCH=x86-64 \
 	-DCOMPILE_CUDA=OFF \
 	-DUSE_MKL=OFF \
 	-DUSE_STATIC_LIBS=OFF \

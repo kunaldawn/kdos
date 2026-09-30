@@ -386,10 +386,11 @@ the source: meson's `--buildtype=release`, CMake's `-DCMAKE_BUILD_TYPE=Release`,
 `-ldflags "-s -w"`, and the build system's own variable where it has one (GCC's
 `CFLAGS_FOR_TARGET` and `CXXFLAGS_FOR_TARGET` for the libraries it builds for its target, CPython's
 `OPT`). A `-g` that a build puts ahead of `$CFLAGS` is cancelled by `-g0` at the end of `CFLAGS`
-or `CXXFLAGS` (`newsboat`, `aubio`); one a makefile appends after them, or one in compile rules
-that never read them, is dropped at the link by `-Wl,--strip-debug` in `LDFLAGS` (`frotz`,
-`linuxcnc`), or left out by a command-line `CFLAGS` that replaces the makefile's own line
-(`stfl`). `testing/debuginfo.sh` lists what a built
+or `CXXFLAGS` (`newsboat`, `aubio`); one in a make variable of its own is cancelled or left out
+through that variable (`linuxcnc`'s `EXTRA_DEBUG=-g0` and `ULFLAGS`); one a makefile appends after
+them, or one in compile rules that never read them, is dropped at the link by `-Wl,--strip-debug`
+in `LDFLAGS` (`frotz`), or left out by a command-line `CFLAGS` that replaces the makefile's own
+line (`stfl`, `hfsprogs`, `routino`). `testing/debuginfo.sh` lists what a built
 tree still carries; see
 [Testing](testing.md#debug-information-in-the-built-tree).
 
@@ -456,15 +457,39 @@ Check each of these against the recipe, whichever build system it uses:
   `debug_and_release`. A switch that only makes a debug path available at run time is not a debug
   build: `ocl-icd`'s `--enable-debug` is upstream's default and prints nothing unless
   `OCL_ICD_DEBUG` is set.
+- **Every compile and link line takes the exported flags.** A build system that reads none from
+  the environment is handed them through its own variable, and the build log's compile and link
+  lines are the check, not the recipe: b2's toolset declaration in a `user-config.jam` (`boost`,
+  as Alpine does; a b2 argument would split `LDFLAGS` at its commas), qmake's release variables
+  through `--qmake-setting` (`python3-pyqt6`, `python3-qscintilla`), a makefile's link command or
+  flag variable given on the command line with the makefile's own entries restated after the
+  exported flags (`zip`'s `BIND`, `stk`, `ladspa`, `hfsprogs`, `routino`), or the one variable a
+  makefile appends to its own (DarkPlaces' `CPUOPTIMIZATIONS` in `xonotic`, which carries
+  `LDFLAGS` as well because its release link line repeats it). Where the build system overwrites
+  the flags and no variable reaches the compile, a patch puts them first:
+  `translatelocally`'s `marian-honour-flags.patch`, because marian sets `CMAKE_CXX_FLAGS`
+  outright. Upstream's own level and maths options come after the exported flags and stand, even
+  `-Ofast`, `-ffast-math` or `-Os`, where upstream chose them for its code: `goxel`, `hydrogen`,
+  `sauerbraten`, `cataclysm-dda`, `retroarch` and `routino` build as upstream intends. A realtime
+  or kernel-side part upstream compiles with fixed flags keeps them (`linuxcnc`'s realtime
+  components).
 - **No machine-specific code.** Never `-march=`, `-mtune=`, `-mcpu=native`, zig's `-Dcpu=native`,
   rustc's `target-cpu`, `GOAMD64` above v1, or a project's own "optimise for this machine" switch,
   such as libsodium's `--enable-opt`. The build machine's CPU is not the one that runs the
   package; the feature level is [`kdos march`](../04-programs/kdos-command.md#kdos-march)'s to
   choose, per machine. Where upstream selects SIMD code at run time, turn that on: gmp's
-  `--enable-fat`, and the dispatch dav1d, x265, libjpeg-turbo and ffmpeg carry. Watch for a
+  `--enable-fat`, stockfish's `ARCH=x86-64-universal`, and the dispatch dav1d, x265,
+  libjpeg-turbo and ffmpeg carry. Where upstream selects it only at build time, build one copy per
+  level and let the program choose among them as it starts: `john` ships an AVX-512BW, AVX2, XOP,
+  AVX and SSE2 build, each compiled with `-DCPU_FALLBACK` to hand over to the next when the
+  processor lacks its level, and `satdump` builds its DVB plugin with SSE4.1 and again without,
+  and each copy loads only where the other does not. Watch for a
   default that is above x86-64 v1 or taken from the build machine: numpy's `cpu-baseline` defaults
   to x86-64 v2, so its recipe passes `-Dcpu-baseline=none` and keeps the run-time dispatch, and
-  OpenBLAS infers the CPU for its code outside the kernels unless `TARGET` names one.
+  OpenBLAS infers the CPU for its code outside the kernels unless `TARGET` names one. A floor
+  upstream's code cannot go below stays, with nothing added above it: marian, in
+  `translatelocally`, compiles with `-msse4.1` whatever it is given, so its `BUILD_ARCH` is
+  `x86-64` rather than its default `native`, and the package needs SSE4.1.
 - **SIMD and assembly on, with the assembler in `depends`.** `nasm` for ffmpeg, x264, x265, dav1d,
   libvpx (`--as=nasm`), libjpeg-turbo (`-DWITH_SIMD=ON`) and libass (`--enable-asm`); openssl never
   configured with `no-asm`. SIMD options above SSE2 stay off, since the baseline is x86-64 v1
@@ -480,14 +505,20 @@ Check each of these against the recipe, whichever build system it uses:
 
   meson needs this form: it puts the exported `CFLAGS` after its own `-O3`, so
   `-Doptimization=3` alone loses to `-O2`.
-- **LTO only on precedent.** Link-time optimisation is for a hot interpreter or codec that Alpine
-  also builds with it. In this tree that is python, built with PGO and `--with-lto`, and Pillow's
-  imaging modules, built with `-flto=auto`. Use `-flto=auto`, add `-ffat-lto-objects` where the
-  port ships a `.a`, and keep the change only once the port builds byte-identically twice. An archive that
-  carries LTO sections fails that test: GCC names each object's `.gnu.lto_*` sections with a random
-  seed, so `libzstd.a` and `liblz4.a` differ from one build to the next while the shared libraries
-  and programs linked from the same objects do not. zstd and lz4 build at `-O3` without LTO for
-  that reason.
+- **LTO only for the hot libraries.** Link-time optimisation is for code that most of the
+  desktop's time is spent in. In this tree that is python, built with PGO and `--with-lto`;
+  Pillow's imaging modules; cmake, through its own `CMake_BUILD_LTO`; and the media and drawing
+  libraries: ffmpeg, x264, x265, dav1d, libvpx, zstd, lz4, flac, opus, pipewire, pixman, cairo and
+  harfbuzz. Nothing else gets it, however large: not Qt, nodejs, perl, R, LibreOffice, WebKit, the
+  browsers or the applications. Use the project's own switch where it has one (`--enable-lto` in
+  x264, `--enable-lto=auto` in ffmpeg, `-Db_lto=true` in meson,
+  `-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON` in CMake) and `-flto=auto` in both `CFLAGS` and
+  `LDFLAGS` otherwise. Each of those thirteen libraries also adds `-frandom-seed=<port>` to `CFLAGS` (and
+  `CXXFLAGS` for C++). GCC names each object's `.gnu.lto_*` sections with a random number unless
+  that flag fixes it, and an archive keeps those sections, so without it a port that ships a `.a`
+  differs on every build. A port that ships a `.a` also adds `-ffat-lto-objects`, or the archive
+  holds only bytecode and links only through GCC's plugin; zstd and lz4 do both. Keep the change
+  only once the port builds byte-identically twice.
 - **The job count is `$KDOS_JOBS`**, never `nproc`: `scons -j"$KDOS_JOBS"`, not
   `scons -j"$(nproc)"`.
 
@@ -507,7 +538,7 @@ configure takes the exported flags. Read `./configure --help` for `--disable-deb
 
 ```bash
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
-      --buildtype=release -Db_ndebug=if-release -Dtests=disabled -Ddocs=disabled
+      --buildtype=release -Dtests=disabled -Ddocs=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
 ```
@@ -521,10 +552,29 @@ meson's default is `debug`, which compiles `-g -O0` into every object, and `kpkg
 so the package ships unoptimised code and its DWARF. `testing/preflight.sh` fails a recipe that
 runs `meson setup` without naming a buildtype.
 
-The buildtype does not define `NDEBUG`; `-Db_ndebug=if-release` does, which is what CMake's
-Release already gives. Before adding it, read what else the project's `meson.build` hangs on
-`b_ndebug`: glib reads it for nothing, and takes `G_DISABLE_ASSERT` from its own `glib_debug`
-option. meson's release optimisation is `-O3`, but the exported `CFLAGS` follows it on the command
+The buildtype does not define `NDEBUG`, so a meson port keeps its `assert()` checks, and a
+recipe leaves them on. In a library that parses a file, a peer's message or a kernel interface, an
+assertion is the last check between bad input and memory corruption, and outside an inner loop it
+costs nothing that can be measured. The security- and hardware-facing libraries — p11-kit,
+pcsc-lite, ccid, libdrm, libepoxy, libglvnd, libva, libva-intel-driver, libplacebo, wayland,
+wlroots, bubblewrap and xdg-dbus-proxy — never turn them off.
+
+`-Db_ndebug=if-release` is for a port whose assertions sit in a hot path it spends its time in,
+and only these pass it:
+
+| Port | What `NDEBUG` removes |
+|---|---|
+| gtk4 | the checks in the roaring bitmaps under `GtkBitset`, walked on every list-view update |
+| openh264 | the encoder's per-slice checks; upstream's own release `Makefile` defines `NDEBUG` |
+| mesa | `-D b_ndebug=true`, the driver's checks on every draw call |
+
+harfbuzz sets `b_ndebug=if-release` in its own `default_options` and needs nothing from the
+recipe. Before adding a port to that table, read what its `meson.build` hangs on the buildtype
+rather than on `b_ndebug`: gtk3 and gtk4 take `G_DISABLE_ASSERT` and `G_DISABLE_CAST_CHECKS` from
+`optimization`, and glib takes `G_DISABLE_ASSERT` from its own `glib_debug` option, so for gtk3 and
+glib `b_ndebug` changes nothing.
+
+meson's release optimisation is `-O3`, but the exported `CFLAGS` follows it on the command
 line, so a meson port builds at `-O2` unless its recipe raises `CFLAGS` itself (see
 [Every port](#every-port)).
 
@@ -558,9 +608,13 @@ The tree's CMake is 4.4.3, which refuses a project that declares a minimum versi
 Release appends `-O3 -DNDEBUG` after the exported `CFLAGS`, so a CMake port builds at `-O3` with
 assertions off. Name the build type in the recipe even though `CMAKE_BUILD_TYPE` is exported: the
 command line is what a reader sees. A recipe that sets `CMAKE_C_FLAGS_RELEASE` or
-`CMAKE_CXX_FLAGS_RELEASE` itself keeps `-DNDEBUG` in it. Turn on the project's SIMD options, such
-as `WITH_SIMD`, `ENABLE_ASSEMBLY` and `*_ENABLE_ASM`, and leave
-`CMAKE_INTERPROCEDURAL_OPTIMIZATION` off unless Alpine turns it on.
+`CMAKE_CXX_FLAGS_RELEASE` itself keeps `-DNDEBUG` in it. A project can put `-UNDEBUG` back behind
+its own switch whatever the build type: LLVM's `LLVM_ENABLE_ASSERTIONS` follows the build type and
+is off in Release, but `LIBUNWIND_ENABLE_ASSERTIONS` defaults to on, so the `libunwind` recipe
+names it off. Look for an `*_ENABLE_ASSERTIONS` option before trusting Release alone. Turn on the
+project's SIMD options, such as `WITH_SIMD`, `ENABLE_ASSEMBLY` and `*_ENABLE_ASM`, and leave
+`CMAKE_INTERPROCEDURAL_OPTIMIZATION` off except in a port on the LTO list in
+[Every port](#every-port).
 
 A misspelt CMake option is a warning, not an error, the opposite of meson. Read the warning about
 unused variables in the log rather than trusting the exit status, and take option names from the

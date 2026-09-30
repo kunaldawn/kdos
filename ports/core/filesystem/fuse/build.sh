@@ -15,7 +15,7 @@
 # enable-io-uring is off because fuse-over-io-uring links libnuma as well as
 # liburing, and no port provides libnuma: left on, the feature would switch
 # itself on for whichever build root happened to carry both.
-meson setup build --buildtype=release -Db_ndebug=if-release \
+meson setup build --buildtype=release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	-Dinitscriptdir= \
 	-Dudevrulesdir=/lib/udev/rules.d \
