@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = liquid-dsp
+version     = 1.8.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/jgaeddert/liquid-dsp/archive/refs/tags/v$version.tar.gz
+sha256      = 18fa83b73db8bb6fe6ea0376e4b5aecf8645970f4604d10d9dadbf609f3f95e2  liquid-dsp-1.8.3.tar.gz
+description = liquid-dsp — filters, modems, resamplers and FEC for software radio, in C
+homepage    = https://liquidsdr.org/
+depends     = cmake ninja fftw

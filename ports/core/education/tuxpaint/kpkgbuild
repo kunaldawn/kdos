@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tuxpaint
+version     = 0.9.35
+release     = 1
+source      = https://downloads.sourceforge.net/project/$name/$name/$version/$name-$version.tar.gz
+sha256      = c1c18af91be77e94fdaab2c928204c4c39ba39ac5da2f441aaf2ecab6d8bd0ad  tuxpaint-0.9.35.tar.gz
+description = Drawing program for children — brushes, stamps, shapes, text and magic tools
+homepage    = https://tuxpaint.org/
+depends     = pkgconf gperf gettext imagemagick sdl2-compat sdl2-image sdl2-ttf sdl2-mixer sdl2-gfx sdl2-pango pango fribidi librsvg cairo libpng zlib libpaper libimagequant libxml2 fontconfig

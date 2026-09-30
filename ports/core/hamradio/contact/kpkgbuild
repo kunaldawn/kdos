@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = contact
+version     = 1.7.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/contact/contact-$version.tar.gz
+sha256      = c05dd3601d1f256c11385a7fa94444009ef23ae3a5f98c582846f6ed8b4025b5  contact-1.7.1.tar.gz
+description = A terminal client for a Meshtastic radio — chat, nodes and settings in curses
+homepage    = https://github.com/pdxlocations/contact
+depends     = python3 python3-pip python3-poetry-core python3-meshtastic

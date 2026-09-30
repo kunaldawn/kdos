@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libnfs
+version     = 8.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/sahlberg/libnfs/archive/refs/tags/libnfs-$version.tar.gz
+sha256      = bc91216e927a85142b5de611c7f711558e02119a7daad67620ea631634038350  libnfs-8.0.0.tar.gz
+description = Userspace NFS v3/v4 client library — Kodi's nfs:// sources, and the nfs-ls, nfs-cp and nfs-cat tools
+homepage    = https://github.com/sahlberg/libnfs
+depends     = cmake ninja pkgconf gnutls

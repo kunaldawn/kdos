@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = arpack-ng
+version     = 3.9.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/opencollab/arpack-ng/archive/refs/tags/$version.tar.gz
+sha256      = f6641deb07fa69165b7815de9008af3ea47eb39b2bb97521fbf74c97aba6e844  arpack-ng-3.9.1.tar.gz
+description = ARPACK-NG — large sparse eigenvalue problems, for Octave's eigs and SciPy-style solvers
+homepage    = https://github.com/opencollab/arpack-ng
+depends     = cmake ninja gcc openblas

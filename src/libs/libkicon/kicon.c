@@ -628,6 +628,25 @@ void kicon_retint(void)
 	tint_reset(ktui_theme ? kcol_find(ktui_theme->name) : NULL);
 }
 
+void kicon_recell(int cell_w, int cell_h, int scale)
+{
+	if (scale < 1)
+		scale = 1;
+	if (!ki_cw || cell_w < 4 || cell_h < 4)
+		return;
+	if (cell_w == ki_cw && cell_h == ki_ch && scale == ki_scale)
+		return;
+	ki_cw = cell_w;
+	ki_ch = cell_h;
+	ki_scale = scale;
+	for (int i = 0; i < ncache; i++)
+		if (cache[i].img)
+			cache_drop(i);
+	ncache = 0;
+	/* The memo names the slots just handed back; see kicon_retint(). */
+	kicon_forget_paths();
+}
+
 static uint32_t fallback_cp(void)
 {
 	return (ktui_caps & KT_CAP_UTF8) ? 0x2593u : (uint32_t)'#';

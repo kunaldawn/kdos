@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ptouch-print
+version     = 1.9
+release     = 1
+_commit     = 02be73c75be483bd2bf947a048d447200e3229af
+source      = $name-$version.tar.gz
+sha256      = 5d471b651e43a1e5e30dc5b29adc35e061d4df5c6e68326d3ed8e51b9da87a40  ptouch-print-1.9.tar.gz
+description = ptouch-print — print text and images on Brother P-touch label printers over USB
+homepage    = https://dominic.familie-radermacher.ch/projekte/ptouch-print/
+depends     = cmake ninja git gettext libgd libusb argp-standalone

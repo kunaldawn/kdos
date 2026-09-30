@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = re2
+version     = 2025.11.05
+release     = 1
+_tag        = ${version//./-}
+source      = $name-$version.tar.gz::https://github.com/google/re2/releases/download/$_tag/re2-$_tag.tar.gz
+sha256      = 87f6029d2f6de8aa023654240a03ada90e876ce9a4676e258dd01ea4c26ffd67  re2-2025.11.05.tar.gz
+description = Google's linear-time regular expression library, with full Unicode properties from ICU
+homepage    = https://github.com/google/re2
+depends     = cmake ninja pkgconf abseil-cpp icu

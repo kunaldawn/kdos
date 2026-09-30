@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = phonon-backend-vlc
+version     = 0.12.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/phonon/$name/$version/$name-$version.tar.xz
+sha256      = 338479dc451e4b94b3ca5b578def741dcf82f5c626a2807d36235be2dce7c9a5  phonon-backend-vlc-0.12.0.tar.xz
+description = Phonon backend that plays through libvlc
+homepage    = https://invent.kde.org/libraries/phonon-vlc
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase phonon vlc

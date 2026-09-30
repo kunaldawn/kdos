@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libggml
+version     = 0.25.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ggml-org/ggml/archive/refs/tags/v$version.tar.gz
+sha256      = cd9b92d5652f5e4abb41603bf59e269f8fec1b2d05ce22fded981064dd25fb89  libggml-0.25.3.tar.gz
+description = ggml, the tensor library under llama.cpp and whisper.cpp: CPU variants, OpenBLAS and Vulkan backends as loadable modules
+homepage    = https://github.com/ggml-org/ggml
+depends     = cmake ninja openblas vulkan-headers vulkan-loader spirv-headers shaderc glslang

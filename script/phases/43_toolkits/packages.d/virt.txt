@@ -1,0 +1,33 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   43_toolkits: Toolkits
+# ---------------------------------
+#   virt — Virtual machines, their tooling, and remote-desktop and VNC
+#   protocols
+# ---------------------------------
+#
+# Libraries whose dependency closure reaches GTK, Qt, wxWidgets, FLTK or Motif:
+# the toolkits themselves, KDE Frameworks, and what applications link over
+# them.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Containers share the host kernel, so nothing else on the image could run
+# another OS — test a kernel, open an untrusted disk image, boot the installer
+# of the distro being migrated from. On a distro whose own test rig IS qemu.
+qemu
+
+gtk-vnc
+libvirt
+libvirt-glib
+spice-gtk

@@ -33,6 +33,23 @@
       reads: 0 yes, 1 no, 254 cancelled.
     -->
     <promptCommand>kdos-prompt --message '%m' --no '%n' --yes '%y'</promptCommand>
+    <!--
+      Variable refresh and tearing, for a fullscreen window only. On an
+      output that reports VRR, adaptiveSync turns it on while a view is
+      fullscreen and off again when none is, so the desktop never runs at a
+      wandering rate. allowTearing lets a fullscreen window that asks for
+      tearing (wp_tearing_control, which games and Proton send) flip
+      without waiting for vblank; a window that does not ask is unchanged,
+      and `fullscreenForced` would tear every fullscreen window.
+
+      Tearing reaches only frames that leave the CRT pass out, which is
+      what crt_fullscreen = off in ~/.config/kdos/comp.conf does for a
+      fullscreen window: with it on (the default), those frames go through
+      the pass and flip on vblank. A display or driver that supports
+      neither refuses the request and the output keeps a fixed rate.
+    -->
+    <adaptiveSync>fullscreen</adaptiveSync>
+    <allowTearing>fullscreen</allowTearing>
   </core>
 
   <!--
@@ -432,6 +449,21 @@
          repaints the whole desktop live under the hand as the highlight
          moves, so it must be hard to press by accident. -->
     <keybind key="W-C-S-space"><action name="Execute" command="kdos-style"/></keybind>
+
+    <!-- Accessibility. The magnifier on Super+= and its zoom on Super+Alt
+         with = and -; the rest are Super+Alt with a letter, and each switch
+         puts up a notification saying which way it went, because a keyboard
+         aid switched on by accident is a keyboard that misbehaves for no
+         visible reason. comp.conf sets where each one starts. -->
+    <keybind key="W-equal"><action name="ToggleMagnify"/></keybind>
+    <keybind key="W-A-equal"><action name="ZoomIn"/></keybind>
+    <keybind key="W-A-minus"><action name="ZoomOut"/></keybind>
+    <keybind key="W-A-s"><action name="ToggleStickyKeys"/></keybind>
+    <keybind key="W-A-l"><action name="ToggleSlowKeys"/></keybind>
+    <keybind key="W-A-b"><action name="ToggleBounceKeys"/></keybind>
+    <keybind key="W-A-d"><action name="ToggleDwellClick"/></keybind>
+    <keybind key="W-A-c"><action name="ToggleLargeCursor"/></keybind>
+    <keybind key="W-A-k"><action name="ToggleOnScreenKeyboard"/></keybind>
 
 
     <!-- media keys: keysyms that exist only on those keys, safe unmodified.

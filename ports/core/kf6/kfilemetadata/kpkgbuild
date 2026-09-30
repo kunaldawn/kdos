@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kfilemetadata
+version     = 6.30.0
+release     = 1
+source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 5e14cd8e395e927042cb3eb7cff47e0effda5e8bf2520cf18d1082a9403b2e62  kfilemetadata-6.30.0.tar.xz
+description = KDE Frameworks: file metadata and text extraction
+homepage    = https://invent.kde.org/frameworks/kfilemetadata
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kcodecs kconfig kcoreaddons ki18n poppler taglib exiv2 ffmpeg ebook-tools libzip libxml2 attr gettext

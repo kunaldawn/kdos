@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = minizip
+version     = 1.3.2
+release     = 1
+source      = $name-$version.tar.xz::https://zlib.net/zlib-$version.tar.xz
+sha256      = d7a0654783a4da529d1bb793b7ad9c3318020af77667bcae35f95d0e42a792f3  minizip-1.3.2.tar.xz
+description = Read and write ZIP archives: the minizip library from zlib's contrib
+homepage    = https://www.zlib.net/
+depends     = autoconf automake libtool pkgconf zlib

@@ -21,12 +21,12 @@ def main():
     # 2. Build the os-dev image
     run(["docker", "build", "-t", "os-dev", "."])
     
-    # 3. Run the mini build up to phase 2
+    # 3. Run the mini build from 00_cross to 31_compilers
     # We mount testing/mini_build.py as well
     uid = os.getuid()
     gid = os.getgid()
     
-    print("\n--- Running Build up to Phase 2 ---")
+    print("\n--- Running Build from 00_cross to 31_compilers ---")
     run([
         "docker", "run", "--rm", "--privileged",
         "-e", f"HOST_UID={uid}", "-e", f"HOST_GID={gid}",

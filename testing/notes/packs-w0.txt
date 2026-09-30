@@ -69,8 +69,7 @@ FILE-BACKED MOUNT — NOT REPRODUCED ON THE MEASURING KERNEL
 
 W0-3  ROOTLESS podman ON A ROOT-MOUNTED OVERLAY                          PASS
 
-  A three-pack stack was baked from real Debian trixie by ports/appbox/packs,
-  mounted as root, and entered by a rootless podman running as uid 1000:
+  A three-pack stack was baked from real Debian trixie, mounted as root, and entered by a rootless podman running as uid 1000:
 
     podman run --rootfs /work/merged                     id -u -> 0
                                                          /usr   -> root root
@@ -92,8 +91,8 @@ W0-3  ROOTLESS podman ON A ROOT-MOUNTED OVERLAY                          PASS
   was found by composing a stack whose base was a diff over debian:trixie-slim
   and getting a root with `etc root run tmp usr var` in it and no shell —
   /bin, /lib and /sbin are symlinks the base IMAGE provides and no layer above
-  it re-adds. ports/appbox/packs exports the base row and packs the top layer
-  of every other row.
+  it re-adds. So the base row is exported whole and every other row packs only
+  its top layer.
 
 
 W0-5  SIZE REALITY                                                    PARTIAL

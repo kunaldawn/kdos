@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libdmtx
+version     = 0.7.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/dmtx/libdmtx/archive/v$version/libdmtx-$version.tar.gz
+sha256      = 2394bf1d1d693a5a4ca3cfcc1bb28a4d878bdb831ea9ca8f3d5c995d274bdc39  libdmtx-0.7.8.tar.gz
+description = Data Matrix two-dimensional barcode reading and writing library
+homepage    = https://github.com/dmtx/libdmtx
+depends     = autoconf automake libtool

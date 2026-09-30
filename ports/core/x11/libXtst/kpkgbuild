@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libXtst
+version     = 1.2.5
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = b50d4c25b97009a744706c1039c598f4d8e64910c9fde381994e1cae235d9242  libXtst-1.2.5.tar.xz
+description = X11 XTEST and RECORD extension client library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libXtst
+depends     = libX11 libXext libXi xorgproto

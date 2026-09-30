@@ -1,0 +1,36 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = curaengine
+version     = 5.13.0
+release     = 1
+_index      = c4077fc3e719b436d1cdc2032bf3f851b6f089bb
+_scripta    = b96045cd9b531d97f42dec8c9a0ef52f773f6b90
+_stb        = 5736b15f7ea0ffb08dd38af21067c314d6a3aae9
+_wagyu      = 0.5.0
+_geometry   = 2.0.3
+_variant    = 1.2.0
+source      = $name-$version.tar.gz::https://github.com/Ultimaker/CuraEngine/archive/refs/tags/$version.tar.gz
+source      = conan-ultimaker-index-$_index.tar.gz::https://github.com/Ultimaker/conan-ultimaker-index/archive/$_index.tar.gz
+source      = scripta-$_scripta.tar.gz::https://github.com/Ultimaker/Scripta_public/archive/$_scripta.tar.gz
+source      = stb-$_stb.tar.gz::https://github.com/nothings/stb/archive/$_stb.tar.gz
+source      = wagyu-$_wagyu.tar.gz::https://github.com/mapbox/wagyu/archive/refs/tags/$_wagyu.tar.gz
+source      = geometry.hpp-$_geometry.tar.gz::https://github.com/mapbox/geometry.hpp/archive/refs/tags/v$_geometry.tar.gz
+source      = variant-$_variant.tar.gz::https://github.com/mapbox/variant/archive/refs/tags/v$_variant.tar.gz
+sha256      = 287450f5f4d1afaab6954272cc986e1a4ba5c7b71a28303a70f45996c786980e  curaengine-5.13.0.tar.gz
+sha256      = b35b9b112085c299ee5e9e5e15612e5e065d07220d0c9954b776b15cfa5095b5  conan-ultimaker-index-c4077fc3e719b436d1cdc2032bf3f851b6f089bb.tar.gz
+sha256      = 0b6737514ba08f68750263c5198ee0e36597ffbbe241ced89c9dd90bd99b05d3  scripta-b96045cd9b531d97f42dec8c9a0ef52f773f6b90.tar.gz
+sha256      = d00921d49b06af62aa6bfb97c1b136bec661dd11dd4eecbcb0da1f6da7cedb4c  stb-5736b15f7ea0ffb08dd38af21067c314d6a3aae9.tar.gz
+sha256      = 88c41eaba03107ebe79052fdbd66e419e903d331a2616a51849018e13648ab83  wagyu-0.5.0.tar.gz
+sha256      = 9d750d34576069bcc4f39677af08cde2862fbe4b8c0d9af504877c2fae2ae273  geometry.hpp-2.0.3.tar.gz
+sha256      = 7059f4420d504c4bc96f8a462a0f6d029c5be914ba55cc030a0a773366dd7bc8  variant-1.2.0.tar.gz
+description = CuraEngine — the slicer behind Cura, also usable on its own from the command line
+homepage    = https://github.com/Ultimaker/CuraEngine
+depends     = cmake ninja pkgconf libarcus protobuf abseil-cpp polyclipping range-v3 rapidjson boost spdlog fmt onetbb libpng zlib

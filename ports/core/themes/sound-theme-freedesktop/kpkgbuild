@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sound-theme-freedesktop
+version     = 0.8
+release     = 1
+source      = https://people.freedesktop.org/~mccann/dist/$name-$version.tar.bz2
+sha256      = cb518b20eef05ec2e82dda1fa89a292c1760dc023aba91b8aa69bafac85e8a14  sound-theme-freedesktop-0.8.tar.bz2
+description = The freedesktop default sound theme — event sounds libcanberra plays
+homepage    = https://www.freedesktop.org/wiki/Specifications/sound-theme-spec/
+depends     = intltool

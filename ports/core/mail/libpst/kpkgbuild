@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libpst
+version     = 0.6.76
+release     = 1
+source      = https://www.five-ten-sg.com/libpst/packages/$name-$version.tar.gz
+sha256      = 3d291beebbdb48d2b934608bc06195b641da63d2a8f5e0d386f2e9d6d05a0b42  libpst-0.6.76.tar.gz
+description = Outlook PST and OST reader — readpst, lspst and the libpst library
+homepage    = https://www.five-ten-sg.com/libpst/
+depends     = pkgconf libgsf zlib

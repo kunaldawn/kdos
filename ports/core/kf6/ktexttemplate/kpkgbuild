@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ktexttemplate
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = c3c229944d25294102e4e8a5b49fa0c0f481da9d33f8bec3782e8a53afd47493  ktexttemplate-6.30.0.tar.xz
+description = KTextTemplate — the KDE Frameworks text template engine, for KDevelop's templates
+homepage    = https://invent.kde.org/frameworks/ktexttemplate
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative

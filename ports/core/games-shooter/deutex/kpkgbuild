@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = deutex
+version     = 5.2.3
+release     = 1
+source      = https://github.com/Doom-Utils/deutex/releases/download/v$version/deutex-$version.tar.zst
+sha256      = 935dcae490fb574e8ad90ef54bdeb599c7055fedca117d79ce837cbc19d070ab  deutex-5.2.3.tar.zst
+description = Doom WAD composer and decomposer — builds an IWAD from lumps, PNGs and sounds
+homepage    = https://github.com/Doom-Utils/deutex
+depends     = pkgconf libpng asciidoc docbook-xsl libxslt

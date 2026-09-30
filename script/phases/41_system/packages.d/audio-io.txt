@@ -1,0 +1,40 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   audio-io — The sound stack: ALSA, PipeWire and WirePlumber, PulseAudio
+#   client, and portable audio I/O APIs
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+alsa-ucm-conf
+alsa-topology-conf
+alsa-lib
+alsa-utils
+libpulse
+
+# One output API over ALSA, so the players that link it need no backend each.
+libao
+
+portaudio
+
+# Sound reaches PipeWire through ALSA and pipewire-pulse; there is no JACK.
+rtaudio
+
+shairplay
+libsoundio

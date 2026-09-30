@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ocaml-facile
+version     = 1.1.4
+release     = 1
+source      = $name-$version.tar.bz2::https://github.com/Emmanuel-PLF/facile/releases/download/$version/facile-$version.tbz
+sha256      = 5712a00802c525d19fb59b7800ffd9d3f7ca08ee9cd295b3905b64676ce5194b  ocaml-facile-1.1.4.tar.bz2
+description = FaCiLe — constraint programming library for OCaml, the solver behind Kalzium's equation balancer
+homepage    = https://github.com/Emmanuel-PLF/facile
+depends     = ocaml

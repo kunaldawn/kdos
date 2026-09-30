@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyuvula
+version     = 1.1.0
+release     = 1
+_commit     = 1dca0afc6fd5b380285bbc6fdacb3831f1826976
+_index      = c4077fc3e719b436d1cdc2032bf3f851b6f089bb
+source      = $name-$version.tar.gz::https://github.com/Ultimaker/libUvula/archive/$_commit.tar.gz
+source      = conan-ultimaker-index-$_index.tar.gz::https://github.com/Ultimaker/conan-ultimaker-index/archive/$_index.tar.gz
+sha256      = fcc42f07eb14b84ccb2ae873917abdc181dfc8a0acefeb499243c85013704014  python3-pyuvula-1.1.0.tar.gz
+sha256      = b35b9b112085c299ee5e9e5e15612e5e065d07220d0c9954b776b15cfa5095b5  conan-ultimaker-index-c4077fc3e719b436d1cdc2032bf3f851b6f089bb.tar.gz
+description = pyUvula — UV unwrapping and projection for Cura's paint tool, with its Python module
+homepage    = https://github.com/Ultimaker/libUvula
+depends     = cmake ninja pkgconf python3 python3-pybind11 spdlog fmt range-v3 polyclipping

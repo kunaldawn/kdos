@@ -183,7 +183,7 @@ static void toggle_autologin(void)
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 static const KtuiCol US_COL[] = {
-	{ "USER", 12 }, { "UID", 7 }, { "NAME", 0 }, { "SHELL", 18 }
+	{ "USER", 12, 0 }, { "UID", 7, 0 }, { "NAME", 0, 0 }, { "SHELL", 18, 0 }
 };
 #define US_NCOL 4
 
@@ -299,117 +299,89 @@ static int on_key(int k)
 	return 0;
 }
 
+static int us_arg(int argc, char **argv, int *i)
+{
+	(void)argc;
+	if (strcmp(argv[*i], "--no-icons"))
+		return 0;
+	icons_on = 0;
+	return 1;
+}
+
+static void us_start(int dump)
+{
+	(void)dump;
+	refresh();
+}
+
+static int us_event(KtuiEvent *ev)
+{
+	if (ev->type == KT_EVT_MOUSE) {
+		/*
+		 * A DETENT SCROLLS THE TABLE. It is answered before anything
+		 * below, because a wheel tick arrives as a press with no
+		 * release and would otherwise fall into the button arm and run
+		 * whichever row it passed over.
+		 */
+		if (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN) {
+			ktui_table_key(&tbl, nuser, ktui_h - 8,
+				       ev->btn == KT_MB_WHEEL_UP ? KT_K_UP
+								 : KT_K_DOWN,
+				       NULL, NULL);
+			load_groups(sel_user());
+			return SH_EV_TAKEN;
+		}
+		if (ev->press == KT_MP_DRAG) {
+			kch_hover(ev->mx, ev->my);
+			return SH_EV_TAKEN;
+		}
+		if (ev->press != KT_MP_PRESS)
+			return SH_EV_PASS;
+
+		int bi = kch_button_at(ev->mx, ev->my);
+
+		if (bi == UB_CLOSE)
+			return SH_EV_CLOSE;
+		if (bi == UB_AUTO) {
+			toggle_autologin();
+			return SH_EV_TAKEN;
+		}
+		if (bi == UB_REFRESH) {
+			refresh();
+			return SH_EV_TAKEN;
+		}
+		int idx = ktui_table_hit(krect(2, 4, ktui_w - 4, ktui_h - 11),
+					 &tbl, nuser, US_NCOL, US_COL, ev->mx,
+					 ev->my);
+		if (ktui_table_pick(&tbl, nuser, idx, NULL, NULL))
+			load_groups(sel_user());
+		return SH_EV_TAKEN;
+	}
+	if (ev->type != KT_EVT_KEY)
+		return SH_EV_PASS;
+	return on_key(ev->key) ? SH_EV_CLOSE : SH_EV_TAKEN;
+}
+
 int users_main(int argc, char **argv)
 {
-	const char *font = NULL;
-	int dump = 0;
-
-	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--font") && i + 1 < argc)
-			font = argv[++i];
-		else if (!strcmp(argv[i], "--dump"))
-			dump = 1;
-		else if (!strcmp(argv[i], "--no-icons"))
-			icons_on = 0;
-		else {
-			fprintf(stderr, "usage: kdos-users [--font NAME] "
-					"[--no-icons] [--dump]\n");
-			return 2;
-		}
-	}
-
-	KDispConfig cfg = {
-		.role = KDISP_ROLE_TOPLEVEL,
-		.cols = US_COLS,
-		.rows = US_ROWS,
-		.min_cols = 56,
-		.min_rows = 14,
-		.title = "Accounts",
-		.app_id = "kdos-users",
-		.font = font,
-		.keyboard = 1,
+	static const ShSurface s = {
+		.cfg = {
+			.role = KDISP_ROLE_TOPLEVEL,
+			.cols = US_COLS,
+			.rows = US_ROWS,
+			.min_cols = 56,
+			.min_rows = 14,
+			.title = "Accounts",
+			.app_id = "kdos-users",
+			.keyboard = 1,
+		},
+		.usage = "[--font NAME] [--no-icons] [--dump]",
+		.keys = &keys,
+		.arg = us_arg,
+		.start = us_start,
+		.draw = draw,
+		.event = us_event,
 	};
 
-	sh_theme_from_cache();
-	refresh();
-	if (dump) {
-		ktui_offscreen_init(US_COLS, US_ROWS);
-		ktui_draw_init();
-		draw();
-		ktui_draw_dump();
-		return 0;
-	}
-	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-		fprintf(stderr, "kdos-users: no display server\n");
-		return 1;
-	}
-	ktui_draw_init();
-
-	while (!kdisp_should_close()) {
-		draw();
-		ktui_draw_flush();
-
-		KtuiEvent ev;
-
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
-			if (ktui_resized) {
-				ktui_resized = 0;
-				ktui_draw_resize();
-				ktui_draw_invalidate();
-			}
-			continue;
-		}
-		if (ev.type == KT_EVT_MOUSE) {
-			/*
-			 * A DETENT SCROLLS THE TABLE. It is answered before
-			 * anything below, because a wheel tick arrives as a
-			 * press with no release and would otherwise fall into
-			 * the button arm and run whichever row it passed over.
-			 */
-			if (ev.btn == KT_MB_WHEEL_UP ||
-			    ev.btn == KT_MB_WHEEL_DOWN) {
-				ktui_table_key(&tbl, nuser, ktui_h - 8,
-					       ev.btn == KT_MB_WHEEL_UP ? KT_K_UP
-									: KT_K_DOWN,
-					       NULL, NULL);
-				load_groups(sel_user());
-				continue;
-			}
-			if (ev.press == KT_MP_DRAG) {
-				kch_hover(ev.mx, ev.my);
-				continue;
-			}
-			if (ev.press != KT_MP_PRESS)
-				continue;
-
-			int bi = kch_button_at(ev.mx, ev.my);
-
-			if (bi == UB_CLOSE)
-				break;
-			if (bi == UB_AUTO) {
-				toggle_autologin();
-				continue;
-			}
-			if (bi == UB_REFRESH) {
-				refresh();
-				continue;
-			}
-			int idx = ktui_table_hit(krect(2, 4, ktui_w - 4,
-						       ktui_h - 11),
-						 &tbl, nuser, US_NCOL, US_COL,
-						 ev.mx, ev.my);
-			if (ktui_table_pick(&tbl, nuser, idx, NULL, NULL))
-				load_groups(sel_user());
-			continue;
-		}
-		if (ev.type != KT_EVT_KEY)
-			continue;
-		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
-			break;
-		if (on_key(ev.key))
-			break;
-	}
-
-	kdisp_shutdown();
-	return 0;
+	return sh_run(&s, argc, argv);
 }

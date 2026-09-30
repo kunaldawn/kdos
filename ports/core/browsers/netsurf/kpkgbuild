@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = netsurf
+version     = 3.11
+release     = 1
+source      = https://download.netsurf-browser.org/netsurf/releases/source/$name-$version-src.tar.gz
+sha256      = c28a626aefee428d053b13f88b5c440922245976522d12eaf137cfd32d201cb2  netsurf-3.11.tar.gz
+description = NetSurf — a small, fast web browser with its own layout engine, on GTK 3
+homepage    = https://www.netsurf-browser.org/
+depends     = nsgenbind perl pkgconf gtk3 glib curl openssl zlib libjpeg-turbo libpng libwebp libjxl librsvg utf8proc libwapcaplet libparserutils libhubbub libdom libcss libnsbmp libnsgif libnsutils libnspsl libnslog libsvgtiny imagemagick

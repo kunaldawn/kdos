@@ -1,0 +1,49 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   office — Office suites, word processors, spreadsheets, presentations,
+#   accounting and finance, and office-format import libraries
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# SLIDES FROM A MARKDOWN FILE, drawn in the terminal — the pictures go through
+# the sixel and kitty protocols kdos-term speaks.
+presenterm
+
+# FreeXL reads spreadsheets for GDAL: the binary .xls, and through minizip
+# the zipped .xlsx and .ods.
+freexl
+
+# WHAT LETS THE SPREADSHEET HAND A FILE BACK IN THE FORMAT IT ARRIVED IN.
+# sc-im READS .xlsx through libxml2 and libzip and gates its EXPORT on a
+# pkg-config probe for `xlsxwriter`; without this port that probe fails
+# silently at build time and the finished program answers `XLSX export support
+# not compiled in.` to a save.
+libxlsxwriter
+
+libgsf
+librevenge
+libwpd
+libwpg
+libcdr
+libvisio
+wv
+mdds
+libixion
+liborcus

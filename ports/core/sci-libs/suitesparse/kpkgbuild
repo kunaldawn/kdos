@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = suitesparse
+version     = 7.14.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/refs/tags/v$version.tar.gz
+sha256      = 81e560e1f74546df139edb765b3f5bc865866da23062312ffe8fd821063c8397  suitesparse-7.14.1.tar.gz
+description = Sparse matrix algebra — CHOLMOD, UMFPACK, KLU, SPQR and CXSparse, under Octave
+homepage    = https://people.engr.tamu.edu/davis/suitesparse.html
+depends     = cmake ninja gcc openblas gmp mpfr

@@ -32,8 +32,12 @@
 
 #include "ext-session-lock-v1-client-protocol.h"
 #include "kwl_priv.h"
+#include "kwl_insp.h"
+#include "kwl_glide.h"
 #include "cursor-shape-v1-client-protocol.h"
+#include "fractional-scale-v1-client-protocol.h"
 #include "primary-selection-unstable-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -97,6 +101,29 @@
  */
 #define KWL_FRAME_STALL_MS 100
 
+/*
+ * THE COAST after a finger leaves the touchpad (coast_start). The release
+ * speed is measured over the finger's last KWL_FLING_WINDOW_MS, from at most
+ * KWL_FLING_N samples; a finger that stopped before it lifted measures nothing
+ * in that window and does not coast. Below KWL_COAST_MIN_V axis units per
+ * millisecond a lift is a lift and not a flick. The speed then falls by
+ * KWL_COAST_DECAY every millisecond — a time constant of 250 ms, so the list
+ * travels a quarter of a second's worth of the release speed in all — and
+ * the coast ends under KWL_COAST_STOP_V (a tick every half second) or after
+ * KWL_COAST_MAX_MS. Tuned by reading, not on a touchpad: the numbers are the
+ * feel, and each is one constant.
+ */
+#define KWL_FLING_N 8
+#define KWL_FLING_WINDOW_MS 100
+#define KWL_COAST_MIN_V 0.3
+#define KWL_COAST_DECAY 0.996
+#define KWL_COAST_STOP_V 0.02
+#define KWL_COAST_MAX_MS 3000
+/* How often a coast is advanced while nothing else wakes the wait. */
+#define KWL_COAST_STEP_MS 16
+/* The axis distance one tick is worth on the counted (touchpad) path. */
+#define KWL_AXIS_TICK 10.0
+
 /* ── state ─────────────────────────────────────────────────────────────── */
 
 static struct {
@@ -136,6 +163,11 @@ static struct {
 	 * buffer of our own. */
 	struct wp_cursor_shape_manager_v1 *shape_mgr;
 	struct wp_cursor_shape_device_v1 *shape_dev;
+	/* A fractional output scale needs both: the one to be told the scale,
+	 * the other to hand the compositor a buffer that is not a whole
+	 * multiple of the surface. Either missing is the integer path. */
+	struct wp_fractional_scale_manager_v1 *frac_mgr;
+	struct wp_viewporter *viewporter;
 	int cursor;		/* enum kdisp_cursor, re-sent on every enter */
 	uint32_t ptr_serial;	/* the pointer-enter serial set_shape needs */
 
@@ -279,10 +311,34 @@ static struct {
 	int64_t frame_at_ms;
 	KtuiCell *pend;
 	int pend_w, pend_h, pend_full, pend_valid;
-	/* One byte per row of the frame being committed, set for the rows that
-	 * differ from what was last presented. It is the damage. */
-	unsigned char *dirty;
+	/*
+	 * THE FRAME CLOCK. `tick_due` is a display frame that went by while an
+	 * animation wanted one, owed to the caller as a KT_EVT_TICK;
+	 * `anim_frame` is that the last frame presented was drawn while one
+	 * was live, so the frame after it is owed too — it is the one that
+	 * draws the end value. See tick_wanted().
+	 */
+	int tick_due, anim_frame;
+	/* The buffer the last commit attached, plus one — 0 before any. A
+	 * gliding list copies what the screen shows out of it (kwl_glide.h). */
+	int shown_buf;
+	/* One cell span per row of the frame being committed: what differs
+	 * from what was last presented, x0 == x1 for a row that does not. It
+	 * is the damage. */
+	KCellSpan *dirty;
 	int dirty_n;
+	/* The same per row against the buffer being painted — its own shadow —
+	 * which is what a partial paint repaints. See flush_commit(). */
+	KCellSpan *pspan;
+	int pspan_n;
+	/* One flag per row of a scrolled band: its picture differs at the two
+	 * ends of the move. See scroll_blit(). */
+	unsigned char *sbad;
+	int sbad_n;
+	/* Paints that moved a band rather than repainting it. Nothing in the
+	 * library reads it; paintcheck does, to fail a run that never took the
+	 * path it exists to test. */
+	unsigned long scrolls;
 	/* Whether the last flush reached a commit; see KtuiBackend.presented. */
 	int committed;
 	/* Whether something below the grid changed its pixels, asked at flush
@@ -291,14 +347,38 @@ static struct {
 	int (*px_dirty_fn)(void);
 
 	/*
-	 * HiDPI: the integer scale of the output the surface is on, clamped to
-	 * KCELL_MAX_SCALE. Layer-surface sizes stay in logical pixels; the shm
-	 * buffer is px * scale and the glyphs are rendered at the scale rather
-	 * than stretched. `scale_sent` trails it so set_buffer_scale is always
-	 * committed together with a buffer of the matching size.
+	 * HiDPI: the whole-number scale the grid is painted at, clamped to
+	 * KCELL_MAX_SCALE — the compositor's preferred scale where it is a
+	 * whole number, the output's `wl_output.scale` where no preferred
+	 * scale has arrived, and 1 on the fractional path below. Surface
+	 * sizes stay in logical pixels; the shm buffer is px * scale and the
+	 * glyphs are rendered at the scale rather than stretched. `scale_sent`
+	 * trails it so set_buffer_scale is always committed together with a
+	 * buffer of the matching size.
 	 */
 	int scale, scale_sent;
 	int on_output;		/* index of the output last entered, or -1 */
+	/*
+	 * THE FRACTIONAL PATH. `s120` is the compositor's preferred scale for
+	 * this surface in 120ths (wp_fractional_scale_v1), 0 until one arrives.
+	 * `frac120` is the scale the cell font is LOADED AT when that is not a
+	 * whole number, and 0 on the integer path: the font at the device
+	 * pixel size, the buffer and every pixel in device pixels, `scale` 1,
+	 * and a viewport destination telling the compositor the logical size,
+	 * so a 1.5 output gets glyphs rasterised at 1.5 instead of a 2x picture
+	 * the compositor shrinks. `lcw`/`lch` are the cell of the font AS
+	 * NAMED — the unit every size handed to the compositor is counted in,
+	 * on both paths, so a surface keeps its logical size whichever font is
+	 * drawing it. `dest_w`/`dest_h` trail the destination sent, -1 unset.
+	 */
+	int s120, frac120;
+	/* A fraction no device font fitted for the name in force: not tried
+	 * again on every enter until the name changes. */
+	int frac_refused;
+	int lcw, lch;
+	int dest_w, dest_h;
+	struct wp_fractional_scale_v1 *frac;
+	struct wp_viewport *viewport;
 
 	KDispConfig cfg;
 	/*
@@ -322,6 +402,30 @@ static struct {
 	int rule_bottom;
 	/* Pixel chrome under the cell grid, or NULL. See kwl_set_backdrop(). */
 	KDispBackdropFn backdrop;
+	/* Who follows the pixel cell. See kwl_on_scale(). */
+	KDispScaleFn scale_fn[KWL_SCALE_FNS];
+	int nscale_fn;
+	/* What lets a backdrop surface repaint only its changed cells — the
+	 * picture's key, a painter for part of it, which pixels moved between
+	 * two of its keys, and whether two of its rows are the same pixels.
+	 * See kwl_set_backdrop_cache(). */
+	uint64_t (*bd_key)(void);
+	KwlBackdropBandFn bd_band;
+	KwlBackdropDiffFn bd_diff;
+	KwlBackdropSameFn bd_same;
+	/* The backdrop key of the buffer last attached, which is what the
+	 * compositor is showing: row damage is only honest while the buffer
+	 * being attached wears the same backdrop. */
+	uint64_t bd_shown_key;
+	int bd_shown_scale;
+	int bd_shown_valid;
+	/*
+	 * Whether the surface claims to be opaque (kwl_set_opaque), and what
+	 * was last sent: the claim, and the logical size it covered, since a
+	 * resize must re-send a region that no longer spans the surface.
+	 */
+	int opaque;
+	int opaque_sent, opaque_w, opaque_h;
 	int cols, rows;		/* and in cells                            */
 	int configured;
 	/*
@@ -430,6 +534,44 @@ static struct {
 	 * wheel_gate(). */
 	int64_t wheel_last_ms;
 	int wheel_last_up;
+	/*
+	 * wl_seat as bound: the lower of what the compositor offers and 9.
+	 * Version 8 replaces axis_discrete with axis_value120, which a wheel
+	 * with a high-resolution mode sends in fractions of a detent; 9 adds
+	 * which way the device itself reversed the axis. Both are read below,
+	 * and a compositor offering less keeps the discrete path.
+	 */
+	uint32_t seat_ver;
+	/*
+	 * axis_value120, per axis, as this frame carried it (what the raw
+	 * stream reports), and the vertical one ACCUMULATED across frames —
+	 * a high-resolution wheel sends a detent as several eighths, and the
+	 * cell path moves a row per whole detent. `v120_seen` is set by a
+	 * frame that carried any; see pt_frame_cooked().
+	 */
+	int v120_frame[2];
+	int v120_seen;
+	int v120_acc;
+	/* axis_relative_direction per axis: the device reversed it itself
+	 * (natural scrolling), which the raw stream reports as
+	 * KT_RAW_INVERTED. */
+	int axis_inv[2];
+	/*
+	 * THE COAST. A finger that leaves the touchpad while still moving
+	 * keeps the list moving, slowing to a stop — see coast_start().
+	 * `fl` is the finger's last few vertical samples, in the compositor's
+	 * milliseconds, which is what the release velocity is measured from;
+	 * `coast_v` is the speed now, in axis units per millisecond, and
+	 * `coast_acc` the distance not yet spent on a whole tick.
+	 */
+	struct {
+		unsigned ms;
+		double v;
+	} fl[KWL_FLING_N];
+	int fl_n, fl_head;
+	int coast_on;
+	double coast_v, coast_acc;
+	int64_t coast_at, coast_t0;
 
 	/*
 	 * Key repeat. Wayland has no repeat of its own — the compositor sends
@@ -483,6 +625,7 @@ int kwl_fd(void)
 
 static void paste_pump(void);
 static void send_pump(void);
+static void insp_refresh(void);
 
 void kwl_pump(void)
 {
@@ -548,6 +691,10 @@ flush:
 	 */
 	if (wl_display_flush(K.display) < 0 && errno != EAGAIN)
 		K.closed = 1;
+	/* A loop that waits on its own descriptors wakes here, and so is
+	 * where the overlay's due refresh goes out for it. */
+	if (kwl_insp_on() && !K.closed && kwl_insp_wait(now_ms()) == 0)
+		insp_refresh();
 }
 /*
  * A CELL IS NEVER ZERO WIDE. With no font loaded — kwl_init having failed, or
@@ -555,9 +702,94 @@ flush:
  * and the callers that turn cells into pixels divide by this. Flooring here
  * costs nothing on a real surface and keeps a caller from having to check a
  * number that cannot legitimately be zero.
+ *
+ * It is the cell of the font DRAWING the grid, in the pixel units below: on a
+ * fractional scale that is the font at the device size, and every pixel a
+ * consumer draws beside the cells is counted in it.
  */
 int kwl_cell_w(void) { int w = kcell_w(); return w > 0 ? w : 8; }
 int kwl_cell_h(void) { int h = kcell_h(); return h > 0 ? h : 16; }
+
+/* ── pixel units ───────────────────────────────────────────────────────── */
+
+/*
+ * TWO KINDS OF PIXEL, and which one a number is decides whether it is right.
+ *
+ * LOGICAL pixels are what the compositor speaks: a configure, a layer size, a
+ * margin, an exclusive zone, a region, a pointer position. The UNIT is what
+ * kwl_cell_w() measures and what everything drawn into the buffer is counted
+ * in — the grid, the rule, a consumer's pixel chrome, the raw pointer a
+ * scrollbar is aimed with. On the integer path the two are the same number
+ * and the buffer is the unit times `scale`. On the fractional path the unit
+ * is a DEVICE pixel, the buffer is exactly the unit, and the conversions below
+ * are the only place a logical number and a device one meet: the grid is cut
+ * in device pixels, so a cell edge falls where the glyph was drawn and not
+ * where a logical cell would have put it.
+ *
+ * Rounding: a size in (to_unit) to the nearest device pixel; a position out
+ * (from_unit_floor) to the logical pixel it falls in; an extent out
+ * (from_unit_ceil) to the logical pixel that covers its last device pixel.
+ */
+static long long div_floor(long long a, long long b)
+{
+	long long q = a / b;
+
+	if ((a % b) && ((a < 0) != (b < 0)))
+		q--;
+	return q;
+}
+
+static int to_unit(int logical)
+{
+	if (K.frac120 > 0)
+		return (int)div_floor((long long)logical * K.frac120 + 60, 120);
+	return logical;
+}
+
+static int from_unit_floor(int u)
+{
+	if (K.frac120 > 0)
+		return (int)div_floor((long long)u * 120, K.frac120);
+	return u;
+}
+
+static int from_unit_ceil(int u)
+{
+	if (K.frac120 > 0)
+		return (int)-div_floor(-(long long)u * 120, K.frac120);
+	return u;
+}
+
+/* A pointer position, in units. wl_fixed carries a fraction of a logical
+ * pixel, which on the fractional path is a whole device pixel worth keeping;
+ * the integer path truncates it, as it always has. */
+static int ptr_unit(wl_fixed_t v)
+{
+	if (K.frac120 > 0)
+		return (int)div_floor((long long)v * K.frac120, 120 * 256);
+	return wl_fixed_to_int(v);
+}
+
+/* The rule, in units, and where the grid starts below it. */
+static int rule_unit(void)
+{
+	return to_unit(K.rule);
+}
+
+static int ptr_grid_y(wl_fixed_t y)
+{
+	return ptr_unit(y) - (K.rule_bottom ? 0 : rule_unit());
+}
+
+/* The cell of the font as named, in logical pixels: what a size asked of the
+ * compositor is counted in. See K.lcw. */
+static int lcell_w(void) { return K.lcw > 0 ? K.lcw : kcell_w(); }
+static int lcell_h(void) { return K.lch > 0 ? K.lch : kcell_h(); }
+
+int kwl_px_logical(int px)
+{
+	return from_unit_floor(px);
+}
 
 /*
  * The SURFACE's own height in logical pixels — the cells plus the rule.
@@ -606,7 +838,7 @@ static int panel_gap(void)
 /* The surface's own height in LOGICAL pixels — the cell grid plus the rule. */
 static int surface_px_h(void)
 {
-	return K.px_h > 0 ? K.px_h : K.rows * kcell_h() + K.rule;
+	return K.px_h > 0 ? K.px_h : K.rows * lcell_h() + K.rule;
 }
 
 /*
@@ -667,15 +899,86 @@ void kwl_set_backdrop(KDispBackdropFn fn)
 	 * keeps the last frame.
 	 */
 	kcell_set_bg_preserve(fn != NULL);
+	/* A new backdrop is a new picture, and until its owner says how to key
+	 * and repaint part of it, every paint over it is a full one. */
+	K.bd_key = NULL;
+	K.bd_band = NULL;
+	K.bd_diff = NULL;
+	K.bd_same = NULL;
+	K.bd_shown_valid = 0;
+	/* An opaque claim was about the last picture, not this one. */
+	K.opaque = 0;
 	/* The next paint has to be a full one whatever the diff thinks: the
 	 * surface's pixels are about to be owned by somebody else. */
-	for (size_t i = 0; i < sizeof(K.buf) / sizeof(K.buf[0]); i++)
+	for (size_t i = 0; i < sizeof(K.buf) / sizeof(K.buf[0]); i++) {
 		K.buf[i].stale = true;
+		K.buf[i].bd_valid = false;
+	}
 }
-/* The integer output scale this surface is being rendered at. A consumer that
+
+void kwl_set_backdrop_cache(uint64_t (*key)(void), KwlBackdropBandFn band,
+			    KwlBackdropDiffFn diff, KwlBackdropSameFn same)
+{
+	K.bd_key = key && band ? key : NULL;
+	K.bd_band = key && band ? band : NULL;
+	K.bd_diff = key && band ? diff : NULL;
+	K.bd_same = key && band ? same : NULL;
+	K.bd_shown_valid = 0;
+	for (size_t i = 0; i < sizeof(K.buf) / sizeof(K.buf[0]); i++)
+		K.buf[i].bd_valid = false;
+}
+
+void kwl_set_opaque(bool on)
+{
+	K.opaque = on ? 1 : 0;
+}
+
+/*
+ * THE OPAQUE CLAIM RIDES THE COMMIT THAT CARRIES ITS PIXELS. The region is
+ * double-buffered surface state, so set here, just before the attach, it
+ * applies to exactly the buffer the claim was made for; set when the caller
+ * asked, it would apply to whatever frame happened to be committed next.
+ * Re-sent on a resize too, because a region is a size, and one cut for the
+ * old size either under-claims or claims pixels that are not there.
+ */
+static void opaque_sync(void)
+{
+	int on = K.opaque && K.compositor;
+
+	if (on == K.opaque_sent &&
+	    (!on || (K.opaque_w == K.px_w && K.opaque_h == K.px_h)))
+		return;
+	if (on) {
+		struct wl_region *reg = wl_compositor_create_region(K.compositor);
+
+		if (!reg)
+			return;
+		wl_region_add(reg, 0, 0, K.px_w, K.px_h);
+		wl_surface_set_opaque_region(K.surface, reg);
+		wl_region_destroy(reg);
+	} else {
+		wl_surface_set_opaque_region(K.surface, NULL);
+	}
+	K.opaque_sent = on;
+	K.opaque_w = K.px_w;
+	K.opaque_h = K.px_h;
+}
+/* The whole-number scale this surface is being rendered at. A consumer that
  * rasterises anything of its own — libkicon is the one — has to do it at
- * cell * scale, or a HiDPI panel gets a picture upscaled from half its size. */
+ * cell * scale, or a HiDPI panel gets a picture upscaled from half its size.
+ * 1 on the fractional path, where the cell itself is the device size. */
 int kwl_scale(void) { return K.scale > 0 ? K.scale : 1; }
+
+void kwl_on_scale(KDispScaleFn fn)
+{
+	if (!fn)
+		return;
+	for (int i = 0; i < K.nscale_fn; i++)
+		if (K.scale_fn[i] == fn)
+			return;
+	if (K.nscale_fn < KWL_SCALE_FNS)
+		K.scale_fn[K.nscale_fn++] = fn;
+}
 
 static int ev_is_motion(const KtuiEvent *ev)
 {
@@ -921,11 +1224,13 @@ static void raw_ptr(int px, int py, int code, int state, unsigned ms)
  * NOT QUANTISED TO A TICK EITHER. The accumulator the frame handler runs makes
  * a whole row out of a finger's stream, which is what a grid moves by; a pixel
  * guest wants the stream. A DETENT IS COUNTED AND NOT MEASURED — 120 to a
- * detent is what a high-resolution client steps by — and `value` carries the
- * same distance for a client that predates the count. Zero on both is the end
- * of the gesture, which is a message and never coalesced away.
+ * detent is what a high-resolution client steps by, and `value120` is the
+ * compositor's own count where the seat carries one (version 8) or the
+ * discrete count times 120 where it does not — and `value` carries the same
+ * distance for a client that predates the count. Zero on both is the end of
+ * the gesture, which is a message and never coalesced away.
  */
-static void raw_axis(int axis, double value, int discrete, unsigned ms)
+static void raw_axis(int axis, double value, int value120, unsigned ms)
 {
 	KtuiRaw r;
 
@@ -933,7 +1238,9 @@ static void raw_axis(int axis, double value, int discrete, unsigned ms)
 	r.type = KT_RAW_AXIS;
 	r.axis = axis;
 	r.value = raw_fx(value);
-	r.value120 = discrete * 120;
+	r.value120 = value120;
+	if (K.axis_inv[axis == KT_RAW_HORIZ])
+		r.flags |= KT_RAW_INVERTED;
 	r.mods = mods_now();
 	r.ms = ms;
 
@@ -1457,8 +1764,8 @@ static void drag_cell(wl_fixed_t x, wl_fixed_t y)
 	if (cw <= 0 || ch <= 0)
 		return;
 
-	K.drop_cx = wl_fixed_to_int(x) / cw;
-	K.drop_cy = (wl_fixed_to_int(y) - (K.rule_bottom ? 0 : K.rule)) / ch;
+	K.drop_cx = ptr_unit(x) / cw;
+	K.drop_cy = ptr_grid_y(y) / ch;
 }
 
 static void dd_enter(void *d, struct wl_data_device *dev, uint32_t serial,
@@ -1647,6 +1954,9 @@ static const struct wl_buffer_listener buffer_listener = {
 
 static void buffer_free(KwlBuffer *b)
 {
+	/* Its pixels are no longer what the screen shows. */
+	if (K.shown_buf && b == &K.buf[K.shown_buf - 1])
+		K.shown_buf = 0;
 	if (b->grid)
 		pixman_image_unref(b->grid);
 	if (b->img)
@@ -1723,7 +2033,7 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 	 * libkcell makes, for a thing exactly one surface wants. Zero rule and
 	 * the two images are the same picture.
 	 */
-	int rule_px = K.rule * (K.scale > 0 ? K.scale : 1);
+	int rule_px = rule_unit() * (K.scale > 0 ? K.scale : 1);
 	if (rule_px > 0 && rule_px < h && !K.rule_bottom) {
 		b->grid = pixman_image_create_bits(
 			argb ? PIXMAN_a8r8g8b8 : PIXMAN_x8r8g8b8, w,
@@ -1748,6 +2058,303 @@ static const struct wl_callback_listener frame_listener = {
 };
 
 /*
+ * EVERY COMMIT PAINTED AND DAMAGED IN FULL, when `KDOS_PAINT_FULL` is set. The
+ * partial paint and the span damage are the two places a wrong answer leaves
+ * stale pixels on a screen, and the only way to say which one a defect is in
+ * is to run the same session with both off. One getenv at startup, so an
+ * instrumented build is the shipped build.
+ */
+static int paint_full_forced(void)
+{
+	static int on = -1;
+
+	if (on < 0) {
+		const char *e = getenv("KDOS_PAINT_FULL");
+
+		on = e && *e && *e != '0';
+	}
+	return on;
+}
+
+/*
+ * DID ANYTHING UNDER THE GRID CHANGE SINCE THE FRAME ON THE SCREEN? A keyed
+ * backdrop answers by its key against the key of the buffer last attached —
+ * the one question that is about the screen. The backdrop's own cache is not:
+ * a buffer that repainted none of its cells never asked for its picture, so
+ * the cache can still hold one the screen has already stopped showing, and a
+ * cache comparison then commits a frame identical to the one showing.
+ */
+static int pixels_moved(void)
+{
+	if (K.backdrop && K.bd_key)
+		return !K.bd_shown_valid || K.bd_key() != K.bd_shown_key;
+	return K.px_dirty_fn && K.px_dirty_fn();
+}
+
+/* A per-row span array at least `h` long, or -1 with nothing changed. */
+static int spans_fit(KCellSpan **a, int *n, int h)
+{
+	if (*a && *n >= h)
+		return 0;
+
+	KCellSpan *p = realloc(*a, (size_t)h * sizeof(**a));
+
+	if (!p)
+		return -1;
+	*a = p;
+	*n = h;
+	return 0;
+}
+
+/*
+ * EVERY CELL A MOVED PIXEL TOUCHES, added to this buffer's own diff spans.
+ *
+ * The backdrop under those cells is about to be laid back from the current
+ * picture, and the painter leaves a backdrop-owned background alone — so each
+ * one must be repainted whole, glyph and all, or the glyph that stood on the
+ * old picture is gone. A span that would start on the continuation of a
+ * double-width character starts on its lead, which is what paints it (the
+ * same rule kcell_diff_spans applies). Returns 0 when a moved pixel lies
+ * outside the cells — on the rule, or in the remainder past the last one —
+ * where nothing but a full paint puts back what belongs there.
+ */
+static int bd_moved_spans(const pixman_region32_t *moved, const KtuiCell *cur,
+			  int w, int h, int cw, int ch, int off, int gx1,
+			  int gy1)
+{
+	int n;
+	const pixman_box32_t *r = pixman_region32_rectangles(
+		(pixman_region32_t *)moved, &n);
+
+	for (int i = 0; i < n; i++) {
+		if (r[i].x1 < 0 || r[i].y1 < off || r[i].x2 > gx1 ||
+		    r[i].y2 > gy1)
+			return 0;
+
+		int cx0 = r[i].x1 / cw, cx1 = (r[i].x2 + cw - 1) / cw;
+		int cy0 = (r[i].y1 - off) / ch;
+		int cy1 = (r[i].y2 - off + ch - 1) / ch;
+
+		if (cx1 > w)
+			cx1 = w;
+		if (cy1 > h)
+			cy1 = h;
+		for (int y = cy0; y < cy1; y++) {
+			KCellSpan *sp = &K.pspan[y];
+			int x0 = cx0;
+
+			if (x0 > 0 && cur[(size_t)y * w + x0].ch ==
+					      KTUI_WIDE_CONT)
+				x0--;
+			if (sp->x1 <= sp->x0) {
+				sp->x0 = x0;
+				sp->x1 = cx1;
+				continue;
+			}
+			if (x0 < sp->x0)
+				sp->x0 = x0;
+			if (cx1 > sp->x1)
+				sp->x1 = cx1;
+		}
+	}
+	return 1;
+}
+
+/*
+ * THE BACKDROP UNDER EVERY CELL THE PARTIAL PAINT IS ABOUT TO REPAINT, and
+ * nowhere else. The spans are this buffer's own diff (K.pspan, from
+ * own_diff()) — the cells its pixels are wrong in — widened here by every
+ * cell over a pixel the picture moved since this buffer was painted
+ * (`moved`, NULL when it did not), and the paint that follows repaints
+ * exactly those, so each cell is laid on its own rectangle of the same
+ * picture a full paint would have put under it. Returns 0, with the buffer in
+ * whatever state, when the backdrop cannot do it: the caller then paints in
+ * full, which overwrites all of it.
+ */
+static int bd_restore(KwlBuffer *b, const KtuiCell *cur, int w, int h,
+		      int scale, int rule_px, const pixman_region32_t *moved)
+{
+	int cw = kcell_w() * scale, ch = kcell_h() * scale;
+	int off = K.rule_bottom ? 0 : rule_px;
+	int gh = b->h - rule_px;
+
+	if (moved) {
+		int gx1 = w * cw < b->w ? w * cw : b->w;
+		int gy1 = off + (h * ch < gh ? h * ch : gh);
+
+		if (!bd_moved_spans(moved, cur, w, h, cw, ch, off, gx1, gy1))
+			return 0;
+	}
+	for (int y = 0; y < h; y++) {
+		int x0 = K.pspan[y].x0 * cw, x1 = K.pspan[y].x1 * cw;
+		int y0 = y * ch, y1 = y0 + ch;
+
+		if (x1 > b->w)
+			x1 = b->w;
+		if (y1 > gh)
+			y1 = gh;
+		if (x1 <= x0 || y1 <= y0)
+			continue;
+		if (K.bd_band(b->img, b->w, b->h, scale, x0, off + y0, x1 - x0,
+			      y1 - y0) < 0)
+			return 0;
+	}
+	return 1;
+}
+
+/*
+ * One damage rectangle per run of rows that changed over the SAME cell span —
+ * a caret is one cell, a status line one row, a list scrolled end to end one
+ * rectangle — each the span's cells and not the row's width. A span that
+ * reaches the last column reaches the buffer's edge, which is where the
+ * grid's last, partly clipped cell ends.
+ */
+static void damage_spans(int w, int h, int scale, int bw, int bh, int off)
+{
+	int cw = kcell_w() * scale, ch = kcell_h() * scale;
+
+	for (int y = 0; y < h;) {
+		KCellSpan s = K.dirty[y];
+
+		if (s.x1 <= s.x0) {
+			y++;
+			continue;
+		}
+
+		int start = y;
+
+		while (y < h && K.dirty[y].x0 == s.x0 && K.dirty[y].x1 == s.x1)
+			y++;
+
+		int x0 = s.x0 * cw, x1 = s.x1 >= w ? bw : s.x1 * cw;
+		int y0 = off + start * ch, y1 = off + y * ch;
+
+		if (x1 > bw)
+			x1 = bw;
+		if (y1 > bh)
+			y1 = bh;
+		if (x1 > x0 && y1 > y0)
+			wl_surface_damage_buffer(K.surface, x0, y0, x1 - x0,
+						 y1 - y0);
+	}
+}
+
+/*
+ * SCROLL BY MOVING PIXELS. A grid that shifted vertically — a terminal taking
+ * a line of output, a list moved by a row — differs from this buffer's shadow
+ * in every row it moved, and the row diff would repaint every glyph of every
+ * one. The same pixels are already in this buffer, some rows away, so when
+ * libkcell finds a band of `cur` that is a shifted band of the shadow, the
+ * band's pixels are moved inside the buffer and the shadow is moved with
+ * them. The paint that follows is the same diff as ever, against a shadow
+ * that now matches in the moved rows, so what it repaints is the rows the
+ * band exposed and anything else that changed.
+ *
+ * ONLY THIS BUFFER IS READ AND WRITTEN. It is the one about to be painted and
+ * is not busy; its own shadow is the exact record of what it holds, so the
+ * shift is found against that and not against the frame on the screen, which
+ * is the other buffer's. Two buffers alternate, so the shift found here is
+ * usually two frames' worth, which moves exactly as well as one.
+ *
+ * OVER A BACKDROP a row's pixels are its cells over the picture, and the move
+ * carries the picture along. A row is moved correctly only where the picture
+ * is the same at both ends of the move (`bd_same`) and, when this buffer wears
+ * an older picture, where its source rows are not among the pixels that moved
+ * since (`moved`): each row that fails either is marked stale in the shadow,
+ * and the partial paint lays its band of the picture back and repaints it
+ * whole. A body graded top to bottom fails every row, so the band is not
+ * moved at all when most of it would only be repainted anyway, and a backdrop
+ * that cannot answer `bd_same` is never moved.
+ *
+ * ONLY THE GRID'S COLUMNS MOVE. The remainder strip past the last cell is no
+ * cell's pixels: it is KT_BG in every row with no backdrop, and the picture
+ * at its own position over one. A stale row is restored only over its
+ * cells, so a strip moved with the band would keep the source row's picture
+ * where a full paint draws the destination's.
+ *
+ * The damage does not change: it is cut from K.screen, and the buffer ends
+ * this commit with exactly the pixels a full paint would give it.
+ */
+static void scroll_blit(KwlBuffer *b, const KtuiCell *cur, int w, int h,
+			int scale, int rule_px, pixman_region32_t *moved)
+{
+	KCellScroll s;
+	int gh = b->h - rule_px, gw = w * kcell_w() * scale;
+	int nbad = 0;
+
+	if (!kcell_scroll_find(cur, b->shadow, w, h, scale, K.pspan, &s))
+		return;
+	if (K.backdrop) {
+		int ch = kcell_h() * scale;
+		int off = K.rule_bottom ? 0 : rule_px;
+
+		if (!K.bd_same)
+			return;
+		if (K.sbad_n < s.n) {
+			unsigned char *p = realloc(K.sbad, (size_t)s.n);
+
+			if (!p)
+				return;
+			K.sbad = p;
+			K.sbad_n = s.n;
+		}
+		for (int i = 0; i < s.n; i++) {
+			int dy = (s.y + i) * ch, sy = (s.from + i) * ch;
+			int hh = ch;
+			int bad = 0;
+
+			if (gh - dy < hh)
+				hh = gh - dy;
+			if (gh - sy < hh)
+				hh = gh - sy;
+			if (hh > 0) {
+				bad = K.bd_same(b->w, b->h, scale, off + dy,
+						off + sy, hh) != 1;
+				if (!bad && moved) {
+					pixman_box32_t box = { 0, off + sy, b->w,
+							       off + sy + hh };
+
+					bad = pixman_region32_contains_rectangle(
+						      moved, &box) !=
+					      PIXMAN_REGION_OUT;
+				}
+			}
+			K.sbad[i] = (unsigned char)bad;
+			nbad += bad;
+		}
+		if (nbad * 2 > s.n)
+			return;
+	}
+	if (kcell_scroll_apply(b->grid, b->shadow, w, h, &s, scale,
+			       gw < b->w ? gw : b->w, gh) < 0)
+		return;
+	for (int i = 0; nbad && i < s.n; i++)
+		if (K.sbad[i])
+			kcell_row_stale(b->shadow, w, s.y + i);
+	K.scrolls++;
+	kcell_diff_spans(cur, b->shadow, w, h, K.pspan);
+}
+
+/*
+ * THIS BUFFER'S OWN DIFF, into K.pspan: the cells where `cur` differs from
+ * what the buffer holds, after any band scroll_blit() moved. Computed once
+ * and handed to everything that needs it — the scroll search, the backdrop
+ * restore and the paint — because on a frame that changed a caret the pass
+ * over both grids IS the cost, and a second one would double it. Returns 0,
+ * with nothing computed, when the buffer has no shadow or there is no memory
+ * for the spans; the caller then paints in full.
+ */
+static int own_diff(KwlBuffer *b, const KtuiCell *cur, int w, int h,
+		    int scale, int rule_px, pixman_region32_t *moved)
+{
+	if (!b->shadow || spans_fit(&K.pspan, &K.pspan_n, h) < 0)
+		return 0;
+	if (kcell_diff_spans(cur, b->shadow, w, h, K.pspan) >= 2)
+		scroll_blit(b, cur, w, h, scale, rule_px, moved);
+	return 1;
+}
+
+/*
  * Paint `cur` into a buffer and commit it. Two different diffs, against two
  * different baselines, and keeping them apart is the whole of S1:
  *
@@ -1762,11 +2369,19 @@ static const struct wl_callback_listener frame_listener = {
  * The PAINT diffs against the buffer's OWN shadow, because commits alternate
  * buffers: the buffer being painted holds the frame before last, and a partial
  * paint measured against the frame on screen is how a cell grid grows stale
- * rows that never repair.
+ * rows that never repair. A grid that scrolled has its moved rows' pixels
+ * moved inside the buffer first, with the shadow, so the paint repaints the
+ * rows the move exposed and not every row it shifted (scroll_blit).
  */
+/* Set around the overlay's own refresh: a commit with no cell changed that
+ * must still go out, and is not the surface's. */
+static int insp_own;
+
 static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 {
 	size_t n = (size_t)w * h;
+	int insp = kwl_insp_on();
+	int64_t insp_t0 = insp ? kwl_insp_us() : 0;
 
 	if (!K.screen || K.screen_w != w || K.screen_h != h) {
 		free(K.screen);
@@ -1781,36 +2396,18 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 	}
 
 	/*
-	 * THE ROWS THAT CHANGED, each one of them, rather than the band from
-	 * the first to the last. A status line at the top and a caret near the
-	 * bottom are two rows; as a band they are the whole surface, and a
-	 * compositor told that much damage re-uploads and re-composites all of
-	 * it every frame.
+	 * THE CELLS THAT CHANGED, row by row, rather than the band from the
+	 * first row to the last or the whole width of each. A status line at
+	 * the top and a caret near the bottom are two small rectangles; as a
+	 * band they are the whole surface, and a compositor told that much
+	 * damage re-uploads and re-composites all of it every frame.
 	 */
-	int dirty_y0 = -1, dirty_y1 = -1;
+	int ndirty = 0;
 
+	if (!full && spans_fit(&K.dirty, &K.dirty_n, h) < 0)
+		full = 1;
 	if (!full) {
-		if (!K.dirty || K.dirty_n < h) {
-			free(K.dirty);
-			K.dirty = malloc((size_t)h);
-			if (!K.dirty) {
-				K.dirty_n = 0;
-				full = 1;
-			} else {
-				K.dirty_n = h;
-			}
-		}
-	}
-	if (!full) {
-		memset(K.dirty, 0, (size_t)h);
-		for (int y = 0; y < h; y++)
-			if (memcmp(cur + (size_t)y * w, K.screen + (size_t)y * w,
-				   (size_t)w * sizeof(*cur))) {
-				K.dirty[y] = 1;
-				if (dirty_y0 < 0)
-					dirty_y0 = y;
-				dirty_y1 = y;
-			}
+		ndirty = kcell_diff_spans(cur, K.screen, w, h, K.dirty);
 		/*
 		 * PIXELS CAN MOVE WITHOUT A CELL MOVING. A surface with a
 		 * backdrop draws part of its picture below the grid — the
@@ -1823,7 +2420,8 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 		 * draw, and a latch set from that makes every frame a commit
 		 * and defeats this gate entirely.
 		 */
-		if (dirty_y0 < 0 && !(K.px_dirty_fn && K.px_dirty_fn()))
+		if (!ndirty && !pixels_moved() && !insp_own &&
+		    !kwl_glide_owed())
 			return;		/* nothing changed: no commit at all */
 	}
 
@@ -1867,6 +2465,8 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 		memcpy(K.pend, cur, bytes);
 		K.pend_full |= full;
 		K.pend_valid = 1;
+		if (insp)
+			kwl_insp_stash(now_ms());
 		return;
 	}
 	/*
@@ -1882,12 +2482,22 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 	/*
 	 * b->w/b->h rather than w*cell_w: the shm buffer is what the compositor
 	 * will read, and any of it the grid does not reach must be KT_BG rather
-	 * than whatever the last frame left. Sized at scale: the surface stays
-	 * logical, the pixels are the output's own.
+	 * than whatever the last frame left. Sized in units times the scale:
+	 * the surface stays logical, the pixels are the output's own — on the
+	 * fractional path the units are device pixels and the scale is 1.
 	 */
 	int scale = K.scale > 0 ? K.scale : 1;
-	int bw = K.px_w * scale, bh = K.px_h * scale;
-	int bfull = full || b->stale;
+	int bw = to_unit(K.px_w) * scale, bh = to_unit(K.px_h) * scale;
+	/*
+	 * UNDER KDOS_INSPECT EVERY COMMIT IS PAINTED AND DAMAGED WHOLE: the
+	 * overlay's tint fades and its panel changes where no cell did, and a
+	 * partial paint or damage would leave the old overlay in whichever
+	 * buffer, and whichever part of the compositor's copy, the diff did
+	 * not reach. What it lights is what the diff found, recorded first.
+	 */
+	if (insp && !insp_own)
+		kwl_insp_damage(K.dirty, w, h, full, now_ms());
+	int bfull = full || b->stale || paint_full_forced() || insp;
 	if (!b->img || b->w != bw || b->h != bh) {
 		if (buffer_alloc(b, bw, bh) < 0)
 			return;
@@ -1903,22 +2513,94 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 
 	/* kcell_paint updates `prev` (the shadow) with what it painted; a NULL
 	 * shadow — allocation failure — degrades to a full paint every frame. */
-	int rule_px = K.rule * scale;
+	int rule_px = rule_unit() * scale;
+	int grid_h = b->h - rule_px;
 	/*
 	 * The backdrop goes down first and the cells composite over it.
 	 *
-	 * bfull, unconditionally: the row diff tracks CELLS and knows nothing
-	 * about the pixels a backdrop just rewrote, so a partial repaint here
-	 * leaves the previous frame's text standing on a fresh body. A bar is
-	 * a few dozen rows and only repaints when something changed, so the
-	 * cost is a full paint a couple of times a second.
+	 * A FULL PAINT UNLESS THIS BUFFER'S PICTURE CAN BE BROUGHT UP TO DATE
+	 * IN PART. The row diff tracks CELLS and knows nothing about the
+	 * pixels a backdrop rewrites, so a partial repaint over a freshly
+	 * painted backdrop leaves the previous frame's text standing on a
+	 * fresh body. When the key the backdrop answers now is the key this
+	 * buffer was last painted with, nothing under the cells has moved;
+	 * when it is not but the backdrop can say which pixels moved since
+	 * that key (bd_diff), those pixels' cells join the ones to repaint.
+	 * Either way the backdrop is not repainted: each cell that differs
+	 * from this buffer's shadow, or stands on a moved pixel, gets its band
+	 * of the picture laid back first (bd_restore) — the painter leaves a
+	 * backdrop-owned background alone, so without that a new glyph lands
+	 * on the old one. A backdrop with no key paints in full every time;
+	 * one that cannot answer for this buffer's key (a salt or palette
+	 * change, a key it does not remember) paints in full this time.
+	 *
+	 * With or without a backdrop, a partial paint starts from own_diff():
+	 * the buffer's diff against its shadow, taken once, after moving any
+	 * band of rows the grid scrolled (scroll_blit).
 	 */
-	if (K.backdrop) {
-		bfull = 1;
-		K.backdrop(b->img, b->w, b->h, scale);
+	/*
+	 * A LIST THAT MOVED A ROW STARTS GLIDING HERE, before anything below
+	 * writes into `b`: what it slides out of is the picture on the screen,
+	 * and `b` may be the buffer holding it. Not under KDOS_INSPECT, whose
+	 * overlay would slide with the list it lights.
+	 */
+	{
+		KwlBuffer *sb = K.shown_buf ? &K.buf[K.shown_buf - 1] : NULL;
+
+		if (sb && (!sb->grid || sb->w != b->w || sb->h != b->h))
+			sb = NULL;
+		kwl_glide_begin(sb ? sb->grid : NULL, K.opaque_sent, cur,
+				K.screen_w == w && K.screen_h == h ? K.screen
+								   : NULL,
+				w, h, kcell_w() * scale, kcell_h() * scale,
+				ktui_anim_now(), !insp && ktui_anim_moving());
 	}
-	kcell_paint(b->grid, cur, bfull ? NULL : b->shadow, w, h, bfull, scale,
-		    b->w, b->h - rule_px);
+
+	uint64_t bd_key = 0;
+	int spans = 0;
+
+	if (K.backdrop) {
+		bd_key = K.bd_key ? K.bd_key() : 0;
+		if (!bfull && K.bd_key && b->bd_valid && b->bd_scale == scale) {
+			if (b->bd_key == bd_key) {
+				spans = own_diff(b, cur, w, h, scale, rule_px,
+						 NULL) &&
+					bd_restore(b, cur, w, h, scale,
+						   rule_px, NULL);
+			} else if (K.bd_diff) {
+				pixman_region32_t mv;
+
+				pixman_region32_init(&mv);
+				if (K.bd_diff(b->bd_key, b->w, b->h, scale,
+					      &mv) == 0)
+					spans = own_diff(b, cur, w, h, scale,
+							 rule_px, &mv) &&
+						bd_restore(b, cur, w, h, scale,
+							   rule_px, &mv);
+				pixman_region32_fini(&mv);
+			}
+		}
+		if (!spans) {
+			bfull = 1;
+			K.backdrop(b->img, b->w, b->h, scale);
+		}
+		b->bd_key = bd_key;
+		b->bd_scale = scale;
+		b->bd_valid = K.bd_key != NULL;
+	} else if (!bfull) {
+		spans = own_diff(b, cur, w, h, scale, rule_px, NULL);
+	}
+	if (spans)
+		kcell_paint_spans(b->grid, cur, b->shadow, w, h, K.pspan, scale,
+				  b->w, grid_h);
+	else
+		kcell_paint(b->grid, insp ? kwl_insp_cells(cur, w, h, now_ms())
+					  : cur,
+			    bfull ? NULL : b->shadow, w, h, bfull, scale, b->w,
+			    grid_h);
+	if (insp)
+		kwl_insp_paint(b->grid, w, h, kcell_w() * scale,
+			       kcell_h() * scale, now_ms());
 	/*
 	 * THE CELL PAINTER MUST NOT BE LEFT HOLDING A CLIP ON THIS IMAGE. The
 	 * rule is painted into b->img, and b->img IS b->grid whenever the grid
@@ -1971,6 +2653,13 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 		memcpy(b->shadow, cur, n * sizeof(KtuiCell));
 	if (bfull)
 		b->stale = false;
+	/* After the shadow is settled: a gliding list's pixels are not its
+	 * cells', and the glide marks them stale in it for the next paint of
+	 * this buffer. */
+	int glide_r[KWL_GLIDES][4];
+	int nglide = kwl_glide_apply(b->grid, b->shadow, w, h,
+				     K.opaque && K.compositor, ktui_anim_now(),
+				     glide_r, KWL_GLIDES);
 	memcpy(K.screen, cur, n * sizeof(KtuiCell));
 
 	if (scale != K.scale_sent) {
@@ -1979,41 +2668,71 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 		wl_surface_set_buffer_scale(K.surface, scale);
 		K.scale_sent = scale;
 	}
+	/*
+	 * AND THE LOGICAL SIZE, IN THE SAME COMMIT, on the fractional path. A
+	 * buffer of device pixels at buffer scale 1 would otherwise BE the
+	 * surface size, 1.5 times too large; the destination says what it
+	 * covers. Unset (-1) on the integer path, where the buffer scale
+	 * already does.
+	 */
+	if (K.viewport) {
+		int dw = K.frac120 > 0 && K.px_w > 0 ? K.px_w : -1;
+		int dh = K.frac120 > 0 && K.px_h > 0 ? K.px_h : -1;
+
+		if (dw < 0 || dh < 0)
+			dw = dh = -1;
+		if (dw != K.dest_w || dh != K.dest_h) {
+			wp_viewport_set_destination(K.viewport, dw, dh);
+			K.dest_w = dw;
+			K.dest_h = dh;
+		}
+	}
+	opaque_sync();
 	wl_surface_attach(K.surface, b->wl, 0, 0);
 	K.attached = 1;
 	/*
-	 * The damage is this frame's rows, but the PAINT was the buffer's own
-	 * diff — `bfull`, or the shadow's disagreement with `cur` — and that
-	 * can be wider. A buffer painted in full is damaged in full, or the
-	 * compositor keeps the rows it was not told about.
+	 * The damage is this frame's changed cells — the span of each changed
+	 * row, against what the compositor shows — but the PAINT was the
+	 * buffer's own diff, `bfull` or the shadow's disagreement with `cur`,
+	 * and that can be wider. A buffer painted in full is damaged in full,
+	 * or the compositor keeps the pixels it was not told about. One whose
+	 * backdrop is not the one on the screen adds the pixels the backdrop
+	 * says moved between the two — the cells agree there and the picture
+	 * under them does not — and is damaged in full when it cannot say.
 	 */
-	if (!full && !bfull && dirty_y0 >= 0 && K.dirty && K.dirty_n >= h) {
-		int ch = kcell_h() * scale;
-		int off = K.rule_bottom ? 0 : rule_px;
+	int bd_same = !K.backdrop ||
+		      (K.bd_shown_valid && K.bd_shown_key == bd_key &&
+		       K.bd_shown_scale == scale);
+	pixman_region32_t mv;
+	int bd_moved = 0;
 
-		for (int y = dirty_y0; y <= dirty_y1;) {
-			if (!K.dirty[y]) {
-				y++;
-				continue;
-			}
+	pixman_region32_init(&mv);
+	if (!bd_same && !full && !bfull && K.bd_diff && K.bd_shown_valid &&
+	    K.bd_shown_scale == scale)
+		bd_moved = K.bd_diff(K.bd_shown_key, bw, bh, scale, &mv) == 0;
+	if (!full && !bfull && !insp && (bd_same || bd_moved)) {
+		int n;
+		const pixman_box32_t *r = pixman_region32_rectangles(&mv, &n);
 
-			int start = y;
-
-			while (y <= dirty_y1 && K.dirty[y])
-				y++;
-
-			int y0 = off + start * ch;
-			int y1 = off + y * ch;
-
-			if (y1 > bh)
-				y1 = bh;
-			if (y1 > y0)
-				wl_surface_damage_buffer(K.surface, 0, y0, bw,
-							 y1 - y0);
-		}
+		if (ndirty)
+			damage_spans(w, h, scale, bw, bh,
+				     K.rule_bottom ? 0 : rule_px);
+		for (int i = 0; i < nglide; i++)
+			wl_surface_damage_buffer(
+				K.surface, glide_r[i][0],
+				glide_r[i][1] + (K.rule_bottom ? 0 : rule_px),
+				glide_r[i][2], glide_r[i][3]);
+		for (int i = 0; i < n; i++)
+			wl_surface_damage_buffer(K.surface, r[i].x1, r[i].y1,
+						 r[i].x2 - r[i].x1,
+						 r[i].y2 - r[i].y1);
 	} else {
 		wl_surface_damage_buffer(K.surface, 0, 0, bw, bh);
 	}
+	pixman_region32_fini(&mv);
+	K.bd_shown_key = bd_key;
+	K.bd_shown_scale = scale;
+	K.bd_shown_valid = K.backdrop && K.bd_key;
 	K.frame_cb = wl_surface_frame(K.surface);
 	if (K.frame_cb) {
 		wl_callback_add_listener(K.frame_cb, &frame_listener, NULL);
@@ -2022,22 +2741,99 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 	wl_surface_commit(K.surface);
 	K.committed = 1;
 	b->busy = true;
+	K.shown_buf = (int)(b - K.buf) + 1;
 	K.cur_buf ^= 1;
 	wl_display_flush(K.display);
+	if (insp)
+		kwl_insp_committed(insp_own, kwl_insp_us() - insp_t0, now_ms());
+}
+
+/*
+ * A GLIDING LIST'S NEXT FRAME, committed by this library with no draw from the
+ * surface: the cells on the screen, again, which flush_commit() presents at
+ * wherever the glide is now (kwl_glide.h). Each commit asks for a frame
+ * callback and the callback asks for the next, so a glide runs at the
+ * display's rate and stops asking when it lands. Nothing goes out while a
+ * frame is stashed — that commit carries the glide anyway — or while the
+ * throttle is closed; a callback past KWL_FRAME_STALL_MS is dropped, so a
+ * surface on no output still reaches the end.
+ */
+static KtuiCell *glide_cells;
+static size_t glide_cells_n;
+
+static void glide_refresh(void)
+{
+	size_t n = (size_t)K.screen_w * K.screen_h;
+
+	if (!kwl_glide_owed() || !K.configured || !K.surface || !K.screen ||
+	    !n || K.pend_valid || kwl_frame_throttled())
+		return;
+	if (n > glide_cells_n) {
+		KtuiCell *p = realloc(glide_cells, n * sizeof(*p));
+
+		if (!p)
+			return;
+		glide_cells = p;
+		glide_cells_n = n;
+	}
+	if (K.frame_cb) {
+		wl_callback_destroy(K.frame_cb);
+		K.frame_cb = NULL;
+	}
+	/* A copy: flush_commit() copies its cells into K.screen. */
+	memcpy(glide_cells, K.screen, n * sizeof(*glide_cells));
+	flush_commit(glide_cells, K.screen_w, K.screen_h, 0);
+}
+
+/* The wait cut to the next glide frame's deadline: the stall of the callback
+ * in flight, or now when none is. A stashed frame is not cut for: the buffer
+ * release that commits it is an event on the socket. */
+static int glide_wait(int wait)
+{
+	int64_t rem;
+
+	if (!kwl_glide_owed() || !K.configured || !K.surface || K.pend_valid)
+		return wait;
+	rem = K.frame_cb ? KWL_FRAME_STALL_MS - (now_ms() - K.frame_at_ms) : 0;
+	if (rem < 0)
+		rem = 0;
+	return wait < 0 || rem < wait ? (int)rem : wait;
+}
+
+/*
+ * DOES THE CALLER WANT THE NEXT DISPLAY FRAME? While an animation is live, and
+ * for one frame after the last one drawn inside it: that frame is the one that
+ * draws the end value, and without it a surface keeps whatever the last tick
+ * inside the window happened to draw until something else wakes it. Nothing
+ * else ever sets it, so an idle surface gets no tick, no empty commit and no
+ * shortened wait from any of this.
+ */
+static int tick_wanted(void)
+{
+	return ktui_anim_live() || K.anim_frame;
 }
 
 static void frame_done(void *d, struct wl_callback *cb, uint32_t t)
 {
 	(void)d;
 	(void)t;
-	if (K.frame_cb == cb)
+	if (K.frame_cb == cb) {
 		K.frame_cb = NULL;
+		if (kwl_insp_on())
+			kwl_insp_frame_done(now_ms() - K.frame_at_ms);
+	}
 	wl_callback_destroy(cb);
+	/* Before the stash goes out: the commit below asks for the next
+	 * frame, and this one is the frame an animation was waiting for. */
+	if (tick_wanted())
+		K.tick_due = 1;
 	if (K.pend_valid && K.configured && K.surface) {
 		K.pend_valid = 0;
 		int full = K.pend_full;
 		K.pend_full = 0;
 		flush_commit(K.pend, K.pend_w, K.pend_h, full);
+	} else {
+		glide_refresh();
 	}
 }
 
@@ -2060,6 +2856,72 @@ static void frame_done(void *d, struct wl_callback *cb, uint32_t t)
 int kwl_frame_throttled(void)
 {
 	return K.frame_cb && now_ms() - K.frame_at_ms < KWL_FRAME_STALL_MS;
+}
+
+/*
+ * THE FRAME CLOCK, asked by the wait. While a tick is wanted and no frame is on
+ * its way, an EMPTY commit asks for one: the last draw may have changed no
+ * cell and no plate — an animation whose step fell inside a pixel — and then
+ * no commit carried a frame callback and nothing would ever tick again.
+ * wlroots schedules a frame for a surface that commits with a callback pending
+ * and answers it when that output presents, so the ticks come at the
+ * display's rate, and not at all while the surface is on no output.
+ *
+ * Returns the wait shortened to that callback's stall deadline: one the
+ * compositor never answers must not hold an animation still, and
+ * tick_take() answers for it when the deadline passes.
+ */
+static int tick_wait(int wait)
+{
+	int64_t rem;
+
+	if (!tick_wanted() || !K.configured || !K.surface)
+		return wait;
+	if (K.tick_due)
+		return 0;
+	if (!K.frame_cb) {
+		K.frame_cb = wl_surface_frame(K.surface);
+		if (!K.frame_cb)
+			return wait;
+		wl_callback_add_listener(K.frame_cb, &frame_listener, NULL);
+		K.frame_at_ms = now_ms();
+		wl_surface_commit(K.surface);
+		wl_display_flush(K.display);
+	}
+	rem = KWL_FRAME_STALL_MS - (now_ms() - K.frame_at_ms);
+	if (rem < 0)
+		rem = 0;
+	if (wait < 0 || rem < wait)
+		wait = (int)rem;
+	return wait;
+}
+
+/*
+ * HAND THE CALLER ITS TICK: a frame went by, or the one asked for stalled —
+ * which drops the callback, so the next wait asks again and a surface on no
+ * output ticks at the stall rate for what is left of its animation rather
+ * than freezing mid-way. After the live window the owed frame is paid by
+ * this tick: a caller that draws on it clears `anim_frame` by presenting
+ * the end, and one that does not draw is not asked again, so a loop that
+ * ignores ticks cannot keep the clock running.
+ */
+static int tick_take(KtuiEvent *ev)
+{
+	if (!K.tick_due) {
+		if (!tick_wanted() || !K.frame_cb ||
+		    now_ms() - K.frame_at_ms < KWL_FRAME_STALL_MS)
+			return 0;
+		wl_callback_destroy(K.frame_cb);
+		K.frame_cb = NULL;
+	}
+	K.tick_due = 0;
+	if (!ktui_anim_live())
+		K.anim_frame = 0;
+	memset(ev, 0, sizeof(*ev));
+	ev->type = KT_EVT_TICK;
+	/* A caller receives it, so it is counted — see cooked_n. */
+	K.cooked_n++;
+	return 1;
 }
 
 static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
@@ -2098,6 +2960,8 @@ static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		memcpy(K.pend, cur, n * sizeof(KtuiCell));
 		K.pend_full |= full;
 		K.pend_valid = 1;
+		if (kwl_insp_on())
+			kwl_insp_stash(now_ms());
 		return;
 	}
 	if (K.frame_cb) {
@@ -2120,6 +2984,41 @@ static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		K.pend_full = 0;
 	}
 	flush_commit(cur, w, h, full);
+}
+
+/*
+ * CAN THE OVERLAY COMMIT A FRAME OF ITS OWN NOW? Not while the throttle is
+ * closed, a frame is stashed or both buffers are held: each of those ends in
+ * an event on the display socket, which wakes the wait, and the surface's
+ * own commit then carries the overlay anyway. A refresh asked for then would
+ * be stashed, and counted as the surface's.
+ */
+static int insp_ready(void)
+{
+	return K.configured && K.surface && K.screen && !K.pend_valid &&
+	       !kwl_frame_throttled() && !(K.buf[0].busy && K.buf[1].busy);
+}
+
+/*
+ * THE OVERLAY'S OWN COMMIT: the frame on the screen, again, so a fading tint
+ * steps down and the panel's numbers move on a surface that is not drawing.
+ * Not counted in the panel's commits, its paint time or its frame latency.
+ */
+static void insp_refresh(void)
+{
+	size_t n = (size_t)K.screen_w * K.screen_h;
+	KtuiCell *copy;
+
+	if (!insp_ready() || !n || !(copy = kwl_insp_scratch(n)))
+		return;
+	memcpy(copy, K.screen, n * sizeof(*copy));
+	if (K.frame_cb) {
+		wl_callback_destroy(K.frame_cb);
+		K.frame_cb = NULL;
+	}
+	insp_own = 1;
+	flush_commit(copy, K.screen_w, K.screen_h, 0);
+	insp_own = 0;
 }
 
 /*
@@ -2192,6 +3091,9 @@ static void kwl_present(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			int full)
 {
 	K.committed = 0;
+	K.anim_frame = ktui_anim_live();
+	/* The lists this draw declared are this frame's, stashed or not. */
+	kwl_glide_frame();
 	kwl_flush(cur, prev, w, h, full);
 	if (prev)
 		memcpy(prev, cur, (size_t)w * h * sizeof(*cur));
@@ -2214,8 +3116,17 @@ static int tc_down_count;
 static KtuiEvent tc_pend[KWL_TOUCH_SLOTS * 2];
 static int tc_npend;
 
-static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
+/* The last kwl_poll_once() found nothing on any descriptor within its
+ * wait: a pure timeout, as opposed to a wake that carried no event. */
+static int poll_timed_out;
+
+/* A coast runs off the wait below; see coast_start(). */
+static void coast_pump(void);
+static int coast_wait(int wait);
+
+static int kwl_poll_once(KtuiEvent *ev, int timeout_ms)
 {
+	poll_timed_out = 0;
 	/* The documented libwayland read sequence. Anything simpler races: two
 	 * threads or a re-entrant dispatch can consume the socket between the
 	 * poll and the read, and prepare_read/cancel_read is what makes that
@@ -2233,7 +3144,13 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 	}
 	wl_display_flush(K.display);
 
+	coast_pump();
+	glide_refresh();
 	if (pop_event(ev)) {
+		wl_display_cancel_read(K.display);
+		return 1;
+	}
+	if (tick_take(ev)) {
 		wl_display_cancel_read(K.display);
 		return 1;
 	}
@@ -2263,6 +3180,10 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 		if (wait < 0 || wait > 40)
 			wait = 40;
 	}
+	/* An animation's next frame: nothing at all while none is live. */
+	wait = tick_wait(wait);
+	wait = coast_wait(wait);
+	wait = glide_wait(wait);
 	if (K.paste_fd >= 0) {
 		/* An in-flight paste has its own deadline — a source that
 		 * wedged must be abandoned even when no event ever comes. */
@@ -2309,6 +3230,7 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 	}
 
 	int n = poll(pfd, (nfds_t)nfd, wait);
+	poll_timed_out = n == 0;
 	if (K.paste_fd >= 0 && (n <= 0 || pfd[1].revents))
 		paste_pump();
 	send_pump();
@@ -2333,7 +3255,19 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 		wl_display_cancel_read(K.display);
 		if (n < 0 && errno != EINTR)
 			K.closed = 1;
-		return repeat_due(ev);
+		coast_pump();
+		glide_refresh();
+		if (pop_event(ev)) {
+			poll_timed_out = 0;
+			return 1;
+		}
+		if (repeat_due(ev))
+			return 1;
+		if (tick_take(ev)) {
+			poll_timed_out = 0;
+			return 1;
+		}
+		return 0;
 	}
 	if (wl_display_read_events(K.display) < 0) {
 		K.closed = 1;
@@ -2348,7 +3282,54 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 
 	if (pop_event(ev))
 		return 1;
-	return repeat_due(ev);
+	if (repeat_due(ev))
+		return 1;
+	return tick_take(ev);
+}
+
+/*
+ * WHAT THIS LIBRARY RUNS ON ITS OWN RIDES THE CALLER'S WAIT WITHOUT SHORTENING
+ * IT: the overlay's refreshes, a coast's steps (coast_pump) and a gliding
+ * list's frames (glide_pump). The wait is cut into pieces at their deadlines
+ * and each goes out at its own; the caller still sees an event, a wake that
+ * carried none, or its own timeout — never a timeout early, which a loop
+ * running a clock off its timeouts would take for its tick.
+ */
+static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
+{
+	int64_t end;
+	int tried = 0;
+
+	if (!kwl_insp_on() && !K.coast_on && !kwl_glide_owed())
+		return kwl_poll_once(ev, timeout_ms);
+	end = timeout_ms < 0 ? -1 : now_ms() + timeout_ms;
+	for (;;) {
+		int64_t now = now_ms();
+		int due = kwl_insp_on() && insp_ready() ? kwl_insp_wait(now)
+							: -1;
+		int left = end < 0 ? -1 : (int)(end > now ? end - now : 0);
+		int wait = left;
+		int r;
+
+		/* One refresh per piece of the wait: one that could not go out
+		 * (no buffer) is not retried in a spin. */
+		if (due == 0 && !tried) {
+			tried = 1;
+			insp_refresh();
+			continue;
+		}
+		if (due > 0 && (wait < 0 || due < wait))
+			wait = due;
+		r = kwl_poll_once(ev, wait);
+		tried = 0;
+		if (r || K.closed || !poll_timed_out)
+			return r;
+		/* A piece that timed out is the caller's timeout only once the
+		 * caller's time is up: a coast or a glide cuts the wait inside
+		 * kwl_poll_once as well as here. */
+		if (end >= 0 && now_ms() >= end)
+			return r;
+	}
 }
 
 static void kwl_size(int *w, int *h)
@@ -2390,6 +3371,14 @@ static const char *kwl_keymap_text(unsigned *gen)
 	return K.keymap_text;
 }
 
+/* See KtuiBackend.animates: poll_event ticks through tick_take() while a
+ * surface is up to commit on. An overlay that is hidden has none, and what it
+ * draws meanwhile is drawn at the end value. */
+static int kwl_animates(void)
+{
+	return K.surface != NULL;
+}
+
 static const KtuiBackend kwl_backend = {
 	.name = "wayland",
 	.flush = kwl_present,
@@ -2403,6 +3392,7 @@ static const KtuiBackend kwl_backend = {
 	 * neither and leaves both NULL. */
 	.poll_raw = kwl_poll_raw,
 	.keymap = kwl_keymap_text,
+	.animates = kwl_animates,
 };
 
 /* ── input ─────────────────────────────────────────────────────────────── */
@@ -2410,6 +3400,8 @@ static const KtuiBackend kwl_backend = {
 /* Defined below, beside the rest of the compose machine, and called from the
  * keymap handler above it — a keymap change is what invalidates the table. */
 static void compose_init(void);
+/* See coast_start(): a key, a button or a leave ends a coast. */
+static void coast_stop(void);
 
 static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int fd,
 		      uint32_t size)
@@ -2558,6 +3550,8 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 	 * for ever, so this sits above every early return under it.
 	 */
 	raw_key(key, state == WL_KEYBOARD_KEY_STATE_PRESSED, time);
+	if (state == WL_KEYBOARD_KEY_STATE_PRESSED)
+		coast_stop();
 	if (state != WL_KEYBOARD_KEY_STATE_PRESSED) {
 		/* The held key was let go: stop repeating it. Any OTHER key's
 		 * release is not ours to act on — a chord ends when the key
@@ -2729,12 +3723,12 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t time,
 	int cw = kcell_w(), ch = kcell_h();
 	if (cw <= 0 || ch <= 0)
 		return;
-	int px = wl_fixed_to_int(sx);
+	int px = ptr_unit(sx);
 	int cx = px / cw;
 	/* Below the rule when the rule is on top: the grid starts there, so a
 	 * pointer on the rule itself is row -1 and hits nothing, which is what
 	 * a border is. */
-	int py = wl_fixed_to_int(sy) - (K.rule_bottom ? 0 : K.rule);
+	int py = ptr_grid_y(sy);
 	int cy = py / ch;
 
 	/* THE PIXEL ALWAYS, THE CELL ONLY WHEN IT CHANGED. The early return
@@ -2770,8 +3764,10 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial,
 	(void)d;
 	(void)p;
 	K.input_serial = serial;
-	if (state == WL_POINTER_BUTTON_STATE_PRESSED)
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
 		ptr_grab_serial = serial;
+		coast_stop();
+	}
 	/* EVERY BUTTON, AND THE EVDEV CODE IT CAME WITH. The switch below
 	 * names three; a mouse with side buttons drives Back and Forward in a
 	 * browser, and narrowing here is where those stop existing. */
@@ -2889,19 +3885,152 @@ static void push_wheel_raw(int up)
 	push_event(&ev);
 }
 
+/* The axis comes from a finger or another source with no detents. */
+static int axis_unquantised(void)
+{
+	return K.axis_src_seen && (K.axis_src == WL_POINTER_AXIS_SOURCE_FINGER ||
+				   K.axis_src == WL_POINTER_AXIS_SOURCE_CONTINUOUS);
+}
+
 /*
  * `n` ticks from ONE pointer frame, past the duplicate gate — which is asked
  * once, because a frame is one gesture. The wheel path always passes 1 (see
  * pt_frame); the counted path is the touchpad's, where several ticks' worth of
  * accumulated delta in one frame is a real flick and dropping all but the
  * first would make a two-finger scroll crawl.
+ *
+ * THE GATE IS FOR DETENTS. What it drops is one notch counted twice on its
+ * way here, and a finger has no notches: a touchpad crossing the tick
+ * threshold in two frames 15 ms apart is a fast scroll, and gating it would
+ * throw away every other tick of it.
  */
 static void wheel_emit(int up, int n)
 {
-	if (n < 1 || !wheel_gate(up))
+	if (n < 1 || (!axis_unquantised() && !wheel_gate(up)))
 		return;
 	for (int i = 0; i < n; i++)
 		push_wheel_raw(up);
+}
+
+/*
+ * THE COAST: a flick keeps moving after the finger leaves the pad.
+ *
+ * The finger's release speed is what the last KWL_FLING_WINDOW_MS of its
+ * vertical samples add up to over that time; the coast then feeds the same
+ * distance a finger would into a tick accumulator of its own, slowing by
+ * KWL_COAST_DECAY a millisecond, and a whole KWL_AXIS_TICK of it is a wheel
+ * event exactly as the finger's own were. So every surface coasts, cells and
+ * all, and none of them knows it is not the finger.
+ *
+ * ANYTHING THE HAND DOES STOPS IT: the next scroll, a button, a key, the
+ * pointer leaving. A coast is motion, so it does not start where motion is
+ * off (comp.conf's `motion`) or where the backend has no surface to scroll.
+ * The raw stream is not fed: a pixel guest receives the finger's own end of
+ * gesture and runs its own kinetics from it.
+ */
+static void fling_note(unsigned ms, double v)
+{
+	K.fl[K.fl_head].ms = ms;
+	K.fl[K.fl_head].v = v;
+	K.fl_head = (K.fl_head + 1) % KWL_FLING_N;
+	if (K.fl_n < KWL_FLING_N)
+		K.fl_n++;
+}
+
+static void coast_stop(void)
+{
+	K.coast_on = 0;
+	K.coast_acc = 0.0;
+	K.fl_n = 0;
+}
+
+/* The finger lifted at `ms`: coast at the speed it was moving, if it was. */
+static void coast_start(unsigned ms)
+{
+	double sum = 0.0;
+	unsigned oldest = ms;
+	int n = 0;
+
+	for (int i = 0; i < K.fl_n; i++) {
+		int k = (K.fl_head + KWL_FLING_N - 1 - i) % KWL_FLING_N;
+		unsigned age = ms - K.fl[k].ms;
+
+		/* Unsigned: a sample stamped after the lift is age 0, and
+		 * one from a wrapped clock is far past the window. */
+		if (age > KWL_FLING_WINDOW_MS)
+			break;
+		sum += K.fl[k].v;
+		oldest = K.fl[k].ms;
+		n++;
+	}
+	K.fl_n = 0;
+	K.coast_on = 0;
+	if (!n || !ktui_anim_moving())
+		return;
+
+	/* One sample, or a burst inside a few milliseconds, is a speed over
+	 * no time at all: the span is at least one frame of samples. */
+	unsigned span = ms - oldest;
+	double v = sum / (double)(span < 16 ? 16 : span);
+
+	if ((v < 0.0 ? -v : v) < KWL_COAST_MIN_V)
+		return;
+	K.coast_on = 1;
+	K.coast_v = v;
+	K.coast_acc = 0.0;
+	K.coast_t0 = K.coast_at = ktui_anim_now();
+}
+
+/*
+ * Advance the coast to now. Past the duplicate gate like any finger tick:
+ * the ticks a coast makes are counted, not a device's detents. A loop that
+ * slept through a long stretch does not get it all at once — at most
+ * 100 ms is caught up, which is five frames' worth of ticks at a time.
+ */
+static void coast_pump(void)
+{
+	int64_t now, dt;
+	double v, d = 0.0;
+	int n = 0, up;
+
+	if (!K.coast_on)
+		return;
+	now = ktui_anim_now();
+	dt = now - K.coast_at;
+	if (dt <= 0)
+		return;
+	if (dt > 100)
+		dt = 100;
+	K.coast_at = now;
+	v = K.coast_v;
+	for (int64_t i = 0; i < dt; i++) {
+		d += v;
+		v *= KWL_COAST_DECAY;
+	}
+	K.coast_v = v;
+	K.coast_acc += d;
+	up = K.coast_acc < 0.0;
+	while ((K.coast_acc >= KWL_AXIS_TICK || K.coast_acc <= -KWL_AXIS_TICK) &&
+	       n < 5) {
+		n++;
+		K.coast_acc += K.coast_acc < 0.0 ? KWL_AXIS_TICK
+						 : -KWL_AXIS_TICK;
+	}
+	if (wheel_dbg() && n)
+		fprintf(stderr, "kwl: coast %d tick(s), %+.3f/ms\n", n, v);
+	for (int i = 0; i < n; i++)
+		push_wheel_raw(up);
+	if ((v < 0.0 ? -v : v) < KWL_COAST_STOP_V ||
+	    now - K.coast_t0 >= KWL_COAST_MAX_MS)
+		coast_stop();
+}
+
+/* The wait shortened to the coast's next step while one is running. */
+static int coast_wait(int wait)
+{
+	if (!K.coast_on)
+		return wait;
+	return wait < 0 || wait > KWL_COAST_STEP_MS ? KWL_COAST_STEP_MS : wait;
 }
 
 static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
@@ -2910,15 +4039,25 @@ static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
 	(void)d;
 	(void)p;
 	/* BOTH AXES TRAVEL RAW. Only the vertical one has a cell to move, so
-	 * only it reaches the accumulator below. */
+	 * only it reaches the accumulator below. The count is the frame's
+	 * value120 on a seat that carries one and its discrete count on one
+	 * that does not. */
 	if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
 		raw_axis(KT_RAW_HORIZ, wl_fixed_to_double(value),
-			 K.axis_disc_h, time);
+			 K.seat_ver >= 8 ? K.v120_frame[1]
+					 : K.axis_disc_h * 120,
+			 time);
 	else if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
-		raw_axis(KT_RAW_VERT, wl_fixed_to_double(value), K.axis_disc,
+		raw_axis(KT_RAW_VERT, wl_fixed_to_double(value),
+			 K.seat_ver >= 8 ? K.v120_frame[0] : K.axis_disc * 120,
 			 time);
 	if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL)
 		return;
+	/* The hand is scrolling again: whatever was coasting stops, and the
+	 * finger's samples are what the next lift measures. */
+	K.coast_on = 0;
+	if (K.axis_src_seen && K.axis_src == WL_POINTER_AXIS_SOURCE_FINGER)
+		fling_note(time, wl_fixed_to_double(value));
 	K.axis_acc += wl_fixed_to_double(value);
 	if (wheel_dbg())
 		fprintf(stderr, "kwl: axis %+.2f (acc %+.2f)\n",
@@ -2948,8 +4087,8 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
 	 */
 	int cw = kcell_w(), ch = kcell_h();
 	if (cw > 0 && ch > 0) {
-		int px = wl_fixed_to_int(x);
-		int py = wl_fixed_to_int(y) - (K.rule_bottom ? 0 : K.rule);
+		int px = ptr_unit(x);
+		int py = ptr_grid_y(y);
 
 		K.ptr_cx = px / cw;
 		K.ptr_cy = py / ch;
@@ -3019,6 +4158,9 @@ static void pt_leave(void *d, struct wl_pointer *p, uint32_t s,
 	K.axis_acc = 0;
 	K.axis_disc = 0;
 	K.axis_disc_h = 0;
+	K.v120_acc = 0;
+	/* A coast scrolls what is under the pointer, and nothing is. */
+	coast_stop();
 	/* The next enter is a place, not a step from wherever the pointer was
 	 * when it left. */
 	K.raw_seen = 0;
@@ -3030,19 +4172,42 @@ static void pt_leave(void *d, struct wl_pointer *p, uint32_t s,
 /*
  * End of one logical pointer event group, which is where the wheel is decided.
  *
- * `discrete` is the notch count when the compositor measured one; otherwise the
- * continuous value is spent in notch-sized units. Ten is libinput's own step
- * for a wheel detent, so a mouse still moves a list one row per click while a
- * touchpad's small deltas accumulate instead of each becoming a full tick.
+ * `value120` (seat version 8) or `discrete` (older seats) is the notch count
+ * when the compositor measured one; otherwise the continuous value is spent in
+ * notch-sized units (KWL_AXIS_TICK). Ten is libinput's own step for a wheel
+ * detent, so a mouse still moves a list one row per click while a touchpad's
+ * small deltas accumulate instead of each becoming a full tick.
  */
 static void pt_frame_cooked(void)
 {
 	/* This frame's horizontal detents have been spent by the raw arm; the
 	 * cell path has no horizontal axis to spend them on. */
 	K.axis_disc_h = 0;
-	if (wheel_dbg() && (K.axis_disc || K.axis_acc != 0))
-		fprintf(stderr, "kwl: frame disc=%d acc=%+.2f\n", K.axis_disc,
-			K.axis_acc);
+	K.v120_frame[0] = K.v120_frame[1] = 0;
+	if (wheel_dbg() && (K.axis_disc || K.axis_acc != 0 || K.v120_seen))
+		fprintf(stderr, "kwl: frame disc=%d v120=%d acc=%+.2f\n",
+			K.axis_disc, K.v120_acc, K.axis_acc);
+	if (K.v120_seen) {
+		/*
+		 * A SEAT AT VERSION 8 COUNTS IN 120THS, and a wheel with a
+		 * high-resolution mode sends a detent as several frames of a
+		 * fraction each. The fractions add up across frames and a
+		 * whole detent is ONE tick — never more from one frame, for
+		 * the reason the discrete branch below gives: two detents in
+		 * one frame are far more often one notch counted twice, and
+		 * what is left over from them is thrown away with it. A
+		 * reversal starts the count again, so a fraction one way is
+		 * not paid off by the other.
+		 */
+		K.v120_seen = 0;
+		K.axis_disc = 0;
+		K.axis_acc = 0;
+		if (K.v120_acc >= 120 || K.v120_acc <= -120) {
+			wheel_emit(K.v120_acc < 0, 1);
+			K.v120_acc = 0;
+		}
+		return;
+	}
 	if (K.axis_disc) {
 		/*
 		 * ONE FRAME IS ONE DETENT, and the count in it is deliberately
@@ -3084,8 +4249,8 @@ static void pt_frame_cooked(void)
 	 * cadence — a fifteen-unit notch leaves five behind, so the second
 	 * notch crosses the threshold twice and the list jumps two rows.
 	 * `axis_source` says which this is and the protocol has carried it
-	 * since version 5, which is the version this binds; a compositor that
-	 * sends no source at all keeps the old accumulator, because then
+	 * since version 5; a compositor that sends no source at all — a seat
+	 * offered below it included — keeps the old accumulator, because then
 	 * there is genuinely nothing to go on.
 	 *
 	 * This is the correct reading of the protocol whether or not it is
@@ -3104,9 +4269,10 @@ static void pt_frame_cooked(void)
 	 * the duplicate gate once per tick would throw away every one after the
 	 * first. */
 	int n = 0, up = K.axis_acc < 0;
-	while ((K.axis_acc >= 10.0 || K.axis_acc <= -10.0) && n < 5) {
+	while ((K.axis_acc >= KWL_AXIS_TICK || K.axis_acc <= -KWL_AXIS_TICK) &&
+	       n < 5) {
 		n++;
-		K.axis_acc += K.axis_acc < 0 ? 10.0 : -10.0;
+		K.axis_acc += K.axis_acc < 0 ? KWL_AXIS_TICK : -KWL_AXIS_TICK;
 	}
 	wheel_emit(up, n);
 }
@@ -3134,7 +4300,7 @@ static void pt_axis_src(void *d, struct wl_pointer *p, uint32_t s)
 	K.axis_src_seen = 1; (void)d; (void)p; (void)s; }
 
 /* A finger left the touchpad: the leftover fraction is not the start of the
- * next gesture. */
+ * next gesture, and a finger still moving as it left coasts (coast_start). */
 static void pt_axis_stop(void *d, struct wl_pointer *p, uint32_t t, uint32_t a)
 {
 	(void)d; (void)p;
@@ -3143,7 +4309,46 @@ static void pt_axis_stop(void *d, struct wl_pointer *p, uint32_t t, uint32_t a)
 	raw_axis(a == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? KT_RAW_HORIZ
 							: KT_RAW_VERT,
 		 0.0, 0, t);
+	if (a != WL_POINTER_AXIS_VERTICAL_SCROLL)
+		return;
 	K.axis_acc = 0;
+	if (K.axis_src_seen && K.axis_src == WL_POINTER_AXIS_SOURCE_FINGER)
+		coast_start(t);
+}
+
+/* Version 8: a detent in 120ths, before the axis event it belongs to. */
+static void pt_axis_v120(void *d, struct wl_pointer *p, uint32_t a, int32_t v)
+{
+	int i = a == WL_POINTER_AXIS_HORIZONTAL_SCROLL;
+
+	(void)d;
+	(void)p;
+	if (a != WL_POINTER_AXIS_VERTICAL_SCROLL &&
+	    a != WL_POINTER_AXIS_HORIZONTAL_SCROLL)
+		return;
+	K.v120_frame[i] += v;
+	if (i)
+		return;
+	if ((v < 0 && K.v120_acc > 0) || (v > 0 && K.v120_acc < 0))
+		K.v120_acc = 0;
+	K.v120_acc += v;
+	K.v120_seen = 1;
+	if (wheel_dbg())
+		fprintf(stderr, "kwl: value120 v=%d (acc %d)\n", v, K.v120_acc);
+}
+
+/* Version 9: the device reversed this axis itself — natural scrolling. The
+ * cells are handed the direction the content moves either way; only the raw
+ * stream says so, for a guest that draws its own scrollbar. */
+static void pt_axis_reldir(void *d, struct wl_pointer *p, uint32_t a,
+			   uint32_t dir)
+{
+	(void)d;
+	(void)p;
+	if (a == WL_POINTER_AXIS_VERTICAL_SCROLL ||
+	    a == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
+		K.axis_inv[a == WL_POINTER_AXIS_HORIZONTAL_SCROLL] =
+			dir == WL_POINTER_AXIS_RELATIVE_DIRECTION_INVERTED;
 }
 
 static void pt_axis_disc(void *d, struct wl_pointer *p, uint32_t a, int32_t v)
@@ -3169,6 +4374,8 @@ static const struct wl_pointer_listener pointer_listener = {
 	.axis_source = pt_axis_src,
 	.axis_stop = pt_axis_stop,
 	.axis_discrete = pt_axis_disc,
+	.axis_value120 = pt_axis_v120,
+	.axis_relative_direction = pt_axis_reldir,
 };
 
 /* ── touch ─────────────────────────────────────────────────────────────── */
@@ -3189,9 +4396,9 @@ static int tc_cell(wl_fixed_t sx, wl_fixed_t sy, int *cx, int *cy)
 	if (cw <= 0 || ch <= 0)
 		return 0;
 
-	*cx = wl_fixed_to_int(sx) / cw;
+	*cx = ptr_unit(sx) / cw;
 	/* Below the rule when the rule is on top, as pt_motion does. */
-	*cy = (wl_fixed_to_int(sy) - (K.rule_bottom ? 0 : K.rule)) / ch;
+	*cy = ptr_grid_y(sy) / ch;
 	return 1;
 }
 
@@ -3549,13 +4756,15 @@ static void grid_from_px(void)
 	K.pend_valid = 0;
 	K.pend_full = 0;
 
+	/* In units: on the fractional path the grid is cut in the device
+	 * pixels the glyphs were drawn in. */
 	int cw = kcell_w(), ch = kcell_h();
-	int grid_h = K.px_h - K.rule;
+	int grid_h = to_unit(K.px_h) - rule_unit();
 
 	if (grid_h < 0)
 		grid_h = 0;
 	/* The grid is the same size either way; only its ORIGIN moves. */
-	K.cols = cw > 0 ? K.px_w / cw : 0;
+	K.cols = cw > 0 ? to_unit(K.px_w) / cw : 0;
 	K.rows = ch > 0 ? grid_h / ch : 0;
 	if (K.cols < 1)
 		K.cols = 1;
@@ -3689,11 +4898,19 @@ static void out_done(void *d, struct wl_output *o) { (void)d; (void)o; }
  * every size this library places — a cell, a margin, a layer-surface extent —
  * is logical, which is the mode divided by that output's own scale. Skip
  * either and the clamp permits a surface larger than the screen.
+ *
+ * The scale is in 120ths. `wl_output.scale` is a whole number, a fractional
+ * one rounded UP, so the output this surface is on answers with the
+ * compositor's preferred scale where one arrived: a 1.5 screen divided by 2
+ * is a box a quarter smaller than the room it has.
  */
 static void output_box(int i, int *w, int *h)
 {
-	int s = K.output_scale[i] > 0 ? K.output_scale[i] : 1;
+	int s = K.output_scale[i] > 0 ? K.output_scale[i] * 120 : 120;
 	int ow = K.output_w[i], oh = K.output_h[i];
+
+	if (i == K.on_output && K.s120 > 0)
+		s = K.s120;
 
 	switch (K.output_transform[i]) {
 	case WL_OUTPUT_TRANSFORM_90:
@@ -3709,8 +4926,8 @@ static void output_box(int i, int *w, int *h)
 	default:
 		break;
 	}
-	*w = ow / s;
-	*h = oh / s;
+	*w = (int)((long long)ow * 120 / s);
+	*h = (int)((long long)oh * 120 / s);
 }
 
 /*
@@ -3747,16 +4964,16 @@ static void overlay_clamp(int *cols, int *rows, int reserve)
 	if (i < 0)
 		return;
 	output_box(i, &w, &h);
-	if (kcell_w() <= 0 || kcell_h() <= 0)
+	if (lcell_w() <= 0 || lcell_h() <= 0)
 		return;
 
 	if (reserve > 0 && reserve < h)
 		h -= reserve;
-	int max_cols = w / kcell_w() - 2;
+	int max_cols = w / lcell_w() - 2;
 	/* One row of air where `reserve` is known and four where it is not:
 	 * `reserve` is the panel's thickness measured, and without it the four
 	 * rows stand in for a thickness this cannot see. */
-	int max_rows = h / kcell_h() - (reserve > 0 ? 1 : 4);
+	int max_rows = h / lcell_h() - (reserve > 0 ? 1 : 4);
 	if (max_cols > 4 && *cols > max_cols)
 		*cols = max_cols;
 	if (max_rows > 4 && *rows > max_rows)
@@ -3798,28 +5015,171 @@ static const struct wl_output_listener output_listener = {
 };
 
 /*
- * HiDPI: adopt the scale of the output the surface is on. The layer-surface
- * size stays in LOGICAL pixels — the compositor's configure already speaks
- * them — while the shm buffer grows to px * scale and the glyphs are rendered
- * at the scale, which is a sharper picture than the compositor stretching a
- * 1x buffer. Integer only, clamped to what the glyph cache will render (see
- * KCELL_MAX_SCALE); the buffer swap itself waits for the next flush, where
- * set_buffer_scale and the resized buffer land in one commit.
+ * THE FONT AT THE DEVICE SIZE, for a fractional scale `s120`.
+ *
+ * The name in force is loaded again at its own pixel size times the scale,
+ * through libkcell's size policy, so Terminus at 32 on a 1.5 output is asked
+ * for at 48 and comes back as its scalable twin cut to a 24x48 cell rather
+ * than as the 32 strike stretched. The cell of the font as named has already
+ * been measured (K.lcw/K.lch).
+ *
+ * THE DEVICE CELL IS NEVER LARGER THAN THE NAMED CELL TIMES THE SCALE. Every
+ * size this library asks of the compositor is counted in named cells, so a
+ * device cell over that would leave a surface sized for N cells one cell
+ * short of holding them. A face that comes back over is asked for again a
+ * pixel smaller, a few times, and the integer path is kept if none fits.
+ *
+ * 0 with the device font loaded. -1 with the font as named loaded again.
+ */
+static int frac_font(int s120)
+{
+	char name[sizeof(K.font)];
+	double base = kcell_name_pixelsize(K.font);
+	int lw = K.lcw, lh = K.lch;
+	int px;
+
+	if (base <= 0)
+		base = lh;
+	px = (int)(base * s120 / 120.0 + 0.5);
+	for (int tries = 0; tries < 4 && px >= 4; tries++, px--) {
+		if (!kcell_name_at_px(K.font, px, name, sizeof(name)) ||
+		    kcell_font_load(name) != 0)
+			break;
+		if ((long long)kcell_w() * 120 <= (long long)lw * s120 &&
+		    (long long)kcell_h() * 120 <= (long long)lh * s120)
+			return 0;
+	}
+	kcell_font_load(K.font);
+	return -1;
+}
+
+/*
+ * HiDPI: adopt the scale the compositor gives this surface.
+ *
+ * Surface sizes stay in LOGICAL pixels — the compositor's configure already
+ * speaks them. Where the scale is a WHOLE NUMBER the shm buffer grows to
+ * px * scale and the glyphs are rendered at it, which is a sharper picture
+ * than the compositor stretching a 1x buffer; clamped to what the glyph cache
+ * will render (see KCELL_MAX_SCALE). The number is the compositor's preferred
+ * scale (wp_fractional_scale_v1) where one has arrived, and the output's
+ * `wl_output.scale` otherwise.
+ *
+ * Where the preferred scale is a FRACTION and a viewporter is bound, the font
+ * is loaded at the device size (frac_font()), the buffer is the logical size
+ * times the scale in device pixels at buffer scale 1, and the viewport tells
+ * the compositor what it covers: the glyphs are drawn at 1.5 rather than drawn
+ * at 2 and shrunk. Without a viewporter, or when no device font fits, the
+ * fraction is rounded UP to the integer path, as `wl_output.scale` is.
+ *
+ * The buffer swap itself waits for the next flush, where the buffer scale,
+ * the viewport destination and the resized buffer land in one commit.
  */
 static void apply_scale(void)
 {
-	int s = K.on_output >= 0 ? K.output_scale[K.on_output] : 1;
+	int s, want = 0, moved = 0;
+
+	if (K.s120 > 0) {
+		s = (K.s120 + 119) / 120;
+		if (K.s120 % 120 && K.viewport &&
+		    K.s120 <= 120 * KCELL_MAX_SCALE &&
+		    K.s120 != K.frac_refused)
+			want = K.s120;
+	} else {
+		s = K.on_output >= 0 ? K.output_scale[K.on_output] : 1;
+	}
 	if (s < 1)
 		s = 1;
 	if (s > KCELL_MAX_SCALE)
 		s = KCELL_MAX_SCALE;
-	if (s == K.scale)
+
+	/*
+	 * THE FONT FOLLOWS THE PATH. Entering the fractional path, or moving
+	 * between two fractions, loads the font at the new device size;
+	 * leaving it loads the font as named again. Either is a new cell, and
+	 * a new cell is a new grid over the same logical surface.
+	 */
+	if (want != K.frac120) {
+		if (want && frac_font(want) == 0) {
+			K.frac120 = want;
+		} else {
+			if (want)
+				K.frac_refused = want;
+			else if (K.frac120)
+				kcell_font_load(K.font);
+			K.frac120 = 0;
+		}
+		moved = 1;
+	}
+	if (K.frac120)
+		s = 1;
+	if (s == K.scale && !moved)
 		return;
 	K.scale = s;
-	/* The cell grid is unchanged — same cols, same rows — so this is not
-	 * a resize; but every pixel must be repainted at the new scale even
-	 * when no cell differs. */
+	if (moved) {
+		/* Every baseline names glyphs of the old face: see font_apply(). */
+		grid_from_px();
+		kwl_owe(0, 0, 1 << 15, 1 << 15);
+	}
+	/* The cell grid is unchanged on the integer path — same cols, same
+	 * rows — so this is not a resize there; but every pixel must be
+	 * repainted at the new scale even when no cell differs. */
 	ktui_draw_invalidate();
+	/*
+	 * THE PICTURES FOLLOW, AND THE CELLS ARE DRAWN AGAIN. A follower drops
+	 * what it rasterised at the old scale or for the old cell — icons and
+	 * tiles are sprites, and the cells on screen name them — so the
+	 * consumer is sent a redraw to ask for them again; without it a
+	 * surface that draws only on input shows blank icons until the next
+	 * key.
+	 */
+	for (int i = 0; i < K.nscale_fn; i++)
+		K.scale_fn[i](s);
+	if (K.nscale_fn > 0)
+		ktui_resized = 1;
+}
+
+static void frac_preferred(void *d, struct wp_fractional_scale_v1 *f,
+			   uint32_t s120)
+{
+	(void)d;
+	(void)f;
+	K.s120 = (int)s120;
+	apply_scale();
+}
+
+static const struct wp_fractional_scale_v1_listener frac_listener = {
+	.preferred_scale = frac_preferred,
+};
+
+/*
+ * The per-surface halves of the fractional path, made WITH the surface and
+ * before its role: kdos-comp tells a layer surface its scale the moment the
+ * role is given, and an object made after that has missed it — the first
+ * frame would then go out at the integer scale and the second at the fraction.
+ * Both are gone with the surface; see surface_scale_drop().
+ */
+static void surface_scale_make(void)
+{
+	K.dest_w = K.dest_h = -1;
+	if (!K.surface || !K.viewporter || !K.frac_mgr)
+		return;
+	K.viewport = wp_viewporter_get_viewport(K.viewporter, K.surface);
+	K.frac = wp_fractional_scale_manager_v1_get_fractional_scale(
+		K.frac_mgr, K.surface);
+	if (K.frac)
+		wp_fractional_scale_v1_add_listener(K.frac, &frac_listener,
+						    NULL);
+}
+
+static void surface_scale_drop(void)
+{
+	if (K.frac)
+		wp_fractional_scale_v1_destroy(K.frac);
+	if (K.viewport)
+		wp_viewport_destroy(K.viewport);
+	K.frac = NULL;
+	K.viewport = NULL;
+	K.dest_w = K.dest_h = -1;
 }
 
 static void surf_enter(void *d, struct wl_surface *sf, struct wl_output *o)
@@ -3835,8 +5195,9 @@ static void surf_enter(void *d, struct wl_surface *sf, struct wl_output *o)
 }
 
 /* A surface spanning two outputs gets an enter per output and a leave when it
- * stops overlapping one; the scale followed the LAST enter, which is as good
- * an answer as a single-buffer surface has. */
+ * stops overlapping one. A preferred scale from the compositor already
+ * answers for all of them; without one the scale follows the LAST enter,
+ * which is as good an answer as a single-buffer surface has. */
 static void surf_leave(void *d, struct wl_surface *sf, struct wl_output *o)
 { (void)d; (void)sf; (void)o; }
 
@@ -3879,7 +5240,12 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 		 * client, and every event would arrive twice. */
 		if (K.seat)
 			return;
-		K.seat = wl_registry_bind(r, name, &wl_seat_interface, 5);
+		/* Up to 9, for axis_value120 and the natural-scrolling bit
+		 * (see K.seat_ver); every event those versions add to the
+		 * pointer, the keyboard and touch has a handler here. */
+		K.seat_ver = version < 9 ? version : 9;
+		K.seat = wl_registry_bind(r, name, &wl_seat_interface,
+					  K.seat_ver);
 		wl_seat_add_listener(K.seat, &seat_listener, NULL);
 	} else if (!strcmp(iface, zxdg_importer_v2_interface.name)) {
 		K.importer = wl_registry_bind(r, name,
@@ -3943,6 +5309,13 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 	} else if (!strcmp(iface, wp_cursor_shape_manager_v1_interface.name))
 		K.shape_mgr = wl_registry_bind(
 			r, name, &wp_cursor_shape_manager_v1_interface, 1);
+	else if (!strcmp(iface, wp_viewporter_interface.name))
+		K.viewporter = wl_registry_bind(r, name,
+						&wp_viewporter_interface, 1);
+	else if (!strcmp(iface,
+			 wp_fractional_scale_manager_v1_interface.name))
+		K.frac_mgr = wl_registry_bind(
+			r, name, &wp_fractional_scale_manager_v1_interface, 1);
 	else if (!strcmp(iface, wl_data_device_manager_interface.name))
 		/*
 		 * Version 1, and it is enough for copy, paste and drag as this
@@ -4104,9 +5477,9 @@ static int make_panel(void)
 	/* The rule is on TOP of the cells, not out of them: a bar that gave up
 	 * three pixels of its own grid would clip the glyphs it was drawn to
 	 * frame. */
-	int thickness = K.cfg.cells * kcell_h() + K.rule;
+	int thickness = K.cfg.cells * lcell_h() + K.rule;
 	if (!vertical)
-		thickness = K.cfg.cells * kcell_w();
+		thickness = K.cfg.cells * lcell_w();
 
 	uint32_t layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
 	if (K.cfg.role == KDISP_ROLE_OVERLAY || K.cfg.role == KDISP_ROLE_SAVER)
@@ -4205,7 +5578,7 @@ static int make_panel(void)
 		 */
 		overlay_clamp(&cols, &rows, K.cfg.margin_y);
 		int mx = K.cfg.margin_x, my = K.cfg.margin_y;
-		place_clamp(cols * kcell_w(), rows * kcell_h(), &mx, &my);
+		place_clamp(cols * lcell_w(), rows * lcell_h(), &mx, &my);
 		/*
 		 * AN EXPLICIT MARGIN IS MEASURED FROM THE OUTPUT, NOT FROM WHAT
 		 * IS LEFT OF IT — and this is the whole of "the Start menu is
@@ -4292,8 +5665,8 @@ static int make_panel(void)
 				my ? my : KWL_OVERLAY_MARGIN, 0);
 		}
 		zwlr_layer_surface_v1_set_size(K.layer_surface,
-					       (uint32_t)(cols * kcell_w()),
-					       (uint32_t)(rows * kcell_h()));
+					       (uint32_t)(cols * lcell_w()),
+					       (uint32_t)(rows * lcell_h()));
 	} else {
 		zwlr_layer_surface_v1_set_anchor(K.layer_surface, ANCHOR[K.cfg.edge]);
 		zwlr_layer_surface_v1_set_size(K.layer_surface,
@@ -4648,7 +6021,7 @@ static int make_toplevel(void)
 	int cols = K.cfg.cols > 0 ? K.cfg.cols : 80;
 	int rows = K.cfg.rows > 0 ? K.cfg.rows : 22;
 
-	resize_cells(cols * kcell_w(), rows * kcell_h());
+	resize_cells(cols * lcell_w(), rows * lcell_h());
 	return 0;
 }
 
@@ -4744,6 +6117,10 @@ int kwl_init(const KDispConfig *cfg)
 	snprintf(K.font_init, sizeof(K.font_init), "%s", K.font);
 	if (kcell_font_load(K.font) != 0)
 		return -1;
+	/* The named cell: every size asked of the compositor is counted in it,
+	 * whichever font a fractional scale later draws with. */
+	K.lcw = kcell_w();
+	K.lch = kcell_h();
 	/*
 	 * The rule, once there is a cell to measure it against. Only a
 	 * horizontally-anchored panel has a top edge to rule, and a rule as
@@ -4805,6 +6182,7 @@ int kwl_init(const KDispConfig *cfg)
 		goto fail_xkb;
 	/* enter/leave: which output the surface is on, for its scale */
 	wl_surface_add_listener(K.surface, &surface_listener, NULL);
+	surface_scale_make();
 
 	int rc;
 	switch (cfg->role) {
@@ -4863,6 +6241,9 @@ int kwl_init(const KDispConfig *cfg)
 	}
 
 	ktui_backend_set(&kwl_backend);
+	/* comp.conf's `motion`, the compositor's own reduce-motion switch, so
+	 * a surface and the fades around it answer to one setting. */
+	ktui_anim_set_motion_fn(kwl_conf_motion);
 	return 0;
 
 fail_xkb:
@@ -4934,9 +6315,16 @@ void kwl_input_cells(const KRect *rects, int n)
 	if (!reg)
 		return;
 	int cw = kcell_w(), ch = kcell_h();
-	for (int i = 0; i < n; i++)
-		wl_region_add(reg, rects[i].x * cw, rects[i].y * ch,
-			      rects[i].w * cw, rects[i].h * ch);
+	/* Cells are cut in units and the region is logical: each rect covers
+	 * every logical pixel any of its device pixels falls in. */
+	for (int i = 0; i < n; i++) {
+		int x0 = from_unit_floor(rects[i].x * cw);
+		int y0 = from_unit_floor(rects[i].y * ch);
+		int x1 = from_unit_ceil((rects[i].x + rects[i].w) * cw);
+		int y1 = from_unit_ceil((rects[i].y + rects[i].h) * ch);
+
+		wl_region_add(reg, x0, y0, x1 - x0, y1 - y0);
+	}
 	wl_surface_set_input_region(K.surface, reg);
 	wl_region_destroy(reg);
 	region_commit();
@@ -4952,7 +6340,7 @@ void kwl_layer_autohide(bool hidden)
 
 	int vertical = K.cfg.edge == KDISP_EDGE_TOP ||
 		       K.cfg.edge == KDISP_EDGE_BOTTOM;
-	int cell = vertical ? kcell_h() : kcell_w();
+	int cell = vertical ? lcell_h() : lcell_w();
 	int cells = hidden ? 1 : (K.cfg.cells > 0 ? K.cfg.cells : 1);
 	/* The rule rides on top of the cells here too, or the hidden strip
 	 * would be a cell tall while the grid inside it believed it had one. */
@@ -5062,8 +6450,8 @@ int kwl_overlay_resize(int cols, int rows)
 		cols = 1;
 	if (rows < 1)
 		rows = 1;
-	w = (uint32_t)(cols * kcell_w());
-	h = (uint32_t)(rows * kcell_h());
+	w = (uint32_t)(cols * lcell_w());
+	h = (uint32_t)(rows * lcell_h());
 	if ((int)w == K.px_w && (int)h == K.px_h)
 		return 0;
 	zwlr_layer_surface_v1_set_size(K.layer_surface, w, h);
@@ -5138,12 +6526,14 @@ void kwl_overlay_hide(void)
 	K.pend_valid = 0;
 	zwlr_layer_surface_v1_destroy(K.layer_surface);
 	K.layer_surface = NULL;
+	surface_scale_drop();
 	wl_surface_destroy(K.surface);
 	K.surface = NULL;
 	buffer_free(&K.buf[0]);
 	buffer_free(&K.buf[1]);
 	/* The next surface starts at the protocol defaults and shows nothing:
-	 * neither the sent scale nor the on-screen record survives it. */
+	 * neither the sent scale, the viewport destination (gone with its
+	 * viewport) nor the on-screen record survives it. */
 	K.scale_sent = 1;
 	/* And it has no buffer on it, so a state change made before the next
 	 * paint must not commit — see region_commit(). */
@@ -5175,7 +6565,9 @@ int kwl_overlay_show(int cols, int rows)
 	if (!K.surface)
 		return -1;
 	wl_surface_add_listener(K.surface, &surface_listener, NULL);
+	surface_scale_make();
 	if (make_panel() != 0) {
+		surface_scale_drop();
 		wl_surface_destroy(K.surface);
 		K.surface = NULL;
 		return -1;
@@ -5203,6 +6595,8 @@ void kwl_shutdown(void)
 	free(K.pend);
 	free(K.screen);
 	free(K.dirty);
+	free(K.pspan);
+	free(K.sbad);
 	/* A send holds a reference to the payload it is writing and the
 	 * selection slot holds the last one; neither survives the display. */
 	for (int i = 0; i < KWL_COPY_SENDS; i++) {
@@ -5734,9 +7128,30 @@ static int font_apply(const char *want)
 		 * fails too leaves the process with no font at all, and the
 		 * caller's next draw is what says so. */
 		kcell_font_load(prev);
+		if (K.frac120 && frac_font(K.frac120) != 0) {
+			K.frac120 = 0;
+			apply_scale();
+		}
 		return -1;
 	}
 	snprintf(K.font, sizeof(K.font), "%s", want);
+	K.lcw = kcell_w();
+	K.lch = kcell_h();
+	K.frac_refused = 0;
+	/*
+	 * ON A FRACTIONAL SCALE THE NEW NAME IS DRAWN AT THE DEVICE SIZE. The
+	 * load above measured its cell as named; the one the grid is cut to is
+	 * the same name at the scale. A name no device size fits falls back to
+	 * the integer path, which apply_scale() settles and tells the
+	 * followers about; a fraction the old name was refused at is tried
+	 * again for the new one there too.
+	 */
+	if (K.frac120 && frac_font(K.frac120) != 0) {
+		K.frac120 = 0;
+		apply_scale();
+	} else if (!K.frac120 && K.s120 > 0) {
+		apply_scale();
+	}
 
 	/* The surface keeps its pixels and gets a different cell, so the grid
 	 * is recut from the size it already has. */
@@ -5748,9 +7163,9 @@ static int font_apply(const char *want)
 	 * already had — writes byte-identical cells, and all three diffs would
 	 * then find nothing to paint while every glyph on the screen is drawn
 	 * at the old size. A cell is at least one pixel, so the surface's own
-	 * pixel size covers whatever each of those grids is.
+	 * size in units covers whatever each of those grids is.
 	 */
-	kwl_owe(0, 0, K.px_w, K.px_h);
+	kwl_owe(0, 0, to_unit(K.px_w), to_unit(K.px_h));
 	return 0;
 }
 
@@ -5794,6 +7209,7 @@ const KDispImpl kwl_impl = {
 	.cell_w = kwl_cell_w,
 	.cell_h = kwl_cell_h,
 	.scale = kwl_scale,
+	.px_logical = kwl_px_logical,
 	.decorated = kwl_decorated,
 	.popup_offset = kwl_popup_offset,
 	.edge_bottom = kwl_edge_bottom,
@@ -5820,4 +7236,5 @@ const KDispImpl kwl_impl = {
 	.font_at = kwl_font_at,
 	.font_current = kwl_font_current,
 	.font_set = kwl_font_set,
+	.on_scale = kwl_on_scale,
 };

@@ -1,0 +1,53 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   40_lang: Languages
+# ---------------------------------
+#   python-net — python3-* HTTP, web-framework, TLS-trust and network-stack
+#   modules
+# ---------------------------------
+#
+# Language modules and developer tools — the python3-* and perl-* modules,
+# language implementations, build and documentation tools, debuggers and
+# version control — whose dependency closure needs nothing past 31_compilers.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+python3-charset-normalizer
+python3-idna
+python3-urllib3
+python3-requests
+
+# LoRa mesh text and position: no licence, no infrastructure, no subscription.
+python3-meshtastic
+
+python3-httplib2
+
+# toot turns a post's HTML into text through Beautiful Soup.
+python3-soupsieve
+python3-beautifulsoup4
+
+python3-webencodings
+
+# Imported by qt6-qtwebengine's build.
+python3-html5lib
+
+python3-asgiref
+python3-blinker
+python3-itsdangerous
+python3-truststore
+python3-waitress
+python3-werkzeug
+python3-flask
+python3-flask-cors
+python3-rns
+python3-lxmf

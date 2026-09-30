@@ -60,7 +60,7 @@ tested by building the distribution with them.
 
 ## preflight.sh
 
-Preflight checks the tree's wiring without building anything. It runs 48 checks:
+Preflight checks the tree's wiring without building anything. It runs 53 checks:
 
 ```sh
 testing/preflight.sh
@@ -72,8 +72,9 @@ headed by a `==>` line. It exits 0 when every check passes and 1 when any fails,
 failure with the file to look at, and ends with either `preflight clean` or the number of problems
 found.
 
-Nine checks read the built tree under `build/fs`. Five of them skip entirely without one: orphaned
-packages, the built `kinstall`, icon names, chrome glyphs and desktop entries. Four run a reduced
+Ten checks read the built tree under `build/fs`. Six of them skip entirely without one: orphaned
+packages, the built `kinstall`, icon names, chrome glyphs, desktop entries, and the libraries the
+desktop's own programs link (which also skips on a host with no `readelf`). Four run a reduced
 check and say what they left out: the programs a recipe's embedded scripts name, the programs
 `fs/etc/inittab` names, the `mimeapps` rows (only the `kdos-*` handlers are checked, against `fs/`
 and `src/`), and the check on the build tree's root (its udev grants, daemon accounts and group
@@ -84,15 +85,16 @@ check that finds its directory there reports what is missing from it.
 
 | Group | Checks |
 |---|---|
-| Packages | Every package named in a phase list has a port; ports built from one tarball (`linux` and `perf`) agree on its version and hash; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone |
+| Layout | Every recipe under `ports/core` sits exactly at `ports/core/<shelf>/<name>/kpkgbuild`, and `ports/core` holds nothing but shelves; `ports/shelves` lists every shelf once, each with a description, an id of lowercase letters, digits and `-`, not `libs` or `core` and not a port's name, and each a non-empty directory; `src/` holds only its six areas and every port of KDOS's own sits at `src/<area>/<name>/`; the orphan sweep searches every `src/` area that holds a recipe; every bare name is one port across the shelves and the `src/` areas; every `name =` is its directory's name; every `group =` family sits on one shelf; every file of a `packages.d/` is `00-order.txt`, a listed shelf's `<shelf>.txt` or a `src-<area>.txt`, and names only ports filed there, and no phase has both `packages.txt` and `packages.d/` |
+| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball (`linux` and `perf`) agree on its version and hash; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone |
 | Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every recipe and build script carries the KDOS banner; every source a port declares is named by a checksum and is non-empty where it is on disk (one not yet fetched is reported as a `make fetch` note, not a failure) |
 | Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value option types validated; every recipe that runs cargo builds against a shared C library; every consumer of a shared library generates the Wayland protocols it includes |
 | Sources | Every source file in a port of KDOS's own is compiled by its recipe, unless that recipe globs its own `$PORT_SRC` directory (a glob of the shared `libk*` trees does not exempt it); a first source whose members are `./`-prefixed is accounted for; a flat first source is unpacked by its own recipe |
 | The sources archive | No archive a recipe hashes is tracked by git; `.gitignore` ignores every archive suffix under `ports/core` and the source cache, and none of the archive fixtures under `testing/fixtures`; `ports/srclib.sh`, `ports/fetch`, `ports/publish` and `script/hooks/pre-push` exist, are executable where they must be, and pass `bash -n`. An unset `core.hooksPath` is printed as a note, not a failure |
 | Shipped configuration | The shipped compositor configuration keeps labwc's default bindings; every command it, the menus and `menu.conf`'s routes name exists; every program `fs/etc/inittab` names is on the image; every filesystem the installer offers, the initramfs can mount; the ISO step builds every boot path (BIOS and UEFI, disc and written stick); the built `kinstall` is the installer in this tree |
 | Permissions and accounts | `/etc/shadow` on the built tree is mode 600 or 640 and the file-system step narrows it; the polkit and udev rule directories and files are owned by root; no udev rule sets `GROUP=`, `MODE=` or `OWNER=` on a device class that has no node, and every group a rule grants is one the desktop user is in; every account a shipped daemon drops to exists in `fs/etc/passwd`; the desktop user is in the groups its surfaces need |
-| Shell | All shipped and build shell is syntactically valid; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
-| Consistency | The build tree's root carries nothing but a root filesystem; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
+| Shell | All shipped and build shell is syntactically valid; every file a build script, a `phase.env` or a shared environment file sources exists, and a step sources its own phase's `phase.env`; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
+| Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; only `kdos_crt_scanout()` in the compositor writes the scene's direct-scanout switch; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
 | Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load |
 | Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; every icon name a surface asks for resolves on the image; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=` |
 
@@ -153,9 +155,11 @@ blocks fall into these groups, in roughly this order:
 3. **Boxes, packs and the terminal.** Box profiles, the pack store and its signature checks, and
    the terminal emulator library replaying recorded streams.
 4. **Packaging and the build.** The version checker against a recorded corpus, offline; the ports
-   tree resolving through `kpkgdepends`; a package built twice being byte-identical; the shared
-   indexes, file ownership, skip-if-installed, the binary host's signed index and delta packages;
-   and `kdosbuild` running a synthetic two-phase build end to end.
+   tree resolving through `kpkgdepends`, and `libkpkg`'s lookup over a fixture tree of shelves (a
+   port found one shelf down or loose beside the shelves, a name filed twice or nested below its
+   shelf refused, a shelf with no port ignored); a package built twice being byte-identical; the
+   shared indexes, file ownership, skip-if-installed, the binary host's signed index and delta
+   packages; and `kdosbuild` running a synthetic two-phase build end to end.
 5. **The system programs.** Timers, reminders, the boot slots and their rollback, the initramfs's
    encrypted-root unlock, the installer's plan, the polkit rules, the power, energy,
    out-of-memory and mount daemons, the tray and the file-chooser portal.
@@ -182,6 +186,215 @@ are asserted to *disagree*, because each generated file was written against exac
 A test whose only subject is code nothing ships is not coverage. It reports green while the
 behaviour a person sees goes untested. When the last shipped caller of something goes, its
 assertions go with it.
+
+### The partial paint
+
+`libkwl` repaints a buffer in part and reports only the changed cells as damage. Over a backdrop
+it keeps a buffer's backdrop, repaints the cells over whatever pixels the picture moved since that
+buffer was painted, and lays each repainted cell back on its band of the cached picture, which
+`libkchrome` re-rasterises only where its op list changed (see
+[Presenting a frame](writing-desktop-software.md#presenting-a-frame)). All of it fails as stale
+pixels, never as a crash, so `testing/fixtures/kwl/paintcheck.c` checks it against what it must
+equal. It includes `kwl.c`, so the real flush runs with its real state, and defines
+`wl_proxy_marshal_flags()` itself, which every generated protocol call reaches: the simulated
+compositor copies into its own screen exactly the damage each commit names and then requires the
+screen to equal the buffer it was handed, a buffer that claims an opaque region to be opaque
+in every pixel, and the surface size it derives (the viewport destination where one is set, else
+the buffer over its scale) to be the logical size the surface was configured to. A seeded walk drives it through hovers, two translucent plates swapping which is
+on top, a plate at any pixel position, plates dropped from the middle of the list, a plate on the
+rule or past the last cell, display text two rows high whose figure changes (on the backdrop's own
+slot, on a band of another slot, centred), clock ticks, a caret, edits in double-width text, the
+taskbar's alpha, a retint, night light, a popup's backdrop or a flat body replacing the bar's, no
+backdrop, a resize, a scale change to a whole number or to a fraction (a buffer of device pixels
+behind a viewport), the list scrolled by a line, back and by a page (with shade
+characters and plates that travel with their rows) and a compositor holding a buffer, at two font
+sizes whose cell heights differ in parity. A `scroll` run ends each walk with the list scrolled
+under an op past the last cell over a bare body, and then over a flat body under changing display
+text. Each seed runs twice, once as shipped and once under `KDOS_PAINT_FULL=1`, and every
+committed buffer must hash the same in both; a run in which no commit repainted a moved picture in
+part fails as well, and so does a run with no commit at a fractional scale, or a `scroll` run in
+which no paint moved a band, or none moved one over a backdrop. Before the walks it checks the
+[fractional scale](c-libraries.md#the-fractional-scale)'s conversions — every device pixel up to
+600 at five scales lies in the logical pixel it is converted to and inside the extent that covers
+it, and so does a pointer position at every 37th 256th of a pixel — and which path each scale takes:
+1.5 and 1.25 with a viewport load the font at the device size with a cell no larger than the named
+cell times the scale, 2 is the integer path over the font as named, and 1.5 without a viewport is
+rounded up to 2. Before each walk it checks `libkcell`'s scroll on its own: a list scrolled up by
+three rows and down by two under a fixed first row must yield exactly the band that moved, leave
+only the exposed rows (and the one fed by the half-clipped last row) for the diff, and repaint to
+the same pixels as a full paint; three lines of text scrolled under eight blank rows must yield
+the two text rows, not the longer run of blanks; and two changed cells must not be taken for a
+scroll. Each of these makes it fail: dropping the
+band restore, the per-buffer key comparison, the screen-key check, the span widening, the popup's
+opaque test, the moved cells, the moved damage, the op order (a set comparison instead of the
+common subsequence), the vanished ops, the grid bound on moved pixels, the step from a
+continuation to its lead, a cache clip one pixel off, and, for a scrolled band, the backdrop's
+row comparison, the moved-pixel check on a band's source rows, the rule offset, the stale mark on
+a row the picture differs under, the shade phase, the order of the moves, the shadow moving with
+the pixels, the stale mark on a row fed by a clipped one, the diff taken again after a move, a
+band one row too long, or scoring a shift by its length instead of the rows it spares.
+
+A `glide` run declares the list a gliding view (`kwl_list_view`) on every frame, drives the
+animation clock by hand and puts the library's own glide frames between the surface's, so the walk
+also requires every commit in between two positions to be damaged and to hash the same under
+`KDOS_PAINT_FULL=1`. Each glide walk ends with a list alone on the surface, scrolled by a line, by
+three, back, by several while one is under way and by more than it holds, with glide frames between
+the draws: every commit's list must equal the list painted independently from its cells at the
+position the glide presented, the rows at `top` moved by the lag and the rows it opens taken from
+the row before. Far past the end nothing may be owed or committed, and a list that stops being
+declared while it is in between must get the commit that puts its own picture back. A glide run
+in which no commit presented a list in between fails. Dropping the glide's damage, the stale mark
+in the shadow, the continuation from the lag on the screen (starting each step from rest), the
+reset of the lag once it lands, the commit owed to a list that stops being declared, or the gate that lets
+a glide frame through with no cell changed, taking the copy from the buffer about to be painted
+instead of the one on the screen, or reading the old picture a row off, each makes it fail. It runs
+where `libkwl` is compiled, which is the development container and not a bare host.
+
+### The inspector
+
+`KDOS_INSPECT=1` draws a developer overlay over every `libkwl` surface (see
+[Presenting a frame](writing-desktop-software.md#presenting-a-frame)): the rows each commit
+changed, tinted and fading; a panel of frame numbers; and outlines round a frame surface's hit
+rects. It is how to see, live and with no rig photograph, which rows repaint on every frame and
+whether a surface is throttled or stalled. Start any surface under it:
+
+```sh
+KDOS_INSPECT=1 kdos-res
+KDOS_INSPECT=1 kdos-settings        # a frame surface: its hit rects are outlined too
+```
+
+The overlay is pixels in the shared-memory buffer only, over a copy of the cells, so no `--dump`,
+golden or `tty1` frame ever carries it, and it makes every commit a full paint and a full damage
+while it is on. Two checks hold it to that. `testing/fixtures/kwl/inspcheck.c` drives `kwl_insp.c`
+with the clock handed in: the panel lands on a copy and the frame handed in is untouched, a wide
+glyph the panel would cut loses both halves, a changed row is tinted over exactly its changed cells
+and fades out in a second, a full commit lights every row, the numbers are right and the overlay's
+own refreshes feed none of them, the refreshes come a tenth of a second apart while a tint fades and
+stop on a still surface, and the hit outlines take their slots and leave the rects' insides alone.
+Counting the refreshes' own commits, pacing the fade from anything but the last paint, dropping the
+wide-glyph rule, ignoring `full`, or not fading each make it fail. `KDOS_INSPECT=0` and an unset
+variable must both leave it off. And `paintcheck` runs once more with the overlay on, where every
+commit must still leave its simulated screen equal to the buffer it was handed: an overlay commit
+that was not damaged whole fails there.
+
+### The frame clock
+
+An animation's ticks fail in two directions, and neither crashes: an idle surface that wakes, asks
+for frames or commits when nothing moves, and a moving one that freezes because no frame was on
+its way. `testing/fixtures/kwl/tickcheck.c` includes `libkwl`'s own source, as `paintcheck` does,
+records every commit and frame callback at the wire, and makes the display's socket a pipe the test
+writes to when it wants the compositor to answer, so the real `kwl_poll_event()` runs, `poll()`
+and all. An idle wait must run its whole length with no event, no commit and no frame asked for,
+and an ordinary commit's answered callback must not become a tick. With an animation live, a wait
+must ask for a frame with one empty commit, return the answer as a `KT_EVT_TICK` at once, turn an
+unanswered callback into a tick at the stall bound and drop it, owe exactly one frame after the
+end, and fall silent after it even when the loop never draws. It also reads `comp.conf`'s `motion`
+as the compositor does: the last line wins, a commented line is a comment, and a changed file is
+read again. Ticking idle, committing idle, owing forever, owing nothing, keeping the stalled
+callback, skipping the empty commit, returning the tick as a timeout, not cutting the wait, the
+first line winning and not re-reading each make it fail.
+
+The same fixture drives the wheel and the coast through the real pointer handlers. On a version 8
+seat a high-resolution wheel's thirds of a detent must add up to one tick, two detents in one frame
+must be one tick, and a half one way and a half back nothing; the raw stream must carry the frame's
+own `value120` and the natural-scrolling bit; on a version 5 seat the discrete count still makes one
+tick a frame; the duplicate gate must drop a second detent inside its window and keep a finger's two
+ticks a millisecond apart. A flick must coast in the finger's direction at its release speed, slow
+down and end before the time limit, travelling about a quarter of a second of the release speed; a
+press must stop it; a finger held still before lifting, one too slow, and `motion = no` must not
+coast; the pointer leaving must stop it; and a wait during a coast must return its ticks or run its
+whole length. Gating fingers, honouring a frame's whole count, not resetting on a reversal, no
+decay, no release window, returning a coast step as a timeout, or a press that does not stop it
+each make it fail. The curves, the end value on the terminal,
+a capture backend and with motion off, the live window and the pulse are `test_ktui_anim` in
+`src/libs/selftest.c`.
+
+### The selection plate check
+
+The plate a menu's selected row stands on slides to a new row (`kch_px_row_anim`, see
+[libkchrome](c-libraries.md#libkchrome)), and a golden is a cell frame with the pixel layer stubbed,
+so a plate in the wrong place for a few frames reaches no golden. `testing/fixtures/rowanim/rowcheck.c`
+includes `kch_px.c`, stubs the `libkwl` calls it makes, installs a backend whose only answer is
+whether it keeps a frame clock, and drives time through `ktui_anim_set_clock()`. At rest the plate
+must be the ops `kch_px_row()` records. A new item must start on the old row, never go back or past
+the new one, be past half way before half time (an ease-out), land at `KCH_ROW_ANIM_MS` and keep
+the clock live until then and not after; a move into another column must slide `x` and stretch `w`;
+a redirect mid-slide must set out from where the plate stands. The same item somewhere else, even
+mid-slide, a plate missing from the list before, a changed cell size, a backdrop installed afresh,
+no frame clock and motion off must each land at once, and a move onto the row the plate already
+stands on must start nothing. Four keys are four plates, and a fifth must evict the one asked least
+recently, in whichever slot, and disturb no other. Dropping the scroll landing, the list count, the
+cell size, the clear on install, the mid-air start, the ease-out, the same-row guard, the
+least-recent eviction or the bar's place on the plate each makes it fail. It needs `fcft` and
+`pixman`, so it runs in the development container.
+
+### The display text check
+
+Display text (`kch_px_text` and `kch_display_text`, see [libkchrome](c-libraries.md#libkchrome))
+reaches a golden only as its cell form, so `testing/fixtures/disptext/textcheck.c` includes
+`kch_px.c` with the `libkwl` calls stubbed, links `kch_chrome.c` for real, loads a cell font and
+replays into images of its own. With no backdrop it must record nothing, and `kch_display_text()`
+must fill the rectangle with its band and draw the string on its first row, aligned. Under a popup
+the rectangle's cells must go blank on the backdrop's slot, with one text op two rows of the cell
+tall, preceded by a flat rectangle of the band's slot only when that is another slot. The key must
+follow the string and not its offset in the pool, and the differ must answer exactly the changed
+text's rectangle. A string past the pool, or text and its band with one op free, must be refused
+with nothing recorded and no cell touched. Replayed at scale 1 and 2, no pixel may be inked outside
+the rectangle, even for a string too long for it; right- and left-aligned ink must sit at the side
+asked for; and a replay under a clip region must equal the whole replay inside the clip and leave
+everything outside it untouched. A flat body must be its slot's colour, claim opaque, and answer
+the same rows until display text reaches them. Dropping the glyph clip, the string from the
+comparison, the alignment, the row height, the band, or the flat body's row answer, or comparing
+the pool offset, each makes it fail. It needs `fcft`, `pixman` and a font, so it runs in the
+development container.
+
+### The tile lifetime check
+
+A pixel tile larger than 16×16 cells is a grid of sprites over views of one canvas (see
+[libkchrome](c-libraries.md#libkchrome)), and both ways it can break are silent: a block cut at the
+wrong origin shows another block's pixels, and a view the sprite table's evictor unrefs once too
+often is freed while the tile still names it. `testing/fixtures/tile/tilecheck.c` links
+`kch_tile.c` with `libkcell` and `libktui`, stubs the display's cell size and the icon switch, and
+reads the pixel every drawn cell resolves to against what was rasterised, while a destroy function
+hung on each view counts its frees. It runs a 40×20 tile (six blocks) under `kcell_tile_free`, the
+evictor the shell registers, through alternating halves, a full table evicting the undrawn half, the
+published half evicted while undrawn and put back with no raster, a cleared table, and a byte budget
+that refuses a half, including the case where every put succeeds by evicting a block the same commit
+had just put. A 16×2 tile, the meters strip's shape, must be one sprite under its old key, and
+without an evictor a refused put must take back the blocks put before it. After a reset every view
+must have been freed exactly once. Taking no reference for the table, taking one on a re-put,
+dropping the evicted-half check, the whole-half check after the puts or the take-back on a refusal,
+cutting blocks at the wrong origin, or letting `kch_tile_slot()` answer for a half with a block
+missing each makes it fail. It needs `fcft` and `pixman`, so it runs in the development container
+and not on a bare host; built with AddressSanitizer on glibc, a missing reference is also a
+use-after-free report.
+
+### The chart pixel check
+
+Every golden is a cell frame, and a chart is pixels only where a display has them, so the
+antialiased chart the panel's meters and `kdos-res` draw (see [libkchrome](c-libraries.md#libkchrome))
+reaches no golden. `testing/fixtures/plot/plotcheck.c` links `kch_plot.c` and `kch_tile.c` with
+`libkcell` and `libktui`, sets a palette of its own so a change to a shipped theme moves nothing, and
+checks two kinds of claim. The first holds whatever the arithmetic: a series, a line, a fill or a
+chart writes nothing outside its rectangle or the clip; every pixel stays premultiplied; a series at
+rest is exactly its bottom row at the rest weight; a sample above zero lifts the trace off that
+row; a series at full scale fills its band; a mirrored series is the upright one flipped; the oldest
+value reaches the left edge only when held; a line is the same bytes drawn from either end, a steep
+line is the shallow one transposed, and a line's total coverage is its width times its length; a
+nested clip cannot widen its parent, the ninth push is refused and a clear empties the stack; the
+pair's midline is at half the height and the gridlines are at the sample numbers they are keyed to;
+`kch_plot()` keeps its slot for unchanged content and alternates for a new sample number; and a
+marked sample is its own column top to bottom, over everything and nowhere else, and part of the
+hash. The
+second is a digest of whole canvases for fixed inputs. The marks are fixed point from one conversion
+per input, so a digest is the same on every build; one that moves is a picture that changed, and a
+change made on purpose updates the digest in the file, which `plotcheck --print` prints. Removing
+the one-pixel floor, the rest weight, the mirror, the hold, the slope term or the transposition of
+a steep line, the pixman half of the clip, the clear's reset, the premultiplication, the right and
+bottom bound, the interpolation between samples, the sample number from the hash, the midline gap
+or the chart's own clip, or moving a gridline by a pixel, each makes it fail. It needs `fcft` and
+`pixman`, so it runs in the development container and not on a bare host; it is also clean under
+AddressSanitizer and UndefinedBehaviorSanitizer on glibc.
 
 ### The window-model contract
 
@@ -278,22 +491,44 @@ and the stale binary survives. Delete them from a container rather than with `su
 ## Goldens
 
 A **golden** is a committed reference frame: a surface rendered offscreen and compared byte for
-byte. There are 193 of them under `testing/goldens/`. They cover the shell's surfaces, all eleven
-resource-monitor pages plus its detail page, the terminal, the cell-level frames, and nine replayed
-terminal streams. Text frames are committed at twelve different sizes. `testing/goldens/README`
-states the rules for adding one.
+byte. There are 217 of them under `testing/goldens/`. They cover the shell's surfaces, all eleven
+resource-monitor pages plus its detail page and a chart read one sample at a time, the terminal, the cell-level frames, nine replayed
+terminal streams, and fourteen frames of a surface driven through its own loop. Text frames are
+committed at twelve different sizes and driven frames at three, two of them their own.
+`testing/goldens/README` states the rules for adding one.
 
 | Kind | Catches | Count |
 |---|---|---|
-| Text frames (`--dump`) | Geometry: overflow, misalignment, a control drawn past its rectangle | 175 |
+| Text frames (`--dump`) | Geometry: overflow, misalignment, a control drawn past its rectangle | 185 |
 | Cell frames (`--dump-cells`, `cells-*.txt`) | Colour-slot and attribute drift as well | 9 |
 | Replayed streams (`vt-*.txt`) | A change in the terminal's state machine, against bytes real programs wrote: the characters, the attributes, the cells that named a colour of their own, the hyperlinks and the prompt marks | 9 |
+| Driven frames (`drive-*.txt`) | A loop that does not answer a key, a loop without the resize step, `ktui_keys()` asked after the surface's own keys, and a change in the runner's frame opt-in | 14 |
 
 A text frame is the character in each cell, one line per row. A cell frame is one line per
 non-blank cell, `row col U+XXXX fg bg attr`, so a selection that lost its accent fill, or a label
 that dropped to an unreadable colour slot, changes it even when the text frame is identical. Every
 dump is drawn at the ASCII glyph tier, because a surface drawing straight to a buffer has no
 terminal to report richer capabilities.
+
+A driven frame is a text frame taken at the end of a script. A `--dump` draws once and never runs
+the loop, so nothing in it can show an event handler. With `$KDOS_DUMP_KEYS` set, the harness's
+`kdisp_init()` answers with a display that reads the variable as a script of keys, clicks, ticks
+and resizes (the steps are listed in
+[Writing desktop software](writing-desktop-software.md#looking-at-it-without-a-screen)); the
+surface takes its live path, and the frame it last presented is printed when it shuts down,
+followed by `-- N of M events read`. `keydrive` in `testing/selftest.sh` commits these. Every
+script ends in `esc tick`, so a surface that closes on `Esc` stops one short of the total and one
+where `Esc` closed a rung first reads them all, and every script resizes once, so the frame is at
+the new size only if the resize step ran. No script runs a command whose answer depends on the host
+(a toggle, a delete, a check). A surface that saves when it closes, as the note does on `Esc`
+after an edit, is given a data directory of its own, made empty for the run, so the save is
+exercised and the next run does not load it back. The six `drive-runner-*` frames are of a surface defined in the
+harness itself, on `sh_run()` with and without `.frame`, which is where the frame opt-in is pinned:
+no shipped front end takes it.
+
+A driven frame is a golden of the loop as it is, not a proof that it is right. A migration of a
+surface onto the runner keeps its frames byte-identical and its driven frame identical to the one
+its own loop drew before the move.
 
 A terminal's frame is taken by running a command to completion: `kdos-term --dump WxH -e …` waits
 for the child and consumes everything it wrote before drawing, because a frame taken while a
@@ -317,7 +552,9 @@ block headed `the shell's front ends draw offscreen, and the boxes line up` in
 1. `testing/fixtures/shell/dumpmain.c`, the test driver, which also stubs everything that would
    need a display or a bus: `libkdisp` and the three `libkwl` entry points, the icon layer, the
    pixel plates and tiles, the tray, MPRIS and the privacy indicators. It wraps
-   `ktui_offscreen_init` so that `KDOS_DUMP_SIZE=WxH` overrides the size a surface asks for;
+   `ktui_offscreen_init` so that `KDOS_DUMP_SIZE=WxH` overrides the size a surface asks for, holds
+   the scripted display `$KDOS_DUMP_KEYS` selects, and defines the runner's own test surface,
+   `runner`;
 2. the **base source list** (`DFRONTS` in the script): the files every surface needs, always
    linked. These are `shell.c`, `cal.c`, `menu.c`, `pick.c`, `osd.c`, `apps.c`, and shared helpers
    such as `fav.c`, `mountd.c`, `routes.c`, `chords.c` and `libkchrome`'s drawing code;
@@ -387,7 +624,8 @@ candidates. A file that is sometimes linked and sometimes stubbed collides on ex
 where the harness otherwise works.
 
 A shared helper belongs in the base source list. `mountd.c` is the one `kdos-mountd` client that
-both `kdos-devices` and `kdos-disks` use. Leaving it out of the base list makes those surfaces fail
+both `kdos-devices` and `kdos-disks` use, and `job.c` is the long-child runner `kdos-backup`,
+`kdos-burn` and `kdos-verify` share. Leaving either out of the base list makes those surfaces fail
 to link, which reads as a defect in them and skips every candidate's golden.
 
 A surface that needs a library the harness lacks is skipped by name. `kdos-peek` and `kdos-pix`
@@ -473,7 +711,7 @@ A parser gets a fixture *and* the shipped file. `kdos-appbox catalogue --selftes
 type including the awkward ones: a base with its own image, a two-deep runtime chain, a row whose
 package list is `-`, a row with no `meta`, and a member in two groups. It pins the rules: a chain
 is base-first, a `-` package list is empty, and an expansion removes duplicates. The shipped
-`src/packages/kdos-appbox/catalogue` is also parsed, because a hand-added row the parser rejects
+`src/system/kdos-appbox/catalogue` is also parsed, because a hand-added row the parser rejects
 is a store that opens empty with no error on screen. `KDOS_CATALOGUE` is the variable that points
 the parser at either file.
 
@@ -501,7 +739,7 @@ The image must carry a font and GNU `tar`, and must have the Wayland development
 A **fixture** is recorded system state that a program can be pointed at instead of the live
 machine. It is what makes a monitor, an attribution engine or a kill-selection policy testable at
 all. The seam is the same everywhere: the process and system filesystems sit behind a movable root,
-or a variable moves one directory walk. There are 38 fixture directories under
+or a variable moves one directory walk. There are 49 fixture directories under
 `testing/fixtures/`.
 
 | Fixture | Records | Makes testable |
@@ -522,12 +760,22 @@ or a variable moves one directory walk. There are 38 fixture directories under
 | `shell` | The dump harness, its stubs, and a frozen home and configuration | Every surface's layout |
 | `shell/rec` | Two PCM lines (one playback-only, one with a capture stream), 25,600 bytes of raw signed 16-bit audio (four ticks at half full scale, then four of zeros), and a stand-in speech model | That the input list is *filtered* rather than merely listed, and that the level is computed from the samples. The recorder's `--meter` prints one line per tick and `--write` produces a WAV compared byte for byte against `shell/Recordings/2026-01-01-000000.wav` |
 | `print`, `devices`, `display`, `firewall`, `backup` | Recorded command output | The printers, devices, display, firewall and backup surfaces, without the host's own state |
+| `burn` | A `/sys/block` tree with one optical drive, its vendor and model space-padded as a SCSI inquiry pads them, and one disk that is not a drive | That `kdos-burn` lists the drive and not the disk |
+| `verify` | A `SHA256SUMS` naming one file that matches its line and one that does not | A row of each verdict in `kdos-verify`'s frame |
 | `vt` | What `vim`, `htop`, `mc`, `less` and `tmux` wrote to an 80×24 terminal, four hand-written streams, the recorder `record.py` and the replayer `vtrender.c` | That the terminal's state machine still produces the same screen |
 | `img` | Valid, truncated, zero-length, oversized and malformed images in each decoded format, and `fuzz.c` beside them | `libkimg`: every fixture decoded, then mutated and truncated |
 | `catalogue` | A small catalogue with every row type | The catalogue parser |
 | `wm` | `geometry.txt`, 106 rows read from the compositor's source | See [The window-model contract](#the-window-model-contract) |
 | `polkit` | A rule harness and a stub, run under `duk` | What the shipped polkit rules grant, and what they must not |
 | `term` | A stub of `libkwl` | `kdos-term --dump` on a host with no Wayland |
+| `kwl` | `paintcheck.c` and `tickcheck.c`, which include `libkwl`'s own source and stand a simulated compositor under it, and `inspcheck.c`, which drives `kwl_insp.c` with the clock handed in | That a partial repaint produces the same pixels as a full one and that the damage covers every changed pixel; that a gliding list is its own picture at the position presented; that the frame clock ticks while an animation runs and is silent otherwise; that the wheel counts detents and a flick coasts; that the `KDOS_INSPECT` overlay stays off the cells and goes still on a still surface; see [The partial paint](#the-partial-paint), [The frame clock](#the-frame-clock) and [The inspector](#the-inspector) |
+| `rowanim` | `rowcheck.c`, which includes `libkchrome`'s `kch_px.c` with the `libkwl` calls stubbed and the clock driven by hand | That the travelling selection plate slides, lands on time, and lands at once wherever there is nothing on the screen to slide from; see [The selection plate check](#the-selection-plate-check) |
+| `disptext` | `textcheck.c`, which includes `libkchrome`'s `kch_px.c` with the `libkwl` calls stubbed and links `kch_chrome.c` | That display text records one op in its rectangle or its cell form, keys by its string, and replays inside its rectangle at both scales and under a clip; see [The display text check](#the-display-text-check) |
+| `plot` | `plotcheck.c`, which links `libkchrome`'s `kch_plot.c` and `kch_tile.c` with a palette of its own | That the chart's data marks, clip and tile keep their bounds and symmetries and draw the same bytes for the same input; see [The chart pixel check](#the-chart-pixel-check) |
+| `tile` | `tilecheck.c`, which links `libkchrome`'s `kch_tile.c` with a stubbed display | That a pixel tile of any size draws every block's pixels at the right cells and that the sprite table's evictor never frees a view the tile still holds; see [The tile lifetime check](#the-tile-lifetime-check) |
+| `motion`, `sched` | `motioncheck.c` and `schedcheck.c`, which include the compositor's `kdos-motion.c` and `kdos-sched.c`, and `motion/stub/`, the two labwc headers both read | The compositor's fades and window transitions against wlroots' scene graph, and render-late scheduling against wlroots' output signals and a real event loop; see [Compiling the compositor without a full build](#compiling-the-compositor-without-a-full-build) |
+| `crt` | `scopecheck.c`, which links the compositor's `kdos-crt-pass.c` and wlroots' damage ring and draws on a surfaceless EGL context | That the phosphor pass drawn over only each frame's damage matches a whole-output draw byte for byte; see [Compiling the compositor without a full build](#compiling-the-compositor-without-a-full-build) |
+| `fontpolicy` | `fontcheck.c`, which links `libkcell` | The cell-size arithmetic everywhere, and the font loads, the three fractional-scale cells among them, only where Terminus and its `Terminus (TTF)` twin are installed; see [The cell's size](c-libraries.md#the-cells-size) |
 | `pack` | The metadata of six packs, not the packs | What `kdos-packd` would mount and what it refuses: which stack, which cannot, which is signed |
 | `box` | Four box profiles | What a profile says it enforced and what it could not |
 | `openwith`, `places`, `recent` | A MIME glob table and files, a home with a renamed desktop folder, a recently-used list | File-type resolution, the places list and the recent list |
@@ -627,9 +875,49 @@ of the suite while reporting only their own one-line error.
 ## Compiling the compositor without a full build
 
 `kdos-comp` needs `wlroots-0.20`, which no distribution packages, so the self-test reports its
-block as skipped. It is still buildable without a full build, because the tree's own recipe names
-the source: `ports/core/wlroots/wlroots-0.20.2.tar.gz`, which `make fetch` puts in place. Build it
-in an image derived from the development image:
+block as skipped. One compositor block runs regardless: the phosphor pass's scope check,
+`testing/fixtures/crt/scopecheck.c`. It links the pass's shader and region code
+(`kdos-crt-pass.c`, which touches no wlroots) with wlroots' damage ring compiled straight from the
+port's tarball, and draws on a surfaceless EGL context, which Mesa's software rasteriser in the
+development image provides with no display. Every scripted frame drawn over only its damage must
+match a whole-output draw byte for byte, and the check fails unless its two deliberately broken
+modes fail too. It compares buffer contents, not the damage a commit reports. A bare host without
+EGL and GLES2 development files skips it.
+
+The compositor's fades have a check that does need `wlroots-0.20`:
+`testing/fixtures/motion/motioncheck.c` compiles `kdos-motion.c` against wlroots' own scene graph,
+standing in for the two labwc headers it reads with stubs in `testing/fixtures/motion/stub/`. It
+maps a layer surface, unmaps it half way through its fade in the order wlroots really uses, lets
+the client exit, removes the output and tears the compositor down. It checks that the close fade's
+snapshot stands directly above the output's layer tree and outside it, that it keeps the
+surface's buffers until the fade ends and then releases them, that it lets the pointer through,
+that a hidden subsurface is left out, and that every fade ends on its exact end value. It then
+builds a window's tree (decoration rectangles, an inactive decoration switched off, the content
+tree) and plays a window transition's open, with labwc moving the window part way through; a
+close, whose snapshot must copy the showing border as a one-pixel buffer that refuses the pointer
+and leave the rest out; a workspace switch's snapshot below its anchor; a switch straight back, in
+which the window must take over its own leaving snapshot's alpha and offset and the snapshot must
+go, while a snapshot whose window has gone fades out untouched; and `motion` switched off
+mid-transition. A window must always end exactly at rest and exactly opaque.
+
+`testing/fixtures/sched/schedcheck.c` does the same for render-late scheduling. It compiles
+`kdos-sched.c` with the same stubs, stands a `wlr_output` up by hand with its presentation, commit
+and destroy signals, and runs a real event loop. It checks the prediction's arithmetic; that a
+deferred frame holds the output's pending flag for the wait and lowers it before the composite;
+that any other commit cancels the timer, a buffer-less one (variable refresh switched on for a
+fullscreen window) included, since it too queues a page flip, and that one switching the output off
+also lowers the flag; that a later frame event that is refused cancels it too; that a
+stale presentation, variable refresh, a tearing frame, a budget past the blank and an output that
+is not DRM all composite at once; and that the timer goes with its output and at shutdown. Its
+refresh is 200 ms rather than a display's, so a loaded machine cannot make a millisecond timer miss
+a check.
+
+Like the graft compile, both run in the image described next once wlroots is installed there, and
+are skipped everywhere else.
+
+`kdos-comp` is still buildable without a full build, because the tree's own recipe names the
+source: `wlroots-0.20.2.tar.gz` in the `wlroots` port's directory, which `make fetch` puts in place.
+Build it in an image derived from the development image:
 
 ```dockerfile
 FROM kdos-devdeps:latest
@@ -640,7 +928,7 @@ RUN apk add --no-cache meson ninja pango-dev libdrm-dev libinput-dev libseat-dev
 # then meson setup / compile / install the wlroots tarball with -Dxwayland=enabled
 ```
 
-The recipe (`ports/core/wlroots/build.sh`) also applies `idle-capture-frame.patch` and builds with
+The recipe (the `wlroots` port's `build.sh`) also applies `idle-capture-frame.patch` and builds with
 `-Drenderers=gles2,vulkan` and `-Dcolor-management=enabled`. Those two options additionally need
 the Vulkan headers, `glslang` and `lcms2`, which the image above does not carry; apply the patch
 when the change under test touches screen capture.
@@ -741,7 +1029,7 @@ testing/quick.sh kdos-comp,kdos-shell -- --keys meta_l-ret --sleep 3 \
 ```
 
 It needs an ISO from one full build. It rebuilds the named ports into `build/fs` with no packaging
-and no snapshot (`--phases 05_desktop --rebuild <ports> --no-snapshot`, about 1m09s), tars exactly
+and no snapshot (`--phases 50_desktop --rebuild <ports> --no-snapshot`, about 1m09s), tars exactly
 the files those ports own into `build/fix.tar`, and boots the ISO at 1280×800 with that tar on a
 raw disk. There `testing/quickpatch.sh` unpacks it over the live medium's in-memory overlay and
 restarts the session. Everything after `--` is passed to `vnc-shot.py`, after the patch and after
@@ -750,7 +1038,7 @@ the key card is dismissed. A run takes about three minutes, or 1m37s with `KDOS_
 
 | Variable | Does |
 |---|---|
-| `KDOS_QUICK_PHASES` | The phases to build (default `05_desktop`); widen it, e.g. `04_phase4,05_desktop` |
+| `KDOS_QUICK_PHASES` | The phases to build (default `50_desktop`); widen it to the phase of a port outside the desktop, e.g. `42_graphics,50_desktop` |
 | `KDOS_QUICK_NOBUILD=1` | Reuse what is already in `build/fs` |
 | `KDOS_QUICK_KEEP=1` | Do not restart the session |
 | `KDOS_QUICK_FILES` | Extra paths under `build/fs` to carry, such as a configuration file or a chord table |
@@ -969,7 +1257,7 @@ puts it in its port directory (see
 |---|---|---|
 | `make fetch-check` (`ports/fetch --check [port…]`) | Offline, about a minute | Every hashed source that git does not track is on disk and matches its hash; it lists what is missing or corrupt and exits 1 if anything is |
 | Preflight's source checks | `testing/preflight.sh` | No recipe-hashed archive is tracked by git, `.gitignore` keeps fetched sources and the cache out of commits, and the fetch and publish scripts parse |
-| The pre-push hook | Enabled with `git config core.hooksPath script/hooks` | A push naming a source hash that `ports/sources.idx` and the archive do not hold is refused; see [Writing ports](writing-ports.md#the-pre-push-hook) |
+| The pre-push hook | Enabled with `git config core.hooksPath script/hooks` | Offline first, a pushed tip whose ports layout breaks is refused: a recipe not exactly at `ports/core/<shelf>/<name>/`, a shelf missing from `ports/shelves` or named `libs`, `core` or after a port, or a bare name held twice across `ports/core` and `src/<area>/` (`KDOS_SKIP_LAYOUT_CHECK=1` skips it). Then a push naming a source hash that `ports/sources.idx` and the archive do not hold is refused, as is one made while the archive is unreachable (`KDOS_SKIP_PUBLISH_CHECK=1` skips that check only); see [Writing ports](writing-ports.md#the-pre-push-hook) |
 
 A file git tracks, such as a patch or a configuration file beside a recipe, is never treated as an
 archived source: `ports/fetch` and `--check` skip it. A recipe-hashed archive that git tracks fails
@@ -1032,7 +1320,7 @@ any GL or GLES client, with no extra software and no change to the program:
 GALLIUM_HUD=fps es2gears_wayland
 GALLIUM_HUD=fps+frametime glmark2-es2-wayland     # both curves in one pane
 GALLIUM_HUD=simple,fps es2gears_wayland           # text, no graph
-GALLIUM_HUD=csv+fps+frametime vkgears             # values to stdout, for a script
+GALLIUM_HUD=csv+fps+frametime es2gears_wayland    # values to stdout, for a script
 GALLIUM_HUD=help es2gears_wayland                 # every name this driver can draw
 ```
 
@@ -1068,60 +1356,46 @@ render rate by construction and is comparable between machines rather than betwe
 | The same for Vulkan | `vkgears`, or `vkcube` for a swapchain whose present mode can be chosen |
 | Does this machine have a Vulkan driver, and which | `vulkaninfo --summary`. Run it first under an emulator, because a Vulkan tool falls back to lavapipe on the CPU without saying so |
 | Which EGL renderer, extensions and configs a client gets | `eglinfo` |
-| What an X11 client sees through Xwayland | `es2gears_x11`, which exists only in a box; `glxinfo` there reports that the X server has no GLX |
+| What an X11 client sees through Xwayland | `glxinfo`, `glxgears` and `es2gears_x11`, which exist only in a box |
 
 `es2gears_wayland`, `eglinfo` and `vkgears` come from the `mesa-demos` port, the six `glmark2`
 flavours from `glmark2`, and `vulkaninfo` and `vkcube` from `vulkan-tools`.
 
 ### Desktop GL and GLX
 
-Desktop GL is reached through EGL, never GLX. `glmark2-wayland` binds `EGL_OPENGL_API` and then
-opens the GL entry-point library by a legacy name, `libGL.so` first and `libGL.so.1` second, and
-prints `Error loading GL library` if neither answers. `libglvnd` is built `glx=disabled`, so it
-builds no `libGL`; its recipe adds `libGL.so` as a filename alias of `libOpenGL.so.0`, which
-carries the same dispatch table and every `gl*` entry point.
+A Wayland client reaches desktop GL through EGL, never GLX. `glmark2-wayland` binds
+`EGL_OPENGL_API` and then opens the GL entry-point library by name, `libGL.so` first and
+`libGL.so.1` second, and prints `Error loading GL library` if neither answers.
 
-Three facts about that alias, each checkable:
+`libglvnd` is built with `x11` and `glx` enabled, so it installs `libGL`, `libGLX`, `libOpenGL`,
+`libEGL` and `libGLES` with their `gl.pc` and `glx.pc`. `libGLX` dispatches to mesa's
+`libGLX_mesa`. mesa is built `-D glx=dri -D platforms=wayland,x11`, which is what an X11 client
+under Xwayland draws with: `libGLX_mesa` behind glvnd's `libGL` and `libGLX`, and the Vulkan X11
+WSI. Xwayland is built `-Dglx=true` (with `-Dglamor=true` and `-Ddri3=true`), so an X11 client's
+`glXChooseVisual` finds the GLX extension. libepoxy is built `-Dglx=yes` and resolves `glX*`
+through `libGL.so.1` at run time. A Wayland client never loads `libGLX_mesa`, but `libEGL_mesa`
+and the Vulkan drivers link `libxcb` and `libX11` for their X11 platform, so the X client libraries
+are on the host either way.
 
-- **It is a filename, not a SONAME.** `libOpenGL.so.0.0.0` has `SONAME libOpenGL.so.0`, and no
-  library records `libGL.so` as a dependency. `-lGL` therefore *links*: `ld` finds the alias and
-  records `DT_NEEDED libOpenGL.so.0`, which runs. A link that wants `glX*` fails naming the symbol,
-  which is the correct answer.
-- **`libGL.so.1` must not exist.** libepoxy treats any `libGL.so.1` it can open as the GLX provider
-  and resolves `glXGetCurrentContext` from it, aborting when it is missing. Pointing `.1` at
-  glvnd's `libOpenGL` kills the process on the second entry point a client resolves:
-  `glXGetCurrentContext() not found: … undefined symbol`, `SIGABRT`, exit 134. On this image
-  `Xwayland` is what links libepoxy. It reproduces on any machine with libepoxy and EGL: make a
-  desktop-GL context current, call `glGetString` then `glGetIntegerv` through epoxy, and run it
-  with `LD_LIBRARY_PATH` pointing at a directory holding `libGL.so.1 -> libOpenGL.so.0`.
-- **Two programs on the image ask for the unsuffixed name, and both are served.**
-  `glmark2-wayland` wants exactly this. `eglinfo`'s bundled loader lists `libGL.so.1` then
-  `libGL.so` but is never reached, because `eglinfo` loads through
-  `gladLoadGLLoader(eglGetProcAddress)`. `libgstgl` and libepoxy name only `libGL.so.1`, so they
-  see no desktop GL library on this host and have nothing to mis-resolve.
-
-The alias is not a GLX provider, and there is no GLX provider on this host.
-
-To confirm an image carries the alias:
+To confirm what an image carries:
 
 ```sh
-unsquashfs -ll build/iso_root/system.sfs | grep -E 'libGL|libOpenGL'
-ls build/fs/usr/lib/libGL.so                 # the same question of the build tree
+unsquashfs -ll build/iso_root/system.sfs | grep -E 'libGL|libOpenGL|libGLX'
+ls build/fs/usr/lib/libGL.so*                # the same question of the build tree
 ```
 
-mesa is built `-D glx=disabled -D platforms=wayland`: no GLX and no X11 EGL platform, so `glxgears`
-and `glxinfo` cannot be linked on this host at all. Xwayland is the single X exception, and those
-two programs live in a box. Xwayland itself is built `-Dglx=false` (with `-Dglamor=true` and
-`-Ddri3=true`), so from the box `glxgears` cannot draw and `glxinfo` reports that the X server has
-no GLX extension. The box's `es2gears_x11`, which draws through EGL, is the X11 path that works.
-The `app.mesa-utils` catalogue row puts `glxgears`, `glxinfo` and `es2gears_x11` on the host's
-path as shims; any other program in the box is reached with `kdos-appbox -b app.mesa-utils run`:
+The `mesa-demos` port is built for Wayland alone (`-Dx11=disabled`), so `glxgears`, `glxinfo` and
+the X11 EGL demos are not on the host. They come from a box: the `app.mesa-utils` catalogue row
+builds Debian's `mesa-utils` on the base image and puts `glxgears`, `glxinfo` and `es2gears_x11` on
+the host's path as shims. Those three names are the ones the host does not carry, so a shim never
+shadows a host binary; any other program in the box is reached with
+`kdos-appbox -b app.mesa-utils run`:
 
 ```sh
 kdos app install app.mesa-utils
-es2gears_x11                                  # draws, through EGL and Xwayland
-glxinfo                                       # reports no GLX extension on the X server
-glxgears                                      # cannot draw, for the same reason
+es2gears_x11                                  # through EGL and Xwayland
+glxinfo                                       # the GLX extension Xwayland serves
+glxgears                                      # through GLX and Xwayland
 kdos-appbox -b app.mesa-utils run eglinfo     # the boxed copy, not the host's
 ```
 
@@ -1149,7 +1423,7 @@ stock ISO:
   refuses to sweep with exit status 2;
 - `packlane.sh` looks for packs on the medium at `/mnt/iso/packs`, or in the store at
   `/var/lib/kdos/packs` when there is no medium, and reports every check that needs one (a base,
-  `rt-gtk`, the index, `app.keepassxc` (`PACKLANE_APP`) and `app.gimp` (`PACKLANE_QTAPP`)) as
+  `rt-gtk`, the index, `app.vorta` (`PACKLANE_APP`) and `app.meld` (`PACKLANE_QTAPP`)) as
   failed;
 - `install-to-disk.sh` asks the installer for `app.zathura app.kcalc alpine` unless
   `INSTALL_PACKS` names others.
@@ -1182,13 +1456,13 @@ each in a fresh container, outside `make build`. They answer whether a single re
 a base system on its own, without the state an incremental build tree has accumulated; they do not
 replace the build. They need Docker, and `prepare_base.py` also runs `sudo`:
 
-- `prepare_base.py` builds the `os-dev` build container, runs phases `00_toolchain` to `03_phase3`
-  into `build_test/` through `mini_build.py` inside it, packs the result as
-  `testing/kdos_fs.tar.gz`, writes `testing/Dockerfile.base` and builds the image `kdos-base-test`
-  from it;
-- `test_runner.py` runs `kpkg install -f <port>` for each port under `ports/core` (or the one named
-  by `--package`) in a fresh `kdos-base-test` container, recording results in
-  `testing/test_results.json` and logs under `testing/logs/`;
+- `prepare_base.py` builds the `os-dev` build container, runs phases `00_cross` to `31_compilers`
+  into `build_test/` through `mini_build.py` inside it, reading each package phase's
+  `packages.txt` or `packages.d/`, packs the result as `testing/kdos_fs.tar.gz`, writes
+  `testing/Dockerfile.base` and builds the image `kdos-base-test` from it;
+- `test_runner.py` runs `kpkg install -f <port>` for each port under `ports/core`, found one shelf
+  down and named by its bare name (or the one named by `--package`), in a fresh `kdos-base-test`
+  container, recording results in `testing/test_results.json` and logs under `testing/logs/`;
 - `report_gen.py` summarises those results as `testing/report.html`.
 
 ## What is not tested
@@ -1208,7 +1482,7 @@ The pack lane (the [import lane](../06-reference/glossary.md), exercised by `pac
 application packs into it. Nothing tests the lane until someone provides packs, and nothing tests a
 pack rollback on a booted machine; see [The other harnesses](#the-other-harnesses).
 
-Of the 53 names `kdos-shell` answers to, fourteen have no committed frame: `about`, `ascii`,
+Of the 55 names `kdos-shell` answers to, fourteen have no committed frame: `about`, `ascii`,
 `audio`, `bt`, `cal`, `calc`, `clip`, `devices`, `ime`, `mediad`, `note`, `slit`, `time` and
 `users`. `ascii`, `ime` and `mediad` have no dump at all. `clip` cannot be linked into the dump
 harness, because it wants a protocol the harness does not generate. Most of the rest draw something
@@ -1233,6 +1507,11 @@ A golden cannot see a translucent window. A surface that is seen through sets
 in; a dump records the slot, so a window at 70 per cent and one at 100 give identical goldens. The
 same holds for `ktui_draw_blend`, which writes a blend as a cell's literal colour and leaves its
 slot as drawn. Only the rig can show either.
+
+The chart's pixels are held to properties and to digests of themselves, so a test says a picture
+is unchanged and never that it reads well. The pixel tier of `kdos-res` (its tiles, and the sweep
+that gives back the tile of a chart whose page is not on screen) runs only in a window, which no
+dump reaches; the rig is the place to look at both.
 
 The pointer's own pixels are in no test. The compositor draws the cursor, and a photograph of a
 moving pointer is the only place to look at it.

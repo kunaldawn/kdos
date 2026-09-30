@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = organicmaps
+version     = 2025.09.05.1
+release     = 1
+_tag        = 2025.09.05-1-linux
+_gtfs       = 7516753825500f90ac2de6f18c256d5abec1ff33
+_protobuf   = 9442c12e866b56369f1c53abea1261259c924a19
+_fastobj    = 42629f744269e004907a6fb4f16c6c7f69acc586
+source      = $name-$version.tar.gz::https://github.com/organicmaps/organicmaps/archive/refs/tags/$_tag.tar.gz
+source      = organicmaps-just_gtfs-$_gtfs.tar.gz::https://github.com/organicmaps/just_gtfs/archive/$_gtfs.tar.gz
+source      = organicmaps-protobuf-$_protobuf.tar.gz::https://github.com/organicmaps/protobuf/archive/$_protobuf.tar.gz
+source      = fast_obj-$_fastobj.tar.gz::https://github.com/thisistherk/fast_obj/archive/$_fastobj.tar.gz
+sha256      = 4fab0f3e1c9aa3e1a5174d9af47cc974e820b22e0dc2dec844f5b3d2eeca9caf  organicmaps-2025.09.05.1.tar.gz
+sha256      = 7017a708f3bfba534bc9eabe8d9c641f595d32d91d7b4c4ead8bb65514fda594  organicmaps-just_gtfs-7516753825500f90ac2de6f18c256d5abec1ff33.tar.gz
+sha256      = 9903264b35493ec519c4d45ecc2043356450935e56939ef6ec0fe982320f4784  organicmaps-protobuf-9442c12e866b56369f1c53abea1261259c924a19.tar.gz
+sha256      = 14ad8a0db71464e90144ae8ceac65c1b672a630cf0884e451c8cf346fd1022de  fast_obj-42629f744269e004907a6fb4f16c6c7f69acc586.tar.gz
+description = Organic Maps: offline maps with search and turn-by-turn routing for walking, cycling and driving, from OpenStreetMap data
+homepage    = https://organicmaps.app/
+depends     = cmake ninja python3 pkgconf boost expat fast-double-parser gflags jansson pugixml utfcpp glm icu freetype2 harfbuzz zlib vulkan-headers qt6-qtbase qt6-qtpositioning qt6-qtsvg hicolor-icon-theme

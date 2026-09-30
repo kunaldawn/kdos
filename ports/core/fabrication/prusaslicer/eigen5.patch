@@ -1,0 +1,102 @@
+diff -rupN PrusaSlicer-version_2.9.3/bundled_deps/libigl/igl/diag.cpp PrusaSlicer-version_2.9.3-new/bundled_deps/libigl/igl/diag.cpp
+--- PrusaSlicer-version_2.9.3/bundled_deps/libigl/igl/diag.cpp	2025-09-12 12:27:39.000000000 +0200
++++ PrusaSlicer-version_2.9.3-new/bundled_deps/libigl/igl/diag.cpp	2025-10-15 20:58:52.536372844 +0200
+@@ -72,14 +72,16 @@ IGL_INLINE void igl::diag(
+   Eigen::SparseMatrix<T>& X)
+ {
+   // clear and resize output
+-  Eigen::DynamicSparseMatrix<T, Eigen::RowMajor> dyn_X(V.size(),V.size());
++  Eigen::SparseMatrix<T, Eigen::RowMajor> dyn_X(V.size(),V.size());
+   dyn_X.reserve(V.size());
++  dyn_X.uncompress();
+   // loop over non-zeros
+   for(typename Eigen::SparseVector<T>::InnerIterator it(V); it; ++it)
+   {
+     dyn_X.coeffRef(it.index(),it.index()) += it.value();
+   }
+-  X = Eigen::SparseMatrix<T>(dyn_X);
++  dyn_X.makeCompressed();
++  X = std::move(dyn_X);
+ }
+ 
+ template <typename T, typename DerivedV>
+@@ -89,14 +91,16 @@ IGL_INLINE void igl::diag(
+ {
+   assert(V.rows() == 1 || V.cols() == 1);
+   // clear and resize output
+-  Eigen::DynamicSparseMatrix<T, Eigen::RowMajor> dyn_X(V.size(),V.size());
++  Eigen::SparseMatrix<T, Eigen::RowMajor> dyn_X(V.size(),V.size());
+   dyn_X.reserve(V.size());
++  dyn_X.uncompress();
+   // loop over non-zeros
+   for(int i = 0;i<V.size();i++)
+   {
+     dyn_X.coeffRef(i,i) += V[i];
+   }
+-  X = Eigen::SparseMatrix<T>(dyn_X);
++  dyn_X.makeCompressed();
++  X = std::move(dyn_X);
+ }
+ 
+ #ifdef IGL_STATIC_LIBRARY
+diff -rupN PrusaSlicer-version_2.9.3/bundled_deps/libigl/igl/slice.cpp PrusaSlicer-version_2.9.3-new/bundled_deps/libigl/igl/slice.cpp
+--- PrusaSlicer-version_2.9.3/bundled_deps/libigl/igl/slice.cpp	2025-09-12 12:27:39.000000000 +0200
++++ PrusaSlicer-version_2.9.3-new/bundled_deps/libigl/igl/slice.cpp	2025-10-15 20:58:40.202747930 +0200
+@@ -51,10 +51,11 @@ IGL_INLINE void igl::slice(
+     CI[C(i)].push_back(i);
+   }
+   // Resize output
+-  Eigen::DynamicSparseMatrix<TY, Eigen::RowMajor> dyn_Y(ym,yn);
++  Eigen::SparseMatrix<TY, Eigen::RowMajor> dyn_Y(ym,yn);
+   // Take a guess at the number of nonzeros (this assumes uniform distribution
+   // not banded or heavily diagonal)
+   dyn_Y.reserve((X.nonZeros()/(X.rows()*X.cols())) * (ym*yn));
++  dyn_Y.uncompress();
+   // Iterate over outside
+   for(int k=0; k<X.outerSize(); ++k)
+   {
+@@ -71,7 +72,8 @@ IGL_INLINE void igl::slice(
+       }
+     }
+   }
+-  Y = Eigen::SparseMatrix<TY>(dyn_Y);
++  dyn_Y.makeCompressed();
++  X = std::move(dyn_Y);
+ #else
+ 
+   // Alec: This is _not_ valid for arbitrary R,C since they don't necessary
+diff -rupN PrusaSlicer-version_2.9.3/bundled_deps/libigl/igl/slice_into.cpp PrusaSlicer-version_2.9.3-new/bundled_deps/libigl/igl/slice_into.cpp
+--- PrusaSlicer-version_2.9.3/bundled_deps/libigl/igl/slice_into.cpp	2025-09-12 12:27:39.000000000 +0200
++++ PrusaSlicer-version_2.9.3-new/bundled_deps/libigl/igl/slice_into.cpp	2025-10-15 20:59:27.903217029 +0200
+@@ -34,7 +34,8 @@ IGL_INLINE void igl::slice_into(
+ #endif
+ 
+   // create temporary dynamic sparse matrix
+-  Eigen::DynamicSparseMatrix<T, Eigen::RowMajor>  dyn_Y(Y);
++  Eigen::SparseMatrix<T, Eigen::RowMajor>  dyn_Y(Y);
++  dyn_Y.uncompress();
+   // Iterate over outside
+   for(int k=0; k<X.outerSize(); ++k)
+   {
+@@ -44,7 +45,8 @@ IGL_INLINE void igl::slice_into(
+       dyn_Y.coeffRef(R(it.row()),C(it.col())) = it.value();
+     }
+   }
+-  Y = Eigen::SparseMatrix<T>(dyn_Y);
++  dyn_Y.makeCompressed();
++  Y = std::move(dyn_Y);
+ }
+ 
+ template <typename DerivedX, typename DerivedY>
+diff -rupN PrusaSlicer-version_2.9.3/CMakeLists.txt PrusaSlicer-version_2.9.3-new/CMakeLists.txt
+--- PrusaSlicer-version_2.9.3/CMakeLists.txt	2025-10-15 14:23:59.975834608 +0200
++++ PrusaSlicer-version_2.9.3-new/CMakeLists.txt	2025-10-15 14:24:41.430981192 +0200
+@@ -374,7 +374,7 @@ set(MINIMUM_BOOST_VERSION "1.83.0")
+ set(_boost_components "filesystem;thread;log;locale;regex;chrono;atomic;date_time;iostreams;nowide")
+ find_package(Boost ${MINIMUM_BOOST_VERSION} REQUIRED COMPONENTS ${_boost_components})
+ 
+-find_package(Eigen3 3.3.7 REQUIRED)
++find_package(Eigen3 REQUIRED)
+ 
+ add_library(boost_libs INTERFACE)
+ add_library(boost_headeronly INTERFACE)

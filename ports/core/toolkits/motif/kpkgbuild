@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = motif
+version     = 2.5.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/thentenaar/motif/archive/refs/tags/v$version.tar.gz
+sha256      = 6698f72e2018eaebb810c8a47345fc8a40a3f945551380ce88a0da6c434a010a  motif-2.5.2.tar.gz
+description = The Motif widget toolkit (libXm, libMrm, uil) for X11 programs run under Xwayland
+homepage    = https://github.com/thentenaar/motif
+depends     = autoconf automake libtool pkgconf bison flex xbitmaps libX11 libXt libXmu libXext libXpm libXft libXrender libXrandr libXcursor fontconfig freetype2 libpng libjpeg-turbo

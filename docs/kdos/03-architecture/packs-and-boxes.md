@@ -1,15 +1,15 @@
 # Packs and boxes
 
-This chapter explains how KDOS packages and runs graphical applications, which the host itself
-never installs: how an application is built from the catalogue, what a **pack** is, how a pack is
-verified, installed and mounted, how a box's root filesystem is composed, and how a **box**,
+This chapter explains how KDOS packages the graphical applications that run in containers rather
+than as native ports: how an application is built from the catalogue, what a **pack** is, how a pack
+is verified, installed and mounted, how a box's root filesystem is composed, and how a **box**,
 whichever route built it, reaches your desktop. It is written for administrators who want to know
 what happens when an application is installed, and for contributors working on `kdos-appbox` (and
 `kdos-box`, the same program under a second name), `kdos-pack`, `kdos-packd`, `kdos-boxinit` or the
 catalogue. If you only want to install and use applications, read
-[Applications](../02-user-guide/applications.md) first; this chapter is the machinery underneath
-it. [Principles](../01-philosophy/principles.md) explains why no GTK or Qt application
-runs on the host at all.
+[Applications](../02-user-guide/applications.md) first; this chapter is the machinery underneath it.
+[Principles](../01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop) explains
+which applications are native ports instead, and why.
 
 Seven terms carry the chapter:
 
@@ -54,7 +54,7 @@ machine without one, and the one that carries a verification KDOS itself perform
 
 ## The catalogue
 
-`src/packages/kdos-appbox/catalogue` defines what can be built, and is installed to
+`src/system/kdos-appbox/catalogue` defines what can be built, and is installed to
 `/usr/share/kdos/appstore/catalogue`. The store lane, the installer (`kinstall`) and `kdos app` all
 read this one file; there is no second copy and no generated index, so a row added here is offered
 by every surface.
@@ -70,17 +70,17 @@ counts every line kind in the shipped file:
 |---|---|---|
 | `base` | A whole root filesystem | 2 |
 | `runtime` | A layer over the base, shared by many applications | 7 |
-| `app` | One application, as a difference over a runtime or the base | 180 |
+| `app` | One application, as a difference over a runtime or the base | 73 |
 | `data` | A dataset, mounted but never composed into a container | 2 |
 | `image` | A base that names its own container image, `image <base> <ref>` | 1 |
 | `snapshot` | Which Debian archive date the packages come from | 1 |
-| `env` | An environment variable a row needs, `env <row> NAME=VALUE` | 8 |
-| `cmd` | A command a row provides that has no graphical launcher, `cmd <row> <name>` | 33 |
+| `env` | An environment variable a row needs, `env <row> NAME=VALUE` | 7 |
+| `cmd` | A command a row provides that has no graphical launcher, `cmd <row> <name>` | 25 |
 | `deb` | An application Debian does not carry, `deb <row> <releases-api-url> <asset-pattern>` | 1 |
-| `needs` | A data row an application is useless without, `needs <app> <data>` | 1 |
-| `graft`, `boxgraft` | Where a data row's contents should appear, `graft <data> <path-in-pack> <destination>` | 1 and 2 |
-| `group` | A curated bundle `kdos-store` and the installer offer as one tick | 21 lines, 7 groups |
-| `meta` | Display name, category, size estimate and tagline | 182: one for each `app` and `data` row |
+| `needs` | A data row an application is useless without, `needs <app> <data>` | 0 |
+| `graft`, `boxgraft` | Where a data row's contents should appear, `graft <data> <path-in-pack> <destination>` | 2 and 1 |
+| `group` | A curated bundle `kdos-store` and the installer offer as one tick | 17 lines, 7 groups |
+| `meta` | Display name, category, size estimate and tagline | 75: one for each `app` and `data` row |
 
 **A row's parent must appear above it.** The resolver walks a chain upward in one pass, so a
 forward reference is a chain it cannot close; reordering the file makes an install fail naming the
@@ -104,7 +104,7 @@ with a missing parent) while the other members still install.
 
 **`meta` is optional.** Its form is `meta <id> <name>|<category>|<bytes>|<tagline>`, separated by
 pipes because a tagline contains spaces. In the shipped file every `app` and `data` row has one,
-which is why `kdos app list --all` prints 182 entries: the 180 applications and the 2 data rows. A
+which is why `kdos app list --all` prints 75 entries: the 73 applications and the 2 data rows. A
 row without one presents as its own id, category `Other`, no tagline and size 0, so adding software
 is a one-line change. The size is an estimate and every surface labels it as one: what apt resolves
 on the day depends on the snapshot.
@@ -434,7 +434,7 @@ produces a pack that fails that comparison. Nothing in the tree applies deltas a
 
 No applications are baked onto the installation medium. The ISO carries the catalogue; the only pack
 it can carry is the opt-in KDOS base pack described below. The packaging step
-`script/06_packaging/01_packs.sh` creates the pack store's two directories,
+`script/phases/70_image/100_packs.sh` creates the pack store's two directories,
 `/var/lib/kdos/packs/staging` at mode `01777` and `/var/lib/kdos/packs/mnt`. Staging is the one
 place an unprivileged write may land. Its mode is set at build time as well as by the daemon, so a
 first boot does not refuse an import because `kdos-packd` has not yet run.
@@ -477,12 +477,12 @@ with a warning.
 
 The root-filesystem pack is opt-in because it costs a second `mkfs.erofs` over the whole tree on
 every build, for a base most machines will never use. The flag is passed by the `Makefile` and named
-in `script/chroot_exec.sh`. The pack is written to `build/kdos-base/` rather than into the pack
+in `script/chroot/exec.sh`. The pack is written to `build/kdos-base/` rather than into the pack
 store: the pack store is *inside* the root filesystem, so a pack written there would be squashed
-into `system.sfs` and the medium would carry the tree twice. `script/06_packaging/02_iso.sh` copies
+into `system.sfs` and the medium would carry the tree twice. `script/phases/70_image/110_iso.sh` copies
 it to `/packs/kdos.kpack` on the ISO9660 filesystem, beside `system.sfs`. A booted medium appears at
 `/mnt/iso`, and `kdos-packd` scans `/mnt/iso/packs` for `*.kpack`, so the pack is usable with
-nothing installed. The copy is gated on the flag, not on the file being present, and `01_packs.sh`
+nothing installed. The copy is gated on the flag, not on the file being present, and `100_packs.sh`
 deletes `build/kdos-base/` whenever the flag is off, so a pack left by an earlier opt-in build does
 not reach later images.
 
@@ -621,9 +621,9 @@ The kernel refuses to stack an upper layer on overlayfs, and a live session's `$
 overlay. A filesystem the daemon has not been shown to work on is treated the same way rather than
 guessed at. The daemon's `status` reply marks each composed box `persistent` or `ephemeral`, so
 losing your work is never silent. `persistent` means the upper layer is in your home directory; a
-home on tmpfs is marked `persistent` and still loses the layer at the next boot. The merged root is mounted at
-`$XDG_RUNTIME_DIR/kdos/boxes/<box>/root`. The daemon composes at most 32 boxes, each a stack of at
-most 32 packs.
+home on tmpfs is marked `persistent` and still loses the layer at the next boot. The merged root is
+mounted at `$XDG_RUNTIME_DIR/kdos/boxes/<box>/root`. The daemon composes at most 32 boxes, each a
+stack of at most 32 packs.
 
 There is one box per application, named after the pack. One box composing every installed
 application would hit two limits at once: an overlay cannot gain a layer while it is mounted, so
@@ -756,13 +756,14 @@ graft namespaces, because the host's data directories are invisible inside a box
 | `boxgraft` | A symlink under `~/.local/share/kdos/packs/<name>` | Boxed applications, which share your home |
 
 A `boxgraft` destination beginning with `~/` lands at that place in your home instead, for a program
-that reads its own fixed directory and takes no variable. An `env` line names the place for the
-application. The catalogue pairs the two like this, though no launch exports a catalogue `env` row
-(see [The environment a box is given](#the-environment-a-box-is-given)):
+that reads its own fixed directory and takes no variable. The shipped catalogue declares a host
+graft for the KiCad models, where the natively built KiCad looks, and both kinds for the Tesseract
+languages:
 
 ```text
-boxgraft data.kicad-packages3d  usr/share/kicad/3dmodels  kicad-3dmodels
-env      app.kicad              KICAD9_3DMODEL_DIR=$HOME/.local/share/kdos/packs/kicad-3dmodels
+graft    data.kicad-packages3d  usr/share/kicad/3dmodels  kicad/3dmodels
+graft    data.tesseract-langs   usr/share/tesseract-ocr/5/tessdata  tesseract-ocr/5/tessdata
+boxgraft data.tesseract-langs   usr/share/tesseract-ocr/5/tessdata  tessdata
 ```
 
 A graft never replaces something that is not a symlink: an existing real file or directory at the
@@ -818,9 +819,9 @@ line. It has four forms:
 | `genlaunchers <desktop-dir> <fs-root>` | One directory of desktop entries | The system tree under `<fs-root>` |
 
 The system tree is `/etc/skel/.local/share/applications`, `/usr/share/kdos/alien-apps` and
-`/usr/local/bin`; the build's `script/06_packaging/00_launchers.sh` runs the `--packs-dir` form,
+`/usr/local/bin`; the build's `script/phases/70_image/030_launchers.sh` runs the `--packs-dir` form,
 which with no packs on the medium clears any stale launchers (its place in the build is in
-[How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-06_packaging)). Your own tree is
+[How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image)). Your own tree is
 `~/.local/share/applications`, `~/.local/share/kdos/alien-apps` and `~/.local/bin`, which every
 reader consults first.
 
@@ -855,7 +856,7 @@ The details (entry naming, quoting, field codes, the tables that skip or rename 
 - [Packaging](packaging.md) — the host's separate packaging system
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md#applications) — this model compared with
   Flatpak, Snap and distribution packages
-- [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-06_packaging) — the packaging
+- [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image) — the packaging
   phase that writes launchers and, on request, the base pack
 - [The ports catalogue](../06-reference/ports-catalogue.md) — the host's recipes, which this
   catalogue is not

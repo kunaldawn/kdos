@@ -175,8 +175,9 @@ const KbuildSnapshot *kbuild_snap_find(const KbuildSnapshot *snaps, int n,
 /* Restore selection
  *
  * Layered and newest-wins: each declared path is taken from the newest
- * snapshot at or below the target, so restoring phase 5 can still get `ports`
- * from phase 3 if that is the last phase that declared it. */
+ * snapshot at or below the target, so restoring 60_kernel takes `fs` from
+ * 60_kernel and `cross` and `mark` from 10_bootstrap, the last phase that
+ * declares them. */
 
 int kbuild_snap_plan_restore(const char *root, const KbuildPhase *ph, int nph,
 			     int target_index, KbuildRestoreItem *out, int max)
@@ -262,9 +263,9 @@ int kbuild_snap_interrupted(const char *build_dir, char *target, size_t cap)
 	return 1;
 }
 
-/* /proc/mounts, longest first — chroot_exec.sh's own bind mounts have to be
- * released before build/ can be deleted, and a snapshot taken over a live
- * bind mount would archive the host's /dev. */
+/* /proc/mounts, longest first — script/chroot/exec.sh's own bind mounts have
+ * to be released before build/ can be deleted, and a snapshot taken over a
+ * live bind mount would archive the host's /dev. */
 int kbuild_snap_mounts_under(const char *path, char out[][256], int max)
 {
 	size_t len = 0;

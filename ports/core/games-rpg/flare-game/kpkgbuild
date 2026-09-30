@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = flare-game
+version     = 1.15
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/flareteam/flare-game/archive/refs/tags/v$version.tar.gz
+sha256      = b6b2e7037dae416c29d2d55f8275491ed9edec690194fc2165a5429582a2518c  flare-game-1.15.tar.gz
+description = Flare: Empyrean Campaign — the art, music, maps and story that make the FLARE engine a game
+homepage    = https://flarerpg.org
+depends     = cmake ninja flare-engine

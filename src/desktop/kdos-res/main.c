@@ -20,7 +20,7 @@
  * THE SAMPLE DEADLINE IS ALSO THE POLL DEADLINE. This loop is woken by events
  * — a keystroke, a pointer crossing a row, a configure — so a poll that always
  * waits the full interval samples at irregular intervals, and a chart plots one
- * sample per pixel. The wait is always what remains until the next sample and
+ * sample per column. The wait is always what remains until the next sample and
  * never more.
  */
 
@@ -54,6 +54,7 @@ static void usage(FILE *f)
 	fprintf(f,
 	  "usage: kdos-res [--page <id>] [--tty|--gui]\n"
 	  "                [--fixture <dir>] [--interval <ms>] [--detail <pid>]\n"
+	  "                [--scrub <n>]\n"
 	  "                [--dump|--dump-cells] [--dump-size WxH] [--json]\n"
 	  "                [--version] [--help]\n"
 	  "\n"
@@ -115,10 +116,18 @@ static void on_hup(int sig)
 	g_reload = 1;
 }
 
+/* The icons follow the pixel cell: the output's scale arrives once the window
+ * is on a screen, and a fractional one grows the cell instead of the scale.
+ * See kicon_recell(). */
+static void res_recell(int scale)
+{
+	kicon_recell(kdisp_cell_w(), kdisp_cell_h(), scale);
+}
+
 int main(int argc, char **argv)
 {
 	const char *page = NULL, *fixture = NULL, *font = NULL;
-	int detail_pid = 0;
+	int detail_pid = 0, scrub = 0;
 	int want_tty = 0, want_gui = 0, dump = 0, dump_cells = 0, json = 0;
 	int dw = 80, dh = 24, interval = 0;
 
@@ -137,6 +146,14 @@ int main(int argc, char **argv)
 			 * geometry nothing checks.
 			 */
 			detail_pid = atoi(argv[++i]);
+		} else if (!strcmp(a, "--scrub") && i + 1 < argc) {
+			/*
+			 * Dump-only, for the same reason: `←` pressed this
+			 * many times on the page before it is drawn, so a
+			 * chart's scrub — its marked sample and the reading it
+			 * gives — has a golden.
+			 */
+			scrub = atoi(argv[++i]);
 		} else if (!strcmp(a, "--fixture") && i + 1 < argc) {
 			fixture = argv[++i];
 		} else if (!strcmp(a, "--interval") && i + 1 < argc) {
@@ -242,6 +259,8 @@ int main(int argc, char **argv)
 		res_sample();
 		if (detail_pid)
 			res_detail_open_proc(detail_pid);
+		for (int k = 0; k < scrub; k++)
+			res_frame_key(KT_K_LEFT);
 		res_draw_frame();
 		if (json)
 			return 0;
@@ -296,6 +315,31 @@ int main(int argc, char **argv)
 					"— try --tty\n");
 			return 1;
 		}
+		/*
+		 * THE PIXEL TIER, which the charts are drawn in where it is up
+		 * — see graph.c. AFTER kdisp_init, because the cell size and
+		 * the output scale are the display's. A display with no pixel
+		 * cell of its own answers one, which kicon_init() refuses: the
+		 * tier stays off and every chart draws its cells, as it does
+		 * on a terminal and in a dump, where this is never called.
+		 * The same call lights the header band's page icon, which
+		 * `icons` asks for.
+		 */
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
+		/* The cell and scale answered here are the font's at 1 until
+		 * the window is on a screen; the icons are rebuilt when the
+		 * output's arrive. */
+		kdisp_on_scale(res_recell);
+		/*
+		 * THE PAGE IS HANDED TO A FLAT BACKDROP, which paints it in
+		 * the same KT_BG it always was — so nothing on screen moves —
+		 * and gives the window a pixel layer: the band's figure is
+		 * display text drawn there (see res_draw_frame()). A window
+		 * only: on a terminal and in a dump nothing is installed, and
+		 * the frame draws no figure.
+		 */
+		kch_px_flat(KT_BG);
+		res_graph_reset();
 	} else {
 		ktui_backend_set(NULL);	/* NULL selects the built-in tty */
 		if (ktui_term_init(1) != 0) {
@@ -323,6 +367,7 @@ int main(int argc, char **argv)
 			g_reload = 0;
 			res_conf_load();
 			res_theme_from_cache();
+			res_graph_reset();
 			ktui_draw_invalidate();
 		}
 
@@ -342,6 +387,7 @@ int main(int argc, char **argv)
 
 		res_draw_frame();
 		ktui_draw_flush();
+		res_graph_sweep();
 
 		now = kpr_mono_ms();
 		int wait = next > now ? (int)(next - now) : 0;

@@ -41,8 +41,9 @@ You need:
 
 The wizard checks each of these and names the one that failed.
 
-Applications are optional during the install. Read [8. Applications](#8-applications) before
-relying on them: of the three ways the installer can deliver applications, only the one that records
+The natively built applications are part of the system and are always copied. Applications from
+the catalogue are optional during the install. Read [8. Applications](#8-applications) before
+relying on them: of the three ways the installer can deliver them, only the one that records
 your choice for the first login reaches the installed machine. The other two run the live session's
 own `kdos-appbox`, which writes into the live system's pack store and container storage rather than
 onto the new disk.
@@ -86,6 +87,7 @@ it.
 | `Esc` | Back a page, or close the key card |
 | `PgUp` / `PgDn`, mouse wheel | Scroll a page taller than the screen |
 | `Ctrl+U` | Clear the field you are in |
+| `Ctrl+W`, `Ctrl+Backspace` | Delete the word before the caret; `Ctrl+←` / `Ctrl+→` move by word |
 | `F1` | Show or hide the key card |
 | `L` | Toggle the full log, on the Install page |
 | `Ctrl+Q`, `Ctrl+C` | Quit. The installer always asks first, and during an install it warns that the target is left half written |
@@ -312,9 +314,10 @@ The checkbox is `Install the alien app library`. An *alien app* is a graphical a
 does not compile itself and runs in a container instead; see
 [Applications](applications.md#what-an-alien-app-is). This checkbox, shown with its size, decides
 whether the live account's container store, `/home/kdos/.local/share/containers` (the images Podman
-keeps), is copied to the disk. The medium ships no prebuilt applications, so the store holds only
-what the live session has itself pulled or built, often nothing. Leaving it out does not stop you
-installing applications later.
+keeps), is copied to the disk. The medium ships no prebuilt container images, so the store holds
+only what the live session has itself pulled or built, often nothing. Leaving it out does not stop
+you installing applications later. The natively built applications are part of the system itself
+and are copied with it whatever this checkbox says.
 
 #### Services
 
@@ -334,26 +337,30 @@ machine, and the boot scripts skip it. Any of them can be changed later with `se
 
 ### 8. Applications
 
+This page is about boxed applications only. The applications KDOS compiles natively are part of
+the system the installer copies, so they are on the new disk whatever you choose here; see
+[Applications](applications.md#native-applications).
+
 The application groups this medium's catalogue can build, with `essential` already ticked. The
 catalogue is `/usr/share/kdos/appstore/catalogue`; the groups and their descriptions come from it,
 and a group none of whose members is in the catalogue is not shown. The shipped catalogue has seven.
-`essential` holds Firefox ESR, LibreOffice, GIMP, Zathura and KeePassXC.
+`essential` holds Zathura.
 
 | Group | Description | Applications |
 |---|---|---|
-| `essential` | What a new machine starts with | 5 |
-| `office` | Documents, spreadsheets and reading | 8 |
-| `creative` | Images, audio and video | 10 |
-| `dev` | Programming and electronics | 8 |
-| `science` | Computation, modelling and data | 9 |
-| `make` | Three dimensions: model it, slice it, cut it | 8 |
-| `games` | Games and emulators | 13 |
+| `essential` | What a new machine starts with | 1 |
+| `office` | Documents, spreadsheets and reading | 4 |
+| `creative` | Images, audio and video | 1 |
+| `dev` | Programming and electronics | 4 |
+| `science` | Computation, modelling and data | 6 |
+| `make` | Three dimensions: model it, slice it, cut it | 1 |
+| `games` | Games and emulators | 1 |
 
 `Space`, `Enter` or a click toggles a group. The size total under the list updates as you go and is
 labelled an estimate: each group counts its own members once and no shared runtime, and an
-application in two ticked groups is counted in both (LibreOffice, Zathura and GIMP are each in
-`essential` and in one other group). The Summary's application count is summed the same way. The
-shared runtimes are not choices; each application brings the one it is built on.
+application in two ticked groups is counted in both (Zathura is in `essential` and in `office`).
+The Summary's application count is summed the same way. The shared runtimes are not choices; each
+application brings the one it is built on.
 
 The page also says how the applications will arrive, which matters more than the size:
 
@@ -601,7 +608,7 @@ Things to watch for:
   answer file without `autologin = yes` installs a machine that asks for a password at `tty1`. The
   install edits the target's `/etc/kdos/login.conf` in place: `autologin = <username>` for on, the
   same line commented out for off.
-- `apps` takes groups, not applications. An application id such as `app.krita` matches no group
+- `apps` takes groups, not applications. An application id such as `app.scribus` matches no group
   and is dropped. If none of the names is a known group, the selection falls back to `essential`
   rather than failing the install over a spelling mistake.
 - There is no key for the administrator choice. An account installed from an answer file is

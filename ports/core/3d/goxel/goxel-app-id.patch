@@ -1,0 +1,11 @@
+--- a/src/main.c
++++ b/src/main.c
+@@ -388,6 +388,8 @@
+     glfwInit();
+     glfwWindowHint(GLFW_SAMPLES, 4);
+     glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
++    glfwWindowHintString(GLFW_WAYLAND_APP_ID, "goxel");
++    glfwWindowHintString(GLFW_X11_CLASS_NAME, "goxel");
+     monitor = glfwGetPrimaryMonitor();
+     mode = glfwGetVideoMode(monitor);
+     if (mode) {

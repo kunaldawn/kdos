@@ -1,0 +1,90 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   00-order — runs whose order a comment pins
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+#
+# This file sorts first, so its runs install before any shelf file's ports, in
+# the order written. A run is here because a comment pins its order; everything
+# else is in the file of its shelf.
+#
+# It is also the one file that may name a port an earlier phase installs: kpkg
+# skips that port while its recipe hash is current and rebuilds it here, in this
+# order, when the recipe has changed.
+
+# `expr length` is a GNU extension toybox does not implement — it yields the
+# empty string, and brltty's configure then reports a driver that is present as
+# unknown. One program, for the same reason sed and gawk are ports.
+coreutils
+
+# Text games are this desktop's own medium: they are cells already, so they
+# cost a terminal window and no toolkit at all. A machine with nothing to play
+# on it is a machine nobody stays at.
+#
+# THEY LAND AFTER coreutils ON PURPOSE. Every one of these installs with GNU
+# `install`, and toybox as this image configures it has no install applet — a
+# game listed before coreutils dies on "install: not found" at the very last
+# step of its build, hours in.
+#
+# The dungeon of Doom, 3.6.7. No setgid playground and no shared score file:
+# the wrapper points $NETHACKDIR at the player's own data directory, which is
+# the only way a compile-time HACKDIR can become per-player.
+nethack
+
+# Interactive fiction, with one MIT-licensed story shipped beside it so the
+# program opens something. It also installs the z-machine MIME type, which
+# shared-mime-info does not define — without it a story file resolves to
+# nothing and the entry's MimeType line is decoration.
+frotz
+
+# Three of the BSD games — Colossal Cave, tetris and worm. Not hangman: it
+# calls err(1) when it cannot open /usr/share/dict/words, and no wordlist
+# exists anywhere on this image.
+bsd-games
+
+# The arcade end of it. It builds as it is, with no patch.
+moon-buggy
+
+# A CALENDAR AND AN ADDRESS BOOK OVER A vdir — one directory of .ics or .vcf
+# files, which is greppable, diffable and backed up by copying it, and which
+# `kdos-cal` reads without asking khal anything at draw time. Each vendors the
+# part of its runtime closure no other program imports; what they share —
+# configobj, pytz, urwid, click-log — are python3-* ports.
+#
+# khal's vendor bundle carries its own pyxdg into site-packages: xdg/ and the
+# pyxdg dist-info. The path belongs to whichever package installs last, so
+# python3-pyxdg installs straight after khal and the port owns them, not the
+# bundle.
+khal
+khard
+
+# speech-dispatcher's configuration tool, spd-conf, finds its files through it.
+python3-pyxdg
+
+# Nothing else here reaches the Fediverse: iamb is Matrix and profanity is
+# XMPP. `toot tui` is the screen and `toot post` is the command, in one port.
+#
+# toot's vendor bundle carries its own PySocks into site-packages: socks.py,
+# sockshandler.py and the pysocks dist-info. The path belongs to whichever
+# package installs last, so python3-pysocks installs straight after toot and
+# the port owns them, not the bundle.
+toot
+
+python3-pysocks

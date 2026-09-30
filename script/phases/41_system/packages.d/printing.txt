@@ -1,0 +1,42 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   printing — Printing, printer drivers, labels, scanning and OCR
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libpaper
+cups
+tessdata-eng
+tesseract
+
+# Where every print queue and every OCR pipeline ends. --with-system-libtiff
+# and friends, because the bundled copies build fine and then the machine
+# carries two of each and only one gets a security fix.
+ghostscript
+
+# Without it a consumer inkjet prints washed-out garbage. The queue existing is
+# not the same as the page coming out right.
+gutenprint
+
+# A printer on a cable needs no driver either: IPP-over-USB presents the
+# device's own IPP service to cups.
+ipp-usb
+
+brlaser

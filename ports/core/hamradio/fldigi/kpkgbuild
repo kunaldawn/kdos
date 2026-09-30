@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fldigi
+version     = 4.2.13
+release     = 1
+source      = https://downloads.sourceforge.net/project/fldigi/$name/$name-$version.tar.gz
+sha256      = a1e8d990359ce9c0cce3ceb5116fd0cf72c95528969766898640ca6ca2dba8d4  fldigi-4.2.13.tar.gz
+description = fldigi — sound-card digital modes for amateur radio (PSK, RTTY, Olivia, MFSK, CW) with flarq
+homepage    = http://www.w1hkj.org/
+depends     = pkgconf fltk libX11 flxmlrpc hamlib portaudio libpulse libsndfile libsamplerate libpng libgpiod imagemagick

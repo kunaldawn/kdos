@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdbusaddons
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 063ef80460f76d86dc4b033ef04b65b69ba82ee0de410440fe609465e7f5a997  kdbusaddons-6.30.0.tar.xz
+description = KDE Frameworks: convenience classes for Qt D-Bus
+homepage    = https://api.kde.org/frameworks/kdbusaddons/html/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase libX11

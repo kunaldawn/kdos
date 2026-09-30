@@ -1,0 +1,38 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = digital
+version     = 0.31
+release     = 1
+
+_maven      = https://repo1.maven.org/maven2
+_xstream    = 1.4.20
+_mxparser   = 1.2.2
+_xmlpull    = abeaa4aa87b2625af70c32f658f44e11355fe568
+_slf4j      = 1.7.24
+_json       = 20220924
+
+source      = $name-$version.tar.gz::https://github.com/hneemann/Digital/archive/refs/tags/v$version.tar.gz
+source      = $_maven/com/thoughtworks/xstream/xstream/$_xstream/xstream-$_xstream-sources.jar
+source      = $_maven/io/github/x-stream/mxparser/$_mxparser/mxparser-$_mxparser-sources.jar
+source      = xmlpull-api-v1-$_xmlpull.tar.gz::https://github.com/aslom/xmlpull-api-v1/archive/$_xmlpull.tar.gz
+source      = $_maven/org/slf4j/slf4j-api/$_slf4j/slf4j-api-$_slf4j-sources.jar
+source      = $_maven/org/slf4j/slf4j-simple/$_slf4j/slf4j-simple-$_slf4j-sources.jar
+source      = $_maven/org/json/json/$_json/json-$_json-sources.jar
+sha256      = c17f68c8e9cf80a13f8deb70ecb36d937c4abfec5fbc73d5d9c43b1d7f0f81ef  digital-0.31.tar.gz
+sha256      = 35f61c5d3f59a8b88cbcca90196ad4355666de185d1584b24e4f2a3a851ae7aa  xstream-1.4.20-sources.jar
+sha256      = b2e72350ce8b2f287c0cd435a338c17705f9047857c52a709e223af2f5cbb0de  mxparser-1.2.2-sources.jar
+sha256      = 2a1a71a1e413f15211225c919285516be82050e26d596e4a70bcf24d5fbae59c  xmlpull-api-v1-abeaa4aa87b2625af70c32f658f44e11355fe568.tar.gz
+sha256      = 6ba37c84d993aa9e284c6008bd31caf5ec7dd2a928cb6dadb529867d83cde952  slf4j-api-1.7.24-sources.jar
+sha256      = 4b58609f91908771dbfd5439d0664531413f65ef041b1af5b40f0902cfa97108  slf4j-simple-1.7.24-sources.jar
+sha256      = e70ce6536fc0352c6a8d398b0e534f9213938431b3ad470c0bedb50c063fbde3  json-20220924-sources.jar
+description = Digital — digital logic designer and circuit simulator for teaching, with FSM and HDL export (Java Swing)
+homepage    = https://github.com/hneemann/Digital
+depends     = openjdk unzip

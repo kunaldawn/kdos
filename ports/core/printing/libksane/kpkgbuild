@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libksane
+version     = 26.08.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 95281efd9a8754d152889958336deb9e16291ef77280bb29f8d48e9ed926fc07  libksane-26.08.1.tar.xz
+description = Qt 6 scanner widget over ksanecore, used by Skanlite and KolourPaint
+homepage    = https://invent.kde.org/graphics/libksane
+depends     = cmake ninja extra-cmake-modules qt6-qtbase ki18n kwidgetsaddons ktextwidgets kwallet ksanecore sane-backends

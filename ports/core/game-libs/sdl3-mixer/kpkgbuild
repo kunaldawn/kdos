@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = sdl3-mixer
+version     = 3.2.4
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libsdl-org/SDL_mixer/releases/download/release-$version/SDL3_mixer-$version.tar.gz
+sha256      = 182a07c745375e113dc740d43964ff21b0be29f29f59876c4dbc4db3d32f6901  sdl3-mixer-3.2.4.tar.gz
+description = Play music and sound effects from SDL3 programs: Ogg, Opus, FLAC, MP3, WavPack, MOD, MIDI and chiptunes
+homepage    = https://github.com/libsdl-org/SDL_mixer
+depends     = cmake ninja pkgconf perl sdl3 flac libogg libvorbis opus opusfile mpg123 wavpack libxmp libgme fluidsynth

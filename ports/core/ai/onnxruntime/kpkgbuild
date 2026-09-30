@@ -1,0 +1,46 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = onnxruntime
+version     = 1.30.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/microsoft/onnxruntime/archive/refs/tags/v$version.tar.gz
+source      = ort-abseil_cpp-20250814.0.zip::https://github.com/abseil/abseil-cpp/archive/refs/tags/20250814.0.zip
+source      = ort-re2-2024-07-02.zip::https://github.com/google/re2/archive/refs/tags/2024-07-02.zip
+source      = ort-protobuf-protobuf-33.6.tar.gz::https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protobuf-33.6.tar.gz
+source      = ort-date-v3.0.1.zip::https://github.com/HowardHinnant/date/archive/refs/tags/v3.0.1.zip
+source      = ort-mp11-boost-1.82.0.zip::https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip
+source      = ort-json-v3.11.3.zip::https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.zip
+source      = ort-pytorch_cpuinfo-66ee79c038d70dad9f08705b2c9b3e58f6d8f512.zip::https://github.com/pytorch/cpuinfo/archive/66ee79c038d70dad9f08705b2c9b3e58f6d8f512.zip
+source      = ort-microsoft_gsl-v4.2.1.zip::https://github.com/microsoft/GSL/archive/refs/tags/v4.2.1.zip
+source      = ort-safeint-3.0.28.zip::https://github.com/dcleblanc/SafeInt/archive/refs/tags/3.0.28.zip
+source      = ort-flatbuffers-v23.5.26.zip::https://github.com/google/flatbuffers/archive/refs/tags/v23.5.26.zip
+source      = ort-onnx-v1.22.0.zip::https://github.com/onnx/onnx/archive/refs/tags/v1.22.0.zip
+source      = ort-eigen-eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip::https://github.com/eigen-mirror/eigen/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33/eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip
+source      = ort-pybind11-v3.0.2.zip::https://github.com/pybind/pybind11/archive/refs/tags/v3.0.2.zip
+source      = ort-dlpack-5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip::https://github.com/dmlc/dlpack/archive/5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip
+sha256      = f6681ecbddf53898adf0cc9e8e9e84657485b84d2eca3c8aa353de6d7dd417ef  onnxruntime-1.30.0.tar.gz
+sha256      = b2bdcf6682d8cb53df365bcc5d6c318a22e55821d9978a10fdb61404c026daff  ort-abseil_cpp-20250814.0.zip
+sha256      = f4300b96f7a304d4ef9bf6e0fa3ded72159f7f2d0f605bdde3e030a0dba7cf9f  ort-date-v3.0.1.zip
+sha256      = 14e8b3f03ab7461f56b3fa7ffd4acfb6e6a65f895dc4b50548cab259229afcbd  ort-dlpack-5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip
+sha256      = 6a60d76351f97132669daeeb721d6bf14b008101883ad2d687a3201c5c461eb0  ort-eigen-eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip
+sha256      = 57bd580c0772fd1a726c34ab8bf05325293bc5f9c165060a898afa1feeeb95e1  ort-flatbuffers-v23.5.26.zip
+sha256      = 04022b05d806eb5ff73023c280b68697d12b93e1b7267a0b22a1a39ec7578069  ort-json-v3.11.3.zip
+sha256      = c9291d95f5f6e5c561990d06a589b01d89e553d0f366f0ce723dd1788e7a6076  ort-microsoft_gsl-v4.2.1.zip
+sha256      = 81431bdc44c439a324e02c07ed067f8f556419fd86f2d8b486ff568df6aac899  ort-mp11-boost-1.82.0.zip
+sha256      = 8dc1181d33529a1249e031226126d0699ac9bdfc571ee530ee3a12f4656f2be3  ort-onnx-v1.22.0.zip
+sha256      = 16498d7dc7967e9b100632138babd4b86b61592beeccdd556f67539d9c231355  ort-protobuf-protobuf-33.6.tar.gz
+sha256      = e3754d16ea536bdc968ce1464fa822e198a1217881d31bd9bf3d287fed2bbf4c  ort-pybind11-v3.0.2.zip
+sha256      = b93044263ee072e9be3577bda52f48d5a4dd9fcb80091529471c8d2bfe59219d  ort-pytorch_cpuinfo-66ee79c038d70dad9f08705b2c9b3e58f6d8f512.zip
+sha256      = a835fe55fbdcd8e80f38584ab22d0840662c67f2feb36bd679402da9641dc71e  ort-re2-2024-07-02.zip
+sha256      = 3ffbd9a2fdff45da77da3e7269e9aa512ea43bed5c38ce8fd8f3d1068a032c3f  ort-safeint-3.0.28.zip
+description = ONNX Runtime: inference for ONNX models on the CPU, as a C/C++ library and a Python module
+homepage    = https://onnxruntime.ai/
+depends     = cmake ninja patch python3 numpy python3-setuptools python3-wheel python3-packaging python3-pip zlib

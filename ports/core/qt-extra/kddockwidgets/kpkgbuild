@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kddockwidgets
+version     = 2.4.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/KDAB/KDDockWidgets/releases/download/v$version/kddockwidgets-$version.tar.gz
+sha256      = 5cd9495d9316cf6cc937bb328a7fd491c3248ef2469cfa42511f1039f6148aca  kddockwidgets-2.4.1.tar.gz
+description = KDAB dock widget framework for Qt 6, with the Widgets and Qt Quick front ends
+homepage    = https://github.com/KDAB/KDDockWidgets
+depends     = cmake ninja qt6-qtbase qt6-qtdeclarative nlohmann-json

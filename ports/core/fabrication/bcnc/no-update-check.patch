@@ -1,0 +1,34 @@
+diff -ru a/bCNC/bCNC.ini b/bCNC/bCNC.ini
+--- a/bCNC/bCNC.ini
++++ b/bCNC/bCNC.ini
+@@ -1,7 +1,7 @@
+ [bCNC]
+ tool = CNC
+ page = File
+-checkinterval = 30
++checkinterval = 0
+ 
+ ribbon = File Control Probe CAM Editor Terminal>
+ 
+diff -ru a/bCNC/Updates.py b/bCNC/Updates.py
+--- a/bCNC/Updates.py
++++ b/bCNC/Updates.py
+@@ -219,14 +219,14 @@
+ # Check if interval has passed from last check
+ # -----------------------------------------------------------------------------
+ def need2Check():
+-    lastCheck = Utils.getInt(Utils.__prg__, "lastcheck", 0)
+-    if lastCheck == 0:  # Unknown
+-        return True
+-
+     checkInt = Utils.getInt(Utils.__prg__, "checkinterval", 30)
+     if checkInt == 0:  # Check never
+         return False
+ 
++    lastCheck = Utils.getInt(Utils.__prg__, "lastcheck", 0)
++    if lastCheck == 0:  # Unknown
++        return True
++
+     return lastCheck + checkInt * 86400 < int(time.time())
+ 
+ 

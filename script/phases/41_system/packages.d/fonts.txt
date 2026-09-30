@@ -1,0 +1,82 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   fonts — Font packages, and font libraries and tooling
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+freetype2
+fontconfig
+bdftopcf
+terminus-font
+
+# The web-font decoder WebKitGTK links.
+woff2
+
+# One OpenType Collection covering Chinese, Japanese and Korean. Without a CJK
+# face, fontconfig has nothing to fall back to and every CJK codepoint renders
+# as a box — in foot, in an alien app, and in any filename that carries one.
+noto-cjk
+
+# Noto Sans and Noto Sans Mono, and the preference file that puts them at the
+# head of `sans-serif` and `monospace`. Anything that asks fontconfig for a
+# generic family gets Noto: libkcell's default and its monospace retry, the
+# canvas fallback, libkwl's font-step fallback and every GTK or Qt app,
+# native or boxed.
+# The desktop's own chrome, panel and terminal name Terminus. It is installed
+# BESIDE DejaVu and not instead of it: Noto Sans Mono carries the full box and
+# block sets but no diagonal arrows, four dingbats and three misc symbols, and
+# the preference file is numbered so fontconfig reaches DejaVu for those next.
+noto-fonts
+
+# The scripts noto-fonts itself does not carry: its sources are Latin, Greek
+# and Cyrillic, so Thai, Devanagari, Bengali, Tamil, Telugu, Gujarati, Hebrew,
+# Arabic, Khmer and Ethiopic all render as tofu without this. CJK is NOT here
+# — noto-cjk already ships the same 112 MB asset, and two packages owning one
+# file is a conflict at install time.
+noto-fonts-extra
+
+# The glyph range a prompt theme, a file manager's type column and a status bar
+# reach for. Upstream's own fontconfig rule prefers the PROPORTIONAL symbol
+# face for `monospace`, which puts a double-width icon in a single cell; the
+# recipe ships a corrected rule that keeps the cell grid's real family first.
+nerd-fonts-symbols
+
+# Inspect, subset and convert a font file. The desktop's own chrome_font
+# question, which faces exist and what is in them, is otherwise answered by
+# opening one in something that has no place on this host.
+fonttools
+
+font-util
+mkfontscale
+encodings
+
+# The X core fonts Xwayland serves to its X11 clients. They are the SERVER's:
+# a Motif or Xt program, native or boxed, asks Xwayland, on the host, for
+# -adobe-helvetica and -misc-fixed, and a font directory inside a box is
+# invisible to it. Three families cover xterm, grace and xastir.
+font-misc-misc
+font-adobe-75dpi
+font-cursor-misc
+
+# Metric clones of the Microsoft document fonts. Without them and
+# font-liberation a Word document paginates differently here from the machine
+# that wrote it.
+font-carlito
+font-caladea

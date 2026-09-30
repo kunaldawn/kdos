@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = retroarch-assets
+version     = 1.22.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libretro/retroarch-assets/archive/v$version.tar.gz
+sha256      = 183c638bf2e9273c975e1f46c2d19eff2f63529312856a984c0a777f973672ac  retroarch-assets-1.22.0.tar.gz
+description = RetroArch menu artwork — the XMB, Ozone, RGUI and GLUI themes, their icons, fonts and sounds
+homepage    = https://github.com/libretro/retroarch-assets
+depends     = coreutils

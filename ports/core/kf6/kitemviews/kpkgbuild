@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kitemviews
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 9452f2b0cc5dd0214b88c4ce33297866be89af4177af14f5390cfb616e49c153  kitemviews-6.30.0.tar.xz
+description = KDE Frameworks: widget add-ons for Qt item views
+homepage    = https://api.kde.org/frameworks/kitemviews/html/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase

@@ -1,0 +1,14 @@
+diff -ru a/libs/librepcb/core/workspace/workspacesettings.cpp b/libs/librepcb/core/workspace/workspacesettings.cpp
+--- a/libs/librepcb/core/workspace/workspacesettings.cpp
++++ b/libs/librepcb/core/workspace/workspacesettings.cpp
+@@ -99,8 +99,8 @@
+                      },
+                  },
+                  this),
+-    librariesAutoUpdateMode("library_updates", AutoUpdateMode::Install, this),
+-    autofetchLivePartInformation("autofetch_live_part_information", true, this),
++    librariesAutoUpdateMode("library_updates", AutoUpdateMode::Disabled, this),
++    autofetchLivePartInformation("autofetch_live_part_information", false, this),
+     externalWebBrowserCommands("external_web_browser", "command", QStringList(),
+                                this),
+     externalFileManagerCommands("external_file_manager", "command",

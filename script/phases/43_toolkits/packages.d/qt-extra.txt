@@ -1,0 +1,41 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   43_toolkits: Toolkits
+# ---------------------------------
+#   qt-extra — Third-party and KDE-hosted Qt add-on libraries that are not in
+#   KF6
+# ---------------------------------
+#
+# Libraries whose dependency closure reaches GTK, Qt, wxWidgets, FLTK or Motif:
+# the toolkits themselves, KDE Frameworks, and what applications link over
+# them.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+kirigami-addons
+polkit-qt6
+phonon
+kdsingleapplication
+kddockwidgets
+phonon-backend-vlc
+quazip
+mpvqt
+qtutilities
+qtforkawesome
+kcolorpicker
+kimageannotator
+kqtquickcharts
+qwt-qt5
+qscintilla
+python3-qscintilla
+qwt

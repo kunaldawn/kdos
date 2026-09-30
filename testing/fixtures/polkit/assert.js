@@ -8,7 +8,8 @@
 function sub(g) { return { isInGroup: function (n) { return n === g; } }; }
 
 /* Every id a shipped surface or program calls: kdos-net's list, join, forget
- * and wifi toggle, the hotspot, mmcli, and pcscd. */
+ * and wifi toggle, the hotspot, mmcli, pcscd, udisks2 for the toolkit
+ * applications, and the administrative applications' own actions. */
 var GRANT = [
     "org.freedesktop.NetworkManager.network-control",
     "org.freedesktop.NetworkManager.wifi.scan",
@@ -29,7 +30,36 @@ var GRANT = [
     "org.freedesktop.ModemManager1.Messaging",
     /* pcscd: gpg's scdaemon, opensc and ykman reaching a smart card. */
     "org.debian.pcsc-lite.access_pcsc",
-    "org.debian.pcsc-lite.access_card"
+    "org.debian.pcsc-lite.access_card",
+    /* udisks2: Dolphin's devices, GNOME Disks, K3b, Impression. */
+    "org.freedesktop.udisks2.filesystem-mount",
+    "org.freedesktop.udisks2.filesystem-mount-system",
+    "org.freedesktop.udisks2.filesystem-unmount-others",
+    "org.freedesktop.udisks2.filesystem-take-ownership",
+    "org.freedesktop.udisks2.encrypted-unlock",
+    "org.freedesktop.udisks2.encrypted-unlock-system",
+    "org.freedesktop.udisks2.encrypted-lock-others",
+    "org.freedesktop.udisks2.encrypted-change-passphrase",
+    "org.freedesktop.udisks2.eject-media",
+    "org.freedesktop.udisks2.eject-media-system",
+    "org.freedesktop.udisks2.power-off-drive",
+    "org.freedesktop.udisks2.loop-setup",
+    "org.freedesktop.udisks2.loop-delete-others",
+    "org.freedesktop.udisks2.open-device",
+    "org.freedesktop.udisks2.open-device-system",
+    "org.freedesktop.udisks2.modify-device",
+    "org.freedesktop.udisks2.modify-device-system",
+    "org.freedesktop.udisks2.rescan",
+    "org.freedesktop.udisks2.cancel-job",
+    "org.freedesktop.udisks2.ata-check-power",
+    "org.freedesktop.udisks2.ata-smart-update",
+    "org.freedesktop.udisks2.nvme-smart-update",
+    /* GParted, K3b's and KTextEditor's KAuth helpers, Resources, libvirt. */
+    "org.gnome.gparted",
+    "org.kde.k3b.updatepermissions",
+    "org.kde.ktexteditor6.katetextbuffer.savefile",
+    "net.nokyan.Resources.kill",
+    "org.libvirt.unix.manage"
 ];
 
 /* Named in the rules file's own comment as deliberately absent. If one starts
@@ -39,7 +69,22 @@ var WITHHOLD = [
     "org.freedesktop.NetworkManager.settings.modify.global-dns",
     "org.freedesktop.NetworkManager.checkpoint-rollback",
     "org.freedesktop.NetworkManager.sleep-wake",
-    "org.freedesktop.NetworkManager.reload"
+    "org.freedesktop.NetworkManager.reload",
+    "org.freedesktop.udisks2.filesystem-fstab",
+    "org.freedesktop.udisks2.encrypted-unlock-crypttab",
+    "org.freedesktop.udisks2.modify-system-configuration",
+    "org.freedesktop.udisks2.read-system-configuration-secrets",
+    "org.freedesktop.udisks2.manage-md-raid",
+    "org.freedesktop.udisks2.manage-swapspace",
+    "org.freedesktop.udisks2.lvm2.manage-lvm",
+    "org.freedesktop.udisks2.btrfs.manage-btrfs",
+    "org.freedesktop.udisks2.ata-secure-erase",
+    "org.freedesktop.udisks2.nvme-sanitize",
+    "org.freedesktop.udisks2.nvme-format-namespace",
+    "org.kde.k3b.addtogroup",
+    "org.gtk.vfs.file-operations",
+    "org.kde.ksysguard.processlisthelper.sendsignal",
+    "org.freedesktop.policykit.exec"
 ];
 
 var fails = 0, i, r;
@@ -75,6 +120,6 @@ for (i = 0; i < GRANT.length; i++) {
 if (fails)
     print("  " + fails + " failed");
 else
-    print("  ok    wheel gets the twelve the surfaces, mmcli and pcscd ask for, is refused the five\n" +
-          "        the file says it withholds, and a subject outside wheel is\n" +
-          "        not answered at all");
+    print("  ok    wheel gets the " + GRANT.length + " actions the surfaces and applications ask for,\n" +
+          "        is refused the " + WITHHOLD.length + " the file says it withholds, and a subject\n" +
+          "        outside wheel is not answered at all");

@@ -1,0 +1,47 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   devtools — Debuggers, tracers, profilers, analysers, linters, language
+#   servers and developer utilities
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+delta
+
+# Disassembly, cross-references and patching in a terminal with no JVM. Its
+# decompiler is weak and Ghidra is the boxed row that answers that.
+rizin
+
+# Every kernel prerequisite is already set in kdos.config — DEBUG_INFO_BTF,
+# BPF_SYSCALL, BPF_JIT, KPROBES, UPROBES — which is what makes bpftrace a port
+# rather than a kernel change plus a port.
+bpftrace
+
+# preflight runs `bash -n` over the build.sh files and shfmt parses them;
+# shellcheck ANALYSES them: the unquoted expansion that splits, the `cd` whose
+# failure nothing checks, the variable read in a subshell and lost.
+shellcheck
+
+# ctags indexes the ~140 languages with no language server here.
+universal-ctags
+
+# The kernel profiler. Built from the same tarball as the `linux` port and
+# pinned to the same version: a perf built from a different kernel's source
+# does not fail, it silently reports unknown record types.
+perf

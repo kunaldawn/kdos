@@ -1,0 +1,29 @@
+--- a/src/config.cc
++++ b/src/config.cc
+@@ -138,7 +138,7 @@
+   pronounceOnLoadMain( false ),
+   pronounceOnLoadPopup( false ),
+   useInternalPlayer( InternalPlayerBackend::anyAvailable() ),
+-  checkForNewReleases( true ),
++  checkForNewReleases( false ),
+   disallowContentFromOtherSites( false ),
+ 
+   zoomFactor( 1 ),
+@@ -281,7 +281,7 @@
+ DictServers makeDefaultDictServers()
+ {
+   DictServers ds;
+-  ds.push_back( DictServer( "6eb6f7a1df225e1cfdcd4cf8e9e4771b", "dict.org", "dict://dict.org", true, "wn", "", "" ) );
++  ds.push_back( DictServer( "6eb6f7a1df225e1cfdcd4cf8e9e4771b", "dict.org", "dict://dict.org", false, "wn", "", "" ) );
+   return ds;
+ }
+ 
+@@ -442,7 +442,7 @@
+       c.hunspell.dictionariesPath = possibleMorphologyPath;
+     }
+ 
+-    c.mediawikis  = makeDefaultMediaWikis( true );
++    c.mediawikis  = makeDefaultMediaWikis( false );
+     c.webSites    = makeDefaultWebSites();
+     c.dictServers = makeDefaultDictServers();
+     c.programs    = makeDefaultPrograms();

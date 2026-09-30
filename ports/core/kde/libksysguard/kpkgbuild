@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libksysguard
+version     = 6.7.5
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/libksysguard-$version.tar.xz
+sha256      = 9069bcf3fe4e491ea774d0d70eb17f99b567299871045a38543fcabcdb56dfc4  libksysguard-6.7.5.tar.xz
+description = libksysguard — process list, sensors and system statistics libraries, for KDevelop's attach to process
+homepage    = https://invent.kde.org/plasma/libksysguard
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcoreaddons kconfig ki18n kauth kservice kpackage knewstuff solid zlib libnl lm-sensors eudev libdrm

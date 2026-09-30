@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = sdl3-image
+version     = 3.4.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libsdl-org/SDL_image/releases/download/release-$version/SDL3_image-$version.tar.gz
+sha256      = d2e4637ae700f72e5196b8fbd749850ed2e5e1e09c5a5be8d06ff55aaccf3b01  sdl3-image-3.4.6.tar.gz
+description = Load PNG, JPEG, WebP, AVIF, JPEG XL, TIFF, SVG and animated formats into SDL3 surfaces
+homepage    = https://github.com/libsdl-org/SDL_image
+depends     = cmake ninja pkgconf perl sdl3 libjpeg-turbo libpng libtiff libwebp libavif libjxl zlib

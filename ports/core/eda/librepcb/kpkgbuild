@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = librepcb
+version     = 2.1.1
+release     = 1
+source      = https://download.librepcb.org/releases/$version/librepcb-$version-source.zip
+sha256      = c5f6443e1fac1682fdb0f662136c4abb582b8ec9ce260ee94b4e82f0d8dd69c0  librepcb-2.1.1.zip
+sha256      = fedcc1b46c9923e46b8fac38c3e1b40cd07d3af3b734e296188390113fe9ce34  librepcb-vendor-2.1.1.tar.xz
+description = LibrePCB — schematic and PCB design with managed libraries, STEP 3D export and Gerber output (Qt 6, Slint)
+homepage    = https://librepcb.org/
+depends     = cmake ninja pkgconf unzip rust qt6-qtbase qt6-qtsvg qt6-qttools qt6-qtwayland opencascade polyclipping mesa libglvnd glu zlib openssl fontconfig freetype2 libxkbcommon

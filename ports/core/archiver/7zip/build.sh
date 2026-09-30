@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# Alone2 is the one bundle that builds 7zz, the standalone program with every
+# format and codec compiled in; the other bundles need a 7z.so loaded beside
+# them. The makefile assigns CFLAGS and CXXFLAGS itself, so the tree's flags
+# ride in through CFLAGS_BASE2 and CXXFLAGS_BASE2, the two slots it leaves
+# unassigned. Without them the reproducibility flags never reach the compiler.
+#
+# The makefile also compiles with -Werror, and GCC 16's -Warray-bounds reports
+# the progress object ProgressUtils.h builds in HandlerCont.cpp as outside its
+# storage. -Wno-error=array-bounds keeps that one a warning; every other
+# warning still stops the build.
+export CFLAGS_BASE2="$CFLAGS -Wno-error=array-bounds"
+export CXXFLAGS_BASE2="$CXXFLAGS -Wno-error=array-bounds"
+cd CPP/7zip/Bundles/Alone2
+make -f ../../cmpl_gcc.mak
+install -Dm755 b/g/7zz "$PKG/usr/bin/7zz"
+
+# 7z is the name front ends run: Ark's cli7z plugin execs `7z`, and 7zz takes
+# the same commands and switches, so a link is all that name needs.
+ln -s 7zz "$PKG/usr/bin/7z"

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-owslib
+version     = 0.36.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/o/owslib/owslib-$version.tar.gz
+sha256      = b1ea352ee84f37a1a8ae44122b13cbd3b5b7bf9af0f74d84fe9ed7d9613b9543  python3-owslib-0.36.0.tar.gz
+description = OWSLib — OGC web service client (WMS, WFS, WCS, CSW, OGC API), for QGIS MetaSearch
+homepage    = https://geopython.github.io/OWSLib/
+depends     = python3 python3-pip python3-setuptools python3-wheel python3-lxml python3-dateutil python3-yaml python3-requests

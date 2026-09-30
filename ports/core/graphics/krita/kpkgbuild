@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = krita
+version     = 6.0.4
+release     = 1
+source      = https://download.kde.org/stable/krita/$version/krita-$version.tar.xz
+sha256      = ef73e57fe20fa5bd896d53d4af6eb254e5ade83e6a39b47273dd320f9823ab4b  krita-6.0.4.tar.xz
+description = Krita: digital painting, illustration and frame-by-frame animation, for Qt 6
+homepage    = https://krita.org/
+depends     = cmake ninja pkgconf gettext extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qt5compat qt6-qtdeclarative qt6-qtwayland wayland kconfig kwidgetsaddons kcompletion kcoreaddons kguiaddons ki18n kitemviews kcolorscheme kcrash boost eigen immer zug lager xsimd exiv2 lcms2 libpng zlib libjpeg-turbo libtiff giflib libwebp openexr libheif openjpeg libjxl fftw gsl opencolorio kseexpr libmypaint quazip libkdcraw poppler mlt sdl2-compat freetype2 harfbuzz fontconfig fribidi libunibreak libX11 libXi python3 python3-sip python3-pyqt-builder python3-pyqt6 ffmpeg hicolor-icon-theme shared-mime-info

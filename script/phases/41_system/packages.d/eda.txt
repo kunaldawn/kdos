@@ -1,0 +1,67 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   eda — Electronics: schematic and PCB, circuit simulation, antenna
+#   modelling, FPGA synthesis and simulation, logic analysers and bench
+#   instruments
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The protocol every PLC and bench instrument speaks over RS-485 or TCP.
+libmodbus
+
+# The FX2 analysers are blank until libsigrok uploads this to them; sdcc
+# compiles it.
+sigrok-firmware-fx2lafw
+
+# A hundred hardware drivers behind one interface, so a program reads samples
+# without knowing which box produced them. The decoders are python modules —
+# adding one for an undecoded chip is writing a file, not patching C.
+libsigrok
+libsigrokdecode
+sigrok-cli
+
+# VXI-11 is ONC RPC, hence libtirpc.
+liblxi
+
+# Read and write Modbus registers from a prompt — libmodbus with a front end.
+mbpoll
+
+# SPICE, Verilog simulation and the file formats a bootloader argues about.
+# ngspice is the analogue half of a bench that already synthesises and places.
+ngspice
+iverilog
+
+# The lint as much as the simulator: verilator catches the width mismatches and
+# inferred latches iverilog will happily simulate and a real part will not do.
+verilator
+
+# An antenna model is a card deck in and a pattern out, with no Fortran runtime.
+nec2c
+
+icestorm
+prjtrellis
+
+# iceprog programs one family over FTDI; this knows a hundred boards, which is
+# what makes the flow usable on hardware somebody actually has.
+openfpgaloader
+
+kicad-symbols
+kicad-footprints
+kicad-templates

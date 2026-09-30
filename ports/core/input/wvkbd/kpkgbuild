@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wvkbd
+version     = 0.20
+release     = 1
+source      = $name-$version.tar.gz::https://git.sr.ht/~proycon/wvkbd/archive/v$version.tar.gz
+sha256      = 330e7d41e2ccf3f984af701c0d055d919cff66710dfe05ce9d77e4ae6e1adc16  wvkbd-0.20.tar.gz
+description = On-screen keyboard for Wayland — layer-shell and virtual-keyboard, drawn with cairo and pango
+homepage    = https://git.sr.ht/~proycon/wvkbd
+depends     = pkgconf wayland libxkbcommon pango cairo fontconfig scdoc

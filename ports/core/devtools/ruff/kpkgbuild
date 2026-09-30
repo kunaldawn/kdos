@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ruff
+version     = 0.16.9
+release     = 1
+source      = https://github.com/astral-sh/ruff/archive/$version/ruff-$version.tar.gz
+sha256      = 3b75e09dd9cf0fafbb2ae1fe13bcfdb4d43d3c07cd8578e2c48bee86b2d328e3  ruff-0.16.9.tar.gz
+sha256      = ba238c6920c99d92d73815045bb6afdbf8608cd388e15ffb8d6ebd5088064241  ruff-vendor-0.16.9.tar.xz
+description = Ruff — the Python linter and formatter, as the ruff command and the Python module that runs it
+homepage    = https://docs.astral.sh/ruff/
+depends     = python3 python3-pip python3-maturin rust
+vendoring   = rust

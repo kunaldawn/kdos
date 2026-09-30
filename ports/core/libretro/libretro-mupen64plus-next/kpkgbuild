@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libretro-mupen64plus-next
+version     = 20260912
+release     = 1
+_commit     = 6752836de8b224febfd5708444755b77712ac939
+source      = $name-$version.tar.gz::https://github.com/libretro/mupen64plus-libretro-nx/archive/$_commit.tar.gz
+sha256      = 78509e9787729aa0051915e646200ce21ab2d7e809318c9b1dfdaabcab2f067d  libretro-mupen64plus-next-20260912.tar.gz
+description = Mupen64Plus-Next as a libretro core — Nintendo 64 emulator with the GLideN64 renderer
+homepage    = https://github.com/libretro/mupen64plus-libretro-nx
+depends     = nasm pkgconf mesa libglvnd zlib libpng minizip xxhash

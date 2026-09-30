@@ -69,6 +69,8 @@ static const struct {
 	{ "kdos-store",  store_main },
 	{ "kdos-firewall", firewall_main },
 	{ "kdos-backup", backup_main },
+	{ "kdos-burn", burn_main },
+	{ "kdos-verify", verify_main },
 	{ "kdos-note", note_main },
 	{ "kdos-slit", slit_main },
 	{ "kdos-doc", doc_main },

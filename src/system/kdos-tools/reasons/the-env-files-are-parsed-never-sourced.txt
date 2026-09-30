@@ -1,0 +1,17 @@
+title: the phase env files are PARSED, never sourced
+cite: libkbuild
+port: kdos-tools
+
+Every chroot phase's environment (script/env/chroot.env, which its phase.env
+sources) ends with `rm -rf /var/cache/kpkg/work`, which at source time hits the
+build CONTAINER's filesystem, not the target's. So only export NAME=VALUE
+lines are read, only five keys are honoured, and a value must be a literal.
+
+A declared snapshot path is either kept or reported as REJECTED, never quietly
+repaired: snapshot and restore delete and re-extract those paths as root, so
+absolute, empty, "." and anything with a .. component is refused.
+
+And kb_read_all reads to EOF and never trusts st_size: every file under /proc
+reports 0, so a size-bounded read would give back an empty /proc/mounts,
+mounts_under() would answer "nothing is mounted", and a snapshot would run
+over a live bind mount.

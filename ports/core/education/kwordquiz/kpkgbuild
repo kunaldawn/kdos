@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kwordquiz
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 5985459f41a73bab5a651fe46bb97c0c9e23a2bc433b1eff686713831ae24acd  kwordquiz-26.08.1.tar.xz
+description = KDE flashcard trainer — flashcards, multiple choice and question-and-answer quizzes on KVTML decks
+homepage    = https://apps.kde.org/kwordquiz/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtdeclarative qt6-qtmultimedia ki18n kcrash kconfig knewstuff kirigami kirigami-addons kdbusaddons kitemmodels kdoctools libkeduvocdocument

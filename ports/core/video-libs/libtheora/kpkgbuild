@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libtheora
+version     = 1.2.0
+release     = 1
+source      = https://downloads.xiph.org/releases/theora/$name-$version.tar.xz
+sha256      = ebdf77a8f5c0a8f7a9e42323844fa09502b34eb1d1fece7b5f54da41fe2122ec  libtheora-1.2.0.tar.xz
+description = The Theora video codec, the one in Ogg video files
+homepage    = https://www.theora.org/
+depends     = pkgconf libogg

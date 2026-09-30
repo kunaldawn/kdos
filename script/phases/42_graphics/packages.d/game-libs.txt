@@ -1,0 +1,47 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   42_graphics: Graphics Stack
+# ---------------------------------
+#   game-libs — Game engines and game-development libraries, SDL in all
+#   versions, and shared game libraries
+# ---------------------------------
+#
+# Ports whose dependency closure reaches wayland, libX11, mesa, libdrm, cairo,
+# pango, gstreamer, ffmpeg or pipewire but no toolkit, and that are not leaf
+# applications.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# SDL3 carries the drivers; sdl2-compat is the SDL2 library baresip's video
+# display and whisper.cpp's streaming transcription link, answering through
+# SDL3 at run time. Without them a call cannot show the other person and
+# transcription is batch over a closed file. Built with no X11 and no KMSDRM —
+# a graphical program here runs under a compositor.
+sdl3
+sdl2-compat
+
+# The SDL satellites for SDL 2 and SDL 3. There is no `sdl2-config`: a build
+# that asks for it is given `pkg-config sdl2`, and an SDL 2 program runs on SDL
+# 3 through sdl2-compat.
+sdl2-image
+sdl3-image
+sdl2-ttf
+sdl2-net
+sdl2-gfx
+sdl2-pango
+sdl2-mixer
+sdl3-mixer
+sdl3-ttf
+
+sdl12-compat
+love

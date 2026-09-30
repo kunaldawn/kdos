@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cm256cc
+version     = 1.1.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/f4exb/cm256cc/archive/refs/tags/v$version.tar.gz
+sha256      = 2f4a1998b1b56c7feabcc66f24495c31fe900412b9140c60e81501ad8201e9bc  cm256cc-1.1.2.tar.gz
+description = cm256cc — Cauchy MDS erasure codes over GF(256); SDRangel's remote sink and source
+homepage    = https://github.com/f4exb/cm256cc
+depends     = cmake ninja pkgconf

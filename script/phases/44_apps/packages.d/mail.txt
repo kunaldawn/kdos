@@ -1,0 +1,39 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   44_apps: Applications
+# ---------------------------------
+#   mail — Email clients, fetch and send tools, mail libraries, and feed
+#   readers
+# ---------------------------------
+#
+# Leaf applications whose dependency closure reaches a toolkit, or the graphics
+# stack on an application shelf.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The mail client. Its notmuch binding is cgo, which is why this is the one Go
+# port built with CGO_ENABLED=1. /etc/skel's aerc.conf names the filter chain
+# the console reads mail with, and this recipe installs the one filter that is
+# ours; the rest are aerc's own.
+aerc
+
+# THE OTHER ANSWER TO THE SAME QUESTION, and it is a different one rather than
+# a smaller one. newsboat is a reader with a database; sfeed is a PARSER that
+# writes one tab-separated line per item, and everything after that — the
+# curses reader, an mbox, a gopher page, a plain list — is a separate program
+# reading that file. That is what makes a feed greppable, and it is why the
+# two are both here: one is an application, the other is a pipeline.
+sfeed
+
+# Ships a policies file that turns off its telemetry and update checks.
+thunderbird

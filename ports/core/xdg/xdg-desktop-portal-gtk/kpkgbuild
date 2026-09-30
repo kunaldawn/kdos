@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = xdg-desktop-portal-gtk
+version     = 1.15.3
+release     = 1
+source      = https://github.com/flatpak/xdg-desktop-portal-gtk/releases/download/$version/xdg-desktop-portal-gtk-$version.tar.xz
+sha256      = 47a3743d2419a8601e691db37e85bb5fac5ae4b26842177065cd5f22ada23b37  xdg-desktop-portal-gtk-1.15.3.tar.xz
+description = GTK backend for xdg-desktop-portal — the Print and Email portals
+homepage    = https://github.com/flatpak/xdg-desktop-portal-gtk
+depends     = meson glib gtk3 xdg-desktop-portal dbus

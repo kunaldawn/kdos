@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libSM
+version     = 1.2.6
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = be7c0abdb15cbfd29ac62573c1c82e877f9d4047ad15321e7ea97d1e43d835be  libSM-1.2.6.tar.xz
+description = X11 Session Management library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libSM
+depends     = libICE xtrans xorgproto util-linux

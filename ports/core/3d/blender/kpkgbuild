@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = blender
+version     = 5.2.2
+release     = 1
+source      = https://download.blender.org/source/$name-$version.tar.xz
+sha256      = 56a3b1ec97479ff24dce65d2f09f8a1895005cece279b701fe4fcf74bce3f77e  blender-5.2.2.tar.xz
+description = Blender: 3D modelling, sculpting, animation, rendering (Cycles, EEVEE), compositing and video editing
+homepage    = https://www.blender.org/
+depends     = cmake ninja pkgconf python3 numpy python3-zstandard eigen ceres-solver abseil-cpp onetbb opencolorio openimageio openexr imath opensubdiv openvdb c-blosc alembic libharu potrace pugixml fmt gmp manifold fftw ffmpeg libsndfile openal-soft libpulse pipewire rubberband libjpeg-turbo libpng zlib zstd libwebp openjpeg libtiff freetype2 brotli libepoxy shaderc vulkan-headers vulkan-loader wayland wayland-protocols libxkbcommon libX11 libXi libXfixes libXrender libglvnd mesa librsvg

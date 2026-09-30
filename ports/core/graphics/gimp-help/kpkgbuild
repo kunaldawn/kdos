@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = gimp-help
+version     = 3.2.0
+release     = 1
+source      = https://download.gimp.org/pub/gimp/help/$name-$version.tar.bz2
+sha256      = 8b3df4ebffcd66ffd52530ca5867f5b0d88e931031fe1d4cccf104b09744e90b  gimp-help-3.2.0.tar.bz2
+description = The GIMP user manual in English, as local HTML that F1 opens with no network
+homepage    = https://docs.gimp.org/
+depends     = libxslt libxml2 python3 docbook-xsl docbook-xml perl

@@ -1,0 +1,43 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   virt — Virtual machines, their tooling, and remote-desktop and VNC
+#   protocols
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libslirp
+spice-protocol
+libcacard
+usbredir
+
+# Serves a host directory to a guest over virtio-fs; a guest's command line
+# names it.
+virtiofsd
+
+# The event loop neatvnc links.
+aml
+
+libvncserver
+osinfo-db-tools
+osinfo-db
+libosinfo
+libnbd
+nbdkit
+phodav

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kidletime
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 22873204292ddb757e5a0a57004c57debe1285cd0fd4e796d07e9de2402e60c3  kidletime-6.30.0.tar.xz
+description = KDE Frameworks: user idle-time reporting
+homepage    = https://api.kde.org/frameworks/kidletime/html/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland wayland wayland-protocols plasma-wayland-protocols libX11 libxcb libXext

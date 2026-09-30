@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 CC=${CC:-cc}
 WARN="-Wall -Wextra -Werror"
 STD="-O2 -std=gnu11 -D_GNU_SOURCE"
-INC="-Isrc/libs/libkbase -Isrc/libs/libkwm -Isrc/libs/libkvt -Isrc/libs/libkdisp -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/tools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
+INC="-Isrc/libs/libkbase -Isrc/libs/libkwm -Isrc/libs/libkvt -Isrc/libs/libkdisp -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/devtools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
 OUT=$(mktemp -d)
 
 #
@@ -39,11 +39,25 @@ XDG_STATE_HOME="$OUT/state"
 export XDG_STATE_HOME
 mkdir -p "$XDG_STATE_HOME"
 
+# A PORT IS FOUND BY ITS NAME, NEVER BY A PATH SPELLED WITH ITS SHELF.
+# ports/core files every port one shelf down, ports/core/<shelf>/<name>/, and
+# a port changes shelf with one `git mv`: a path written out here would then
+# name nothing, and every block reading a tarball out of it would skip itself
+# as if the port were unfetched. Prints the directory, or nothing when no port
+# carries the name; it always succeeds, so `set -e` never ends the suite on a
+# lookup.
+port_dir() {
+    for _pd in ports/core/*/"$1"; do
+        [ -f "$_pd/kpkgbuild" ] && { printf '%s\n' "$_pd"; return 0; }
+    done
+    return 0
+}
+
 # WHICH sd-bus THIS HOST HAS, decided ONCE and up here because two blocks a
 # thousand lines apart both ask. KDOS ships basu; nearly every development host
-# has libsystemd, and the API is the same one. Deciding it late meant the
-# kdos-shell block read an unset variable and skipped itself on every host,
-# which is why the front-end goldens behind it went unlooked-at.
+# has libsystemd, and the API is the same one. A block that reads it unset
+# skips itself on every host, and the front-end goldens behind it stop being
+# checked without a failure.
 TRAY_SDBUS=""
 pkg-config --exists basu 2>/dev/null && TRAY_SDBUS=basu
 [ -z "$TRAY_SDBUS" ] && pkg-config --exists libsystemd 2>/dev/null && \
@@ -112,7 +126,7 @@ $CC $STD $WARN $INC $KIMG_FLAGS -o "$OUT/selftest" src/libs/selftest.c $KIMG_SRC
     src/libs/libkxdg/*.c src/libs/libksig/*.c src/libs/libksig/monocypher/*.c \
     src/libs/libkpack/*.c src/libs/libkwm/*.c src/libs/libkvt/*.c \
     src/libs/libkdisp/*.c \
-    src/tools/kdos-portup/extract.c $KIMG_LIBS
+    src/devtools/kdos-portup/extract.c $KIMG_LIBS
 ASAN_OPTIONS=detect_leaks=1 "$OUT/selftest"
 
 #
@@ -141,25 +155,25 @@ echo "==> every consumer still compiles against the libraries"
 # kinstall compiles catalogue.c IN — the Applications page reads the catalogue
 # rather than running kdos-appbox, because a live installer cannot assume
 # anything is on $PATH in the target it is building.
-$CC $STD $WARN $INC -Isrc/packages/kdos-installer -Isrc/packages/kdos-appbox \
+$CC $STD $WARN $INC -Isrc/system/kdos-installer -Isrc/system/kdos-appbox \
     -o "$OUT/kinstall" \
-    src/packages/kdos-installer/*.c src/packages/kdos-appbox/catalogue.c \
+    src/system/kdos-installer/*.c src/system/kdos-appbox/catalogue.c \
     src/libs/libkbase/*.c \
     src/libs/libktui/*.c src/libs/libkcolor/*.c -lcrypt
 echo "  kinstall"
 # The plan resolves over the SHIPPED catalogue, and the two renderings agree.
 # A disagreement between the text dump and the JSON is what makes a dump
 # untrustworthy, and it is the one thing an installer's dumps must not be.
-KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kinstall" \
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
     --dump plan >/dev/null
-KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kinstall" \
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
     --dump plan --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
 assert d["apps"], "the plan chose no applications"
 assert d["apps_bytes"] > 0, "the chosen set costs nothing"
 assert d["apps_route"] in ("none","import","network","pending"), d["apps_route"]'
 echo "  kinstall plan"
-$CC $STD $WARN $INC -Isrc/packages/kdos-appbox -o "$OUT/kdos-appbox" \
-    src/packages/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
+$CC $STD $WARN $INC -Isrc/system/kdos-appbox -o "$OUT/kdos-appbox" \
+    src/system/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
     src/libs/libkcolor/*.c src/libs/libkxdg/*.c
 echo "  kdos-appbox"
 # The catalogue parser, against a fixture AND against the shipped file. The
@@ -169,9 +183,9 @@ echo "  kdos-appbox"
 # error on the screen.
 KDOS_CATALOGUE=testing/fixtures/catalogue/catalogue "$OUT/kdos-appbox" \
     catalogue --selftest
-KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kdos-appbox" \
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kdos-appbox" \
     catalogue >/dev/null
-KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kdos-appbox" \
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kdos-appbox" \
     catalogue --groups >/dev/null
 echo "  catalogue"
 # The Containerfile generator. podman is not here and never will be, so what is
@@ -185,24 +199,24 @@ KDOS_CATALOGUE=testing/fixtures/catalogue/catalogue "$OUT/kdos-appbox" \
 # And the chain resolves over the SHIPPED catalogue, with the snapshot pinned
 # so the generator takes its longest path rather than the `off` short one.
 sed 's/^snapshot = auto/snapshot = 20260824T000000Z/' \
-    src/packages/kdos-appbox/catalogue > "$OUT/catalogue-pinned"
+    src/system/kdos-appbox/catalogue > "$OUT/catalogue-pinned"
 KDOS_CATALOGUE="$OUT/catalogue-pinned" "$OUT/kdos-appbox" \
     install essential --dry-run >/dev/null
 echo "  store"
-$CC $STD $WARN $INC -Isrc/packages/kdos-theme -o "$OUT/kdos-theme" \
-    src/packages/kdos-theme/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
+$CC $STD $WARN $INC -Isrc/art/kdos-theme -o "$OUT/kdos-theme" \
+    src/art/kdos-theme/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
 echo "  kdos-theme"
 # libkpack (over libksig) is `kdos app update`: reading a PACKAGES index and
 # picking the delta is the same parser kdos-packd uses.
 $CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/libs/libkpack \
-    -Isrc/packages/kdos-tools -o "$OUT/kdos-tools" \
-    src/packages/kdos-tools/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
+    -Isrc/system/kdos-tools -o "$OUT/kdos-tools" \
+    src/system/kdos-tools/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
     src/libs/libkpkg/*.c src/libs/libkxdg/*.c src/libs/libkproc/*.c \
     src/libs/libksig/*.c src/libs/libksig/monocypher/*.c src/libs/libkpack/*.c
 echo "  kdos-tools"
-$CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/packages/kdos-kpkg \
+$CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/system/kdos-kpkg \
     -o "$OUT/kdos-kpkg" \
-    src/packages/kdos-kpkg/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
+    src/system/kdos-kpkg/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
     src/libs/libksig/*.c src/libs/libksig/monocypher/*.c
 echo "  kdos-kpkg"
 # kdos-powerd is a root daemon and kdos-checkpass is the one setuid binary in
@@ -213,27 +227,27 @@ echo "  kdos-kpkg"
 # closed table rather than sanitised by a character class copied into the
 # daemon. Linking it here keeps this check the same link as the recipe's.
 $CC $STD $WARN $INC -Isrc/libs/libkcolor -o "$OUT/kdos-powerd" \
-    src/desktop/kdos-powerd/main.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
+    src/daemons/kdos-powerd/main.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
 ln -sf kdos-powerd "$OUT/kdos-power"
 echo "  kdos-powerd"
 
 # kdos-energyd is the other root daemon, and the only one whose ANSWER can be
 # checked without root: --fixture replays recorded /proc and powercap trees
 # through the same sampler and ledger the daemon runs.
-$CC $STD $WARN $INC -Isrc/libs/libkproc -Isrc/desktop/kdos-energyd \
+$CC $STD $WARN $INC -Isrc/libs/libkproc -Isrc/daemons/kdos-energyd \
     -o "$OUT/kdos-energyd" \
-    src/desktop/kdos-energyd/*.c src/libs/libkbase/*.c src/libs/libkproc/*.c
+    src/daemons/kdos-energyd/*.c src/libs/libkbase/*.c src/libs/libkproc/*.c
 ln -sf kdos-energyd "$OUT/kdos-energy"
 echo "  kdos-energyd"
 $CC $STD $WARN -o "$OUT/kdos-checkpass" src/desktop/kdos-lock/checkpass.c -lcrypt
 echo "  kdos-checkpass"
-$CC $STD $WARN $INC -Isrc/build/kdosbuild -o "$OUT/kdosbuild" \
-    src/build/kdosbuild/*.c src/libs/libkbase/*.c src/libs/libkbuild/*.c \
-    src/libs/libktui/*.c src/libs/libkcolor/*.c
+$CC $STD $WARN $INC -Isrc/devtools/kdosbuild -o "$OUT/kdosbuild" \
+    src/devtools/kdosbuild/*.c src/libs/libkbase/*.c src/libs/libkbuild/*.c \
+    src/libs/libkpkg/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c
 echo "  kdosbuild"
 "$OUT/kdosbuild" --selftest
-$CC $STD $WARN $INC -Isrc/tools/kdos-portup -o "$OUT/kdos-portup" \
-    src/tools/kdos-portup/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
+$CC $STD $WARN $INC -Isrc/devtools/kdos-portup -o "$OUT/kdos-portup" \
+    src/devtools/kdos-portup/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
     src/libs/libkbuild/*.c
 echo "  kdos-portup"
 "$OUT/kdos-portup" --selftest --fixture testing/fixtures/portup
@@ -242,19 +256,19 @@ echo "  kdos-portup"
 # mounts. Its ANSWER is checkable without root: --fixture runs the same scan,
 # the same solve and the same graft rules and mounts nothing, which is the seam
 # `kdos stutter`, `kdos-oomd` and `kdos-mountd` all use.
-$CC $STD $WARN $INC -Isrc/desktop/kdos-packd -o "$OUT/kdos-packd" \
-    src/desktop/kdos-packd/*.c src/libs/libkbase/*.c src/libs/libksig/*.c \
+$CC $STD $WARN $INC -Isrc/daemons/kdos-packd -o "$OUT/kdos-packd" \
+    src/daemons/kdos-packd/*.c src/libs/libkbase/*.c src/libs/libksig/*.c \
     src/libs/libksig/monocypher/*.c src/libs/libkpkg/*.c src/libs/libkpack/*.c
 echo "  kdos-packd"
 $CC $STD $WARN $INC -o "$OUT/kdos-pack" \
-    src/packages/kdos-pack/main.c src/libs/libkbase/*.c src/libs/libksig/*.c \
+    src/system/kdos-pack/main.c src/libs/libkbase/*.c src/libs/libksig/*.c \
     src/libs/libksig/monocypher/*.c src/libs/libkpkg/*.c src/libs/libkpack/*.c
 echo "  kdos-pack"
 
 echo
 echo "==> boxes: the profile says what it enforced, and what it could not"
-$CC $STD $WARN $INC -Isrc/packages/kdos-appbox -o "$OUT/kdos-box" \
-    src/packages/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
+$CC $STD $WARN $INC -Isrc/system/kdos-appbox -o "$OUT/kdos-box" \
+    src/system/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
     src/libs/libkcolor/*.c src/libs/libkxdg/*.c
 BH="$OUT/boxhome"
 mkdir -p "$BH/.config/kdos/boxes"
@@ -403,21 +417,21 @@ echo "  ok    a data pack is never composed into a box root"
 # libkcell and libkwl are the TWO libraries here with real external
 # dependencies — libkcell is the glyph cache and the cell painter, libkwl is
 # the Wayland half built on it. They are separate archives from libktui, whose
-# zero-`-l` property keeps kinstall in phase 1, and separate from EACH OTHER so
-# that a consumer wanting the cell painter is not made to link a Wayland CLIENT
-# library to get it. (kdos-comp does not link either: since the labwc fork its
-# window frames are labwc's own SSD, drawn with pango and coloured from the
-# generated `themerc-override`.) Skipped rather than failed when the deps are
-# absent:
+# zero-`-l` property keeps kinstall in the bootstrap phase, and separate from
+# EACH OTHER so that a consumer wanting the cell painter is not made to link a
+# Wayland CLIENT library to get it. (kdos-comp does not link either: it is a
+# labwc fork, and its window frames are labwc's own SSD, drawn with pango and
+# coloured from the generated `themerc-override`.) Skipped rather than failed
+# when the deps are absent:
 # this script's contract is that it runs on a bare host with no container and
 # no network.
-if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
+if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/null &&
    [ -n "$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)" ]; then
     PROTO="$OUT/proto"
     mkdir -p "$PROTO"
     SCANNER=$(pkg-config --variable=wayland_scanner wayland-scanner)
     XDG=$(pkg-config --variable=pkgdatadir wayland-protocols)/stable/xdg-shell/xdg-shell.xml
-    LS=$(ls ports/core/wlroots/wlroots-*.tar.gz 2>/dev/null | head -1)
+    LS=$(ls "$(port_dir wlroots)"/wlroots-*.tar.gz 2>/dev/null | head -1)
     if [ -n "$LS" ]; then
         tar xf "$LS" -C "$PROTO" --strip-components=2 \
             "$(tar tf "$LS" | grep 'protocol/wlr-layer-shell-unstable-v1.xml$' | head -1)"
@@ -466,6 +480,15 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" client-header \
             "$(pkg-config --variable=pkgdatadir wayland-protocols)/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
             "$PROTO/xdg-foreign-unstable-v2-client-protocol.h"
+        # viewporter and fractional-scale: the fractional output scale.
+        # libkwl includes both unconditionally, so they are as mandatory
+        # here as the lock role's protocol.
+        "$SCANNER" client-header \
+            "$(pkg-config --variable=pkgdatadir wayland-protocols)/stable/viewporter/viewporter.xml" \
+            "$PROTO/viewporter-client-protocol.h"
+        "$SCANNER" client-header \
+            "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/fractional-scale/fractional-scale-v1.xml" \
+            "$PROTO/fractional-scale-v1-client-protocol.h"
         # The private-code halves. The blocks above only COMPILE, so headers
         # were enough for them; kdos-res LINKS, and an interface referenced
         # with no generated code is an undefined symbol at link rather than a
@@ -496,6 +519,12 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" private-code \
             "$_wp/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
             "$PROTO/xdg-foreign-unstable-v2-protocol.c"
+        "$SCANNER" private-code \
+            "$_wp/stable/viewporter/viewporter.xml" \
+            "$PROTO/viewporter-protocol.c"
+        "$SCANNER" private-code \
+            "$_wp/staging/fractional-scale/fractional-scale-v1.xml" \
+            "$PROTO/fractional-scale-v1-protocol.c"
         KCINC="-Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
 -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkwm"
         # libkcell first and on its OWN: it must compile with no Wayland
@@ -505,7 +534,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         for f in src/libs/libkcell/*.c; do
             $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkcell \
-                $(pkg-config --cflags fcft pixman-1) \
+                $(pkg-config --cflags fcft fontconfig pixman-1) \
                 -c -o "$OUT/$(basename "$f" .c).o" "$f"
         done
         echo "  libkcell"
@@ -525,11 +554,11 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # one would put a real `-l` on the suite that proves libktui has none.
         $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
-            $(pkg-config --cflags fcft pixman-1) \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/asciicheck" testing/fixtures/ascii/asciicheck.c \
             src/libs/libkcell/*.c src/libs/libktui/*.c \
             src/libs/libkbase/*.c \
-            $(pkg-config --libs fcft pixman-1)
+            $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/asciicheck" >/dev/null
         echo "  asciicheck (ramp monotonic, orientation distinguished)"
 
@@ -538,13 +567,98 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # libpixman's uninstrumented fill loop — see the file's header.
         $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
-            $(pkg-config --cflags fcft pixman-1) \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/clipcheck" testing/fixtures/cellclip/clipcheck.c \
             src/libs/libkcell/*.c src/libs/libktui/*.c \
             src/libs/libkbase/*.c \
-            $(pkg-config --libs fcft pixman-1)
+            $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/clipcheck" >/dev/null
         echo "  clipcheck (no writes past a ragged cell grid)"
+
+        # A TILE PAST ONE SPRITE is a grid of sprites over views of one
+        # canvas, and both ways it can break are silent: a block cut at the
+        # wrong origin shows another block's pixels, and a view the table's
+        # evictor unrefs once too often is freed while the tile still names
+        # it. The fixture reads the pixels every drawn cell resolves to and
+        # counts each view's destruction, through evictions, a cleared table,
+        # budget refusals and a reset. kch_tile.c alone from libkchrome: the
+        # display and the icon switch it asks are stubbed in the fixture.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon -Isrc/libs/libkdisp \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/tilecheck" testing/fixtures/tile/tilecheck.c \
+            src/libs/libkchrome/kch_tile.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/tilecheck" >/dev/null \
+            || { "$OUT/tilecheck"; echo "  tilecheck FAILED"; exit 1; }
+        echo "  tilecheck (a tile of any size: every block's pixels, every view freed once)"
+
+        # THE CHART'S PIXELS. Every golden is a cell frame, so the antialiased
+        # chart kdos-res and the panel draw on a real display is looked at by
+        # nothing else: the fixture checks what must hold whatever the
+        # arithmetic (the rectangle and the clip, premultiplied pixels, the
+        # rest row, the one-pixel floor, mirror and transpose symmetry, a
+        # line's area, the tile's re-raster only on new content) and digests
+        # whole canvases for fixed inputs. The marks are fixed point from one
+        # conversion per input, so the digests are the same bytes on every
+        # build; one that moves is a picture that changed.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon -Isrc/libs/libkdisp \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/plotcheck" testing/fixtures/plot/plotcheck.c \
+            src/libs/libkchrome/kch_plot.c src/libs/libkchrome/kch_tile.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/plotcheck" >/dev/null \
+            || { "$OUT/plotcheck"; echo "  plotcheck FAILED"; exit 1; }
+        echo "  plotcheck (the chart's pixels: bounds, symmetry, digests)"
+
+        # THE SELECTION PLATE THAT TRAVELS. A golden is a cell frame with the
+        # pixel layer stubbed out, so a plate in the wrong place for a few
+        # frames is invisible to every other check here. rowcheck includes
+        # kch_px.c, stubs the libkwl calls it makes and drives the clock by
+        # hand: at rest it is kch_px_row's plate, a new item slides with an
+        # ease-out and lands on time, a redirect sets out from where the
+        # plate stands, a scroll, a plate nobody saw, a new cell size, a new
+        # backdrop, no frame clock and motion off all land at once.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon -Isrc/libs/libkdisp -Isrc/libs/libkwl \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/rowcheck" testing/fixtures/rowanim/rowcheck.c \
+            src/libs/libkchrome/kch_tone.c src/libs/libkcolor/*.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/rowcheck" >/dev/null \
+            || { "$OUT/rowcheck"; echo "  rowcheck FAILED"; exit 1; }
+        echo "  rowcheck (the selection plate: slides, lands, and lands at once where it must)"
+
+        # DISPLAY TEXT, the one pixel op that is a string. A golden holds its
+        # cell form and nothing else, so textcheck includes kch_px.c and
+        # links kch_chrome.c for real: refused whole with no backdrop and
+        # drawn as cells on the rectangle's first row; recorded under one
+        # with its cells handed to the backdrop; keyed and diffed by the
+        # string and not its place in the pool; replayed with every pixel in
+        # its rectangle at scale 1 and 2, aligned, and the same under a clip
+        # as whole; and the flat body a window hands its page to.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon -Isrc/libs/libkdisp -Isrc/libs/libkwl \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/textcheck" testing/fixtures/disptext/textcheck.c \
+            src/libs/libkchrome/kch_chrome.c src/libs/libkchrome/kch_tone.c \
+            src/libs/libkcolor/*.c src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/textcheck" >/dev/null 2>&1 \
+            || { "$OUT/textcheck"; echo "  textcheck FAILED"; exit 1; }
+        echo "  textcheck (display text: cell form, the op, its key, its pixels inside its rectangle)"
 
         # AND THE SLANT NO BITMAP FACE CARRIES. An italic companion is taken
         # only where its metrics match the upright face's, which on this
@@ -553,13 +667,27 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # measured with no font and no frame.
         $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
-            $(pkg-config --cflags fcft pixman-1) \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/obliquecheck" testing/fixtures/oblique/obliquecheck.c \
             src/libs/libkcell/*.c src/libs/libktui/*.c \
             src/libs/libkbase/*.c \
-            $(pkg-config --libs fcft pixman-1)
+            $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/obliquecheck" >/dev/null
         echo "  obliquecheck (a synthesised italic leans, and leans evenly)"
+
+        # THE SIZE POLICY: which pixel sizes a bitmap face draws exactly,
+        # the `(TTF)` twin's name and how it is recognised, and the cell a
+        # scalable face is pinned to. The arithmetic is checked everywhere;
+        # the loads only where Terminus and its twin are installed, which a
+        # build container is not — the fixture says which it did.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/fontcheck" testing/fixtures/fontpolicy/fontcheck.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        "$OUT/fontcheck" || { echo "  fontcheck FAILED"; exit 1; }
 
         # A TRAY ITEM'S OWN PICTURE, decoded from bytes rather than found by
         # name. Every surface turns its icons OFF for a dump — a golden frame
@@ -579,11 +707,11 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkicon \
             -Isrc/libs/libkxdg \
-            $(pkg-config --cflags pixman-1 fcft libpng) \
+            $(pkg-config --cflags pixman-1 fcft fontconfig libpng) \
             -o "$OUT/iconpng" testing/fixtures/iconpng/iconpng.c \
             src/libs/libkicon/*.c src/libs/libkcell/*.c src/libs/libktui/*.c \
             src/libs/libkcolor/*.c src/libs/libkbase/*.c src/libs/libkxdg/*.c \
-            $(pkg-config --libs pixman-1 fcft libpng)
+            $(pkg-config --libs pixman-1 fcft fontconfig libpng)
         "$OUT/iconpng" 2>/dev/null \
             || { echo "  kicon_slot_png FAILED"; exit 1; }
         else
@@ -599,13 +727,105 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # kwl_font.c is HERE and not left to the two links below: it is the
         # only file in the archive that reaches fontconfig, so a name it gets
         # wrong is a compile error nothing else in this suite would show.
-        for f in src/libs/libkwl/kwl_key.c src/libs/libkwl/kwl_font.c; do
+        for f in src/libs/libkwl/kwl_key.c src/libs/libkwl/kwl_font.c \
+                 src/libs/libkwl/kwl_insp.c src/libs/libkwl/kwl_glide.c; do
             $CC $STD $WARN -c -I"$PROTO" $KCINC \
                 $(pkg-config --cflags fcft fontconfig pixman-1 xkbcommon \
                              wayland-client) \
                 -o "$OUT/$(basename "$f" .c).o" "$f"
         done
         echo "  libkwl"
+
+        # THE PARTIAL PAINT AND THE CELL DAMAGE, against the full ones. Both
+        # fail as stale pixels and never as a crash, so the fixture runs the
+        # real flush_commit under a simulated compositor that applies only
+        # the damage it is given, and every seed is run twice: once as
+        # shipped and once under KDOS_PAINT_FULL=1. The committed pixels must
+        # be the same frame for frame, and the screen must equal each buffer
+        # it was just handed. `cells` weights a run toward cell-only changes,
+        # which is the path the partial paint takes; `scroll` toward a list
+        # scrolled by lines and pages, where a band of pixels is moved rather
+        # than repainted and must come out as the full paint would draw it;
+        # `glide` toward a list declared as gliding, whose commits in between
+        # two positions must be damaged, equal under the full paint, and be
+        # the list's own picture at the position presented.
+        $CC $STD $WARN -I"$PROTO" $KCINC -Isrc/libs/libkchrome \
+            -Isrc/libs/libkicon \
+            $(pkg-config --cflags fcft fontconfig pixman-1 xkbcommon \
+                         wayland-client) \
+            -o "$OUT/paintcheck" testing/fixtures/kwl/paintcheck.c \
+            src/libs/libkwl/kwl_key.c src/libs/libkwl/kwl_font.c \
+            src/libs/libkwl/kwl_insp.c \
+            src/libs/libkdisp/*.c src/libs/libkcell/*.c \
+            src/libs/libktui/*.c src/libs/libkcolor/*.c \
+            src/libs/libkbase/*.c \
+            src/libs/libkchrome/kch_px.c src/libs/libkchrome/kch_tone.c \
+            "$PROTO"/*-protocol.c \
+            $(pkg-config --libs fcft fontconfig pixman-1 xkbcommon \
+                         wayland-client)
+        for _pc in "1 400" "2 400 cells" "3 400" "4 400 cells" \
+                   "5 400 scroll" "6 400 scroll" "7 300 glide" "8 300 glide"; do
+            # shellcheck disable=SC2086
+            "$OUT/paintcheck" $_pc > "$OUT/paint.part" 2>"$OUT/paint.err" \
+                || { cat "$OUT/paint.err"; echo "  paintcheck $_pc FAILED"; exit 1; }
+            # shellcheck disable=SC2086
+            KDOS_PAINT_FULL=1 "$OUT/paintcheck" $_pc > "$OUT/paint.full" \
+                2>"$OUT/paint.err" \
+                || { cat "$OUT/paint.err"; echo "  paintcheck $_pc (full) FAILED"; exit 1; }
+            cmp -s "$OUT/paint.part" "$OUT/paint.full" \
+                || { echo "  paintcheck $_pc: the partial paint differs from the full one"; exit 1; }
+        done
+        echo "  paintcheck (partial paint, moved bands and gliding lists == full paint, damage covers every change)"
+
+        # THE KDOS_INSPECT OVERLAY. Twice over: inspcheck drives kwl_insp.c
+        # with the clock handed in (the panel on a copy of the cells, the
+        # tint and its fade, the numbers, a refresh cadence that goes still,
+        # the hit outlines), and paintcheck runs the real flush_commit with
+        # the overlay on, where every commit must still leave the screen
+        # equal to the buffer it was handed — the overlay's pixels move where
+        # no cell did, so any commit it does not damage whole fails there.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkwl \
+            $(pkg-config --cflags fcft fontconfig pixman-1) \
+            -o "$OUT/inspcheck" testing/fixtures/kwl/inspcheck.c \
+            src/libs/libkwl/kwl_insp.c src/libs/libkcell/*.c \
+            src/libs/libktui/*.c src/libs/libkbase/*.c \
+            $(pkg-config --libs fcft fontconfig pixman-1)
+        KDOS_INSPECT=1 "$OUT/inspcheck" >/dev/null \
+            || { KDOS_INSPECT=1 "$OUT/inspcheck"; echo "  inspcheck FAILED"; exit 1; }
+        KDOS_INSPECT=0 "$OUT/inspcheck" off \
+            || { echo "  inspcheck: KDOS_INSPECT=0 did not keep it off"; exit 1; }
+        env -u KDOS_INSPECT "$OUT/inspcheck" off \
+            || { echo "  inspcheck: the overlay is on by default"; exit 1; }
+        KDOS_INSPECT=1 "$OUT/paintcheck" 5 200 cells > /dev/null 2>"$OUT/paint.err" \
+            || { cat "$OUT/paint.err"; echo "  paintcheck under KDOS_INSPECT FAILED"; exit 1; }
+        echo "  inspcheck (KDOS_INSPECT: panel on a copy, tint and fade, numbers, still when still; paintcheck with it on)"
+
+        # THE FRAME CLOCK. tickcheck includes kwl.c like paintcheck and
+        # replaces the wire and the display socket (a pipe), so the real
+        # kwl_poll_event() runs: an idle wait must run its whole length with
+        # no commit, no frame asked for and no tick; a live animation gets
+        # one empty commit, then a KT_EVT_TICK per frame answered or per
+        # stall; one frame is owed after the window and none after that;
+        # comp.conf's `motion` reads as the compositor reads it; and the
+        # wheel and the coast run through the real pointer handlers: a
+        # detent is one tick however it arrives, a flick coasts and stops.
+        $CC $STD $WARN -I"$PROTO" $KCINC \
+            $(pkg-config --cflags fcft fontconfig pixman-1 xkbcommon \
+                         wayland-client) \
+            -o "$OUT/tickcheck" testing/fixtures/kwl/tickcheck.c \
+            src/libs/libkwl/kwl_key.c src/libs/libkwl/kwl_font.c \
+            src/libs/libkwl/kwl_insp.c src/libs/libkwl/kwl_glide.c \
+            src/libs/libkdisp/*.c src/libs/libkcell/*.c \
+            src/libs/libktui/*.c src/libs/libkcolor/*.c \
+            src/libs/libkbase/*.c \
+            "$PROTO"/*-protocol.c \
+            $(pkg-config --libs fcft fontconfig pixman-1 xkbcommon \
+                         wayland-client)
+        rm -rf "$OUT/tick.conf" && mkdir -p "$OUT/tick.conf"
+        "$OUT/tickcheck" "$OUT/tick.conf" > /dev/null 2>"$OUT/tick.err" \
+            || { cat "$OUT/tick.err"; echo "  tickcheck FAILED"; exit 1; }
+        echo "  tickcheck (frame clock: idle silent, a tick per frame while live, one owed, motion key; wheel detents, the coast)"
 
         # kdos-lock's client half draws through exactly the headers just
         # generated, so it costs one more compile and is the only gate it has.
@@ -769,12 +989,14 @@ fi
 # gate here, because they are the KDOS-owned code and each includes
 # labwc.h + wlroots headers, which is where version drift would bite.
 # libxml2, cairo, pango and glib are in the list because labwc.h reaches
-# rcxml.h and font.h, which include them. Without their include paths the graft
-# files fail to COMPILE, and on a host that has wlroots that is a hard stop
-# rather than a skip — the guard has to name every header the compile needs,
-# not only the libraries the object would link.
+# rcxml.h and font.h, which include them, and basu because the keyboard
+# monitor (kdos-a11ymon.c) and the ScreenSaver inhibitor (kdos-screensaver.c)
+# are session-bus services. Without their include
+# paths the graft files fail to COMPILE, and on a host that has wlroots that
+# is a hard stop rather than a skip — the guard has to name every header the
+# compile needs, not only the libraries the object would link.
 if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 \
-        libdrm libpng libxml-2.0 cairo pango glib-2.0 2>/dev/null; then
+        libdrm libpng libxml-2.0 cairo pango glib-2.0 basu 2>/dev/null; then
     KC=src/desktop/kdos-comp
     #
     # wlr_layer_shell_v1.h includes a GENERATED protocol header, which a meson
@@ -795,13 +1017,115 @@ if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 \
             -I"$KC/include" -I"$OUT/compconf" -I"$PROTO" \
             -Isrc/libs/libkcolor -Isrc/libs/libkbase \
             $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server \
-                pixman-1 libdrm libpng libxml-2.0 cairo pango glib-2.0) \
+                pixman-1 libdrm libpng libxml-2.0 cairo pango glib-2.0 basu) \
             -o "$OUT/comp-$(basename "$f" .c).o" "$f"
     done
     echo "  kdos-comp grafts ($(ls "$KC"/src/kdos-*.c | wc -l) files)"
 
 else
-    echo "  kdos-comp grafts (skipped — wlroots-0.20, glesv2, egl, libxml2, cairo or pango not on this host)"
+    echo "  kdos-comp grafts (skipped — wlroots-0.20, glesv2, egl, libxml2, cairo, pango or basu not on this host)"
+fi
+
+# The phosphor pass redraws only the damaged part of the output, and the result
+# must equal a whole-output pass on every frame — a stale column or a stale
+# buffer is on screen until something else repaints it, and the rig cannot see
+# the pass at all. scopecheck runs the compositor's own shader and scoping code
+# (kdos-crt-pass.c) and wlroots' own damage ring (from the port's tarball, which
+# needs no installed wlroots) on a surfaceless EGL context; llvmpipe is enough.
+# The two broken modes must FAIL, or the comparison proves nothing.
+SCW=$(ls "$(port_dir wlroots)"/wlroots-*.tar.gz 2>/dev/null | head -1)
+if [ -n "$SCW" ] && pkg-config --exists egl glesv2 pixman-1 wayland-server \
+        2>/dev/null; then
+    mkdir -p "$OUT/scwlr"
+    tar xzf "$SCW" -C "$OUT/scwlr" --strip-components=1 \
+        --wildcards '*/include/wlr/*' '*/types/wlr_damage_ring.c'
+    # wlroots builds itself with WLR_PRIVATE empty; the layout is the same
+    $CC $STD -DWLR_USE_UNSTABLE -DWLR_PRIVATE= -I"$OUT/scwlr/include" \
+        $(pkg-config --cflags pixman-1 wayland-server) \
+        -c "$OUT/scwlr/types/wlr_damage_ring.c" -o "$OUT/scring.o"
+    $CC $STD $WARN -DWLR_USE_UNSTABLE -I"$OUT/scwlr/include" \
+        -Isrc/desktop/kdos-comp/include \
+        $(pkg-config --cflags egl glesv2 pixman-1 wayland-server) \
+        -o "$OUT/scopecheck" testing/fixtures/crt/scopecheck.c \
+        src/desktop/kdos-comp/src/kdos-crt-pass.c "$OUT/scring.o" \
+        $(pkg-config --libs egl glesv2 pixman-1 wayland-server)
+    scrc=0
+    scline=$("$OUT/scopecheck") || scrc=$?
+    if [ "$scrc" = 77 ]; then
+        echo "  crt scopecheck (skipped — no surfaceless EGL/GLES2 here)"
+    elif [ "$scrc" != 0 ]; then
+        echo "$scline"
+        echo "  FAIL: the scoped phosphor pass differs from the whole one"
+        exit 1
+    else
+        for scm in no-reach no-age; do
+            scrc=0
+            "$OUT/scopecheck" "$scm" >/dev/null || scrc=$?
+            if [ "$scrc" != 1 ]; then
+                echo "  FAIL: scopecheck $scm exited $scrc — the comparison cannot fail"
+                exit 1
+            fi
+        done
+        echo "  crt scopecheck (${scline#scopecheck: }; no-reach and no-age caught)"
+    fi
+else
+    echo "  crt scopecheck (skipped — egl, glesv2, pixman-1, wayland-server or the wlroots tarball not on this host)"
+fi
+
+# The compositor's fades (kdos-motion.c) copy a closing surface into a
+# snapshot beside the output's layer tree and hold its buffers until the fade
+# ends; a snapshot inside the layer tree crashes the next arrange, one that
+# keeps no lock shows a freed buffer, and an open that ends a hair under 1
+# leaves the surface unoccluding for good. A window transition moves the
+# window's tree as well, and one that does not follow labwc placing the window
+# mid-open, or does not end exactly at rest, leaves it drawn away from where
+# input thinks it is; its snapshot copies the border rectangles as buffers
+# that refuse the pointer; a window shown again while its own snapshot still
+# leaves must take the snapshot over, or it is drawn twice. motioncheck plays
+# map, unmap, client exit, output loss, a window's open, close, workspace
+# switch and switch straight back, and teardown against
+# wlroots' real scene graph, which needs an installed wlroots — the tarball
+# alone would mean building most of it here.
+if pkg-config --exists wlroots-0.20 wayland-server pixman-1 2>/dev/null; then
+    $CC $STD $WARN -DWLR_USE_UNSTABLE -Itesting/fixtures/motion/stub \
+        -Isrc/desktop/kdos-comp/include -Isrc/desktop/kdos-comp/src \
+        -Isrc/libs/libkcolor \
+        $(pkg-config --cflags wlroots-0.20 wayland-server pixman-1) \
+        -o "$OUT/motioncheck" testing/fixtures/motion/motioncheck.c \
+        $(pkg-config --libs wlroots-0.20 wayland-server pixman-1) -lm
+    mcline=$("$OUT/motioncheck") || {
+        echo "$mcline"
+        echo "  FAIL: the compositor's fades"
+        exit 1
+    }
+    echo "  motion fades (${mcline#motioncheck: })"
+else
+    echo "  motion fades (skipped — wlroots-0.20, wayland-server or pixman-1 not on this host)"
+fi
+
+# Render-late scheduling (kdos-sched.c) holds an output's frame_pending up
+# while it waits for the moment before the vertical blank and lowers it
+# before the composite; a wait that does not hold it gets a second frame
+# event in the middle, one that does not lower it never frames again, and a
+# timer left armed across any other commit, buffer or not, composites over a
+# pending flip.
+# schedcheck plays presentations, commits, refusals, output loss and shutdown
+# through a real event loop, with the same installed-wlroots condition.
+if pkg-config --exists wlroots-0.20 wayland-server pixman-1 2>/dev/null; then
+    $CC $STD $WARN -DWLR_USE_UNSTABLE -Itesting/fixtures/motion/stub \
+        -Isrc/desktop/kdos-comp/include -Isrc/desktop/kdos-comp/src \
+        -Isrc/libs/libkcolor \
+        $(pkg-config --cflags wlroots-0.20 wayland-server pixman-1) \
+        -o "$OUT/schedcheck" testing/fixtures/sched/schedcheck.c \
+        $(pkg-config --libs wlroots-0.20 wayland-server pixman-1) -lm
+    sdline=$("$OUT/schedcheck") || {
+        echo "$sdline"
+        echo "  FAIL: render-late frame scheduling"
+        exit 1
+    }
+    echo "  render-late scheduling (${sdline#schedcheck: })"
+else
+    echo "  render-late scheduling (skipped — wlroots-0.20, wayland-server or pixman-1 not on this host)"
 fi
 
 # kdos-boxsock is the enforcement half of N1: it is what hands a box a socket
@@ -1326,7 +1650,7 @@ echo "  7 ports, all three outcomes reproduced from the recorded corpus"
 
 echo
 echo "==> kpkgdepends still agrees with the ports tree"
-PORT_REPO="$PWD/ports/core $PWD/src/packages" KPKG_CONF=/nonexistent \
+PORT_REPO="$PWD/ports/core $PWD/src/system $PWD/src/art" KPKG_CONF=/nonexistent \
     PKGDB_DIR=/dev/null "$OUT/kdos-kpkg" kpkgdepends bash >/dev/null
 echo "  ok"
 
@@ -1342,15 +1666,15 @@ echo "==> a game's desktop entry is what makes it reachable, and nothing checks 
 #
 # The entries are read out of the build.sh heredocs rather than out of a built
 # image, so this runs on any host and fails at the recipe rather than after a
-# seven-minute packaging run.
+# seven-minute image build.
 _gamefail=0
 for _p in nethack frotz bsd-games moon-buggy; do
-    _bs="ports/core/$_p/build.sh"
+    _bs="$(port_dir "$_p")/build.sh"
     [ -f "$_bs" ] || { echo "  $_p: no build.sh"; _gamefail=1; continue; }
     # The recipe parses AND its whole dependency closure resolves, which is
     # the same call the block above makes for bash — a `depends` naming a port
     # this tree does not have is the other way a game recipe fails late.
-    PORT_REPO="$PWD/ports/core $PWD/src/packages" KPKG_CONF=/nonexistent \
+    PORT_REPO="$PWD/ports/core $PWD/src/system $PWD/src/art" KPKG_CONF=/nonexistent \
         PKGDB_DIR=/dev/null "$OUT/kdos-kpkg" kpkgdepends "$_p" \
         > "$OUT/game-$_p.deps" 2>&1 \
         || { echo "  $_p: the recipe does not parse or its depends do not resolve"
@@ -1389,9 +1713,10 @@ fi
 # frotz's entry claims application/x-zmachine, and shared-mime-info — the
 # version this image builds — defines no such type, so without the XML the
 # recipe installs, the claim resolves to nothing and says so nowhere.
-_smi=$(ls ports/core/shared-mime-info/shared-mime-info-*.tar.xz 2>/dev/null | head -1)
-if grep -q 'MimeType=.*x-zmachine' ports/core/frotz/build.sh; then
-    grep -q 'mime/packages/kdos-zmachine.xml' ports/core/frotz/build.sh &&
+_smi=$(ls "$(port_dir shared-mime-info)"/shared-mime-info-*.tar.xz 2>/dev/null | head -1)
+_frotz="$(port_dir frotz)/build.sh"
+if grep -q 'MimeType=.*x-zmachine' "$_frotz"; then
+    grep -q 'mime/packages/kdos-zmachine.xml' "$_frotz" &&
         echo "  and the z-machine type frotz claims is one frotz installs" ||
         { echo "  frotz claims a MIME type nothing on this image defines"
           exit 1; }
@@ -1477,6 +1802,8 @@ printf 'stale\n' > "$PKG/usr/share/info/dir"
 install -Dm644 /dev/null "$PKG/etc/udev/hwdb.d/60-feed.hwdb"
 install -Dm644 /dev/null "$PKG/usr/share/man/man1/feed.1"
 install -Dm644 /dev/null "$PKG/etc/fonts/conf.d/60-feed.conf"
+install -Dm644 /dev/null "$PKG/usr/share/texmf-dist/tex/latex/feed/feed.sty"
+install -Dm644 /dev/null "$PKG/usr/share/applications/feed.desktop"
 EOF
 mkdir -p "$TR/ports/page"
 cat > "$TR/ports/page/kpkgbuild" <<'EOF'
@@ -1488,14 +1815,17 @@ EOF
 cat > "$TR/ports/page/build.sh" <<'EOF'
 install -Dm644 /dev/null "$PKG/usr/share/man/man1/page.1"
 EOF
-# The MIME stub leaves a generated file behind, as the real tool does: that is
-# what keeps the database directory alive after the last XML is removed. The
-# makewhatis stub writes the database, which is what the trigger measures.
-for t in update-mime-database install-info udevadm makewhatis fc-cache; do
+# The MIME and desktop-database stubs leave a generated file behind, as the
+# real tools do: that is what keeps each directory alive after the last XML or
+# desktop entry is removed. The makewhatis stub writes the database, which is
+# what the trigger measures.
+for t in update-mime-database install-info udevadm makewhatis fc-cache mktexlsr \
+         update-desktop-database; do
     printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\n' "$t" "$TR" > "$TR/bin/$t"
     chmod +x "$TR/bin/$t"
 done
 printf ': > "$1/globs"\n' >> "$TR/bin/update-mime-database"
+printf ': > "$2/mimeinfo.cache"\n' >> "$TR/bin/update-desktop-database"
 printf 'd=$1; [ "$1" = -d ] && d=$2; echo db > "$d/mandoc.db"\n' \
     >> "$TR/bin/makewhatis"
 ktrig() {
@@ -1522,6 +1852,10 @@ grep -qx "fc-cache -s --sysroot $TR/root" "$TR/calls" \
     || { echo "  installing fontconfig configuration did not rebuild the font cache"; exit 1; }
 grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
     || { echo "  a first manual page did not build the whole manual index"; exit 1; }
+grep -qx "mktexlsr --quiet $TR/root/usr/share/texmf-dist" "$TR/calls" \
+    || { echo "  installing a TeX file did not rebuild ls-R, or named a tree that does not exist"; exit 1; }
+grep -qx "update-desktop-database -q $TR/root/usr/share/applications" "$TR/calls" \
+    || { echo "  installing a desktop entry did not rebuild mimeinfo.cache"; exit 1; }
 : > "$TR/calls"
 ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/page-1.0-1.tar.xz" >/dev/null \
     || { echo "  the synthetic page package did not install"; exit 1; }
@@ -1535,7 +1869,9 @@ grep -qx "udevadm hwdb --update --root $TR/root" "$TR/calls" \
     || { echo "  removing a hwdb.d file left its entries in the trie"; exit 1; }
 grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
     || { echo "  removing a manual page did not rebuild the whole manual index"; exit 1; }
-echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache and manual index"
+grep -qx "update-desktop-database -q $TR/root/usr/share/applications" "$TR/calls" \
+    || { echo "  removing a desktop entry left mimeinfo.cache naming it"; exit 1; }
+echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index, ls-R and desktop database"
 
 echo
 
@@ -2236,6 +2572,15 @@ rb /tmp --dry-run "$OUT/rb" >/dev/null 2>&1 \
     && { echo "  a directory that is not a KDOS tree was accepted"; exit 1; }
 rb "$PWD" --dry-run "$RBW" >/dev/null 2>&1 \
     || { echo "  this repo was not recognised as a KDOS tree"; exit 1; }
+# A tree without the fs/ overlay builds a root with no configuration.
+RBT="$OUT/rb-tree"
+mkdir -p "$RBT/script" "$RBT/ports/core" "$RBT/src/devtools/kdosbuild"
+: > "$RBT/script/kdosbuild.sh"
+rb "$RBT" --dry-run "$RBW" >/dev/null 2>&1 \
+    && { echo "  a tree with no fs/ overlay was accepted"; exit 1; }
+mkdir -p "$RBT/fs/etc"
+rb "$RBT" --dry-run "$RBW" >/dev/null 2>&1 \
+    || { echo "  a tree with every part was not recognised"; exit 1; }
 # /dev/shm is tmpfs on any Linux that has it, which is the case this exists for.
 if [ -d /dev/shm ]; then
     rb "$PWD" --dry-run /dev/shm/kdos-rebuild-check >/dev/null 2>&1 \
@@ -2258,7 +2603,7 @@ if ! command -v cpio >/dev/null 2>&1; then
 else
 # The early loader does not mount anything: it scans the raw initrd for one
 # literal path before decompression. So this builds an initrd shaped exactly
-# like 01_initramfs.sh's output -- an uncompressed cpio carrying both vendors'
+# like 090_initramfs.sh's output -- an uncompressed cpio carrying both vendors'
 # blobs, then the gzipped part -- and asserts doctor's answer flips with it.
 # Both blobs are present so the assertion does not depend on the host's CPU.
 UC="$OUT/ucode"
@@ -2479,7 +2824,7 @@ echo i > "$ES/esp/EFI/kdos/a/initramfs.cpio.gz"
 esb set-slot a AAAA-1111 LUKS-AAAA >/dev/null
 python3 - "$ES/esp/limine.conf" <<'PYEOF' || { echo "  could not render kinstall's limine.conf"; exit 1; }
 import re, sys
-s = open('src/packages/kdos-installer/install.c').read()
+s = open('src/system/kdos-installer/install.c').read()
 m = re.search(r'wr\("/boot/efi/limine.conf",\n(.*?)\n\t   theme, paper', s, re.S)
 fmt = ''.join(re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1)))
 fmt = fmt.encode().decode('unicode_escape')
@@ -2541,7 +2886,7 @@ test ! -e "$ES/esp/EFI/kdos/vmlinuz" && cmp -s "$ES/rc/boot/vmlinuz-kdos" "$ES/e
 # root has no /boot/initramfs.modules.
 if command -v cpio >/dev/null; then
     ( . /dev/stdin <<EOF
-$(sed -n '/^archive_modules() (/,/^)/p' ports/core/linux/postinstall.sh)
+$(sed -n '/^archive_modules() (/,/^)/p' "$(port_dir linux)/postinstall.sh")
 EOF
       test "$(archive_modules "$ES/rc/boot/initramfs.cpio.gz")" = vfat ) \
         || { echo "  the postinstall found no module set in the image's archive"; exit 1; }
@@ -2701,7 +3046,7 @@ echo "  the spec's load option, the confirmed slot's default kept, one boot then
 
 echo
 echo "==> the initramfs unlocks a LUKS root, or says why it cannot"
-# The generated init is a heredoc inside a packaging script, which is exactly
+# The generated init is a heredoc inside an image-phase script, which is exactly
 # the kind of code nothing ever tests until it is 3 a.m. and a laptop will not
 # boot. It is extracted, syntax-checked, and its unlock function is run against
 # stub tools — which is what PASS_TTY and CRYPT_MAPPER_DIR exist for.
@@ -2709,7 +3054,7 @@ IR="$OUT/initramfs"
 mkdir -p "$IR/bin" "$IR/mapper"
 python3 - "$IR/init" <<'PYEOF' || { echo "  could not extract the generated init"; exit 1; }
 import re, sys
-s = open('script/06_packaging/01_initramfs.sh').read()
+s = open('script/phases/70_image/090_initramfs.sh').read()
 m = re.search(r"cat > init <<EOF\n(.*?)\nEOF\n", s, re.S)
 if not m:
     sys.exit(1)
@@ -2836,11 +3181,11 @@ echo "  volume groups: no lvm without a PV, once per newly seen set of PVs, thin
 # toybox's applet implements no `-U` and cannot see `crypto_LUKS`. With the
 # applet, an installed machine drops to a shell with "Root device not found".
 # $PATH puts /usr/bin ahead of /usr/sbin, so the name alone decides it.
-grep -q 'cp /usr/sbin/blkid bin/blkid' script/06_packaging/01_initramfs.sh \
+grep -q 'cp /usr/sbin/blkid bin/blkid' script/phases/70_image/090_initramfs.sh \
     || { echo "  the initramfs no longer copies util-linux's blkid"; exit 1; }
-grep -q "rm -f bin/blkid" script/06_packaging/01_initramfs.sh \
+grep -q "rm -f bin/blkid" script/phases/70_image/090_initramfs.sh \
     || { echo "  the toybox blkid symlink is not removed first — cp writes THROUGH it"; exit 1; }
-grep -q "CONFIG_BLKID is not set" ports/core/toybox/build.sh \
+grep -q "CONFIG_BLKID is not set" "$(port_dir toybox)/build.sh" \
     || { echo "  toybox's blkid applet is back, and it shadows util-linux's on PATH"; exit 1; }
 echo "  the initramfs blkid is util-linux's, and toybox claims no such name"
 
@@ -2913,8 +3258,51 @@ echo "==> kdosbuild reads the build tree correctly"
 # over a real tree.
 "$OUT/kdosbuild" --script-dir script --list >/dev/null 2>&1 \
     || { echo "  kdosbuild cannot read script/"; exit 1; }
-phases=$("$OUT/kdosbuild" --script-dir script --build-dir "$OUT/empty" --list 2>&1)
+# --list still answers when a phase is unreadable, and names it on stderr: a
+# name there is a phase every real build refuses before its first step.
+mkdir -p "$OUT/empty"
+"$OUT/kdosbuild" --script-dir script --build-dir "$OUT/empty" --list \
+    >/dev/null 2>"$OUT/list-err"
+grep -q '^kdosbuild:' "$OUT/list-err" \
+    && { echo "  a phase in script/phases cannot run:"; cat "$OUT/list-err"; exit 1; }
 echo "  phase discovery and snapshot inventory"
+
+# A phase that cannot say what it installs refuses the whole build with exit 2
+# and runs nothing: both packages.txt and packages.d/ (which list is a guess),
+# a packages.d/ with no *.txt, a directory with no list and no step (each would
+# install nothing and report success), and a script directory with no phase.
+# Each is planted beside a step that would leave a mark had it run.
+kb_refuses() {  # <tree> <expected stderr text>
+    local rc=0
+    ( cd "$1" && "$OUT/kdosbuild" --script-dir script --build-dir build --fresh ) \
+        > "$1/out.log" 2>&1 || rc=$?
+    [ "$rc" = 2 ] || { echo "  $1: exit $rc, not 2"; cat "$1/out.log"; exit 1; }
+    grep -qF -- "$2" "$1/out.log" || { echo "  $1: no '$2'"; cat "$1/out.log"; exit 1; }
+    [ -e "$1/ran" ] && { echo "  $1: a step ran before the refusal"; exit 1; }
+    return 0
+}
+kb_tree() {  # <tree>: one runnable phase that marks the tree when it runs
+    mkdir -p "$1/script/phases/00_ok" "$1/build"
+    printf '#!/bin/bash\ntouch "$PWD/ran"\n' > "$1/script/phases/00_ok/00_mark.sh"
+    chmod +x "$1/script/phases/00_ok/00_mark.sh"
+}
+KR="$OUT/kbrefuse"
+kb_tree "$KR/both"
+mkdir -p "$KR/both/script/phases/10_pk/packages.d"
+echo zlib > "$KR/both/script/phases/10_pk/packages.txt"
+echo zlib > "$KR/both/script/phases/10_pk/packages.d/base.txt"
+kb_refuses "$KR/both" "10_pk has both packages.txt and packages.d/"
+kb_tree "$KR/nolist"
+mkdir -p "$KR/nolist/script/phases/10_pk/packages.d"
+echo zlib > "$KR/nolist/script/phases/10_pk/packages.d/base.list"
+kb_refuses "$KR/nolist" "10_pk/packages.d/ holds no *.txt"
+kb_tree "$KR/bare"
+mkdir -p "$KR/bare/script/phases/10_pk"
+echo 'export KDOS_PHASE_TITLE="Nothing"' > "$KR/bare/script/phases/10_pk/phase.env"
+kb_refuses "$KR/bare" "10_pk has no packages.txt, no packages.d/ and no *.sh"
+mkdir -p "$KR/none/script/phases" "$KR/none/build"
+kb_refuses "$KR/none" "no phase under script/phases/"
+echo "  an unreadable phase refuses the build before any step runs"
 
 echo
 echo "==> kdosbuild runs a build end to end"
@@ -2923,17 +3311,17 @@ echo "==> kdosbuild runs a build end to end"
 # logs, tarring the snapshot, extracting it again — rather than a decision.
 mkdir -p "$OUT/empty"
 E="$OUT/e2e"
-mkdir -p "$E/script/00_alpha" "$E/script/01_beta" "$E/build" "$E/bin"
-cat > "$E/script/alpha.env.sh" <<'EOF'
+mkdir -p "$E/script/phases/00_alpha" "$E/script/phases/01_beta" "$E/build" "$E/bin"
+cat > "$E/script/phases/00_alpha/phase.env" <<'EOF'
 export KDOS_PHASE_TITLE="Alpha Phase"
 export KDOS_SNAPSHOT_PATHS="fs"
 export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/*"
 rm -rf /var/cache/kpkg/work
 EOF
-cat > "$E/script/beta.env.sh" <<'EOF'
+cat > "$E/script/phases/01_beta/phase.env" <<'EOF'
 export KDOS_SNAPSHOT_PATHS="fs ports"
 EOF
-cat > "$E/script/00_alpha/00_tree.sh" <<'EOF'
+cat > "$E/script/phases/00_alpha/00_tree.sh" <<'EOF'
 #!/bin/bash
 # Title: build the rootfs
 set -e
@@ -2942,12 +3330,12 @@ echo hello > "$PWD/build/fs/usr/bin/hello"
 printf 'ansi \033[31mred\033[0m and\ttab\n'
 printf 'no trailing newline'
 EOF
-cat > "$E/script/01_beta/00_ports.sh" <<'EOF'
+cat > "$E/script/phases/01_beta/00_ports.sh" <<'EOF'
 #!/bin/bash
 mkdir -p "$PWD/build/ports"; echo port > "$PWD/build/ports/one"
 echo "replay=$KDOS_REPLAY"
 EOF
-chmod +x "$E"/script/*/*.sh
+chmod +x "$E"/script/phases/*/*.sh
 KB="$OUT/kdosbuild"
 
 ( cd "$E" && "$KB" --script-dir script --build-dir build --fresh ) > "$OUT/e2e.log" 2>&1
@@ -2984,11 +3372,11 @@ echo "  build plan narrowing and KDOS_REPLAY"
 
 # A failing step stops the build, exits 1, and does NOT snapshot the phase.
 F="$OUT/fail"
-mkdir -p "$F/script/00_a" "$F/build"
-echo 'export KDOS_SNAPSHOT_PATHS="fs"' > "$F/script/a.env.sh"
-printf '#!/bin/bash\necho starting\nexit 3\n' > "$F/script/00_a/00_boom.sh"
-printf '#!/bin/bash\necho unreachable\n' > "$F/script/00_a/01_after.sh"
-chmod +x "$F"/script/*/*.sh
+mkdir -p "$F/script/phases/00_a" "$F/build"
+echo 'export KDOS_SNAPSHOT_PATHS="fs"' > "$F/script/phases/00_a/phase.env"
+printf '#!/bin/bash\necho starting\nexit 3\n' > "$F/script/phases/00_a/00_boom.sh"
+printf '#!/bin/bash\necho unreachable\n' > "$F/script/phases/00_a/01_after.sh"
+chmod +x "$F"/script/phases/*/*.sh
 if ( cd "$F" && "$KB" --script-dir script --build-dir build --fresh ) \
         > "$OUT/fail.log" 2>&1; then
     echo "  a failing step did not fail the build"; exit 1
@@ -3086,11 +3474,11 @@ echo "  no secret reaches a dump or the answer file it writes"
 
 # ── the Applications page reads the CATALOGUE ───────────────────────────────
 # kinstall links libkbase, libktui and libkcolor and nothing else, which is what
-# lets it live in phase 1 — so catalogue.c is compiled IN rather than shelled
-# out to, and this asserts the four answers that decide what an install carries:
-# `essential` is preselected, an answer file's choice wins, an UNKNOWN id falls
-# back rather than failing after the point of no return, and the page says which
-# ROUTE the applications will take.
+# lets it live in the bootstrap phase — so catalogue.c is compiled IN rather
+# than shelled out to, and this asserts the four answers that decide what an
+# install carries: `essential` is preselected, an answer file's choice wins, an
+# UNKNOWN id falls back rather than failing after the point of no return, and
+# the page says which ROUTE the applications will take.
 mkdir -p "$OUT/cat"
 cat > "$OUT/cat/catalogue" <<'CAT'
 snapshot = 20260824T000000Z
@@ -3448,7 +3836,7 @@ while [ ! -S "$W/p.sock" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
 fail() { echo "  $1"; exit 1; }
 "$B/kdos-power" firewall list > "$W/l1" || fail "firewall list failed"
 [ "$(tail -n1 "$W/l1")" = ok ] || fail "the list does not end in ok"
-[ "$(grep -c "	" "$W/l1")" -ge 13 ] || fail "the list lost rows past the first read"
+[ "$(grep -c "	" "$W/l1")" -ge 21 ] || fail "the list lost rows past the first read"
 grep -q "^mosh	off	" "$W/l1" || fail "mosh is not listed off"
 "$B/kdos-power" firewall mosh on > "$W/t1" || fail "firewall mosh on failed"
 grep -q "^ok mosh on" "$W/t1" || fail "the toggle reply is not on stdout"
@@ -3672,7 +4060,7 @@ echo "==> kdos-oomd picks the victim the desktop can afford to lose"
 # with an empty cmdline (1.2 G). If any one of those checks broke, the answer
 # would be that process and not firefox-esr.
 $CC $STD $WARN $INC -o "$OUT/kdos-oomd" \
-    src/desktop/kdos-oomd/main.c src/libs/libkbase/*.c src/libs/libkproc/*.c
+    src/daemons/kdos-oomd/main.c src/libs/libkbase/*.c src/libs/libkproc/*.c
 echo "  kdos-oomd"
 OM="$OUT/oomd.txt"
 "$OUT/kdos-oomd" --fixture testing/fixtures/oomd/preferred > "$OM" \
@@ -3731,7 +4119,7 @@ echo "==> kdos-mountd offers the stick and refuses everything else"
 # /etc/fstab is somebody's existing decision, which this daemon does not get to
 # second-guess.
 $CC $STD $WARN $INC -o "$OUT/kdos-mountd" \
-    src/desktop/kdos-mountd/main.c src/libs/libkbase/*.c
+    src/daemons/kdos-mountd/main.c src/libs/libkbase/*.c
 MF=testing/fixtures/mountd
 MO="$OUT/mountd.txt"
 # The mounts file is the fixture's too, for every invocation below: the
@@ -3807,7 +4195,7 @@ rm -f "$OUT/km.uevent"; mkfifo "$OUT/km.uevent"
 mkdir -p "$OUT/media"
 KDOS_MOUNTD_SOCKET="$KMSOCK" KDOS_MOUNTD_MOUNTS="$MF/mounts-live" \
 KDOS_MOUNTD_CONF="$OUT/mountd.conf" KDOS_MOUNTD_UEVENT="$OUT/km.uevent" \
-KDOS_MOUNTD_MEDIA="$OUT/media" \
+KDOS_MOUNTD_MEDIA="$OUT/media" KDOS_MOUNTD_SINK="$OUT/km.sink" \
     "$OUT/kdos-mountd" --fixture-serve "$MF/sys" "$MF/dev" > "$OUT/km.exec" 2>&1 &
 KMPID=$!
 for _i in $(seq 1 50); do [ -S "$KMSOCK" ] && break; sleep 0.1; done
@@ -3947,6 +4335,71 @@ if grep -q 'correct horse' "$OUT/km.exec" 2>/dev/null; then
 else
     echo "  ok    and it appears in no argument vector"
 fi
+# ── AN IMAGE OVER A WHOLE DISK ────────────────────────────────────────────
+#
+# `write` is the verb that replaces everything on a stick, and the image
+# crosses the socket as an OPEN DESCRIPTOR, never as a path: a root daemon that
+# opened a named file would copy one the caller cannot read onto a stick the
+# caller can. Under --fixture-serve the "disk" is $KDOS_MOUNTD_SINK, so the
+# copy and the read-back both really run and nothing that looks like a device
+# is touched.
+cat > "$OUT/kmwrite.py" <<'KMWRITEEOF'
+import array, os, socket, sys
+sock, line, path = sys.argv[1], sys.argv[2], sys.argv[3]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sock)
+anc = []
+if path != '-':
+    anc = [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+            array.array('i', [os.open(path, os.O_RDONLY)]))]
+s.sendmsg([line.encode()], anc)
+s.shutdown(socket.SHUT_WR)
+b = b''
+while True:
+    d = s.recv(4096)
+    if not d:
+        break
+    b += d
+sys.stdout.write(b.decode(errors='replace'))
+KMWRITEEOF
+kmwrite() {  # <request> <image or -> <expected substring> <what it proves>
+    _got=$(python3 "$OUT/kmwrite.py" "$KMSOCK" "$1" "$2")
+    case "$_got" in
+    *"$3"*) echo "  ok    $4" ;;
+    *) echo "  FAIL  $4"; echo "        got:  $_got"; echo "        want: $3"
+       mountd_fail=1 ;;
+    esac
+}
+head -c 3000000 /dev/urandom > "$OUT/km.img"
+rm -f "$OUT/km.sink"
+kmwrite 'write 0 3
+sdb' "$OUT/km.img" 'write is off' "write is refused until mountd.conf opts in"
+printf 'format = yes\nwrite = yes\n' > "$OUT/mountd.conf"
+kmwrite 'write 0 3
+sdb' - 'travels as a descriptor' "a write with no descriptor attached is refused"
+kmwrite 'write 0 4
+sdb1' "$OUT/km.img" 'type sdb to confirm' \
+    "the confirmation is the DISK's name, not the partition's"
+kmwrite 'write 2 3
+sdd' "$OUT/km.img" 'booted from' "the live medium's disk is refused whole"
+kmwrite 'write 0 3
+sdb' "$OUT" 'not a file' "a directory is not an image"
+kmwrite 'write 0 3
+sdb' "$OUT/km.img" 'ok sdb 3000000 verified' "an image is written and read back"
+if cmp -s "$OUT/km.img" "$OUT/km.sink"; then
+    echo "  ok    and the disk holds the image, byte for byte"
+else
+    echo "  FAIL  the sink does not hold the image"; mountd_fail=1
+fi
+# A descriptor sent with any other verb is closed, not kept: a daemon that
+# held every file a client passed it would run out of descriptors.
+kmwrite 'list
+' "$OUT/km.img" 'sdb1' "a descriptor sent with another verb is ignored"
+_kmfd=$(ls /proc/$KMPID/fd 2>/dev/null | wc -l)
+[ "$_kmfd" -le 6 ] && echo "  ok    and the daemon holds no image afterwards" \
+    || { echo "  FAIL  the daemon kept $_kmfd descriptors"
+         ls -l /proc/$KMPID/fd; mountd_fail=1; }
+
 # ── A SHARE ON ANOTHER MACHINE ────────────────────────────────────────────
 #
 # `mount.cifs` builds its option string by concatenation and escapes nothing
@@ -4514,6 +4967,22 @@ PROMPT
     t1=$(date +%s%N)
     took=$(( (t1 - t0) / 1000000 ))
 
+    # The keys a toolkit reads besides the colours. A font key left out is
+    # GTK's schema default, Cantarell, which KDOS does not ship; `contrast`
+    # is the key libadwaita reads to pick its high-contrast style;
+    # gtk-im-module left out is GTK 4's fallback "simple", which disables
+    # every input method.
+    for k in "org.gnome.desktop.interface font-name" \
+             "org.gnome.desktop.interface monospace-font-name" \
+             "org.gnome.desktop.interface gtk-im-module" \
+             "org.freedesktop.appearance contrast"; do
+        DBUS_SESSION_BUS_ADDRESS="$PORTAL_ADDR" timeout 2 busctl \
+            --address="$PORTAL_ADDR" call \
+            org.freedesktop.impl.portal.desktop.kdos \
+            /org/freedesktop/portal/desktop \
+            org.freedesktop.impl.portal.Settings Read ss $k
+    done > "$OUT/portal-keys.out" 2>&1
+
     # OpenURI — "open this on the host for me", which is what a containerised
     # application asks when a link or a downloaded file is clicked. There was no
     # backend for it at all, so the click did nothing, silently. It must answer
@@ -4565,6 +5034,10 @@ PROMPT
     grep -q "^v u 1$" "$OUT/portal-set.out" || {
         echo "  color-scheme is not 'prefer dark': $(cat "$OUT/portal-set.out")"
         exit 1; }
+    printf 'v s "Noto Sans 10"\nv s "Noto Sans Mono 10"\nv s ""\nv u 0\n' |
+        cmp -s - "$OUT/portal-keys.out" || {
+        echo "  the font, input-method and contrast keys are not what the theme names:"
+        cat "$OUT/portal-keys.out"; exit 1; }
     # And the deferred reply really is the chooser's answer.
     grep -q "file:///tmp/chosen.txt" "$OUT/portal-open.out" || {
         echo "  the deferred OpenFile reply lost the URI"
@@ -4610,7 +5083,7 @@ echo "==> the shell's front ends draw offscreen, and the boxes line up"
 # is the distinction this harness was built around and still keeps.
 DUMPCK=""
 DPROTO="$OUT/dproto"
-DWLR=$(ls ports/core/wlroots/wlroots-*.tar.gz 2>/dev/null | head -1)
+DWLR=$(ls "$(port_dir wlroots)"/wlroots-*.tar.gz 2>/dev/null | head -1)
 DSCAN=$(pkg-config --variable=wayland_scanner wayland-scanner 2>/dev/null || true)
 DWP=$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null || true)
 if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
@@ -4644,7 +5117,8 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     # one missing from it is a LINK failure that skips every golden below.
     # fav.c is the favourites store several of them write;
     # mountd.c is the one kdos-mountd client kdos-devices and kdos-disks both
-    # call. None is a front end, so all belong in the base set rather than in
+    # call; job.c is the long-child runner kdos-backup, kdos-burn and
+    # kdos-verify share. None is a front end, so all belong in the base set rather than in
     # the candidate loop — a surface that uses one would otherwise fail to
     # LINK, which the harness reports as "the new front ends do not link" and
     # which reads as a defect in those files.
@@ -4670,6 +5144,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
              src/desktop/kdos-shell/fav.c src/desktop/kdos-shell/cells.c
              src/desktop/kdos-shell/logo.c
              src/desktop/kdos-shell/mountd.c
+             src/desktop/kdos-shell/job.c
              src/desktop/kdos-shell/osd.c
              src/libs/libkchrome/kch_chrome.c
              src/libs/libkchrome/kch_tone.c"
@@ -4722,7 +5197,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
              find pix rec chars disks print timezone users update firewall \
              netagent backup theme palette contacts store \
              run prompt notifyd desk connect traymenu \
-             about calc note ime mediad display; do
+             about calc note ime mediad display burn verify; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -4860,8 +5335,8 @@ PKEOF
         "$OUT/pkdrv" nosuchprogram | grep -qx "nosuchprogram known=0 rows=0" ||
             { echo "  a program with no reader did not answer nothing"
               _pkfail=1; }
-        # helix is NAMED by the plan and is in no packages.txt at all, so it
-        # has never been built or shipped: a reader for it could not run and
+        # helix is NAMED by the plan and is in no phase's package list, so it
+        # is neither built nor shipped: a reader for it could not run and
         # could not be checked, and it must not pretend otherwise.
         "$OUT/pkdrv" helix | grep -qx "helix known=0 rows=0" ||
             { echo "  helix answers as though a reader existed"; _pkfail=1; }
@@ -5024,8 +5499,7 @@ check_box() {
     ' || exit 1
 }
 
-# Body deliberately unindented: it is a long stretch of assertions that used to
-# be top-level, and reindenting all of it would bury the one thing that changed.
+# Body deliberately unindented.
 #
 # EVERY SURFACE ANSWERS THE CONTRACT, AND SAYS SO ON ITS BOTTOM ROW.
 #
@@ -5064,7 +5538,9 @@ _furniture=" start start-route start-system menu-system traymenu traymenu-folder
 _norow=""
 for _g in testing/goldens/*-80x24.txt; do
     _n=$(basename "$_g" -80x24.txt)
-    case "$_n" in cells-*|res-*|term-*|vt-*|shell*) continue ;; esac
+    # A key drive's frame ends in the line counting the events it read, and
+    # is the same surface as a --dump golden that this loop already reads.
+    case "$_n" in cells-*|drive-*|res-*|term-*|vt-*|shell*) continue ;; esac
     case "$_furniture" in *" $_n "*) continue ;; esac
     # THE ROW ABOVE THE BOTTOM BORDER. A hint is `Key verb`, so the row must
     # hold at least two words between the frame's own columns — a blank row
@@ -5242,7 +5718,7 @@ golden() {			# <name> <WxH> <argv…>
       env LC_ALL=C TZ=UTC HOME="$PWD" \
           XDG_CACHE_HOME=/nonexistent-kdos-cache \
           XDG_CONFIG_HOME="$PWD/config" \
-          XDG_DATA_HOME=/nonexistent-kdos-data \
+          XDG_DATA_HOME="${KDOS_GOLDEN_DATA:-/nonexistent-kdos-data}" \
           XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
           XDG_RUNTIME_DIR=/nonexistent-kdos-run \
           KDOS_PANEL_ROOT="$PWD/panelroot" KDOS_PANEL_NOW=1735689600 ${KDOS_PANEL_DEBUG:+KDOS_PANEL_DEBUG=$KDOS_PANEL_DEBUG} \
@@ -5465,6 +5941,13 @@ if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have backup; then
     for _bs in 80x24 56x24 132x43; do
         golden backup "$_bs" backup --fixture "$_bkf" --dump
     done
+    # THE RESTORE VIEW, over a recorded `restic ls` of the newer snapshot. It
+    # opens at the root because that snapshot holds two paths, and one level
+    # down is the folder whose file name carries a space — the entry a restore
+    # that split on spaces would get wrong.
+    golden backup-restore 80x24 backup --fixture "$_bkf" --open e399cdcf --dump
+    golden backup-restore-dir 80x24 backup --fixture "$_bkf" --open e399cdcf \
+        --dir /home/kdos/Documents --dump
 
     # THE MODE REFUSAL, WHICH IS THE SECURITY LINE OF THIS SURFACE. A password
     # file the group or the world can read hands the key to every backup on the
@@ -5492,6 +5975,28 @@ if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have backup; then
     echo "  a group-readable password file is refused before it is used"
 else
     echo "  the kdos-backup goldens are skipped (it did not link)"
+fi
+
+# kdos-burn's drives are the host's /sys/block/sr*, so its golden reads a
+# recorded /sys instead: one drive, and one disk beside it that is not a drive
+# and must not be listed. The sources are files the shell fixture already
+# holds, named relative to it so the frame carries no host path.
+if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have burn; then
+    _bnf="$PWD/testing/fixtures/burn/sys"
+    golden burn        80x24  burn --fixture "$_bnf" tree --dump
+    golden burn        56x24  burn --fixture "$_bnf" tree --dump
+    golden burn-image  80x24  burn --fixture "$_bnf" pix/one.png --dump
+    golden burn-none   80x24  burn --fixture /nonexistent-kdos-sys --dump
+fi
+
+# kdos-verify RUNS THE CHECKER for its golden: `sha256sum -c` over a list with
+# one file that matches and one that does not. Both verdict lines are the same
+# in coreutils and busybox, and the warning each prints to stderr in its own
+# words is not a row, so the frame is the same wherever the suite runs.
+if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have verify; then
+    golden verify       80x24  verify ../verify/SHA256SUMS --dump
+    golden verify       132x43 verify ../verify/SHA256SUMS --dump
+    golden verify-none  80x24  verify --dump
 fi
 
 # kdos-devices' SCANNER SECTION, WITHOUT A GOLDEN FOR THE SURFACE. The rest of
@@ -5635,6 +6140,12 @@ if [ -n "${RESBIN:-}" ] && [ -x "$RESBIN" ]; then
     res_golden detail 56x24  --page processes --detail 950
     res_golden detail 80x24  --page processes --detail 950
     res_golden detail 132x43 --page processes --detail 950
+    #
+    # A chart read one sample at a time: `←` on the CPU page, which starts a
+    # scrub at the newest sample. The reading in the label row becomes that
+    # sample's age and value and the Esc hint names the scrub's own rung; the
+    # marked column is an attribute, which a text dump does not carry.
+    res_golden cpu-scrub 80x24 --page cpu --scrub 1
 else
     echo "  kdos-res goldens (skipped — the binary was not built on this host)"
 fi
@@ -6290,6 +6801,77 @@ if "$DUMPCK" --have keys; then
         && { echo "  the key card kept a row for a program no host carries"
              exit 1; }
 fi
+
+#
+# THE LOOP, DRIVEN. A --dump runs one draw and never the loop, so a golden of
+# one cannot see an event handler, the resize step, or ktui_keys() being asked
+# first. `$KDOS_DUMP_KEYS` gives the harness a display that is a script (see
+# dumpmain.c): the surface takes its live path, reads the events, and the
+# frame it last presented is the golden, followed by `-- N of M events read`.
+#
+# WHAT EACH ONE PINS. Every script ends `esc tick`: a surface that closes on
+# Esc stops one short of the total, and one where Esc closed a rung first
+# (trash's question, verify's path prompt) reads them all. Every script
+# resizes once, so the frame is drawn at the new size or the step is missing.
+# The rest walks the keys each surface answers — the table, the field, a
+# question and its cancel, a page — and not one of them runs a command the
+# harness host would answer differently: no toggle, no delete, no check.
+#
+# THE RUNNER'S OWN SURFACE IS HOW THE FRAME OPT-IN IS PINNED, because no
+# shipped surface on the runner takes it: unframed, Tab and Enter reach
+# event() and press nothing; framed, Tab walks the ring and Enter presses the
+# focused button; a Tab event() took stays put; a press lands on the button
+# drawn under it; and a button that closes ends the loop short of the script.
+#
+keydrive() {		# <name> <WxH> <script> <argv…>
+    _k_name=$1; _k_size=$2; _k_keys=$3; shift 3
+    if "$DUMPCK" --have "$1"; then
+        KDOS_DUMP_KEYS="$_k_keys" golden "drive-$_k_name" "$_k_size" "$@"
+    elif [ -f "$GOLD/drive-$_k_name-$_k_size.txt" ]; then
+        echo "  drive-$_k_name: a golden is committed but the surface no longer links"
+        golden_fail=1
+    else
+        echo "  drive-$_k_name (skipped — not linked into the harness)"
+    fi
+}
+KDOS_FIREWALL_LIST="$PWD/testing/fixtures/firewall/list.txt" \
+    keydrive firewall 80x24 "down down wheeldown:10,8 resize:60x20 esc tick" \
+    firewall
+keydrive trash 80x24 "down s d esc c n resize:70x22 esc tick" trash
+KDOS_CONTACT_LIST="$OUT/contacts.txt" \
+    keydrive contacts 80x24 "text:ada down up bs bs resize:60x20 esc tick" \
+    contacts
+keydrive chars 80x24 \
+    "text:arrow down down pgdn home bs resize:60x22 esc tick" chars
+keydrive verify 80x24 "l text:abc f1 f10 bs resize:70x20 esc tick" verify
+KDOS_UPDATE_JSON="$PWD/testing/fixtures/update/update.json" \
+KDOS_CVE_JSON="$PWD/testing/fixtures/update/cve.json" \
+KDOS_SLOT_TEXT="$PWD/testing/fixtures/update/slot.txt" \
+    keydrive update 80x24 "down tab down resize:70x22 esc tick" update
+keydrive print 80x24 "down tab down resize:70x22 esc tick" \
+    print --fixture "$PWD/testing/fixtures/print"
+# THE NOTE DRIVE SAVES, and into a data directory of its own made empty here.
+# Esc after an edit ends the loop through stop(), which writes the buffer to
+# $XDG_DATA_HOME/kdos/scratch.txt. Run as root, the fixed path golden() hands
+# every other surface is created, and the next run loads that buffer back and
+# drifts; a fresh directory under $OUT keeps the save path under test and the
+# frame independent of any earlier run.
+rm -rf "$OUT/note-data"; mkdir -p "$OUT/note-data"
+KDOS_GOLDEN_DATA="$OUT/note-data" \
+    keydrive note 60x20 \
+    "text:hello enter text:world ctrl+x resize:50x16 esc tick" note
+if "$DUMPCK" --have note &&
+   ! grep -q world "$OUT/note-data/kdos/scratch.txt" 2>/dev/null; then
+    echo "  drive-note: Esc after an edit saved nothing to \$XDG_DATA_HOME"
+    golden_fail=1
+fi
+keydrive runner       40x8 "tab enter tick"        runner
+keydrive runner-frame 40x8 "tab enter tick"        runner --frame
+keydrive runner-eat   40x8 "tab enter tick"        runner --frame --eat-tab
+keydrive runner-click 40x8 "click:15,3 tick"       runner --frame
+keydrive runner-close 40x8 "tab tab enter tick tick" runner --frame
+keydrive runner-resize 40x8 "resize:50x10 tab tick" runner --frame
+
 if [ "$golden_fail" != 0 ]; then
     echo
     echo "  A golden frame changed. If the change is intended:"
@@ -6563,10 +7145,10 @@ cp fs/etc/skel/.config/starship.toml "$AH/.config/" 2>/dev/null || true
 # ships, in a file nobody re-reads.
 mkdir -p "$AH/.config/mc"
 cp fs/etc/skel/.config/mc/ini "$AH/.config/mc/ini"
-export KDOS_GTK_SRC="$PWD/src/packages/kdos-gtk-theme/theme"
-export KDOS_ICON_ART="$PWD/src/packages/kdos-icons/art"
-export KDOS_ICON_MARKS="$PWD/src/packages/kdos-icons/marks"
-export KDOS_CURSOR_ART="$PWD/src/packages/kdos-cursors/art"
+export KDOS_GTK_SRC="$PWD/src/art/kdos-gtk-theme/theme"
+export KDOS_ICON_ART="$PWD/src/art/kdos-icons/art"
+export KDOS_ICON_MARKS="$PWD/src/art/kdos-icons/marks"
+export KDOS_CURSOR_ART="$PWD/src/art/kdos-cursors/art"
 audit() {
     env -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u XDG_DATA_HOME \
         HOME="$AH" TMPDIR="$OUT" PATH="$OUT:$PATH" "$OUT/kdos" theme "$@"

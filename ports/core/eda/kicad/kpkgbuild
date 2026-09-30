@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kicad
+version     = 10.0.6
+release     = 1
+source      = https://gitlab.com/kicad/code/kicad/-/archive/$version/kicad-$version.tar.gz
+sha256      = 528788c342461536bee3331998a8aa609975723f07b816287146ab8d4d9af3cb  kicad-10.0.6.tar.gz
+description = KiCad — schematic capture, PCB layout, Gerber viewer and SPICE simulation for electronics design
+homepage    = https://www.kicad.org/
+depends     = cmake ninja pkgconf swig python3 python3-wxpython wxwidgets gtk3 webkitgtk glib cairo pixman freetype2 harfbuzz fontconfig mesa libglvnd glu wayland libsecret poppler glm zlib zstd curl boost libgit2 libspnav ngspice opencascade protobuf abseil-cpp nng unixodbc

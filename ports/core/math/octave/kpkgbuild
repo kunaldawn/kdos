@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = octave
+version     = 11.3.0
+release     = 1
+source      = https://ftp.gnu.org/gnu/octave/octave-$version.tar.xz
+sha256      = 2b80f3149b2de6d1f4f2fcb4fe6515a17eb363b52111bf57b90f37bf6f5e12e1  octave-11.3.0.tar.xz
+description = GNU Octave — MATLAB-compatible numerical computing, with its Qt 6 desktop
+homepage    = https://octave.org/
+depends     = gcc openblas suitesparse arpack-ng qrupdate sundials fftw glpk qhull hdf5 curl openssl pcre2 readline ncurses zlib bzip2 rapidjson graphicsmagick libsndfile portaudio freetype2 fontconfig libglvnd mesa glu gl2ps qt6-qtbase qt6-qttools qt6-qt5compat qscintilla wayland texinfo gnuplot ghostscript perl bison flex gperf

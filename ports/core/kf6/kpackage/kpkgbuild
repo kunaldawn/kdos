@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kpackage
+version     = 6.30.0
+release     = 1
+source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 58939af0c553f24963652e10d248e2f8f2b2ca2b87dc26d3220675ed0cf33019  kpackage-6.30.0.tar.xz
+description = KDE Frameworks: loading and installing non-binary content packages
+homepage    = https://invent.kde.org/frameworks/kpackage
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kcoreaddons ki18n kdoctools gettext

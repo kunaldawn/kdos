@@ -14,15 +14,14 @@ and what to do instead where there is something. Some entries are known defects:
 code has today that contradicts its own documentation or usage text. They are listed so that a
 reader who meets one knows it is known. The sections follow the shape of the system: the desktop,
 applications and boxes, hardware, installation, boot and updates, security, ports built without a
-feature, upgrades, sources and publishing, testing, and this book. Every entry describes the tree
+feature, upgrades, building, sources and publishing, testing, and this book. Every entry describes the tree
 as it stands; a gap that closes is removed rather than marked as closed (see
 [Principles](../01-philosophy/principles.md#documentation-describes-the-present)).
 
-Four other chapters answer the neighbouring questions. What is absent on purpose, and the
-reasoning behind it, is in [Decisions](../01-philosophy/decisions.md), and what that costs next to
+Three other chapters answer the neighbouring questions. What is absent on purpose, and the
+reasoning behind it, is in [Decisions](../01-philosophy/decisions.md); what that costs next to
 other distributions is in [How KDOS differs](../01-philosophy/how-kdos-differs.md#what-you-give-up);
-what is intended is in [Roadmap](roadmap.md); how mature the parts that do exist are is in
-[Status](status.md).
+how mature the parts that do exist are is in [Status](status.md).
 
 ## Desktop
 
@@ -34,14 +33,17 @@ narrowing rather than a gap; see [Decisions](../01-philosophy/decisions.md#narro
 directions are implemented in `libkwl`, and no test asserts either of them: nothing has been dragged
 with a pointer between a KDOS surface and a boxed application. See [Status](status.md).
 
-### KDOS's own surfaces do not scale fractionally
+### KDOS's own surfaces have not been seen at a fractional scale
 
-`libkwl` adopts the integer scale of the output a surface is on, clamped to `KCELL_MAX_SCALE`, and
-renders glyphs at that scale, so a high-density display gets a sharp grid rather than a stretched
-one. The scale it reads is `wl_output`'s, which is an integer by definition, so a fractional output
-scale is never seen as a fraction. `kdos-comp` does offer `wp_fractional_scale_manager_v1`, so a
-Wayland application that speaks it, native or boxed, is told the fractional value; the gap is in
-the toolkit, not the compositor. See [Roadmap](roadmap.md).
+On an output scaled by a fraction, such as 1.5, `libkwl` loads the chrome font at the device size and
+hands `kdos-comp` a buffer of device pixels behind a viewport, so the panel, the menus and the other
+surfaces are drawn crisp at 1.5 rather than drawn at 2 and shrunk. What is measured is the arithmetic
+and the paint: the device cells in a build container with the image's fonts, and the real flush
+walked through fractional scales in a harness with a simulated compositor. No KDOS surface has been
+photographed on a fractional output, on the rig or on hardware, so the look of the result is
+unconfirmed. A toplevel such as `kdos-term` is told its scale only once it is on a screen, so its
+first frame is drawn with the font as named and the next at the device size. See
+[The fractional scale](../05-developer/c-libraries.md#the-fractional-scale).
 
 ### Emoji draw everywhere except the text console on `tty1`
 
@@ -69,11 +71,10 @@ workspace you have visited, and says nothing about the rest.
 
 `openconnect` ships and speaks AnyConnect, GlobalProtect, Fortinet and Pulse, with `vpnc-script`
 giving the tunnel its routes, but there is no NetworkManager plugin for it, so it does not appear
-in the network surface beside Wi-Fi and OpenVPN. Upstream's plugin requires `webkit2gtk`
-unconditionally, and the dialog it builds with it is what the VPN service hands authentication to.
-On a host with no GTK the plugin cannot be built, and one built with the dialog disabled would be a
-connection type the surface offers and cannot authenticate. WireGuard and OpenVPN are the two VPN
-types that do appear.
+in the network surface beside Wi-Fi and OpenVPN. Neither NetworkManager's openconnect plugin nor its
+vpnc plugin is a port. Upstream's openconnect plugin needs `webkit2gtk` for the dialog the VPN
+service hands authentication to; the `webkitgtk` port provides that library, and no recipe builds
+the plugin. WireGuard and OpenVPN are the two VPN types that do appear.
 
 ### A fingerprint unlocks `sudo` and nothing else
 
@@ -85,29 +86,40 @@ surface offers enrolment. For an account with a fingerprint enrolled, `sudo` ove
 machine's reader before asking for the password: the only remote-login test the module has without
 logind is `PAM_RHOST`, which `sudo` never sets.
 
-### X11 applications get no input method
+### X11 and Qt 5 applications get no input method
 
 Xwayland gives its X clients no text-input protocol, and fcitx5 is built without the XIM frontend
-that X clients use, so CJK input works in Wayland clients only, host or boxed. See
-[the session](../03-architecture/session.md#input-methods).
+that X clients use. Qt 5's Wayland plugin (qtwayland 5.15) speaks only text-input-unstable-v2, and
+`kdos-comp` serves text-input-v3, so a Qt 5 application on Wayland gets no input method either;
+there is no `fcitx5-qt` port that would give Qt 5 a direct route. CJK input and the on-screen
+keyboard's automatic raise therefore reach GTK 3, GTK 4 and Qt 6 applications on Wayland, host or
+boxed. See [the session](../03-architecture/session.md#input-methods).
 
 ### There is no input-method configuration tool
 
-The one upstream ships is built on a toolkit this host does not have. fcitx5 is configured through
+The one upstream ships, `fcitx5-configtool`, is a Qt program that is not a port. fcitx5 is configured through
 its text files.
 
-### Nothing reads the desktop aloud
+### A screen reader reads the applications, not the desktop's own windows
 
-`kdos-comp` draws pixels, so a screen reader would need a tree of accessible objects, and no such
-tree exists for a KDOS surface, which composes its own cells and publishes them to nobody. Each
-surface does keep a per-frame record in `libktui` of what its widgets would say aloud. On every
-frame, controls of ten roles (button, check box, radio button, input, list, table, tab, choice, text
+Orca is a host port, with at-spi2-core's accessibility bus, for the native GTK and Qt
+applications, whose toolkits publish a tree of accessible objects. It is set up to speak through
+speech-dispatcher and to reach braille through BrlAPI. Neither Orca nor at-spi2-core has been
+through a build. Nothing starts it: KDOS runs no autostart agent, so it is started by running
+`orca`. The keys typed into other windows reach it through the compositor's
+[keyboard monitor](../04-programs/kdos-comp.md#the-keyboard-monitor), which is the one interface of
+its family `kdos-comp` serves: there is no pointer locator (`PointerLocator`), and Orca's mouse
+review reports itself unavailable, because it needs Wnck, which is X11-only and not a port.
+
+The desktop's own windows are not read. `kdos-comp` draws pixels, and a KDOS surface composes its
+own cells and publishes no accessible tree. Each surface does keep a per-frame record in `libktui`
+of what its widgets would say aloud. On every frame, controls of ten roles (button, check box, radio button, input, list, table, tab, choice, text
 area and slider), menus included, write their role and their position in the set to it, and a name
 and a value where the widget holds them rather than the caller's own draw callback. Nothing carries
 that record out of the process: there is no socket, no bus name and no bridge, and the only thing
 that reads it is the library's self-test. What is missing is a route and a client rather than the
-material. What exists for applications is a boxed one's own accessibility registry, opted into with
-`~/.config/kdos/a11y`. There is no braille route and no voice for the desktop itself. See
+material. A boxed application has its own accessibility registry, opted into with
+`~/.config/kdos/a11y`; whether the host's Orca reaches it has not been tried. See
 [Accessibility](../02-user-guide/accessibility.md).
 
 ### There is no graphical login screen (greeter)
@@ -135,6 +147,16 @@ disable-while-typing are libinput settings that the compositor's `<libinput>` bl
 that block commented out, as a template, and sets none of them, so the compositor's own defaults
 apply, with tap-to-click on. The control centre's Input page says where the template is and stops
 there.
+
+### A touchpad scroll is not one-to-one with the finger
+
+Every surface here scrolls in whole wheel ticks, and `libkwl` makes one tick of a touchpad's stream
+per ten axis units (libinput reports a finger's travel in units it scales like pointer motion),
+which a scrolling list spends as three rows
+(`SH_WHEEL_ROWS`). So a list moves several times further than the finger did. The movement between
+ticks glides and a flick coasts, but the ratio stays: matching it to the finger means knowing how
+far each surface moves per tick, and the feel has not been judged on a touchpad. See
+[Input the backend cleans](../05-developer/writing-desktop-software.md#input-the-backend-cleans).
 
 ### The launcher's `files` setting does nothing
 
@@ -212,11 +234,12 @@ than calling `ktui_sel_row()`. See [kdos-res](../04-programs/kdos-res.md).
 
 ### Changing the accent colour reaches running GTK3 applications, not running libadwaita or KDE ones
 
-GTK rebuilds its style when `gtk-theme-name` changes, and `kdos theme` writes each accent's
+GTK rebuilds its style when the portal's `gtk-theme` key changes, and `kdos theme` writes each accent's
 stylesheet under its own name (`~/.themes/KDOS-<accent>`), so the settings portal's change signal
-is enough for GTK3, which is most of the catalogue. libadwaita ignores GTK themes entirely and reads
-`~/.config/gtk-4.0/gtk.css`, which GTK loads once at startup. A Qt application on the `rt-kde`
-runtime runs under the KDE platform theme and reads `~/.config/kdeglobals`, which KDE re-reads only
+is enough for GTK3. libadwaita ignores GTK themes entirely and reads
+`~/.config/gtk-4.0/gtk.css`, which GTK loads once at startup. A Qt 6 application on the host, where
+the session sets `QT_QPA_PLATFORMTHEME=kde`, or in a box on the `rt-kde` runtime, runs under the KDE
+platform theme and reads `~/.config/kdeglobals`, which KDE re-reads only
 on its own global-settings signal, and there is no KDE daemon here to send it. Both pick up the new
 palette the next time they start. libadwaita 1.6 and later follow the portal's `accent-color` on
 their own, which changes the accent and not the rest of the palette. A Qt application on the
@@ -255,14 +278,6 @@ builds it again. For example, the base image's row carries `libva` and the VA-AP
 boxed browser built before the row carried them reports no hardware decoder and decodes every
 frame on the CPU. Nothing tells you a row changed: the catalogue has no per-row version, so an image
 counts as current until somebody removes it.
-
-### X11 applications get no GLX
-
-Xwayland is built without GLX (`-Dglx=false`), and the host's Mesa without GLX or the X11
-platform, so an X11 client that draws through GLX gets no OpenGL. An X11 client in a box that draws
-through EGL uses the box's own Mesa over DRI3 and is unaffected, as are Wayland-native
-applications. Enabling GLX means rebuilding Mesa with GLX and the X11 platform and adding several X
-libraries.
 
 ### A live session cannot create a persistent box
 
@@ -338,6 +353,16 @@ ask: `kdos-mount browse` is an mDNS query plus a NetBIOS one, and a machine that
 another subnet, or behind a router that does not forward broadcasts is missing from it. It can still
 be reached by name.
 
+The file managers' `network://` view is the same: `gvfs` is built without its WS-Discovery (`wsdd`)
+backend, because `wsdd` is not a port, so it lists only the hosts Avahi finds. A Windows machine,
+which announces itself over WS-Discovery rather than mDNS, is reached by typing `smb://host`.
+
+### An NFSv3 mount needs `-o nolock`
+
+NFSv4 mounts and the v4-only server (`72_nfsd`) work. There is no `rpcbind` port, so `rpc.statd`
+cannot register, and a `vers=3` mount that wants locking is refused. Mounting with `-o nolock`
+works and keeps locks local to this machine.
+
 ### Kerberos is built and has never been given a ticket
 
 `kinit`, `cifs.upcall` and the `request-key` rule that joins them are on the image, and
@@ -347,12 +372,13 @@ domain controller accepts it; no share has been mounted with a ticket on this im
 not built either: it needs winbind's client library, and this desktop does not need it, because
 every share is mounted with an explicit `uid=` and `gid=`.
 
-### `gpg` asks for a passphrase only in a terminal
+### The graphical passphrase prompt has not been exercised
 
-The pinentries built are `curses` and `tty`, because every graphical one is GTK, Qt, EFL or FLTK.
-Each interactive `bash` exports `GPG_TTY`, so anything run from a terminal prompts there. A program
-started from a launcher has no terminal, and a signature or decryption that needs a passphrase
-fails, with no prompt anywhere, unless `gpg-agent` already holds it.
+`pinentry` is `pinentry-qt`, which draws a Qt dialog when the request from `gpg` carries
+`WAYLAND_DISPLAY` or `DISPLAY`, and otherwise asks in the terminal `GPG_TTY` names. A program
+started from a launcher should therefore get the dialog, but no signature or decryption has been
+made through it on this image, so neither the dialog on `kdos-comp` nor its placement over the
+window that asked has been seen.
 
 ### `rga` does not search `.htm` files
 
@@ -362,25 +388,101 @@ claims `.htm` too and passes the extension as the input format, and pandoc has n
 `rga --rga-adapters=-pandoc` drops the adapter, and the file is then searched as plain text. The
 other formats, `.html` included, are searched through pandoc.
 
-### No speech-recognition model ships, and a transcription has never been read back
+### A transcription has never been read back
 
 What is verified is the model check, the `whisper-cli` command line, starting it and its exit
-status. A model is downloaded rather than packaged: `kdos speech get` picks one from a table, checks
-its sha256 and writes it to `~/.local/share/whisper.cpp/models`, and `kdos-rec`'s *Transcribe*
-button, the one beside *Record*, reads *Get model* until one is there. What has not been done is
-running a transcription with a model installed and checking its output.
+status. The image carries `base.en` in `/usr/share/whisper.cpp/models`; any other model is fetched
+by `kdos speech get`, which picks one from a table, checks its sha256 and writes it to
+`~/.local/share/whisper.cpp/models`. What has not been done is running a transcription and checking
+its output.
 
 ### Live transcription is a terminal program, not a desktop action
 
 `whisper-stream` is built and transcribes a microphone, and nothing on the desktop starts it.
 `kdos-rec`'s *Transcribe* runs `whisper-cli` over the file it has just recorded. Both need the same
-model, and none ships.
+model, and `base.en` ships.
+
+### The native applications have not been built
+
+The browsers, office suites, editors, games and the rest of the graphical applications are recipes
+under `ports/core`, named in the lists of the userland phases, `40_lang` to `44_apps`, with every
+source fetched and hashed. None of them has been through a build, and none has been started on a KDOS image, so
+what is written about any of them here and in [the ports catalogue](ports-catalogue.md) describes
+its recipe. The published source archive holds almost none of their sources, so `make fetch` on
+another clone takes them from upstream. See
+[The source archive has one public location](#the-source-archive-has-one-public-location).
+
+### Five applications have no port
+
+- **Anki** needs a cargo and a yarn vendor bundle in one recipe, a musl build of a native rollup
+  addon, and about seventeen Python ports that do not exist.
+- **Ghidra** builds with Gradle, and Gradle's own build needs a Gradle seed and several hundred
+  Maven artifacts that `ports/fetch` has no mode to bundle.
+- **LanguageTool** pulls in well over a hundred Java libraries, each of which would have to be
+  compiled from its sources, since upstream's prebuilt jars are not accepted.
+- **Weasis** needs a Maven build and its own fork of OpenCV's Java binding, whose DICOM codecs have
+  no public source. `dcmtk` is the DICOM toolkit on the host.
+- **YAAC** ships 58 prebuilt jars, some carrying glibc native libraries, and they fit no class of
+  [what is not built from source](../01-philosophy/why-kdos.md#what-is-not-built-from-source).
+
+### A saved login needs KeePassXC running
+
+Programs that keep a password through the Secret Service (libsecret in GTK programs, QtKeychain,
+KWallet's API) find a provider only while KeePassXC is running with its Secret Service integration
+turned on in its own settings. The KeePassXC recipe enables that integration, and nothing starts
+KeePassXC or turns it on. Without it, such a program has nowhere to store its secret: Nheko, for
+one, stores its login through QtKeychain.
+
+### Chromium checks no spelling and reaches no Google service
+
+Chromium reads only its own `.bdic` dictionaries, which it downloads, so it cannot use the
+Hunspell dictionaries on the host, and its spelling service is off by policy. It is configured with
+no Google API keys, so sync, sign-in, Safe Browsing, translation and location services do nothing.
+
+### Quassel shows no link previews
+
+The previews need Qt 5's WebEngine, which is not a port, so `quassel` is configured with
+`WITH_WEBENGINE=OFF`.
+
+### An Android screen cannot be mirrored
+
+`scrcpy` is not a port: its device-side server is a jar that cannot be built here, and shipping
+upstream's prebuilt one was declined. `adb` and `fastboot` from `android-tools` are on the host.
+
+### A phone cannot drive the pointer or keyboard through KDE Connect
+
+KDE Connect's remote input, the phone as a touchpad and keyboard, asks the RemoteDesktop portal for
+an EIS connection (`ConnectToEIS`). No backend on KDOS answers RemoteDesktop:
+`xdg-desktop-portal-wlr` does not implement it, `xdg-desktop-portal-kdos` does not either, and
+`kdos-portals.conf` routes it nowhere, so the request is refused. Pairing, notifications, the
+clipboard, file transfer and the other plugins do not use the portal.
+
+### The local model and translation programs ship without models or pages
+
+`llama-server` serves its OpenAI-compatible API and no web page: the page is a Svelte application
+that is either built with npm or downloaded, and the offline build does neither. A page placed in a
+directory is served with `--path`. Translate Locally ships no Bergamot language model; its model
+list is fetched from the network only when asked, and a model downloaded elsewhere is imported from
+the disk.
+
+### Hatari ships no TOS
+
+The Atari ST emulator needs a TOS or EmuTOS image, and building EmuTOS needs an m68k cross
+toolchain that is not a port, so the user supplies the image.
+
+### A 3D mouse reaches no program
+
+FreeCAD and OpenSCAD are configured with 3D-mouse support through `libspnav`, which reaches the device
+through the `spacenavd` daemon, and `spacenavd` is not a port, so no device ever answers.
+`solvespace-qt` has no 3D-mouse support at all; upstream has it only in its GTK and Windows
+interfaces.
 
 ## Hardware and platform
 
 ### x86-64 only
 
-There is no other build target. See [Roadmap](roadmap.md#aarch64-and-mobile).
+There is no other build target: the cross toolchain targets `x86_64-kdos-linux-musl`, and every
+later phase builds with it.
 
 ### Secure Boot is not supported
 
@@ -453,14 +555,30 @@ firmware publishes no ESRT, so it has no device to update.
 
 ### A phone is mounted by hand
 
-`kdos-mountd` offers block devices only, so an MTP phone never appears in its list.
-`aft-mtp-mount ~/Phone` is the way in, and no phone has been mounted on this system.
+`kdos-mountd` offers block devices only, so an MTP phone never appears in its list. The Android
+File Transfer window and `aft-mtp-mount ~/Phone` are the ways in, and no phone has been reached
+through either on this system.
 
 ### Smart cards, drawing tablets and software radios have not met hardware
 
 `opensc` has not been used with a card in a reader, `libwacom`'s pairing with a tablet, or the
-SoapySDR modules with a radio; each is built and never tried against the hardware. SDRplay
-receivers have a udev permission rule and no driver, because SDRplay's API is a closed library.
+SoapySDR modules with a radio; each is built and never tried against the hardware. The SDR
+applications (GNU Radio, SDR++, SDRangel, Gqrx, URH) have not been through a build. SDRplay receivers have a udev permission rule
+and no driver, because SDRplay's API is published only as a closed library, so SoapySDRPlay3,
+SDRangel's SDRplay input and SDR++'s SDRplay source are all off. XTRX is not supported at all: it
+needs the out-of-tree `xtrx_linux_pcie_drv` kernel module, and its libraries are unmaintained.
+SDRangel's four remote plugins (remote input, output, sink and source) are not built on x86-64:
+they need SSE3 at compile time, which the x86-64 baseline the tree compiles for does not define,
+and `cm256cc`, the library they use, needs a processor with SSSE3 there.
+
+### Packet radio has no kernel network interface
+
+Linux 7.2 carries no AX.25, NET/ROM or ROSE stack and none of the hamradio device drivers, so there
+is no `ax0` interface, no `kissattach` and no connected-mode AX.25 socket. Packet radio runs in
+userspace instead: `direwolf` is the modem, Pat reaches it through its AGW port with the
+`ax25+agwpe` transport, and Xastir through a KISS serial or network interface. A program that needs
+the kernel's AX.25 sockets, such as the `ax25-tools` and `ax25-apps` suites, a NET/ROM node or
+LinFBB, has nothing to talk to.
 
 ### Intel Quick Sync through oneVPL has no runtime
 
@@ -468,16 +586,30 @@ receivers have a udev permission rule and no driver, because SDRplay's API is a 
 VA-API reaches the same decode and encode hardware through `intel-media-driver` and
 `libva-intel-driver`.
 
-### Encrypted discs do not play
+### Encrypted Blu-ray discs do not play
 
-A CSS-encrypted DVD needs `libdvdcss` and an AACS-encrypted Blu-ray needs `libaacs`, and neither is
-a port, so `mpv`, `ffmpeg` and GStreamer open only an unencrypted disc or a backup. A
-`libdvdcss.so.2` you install by hand is loaded, because `libdvdread` looks for it at run time. A
-Blu-ray's BD-J menus do not run either: they are Java, and `libbluray` is built without its jar
-because the host has no JDK and no JVM, so a disc plays its titles without them. An audio CD lists
-as numbered tracks, because the CDDB lookup `cmus` and `libcdio` can make needs `libcddb`, which is
-not a port. None of the optical paths has read a disc here: the rig has no drive, and what is
-verified is that each library builds and each consumer links it.
+An AACS-encrypted Blu-ray needs `libaacs`, which is not a port, so `mpv`, `ffmpeg` and GStreamer
+open only an unencrypted Blu-ray or a backup. A Blu-ray's BD-J menus do not run either: they are
+Java, and `libbluray` is built without its jar (`-Dbdj_jar=disabled`), because the jar is built
+with Apache Ant, which is not a port, so a disc plays its titles without them. A CSS-encrypted DVD is opened through `libdvdcss`, which
+`libdvdread` is configured to link. An audio CD lists as numbered tracks, because the CDDB lookup
+`cmus` and `libcdio` can make needs `libcddb`, which is left out: its one job is a lookup over the
+network. None of the optical paths has read a disc here, because the rig has no drive, and
+`libdvdcss` has not been through a build.
+
+### Burning a disc and writing an image are unproved on hardware
+
+`kdos-burn` has not burnt a disc: the rig has no optical drive, so what is verified is its frame
+and the `--compare` it runs afterwards, not `xorriso`'s write or its `-compare_r` against a real
+medium. The `write` verb of `kdos-mountd` is proved under `--fixture-serve`, where the copy and the
+read-back run against a scratch file; the `O_EXCL` claim, the cache drop before the verify and the
+partition re-read after it act only on a real block device and have not met one. `write` offers
+only a disk the daemon lists, which means a disk carrying a filesystem it recognises: a blank stick,
+or one holding only a partition type it does not probe, cannot be written through it, and in a live
+session any disk with an ISO 9660 partition is refused as the boot disk.
+
+`kdos-verify` checks a BLAKE3 list with `b3sum`, which is not a port, so such a list answers that
+`b3sum` is not on this machine. SHA-256, SHA-512 and par2 are checked.
 
 ## Installation
 
@@ -616,8 +748,8 @@ The full statement is
 
 ## Ports built without a feature
 
-Each port, the phase list and group it is built from, and the recipes that are not installed at
-all are in [The ports catalogue](ports-catalogue.md).
+Each port, its shelf and the phase that builds it, and the recipes that are not installed at all
+are in [The ports catalogue](ports-catalogue.md).
 
 ### Go has no race detector and no BoringCrypto
 
@@ -671,6 +803,25 @@ never fetched on demand either; the transformations that need no grid are the on
 repository and not in the crate, and the only way to swap in a rebuilt dump is a patch to
 presenterm's theme loading. Its grammars, and bat's themes, are compiled here by the `bat` port.
 
+### Strawberry has no tag fetcher
+
+The fetcher sends a song's fingerprint to AcoustID and MusicBrainz, so `strawberry` is configured with
+`ENABLE_TAGFETCHER=OFF`. Its fingerprints are still taken, locally, so a moved or renamed file keeps
+its play counts and ratings.
+
+### LinuxCNC is the simulator only
+
+The recipe removes the setuid bit upstream sets on `rtapi_app` and `linuxcnc_module_helper`, so
+LinuxCNC runs its threads without realtime priority and cannot drive a machine. The latency
+histogram draws with BLT, which has no Tcl 9 support and is not a port, so it has no menu entry.
+
+### A SPICE viewer redirects only the USB devices you can already open
+
+`spice-gtk` is configured without `spice-client-glib-usb-acl-helper`, the setuid helper that opens
+a device node for an unprivileged client, so USB redirection from virt-manager reaches only the
+devices whose nodes a udev rule already gives you. Folder sharing (phodav) and smart card
+passthrough (libcacard) are enabled.
+
 ## Upgrades
 
 ### A `tzdata` upgrade can reset the time zone to UTC, once
@@ -690,13 +841,53 @@ install to the same path takes the file into the later manifest, so the owning p
 not list it, and toybox's upgrade removes it as an orphan. On such a machine, upgrade toybox
 together with those ports, whose release bumps reinstall the names.
 
+## Building
+
+### The phase lists have not been through a build
+
+The thirteen phases under `script/phases/`, the five userland phases `40_lang` to `44_apps` and the
+ports tree filed on shelves pass preflight, `testing/phaseclosure.py` and the self-test, and no
+build has run through them. How long each phase takes and how large its snapshot is are not
+measured. Every phase takes a snapshot; one that should not leaves `KDOS_SNAPSHOT_PATHS` empty in
+its `phase.env`.
+
+### Some command-line programs build after Qt
+
+A port builds in the phase its whole dependency closure allows, and some closures reach further
+than the program does. Each of these builds in `43_toolkits`, after GTK and Qt, for its own reason:
+
+- `podman`, and `distrobox` with it, because `podman` depends on `gpgme`, `gpgme` on `gnupg`,
+  `gnupg` on `pinentry`, and `pinentry` on `qt6-qtbase` for its dialog. A terminal-only
+  `pinentry` would cut that chain.
+- `qemu`, and `libvirt` with it, because `qemu` depends on `gtk3` and `vte3` for its display
+  window. Only a `qemu` built without that display could build earlier.
+- `sane-backends`, because it depends on `poppler`, which depends on `qt6-qtbase` and on `gpgmepp`.
+  Cutting that chain takes a `poppler` without its Qt binding and its signature support.
+
+`kdos-tools` builds in `42_graphics` because `kbd` depends on `libxkbcommon`, which the graphics
+stack provides. A build that stops before those phases has none of them.
+
+### The image's installer is rebuilt only when its mark is gone
+
+The `kinstall` on the image is compiled by `10_bootstrap`'s `130_kinstall.sh`, straight from
+`src/system/kdos-installer` and `src/system/kdos-appbox/catalogue.c`. That step is skipped
+whenever `build/mark/bootstrap/kinstall` exists, whatever changed in either directory, so an edit
+to the installer or to `catalogue.c` reaches the image only when the step runs again: remove the
+mark, or name the step explicitly with `--steps 10_bootstrap:130_kinstall.sh`, which sets
+`KDOS_REPLAY=1` for it.
+
+The `kdos-installer` port builds the same program from the same sources, and no phase list names
+it. Its recipe hash covers its own directory and `src/libs` but not `catalogue.c`, so a `kpkg`
+build of that port counts an edit to `catalogue.c` alone as nothing to do.
+
 ## Sources and publishing
 
 ### There is no public binary host
 
 The mechanism is complete: a signed index, three checks that a prebuilt package matches this
 machine (architecture, build configuration and recipe hash), and deltas; see
-[The binary host](../03-architecture/packaging.md#the-binary-host). It is one you run yourself.
+[The binary host](../03-architecture/packaging.md#the-binary-host). `make build KDOS_MAKE_BINHOST=1`
+writes a signed one to `build/binhost/`, and nothing publishes it: it is one you run yourself.
 
 ### The source archive has one public location
 
@@ -706,52 +897,55 @@ exact file. `KDOS_SOURCES_BASE` can point `make fetch` at another copy laid out 
 nothing publishes such a copy. See
 [Developing](../05-developer/developing.md#where-sources-come-from).
 
+### Two emulator cores may not go on sold media
+
+`libretro-snes9x` is under the Snes9x licence, which forbids commercial distribution, and
+`libretro-genesis-plus-gx`'s licence forbids selling it or using it in a commercial product. An
+image or a medium that is sold must leave both out.
+
 ### A clone does not check what it pushes unless you enable the hook
 
-`script/hooks/pre-push`, which refuses a push naming a source hash the archive does not hold, runs
-only after `git config core.hooksPath script/hooks`. Without it, a push can name a source nobody has
-published, and every other clone's `make fetch` then depends on upstream still serving that file.
-Setting `core.hooksPath` replaces `.git/hooks` as a whole, so git-lfs's hooks, or any other
-installed there, stop running in that clone. With the hook on, a push that introduces a new source
-hash is also refused when the archive cannot be reached or answers anything but 200 or 404, because
-the missing source cannot then be ruled out; such a push made offline needs the bypass. Every push
-is refused while `KDOS_SOURCES_BASE` is empty. `KDOS_SKIP_PUBLISH_CHECK=1 git push …` skips the
-check for one push.
+`script/hooks/pre-push` runs only after `git config core.hooksPath script/hooks`. It refuses a push
+that breaks the ports layout (a recipe not exactly one listed shelf down, a name held by two ports,
+a reserved or port-named shelf), and a push naming a source hash the archive does not hold. Without
+it, a push can carry a layout no build resolves, or name a source nobody has published, and every
+other clone's `make fetch` then depends on upstream still serving that file. Setting
+`core.hooksPath` replaces `.git/hooks` as a whole, so git-lfs's hooks, or any other installed
+there, stop running in that clone.
+
+The layout check reads the tree of each pushed ref's commit, not of every commit between it and the
+remote, so a commit in the middle of a push that breaks the layout passes when a later one repairs
+it; preflight is what checks the working tree. With the hook on, a push that introduces a new
+source hash is also refused when the archive cannot be reached or answers anything but 200 or 404,
+because the missing source cannot then be ruled out; such a push made offline needs the bypass.
+Every push is refused while `KDOS_SOURCES_BASE` is empty. `KDOS_SKIP_PUBLISH_CHECK=1 git push …`
+skips the archive check for one push and leaves the layout check in force;
+`KDOS_SKIP_LAYOUT_CHECK=1` skips the layout check.
 
 ### A file beside a recipe that no `sha256 =` line names is outside the recipe hash
 
 For a port that names a `source =`, the recipe hash covers `kpkgbuild`, `build.sh`,
 `postinstall.sh` and every `.patch`, and each other file in the directory is expected to be checked
 by its own `sha256 =` line. A file committed beside the recipe that no such line names is in
-neither. Seven are, counted as the git-tracked files under `ports/core/*/` that are not one of the
+neither. Six are, counted as the git-tracked files under `ports/core/*/*/` that are not one of the
 four recipe kinds and that no `sha256 =` line names: `linux/kdos.config`,
-`linux/kdos-logo-mono.pbm`, `linux/genlogo-mono.py`, `doxx/doxx.desktop`, `epy/epy.desktop`,
+`linux/kdos-logo-mono.pbm`, `linux/genlogo-mono.py`, `epy/epy.desktop`,
 `ffmpeg/LICENSE.notice` and `pandoc/cabal.project.freeze`. Editing one of them changes nothing the
 build compares, so under `KPKG_STRICT_RECIPE=1` the installed package counts as current and keeps
 the old file. Bump the port's `release` in the same change. See
 [`E:` — the recipe hash](../03-architecture/packaging.md#e--the-recipe-hash).
 
-### An offline `kdos rebuild` from the medium stops in phase 1
+### An offline `kdos rebuild` from the medium has not been run to the end
 
-A stick built with `KDOS_ISO_SOURCES=1` carries `src/` and `script/` under `sources/`, and
-`kdos rebuild` copies that tree somewhere writable and runs the orchestrator in it. The packaging
-step also copies `/kdos/ports`, but inside the build chroot that path is an empty mount point (the
-ports tree is mounted at `/ports`), so `sources/ports/` holds no recipes and no upstream sources.
-The medium does not carry `fs/` either, and the phase environments fix `WORKSPACE` at
-`/workspace`, so phase 1's file-system step (`01_phase1/00_file_system.sh`), which copies
-`$WORKSPACE/fs` into the new root, has nothing to copy and the build stops there. The phase
-scripts before that step also build under `/workspace/build`, not in the work directory whose free
-space `kdos rebuild` checked. The rebuild therefore lacks both the recipes with their sources and
-`fs/`. See
-[kdos rebuild](../04-programs/kdos-command.md#kdos-rebuild) and, for the build it runs,
+A stick built with `KDOS_ISO_SOURCES=1` carries, under `sources/`, the ports tree (`/ports`
+without its dot-directories, so every fetched source beside its recipe), `src/`, `script/` and
+`fs/`, and `sources/binhost` when the build wrote one.
+`kdos rebuild` refuses a tree without `fs/etc`, copies the tree somewhere writable and runs the
+orchestrator there with `KDOS_WORKSPACE` naming the copy, which `script/env/host.env`, the
+environment of `00_cross` and `10_bootstrap`, uses in place of `/workspace`. No rebuild from a medium has been run through every
+phase. See [kdos rebuild](../04-programs/kdos-command.md#kdos-rebuild) and, for the build it runs,
 [How KDOS is built](../05-developer/how-kdos-is-built.md); the copy itself is described in
 [Repository layout](repository-layout.md).
-
-### No port uses node vendoring
-
-No port declares `vendoring = node`, though `ports/fetch` implements it beside the four that are
-used: 60 recipes declare `rust`, 34 `go`, 25 `python` and 4 `haskell`. The npm path has never been
-run, so what stands behind it is the code and not a tarball it produced.
 
 ## Testing
 
@@ -813,7 +1007,6 @@ record of those conditions and not a guarantee for yours.
 ## See also
 
 - [Decisions](../01-philosophy/decisions.md) — what is absent on purpose, and why
-- [Roadmap](roadmap.md) — what is intended
 - [Status](status.md) — maturity per subsystem, and the evidence behind each verdict
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md) — what the design gives up next to other distributions
 - [The ports catalogue](ports-catalogue.md) — every port, so a missing one can be told from one built without a feature
@@ -822,4 +1015,4 @@ record of those conditions and not a guarantee for yours.
 <!-- book-nav -->
 ---
 
-*Part VI — Reference, chapter 43.* Previous: [42. Repository layout](repository-layout.md) · [Contents](../README.md) · Next: [44. Roadmap](roadmap.md)
+*Part VI — Reference, chapter 43.* Previous: [42. Repository layout](repository-layout.md) · [Contents](../README.md) · Next: [44. Status](status.md)

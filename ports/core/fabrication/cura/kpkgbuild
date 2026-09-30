@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cura
+version     = 5.13.0
+release     = 1
+_charon     = 0decd60531dcdde31b519fdad0cd14102e63c25f
+source      = $name-$version.tar.gz::https://github.com/Ultimaker/Cura/archive/refs/tags/$version.tar.gz
+source      = fdm_materials-$version.tar.gz::https://github.com/Ultimaker/fdm_materials/archive/refs/tags/$version.tar.gz
+source      = libCharon-$_charon.tar.gz::https://github.com/Ultimaker/libCharon/archive/$_charon.tar.gz
+sha256      = 5911c63c465d23e8c27262b5702c2e708844b33fefb0f924855fa1a17158a089  cura-5.13.0.tar.gz
+sha256      = bb4060bddb3fa87eaf58ac3427097fff46d79a6142037380c624636f705174df  fdm_materials-5.13.0.tar.gz
+sha256      = c68bb416dc93ad33c1e0e63ed9378e7812ae37e07836b0b6c76c3a08975e2f47  libCharon-0decd60531dcdde31b519fdad0cd14102e63c25f.tar.gz
+sha256      = 9b5b5fdcc2d7f1499f5074591887ea792939acd5eaaf43e9369a0a83573998db  cura-vendor-5.13.0.tar.xz
+description = UltiMaker Cura — prepares 3D models for FDM printing, with printer definitions and material profiles
+homepage    = https://ultimaker.com/software/ultimaker-cura
+depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-poetry-core python3-cython python3-wheel uranium curaengine python3-pyarcus python3-pysavitar python3-pynest2d python3-pyuvula python3-pyqt6 python3-requests python3-certifi python3-keyring python3-pyserial python3-cryptography numpy scipy
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = trimesh:5.1.0 zeroconf:0.151.3 ifaddr:0.2.0

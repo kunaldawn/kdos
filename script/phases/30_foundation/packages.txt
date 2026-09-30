@@ -1,0 +1,287 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   30_foundation: Build Foundation
+# ---------------------------------
+#
+# The build systems, interpreters and base libraries every later recipe builds
+# with: make, pkgconf, the autotools, cmake, meson and ninja, perl and python3,
+# and the archive, TLS and documentation tooling. Nothing here needs a compiler
+# from 31_compilers.
+#
+# This list names every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# it, or when a shelf section names a port an earlier phase installs.
+
+# FIRST, AND IN THIS ORDER. These are the build tools recipes reach for without
+# naming them in `depends`: a configure script calls pkg-config through
+# PKG_CHECK_MODULES, a build.sh runs autoreconf, meson or cmake. Listed ahead
+# of every shelf section, they are installed before anything else in the phase,
+# in the order kpkgdepends gives this run; bash and toybox are the shell and
+# the userland every build.sh runs in. musl, gcc, binutils and m4 are
+# 20_selfhost's; naming them here rebuilds one whose recipe changed before
+# anything uses it.
+musl
+gcc
+binutils
+make
+pkgconf
+libtool
+autoconf
+automake
+m4
+bison
+flex
+cmake
+meson
+ninja
+python3
+perl
+bash
+toybox
+
+# 20_selfhost's other ports, after toybox. A toybox upgrade removes the names
+# its previous manifest held, so a port whose name toybox compiles out carries a
+# release bump and reinstalls here to take the name back; listed ahead of
+# toybox, it would rebuild first, lose the name to the upgrade, and be current
+# again when 40_lang's toybox run reaches it. zlib, ncurses and readline are
+# gcc's and python3's dependencies and rebuild ahead of them whatever this list
+# says.
+tar
+diffutils
+gawk
+ncurses
+readline
+zlib
+
+# ---------------------------------
+# base — The minimal userland and system daemons that every KDOS image boots
+# with
+# ---------------------------------
+ca-certificates
+util-linux
+less
+patch
+findutils
+
+# GNU sed, over toybox's applet, for the same reason as gawk and findutils:
+# upstream build systems assume GNU extensions. xapian's configure generates
+# its public version.h through a sed script using `0,/regex/d`; toybox does not
+# implement that address form, produces nothing, and leaves a ZERO-BYTE header
+# that fails three steps later with an error naming a type. Nothing in it says
+# "sed".
+sed
+
+gzip
+kmod
+eudev
+bc
+
+# ---------------------------------
+# base-libs — Low-level C libraries that the base system links
+# ---------------------------------
+attr
+acl
+libffi
+libcap-ng
+libcap
+
+# ---------------------------------
+# auth — Authentication, authorisation, accounts and directory services
+# ---------------------------------
+
+# WHAT mbsync AUTHENTICATES THROUGH, with cyrus-sasl-xoauth2 in 41_system: the
+# library ships no XOAUTH2 of its own. cyrus-sasl is the mechanism LOADER —
+# client side only, with no saslauthd and no password store; the plugin is the
+# mechanism a provider that has withdrawn application passwords requires.
+# Without both, an account on such a provider can be read in aerc and sent
+# through msmtp and cannot be mirrored into a local Maildir at all.
+cyrus-sasl
+
+# libldap, for curl's ldap:// URLs and dirmngr's directory lookups.
+openldap
+
+shadow
+
+# ---------------------------------
+# toolchain — The native compilers, the linker, the C library, and the LLVM
+# family
+# ---------------------------------
+yasm
+nasm
+swig
+gperf
+
+# The gettext runtime: musl has no gettext in libc and the gettext port is
+# built --disable-nls, so newsboat's libintl_gettext resolves nowhere without
+# it.
+libintl
+argp-standalone
+musl-fts
+musl-obstack
+musl-rpmatch
+elfutils
+patchelf
+
+# ---------------------------------
+# buildtools — Build systems and build helpers
+# ---------------------------------
+intltool
+itstool
+
+# ---------------------------------
+# lang — Language implementations, plus the modules of any language that has no
+# module shelf of its own
+# ---------------------------------
+lua
+
+# 5.4 BESIDE 5.5, not instead of it. Prosody 13 supports 5.2 through 5.4 and
+# will not load on 5.5; every path this installs is versioned, so neither
+# package can shadow the other.
+lua54
+
+# The four modules Prosody will not start without: a transport, TLS over it,
+# an XML parser (XMPP is XML on the wire) and stat/mkdir/readdir.
+lua54-luasocket
+lua54-luasec
+lua54-luaexpat
+lua54-luafilesystem
+
+# ---------------------------------
+# vcs — Version control and diff/merge tools
+# ---------------------------------
+git
+
+# ---------------------------------
+# doctools — Documentation toolchains, man pages, markup converters and TeX
+# typesetting
+# ---------------------------------
+
+# mandoc reads the man pages on the image.
+mandoc
+
+# A Makefile rule that pipes `$(PROG) --help` into help2man does not degrade
+# when it is absent — it exits 127 and takes the build with it.
+help2man
+
+doxygen
+sgml-common
+asciidoc
+xmlto
+docbook-xml
+docbook-xsl
+scdoc
+texinfo
+
+# ---------------------------------
+# devlibs — General-purpose C and C++ utility libraries with no domain
+# ---------------------------------
+pcre2
+
+# ---------------------------------
+# formats — Data-format and serialisation libraries (XML, JSON, YAML, TOML,
+# INI, RDF, protobuf, thrift), plus data query and convert tools
+# ---------------------------------
+expat
+yaml
+libxml2
+libxslt
+
+# ---------------------------------
+# database — Database engines, embedded key-value stores, database servers,
+# clients and full-text indexes
+# ---------------------------------
+gdbm
+sqlite
+
+# ---------------------------------
+# archiver — Compression libraries and archive tools
+# ---------------------------------
+bzip2
+xz
+lz4
+zstd
+lzo
+libarchive
+brotli
+
+# ---------------------------------
+# crypto — Cryptographic libraries, PKCS#11, smartcards and TPM
+# ---------------------------------
+openssl
+openssl3
+
+# ---------------------------------
+# net-libs — Networking and protocol libraries
+# ---------------------------------
+nghttp2
+ngtcp2
+nghttp3
+libidn2
+libpsl
+libssh2
+curl
+libuv
+c-ares
+
+# ---------------------------------
+# i18n — Unicode, locale, text shaping and segmentation, conversion, and
+# translation
+# ---------------------------------
+libunistring
+gettext
+icu
+
+# ---------------------------------
+# python — The python3 interpreter, tkinter, and Python build, packaging and
+# extension tooling
+# ---------------------------------
+python3-setuptools
+python3-pip
+python3-flit-core
+python3-packaging
+python3-pathspec
+python3-vcs-versioning
+python3-setuptools-scm
+python3-pluggy
+python3-poetry-core
+python3-tomlkit
+python3-calver
+python3-trove-classifiers
+python3-hatchling
+python3-hatch-vcs
+
+# ---------------------------------
+# python-libs — General-purpose python3-* runtime libraries: text, templating,
+# markup, parsing, config, CLI, system, files, crypto, imaging
+# ---------------------------------
+python3-pygments
+python3-docutils
+python3-markupsafe
+
+# Every file under libplacebo's src/shaders/ is GENERATED from a jinja template
+# at build time, and its vendored copy of jinja is an empty submodule in the
+# release archive.
+python3-jinja2
+python3-yaml
+python3-sphinx
+
+# ---------------------------------
+# python-net — python3-* HTTP, web-framework, TLS-trust and network-stack
+# modules
+# ---------------------------------
+python3-certifi
+
+# ---------------------------------
+# perl-cpan — The perl interpreter and every perl-* CPAN module
+# ---------------------------------
+perl-class-inspector
+perl-file-sharedir-install
+perl-file-sharedir
+perl-xml-parser

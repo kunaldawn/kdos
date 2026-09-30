@@ -1,0 +1,12 @@
+--- a/linux/applications/org.kde.falkon.desktop	2026-09-28 03:11:23.585749632 +0530
++++ b/linux/applications/org.kde.falkon.desktop	2026-09-28 03:11:40.643951684 +0530
+@@ -141,8 +141,7 @@
+ GenericName[zh_CN]=网页浏览器
+ GenericName[zh_TW]=網路瀏覽器
+ Exec=falkon %u
+-StartupWMClass=Falkon
+-MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;application/x-mimearchive;
++StartupWMClass=org.kde.falkon
+ Terminal=false
+ Actions=NewTab;NewWindow;PrivateBrowsing;
+ 

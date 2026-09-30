@@ -21,10 +21,10 @@
  * overrides file and nothing on a machine where nobody has rebound anything.
  * Each says so where it is written.
  *
- * HELIX IS NOT HERE, and that is measured rather than an omission. The plan
- * names it, but `helix` is in no `packages.txt` at all: the port exists and
- * has never been built or shipped, so a reader for it could not run and could
- * not be checked. It goes in when the port does.
+ * HELIX IS NOT HERE, and that is measured rather than an omission: `helix`
+ * is in no phase's package list, so the port (ports/core/editors/helix) is
+ * neither built nor shipped, and a reader for it could not run or be checked.
+ * It goes in when the port does.
  */
 
 #include <ctype.h>

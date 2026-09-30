@@ -1,0 +1,15 @@
+Converseen asks its server for the latest version every time it starts, with
+no setting that stops the request. Drop the start-up request and hide the
+menu entry that only reports its answer.
+
+--- a/src/mainwindowimpl.cpp
++++ b/src/mainwindowimpl.cpp
+@@ -117,7 +117,7 @@
+         spin_geoHeight->setValue(1);
+     }
+ 
+-    checkForUpdates();
++    actionCheckForUpdates->setVisible(false);
+ 
+     checkVersion();
+ }

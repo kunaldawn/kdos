@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cantor
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/cantor-$version.tar.xz
+sha256      = 5935a4cbd47d0dc84122d56e968c8bdd5416f8b9a69b8f97f42f791b526dc3b0  cantor-26.08.1.tar.xz
+description = Cantor — worksheet front end for Python, R, Octave, Maxima, Qalculate, KAlgebra and Lua
+homepage    = https://apps.kde.org/cantor/
+depends     = cmake ninja extra-cmake-modules shared-mime-info qt6-qtbase qt6-qtsvg qt6-qttools qt6-qtwebengine karchive kcompletion kconfig kcoreaddons kcrash kdoctools ki18n kiconthemes kio knewstuff kparts ktexteditor ktextwidgets kxmlgui syntax-highlighting libxml2 libxslt poppler analitza libqalculate R python3 luajit

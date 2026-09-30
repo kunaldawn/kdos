@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libXdamage
+version     = 1.1.7
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = 127067f521d3ee467b97bcb145aeba1078e2454d448e8748eb984d5b397bde24  libXdamage-1.1.7.tar.xz
+description = X11 DAMAGE extension client library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libXdamage
+depends     = libX11 libXfixes xorgproto

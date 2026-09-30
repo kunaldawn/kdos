@@ -12,9 +12,9 @@
 #                                            --shot /kdos/build/shots/x.png
 #
 # WHAT IT SAVES, AND WHY THAT IS THE WHOLE POINT. The ordinary loop is
-# `make build` with 06_packaging, which repacks a 32 GB ISO: measured 5m30s of
+# `make build` with 70_image, which repacks a 32 GB ISO: measured 5m30s of
 # a 7m30s build, to carry a 200 KB binary. This builds the named ports into
-# `build/fs` with NO packaging (measured 1m09s), tars exactly the files those
+# `build/fs` with NO 70_image (measured 1m09s), tars exactly the files those
 # ports own, and hands them to a booted ISO on a raw disk — where
 # `quickpatch.sh` untars them over the live medium's RAM overlay and restarts
 # the session. Twelve minutes becomes three.
@@ -45,14 +45,14 @@ cd "$(dirname "$0")/.."
 PORTS=${1:-}
 if [ -z "$PORTS" ]; then
 	echo "usage: testing/quick.sh PORT[,PORT...] [-- vnc-shot args...]" >&2
-	echo "       KDOS_QUICK_PHASES=04_phase4,05_desktop to widen the build" >&2
+	echo "       KDOS_QUICK_PHASES=42_graphics,50_desktop to widen the build" >&2
 	echo "       KDOS_QUICK_NOBUILD=1 to reuse what is already in build/fs" >&2
 	exit 2
 fi
 shift
 [ "${1:-}" = "--" ] && shift
 
-PHASES=${KDOS_QUICK_PHASES:-05_desktop}
+PHASES=${KDOS_QUICK_PHASES:-50_desktop}
 # Extra paths under build/fs to carry — a config file, a chord table.
 # The fs step must have run for them to be there: they come from the
 # tree's `fs/`, not from a package.
@@ -62,9 +62,9 @@ TAR=build/fix.tar
 
 [ -f "$ISO" ] || { echo "quick: no $ISO — run a full build once" >&2; exit 1; }
 
-# ── 1. build, without packaging ─────────────────────────────────────────
+# ── 1. build, without 70_image ──────────────────────────────────────────
 if [ "${KDOS_QUICK_NOBUILD:-0}" != 1 ]; then
-	echo "==> building $PORTS ($PHASES, no packaging)"
+	echo "==> building $PORTS ($PHASES, no image)"
 	make build BUILD_ARGS="--phases $PHASES --rebuild $PORTS --no-snapshot"
 fi
 

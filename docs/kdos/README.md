@@ -8,9 +8,10 @@ contents. Every chapter it lists describes the system as it is in this source tr
 ## Preface
 
 KDOS is a Linux distribution for x86_64 machines, compiled in this repository from upstream source
-with a musl C library, no systemd, no Xorg server and no GTK or Qt on the host. Its desktop is its
-own, every surface of it drawn as a grid of character cells, and the large graphical applications
-people expect run beside that desktop in containers called *boxes*.
+with a musl C library, no systemd and no Xorg server. Its desktop is its own, every surface of it
+drawn as a grid of character cells with no GUI toolkit under it. The graphical applications people
+expect are ported natively on top of it, each with the toolkit it is written in (GTK, Qt, KDE
+Frameworks, wxWidgets, FLTK or Tk), or run beside it in containers called *boxes*.
 
 The book is written for people: anyone deciding whether to try KDOS, installing it, looking after a
 machine that runs it, or building and changing it. It assumes a working knowledge of Linux (a
@@ -47,7 +48,7 @@ front to back. The shortest route that still covers the whole system is:
 4. Ch 12, [Architecture overview](03-architecture/overview.md), then chapters 13 to 19 in order
 5. Ch 20, [The programs](04-programs/README.md), and any program chapter that interests you
 6. Ch 30, [How KDOS is built](05-developer/how-kdos-is-built.md)
-7. Ch 45, [Status](06-reference/status.md), and ch 43, [Known gaps](06-reference/known-gaps.md)
+7. Ch 44, [Status](06-reference/status.md), and ch 43, [Known gaps](06-reference/known-gaps.md)
 
 ### Installing and using KDOS
 
@@ -57,7 +58,8 @@ For someone who wants an image on hardware and a working desktop:
 2. Ch 5, [Getting started](02-user-guide/getting-started.md): build an image, write a medium, boot it
 3. Ch 6, [Installation](02-user-guide/installation.md): the installer, page by page
 4. Ch 7, [The desktop](02-user-guide/desktop.md): panel, menus, windows and keyboard shortcuts
-5. Ch 8, [Applications](02-user-guide/applications.md): the catalogue and the boxes behind it
+5. Ch 8, [Applications](02-user-guide/applications.md): which applications are native, and the
+   catalogue and boxes for the rest
 6. Ch 9, [Theming](02-user-guide/theming.md), and ch 11, [Accessibility](02-user-guide/accessibility.md)
 7. Ch 43, [Known gaps](06-reference/known-gaps.md): what does not exist, before you depend on it
 
@@ -91,7 +93,7 @@ For a developer who builds the distribution, adds or changes a port, or writes d
 
 ## Contents
 
-Forty-six chapters in six parts.
+Forty-five chapters in six parts.
 
 ### Part I — Introduction
 
@@ -108,8 +110,8 @@ chapters stay at the level of ideas and link to the chapters that describe each 
 3. [Principles](01-philosophy/principles.md): the rules that constrain every change, each with the
    failure it prevents and the price it charges
 4. [Decisions](01-philosophy/decisions.md): the choices where an alternative was reasonable (the
-   compositor fork, the catalogue, packs, musl, the source archive, `-march` and more), and why
-   the alternative lost
+   compositor fork, native applications beside the catalogue, packs, musl, the source archive,
+   `-march` and more), and why the alternative lost
 
 ### Part II — Using KDOS
 
@@ -124,8 +126,9 @@ are written for the person at the keyboard and name the file behind each behavio
    encryption, A/B root slots, unattended installs and every file the installer writes
 7. [The desktop](02-user-guide/desktop.md): the panel, the Start menu, windows, keyboard
    shortcuts, notifications, files, the clipboard, locking, displays and removable media
-8. [Applications](02-user-guide/applications.md): finding, installing, launching, updating and
-   removing boxed applications, carrying a set to another machine, and managing boxes
+8. [Applications](02-user-guide/applications.md): which applications are ported natively, then
+   finding, installing, launching, updating and removing boxed applications, carrying a set to
+   another machine, and managing boxes
 9. [Theming](02-user-guide/theming.md): the eight accents, fonts, the phosphor pass, wallpaper,
    the boot menu and consoles, and theming inside a box
 10. [Administration](02-user-guide/administration.md): services, users, storage, networking, the
@@ -149,7 +152,7 @@ region of it.
     splash, A/B slot selection, unlocking an encrypted root, `rcS`, the console and the login
 14. [The session](03-architecture/session.md): what a login starts: the session bus, audio,
     portals, the supervised chrome, capture, the clipboard, input methods and a box's environment
-15. [Packaging](03-architecture/packaging.md): the ports tree and its phases and groups, where
+15. [Packaging](03-architecture/packaging.md): the ports tree, its shelves and its phases, where
     sources come from, `kpkg`, what a build verifies, reproducible packages, the binary host,
     deltas and vulnerability tracking
 16. [Packs and boxes](03-architecture/packs-and-boxes.md): the two lanes, the catalogue, the pack
@@ -175,7 +178,7 @@ these chapters cover only what this repository writes.
 21. [kdos-comp](04-programs/kdos-comp.md): the compositor: configuration, bindings, decorations,
     frame pacing, the phosphor pass, idle and lock, its sockets, box identity and working on its
     code
-22. [kdos-shell](04-programs/kdos-shell.md): one binary under 53 names and 52 surfaces: the panel,
+22. [kdos-shell](04-programs/kdos-shell.md): one binary under 55 names and 54 surfaces: the panel,
     the Start menu, the file chooser, settings, device managers, notifications, the store and the
     small surfaces
 23. [kdos-res](04-programs/kdos-res.md): the resource monitor: its eleven pages, keys, acting on a
@@ -203,7 +206,8 @@ failures that recur, the C libraries, desktop software and the test harnesses.
     `git clone` through fetching, the cross toolchain, the phases and the chroot, to a bootable ISO
 31. [Developing](05-developer/developing.md): what a development machine needs, the first build,
     every make target, rebuilding one thing, working without a build, and cutting a release
-32. [The build system](05-developer/build-system.md): phases, the chroot, syncing `fs/`, the
+32. [The build system](05-developer/build-system.md): the thirteen phases and their package
+    lists, where `kpkg` looks for a port, the phase environment, the chroot, syncing `fs/`, the
     orphan sweep, the packaging steps, snapshots, build plans and `kdosbuild`
 33. [Writing ports](05-developer/writing-ports.md): the recipe format, canonical build shapes, a
     worked example, adding a port end to end, vendoring, checking for new versions and publishing
@@ -220,11 +224,12 @@ failures that recur, the C libraries, desktop software and the test harnesses.
 ### Part VI — Reference
 
 Lookup tables and statements of state: every port, command, configuration key, path and socket,
-the layout of the source tree, what does not exist, where the work is heading, how mature each part
-is, and the vocabulary of the book.
+the layout of the source tree, what does not exist, how mature each part is, and the vocabulary of
+the book.
 
-38. [The ports catalogue](06-reference/ports-catalogue.md): every port KDOS can build, by phase
-    and group, with the ports installed only as dependencies and those not installed
+38. [The ports catalogue](06-reference/ports-catalogue.md): every port KDOS can build, by shelf
+    and by `src/` area, with the phase that builds it, the ports named in more than one list and
+    those not installed
 39. [Command index](06-reference/command-index.md): every command the tree installs, where it lives
     and which chapter documents it
 40. [Configuration](06-reference/configuration.md): every configuration file and key, with its
@@ -232,15 +237,13 @@ is, and the vocabulary of the book.
 41. [Filesystem and IPC](06-reference/filesystem-and-ipc.md): KDOS-owned paths, every socket and
     its verbs, files used as an interface, and environment variables
 42. [Repository layout](06-reference/repository-layout.md): the source tree directory by
-    directory: the port repositories, the library rule, where upstream sources are, and what git
-    ignores
+    directory: the port repositories, the shelves of `ports/core` and the areas of `src/`, the
+    `script/` directory, the library rule, where upstream sources are, and what git ignores
 43. [Known gaps](06-reference/known-gaps.md): what KDOS does not do, or has not been shown to do,
     and what to do instead
-44. [Roadmap](06-reference/roadmap.md): aarch64 and mobile, the stated directions, and what is not
-    planned, kept separate from what ships
-45. [Status](06-reference/status.md): the maturity of each subsystem and the evidence behind each
+44. [Status](06-reference/status.md): the maturity of each subsystem and the evidence behind each
     verdict
-46. [Glossary](06-reference/glossary.md): the vocabulary the book uses, defined once, and the words
+45. [Glossary](06-reference/glossary.md): the vocabulary the book uses, defined once, and the words
     it avoids
 
 ## Conventions

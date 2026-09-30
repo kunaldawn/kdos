@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = python3-rns
+version     = 1.5.4
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/r/rns/rns-$version.tar.gz
+sha256      = 578508ef08dedf7c109f73a445065ca89c50a63c6a69ced7b147ed20391ceb15  python3-rns-1.5.4.tar.gz
+description = Reticulum — encrypted mesh networking over LoRa, packet radio, WiFi or anything that carries bytes
+homepage    = https://reticulum.network/
+depends     = python3 python3-setuptools python3-pip python3-cryptography python3-pyserial

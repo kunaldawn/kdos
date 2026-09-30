@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kolourpaint
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = e2ae301feb5e0ccb7634421b7e320808590fcf7c5bf4c4eb3c60d87bd68caca3  kolourpaint-26.08.1.tar.xz
+description = Easy paint program — draw, crop, recolour and scan, for anyone
+homepage    = https://apps.kde.org/kolourpaint/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtimageformats qt6-qtwayland ki18n kguiaddons kwidgetsaddons kio kxmlgui ktextwidgets kjobwidgets kcrash kdoctools libksane kimageformats

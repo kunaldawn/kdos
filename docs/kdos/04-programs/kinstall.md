@@ -120,6 +120,7 @@ fails with "kinstall must run as root" instead.
 | F1 | Show or hide the key help |
 | L | The full log, on the Install page (an unattended run only; see [The pages](#the-pages)) |
 | Ctrl+U | Clear a text field |
+| Ctrl+W, Ctrl+Backspace | Delete the word before the caret; Ctrl+Left and Ctrl+Right move by word |
 | Ctrl+Q, Ctrl+C | Quit the installer. It asks first, and while an install is running it warns that stopping leaves the target half written |
 
 Alt+Left, Alt+Right and Esc do nothing on the Install and Done pages, which have no navigation
@@ -514,7 +515,7 @@ Three columns each prevent a failure that would only show up later:
   compressed. The wrong method installs cleanly and then boots with no swap and nothing saying
   why. Where `fallocate` or `btrfs` is missing, the step falls back to `dd`.
 - **f2fs is a kernel module**, so it is in the initramfs module list in
-  `script/06_packaging/01_initramfs.sh`. ext4, btrfs and xfs are built in: `kdos.config` in the
+  `script/phases/70_image/090_initramfs.sh`. ext4, btrfs and xfs are built in: `kdos.config` in the
   `linux` port sets `CONFIG_XFS_FS=m`, and its `build.sh` then enables it as built-in. The list
   names xfs as well, and copying a built-in driver is a no-op. A root on a filesystem the
   initramfs cannot load installs without error and does not boot.
@@ -623,8 +624,8 @@ The installer reads the catalogue from the first of these that exists:
 With no catalogue, the page says that nothing can be chosen and the Packs step is skipped.
 
 **It lists groups, not applications.** Seven named bundles is something to read during an
-install; the shipped catalogue's 180 applications is not. The catalogue
-(`src/packages/kdos-appbox/catalogue`) defines these groups:
+install; the shipped catalogue's 73 applications is not. The catalogue
+(`src/system/kdos-appbox/catalogue`) defines these groups:
 
 | Group | Description |
 |---|---|
@@ -645,7 +646,7 @@ The base system and the runtimes are not choices, and the page says so in one li
 offering them as rows. Each application pulls in the runtime it needs, so leaving a runtime out
 could only produce applications that cannot start.
 
-In an answer file, `apps` names group ids. An application id such as `app.krita` matches no group
+In an answer file, `apps` names group ids. An application id such as `app.scribus` matches no group
 and is ignored, and if nothing on the line matches, the selection is `essential`. With no `apps`
 key the selection is `essential`. The page's selection logic runs before planning on every path
 that plans without walking the wizard (`--dump plan` and `--unattended`), because the selection is
@@ -850,8 +851,9 @@ The installed system depends on these, and each exists because of the installer:
 `kinstall` links `libkbase`, `libktui` and `libkcolor`, compiled from source into the binary, and
 no other library, not even a terminal library. Password hashing uses `crypt()` from the C library,
 which musl carries; a glibc host build, such as the one in `testing/selftest.sh`, adds `-lcrypt`.
-That is what lets it be cross-compiled in phase 1 of the build (`script/01_phase1/13_kinstall.sh`;
-see [Phase 1: a minimal KDOS](../05-developer/how-kdos-is-built.md#phase-1-a-minimal-kdos)) and
+That is what lets it be cross-compiled in the bootstrap phase of the build
+(`script/phases/10_bootstrap/130_kinstall.sh`; see
+[How KDOS is built](../05-developer/how-kdos-is-built.md)) and
 exist on every tree from the first bootable image onward. `libkcolor` is on the list because
 `libktui`'s theme code includes its palette header; the colour values live there and nowhere
 else.
@@ -859,17 +861,17 @@ else.
 Giving `kinstall`, or any of those three libraries, a new dependency means moving the installer's
 build to a later phase.
 
-A recipe (`src/packages/kdos-installer/kpkgbuild`, built by `build.sh`) sits beside the sources so
+A recipe (`src/system/kdos-installer/kpkgbuild`, built by `build.sh`) sits beside the sources so
 a running KDOS can rebuild the installer natively; the [ports
-catalogue](../06-reference/ports-catalogue.md#phases-0-and-1-built-by-script) lists it with the
-other packages phase 1 builds by script. Both builds compile every `.c` file in the
-directory by glob, plus `kdos-appbox`'s `catalogue.c`, so the phase-1 installer and the packaged
+catalogue](../06-reference/ports-catalogue.md#built-by-script) lists it with the
+other packages the bootstrap phase builds by script. Both builds compile every `.c` file in the
+directory by glob, plus `kdos-appbox`'s `catalogue.c`, so the bootstrap installer and the packaged
 one are always the same program.
 
-The phase-1 step skips itself when its marker `build/mark/phase1/kinstall` exists, and
+The bootstrap step skips itself when its marker `build/mark/bootstrap/kinstall` exists, and
 `--rebuild` does not reach it because it is not a port. `testing/preflight.sh` checks that the
 installer in `build/fs/usr/bin/kinstall` carries a string `install.c` owns (the Limine path), and
-when it does not, says to remove the marker and rebuild phase 1.
+when it does not, says to remove the marker and rebuild the bootstrap phase.
 
 ### The file split
 
@@ -961,6 +963,16 @@ The sidebar is drawn before the page. If its rows took ordinary focus positions,
 every page would move down the Tab order and the cursor would start on a decoration, where typing
 does nothing. The sidebar's rows register as *chrome*, in a separate range that never joins the
 Tab order.
+
+### Fields that come and go
+
+Some controls exist only while a box above them is ticked: the passphrase pair under *Encrypt the
+root filesystem*, the swap size while there is swap, the root password while root is not locked.
+A control's focus position is otherwise its place on the page, so ticking the box would renumber
+every control after the group. The focus would land elsewhere, and the new passphrase field would
+take the swap size field's cursor. Each such group is drawn in its own named id scope
+(`ktui_id_push`), which keeps every control after it where it was. Tab still visits the group's
+fields in the order they are drawn.
 
 ## See also
 

@@ -39,4 +39,9 @@ void keyboard_cancel_all_keybind_repeats(struct seat *seat);
 
 uint32_t keyboard_get_all_modifiers(struct seat *seat);
 
+/* KDOS: bindings, then the client — see kdos_a11y_key() */
+struct wlr_keyboard_key_event;
+void keyboard_key_deliver(struct keyboard *keyboard,
+	struct wlr_keyboard_key_event *event);
+
 #endif /* LABWC_KEYBOARD_H */

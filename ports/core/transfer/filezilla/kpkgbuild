@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = filezilla
+version     = 3.71.0
+release     = 1
+source      = $name-$version.tar.xz::https://deb.debian.org/debian/pool/main/f/filezilla/filezilla_$version.orig.tar.xz
+sha256      = bb107bafc2d8fedaf3d9dbb032b967611d4e29a298b10afa3b8bdff15592cc9b  filezilla-3.71.0.tar.xz
+description = FileZilla (wxWidgets, GTK 3) — FTP, FTPS and SFTP client with a two-pane site manager
+homepage    = https://filezilla-project.org/
+depends     = pkgconf libfilezilla fzssh wxwidgets gtk3 gnutls nettle libidn sqlite pugixml xdg-utils hicolor-icon-theme

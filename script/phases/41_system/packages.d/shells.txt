@@ -1,0 +1,39 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   shells — Interactive shells and their add-ons, terminal multiplexers, and
+#   terminal emulators
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+bash-completion
+tmux
+byobu
+direnv
+starship
+zoxide
+
+# Shell history in a local SQLite database. Built --no-default-features
+# --features client: no sync, no update check, no daemon and no clipboard, so
+# the history of everything typed on this machine has no route off it.
+atuin
+
+# zsh is here for Completion/ — embedded knowledge of a thousand commands'
+# arguments, worth more offline than on. bash remains the system shell.
+zsh

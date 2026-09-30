@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = digikam
+version     = 9.1.0
+release     = 1
+_models     = https://files.kde.org/digikam/facesengine
+source      = $name-$version.tar.xz::https://download.kde.org/stable/digikam/$version/digiKam-$version.tar.xz
+source      = $_models/yunet/face_detection_yunet_2023mar.onnx
+source      = $_models/dnnface/face_recognition_sface_2021dec.onnx
+source      = $_models/dnntestimage.jpeg
+sha256      = a7309191e9a4787853cb3ac4136e4f8d7c044b40338dc42c7e422c37625b72e1  digikam-9.1.0.tar.xz
+sha256      = 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4  face_detection_yunet_2023mar.onnx
+sha256      = 0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79  face_recognition_sface_2021dec.onnx
+sha256      = 158c039c7ae795340eea959bedde4a5d263a8add9e5bebca10b4a45bb7073a2b  dnntestimage.jpeg
+description = digiKam and showFoto: photo library, tagging, face recognition, RAW import and editing, for Qt 6
+homepage    = https://www.digikam.org/
+depends     = cmake ninja pkgconf gettext extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtnetworkauth qt6-qtscxml qt6-qtmultimedia qt6-qtwebengine kxmlgui kcoreaddons kconfig kservice kwindowsystem solid ki18n kio kiconthemes threadweaver knotifyconfig knotifications sonnet kcalendarcore libksane opencv exiv2 expat libjpeg-turbo lcms2 libpng libtiff zlib boost eigen libheif libjxl x265 flex bison libxml2 libxslt imagemagick ffmpeg lensfun libgphoto2 glib libX11 libXv mesa libglvnd hicolor-icon-theme

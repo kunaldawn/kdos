@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ladspa
+version     = 1.17
+release     = 1
+source      = https://ladspa.org/download/ladspa_sdk_$version.tgz
+sha256      = 27d24f279e4b81bd17ecbdcc38e4c42991bb388826c0b200067ce0eb59d3da5b  ladspa-1.17.tar.gz
+description = LADSPA audio plugin API header, example plugins and the analyseplugin, applyplugin and listplugins tools
+homepage    = https://ladspa.org/
+depends     = libsndfile

@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   40_lang: Languages
+# ---------------------------------
+#   python-sci — python3-* science, numerics, astronomy and geo modules
+# ---------------------------------
+#
+# Language modules and developer tools — the python3-* and perl-* modules,
+# language implementations, build and documentation tools, debuggers and
+# version control — whose dependency closure needs nothing past 31_compilers.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+python3-cycler
+python3-kiwisolver
+python3-astropy-iers-data
+python3-gmpy2
+
+# Arbitrary precision, and how sympy evaluates numerically.
+python3-mpmath
+
+python3-owslib

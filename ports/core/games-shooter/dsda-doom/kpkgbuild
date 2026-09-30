@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dsda-doom
+version     = 0.29.4
+release     = 1
+source      = https://github.com/kraflab/dsda-doom/archive/refs/tags/v$version.tar.gz
+sha256      = f866db79381862080718668f582b0f358811a016db17680e507abb9250afbea5  dsda-doom-0.29.4.tar.gz
+description = Speedrunning Doom engine from the PrBoom+ line — Boom, MBF21, UMAPINFO, OpenGL renderer
+homepage    = https://github.com/kraflab/dsda-doom
+depends     = cmake ninja pkgconf sdl2-compat sdl2-mixer sdl2-image libsndfile zlib libzip mesa libglvnd glu libmad fluidsynth libxmp libvorbis portmidi librsvg freedoom

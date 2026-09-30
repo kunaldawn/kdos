@@ -1,10 +1,14 @@
 # xdg-desktop-portal-wlr — what happens when something asks to record the screen.
 #
-# chooser_type=simple runs chooser_cmd and reads the output it picks. slurp is
-# already installed (phase 4) and is what upstream's own sample uses. The
-# alternative, chooser_type=none, silently captures the first output — right on
-# a laptop, wrong the moment a second screen is plugged in, and wrong in the
-# direction where the user does not find out.
+# chooser_type=dmenu writes every source the request allows, screens as
+# "Monitor: <name> <description>" and windows as "Window: <title> (<id>)", to
+# chooser_cmd's stdin and captures the line it prints. It is the only type
+# that offers windows: `simple` (slurp) can name only an output, and a request
+# for a window answered with an output name records the whole screen. fuzzel
+# is a 42_graphics port and a layer-shell client. The alternative,
+# chooser_type=none, silently captures the first output — right on a laptop,
+# wrong the moment a second screen is plugged in, and wrong in the direction
+# where the user does not find out.
 #
 # max_fps caps the capture, not the desktop: a 30 fps screen recording of a
 # 60 Hz session costs half the encode and looks the same. It is also what
@@ -14,5 +18,5 @@
 # own rate if this line is removed.
 [screencast]
 max_fps=30
-chooser_type=simple
-chooser_cmd=slurp -f %o -or
+chooser_type=dmenu
+chooser_cmd=fuzzel --dmenu --lines=10 --prompt='Share: '

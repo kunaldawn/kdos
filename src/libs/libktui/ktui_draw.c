@@ -1503,7 +1503,7 @@ void ktui_draw_flush(void)
 	 * drawn a pixel apart on the same screen.
 	 *
 	 * IT CANNOT BE DRAWN HERE. This file links nothing but musl and has to
-	 * keep doing so — kinstall links it in phase 1, before any library
+	 * keep doing so — kinstall links it in 10_bootstrap, before any library
 	 * exists to link against — so an arrow, which needs a pixel buffer and
 	 * a colour in it, lives in the backend that already owns both.
 	 *

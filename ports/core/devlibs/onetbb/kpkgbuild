@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = onetbb
+version     = 2023.1.0
+release     = 1
+source      = https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v$version.tar.gz
+sha256      = 191288b52e1e6b17198000b64d77d194bb65e791be46ebc606e9b091781e2070  onetbb-2023.1.0.tar.gz
+description = oneAPI Threading Building Blocks: task-parallel C++ runtime
+homepage    = https://github.com/uxlfoundation/oneTBB
+depends     = cmake ninja pkgconf hwloc

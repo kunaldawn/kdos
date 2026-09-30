@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libgeotiff
+version     = 1.7.4
+release     = 1
+source      = https://download.osgeo.org/geotiff/libgeotiff/libgeotiff-$version.tar.gz
+sha256      = c598d04fdf2ba25c4352844dafa81dde3f7fd968daa7ad131228cd91e9d3dc47  libgeotiff-1.7.4.tar.gz
+description = libgeotiff — reads and writes the georeferencing tags of GeoTIFF rasters, with listgeo and geotifcp
+homepage    = https://github.com/OSGeo/libgeotiff
+depends     = proj libtiff libjpeg-turbo zlib

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ksanecore
+version     = 26.08.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 0555c4109b6132a774ce4081c12d9deeed8fdb152fa65714f7f73cb20965494d  ksanecore-26.08.1.tar.xz
+description = Qt 6 library that drives SANE scanners, without a user interface
+homepage    = https://invent.kde.org/libraries/ksanecore
+depends     = cmake ninja extra-cmake-modules qt6-qtbase ki18n sane-backends

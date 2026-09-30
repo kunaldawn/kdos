@@ -64,9 +64,28 @@ esac
 export XCURSOR_THEME=KDOS-cursors
 export XCURSOR_SIZE=24
 
-export QT_QPA_PLATFORM=wayland
-export GDK_BACKEND=wayland
+# Toolkit back ends. Every toolkit on the host that has a Wayland back end is
+# built with it and its X11 one, and Wayland comes first; Tk has only X11.
+# Qt takes a list and falls back to xcb (Xwayland) only when the Wayland
+# plugin cannot start. GDK_BACKEND is
+# left unset: GDK already tries Wayland first, and a value here would override
+# the GDK_BACKEND=x11 an X11-only application sets for itself.
+export QT_QPA_PLATFORM="wayland;xcb"
 export MOZ_ENABLE_WAYLAND=1
-export _JAVA_AWT_WM_NONREPARENTING=1
 export SDL_VIDEODRIVER=wayland
 export CLUTTER_BACKEND=wayland
+# Swing and AWT run under Xwayland and assume a reparenting window manager;
+# with none they draw blank or mis-placed windows.
+export _JAVA_AWT_WM_NONREPARENTING=1
+
+# Native GTK and Qt applications on the host. GTK_USE_PORTAL=1 routes GTK's
+# file chooser, print dialog and settings through the portals, so a GTK
+# application opens kdos-pick instead of drawing its own dialog. The `kde`
+# platform theme (plasma-integration, Qt 6 only) reads the ~/.config/kdeglobals
+# that `kdos theme` writes; without it a Qt 6 application paints Qt's built-in
+# light palette under every KDOS theme. Qt takes one name here, not a list, and
+# each Qt major version searches only its own plugin directory: a Qt 5
+# application finds the qt5ct plugin under `kde` (the qt5ct port adds the key)
+# and reads the ~/.config/qt5ct files `kdos theme` writes.
+export GTK_USE_PORTAL=1
+export QT_QPA_PLATFORMTHEME=kde

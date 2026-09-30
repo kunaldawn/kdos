@@ -45,7 +45,7 @@ subcommands always use the home directory.
 | `timers.d/` | The system's periodic jobs, plus a `README` | yes: `10-update-check.timer` and `20-fstrim.timer`; the `fwupd` package adds `30-fwupd-refresh.timer` |
 | `keys/` | Trusted keys for host packages and the binhost index | yes, with no keys: only a `README` stating the policy |
 | `keys/packs/` | Trusted keys for application packs | yes, one key: `kdos-packs.pub` |
-| `mountd.conf` | Removable-media options, including `format = yes`, without which the media daemon refuses to format | no: create it |
+| `mountd.conf` | Removable-media options, including `format = yes` and `write = yes`, without which the media daemon refuses to format a device or write an image over one | no: create it |
 | `update.conf` | The binhost `kdos update` installs from | no: create it |
 | `accent` | The accent name, so the boot splash can repaint in it before anyone logs in | no: written by `kdos-powerd` when `kdos theme` runs |
 
@@ -100,8 +100,7 @@ Holds `kdos` and the other session-side names of the `ksvc` binary, `kdos-appbox
 *shim*, a symbolic link to `kdos-appbox` named after a boxed application. Running a shim runs
 `kdos-appbox`, which dispatches on the name it was called by. The build writes one shim per
 application in a pack the medium carries (`kdos-appbox genlaunchers`, from
-`script/06_packaging/00_launchers.sh`); the default medium carries no packs, so it has none, and
-the same step removes the links committed under `fs/usr/local/bin/`. An application you install
+`script/phases/70_image/030_launchers.sh`); the default medium carries no packs, so it has none. An application you install
 gets its shim in `~/.local/bin` instead.
 
 ### `/var/lib/kpkg/` — the host package database
@@ -117,11 +116,14 @@ The state and caches of `kpkg`, the host package manager. Every directory is a d
 | `/var/cache/kpkg/packages/` | Built package archives (`PACKAGE_DIR`) |
 | `/var/cache/kpkg/work/` | Build working directories (`WORK_DIR`) |
 
-The ports tree `kpkg` builds from is `/ports/core` (`PORT_REPO`); every port in it is listed in
-[The ports catalogue](ports-catalogue.md). Neither `/ports` nor
-`/var/cache` is carried onto the boot medium, so on a fresh machine both are empty until something
-is built there; a medium made with `KDOS_ISO_SOURCES=1` carries a partial copy of the tree, with no
-ports, under `/mnt/iso/sources`.
+The ports tree `kpkg` builds from is named by `PORT_REPO`, `/ports/core` by default: a
+space-separated list of recipe directories, each searched for a port at `<name>/` and one shelf
+down at `<shelf>/<name>/`. Every port is listed in [The ports catalogue](ports-catalogue.md).
+Neither `/ports` nor `/var/cache` is carried into the installed system, so on a fresh machine both
+are empty until something is put there; a medium made with `KDOS_ISO_SOURCES=1` carries the whole
+tree, every port with its fetched sources, under `/mnt/iso/sources`, and
+[Keeping it current](../02-user-guide/administration.md#keeping-it-current) gives the `PORT_REPO`
+that names it.
 
 ### The boot medium
 
@@ -356,10 +358,11 @@ daemon's own decision or it does not happen.
 ### `/run/kdos-mountd.sock`
 
 Removable media, encrypted volumes, network shares and drive health, from `kdos-mountd`; the client
-is `kdos-mount`. Root, and members of `seat` or `wheel`. Fifteen verbs. Removable media are mounted
+is `kdos-mount`. Root, and members of `seat` or `wheel`. Sixteen verbs. Removable media are mounted
 under `/media`.
 
-Three verbs carry a secret as a *second frame*; see [Secrets](#secrets).
+Four verbs carry a second frame; see [Secrets](#secrets). One, `write`, also carries an open file
+descriptor.
 
 | Verb | Argument | Answers |
 |---|---|---|
@@ -371,6 +374,7 @@ Three verbs carry a secret as a *second frame*; see [Secrets](#secrets).
 | `smart` | An index | The drive's own health summary |
 | `unlock` | An index and a byte count | The name of the unlocked device; the passphrase follows as a second frame |
 | `format` | An index, a filesystem and a byte count | The device's kernel name, typed back, follows as a second frame. Refused unless `/etc/kdos/mountd.conf` says `format = yes` |
+| `write` | An index and a byte count | Writes an image over the whole disk the row is on and reads it back. The disk's name, typed back, follows as a second frame, and the image is attached to the request as an open descriptor (`SCM_RIGHTS`), never named. The connection stays open for `progress write\|verify <done> <total>` lines and ends `ok <disk> <bytes> verified`. Refused unless `/etc/kdos/mountd.conf` says `write = yes` |
 | `cifs` | A server, a share, a username, a domain and a byte count | The mountpoint; the password follows as a second frame |
 | `krb5` | A server, a share, a username or `-`, and a domain or `-` | The mountpoint. Uses your Kerberos ticket; no second frame |
 | `shares` | none | The mounted network shares, with an index each |
@@ -391,8 +395,8 @@ mounted, and any device whose node differs from the one the scan recorded.
 
 #### Secrets
 
-`unlock`, `format` and `cifs` carry their secret as a *second frame*: the request line ends with a
-byte count, and exactly that many bytes follow the newline. A secret is never a word on the request
+`unlock`, `format`, `write` and `cifs` carry their secret or confirmation as a *second frame*: the
+request line ends with a byte count, and exactly that many bytes follow the newline. A secret is never a word on the request
 line, because that line is split on whitespace and a passphrase may contain some. The byte count
 may not be zero. The daemon holds the secret in one buffer and wipes it on every way out of the
 request.
@@ -583,7 +587,9 @@ set only between KDOS's own programs are left out.
 | `KDOS_COMP_DEBUG=1` | Raise the compositor's log level from INFO to DEBUG |
 | `KDOS_PANEL_DEBUG=1` | The panel explains its layout decisions, such as why a tile declined |
 | `KDOS_BB_DEBUG=1` | The `kdos-bb` demo reports how its audio mixer is fed |
-| `KDOS_WHEEL_DEBUG=1` | Trace every scroll-wheel event, tick and dropped duplicate in a `libkwl` surface |
+| `KDOS_WHEEL_DEBUG=1` | Trace every scroll-wheel event (discrete, high-resolution and continuous), tick, dropped duplicate and coast step in a `libkwl` surface |
+| `KDOS_PAINT_FULL=1` | Paint and damage every commit of a `libkwl` surface in full, bypassing the partial repaint, the scrolled-band move and the per-cell damage; the comparison for a surface that shows stale pixels |
+| `KDOS_INSPECT=1` | Draw a developer overlay over every `libkwl` surface: the rows each commit changed, tinted and fading; a panel of commits, stashed frames, paint time, frame-callback latency, sprite bytes and hit rects; and outlines round a frame surface's hit rects. Every commit is painted and damaged in full while it is on; no dump or golden carries it |
 | `KDOS_CRT_DUMP=<prefix>` | Write the phosphor effect's input and output images once, as `<prefix>-in.ppm` and `<prefix>-out.ppm` |
 | `KDOS_CRT_DUMP_FRAME=<n>` | Wait until frame *n* before that dump |
 | `KDOS_PACKD_VERBOSE=1` | Under `kdos-packd --fixture`, print every step rather than only the result |
@@ -617,6 +623,7 @@ honoured only where noted.
 | Variable | Points at |
 |---|---|
 | `KDOS_DUMP_SIZE=WxH` | The size the test harness's offscreen render (`--dump`) draws a surface at |
+| `KDOS_DUMP_KEYS` | A script of keys, clicks, ticks and resizes the test harness plays into a surface's own loop in place of a display, printing the frame it ends on; read by the dump harness alone (see [Writing desktop software](../05-developer/writing-desktop-software.md#looking-at-it-without-a-screen)) |
 | `KDOS_GOLDEN_UPDATE=1` | Regenerate reference frames instead of comparing against them |
 | `KDOS_RES_FIXTURE` | A recorded system state for the resource monitor's library tests; the program itself takes `kdos-res --fixture <dir>` |
 | `KDOS_PRIVACY_PROC` | A recorded process tree for the panel's privacy indicator and the devices surface |
@@ -648,16 +655,18 @@ Read by `make build` and the build scripts on the build machine; see
 
 | Variable | Effect |
 |---|---|
-| `KDOS_ISO_SOURCES=1` | Copy `src/` and `script/` onto the boot medium as `/sources`, with an empty `ports/` directory and a `SOURCES` stamp; a live session sees it at `/mnt/iso/sources`. The `Makefile`, the `Dockerfile` and `fs/` are not on the medium |
+| `KDOS_ISO_SOURCES=1` | Copy `src/`, `script/`, `fs/` and `ports/` (every fetched source beside its recipe, without the source cache and the host helpers) onto the boot medium as `/sources`, with a `SOURCES` stamp; a live session sees it at `/mnt/iso/sources`. The `Makefile` and the `Dockerfile` are not on the medium |
+| `KDOS_MAKE_BINHOST=1` | Keep every package the chroot phases build, and have `70_image` write a signed binary host of them to `build/binhost/` |
 | `KDOS_PACK_KDOS=1` | Also pack this root filesystem as a base pack named `kdos`, written to `build/kdos-base` |
 | `KDOS_REPLAY=1` | A build step's "already done" guard stands down. Set for steps a build plan named explicitly |
 | `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY` | Recorded in each phase's snapshot manifest as `git_commit` and `git_dirty`, and shown by the snapshot picker, which marks a snapshot stale when either disagrees with the tree. Nothing on the image reads them; `/etc/os-release` carries a fixed version |
-| `KDOS_SNAPSHOT_PATHS`, `KDOS_SNAPSHOT_EXCLUDE`, `KDOS_PHASE_TITLE`, `KDOS_PHASE_DESC` | A phase's metadata block in its `script/<phase>.env.sh` file, parsed by the orchestrator and never sourced |
+| `KDOS_SNAPSHOT_PATHS`, `KDOS_SNAPSHOT_EXCLUDE`, `KDOS_PHASE_TITLE`, `KDOS_PHASE_DESC` | A phase's metadata block in its `script/phases/<phase>/phase.env`. The orchestrator parses these keys from the file's own text without sourcing it, so it follows none of the file's `source` lines and each `phase.env` sets them itself; the phase's steps source the whole file as shell |
 | `KDOS_RES=WxH` | The virtual screen size for `make run` and its variants; default `1920x1080` |
 
 The build runs its later steps inside a chroot entered with a cleared environment, so a variable a
-chroot step reads must also be named in `script/chroot_exec.sh`. Exactly three are forwarded:
-`KDOS_REPLAY`, `KDOS_ISO_SOURCES` and `KDOS_PACK_KDOS`. A new one added to the `Makefile` and not
+chroot step reads must also be named in `script/chroot/exec.sh`. Exactly four are forwarded:
+`KDOS_REPLAY`, `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS` and `KDOS_MAKE_BINHOST`, which also arrives as
+`KPKG_KEEP_CACHE`. A new one added to the `Makefile` and not
 there reaches every host step and no chroot step; see
 [Entering the chroot](../05-developer/how-kdos-is-built.md#entering-the-chroot).
 
@@ -684,7 +693,8 @@ resolves a source and when the pre-push hook refuses a push are in
 | `KDOS_LFS_STORE` | the clone's `lfs/objects` | Where `ports/publish --history` reads Git LFS (Large File Storage) objects that earlier commits' recipes name, to archive them under their hashes |
 | `KDOS_GITHUB_API`, `KDOS_GITHUB_UPLOADS` | `https://api.github.com`, `https://uploads.github.com` | Replace the API and upload endpoints, for testing against a local stand-in |
 | `KDOS_ALLOW_UNVERIFIED=1` | unset | Let `kpkg` build from a source file whose recipe has no `sha256`, and quiet `ports/fetch`'s warning about it. Without it such a file is refused. `ports/fetch`, and `kpkg install` or `kpkgbuild` run by hand, read it; a `make build` step in the chroot does not see it (see [Build](#build)) |
-| `KDOS_SKIP_PUBLISH_CHECK=1` | unset | Skip the pre-push hook's check that every source a pushed recipe names is archived |
+| `KDOS_SKIP_PUBLISH_CHECK=1` | unset | Skip the pre-push hook's check that every source a pushed recipe names is archived. The layout check still runs |
+| `KDOS_SKIP_LAYOUT_CHECK=1` | unset | Skip the pre-push hook's offline check of the ports layout: every recipe one listed shelf down, one name per port, no reserved or port-named shelf |
 
 ## See also
 

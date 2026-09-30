@@ -1,0 +1,47 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   43_toolkits: Toolkits
+# ---------------------------------
+#   gtk — The GLib and GTK platform and GNOME/Xfce desktop-platform libraries:
+#   widgets, settings, bindings, GIO plug-ins
+# ---------------------------------
+#
+# Libraries whose dependency closure reaches GTK, Qt, wxWidgets, FLTK or Motif:
+# the toolkits themselves, KDE Frameworks, and what applications link over
+# them.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Both GTKs are built with their Wayland and X11 backends. GDK_BACKEND is left
+# unset, so an application tries Wayland first and the X11 backend serves the
+# ones that force it; GTK 3's AT-SPI bridge is compiled only beside its X11
+# backend.
+gtk3
+gtk4
+
+# Each GTK has its own series and the two install side by side: gtkmm3 over
+# glibmm 2.66, cairomm 1.14, pangomm 2.46 and atkmm 2.28, and gtkmm4 over the
+# current glibmm, cairomm and pangomm.
+gtkmm3
+gtkmm4
+
+vte3
+libadwaita
+gtksourceview5
+gtksourceview4
+libhandy
+blueprint-compiler
+gvfs
+libxfce4ui
+exo
+libpeas

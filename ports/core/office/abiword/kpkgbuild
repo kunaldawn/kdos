@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = abiword
+version     = 3.0.8
+release     = 2
+source      = $name-$version.tar.gz::https://gitlab.gnome.org/World/AbiWord/-/archive/release-$version/AbiWord-release-$version.tar.gz
+sha256      = 7c490e46f0a6143f84d5c7e3fed246f34486ad70cd55f162c792827607cd7e9a  abiword-3.0.8.tar.gz
+description = AbiWord word processor — reads and writes Word, OpenDocument, RTF and HTML
+homepage    = https://gitlab.gnome.org/World/AbiWord
+depends     = autoconf autoconf-archive automake libtool pkgconf glib gtk3 cairo pango librsvg libgsf wv fribidi enchant libxml2 libxslt libjpeg-turbo libpng zlib libX11 goffice boost readline librevenge libwpd libwpg poppler

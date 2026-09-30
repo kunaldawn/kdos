@@ -1,0 +1,81 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   audio-codecs — Audio codecs, containers and tagging, including the
+#   Bluetooth audio codecs
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# ffmpeg, libsndfile and the gst plugin packages are configured against these
+# and are only as capable as what is installed: each of those build systems
+# answers a missing library by disabling the feature rather than failing. One
+# encoder per format — adding a second earns nothing.
+libogg
+libvorbis
+flac
+opus
+lame
+
+mpg123
+
+# The mandatory codec of Bluetooth LE Audio. A codec left on meson's `auto`
+# produces a pipewire that negotiates SBC and says nothing, so pipewire names
+# this one explicitly.
+liblc3
+
+libsndfile
+sbc
+libfreeaptx
+ldacbt
+fdk-aac
+faad2
+
+# libopus encodes a FRAME; libopusenc encodes a FILE — Ogg muxing, comment
+# headers and the delay bookkeeping that makes a decode line up sample for
+# sample. opusenc does not build without it.
+libopusenc
+
+# And opusfile is the READ half — opusdec and opusinfo link it, so without it
+# opus-tools builds an encoder and nothing that can play the result back.
+opusfile
+opus-tools
+
+# The MPEG-1 Layer II encoder mpd's, sox's and GStreamer's MP2 output link.
+twolame
+
+libid3tag
+
+# The low-bit-rate speech codec FreeDV's digital voice is built on.
+codec2
+
+wavpack
+
+# The AC-3 decoder gst-plugins-ugly's a52dec element wraps.
+a52dec
+
+libmad
+
+# oggenc, oggdec, ogginfo, vorbiscomment.
+vorbis-tools
+
+taglib
+speex
+audiofile
+id3lib
+gsm

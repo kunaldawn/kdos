@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = powder-toy
+version     = 100.1.400
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/The-Powder-Toy/The-Powder-Toy/archive/refs/tags/v$version.tar.gz
+sha256      = 75cd971e1b2d6789f9e35b75926b76d037a564ad9291fa852ad9996c8ac40c96  powder-toy-100.1.400.tar.gz
+description = The Powder Toy — a falling-sand physics sandbox of air pressure, heat, gravity and electronics, with local saves
+homepage    = https://powdertoy.co.uk
+depends     = meson ninja pkgconf python3 sdl2-compat luajit fftw jsoncpp libpng bzip2 zlib

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kicad-templates
+version     = 10.0.6
+release     = 1
+source      = https://gitlab.com/kicad/libraries/kicad-templates/-/archive/$version/kicad-templates-$version.tar.gz
+sha256      = 18b4e3f2ed781383179c1b15a82c94e5176dc825e1c646f84e89ed50e835063b  kicad-templates-10.0.6.tar.gz
+description = KiCad's official project templates — board outlines and starting points for common form factors
+homepage    = https://www.kicad.org/libraries/
+depends     = cmake ninja

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libiio
+version     = 0.26
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/analogdevicesinc/libiio/archive/refs/tags/v$version.tar.gz
+sha256      = fb445fb860ef1248759f45d4273a4eff360534480ec87af64c6b8db3b99be7e5  libiio-0.26.tar.gz
+description = Linux Industrial I/O client library — ADALM-Pluto and other ADI SDRs over USB and the network, for gr-iio and SDRangel
+homepage    = https://wiki.analog.com/resources/tools-software/linux-software/libiio
+series      = 0
+depends     = cmake ninja pkgconf bash libxml2 libusb libserialport avahi

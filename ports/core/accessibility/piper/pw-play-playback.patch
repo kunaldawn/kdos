@@ -1,0 +1,70 @@
+--- a/src/piper/audio_playback.py
++++ b/src/piper/audio_playback.py
+@@ -1,4 +1,4 @@
+-"""Audio playback using ffplay."""
++"""Audio playback using pw-play."""
+ 
+ import shutil
+ import subprocess
+@@ -6,7 +6,7 @@
+ 
+ 
+ class AudioPlayer:
+-    """Plays raw audio using ffplay."""
++    """Plays raw audio using pw-play."""
+ 
+     def __init__(self, sample_rate: int) -> None:
+         """Initializes audio player."""
+@@ -14,18 +14,17 @@
+         self._proc: Optional[subprocess.Popen] = None
+ 
+     def __enter__(self):
+-        """Starts ffplay subprocess and returns player."""
++        """Starts pw-play subprocess and returns player."""
+         self._proc = subprocess.Popen(
+             [
+-                "ffplay",
+-                "-nodisp",
+-                "-autoexit",
+-                "-f",
+-                "s16le",
+-                "-sample_rate",
++                "pw-play",
++                "--raw",
++                "--rate",
+                 str(self.sample_rate),
+-                "-ch_layout",
+-                "mono",
++                "--channels",
++                "1",
++                "--format",
++                "s16",
+                 "-",
+             ],
+             stdin=subprocess.PIPE,
+@@ -35,7 +34,7 @@
+         return self
+ 
+     def __exit__(self, exc_type, exc_val, exc_tb):
+-        """Stops ffplay subprocess."""
++        """Stops pw-play subprocess."""
+         if self._proc:
+             try:
+                 if self._proc.stdin:
+@@ -45,7 +44,7 @@
+             self._proc.wait(timeout=5)
+ 
+     def play(self, audio_bytes: bytes) -> None:
+-        """Plays raw audio using ffplay."""
++        """Plays raw audio using pw-play."""
+         assert self._proc is not None
+         assert self._proc.stdin is not None
+ 
+@@ -54,5 +53,5 @@
+ 
+     @staticmethod
+     def is_available() -> bool:
+-        """Returns true if ffplay is available."""
+-        return bool(shutil.which("ffplay"))
++        """Returns true if pw-play is available."""
++        return bool(shutil.which("pw-play"))

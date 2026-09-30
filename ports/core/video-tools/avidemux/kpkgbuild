@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = avidemux
+version     = 2.8.1
+release     = 1
+source      = https://github.com/mean00/avidemux2/releases/download/$version/avidemux_$version.tar.gz
+sha256      = 77d9bdca8683ce57c192b69d207cfab7cf92a7759ce0f63fa37b5c8e42ad3da2  avidemux-2.8.1.tar.gz
+description = Avidemux: a Qt 6 video cutter, filter and encoder for simple edits
+homepage    = https://avidemux.sourceforge.net/
+depends     = cmake make pkgconf nasm patch qt6-qtbase qt6-qttools qt6-qtwayland sqlite zlib x264 x265 libvpx opus lame libvorbis faad2 libmad libass freetype2 fontconfig fribidi alsa-lib libpulse mesa libglvnd libX11

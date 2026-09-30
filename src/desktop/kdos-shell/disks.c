@@ -13,7 +13,7 @@
  *   │ sdb2       -              crypto_L 1.0G   -          │
  *   │ kdos-sdb2  vault          ext4     1.0G   -          │
  *   ├──────────────────────────────────────────────────────┤
- *   │ [ Mount ] [ Unlock ] [ SMART ] [ Partition ] [ Erase ]│
+ *   │ [ Mount ] [ Unlock ] [ SMART ] [ Partition ] [ Write image ] [ Erase ]│
  *   └──────────────────────────────────────────────────────┘
  *
  * EVERY PRIVILEGED OPERATION IS A kdos-mountd VERB and this program runs as
@@ -35,6 +35,14 @@
  * answer it. A button that started one and could not be stopped would be the
  * most dangerous control on this desktop.
  *
+ * WRITE IMAGE PUTS A FILE OVER THE WHOLE DISK and reads it back — an
+ * installer or a live system onto a stick. The file is opened HERE, as the
+ * person, and only the open descriptor goes to the daemon; the daemon never
+ * sees a path it could open as root. It asks for the DISK's name, `sdb` for a
+ * row on `sdb1`, because the disk is what is replaced. The write runs in the
+ * daemon's own worker and reports as it goes, so this window keeps drawing and
+ * may be closed without stopping it.
+ *
  * ERASE ASKS FOR THE DEVICE'S OWN NAME, typed. That is the daemon's rule, not
  * this surface's decoration: `format` is refused unless the fourth token is
  * the kernel name THE DAEMON published, so a surface cannot confirm on
@@ -43,8 +51,11 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "kbase.h"
 #include "kwl.h"
@@ -53,12 +64,13 @@
 #define DK_COLS 74
 #define DK_ROWS 20
 #define DK_MAX 64
-#define DK_ANSWER 64
+#define DK_ANSWER 512
 
 /* The buttons, most-useful-first: the bar drops from the right when the
  * window is narrow, and what must survive is the verb somebody opened this
  * window to reach. */
-enum { DB_MOUNT, DB_UNLOCK, DB_SMART, DB_PART, DB_ERASE, DB_CLOSE, DB_N };
+enum { DB_MOUNT, DB_UNLOCK, DB_SMART, DB_PART, DB_WRITE, DB_ERASE, DB_CLOSE,
+       DB_N };
 
 static KtuiKeys keys;
 static ShMountRow rows[DK_MAX];
@@ -69,11 +81,19 @@ static KtuiTable tbl;
 static int icons_on = 1;
 
 /* An open prompt: which verb is waiting for typed text, and what has been
- * typed. `unlock` wants a passphrase and `format` wants the device's name. */
-enum { PR_NONE, PR_PASS, PR_NAME };
+ * typed. `unlock` wants a passphrase, `format` the device's name, and a write
+ * first the image's path and then the disk's name. */
+enum { PR_NONE, PR_PASS, PR_NAME, PR_IMAGE, PR_DISK };
 static int prompt;
 static char answer[DK_ANSWER];
-static int caret;
+/* The toolkit's field over `answer`; `secret` is set for the passphrase. */
+static KtuiField qf = { answer, sizeof(answer), 0, 0, NULL };
+/* The image a write was asked for, held between its two prompts, and the
+ * write in flight. */
+static char image[DK_ANSWER];
+static int write_row = -1;
+/* `fd` is -1 until a write starts: a zeroed struct would name stdin. */
+static ShMountWrite wr = { .fd = -1 };
 
 static void refresh(void)
 {
@@ -208,11 +228,79 @@ static void do_partition(void)
 	snprintf(status, sizeof(status), "cfdisk on %s", node);
 }
 
+/*
+ * THE DISK A ROW IS ON, as the prompt names it: `sdb` for `sdb1`, `mmcblk0`
+ * for `mmcblk0p1`, `sdb` for the mapping `kdos-sdb2`. The kernel says which:
+ * a partition's /sys/class/block entry has a `partition` file and sits inside
+ * its disk's, and a whole disk's has neither — so `nvme0n1` and `mmcblk0` are
+ * not cut at their trailing digits. Only the prompt's wording rests on this —
+ * the daemon compares what is typed against the disk it recorded, so a wrong
+ * answer here is a refusal that names the right one.
+ */
+static void disk_of(const char *kname, char *out, size_t n)
+{
+	char path[256], link[PATH_MAX], *sl;
+	const char *name = strncmp(kname, "kdos-", 5) ? kname : kname + 5;
+	ssize_t k;
+
+	snprintf(out, n, "%s", name);
+	snprintf(path, sizeof(path), "/sys/class/block/%s/partition", name);
+	if (access(path, F_OK) != 0)
+		return;
+	/* `../../devices/…/block/sdb/sdb1`: the disk is the next-to-last
+	 * component. */
+	snprintf(path, sizeof(path), "/sys/class/block/%s", name);
+	k = readlink(path, link, sizeof(link) - 1);
+	if (k <= 0)
+		return;
+	link[k] = '\0';
+	if ((sl = strrchr(link, '/')) == NULL)
+		return;
+	*sl = '\0';
+	snprintf(out, n, "%s", kb_basename(link));
+}
+
+/* A dropped file: the first `file://` URI in the list, as a path. */
+static int take_drop(char *out, size_t n)
+{
+	size_t len = 0;
+	const char *uris = ktui_drop_take(&len);
+	char line[DK_ANSWER];
+
+	if (!uris)
+		return 0;
+	for (const char *p = uris; p < uris + len && *p;) {
+		size_t k = strcspn(p, "\r\n");
+
+		if (k && *p != '#' && k < sizeof(line)) {
+			memcpy(line, p, k);
+			line[k] = '\0';
+			if (kb_uri_path(line, out, n))
+				return 1;
+		}
+		p += k;
+		while (*p == '\r' || *p == '\n')
+			p++;
+	}
+	return 0;
+}
+
+static void write_start(const char *typed)
+{
+	if (write_row < 0)
+		return;
+	if (sh_mountd_write_start(&wr, write_row, image, typed) != 0)
+		snprintf(status, sizeof(status), "%.150s", wr.msg);
+	else
+		status[0] = '\0';
+	write_row = -1;
+}
+
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 static const KtuiCol DK_COL[] = {
-	{ "DEVICE", 12 }, { "LABEL", 0 },  { "TYPE", 12 },
-	{ "SIZE", 7 },	  { "MOUNTED", 22 }
+	{ "DEVICE", 12, 0 }, { "LABEL", 0, 0 },  { "TYPE", 12, 0 },
+	{ "SIZE", 7, 0 },	  { "MOUNTED", 22, 0 }
 };
 #define DK_NCOL 5
 
@@ -292,6 +380,8 @@ static void draw(void)
 	b[DB_UNLOCK] = (struct kch_button){ "Unlock", is_locked(r) };
 	b[DB_SMART] = (struct kch_button){ "SMART", r != NULL };
 	b[DB_PART] = (struct kch_button){ "Partition", r && !r->mnt[0] };
+	b[DB_WRITE] = (struct kch_button){ "Write image",
+					   r && !r->mnt[0] && !wr.running };
 	b[DB_ERASE] = (struct kch_button){ "Erase", r && !r->mnt[0] };
 	b[DB_CLOSE] = (struct kch_button){ "Close", 1 };
 
@@ -300,10 +390,17 @@ static void draw(void)
 
 	if (prompt) {
 		char shown[DK_ANSWER + 8];
+		char ask[160], disk[32];
 
 		if (prompt == PR_PASS) {
-			size_t n = strlen(answer);
+			/* One mark per CHARACTER, as the field counts them:
+			 * a mark per byte would say how many of them were not
+			 * ASCII. */
+			size_t n = 0;
 
+			for (const char *p = answer; *p; p++)
+				if (((unsigned char)*p & 0xc0) != 0x80)
+					n++;
 			if (n > sizeof(shown) - 2)
 				n = sizeof(shown) - 2;
 			memset(shown, '*', n);
@@ -311,12 +408,31 @@ static void draw(void)
 		} else {
 			snprintf(shown, sizeof(shown), "%s", answer);
 		}
+		disk_of(r ? r->kname : "", disk, sizeof(disk));
+		if (prompt == PR_PASS)
+			snprintf(ask, sizeof(ask), "Passphrase:");
+		else if (prompt == PR_NAME)
+			snprintf(ask, sizeof(ask),
+				 "Erase as ext4 — type the device name:");
+		else if (prompt == PR_IMAGE)
+			snprintf(ask, sizeof(ask), "Image to write (a path, or "
+						   "drop the file here):");
+		else
+			snprintf(ask, sizeof(ask), "Replaces ALL of %s — type "
+						   "%s to write:", disk, disk);
 		ktui_draw_textf(2, h - 3, w - 4, KT_TEXT, KT_BG, KT_A_NONE,
-				"%s %s",
-				prompt == PR_PASS
-					? "Passphrase:"
-					: "Erase as ext4 — type the device name:",
-				shown);
+				"%s %s", ask, shown);
+		ktui_term_caret(2 + ktui_utf8_width(ask) + 1 +
+					ktui_field_col(&qf),
+				h - 3);
+	} else if (wr.running) {
+		char lbl[64];
+		double frac = wr.total ? (double)wr.done / (double)wr.total : 0;
+
+		snprintf(lbl, sizeof(lbl), "%s %s of %s",
+			 wr.verifying ? "verifying" : "writing",
+			 kb_human_size(wr.done), kb_human_size(wr.total));
+		ktui_progress(krect(2, h - 3, w - 4, 1), frac, lbl);
 	} else if (status[0] && room > 0) {
 		ktui_draw_text(2, h - 2, room, status, KT_MID, KT_BG,
 			       KT_A_NONE);
@@ -327,12 +443,14 @@ static void draw(void)
 	ktui_hint_if(!prompt && is_locked(r), "u", "unlock");
 	ktui_hint_if(!prompt && r, "s", "SMART");
 	ktui_hint_if(!prompt && r && !r->mnt[0], "p", "partition");
+	ktui_hint_if(!prompt && r && !r->mnt[0] && !wr.running, "w",
+		     "write image");
 	ktui_hint_if(!prompt, "r", "rescan");
 	ktui_hint_if(prompt != 0, "Enter", "confirm");
 	ktui_hint("Esc", prompt ? "cancel" : ktui_esc_verb(&keys));
-	ktui_hint_row(&keys, krect(2, h - 3 + (prompt ? 1 : 0), w - 4, 1),
-		      KT_BG);
-	if (prompt)
+	ktui_hint_row(&keys, krect(2, h - 3 + (prompt || wr.running ? 1 : 0),
+				   w - 4, 1), KT_BG);
+	if (!prompt)
 		ktui_term_caret(-1, -1);
 }
 
@@ -342,45 +460,61 @@ static void prompt_open(int which)
 {
 	prompt = which;
 	answer[0] = '\0';
-	caret = 0;
+	qf.caret = 0;
+	qf.secret = which == PR_PASS;
 	status[0] = '\0';
 }
 
 static void prompt_take(void)
 {
 	int was = prompt;
+	struct stat st;
 
 	prompt = PR_NONE;
 	if (!answer[0])
 		return;
+	/* The image is looked at before the disk is asked for: a typo in a
+	 * path is said now, not after somebody has typed a disk's name. */
+	if (was == PR_IMAGE) {
+		if (stat(answer, &st) != 0 || !S_ISREG(st.st_mode)) {
+			snprintf(status, sizeof(status), "%.100s is not a file",
+				 answer);
+			return;
+		}
+		snprintf(image, sizeof(image), "%s", answer);
+		write_row = sel_row() ? sel_row()->idx : -1;
+		prompt_open(PR_DISK);
+		return;
+	}
+	if (was == PR_DISK) {
+		write_start(answer);
+		memset(answer, 0, sizeof(answer));
+		qf.caret = 0;
+		return;
+	}
 	send_secret(was == PR_PASS ? "unlock" : "format", answer);
 	/* THE SECRET DOES NOT OUTLIVE THE PROMPT. A passphrase left in a
 	 * surface's static buffer is one a core dump carries. */
 	memset(answer, 0, sizeof(answer));
-	caret = 0;
+	qf.caret = 0;
 }
 
-static int on_key(int k)
+static int on_key(const KtuiEvent *ev)
 {
-	if (prompt) {
-		int n = (int)strlen(answer);
+	int k = ev->key;
 
+	if (prompt) {
 		if (k == KT_K_ESC) {
 			prompt = PR_NONE;
 			memset(answer, 0, sizeof(answer));
-			caret = 0;
+			qf.caret = 0;
 		} else if (k == KT_K_ENTER) {
 			prompt_take();
-		} else if (k == KT_K_BACKSPACE) {
-			if (caret > 0) {
-				memmove(answer + caret - 1, answer + caret,
-					(size_t)(n - caret) + 1);
-				caret--;
-			}
-		} else if (k >= 0x20 && k < 0x7f && n + 1 < DK_ANSWER) {
-			memmove(answer + caret + 1, answer + caret,
-				(size_t)(n - caret) + 1);
-			answer[caret++] = (char)k;
+		} else {
+			/* Everything else is the field's, which passes an
+			 * unclaimed chord back rather than typing its
+			 * letter. */
+			ktui_field_key(&qf, ev);
 		}
 		return 0;
 	}
@@ -416,6 +550,10 @@ static int on_key(int k)
 		if (r && !r->mnt[0])
 			prompt_open(PR_NAME);
 		break;
+	case 'w':
+		if (r && !r->mnt[0] && !wr.running)
+			prompt_open(PR_IMAGE);
+		break;
 	case 'r':
 		refresh();
 		break;
@@ -443,6 +581,10 @@ static void on_button(int bi)
 		break;
 	case DB_PART:
 		do_partition();
+		break;
+	case DB_WRITE:
+		if (r && !r->mnt[0] && !wr.running)
+			prompt_open(PR_IMAGE);
 		break;
 	case DB_ERASE:
 		if (r && !r->mnt[0])
@@ -499,16 +641,46 @@ int disks_main(int argc, char **argv)
 	refresh();
 
 	while (!kdisp_should_close()) {
+		if (wr.fd >= 0 && sh_mountd_write_pump(&wr) && !wr.running) {
+			snprintf(status, sizeof(status), "%s: %.140s",
+				 wr.ok ? "written" : "not written", wr.msg);
+			refresh();
+		}
 		draw();
 		ktui_draw_flush();
 
 		KtuiEvent ev;
 
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
+		/* A quarter-second tick while a write reports, so the bar
+		 * moves; a second otherwise. */
+		int got = ktui_backend()->poll_event(&ev,
+						     wr.running ? 250 : 1000);
+
+		/* A paste is a queue and not an event: offered on every wake
+		 * a prompt is open. */
+		if (prompt)
+			ktui_field_key(&qf, NULL);
+		if (!got) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();
 				ktui_draw_invalidate();
+			}
+			continue;
+		}
+		/* A FILE DROPPED ON THE WINDOW IS AN IMAGE TO WRITE: it
+		 * opens the write prompt with the path filled in, on the row
+		 * that is selected, and asks for nothing more until Enter. */
+		if (ev.type == KT_EVT_DROP) {
+			const ShMountRow *r = sel_row();
+
+			if (r && !r->mnt[0] && !wr.running &&
+			    (prompt == PR_NONE || prompt == PR_IMAGE) &&
+			    take_drop(answer, sizeof(answer))) {
+				prompt = PR_IMAGE;
+				qf.caret = (int)strlen(answer);
+				qf.secret = 0;
+				status[0] = '\0';
 			}
 			continue;
 		}
@@ -557,7 +729,7 @@ int disks_main(int argc, char **argv)
 		 * window on the key that must abandon the passphrase. */
 		if (!prompt && ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			break;
-		if (on_key(ev.key))
+		if (on_key(&ev))
 			break;
 	}
 

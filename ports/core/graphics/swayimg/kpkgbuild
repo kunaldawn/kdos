@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = swayimg
+version     = 5.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/artemsen/swayimg/archive/refs/tags/v$version.tar.gz
+sha256      = 0f70cbc665217a747e8a098e1a881239e96df270930f47c262ab2ecff290e428  swayimg-5.6.tar.gz
+description = Image viewer for Wayland and the console — no toolkit, Lua-configured
+homepage    = https://github.com/artemsen/swayimg
+depends     = meson ninja pkgconf wayland wayland-protocols libxkbcommon fontconfig freetype2 luajit libdrm openexr libheif libavif libjpeg-turbo openjpeg libjxl libpng giflib librsvg libtiff libsixel libraw libwebp ffmpeg exiv2 bash-completion

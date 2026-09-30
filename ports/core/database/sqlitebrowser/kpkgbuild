@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sqlitebrowser
+version     = 3.13.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/sqlitebrowser/sqlitebrowser/archive/refs/tags/v$version.tar.gz
+sha256      = 1044ba67d649cabc459eb887c016f70d6a404ad651390ab33bf7859dc7f1b67b  sqlitebrowser-3.13.1.tar.gz
+description = DB Browser for SQLite — create, browse, edit and query SQLite databases
+homepage    = https://sqlitebrowser.org/
+depends     = cmake ninja sqlite qt5-qtbase qt5-qttools qt5-qtwayland

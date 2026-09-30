@@ -1,0 +1,24 @@
+Leave the palette type out of the shared MIME database. It claims every
+*.xml file by glob, with the same length as application/xml, and a lookup
+that goes by the longest suffix then gives any XML file to whichever of the
+two was compiled first. Palettes are opened from Pencil2D's own palette
+menu, which does not consult the database.
+
+--- a/app/data/org.pencil2d.Pencil2D.xml	2026-09-28 04:21:00.566533750 +0530
++++ b/app/data/org.pencil2d.Pencil2D.xml	2026-09-28 04:21:00.583915518 +0530
+@@ -17,15 +17,6 @@
+     <glob pattern="*.pclx"/>
+     <sub-class-of type="application/zip"/>
+   </mime-type>
+-  <mime-type type="application/x-pencil2d-palette">
+-    <comment>Pencil2D palette</comment>
+-    <comment xml:lang="de">Pencil2D-Palette</comment>
+-    <glob pattern="*.xml"/>
+-    <magic priority="90">
+-      <match type="string" offset="0" value="&lt;!DOCTYPE PencilPalette&gt;"/>
+-    </magic>
+-    <sub-class-of type="text/xml"/>
+-  </mime-type>
+   <mime-type type="application/x-pencil2d-shortcuts">
+     <comment>Pencil2D shortcuts</comment>
+     <comment xml:lang="de">Pencil2D-Tastenkürzel</comment>

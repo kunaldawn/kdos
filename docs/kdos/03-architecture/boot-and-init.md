@@ -102,7 +102,7 @@ BIOS one.
 `BOOTIA32.EFI` sits beside the 64-bit binary, and the two never compete. A 64-bit CPU does not
 imply a 64-bit firmware: early Atom tablets and a few netbooks run this kernel and this userland
 but can load only a 32-bit EFI binary. Firmware reads the one `EFI/BOOT/BOOT<arch>.EFI` it can
-execute and ignores the other. `ports/core/limine` builds both from one source
+execute and ignores the other. The `limine` port builds both from one source
 (`--enable-uefi-x86-64 --enable-uefi-ia32`). The ISO carries both under `EFI/BOOT/`, and its UEFI
 El Torito image (El Torito is the specification firmware follows to find a boot image on a disc),
 `limine-uefi-cd.bin`, gathers whichever EFI binaries the build produced. The
@@ -139,7 +139,7 @@ Three programs write the loader configuration, and nothing else does:
 
 | Writer | File | When |
 |---|---|---|
-| `script/06_packaging/02_iso.sh` | `boot/limine/limine.conf` on the live medium | At build time |
+| `script/phases/70_image/110_iso.sh` | `boot/limine/limine.conf` on the live medium | At build time |
 | `kinstall` | `limine.conf` at the root of the installed machine's ESP | At install time |
 | `kdos-bootctl` | The `/KDOS` entries of that same file, and its theme keys; plus `EFI/kdos/trial/limine.conf` during a UEFI update trial | Whenever the boot state or the accent changes; see [One kernel per slot](#one-kernel-per-slot), [One boot through BootNext](#one-boot-through-bootnext) and [Restamping an installed machine](#restamping-an-installed-machine) |
 
@@ -187,7 +187,7 @@ The menu is drawn as a character grid in the [accent](../06-reference/glossary.m
 colour scheme the machine is set to), in Terminus `ter-i16n` (an 8x16 face in the CP437 encoding
 Limine indexes by), over a dimmed full-screen backdrop. The console's own face, `ter-kdos32n`, is
 not usable here: Limine reads only 8-dot-wide fonts, and only Terminus's `-i` faces are CP437, so
-`script/util/psf2limine.py` refuses both mistakes rather than converting them. See
+`script/phases/70_image/psf2limine.py` refuses both mistakes rather than converting them. See
 [Theming the boot menu](../02-user-guide/theming.md#the-boot-menu-the-splash-and-the-text-consoles)
 for what you can change and [the design language](design-language.md) for where the colours come
 from.
@@ -200,7 +200,7 @@ themselves are the ones that name files rather than colours (`wallpaper`, `term_
 
 | File | On the live medium | On an installed machine |
 |---|---|---|
-| Font | `psf2limine.py` converts `ter-i16n` during packaging and writes `boot/limine/font.bin` straight into the ISO tree. It is not in the root filesystem. | `kinstall` copies `/boot/limine/font.bin`, or `/mnt/iso/boot/limine/font.bin` (where the initramfs mounts the medium), to `EFI/kdos/font.bin` |
+| Font | `psf2limine.py` converts `ter-i16n` in the image phase and writes `boot/limine/font.bin` straight into the ISO tree. It is not in the root filesystem. | `kinstall` copies `/boot/limine/font.bin`, or `/mnt/iso/boot/limine/font.bin` (where the initramfs mounts the medium), to `EFI/kdos/font.bin` |
 | Backdrop | `/usr/share/kdos/boot/kdos-backdrop.png`, falling back to `kdos-banner.png`, copied to `boot/limine/wallpaper.png` | The same two files, which the `fs/` overlay ships in the root, copied to `EFI/kdos/wallpaper.png`, so an install run with no medium mounted still gets its artwork |
 
 Either file missing is survivable: Limine draws its own face on a plain backdrop, and the entries
@@ -294,7 +294,7 @@ Limine's default green under every accent.
 ### The artwork
 
 The backdrop is the penguin and the wordmark, sized to fit the margin.
-`src/packages/kdos-splash/genbackdrop.py` lays them on a fixed near-black floor, `(10,10,9)`, in
+`src/art/kdos-splash/genbackdrop.py` lays them on a fixed near-black floor, `(10,10,9)`, in
 greyscale, on a 1920x1080 canvas. It is achromatic because Limine cannot retint a wallpaper, and
 `kdos-bootctl theme` rewrites text keys only: this one file sits under all eight accents, and a
 green penguin would stay green under amber. Four of the generator's constants are fixed by the
@@ -363,8 +363,8 @@ own search against `/boot/initramfs.cpio.gz` and reports the running revision.
 
 ## The initramfs
 
-`script/06_packaging/01_initramfs.sh` generates it at packaging time as `build/initramfs.cpio.gz`,
-and `02_iso.sh` copies that file to the ISO's `boot/` and to `/boot/initramfs.cpio.gz` in the image,
+`script/phases/70_image/090_initramfs.sh` generates it in the image phase as
+`build/initramfs.cpio.gz`, and `110_iso.sh` copies that file to the ISO's `boot/` and to `/boot/initramfs.cpio.gz` in the image,
 so an installed system carries it. It carries toybox and bash, a module set, and the programs early
 boot needs. The `init` it generates is a bash script; the sections that follow this one describe
 what it does, in the order it does it.
@@ -746,7 +746,7 @@ archive appended:
 - The base carries the microcode, which the early loader finds only at the very start of the file,
   and the `init` script.
 - The appended archive carries the new kernel's copies of the modules listed in
-  `/boot/initramfs.modules` (the list `01_initramfs.sh` used, written beside the image's
+  `/boot/initramfs.modules` (the list `090_initramfs.sh` used, written beside the image's
   initramfs) and their dependencies. A root with no such list gets the set the base archive itself
   carries: every module under its `lib/modules/`, found by walking past the uncompressed microcode
   archive to the compressed part.
@@ -755,7 +755,7 @@ The kernel unpacks concatenated archives into one tree, and the init's `modprobe
 `uname -r`, so it finds the new set. The init itself is therefore always the one the image
 shipped. If the build fails, the postinstall removes the previous `/boot/initramfs-kdos.cpio.gz`
 too, since it belongs to the kernel just replaced, and a `deploy` of that root is then refused (see
-below) until one is built. Packaging deletes `/boot/initramfs-kdos.cpio.gz` from the image, so an
+below) until one is built. `110_iso.sh` deletes `/boot/initramfs-kdos.cpio.gz` from the image, so an
 ISO carries only the kernel and initramfs built together.
 
 Who deploys depends on the root the package went into:
@@ -923,8 +923,10 @@ the installed path does not, and `01_udev` starts a `udevd` from the real root e
 
 On the live medium the init mounts `system.sfs` read-only through a loop device and puts an
 overlay on top of it as the new root. `system.sfs` is the whole root filesystem, xz-compressed by
-`mksquashfs` at packaging time, with the pseudo-filesystem mount points recreated empty. The
-overlay's writable upper layer decides whether the session survives a power-off:
+`mksquashfs` in the image phase (`110_iso.sh`), with the pseudo-filesystem mount points recreated empty. The
+contents of `/var/cache` and `/var/log` are left out, and both directories are recreated empty too,
+because a daemon makes its own directory under them with a single `mkdir` that needs the parent.
+The overlay's writable upper layer decides whether the session survives a power-off:
 
 - A filesystem labelled `KDOS_PERSIST` is used as the upper layer when one is present, in `upper/`
   and `work/` directories on it. `kdos persist` creates such a store, as an ext4 partition in the
@@ -976,20 +978,21 @@ Both passes write to `/run/kdos-fsck.log`.
 applets of one binary. Several of its applet names also belong to full implementations that KDOS
 ships, and `$PATH` puts `/usr/bin` ahead of `/usr/sbin`. The toybox recipe therefore switches off
 every applet whose name belongs to a full implementation that must win everywhere, including inside
-the initramfs and during phase 1, so the name resolves to the real tool. The exceptions are the
-few applets phase 1 itself needs (below), which the GNU ports install over later. What stays in
+the initramfs and during the build's bootstrap phase, so the name resolves to the real tool. The
+exceptions are the few applets the bootstrap phase itself needs (below), which the GNU ports
+install over later. What stays in
 toybox includes `init` and `getty`, which the recipe switches on.
 
-Phase 1 of the build (see [the build system](../05-developer/build-system.md)) also installs
-toybox, outside the package database, so a name it plants is owned by no package: the later port
+The bootstrap phase, `10_bootstrap` (see [the build system](../05-developer/build-system.md)),
+also installs toybox (`062_toybox.sh`), outside the package database, so a name it plants is owned by no package: the later port
 install replaces `/usr/bin/toybox` without removing the symlink, and the
-[orphan sweep](../05-developer/build-system.md#sweeping-orphaned-packages), the packaging step that
+[orphan sweep](../05-developer/build-system.md#sweeping-orphaned-packages), the image-phase step that
 removes installed packages with no recipe, works from the package database and never sees a file no
-package owns. Phase 1 therefore also switches off every applet whose real tool lives
+package owns. Its toybox step therefore also switches off every applet whose real tool lives
 in a different directory (`blkid`, `blkdiscard`, `rtcwake`, `nologin`, `lspci`, `iotop`), `gunzip`
 and `zcat` (gzip's, installed just before toybox), `tar` and `file`, and `netcat` and `ulimit`,
-which no port installs at any path. A name in the same directory as the real tool needs no phase-1
-change, because the real port's install replaces the symlink.
+which no port installs at any path. A name in the same directory as the real tool needs no change in
+that step, because the real port's install replaces the symlink.
 
 | Switched off | Because the image has |
 |---|---|
@@ -1008,7 +1011,8 @@ does not know `nofail`; its `lspci` and `lsusb` have no `-d`, which `airmon-ng`'
 relies on.
 
 `sed`, `find`, `xargs`, `awk`, `expr` and `ln` stay in toybox. Every configure script run between
-toybox and the GNU ports uses them, and phase 1 has no other copy. The GNU ports come later in
+toybox and the GNU ports uses them, and the bootstrap phase has no other copy. The GNU ports come
+later in
 dependency order and take the names over; an upgrade of toybox alone puts its applets back until
 those ports are reinstalled.
 
@@ -1030,20 +1034,20 @@ makes no LVM call.
 
 Two rules follow, the same two that `switch_root` keeps:
 
-- Toybox's `blkid` is switched off in the recipe **and in phase 1**, beside `tar` and `file`, so
+- Toybox's `blkid` is switched off in the recipe **and in the bootstrap step**, beside `tar` and `file`, so
   neither build plants `/usr/bin/blkid` and the name resolves to util-linux's `/usr/sbin/blkid`.
-  Every applet the recipe switches off and phase 1 leaves on lands on the same path as its real
-  tool, which replaces the phase-1 link when it is installed. `blkid` is an `sbin` program and
-  nothing would ever replace a `/usr/bin/blkid` link, which is why it has to be off in phase 1 too.
+  Every applet the recipe switches off and the bootstrap step leaves on lands on the same path as
+  its real tool, which replaces the bootstrap link when it is installed. `blkid` is an `sbin` program and
+  nothing would ever replace a `/usr/bin/blkid` link, which is why it has to be off in the bootstrap step too.
 - The initramfs removes `bin/blkid` before copying. With the applet compiled out, `./bin/toybox`
   does not list it and the applet loop never claims the name; the removal guards that, because
   `cp` writes *through* a symlink and a `bin/blkid` pointing at `bin/toybox` would take the copy
-  and overwrite the multi-call binary. The packaging step then refuses an initramfs whose `blkid`
+  and overwrite the multi-call binary. `090_initramfs.sh` then refuses an initramfs whose `blkid`
   reports itself as a Toybox multicall binary.
 
 ### `file`
 
-Toybox's `file` applet is switched off in the recipe and in phase 1, so `/usr/bin/file` is the
+Toybox's `file` applet is switched off in the recipe and in the bootstrap step, so `/usr/bin/file` is the
 `file` port's (5.48): the reference implementation, with `/usr/share/misc/magic.mgc` behind it.
 
 The applet reads a handful of headers and refuses `--mime` outright. `lesspipe` asks
@@ -1058,7 +1062,7 @@ megabytes.
 ### `switch_root`
 
 The initramfs carries util-linux's `/usr/sbin/switch_root`, with its `mount`, `umount`, `losetup`
-and `dmesg`. The applets are compiled out, and the packaging step refuses an initramfs whose copy of
+and `dmesg`. The applets are compiled out, and `090_initramfs.sh` refuses an initramfs whose copy of
 any of the five reports itself as a Toybox multicall binary, or whose programs name a library it
 does not carry.
 
@@ -1122,20 +1126,35 @@ The base filesystem ships these service scripts in `/etc/init.d/`:
 46_hostapd  47_pcscd  50_alsa  51_mdmonitor  52_smartd  53_xfs_healer
 54_thermald  55_powerd  55_tlp  56_energyd  57_oomd  58_mountd  59_packd
 60_bluetooth  70_sshd  80_cups  81_cups-browsed  82_ipp-usb
+86_kiwix-serve  87_kolibri  88_llama-server
 ```
 
-Ports on the image install more beside them:
+Ports install more beside them, each from its `build.sh`:
 
 | Script | Installed by |
 |---|---|
+| `31_babeld` | `babeld` |
 | `43_boltd` | `bolt` |
+| `51_lsmd` | `libstoragemgmt` |
+| `56_nut` | `nut` |
+| `62_virtlogd` | `libvirt` |
 | `63_gssd` | `nfs-utils` |
+| `63_libvirtd` | `libvirt` |
+| `64_lircd` | `lirc` |
 | `65_brltty` | `brltty` |
+| `71_snmpd` | `net-snmp` |
 | `72_nfsd` | `nfs-utils` |
 | `73_mosquitto` | `mosquitto` |
 | `74_prosody` | `prosody` |
+| `75_mumble-server` | `mumble` |
 | `76_postgresql` | `postgresql` |
+| `77_radicale` | `radicale` |
+| `78_maddy` | `maddy` |
+| `79_ngircd` | `ngircd` |
 | `83_samba` | `samba` |
+| `84_minidlna` | `minidlna` |
+| `85_gnuhealth` | `gnuhealth` |
+| `89_step-ca` | `step-ca` |
 
 A package installed later can add its own, so `ls /etc/init.d` on the running machine is the
 complete list.
@@ -1151,6 +1170,24 @@ The conventions for the scripts themselves, and the reason `ksvc` exists rather 
 supervisor, are in [Administration](../02-user-guide/administration.md#services) and
 [The daemons](../04-programs/daemons.md).
 
+### The local servers
+
+Three shipped scripts serve offline data to this machine alone. Each binds `127.0.0.1`, so the
+firewall never sees it, and each is skipped with a `[SKIP]` line, not failed, until there is data
+for it to serve; a data pack or a mounted library medium supplies it, and the next boot, or
+`sudo /etc/init.d/<script> start`, starts the server.
+
+| Script | Serves | Address | Starts when | Runs as |
+|---|---|---|---|---|
+| `86_kiwix-serve` | The ZIM archives listed in `/var/lib/kiwix/library.xml`, which `kiwix-manage` writes. `--monitorLibrary` picks up an archive added later | `http://127.0.0.1:8080` | The library file lists at least one archive | `nobody` |
+| `87_kolibri` | Kolibri, with `KOLIBRI_HOME=/var/lib/kolibri` | `http://127.0.0.1:8081` | A channel database is in `/var/lib/kolibri/content/databases`, and the `kolibri` account exists (the `kolibri` package's `postinstall.sh` makes it) | `kolibri` |
+| `88_llama-server` | Every `.gguf` model under `/usr/share/llama.cpp/models`, through llama-server's router: a model is loaded on the first request that names it, one at a time | `http://127.0.0.1:8082`, an OpenAI-compatible API | At least one `.gguf` file is there | `nobody`, in `render` so the Vulkan backend can reach a GPU |
+
+`8080` is also the port the `kiwix` [firewall](../04-programs/daemons.md) name opens and the port
+the shipped Caddyfile proxies, so serving the library to the network is Caddy's route, not a
+change to this script. Each is disabled like any other service, with a marker named `kiwix-serve`,
+`kolibri` or `llama-server`.
+
 ### Shutdown
 
 When `reboot`, `poweroff` or `kdos-powerd` signals it, toybox's `init` runs the `::shutdown` entries
@@ -1161,6 +1198,14 @@ scripts `rcS` would run (executable, no marker under `/etc/service.disabled`) an
 action still has a writable filesystem to save to; `50_alsa` storing the mixer levels is the
 plainest case. A stop that fails, such as a service that was skipped at boot answering "not
 running", does not end the walk.
+
+The last entry is `/etc/init.d/killpower`. When NUT's `upsmon` shut the machine down on a low
+battery it leaves its flag file, `/etc/killpower`; `upsmon -K` reports it, and the script then runs
+`upsdrvctl shutdown`, which tells the UPS to cut the power once its off-delay runs out. Without it
+a UPS keeps the halted machine powered on the last of the battery, and if mains returns first the
+machine never sees the power drop and stays off. It runs after `umount -a -r` because the UPS cuts
+the power seconds later whatever state the disks are in. With no NUT installed, or no flag, it does
+nothing.
 
 `25_nftables` is the one script `rcK` leaves out. Its stop deletes the firewall's `inet filter`
 table, and it would run after the network scripts while the interfaces are still configured,
@@ -1239,7 +1284,7 @@ scratch space, font caches), and the failure looks like "the application is slow
 tmpfs that is already mounted ignores a mode change on remount, so only the explicit `chmod`
 repairs one.
 
-`/var/run` and `/var/lock` are symlinks into `/run`, created by phase 1 of the build. Several
+`/var/run` and `/var/lock` are symlinks into `/run`, created by the build's bootstrap phase. Several
 libraries compile in the path `/var/run/dbus/system_bus_socket`. If `/var/run` were a real, empty
 directory, every one of those clients would fail to reach the system bus, and report it as the
 *service* being unreachable while that service is running.
@@ -1352,7 +1397,7 @@ prints the block, moves the cursor back up over it and writes each line with an 
 jump. That output is not a sequence of raster lines, so replaying it a line at a time would drift
 one row per line and draw the block twice.
 
-The logo is generated by `src/packages/kdos-splash/genlogo.py` from `penguin.h`, the same image the
+The logo is generated by `src/art/kdos-splash/genlogo.py` from `penguin.h`, the same image the
 boot splash draws, so the banner, the splash and the mascot cannot drift apart.
 
 ![The login banner at the 512-glyph VT font, on the first terminal](../../screenshots/tty-banner.png)
@@ -1375,14 +1420,14 @@ the prompt below it, or the banner prints plainly instead of animating.
 - [The session](session.md): everything after the login prompt
 - [The daemons](../04-programs/daemons.md): the services `rcS` starts
 - [kinstall](../04-programs/kinstall.md): the installer, its partition plans and LVM
-- [The build system](../05-developer/build-system.md): the packaging phase that builds the initramfs
+- [The build system](../05-developer/build-system.md): the image phase that builds the initramfs
   and the ISO
-- [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-06_packaging): the build
+- [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image): the build
   from source to the ISO this chapter boots
 - [Configuration](../06-reference/configuration.md): `fstab`, `inittab`, `login.conf` and the rest
-- [The ports catalogue](../06-reference/ports-catalogue.md): every port by phase and group,
+- [The ports catalogue](../06-reference/ports-catalogue.md): every port by shelf, with its phase,
   including `limine` and `toybox`
-- [Known gaps](../06-reference/known-gaps.md): what the boot path does not do yet
+- [Known gaps](../06-reference/known-gaps.md): what the boot path does not do
 
 <!-- book-nav -->
 ---

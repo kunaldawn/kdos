@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libXi
+version     = 1.8.3
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = 7ad60056f01af4f786cfe93b3a7707447711626fc8da2637bec71a90409babe5  libXi-1.8.3.tar.xz
+description = X11 Input extension (XInput2) client library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libXi
+depends     = libX11 libXext libXfixes xorgproto

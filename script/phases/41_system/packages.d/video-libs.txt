@@ -1,0 +1,62 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   video-libs — Video codecs, containers, subtitles, disc playback and effects
+#   libraries
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# ffmpeg and the gst plugin packages are configured against these and are only
+# as capable as what is installed: each of those build systems answers a
+# missing library by disabling the feature rather than failing. One encoder per
+# format: adding a second earns nothing. See
+# ports/core/media-frameworks/ffmpeg/LICENSE.notice for what --enable-gpl does
+# to the shipped binary's licence.
+x264
+x265
+libvpx
+svt-av1
+
+dav1d
+
+# The optical drive, for mpv, mpd, cmus, ffmpeg and GStreamer: Blu-ray (its UDF
+# reader first), DVD with its menus, and audio CDs read with paranoia.
+libudfread
+libbluray
+
+# libdvdcss reads a CSS-scrambled DVD, which is most commercial discs;
+# libdvdread opens only unscrambled ones without it.
+libdvdcss
+libdvdread
+libdvdnav
+
+# vid.stab, the stabiliser behind ffmpeg's vidstabdetect and vidstabtransform.
+vidstab
+
+libde265
+
+# The MPEG-2 video decoder gst-plugins-ugly's mpeg2dec element wraps.
+libmpeg2
+
+libtheora
+libebml
+libmatroska
+libdvbpsi
+gavl
+openh264

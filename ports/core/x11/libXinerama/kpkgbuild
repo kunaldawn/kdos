@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libXinerama
+version     = 1.1.6
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = d00fc1599c303dc5cbc122b8068bdc7405d6fcb19060f4597fc51bd3a8be51d7  libXinerama-1.1.6.tar.xz
+description = X11 Xinerama extension client library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libXinerama
+depends     = libX11 libXext xorgproto

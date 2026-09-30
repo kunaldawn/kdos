@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qtserialport
+version     = 5.15.19
+release     = 1
+_module     = qtserialport
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+sha256      = f54d167250e1e68938791e6d7dcbd7c1589741c898e19d7174adfd09d816f0c5  qt5-qtserialport-5.15.19.tar.xz
+description = Qt 5 serial port access, with port enumeration through udev
+homepage    = https://www.qt.io/
+depends     = qt5-qtbase eudev
+group       = qt5
+series      = 5.15

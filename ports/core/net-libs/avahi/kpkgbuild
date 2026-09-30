@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = avahi
+version     = 0.9rc5
+release     = 2
+
+_tag        = v${version/rc/-rc}
+
+source      = $name-$version.tar.gz::https://github.com/avahi/avahi/archive/refs/tags/$_tag.tar.gz
+sha256      = 5b0a9d88110b0fc8aaafc5cc0a26e83e7d2a4aca3a36bc27c9b626db7ead27b0  avahi-0.9rc5.tar.gz
+description = mDNS/DNS-SD stack — what makes network printers discoverable
+homepage    = https://avahi.org
+depends     = libdaemon expat dbus glib gdbm gettext autoconf automake libtool pkgconf xmltoman

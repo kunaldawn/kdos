@@ -283,6 +283,8 @@ void res_draw_procs(int x, int y, int w, int h)
 	if (sel >= 0)
 		g_sel_pid = g_rows[sel]->pid;
 	kch_list_clamp(&g_top, sel, g_nrows, body, g_follow);
+	/* The rows, beside the scrollbar's column: a scroll glides them. */
+	kch_list_view(x, row, w - 1, body, g_top);
 
 	for (int i = 0; i < body && g_top + i < g_nrows; i++) {
 		const KprProc *p = g_rows[g_top + i];

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libdab
+version     = 0.8.git20260323
+release     = 1
+_commit     = a04f705582d7e2bf041a322522fa3c0529c4e832
+source      = $name-$version.tar.gz::https://github.com/srcejon/dab-cmdline/archive/$_commit.tar.gz
+sha256      = 4746d87357ea29c895f232c2e1e3416ca614607dc56d70311e49be7c49de09bb  libdab-0.8.git20260323.tar.gz
+description = libdab — the DAB and DAB+ decoder library from dab-cmdline; SDRangel's DAB demodulator
+homepage    = https://github.com/srcejon/dab-cmdline
+depends     = cmake ninja fftw faad2 zlib

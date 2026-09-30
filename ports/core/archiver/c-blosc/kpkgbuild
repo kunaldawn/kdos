@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = c-blosc
+version     = 1.21.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Blosc/c-blosc/archive/refs/tags/v$version.tar.gz
+sha256      = 9fcd60301aae28f97f1301b735f966cc19e7c49b6b4321b839b4579a0c156f38  c-blosc-1.21.6.tar.gz
+description = Blosc: a blocking, shuffling compressor for binary data — OpenVDB's grid codec
+homepage    = https://www.blosc.org/
+depends     = cmake ninja lz4 zlib zstd

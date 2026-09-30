@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mlt
+version     = 7.40.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/mltframework/mlt/releases/download/v$version/mlt-$version.tar.gz
+sha256      = f11c30e21670f62a3dfc56a31306ac02f3feea00908a2821a4a0bf3e989d3d6a  mlt-7.40.0.tar.gz
+description = MLT multimedia framework: the video editing engine under Kdenlive and Shotcut
+homepage    = https://www.mltframework.org/
+depends     = cmake ninja pkgconf ffmpeg fftw gdk-pixbuf pango fontconfig libexif libxml2 zlib glib ladspa lilv libebur128 libsamplerate rtaudio rubberband sdl2-compat sox vidstab libvorbis frei0r-plugins qt6-qtbase qt6-qtsvg alsa-lib libpulse movit libX11 libglvnd opencv rnnoise libspatialaudio

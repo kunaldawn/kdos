@@ -1,0 +1,46 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   music-libs — Music-format libraries: tracker modules, chip emulation, MIDI,
+#   OSC, synthesis and soundfonts
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The General MIDI SoundFont fluidsynth plays through when none is named.
+fluidr3-gm-sf3
+
+libopenmpt
+
+# Tracker-module playback for kdos-bb, ALSA only — on a bare TTY there is no
+# pipewire, and kdos is already in the audio group.
+libmikmod
+
+libmodplug
+libgme
+libxmp
+portmidi
+rtmidi
+liblo
+libbinio
+adplug
+libresidfp
+libsidplayfp
+portsmf
+libgig
+libmt32emu

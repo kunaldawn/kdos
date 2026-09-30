@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = iir1
+version     = 1.10.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/berndporr/iir1/archive/refs/tags/$version.tar.gz
+sha256      = 13b53f14d276adf6cafd3564fcda1d4b3e72342108d1c40ec4b4f0c7fc3ac95a  iir1-1.10.0.tar.gz
+description = IIR1 — realtime C++ IIR filter library (Butterworth, Chebyshev, RBJ)
+homepage    = https://github.com/berndporr/iir1
+depends     = cmake ninja

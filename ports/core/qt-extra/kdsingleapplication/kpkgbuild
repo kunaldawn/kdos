@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdsingleapplication
+version     = 1.2.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/KDAB/KDSingleApplication/releases/download/v$version/kdsingleapplication-$version.tar.gz
+sha256      = e3254ce9dc5ecf6d61ef83264bc61d486a307f0e3c9ed1bb2176f068cdbcbe09  kdsingleapplication-1.2.1.tar.gz
+description = KDAB helper class for single-instance Qt 6 applications
+homepage    = https://github.com/KDAB/KDSingleApplication
+depends     = cmake ninja qt6-qtbase

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-markdown
+version     = 3.11
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/m/markdown/markdown-$version.tar.gz
+sha256      = 180224db6aed87ba9ce1f2781ebcd5826253de8ff637112090e24b84502bbf9f  python3-markdown-3.11.tar.gz
+description = Python-Markdown — Markdown to HTML conversion for Python
+homepage    = https://python-markdown.github.io/
+depends     = python3 python3-pip python3-setuptools

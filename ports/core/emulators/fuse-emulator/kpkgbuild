@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fuse-emulator
+version     = 1.10.0
+release     = 1
+source      = $name-$version.tar.gz::https://downloads.sourceforge.net/project/fuse-emulator/fuse/$version/fuse-$version.tar.gz
+sha256      = 65b3ccc23c8b31fe779d1ff53edc260f776c0eafa93137df95803f14ba801b09  fuse-emulator-1.10.0.tar.gz
+description = Fuse — the Free Unix Spectrum Emulator, 16K to +3, Pentagon and Timex, with its ROMs
+homepage    = https://fuse-emulator.sourceforge.net/
+depends     = pkgconf perl libspectrum sdl2-compat libpng libxml2 zlib glib

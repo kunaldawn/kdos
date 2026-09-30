@@ -186,7 +186,14 @@ static void walk(Walk *w, const char *name)
 	if (!dir)
 		return;		/* unknown port: no deps, and it still ships */
 
-	char deps[KP_MAX_DEPS][128];
+	/* On the heap: walk() recurses once per level of the dependency
+	 * chain, and a KP_MAX_DEPS array in every frame would multiply by
+	 * that depth on the stack. */
+	char (*deps)[128] = malloc(sizeof(char[KP_MAX_DEPS][128]));
+	if (!deps) {
+		free(dir);
+		return;
+	}
 	int n = kp_depends(dir, deps, KP_MAX_DEPS);
 	free(dir);
 
@@ -201,6 +208,7 @@ static void walk(Walk *w, const char *name)
 		walk(w, deps[i]);
 		emit(w, deps[i]);
 	}
+	free(deps);
 }
 
 void kp_resolve(const KpConf *c, char **names, int nnames, KpOrder *out)

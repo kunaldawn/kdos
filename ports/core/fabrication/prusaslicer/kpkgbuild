@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = prusaslicer
+version     = 2.9.6
+release     = 1
+_bgcode     = 6f4ad7ce6b0e638b760199d6611039a610a5a479
+_nanosvg    = abcd277ea45e9098bed752cf9c6875b533c0892f
+_heatshrink = 0.4.1
+source      = $name-$version.tar.gz::https://github.com/prusa3d/PrusaSlicer/archive/refs/tags/version_$version.tar.gz
+source      = libbgcode-$_bgcode.tar.gz::https://github.com/prusa3d/libbgcode/archive/$_bgcode.tar.gz
+source      = nanosvg-$_nanosvg.tar.gz::https://github.com/fltk/nanosvg/archive/$_nanosvg.tar.gz
+source      = heatshrink-$_heatshrink.tar.gz::https://github.com/atomicobject/heatshrink/archive/refs/tags/v$_heatshrink.tar.gz
+sha256      = 8f9f40d93838b912bd9ed35e598c0b7eabd08024cb18aa620c6aa9f9d49d0b57  prusaslicer-2.9.6.tar.gz
+sha256      = f40e669226e9d3236799e22347ee7727bd411d3993b79c192717b1ce6f22efc5  libbgcode-6f4ad7ce6b0e638b760199d6611039a610a5a479.tar.gz
+sha256      = 700f6c7b246a9d132fdc061f167df20b87312bc6d9bc2fc68034b1ad7cd24307  nanosvg-abcd277ea45e9098bed752cf9c6875b533c0892f.tar.gz
+sha256      = 7529a1c8ac501191ad470b166773364e66d9926aad632690c72c63a1dea7e9a6  heatshrink-0.4.1.tar.gz
+description = PrusaSlicer — turns 3D models into G-code for FDM and resin printers, with the bundled vendor profiles
+homepage    = https://www.prusa3d.com/prusaslicer/
+depends     = cmake ninja pkgconf boost eigen onetbb curl openssl zlib expat libpng libjpeg-turbo mesa libglvnd glu glew cereal nlopt openvdb cgal gmp mpfr qhull nlohmann-json z3 opencascade wxwidgets gtk3 webkitgtk glib dbus hidapi eudev libX11 wayland

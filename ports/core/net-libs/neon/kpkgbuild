@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = neon
+version     = 0.37.1
+release     = 1
+source      = https://notroj.github.io/neon/neon-$version.tar.gz
+sha256      = a99b7262525a454d1065cf76dd17240fd808dfc4ef15636990ff83a5d0d9e740  neon-0.37.1.tar.gz
+description = HTTP and WebDAV client library with TLS, used by NUT's netxml-ups driver and Audacious
+homepage    = https://notroj.github.io/neon/
+depends     = pkgconf openssl expat zlib

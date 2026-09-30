@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libmirisdr
+version     = 2.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/f4exb/libmirisdr-4/archive/refs/tags/v$version.tar.gz
+sha256      = c9fa00737f37de788873248c71dd653b0e9c043aed70620ea17cfde8894be2df  libmirisdr-2.0.0.tar.gz
+description = libmirisdr-4 — driver library and miri_sdr and miri_fm tools for Mirics MSi2500/MSi001 receivers
+homepage    = https://github.com/f4exb/libmirisdr-4
+depends     = cmake pkgconf libusb

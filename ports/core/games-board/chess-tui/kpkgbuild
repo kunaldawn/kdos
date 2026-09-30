@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = chess-tui
+version     = 2.7.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/thomas-mauran/chess-tui/archive/refs/tags/$version.tar.gz
+sha256      = 471b6280c8aa0979956b85d54dfd216855a47f8517a9a1d3e5286e4044adaac5  chess-tui-2.7.1.tar.gz
+sha256      = c12350c04e769be046cd8b23e9b4752d3f57bd8ff484fc4bf602ba4abad34c97  chess-tui-vendor-2.7.1.tar.xz
+description = Chess in a terminal, against Stockfish or a second player
+homepage    = https://thomas-mauran.github.io/chess-tui/
+depends     = rust pkgconf cmake alsa-lib stockfish
+vendoring   = rust

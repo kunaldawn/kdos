@@ -1,0 +1,70 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   formats — Data-format and serialisation libraries (XML, JSON, YAML, TOML,
+#   INI, RDF, protobuf, thrift), plus data query and convert tools
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+json-c
+inih
+jansson
+jq
+yq
+
+# jq answers a question; this BROWSES the document — fold, search, and a JS
+# expression when the shape is not known yet. Go, so no X clipboard crate
+# follows it in.
+fx
+
+# awk for CSV, TSV and JSON: named fields instead of column numbers, which is
+# the difference between a one-liner and a script.
+miller
+
+pugixml
+json-glib
+
+# cJSON is here for mosquitto's control plane rather than for its own sake.
+cjson
+
+protobuf
+nlohmann-json
+
+# Exists for bpftrace.
+cereal
+
+dotconf
+
+# recoll stores its index metadata through it, by pkg-config.
+jsoncpp
+
+libxmlb
+protobuf-c
+iniparser
+libconfig
+rapidjson
+yaml-cpp
+yajl
+raptor2
+gumbo-parser
+tinyxml
+tomlplusplus
+libfyaml
+thrift
+xerces-c

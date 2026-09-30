@@ -55,6 +55,21 @@ KDOS_SOURCES_REPO="${KDOS_SOURCES_REPO:-kunaldawn/kdos}"
 # Empty means upstream only — no archive is consulted.
 KDOS_SOURCES_BASE="${KDOS_SOURCES_BASE-https://github.com/$KDOS_SOURCES_REPO/releases/download}"
 
+# A BASE WITH NO SCHEME IS A DIRECTORY: an archive disk, or any copy of the
+# release assets laid out as <dir>/sources-NNN/<hash>. It is made absolute and
+# served as a file:// URL, so every caller reads it through the same curl call
+# as the network archive — a relative path would follow each caller's later cd.
+case $KDOS_SOURCES_BASE in
+    ""|*://*) ;;
+    /*) KDOS_SOURCES_BASE="file://$KDOS_SOURCES_BASE" ;;
+    *) KDOS_SOURCES_BASE="file://$PWD/$KDOS_SOURCES_BASE" ;;
+esac
+
+# src_base_local — true when the archive is a directory on this machine.
+src_base_local() {
+    [[ $KDOS_SOURCES_BASE == file://* ]]
+}
+
 SRCLIB_PORTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRCLIB_ROOT="$(dirname "$SRCLIB_PORTS")"
 
@@ -157,13 +172,13 @@ src_cache_get() {
 #
 # kdos-kpkg's primary dispatch is argv[0]'s basename, so the binary must be
 # named literally `kpkg`. It links libkbase, libkpkg and libksig
-# (kdos-kpkg.h includes ksig.h); src/tools/kdos-portup/main.c and
+# (kdos-kpkg.h includes ksig.h); src/devtools/kdos-portup/main.c and
 # testing/selftest.sh compile the same set and all three must agree.
 KPKG="${KPKG_BIN:-$SRCLIB_PORTS/.kpkgbin/kpkg}"
 
 src_kpkg_ensure() {
     local srcs=(
-        "$SRCLIB_ROOT"/src/packages/kdos-kpkg/*.[ch]
+        "$SRCLIB_ROOT"/src/system/kdos-kpkg/*.[ch]
         "$SRCLIB_ROOT"/src/libs/libkbase/*.[ch]
         "$SRCLIB_ROOT"/src/libs/libkpkg/*.[ch]
         "$SRCLIB_ROOT"/src/libs/libksig/*.[ch]
@@ -181,8 +196,8 @@ src_kpkg_ensure() {
     ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE \
         -I"$SRCLIB_ROOT/src/libs/libkbase" -I"$SRCLIB_ROOT/src/libs/libkpkg" \
         -I"$SRCLIB_ROOT/src/libs/libksig" \
-        -I"$SRCLIB_ROOT/src/packages/kdos-kpkg" -o "$KPKG.tmp" \
-        "$SRCLIB_ROOT"/src/packages/kdos-kpkg/*.c \
+        -I"$SRCLIB_ROOT/src/system/kdos-kpkg" -o "$KPKG.tmp" \
+        "$SRCLIB_ROOT"/src/system/kdos-kpkg/*.c \
         "$SRCLIB_ROOT"/src/libs/libkbase/*.c "$SRCLIB_ROOT"/src/libs/libkpkg/*.c \
         "$SRCLIB_ROOT"/src/libs/libksig/*.c "$SRCLIB_ROOT"/src/libs/libksig/monocypher/*.c \
         && mv -f "$KPKG.tmp" "$KPKG"
@@ -201,4 +216,66 @@ src_port_hashes() {
 # a certificate bundle), so the archive neither needs nor holds it.
 src_tracked() {
     git -C "$SRCLIB_ROOT" ls-files --error-unmatch -- "$1" >/dev/null 2>&1
+}
+
+# A REPOSITORY HOLDS PORTS DIRECTLY OR ONE SHELF DOWN: <repo>/<name>/ or
+# <repo>/<shelf>/<name>/, never deeper. ports/core is shelved and every
+# src/<area> is flat; both are read by the same walk, whichever tree
+# ports/fetch --tree names. A directory holding a kpkgbuild is a port and is never looked inside,
+# so a port's own subdirectories are not taken for ports. A port's identity is
+# its bare name, whatever shelf it sits on.
+
+# src_shelves — every shelf id ports/shelves lists, one per line. Comments and
+# blank lines are skipped.
+src_shelves() {
+    [ -f "$SRCLIB_PORTS/shelves" ] || return 0
+    awk '!/^[[:space:]]*(#|$)/ { print $1 }' "$SRCLIB_PORTS/shelves"
+}
+
+# src_port_dirs <repo> — every port directory under <repo>, one per line.
+src_port_dirs() {
+    local d p
+    for d in "$1"/*/; do
+        d=${d%/}
+        if [ -f "$d/kpkgbuild" ]; then
+            printf '%s\n' "$d"
+            continue
+        fi
+        for p in "$d"/*/kpkgbuild; do
+            [ -f "$p" ] && printf '%s\n' "${p%/kpkgbuild}"
+        done
+    done
+    return 0
+}
+
+# src_port_dir <repo> <name> — the directory of port <name> under <repo>.
+# Fails when there is none, and when there are two: a name on two shelves is
+# ambiguous, and taking either would build whichever the walk met first.
+src_port_dir() {
+    local hits=() d
+    case $2 in ""|*/*|.|..) return 1 ;; esac
+    [ -f "$1/$2/kpkgbuild" ] && hits+=("$1/$2")
+    for d in "$1"/*/"$2"; do
+        [ -f "${d%/*}/kpkgbuild" ] && continue
+        [ -f "$d/kpkgbuild" ] && hits+=("$d")
+    done
+    case ${#hits[@]} in
+        0) return 1 ;;
+        1) printf '%s\n' "${hits[0]}" ;;
+        *) echo "port $2 is in more than one place: ${hits[*]}" >&2; return 1 ;;
+    esac
+}
+
+# src_label <path> — the index label "<port>/<file>" for a path under
+# ports/core, with or without its shelf: a leading component that ports/shelves lists
+# is the shelf and is dropped. No shelf shares a name with a port, so a flat
+# path is never mistaken for a shelved one.
+declare -gA SRC_SHELF=()
+src_label() {
+    local rel=${1#ports/core/} s
+    if [ "${#SRC_SHELF[@]}" = 0 ]; then
+        while read -r s; do SRC_SHELF[$s]=1; done < <(src_shelves)
+    fi
+    [ -n "${SRC_SHELF[${rel%%/*}]:-}" ] && rel=${rel#*/}
+    printf '%s\n' "$rel"
 }

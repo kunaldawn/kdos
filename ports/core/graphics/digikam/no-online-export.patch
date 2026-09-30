@@ -1,0 +1,34 @@
+Leave out the export plugins whose only function is uploading to an online
+service. They fail on a machine with no network and cannot be switched off
+by a build option. Export to a local folder and through KIO stay.
+
+--- a/core/dplugins/generic/webservices/CMakeLists.txt
++++ b/core/dplugins/generic/webservices/CMakeLists.txt
+@@ -9,18 +9,7 @@
+ include_directories($<TARGET_PROPERTY:Qt${QT_VERSION_MAJOR}::WebEngineWidgets,INTERFACE_INCLUDE_DIRECTORIES>)
+ set(QWEB_BACKEND Qt${QT_VERSION_MAJOR}::WebEngineWidgets)
+ 
+-add_subdirectory(box)
+-add_subdirectory(dropbox)
+ add_subdirectory(filecopy)
+-add_subdirectory(flickr)
+-add_subdirectory(google)
+-add_subdirectory(imgur)
+-add_subdirectory(imageshack)
+-add_subdirectory(inaturalist)
+-add_subdirectory(mediawiki)
+-add_subdirectory(onedrive)
+-add_subdirectory(pinterest)
+-add_subdirectory(piwigo)
+ 
+ if(NOT Qt6_FOUND AND Qt5XmlPatterns_FOUND)
+ 
+@@ -28,8 +17,6 @@
+ 
+ endif()
+ 
+-add_subdirectory(smugmug)
+-add_subdirectory(twitter)
+ 
+ if(KF${QT_VERSION_MAJOR}KIO_FOUND)
+ 

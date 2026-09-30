@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qttranslations
+version     = 6.11.2
+release     = 1
+_module     = qttranslations
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 021684c1a7937a9fabc3b056a6698ad5978794caf9ac190fd6cc11399e67c014  qt6-qttranslations-6.11.2.tar.xz
+description = Qt 6 translation catalogues for the Qt libraries and tools
+homepage    = https://www.qt.io
+depends     = cmake ninja qt6-qtbase qt6-qttools
+group       = qt6

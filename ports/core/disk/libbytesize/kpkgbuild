@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libbytesize
+version     = 2.12
+release     = 1
+source      = https://github.com/storaged-project/libbytesize/releases/download/$version/$name-$version.tar.gz
+sha256      = 8356bac2cafd2f31f39bf1ad373cef8448cab08b817aeaee5c526d54e81c3c5a  libbytesize-2.12.tar.gz
+description = Library for working with arbitrarily large sizes in bytes
+homepage    = https://github.com/storaged-project/libbytesize
+depends     = gmp mpfr pcre2 gettext

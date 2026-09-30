@@ -1,0 +1,8 @@
+title: anything a chroot command prints is parsed — keep stdout clean
+cite: exec.sh in script/chroot
+port: kdos-tools
+
+kpkgdepends writes the install order to stdout and nothing else, so
+script/chroot/exec.sh logs diagnostics to build/logs/chroot.log. kdosbuild reads
+stdout only and validates every token against ^[A-Za-z0-9][A-Za-z0-9._+-]*$;
+noise fails loudly instead of being installed as a package.

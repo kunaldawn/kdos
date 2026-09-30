@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rttr
+version     = 0.9.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/rttrorg/rttr/archive/refs/tags/v$version.tar.gz
+sha256      = 058554f8644450185fd881a6598f9dee7ef85785cbc2bb5a5526a43225aa313f  rttr-0.9.6.tar.gz
+description = Run-time type reflection library for C++
+homepage    = https://www.rttr.org/
+depends     = cmake ninja

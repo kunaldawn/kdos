@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gimagereader
+version     = 3.4.3
+release     = 1
+source      = https://github.com/manisandro/gImageReader/releases/download/v$version/$name-$version.tar.xz
+sha256      = 4604b53e8d952c68ce4198d7b8d864327ef6afaf597e7909f6b31f0eb9b4c425  gimagereader-3.4.3.tar.xz
+description = OCR front end for Tesseract — scan or open images and PDFs, recognise and edit text
+homepage    = https://github.com/manisandro/gImageReader
+depends     = cmake ninja gettext intltool pkgconf qt6-qtbase qt6-qttools qt6-qtwayland qtspell enchant poppler quazip djvulibre podofo tesseract leptonica sane-backends

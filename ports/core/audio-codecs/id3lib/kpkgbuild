@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = id3lib
+version     = 3.8.3
+release     = 1
+source      = https://downloads.sourceforge.net/id3lib/$name-$version.tar.gz
+sha256      = 2749cc3c0cd7280b299518b1ddf5a5bcfe2d1100614519b68702230e26c7d079  id3lib-3.8.3.tar.gz
+description = ID3v1 and ID3v2 tag library, with the id3tag, id3info, id3convert and id3cp commands
+homepage    = https://id3lib.sourceforge.net/
+depends     = autoconf automake libtool zlib

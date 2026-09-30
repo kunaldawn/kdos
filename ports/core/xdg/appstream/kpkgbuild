@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = appstream
+version     = 1.2.0
+release     = 1
+source      = $name-$version.tar.xz::https://www.freedesktop.org/software/appstream/releases/AppStream-$version.tar.xz
+sha256      = 901919378910550271feb2d826034c9af6522f3ad218de04d3d6d35ddba5cb45  appstream-1.2.0.tar.xz
+description = AppStream metadata library and appstreamcli — reads and validates software component data
+homepage    = https://www.freedesktop.org/wiki/Distributions/AppStream/
+depends     = meson ninja pkgconf glib gobject-introspection glib-introspection curl libxml2 libfyaml libxmlb zstd gperf itstool wayland bash-completion

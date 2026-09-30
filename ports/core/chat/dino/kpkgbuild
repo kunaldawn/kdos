@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dino
+version     = 0.5.1
+release     = 1
+source      = https://github.com/dino/dino/releases/download/v$version/dino-$version.tar.gz
+sha256      = 0b265ee3551dcddad5b62e188bdcab2cbb61a0d6a7e72107b2518a156b3ed665  dino-0.5.1.tar.gz
+description = Dino (GTK 4, libadwaita) — XMPP chat with OMEMO and OpenPGP encryption, file transfer, and voice and video calls
+homepage    = https://dino.im/
+depends     = meson ninja pkgconf vala glib gtk4 libadwaita libgee gdk-pixbuf icu sqlite gnutls libgcrypt libsrtp libnice libomemo-c qrencode gpgme libsoup3 libcanberra gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad webrtc-audio-processing glib-networking librsvg hicolor-icon-theme

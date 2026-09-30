@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   42_graphics: Graphics Stack
+# ---------------------------------
+#   sysmon — Process, resource and system-information monitors
+# ---------------------------------
+#
+# Ports whose dependency closure reaches wayland, libX11, mesa, libdrm, cairo,
+# pango, gstreamer, ffmpeg or pipewire but no toolkit, and that are not leaf
+# applications.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The same drm-engine-* fdinfo source kdos-energyd's GPU column reads, so the
+# two agree by construction. NVIDIA_SUPPORT=OFF: NVML is in a driver this
+# distro cannot build.
+nvtop

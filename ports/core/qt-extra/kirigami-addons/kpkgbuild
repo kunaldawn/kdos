@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kirigami-addons
+version     = 1.14.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/kirigami-addons/$name-$version.tar.xz
+sha256      = 1e4b3402d7f8744c903b0c0b907fa379379b848deda413b5a940dbaf4714cb32  kirigami-addons-1.14.2.tar.xz
+description = Additional Kirigami components: form cards, dialogs and pickers
+homepage    = https://invent.kde.org/libraries/kirigami-addons
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcolorscheme kconfig kcoreaddons kcrash kglobalaccel kguiaddons ki18n kiconthemes kirigami

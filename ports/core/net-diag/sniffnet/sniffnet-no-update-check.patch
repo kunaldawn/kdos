@@ -1,0 +1,16 @@
+--- a/src/utils/check_updates.rs
++++ b/src/utils/check_updates.rs
+@@ -10,10 +10,10 @@
+     name: String,
+ }
+ 
+-/// Calls a method to check if a newer release of Sniffnet is available on GitHub
+-/// and updates application status accordingly
++/// Reports no release status: the check asks GitHub over the network, and a
++/// build that works offline never makes that request
+ pub async fn set_newer_release_status() -> Option<bool> {
+-    is_newer_release_available(6, 30).await
++    None
+ }
+ 
+ /// Checks if a newer release of Sniffnet is available on GitHub

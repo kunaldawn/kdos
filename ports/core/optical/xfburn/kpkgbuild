@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = xfburn
+version     = 0.8.0
+release     = 1
+source      = https://archive.xfce.org/src/apps/$name/${version%.*}/$name-$version.tar.bz2
+sha256      = 13a301aebcef27de18f63f8ca10b43bc42f9c1b9865dff1bfb3e97cfd95dd989  xfburn-0.8.0.tar.bz2
+description = Simple GTK 3 disc burner over libburn — data and audio CDs, DVDs and ISO images
+homepage    = https://docs.xfce.org/apps/xfburn/start
+depends     = meson ninja pkgconf gettext glib gtk3 libburn libisofs libxfce4util libxfce4ui exo libgudev gstreamer gst-plugins-base gst-plugins-good libxslt docbook-xsl librsvg

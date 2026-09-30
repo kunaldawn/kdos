@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = amiberry
+version     = 8.3.0
+release     = 1
+_nfd        = e092bbb4578583c6fd0edc2cd14fb9c658194a4d
+source      = $name-$version.tar.gz::https://github.com/BlitterStudio/amiberry/archive/refs/tags/v$version.tar.gz
+source      = nativefiledialog-extended-$_nfd.tar.gz::https://github.com/btzy/nativefiledialog-extended/archive/$_nfd.tar.gz
+sha256      = 881628c2465fe28063b8444350e78167e7a9ed047def66b9ef3cfdabd4bdc1d6  amiberry-8.3.0.tar.gz
+sha256      = f6a68f6e24c3b6c1eab37daf35d068f9a2508df5b46692f2a0850164fe6c17f7  nativefiledialog-extended-e092bbb4578583c6fd0edc2cd14fb9c658194a4d.tar.gz
+description = Amiberry — Amiga emulator from the A500 to the A4000 and CD32, with WHDLoad booting and the AROS ROMs
+homepage    = https://amiberry.com/
+depends     = cmake ninja pkgconf sdl3 sdl3-image flac mpg123 libpng zlib zstd curl nlohmann-json libserialport enet portmidi libmpeg2 libpcap dbus wayland libglvnd mesa

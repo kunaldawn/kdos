@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = solid
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = bdbfdc9f26b87e12b951097825af2956f2dee3f14c701d780277b69701f2c74e  solid-6.30.0.tar.xz
+description = KDE Frameworks: hardware discovery through udev, UDisks2 and UPower
+homepage    = https://api.kde.org/frameworks/solid/html/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase flex bison util-linux eudev libimobiledevice libplist udisks2 upower

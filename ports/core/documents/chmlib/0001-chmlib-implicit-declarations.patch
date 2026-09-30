@@ -1,0 +1,39 @@
+Description: Add missing includes and fix large file support
+Author: Zixing Liu <zixing.liu@canonical.com>
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1066327
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/2062947
+Forwarded: no
+Last-Update: 2024-04-19
+---
+Index: chmlib/src/chm_http.c
+===================================================================
+--- chmlib.orig/src/chm_http.c
++++ chmlib/src/chm_http.c
+@@ -34,6 +34,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <unistd.h>
+ #if __sun || __sgi
+ #include <strings.h>
+ #define strrchr rindex
+@@ -43,6 +44,7 @@
+ #include <sys/socket.h>
+ #include <sys/types.h>
+ #include <netinet/in.h>
++#include <arpa/inet.h>
+ 
+ /* threading includes */
+ #include <pthread.h>
+Index: chmlib/src/chm_lib.c
+===================================================================
+--- chmlib.orig/src/chm_lib.c
++++ chmlib/src/chm_lib.c
+@@ -48,6 +48,7 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#define _LARGEFILE64_SOURCE 1
+ #include "chm_lib.h"
+ 
+ #ifdef CHM_MT

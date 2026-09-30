@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libretro-beetle-psx
+version     = 20260927
+release     = 1
+_commit     = d50a9d0da3a9cea8417529cdfbb547eef8cbba15
+source      = $name-$version.tar.gz::https://github.com/libretro/beetle-psx-libretro/archive/$_commit.tar.gz
+sha256      = ce9b6e0803eb863b3da36bd7db0f38da01d9e6b6fe60af8837385bb97d129eab  libretro-beetle-psx-20260927.tar.gz
+description = Beetle PSX as libretro cores — Mednafen's PlayStation emulator, software and OpenGL/Vulkan renderers
+homepage    = https://github.com/libretro/beetle-psx-libretro
+depends     = mesa libglvnd vulkan-headers

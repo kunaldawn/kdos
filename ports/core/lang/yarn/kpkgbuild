@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = yarn
+version     = 4.18.1
+release     = 1
+source      = $name-$version.tgz::https://registry.npmjs.org/@yarnpkg/cli-dist/-/cli-dist-$version.tgz
+sha256      = f6729593ad4c17784e3d4ade53b3ed684e3dba3af5adb9bebe21bb854fe0b153  yarn-4.18.1.tgz
+description = Yarn — the JavaScript package manager, modern (Berry) line
+homepage    = https://yarnpkg.com/
+depends     = nodejs

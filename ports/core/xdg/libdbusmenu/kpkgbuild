@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libdbusmenu
+version     = 16.04.0
+release     = 1
+source      = https://launchpad.net/libdbusmenu/${version%.*}/$version/+download/libdbusmenu-$version.tar.gz
+sha256      = b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a  libdbusmenu-16.04.0.tar.gz
+description = Menus passed over D-Bus — libdbusmenu-glib and the GTK 3 renderer libdbusmenu-gtk3
+homepage    = https://launchpad.net/libdbusmenu
+depends     = pkgconf glib gtk3 gobject-introspection glib-introspection vala intltool

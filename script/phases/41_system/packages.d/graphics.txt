@@ -1,0 +1,37 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   graphics — Graphics applications: painting, vector, photo development and
+#   management, image viewers, screenshot and image optimisers
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# A PNG pass beside oxipng: pngquant reduces a truecolour image to a palette,
+# which is lossy. noto-emoji runs every emoji image through it and zopflipng.
+pngquant
+
+# Lossless, which is the only reason it is safe to point at an archive: the
+# output decodes bit-identical, so nobody has to judge acceptable quality loss.
+oxipng
+
+# Turns a depth map into an ASCII stereogram, on the TTY.
+aa3d
+
+optipng
+gimp-help

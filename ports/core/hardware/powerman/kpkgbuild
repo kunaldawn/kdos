@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = powerman
+version     = 2.4.4
+release     = 1
+source      = https://github.com/chaos/powerman/releases/download/v$version/powerman-$version.tar.gz
+sha256      = d675502144bc0875def92dad4c0efc6d43bc81c78d6fdb09ebc5f3558b3b7c85  powerman-2.4.4.tar.gz
+description = PowerMan — control remote power distribution units and BMCs over telnet, serial, HTTP, Redfish and SNMP
+homepage    = https://github.com/chaos/powerman
+depends     = pkgconf flex bison curl jansson net-snmp

@@ -963,6 +963,7 @@ handle_motion(struct wl_listener *listener, void *data)
 		preprocess_cursor_motion(seat, event->pointer,
 			event->time_msec, event->delta_x, event->delta_y);
 	}
+	kdos_a11y_pointer_motion(seat); /* KDOS: dwell click */
 }
 
 static void
@@ -990,6 +991,7 @@ handle_motion_absolute(struct wl_listener *listener, void *data)
 
 	preprocess_cursor_motion(seat, event->pointer,
 		event->time_msec, dx, dy);
+	kdos_a11y_pointer_motion(seat); /* KDOS: dwell click */
 }
 
 static void
@@ -1318,6 +1320,8 @@ handle_button(struct wl_listener *listener, void *data)
 	struct wlr_pointer_button_event *event = data;
 	idle_manager_notify_activity(seat->wlr_seat);
 	cursor_set_visible(seat, /* visible */ true);
+	kdos_a11y_pointer_button(seat, /* KDOS: a real click ends a dwell */
+		event->state == WL_POINTER_BUTTON_STATE_PRESSED);
 
 	bool notify;
 	switch (event->state) {

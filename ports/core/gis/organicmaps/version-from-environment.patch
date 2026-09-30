@@ -1,0 +1,16 @@
+--- a/tools/unix/version.sh
++++ b/tools/unix/version.sh
+@@ -5,7 +5,12 @@
+ 
+ 
+ function init {
+-  if ! type git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 ; then
++  if [ -n "${OM_VERSION_DATE:-}" ]; then
++    # The packager names the release: an archive build has no history, and the
++    # build date would otherwise become the version.
++    local COUNT_AND_DATE=( "${OM_VERSION_COUNT:-0}" "$OM_VERSION_DATE" )
++    GIT_HASH="00000000"
++  elif ! type git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 ; then
+     # Either git is not installed on the system or this is not a git work tree.
+     # Likely because the code is built from an archive.
+     # In any case determining commit count, date and hash won't be possible.

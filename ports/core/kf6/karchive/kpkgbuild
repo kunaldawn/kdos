@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = karchive
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 4cf89d91e429d2ece3110e78f7ef7011952b0412cb15011329516b46f21e98e2  karchive-6.30.0.tar.xz
+description = KDE Frameworks: reading and writing compressed archives
+homepage    = https://api.kde.org/frameworks/karchive/html/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase pkgconf zlib bzip2 xz zstd openssl

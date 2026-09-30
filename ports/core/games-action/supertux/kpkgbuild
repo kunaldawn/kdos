@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = supertux
+version     = 0.7.0
+release     = 1
+source      = https://github.com/SuperTux/supertux/releases/download/v$version/SuperTux-v$version-Source.tar.gz
+sha256      = 32fc5b99b9994ed58e58341d6f21de925764b381256e108591136de53bc31da5  supertux-0.7.0.tar.gz
+description = SuperTux — classic 2D side-scrolling platformer with Tux, with a level editor
+homepage    = https://www.supertux.org/
+depends     = cmake ninja pkgconf sdl2-compat sdl2-image sdl2-ttf physfs openal-soft libogg libvorbis libpng zlib fmt glm freetype2 glew mesa libglvnd librsvg

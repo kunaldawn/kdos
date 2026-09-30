@@ -1,0 +1,140 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# -Dgstreamer=enabled builds the `pipewiresrc` element, which is the only way
+# anything reads a PipeWire node from a pipeline: `kdos-record` drives the
+# ScreenCast portal for a node id and hands it to gst-launch. Without it the
+# element does not exist and the recorder has nothing to read the desktop with.
+# The cost is that pipewire — which every image with sound installs — now pulls
+# gstreamer and gst-plugins-base with it; this tree has no split packages, so
+# the element and the audio server arrive together or not at all.
+
+# THE BLUETOOTH CODECS ARE NAMED RATHER THAN LEFT TO `auto`. Each one is a
+# feature that quietly disables itself when its library is not found, so an
+# `auto` build on a machine missing libfreeaptx produces a pipewire that
+# negotiates SBC and says nothing about why — the exact failure the explicit
+# `depends` line exists to prevent. SBC is mandatory in the profile and is
+# always built; aptX, LDAC and AAC are what a headset actually asks for, and
+# without them every device falls back to the worst codec in the spec.
+
+# -Dv4l2=enabled builds the SPA plugin that puts a camera on the graph, which
+# is what the session manager's `api.v4l2.*` mapping points at.
+# -Dpipewire-v4l2 stays off: that half is an LD_PRELOAD shim which resolves its
+# passthrough with dlsym(RTLD_NEXT, "openat64") and dlsym(RTLD_NEXT, "mmap64"),
+# and musl exports no large-file aliases at all — both come back NULL and are
+# called anyway, so every process started under it faults on its first open().
+
+# -Dpipewire-jack stays off with -Djack-devel: the replacement libjack is only
+# reachable through jack.pc, and once jack.pc is installed every consumer that
+# leaves JACK on `auto` (ffmpeg, mpv, sdl3, mpd, portaudio) gains it or not by
+# build order.
+#
+# -Dfftw=enabled gives the filter-chain convolver FFTW's single-precision
+# transforms (fftw3f) for room correction and headphone impulse responses;
+# without it the convolver runs on its bundled pffft. -Dlibpulse=enabled builds
+# module-pulse-tunnel, the one module that sends a stream to a PulseAudio server
+# on another machine; libpulse is the client library only, so it adds no second
+# server beside pipewire-pulse. -Dlibmysofa=enabled is the filter-chain's
+# `sofa` spatializer, which places a source around a listener on headphones
+# from a SOFA head-related transfer function file. -Debur128=enabled is the
+# filter-graph's EBU R128 loudness meter and normaliser, and -Dlv2=enabled
+# lets a filter-chain host LV2 plugins through lilv.
+#
+# Every other `auto` feature is named, and each one pinned off has one of these
+# reasons:
+#   - its library is not a port: libffado, roc-toolkit, lc3plus, the LDAC
+#     decoder, spandsp;
+#   - it is excluded by rule: every systemd and logind option, and SELinux,
+#     which this image does not use;
+#   - it serves an X session, which this desktop is not: x11, x11-xfixes and
+#     libcanberra, which feeds only module-x11-bell;
+#   - it has no consumer here: vulkan builds only the SPA compute source and
+#     blit filters, which no graph or session config on this image loads;
+#     onnxruntime only the filter-graph's neural model node, which no graph
+#     here loads; sdl2 only the examples (which are off); gsettings only the
+#     GNOME schema that module-gsettings reads, and flatpak and snap only the
+#     sandbox detection for those two packagers.
+
+# THE LIMITS FILE IS NOT INSTALLED -- see -Drlimits-install below. Nothing on
+# this image could read it and nobody could match it: limits.d is PAM's and
+# shadow is built --without-libpam, so `login` links libc alone, while the match
+# rule pipewire generates is `@pipewire`, a group that is not in /etc/group. A
+# shipped grant that cannot fire is a claim the image does not honour, and it
+# hides the one that does -- kdos-getty raises RLIMIT_RTPRIO, RLIMIT_NICE and
+# RLIMIT_MEMLOCK as the last root process on either login path, and rlimits are
+# inherited through setuid and execve to the session, to pipewire and to every
+# ALSA client under them.
+meson setup build \
+	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
+	-Dbuildtype=release \
+	-Ddocs=disabled \
+	-Dman=enabled \
+	-Dtests=disabled \
+	-Dexamples=disabled \
+	-Dffmpeg=enabled \
+	-Dpw-cat-ffmpeg=enabled \
+	-Dalsa=enabled \
+	-Dpipewire-alsa=enabled \
+	-Dcompress-offload=enabled \
+	-Dudev=enabled \
+	-Ddbus=enabled \
+	-Dlibusb=enabled \
+	-Dselinux=disabled \
+	-Dbluez5=enabled \
+	-Dbluez5-codec-aptx=enabled \
+	-Dbluez5-codec-ldac=enabled \
+	-Dbluez5-codec-aac=enabled \
+	-Dbluez5-codec-lc3=enabled \
+	-Dbluez5-codec-opus=enabled \
+	-Dbluez5-codec-g722=enabled \
+	-Dbluez5-codec-lc3plus=disabled \
+	-Dbluez5-codec-ldac-dec=disabled \
+	-Dbluez5-plc-spandsp=disabled \
+	-Dreadline=enabled \
+	-Dlibpulse=enabled \
+	-Dfftw=enabled \
+	-Dopus=enabled \
+	-Dgstreamer=enabled \
+	-Dgstreamer-device-provider=enabled \
+	-Djack=disabled \
+	-Dpipewire-jack=disabled \
+	-Dpipewire-v4l2=disabled \
+	-Dv4l2=enabled \
+	-Dvulkan=disabled \
+	-Droc=disabled \
+	-Dlibcamera=enabled \
+	-Dlv2=enabled \
+	-Dsndfile=enabled \
+	-Dpw-cat=enabled \
+	-Davahi=enabled \
+	-Draop=enabled \
+	-Decho-cancel-webrtc=enabled \
+	-Dlibmysofa=enabled \
+	-Debur128=enabled \
+	-Donnxruntime=disabled \
+	-Dlibffado=disabled \
+	-Dlibsystemd=disabled \
+	-Dlogind=disabled \
+	-Dsystemd-system-service=disabled \
+	-Dsystemd-user-service=disabled \
+	-Dsdl2=disabled \
+	-Dx11=disabled \
+	-Dx11-xfixes=disabled \
+	-Dlibcanberra=disabled \
+	-Dflatpak=disabled \
+	-Dgsettings=disabled \
+	-Dgsettings-pulse-schema=disabled \
+	-Davb=enabled \
+	-Dsnap=disabled \
+	-Drlimits-install=false \
+	"-Dsession-managers=[]"
+meson compile -C build
+DESTDIR=$PKG meson install --no-rebuild -C build

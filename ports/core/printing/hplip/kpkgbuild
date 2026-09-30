@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hplip
+version     = 3.26.4
+release     = 1
+source      = https://downloads.sourceforge.net/hplip/$name-$version.tar.gz
+sha256      = b9c61252754f35b4a237396ca8961e7b3e0c56db76d66a6712b7bf3e30e69463  hplip-3.26.4.tar.gz
+description = HP printer and scanner drivers — hpcups, the hp backend, PPDs and the hpaio SANE backend
+homepage    = https://developers.hp.com/hp-linux-imaging-and-printing
+depends     = cups cups-filters ghostscript libusb libjpeg-turbo dbus sane-backends python3 zlib net-snmp avahi openssl

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyqt6
+version     = 6.11.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pyqt6/pyqt6-$version.tar.gz
+sha256      = 45dd60aa69976de1918b5ced6b4e7b6a25abd2a919ecef5fd5826ecc76718889  python3-pyqt6-6.11.0.tar.gz
+description = PyQt6 — the Qt 6 bindings Calibre, Anki, QGIS, Picard and git-cola are written in
+homepage    = https://www.riverbankcomputing.com/software/pyqt/
+depends     = python3 python3-sip python3-pyqt-builder python3-pyqt6-sip python3-dbus dbus pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qttools qt6-qtmultimedia qt6-qtspeech qt6-qtwebchannel qt6-qtwebsockets qt6-qtpositioning qt6-qtserialport qt6-qtsensors qt6-qtquick3d qt6-qtremoteobjects qt6-qtscxml

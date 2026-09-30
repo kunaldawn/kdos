@@ -1,0 +1,20 @@
+--- a/configure
++++ b/configure
+@@ -17349,7 +17349,7 @@
+ fi
+ 
+              echo -n "Checking header volume_key/libvolume_key.h existence and usability..."
+-temp_file=$(mktemp --tmpdir XXXXX.c)
++temp_file=$(mktemp -u --tmpdir XXXXXX).c
+ echo "#include <volume_key/libvolume_key.h>" > $temp_file
+ ${CC} -c $GLIB_CFLAGS $NSS_CFLAGS $temp_file
+ status=$?
+@@ -17365,7 +17365,7 @@
+ 
+ fi
+             echo -n "Checking header keyutils.h existence and usability..."
+-temp_file=$(mktemp --tmpdir XXXXX.c)
++temp_file=$(mktemp -u --tmpdir XXXXXX).c
+ echo "#include <keyutils.h>" > $temp_file
+ ${CC} -c  $temp_file
+ status=$?

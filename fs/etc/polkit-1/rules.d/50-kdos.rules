@@ -30,7 +30,10 @@
  * pcscd, which is the card holder's own device behind the card's own PIN.
  * They can also unlock and enable a modem and read its text messages through
  * mmcli (ModemManager Device.Control and Messaging), which ModemManager
- * otherwise allows only to an active session.
+ * otherwise allows only to an active session. And they mount, unlock, format
+ * and write raw images to disks through udisks2, repartition with GParted,
+ * manage libvirt's system guests, and save root-owned files from Kate —
+ * each of which is `sudo` with one step fewer.
  *
  * A NAME NOT IN THIS LIST IS NOT GRANTED. Every id here is one a shipped
  * surface or a shipped user program calls; adding a row is a decision, and
@@ -92,6 +95,57 @@ polkit.addRule(function (action, subject) {
     case "org.freedesktop.ModemManager1.Device.Control":
     case "org.freedesktop.ModemManager1.Messaging":
         return polkit.Result.YES;
+
+    /*
+     * udisks2, for the toolkit applications: Dolphin's and the file
+     * choosers' device lists, GNOME Disks, K3b, Impression. kdos-mountd stays
+     * the authority for kdos-shell and needs none of these. udisksd is built
+     * with no logind, so it treats every drive as on the caller's seat and
+     * never asks an -other-seat action; the -system variants are what it asks
+     * for a drive that is not removable. open-device is how an image writer
+     * or Disks' backup and restore reaches the raw block device, and
+     * modify-device is formatting and partitioning.
+     */
+    case "org.freedesktop.udisks2.filesystem-mount":
+    case "org.freedesktop.udisks2.filesystem-mount-system":
+    case "org.freedesktop.udisks2.filesystem-unmount-others":
+    case "org.freedesktop.udisks2.filesystem-take-ownership":
+    case "org.freedesktop.udisks2.encrypted-unlock":
+    case "org.freedesktop.udisks2.encrypted-unlock-system":
+    case "org.freedesktop.udisks2.encrypted-lock-others":
+    case "org.freedesktop.udisks2.encrypted-change-passphrase":
+    case "org.freedesktop.udisks2.eject-media":
+    case "org.freedesktop.udisks2.eject-media-system":
+    case "org.freedesktop.udisks2.power-off-drive":
+    case "org.freedesktop.udisks2.loop-setup":
+    case "org.freedesktop.udisks2.loop-delete-others":
+    case "org.freedesktop.udisks2.open-device":
+    case "org.freedesktop.udisks2.open-device-system":
+    case "org.freedesktop.udisks2.modify-device":
+    case "org.freedesktop.udisks2.modify-device-system":
+    case "org.freedesktop.udisks2.rescan":
+    case "org.freedesktop.udisks2.cancel-job":
+    case "org.freedesktop.udisks2.ata-check-power":
+    case "org.freedesktop.udisks2.ata-smart-update":
+    case "org.freedesktop.udisks2.nvme-smart-update":
+        return polkit.Result.YES;
+
+    /*
+     * Administrative applications. GParted's wrapper re-runs itself through
+     * pkexec under this id, which is auth_admin everywhere. The two KAuth
+     * helpers are K3b setting the burner's group and permissions, and
+     * KTextEditor (Kate, KDevelop) writing a file the user cannot.
+     * Resources ends another user's process through pkexec and its
+     * resources-kill helper. libvirt's own rule grants unix.manage to its
+     * `libvirt` group, which no account is in; this is what lets
+     * virt-manager open qemu:///system.
+     */
+    case "org.gnome.gparted":
+    case "org.kde.k3b.updatepermissions":
+    case "org.kde.ktexteditor6.katetextbuffer.savefile":
+    case "net.nokyan.Resources.kill":
+    case "org.libvirt.unix.manage":
+        return polkit.Result.YES;
     }
 
     /*
@@ -105,6 +159,23 @@ polkit.addRule(function (action, subject) {
      *   sleep-wake                 kdos-powerd owns suspend, with its own gate
      *   reload                     re-reading NetworkManager's own config is
      *                              administration, and `sudo` is how it is done
+     *   udisks2 fstab, crypttab and system-configuration actions
+     *                              /etc/fstab and /etc/crypttab are the
+     *                              installer's
+     *   udisks2 manage-md-raid, lvm2.manage-lvm, btrfs.manage-btrfs,
+     *   manage-swapspace           the storage layout under a running system
+     *                              is administration
+     *   udisks2 ata-secure-erase, nvme-sanitize, nvme-format-namespace
+     *                              an irreversible firmware erase stays one
+     *                              deliberate `sudo` away
+     *   org.kde.k3b.addtogroup     it edits /etc/group
+     *   org.gtk.vfs.file-operations (gvfs admin://), the
+     *   org.kde.ksysguard.processlisthelper.* actions, and
+     *   org.freedesktop.policykit.exec (pkexec of any command, which
+     *                              Resources' memory-module view asks for)
+     *                              no shipped surface depends on them, and a
+     *                              generic exec grant would be sudo with no
+     *                              password
      */
     return undefined;
 });

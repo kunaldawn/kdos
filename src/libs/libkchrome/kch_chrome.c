@@ -103,6 +103,33 @@ void kch_group(int x, int y, int w, const char *label)
 				kch_body_slot());
 }
 
+/* ── display text ──────────────────────────────────────────────────────── */
+
+/*
+ * HERE AND NOT IN kch_px.c, because the cell half has to run where the pixel
+ * layer does not exist: the front-end dump links this file and stubs kch_px.c
+ * whole, so a fallback kept beside the op would be one no golden ever drew.
+ */
+int kch_display_text(KRect r, const char *s, int fg, int bg, int align)
+{
+	int w;
+
+	if (r.w <= 0 || r.h <= 0 || !s)
+		return 0;
+	if (kch_px_text(r.x, r.y, r.w, r.h, s, fg, bg, align))
+		return 1;
+	ktui_draw_fill(r, bg);
+	w = ktui_utf8_width(s);
+	if (align == KCH_ALIGN_RIGHT)
+		ktui_draw_text_right(r.x, r.y, r.w, s, fg, bg, KT_A_NONE);
+	else if (align == KCH_ALIGN_CENTER && w < r.w)
+		ktui_draw_text(r.x + (r.w - w) / 2, r.y, r.w - (r.w - w) / 2, s,
+			       fg, bg, KT_A_NONE);
+	else
+		ktui_draw_text(r.x, r.y, r.w, s, fg, bg, KT_A_NONE);
+	return 0;
+}
+
 /* ── the button bar ────────────────────────────────────────────────────── */
 
 static struct {

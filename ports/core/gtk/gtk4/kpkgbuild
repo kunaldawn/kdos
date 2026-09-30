@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gtk4
+version     = 4.24.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/gtk/${version%.*}/gtk-$version.tar.xz
+sha256      = 28ba4ac1c04f86eac09b79a163cb163a4c2b54442d9f7eccc04679062a581044  gtk4-4.24.0.tar.xz
+description = GTK 4 widget toolkit, with the Wayland and X11 backends, Vulkan and GStreamer media
+homepage    = https://www.gtk.org/
+depends     = meson glib gobject-introspection glib-introspection cairo pango harfbuzz fribidi gdk-pixbuf librsvg libpng libtiff libjpeg-turbo libepoxy graphene libxkbcommon wayland wayland-protocols libX11 libXext libXrender libXi libXrandr libXcursor libXdamage libXfixes libXinerama fontconfig freetype2 cups gstreamer gst-plugins-base gst-plugins-bad vulkan-headers vulkan-loader shaderc libdrm iso-codes shared-mime-info hicolor-icon-theme at-spi2-core bash-completion python3-docutils
+devseries   = odd-minor

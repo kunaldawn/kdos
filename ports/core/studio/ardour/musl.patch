@@ -1,0 +1,30 @@
+diff -ru a/libs/tk/ytk/gtksearchenginesimple.c b/libs/tk/ytk/gtksearchenginesimple.c
+--- a/libs/tk/ytk/gtksearchenginesimple.c
++++ b/libs/tk/ytk/gtksearchenginesimple.c
+@@ -211,7 +211,7 @@
+   data = (SearchThreadData*)g_static_private_get (&search_thread_data);
+ 
+   if (data->cancelled)
+-#ifdef HAVE_GNU_FTW
++#if defined(HAVE_GNU_FTW) && defined(FTW_ACTIONRETVAL)
+     return FTW_STOP;
+ #else
+     return 1;
+@@ -254,7 +254,7 @@
+   if (data->n_processed_files > BATCH_SIZE)
+     send_batch (data);
+ 
+-#ifdef HAVE_GNU_FTW
++#if defined(HAVE_GNU_FTW) && defined(FTW_ACTIONRETVAL)
+   if (is_hidden)
+     return FTW_SKIP_SUBTREE;
+   else
+@@ -276,7 +276,7 @@
+   g_static_private_set (&search_thread_data, data, NULL);
+ 
+   nftw (data->path, search_visit_func, 20,
+-#ifdef HAVE_GNU_FTW
++#if defined(HAVE_GNU_FTW) && defined(FTW_ACTIONRETVAL)
+         FTW_ACTIONRETVAL |
+ #endif
+         FTW_PHYS);

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = testdisk
+version     = 7.3pre20260819
+release     = 1
+_commit     = 40e1b8d7830c754203df08f74796d935401632b0
+source      = $name-$version.tar.gz::https://github.com/cgsecurity/testdisk/archive/$_commit.tar.gz
+sha256      = cf9f0ace44849b544dff1ff78a9eb89870b80a9655e5eefb3ddcc0ef078d7400  testdisk-7.3pre20260819.tar.gz
+description = Recover lost partitions and, as photorec and the QPhotoRec window, deleted files
+homepage    = https://www.cgsecurity.org/wiki/TestDisk
+depends     = autoconf automake pkgconf ncurses e2fsprogs libjpeg-turbo util-linux zlib ntfs-3g libewf qt6-qtbase qt6-qtwayland qt6-qttools

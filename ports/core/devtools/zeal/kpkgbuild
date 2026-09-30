@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = zeal
+version     = 0.9.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/zealdocs/zeal/archive/refs/tags/v$version.tar.gz
+sha256      = 0af711d8a37c4355b8e914855a637f47d0fd3ca8c66ba239523a65d45d5a15f5  zeal-0.9.1.tar.gz
+description = Offline documentation browser — searchable API docsets for languages and libraries
+homepage    = https://zealdocs.org/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtwebengine qt6-qtwebchannel libarchive sqlite zlib tomlplusplus

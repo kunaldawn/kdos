@@ -9,7 +9,7 @@
 #   testing/preflight.sh — everything a full build would catch, minus the build
 #
 # `make build` takes hours and needs a container. This checks the WIRING in
-# seconds: that every package named in a packages.txt resolves, that every
+# seconds: that every package named in a phase list resolves, that every
 # recipe parses, that the phase scripts are valid shell, that nothing still
 # points at a file the C consolidation removed, and that the shipped rootfs
 # carries no script whose interpreter is gone.
@@ -29,8 +29,8 @@ trap 'rm -rf "$SP"' EXIT
 echo "==> building kpkg for the checks"
 cc -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
    -Isrc/libs/libkbase -Isrc/libs/libkpkg -Isrc/libs/libksig \
-   -Isrc/packages/kdos-kpkg \
-   -o "$SP/kdos-kpkg" src/packages/kdos-kpkg/*.c src/libs/libkbase/*.c \
+   -Isrc/system/kdos-kpkg \
+   -o "$SP/kdos-kpkg" src/system/kdos-kpkg/*.c src/libs/libkbase/*.c \
    src/libs/libkpkg/*.c src/libs/libksig/*.c \
    src/libs/libksig/monocypher/*.c || { echo "  cannot build kpkg"; exit 1; }
 # Installed as five names and dispatched on its own basename, so the checks
@@ -40,27 +40,292 @@ for n in kpkg kpkgadd kpkgbuild kpkgdel kpkgdepends; do
     ln -sf kdos-kpkg "$SP/$n"
 done
 
-# src/desktop is the third port repo — the compositor and shell live there,
-# and script/desktop.env.sh puts it on PORT_REPO for the desktop phase. This
-# has to match, or preflight reports ports that build fine as missing.
-export PORT_REPO="$PWD/ports/core $PWD/src/packages $PWD/src/desktop"
+# Every port repository any phase searches: the desktop phase's PORT_REPO
+# (script/phases/50_desktop/phase.env) is the widest, and it names all five.
+# This has to match, or preflight reports ports that build fine as missing.
+export PORT_REPO="$PWD/ports/core $PWD/src/system $PWD/src/art $PWD/src/desktop $PWD/src/daemons"
 export KPKG_CONF=/nonexistent PKGDB_DIR=/dev/null
 
+# EVERY PORT, WALKED ONCE AND FOUND BY NAME. ports/core files each upstream
+# port one shelf down, ports/core/<shelf>/<name>/, and ours sit at
+# src/<area>/<name>/. A port is named by its directory alone, so every check
+# below asks by name: a path spelled with a shelf goes stale the day the port
+# changes shelf, and a flat glob over ports/core finds shelves, sees no
+# kpkgbuild in any of them and passes having checked nothing.
+#
+# THE WALK IS ports/srclib.sh's src_port_dirs, the one ports/fetch and
+# ports/publish use, so the set checked here is the set they fetch and
+# archive. It takes a port directly under a repository as well as one shelf
+# down; the layout checks below refuse the first under ports/core, and this
+# walk makes sure a loose port is still checked in every other way until then.
+#
+# PDIR maps a name to its directory and PREPO to the repository root that
+# carries it (ports/core for every shelf). A name found twice keeps its first
+# directory here and is reported by the layout checks below: kpkg refuses a
+# name two shelves of one repository carry, and resolves a name two
+# repositories carry to the first, so either has to fail before a build asks
+# for it.
+# shellcheck source=ports/srclib.sh
+. ports/srclib.sh
+declare -A PDIR PREPO
+PORTS_ALL=()
+PDUP=()
+for _r in ports/core src/*; do
+    [ -d "$_r" ] || continue
+    while IFS= read -r _d; do
+        _n=${_d##*/}
+        if [ -n "${PDIR[$_n]:-}" ]; then
+            PDUP+=("port $_n is in two places: ${PDIR[$_n]}/kpkgbuild and $_d/kpkgbuild")
+            continue
+        fi
+        PDIR[$_n]=$_d
+        PREPO[$_n]=$_r
+        PORTS_ALL+=("$_d")
+    done < <(src_port_dirs "$_r")
+done
+has_port() { [ -n "${PDIR[$1]:-}" ]; }
+
+# A phase names its ports in packages.txt, or in packages.d/*.txt read in
+# byte order as one list; never both, which the layout checks enforce. A glob
+# sorts by the locale's collation, which is not byte order in every locale, so
+# this one runs under C and reads the files in the order the build does.
+# Prints the list files of one phase directory.
+phase_lists() {
+    local LC_ALL=C
+    if [ -f "$1/packages.txt" ]; then
+        printf '%s\n' "$1/packages.txt"
+    elif [ -d "$1/packages.d" ]; then
+        for _l in "$1"/packages.d/*.txt; do
+            [ -f "$_l" ] && printf '%s\n' "$_l"
+        done
+    fi
+}
+PHASE_LISTS=$(for _ph in script/phases/*/; do phase_lists "${_ph%/}"; done)
+
 echo
-echo "==> every package named in a packages.txt has a port"
-for f in script/*/packages.txt; do
+echo "==> the ports tree is shelved, and every name is one port"
+# THE LAYOUT IS WHAT EVERY WALKER ASSUMES, and none of them says so when it is
+# wrong. A recipe three levels down is a port kpkg does not resolve and
+# `make fetch` never fetches; one at ports/core/<name>/ is one kpkg builds
+# and script/lib/port.sh's port_dir never finds; a shelf missing from
+# ports/shelves is one nobody placed a port on by its rules; a shelf named
+# `libs` turns `<portdir>/../../libs` — the tree a source-less port hashes —
+# into a real directory; a `name =` that differs from its directory is a
+# package the orphan sweep deletes from the image. Each is silent everywhere
+# else.
+#
+# script/hooks/pre-push holds the same rules for the four it can read out of a
+# commit — the depth, the listed shelf, the one name and the shelf's own name —
+# and says each in the words used here, so either answer names the same fault.
+_lay=0
+while IFS= read -r _k; do
+    case "$_k" in
+        ports/core/*/*/kpkgbuild)
+            case "${_k#ports/core/*/*/}" in */*)
+                bad "$_k" "not at ports/core/<shelf>/<name>/kpkgbuild"
+                _lay=$((_lay + 1)) ;;
+            esac ;;
+        *)  bad "$_k" "not at ports/core/<shelf>/<name>/kpkgbuild"
+            _lay=$((_lay + 1)) ;;
+    esac
+done < <(find ports/core -name kpkgbuild 2>/dev/null | LC_ALL=C sort)
+for _e in ports/core/* ports/core/.[!.]*; do
+    [ -e "$_e" ] || continue
+    [ -d "$_e" ] && [ ! -L "$_e" ] && continue
+    bad "$_e" "ports/core holds shelves only"
+    _lay=$((_lay + 1))
+done
+
+# The closed shelf list: `<id> <description>` per line.
+declare -A SHELF
+if [ -z "$(src_shelves)" ]; then
+    bad "ports/shelves" "ports/shelves is missing or lists no shelf"
+    _lay=$((_lay + 1))
+else
+    while read -r _s _rest || [ -n "$_s" ]; do
+        case "$_s" in ''|\#*) continue ;; esac
+        if [ -n "${SHELF[$_s]:-}" ]; then
+            bad "ports/shelves" "lists '$_s' twice"
+            _lay=$((_lay + 1))
+        fi
+        SHELF[$_s]=1
+        # A leading `-` is refused too: a shelf is a path every tool is handed
+        # as an argument.
+        if ! printf '%s' "$_s" | grep -qxE '[a-z0-9][a-z0-9-]*'; then
+            bad "ports/shelves" "shelf $_s: an id is lowercase letters, digits and -"
+            _lay=$((_lay + 1))
+        fi
+        [ -n "$_rest" ] || { bad "ports/shelves" "shelf $_s has no description"; _lay=$((_lay + 1)); }
+        # <portdir>/../../libs is the tree a source-less port hashes.
+        case "$_s" in libs|core)
+            bad "ports/shelves" "shelf $_s: the name is reserved"
+            _lay=$((_lay + 1)) ;;
+        esac
+        if has_port "$_s"; then
+            bad "ports/shelves" "shelf $_s shares its name with the port at ${PDIR[$_s]}/kpkgbuild"
+            _lay=$((_lay + 1))
+        fi
+        if [ ! -d "ports/core/$_s" ]; then
+            bad "ports/shelves" "lists '$_s', which is not a directory under ports/core"
+            _lay=$((_lay + 1))
+        elif ! compgen -G "ports/core/$_s/*/kpkgbuild" >/dev/null; then
+            bad "ports/core/$_s" "a listed shelf with no port on it"
+            _lay=$((_lay + 1))
+        fi
+    done < ports/shelves
+    for _e in ports/core/*/; do
+        _s=${_e%/}; _s=${_s##*/}
+        [ -d "$_e" ] || continue
+        [ -n "${SHELF[$_s]:-}" ] && continue
+        bad "ports/core/$_s" "shelf $_s is not listed in ports/shelves"
+        _lay=$((_lay + 1))
+    done
+fi
+
+# src/ holds exactly its six areas, and a port of ours sits exactly at
+# src/<area>/<name>/: `$PORT_SRC/../../libs` is how 17 recipes find the
+# libraries, and it resolves at no other depth.
+for _e in src/*; do
+    case "${_e#src/}" in libs|system|art|desktop|daemons|devtools) continue ;; esac
+    bad "$_e" "src/ holds libs, system, art, desktop, daemons and devtools only"
+    _lay=$((_lay + 1))
+done
+for _a in libs system art desktop daemons devtools; do
+    [ -d "src/$_a" ] || { bad "src/$_a" "missing"; _lay=$((_lay + 1)); }
+done
+while IFS= read -r _k; do
+    case "${_k#src/*/*/}" in kpkgbuild) continue ;; esac
+    bad "$_k" "a recipe not at src/<area>/<name>/kpkgbuild — ../../libs does not resolve from it"
+    _lay=$((_lay + 1))
+done < <(find src -name kpkgbuild 2>/dev/null | LC_ALL=C sort)
+
+# The orphan sweep deletes every installed package whose port it cannot find,
+# and REPOS is where it looks: an area missing there has every one of its
+# packages removed from the image.
+_orph=script/phases/70_image/040_orphans.sh
+_orepos=" $(sed -n 's/^REPOS="\(.*\)"$/\1/p' "$_orph" 2>/dev/null) "
+for _a in $(for _k in src/*/*/kpkgbuild; do [ -f "$_k" ] && echo "${_k#src/}"; done |
+            cut -d/ -f1 | sort -u); do
+    case "$_orepos" in *" /kdos/src/$_a "*) continue ;; esac
+    bad "$_orph" "REPOS does not name /kdos/src/$_a — the sweep deletes its packages from the image"
+    _lay=$((_lay + 1))
+done
+
+# One name, one port, across every shelf and every src area.
+for _m in "${PDUP[@]}"; do
+    bad "port names" "$_m"
+    _lay=$((_lay + 1))
+done
+
+# `name =` is the directory's name; nothing else enforces it. And a `group =`
+# family moves as one: ports/update bumps every member together, so they share
+# a shelf. One awk over every recipe answers both — a process per recipe is
+# half a minute of forks.
+declare -A GSHELF
+while IFS='	' read -r _d _nm _g; do
+    if [ "$_nm" != "${_d##*/}" ]; then
+        bad "$_d" "name = '$_nm' is not its directory's name"
+        _lay=$((_lay + 1))
+    fi
+    [ -n "$_g" ] || continue
+    case "$_d" in ports/core/*) ;; *) continue ;; esac
+    _s=${_d#ports/core/}; _s=${_s%%/*}
+    case " ${GSHELF[$_g]:-} " in *" $_s "*) ;; *) GSHELF[$_g]="${GSHELF[$_g]:-} $_s" ;; esac
+done < <(for _d in "${PORTS_ALL[@]}"; do printf '%s/kpkgbuild\n' "$_d"; done |
+         xargs awk '
+             FNR == 1 { if (f != "") print f "\t" n "\t" g; f = FILENAME; n = ""; g = "" }
+             /^name[[:blank:]]*=/  && n == "" { n = $0; sub(/^name[[:blank:]]*=[[:blank:]]*/, "", n) }
+             /^group[[:blank:]]*=/ && g == "" { g = $0; sub(/^group[[:blank:]]*=[[:blank:]]*/, "", g) }
+             END { if (f != "") print f "\t" n "\t" g }' |
+         sed 's|/kpkgbuild\t|\t|')
+
+for _g in "${!GSHELF[@]}"; do
+    set -- ${GSHELF[$_g]}
+    [ "$#" -le 1 ] && continue
+    bad "group $_g" "its members sit on several shelves:${GSHELF[$_g]}"
+    _lay=$((_lay + 1))
+done
+
+# A phase names its ports one way. In packages.d/ a file is one shelf's ports,
+# named <shelf>.txt, or one src area's, src-<area>.txt, or 00-order.txt: the
+# runs a comment pins ahead of every shelf, whatever shelf they sit on. The
+# build reads only *.txt there, so any other file is a list nothing installs;
+# and a port filed under a shelf it is not on is one the next reader looks for
+# in the wrong place.
+for _ph in script/phases/*/; do
+    _ph=${_ph%/}
+    if [ -f "$_ph/packages.txt" ] && [ -e "$_ph/packages.d" ]; then
+        bad "$_ph" "has packages.txt and packages.d — a phase uses one or the other"
+        _lay=$((_lay + 1))
+        continue
+    fi
+    [ -d "$_ph/packages.d" ] || continue
+    if ! compgen -G "$_ph/packages.d/*.txt" >/dev/null; then
+        bad "$_ph" "packages.d holds no .txt list"
+        _lay=$((_lay + 1))
+    fi
+    for _l in "$_ph"/packages.d/* "$_ph"/packages.d/.[!.]*; do
+        [ -e "$_l" ] || continue
+        _b=${_l##*/}
+        case "$_b" in
+            00-order.txt) continue ;;
+            src-*.txt)
+                _a=${_b#src-}; _a=${_a%.txt}
+                case "$_a" in system|art|desktop|daemons) ;; *)
+                    bad "$_l" "src-$_a is not a src area that holds ports"
+                    _lay=$((_lay + 1)); continue ;;
+                esac ;;
+            *.txt)
+                _a=${_b%.txt}
+                if [ -z "${SHELF[$_a]:-}" ]; then
+                    bad "$_l" "$_a is not a shelf ports/shelves lists"
+                    _lay=$((_lay + 1)); continue
+                fi ;;
+            *)  bad "$_l" "not a .txt list — the build never reads it"
+                _lay=$((_lay + 1)); continue ;;
+        esac
+        _off=""
+        while read -r _p || [ -n "$_p" ]; do
+            case "$_p" in ''|\#*) continue ;; esac
+            has_port "$_p" || continue
+            case "$_b" in
+                src-*) [ "${PREPO[$_p]}" = "src/$_a" ] ;;
+                *)     [ "${PDIR[$_p]}" = "ports/core/$_a/$_p" ] ;;
+            esac || _off="$_off $_p"
+        done < "$_l"
+        [ -z "$_off" ] || { bad "$_l" "names ports filed elsewhere:$_off"; _lay=$((_lay + 1)); }
+    done
+done
+[ "$_lay" = 0 ] && note "ports layout" "${#PORTS_ALL[@]} ports on ${#SHELF[@]} shelves and in src/, every name one port"
+
+echo
+echo "==> each package phase installs exactly the ports its list names"
+# A GRANULAR PHASE MEANS SOMETHING ONLY IF ITS LIST IS ITS CLOSURE. For each
+# package phase in order, the dependency closure of its list, minus what every
+# earlier phase installed, has to equal the list itself: a port an earlier
+# phase starts to need moves there in the list rather than being pulled in
+# silently, and a list that reaches forward fails here rather than hours into
+# the phase that builds too much. testing/phaseclosure.py computes it and
+# names each port that differs with both of its phases.
+if [ ! -f testing/phaseclosure.py ]; then
+    bad "phase closure" "testing/phaseclosure.py is missing — nothing checks a phase against its list"
+elif python3 testing/phaseclosure.py > "$SP/closure" 2>&1; then
+    note "phase closure" "every package phase installs exactly its list"
+else
+    bad "phase closure" "$(grep -c . "$SP/closure") line(s), first: $(head -3 "$SP/closure" | tr '\n' ' ')"
+fi
+
+echo
+echo "==> every package named in a phase list has a port"
+for f in $PHASE_LISTS; do
     missing=""
-    # `|| [ -n "$p" ]`: a packages.txt whose last line has no newline still
-    # names a package the build installs, and a plain `read` would drop it —
-    # this gate would then pass a phase whose last entry has no port.
+    # `|| [ -n "$p" ]`: a list whose last line has no newline still names a
+    # package the build installs, and a plain `read` would drop it — this gate
+    # would then pass a phase whose last entry has no port.
     while read -r p || [ -n "$p" ]; do
         [ -z "$p" ] && continue
         case "$p" in \#*) continue ;; esac
-        if [ ! -f "ports/core/$p/kpkgbuild" ] && \
-           [ ! -f "src/packages/$p/kpkgbuild" ] && \
-           [ ! -f "src/desktop/$p/kpkgbuild" ]; then
-            missing="$missing $p"
-        fi
+        has_port "$p" || missing="$missing $p"
     done < "$f"
     [ -z "$missing" ] && note "$f" "ok" || bad "$f" "no port for:$missing"
 done
@@ -68,21 +333,27 @@ done
 echo
 echo
 echo "==> ports built from one tarball agree on its version"
-# `perf` is tools/perf/ inside the kernel tree, so it fetches the SAME archive
-# as `linux` and carries its own copy of the version and hash. A mismatch does
-# not fail the build and does not fail at runtime either: perf loads, and then
-# reports unknown record types for every event the running kernel added after
-# the source it was built from. That is a bug nobody attributes to a version
-# skew, so it is caught here instead.
+# Each pair fetches the same upstream archive, and each recipe carries its own
+# copy of the version and hash. A bump of one without the other does not fail
+# the build. It ships two halves of different releases: perf reports unknown
+# record types for every event the running kernel added after its source;
+# python3-tkinter builds _tkinter against another release's libpython; clang,
+# lld and the other LLVM parts link a different LLVM. The skew is caught here
+# instead.
 shared=0
-for pair in "linux perf"; do
+for pair in "linux perf" "python3 python3-tkinter" "gettext libintl" \
+            "glib glib-introspection" "webkitgtk webkitgtk6" "qca qca-qt5" \
+            "qscintilla python3-qscintilla" "qwt qwt-qt5" "mgba libretro-mgba" \
+            "llvm clang" "llvm lld" "llvm lldb" "llvm compiler-rt" \
+            "llvm libunwind" "llvm openmp" "llvm libclc"; do
     set -- $pair
     a=$1; b=$2
-    av=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "ports/core/$a/kpkgbuild" 2>/dev/null | head -1)
-    bv=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "ports/core/$b/kpkgbuild" 2>/dev/null | head -1)
+    has_port "$a" && has_port "$b" || continue
+    av=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "${PDIR[$a]}/kpkgbuild" 2>/dev/null | head -1)
+    bv=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "${PDIR[$b]}/kpkgbuild" 2>/dev/null | head -1)
     [ -z "$av" ] || [ -z "$bv" ] && continue
-    ah=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "ports/core/$a/kpkgbuild" | head -1)
-    bh=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "ports/core/$b/kpkgbuild" | head -1)
+    ah=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "${PDIR[$a]}/kpkgbuild" | head -1)
+    bh=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "${PDIR[$b]}/kpkgbuild" | head -1)
     if [ "$av" != "$bv" ]; then
         bad "$a/$b" "versions differ: $a is $av, $b is $bv"
     elif [ "$ah" != "$bh" ]; then
@@ -94,17 +365,40 @@ for pair in "linux perf"; do
 done
 [ "$shared" = 0 ] && note "shared-tarball ports" "none declared"
 
-echo "==> every packages.txt resolves to a dependency order"
-for f in script/*/packages.txt; do
-    pkgs=$(grep -v '^#' "$f" | grep -v '^$' | tr '\n' ' ')
+echo "==> every phase list resolves to a dependency order"
+# Each phase resolves with its own phase.env's PORT_REPO (kpkg.conf's
+# /ports/core when it sets none), and kpkgdepends passes an unknown name
+# through as if it were a port. A dependency outside the phase's repos
+# therefore resolves here and fails the build with no port found. A phase
+# with packages.d/ is one list, its files read in sorted order.
+for ph in script/phases/*/; do
+    ph=${ph%/}
+    f=$(phase_lists "$ph")
+    [ -n "$f" ] || continue
+    pkgs=$(cat $f | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
     [ -z "$pkgs" ] && continue
-    out=$("$SP/kpkgdepends" $pkgs 2>"$SP/err")
+    f=$(printf '%s\n' "$f" | head -1)
+    case "$f" in */packages.d/*) f=$ph/packages.d ;; esac
+    repo=$(sed -n 's/^export PORT_REPO="\(.*\)"$/\1/p' "$ph/phase.env" 2>/dev/null)
+    repo=${repo:-/ports/core}
+    repo=$(printf '%s' "$repo" | sed "s|/kdos/src/|$PWD/src/|g; s|^/ports/core|$PWD/ports/core|")
+    out=$(PORT_REPO="$repo" "$SP/kpkgdepends" $pkgs 2>"$SP/err")
+    miss=
+    for t in $out; do
+        h=
+        for r in $repo; do
+            [ -n "${PREPO[$t]:-}" ] && [ "$r" = "$PWD/${PREPO[$t]}" ] && { h=1; break; }
+        done
+        [ -z "$h" ] && { miss=$t; break; }
+    done
     if [ -s "$SP/err" ]; then
         bad "$f" "kpkgdepends wrote to stderr: $(head -1 "$SP/err")"
     elif [ -z "$out" ]; then
         bad "$f" "kpkgdepends returned nothing"
     elif printf '%s' "$out" | tr ' ' '\n' | grep -qvE '^[A-Za-z0-9][A-Za-z0-9._+-]*$'; then
         bad "$f" "a resolved token is not a package name"
+    elif [ -n "$miss" ]; then
+        bad "$f" "resolves $miss, which this phase's PORT_REPO does not carry"
     else
         note "$f" "$(echo "$out" | wc -w) packages"
     fi
@@ -113,12 +407,9 @@ done
 echo
 echo "==> every depends key names a port that exists"
 orphans=0
-for d in ports/core/* src/packages/* src/desktop/*; do
-    [ -f "$d/kpkgbuild" ] || continue
+for d in "${PORTS_ALL[@]}"; do
     for dep in $(sed -n 's/^depends[[:blank:]]*=[[:blank:]]*//p' "$d/kpkgbuild"); do
-        if [ ! -f "ports/core/$dep/kpkgbuild" ] && \
-           [ ! -f "src/packages/$dep/kpkgbuild" ] && \
-           [ ! -f "src/desktop/$dep/kpkgbuild" ]; then
+        if ! has_port "$dep"; then
             bad "$(basename "$d")" "depends on '$dep', which has no port"
             orphans=$((orphans + 1))
         fi
@@ -129,21 +420,21 @@ done
 echo
 echo "==> every port of OURS is built by something"
 # The reverse of the check above, and the one a NEW port needs. `ports/core` is
-# upstream and a recipe there may legitimately sit unbuilt; `src/packages` and
-# `src/desktop` are ours, and a port nobody installs is a directory that
-# compiles on a developer's machine and is absent from the ISO. kdos-oomd is
-# the live example: a daemon, an init script and a recipe, and one missing line
-# in script/05_desktop/packages.txt between it and never running.
+# upstream and a recipe there may legitimately sit unbuilt; every port under
+# src/ is ours, and a port nobody installs is a directory that compiles on a
+# developer's machine and is absent from the ISO. kdos-oomd is the live
+# example: a daemon, an init script and a recipe, and one missing line in
+# script/phases/50_desktop/packages.txt between it and never running.
 #
 # A port a PHASE SCRIPT builds by name is fine — that is how kinstall is built,
-# in phase 1, long before any packages.txt exists.
+# in the bootstrap phase, long before any phase list is read.
 unbuilt=0
-for d in src/packages/* src/desktop/*; do
+for d in src/*/*; do
     [ -f "$d/kpkgbuild" ] || continue
     p=$(basename "$d")
-    grep -qxF "$p" script/*/packages.txt 2>/dev/null && continue
-    grep -rqlF "$p" script/*/*.sh 2>/dev/null && continue
-    bad "$p" "in no packages.txt and named by no phase script — nothing builds it"
+    [ -n "$PHASE_LISTS" ] && grep -qxF "$p" $PHASE_LISTS 2>/dev/null && continue
+    grep -rqlF "$p" script/phases/*/*.sh 2>/dev/null && continue
+    bad "$p" "in no phase list and named by no phase script — nothing builds it"
     unbuilt=$((unbuilt + 1))
 done
 [ "$unbuilt" = 0 ] && note "our ports are all built" "ok"
@@ -164,8 +455,8 @@ for f in fs/etc/init.d/*.sh; do
     sed -n 's/^[[:space:]]*DAEMON="\([^"]*\)".*/\1/p' "$f" > "$SP/daemons"
     while read -r dpath || [ -n "$dpath" ]; do
         case "$(basename "$dpath")" in kdos-*) ;; *) continue ;; esac
-        if ! grep -rqF -- "$dpath\"" ports/core/*/build.sh src/packages/*/build.sh \
-                src/desktop/*/build.sh 2>/dev/null; then
+        if ! grep -rqF -- "$dpath\"" ports/core/*/*/build.sh src/*/*/build.sh \
+                2>/dev/null; then
             bad "$(basename "$f")" "starts $dpath, which no build.sh installs"
         fi
     done < "$SP/daemons"
@@ -209,12 +500,15 @@ echo "==> a first source whose members are ./-prefixed is accounted for"
 # wrong thing entirely. One port in 656 is like this; the check exists so the
 # second one costs a preflight run rather than a build.
 dotp=0
-for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
+for d in "${PORTS_ALL[@]}"; do
     [ -f "$d/build.sh" ] || continue
-    t="$d$(first_source_file "$d")"
+    t="$d/$(first_source_file "$d")"
     case "$t" in *.tar.*|*.tgz|*.tbz2|*.txz) ;; *) continue ;; esac
     [ -f "$t" ] || continue
-    first=$(tar tf "$t" 2>/dev/null | head -1)
+    # A lone `./` entry says nothing about the members: Mozilla's tarballs
+    # open with one and write every member after it as `firefox-<v>/…`, which
+    # the strip unpacks correctly. The first member other than the dot decides.
+    first=$(tar tf "$t" 2>/dev/null | awk '$0 != "./" && $0 != "." { print; exit }')
     case "$first" in
     ./*)
         dotp=$((dotp + 1))
@@ -249,12 +543,13 @@ echo "==> a FLAT first source is unpacked by its own recipe"
 # does not have. tzdata is why the rule is already written down; yosys is why
 # it is now checked. A recipe accounts for it by unpacking the tarball itself.
 flatp=0
-for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
+for d in "${PORTS_ALL[@]}"; do
     [ -f "$d/build.sh" ] || continue
-    t="$d$(first_source_file "$d")"
+    t="$d/$(first_source_file "$d")"
     case "$t" in *.tar.*|*.tgz|*.tbz2|*.txz) ;; *) continue ;; esac
     [ -f "$t" ] || continue
-    tops=$(tar tf "$t" 2>/dev/null | head -300 | awk -F/ 'NF>1 || $1!="" {print $1}' | sort -u | wc -l)
+    # The dot of a lone `./` entry is not a top-level entry of its own.
+    tops=$(tar tf "$t" 2>/dev/null | head -300 | awk -F/ '(NF>1 || $1!="") && $1!="." {print $1}' | sort -u | wc -l)
     [ "$tops" -le 1 ] && continue
     flatp=$((flatp + 1))
     grep -qE '^[[:space:]]*tar x[a-z]* +"?\$(PORT_SRC|\{PORT_SRC\})' "$d/build.sh" \
@@ -282,7 +577,7 @@ b_lundef b_ndebug b_pch b_pgo b_sanitize b_staticpic b_vscrt buildtype \
 debug default_both_libraries default_library errorlogs install_umask \
 layout optimization pkg_config_path prefer_static strip unity unity_size \
 warning_level werror wrap_mode"
-for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
+for d in "${PORTS_ALL[@]}"; do
     [ -f "$d/build.sh" ] || continue
     grep -q 'meson setup' "$d/build.sh" || continue
     # EVERY tarball the port ships, not the first: a port with two sources
@@ -304,12 +599,12 @@ for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
                    'meson_options.txt' 'meson.options' \
                2>/dev/null | tr '\n' ' ' || true)
         defined="$defined
-$(printf '%s' "$flat" | grep -oE "option\([[:space:]]*'[a-zA-Z0-9_-]+" \
+$(printf '%s' "$flat" | grep -oE "option[[:space:]]*\([[:space:]]*'[a-zA-Z0-9_-]+" \
           | sed "s/.*'//" || true)"
         deftypes="$deftypes
 $(printf '%s' "$flat" \
-          | grep -oE "option\([[:space:]]*'[a-zA-Z0-9_-]+'[[:space:]]*,[[:space:]]*type[[:space:]]*:[[:space:]]*'[a-z]+'" \
-          | sed -E "s/option\([[:space:]]*'([a-zA-Z0-9_-]+)'.*'([a-z]+)'\$/\\1\t\\2/" || true)"
+          | grep -oE "option[[:space:]]*\([[:space:]]*'[a-zA-Z0-9_-]+'[[:space:]]*,[[:space:]]*type[[:space:]]*:[[:space:]]*'[a-z]+'" \
+          | sed -E "s/option[[:space:]]*\([[:space:]]*'([a-zA-Z0-9_-]+)'.*'([a-z]+)'\$/\\1\t\\2/" || true)"
     done
     # No options file at all means the port defines none; every -D it is
     # handed then has to be a built-in, which the same comparison covers.
@@ -321,7 +616,8 @@ $(printf '%s' "$flat" \
     # — and reading that as something this port passes reports a defect in the
     # port that documented the fix. `install -Dm644` is not a meson option
     # either, and `option(` may be followed by a NEWLINE before its name, which
-    # fcft does, so the option file is flattened before it is read.
+    # fcft does, so the option file is flattened before it is read; `option (`
+    # with a space, which Impression writes, is the same call.
     #
     # A COMPILER FLAG IS NOT A MESON OPTION EITHER. `-D` names a preprocessor
     # macro in a CFLAGS assignment and a project option on a meson line, and
@@ -402,7 +698,7 @@ echo "==> every source a port declares is hashed, and on disk once fetched"
 # read through the same parser the build uses, NOT a glob of archive
 # extensions: a glob knows only the suffixes it lists, and a plain-file
 # source (ca-certificates', iana-etc's) is invisible to it and fails instead
-# hours into phase 3.
+# hours into the foundation phase.
 #
 # A HASHED SOURCE THAT IS NOT ON DISK IS UNFETCHED, NOT BROKEN. Upstream
 # sources are not in git: `make fetch` resolves each `sha256 =` entry from the
@@ -413,8 +709,7 @@ echo "==> every source a port declares is hashed, and on disk once fetched"
 unhashed=0
 unfetched=0
 stale=""
-for d in ports/core/* src/packages/* src/desktop/*; do
-    [ -f "$d/kpkgbuild" ] || continue
+for d in "${PORTS_ALL[@]}"; do
     p=$(basename "$d")
     unset name version source vendoring
     eval "$("$SP/kpkg" meta "$d" 2>/dev/null)"
@@ -450,7 +745,7 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         # takes nothing from the archive for a name the recipe does not hash,
         # so a name nothing provides is reported here rather than at whatever
         # hour of the build its phase reaches that package. Every port is
-        # judged, not only the ones a packages.txt names: a port wired into no
+        # judged, not only the ones a phase list names: a port wired into no
         # phase yet is exactly the one whose source was never hashed.
         if [ ! -f "$d/$base" ]; then
             if grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
@@ -560,7 +855,7 @@ if [ -n "$stale" ]; then
 fi
 
 # The escape hatch must be unused in a committed tree.
-if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild src/desktop/*/kpkgbuild 2>/dev/null; then
+if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/*/kpkgbuild src/*/*/kpkgbuild 2>/dev/null; then
     bad "recipes" "a recipe references KDOS_ALLOW_UNVERIFIED"
 else
     note "no recipe needs the unverified escape hatch" "ok"
@@ -579,7 +874,7 @@ rot=0
 # is generated and .git/ is not the tree, so neither may answer for a cite.
 find . -path ./build -prune -o -path ./.git -prune -o -type f -print 2>/dev/null |
     sed 's,.*/,,' | sort -u > "$SP/treenames"
-for r in src/packages/kdos-tools/reasons/*.txt; do
+for r in src/system/kdos-tools/reasons/*.txt; do
     [ -f "$r" ] || continue
     _rn=$(basename "$r" .txt)
     grep -q "^title:" "$r" || { bad "$_rn" "has no title:"; rot=$((rot + 1)); }
@@ -591,8 +886,7 @@ for r in src/packages/kdos-tools/reasons/*.txt; do
     sed -n 's/^port:[[:blank:]]*//p' "$r" > "$SP/rports"
     while read -r _p || [ -n "$_p" ]; do
         [ -n "$_p" ] || continue
-        if [ ! -f "ports/core/$_p/kpkgbuild" ] && [ ! -f "src/packages/$_p/kpkgbuild" ] && \
-           [ ! -f "src/desktop/$_p/kpkgbuild" ]; then
+        if ! has_port "$_p"; then
             bad "$_rn" "names port '$_p', which no longer exists"
             rot=$((rot + 1))
         fi
@@ -613,7 +907,7 @@ for r in src/packages/kdos-tools/reasons/*.txt; do
     sed -n 's/^see:[[:blank:]]*//p' "$r" > "$SP/rsees"
     while read -r _s || [ -n "$_s" ]; do
         [ -n "$_s" ] || continue
-        if [ ! -f "src/packages/kdos-tools/reasons/$_s.txt" ]; then
+        if [ ! -f "src/system/kdos-tools/reasons/$_s.txt" ]; then
             bad "$_rn" "sees '$_s', which is not a reason"
             rot=$((rot + 1))
         fi
@@ -633,17 +927,15 @@ for r in src/packages/kdos-tools/reasons/*.txt; do
         fi
     done < "$SP/cites"
 done
-[ "$rot" = 0 ] && note "reasons resolve" "$(ls src/packages/kdos-tools/reasons/*.txt 2>/dev/null | wc -l) recorded"
+[ "$rot" = 0 ] && note "reasons resolve" "$(ls src/system/kdos-tools/reasons/*.txt 2>/dev/null | wc -l) recorded"
 
 echo
 echo "==> every port has a build.sh, and it parses"
 # The build is a shell script in its own file, so it can actually be checked:
-# `bash -n` on 396 recipes is a real syntax gate, and it was impossible while
-# the build lived inside the recipe.
+# `bash -n` on every build.sh is a real syntax gate.
 missing=0
 scripts=0
-for d in ports/core/* src/packages/* src/desktop/*; do
-    [ -f "$d/kpkgbuild" ] || continue
+for d in "${PORTS_ALL[@]}"; do
     p=$(basename "$d")
     if [ ! -f "$d/build.sh" ]; then
         bad "$p" "no build.sh beside kpkgbuild"
@@ -673,8 +965,7 @@ echo
 echo "==> every recipe parses as metadata"
 # The same reader the build uses. A recipe that does not parse has no name,
 # version or release, and nothing downstream would find out until it ran.
-for d in ports/core/* src/packages/* src/desktop/*; do
-    [ -f "$d/kpkgbuild" ] || continue
+for d in "${PORTS_ALL[@]}"; do
     p=$(basename "$d")
     out=$("$SP/kpkg" meta "$d" 2>"$SP/err")
     if [ -s "$SP/err" ] || [ -z "$out" ]; then
@@ -685,8 +976,7 @@ note "recipe metadata" "all recipes parse"
 
 echo
 echo "==> every recipe declares a name, version and release"
-for d in ports/core/* src/packages/* src/desktop/*; do
-    [ -f "$d/kpkgbuild" ] || continue
+for d in "${PORTS_ALL[@]}"; do
     for k in name version release; do
         grep -qE "^$k[[:blank:]]*=" "$d/kpkgbuild" || \
             bad "$(basename "$d")" "no '$k'"
@@ -704,24 +994,23 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         *-*) bad "$(basename "$d")" "version '$version' contains a hyphen" ;;
     esac
 done
-note "recipe fields" "checked $(ls -d ports/core/*/ src/packages/*/ 2>/dev/null | wc -l) ports"
+note "recipe fields" "checked $(find ports/core src -name kpkgbuild 2>/dev/null | wc -l) ports"
 
 echo
 echo "==> shell that ships or builds is syntactically valid"
 _sh=0
-for f in script/*.sh script/*/*.sh fs/etc/init.d/* \
+for f in script/*.sh script/*/*.sh script/phases/*/*.sh \
+         script/phases/*/phase.env script/env/*.env fs/etc/init.d/* \
          ports/fetch testing/*.sh \
-         ports/core/*/build.sh src/packages/*/build.sh \
-         ports/core/*/postinstall.sh src/packages/*/postinstall.sh \
+         ports/core/*/*/build.sh src/*/*/build.sh \
+         ports/core/*/*/postinstall.sh src/*/*/postinstall.sh \
          fs/etc/profile fs/etc/profile.d/* fs/usr/local/bin/* \
          fs/usr/local/lib/kdos/* fs/etc/skel/.config/notmuch/default/hooks/*; do
-    # A SYMLINK IS NOT A SCRIPT. /usr/local/bin is almost entirely links to
-    # kdos-appbox, and `bash -n` on one would read a binary that is not even
-    # in this tree. Regular files whose first line names a shell, and nothing
+    # A SYMLINK IS NOT A SCRIPT: `bash -n` on one reads whatever it points
+    # at, which need not be in this tree. Regular files whose first line names a shell, and nothing
     # else — which is also what keeps a config file out of the loop.
     [ -f "$f" ] || continue
     [ -L "$f" ] && continue
-    case "$f" in *packages.txt) continue ;; esac
     head -1 "$f" | grep -qE '^#!.*(^|/)(sh|bash|dash)( |$)' ||
         case "$f" in
             # A profile fragment is SOURCED and carries no shebang; so does
@@ -746,7 +1035,7 @@ echo "==> a script shipped inside a recipe parses, and names only programs the i
 # delimiter KDOS_SH marks a heredoc whose body is a /bin/sh script, and both
 # checks below run on it.
 #
-# THE PROGRAMS ARE CHECKED AGAINST THE BUILD TREE, not against packages.txt,
+# THE PROGRAMS ARE CHECKED AGAINST THE BUILD TREE, not against a phase list,
 # because a port's name and its binaries' names are different things —
 # `mutool` comes from `mupdf` — and a name table mapping one to the other
 # would be a second place to keep right. Skipped when there is no build tree.
@@ -762,7 +1051,7 @@ echo "==> a script shipped inside a recipe parses, and names only programs the i
 # this is for.
 _hd=0
 _hdbad=0
-for f in ports/core/*/build.sh src/packages/*/build.sh src/desktop/*/build.sh; do
+for f in ports/core/*/*/build.sh src/*/*/build.sh; do
     [ -f "$f" ] || continue
     grep -q "<<'KDOS_SH'" "$f" || continue
     _p=$(basename "$(dirname "$f")")
@@ -817,28 +1106,30 @@ else
 fi
 
 echo
-echo "==> nothing still points at a file the rewrite removed"
+echo "==> none of the retired paths exists, and nothing invokes a retired tool"
 for gone in fs/usr/local/bin/kdos fs/usr/local/bin/kdos-banner \
             fs/usr/local/bin/kdos-shot fs/usr/local/bin/kdos-fetch-app \
             fs/usr/local/bin/kdos-fetch-static fs/usr/sbin/service \
             fs/usr/local/sbin/kdos-getty src/kpkg/kpkg \
             ports/appbox ports/sources ports/sources.manifest \
             fs/etc/kdos/pack-sources; do
-    [ -e "$gone" ] && bad "$gone" "should have been removed"
+    [ -e "$gone" ] && bad "$gone" "must not exist"
 done
-# Only things that would INVOKE the removed tools count. A C file naming one in
-# a comment is documenting what it replaced, which is the point.
+# Only things that would INVOKE a retired tool count; a C file may name one in
+# a comment without running it. The script name is the token straight after
+# `python3`: a `depends` line that names python3 and then wavpack or libmspack
+# invokes nothing.
 # THE ARCHIVES ARE EXCLUDED BY NAME, NOT BY A grep FLAG. `ports` holds the
 # fetched tarballs beside the recipes and the baked packs beside their build
-# scripts — 31 GB of them — and grep reads a compressed file whole before it
-# can decide the file is binary. The suite's own container has BusyBox grep,
-# which has no --include, no --exclude and no -I, so the list is built with
-# find instead: a recipe or a script is what can INVOKE a removed tool, and a
-# tarball never can.
+# scripts — about 39 GB of them — and grep reads a compressed file whole
+# before it can decide the file is binary. The suite's own container has
+# BusyBox grep, which has no --include, no --exclude and no -I, so the list is
+# built with find instead: a recipe or a script is what can INVOKE a retired
+# tool, and a tarball never can.
 hits=$(find script ports fs Makefile -type f \
         ! -name '*.kpack' ! -name '*.tar.*' ! -name '*.tgz' ! -name '*.tbz2' \
         ! -name '*.txz' ! -name '*.zip' ! -name '*.lz' 2>/dev/null |
-       xargs grep -l 'python3 .*genlaunchers\|python3 .*pack \|python3 .*assemble\|python3 .*gengtk\|python3 .*genicons\|python3 .*gencursors' \
+       xargs grep -l 'python3 [^ ]*genlaunchers\|python3 [^ ]*pack \|python3 [^ ]*assemble\|python3 [^ ]*gengtk\|python3 [^ ]*genicons\|python3 [^ ]*gencursors' \
         2>/dev/null || true)
 [ -z "$hits" ] && note "no stale invocations" "ok" || bad "stale invocations" "$hits"
 
@@ -859,21 +1150,20 @@ for f in $(grep -rl '^#!' fs/ 2>/dev/null); do
     case "$interp" in
         /bin/bash|/bin/sh) ;;
         /usr/sbin/nft)
-            [ -d ports/core/nftables ] \
+            has_port nftables \
                 || bad "$f" "interpreter $interp has no port" ;;
         *) bad "$f" "unexpected interpreter $interp" ;;
     esac
 done
 note "rootfs interpreters" "every #! is provided by the tree"
 
-# ── the build tree still carries packages whose port is gone ───────────────
+# ── the build tree carries packages whose port is gone ─────────────────────
 #
-# `fs/` is manifest-guarded, packages were not, and the build tree is
-# incremental: a port deleted from `ports/` left its package installed forever.
-# Measured on v0.2 — the ISO shipped all sixteen `cosmic-*` packages,
-# `pop-launcher`, `kdos-theme-helper` and `xdg-desktop-portal-cosmic`, 529 MB of
-# a desktop removed a milestone earlier. `06_packaging/00_orphans.sh` sweeps
-# them at package time; this says so BEFORE a two-hour build does.
+# The build tree is incremental and nothing but the orphan sweep removes a
+# package: a port deleted from `ports/` leaves its package installed, and the
+# ISO ships it — a whole desktop's worth of packages, hundreds of megabytes,
+# when a desktop's ports go at once. `70_image/040_orphans.sh` sweeps them at
+# image time; this says so BEFORE a two-hour build does.
 #
 # Skipped, not failed, when there is no build tree: preflight's whole point is
 # that it needs nothing but the repo.
@@ -884,17 +1174,53 @@ if [ ! -d build/fs/var/lib/kpkg/db ]; then
 else
     orphans=""
     for pkg in $(ls build/fs/var/lib/kpkg/db); do
-        if [ ! -f "ports/core/$pkg/kpkgbuild" ] && \
-           [ ! -f "src/packages/$pkg/kpkgbuild" ] && \
-           [ ! -f "src/desktop/$pkg/kpkgbuild" ]; then
-            orphans="$orphans $pkg"
-        fi
+        has_port "$pkg" || orphans="$orphans $pkg"
     done
     if [ -n "$orphans" ]; then
         bad "orphaned packages" "installed with no recipe:$orphans"
     else
         note "orphaned packages" "none"
     fi
+fi
+
+# ── the desktop's own programs link no toolkit and no Xlib ────────────────
+#
+# Applications may link GTK, Qt, wxWidgets, FLTK, Tk and the X11 client
+# libraries; the desktop itself may not. Every ELF that a package built from a
+# port under src/ installs is read for its NEEDED entries, and a toolkit or an
+# Xlib library among them fails: a compositor, panel or daemon that pulls one
+# in makes the session depend on a stack an application is free to leave out.
+# libxcb is not on the list. kdos-comp speaks XCB to Xwayland, the one X
+# carve-out, and loads no Xlib.
+#
+# Skipped, not failed, when there is no build tree or no readelf.
+echo
+echo "==> the desktop's own programs link no GUI toolkit and no Xlib"
+if [ ! -d build/fs/var/lib/kpkg/db ]; then
+    note "desktop ELF links" "skipped — no build tree"
+elif ! command -v readelf >/dev/null 2>&1; then
+    note "desktop ELF links" "skipped — no readelf on this host"
+else
+    _elf_re='^(libgtk-|libgdk-|libadwaita-|libwebkit|libjavascriptcoregtk|libQt[0-9]|libKF[0-9]|libwx_|libfltk|libtk[0-9]|libX[A-Za-z0-9_-]*\.so)'
+    _elfn=0 _elfp=0 _elfbad=0
+    for _d in src/*/*/; do
+        _pkg=$(sed -n 's/^name[[:space:]]*=[[:space:]]*//p' "$_d/kpkgbuild" 2>/dev/null | head -1)
+        [ -n "$_pkg" ] && [ -f "build/fs/var/lib/kpkg/db/$_pkg" ] || continue
+        _elfp=$((_elfp + 1))
+        while IFS= read -r _f; do
+            _f=build/fs/${_f#./}
+            [ -f "$_f" ] && [ ! -L "$_f" ] || continue
+            [ "$(head -c4 "$_f" 2>/dev/null | od -An -c | tr -d ' \n')" = '177ELF' ] || continue
+            _elfn=$((_elfn + 1))
+            _hit=$(readelf -d "$_f" 2>/dev/null \
+                   | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | grep -E "$_elf_re" | paste -sd' ')
+            [ -z "$_hit" ] && continue
+            bad "desktop ELF links" "$_pkg: ${_f#build/fs} links $_hit"
+            _elfbad=$((_elfbad + 1))
+        done < <(tail -n +2 "build/fs/var/lib/kpkg/db/$_pkg")
+    done
+    [ "$_elfbad" != 0 ] ||
+        note "desktop ELF links" "$_elfn ELF file(s) in $_elfp package(s), none links a toolkit or Xlib"
 fi
 
 echo
@@ -925,8 +1251,8 @@ if [ -f build/fs/etc/shadow ]; then
         600|640) note "sensitive modes" "/etc/shadow is $_sm on the image" ;;
         *) bad "sensitive modes" "/etc/shadow is $_sm on the image — every hash is readable" ;;
     esac
-    grep -q "^etc/shadow " script/01_phase1/00_file_system.sh \
-        || bad "sensitive modes" "nothing in 00_file_system.sh narrows etc/shadow"
+    grep -q "^etc/shadow " script/phases/10_bootstrap/000_file_system.sh \
+        || bad "sensitive modes" "nothing in 000_file_system.sh narrows etc/shadow"
 else
     note "sensitive modes" "skipped — no build tree"
 fi
@@ -1092,12 +1418,11 @@ fi
 echo
 echo "==> every recipe and build script carries the KDOS banner"
 noban=0
-for f in ports/core/*/kpkgbuild ports/core/*/build.sh ports/core/*/postinstall.sh \
-         src/packages/*/kpkgbuild src/packages/*/build.sh src/packages/*/postinstall.sh \
-         src/desktop/*/kpkgbuild src/desktop/*/build.sh src/desktop/*/postinstall.sh; do
+for f in ports/core/*/*/kpkgbuild ports/core/*/*/build.sh ports/core/*/*/postinstall.sh \
+         src/*/*/kpkgbuild src/*/*/build.sh src/*/*/postinstall.sh; do
     [ -f "$f" ] || continue
     grep -q "KD's Homebrew Linux Distro" "$f" || {
-        bad "${f#ports/core/}" "has no KDOS banner header"
+        bad "${f#ports/core/*/}" "has no KDOS banner header"
         noban=$((noban + 1))
     }
 done
@@ -1105,7 +1430,7 @@ done
 
 # A ROOT FILESYSTEM THE INITRAMFS CANNOT MOUNT INSTALLS PERFECTLY AND NEVER
 # BOOTS AGAIN, and nothing else here would see it: `ki_filesystems[]` is what
-# the installer OFFERS and `01_initramfs.sh`'s MODULES line is what makes the
+# the installer OFFERS and `090_initramfs.sh`'s MODULES line is what makes the
 # offer bootable. The two are edited in different languages in different
 # directories, so a row added to one and not the other compiles, passes every
 # other gate, and bricks exactly the machine that picked it.
@@ -1114,8 +1439,8 @@ done
 # MODULES; anything else in the table must be there by name.
 echo
 echo "==> every filesystem the installer offers, the initramfs can mount"
-fs_conf=src/packages/kdos-installer/conf.c
-fs_ini=script/06_packaging/01_initramfs.sh
+fs_conf=src/system/kdos-installer/conf.c
+fs_ini=script/phases/70_image/090_initramfs.sh
 if [ -f "$fs_conf" ] && [ -f "$fs_ini" ]; then
     fs_mods=$(grep -E '^MODULES=' "$fs_ini")
     fs_missing=""
@@ -1125,12 +1450,12 @@ if [ -f "$fs_conf" ] && [ -f "$fs_ini" ]; then
         case "$fs_mods" in *" $fs "*|*" $fs\""*) ;; *) fs_missing="$fs_missing $fs" ;; esac
     done
     if [ -n "$fs_missing" ]; then
-        bad "01_initramfs.sh" "ki_filesystems[] offers$fs_missing, which the initramfs does not carry"
+        bad "090_initramfs.sh" "ki_filesystems[] offers$fs_missing, which the initramfs does not carry"
     else
         note "installer filesystems" "every offered root fs is in the initramfs"
     fi
 else
-    note "installer filesystems" "skipped — conf.c or 01_initramfs.sh not found"
+    note "installer filesystems" "skipped — conf.c or 090_initramfs.sh not found"
 fi
 
 # A WRITTEN STICK BOOTS BY ITS PARTITION TABLE AND BY NOTHING ELSE. `dd` copies
@@ -1139,11 +1464,11 @@ fi
 # a partition of type EFI System; BIOS wants boot code in the first sector. The
 # image has to answer all four combinations of firmware and medium, and each
 # one is a separate flag that xorriso accepts in silence when it does nothing.
-# 02_iso.sh verifies the finished image too, but that costs a full packaging
-# run to learn; this costs a second.
+# 110_iso.sh verifies the finished image too, but that costs a full image
+# phase to learn; this costs a second.
 echo
 echo "==> the ISO boots BIOS and UEFI, from a disc and from a written stick"
-iso_sh=script/06_packaging/02_iso.sh
+iso_sh=script/phases/70_image/110_iso.sh
 if [ -f "$iso_sh" ]; then
     iso_missing=""
     for f in "limine-bios-cd.bin" "--efi-boot" "-efi-boot-part" \
@@ -1152,18 +1477,18 @@ if [ -f "$iso_sh" ]; then
         grep -qF -- "$f" "$iso_sh" || iso_missing="$iso_missing '$f'"
     done
     if [ -n "$iso_missing" ]; then
-        bad "02_iso.sh" "a boot path is missing from the image —$iso_missing"
+        bad "110_iso.sh" "a boot path is missing from the image —$iso_missing"
     else
         note "iso boot structure" "BIOS + UEFI, El Torito + partition table"
     fi
 else
-    note "iso boot structure" "skipped — 02_iso.sh not found"
+    note "iso boot structure" "skipped — 110_iso.sh not found"
 fi
 
 # A BINARY BUILT BY A PHASE STEP IS NOT REBUILT BY `--rebuild <port>`, because
-# it is not a port. kinstall comes out of script/01_phase1/13_kinstall.sh, which
+# it is not a port. kinstall comes out of 10_bootstrap/130_kinstall.sh, which
 # ALSO exits early when its marker exists — so editing the installer's sources,
-# rebuilding, and packaging produces an ISO carrying the binary from whenever
+# rebuilding, and running 70_image produces an ISO carrying the binary from whenever
 # that marker was first written. Nothing fails: the build is green and the image
 # boots, and only the installed system is wrong.
 #
@@ -1173,7 +1498,7 @@ fi
 # installer must mention and the old one cannot, answers it in one grep.
 echo
 echo "==> the built kinstall is the installer in this tree"
-ki_src=src/packages/kdos-installer/install.c
+ki_src=src/system/kdos-installer/install.c
 ki_bin=build/fs/usr/bin/kinstall
 if [ -f "$ki_src" ] && [ -f "$ki_bin" ]; then
     ki_want=$(grep -oE '"[a-z/]*share/limine"' "$ki_src" | head -1 | tr -d '"')
@@ -1182,7 +1507,7 @@ if [ -f "$ki_src" ] && [ -f "$ki_bin" ]; then
     elif strings "$ki_bin" 2>/dev/null | grep -qF "$ki_want"; then
         note "kinstall freshness" "built binary carries $ki_want"
     else
-        bad "13_kinstall.sh" "build/fs/usr/bin/kinstall predates install.c — rm build/mark/phase1/kinstall and rebuild phase 1"
+        bad "130_kinstall.sh" "build/fs/usr/bin/kinstall predates install.c — rm build/mark/bootstrap/kinstall and rebuild the bootstrap phase"
     fi
 else
     note "kinstall freshness" "skipped — no build tree"
@@ -1198,11 +1523,17 @@ fi
 # no name for it.
 #
 # THE IGNORE RULES ARE WHAT KEEP A FETCHED TREE CLEAN. Every fetched source is
-# a file in its port directory; without a pattern for its suffix, `git add -A`
-# commits it. The patterns are anchored to ports/core, so the archive fixtures
-# under testing/fixtures must stay visible to git or every test replaying them
-# is silently absent on a clone. `git check-ignore` on a synthetic path answers
-# what git WILL do with a file nobody has written yet.
+# a file in its port directory, two levels below ports/core; without a pattern
+# for its suffix at that depth, `git add -A` commits it. The patterns are
+# anchored to ports/core, so the archive fixtures under testing/fixtures must
+# stay visible to git or every test replaying them is silently absent on a
+# clone. `git check-ignore` on a synthetic path answers what git WILL do with a
+# file nobody has written yet.
+#
+# BOTH SIDES OF THE COMPARISON ARE <port>/<file>. The hashed set takes the
+# port's directory name off the recipe path and the tracked set strips
+# ports/core/<shelf>/ off the index path; a shelf left on one side and not the
+# other makes the intersection empty and passes every tracked archive.
 #
 # THE THREE SCRIPTS AND THE INDEX ARE THE WHOLE MECHANISM. ports/srclib.sh
 # (sourced) is the archive's addressing and ports/sources.idx says which
@@ -1215,10 +1546,10 @@ echo "==> port sources: untracked, ignored, and the archive scripts sound"
 if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
     pa_hashed=$(awk '/^sha256[[:blank:]]*=/ {
                     n = split(FILENAME, a, "/"); print a[n-1] "/" $NF }' \
-                ports/core/*/kpkgbuild | LC_ALL=C sort -u)
+                ports/core/*/*/kpkgbuild | LC_ALL=C sort -u)
     pa_trk=$(git ls-files --cached ports/core \
              | grep -E '\.(tar|tgz|tbz2|txz|zip|7z)$|\.tar\.' \
-             | sed 's|^ports/core/||' | LC_ALL=C sort)
+             | sed 's|^ports/core/[^/]*/||' | LC_ALL=C sort)
     pa_bad=$(comm -12 <(printf '%s\n' "$pa_hashed") <(printf '%s\n' "$pa_trk") | grep .)
     pa_free=$(comm -13 <(printf '%s\n' "$pa_hashed") <(printf '%s\n' "$pa_trk") | grep .)
     if [ -n "$pa_bad" ]; then
@@ -1230,7 +1561,7 @@ if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
 
     pa_open=""
     for e in tar tar.gz tar.xz tar.bz2 tar.zst tgz tbz2 txz zip 7z tar.gz.part; do
-        git check-ignore -q --no-index "ports/core/.preflight-probe/probe.$e" \
+        git check-ignore -q --no-index "ports/core/.preflight-shelf/.preflight-probe/probe.$e" \
             || pa_open="$pa_open .$e"
     done
     git check-ignore -q --no-index ports/.srccache/sha256-00/probe \
@@ -1240,6 +1571,14 @@ if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
     else
         note ".gitignore covers every source suffix and the cache" "ok"
     fi
+    # A pattern naming one port spells its shelf, and one `git mv` to another
+    # shelf leaves it matching nothing: that port's odd-suffix sources are then
+    # a `git add -A` away from being committed.
+    pa_one=""
+    for _gp in $(sed -n 's|^/ports/core/\([^*/]*/[^*/]*\)/.*|\1|p' .gitignore | sort -u); do
+        [ -f "ports/core/$_gp/kpkgbuild" ] || pa_one="$pa_one $_gp"
+    done
+    [ -z "$pa_one" ] || bad ".gitignore" "names a port directory that holds no port:$pa_one"
     pa_fix=$(git ls-files testing/fixtures \
              | grep -E '\.(tar|tgz|tbz2|txz|zip|7z)$|\.tar\.' \
              | git check-ignore --no-index --stdin 2>/dev/null)
@@ -1383,11 +1722,10 @@ sed -e 's/#.*//' -e '/^[[:space:]]*@/d' -e 's/^[^=]*=//' \
     done
 } | sort -u | while read -r cmd; do
     [ -n "$cmd" ] || continue
-    if [ -d "ports/core/$cmd" ] || [ -d "src/packages/$cmd" ] ||
-       [ -d "src/desktop/$cmd" ] ||
+    if has_port "$cmd" ||
        [ -e "fs/usr/local/bin/$cmd" ] || [ -e "fs/usr/bin/$cmd" ] ||
-       grep -rqF -- "/bin/$cmd\"" ports/core/*/build.sh src/packages/*/build.sh \
-            src/desktop/*/build.sh 2>/dev/null ||
+       grep -rqF -- "/bin/$cmd\"" ports/core/*/*/build.sh src/*/*/build.sh \
+            2>/dev/null ||
        # ...or in a `for t in …` list, which is what a name installed by a
        # loop looks like: kdos-tools links five of its names that way and the
        # path form never appears in the file at all. Restricted to those lines
@@ -1399,7 +1737,7 @@ sed -e 's/#.*//' -e '/^[[:space:]]*@/d' -e 's/^[^=]*=//' \
        # does not begin with `for`, so every one of them drops out of the
        # match and the guard reports a program that is installed as missing.
        sed -e ':a' -e '/\\$/{N;s/\\\n/ /;ba' -e '}' \
-            src/packages/*/build.sh src/desktop/*/build.sh 2>/dev/null |
+            src/*/*/build.sh 2>/dev/null |
             grep -E '^[[:space:]]*for [A-Za-z_]+ in ' |
             grep -qE "(^|[[:space:]])$cmd([[:space:]]|;|\$)" ||
        # ...or as the `Exec=` of a desktop entry a recipe WRITES. A Python
@@ -1407,8 +1745,8 @@ sed -e 's/#.*//' -e '/^[[:space:]]*@/d' -e 's/^[^=]*=//' \
        # no path this can grep: `khal` ships `ikhal` that way. The recipe
        # writing an entry for it is the assertion that it exists, and it is a
        # file in this tree rather than a guess about one.
-       grep -rhE "^Exec=$cmd([[:space:]]|\$)" ports/core/*/build.sh \
-            src/packages/*/build.sh src/desktop/*/build.sh 2>/dev/null |
+       grep -rhE "^Exec=$cmd([[:space:]]|\$)" ports/core/*/*/build.sh \
+            src/*/*/build.sh 2>/dev/null |
             grep -q .; then
         continue
     fi
@@ -1418,6 +1756,30 @@ if [ -s "$SP/missing-cmds" ]; then
     bad "desktop commands" "$(tr '\n' ' ' < "$SP/missing-cmds")"
 else
     note "desktop commands" "every one is provided by the tree"
+fi
+
+echo
+echo "==> kdos-comp's direct-scanout switch has one writer"
+#
+# The scene's direct_scanout field covers every output, while the phosphor pass
+# is decided per output and per frame, so kdos_crt_scanout() writes it before
+# every build that reads it: off for the pass's own build, allowed for a plain
+# frame. Any other writer holds for the frames after it: an upstream toggle
+# (the magnifier has one) lets the pass build from a scanned-out client buffer
+# or keeps scanout from the frames it was meant for, and the environment
+# variable set in code takes scanout from every frame of the session.
+KC=src/desktop/kdos-comp/src
+if [ -d "$KC" ]; then
+    { grep -rnE 'WLR_PRIVATE\.direct_scanout[[:space:]]*=([^=]|$)' "$KC" |
+          grep -v "^$KC/kdos-crt\.c:"
+      grep -rnF 'WLR_SCENE_DISABLE_DIRECT_SCANOUT"' "$KC" | grep -F 'setenv'
+    } > "$SP/scanout-writers"
+    if [ -s "$SP/scanout-writers" ]; then
+        bad "direct-scanout writers" \
+            "only kdos_crt_scanout() may set it: $(cut -d: -f1,2 "$SP/scanout-writers" | tr '\n' ' ')"
+    else
+        note "direct-scanout writers" "kdos_crt_scanout() only"
+    fi
 fi
 
 echo
@@ -1499,6 +1861,12 @@ for name, fn in tools.items():
         if re.search(r'\b(int\s+)?%s_main\s*\(' % re.escape(fn), body):
             text.setdefault(name, "")
             text[name] += body
+# A front end on sh_run() takes `--font` and `--dump` in shell.c, not in its own
+# file, so the runner's source is part of the text its flags are looked for in.
+runner = open(os.path.join(SRC, "shell.c")).read()
+for name in text:
+    if re.search(r'\bsh_run\s*\(', text[name]):
+        text[name] += runner
 
 # kdos-res is a separate binary rather than a TOOLS[] name, and the panel and
 # the compositor's keybind both spawn it. Its whole source is the text a flag
@@ -1540,7 +1908,7 @@ echo "==> every source file in one of OUR ports is compiled by its recipe"
 # be absent from the shipped binary. Only our own trees: an upstream tarball
 # is entitled to carry sources its own build system chooses between.
 : > "$SP/uncompiled"
-for d in src/desktop/*/ src/packages/*/; do
+for d in src/*/*/; do
     b="$d/build.sh"
     [ -f "$b" ] || continue
     # A recipe that globs its OWN source directory compiles whatever is
@@ -1594,10 +1962,10 @@ grep -q 'store_main' src/desktop/kdos-shell/shell.h ||
 # THE CATALOGUE MUST BE INSTALLED, not merely present in the tree. A path
 # nothing installs is a store that opens empty with no error on the screen:
 # cat_load() cannot tell "no applications" from "no file".
-grep -q 'usr/share/kdos/appstore/catalogue' src/packages/kdos-appbox/build.sh ||
+grep -q 'usr/share/kdos/appstore/catalogue' src/system/kdos-appbox/build.sh ||
     bad "catalogue" "build.sh does not install it"
-[ -f src/packages/kdos-appbox/catalogue ] ||
-    bad "catalogue" "src/packages/kdos-appbox/catalogue is missing"
+[ -f src/system/kdos-appbox/catalogue ] ||
+    bad "catalogue" "src/system/kdos-appbox/catalogue is missing"
 note "kdos-store" "the surface is wired in four places and the catalogue ships"
 
 echo
@@ -1609,10 +1977,10 @@ echo "==> no build script NAMES a command inside double quotes and RUNS it"
 # must quote it so the shell does not.
 #
 # Only ECHO lines are checked, and only in the build tree: a backtick elsewhere
-# is ordinary (00_toolchain/01_gcc.sh uses one to place limits.h) and rewriting
+# is ordinary (00_cross/01_gcc.sh uses one to place limits.h) and rewriting
 # those buys nothing. `shellcheck` would flag SC2006 on every one of them.
 _bt=0
-for _f in script/*.sh script/*/*.sh; do
+for _f in script/*.sh script/*/*.sh script/phases/*/*.sh; do
     [ -f "$_f" ] || continue
     while IFS= read -r _line; do
         case "$_line" in
@@ -1633,7 +2001,7 @@ echo "==> every recipe that runs cargo builds against a shared C library"
 # succeeds with a private copy of the library that no update of its port
 # reaches.
 _cs=0
-for _f in ports/core/*/build.sh; do
+for _f in ports/core/*/*/build.sh; do
     grep -qE '(^|[[:space:]])cargo[[:space:]]+(build|install|cbuild|cinstall)' "$_f" || continue
     grep -q -- '-crt-static' "$_f" && continue
     bad "$(basename "$(dirname "$_f")")" "runs cargo without RUSTFLAGS=\"-C target-feature=-crt-static\""
@@ -1643,14 +2011,14 @@ note "crt-static" "$_cs cargo recipes link statically"
 
 echo
 echo "==> no chroot step reads the ports tree through /kdos/ports"
-# chroot_exec binds $REPO_ROOT onto /kdos with a NON-RECURSIVE `mount --bind`,
+# chroot/exec.sh binds $REPO_ROOT onto /kdos with a NON-RECURSIVE `mount --bind`,
 # so the container's own mounts underneath it do not come along: /kdos/ports is
 # the empty directory that sat there before docker shadowed it, and the ports
 # tree is bound separately at /ports. A step that spells it /kdos/ports finds
 # an empty directory on a machine holding every pack, and reports it as awk's
 # exit 2 under `set -e`: an empty step log and nothing naming the path.
 _kp=0
-for _f in script/*/*.sh; do
+for _f in script/*/*.sh script/phases/*/*.sh; do
     [ -f "$_f" ] || continue
     if grep -qE '(^|[^#])/kdos/ports/' "$_f" 2>/dev/null; then
         bad "$(basename "$_f")" "reads /kdos/ports — that is an empty shadow in the chroot; use /ports"
@@ -1658,6 +2026,38 @@ for _f in script/*/*.sh; do
     fi
 done
 note "chroot ports path" "$((_kp)) steps read the ports tree through the shadowed path"
+
+echo
+echo "==> every file a build script sources exists, and a step reads its own phase.env"
+# A `source` of a missing file is the first line of a step failing, which for
+# the image phase is hours into a build; and a step copied from another phase
+# that still sources that phase's phase.env runs with the wrong title, repos
+# and flags and fails nowhere. A path spelled from the repository root, or from
+# the sourcing file's own directory as ${BASH_SOURCE[0]%/*}, is checked; one
+# built from any other variable is not, since only the build knows its value.
+_src=0 _srcn=0
+for _f in script/*.sh script/*/*.sh script/phases/*/*.sh script/phases/*/phase.env \
+          script/env/*.env; do
+    [ -f "$_f" ] || continue
+    _own=${_f#script/phases/}; _own=${_own%%/*}
+    while IFS= read -r _s; do
+        _s=${_s//\"/}
+        _s=${_s//\$\{BASH_SOURCE\[0\]%\/\*\}/${_f%/*}}
+        case "$_s" in *'$'*) continue ;; esac
+        _srcn=$((_srcn + 1))
+        if [ ! -f "$_s" ]; then
+            bad "$_f" "sources $_s, which does not exist"
+            _src=$((_src + 1))
+            continue
+        fi
+        case "$_f:$_s" in script/phases/*:script/phases/*/phase.env)
+            [ "$_s" = "script/phases/$_own/phase.env" ] || {
+                bad "$_f" "sources $_s — a step reads its own phase's phase.env"
+                _src=$((_src + 1)); } ;;
+        esac
+    done < <(sed -n 's/^[[:space:]]*\(source\|\.\)[[:space:]]\+\([^[:space:];&|]*\).*/\2/p' "$_f")
+done
+[ "$_src" = 0 ] && note "sourced files" "$_srcn source line(s) resolve"
 
 echo
 echo "==> every consumer of a shared library generates the protocols it includes"
@@ -1669,7 +2069,7 @@ echo "==> every consumer of a shared library generates the protocols it includes
 _pg=0
 for _p in $(grep -ho '"[a-z0-9-]*-client-protocol\.h"' src/libs/libkwl/*.c 2>/dev/null |
             tr -d '"' | sed 's/-client-protocol\.h$//' | sort -u); do
-    for _f in src/desktop/*/build.sh src/packages/*/build.sh; do
+    for _f in src/*/*/build.sh; do
         [ -f "$_f" ] || continue
         grep -q 'libkwl/\*\.c\|libkwl/kwl\.c' "$_f" 2>/dev/null || continue
         if ! grep -q -- "$_p" "$_f" 2>/dev/null; then
@@ -1696,16 +2096,22 @@ if [ -f apps.plan.md ]; then
     python3 - <<'PYCAT' || true
 import os, re
 
+# A port is its directory's name: ports/core/<shelf>/<name>/ and
+# src/<area>/<name>/ are both one level of grouping above it.
 names = set()
-for d in ("ports/core", "src/packages", "src/desktop"):
-    if os.path.isdir(d):
-        names |= {n for n in os.listdir(d)
-                  if os.path.isfile(os.path.join(d, n, "kpkgbuild"))}
+for top in ("ports/core", "src"):
+    if not os.path.isdir(top):
+        continue
+    for g in os.listdir(top):
+        d = os.path.join(top, g)
+        if os.path.isdir(d):
+            names |= {n for n in os.listdir(d)
+                      if os.path.isfile(os.path.join(d, n, "kpkgbuild"))}
 boxed = set()
-if os.path.isfile("src/packages/kdos-appbox/catalogue"):
+if os.path.isfile("src/system/kdos-appbox/catalogue"):
     # ONLY A PACK ROW CARRIES PACKAGES IN COLUMN 3. `group` and `meta` rows put
     # prose there, and slicing them in fills this set with English.
-    for line in open("src/packages/kdos-appbox/catalogue"):
+    for line in open("src/system/kdos-appbox/catalogue"):
         f = line.strip().split()
         if not f or f[0].startswith("#"):
             continue
@@ -1763,17 +2169,18 @@ echo "==> mc's shipped rows name programs that exist"
 _names="$SP/imagenames"
 {
     sed -n 's|.*bin/\([a-z][a-z0-9-]*\)".*|\1|p' \
-        src/desktop/*/build.sh src/packages/*/build.sh 2>/dev/null
+        src/*/*/build.sh 2>/dev/null
     # CONTINUATIONS ARE JOINED FIRST. The loop is matched by its `; do`, which
     # a backslash-wrapped list puts on a later line — and the extraction then
     # silently yields nothing rather than failing, so every name the loop links
     # drops out of the list this guard compares against.
     sed -e ':a' -e '/\\$/{N;s/\\\n/ /;ba' -e '}' \
-        src/desktop/*/build.sh src/packages/*/build.sh 2>/dev/null |
+        src/*/*/build.sh 2>/dev/null |
         sed -n 's/^for t in \(.*\); do/\1/p; s/^for _t in \(.*\); do/\1/p' |
         tr ' ' '\n'
-    cat script/04_phase4/packages.txt 2>/dev/null
-    ls ports/core 2>/dev/null
+    for _d in "${PORTS_ALL[@]}"; do
+        case "$_d" in ports/core/*) printf '%s\n' "${_d##*/}" ;; esac
+    done
 } | sed 's/[^a-z0-9-]//g' | grep . | sort -u > "$_names"
 
 _mcp=0
@@ -1860,7 +2267,7 @@ fi
 echo
 echo "==> help pages: every .doc names a document that ships"
 _doc=0
-for _d in $(grep -rho 'keys\.doc = "[a-z0-9_-]*"' src/desktop src/packages 2>/dev/null |
+for _d in $(grep -rho 'keys\.doc = "[a-z0-9_-]*"' src/desktop src/daemons src/system src/art 2>/dev/null |
             sed 's/.*"\(.*\)"/\1/' | sort -u); do
     _doc=$((_doc + 1))
     [ -f "fs/usr/share/kdos/doc/$_d.txt" ] ||
@@ -2071,7 +2478,7 @@ echo "==> the generated aerc styleset is one aerc will load"
 # A KEY IS object[.selected].attribute, and aerc refuses the WHOLE FILE on one
 # it cannot parse — so a single wrong key is a mail client that will not start,
 # on a machine where nothing else reads this file and nothing else would say so.
-_akeys=$(sed -n '/^static void write_aerc/,/^}/p' src/packages/kdos-tools/kdos.c 2>/dev/null |
+_akeys=$(sed -n '/^static void write_aerc/,/^}/p' src/system/kdos-tools/kdos.c 2>/dev/null |
          grep -oE '"[A-Za-z_*][A-Za-z0-9_*.]*=' | tr -d '"=')
 _aerc=0
 for _k in $_akeys; do

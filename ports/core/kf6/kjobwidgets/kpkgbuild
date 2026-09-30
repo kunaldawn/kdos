@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kjobwidgets
+version     = 6.30.0
+release     = 1
+source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = bf36e3619df1c6ad3d900bd36433d97ab295be41c1cc401ff0e766380788bbae  kjobwidgets-6.30.0.tar.xz
+description = KDE Frameworks: widgets that track the progress of KJob tasks
+homepage    = https://invent.kde.org/frameworks/kjobwidgets
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons kwidgetsaddons knotifications

@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   43_toolkits: Toolkits
+# ---------------------------------
+#   office — Office suites, word processors, spreadsheets, presentations,
+#   accounting and finance, and office-format import libraries
+# ---------------------------------
+#
+# Libraries whose dependency closure reaches GTK, Qt, wxWidgets, FLTK or Motif:
+# the toolkits themselves, KDE Frameworks, and what applications link over
+# them.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+goffice

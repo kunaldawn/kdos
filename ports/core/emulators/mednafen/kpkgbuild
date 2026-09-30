@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = mednafen
+version     = 1.32.1
+release     = 1
+source      = https://mednafen.github.io/releases/files/mednafen-$version.tar.xz
+sha256      = de7eb94ab66212ae7758376524368a8ab208234b33796625ca630547dbc83832  mednafen-1.32.1.tar.xz
+description = Mednafen — command-line multi-system emulator: NES, SNES, Game Boy, GBA, Mega Drive, PC Engine, PlayStation, Saturn and more
+homepage    = https://mednafen.github.io
+depends     = pkgconf sdl2-compat alsa-lib flac zlib lzo zstd

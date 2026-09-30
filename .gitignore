@@ -8,8 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Anchored: an unanchored build/ also matched src/build/, hiding the
-# orchestrator's own sources from git.
+# Anchored: an unanchored build/ would match a directory of that name anywhere
+# in the tree and hide its sources from git.
 /build/
 /build_test/
 
@@ -30,31 +30,44 @@ ports/.portup-tools/
 ports/.update-cache.json
 
 # Upstream sources are not in git. `make fetch` puts each one in the local
-# cache (ports/.srccache/sha256-XX/<hash>, laid out like the kunaldawn/kdos
-# archive) and hard-links it into its port directory; `ports/publish` is what
-# puts a new one in the archive. Anchored to ports/core so the archive fixtures
-# under testing/fixtures stay tracked — ignoring those makes every test that
-# replays them silently absent on a fresh clone. A pattern never untracks a
-# file git already carries, so a patch or config file a recipe hashes is
-# unaffected, and testing/preflight.sh fails on a tracked archive a recipe
-# hashes.
+# cache (ports/.srccache/sha256-XX/<hash>, split by the hash's leading byte;
+# the archive keeps its copy in a sources-NNN release of kunaldawn/kdos) and
+# hard-links it into its port directory; `ports/publish` is what
+# puts a new one in the archive. Anchored to ports/core/<shelf>/<port>, the
+# depth every port sits at, so a source in a port directory is ignored and the
+# archive fixtures under testing/fixtures stay tracked — ignoring those makes
+# every test that replays them silently absent on a fresh clone. A pattern
+# never untracks a file git already carries, so a patch or config file a recipe
+# hashes is unaffected, and testing/preflight.sh fails on a tracked archive a
+# recipe hashes.
 ports/.srccache/
-/ports/core/*/*.tar
-/ports/core/*/*.tar.*
-/ports/core/*/*.tgz
-/ports/core/*/*.tbz2
-/ports/core/*/*.txz
-/ports/core/*/*.zip
-/ports/core/*/*.7z
-/ports/core/*/*.part
+/ports/core/*/*/*.tar
+/ports/core/*/*/*.tar.*
+/ports/core/*/*/*.tgz
+/ports/core/*/*/*.tbz2
+/ports/core/*/*/*.txz
+/ports/core/*/*/*.zip
+/ports/core/*/*/*.7z
+/ports/core/*/*/*.part
+/ports/core/*/*/*.jar
+/ports/core/*/*/*.rcc
+/ports/core/*/*/*.onnx
+/ports/core/*/*/*.traineddata
+/ports/core/*/*/*.sf3
+/ports/core/*/*/*.nnue
+/ports/core/*/*/*.bin
+/ports/core/graphics/digikam/*.jpeg
+/ports/core/music-libs/fluidr3-gm-sf3/*.md
+/ports/core/hamradio/meshtastic-firmware/*.json
+/ports/core/hamradio/rnode-firmware/*.json
 __pycache__/
 ports-archived/
 port-archive.sh
 
 # Testing runtime artifacts. NOT testing/fixtures — those are the recorded
 # corpora testing/selftest.sh replays (stutter, cve, portup, privacy, tray,
-# energy), and ignoring them made every fixture-driven test silently absent on
-# a fresh clone while passing on the machine that wrote them.
+# energy), and ignoring them makes every fixture-driven test silently absent on
+# a fresh clone while it passes on the machine that wrote them.
 testing/logs/
 testing/test_results.json
 

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = waypipe
+version     = 0.11.2
+release     = 1
+source      = https://gitlab.freedesktop.org/mstoeckl/waypipe/-/archive/v$version/waypipe-v$version.tar.gz
+sha256      = 70914b590b2b9a74a16fe9936bb7dba6b3eb59466ed17aaba2613c9fa09b8dad  waypipe-0.11.2.tar.gz
+sha256      = 0350ffa997edc6656c24edee54f669750a69276c486168db0ada94f218b1952d  waypipe-vendor-0.11.2.tar.xz
+description = Network proxy for Wayland clients — run a program on another machine and show it here, over SSH
+homepage    = https://gitlab.freedesktop.org/mstoeckl/waypipe
+depends     = meson ninja pkgconf scdoc rust bindgen clang lz4 zstd ffmpeg mesa vulkan-headers vulkan-loader shaderc openssh
+vendoring   = rust

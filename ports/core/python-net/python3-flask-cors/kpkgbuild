@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-flask-cors
+version     = 6.0.5
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/f/flask_cors/flask_cors-$version.tar.gz
+sha256      = 30c5031552cd59f620ac0c8211dac45b345d3b2df310e7721879e4f46ef9c601  python3-flask-cors-6.0.5.tar.gz
+description = Cross-origin resource sharing (CORS) headers for Flask applications
+homepage    = https://github.com/corydolphin/flask-cors
+depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-flask python3-werkzeug

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-jellyfish
+version     = 1.2.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/j/jellyfish/jellyfish-$version.tar.gz
+sha256      = 72d2fda61b23babe862018729be73c8b0dc12e3e6601f36f6e65d905e249f4db  python3-jellyfish-1.2.1.tar.gz
+sha256      = 74452fe3b083766b21af03e446018cf3b1023e5b6b1fb3c0549ccda54a6932df  python3-jellyfish-vendor-1.2.1.tar.xz
+description = jellyfish — approximate and phonetic string matching, in Rust
+homepage    = https://github.com/jamesturk/jellyfish
+depends     = python3 python3-pip python3-maturin rust
+vendoring   = rust

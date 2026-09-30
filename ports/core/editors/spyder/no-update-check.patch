@@ -1,0 +1,11 @@
+--- a/spyder/config/main.py
++++ b/spyder/config/main.py
+@@ -90,7 +90,7 @@
+               }),
+             ('update_manager',
+              {
+-              'check_updates_on_startup': True,
++              'check_updates_on_startup': False,
+               'check_stable_only': True,
+               }),
+             ('toolbar',

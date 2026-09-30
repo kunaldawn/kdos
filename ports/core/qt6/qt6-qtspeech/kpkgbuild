@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtspeech
+version     = 6.11.2
+release     = 1
+_module     = qtspeech
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 9c1d05dc9d710049f20a67680fc6b4293c9b584a90f04f4cf6cc36e758c5cb98  qt6-qtspeech-6.11.2.tar.xz
+description = Qt 6 TextToSpeech — speech synthesis through speech-dispatcher
+homepage    = https://www.qt.io
+depends     = cmake ninja qt6-qtbase pkgconf qt6-qtdeclarative qt6-qtmultimedia speech-dispatcher
+group       = qt6

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hunspell-en
+version     = 26.8.0.3
+release     = 1
+_series     = ${version%.*}
+source      = $name-$version.tar.xz::https://download.documentfoundation.org/libreoffice/src/$_series/libreoffice-dictionaries-$version.tar.xz
+sha256      = 4849ca14733cf4d5896a2f5bb6db87ffade9d1fbeab92e63153dc79630995a60  hunspell-en-26.8.0.3.tar.xz
+description = English spelling dictionaries, hyphenation patterns and thesaurus from the LibreOffice dictionaries release
+homepage    = https://git.libreoffice.org/dictionaries
+depends     = mythes perl

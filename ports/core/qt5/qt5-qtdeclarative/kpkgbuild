@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qtdeclarative
+version     = 5.15.19
+release     = 1
+_module     = qtdeclarative
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+sha256      = 71ea562ac01b045f062df8d421120a3a52733b84f2ee3f526db106fabd70720d  qt5-qtdeclarative-5.15.19.tar.xz
+description = Qt 5 QML and Qt Quick — the declarative UI language, its JavaScript engine and the Quick scene graph
+homepage    = https://www.qt.io/
+depends     = qt5-qtbase python3 vulkan-headers
+group       = qt5
+series      = 5.15

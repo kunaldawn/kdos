@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gsm
+version     = 1.0.24
+release     = 1
+source      = https://www.quut.com/gsm/gsm-$version.tar.gz
+sha256      = a3c40c6471928383f4abfcb2e8f24012a1f562be2f17b8d672145d5986681a92  gsm-1.0.24.tar.gz
+description = GSM 06.10 lossy speech codec — libgsm and the toast, untoast and tcat tools
+homepage    = https://www.quut.com/gsm/

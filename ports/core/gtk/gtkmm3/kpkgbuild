@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gtkmm3
+version     = 3.24.11
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/gtkmm/${version%.*}/gtkmm-$version.tar.xz
+sha256      = 19e383c82d5dd89db275e00b82864e90414d4c3fb3d100b2f996bcc2338a4cc7  gtkmm3-3.24.11.tar.xz
+description = C++ bindings for GTK 3 (gtkmm-3.0), with the atkmm and X11 APIs
+homepage    = https://gtkmm.gnome.org/
+depends     = gtk3 glibmm2.66 cairomm1.14 pangomm2.46 atkmm2.28 libsigc++2 gdk-pixbuf meson python3
+series      = 3.24

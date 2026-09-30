@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = manifold
+version     = 3.5.4
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/elalish/manifold/archive/refs/tags/v$version.tar.gz
+sha256      = ce2f8b7798409b9f07e092c0ec0524ed0806431e01aea4020b65d0e934ea9438  manifold-3.5.4.tar.gz
+description = Guaranteed-manifold mesh boolean library, the geometry kernel OpenSCAD renders with
+homepage    = https://github.com/elalish/manifold
+depends     = cmake ninja clipper2 onetbb

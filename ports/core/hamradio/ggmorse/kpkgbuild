@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ggmorse
+version     = 0.1.0.git20250920
+release     = 1
+_commit     = 25f98e2636a8f4a4481a891384c6dd4ca7aa6b3a
+source      = $name-$version.tar.gz::https://github.com/srcejon/ggmorse/archive/$_commit.tar.gz
+sha256      = c5cabc1697ce927f78a731a5146d145a442d4d40d4bc95d6cd2fd8699b325922  ggmorse-0.1.0.git20250920.tar.gz
+description = ggmorse — Morse code decoding library, the fork SDRangel's Morse decoder links
+homepage    = https://github.com/ggerganov/ggmorse
+depends     = cmake ninja

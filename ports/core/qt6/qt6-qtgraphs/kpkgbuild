@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtgraphs
+version     = 6.11.2
+release     = 1
+_module     = qtgraphs
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 9f2109854afa45dd144116c11461989c411a17065c63da5068441a1200fb8b21  qt6-qtgraphs-6.11.2.tar.xz
+description = Qt 6 Graphs — 2D and 3D data visualisation for QML and widgets
+homepage    = https://www.qt.io
+depends     = cmake ninja qt6-qtbase qt6-qtdeclarative qt6-qtquick3d
+group       = qt6

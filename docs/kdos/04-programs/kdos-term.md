@@ -47,7 +47,7 @@ Use `kdos-term` when you want pictures in the terminal, clickable links, prompt 
 size per window.
 
 The binary is `/usr/bin/kdos-term`, built from `src/desktop/kdos-term/` by the `kdos-term` port in
-the `05_desktop` phase (`script/05_desktop/packages.txt`).
+the `50_desktop` phase (`script/phases/50_desktop/packages.txt`).
 
 ## Synopsis
 
@@ -118,7 +118,8 @@ Every child starts on a pseudo-terminal of its own, in a new session, with this 
 | `COLUMNS`, `LINES` | Removed | A stale size inherited from the parent would override the real one |
 
 The shipped `/etc/bash.bashrc` reads `TERM_PROGRAM`: where `GNUTERM` is unset and `gnuplot` is
-installed, it sets `GNUTERM=sixelgd` in `kdos-term` (and in `foot`), so gnuplot draws sixel pictures.
+installed, it sets `GNUTERM=sixelgd` in `kdos-term` (and in `foot`), so gnuplot draws sixel pictures
+inline rather than in its own `qt` window.
 The same file emits the prompt marks described in [Prompt marks](#prompt-marks).
 
 ## Selection and the two clipboards
@@ -220,6 +221,9 @@ fontconfig name by one:
 
 A scalable face changes on every step. A bitmap face answers with the nearest size it has, so a step
 that lands between two of its sizes changes nothing on screen until a step reaches the next one.
+Terminus goes on past its sizes: at 8 and 9 and from 36 each step is drawn from `Terminus (TTF)`,
+the same typeface in outlines, in a cell exactly the stepped size tall and half as wide, rounded up
+at an odd size. The one exception in the range is 64, which is the 32 size with every pixel doubled.
 
 A different cell size means a different number of columns and rows, so the grid is recut and the
 child is told its new size, exactly as when the window is resized. A picture already on the screen
@@ -670,7 +674,7 @@ window.
 |---|---|
 | [`libkvt`](../05-developer/c-libraries.md) | The VT100–VT520 state machine, the child on a pseudo-terminal, the screen as cells, selection, links and prompt marks |
 | `libkdisp` | Which display server to use, decided once at startup |
-| `libkwl` | The Wayland window: the only display implementation `kdos-term` links |
+| `libkwl` | The Wayland window: the only display implementation `kdos-term` links. A screen that scrolls has its rows' pixels moved inside the window's buffer rather than repainted |
 | `libktui` | The cell grid, the sprite table and its budget, the paste filter, the one dialog |
 | `libkcell` | The font painter, and the one scale-and-cut from a decoded picture into sprite tiles |
 | `libkimg` | The one place untrusted image bytes become a picture |

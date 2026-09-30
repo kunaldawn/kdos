@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pat
+version     = 1.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/la5nta/pat/archive/refs/tags/v$version.tar.gz
+sha256      = 2b46189991f81a64d033c200f6877b92748def374e20fa6f65b70574857ef845  pat-1.0.0.tar.gz
+sha256      = aac7f7d33f245a6c3a8bdb2db37d1989119173206c117ea34444da2b29875ecc  pat-vendor-1.0.0.tar.xz
+description = Pat — a Winlink email client for amateur radio, over ARDOP, AX.25 packet and telnet
+homepage    = https://getpat.io/
+depends     = go ardopcf
+vendoring   = go

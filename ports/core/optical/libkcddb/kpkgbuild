@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libkcddb
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 2d86bd59ff8d1d5474e594ca0a8ce2ef5a1cabf9a27f357c6e83c9920dd1dafb  libkcddb-26.08.1.tar.xz
+description = KDE CDDB client library — audio CD track names for K3b
+homepage    = https://invent.kde.org/multimedia/libkcddb
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig ki18n kio kwidgetsaddons kcmutils kdoctools

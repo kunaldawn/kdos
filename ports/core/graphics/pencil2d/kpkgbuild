@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pencil2d
+version     = 0.7.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/pencil2d/pencil/archive/refs/tags/v$version.tar.gz
+sha256      = 22af8bf304cd18ae5d7a84e66d80ea2a21a53963476ffabb60d1d5f37f091a0c  pencil2d-0.7.2.tar.gz
+description = Pencil2D: hand-drawn 2D animation with bitmap and vector layers, for Qt 6
+homepage    = https://www.pencil2d.org/
+depends     = qt6-qtbase qt6-qtmultimedia qt6-qtsvg qt6-qttools ffmpeg hicolor-icon-theme shared-mime-info

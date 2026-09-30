@@ -241,8 +241,8 @@ static void
 enable_magnifier(bool enable)
 {
 	magnify_on = enable;
-	server.scene->WLR_PRIVATE.direct_scanout = enable ? false
-		: server.direct_scanout_enabled;
+	/* KDOS: no scanout while magnified — kdos_crt_scanout() reads
+	 * magnify_on before every plain frame's build */
 }
 
 /* Toggles magnification on and off */

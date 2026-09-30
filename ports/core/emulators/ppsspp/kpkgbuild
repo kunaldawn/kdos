@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ppsspp
+version     = 1.20.4
+release     = 1
+source      = $name-$version.tar.xz::https://github.com/hrydgard/ppsspp/releases/download/v$version/ppsspp-$version.tar.xz
+sha256      = 4de21db3105d9d81a465a8a7e78c68ee3c0e0bf6597d1c1d530f7555f3ad8b31  ppsspp-1.20.4.tar.xz
+description = PPSSPP — PlayStation Portable emulator, OpenGL and Vulkan, drawn through SDL
+homepage    = https://www.ppsspp.org/
+depends     = cmake ninja pkgconf python3 sdl2-compat sdl2-ttf fontconfig ffmpeg libpng zlib zstd libzip rapidjson miniupnpc libglvnd mesa vulkan-loader wayland

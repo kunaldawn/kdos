@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = orca
+version     = 51.0
+release     = 1
+source      = https://download.gnome.org/sources/orca/${version%.*}/orca-$version.tar.xz
+sha256      = 8bc3e44bc5b7b66ec7e0cc5c82695c0075661922745d25724f5fc84a25602108  orca-51.0.tar.xz
+description = Orca — the screen reader: speech and braille over the AT-SPI accessibility tree
+homepage    = https://orca.gnome.org/
+depends     = meson ninja pkgconf gettext itstool python3 python3-gobject python3-cairo python3-dasbus python3-psutil glib gtk3 at-spi2-core gsettings-desktop-schemas speech-dispatcher

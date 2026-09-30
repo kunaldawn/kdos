@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qtx11extras
+version     = 5.15.19
+release     = 1
+_module     = qtx11extras
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+sha256      = 467cdec8c01443f7c3e4f82771b2350bfe797717d0f2b6cc662a65411480a75c  qt5-qtx11extras-5.15.19.tar.xz
+description = Qt 5 X11 extras — QX11Info, which Qt 5 programs use to reach the X11 display under Xwayland
+homepage    = https://www.qt.io/
+depends     = qt5-qtbase libxcb libX11
+group       = qt5
+series      = 5.15

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kate
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = b7d690761e37c29b425375ee42b959b59a9de693789de86e0fb826bace5b3d7f  kate-26.08.1.tar.xz
+description = KDE advanced text editor — tabs, split views, LSP, projects, search, terminal
+homepage    = https://kate-editor.org/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative karchive kbookmarks kconfig kcoreaddons kcrash kdbusaddons kdoctools kguiaddons ki18n kiconthemes kio knewstuff ktexteditor kwidgetsaddons kwindowsystem qtkeychain gpgmepp libintl

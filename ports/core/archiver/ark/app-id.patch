@@ -1,0 +1,11 @@
+--- a/app/org.kde.ark.desktop.cmake	2026-09-28 02:54:14.490285207 +0530
++++ b/app/org.kde.ark.desktop.cmake	2026-09-28 02:54:14.490454519 +0530
+@@ -160,7 +160,7 @@
+ Type=Application
+ Categories=Qt;KDE;Utility;Archiving;Compression;X-KDE-Utilities-File;
+ InitialPreference=3
+-StartupWMClass=ark
++StartupWMClass=org.kde.ark
+ Comment=Work with file archives
+ Comment[ar]=العمل مع أرشيفات الملفات
+ Comment[ast]=Funciona con archivos

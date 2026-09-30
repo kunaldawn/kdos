@@ -1,0 +1,62 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   archiver — Compression libraries and archive tools
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libdeflate
+unzip
+
+# Zip archives as a library: ark, the emulators, the CAD and 3D tools and
+# libsigrok read theirs through it.
+libzip
+
+# A PNG pass beside oxipng: zopflipng recompresses one losslessly and slowly.
+# noto-emoji runs every emoji image through it and pngquant.
+zopfli
+
+ouch
+
+# lzip before ddrescue: GNU ships ddrescue as .tar.lz and nothing else, and
+# kpkg unpacks only the extensions it knows.
+lzip
+
+# unzip has been a port since the beginning and zip had not, so this system
+# could open an archive it could not make.
+zip
+
+# PAR2 recovery data: the difference between a bit-rotted archive and a lost
+# one, on a distro whose medium IS the software library.
+par2cmdline-turbo
+
+minizip
+libaec
+
+# 7zz lists and extracts every archive, ISO and disk image yazi previews.
+7zip
+
+libmspack
+minizip-ng
+cabextract
+unshield
+zziplib
+c-blosc
+lhasa
+zlib-ng

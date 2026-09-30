@@ -37,7 +37,9 @@ tty2::respawn:/usr/local/sbin/kdos-getty tty2 /sbin/getty 38400 tty2
 ::ctrlaltdel:/sbin/reboot
 # Shutdown entries run in order, each to completion, before init signals every
 # process. rcK stops the services first, while the filesystems they save to
-# are still writable.
+# are still writable. killpower comes last because it may tell a UPS to cut
+# the power, which must find every filesystem already read-only.
 ::shutdown:/etc/init.d/rcK
 ::shutdown:/sbin/swapoff -a
 ::shutdown:/bin/umount -a -r
+::shutdown:/etc/init.d/killpower

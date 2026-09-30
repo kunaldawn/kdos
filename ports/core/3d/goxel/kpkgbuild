@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = goxel
+version     = 0.15.1
+release     = 1
+source      = https://github.com/guillaumechereau/goxel/archive/refs/tags/v$version.tar.gz
+sha256      = 01c9601ac9d8d38e29d3adff4b79a26c2b9fea4c2d2cb1d134471e499f8c4a84  goxel-0.15.1.tar.gz
+description = 3D voxel editor, drawn with OpenGL through GLFW and no toolkit
+homepage    = https://goxel.xyz
+depends     = scons pkgconf glfw libglvnd mesa dbus libpng

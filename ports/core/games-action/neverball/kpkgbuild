@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = neverball
+version     = 1.6.0
+release     = 1
+source      = https://neverball.org/$name-$version.tar.gz
+sha256      = 73fe63cca4f96e2d355480d03bc0b2904e83a0abdf65fe8c52db5cc3cca88fa0  neverball-1.6.0.tar.gz
+description = Neverball and Neverputt — tilt the floor to roll a ball through 3D obstacle courses, and minigolf on the same engine
+homepage    = https://neverball.org
+depends     = sdl2-compat sdl2-ttf libvorbis libpng libjpeg-turbo physfs libglvnd mesa pkgconf

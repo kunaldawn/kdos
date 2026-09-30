@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libayatana-indicator
+version     = 0.9.5
+release     = 1
+source      = https://github.com/AyatanaIndicators/libayatana-indicator/archive/$version/libayatana-indicator-$version.tar.gz
+sha256      = 73d71c908b803f12e4a5ecd8392511b58afbdd0c82ad7909611a17bb7847c5c8  libayatana-indicator-0.9.5.tar.gz
+description = Ayatana indicator library — the shared object behind application and system indicators
+homepage    = https://github.com/AyatanaIndicators/libayatana-indicator
+depends     = cmake ninja pkgconf glib gtk3 ayatana-ido

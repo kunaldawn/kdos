@@ -1,0 +1,44 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   42_graphics: Graphics Stack
+# ---------------------------------
+#   python-libs — General-purpose python3-* runtime libraries: text,
+#   templating, markup, parsing, config, CLI, system, files, crypto, imaging
+# ---------------------------------
+#
+# Ports whose dependency closure reaches wayland, libX11, mesa, libdrm, cairo,
+# pango, gstreamer, ffmpeg or pipewire but no toolkit, and that are not leaf
+# applications.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The compiled python bindings a document pipeline needs: an imaging library, a
+# PDF rewriter and a HEIF decoder. Each binds a system library this tree
+# already builds, which is why they are ports rather than entries in somebody's
+# vendor bundle.
+python3-pillow
+python3-pikepdf
+python3-pillow-heif
+
+# WHAT visidata OPENS AN xlsx WITH. sc-im reads the format in C and needs none
+# of this; visidata asks for openpyxl by name and refuses without it.
+python3-openpyxl
+
+# Binds pdfium for ocrmypdf.
+python3-pypdfium2
+
+# Shapes the text fpdf2 writes for ocrmypdf, against the system harfbuzz
+# through python3-pkgconfig.
+python3-uharfbuzz
+
+python3-qrcode

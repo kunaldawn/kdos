@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = freeciv
+version     = 3.2.6
+release     = 1
+source      = https://files.freeciv.org/stable/freeciv-$version.tar.xz
+sha256      = b3ce15f54083b1fca146f62837a5f7d41d298537fa34940cca70eeb09c7a9c6e  freeciv-3.2.6.tar.xz
+description = Freeciv — turn-based empire-building strategy in the Civilization tradition, SDL2 client and server
+homepage    = https://www.freeciv.org/
+depends     = meson ninja pkgconf python3 gzip sdl2-compat sdl2-image sdl2-ttf sdl2-gfx sdl2-mixer icu curl sqlite readline zlib bzip2 xz zstd

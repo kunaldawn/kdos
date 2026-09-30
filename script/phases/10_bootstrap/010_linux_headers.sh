@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+set -e
+source script/phases/10_bootstrap/phase.env
+source script/lib/port.sh
+
+if [ -f "$MARK/linux_headers" ] && [ "${KDOS_REPLAY:-0}" != "1" ]; then
+    exit 0
+fi
+
+echo ">>> Installing Linux Headers..."
+
+LINUX_SRC=$(extract_port_source linux)
+cd "$LINUX_SRC"
+echo "$LINUX_SRC"
+
+make ARCH=x86_64 headers_install INSTALL_HDR_PATH=$SYSROOT/usr
+
+rm -rf "$LINUX_SRC"
+touch "$MARK/linux_headers"

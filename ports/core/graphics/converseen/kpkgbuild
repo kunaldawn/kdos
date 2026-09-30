@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = converseen
+version     = 0.15.2.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Faster3ck/Converseen/archive/refs/tags/v$version.tar.gz
+sha256      = bb29870f5d69aa8decb462aba67365f84cccda45a3a5225d8d3638979bc2b8bf  converseen-0.15.2.8.tar.gz
+description = Batch image converter and resizer over ImageMagick, for Qt 6
+homepage    = https://converseen.fasterland.net/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qttools imagemagick hicolor-icon-theme

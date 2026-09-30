@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gramps
+version     = 6.0.8
+release     = 1
+source      = https://github.com/gramps-project/gramps/archive/refs/tags/v$version.tar.gz
+sha256      = f36069c71449b92636883f69addae38e76fa07ec37d9b3fcb5cac0b38390e314  gramps-6.0.8.tar.gz
+description = Gramps — genealogy: family trees, people, places, sources and reports
+homepage    = https://gramps-project.org/
+depends     = python3 python3-setuptools python3-pip python3-wheel gettext python3-orjson python3-gobject python3-cairo python3-pillow gtk3 pango gdk-pixbuf librsvg gspell gexiv2 graphviz xdg-utils shared-mime-info hicolor-icon-theme

@@ -11,7 +11,7 @@ For the layout of a *running* KDOS system rather than of the source tree, read
 [Filesystem and IPC](filesystem-and-ipc.md). For the story of how these directories become a
 bootable image, read [How KDOS is built](../05-developer/how-kdos-is-built.md) first; for the
 commands to run, [Developing](../05-developer/developing.md). Every recipe under `ports/core/` is
-listed by phase and group in [The ports catalogue](ports-catalogue.md). Terms such as *port*,
+listed by shelf, with its phase, in [The ports catalogue](ports-catalogue.md). Terms such as *port*,
 *box*, *pack*, *lane* and *rig* are defined in the [Glossary](glossary.md).
 
 ## The tree
@@ -20,9 +20,9 @@ The top-level directories divide by role. `src/` holds KDOS's own source: the C 
 desktop and the other programs written for KDOS. `ports/` holds the recipes for upstream software
 and the tools that fetch its sources. `fs/` holds the files copied as they are into the target's
 root filesystem. `script/` is the build, phase by phase; `testing/` is the tests and the test rig;
-`build/` is where the build writes, and git ignores it. Three directories beneath `ports/` and
-`src/` hold recipes; [The three port repositories](#the-three-port-repositories) explains which,
-and how they map onto the three rings of the running system.
+`build/` is where the build writes, and git ignores it. Five directories beneath `ports/` and
+`src/` hold recipes; [The port repositories](#the-port-repositories) explains which, and how they
+map onto the three rings of the running system.
 
 ```
 kdos/
@@ -39,24 +39,26 @@ kdos/
 │   └── screenshots/       every image the documentation references
 │
 ├── ports/
-│   ├── core/<name>/       one directory per upstream port
+│   ├── core/<shelf>/<name>/   one directory per upstream port, on one of 102 shelves
 │   │   ├── kpkgbuild          declarative metadata — parsed, never sourced
 │   │   ├── build.sh           the build; bash, run in the unpacked source
-│   │   ├── postinstall.sh     optional install-time hook (13 ports have one)
-│   │   ├── *.patch            optional patches, tracked (90 files)
+│   │   ├── postinstall.sh     optional install-time hook (26 ports have one)
+│   │   ├── *.patch            optional patches, tracked (436 files)
 │   │   ├── other support files  configuration, data files, single-file sources — tracked
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
+│   ├── shelves                the closed list of shelves, one `<id> <description>` per line
 │   ├── Containerfile.fetch    the image that generates vendor bundles, pinning this tree's toolchains
 │   ├── hackage-vendor         the Hackage downloader behind `vendoring = haskell`
 │   ├── .srccache/             the local source cache, one file per hash — ignored
 │   ├── sources.idx            which source-archive release holds each hash — committed
 │   ├── .kpkgbin/, .portup, .portup-tools/   host helpers compiled on demand — ignored
-│   ├── srclib.sh              the source archive's addressing, shared by fetch, publish and the hook
+│   ├── srclib.sh              the source archive's addressing, and the port lookup by name,
+│   │                          shared by fetch, publish, the hook and preflight
 │   ├── fetch                  download and verify sources; generate vendor bundles (`make fetch`)
 │   ├── publish                upload sources to the archive; freeze a release's hash list
 │   └── update                 front end of the upstream version checker (`make updates`)
 │
-├── src/
+├── src/                   KDOS's own code; every port is at exactly src/<area>/<name>/
 │   ├── libs/              the C libraries, compiled by their consumers — see the rule below
 │   │   ├── libkbase/          allocation, strings, files, processes, the trash
 │   │   ├── libkbuild/         phases, plans, the snapshot inventory
@@ -67,40 +69,27 @@ kdos/
 │   │   ├── libkicon/          icon lookup: resolves an icon name or file to a sprite
 │   │   ├── libkimg/           the only place untrusted image bytes are decoded
 │   │   ├── libkpack/          the pack format
-│   │   ├── libkpkg/           the package database, the ports tree, the solver
+│   │   ├── libkpkg/           the package database, the ports tree and its lookup, the solver
 │   │   ├── libkproc/          reads system state from /proc and /sys, or from a fixture root
 │   │   ├── libksig/           Ed25519 — Monocypher, the one third-party source carried unmodified
-│   │   ├── libktui/           the terminal toolkit: cell buffer, widgets, charts
+│   │   ├── libktui/           the terminal toolkit: cell buffer, widgets, charts, motion
 │   │   ├── libkvt/            the terminal state machine — forked from libtsm, maintained here
 │   │   ├── libkwl/            the toolkit's Wayland backend
 │   │   ├── libkwm/            the window model, taken out of the compositor that obeys it
 │   │   ├── libkxdg/           desktop entries and the MIME cache
 │   │   └── selftest.c         the shared assertion program
 │   │
-│   ├── desktop/           the desktop — a port repository, 13 recipes
-│   │   ├── kdos-comp/         the compositor; KDOS additions in src/kdos-*.c
-│   │   ├── kdos-shell/        the panel and every other surface: one binary under 53 names
-│   │   ├── kdos-res/          the resource monitor, and its setuid helper kdos-resctl
-│   │   ├── kdos-lock/         the lock screen, and the setuid password checker kdos-checkpass
-│   │   ├── kdos-term/         the terminal
-│   │   ├── kdos-record/       the screen recorder
-│   │   ├── kdos-boxsock/      one tagged compositor socket per box
-│   │   ├── kdos-powerd/       suspend, poweroff, reboot; client kdos-power
-│   │   ├── kdos-energyd/      per-application energy attribution; client kdos-energy
-│   │   ├── kdos-oomd/         memory-pressure protection
-│   │   ├── kdos-mountd/       removable media, LUKS, SMB; client kdos-mount
-│   │   ├── kdos-packd/        the only thing that mounts a pack
-│   │   └── xdg-desktop-portal-kdos/  the file chooser, settings, app chooser and access portals
-│   │
-│   ├── packages/          KDOS's own software that is not the desktop — a port repository, 11 recipes
+│   ├── system/            the system layer — a port repository, 5 recipes
 │   │   ├── kdos-kpkg/         the package manager, under five names (no kpkgbuild)
-│   │   ├── kdos-installer/    kinstall, the installer; built directly in phase 1
+│   │   ├── kdos-installer/    kinstall, the installer; also built directly by 10_bootstrap
 │   │   ├── kdos-appbox/       launching boxed applications, box management, the store
 │   │   │   └── catalogue          every installable application, as a chain of apt packages
 │   │   ├── kdos-boxinit/      process 1 inside a box; statically linked
 │   │   ├── kdos-pack/         build, sign, index and diff packs
-│   │   ├── kdos-tools/        one binary: the kdos command, the ksvc supervisor, kdos-getty,
-│   │   │                      kdos-bootctl and the other small system tools
+│   │   └── kdos-tools/        one binary: the kdos command, the ksvc supervisor, kdos-getty,
+│   │                          kdos-bootctl and the other small system tools
+│   │
+│   ├── art/               pictures, themes and their generators — a port repository, 6 recipes
 │   │   ├── kdos-theme/        the stylesheet, icon and cursor generators
 │   │   ├── kdos-splash/       the boot splash, and the host-only boot-artwork generators
 │   │   ├── kdos-bb/           the ASCII-art demo, a fork of the AA-project's bb
@@ -108,8 +97,26 @@ kdos/
 │   │   ├── kdos-cursors/      vendored Bibata cursors, pruned and recoloured
 │   │   └── kdos-gtk-theme/    the vendored adw-gtk3 stylesheet
 │   │
-│   ├── build/kdosbuild/   the build orchestrator — runs on the build host only
-│   └── tools/kdos-portup/ the upstream version checker — runs on the build host only
+│   ├── desktop/           the programs that draw or serve the session — a port repository, 8 recipes
+│   │   ├── kdos-comp/         the compositor; KDOS additions in src/kdos-*.c
+│   │   ├── kdos-shell/        the panel and every other surface: one binary under 55 names
+│   │   ├── kdos-res/          the resource monitor, and its setuid helper kdos-resctl
+│   │   ├── kdos-lock/         the lock screen, and the setuid password checker kdos-checkpass
+│   │   ├── kdos-term/         the terminal
+│   │   ├── kdos-record/       the screen recorder
+│   │   ├── kdos-boxsock/      one tagged compositor socket per box
+│   │   └── xdg-desktop-portal-kdos/  the file chooser, settings, app chooser and access portals
+│   │
+│   ├── daemons/           root daemons the desktop account talks to — a port repository, 5 recipes
+│   │   ├── kdos-powerd/       suspend, poweroff, reboot; client kdos-power
+│   │   ├── kdos-energyd/      per-application energy attribution; client kdos-energy
+│   │   ├── kdos-oomd/         memory-pressure protection
+│   │   ├── kdos-mountd/       removable media, LUKS, SMB; client kdos-mount
+│   │   └── kdos-packd/        the only thing that mounts a pack
+│   │
+│   └── devtools/          host-side build tools — not ports, never installed on the target
+│       ├── kdosbuild/         the build orchestrator
+│       └── kdos-portup/       the upstream version checker
 │
 ├── fs/                    copied verbatim into the target root filesystem
 │   ├── etc/                   the system configuration; see the table below the tree
@@ -120,26 +127,25 @@ kdos/
 │                              the help pages in share/kdos/doc
 │
 ├── script/                the build
-│   ├── 00_toolchain/ … 06_packaging/    the eight phases: step scripts, or a packages.txt
-│   ├── util/                             step helpers: port.sh, psf2limine.py
-│   ├── *.env.sh                          per-phase environment and metadata
-│   ├── kdosbuild.sh                      compiles and runs the orchestrator
-│   ├── chroot_exec.sh, chroot_enter.sh   the chroot
-│   └── hooks/pre-push                    refuses a push naming an unarchived source (opt-in)
-│
-├── script-mobile/         the aarch64 phase tree — seven environment files, an
-│                          orchestrator wrapper and util/port.sh, and no phase
-│                          directories, so a run finds nothing to build
+│   ├── phases/<NN>_<name>/  the thirteen phases, run in number order; each holds its
+│   │                        phase.env and either step scripts or a package list
+│   ├── env/                 common.env, host.env, chroot.env — what the phase.env files share
+│   ├── lib/port.sh          the recipe reader the two host phases source
+│   ├── chroot/              exec.sh runs a step in the chroot; enter.sh opens a shell there
+│   ├── kdosbuild.sh         compiles and runs the orchestrator
+│   └── hooks/pre-push       refuses a push that breaks the ports layout or names an
+│                            unarchived source (opt-in)
 │
 ├── testing/
 │   ├── preflight.sh          compiles kpkg, then checks the tree's wiring (packages resolve,
 │   │                         recipes parse, scripts are valid) without building a port
 │   ├── selftest.sh           the libraries and their consumers
 │   ├── docscheck.sh          the book: dead links, history, the page contract
+│   ├── phaseclosure.py       every package phase installs exactly the ports its list names
 │   ├── barcheck.c, boxcheck.c   checks selftest.sh compiles and runs
 │   ├── hostcheck.sh          in a booted guest: is the binary each name resolves to the right one
-│   ├── fixtures/             recorded system state, 38 directories
-│   ├── goldens/              committed reference frames: 193 files and a README
+│   ├── fixtures/             recorded system state, 49 directories
+│   ├── goldens/              committed reference frames: 217 files and a README
 │   ├── vnc-shot.py           drive and photograph a real session
 │   ├── rig-image.sh          builds kdos-qemu-py, the image vnc-shot.py runs in
 │   ├── quick.sh, quickpatch.sh   one port, patched into a booted ISO's RAM overlay
@@ -178,67 +184,156 @@ kdos/
 
 The keys these files hold are listed in [Configuration](configuration.md).
 
-## The three port repositories
+## The port repositories
 
 A *port* is one recipe: a `kpkgbuild` metadata file and a `build.sh` beside it (see
-[Writing ports](../05-developer/writing-ports.md)). Three directories hold ports, and all three use
+[Writing ports](../05-developer/writing-ports.md)). Five directories hold ports, and all five use
 the same recipe format.
 
-The three port repositories, with `src/libs/`, carry the first two of the three *rings* described
-in [Architecture overview](../03-architecture/overview.md#the-three-rings): `ports/core/` is the
-core ring, and `src/desktop/` and `src/packages/`, together with the libraries in `src/libs/` that
-they compile in, are the desktop ring. The outer ring, the
-applications that run in boxes, is not a port repository; it is the catalogue file
-`src/packages/kdos-appbox/catalogue`.
+The port repositories, with `src/libs/`, carry the first two of the three *rings* described in
+[Architecture overview](../03-architecture/overview.md#the-three-rings): `ports/core/` is the core
+ring, and the four `src/` areas that hold ports, together with the libraries in `src/libs/` that
+they compile in, are the desktop ring. The outer ring, the applications that run in boxes, is not a
+port repository; it is the catalogue file `src/system/kdos-appbox/catalogue`.
 
-| Directory | Holds | Recipes | What decides a port goes here |
+| Directory | Holds | Recipes | Layout |
 |---|---|---|---|
-| `ports/core/` | Upstream software | 1,014 | It is somebody else's source |
-| `src/packages/` | KDOS's own software that is not the desktop | 11 | It is written for KDOS, and it is not a desktop component |
-| `src/desktop/` | The desktop | 13 | It is written for KDOS, and it draws or serves the session |
+| `ports/core/` | Upstream software: somebody else's source | 1,999 | `<shelf>/<name>/`, on 102 shelves |
+| `src/system/` | The package manager, the `kdos` command and its services, packs and boxes, the installer | 5 | `<name>/` |
+| `src/art/` | Theme generators, the themes built from them, the boot splash, the demo | 6 | `<name>/` |
+| `src/desktop/` | Programs that draw the session or serve it over Wayland or D-Bus | 8 | `<name>/` |
+| `src/daemons/` | Root daemons whose client is the desktop account | 5 | `<name>/` |
 
-The counts are directories holding a `kpkgbuild`. Because the format is shared, building the
-desktop is not a special case anywhere in the build system. The package manager finds a recipe
-through `PORT_REPO`, an ordered search path; its default in `kpkg.conf` is `/ports/core`, and the
-phase environment files widen it as the phases need more:
+The counts are directories holding a `kpkgbuild`. A port is its bare name in every one of them:
+one name is one port across all five, and nothing that names a port spells the shelf or the area.
+Because the format is shared, building the desktop is not a special case anywhere in the build
+system. The package manager finds a recipe through `PORT_REPO`, an ordered search path of at most
+eight repositories; it looks for `<repo>/<name>/` and then `<repo>/<shelf>/<name>/`, so shelves
+are never on the path themselves. Its default in `kpkg.conf` is `/ports/core`, and the phase
+environments widen it as the phases need more:
 
-| Environment file | `PORT_REPO` |
+| Phases | `PORT_REPO` |
 |---|---|
-| `script/phase2.env.sh`, `script/phase3.env.sh` | not set: the default, `/ports/core` |
-| `script/phase4.env.sh`, `script/phase5.env.sh` | `/ports/core /kdos/src/packages` |
-| `script/desktop.env.sh` | `/ports/core /kdos/src/packages /kdos/src/desktop` |
+| `20_selfhost`, `30_foundation`, `31_compilers`, `70_image` | not set: the default, `/ports/core` |
+| `40_lang` to `44_apps`, `60_kernel` | `/ports/core /kdos/src/system /kdos/src/art` |
+| `50_desktop` | `/ports/core /kdos/src/system /kdos/src/art /kdos/src/desktop /kdos/src/daemons` |
 
 The paths are the chroot's view of the tree, described in
-[How the build sees the tree](#how-the-build-sees-the-tree).
+[How the build sees the tree](#how-the-build-sees-the-tree). A port in `src/desktop/` or
+`src/daemons/` is on the search path of `50_desktop` alone, so only that phase can build one.
 
-Which port is built in which phase is decided by the `packages.txt` in each phase directory
-(`script/02_phase2/` to `script/05_phase5/`, and `script/05_desktop/`), not by the directory the
-recipe lives in. Comment banners divide each list into named groups, such as "Core Services" or
-"Modern CLI tools (Rust / Go)". [How KDOS is built](../05-developer/how-kdos-is-built.md) explains
-the phases and [The ports catalogue](ports-catalogue.md) lists every port under its group.
+Which port is built in which phase is decided by the lists in the phase directories, not by where
+the recipe lives. Each package phase from `30_foundation` on names every port it installs, and
+`testing/phaseclosure.py` fails the tree when a dependency pulls in a port its phase does not name.
+[Which phase lists a port](../05-developer/writing-ports.md#which-phase-lists-a-port) gives the
+rules, and [The ports catalogue](ports-catalogue.md) the phase of every port.
 
-`src/libs/`, `src/build/` and `src/tools/` are not port repositories. The libraries are compiled
-into each program by that program's own recipe. The two tools run only on the build host and are
-compiled on demand: `script/kdosbuild.sh` builds the orchestrator into `build/.kdosbuild`, and
-`ports/update` builds the version checker into `ports/.portup`.
+### ports/core and its shelves
 
-Two directories under `src/packages/` are built by phase-1 scripts rather than through a phase
-list, because phase 1 runs before the package manager exists:
+Every upstream port sits at exactly `ports/core/<shelf>/<name>/`. A shelf is a subject, such as
+`toolchain`, `audio-codecs` or `games-board`, and it only files the port: moving a port to another
+shelf is one `git mv` and changes no recipe hash, package or index line. The exception is a port
+that `.gitignore` names by path for an odd source suffix (`digikam`, `fluidr3-gm-sf3`,
+`meshtastic-firmware`, `rnode-firmware`): its `.gitignore` line spells the shelf and is edited to
+the new one in the same change, and `testing/preflight.sh` fails until it is. `ports/shelves` is the
+closed list, one line per shelf giving its id and what belongs on it, in the order the package
+lists and the catalogue group by. [Choosing a shelf](../05-developer/writing-ports.md#choosing-a-shelf)
+places a new port.
 
-- `src/packages/kdos-kpkg/` has no `kpkgbuild`. The package manager cannot be built by the package
-  manager, so `script/01_phase1/12_kpkg.sh` compiles it directly and installs it as `/usr/bin/kpkg`
-  with four symlinks beside it: `kpkgadd`, `kpkgbuild`, `kpkgdel` and `kpkgdepends`.
-- `src/packages/kdos-installer/` has a recipe, but no `packages.txt` names it.
-  `script/01_phase1/13_kinstall.sh` compiles `kinstall` from the same directory, taking every `.c`
-  file by glob so that the phase-1 build and the recipe's `build.sh` compile the same sources.
+Four checks hold the layout, in preflight and again in the pre-push hook: every recipe under
+`ports/core` is exactly one shelf down; every shelf is listed in `ports/shelves`; one name is one
+port across `ports/core` and `src/`; and no shelf is named `libs`, `core` or after a port.
+Preflight alone also requires every listed shelf to hold a port, `name =` to equal the directory's
+name, every `group =` family to sit on one shelf, and each file of a `packages.d/` list to name
+only ports filed on its own shelf or in its own `src/` area.
+
+### The src areas
+
+`src/` holds six areas, and a port in any of them sits at exactly `src/<area>/<name>/`: its
+`build.sh` reaches the libraries as `$PORT_SRC/../../libs`, which resolves at no other depth, and
+`kdos-installer` compiles `../kdos-appbox/catalogue.c` from its sibling. A new program goes in the
+first area that fits:
+
+1. A library goes to `src/libs/`.
+2. A program not installed on the target goes to `src/devtools/`.
+3. A program that draws, or that speaks the session's Wayland or D-Bus, goes to `src/desktop/`.
+4. A root daemon whose client is the desktop account goes to `src/daemons/`.
+5. Pictures, themes and their generators go to `src/art/`.
+6. Everything else goes to `src/system/`.
+
+`src/libs/` and `src/devtools/` are not port repositories. The libraries are compiled into each
+program by that program's own recipe. The two tools run only on the build host and are compiled on
+demand: `script/kdosbuild.sh` builds the orchestrator into `build/.kdosbuild`, and `ports/update`
+builds the version checker into `ports/.portup`. Preflight fails any other directory under `src/`
+and any recipe at another depth, and fails the orphan sweep in
+`script/phases/70_image/040_orphans.sh` when its list of repositories leaves out an area that holds
+a recipe, since the sweep deletes from the image every package whose port it cannot find.
+
+Two directories under `src/system/` are built by `10_bootstrap` scripts rather than through a phase
+list, because that phase runs before the package manager exists:
+
+- `src/system/kdos-kpkg/` has no `kpkgbuild`. The package manager cannot be built by the package
+  manager, so `script/phases/10_bootstrap/120_kpkg.sh` compiles it directly and installs it as
+  `/usr/bin/kpkg` with four symlinks beside it: `kpkgadd`, `kpkgbuild`, `kpkgdel` and
+  `kpkgdepends`.
+- `src/system/kdos-installer/` has a recipe, but no phase list names it.
+  `script/phases/10_bootstrap/130_kinstall.sh` compiles `kinstall` from the same directory, taking
+  every `.c` file by glob so that the bootstrap build and the recipe's `build.sh` compile the same
+  sources.
+
+## The script directory
+
+The orchestrator runs every directory under `script/phases/` whose name starts with digits and an
+underscore, in sorted order. The numbers come in bands of ten with gaps, so a phase can be added
+between two others without renaming either. A phase is named on the command line by its directory
+name or by the part after the number (`--phases 41_system` or `--phases system`).
+
+| Phase | Title | Runs | Holds |
+|---|---|---|---|
+| `00_cross` | Cross Toolchain | in the build container | step scripts, `00_binutils.sh` and `01_gcc.sh` |
+| `10_bootstrap` | Base Userland | in the build container | step scripts, `000_file_system.sh` to `130_kinstall.sh` |
+| `20_selfhost` | Self-Hosting Bootstrap | in the chroot | `packages.txt` |
+| `30_foundation` | Build Foundation | in the chroot | `packages.txt` |
+| `31_compilers` | Compilers | in the chroot | `packages.txt` |
+| `40_lang` | Languages | in the chroot | `packages.d/` |
+| `41_system` | System | in the chroot | `packages.d/` |
+| `42_graphics` | Graphics Stack | in the chroot | `packages.d/` |
+| `43_toolkits` | Toolkits | in the chroot | `packages.d/` |
+| `44_apps` | Applications | in the chroot | `packages.d/` |
+| `50_desktop` | Desktop | in the chroot | `packages.txt` |
+| `60_kernel` | Kernel | in the chroot | `packages.txt` |
+| `70_image` | Image | in the chroot | step scripts `010_binhost.sh` to `110_iso.sh`, and `psf2limine.py`, which `110_iso.sh` runs |
+
+A package phase keeps its list as one `packages.txt`, or as `packages.d/`, whose `*.txt` files are
+read in byte order as one list: one file per shelf, `src-system.txt` and `src-art.txt` for ports of
+KDOS's own, and `00-order.txt` for the runs a comment pins ahead of the rest. A phase has one or the
+other, never both, and the orchestrator refuses to build when a phase has both, an empty
+`packages.d/`, or neither a list nor a step.
+
+Each phase's environment is the `phase.env` in its directory. The orchestrator reads that file's
+own text for the phase's title, snapshot paths and `CHROOT=1`, and follows no `source` line, so
+those keys are written in every `phase.env`. Everything shared is sourced from `script/env/`:
+
+| File | Sourced by | Holds |
+|---|---|---|
+| `common.env` | every phase, through one of the two below | The reproducibility settings, `MAKEFLAGS` and `KPKG_STRICT_RECIPE=1` |
+| `host.env` | `00_cross`, `10_bootstrap` | The target triplet, the sysroot and cross-toolchain paths, and the cross `pkg-config` setup |
+| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the base flags, and a cleared work directory |
+
+`script/lib/port.sh` is sourced by the step scripts of `00_cross` and `10_bootstrap`, which run
+before `kpkg` exists; it reads a recipe and unpacks its source, and finds a port by name one shelf
+down, at `ports/core/<shelf>/<name>/`, failing when the name is on two shelves.
+`script/chroot/exec.sh` enters the chroot for a step or a package phase, and
+`script/chroot/enter.sh` opens an interactive shell in it. How a phase runs is in
+[The build system](../05-developer/build-system.md).
 
 ## The library rule
 
 No library is built as an archive of its own. Each program's recipe compiles the library sources it
 needs straight into its binary.
 
-The libraries a phase-1 program needs link nothing but the C library. Phase 1 runs before any other
-library exists on the target, and two programs are built in it:
+The libraries a `10_bootstrap` program needs link nothing but the C library. That phase runs before
+any other library exists on the target, and two programs are built in it:
 
 | Program | Compiles in | Links |
 |---|---|---|
@@ -254,7 +349,7 @@ not draw pixels never compiles it in or links its dependencies:
 | Library | Links |
 |---|---|
 | `libkwl` | fcft, fontconfig, pixman, xkbcommon and the Wayland client libraries |
-| `libkcell` | fcft and pixman |
+| `libkcell` | fcft, fontconfig and pixman |
 | `libkicon` | pixman and libpng |
 | `libkimg` | pixman, plus whichever of libpng, libjpeg, libwebp, libnsgif and libsixel the consumer enables with a `KIMG_HAVE_*` flag |
 | `libkchrome` | pixman directly, plus everything `libkcell`, `libkicon` and `libkwl` link, since it is built on them |
@@ -272,25 +367,24 @@ mounting only the directories the build reads:
 | `build/` | `/workspace/build` | read-write |
 | `src/`, `fs/`, `script/`, `ports/` | `/workspace/src`, `/workspace/fs`, `/workspace/script`, `/workspace/ports` | read-only |
 
-`docs/`, `testing/`, `script-mobile/` and the root files are not mounted, so nothing in them can
+`docs/`, `testing/` and the root files are not mounted, so nothing in them can
 change what a build produces. The build writes only under `build/`; `build/fs/` is the target root
 filesystem it grows phase by phase.
 
-From phase 2 on, each port is built inside a chroot of `build/fs/`. `script/chroot_exec.sh`
-bind-mounts the container's `/workspace` at `/kdos` inside it, with `build/`, `script/` and `src/`
-mounted again beneath it, and `ports/` at `/ports`. That is why the phase environment files name
-`/ports/core` and `/kdos/src/packages`: they are the same directories as the checkout's
-`ports/core/` and `src/packages/`, seen from inside the chroot. The mechanism is in
+From `20_selfhost` on, each port is built inside a chroot of `build/fs/`. `script/chroot/exec.sh`
+bind-mounts the container's `/workspace` at `/kdos` inside it, with `build/`, `script/`, `src/` and
+`fs/` mounted again beneath it, and `ports/` at `/ports`. That is why the phase environments name
+`/ports/core` and `/kdos/src/system`: they are the same directories as the checkout's
+`ports/core/` and `src/system/`, seen from inside the chroot. The mechanism is in
 [The build system](../05-developer/build-system.md).
 
-A build run with `KDOS_ISO_SOURCES=1` has `script/06_packaging/02_iso.sh` copy `/kdos/src` and
-`/kdos/script` onto the ISO under `sources/`. The step also copies `/kdos/ports`, but inside the
-chroot that path is only the mount point the container left in `/workspace`: the bind of
-`/workspace` at `/kdos` does not carry the container's separate `ports/` mount, and the ports tree
-is mounted at `/ports` instead. `sources/ports/` on the medium is therefore empty, and the step's
-removal of `.srccache/`, `.portup-tools/`, `.kpkg-meta` and `.update-cache.json` from it acts on
-nothing. The step also names the `Makefile`, the `Dockerfile` and `CLAUDE.md`, which are not
-mounted into the build and are skipped.
+A build run with `KDOS_ISO_SOURCES=1` has `script/phases/70_image/110_iso.sh` copy the tree onto the
+ISO under `sources/`, beside the compressed system image rather than inside it: `src/`, `script/`
+and `fs/` from `/kdos`, and every entry of `/ports` but its dot-directories, so each fetched source
+travels beside its recipe while the source cache and the compiled host helpers stay behind. The
+step also names the `Makefile`, the `Dockerfile` and `CLAUDE.md`, which are not mounted into the
+build and are skipped. A binary host the build wrote goes beside the tree as `sources/binhost`, and
+`sources/SOURCES` records the number of ports, the size and the build time.
 
 ## Where the upstream sources are
 
@@ -305,11 +399,11 @@ Five files in the tree make this work:
 
 | File | Does |
 |---|---|
-| `ports/srclib.sh` | The archive's addressing and hash checks, and the on-demand build of the recipe reader; sourced by `ports/fetch`, `ports/publish` and the hook |
+| `ports/srclib.sh` | The archive's addressing and hash checks, the lookup of a port by bare name on any shelf, and the on-demand build of the recipe reader; sourced by `ports/fetch`, `ports/publish`, the pre-push hook and `testing/preflight.sh` |
 | `ports/sources.idx` | One line per archived file, `<sha256> <NNN> <port>/<file>`: the file is asset `<sha256>` of release `sources-<NNN>`. Written by `ports/publish`, read by `ports/fetch` and the pre-push hook; append-only, and committed with the recipe that needs it |
 | `ports/fetch` | Resolves every recipe hash from the port directory, `ports/.srccache/`, the archive, or the recipe's `source =` URL, in that order, and generates a port's own vendor bundle when none of those holds it. `make fetch` runs it; `make fetch-check` runs `ports/fetch --check`, which is offline |
-| `ports/publish` | Uploads sources the archive does not hold yet (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
-| `script/hooks/pre-push` | Refuses a `git push` whose recipes name a hash the archive does not hold |
+| `ports/publish` | Uploads sources the archive does not hold (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `script/hooks/pre-push` | Refuses a `git push` that breaks the ports layout, or whose recipes name a hash the archive does not hold |
 
 The hook runs only in a clone that has opted in:
 
@@ -317,9 +411,15 @@ The hook runs only in a clone that has opted in:
 git config core.hooksPath script/hooks
 ```
 
-With the hook on, a push is refused when the archive cannot be reached, when it answers anything but
-200 or 404, or when `KDOS_SOURCES_BASE` is empty, because the hook cannot then rule out that a
-source is missing. Working offline therefore means skipping the check for that push:
+With the hook on, a push is first checked offline for the ports layout, at the tip of each pushed
+ref the remotes do not already hold, since only the tip is built; an intermediate commit that a
+later one repairs passes. The check asks for every recipe under `ports/core` exactly one listed
+shelf down, one name per port across `ports/core` and `src/`, and no shelf named `libs`, `core` or
+after a port.
+`KDOS_SKIP_LAYOUT_CHECK=1` skips that check. The archive check follows, and refuses the push when
+the archive cannot be reached, when it answers anything but 200 or 404, or when `KDOS_SOURCES_BASE`
+is empty, because the hook cannot then rule out that a source is missing. Working offline therefore
+means skipping the archive check for that push, which leaves the layout check in force:
 
 ```sh
 KDOS_SKIP_PUBLISH_CHECK=1 git push …
@@ -333,9 +433,8 @@ included, stops running in that clone.
 | Path | Ignored by git | Notes |
 |---|---|---|
 | `build/` | entirely | The root filesystem, logs, snapshots, the ISO, signing keys, frozen source lists, and `build/podman/`, a podman container store that `script/kdosbuild.sh` leaves owned by root |
-| `build-mobile/` | entirely | The mobile build root; firmware blobs land under it |
 | `build_test/` | entirely | Where `testing/prepare_base.py` builds the minimal root filesystem that `testing/test_runner.py` builds ports against |
-| `ports/core/*/*.tar`, `*.tar.*`, `*.tgz`, `*.tbz2`, `*.txz`, `*.zip`, `*.7z`, `*.part` | yes | Upstream archives, vendor bundles and partial downloads, put there by `make fetch`. A patch or configuration file a recipe hashes is tracked and unaffected, and the archive fixtures under `testing/fixtures/` stay tracked |
+| `ports/core/*/*/*.tar`, `*.tar.*`, `*.tgz`, `*.tbz2`, `*.txz`, `*.zip`, `*.7z`, `*.part`, and a few more suffixes | yes | Upstream archives, vendor bundles and partial downloads, put there by `make fetch`, matched in a port directory one shelf down. A pattern for one port's odd suffix names its shelf, and must be edited when the port changes shelf. A patch or configuration file a recipe hashes is tracked and unaffected, and the archive fixtures under `testing/fixtures/` stay tracked |
 | `ports/.srccache/` | yes | The source cache, `sha256-XX/<hash>`. Plain data: it survives `make clean` and `make cleanbuild` |
 | `ports/.kpkgbin/`, `.portup`, `.portup-tools/` | yes | Compiled host helpers. `.kpkgbin/kpkg` is the recipe reader `ports/fetch` and `ports/publish` use, built by `ports/srclib.sh`; `.portup` is the version checker and `.portup-tools/` its own recipe reader. `.gitignore` also lists `ports/.kpkg-meta`, which nothing in the tree builds |
 | `ports/.update-cache.json` | yes | Per-port version-check results, kept for 24 hours |
@@ -356,7 +455,7 @@ delete them from inside a container rather than with `sudo`.
 | `README.md` | The front door: what KDOS is, and how to build and run it |
 | `CLAUDE.md` | The contributor briefing read by coding assistants: hard rules, conventions and the build loop. It is not a description of how the system works; that is this book |
 | `Makefile` | Every target: `all` (the default, the same as `build`), `fetch`, `fetch-check`, `updates`, `build`, `check-iso-free`, `snapshots`, `run`, `run-hw`, `rundisk`, `rundisk-hw`, `debug-boot`, `check-hw`, `cleandisk`, `cleanbuild`, `clean`. `check-iso-free` runs before every `build` and stops it while another process — usually a running VM — holds `build/iso-build/kdos.iso` open, since rewriting the image under a guest gives it I/O errors; `ALLOW_ISO_IN_USE=1` overrides it. See [Developing](../05-developer/developing.md#make-targets) |
-| `Dockerfile` | The build container, `os-dev`: Alpine with the host tools the toolchain phase needs |
+| `Dockerfile` | The build container, `os-dev`: Alpine with the host tools the two host phases (`00_cross`, `10_bootstrap`) need |
 | `.dockerignore` | What the build container's context leaves out: `build/` and `ports-archived/` |
 | `.gitignore` | The ignore rules in the table above |
 | `.gitattributes` | Declares that no path goes through a filter |
@@ -370,14 +469,14 @@ into the target, which carries no Python:
 
 | Artwork | Committed file | Made from `kdos.png` by |
 |---|---|---|
-| Boot splash penguin | `src/packages/kdos-splash/penguin.h` | Cropping and quantising the mascot; no script in the tree does it |
-| Terminal banner logo | `fs/usr/share/kdos/logo.txt` | `src/packages/kdos-splash/genlogo.py`, which decodes `penguin.h` |
-| Icon marks | `src/packages/kdos-icons/marks/` | `src/packages/kdos-icons/genmarks.py` (needs Pillow) |
-| The mascot in `kdos-bb` | `src/packages/kdos-bb/src/kdostux.c` | `src/packages/kdos-bb/genimg.py` (needs Pillow and a C compiler) |
+| Boot splash penguin | `src/art/kdos-splash/penguin.h` | Cropping and quantising the mascot; no script in the tree does it |
+| Terminal banner logo | `fs/usr/share/kdos/logo.txt` | `src/art/kdos-splash/genlogo.py`, which decodes `penguin.h` |
+| Icon marks | `src/art/kdos-icons/marks/` | `src/art/kdos-icons/genmarks.py` (needs Pillow) |
+| The mascot in `kdos-bb` | `src/art/kdos-bb/src/kdostux.c` | `src/art/kdos-bb/genimg.py` (needs Pillow and a C compiler) |
 
 Two more boot pictures contain the mascot without being generated from `kdos.png`.
 `fs/usr/share/kdos/boot/kdos-banner.png` is committed as a picture; `genbanner.py` in
-`src/packages/kdos-splash/` only repaints its two caption lines. `kdos-backdrop.png` beside it, the
+`src/art/kdos-splash/` only repaints its two caption lines. `kdos-backdrop.png` beside it, the
 boot menu's backdrop, is drawn from the banner by `genbackdrop.py` in the same directory.
 
 After changing `kdos.png`, regenerate the four in the table on the host (and copy the mascot to
@@ -385,8 +484,9 @@ After changing `kdos.png`, regenerate the four in the table on the host (and cop
 
 ## What must never exist
 
-`fs/etc/X11/`. There is no X server on this system. The one carve-out is Xwayland, a rootless X
-server the compositor runs for X11 clients inside boxes, and it needs nothing in that directory. See
+`fs/etc/X11/`. There is no Xorg server on this system and nothing X on the login path. The one X
+server is Xwayland, a rootless X server the compositor starts for X11 clients: boxed applications,
+and host applications that have no Wayland path. It needs nothing in that directory. See
 [Principles](../01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
 
 ## See also
@@ -394,7 +494,7 @@ server the compositor runs for X11 clients inside boxes, and it needs nothing in
 - [Architecture overview](../03-architecture/overview.md) — the three rings this tree implements
 - [How KDOS is built](../05-developer/how-kdos-is-built.md) — how these directories become an ISO
 - [The build system](../05-developer/build-system.md) — how the phases traverse it
-- [The ports catalogue](ports-catalogue.md) — every recipe under `ports/core/`, by phase and group
+- [The ports catalogue](ports-catalogue.md) — every recipe under `ports/core/`, by shelf
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md) — why sources are pinned by hash and
   everything is built from this tree
 - [Writing ports](../05-developer/writing-ports.md) — the recipe format

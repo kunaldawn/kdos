@@ -1,0 +1,62 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   math — Mathematics applications and libraries: computer algebra, arbitrary
+#   precision, solvers, calculators, statistics and plotting apps
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# numbat REFUSES a nonsensical unit combination by construction; qalc is the
+# forgiving one with a far larger definition set. Currency rates are the one
+# online feature and they fail quietly rather than inventing a number.
+libqalculate
+
+# PARI answers exact integer and number-theoretic questions; maxima answers
+# symbolic ones. Neither substitutes for the other.
+pari
+
+# GMP is what makes the exact simplex exact; without it a mixed-integer answer
+# is optimal-looking and occasionally wrong at the last bit, silently.
+glpk
+
+# glpk is a decade behind on mixed-integer problems; HiGHS is the one an open
+# toolchain can put against a commercial solver.
+highs
+
+# Thermophysical properties as a compiled-in lookup, not a download.
+coolprop
+
+# Symbolic algebra, and the answer to the SageMath hole — Sage is gone from
+# trixie and this is what is left that runs on a terminal.
+sympy
+
+# `bc` will add a voltage to a resistance. On a bench the arithmetic mistake
+# that actually happens is a unit one.
+numbat
+
+z3
+
+# The SMT solver a formal proof over yosys is actually answered by.
+yices2
+
+# A 3000-entry conversion database that is itself a reference document.
+units
+
+nlopt
+ceres-solver

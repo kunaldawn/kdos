@@ -1,0 +1,30 @@
+diff -ru a/src/cmedia/cmedia.cxx b/src/cmedia/cmedia.cxx
+--- a/src/cmedia/cmedia.cxx	2026-09-28 03:51:32.701832904 +0530
++++ b/src/cmedia/cmedia.cxx	2026-09-28 03:51:32.726957486 +0530
+@@ -41,11 +41,6 @@
+ #ifndef __WIN32__
+ #include <termios.h>
+ #include <glob.h>
+-#  ifndef __APPLE__
+-#    ifndef __FreeBSD__
+-#      include <error.h>
+-#    endif
+-#  endif
+ #endif
+ 
+ #include "config.h"
+diff -ru a/src/cmedia/tmate2.cxx b/src/cmedia/tmate2.cxx
+--- a/src/cmedia/tmate2.cxx	2026-09-28 03:51:32.701916332 +0530
++++ b/src/cmedia/tmate2.cxx	2026-09-28 03:51:32.727360482 +0530
+@@ -44,11 +44,6 @@
+ #ifndef __WIN32__
+ #include <termios.h>
+ #include <glob.h>
+-#  ifndef __APPLE__
+-#    ifndef __FreeBSD__
+-#      include <error.h>
+-#    endif
+-#  endif
+ #endif
+ 
+ #include "config.h"

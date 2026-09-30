@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gpxsee
+version     = 16.16
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/tumic0/GPXSee/archive/refs/tags/$version.tar.gz
+sha256      = e7955c23df5aa733648ba6094501f294af0e46c9d3f845adb20a2459447d5070  gpxsee-16.16.tar.gz
+description = GPXSee: GPS track, route and waypoint viewer and analyser over offline raster and vector maps
+homepage    = https://www.gpxsee.org/
+depends     = qt6-qtbase qt6-qtpositioning qt6-qtsvg qt6-qtserialport qt6-qtmultimedia zlib hicolor-icon-theme shared-mime-info

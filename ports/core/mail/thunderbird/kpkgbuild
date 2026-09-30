@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = thunderbird
+version     = 153.3.1
+release     = 1
+_esr        = ${version}esr
+source      = $name-$version.tar.xz::https://archive.mozilla.org/pub/thunderbird/releases/$_esr/source/thunderbird-$_esr.source.tar.xz
+sha256      = f4684de0caebf54352f8247ea3106b3c577509a26556759f6417bdc42f7567aa  thunderbird-153.3.1.tar.xz
+description = Mail, calendar, contacts and feeds, offline-first, on GTK 3 for Wayland and X11
+homepage    = https://www.thunderbird.net/
+depends     = clang lld llvm rust cbindgen nodejs nasm python3 m4 pkgconf zip unzip gtk3 glib pango cairo fontconfig freetype2 at-spi2-core wayland libxkbcommon libX11 libxcb libXext libXfixes libXrandr libXcomposite libXcursor libXdamage libXi dbus alsa-lib libpulse pipewire mesa libdrm pciutils libva ffmpeg nspr nss icu libjpeg-turbo libwebp libvpx libevent libffi zlib bzip2 json-c pixman hunspell-en hyphen

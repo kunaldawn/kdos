@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = uranium
+version     = 5.13.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Ultimaker/Uranium/archive/refs/tags/$version.tar.gz
+sha256      = 1c50ddb3469ad01e7edade548991699d0762b61523ce3d5564ae6f8a3763ef9a  uranium-5.13.0.tar.gz
+sha256      = b345e168212d7a587768cb6a85f0d3cdb8effe3ebb2c97818f326169066432fd  uranium-vendor-5.13.0.tar.xz
+description = Uranium — the Python and Qt Quick application framework Cura is built on
+homepage    = https://github.com/Ultimaker/Uranium
+depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-cython python3-wheel python3-typing-extensions python3-pyqt6 python3-pyqt6-sip qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtwayland numpy scipy python3-cryptography python3-pyarcus python3-pyuvula
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = pyclipper:1.4.0 numpy-stl:3.2.0 python-utils:3.9.1 colorlog:6.12.0

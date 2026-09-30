@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libimobiledevice
+version     = 1.4.0
+release     = 1
+source      = https://github.com/libimobiledevice/libimobiledevice/releases/download/$version/libimobiledevice-$version.tar.bz2
+sha256      = 23cc0077e221c7d991bd0eb02150a0d49199bcca1ddf059edccee9ffd914939d  libimobiledevice-1.4.0.tar.bz2
+description = Library and idevice* tools that speak the iPhone and iPad protocols: pairing, backup, files, syslog
+homepage    = https://libimobiledevice.org
+depends     = libplist libimobiledevice-glue libusbmuxd libtatsu openssl readline pkgconf

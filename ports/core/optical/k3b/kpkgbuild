@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = k3b
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 84ca4a064553587e7c6a93ff9b29a36bf05c07dd08269bea43f1ab5ff92374f3  k3b-26.08.1.tar.xz
+description = KDE disc burner — data, audio and video CDs, DVDs and Blu-ray, copies and rips
+homepage    = https://apps.kde.org/k3b/
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtwayland karchive kauth kconfig kcoreaddons kfilemetadata ki18n kiconthemes kjobwidgets kcmutils kio knotifications knewstuff knotifyconfig solid kwidgetsaddons kxmlgui kdoctools libkcddb libsamplerate libdvdread taglib ffmpeg flac libmad libsndfile lame libvorbis libogg libburn libisoburn cdrdao dvd+rw-tools libcdio-paranoia sox udisks2 shared-mime-info

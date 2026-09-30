@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = minizip-ng
+version     = 4.2.2
+release     = 1
+source      = https://github.com/zlib-ng/minizip-ng/archive/refs/tags/$version.tar.gz
+sha256      = 71af7b9799856d8b03619df3949e9c1be9703f8de0795af71399ba283cb27aac  minizip-ng-4.2.2.tar.gz
+description = Zip archive manipulation library, the zlib-ng fork of minizip
+homepage    = https://github.com/zlib-ng/minizip-ng
+depends     = cmake ninja zlib bzip2 xz openssl

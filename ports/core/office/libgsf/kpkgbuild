@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libgsf
+version     = 1.14.59
+release     = 1
+_series     = ${version%.*}
+source      = https://download.gnome.org/sources/$name/$_series/$name-$version.tar.xz
+sha256      = 0d03cb6fadfe735caa13498a024ccd8fdb6cab77df6d9d283a64410c96f2fa49  libgsf-1.14.59.tar.xz
+description = GNOME Structured File library — OLE2, ZIP and ODF containers for office formats
+homepage    = https://gitlab.gnome.org/GNOME/libgsf
+depends     = pkgconf glib libxml2 zlib bzip2 gdk-pixbuf gobject-introspection gettext libintl

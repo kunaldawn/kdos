@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libcss
+version     = 0.9.2
+release     = 1
+source      = https://download.netsurf-browser.org/libs/releases/libcss-$version-src.tar.gz
+sha256      = 2df215bbec34d51d60c1a04b01b2df4d5d18f510f1f3a7af4b80cddb5671154e  libcss-0.9.2.tar.gz
+description = NetSurf CSS parser and selection engine
+homepage    = https://www.netsurf-browser.org/projects/libcss/
+depends     = buildsystem libwapcaplet libparserutils

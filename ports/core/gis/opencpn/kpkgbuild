@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = opencpn
+version     = 5.14.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/OpenCPN/OpenCPN/archive/refs/tags/Release_$version.tar.gz
+sha256      = 581d5d1ca80ccb654e3995f0031fdc10ad32d43197ddb250106260e134e4a924  opencpn-5.14.0.tar.gz
+description = OpenCPN — chart plotter and navigation for S-57/S-63 ENC and raster charts, AIS and GPS (wxWidgets)
+homepage    = https://opencpn.org/
+depends     = cmake ninja pkgconf gettext git wxwidgets gtk3 glib mesa libglvnd glu glew libX11 libXrandr curl libarchive libexif libusb lz4 xz bzip2 zlib portaudio libsndfile rapidjson shapelib sqlite tinyxml elfutils eudev gpsd

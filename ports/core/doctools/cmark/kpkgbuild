@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = cmark
+version     = 0.31.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/commonmark/cmark/archive/refs/tags/$version.tar.gz
+sha256      = f9bc5ca38bcb0b727f0056100fac4d743e768872e3bacec7746de28f5700d697  cmark-0.31.2.tar.gz
+description = CommonMark reference implementation: libcmark and the cmark converter
+homepage    = https://commonmark.org/
+depends     = cmake ninja

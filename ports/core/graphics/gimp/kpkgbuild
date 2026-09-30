@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gimp
+version     = 3.2.6
+release     = 1
+source      = https://download.gimp.org/pub/gimp/v${version%.*}/$name-$version.tar.xz
+sha256      = 40b15e90ad0c0c631b76da3c467ea9847fa5c24f37413ac5b492804860a28cd8  gimp-3.2.6.tar.xz
+description = GNU Image Manipulation Program — raster image editor and photo retoucher
+homepage    = https://www.gimp.org/
+depends     = meson ninja pkgconf perl python3 python3-gobject python3-cairo gobject-introspection glib glib-introspection gettext libxslt shared-mime-info iso-codes gtk3 at-spi2-core cairo pango harfbuzz fontconfig freetype2 gdk-pixbuf librsvg babl gegl gexiv2 exiv2 json-glib lcms2 libmypaint mypaint-brushes appstream libarchive libunwind-nongnu libX11 libXmu libXext libXfixes libXcursor libXpm zlib bzip2 xz libpng libjpeg-turbo libtiff libwebp libheif libjxl openjpeg openexr poppler poppler-data ghostscript cfitsio aalib alsa-lib libgudev xdg-utils bash-completion gimp-help

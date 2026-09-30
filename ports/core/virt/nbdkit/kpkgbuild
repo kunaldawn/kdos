@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = nbdkit
+version     = 1.48.1
+release     = 1
+_series     = ${version%.*}
+source      = https://download.libguestfs.org/$name/$_series-stable/$name-$version.tar.gz
+sha256      = 21ddcdd0bb3cd49ec47aa2d7ca3e69941426e991932b44dc34a856d063f41ead  nbdkit-1.48.1.tar.gz
+description = NBD server toolkit with pluggable plugins and filters; serves disks to libvirt and QEMU
+homepage    = https://gitlab.com/nbdkit/nbdkit
+depends     = pkgconf perl gnutls libnbd libnfs curl libssh zlib xz zstd bzip2 e2fsprogs

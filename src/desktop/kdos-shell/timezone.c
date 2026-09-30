@@ -68,7 +68,7 @@ static int nzone;
 static int hit[TZ_MAX];		/* indices into zones[], the current filter */
 static int nhit;
 static char query[TZ_QUERY];
-static int caret;
+static KtuiField qf = { query, sizeof(query), 0, 0, NULL };
 static char current[TZ_NAME] = "UTC";
 static char chrony[160];
 static char status[160];
@@ -273,7 +273,7 @@ static void do_set(void)
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
-static const KtuiCol TZ_COL[] = { { "WHERE", 10 }, { "ZONE", 0 } };
+static const KtuiCol TZ_COL[] = { { "WHERE", 10, 0 }, { "ZONE", 0, 0 } };
 #define TZ_NCOL 2
 
 static void tz_cell(int idx, int col, int x, int y, int w, int fg, int bg,
@@ -366,12 +366,12 @@ static void draw(void)
 	ktui_hint("r", "refresh");
 	ktui_hint("Esc", ktui_esc_verb(&keys));
 	ktui_hint_row(&keys, krect(2, h - 3, w - 4, 1), KT_BG);
-	ktui_term_caret(2 + caret, top + 2);
+	ktui_term_caret(2 + ktui_field_col(&qf), top + 2);
 }
 
-static int on_key(int k)
+static int on_key(const KtuiEvent *ev)
 {
-	int qn = (int)strlen(query);
+	int k = ev->key;
 
 	/* The four list keys are the list's; every printable character is the
 	 * filter's, which is what makes this a search and not a menu. */
@@ -384,35 +384,10 @@ static int on_key(int k)
 	case KT_K_ENTER:
 		do_set();
 		return 0;
-	case KT_K_BACKSPACE:
-		if (caret > 0) {
-			memmove(query + caret - 1, query + caret,
-				(size_t)(qn - caret) + 1);
-			caret--;
-			filter();
-		}
-		return 0;
-	case KT_K_LEFT:
-		if (caret > 0)
-			caret--;
-		return 0;
-	case KT_K_RIGHT:
-		if (caret < qn)
-			caret++;
-		return 0;
-	case KT_K_HOME:
-		caret = 0;
-		return 0;
-	case KT_K_END:
-		caret = qn;
-		return 0;
 	}
-	if (k >= 0x20 && k < 0x7f && qn + 1 < TZ_QUERY) {
-		memmove(query + caret + 1, query + caret,
-			(size_t)(qn - caret) + 1);
-		query[caret++] = (char)k;
+	/* Everything else is the filter's, the toolkit's field. */
+	if (ktui_field_key(&qf, ev) & KTUI_FIELD_CHANGED)
 		filter();
-	}
 	return 0;
 }
 
@@ -436,7 +411,7 @@ int timezone_main(int argc, char **argv)
 			return 2;
 		}
 	}
-	caret = (int)strlen(query);
+	qf.caret = (int)strlen(query);
 
 	load_zones();
 	refresh();
@@ -475,7 +450,12 @@ int timezone_main(int argc, char **argv)
 
 		/* One second, because there is a CLOCK on this surface: a
 		 * longer timeout is a clock that visibly skips. */
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
+		int got = ktui_backend()->poll_event(&ev, 1000);
+
+		/* A paste is a queue and not an event: offered on every wake. */
+		if (ktui_field_key(&qf, NULL) & KTUI_FIELD_CHANGED)
+			filter();
+		if (!got) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();
@@ -528,7 +508,7 @@ int timezone_main(int argc, char **argv)
 			continue;
 		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			break;
-		if (on_key(ev.key))
+		if (on_key(&ev))
 			break;
 	}
 

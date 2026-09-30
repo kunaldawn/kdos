@@ -1,0 +1,24 @@
+diff --git a/include/mapbox/geometry/wagyu/ring.hpp b/include/mapbox/geometry/wagyu/ring.hpp
+--- a/include/mapbox/geometry/wagyu/ring.hpp	(revision bca18747a2a529db59de34b97aaf395d815c5798)
++++ b/include/mapbox/geometry/wagyu/ring.hpp	(date 1708339817748)
+@@ -11,7 +11,7 @@
+ #include <sstream>
+ #include <vector>
+ 
+-#ifdef DEBUG
++#if defined(DEBUG) &&  __has_include(<execinfo.h>)
+ #include <execinfo.h>
+ #include <iostream>
+ #include <sstream>
+Index: include/mapbox/geometry/wagyu/ring_util.hpp
+diff --git a/include/mapbox/geometry/wagyu/ring_util.hpp b/include/mapbox/geometry/wagyu/ring_util.hpp
+--- a/include/mapbox/geometry/wagyu/ring_util.hpp	(revision bca18747a2a529db59de34b97aaf395d815c5798)
++++ b/include/mapbox/geometry/wagyu/ring_util.hpp	(date 1708339817743)
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#ifdef DEBUG
++#if defined(DEBUG) &&  __has_include(<execinfo.h>)
+ #include <iostream>
+ // Example debug print for backtrace - only works on IOS
+ #include <execinfo.h>

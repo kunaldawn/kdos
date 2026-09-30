@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = sdl2-net
+version     = 2.4.0
+release     = 1
+series      = 2
+source      = $name-$version.tar.gz::https://github.com/libsdl-org/SDL_net/releases/download/release-$version/SDL2_net-$version.tar.gz
+sha256      = 9cbca2527feb3f1a622d48ba65cc7dee9b1e3f2c55ceafb7d7720bb058aafb30  sdl2-net-2.4.0.tar.gz
+description = Portable TCP and UDP sockets for SDL2 programs
+homepage    = https://github.com/libsdl-org/SDL_net
+depends     = cmake ninja pkgconf sdl2-compat

@@ -1,0 +1,12 @@
+--- a/platform/common/koreader.sh
++++ b/platform/common/koreader.sh
+@@ -5,6 +5,9 @@
+ # writable storage: ${HOME}/.config/koreader.
+ export KO_MULTIUSER=1
+ 
++# The window's app_id: SDL takes the program name otherwise, which is luajit.
++export SDL_APP_ID="rocks.koreader.KOReader"
++
+ # Working directory.
+ KOREADER_DIR="$(dirname "$(realpath "$0")")"
+ 

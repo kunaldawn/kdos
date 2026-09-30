@@ -1,0 +1,66 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   devlibs — General-purpose C and C++ utility libraries with no domain
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+liburcu
+libdaemon
+highway
+abseil-cpp
+double-conversion
+mustache
+docopt.cpp
+
+# mpd reaches for an fmt SUBPROJECT WRAP when the system one is absent, which
+# is a download in a build that has no network.
+fmt
+
+boost
+talloc
+
+# w3m allocates through the Boehm collector and its configure refuses to run
+# without gc.h.
+bdwgc
+
+# tcl vendors libtommath and RENAMES every symbol in it; yosys calls the plain
+# names against tcl's public headers, so the external copy is what makes it
+# compile at all — see the tcl recipe.
+libtommath
+
+tllist
+gtest
+simde
+sparsehash
+pystring
+rttr
+immer
+zug
+lager
+spdlog
+coeurl
+re2
+uthash
+fast-double-parser
+gflags
+jemalloc
+glog
+range-v3
+rinutils

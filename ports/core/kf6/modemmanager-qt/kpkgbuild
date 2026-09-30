@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = modemmanager-qt
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = d7c4106dc130729fdfd435abaeaf85039a874fc18563a41755e14f7ea174ae21  modemmanager-qt-6.30.0.tar.xz
+description = KDE Frameworks: Qt wrapper for the ModemManager D-Bus API
+homepage    = https://invent.kde.org/frameworks/modemmanager-qt
+depends     = cmake ninja extra-cmake-modules qt6-qtbase pkgconf modemmanager

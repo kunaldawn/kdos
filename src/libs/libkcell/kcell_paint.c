@@ -75,6 +75,11 @@ void kcell_set_slot_alpha(int slot, uint8_t alpha)
 			any_alpha = true;
 }
 
+uint8_t kcell_slot_alpha(int slot)
+{
+	return slot_alpha[slot & 7];
+}
+
 void kcell_reset_slot_alpha(void)
 {
 	memset(slot_alpha, 255, sizeof(slot_alpha));
@@ -645,7 +650,9 @@ static void block_rects(uint32_t cp, int X, int Y, int cw, int ch,
  * repeating mask offset by the cell's absolute position is one continuous
  * pattern across a whole shaded area; a mask anchored at each cell's origin
  * changes phase at every boundary whose cell width is not a multiple of the
- * period, and that shows as a grid drawn over the fill.
+ * period, and that shows as a grid drawn over the fill. It is also the one
+ * mark whose pixels depend on where the row is, so kcell_scroll_find() keeps
+ * a shaded row out of any band moved by other than a whole number of periods.
  *
  * One tile per tone per scale — at most twelve images of a few dozen bytes —
  * and they survive a font change, because the period is the scale and nothing
@@ -1194,54 +1201,345 @@ static void pad_remainder(pixman_image_t *dst, int used_w, int used_h,
 }
 
 /*
- * The paint itself, saying WHICH ROWS it touched: `painted` is one byte per
- * row, cleared first and set for every row this call drew, and the return is
- * how many. Internal to the library — a caller outside it sees `kcell_paint`,
- * which asks for no row list.
+ * THE CHANGED SPAN OF ONE ROW, half-open, or 0 when the row is unchanged.
+ *
+ * NOT THE WHOLE ROW. A caret, a clock digit or one typed character costs the
+ * cells it touched rather than every glyph beside them — and a row of a
+ * full-screen animation usually changes end to end, where this costs one extra
+ * comparison from each side and finds it.
+ *
+ * WIDENED BY A CELL EACH WAY, because a changed cell's neighbour may hold
+ * pixels a paint has to put back: a face's glyph is clipped to its own cell,
+ * but the PAIR a double-width character occupies is painted as one rectangle
+ * by its lead.
+ *
+ * AND THEN ONTO THE LEAD OF A CONTINUATION. A double-width glyph is painted
+ * entirely by its lead cell; the KTUI_WIDE_CONT marker beside it draws nothing
+ * of its own. A span that starts on the marker fills the marker's pixels —
+ * erasing the right half of the glyph — and then finds nothing to redraw
+ * there, so the character stays half-gone until something touches the lead.
+ * One step is enough: libktui reserves at most one continuation per lead.
+ *
+ * The same span is what a damage rectangle is cut from (kcell_diff_spans), so
+ * the cells a paint rewrites and the cells a compositor is told about cannot
+ * disagree about where a changed cell's pixels end.
  */
-static int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
-			      KtuiCell *prev, int cols, int rows, int full,
-			      int scale, int dst_w, int dst_h,
-			      unsigned char *painted)
+static int row_span(const KtuiCell *crow, const KtuiCell *prow, int cols,
+		    int *px0, int *px1)
 {
-	int npainted = 0;
+	int x0 = 0, x1 = cols;
 
+	if (!memcmp(crow, prow, (size_t)cols * sizeof(*crow)))
+		return 0;
+	while (x0 < cols && !memcmp(&crow[x0], &prow[x0], sizeof(*crow)))
+		x0++;
+	while (x1 > x0 && !memcmp(&crow[x1 - 1], &prow[x1 - 1], sizeof(*crow)))
+		x1--;
+	if (x0 > 0)
+		x0--;
+	if (x0 > 0 && crow[x0].ch == KTUI_WIDE_CONT)
+		x0--;
+	if (x1 < cols)
+		x1++;
+	*px0 = x0;
+	*px1 = x1;
+	return 1;
+}
+
+int kcell_diff_spans(const KtuiCell *cur, const KtuiCell *prev, int cols,
+		     int rows, KCellSpan *spans)
+{
+	int n = 0;
+
+	for (int y = 0; y < rows; y++) {
+		KCellSpan *s = &spans[y];
+
+		s->x0 = s->x1 = 0;
+		if (row_span(cur + (size_t)y * cols, prev + (size_t)y * cols,
+			     cols, &s->x0, &s->x1))
+			n++;
+	}
+	return n;
+}
+
+/*
+ * CLIP THE DESTINATION, and this is not belt-and-braces — without it the
+ * painter writes outside the caller's allocation.
+ *
+ * pixman clips a COMPOSITE to the destination automatically
+ * (_pixman_compute_composite_region32 clamps to bits.width/height), so the
+ * glyph blit is safe. A FILL is not: pixman_image_fill_rectangles with
+ * PIXMAN_OP_SRC takes a fast path that intersects the rectangle only with
+ * `common.clip_region`, and pixman_image_create_bits leaves have_clip_region
+ * FALSE. It then calls pixman_fill32, which is `bits += y*stride + x` and two
+ * loops that have never heard of the image height.
+ *
+ * Every caller paints ceil(w/cell) cells into a buffer that is only w pixels
+ * wide, on the assumption that the last cell is clipped. For the glyphs it is.
+ * For the background fill it is not: measured against pixman 0.46.4, a 16x673
+ * strip filled at (0,672,16,32) writes 1984 bytes past the end of the
+ * allocation — heap corruption that is invisible to ASan, because the store
+ * happens inside uninstrumented libpixman.
+ *
+ * One region here covers every caller.
+ */
+static int paint_begin(pixman_image_t *dst, int scale, int dst_w, int dst_h)
+{
+	pixman_region32_t clip;
+
+	pixman_region32_init_rect(&clip, 0, 0, (unsigned)dst_w, (unsigned)dst_h);
+	pixman_image_set_clip_region32(dst, &clip);
+	pixman_region32_fini(&clip);
+	if (scale < 1)
+		scale = 1;
+	if (scale > KCELL_MAX_SCALE)
+		scale = KCELL_MAX_SCALE;
+	return scale;
+}
+
+void kcell_paint_spans(pixman_image_t *dst, const KtuiCell *cur,
+		       KtuiCell *prev, int cols, int rows,
+		       const KCellSpan *spans, int scale, int dst_w, int dst_h)
+{
+	scale = paint_begin(dst, scale, dst_w, dst_h);
+	for (int y = 0; y < rows; y++) {
+		int x0 = spans[y].x0, x1 = spans[y].x1;
+
+		if (x0 < 0)
+			x0 = 0;
+		if (x1 > cols)
+			x1 = cols;
+		if (x1 <= x0)
+			continue;
+		if (prev)
+			memcpy(prev + (size_t)y * cols + x0,
+			       cur + (size_t)y * cols + x0,
+			       (size_t)(x1 - x0) * sizeof(*cur));
+		paint_row(dst, cur + (size_t)y * cols, cols, y, scale, x0, x1);
+	}
+}
+
+/*
+ * ONE HASH PER ROW, over the row's bytes eight at a time. It only proposes a
+ * band; kcell_scroll_find() compares every row of the band it picks before it
+ * answers, so a collision costs a missed scroll and never a wrong one.
+ */
+static uint64_t row_hash(const KtuiCell *row, int cols)
+{
+	const unsigned char *p = (const unsigned char *)row;
+	size_t n = (size_t)cols * sizeof(*row), i = 0;
+	uint64_t h = 0x9e3779b97f4a7c15ULL;
+
+	for (; i + 8 <= n; i += 8) {
+		uint64_t w;
+
+		memcpy(&w, p + i, 8);
+		h = (h ^ w) * 0x100000001b3ULL;
+		h ^= h >> 29;
+	}
+	for (; i < n; i++)
+		h = (h ^ p[i]) * 0x100000001b3ULL;
+	return h;
+}
+
+static int row_shaded(const KtuiCell *row, int cols)
+{
+	for (int x = 0; x < cols; x++)
+		if (row[x].ch >= 0x2591 && row[x].ch <= 0x2593)
+			return 1;
+	return 0;
+}
+
+/* Scratch that lives for the process, grown to the tallest grid seen. */
+static uint64_t *scr_hc, *scr_hp;
+static unsigned char *scr_shade;
+static int scr_rows;
+
+void kcell_row_stale(KtuiCell *prev, int cols, int row)
+{
+	KtuiCell *p = prev + (size_t)row * cols;
+
+	for (int x = 0; x < cols; x++)
+		p[x].ch = KCELL_STALE;
+}
+
+/*
+ * EVERY SHIFT IS TRIED, and each is scored by the rows it would spare the
+ * painter: a row of the band that already equals `prev` where it stands costs
+ * nothing either way, so only the rows that differ in place count. Blank rows
+ * match each other at every shift, and scoring by band length would pick a
+ * long run of blanks over the text that actually scrolled. Ties go to the
+ * shorter band, which is the smaller move.
+ */
+int kcell_scroll_find(const KtuiCell *cur, const KtuiCell *prev, int cols,
+		      int rows, int scale, const KCellSpan *diff,
+		      KCellScroll *s)
+{
+	size_t rb = (size_t)cols * sizeof(*cur);
+	int moved = 0;
+
+	if (rows < 3 || cols < 1)
+		return 0;
+	for (int y = 0; y < rows && moved < 2; y++)
+		if (diff[y].x1 > diff[y].x0)
+			moved++;
+	if (moved < 2)
+		return 0;	/* a caret, a clock: nothing to move */
+	if (scr_rows < rows) {
+		uint64_t *hc = realloc(scr_hc, (size_t)rows * sizeof(*hc));
+
+		if (hc)
+			scr_hc = hc;
+		uint64_t *hp = realloc(scr_hp, (size_t)rows * sizeof(*hp));
+
+		if (hp)
+			scr_hp = hp;
+		unsigned char *sh = realloc(scr_shade, (size_t)rows);
+
+		if (sh)
+			scr_shade = sh;
+		if (!hc || !hp || !sh)
+			return 0;
+		scr_rows = rows;
+	}
+	/*
+	 * The shade pattern repeats every SHADE_H cell pixels down the
+	 * destination, so a shift of an odd number of odd-height cells puts
+	 * every shaded row of the band half a period out of phase.
+	 */
+	int odd_cell = kcell_h() % SHADE_H != 0;
+
+	(void)scale;	/* the period and the cell both grow with it */
+
+	for (int y = 0; y < rows; y++) {
+		scr_hc[y] = row_hash(cur + (size_t)y * cols, cols);
+		scr_hp[y] = row_hash(prev + (size_t)y * cols, cols);
+		scr_shade[y] = odd_cell &&
+			       row_shaded(cur + (size_t)y * cols, cols);
+	}
+
+	int best_gain = 0, best_n = 0, best_y = 0, best_d = 0;
+
+	for (int d = 1 - rows; d < rows; d++) {
+		int y0 = d < 0 ? -d : 0, y1 = d > 0 ? rows - d : rows;
+		int start = -1, gain = 0;
+		int phase = odd_cell && (d & 1);
+
+		if (!d)
+			continue;
+		for (int y = y0; y <= y1; y++) {
+			int ok = y < y1 && scr_hc[y] == scr_hp[y + d] &&
+				 !(phase && scr_shade[y]);
+
+			if (ok) {
+				if (start < 0) {
+					start = y;
+					gain = 0;
+				}
+				if (diff[y].x1 > diff[y].x0)
+					gain++;
+				continue;
+			}
+			if (start >= 0) {
+				int n = y - start;
+
+				if (gain > best_gain ||
+				    (gain == best_gain && n < best_n)) {
+					best_gain = gain;
+					best_n = n;
+					best_y = start;
+					best_d = d;
+				}
+				start = -1;
+			}
+		}
+	}
+	if (best_gain < 2 || best_gain * 2 < best_n)
+		return 0;
+	for (int i = 0; i < best_n; i++)
+		if (memcmp(cur + (size_t)(best_y + i) * cols,
+			   prev + (size_t)(best_y + i + best_d) * cols, rb))
+			return 0;
+	s->y = best_y;
+	s->n = best_n;
+	s->from = best_y + best_d;
+	return 1;
+}
+
+int kcell_scroll_apply(pixman_image_t *dst, KtuiCell *prev, int cols,
+		       int rows, const KCellScroll *s, int scale, int dst_w,
+		       int dst_h)
+{
+	if (PIXMAN_FORMAT_BPP(pixman_image_get_format(dst)) != 32)
+		return -1;
 	if (scale < 1)
 		scale = 1;
 	if (scale > KCELL_MAX_SCALE)
 		scale = KCELL_MAX_SCALE;
 
-	/*
-	 * CLIP THE DESTINATION, and this is not belt-and-braces — without it
-	 * this function writes outside the caller's allocation.
-	 *
-	 * pixman clips a COMPOSITE to the destination automatically
-	 * (_pixman_compute_composite_region32 clamps to bits.width/height), so
-	 * the glyph blit below is safe and always has been. A FILL is not:
-	 * pixman_image_fill_rectangles with PIXMAN_OP_SRC takes a fast path that
-	 * intersects the rectangle only with `common.clip_region`, and
-	 * pixman_image_create_bits leaves have_clip_region FALSE. It then calls
-	 * pixman_fill32, which is `bits += y*stride + x` and two loops that have
-	 * never heard of the image height.
-	 *
-	 * Every caller here paints ceil(w/cell) cells into a buffer that is only
-	 * w pixels wide, on the assumption that the last cell is clipped. For
-	 * the glyphs it is. For the background fill it was not: measured against
-	 * pixman 0.46.4, a 16x673 strip filled at (0,672,16,32) writes 1984
-	 * bytes past the end of the allocation. That is heap corruption that
-	 * crashes kdos-comp on the first real window, and it is invisible to
-	 * ASan because the store happens inside uninstrumented libpixman.
-	 *
-	 * One region here fixes every caller, which is why it is here and not in
-	 * deco.c.
-	 */
-	pixman_region32_t clip;
-	pixman_region32_init_rect(&clip, 0, 0, (unsigned)dst_w, (unsigned)dst_h);
-	pixman_image_set_clip_region32(dst, &clip);
-	pixman_region32_fini(&clip);
+	uint8_t *data = (uint8_t *)pixman_image_get_data(dst);
+	int stride = pixman_image_get_stride(dst);
+	int iw = pixman_image_get_width(dst), ih = pixman_image_get_height(dst);
+	int ch = kcell_h() * scale;
+	int y0 = s->y, from = s->from, n = s->n;
 
-	if (painted)
-		memset(painted, 0, (size_t)rows);
+	if (dst_w > iw)
+		dst_w = iw;
+	if (dst_h > ih)
+		dst_h = ih;
+	if (!data || dst_w <= 0 || n <= 0 || y0 < 0 || from < 0 ||
+	    y0 + n > rows || from + n > rows)
+		return -1;
+
+	size_t rowb = (size_t)dst_w * 4;
+	/*
+	 * Rows move in the order that never reads a row already overwritten:
+	 * from the top when the band moves up, from the bottom when it moves
+	 * down. Each pixel row is its own memmove, so only the columns the
+	 * caller owns are touched.
+	 */
+	int up = y0 < from;
+
+	for (int k = 0; k < n; k++) {
+		int i = up ? k : n - 1 - k;
+		int dy = (y0 + i) * ch, sy = (from + i) * ch;
+		int hd = dst_h - dy, hs = dst_h - sy;
+
+		if (hd > ch)
+			hd = ch;
+		if (hs > ch)
+			hs = ch;
+		int hh = hd < hs ? hd : hs;
+
+		for (int r = 0; r < hh; r++) {
+			int pr = up ? r : hh - 1 - r;
+
+			memmove(data + (size_t)(dy + pr) * stride,
+				data + (size_t)(sy + pr) * stride, rowb);
+		}
+	}
+	memmove(prev + (size_t)y0 * cols, prev + (size_t)from * cols,
+		(size_t)n * cols * sizeof(*prev));
+	/* A destination row the source could not fill whole — the source was
+	 * the grid's last, partly clipped row — is repainted from scratch. */
+	for (int i = 0; i < n; i++) {
+		int dy = (y0 + i) * ch, sy = (from + i) * ch;
+		int hd = dst_h - dy, hs = dst_h - sy;
+
+		if (hd > ch)
+			hd = ch;
+		if (hs > ch)
+			hs = ch;
+		if (hd > 0 && hs < hd)
+			kcell_row_stale(prev, cols, y0 + i);
+	}
+	return 0;
+}
+
+void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
+		 int cols, int rows, int full, int scale, int dst_w, int dst_h)
+{
+	scale = paint_begin(dst, scale, dst_w, dst_h);
 
 	/*
 	 * No `prev` means no history to diff against, which is the compositor's
@@ -1254,62 +1552,18 @@ static int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
 
 	for (int y = 0; y < rows; y++) {
 		const KtuiCell *crow = cur + (size_t)y * cols;
+		KtuiCell *prow = prev ? prev + (size_t)y * cols : NULL;
 		int x0 = 0, x1 = cols;
 
 		if (!full) {
-			KtuiCell *prow = prev + (size_t)y * cols;
-
-			if (!memcmp(crow, prow, (size_t)cols * sizeof(*crow)))
+			if (!row_span(crow, prow, cols, &x0, &x1))
 				continue;
-
-			/*
-			 * THE CHANGED SPAN, NOT THE WHOLE ROW. A caret, a
-			 * clock digit or one typed character costs the cells
-			 * it touched rather than every glyph beside them —
-			 * and a row of a full-screen animation usually
-			 * changes end to end, where this costs one extra
-			 * comparison from each side and finds it.
-			 *
-			 * WIDENED BY A CELL EACH WAY, because a changed cell's
-			 * neighbour may hold pixels this paint has to put
-			 * back: a face's glyph is clipped to its own cell, but
-			 * the PAIR a double-width character occupies is
-			 * painted as one rectangle by its lead.
-			 *
-			 * AND THEN ONTO THE LEAD OF A CONTINUATION. A
-			 * double-width glyph is painted entirely by its lead
-			 * cell; the KTUI_WIDE_CONT marker beside it draws
-			 * nothing of its own. A span that starts on the marker
-			 * fills the marker's pixels — erasing the right half of
-			 * the glyph — and then finds nothing to redraw there,
-			 * so the character stays half-gone until something
-			 * touches the lead. One step is enough: libktui
-			 * reserves at most one continuation per lead.
-			 */
-			while (x0 < cols &&
-			       !memcmp(&crow[x0], &prow[x0], sizeof(*crow)))
-				x0++;
-			while (x1 > x0 &&
-			       !memcmp(&crow[x1 - 1], &prow[x1 - 1],
-				       sizeof(*crow)))
-				x1--;
-			if (x0 > 0)
-				x0--;
-			if (x0 > 0 && crow[x0].ch == KTUI_WIDE_CONT)
-				x0--;
-			if (x1 < cols)
-				x1++;
 			memcpy(prow + x0, crow + x0,
 			       (size_t)(x1 - x0) * sizeof(*crow));
-		} else if (prev) {
-			memcpy(prev + (size_t)y * cols, crow,
-			       (size_t)cols * sizeof(*crow));
+		} else if (prow) {
+			memcpy(prow, crow, (size_t)cols * sizeof(*crow));
 		}
-
 		paint_row(dst, crow, cols, y, scale, x0, x1);
-		if (painted)
-			painted[y] = 1;
-		npainted++;
 	}
 
 	/* Only on a full paint: the remainder cannot change without the
@@ -1318,12 +1572,4 @@ static int kcell_paint_damage(pixman_image_t *dst, const KtuiCell *cur,
 	if (full)
 		pad_remainder(dst, cols * kcell_w() * scale,
 			      rows * kcell_h() * scale, dst_w, dst_h);
-	return npainted;
-}
-
-void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
-		 int cols, int rows, int full, int scale, int dst_w, int dst_h)
-{
-	kcell_paint_damage(dst, cur, prev, cols, rows, full, scale, dst_w,
-			   dst_h, NULL);
 }

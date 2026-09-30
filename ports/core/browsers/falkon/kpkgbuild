@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = falkon
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 74df8eebd3d198392a35e79cee5d554b9f48ed88a5f3e6906caded1b3698257e  falkon-26.08.1.tar.xz
+description = Qt WebEngine web browser from KDE, with KWallet and KIO integration
+homepage    = https://www.falkon.org/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtwebchannel qt6-qtwebengine qt6-qtwayland qt6-qttools karchive ki18n kwallet kio kcrash kcoreaddons purpose kjobwidgets openssl libxcb xcb-util

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ifuse
+version     = 1.2.1
+release     = 1
+source      = https://github.com/libimobiledevice/ifuse/releases/download/$version/ifuse-$version.tar.bz2
+sha256      = 9d490470ba6553f8052b385bb5330462e46fbe82131ebe65be47a1cc1c70e857  ifuse-1.2.1.tar.bz2
+description = FUSE filesystem that mounts an iPhone's or iPad's media and app documents
+homepage    = https://libimobiledevice.org
+depends     = libimobiledevice libplist fuse usbmuxd pkgconf

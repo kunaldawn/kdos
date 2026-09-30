@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gr-funcube
+version     = 3.10.0.git20260208
+release     = 1
+_commit     = 2fc05048a4a5c0be5105b2060a9daf999d8440bc
+source      = $name-$version.tar.gz::https://github.com/dl1ksv/gr-funcube/archive/$_commit.tar.gz
+sha256      = ecad591251e3117391bc4a978ac92a24cd3961a9c087bb43b2cce10ef5dd7e66  gr-funcube-3.10.0.git20260208.tar.gz
+description = gr-funcube — GNU Radio source and control blocks for the FUNcube Dongle Pro and Pro+
+homepage    = https://github.com/dl1ksv/gr-funcube
+depends     = cmake ninja pkgconf gnuradio boost python3 python3-pybind11 numpy hidapi libusb

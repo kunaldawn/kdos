@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kauth
+version     = 6.30.0
+release     = 1
+source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 60b75e02abc2bfbb247c586e3ab94def7ecd7b4e1ddb8260358951d84d9ea8c9  kauth-6.30.0.tar.xz
+description = KDE Frameworks: execute actions as a privileged user through polkit
+homepage    = https://invent.kde.org/frameworks/kauth
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons kwindowsystem polkit-qt6

@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qtgraphicaleffects
+version     = 5.15.19
+release     = 1
+_module     = qtgraphicaleffects
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+sha256      = cec6982b4f18909f2eea03a5afd44e0c45c9274bede7e2703683e7413fe05b26  qt5-qtgraphicaleffects-5.15.19.tar.xz
+description = Qt 5 Quick graphical effects — the blur, shadow, glow and colour QML types
+homepage    = https://www.qt.io/
+depends     = qt5-qtbase qt5-qtdeclarative
+group       = qt5
+series      = 5.15

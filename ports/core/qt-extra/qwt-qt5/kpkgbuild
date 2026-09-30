@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qwt-qt5
+version     = 6.3.0
+release     = 1
+source      = qwt-$version.tar.bz2::https://downloads.sourceforge.net/qwt/qwt-$version.tar.bz2
+sha256      = dcb085896c28aaec5518cbc08c0ee2b4e60ada7ac929d82639f6189851a6129a  qwt-6.3.0.tar.bz2
+description = Qwt for Qt 5 — plot, dial and scale widgets for GNU Radio's gr-qtgui and Qt 5 SDR tools
+homepage    = https://qwt.sourceforge.io/
+depends     = qt5-qtbase qt5-qtsvg qt5-qttools
+group       = qwt

@@ -40,7 +40,7 @@
 #     dbus-daemon halves are both here.
 #   - libnsgif, which gates libkimg's GIF cases. Alpine packages neither it nor
 #     netsurf's buildsystem; the port builds both, so the block runs inside the
-#     phase-4 chroot and skips here.
+#     build chroot once 41_system has installed it, and skips here.
 #
 # A FONT IS NOT OPTIONAL HERE. fcft resolves `monospace` through fontconfig, and
 # an image with no font at all answers `failed to match font` — which stops the

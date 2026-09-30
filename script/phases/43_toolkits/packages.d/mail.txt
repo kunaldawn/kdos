@@ -1,0 +1,35 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   43_toolkits: Toolkits
+# ---------------------------------
+#   mail — Email clients, fetch and send tools, mail libraries, and feed
+#   readers
+# ---------------------------------
+#
+# Libraries whose dependency closure reaches GTK, Qt, wxWidgets, FLTK or Motif:
+# the toolkits themselves, KDE Frameworks, and what applications link over
+# them.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# MIME parsing that verifies a signature and decrypts a part correctly, which
+# is the whole value over a hand-rolled parser.
+gmime
+
+# notmuch does not fetch, send or store mail: it INDEXES the Maildir isync put
+# there. That split is what lets aerc, mutt and a shell script see the same
+# tags, and it rides the xapian the kiwix and recoll stacks already need.
+notmuch
+
+kmbox
+mimetreeparser

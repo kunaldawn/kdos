@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = git-cola
+version     = 4.19.0
+release     = 1
+source      = $name-$version.tar.gz::https://files.pythonhosted.org/packages/source/g/git-cola/git_cola-$version.tar.gz
+sha256      = 8b85c50ecf1086c9664c79348a96cebd7dbb65054d53ea2b02e70d53cb7f0981  git-cola-4.19.0.tar.gz
+sha256      = 53ee3e6017c3ed1a5e666a386c16b4ad29cb842e5aa3d0ca20eb7d3ba7b39c4c  git-cola-vendor-4.19.0.tar.xz
+description = Git Cola — a Git GUI for staging, committing and reviewing, with the git-dag history viewer
+homepage    = https://git-cola.github.io/
+depends     = python3 python3-setuptools python3-setuptools-scm python3-pip python3-qtpy python3-pyqt6 python3-sphinx librsvg git
+vendoring   = python
+pypackages  = polib:1.2.0

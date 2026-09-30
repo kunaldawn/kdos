@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-cairo
+version     = 1.29.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pycairo/pycairo-$version.tar.gz
+sha256      = 4fbd26b4af24c9787d84cf5448e34eb8dca064b732479aaecd03109520eebd5f  python3-cairo-1.29.1.tar.gz
+description = pycairo — cairo drawing for Python, and the cairo half of PyGObject
+homepage    = https://pycairo.readthedocs.io/
+depends     = python3 meson ninja pkgconf cairo

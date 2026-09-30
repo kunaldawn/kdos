@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = podofo
+version     = 1.1.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/podofo/podofo/archive/refs/tags/$version.tar.gz
+sha256      = d6ffe6fc173ac6d6e5b00f5cb9db01990cab1bdf7cc03bdeffce3013bc9ec63a  podofo-1.1.2.tar.gz
+description = C++ library to read, create and modify PDF documents
+homepage    = https://github.com/podofo/podofo
+depends     = cmake ninja zlib openssl freetype2 fontconfig libxml2 libjpeg-turbo libtiff libpng lcms2

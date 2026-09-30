@@ -56,8 +56,9 @@ typedef union pixman_image pixman_image_t;
 
 /*
  * `cell_w`/`cell_h` are the backend's cell size in PIXELS and `scale` its
- * integer output scale — an icon is chosen and rasterised at cell*scale, or a
- * HiDPI panel gets a blurred one. Returns 0 when at least one source answered,
+ * whole-number scale — an icon is chosen and rasterised at cell*scale, or a
+ * HiDPI panel gets a blurred one. On a fractional output scale the scale is 1
+ * and the cell is the device's. Returns 0 when at least one source answered,
  * -1 when there is no artwork at all (which is a working desktop, not an
  * error). Safe to call twice; the second call is a re-scan.
  *
@@ -71,6 +72,19 @@ typedef union pixman_image pixman_image_t;
  */
 int kicon_init(int cell_w, int cell_h, int scale);
 void kicon_finish(void);
+
+/*
+ * THE PIXEL CELL MOVED — the output scale, or on a fractional output scale
+ * the cell itself, which is the font's at the device size there while the
+ * scale stays 1. Every picture is rasterised at cell * scale, so each one cut
+ * for the old pair is dropped and the next kicon_slot() builds it again for
+ * the new one; the path memo goes too, as in kicon_retint(). Nothing happens
+ * when the pair is the one already in force, before kicon_init() has run, or
+ * for a cell under the 4x4 floor kicon_init() refuses. A program calls it
+ * from the function it hands kdisp_on_scale(), with the cell it gave
+ * kicon_init() read again.
+ */
+void kicon_recell(int cell_w, int cell_h, int scale);
 
 /* `icons = off` in comp.conf, and the `--no-icons` flag every front end takes.
  * Off makes kicon_slot() answer -1 for everything without unloading anything,

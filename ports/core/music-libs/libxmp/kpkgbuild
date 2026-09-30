@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libxmp
+version     = 4.7.3
+release     = 1
+source      = https://github.com/libxmp/libxmp/releases/download/$name-$version/$name-$version.tar.gz
+sha256      = b6a98797e4fb9c9a705f5d53112aa5214561857e929a644928b9e658930d9440  libxmp-4.7.3.tar.gz
+description = Play tracker modules: MOD, S3M, XM, IT and some ninety other formats
+homepage    = https://xmp.sourceforge.net/
+depends     = cmake ninja

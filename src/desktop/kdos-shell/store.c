@@ -380,12 +380,12 @@ static unsigned long long ticked_bytes(void)
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 static const KtuiCol AP_COL[] = {
-	{ "", 4 }, { "APPLICATION", 0 }, { "ON", 12 }, { "SIZE~", 9 }
+	{ "", 4, 0 }, { "APPLICATION", 0, 0 }, { "ON", 12, 0 }, { "SIZE~", 9, 0 }
 };
 #define AP_NCOL 4
 
 static const KtuiCol GR_COL[] = {
-	{ "", 4 }, { "GROUP", 0 }, { "APPS", 6 }, { "SIZE~", 9 }
+	{ "", 4, 0 }, { "GROUP", 0, 0 }, { "APPS", 6, 0 }, { "SIZE~", 9, 0 }
 };
 #define GR_NCOL 4
 

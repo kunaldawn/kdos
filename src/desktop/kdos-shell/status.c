@@ -532,6 +532,8 @@ static void draw_list(int w, int h)
 
 	int rw = nrows > vis ? w - 3 : w - 2;
 
+	kch_list_view(1, y0, rw, vis, top);
+
 	for (int i = 0; i < vis && top + i < nrows; i++) {
 		const struct srow *r = &rows[top + i];
 		int y = y0 + i;

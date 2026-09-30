@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   20_selfhost: Self-Hosting Bootstrap
+# ---------------------------------
+#
+# The first packages kpkg builds inside the chroot: the C library, the
+# compilers and the tools their builds run, rebuilt natively over what
+# 10_bootstrap installed, so every later phase compiles with a toolchain that
+# built itself.
+
+tar
+musl
+zlib
+binutils
+diffutils
+m4
+gawk
+gcc

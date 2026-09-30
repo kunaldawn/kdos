@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = cabextract
+version     = 1.11
+release     = 1
+source      = https://www.cabextract.org.uk/$name-$version.tar.gz
+sha256      = b5546db1155e4c718ff3d4b278573604f30dd64c3c5bfd4657cd089b823a3ac6  cabextract-1.11.tar.gz
+description = Extract Microsoft cabinet (.cab) files
+homepage    = https://www.cabextract.org.uk/
+depends     = pkgconf libmspack

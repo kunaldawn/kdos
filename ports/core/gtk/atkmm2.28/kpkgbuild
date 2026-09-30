@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = atkmm2.28
+version     = 2.28.5
+release     = 1
+source      = $name-$version.tar.xz::https://download.gnome.org/sources/atkmm/${version%.*}/atkmm-$version.tar.xz
+sha256      = ae449192a582a2582a95e0602b15d792bbd639e836339b81ef916aa87540ac5c  atkmm2.28-2.28.5.tar.xz
+description = C++ bindings for ATK, the 1.6 API (atkmm-1.6) that gtkmm 3 builds on
+homepage    = https://gtkmm.gnome.org/
+depends     = at-spi2-core glibmm2.66 libsigc++2 meson python3
+series      = 2.28

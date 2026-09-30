@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gmsh
+version     = 4.15.2
+release     = 1
+source      = $name-$version.tgz::https://gmsh.info/src/gmsh-$version-source.tgz
+sha256      = be3f66f225d27ba9fa014f07e83169285da8a051b0e8ab7103d88066b39bdd3e  gmsh-4.15.2.tgz
+description = Gmsh — 3D finite element mesh generator with CAD, meshing and post-processing (FLTK)
+homepage    = https://gmsh.info/
+depends     = cmake ninja pkgconf fltk opencascade eigen gmp cairo fontconfig freetype2 libX11 libXext libXft libXinerama libXfixes libXcursor libXrender mesa libglvnd glu libjpeg-turbo libpng zlib python3 librsvg

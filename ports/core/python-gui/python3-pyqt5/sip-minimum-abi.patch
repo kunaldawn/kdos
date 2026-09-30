@@ -1,0 +1,15 @@
+Declare the sip module ABI that QtCore, and every module importing it, is
+generated for. sip 6.16.1 refuses a module that targets an ABI major version
+without a %MinimumABIVersion naming it.
+
+--- a/sip/QtCore/QtCoremod.sip
++++ b/sip/QtCore/QtCoremod.sip
+@@ -65,6 +65,8 @@
+ 
+ %Plugin PyQt5
+ 
++%MinimumABIVersion "12.15"
++
+ %If (Py_v3)
+ %DefaultEncoding "ASCII"
+ %End

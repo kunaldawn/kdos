@@ -13,8 +13,15 @@ labwc_sources = files(
   'kdos-layerfocus.c', # KDOS
   'kdos-lid.c', # KDOS
   'kdos-peek.c', # KDOS
+  'kdos-motion.c', # KDOS
+  'kdos-winmotion.c', # KDOS
+  'kdos-sched.c', # KDOS
   'kdos-thumb.c', # KDOS
   'kdos-crt.c', # KDOS
+  'kdos-crt-pass.c', # KDOS
+  'kdos-a11y.c', # KDOS
+  'kdos-a11ymon.c', # KDOS
+  'kdos-screensaver.c', # KDOS
   'action.c',
   'buffer.c',
   'debug.c',

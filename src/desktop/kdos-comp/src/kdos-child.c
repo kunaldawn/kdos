@@ -70,6 +70,7 @@
  * the sort of thing that compiles.
  */
 static bool kdos_want_panel = true;
+static bool kdos_want_osk = false;
 static char kdos_panel_cells_arg[16] = "2";
 static char kdos_panel_margin_arg[16] = "0";
 static char kdos_panel_opacity_arg[16] = "80";
@@ -120,6 +121,13 @@ static const struct {
 	 * instance would be a second history nobody could reach.
 	 */
 	{ "kdos-clip", &kdos_conf.clipboard, false },
+	/*
+	 * The on-screen keyboard, started HIDDEN and shown by signal
+	 * (kdos-a11y.c): SIGUSR2 shows it, SIGUSR1 hides it. Not per-output:
+	 * one keyboard types into one focus. Supervised so that the pid the
+	 * signals go to is always the live one.
+	 */
+	{ "wvkbd-deskintl", &kdos_want_osk, false },
 };
 #define NTEMPLATES ((int)(sizeof(TEMPLATES) / sizeof(TEMPLATES[0])))
 
@@ -197,7 +205,10 @@ child_build_argv(struct kdos_child *c)
 		if (!strcmp(TEMPLATES[c->tmpl].cmd, "kdos-shell")
 				&& kdos_conf.panel_font[0])
 			font = kdos_conf.panel_font;
-		if (font[0]) {
+		/* wvkbd spells its font -fn and takes a pango name; handed
+		 * --font it prints its usage and exits, which under the
+		 * respawn loop is an on-screen keyboard that never starts */
+		if (font[0] && strcmp(TEMPLATES[c->tmpl].cmd, "wvkbd-deskintl")) {
 			c->argv[n++] = "--font";
 			c->argv[n++] = font;
 		}
@@ -220,6 +231,9 @@ child_build_argv(struct kdos_child *c)
 		c->argv[n++] = kdos_panel_margin_arg;
 		c->argv[n++] = "--opacity";
 		c->argv[n++] = kdos_panel_opacity_arg;
+	}
+	if (!strcmp(TEMPLATES[c->tmpl].cmd, "wvkbd-deskintl")) {
+		c->argv[n++] = "--hidden";
 	}
 	/*
 	 * `icons = no` reaches every surface that can draw one — and ONLY
@@ -282,8 +296,8 @@ spawn_one(struct kdos_child *c)
 	c->pid = p;
 }
 
-/* A free slot, or NULL when the table is full (40 = the four session-wide
- * children plus three per output, twelve outputs' worth). */
+/* A free slot, or NULL when the table is full (40 = the five session-wide
+ * children plus three per output, eleven outputs' worth). */
 static struct kdos_child *
 child_alloc(void)
 {
@@ -418,6 +432,7 @@ kdos_children_start(void)
 	 * passed as: kb_argv-style tables store POINTERS, so every argument a
 	 * child gets has to outlive the exec. */
 	kdos_want_panel = kdos_conf.panel_edge != KDOS_PANEL_OFF;
+	kdos_want_osk = kdos_conf.osk != KDOS_OSK_OFF;
 	snprintf(kdos_panel_cells_arg, sizeof(kdos_panel_cells_arg), "%d",
 		 kdos_conf.panel_cells > 0 ? kdos_conf.panel_cells : 2);
 	snprintf(kdos_panel_margin_arg, sizeof(kdos_panel_margin_arg), "%d",
@@ -503,6 +518,23 @@ kdos_child_reap(pid_t pid, int status)
 		return true;
 	}
 	return false;
+}
+
+/*
+ * The live pid of a session-wide child, for a caller that signals it. 0 while
+ * it is off, between a death and its respawn, or given up on.
+ */
+pid_t
+kdos_child_pid(const char *cmd)
+{
+	for (int i = 0; i < KDOS_MAX_CHILDREN; i++) {
+		const struct kdos_child *c = &children[i];
+		if (c->live && !c->stopping && c->pid > 0 && !c->output[0]
+				&& !strcmp(TEMPLATES[c->tmpl].cmd, cmd)) {
+			return c->pid;
+		}
+	}
+	return 0;
 }
 
 /*

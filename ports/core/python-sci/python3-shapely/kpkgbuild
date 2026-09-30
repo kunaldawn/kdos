@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-shapely
+version     = 2.1.2
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/s/shapely/shapely-$version.tar.gz
+sha256      = 2ed4ecb28320a433db18a5bf029986aa8afcfd740745e78847e330d5d94922a9  python3-shapely-2.1.2.tar.gz
+description = Shapely — planar geometry (points, lines, polygons and their set operations) over GEOS, for Python
+homepage    = https://shapely.readthedocs.io/
+depends     = python3 python3-pip python3-setuptools python3-wheel python3-cython numpy geos

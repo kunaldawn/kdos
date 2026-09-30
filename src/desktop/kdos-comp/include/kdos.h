@@ -36,6 +36,17 @@ enum kdos_lid_close {
 	KDOS_LID_SUSPEND,
 };
 
+/*
+ * The on-screen keyboard: off (not started), manual (started hidden, shown
+ * by ToggleOnScreenKeyboard), auto (also shown while a text field has the
+ * keyboard focus and hidden when none does).
+ */
+enum kdos_osk {
+	KDOS_OSK_OFF = 0,
+	KDOS_OSK_MANUAL,
+	KDOS_OSK_AUTO,
+};
+
 struct kdos_conf {
 	/*
 	 * The CRT pass, percentages. crt = 0 is off. ON by default at the
@@ -47,10 +58,10 @@ struct kdos_conf {
 
 	/*
 	 * crt_fullscreen = off skips the pass on an output whose topmost
-	 * view is fullscreen — one render instead of two for video and
-	 * games. Direct scanout itself stays off for the session (the
-	 * scene's switch is creation-time), so this is the battery lever,
-	 * not a zero-copy path.
+	 * view is fullscreen, and that frame may scan the client's buffer
+	 * out directly — zero composites where the display takes the
+	 * buffer, one where it does not, instead of two. The battery and
+	 * latency lever for video and games.
 	 */
 	bool crt_fullscreen;
 
@@ -178,8 +189,11 @@ struct kdos_conf {
 	 * chrome_font, and then to libkwl's default.
 	 *
 	 * Terminus is a BITMAP face: name a size it actually has
-	 * (12/14/16/18/20/22/24/28/32) or fcft answers with the nearest strike
-	 * and the bar is a pixel off what every arithmetic here assumes.
+	 * (12/14/16/18/20/22/24/28/32). A size between them is drawn from the
+	 * nearest strike and the bar lands a pixel off what every arithmetic
+	 * here assumes. 64 and 96 are exact doubled and tripled strikes; a
+	 * size no strike draws (8, 9, 36 and up) comes from the `Terminus (TTF)`
+	 * twin in a cell exactly that tall (libkcell's size policy).
 	 */
 	char panel_font[128];
 
@@ -196,6 +210,73 @@ struct kdos_conf {
 	 * and the fills stay ink.
 	 */
 	int panel_opacity;
+
+	/*
+	 * The keyboard aids (kdos-a11y.c), each OFF by default: a filter that
+	 * nobody asked for eats keystrokes, and the person who needs one is
+	 * the person least able to find what is eating them. A changed value
+	 * applies on a reconfigure; the ToggleStickyKeys family of actions
+	 * flips them for the session without touching this file.
+	 *
+	 * sticky_keys: a modifier pressed and released alone latches for the
+	 *   next key; pressed twice it locks; a third time it releases.
+	 * slow_keys: a key counts only once held for slow_keys_ms.
+	 * bounce_keys: a second press of the same key within bounce_keys_ms
+	 *   of its release is dropped.
+	 */
+	bool sticky_keys, slow_keys, bounce_keys;
+	int slow_keys_ms, bounce_keys_ms;
+
+	/* Dwell click: the pointer held still for dwell_click_ms clicks the
+	 * left button where it rests. Off by default. */
+	bool dwell_click;
+	int dwell_click_ms;
+
+	/*
+	 * The pointer size. cursor_size = 0 keeps whatever XCURSOR_SIZE the
+	 * session was started with; large_cursor switches to
+	 * large_cursor_size, and ToggleLargeCursor flips between the two.
+	 */
+	int cursor_size;
+	bool large_cursor;
+	int large_cursor_size;
+
+	/* The on-screen keyboard (enum kdos_osk). Startup-only: it is a
+	 * supervised child, like the chrome. */
+	int osk;
+
+	/*
+	 * The desktop's reduce-motion switch, ON by default. Off, the
+	 * compositor's fades (kdos-motion.c: layer surfaces opening and
+	 * closing, peek, window transitions) take a single frame and the CRT
+	 * pass skips its degauss and power-down. Read at every fade, so a
+	 * reload applies it at once. It is the desktop's one reduce-motion
+	 * key: a new animation anywhere on the desktop must read this line.
+	 * The desktop's own surfaces read it at each animation's start
+	 * (libkwl's kwl_conf_motion) and draw the end state when it is off;
+	 * the panel's launch pulse is held still instead, a steady accent
+	 * for its 1.1 s.
+	 */
+	bool motion;
+
+	/*
+	 * Window transitions (kdos-winmotion.c), OFF by default: a window
+	 * fades and slides a few pixels as it opens, closes, minimises and
+	 * changes workspace. Only with `motion` on as well. Read at every
+	 * transition, so a reload applies it at once.
+	 */
+	bool window_motion;
+
+	/*
+	 * Render-late frame scheduling (kdos-sched.c), in milliseconds; 0 is
+	 * off, the default. Set, a frame on a display with a fixed refresh is
+	 * composited this long before the predicted vertical blank instead
+	 * of as soon as the previous one is shown, so a client commit that
+	 * lands in between reaches the screen a refresh sooner. Too small a
+	 * budget misses the blank, and `kdos stutter` reports the miss. Read
+	 * at every frame.
+	 */
+	int max_render_time;
 };
 
 extern struct kdos_conf kdos_conf;
@@ -204,8 +285,8 @@ extern struct kdos_conf kdos_conf;
 void kdos_conf_load(void);
 
 /*
- * SIGHUP/Reconfigure: re-parse comp.conf. The crt, idle, lid_close and
- * wallpaper keys apply live; the chrome keys (panel, desktop_icons,
+ * SIGHUP/Reconfigure: re-parse comp.conf. The crt, idle, lid_close,
+ * motion, window_motion, max_render_time and wallpaper keys apply live; the chrome keys (panel, desktop_icons,
  * chrome_font, clock_format) are a child's command line and stay
  * startup-only — a change is LOGGED, never half-applied.
  */
@@ -327,15 +408,19 @@ void kdos_lid_finish(void);
 void kdos_lid_reconfigure(void);
 
 /*
- * The CRT pass. kdos_crt_early_init() BEFORE wlr_scene_create() (it
- * owns the scanout switch); kdos_crt_init() after the renderer
- * exists. kdos_crt_frame() returns true when it committed the frame
- * itself; false means "not my frame" and the caller commits the
+ * The CRT pass. kdos_crt_early_init() before the backend creates an
+ * output (it owns the cursor-plane switch); kdos_crt_init() after the
+ * renderer exists. kdos_crt_frame() returns true when it committed the
+ * frame itself; false means "not my frame" and the caller commits the
  * plain way — that contract is what keeps a failure here from
- * becoming a black screen.
+ * becoming a black screen. kdos_crt_scanout() is the one writer of the
+ * scene's direct-scanout switch: the pass turns it off for its own
+ * build, and the caller turns it on (when the session and the
+ * magnifier allow it) before every plain commit.
  */
 struct wlr_scene_output;
 void kdos_crt_early_init(void);
+void kdos_crt_scanout(bool want);
 void kdos_crt_init(void);
 void kdos_crt_reload(void);
 void kdos_crt_finish(void);
@@ -344,7 +429,8 @@ bool kdos_crt_frame(struct output *output, struct wlr_scene_output *so);
  * The CRT power-down: the last composite collapses to a bright line,
  * then a dot. Called from main() AFTER wl_display_run() returns and
  * BEFORE any graft teardown; hard 600 ms deadline, GLES2-only, a clean
- * no-op everywhere else — it must never block shutdown.
+ * no-op everywhere else and with `motion` off — it must never block
+ * shutdown.
  */
 void kdos_crt_powerdown(void);
 
@@ -370,7 +456,98 @@ void kdos_layer_release_on_demand(struct seat *seat,
  * toplevel state and nothing a client can observe. See kdos-peek.c.
  */
 void kdos_peek_set(bool on);
+void kdos_peek_tick(int64_t now_ns);
 void kdos_peek_finish(void);
+/* Whether peek owns the windows' alpha: peeking, easing, or not yet back at
+ * 1. A window transition does not start while it does. */
+bool kdos_peek_holds(void);
+
+/*
+ * MOTION (kdos-motion.c): the compositor's fades. A top- or overlay-layer
+ * surface fades in at map and out at unmap, from a snapshot of its last
+ * buffers; peek eases; with `window_motion`, windows fade and slide
+ * (kdos-winmotion.c). `motion = no` in comp.conf makes every one of them a
+ * single frame.
+ *
+ * _tick() runs at the top of every output frame, before the frame is built.
+ * _layer_map()/_layer_unmap() are layers.c's map and unmap hooks.
+ * _set_alpha() walks every buffer under a node, disabled subtrees included.
+ * _ease() is the one easing curve, and answers `to` with *done set when
+ * motion is off. _kick() asks every output for a frame.
+ *
+ * The tree fades, for a node the caller owns:
+ * _tree_open() fades `tree` from `from` to 1 while it slides from its resting
+ *   position plus (dx,dy) to the resting position; false when motion is off.
+ * _tree_settle() ends a running open at once, at rest and opaque, and answers
+ *   the alpha it was showing (1 when none ran).
+ * _tree_close() fades a SNAPSHOT of what `src` shows from `from` to nothing,
+ *   sliding by (dx,dy); the snapshot is stacked directly above or below
+ *   `anchor`, in `anchor`'s parent. `forced` and its direct children are
+ *   copied even when disabled (a surface wlroots has just unmapped); every
+ *   other disabled node was not on screen and is left out. False when motion
+ *   is off or nothing was showing.
+ * _tree_reclaim() ends every close snapshot still fading that was taken of
+ *   `src`, answering the alpha and offset the newest was showing; false when
+ *   there was none. A window shown again calls it first, and opens from
+ *   there, or it is drawn twice until its own ghost has faded.
+ */
+struct wlr_scene_node;
+struct wlr_scene_tree;
+void kdos_motion_tick(void);
+void kdos_motion_layer_map(struct wlr_scene_tree *tree, bool above_toplevels);
+void kdos_motion_layer_unmap(struct wlr_scene_tree *tree, bool above_toplevels,
+	bool exclusive_keyboard);
+void kdos_motion_set_alpha(struct wlr_scene_node *node, float alpha);
+float kdos_motion_ease(int64_t start_ns, int64_t dur_ns, float from, float to,
+	int64_t now_ns, bool *done);
+void kdos_motion_kick(void);
+bool kdos_motion_tree_open(struct wlr_scene_tree *tree, float from, int dx,
+	int dy, int64_t dur_ns);
+float kdos_motion_tree_settle(struct wlr_scene_tree *tree);
+bool kdos_motion_tree_close(struct wlr_scene_tree *src,
+	struct wlr_scene_tree *forced, struct wlr_scene_node *anchor,
+	bool above, float from, int dx, int dy, int64_t dur_ns);
+bool kdos_motion_tree_reclaim(struct wlr_scene_tree *src, float *alpha,
+	int *dx, int *dy);
+void kdos_motion_finish(void);
+
+/*
+ * WINDOW TRANSITIONS (kdos-winmotion.c), with `window_motion` and `motion`
+ * both on. _visibility() is view_update_visibility()'s hook, after the view's
+ * tree has been switched on or off: a map or an unminimise fades and rises
+ * in, an unmap or a minimise leaves a snapshot fading and sinking away.
+ * _workspace() is workspaces_switch_to()'s, after the target is enabled: the
+ * old workspace's windows leave as snapshots, the new one's slide in from
+ * the side the switch goes towards. _settle_all() ends every running window
+ * transition at rest, for peek, which owns the windows' alpha while it runs.
+ */
+struct view;
+struct workspace;
+void kdos_winmotion_visibility(struct view *view, bool visible);
+void kdos_winmotion_workspace(struct workspace *from, struct workspace *to);
+void kdos_winmotion_settle_all(void);
+
+/*
+ * RENDER-LATE FRAME SCHEDULING (kdos-sched.c), with `max_render_time` set.
+ * _output_add() gives an output its timer, from handle_new_output().
+ * _defer() is asked by handle_output_frame() before it composites: true
+ * means a timer will call kdos_output_repaint() (output.c) max_render_time
+ * before the predicted vertical blank, and the frame event must return. It
+ * answers false for every output it cannot predict — no fixed refresh, not a
+ * DRM output, no recent presentation, variable refresh on, a tearing frame —
+ * and for a delay under a millisecond. _finish() disarms every timer before
+ * the shutdown animation.
+ * _delay_ns() is the arithmetic, alone so a fixture can check it: the time
+ * from `now_ns` until `budget_ns` before the vertical blank after
+ * `last_present_ns`, or 0 when that blank is not ahead of now.
+ */
+void kdos_sched_output_add(struct output *output);
+bool kdos_sched_defer(struct output *output);
+void kdos_sched_finish(void);
+int64_t kdos_sched_delay_ns(int64_t now_ns, int64_t last_present_ns,
+	int64_t refresh_ns, int64_t budget_ns);
+/* output.c: the frame handler's composite, callable from the timer. */
+void kdos_output_repaint(struct output *output);
 
 /*
  * A THUMBNAIL of the most recently active window with this app_id, written to
@@ -405,5 +582,66 @@ const char *kdos_view_instance(struct view *view);
  */
 bool kdos_box_grant(const char *box, const char *iface);
 void kdos_grant_reload(void);
+
+/*
+ * ACCESSIBILITY (kdos-a11y.c): the keyboard aids, dwell click, the pointer
+ * size and the on-screen keyboard.
+ *
+ * kdos_a11y_key() is the first thing handle_key() does with a key after
+ * the idle notify, and it takes every key it can index: it drops it (a
+ * filter), holds it back (slow keys), lets an assistive technology grab it
+ * through the keyboard monitor, or passes it on itself through
+ * keyboard_key_deliver(). False — a keycode past KEY_MAX — leaves
+ * handle_key() to deliver it unfiltered.
+ */
+struct keyboard;
+struct wlr_keyboard;
+struct wlr_keyboard_key_event;
+enum kdos_a11y_switch {
+	KDOS_A11Y_STICKY_KEYS,
+	KDOS_A11Y_SLOW_KEYS,
+	KDOS_A11Y_BOUNCE_KEYS,
+	KDOS_A11Y_DWELL_CLICK,
+	KDOS_A11Y_LARGE_CURSOR,
+	KDOS_A11Y_OSK,
+};
+void kdos_a11y_init(void);
+void kdos_a11y_finish(void);
+/* After kdos_conf_reload(): a switch whose comp.conf value changed takes
+ * it; the others keep what a Toggle* action set. */
+void kdos_a11y_reconfigure(void);
+void kdos_a11y_toggle(enum kdos_a11y_switch which);
+bool kdos_a11y_key(struct keyboard *keyboard,
+	struct wlr_keyboard_key_event *event);
+/* From both motion handlers and the button handler in cursor.c. */
+void kdos_a11y_pointer_motion(struct seat *seat);
+void kdos_a11y_pointer_button(struct seat *seat, bool pressed);
+/* From update_active_text_input(): whether a text field is active now. */
+void kdos_a11y_text_input(bool active);
+/* Re-assert the lock bits (Caps/Num) a grabbed key toggled in xkb. */
+void kdos_a11y_restore_locks(unsigned int mask, unsigned int value);
+
+/*
+ * org.freedesktop.a11y.KeyboardMonitor on the session bus (kdos-a11ymon.c),
+ * the interface a screen reader uses to see and grab keys on Wayland.
+ * _key() is told every key the aids above let through; true means an
+ * assistive technology grabbed it and it must not reach the client. It is
+ * silent and grabs nothing while the session is locked.
+ */
+void kdos_a11ymon_init(void);
+void kdos_a11ymon_finish(void);
+bool kdos_a11ymon_key(struct wlr_keyboard *kb, unsigned int evdev_keycode,
+	bool pressed);
+/* A toast through org.freedesktop.Notifications; nothing without a bus. */
+void kdos_a11ymon_notify(const char *summary);
+
+/* org.freedesktop.ScreenSaver on the session bus (kdos-screensaver.c): the
+ * idle inhibitor an X11 client under Xwayland can reach. Each cookie is one
+ * kdos_idle_inhibit(true). */
+void kdos_screensaver_init(void);
+void kdos_screensaver_finish(void);
+
+/* A supervised session-wide child's pid by command name, or 0. */
+pid_t kdos_child_pid(const char *cmd);
 
 #endif /* KDOS_H */

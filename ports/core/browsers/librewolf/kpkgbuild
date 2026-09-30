@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = librewolf
+version     = 156.0.1.1
+release     = 1
+_ver        = ${version%.*}-${version##*.}
+source      = $name-$version.tar.gz::https://librewolf.dev/api/packages/librewolf/generic/librewolf-source/$_ver/librewolf-$_ver.source.tar.gz
+sha256      = 93b6d0189fa1171b9ce9ee42c95f8721f7f10df0c1214922ee965a4efbc64f46  librewolf-156.0.1.1.tar.gz
+description = LibreWolf, the privacy-hardened Firefox fork, on GTK 3 with Wayland and X11
+homepage    = https://librewolf.net/
+depends     = clang lld llvm rust cbindgen nodejs python3 nasm unzip pkgconf gtk3 glib pango fontconfig freetype2 dbus wayland libxkbcommon mesa libdrm libX11 libxcb libXext libXfixes libXrandr libXcomposite libXcursor libXdamage libXi libICE libSM at-spi2-core nss nspr icu libevent libffi libjpeg-turbo libvpx libwebp zlib pixman pipewire libpulse alsa-lib ffmpeg pciutils hunspell-en

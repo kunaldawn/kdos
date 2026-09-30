@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libwapcaplet
+version     = 0.4.3
+release     = 1
+source      = https://download.netsurf-browser.org/libs/releases/libwapcaplet-$version-src.tar.gz
+sha256      = 9b2aa1dd6d6645f8e992b3697fdbd87f0c0e1da5721fa54ed29b484d13160c5c  libwapcaplet-0.4.3.tar.gz
+description = NetSurf string internment library — interned, reference-counted strings for fast comparison
+homepage    = https://www.netsurf-browser.org/projects/libwapcaplet/
+depends     = buildsystem

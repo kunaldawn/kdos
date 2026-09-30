@@ -586,7 +586,7 @@ static void open_entry(const struct entry *it)
 	 * Everything else — a file AND a directory — goes to the MIME handler,
 	 * which on this machine is kdos-appbox. A directory must not get a
 	 * hardcoded `foot -e mc` here: that is a SECOND answer to a question
-	 * `inode/directory=mc.desktop` in mimeapps.list already answers, and
+	 * the `inode/directory` line in kdos-mimeapps.list already answers, and
 	 * changing the default file manager would leave the desktop opening mc.
 	 */
 	const char *argv[] = { "kdos-appbox", "open", it->path, NULL };

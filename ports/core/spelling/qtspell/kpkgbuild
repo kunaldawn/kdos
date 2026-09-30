@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qtspell
+version     = 1.0.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/manisandro/qtspell/archive/refs/tags/$version.tar.gz
+sha256      = faa7add9d771350a63e66bb6c9b91b130097c2399f6f85c2a9a0ea8e0ceb79d8  qtspell-1.0.2.tar.gz
+description = Spell checking for Qt text widgets, through Enchant
+homepage    = https://github.com/manisandro/qtspell
+depends     = cmake ninja qt6-qtbase qt6-qttools enchant iso-codes

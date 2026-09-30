@@ -15,7 +15,7 @@
  *
  * This is a reader only, and nothing round-trips through it: whatever writes
  * a JSON file emits its own bytes — kb_plan.c for the plan file,
- * src/build/kdosbuild/snapshot.c for a snapshot manifest — so a format change
+ * src/devtools/kdosbuild/snapshot.c for a snapshot manifest — so a format change
  * has to land on the writer and on this parser separately.
  * ---------------------------------
  */

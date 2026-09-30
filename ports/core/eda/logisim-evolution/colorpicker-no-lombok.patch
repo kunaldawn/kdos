@@ -1,0 +1,158 @@
+diff -ru a/com/bric/colorpicker/ColorPickerMode.java b/com/bric/colorpicker/ColorPickerMode.java
+--- a/com/bric/colorpicker/ColorPickerMode.java
++++ b/com/bric/colorpicker/ColorPickerMode.java
+@@ -1,13 +1,17 @@
+ package com.bric.colorpicker;
+ 
+-import lombok.Getter;
+-import lombok.RequiredArgsConstructor;
+ 
+-@RequiredArgsConstructor
+-@Getter
+ public enum ColorPickerMode {
+     HUE(360), BRIGHTNESS(100), SATURATION(100), RED(255), GREEN(255), BLUE(255), ALPHA(255);
+ 
+     private final int max;
+ 
++    ColorPickerMode(int max) {
++        this.max = max;
++    }
++
++    public int getMax() {
++        return max;
++    }
++
+ }
+diff -ru a/com/bric/colorpicker/ColorPickerPanel.java b/com/bric/colorpicker/ColorPickerPanel.java
+--- a/com/bric/colorpicker/ColorPickerPanel.java
++++ b/com/bric/colorpicker/ColorPickerPanel.java
+@@ -62,7 +62,6 @@
+ import javax.swing.event.ChangeListener;
+ import javax.swing.event.MouseInputAdapter;
+ import javax.swing.event.MouseInputListener;
+-import lombok.extern.slf4j.Slf4j;
+ 
+ /**
+  * This is the large graphic element in the {@code ColorPicker}
+@@ -90,8 +89,9 @@
+  * @see ColorPicker
+  * @see ColorPickerDialog
+  */
+-@Slf4j
+ public class ColorPickerPanel extends JPanel implements ColorListener, ModeListener {
++
++    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ColorPickerPanel.class);
+     /**
+      * The maximum size the graphic will be.  No matter
+      * how big the panel becomes, the graphic will not exceed
+diff -ru a/com/bric/colorpicker/colorslider/ColorSliderUI.java b/com/bric/colorpicker/colorslider/ColorSliderUI.java
+--- a/com/bric/colorpicker/colorslider/ColorSliderUI.java
++++ b/com/bric/colorpicker/colorslider/ColorSliderUI.java
+@@ -39,7 +39,6 @@
+ import javax.swing.JSlider;
+ import javax.swing.event.MouseInputAdapter;
+ import javax.swing.plaf.basic.BasicSliderUI;
+-import lombok.NonNull;
+ 
+ /**
+  * This is a SliderUI designed specifically for the {@code ColorPicker}.
+@@ -65,7 +64,7 @@
+      */
+     private MouseInputAdapter mouseInputAdapter;
+ 
+-    public ColorSliderUI(@NonNull JSlider slider, @NonNull ColorPicker colorPicker) {
++    public ColorSliderUI(JSlider slider, ColorPicker colorPicker) {
+         super(slider);
+         this.colorPicker = colorPicker;
+         ColorPickerPanel colorPanel = colorPicker.getColorPanel();
+diff -ru a/com/bric/colorpicker/colorslider/SliderMouseListener.java b/com/bric/colorpicker/colorslider/SliderMouseListener.java
+--- a/com/bric/colorpicker/colorslider/SliderMouseListener.java
++++ b/com/bric/colorpicker/colorslider/SliderMouseListener.java
+@@ -5,18 +5,18 @@
+ import javax.swing.SwingConstants;
+ import javax.swing.event.MouseInputAdapter;
+ import javax.swing.plaf.basic.BasicSliderUI;
+-import lombok.NonNull;
+-import lombok.RequiredArgsConstructor;
+ 
+-@RequiredArgsConstructor
+ public class SliderMouseListener extends MouseInputAdapter {
+ 
+-    @NonNull
+     private final BasicSliderUI sliderUi;
+ 
+-    @NonNull
+     private final JSlider slider;
+ 
++    public SliderMouseListener(BasicSliderUI sliderUi, JSlider slider) {
++        this.sliderUi = java.util.Objects.requireNonNull(sliderUi, "sliderUi");
++        this.slider = java.util.Objects.requireNonNull(slider, "slider");
++    }
++
+     @Override
+     public void mousePressed(MouseEvent e) {
+         slider.setValueIsAdjusting(true);
+diff -ru a/com/bric/colorpicker/listeners/RepaintFocusListener.java b/com/bric/colorpicker/listeners/RepaintFocusListener.java
+--- a/com/bric/colorpicker/listeners/RepaintFocusListener.java
++++ b/com/bric/colorpicker/listeners/RepaintFocusListener.java
+@@ -3,12 +3,14 @@
+ import java.awt.Component;
+ import java.awt.event.FocusEvent;
+ import java.awt.event.FocusListener;
+-import lombok.RequiredArgsConstructor;
+ 
+-@RequiredArgsConstructor
+ public class RepaintFocusListener implements FocusListener {
+     private final Component component;
+ 
++    public RepaintFocusListener(Component component) {
++        this.component = component;
++    }
++
+     @Override
+     public void focusGained(FocusEvent e) {
+         component.repaint();
+diff -ru a/com/bric/colorpicker/parts/ClickAction.java b/com/bric/colorpicker/parts/ClickAction.java
+--- a/com/bric/colorpicker/parts/ClickAction.java
++++ b/com/bric/colorpicker/parts/ClickAction.java
+@@ -3,16 +3,18 @@
+ import java.awt.event.ActionEvent;
+ import javax.swing.AbstractAction;
+ import javax.swing.JButton;
+-import lombok.RequiredArgsConstructor;
+ 
+ /**
+  * This action calls {@code button.doClick()}.
+  */
+-@RequiredArgsConstructor
+ public class ClickAction extends AbstractAction {
+ 
+     private final JButton button;
+ 
++    public ClickAction(JButton button) {
++        this.button = button;
++    }
++
+     @Override
+     public void actionPerformed(ActionEvent e) {
+         button.doClick();
+diff -ru a/com/bric/colorpicker/parts/ImageTransferable.java b/com/bric/colorpicker/parts/ImageTransferable.java
+--- a/com/bric/colorpicker/parts/ImageTransferable.java
++++ b/com/bric/colorpicker/parts/ImageTransferable.java
+@@ -23,12 +23,14 @@
+ import java.awt.datatransfer.DataFlavor;
+ import java.awt.datatransfer.Transferable;
+ import java.awt.datatransfer.UnsupportedFlavorException;
+-import lombok.RequiredArgsConstructor;
+ 
+-@RequiredArgsConstructor
+ public class ImageTransferable implements Transferable {
+     private final Image img;
+ 
++    public ImageTransferable(Image img) {
++        this.img = img;
++    }
++
+     @Override
+     public Object getTransferData(DataFlavor f)
+             throws UnsupportedFlavorException {

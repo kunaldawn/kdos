@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = vidstab
+version     = 1.1.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/georgmartius/vid.stab/archive/refs/tags/v$version.tar.gz
+sha256      = 96db34d48a9e3aa13736a48744b56dfb76731ac9bb5193c716de8534c9fd709d  vidstab-1.1.2.tar.gz
+description = Video stabilisation library, used by ffmpeg and MLT
+homepage    = https://github.com/georgmartius/vid.stab
+depends     = cmake ninja

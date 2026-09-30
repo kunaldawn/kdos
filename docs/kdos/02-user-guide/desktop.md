@@ -34,11 +34,11 @@ with an empty value is ignored and the default stays in force.
 |---|---|---|
 | `panel` | `bottom` | `bottom`, `top`, or `off` (`none` is accepted as `off`) |
 | `panel_cells` | `2` | Height in cells, 1 to 4. With `1` there is no second row, no meters strip, and a window button shows a name and no icon |
-| `panel_font` | `Terminus:pixelsize=20` | The bar's font, which sets its height. Name a size Terminus has: 12, 14, 16, 18, 20, 22, 24, 28 or 32; any other size is drawn at the nearest one, and the bar then sits a pixel off everything measured against it |
+| `panel_font` | `Terminus:pixelsize=20` | The bar's font, which sets its height. Name a size Terminus has: 12, 14, 16, 18, 20, 22, 24, 28 or 32; a size between them is drawn at the nearest one, and the bar then sits a pixel off everything measured against it |
 | `panel_margin` | `0` | Pixels between the bar and the screen edge, 0 to 64. A non-zero value floats the bar off three sides, and maximised windows stop at the gap |
 | `panel_opacity` | `80` | Background opacity in percent, 20 to 100. Text and icons stay opaque |
 | `panel_autohide` | `no` | `yes` shrinks the bar to a one-row strip until the pointer reaches it |
-| `chrome_font` | `Terminus:pixelsize=32` | The font of the surfaces the compositor starts: the desktop icons, the dock-app column, notifications and the Wi-Fi passphrase prompt. Menus and popups opened from the panel draw in the built-in `Terminus:pixelsize=32` whatever it says. It is a pixel size; for a 4K screen name the scalable face, `Terminus (TTF):pixelsize=64`, because bitmap Terminus stops at 32 |
+| `chrome_font` | `Terminus:pixelsize=32` | The font of the surfaces the compositor starts: the desktop icons, the dock-app column, notifications and the Wi-Fi passphrase prompt. Menus and popups opened from the panel draw in the built-in `Terminus:pixelsize=32` whatever it says. It is a pixel size; for a 4K screen at scale 1, `Terminus:pixelsize=64` is the 32 size with every pixel doubled. A size Terminus has no bitmap for, such as 48, is drawn from `Terminus (TTF)` in a cell exactly that tall |
 | `clock_format` | `%H:%M` | The panel clock, as a `strftime` format; `%a %d %H:%M` adds the day and date |
 | `desktop_icons` | `yes` | `no` turns off `kdos-desk` and leaves the wallpaper bare |
 | `icons` | `yes` | `no` draws a character glyph wherever a picture would go |
@@ -59,9 +59,10 @@ Three things are not on that grid:
 
 - **The compositor's own chrome**: title bars, the compositor's menus and the window-switcher
   display, drawn as text sized to one cell; see [Windows](#windows).
-- **Applications running in a box.** A *box* is the container a graphical application runs in (see
-  the [glossary](../06-reference/glossary.md)). Such an application draws whatever its own toolkit
-  draws.
+- **Applications.** A graphical application draws whatever its own toolkit draws, whether it is
+  built natively or runs in a *box*, the container a boxed application runs in (see the
+  [glossary](../06-reference/glossary.md)). Only its window frame and its file dialogs are the
+  desktop's.
 - **Pictures**, such as icons and window previews, which occupy whole cells.
 
 [The design language](../03-architecture/design-language.md) explains why the desktop looks like
@@ -113,7 +114,10 @@ carries the same figure with a graph.
 
 Pinned launchers and running windows share one row. A pinned application that is running uses its
 pinned slot instead of appearing twice, and the underline under a button shows that it is running.
-Drag a pinned icon along the row to reorder it; the order is saved to `~/.config/kdos/favorites`.
+Starting a pinned application, with a click or a middle click, flashes the accent over its button
+twice in about a second, so the click shows as taken while the program starts; with `motion = no`
+in `comp.conf` the accent is held steady for that second instead (see
+[Reducing motion](accessibility.md#reducing-motion)). Drag a pinned icon along the row to reorder it; the order is saved to `~/.config/kdos/favorites`.
 Releasing the icon anywhere off the row cancels the drag.
 
 By default a window button is a picture with no label, which makes the panel a dock. The
@@ -152,7 +156,8 @@ Choose the meters with `meters =` in `~/.config/kdos/panel.conf`. Six are availa
 | `net` | Network received and sent, mirrored | 6 |
 | `diskio` | Disk read and written, mirrored | 6 |
 
-Sixteen cells is a fixed limit; [kdos-shell](../04-programs/kdos-shell.md) explains why. Two
+Sixteen cells is a fixed limit, the strip's share of the bar, which leaves the rest of the row to the
+window list; [kdos-shell](../04-programs/kdos-shell.md#the-meters-strip) has the detail. Two
 percentage meters and one mirrored meter add up to exactly sixteen; two mirrored meters and anything
 else do not fit. List the names in order of importance: when the set is too wide, or the bar too
 narrow, meters are dropped from the right. `meters =` with nothing after it turns the strip off.
@@ -277,13 +282,12 @@ once, with no arrows and no `Enter`. The shipped favorites are:
 | `lazygit` | `GI` |
 | `foot`, the terminal | `TE` |
 | `firefox-esr` | `WW` |
-| `org.xfce.mousepad`, a text editor | `ED` |
+| `org.kde.kate`, the text editor | `ED` |
 | `gimp` | `IM` |
 
-The last three run in boxes and appear only once they are installed. At most eight pinned
-applications are shown: the first eight entries whose application is installed. An entry with
-nothing installed behind it is skipped and does not use up a place. The panel's pinned launchers
-read the same file.
+Firefox ESR, Kate and GIMP are native applications. At most eight pinned applications are shown: the first eight
+entries whose application is installed. An entry with nothing installed behind it is skipped and
+does not use up a place. The panel's pinned launchers read the same file.
 
 ### Terminal programs
 
@@ -522,6 +526,23 @@ The list is used only when `~/.config/kdos/session-restore` exists: create that 
 (`touch ~/.config/kdos/session-restore`) and your boxed applications are started again at the next
 login, two seconds apart. Programs that are not boxed are recorded but not restarted.
 
+### Accessibility
+
+| Shortcut | Does |
+|---|---|
+| `Super+=` | The magnifier, on or off |
+| `Super+Alt+=`, `Super+Alt+-` | Magnify more, or less |
+| `Super+Alt+S` | Sticky keys, on or off |
+| `Super+Alt+L` | Slow keys, on or off |
+| `Super+Alt+B` | Bounce keys, on or off |
+| `Super+Alt+D` | Dwell click, on or off |
+| `Super+Alt+C` | The large pointer, on or off |
+| `Super+Alt+K` | Show or hide the on-screen keyboard, when `osk` in `comp.conf` starts one |
+
+Each switch puts up a notification saying which way it went. What each aid does, and the
+`comp.conf` keys that set them for every session, are in
+[Accessibility](accessibility.md).
+
 ### Pointer bindings
 
 | Action | Does |
@@ -653,18 +674,21 @@ selected, `Shift+F10` opens the wallpaper's menu; with an icon selected it opens
 Deleting from the desktop moves the file to the standard freedesktop trash, the same
 one `kdos trash <file>` uses from a prompt. Opening the Trash icon opens `kdos-trash`, which lists
 what was deleted, when and from where. `Enter` puts the selected file back where it was, `d` or
-`Delete` deletes it for good, and `c` empties the trash; both of those ask first.
+`Delete` deletes it for good, and `c` empties the trash; both of those ask first. Click a column's
+title, or press `s`, to sort by name, size, date or origin.
 
 ### The file browser
 
-The file browser is `kdos-pick --browse`. The same program is the Open and Save dialog that boxed
-applications get through the file-chooser *portal* (the desktop service through which a boxed
-application asks the host to choose a file, share the screen or open a link), so Open and Save in
-Firefox or GIMP are drawn on this grid rather than by their own toolkit.
+The file browser is `kdos-pick --browse`. The same program is the Open and Save dialog that
+applications get through the file-chooser *portal* (the desktop service through which an
+application asks the host to choose a file, share the screen or open a link). Boxed applications
+always go through the portal; native GTK applications are sent there by `GTK_USE_PORTAL=1` in the
+login profile, and Firefox ESR by its shipped preferences. Open and Save in Firefox or GIMP are
+therefore drawn on this grid rather than by their own toolkit.
 
 Two things are called Files. The Start menu's **Files** row opens `kdos-pick --browse`, while
-`Super+E`, the System menu's Files entry and a double-clicked folder open `mc`, the file manager,
-in a terminal.
+`Super+E` and the System menu's Files entry open `mc`, the file manager, in a terminal. A
+double-clicked folder opens in Dolphin.
 
 ### Opening a file
 
@@ -675,20 +699,33 @@ Some of the shipped defaults:
 
 | You open | It goes to |
 |---|---|
-| A folder | `mc` |
-| A `.pdf` | `kdos-peek` |
-| An `.epub` | `epy` |
-| A `.7z` or `.rar` archive | `kdos-openarchive` |
-| A `.csv` file | `visidata`, whose desktop entry claims `text/csv` |
-| A spreadsheet (`.xlsx`) | Nothing by default: no installed entry claims the type, so neither a double-click nor **Open With** offers a handler. Run `sc-im file.xlsx` or `vd file.xlsx` from a prompt; both read `.xlsx`, and sc-im also writes it |
-| A `mailto:` link | `aerc` |
-| A web page, `http:` or `https:` link | `w3m` |
+| A folder | Dolphin |
+| A `.pdf`, `.ps`, `.eps` or `.djvu` | Okular |
+| An `.epub`, `.mobi` or `.fb2` book | Calibre's e-book viewer |
+| A `.zim` archive | Kiwix |
+| A text file, Markdown, JSON, a shell script, source code, a patch, a log, or an XML, YAML or TOML file | Kate |
+| A picture (PNG, JPEG, GIF, WebP, BMP, TIFF, SVG, AVIF, HEIF, JPEG XL, TGA, ICO, PBM/PGM/PPM/PNM, PSD) | Gwenview |
+| A GIMP `.xcf` image | GIMP |
+| A video | Haruna |
+| A music file, or an `.m3u` or `.pls` playlist | Strawberry |
+| A `.zip`, `.tar.*` or `.7z` archive | Ark |
+| A disc image (`.iso`) | Burn (`kdos-burn`) |
+| A `.rar` archive, or a comic book packed as 7z or rar | `kdos-openarchive` |
+| A `.csv` file | No default: `visidata` and LibreOffice Calc both claim `text/csv`, so **Open With** asks |
+| A Word, OpenDocument or RTF document | LibreOffice Writer |
+| A `mailto:` link, an `.eml` message or an `.ics` calendar | Thunderbird |
+| A web page, `http:` or `https:` link | Firefox ESR |
 
-The system-wide defaults are in two files. `/etc/xdg/kdos-mimeapps.list` is searched first and holds
-the choices that need a window (images to `imv`, text to `nvim`). `/etc/xdg/mimeapps.list` is the
-layer under it and holds the folder, document, archive, mail and web rows in the table above, which
-answer the same way on `tty1` as on the desktop; that is why web links go to `w3m`. Your own choices
-go in `~/.config/mimeapps.list`, which ships empty.
+The system-wide defaults are in two files, and a type is named in only one of them.
+`/etc/xdg/kdos-mimeapps.list` is searched first and holds every choice that needs a window, which is
+every row in the table above except the `kdos-openarchive` row, the `.csv` row and the office
+document row: LibreOffice Writer is the only application that claims those types, so they need no
+row.
+`/etc/xdg/mimeapps.list` is the layer under it and holds the types whose handler draws in a
+terminal: rar and comic-book archives, and the XPS and zipped comic-book pages `kdos-peek` shows.
+Both tables are read on `tty1` too, where there is no compositor for Firefox or Okular to open in;
+run `w3m`, `aerc`, `epy`, `mc` or `kdos-peek` by name there. Your own choices go in
+`~/.config/mimeapps.list`, which ships empty, and outrank both.
 
 A browser you install in a box registers itself as a candidate handler; use `kdos-openwith` to make
 it the default. A link clicked on the desktop or in a terminal program goes through `xdg-open`,
@@ -791,8 +828,12 @@ Removable disks are always mounted `nosuid,nodev`, and `noexec` by default. The 
 `/media/<user>/<label>`, or the device name when the filesystem has no label; it is created readable
 only by you and removed on unmount, and characters other than letters, digits, `.`, `_` and `-` are
 removed from the label. `/etc/kdos/mountd.conf` does not exist by default. Create it with the line
-`exec = yes` to allow programs on removable disks to run, and with `format = yes` to allow the
-disks tool, `kdos-disks` (the `system.disks` route), to format one.
+`exec = yes` to allow programs on removable disks to run, with `format = yes` to allow the disks
+tool, `kdos-disks` (the `system.disks` route), to format one, and with `write = yes` to allow it to
+write a disk image, such as an installer, over a whole stick. **Write image** asks for the image
+(type its path, or drop the file on the window) and then for the disk's name, `sdb` for a row on
+`sdb1`, because the whole disk is replaced. The bar shows the write and then the read-back that
+checks it; the window can be closed while it runs.
 
 The service offers only a disk that is removable or attached over USB, and never:
 
@@ -849,7 +890,8 @@ check `panel` in `comp.conf`.
 - [kdos-shell](../04-programs/kdos-shell.md): every surface on this page, in detail
 - [kdos-comp](../04-programs/kdos-comp.md): frames, the phosphor pass, and the configuration keys
 - [The window model](../03-architecture/window-model.md): where a window goes, snapping and workspaces
-- [Applications](applications.md): installing and launching boxed software
+- [Applications](applications.md): the native applications, and installing and launching boxed
+  software
 - [Theming](theming.md): accents, the shader, the wallpaper and fonts
 - [Accessibility](accessibility.md): the magnifier and what does not exist
 - [Configuration](../06-reference/configuration.md): every key on this page, with defaults

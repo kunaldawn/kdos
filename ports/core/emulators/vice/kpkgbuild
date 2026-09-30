@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = vice
+version     = 3.10
+release     = 1
+source      = $name-$version.tar.gz::https://downloads.sourceforge.net/project/vice-emu/releases/vice-$version.tar.gz
+sha256      = 8e5bac18cbcb9f192380ad3ef881f8790f5b75c41d7b3da65d831985d864d6d1  vice-3.10.tar.gz
+description = VICE — Commodore 64, 128, VIC-20, PET, Plus/4 and CBM-II emulators, with their ROMs
+homepage    = https://vice-emu.sourceforge.io/
+depends     = pkgconf perl texinfo xa bison flex sdl2-compat sdl2-image libpng giflib zlib alsa-lib libpulse flac libvorbis libogg mpg123 lame

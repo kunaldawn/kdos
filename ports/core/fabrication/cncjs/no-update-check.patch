@@ -1,0 +1,12 @@
+diff -ru a/src/server/services/configstore/index.js b/src/server/services/configstore/index.js
+--- a/src/server/services/configstore/index.js
++++ b/src/server/services/configstore/index.js
+@@ -9,7 +9,7 @@
+ 
+ const defaultState = { // default state
+   allowAnonymousUsageDataCollection: false,
+-  checkForUpdates: true,
++  checkForUpdates: false,
+   controller: {
+     exception: {
+       ignoreErrors: false

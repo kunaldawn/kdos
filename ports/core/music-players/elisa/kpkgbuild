@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = elisa
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = e6a36f4c6cd8b775cc8f60f41dc950db86c45107ef74672616c8c683611aecc1  elisa-26.08.1.tar.xz
+description = KDE music player — a local music collection, played through libVLC
+homepage    = https://apps.kde.org/elisa/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtmultimedia qt6-qtsvg qt6-qtwayland ki18n kcoreaddons kiconthemes kfilemetadata kxmlgui kconfig kcolorscheme kcodecs kcrash kdbusaddons kio kirigami kirigami-addons qqc2-desktop-style vlc

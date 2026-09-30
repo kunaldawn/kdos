@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = yamagi-quake2
+version     = 8.70
+release     = 1
+source      = https://deponie.yamagi.org/quake2/quake2-$version.tar.xz
+sha256      = 37e4143e4d362d7b93ba7a8d2c36a945fbcae82aef386512032200233b1750c8  yamagi-quake2-8.70.tar.xz
+description = Quake II engine kept faithful to the original — OpenGL 1.4, 3.2, GLES3 and software renderers
+homepage    = https://www.yamagi.org/quake2/
+depends     = sdl3 mesa libglvnd openal-soft curl

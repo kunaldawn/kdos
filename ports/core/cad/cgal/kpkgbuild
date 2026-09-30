@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = cgal
+version     = 6.2.1
+release     = 1
+source      = $name-$version.tar.xz::https://github.com/CGAL/cgal/releases/download/v$version/CGAL-$version.tar.xz
+sha256      = b6be77c60765a8456335de991eeaf6ffec55256984e4a9ecc6a97c37bbfe85bf  cgal-6.2.1.tar.xz
+description = Computational Geometry Algorithms Library (header-only C++)
+homepage    = https://www.cgal.org/
+depends     = cmake ninja boost gmp mpfr eigen

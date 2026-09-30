@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = airspyhf
+version     = 1.8.1.git20260722
+release     = 1
+_commit     = 24fe8ffcb00b14f827268bbad89ae1392de055e5
+source      = $name-$version.tar.gz::https://github.com/airspy/airspyhf/archive/$_commit.tar.gz
+sha256      = 9047a07b6f17c25837be2d35bacf3470db2ae026b47746fca3e427507cd283d1  airspyhf-1.8.1.git20260722.tar.gz
+description = libairspyhf and the airspyhf_* tools for the Airspy HF+ Discovery and Dual Port receivers
+homepage    = https://github.com/airspy/airspyhf
+depends     = cmake pkgconf libusb

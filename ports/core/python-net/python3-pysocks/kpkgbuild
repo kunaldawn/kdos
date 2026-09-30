@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pysocks
+version     = 1.7.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/P/PySocks/PySocks-$version.tar.gz
+sha256      = 3f8804571ebe159c380ac6de37643bb4685970655d3bba243530d6558b799aa0  python3-pysocks-1.7.1.tar.gz
+description = SOCKS4 and SOCKS5 proxy client module for Python sockets and urllib
+homepage    = https://github.com/Anorov/PySocks
+depends     = python3 python3-pip python3-setuptools

@@ -66,3 +66,45 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="2cf0", GROUP="dialout", MODE="0660"
 
 # SDRplay
 SUBSYSTEM=="usb", ATTR{idVendor}=="1df7", GROUP="dialout", MODE="0660"
+
+# LimeSDR-USB and LimeSDR Mini v1. The Mini v2 is 1d50:6108, which the 1d50
+# vendor rule above already reaches.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b4", ATTR{idProduct}=="00f1", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", GROUP="dialout", MODE="0660"
+
+# Ettus Research and National Instruments USRP B-series, and the unprogrammed
+# FX2 id a B-series shows before UHD loads its firmware.
+SUBSYSTEM=="usb", ATTR{idVendor}=="fffe", ATTR{idProduct}=="0002", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2500", ATTR{idProduct}=="0002", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2500", ATTR{idProduct}=="0020", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2500", ATTR{idProduct}=="0021", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2500", ATTR{idProduct}=="0022", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2500", ATTR{idProduct}=="0023", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3923", ATTR{idProduct}=="7813", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3923", ATTR{idProduct}=="7814", GROUP="dialout", MODE="0660"
+
+# ADALM-Pluto, and the same board in its DFU firmware-update mode.
+SUBSYSTEM=="usb", ATTR{idVendor}=="0456", ATTR{idProduct}=="b673", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0456", ATTR{idProduct}=="b674", GROUP="dialout", MODE="0660"
+
+# FUNcube Dongle Pro and Pro+. The samples come through the USB sound card;
+# the tuner is set over HID, so the hidraw node needs the grant as well as the
+# USB device.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04d8", ATTR{idProduct}=="fb56", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04d8", ATTR{idProduct}=="fb31", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="fb56", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="fb31", GROUP="dialout", MODE="0660"
+
+# Mirics MSi2500 sticks sold under the KWorld brand; the SDRplay-branded ones
+# are 1df7, which the SDRplay vendor rule above reaches.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04bb", ATTR{idProduct}=="0537", GROUP="dialout", MODE="0660"
+
+# Microtelecom Perseus
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b4", ATTR{idProduct}=="325c", GROUP="dialout", MODE="0660"
+
+# RFNM, in both of its USB modes
+SUBSYSTEM=="usb", ATTR{idVendor}=="15a2", ATTR{idProduct}=="008c", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="15a2", ATTR{idProduct}=="008d", GROUP="dialout", MODE="0660"
+
+# Fobos SDR (RigExpert)
+SUBSYSTEM=="usb", ATTR{idVendor}=="16d0", ATTR{idProduct}=="132e", GROUP="dialout", MODE="0660"

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = glm
+version     = 1.0.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/g-truc/glm/archive/refs/tags/$version.tar.gz
+sha256      = 6775e47231a446fd086d660ecc18bcd076531cfedd912fbd66e576b118607001  glm-1.0.3.tar.gz
+description = OpenGL Mathematics: header-only C++ vectors and matrices in GLSL's terms
+homepage    = https://github.com/g-truc/glm
+depends     = cmake ninja

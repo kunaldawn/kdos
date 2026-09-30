@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-rpds-py
+version     = 2026.6.3
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/r/rpds-py/rpds_py-$version.tar.gz
+sha256      = 1cebd1337c242e4ec2293e541f712b2da849b29f48f0c293684b71c0632625d4  python3-rpds-py-2026.6.3.tar.gz
+sha256      = b9b13414d67faa6906e78dc00c6289aed05c34b4db8f26c8349b36026e0314b6  python3-rpds-py-vendor-2026.6.3.tar.xz
+description = rpds-py — persistent data structures in Rust, under jsonschema's referencing
+homepage    = https://github.com/crate-py/rpds
+depends     = python3 python3-pip python3-maturin rust
+vendoring   = rust

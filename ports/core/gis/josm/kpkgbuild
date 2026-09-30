@@ -1,0 +1,91 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = josm
+version     = 19613
+release     = 1
+
+_maven      = https://repo1.maven.org/maven2
+_josmrepo   = https://josm.openstreetmap.de/repository/public
+_javacc     = 7.0.13
+_jmapviewer = 2.25
+_jsonapi    = 2.1.3
+_parsson    = 1.1.7
+_jcs        = 3.2.1
+_compress   = 1.28.0
+_io         = 2.20.0
+_lang3      = 3.18.0
+_codec      = 1.19.0
+_annotation = 3.0.0
+_xz         = 1.11
+_xmp        = 6.1.10
+_metadata   = 2.19.0
+_jsvg       = 2.1.0
+_jbannot    = 24.1.0
+_errorprone = 2.50.0
+_bnd        = 7.1.0
+_osgiannot  = 8.1.0
+_osgiext    = 1.0.1
+_osgisl     = 1.0.0
+_osgires    = 1.0.0
+_ohp        = 0.29.0
+_tag2link   = 2026.6.26
+
+source      = $name-$version.tar.gz::https://github.com/JOSM/josm/archive/refs/tags/$version.tar.gz
+source      = $_maven/net/java/dev/javacc/javacc/$_javacc/javacc-$_javacc-sources.jar
+source      = $_josmrepo/org/openstreetmap/jmapviewer/jmapviewer/$_jmapviewer/jmapviewer-$_jmapviewer-sources.jar
+source      = $_maven/jakarta/json/jakarta.json-api/$_jsonapi/jakarta.json-api-$_jsonapi-sources.jar
+source      = $_maven/org/eclipse/parsson/parsson/$_parsson/parsson-$_parsson-sources.jar
+source      = $_maven/org/apache/commons/commons-jcs3-core/$_jcs/commons-jcs3-core-$_jcs-sources.jar
+source      = $_maven/org/apache/commons/commons-compress/$_compress/commons-compress-$_compress-sources.jar
+source      = $_maven/commons-io/commons-io/$_io/commons-io-$_io-sources.jar
+source      = $_maven/org/apache/commons/commons-lang3/$_lang3/commons-lang3-$_lang3-sources.jar
+source      = $_maven/commons-codec/commons-codec/$_codec/commons-codec-$_codec-sources.jar
+source      = $_maven/jakarta/annotation/jakarta.annotation-api/$_annotation/jakarta.annotation-api-$_annotation-sources.jar
+source      = $_maven/org/tukaani/xz/$_xz/xz-$_xz-sources.jar
+source      = adobe-xmp-core-$_xmp.tar.gz::https://github.com/drewnoakes/adobe-xmp-core/archive/refs/tags/$_xmp.tar.gz
+source      = $_maven/com/drewnoakes/metadata-extractor/$_metadata/metadata-extractor-$_metadata-sources.jar
+source      = jsvg-$_jsvg.tar.gz::https://github.com/weisJ/jsvg/archive/refs/tags/v$_jsvg.tar.gz
+source      = $_maven/com/google/errorprone/error_prone_annotations/$_errorprone/error_prone_annotations-$_errorprone-sources.jar
+source      = $_maven/org/jetbrains/annotations/$_jbannot/annotations-$_jbannot-sources.jar
+source      = $_maven/biz/aQute/bnd/biz.aQute.bnd.annotation/$_bnd/biz.aQute.bnd.annotation-$_bnd-sources.jar
+source      = $_maven/org/osgi/osgi.annotation/$_osgiannot/osgi.annotation-$_osgiannot-sources.jar
+source      = $_maven/org/osgi/org.osgi.namespace.extender/$_osgiext/org.osgi.namespace.extender-$_osgiext-sources.jar
+source      = $_maven/org/osgi/org.osgi.service.serviceloader/$_osgisl/org.osgi.service.serviceloader-$_osgisl-sources.jar
+source      = $_maven/org/osgi/org.osgi.resource/$_osgires/org.osgi.resource-$_osgires-sources.jar
+source      = $_maven/ch/poole/OpeningHoursParser/$_ohp/OpeningHoursParser-$_ohp-sources.jar
+source      = $_maven/org/webjars/npm/tag2link/$_tag2link/tag2link-$_tag2link.jar
+sha256      = 66a8530d9c380c05b539e1773bc45195a0ff1ea19a3393c3bd9cad331ad7b7f8  OpeningHoursParser-0.29.0-sources.jar
+sha256      = 8e9ff9d22782bc25cc6c241eac893bbf36f3de81f7fc7e28e9c162a75b34401b  adobe-xmp-core-6.1.10.tar.gz
+sha256      = 0590a3ec06b522b4aae684ddb63c063cd11bd547fd9baaa5e71f6b020e2a7df4  annotations-24.1.0-sources.jar
+sha256      = a60b7ec93ec278fff28ab8c6792a8fb738e0c7c0a9f8cab22dc3730b776adb36  biz.aQute.bnd.annotation-7.1.0-sources.jar
+sha256      = b0462142585d45fc15bc8091b7b02f1e3a85c83595068659548c82cac9cdc7a2  commons-codec-1.19.0-sources.jar
+sha256      = 6de9de4559f12bba6d41789c72f6a2a424514f2d2a3f7f49e2a3c52414db9632  commons-compress-1.28.0-sources.jar
+sha256      = 7a87277538cce40da6389a7163a4d9458bc7a9c39937a329881b91d144be8e0d  commons-io-2.20.0-sources.jar
+sha256      = fb252a6690f41d547bcbf32178301d98fb30a61ee397ac7facc30130aaa519af  commons-jcs3-core-3.2.1-sources.jar
+sha256      = b15732a13e40df7f07c30f2cb8572874798e8dde581f1398943d2ad3765bafaa  commons-lang3-3.18.0-sources.jar
+sha256      = f7f5b870d5f18bcdcd9d8dc44d6ae3593cc299d32f888aeb29fefe87661473d7  error_prone_annotations-2.50.0-sources.jar
+sha256      = 142dfd2343429df2aac3e1cfacfacc21c8393112c0e0280d3628648d9b612470  jakarta.annotation-api-3.0.0-sources.jar
+sha256      = 1b1f8585037ae1f34afd052013cc36788853bd4ad4ed566fe5f190b63c5008d2  jakarta.json-api-2.1.3-sources.jar
+sha256      = 3c062dd69ea40a8d2c93e2a62f6f3647cd611914abbf51bf2e4865c8d51e5427  javacc-7.0.13-sources.jar
+sha256      = 57f1917823a896138a9ab913331c31407ab75a57e64b2d56022cf4807eb03f29  jmapviewer-2.25-sources.jar
+sha256      = 71ad58ee5e5230ddd52fa88cf07e557b1233b906142500b6e92dd96926e023b9  josm-19613.tar.gz
+sha256      = 10d0c55cbfe150cf6dc4b0856cabc974a7c33f0c068383642dbeb0285d8125b0  jsvg-2.1.0.tar.gz
+sha256      = e1e1494b08e90da072d0c90ce3f807b181e3f0a1f0f464c11ec637612ae8eff1  metadata-extractor-2.19.0-sources.jar
+sha256      = bff6b8f778ee2ad0c53667ccdea907ec7f1715ed63b437a4d9b88028a68af849  org.osgi.namespace.extender-1.0.1-sources.jar
+sha256      = 4de0a3a5f81b5f9635bf8dcaac1227ba011ffedd33d3d3961038a55d98762042  org.osgi.resource-1.0.0-sources.jar
+sha256      = 7d4783b570cd118263bc6a807c0a7c183b1db451442ffcb8a36310ad24a91743  org.osgi.service.serviceloader-1.0.0-sources.jar
+sha256      = b1f418597a5029764973731d9e68835f13eb3bf4e7a69898e690ec50445a7a76  osgi.annotation-8.1.0-sources.jar
+sha256      = 713a473593782f3500e4fe829fb9b0d282e72cc67970ddbea4447fe93d045511  parsson-1.1.7-sources.jar
+sha256      = be4ac4e1a0be7e8740de72b623668ec4a89340f29ea5bf1f72f37c22a55eb3a3  tag2link-2026.6.26.jar
+sha256      = aab470d8c28e718859f9c1f333ed693f926cd44d8e55851c0dda27dd4a6d568c  xz-1.11-sources.jar
+description = JOSM — the Java OpenStreetMap editor: map data, GPS traces, imagery and validation (Java Swing)
+homepage    = https://josm.openstreetmap.de/
+depends     = openjdk unzip

@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = celestia
+version     = 1.7.0.git20260926
+release     = 1
+_commit     = 57a862dae9fada30ad04d8e93bec68942f5d20b0
+_imgui      = 97428e8ac99e339ce05eee531cf55b77b29ea709
+_miniaudio  = 9634bedb5b5a2ca38c1ee7108a9358a4e233f14d
+source      = $name-$version.tar.gz::https://github.com/CelestiaProject/Celestia/archive/$_commit.tar.gz
+source      = imgui-$_imgui.tar.gz::https://github.com/ocornut/imgui/archive/$_imgui.tar.gz
+source      = miniaudio-$_miniaudio.tar.gz::https://github.com/mackron/miniaudio/archive/$_miniaudio.tar.gz
+sha256      = b8779c69b577cf5ed1a6b2e3f64386d562d03f9ccadc2eccf56c36bf6cbb3bfb  celestia-1.7.0.git20260926.tar.gz
+sha256      = e7881abd9544100f2aa66fcee80e92f18a15b74455c33334613d8c965922c53d  imgui-97428e8ac99e339ce05eee531cf55b77b29ea709.tar.gz
+sha256      = 1a3a79b80fc6f0b0cc155e28b954a598e0ddfa2db64e2afa8466be88c476fa55  miniaudio-9634bedb5b5a2ca38c1ee7108a9358a4e233f14d.tar.gz
+description = Real-time 3D space simulator — fly through the solar system, the stars and the galaxies
+homepage    = https://celestiaproject.space/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtwayland sdl2-compat libglvnd libepoxy eigen fmt libpng libjpeg-turbo lua freetype2 icu boost gperf ffmpeg libavif imagemagick ttf-dejavu celestia-content cspice

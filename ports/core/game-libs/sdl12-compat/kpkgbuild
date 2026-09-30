@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = sdl12-compat
+version     = 1.2.76
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libsdl-org/sdl12-compat/archive/refs/tags/release-$version.tar.gz
+sha256      = e889ac9c7e8a6bdfc31972bf1f1254b84882cb52931608bada62e8febbf0270b  sdl12-compat-1.2.76.tar.gz
+description = The SDL 1.2 library, headers and build files, answering every SDL 1.2 call through SDL2
+homepage    = https://libsdl.org
+depends     = cmake ninja sdl2-compat

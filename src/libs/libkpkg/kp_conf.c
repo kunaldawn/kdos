@@ -58,14 +58,78 @@ static void set_from_env(char *dst, size_t cap, const char *name)
 		kb_strlcpy(dst, v, cap);
 }
 
-static void split_repos(KpConf *c, const char *list)
+/* A regular file at <dir>/kpkgbuild: what makes a directory a port. */
+static int is_port(const char *dir)
+{
+	char *recipe = kb_path_join(dir, "kpkgbuild");
+	int ok = kb_path_exists(recipe) && !kb_is_dir(recipe);
+	free(recipe);
+	return ok;
+}
+
+/* A directory of <repo> that is not a port, and so is a shelf. Dot-names are
+ * never shelves: `.git`, and a tool's hidden cache beside the ports. A flat
+ * repository is read the same way, so src/system/kdos-kpkg is a shelf of
+ * src/system: a <dir>/kpkgbuild inside it would be a port of that name. */
+static int is_shelf(const char *repo, const char *entry)
+{
+	if (entry[0] == '.')
+		return 0;
+	char *dir = kb_path_join(repo, entry);
+	int ok = kb_is_dir(dir) && !is_port(dir);
+	free(dir);
+	return ok;
+}
+
+/* The shelves of `repo`, NUL-separated into `buf` and ended by an empty name.
+ * -1 when they do not fit, which leaves the repository uncached rather than
+ * holding a list that silently stops part-way. */
+static int list_shelves(const char *repo, char *buf, size_t cap)
+{
+	size_t at = 0;
+	char **names = kb_listdir(repo, NULL);
+	for (char **e = names; e && *e; e++) {
+		if (!is_shelf(repo, *e))
+			continue;
+		size_t len = strlen(*e) + 1;
+		if (at + len + 1 > cap) {
+			kb_strv_free(names);
+			return -1;
+		}
+		memcpy(buf + at, *e, len);
+		at += len;
+	}
+	kb_strv_free(names);
+	buf[at] = 0;
+	return 0;
+}
+
+int kp_conf_set_repos(KpConf *c, const char *list)
 {
 	c->nrepos = 0;
 	char tmp[2048];
+	if (strlen(list) >= sizeof(tmp))
+		kb_warn("PORT_REPO is longer than %zu bytes and is cut short "
+			"there", sizeof(tmp) - 1);
 	kb_strlcpy(tmp, list, sizeof(tmp));
-	for (char *t = strtok(tmp, " \t\n"); t && c->nrepos < KP_MAX_REPOS;
-	     t = strtok(NULL, " \t\n"))
-		kb_strlcpy(c->repos[c->nrepos++], t, sizeof(c->repos[0]));
+	/*
+	 * THE TAIL IS DROPPED, SO SAY SO. A repository past KP_MAX_REPOS does
+	 * not exist to any lookup, and every port in it reads as "no such
+	 * port" — a phase list that names one fails far from the cause.
+	 */
+	for (char *t = strtok(tmp, " \t\n"); t; t = strtok(NULL, " \t\n")) {
+		if (c->nrepos == KP_MAX_REPOS) {
+			kb_warn("PORT_REPO names more than %d repositories; "
+				"ignoring %s and every one after it",
+				KP_MAX_REPOS, t);
+			break;
+		}
+		int i = c->nrepos++;
+		kb_strlcpy(c->repos[i], t, sizeof(c->repos[0]));
+		c->shelf_cached[i] = list_shelves(c->repos[i], c->shelves[i],
+						  sizeof(c->shelves[0])) == 0;
+	}
+	return c->nrepos;
 }
 
 void kp_conf_load(KpConf *c)
@@ -135,7 +199,7 @@ void kp_conf_load(KpConf *c)
 	set_from_env(c->work_dir, sizeof(c->work_dir), "WORK_DIR");
 	set_from_env(c->pkgdb_dir, sizeof(c->pkgdb_dir), "PKGDB_DIR");
 
-	split_repos(c, repos);
+	kp_conf_set_repos(c, repos);
 }
 
 char *kp_db_dir(const KpConf *c)
@@ -148,23 +212,224 @@ char *kp_db_dir(const KpConf *c)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-char *kp_port_dir(const KpConf *c, const char *name)
+/* The shelves of repository `i`, from the cache or listed now. Freed with
+ * kb_strv_free. */
+static char **shelves_of(const KpConf *c, int i)
 {
-	for (int i = 0; i < c->nrepos; i++) {
-		char *dir = kb_path_join(c->repos[i], name);
-		char *recipe = kb_path_join(dir, "kpkgbuild");
-		int ok = kb_path_exists(recipe);
-		free(recipe);
-		if (ok)
-			return dir;
-		free(dir);
+	int cap = 16, n = 0;
+	char **out = kb_calloc((size_t)cap + 1, sizeof(*out));
+	char **live = NULL;
+
+	if (!c->shelf_cached[i])
+		live = kb_listdir(c->repos[i], NULL);
+	const char *at = c->shelf_cached[i] ? c->shelves[i] : NULL;
+	for (char **e = live;;) {
+		const char *name;
+		if (at) {
+			if (!*at)
+				break;
+			name = at;
+			at += strlen(at) + 1;
+		} else {
+			if (!e || !*e)
+				break;
+			name = *e++;
+			if (!is_shelf(c->repos[i], name))
+				continue;
+		}
+		if (n == cap) {
+			cap *= 2;
+			char **grown = kb_calloc((size_t)cap + 1, sizeof(*grown));
+			memcpy(grown, out, (size_t)n * sizeof(*out));
+			free(out);
+			out = grown;
+		}
+		out[n++] = kb_strdup(name);
 	}
-	return NULL;
+	kb_strv_free(live);
+	return out;
 }
 
-/* Every port name in every repo, sorted, first repo wins on a duplicate —
- * the same precedence kp_port_dir applies. NULL-terminated, kb_strv_free. */
-char **kp_all_ports(const KpConf *c, int *count)
+int kp_port_find(const KpConf *c, const char *name, char **dir, char *err,
+		 size_t errcap)
+{
+	*dir = NULL;
+	if (err && errcap)
+		err[0] = 0;
+	if (!name || !*name)
+		return 0;
+	/* A path is not a name: it is looked up where it points and nowhere
+	 * else, so `a/b` cannot be found twice by also reading as shelf `a`. */
+	int bare = !strchr(name, '/') && strcmp(name, ".") && strcmp(name, "..");
+
+	for (int i = 0; i < c->nrepos; i++) {
+		char *found = NULL;
+
+		char *flat = kb_path_join(c->repos[i], name);
+		if (is_port(flat))
+			found = flat;
+		else
+			free(flat);
+
+		char **shelves = bare ? shelves_of(c, i) : NULL;
+		for (char **s = shelves; s && *s; s++) {
+			char *shelf = kb_path_join(c->repos[i], *s);
+			char *d = kb_path_join(shelf, name);
+			free(shelf);
+			if (!is_port(d)) {
+				free(d);
+				continue;
+			}
+			if (found) {
+				snprintf(err, errcap,
+					 "port %s is filed twice: %s and %s",
+					 name, found, d);
+				free(d);
+				free(found);
+				kb_strv_free(shelves);
+				return -1;
+			}
+			found = d;
+		}
+		kb_strv_free(shelves);
+		if (found) {
+			*dir = found;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+char *kp_port_dir(const KpConf *c, const char *name)
+{
+	char err[1600], *dir = NULL;
+	if (kp_port_find(c, name, &dir, err, sizeof(err)) < 0)
+		kb_die("%s", err);
+	return dir;
+}
+
+typedef struct {
+	char **name;
+	char **path;		/* where it was found, for the duplicate message */
+	int n, cap;
+} PortSet;
+
+static int set_find(const PortSet *ps, const char *name)
+{
+	for (int k = 0; k < ps->n; k++)
+		if (!strcmp(ps->name[k], name))
+			return k;
+	return -1;
+}
+
+static void set_add(PortSet *ps, char *name, char *path)
+{
+	if (ps->n == ps->cap) {
+		int ncap = ps->cap ? ps->cap * 2 : 512;
+		char **nn = kb_calloc((size_t)ncap + 1, sizeof(*nn));
+		char **np = kb_calloc((size_t)ncap + 1, sizeof(*np));
+		if (ps->n) {
+			memcpy(nn, ps->name, (size_t)ps->n * sizeof(*nn));
+			memcpy(np, ps->path, (size_t)ps->n * sizeof(*np));
+		}
+		free(ps->name);
+		free(ps->path);
+		ps->name = nn;
+		ps->path = np;
+		ps->cap = ncap;
+	}
+	ps->name[ps->n] = name;
+	ps->path[ps->n] = path;
+	ps->n++;
+}
+
+static void set_free(PortSet *ps, int keep_names)
+{
+	for (int k = 0; k < ps->n; k++) {
+		if (!keep_names)
+			free(ps->name[k]);
+		free(ps->path[k]);
+	}
+	if (!keep_names)
+		free(ps->name);
+	free(ps->path);
+}
+
+/* One port of the repository being walked, found at `dir`. -1 with `err` set
+ * when the repository already holds the name at another path. */
+static int take_port(PortSet *repo, const char *name, const char *dir,
+		     char *err, size_t errcap)
+{
+	int at = set_find(repo, name);
+	if (at >= 0) {
+		snprintf(err, errcap, "port %s is filed twice: %s and %s", name,
+			 repo->path[at], dir);
+		return -1;
+	}
+	set_add(repo, kb_strdup(name), kb_strdup(dir));
+	return 0;
+}
+
+/* A directory inside a shelf that is not a port. It is invisible, as a stray
+ * directory beside the ports is, UNLESS a port is filed inside it:
+ * that is a port one level too deep, which no lookup would ever find. */
+static int check_nested(const char *dir, char *err, size_t errcap)
+{
+	char **names = kb_listdir(dir, NULL);
+	int rc = 0;
+	for (char **e = names; e && *e && !rc; e++) {
+		if ((*e)[0] == '.')
+			continue;
+		char *d = kb_path_join(dir, *e);
+		if (is_port(d)) {
+			snprintf(err, errcap,
+				 "port %s is nested below its shelf: %s", *e, d);
+			rc = -1;
+		}
+		free(d);
+	}
+	kb_strv_free(names);
+	return rc;
+}
+
+/* Every port of one repository, at both depths, into `ps`. */
+static int scan_repo(const char *repo, PortSet *ps, char *err, size_t errcap)
+{
+	char **names = kb_listdir(repo, NULL);
+	int rc = 0;
+	for (char **e = names; e && *e && !rc; e++) {
+		if ((*e)[0] == '.')
+			continue;
+		char *dir = kb_path_join(repo, *e);
+		if (is_port(dir)) {
+			rc = take_port(ps, *e, dir, err, errcap);
+		} else if (kb_is_dir(dir)) {
+			/* A shelf: exactly one level of ports below it. */
+			char **inner = kb_listdir(dir, NULL);
+			for (char **f = inner; f && *f && !rc; f++) {
+				if ((*f)[0] == '.')
+					continue;
+				char *pd = kb_path_join(dir, *f);
+				if (is_port(pd))
+					rc = take_port(ps, *f, pd, err, errcap);
+				else if (kb_is_dir(pd))
+					rc = check_nested(pd, err, errcap);
+				free(pd);
+			}
+			kb_strv_free(inner);
+		}
+		free(dir);
+	}
+	kb_strv_free(names);
+	return rc;
+}
+
+static int cmp_name(const void *a, const void *b)
+{
+	return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+char **kp_ports_scan(const KpConf *c, int *count, char *err, size_t errcap)
 {
 	/*
 	 * THE ARRAY GROWS. A fixed ceiling here is not a cap on a pathological
@@ -173,52 +438,63 @@ char **kp_all_ports(const KpConf *c, int *count)
 	 * a count that looked like an answer — every port alphabetically after
 	 * the cut simply did not exist, to every consumer, with nothing said.
 	 */
-	int cap = 512, n = 0;
-	char **out = kb_calloc((size_t)cap + 1, sizeof(*out));
+	PortSet all = {0};
+	char scratch[1600];
+	int rc = 0;
 
-	for (int i = 0; i < c->nrepos; i++) {
-		char **names = kb_listdir(c->repos[i], NULL);
-		if (!names)
-			continue;
-		for (char **e = names; *e; e++) {
-			if (n == cap) {
-				int ncap = cap * 2;
-				char **grown = kb_calloc((size_t)ncap + 1,
-							 sizeof(*grown));
-
-				memcpy(grown, out, (size_t)n * sizeof(*out));
-				free(out);
-				out = grown;
-				cap = ncap;
-			}
-			char *dir = kb_path_join(c->repos[i], *e);
-			char *recipe = kb_path_join(dir, "kpkgbuild");
-			int ok = kb_path_exists(recipe) && !kb_is_dir(recipe);
-			free(recipe);
-			free(dir);
-			if (!ok)
-				continue;
-			int dup = 0;
-			for (int k = 0; k < n && !dup; k++)
-				dup = !strcmp(out[k], *e);
-			if (!dup)
-				out[n++] = kb_strdup(*e);
-		}
-		kb_strv_free(names);
+	if (!err || !errcap) {
+		err = scratch;
+		errcap = sizeof(scratch);
 	}
-
-	for (int i = 1; i < n; i++) {
-		char *key = out[i];
-		int k = i - 1;
-		while (k >= 0 && strcmp(out[k], key) > 0) {
-			out[k + 1] = out[k];
-			k--;
-		}
-		out[k + 1] = key;
-	}
+	err[0] = 0;
 	if (count)
-		*count = n;
-	return out;
+		*count = 0;
+
+	for (int i = 0; i < c->nrepos && !rc; i++) {
+		if (!kb_is_dir(c->repos[i]))
+			continue;
+		PortSet one = {0};
+		rc = scan_repo(c->repos[i], &one, err, errcap);
+		/* A repository that is there and yields nothing is a walker
+		 * that does not match the tree, which reads exactly like an
+		 * empty one to every consumer; the second never happens. */
+		if (!rc && !one.n)
+			kb_warn("%s holds no port at <name>/kpkgbuild or "
+				"<shelf>/<name>/kpkgbuild", c->repos[i]);
+		/* The first repository holding a name wins it. */
+		for (int k = 0; k < one.n; k++) {
+			if (!rc && set_find(&all, one.name[k]) < 0) {
+				set_add(&all, one.name[k], one.path[k]);
+				one.name[k] = one.path[k] = NULL;
+			}
+			free(one.name[k]);
+			free(one.path[k]);
+		}
+		free(one.name);
+		free(one.path);
+	}
+
+	if (rc) {
+		set_free(&all, 0);
+		return NULL;
+	}
+	set_free(&all, 1);
+	if (!all.name)
+		all.name = kb_calloc(1, sizeof(*all.name));
+	qsort(all.name, (size_t)all.n, sizeof(*all.name), cmp_name);
+	all.name[all.n] = NULL;
+	if (count)
+		*count = all.n;
+	return all.name;
+}
+
+char **kp_all_ports(const KpConf *c, int *count)
+{
+	char err[1600];
+	char **v = kp_ports_scan(c, count, err, sizeof(err));
+	if (!v)
+		kb_die("%s", err);
+	return v;
 }
 
 /* The merged-/usr aliases, read off the root. A link is an alias only when it

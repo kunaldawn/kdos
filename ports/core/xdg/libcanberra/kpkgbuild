@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libcanberra
+version     = 0.30
+release     = 1
+source      = https://0pointer.de/lennart/projects/$name/$name-$version.tar.xz
+sha256      = c2b671e67e0c288a69fc33dc1b6f1b534d07882c2aceed37004bf48c601afa72  libcanberra-0.30.tar.xz
+description = XDG sound theme event sounds over ALSA, PulseAudio and GStreamer, with the GTK 3 module
+homepage    = https://0pointer.de/lennart/projects/libcanberra/
+depends     = pkgconf libtool alsa-lib libpulse gstreamer libvorbis libogg gtk3 libX11 eudev sound-theme-freedesktop

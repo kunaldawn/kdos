@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = shapelib
+version     = 1.6.3
+release     = 1
+source      = https://download.osgeo.org/$name/$name-$version.tar.gz
+sha256      = 3ff5ead18ca6d2fe249f0e80b361e1ad6782165115268ed4a58c780a60c1e0eb  shapelib-1.6.3.tar.gz
+description = Shapelib — read and write ESRI shapefiles and their dBase attribute tables
+homepage    = https://shapelib.maptools.org/
+depends     = cmake ninja

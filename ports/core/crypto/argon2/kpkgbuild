@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = argon2
+version     = 20190702
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/P-H-C/phc-winner-argon2/archive/$version.tar.gz
+sha256      = daf972a89577f8772602bf2eb38b6a3dd3d922bf5724d45e7f9589b5e830442c  argon2-20190702.tar.gz
+description = Argon2 password hashing library and command-line tool
+homepage    = https://github.com/P-H-C/phc-winner-argon2

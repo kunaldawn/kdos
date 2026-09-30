@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qtutilities
+version     = 6.22.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Martchus/qtutilities/archive/refs/tags/v$version.tar.gz
+sha256      = c6ecf769a5544865e9e1e6c54d881caed8e0c0102a36025199d9cd18748b0afd  qtutilities-6.22.2.tar.gz
+description = Martchus's Qt 6 utility library: settings dialogs, about dialog, notifications and resources
+homepage    = https://github.com/Martchus/qtutilities
+depends     = cmake ninja pkgconf cpp-utilities qt6-qtbase qt6-qttools libX11

@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = radicale
+version     = 3.8.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/r/radicale/radicale-$version.tar.gz
+sha256      = a2668ebc35db2a87c7b1948374c7d3878a7047513c765775a0d1f250dc52ff30  radicale-3.8.1.tar.gz
+sha256      = 5acce056695a622a018e82ac77e198085dc4ca1068a5e6c1a115e13fb086fe84  radicale-vendor-3.8.1.tar.xz
+description = A CalDAV and CardDAV server — shared calendars and contacts on a LAN with no internet
+homepage    = https://radicale.org/
+depends     = python3 python3-setuptools python3-pip python3-hatchling python3-requests python3-packaging python3-dateutil python3-pytz python3-six util-linux
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = defusedxml libpass vobject:0.9.8

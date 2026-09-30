@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt5-qttools
+version     = 5.15.19
+release     = 1
+_module     = qttools
+source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version%.*}/$version/submodules/$_module-everywhere-opensource-src-$version.tar.xz
+sha256      = 2694af886130d63b8a42bcd138f4035fd8108273ebd16781f87300da352f1aa6  qt5-qttools-5.15.19.tar.xz
+description = Qt 5 tools — Designer, Linguist with lrelease and lupdate, Assistant, qdbus and the Qt help and UI tools libraries
+homepage    = https://www.qt.io/
+depends     = qt5-qtbase qt5-qtdeclarative sqlite
+group       = qt5
+series      = 5.15

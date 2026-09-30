@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libcue
+version     = 2.3.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/lipnitsk/libcue/archive/v$version.tar.gz
+sha256      = cc1b3a65c60bd88b77a1ddd1574042d83cf7cc32b85fe9481c99613359eb7cfe  libcue-2.3.0.tar.gz
+description = CUE sheet parser library
+homepage    = https://github.com/lipnitsk/libcue
+depends     = cmake ninja bison flex

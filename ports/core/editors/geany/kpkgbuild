@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = geany
+version     = 2.1
+release     = 1
+source      = https://download.geany.org/$name-$version.tar.bz2
+sha256      = 6b96a8844463300c10b9692a0a5edad8236eec9e84342f575f83d4fc89331228  geany-2.1.tar.bz2
+description = Lightweight GTK programmer's editor — syntax highlighting, symbols, build commands
+homepage    = https://www.geany.org/
+depends     = pkgconf intltool gettext glib gtk3 vte3

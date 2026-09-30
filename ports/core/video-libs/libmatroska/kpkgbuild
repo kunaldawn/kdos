@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libmatroska
+version     = 1.7.2
+release     = 1
+source      = https://dl.matroska.org/downloads/$name/$name-$version.tar.xz
+sha256      = f3e4d406daf7f1399962c43940e4a87de089474d5bcfbf2e6ca516e98bb87cfc  libmatroska-1.7.2.tar.xz
+description = Matroska and WebM container library — VLC's and MKVToolNix's .mkv reader
+homepage    = https://github.com/Matroska-Org/libmatroska
+depends     = cmake ninja libebml

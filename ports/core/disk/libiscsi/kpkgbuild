@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libiscsi
+version     = 1.20.3
+release     = 1
+source      = https://github.com/sahlberg/libiscsi/archive/$version.tar.gz
+sha256      = 212f6e1fd8e7ddb4b02208aafc6de600f6f330f40359babeefdd83b0c79d47a1  libiscsi-1.20.3.tar.gz
+description = Userspace iSCSI initiator library and client tools (iscsi-ls, iscsi-inq, iscsi-swp)
+homepage    = https://github.com/sahlberg/libiscsi
+depends     = autoconf automake libtool pkgconf gnutls

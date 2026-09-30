@@ -55,3 +55,18 @@ the teams surface answer `--dump-cells` without one. A surface that is not
 goldened is skipped by name rather than silently, so the list of what is
 covered is the list of what was chosen.
 
+
+THE DRIVEN FRAMES
+
+`drive-*.txt` is a text frame taken at the end of a script of events, with one
+more line under it: `-- N of M events read`. A --dump draws once and never
+runs the loop; `$KDOS_DUMP_KEYS` gives the dump harness a display that reads a
+script instead (see testing/fixtures/shell/dumpmain.c), so the surface takes
+its live path and its handlers, its resize step and ktui_keys() are what the
+frame shows. The same rule holds as above, and one more: a script runs nothing
+whose answer is the host's — no toggle, no delete, no check that forks a
+command. A surface that saves when it closes writes into a data directory made
+empty for that run (KDOS_GOLDEN_DATA), never the fixed path golden() gives
+every other surface: a save there is loaded back by the next run. `keydrive` in selftest.sh commits them. `drive-runner-*` is the
+runner's own test surface, defined in the harness, and it is where sh_run()'s
+frame opt-in is pinned.

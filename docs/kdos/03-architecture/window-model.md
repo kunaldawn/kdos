@@ -174,7 +174,7 @@ state. A tiled, maximised or fullscreen window has its rectangle derived again f
 the screen it was on, or on the screen it is moved to when that one is gone; a floating window keeps
 its position relative to its screen (or its place in the whole layout when that screen is gone) and
 is pulled back on-screen if it would fall off. That is
-`view_adjust_for_layout_change()` in `src/view.c`.
+`view_adjust_for_layout_change()` in `src/desktop/kdos-comp/src/view.c`.
 
 ## Placement is a search, not a cascade
 
@@ -236,7 +236,7 @@ resize. So:
 Window memory saves each application's rectangle, workspace and shaded state when its window
 closes, and puts them back the next time a window with the same application id opens. It is
 `window_memory` in `~/.config/kdos/comp.conf`, on by default, and lives in the compositor
-(`src/kdos-winpos.c`), not in `libkwm`. The records are kept in `$XDG_STATE_HOME/kdos/winpos`, most
+(`src/desktop/kdos-comp/src/kdos-winpos.c`), not in `libkwm`. The records are kept in `$XDG_STATE_HOME/kdos/winpos`, most
 recent first, and only the 200 most recent applications are kept.
 
 It applies only to a window the compositor would otherwise place itself. These are left alone:
@@ -410,7 +410,7 @@ be expressed. See [Decisions](../01-philosophy/decisions.md#narrowings).
 ### How a drag feels
 
 A drag runs screen edges and window edges through the same kind of edge search, and near an edge it
-resists or attracts. That is interaction, and it stays in the compositor (`src/resistance.c`).
+resists or attracts. That is interaction, and it stays in the compositor (`src/desktop/kdos-comp/src/resistance.c`).
 `<resistance><screenEdgeStrength>` in `rc.xml` (default 20) is the distance in pixels over which
 a screen edge holds a window before it goes over; `<windowEdgeStrength>` (default 20) is the same
 for window edges. A positive value resists entry, a negative one attracts, and `0` takes that kind
@@ -422,7 +422,7 @@ edge *is*, not how it feels to cross one.
 A client may ignore the size it is configured with, as a terminal does when it keeps to whole
 character cells. The library hands back the rectangle that was asked for and has no notion of the
 one that was taken. A client that ignores its configure shows as content cut off at the frame's
-edge. For resizing towards an edge, the compositor (`src/snap-constraints.c`) remembers the size
+edge. For resizing towards an edge, the compositor (`src/desktop/kdos-comp/src/snap-constraints.c`) remembers the size
 the client chose, so that a second `GrowToEdge` in the same direction goes past the edge the client
 stopped short of instead of aiming for it again.
 
@@ -436,6 +436,17 @@ library has no word for. [Window memory](#window-memory) answers it in the compo
 `libkwm` computes rectangles from the space available and the obstacles present; it has no notion
 of a neighbour. That is why ownership and tab groups are the compositor's, and why there are no tile
 groups: two windows side by side that move, resize and minimise together.
+
+### A window between two places
+
+Every rectangle in this chapter is final from the moment it is computed: a window is never
+halfway between two of them, and nothing here has a duration. With `window_motion = yes` in
+`comp.conf` the compositor draws a window on its way (rising into place as it opens, sinking as it
+closes or is minimised, sliding sideways with a workspace switch; see
+[kdos-comp](../04-programs/kdos-comp.md#window-transitions)), but that is a picture over a state
+that has already changed. Placement, snapping, the edge search, window memory and occupancy all see
+the final rectangle and the final workspace. The one thing that follows the picture is the pointer,
+which meets a window where it is drawn.
 
 ### Which workspace a window is on
 
@@ -455,12 +466,12 @@ Every entry point in the library has a caller in a shipped program:
 
 | Entry point | Called from |
 |---|---|
-| `kwm_place()` | `kdos-comp`, `src/placement.c`: the overlap search |
-| `kwm_tile_next()` | `kdos-comp`, `src/view.c`: the tiled-state transition |
-| `kwm_tile_geom()` | `kdos-comp`, `src/view.c`: the rectangle of a tiled state |
-| `kwm_edge_check()` | `kdos-comp`, `src/snap.c`: the snap rule |
-| `kwm_clip_add()`, `kwm_clip_sub()`, `kwm_edge_best()` | `kdos-comp`, `include/edges.h`: the edge-search arithmetic |
-| `kwm_ws_adjacent()` | `kdos-comp`, `src/workspaces.c`: the nearest occupied workspace |
+| `kwm_place()` | `kdos-comp`, `src/desktop/kdos-comp/src/placement.c`: the overlap search |
+| `kwm_tile_next()` | `kdos-comp`, `src/desktop/kdos-comp/src/view.c`: the tiled-state transition |
+| `kwm_tile_geom()` | `kdos-comp`, `src/desktop/kdos-comp/src/view.c`: the rectangle of a tiled state |
+| `kwm_edge_check()` | `kdos-comp`, `src/desktop/kdos-comp/src/snap.c`: the snap rule |
+| `kwm_clip_add()`, `kwm_clip_sub()`, `kwm_edge_best()` | `kdos-comp`, `src/desktop/kdos-comp/include/edges.h`: the edge-search arithmetic |
+| `kwm_ws_adjacent()` | `kdos-comp`, `src/desktop/kdos-comp/src/workspaces.c`: the nearest occupied workspace |
 | `kwm_drag_threshold()` | `kdos-desk`, the `kdos-shell` surface that draws the desktop icons (`src/desktop/kdos-shell/desk.c`): when a press on an icon becomes a drag |
 
 `kwm_edge_between()` and the inline helpers `kwm_edge_is_cardinal()` and `kwm_edge_invert()` have
@@ -529,9 +540,9 @@ grep -vE '^\s*(#|$)' testing/fixtures/wm/geometry.txt | awk '{print $1}' | sort 
 - [The desktop](../02-user-guide/desktop.md#windows): the window keys and gestures from the user's side
 - [The C libraries](../05-developer/c-libraries.md#libkwm): the constraints `libkwm` is built under
 - [kdos-comp](../04-programs/kdos-comp.md): the compositor that calls it
-- [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-05_desktop): the build phase
+- [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop): the build phase
   that compiles `libkwm` into the compositor
-- [The ports catalogue](../06-reference/ports-catalogue.md#the-desktop-phase): the compositor and
+- [The ports catalogue](../06-reference/ports-catalogue.md#srcdesktop): the compositor and
   the rest of the desktop's ports
 - [Testing](../05-developer/testing.md): how the contract file is replayed
 - [Decisions](../01-philosophy/decisions.md#narrowings): the screen-layout and tab-group narrowings

@@ -6,7 +6,7 @@
 
 if [ ! -x /usr/bin/kdos-comp ]; then
 	echo "kdos-desktop: no desktop installed (kdos-comp missing)." >&2
-	echo "The compositor lands in build phase 05_desktop." >&2
+	echo "The compositor lands in build phase 50_desktop." >&2
 	exit 1
 fi
 

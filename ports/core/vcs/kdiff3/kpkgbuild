@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdiff3
+version     = 1.12.6
+release     = 1
+source      = https://download.kde.org/stable/kdiff3/kdiff3-$version.tar.xz
+sha256      = edeaa2313cb74b650958d24cd98b300b73173ac8a9c87067de62babf02baa37c  kdiff3-1.12.6.tar.xz
+description = KDiff3 — two- and three-way file and folder comparison and merge
+homepage    = https://apps.kde.org/kdiff3/
+depends     = cmake ninja extra-cmake-modules boost icu qt6-qtbase ki18n kcoreaddons kxmlgui kwidgetsaddons kconfig kcrash kio kdoctools

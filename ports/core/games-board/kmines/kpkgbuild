@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kmines
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 0097fd3f17033f9a8ad518ce613ceb0920668a3c7fd6321af6ab18fa2c058074  kmines-26.08.1.tar.xz
+description = KMines — the classic minesweeper, on a themed board
+homepage    = https://apps.kde.org/kmines/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons ki18n ktextwidgets kwidgetsaddons kxmlgui kiconthemes kdoctools libkdegames

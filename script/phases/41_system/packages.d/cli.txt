@@ -1,0 +1,61 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   cli — Command-line productivity utilities: search, view, navigation and
+#   text wrangling in the terminal
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+lesspipe
+tree
+ripgrep
+fd
+fzf
+bat
+eza
+sd
+glow
+chezmoi
+entr
+
+# Colours by byte class, so structure in a binary is visible without a legend.
+hexyl
+
+pv
+
+# The `-j` of linux-firmware's `make dedup`; that recipe skips it without it.
+parallel
+
+# Bit-level manipulation and base conversion watched live, which is the other
+# arithmetic a bench actually does.
+bitwise
+
+# The pages are seeded and auto-update is off: out of the box `tldr` downloads
+# on first use, so its whole value appears only where there is a network —
+# which is the case it was chosen FOR.
+tealdeer
+
+# lnav is the only thing on this machine that can answer a question about its
+# own logs in SQL, which matters when there is no search box to paste them
+# into.
+lnav
+
+# On a keyboard-driven desktop typing speed is throughput. ttyper rather than
+# gtypist, whose last release was 2011.
+ttyper

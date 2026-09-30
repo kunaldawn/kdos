@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = spice-protocol
+version     = 0.14.5
+release     = 1
+source      = https://www.spice-space.org/download/releases/spice-protocol-$version.tar.xz
+sha256      = baf58449f6e89d19f475899ad5fb9196fdc46c03cc53233f4e39cf2978f9cff7  spice-protocol-0.14.5.tar.xz
+description = SPICE protocol headers — the message definitions spice-gtk and QEMU's SPICE display share
+homepage    = https://www.spice-space.org
+depends     = meson ninja

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = babeld
+version     = 1.14
+release     = 1
+source      = https://www.irif.fr/~jch/software/files/babeld-$version.tar.gz
+sha256      = c4ed13c04880ccc3a85a99645dcb64134beac8ab0607fe32a4d07e1057ad73b7  babeld-1.14.tar.gz
+description = Babel routing daemon — routes across a mesh of wired and wireless links
+homepage    = https://www.irif.fr/~jch/software/babel/
+depends     =

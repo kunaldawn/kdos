@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ironwail
+version     = 0.8.2
+release     = 1
+source      = https://github.com/andrei-drexler/ironwail/archive/refs/tags/v$version.tar.gz
+sha256      = aedfaed286365bb533b0852ce53bdddc87015ec3366745047d73552de8dcd3a5  ironwail-0.8.2.tar.gz
+description = Quake engine from the QuakeSpasm line — modern OpenGL renderer, high frame rates, faithful look
+homepage    = https://github.com/andrei-drexler/ironwail
+depends     = pkgconf sdl2-compat mesa libglvnd flac mpg123 libvorbis libogg opusfile libxmp

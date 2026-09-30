@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libretro-gambatte
+version     = 20260821
+release     = 1
+_commit     = d9d6cd06382d1ced30de34d56d3609452323dab1
+source      = $name-$version.tar.gz::https://github.com/libretro/gambatte-libretro/archive/$_commit.tar.gz
+sha256      = bd39cd38662135d17e221a7fd34baf2908a40065ade16edf2e8d1168b21b921e  libretro-gambatte-20260821.tar.gz
+description = Gambatte as a libretro core — an accuracy-first Game Boy and Game Boy Color emulator
+homepage    = https://github.com/libretro/gambatte-libretro

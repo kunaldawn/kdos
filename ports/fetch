@@ -16,6 +16,10 @@
 #   ports/fetch --check [port…]       offline: list what is missing or corrupt
 #   ports/fetch --tree <dir> [port…]  fetch for another checkout's ports/core
 #
+# A port is named by its bare name, never by its shelf: ports/core/<shelf>/<name>
+# is fetched as `ports/fetch <name>`, in this tree or the one --tree names. A
+# named port that does not exist fails the run.
+#
 # THIS IS THE ONLY NETWORKED STEP. `make build` reads nothing but port
 # directories, so a tree fetched once builds offline for as long as it likes.
 #
@@ -30,7 +34,8 @@
 #   1. the port directory      a file already there
 #   2. the cache               ports/.srccache/sha256-XX/<hash>, hard-linked in
 #   3. the archive             $KDOS_SOURCES_BASE/sources-NNN/<hash>, NNN from
-#                              ports/sources.idx; a hash it does not name skips this
+#                              ports/sources.idx; a hash it does not name skips this.
+#                              The base is a URL or a directory (an archive disk)
 #   4. the recipe's `source =` the URL that names this filename, if one does
 #   5. regeneration            only for the port's own vendor bundle
 #
@@ -46,9 +51,10 @@
 # hold it, and reaching for our own copy of an unverifiable file would be
 # trusting the wrong thing entirely. A vendor bundle with no hash is generated.
 #
-# Set KDOS_SOURCES_BASE empty to skip the archive; KDOS_SRCCACHE moves the
-# cache; KDOS_SOURCES_INDEX names another index. All are read by
-# ports/srclib.sh.
+# Set KDOS_SOURCES_BASE empty to skip the archive, or to a directory laid out
+# as sources-NNN/<hash> to read the archive from a disk with no network;
+# KDOS_SRCCACHE moves the cache; KDOS_SOURCES_INDEX names another index. All
+# are read by ports/srclib.sh.
 
 set -e
 
@@ -60,6 +66,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 usage() {
     echo "usage: ports/fetch [--check] [--tree <dir>] [port…]" >&2
+    echo "       a port is its bare name, whatever shelf it sits on" >&2
     exit "${1:-2}"
 }
 
@@ -359,14 +366,24 @@ gen_vendor() {
             return 1
         }
 
+        # `npmflags =` is an ordinary recipe helper, word-split onto npm's
+        # command line: a project that upstream resolves with Yarn can hold
+        # a peer pin npm's strict check refuses, and `--legacy-peer-deps`
+        # is then the only way npm resolves it at all. build.sh passes the
+        # same flags to its own offline npm calls. The lock file npm writes
+        # rides in the bundle, because an offline `npm prune` or `npm ci`
+        # needs it and cannot write one without the registry.
         pushd "$tmp_dir" >/dev/null
-        npm install --ignore-scripts --no-audit --no-fund || {
+        # shellcheck disable=SC2086
+        npm install --ignore-scripts --no-audit --no-fund ${npmflags:-} || {
             echo "✗  $port: npm install failed"
             popd >/dev/null
             rm -rf "$tmp_dir"
             return 1
         }
-        vendor_tar "$out" node_modules || {
+        local nlock=()
+        [ -f package-lock.json ] && nlock=(package-lock.json)
+        vendor_tar "$out" node_modules "${nlock[@]}" || {
             echo "✗  $port: Failed to create $vendor_file"
             popd >/dev/null
             rm -rf "$tmp_dir"
@@ -635,12 +652,13 @@ fetch_port() {
     local portdir=$1 port=${1##*/}
 
     if [ ! -f "$portdir/kpkgbuild" ]; then
-        [ "$MODE" = check ] || echo "⚠  $port: No kpkgbuild found"
-        return 0
+        echo "✗  $port: no kpkgbuild in $portdir"
+        [ "$MODE" = check ] && CHECK_BAD=$((CHECK_BAD + 1))
+        return 1
     fi
 
     local name="" version="" release="" source="" sha256="" vendoring="" pypackages=""
-    local vendordir="" vendorsync="" pyrequirements="" pyruntime="" hsplan="" meta
+    local vendordir="" vendorsync="" pyrequirements="" pyruntime="" hsplan="" npmflags="" meta
     meta=$(cd "$portdir" && "$KPKG" meta . 2>/dev/null) || { unreadable; return 1; }
     eval "$meta"
 
@@ -796,8 +814,17 @@ fetch_port() {
 # toolchain's cache are pointed at a scratch directory under build/ — cargo and
 # go both refuse to run without a writable home. A cache outside the tree is
 # mounted beside it.
-ver() { sed -n "s/^version[[:space:]]*=[[:space:]]*//p" \
-               "$PORT_REPO/$1/kpkgbuild" | head -1; }
+#
+# ver <port> — `version =` of the port found by name. It fails rather than
+# print nothing: an empty version reaches the image build as a download URL
+# with no version in it.
+ver() {
+    local d v
+    d=$(src_port_dir "$PORT_REPO" "$1") || { echo "ports/fetch: no port $1 under $PORT_REPO" >&2; return 1; }
+    v=$(sed -n "s/^version[[:space:]]*=[[:space:]]*//p" "$d/kpkgbuild" | head -1)
+    [ -n "$v" ] || { echo "ports/fetch: $1 has no version =" >&2; return 1; }
+    printf '%s\n' "$v"
+}
 
 in_container() {
     local cache_in cache_mount=()
@@ -814,6 +841,10 @@ in_container() {
 
     mkdir -p "$KDOS_SRCCACHE"
     KDOS_SRCCACHE=$(cd "$KDOS_SRCCACHE" && pwd)
+    # A directory archive is mounted at its own path, read-only, so the
+    # file:// base srclib.sh made names the same files inside.
+    local base_mount=()
+    src_base_local && base_mount=(-v "${KDOS_SOURCES_BASE#file://}:${KDOS_SOURCES_BASE#file://}:ro")
     case $KDOS_SRCCACHE in
         "$REPO_ROOT"/*) cache_in="/kdos/${KDOS_SRCCACHE#"$REPO_ROOT"/}" ;;
         *) cache_in=/srccache; cache_mount=(-v "$KDOS_SRCCACHE":/srccache) ;;
@@ -824,19 +855,23 @@ in_container() {
     # it does not have and tries to download into a root-owned RUSTUP_HOME. It
     # is also the correct answer — a bundle must be resolved by the compiler
     # that will build it, not by the one upstream develops against.
-    echo "==> building the fetch image (rust $(ver rust), go $(ver go), node $(ver nodejs), ghc $(ver ghc), cabal $(ver cabal-install))"
+    local v_rust v_go v_node v_ghc v_cabal
+    v_rust=$(ver rust) && v_go=$(ver go) && v_node=$(ver nodejs) &&
+        v_ghc=$(ver ghc) && v_cabal=$(ver cabal-install) || return 1
+    echo "==> building the fetch image (rust $v_rust, go $v_go, node $v_node, ghc $v_ghc, cabal $v_cabal)"
     $ENGINE_OUT build -q -t kdos-fetch \
-        --build-arg RUST_VERSION="$(ver rust)" \
-        --build-arg GO_VERSION="$(ver go)" \
-        --build-arg NODE_VERSION="$(ver nodejs)" \
-        --build-arg GHC_VERSION="$(ver ghc)" \
-        --build-arg CABAL_VERSION="$(ver cabal-install)" \
+        --build-arg RUST_VERSION="$v_rust" \
+        --build-arg GO_VERSION="$v_go" \
+        --build-arg NODE_VERSION="$v_node" \
+        --build-arg GHC_VERSION="$v_ghc" \
+        --build-arg CABAL_VERSION="$v_cabal" \
         -f "$SCRIPT_DIR/Containerfile.fetch" "$SCRIPT_DIR" >/dev/null || return 1
     mkdir -p "$REPO_ROOT/build/fetch-home"
     $ENGINE_OUT run --rm --network=host \
         --user "$(id -u):$(id -g)" \
         -v "$REPO_ROOT":/kdos \
         "${cache_mount[@]}" \
+        "${base_mount[@]}" \
         -e KDOS_FETCH_INNER=1 \
         -e HOME=/kdos/build/fetch-home \
         -e CARGO_HOME=/kdos/build/fetch-home/cargo \
@@ -845,7 +880,7 @@ in_container() {
         -e npm_config_cache=/kdos/build/fetch-home/npm \
         -e CABAL_DIR=/kdos/build/fetch-home/cabal \
         -e KPKG_BIN=/kdos/build/fetch-home/kpkg \
-        -e RUSTUP_TOOLCHAIN="$(ver rust)" \
+        -e RUSTUP_TOOLCHAIN="$v_rust" \
         -e KDOS_SOURCES_REPO="$KDOS_SOURCES_REPO" \
         -e KDOS_SOURCES_BASE="$KDOS_SOURCES_BASE" \
         -e KDOS_SRCCACHE="$cache_in" \
@@ -872,22 +907,34 @@ fi
 
 # Fetch all ports, or only the ones named on the command line — a single
 # accepted version bump (kdos-portup) has no business re-fetching them all.
-wanted() {
-    local name=$1 w
-    [ ${#PORTS[@]} -eq 0 ] && return 0
-    for w in "${PORTS[@]}"; do
-        [ "$w" = "$name" ] && return 0
+# A NAMED PORT THAT DOES NOT RESOLVE IS A FAILURE in both modes: a caller that
+# asked for it would otherwise take the run's success for its sources being
+# in place.
+DIRS=() UNKNOWN=()
+if [ ${#PORTS[@]} -gt 0 ]; then
+    for p in "${PORTS[@]}"; do
+        if d=$(src_port_dir "$PORT_REPO" "$p"); then
+            DIRS+=("$d")
+        else
+            UNKNOWN+=("$p")
+        fi
     done
-    return 1
-}
+else
+    mapfile -t DIRS < <(src_port_dirs "$PORT_REPO")
+    [ ${#DIRS[@]} -gt 0 ] || { echo "ports/fetch: no port under $PORT_REPO" >&2; exit 1; }
+fi
 
 [ "$MODE" = check ] || echo "==> Fetching sources for $PORT_REPO..."
 total=0
 success=0
 failed=0
-for portdir in "$PORT_REPO"/*; do
-    [ -d "$portdir" ] || continue
-    wanted "${portdir##*/}" || continue
+for p in "${UNKNOWN[@]}"; do
+    echo "✗  $p: no such port under $PORT_REPO"
+    total=$((total + 1))
+    failed=$((failed + 1))
+    [ "$MODE" = check ] && CHECK_BAD=$((CHECK_BAD + 1))
+done
+for portdir in "${DIRS[@]}"; do
     total=$((total + 1))
 
     if fetch_port "$portdir"; then
@@ -896,11 +943,6 @@ for portdir in "$PORT_REPO"/*; do
         failed=$((failed + 1))
     fi
 done
-
-if [ ${#PORTS[@]} -gt 0 ] && [ "$total" -eq 0 ]; then
-    echo "==> No port under $PORT_REPO matches: ${PORTS[*]}"
-    exit 1
-fi
 
 if [ "$MODE" = check ]; then
     if [ "$CHECK_BAD" -gt 0 ]; then

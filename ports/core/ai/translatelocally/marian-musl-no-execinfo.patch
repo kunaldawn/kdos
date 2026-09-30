@@ -1,0 +1,31 @@
+--- a/3rd_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/ExceptionWithCallStack.cpp
++++ b/3rd_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/ExceptionWithCallStack.cpp
+@@ -16,7 +16,7 @@
+ #include <Windows.h>
+ #include "DbgHelp.h"
+ #pragma warning(pop)
+-#else
++#elif defined(__GLIBC__)
+ #include <execinfo.h>
+ #include <cxxabi.h>
+ #endif
+@@ -197,7 +197,7 @@
+ 
+     SymCleanup(process);
+ 
+-#else // Linux
++#elif defined(__GLIBC__)
+ 
+     unsigned int MAX_NUM_FRAMES = 1024;
+     void* backtraceAddresses[MAX_NUM_FRAMES];
+@@ -260,6 +260,10 @@
+ 
+     free(symbolList);
+ 
++#else // a C library with no backtrace(), such as musl
++    (void)skipLevels;
++    (void)makeFunctionNamesStandOut;
++    write("    (no call stack: the C library has no backtrace())\n");
+ #endif
+ }
+ 

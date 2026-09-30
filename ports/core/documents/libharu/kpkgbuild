@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libharu
+version     = 2.4.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libharu/libharu/archive/refs/tags/v$version.tar.gz
+sha256      = ec8f327520d1d354ce58b5d2af75b64f380cddc522437c169463b39760921348  libharu-2.4.6.tar.gz
+description = Haru: a C library for writing PDF files — Blender's Grease Pencil PDF export
+homepage    = https://github.com/libharu/libharu
+depends     = cmake ninja zlib libpng

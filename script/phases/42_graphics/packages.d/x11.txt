@@ -1,0 +1,57 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   42_graphics: Graphics Stack
+# ---------------------------------
+#   x11 — X11 protocol, client libraries and data, plus Xwayland, the one X
+#   server
+# ---------------------------------
+#
+# Ports whose dependency closure reaches wayland, libX11, mesa, libdrm, cairo,
+# pango, gstreamer, ffmpeg or pipewire but no toolkit, and that are not leaf
+# applications.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libX11
+
+# The client side of X: what a program running on Xwayland links, and what the
+# X11 backends of mesa, GTK, Qt and mpv are built against beside their Wayland
+# ones.
+libXext
+libXfixes
+libXrender
+libXi
+libXtst
+libXrandr
+libXinerama
+libXcomposite
+libXdamage
+libXxf86vm
+libXcursor
+libXt
+libXmu
+libXpm
+libXft
+libXv
+libXScrnSaver
+libXpresent
+libXres
+
+libxkbfile
+xkbcomp
+
+# A program with no Wayland path — Xastir, VLC 3, a Motif, Tk or Swing program,
+# native or boxed — runs on Xwayland, the one X server. kdos-comp runs it
+# rootlessly itself (wlroots does the work). The client libraries those
+# programs link are on the x11 shelf.
+xwayland

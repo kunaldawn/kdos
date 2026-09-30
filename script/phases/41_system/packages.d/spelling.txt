@@ -1,0 +1,36 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   spelling — Spell checking, hyphenation, thesaurus and their dictionaries
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Spell checking: the Aspell library and command with its English dictionary,
+# Hunspell with its English dictionary and the MyThes thesaurus, and enchant
+# over both. recoll's suggestions, mc's editor, weechat and profanity check
+# through enchant; LibreOffice, Firefox, Thunderbird and the KDE applications
+# read the Hunspell dictionary directly.
+aspell
+aspell-en
+hunspell
+mythes
+hunspell-en
+enchant
+
+hyphen

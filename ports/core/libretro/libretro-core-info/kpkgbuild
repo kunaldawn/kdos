@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libretro-core-info
+version     = 1.22.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libretro/libretro-core-info/archive/v$version.tar.gz
+sha256      = 91b543fe636b4a0dc320c258b04f7b5f76cc26637e8f81cb9658536e8979b563  libretro-core-info-1.22.2.tar.gz
+description = libretro core info files — what each core is called, which files it opens and which firmware it wants
+homepage    = https://github.com/libretro/libretro-core-info
+depends     = coreutils

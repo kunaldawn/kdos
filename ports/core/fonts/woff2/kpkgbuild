@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = woff2
+version     = 1.0.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/google/woff2/archive/v$version.tar.gz
+sha256      = add272bb09e6384a4833ffca4896350fdb16e0ca22df68c0384773c67a175594  woff2-1.0.2.tar.gz
+description = Web Open Font Format 2 reference implementation: the WOFF2 codec libraries and tools
+homepage    = https://github.com/google/woff2
+depends     = brotli cmake ninja

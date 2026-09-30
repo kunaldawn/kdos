@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libXres
+version     = 1.2.3
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = d2de8f5401d6c86a8992791654547eb8def585dfdc0c08cc16e24ef6aeeb69dc  libXres-1.2.3.tar.xz
+description = X11 X-Resource extension client library — per-client resource and pid queries
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libxres
+depends     = libX11 libXext xorgproto

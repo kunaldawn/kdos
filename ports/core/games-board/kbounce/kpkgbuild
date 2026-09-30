@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kbounce
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 2288a3f2b630bc60cc8e3cdbc65396053c61a0303efacf54a2449bd262bf3631  kbounce-26.08.1.tar.xz
+description = KBounce — fence off the field while the balls bounce around it
+homepage    = https://apps.kde.org/kbounce/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland qt6-qtsvg kcolorscheme kconfig kcoreaddons kcrash kwidgetsaddons kdbusaddons ki18n kconfigwidgets kcompletion kxmlgui kio kdoctools kiconthemes libkdegames

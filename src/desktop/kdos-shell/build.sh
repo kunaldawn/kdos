@@ -31,6 +31,18 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	cursor-shape-v1-protocol.c
 "$SCANNER" private-code  "$PROTO/unstable/tablet/tablet-unstable-v2.xml" \
 	tablet-unstable-v2-protocol.c
+# viewporter and fractional-scale: libkwl draws at a fractional output scale
+# through the pair, and kwl.c references both unconditionally.
+"$SCANNER" client-header "$PROTO/stable/viewporter/viewporter.xml" \
+	viewporter-client-protocol.h
+"$SCANNER" private-code  "$PROTO/stable/viewporter/viewporter.xml" \
+	viewporter-protocol.c
+"$SCANNER" client-header \
+	"$PROTO/staging/fractional-scale/fractional-scale-v1.xml" \
+	fractional-scale-v1-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/staging/fractional-scale/fractional-scale-v1.xml" \
+	fractional-scale-v1-protocol.c
 # primary-selection: middle-click paste is a SECOND selection with its own
 # device manager, and libkwl includes the header unconditionally. The
 # private-code is what carries the zwp_primary_selection_* interface symbols
@@ -69,8 +81,8 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	ext-workspace-v1-protocol.c
 # The panel is not a lock screen and binds no lock role — but it compiles the
 # WHOLE of libkwl, and libkwl carries KDISP_ROLE_LOCK for kdos-lock, so kwl.c
-# includes this header unconditionally. Generating it only in kdos-lock's
-# recipe is what made kdos-shell the first package of this phase to fail.
+# includes this header unconditionally: generate it here as well, or kwl.c
+# fails to compile in this recipe.
 "$SCANNER" client-header \
 	"$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
 	ext-session-lock-v1-client-protocol.h
@@ -100,8 +112,9 @@ done
 # this tree has, and asks libarchive whether a file is an archive by opening it.
 # No libsixel — a file on disk is not an escape sequence, and kdos-term is where
 # sixel arrives.
-# fontconfig is libkwl's: the face list the style picker offers is
-# `FC_SPACING == FC_MONO` out of FcFontList, and fcft carries fontconfig as a
+# fontconfig is libkwl's and libkcell's: the face list the style picker offers
+# is `FC_SPACING == FC_MONO` out of FcFontList, kcell_font.c asks FcFontMatch
+# which strike a bitmap face is drawn from, and fcft carries fontconfig as a
 # Requires.private, so `pkg-config --libs fcft` alone does not link it.
 PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libnsgif libarchive"
 
@@ -185,8 +198,9 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-traymenu"
 ln -s kdos-shell "$PKG/usr/bin/kdos-contacts"
 # The disks window. Every privileged operation on it is a kdos-mountd verb and
 # this binary opens no block device: what it does is draw a list the daemon
-# published and send back a row number. Partitioning is `cfdisk` in a terminal
-# and is not reimplemented.
+# published and send back a row number — and, for an image write, the image
+# opened as the user and passed to the daemon as a descriptor. Partitioning is
+# `cfdisk` in a terminal and is not reimplemented.
 ln -s kdos-shell "$PKG/usr/bin/kdos-disks"
 # Printers, over `lpstat`, `lpinfo` and `lpadmin` rather than libcups: those
 # three are what the CUPS documentation tells a person to type and are the
@@ -213,10 +227,17 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-store"
 # that could name a port could open any port, so kdos-powerd owns the names
 # and this asks for them.
 ln -s kdos-shell "$PKG/usr/bin/kdos-firewall"
-# What is in the restic repository, and one key to add to it. It restores
-# nothing: `restic restore` is the operation you do once under pressure and it
-# wants the full command rather than a button whose defaults you cannot see.
+# What is in the restic repository, one key to add to it, and a restore view
+# that puts one file or folder back into ~/Restored/<snapshot> — never over
+# the original. restic does all of it; this forks it by name.
 ln -s kdos-shell "$PKG/usr/bin/kdos-backup"
+# A folder or an image onto an optical disc, over `xorriso`, and the disc read
+# back and compared. The drive is `cdrom`'s and the user is in `cdrom`, so no
+# daemon stands in front of it.
+ln -s kdos-shell "$PKG/usr/bin/kdos-burn"
+# Files against a checksum list or a par2 set. `sha256sum -c`, `b3sum -c` and
+# `par2` decide; this draws their answer and offers par2's repair.
+ln -s kdos-shell "$PKG/usr/bin/kdos-verify"
 ln -s kdos-shell "$PKG/usr/bin/kdos-note"
 ln -s kdos-shell "$PKG/usr/bin/kdos-run"
 # kdos-comp's <core><promptCommand> — the yes/no dialog labwc's If/prompt

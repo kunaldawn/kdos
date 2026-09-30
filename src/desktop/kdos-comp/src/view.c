@@ -2430,6 +2430,7 @@ view_update_visibility(struct view *view)
 	}
 
 	wlr_scene_node_set_enabled(&view->scene_tree->node, visible);
+	kdos_winmotion_visibility(view, visible); /* KDOS: window transitions */
 
 	/*
 	 * Show top layer when a fullscreen view is hidden.

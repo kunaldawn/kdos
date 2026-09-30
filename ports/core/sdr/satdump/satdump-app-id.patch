@@ -1,0 +1,19 @@
+--- a/src-ui/main.cpp
++++ b/src-ui/main.cpp
+@@ -97,12 +97,16 @@
+     // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
+     // glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
+ #endif
++    glfwWindowHintString(GLFW_WAYLAND_APP_ID, "satdump");
++    glfwWindowHintString(GLFW_X11_CLASS_NAME, "satdump");
+ 
+     window = glfwCreateWindow(1000, 600, std::string("SatDump v" + (std::string)SATDUMP_VERSION).c_str(), nullptr, nullptr);
+     if (window == nullptr)
+     {
+         logger->warn("Could not init GLFW Window; falling back to OpenGL 2.1...");
+         glfwDefaultWindowHints();
++        glfwWindowHintString(GLFW_WAYLAND_APP_ID, "satdump");
++        glfwWindowHintString(GLFW_X11_CLASS_NAME, "satdump");
+         fallback_gl = true;
+         window = glfwCreateWindow(1000, 600, std::string("SatDump v" + (std::string)SATDUMP_VERSION).c_str(), nullptr, nullptr);
+         if (window == nullptr)

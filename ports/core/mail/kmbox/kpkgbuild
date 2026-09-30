@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kmbox
+version     = 26.08.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 4bda0a789e010d383db7a56294941853cc2d878ddd57b33f1e08daeb2714a75b  kmbox-26.08.1.tar.xz
+description = KDE PIM library for reading and writing mbox mail folders
+homepage    = https://invent.kde.org/pim/kmbox
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kmime

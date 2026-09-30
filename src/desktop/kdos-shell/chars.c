@@ -68,7 +68,7 @@ static size_t mapped;
 static const char *why;		/* why there is no index, said on the surface */
 
 static char query[CH_QUERY];
-static int caret;
+static KtuiField qf = { query, sizeof(query), 0, 0, NULL };
 static uint32_t hits[CH_HITS];
 static int nhits;
 static int truncated;
@@ -177,9 +177,9 @@ static void search(void)
 }
 
 static const KtuiCol CH_COL[] = {
-	{ NULL, 2 },		/* the character itself                    */
-	{ NULL, 8 },		/* U+XXXX                                  */
-	{ NULL, 0 }		/* the name                                */
+	{ NULL, 2, 0 },		/* the character itself                    */
+	{ NULL, 8, 0 },		/* U+XXXX                                  */
+	{ NULL, 0, 0 }		/* the name                                */
 };
 #define CH_NCOL 3
 
@@ -257,163 +257,120 @@ static void draw(void)
 	ktui_hint("Enter", "copy");
 	ktui_hint("Esc", ktui_esc_verb(&keys));
 	ktui_hint_row(&keys, krect(2 + sw, h - 2, w - 4 - sw, 1), KT_SURFACE);
-	ktui_term_caret(2 + caret, 1);
+	ktui_term_caret(2 + ktui_field_col(&qf), 1);
+}
+
+static int ch_arg(int argc, char **argv, int *i)
+{
+	(void)argc;
+	if (argv[*i][0] == '-')
+		return 0;
+	snprintf(query, sizeof(query), "%s", argv[*i]);
+	return 1;
+}
+
+static void ch_start(int dump)
+{
+	(void)dump;
+	qf.caret = (int)strlen(query);
+	idx_open();
+	search();
+}
+
+/* A paste is a queue and not an event: offered on every wake. */
+static void ch_wake(void)
+{
+	if (ktui_field_key(&qf, NULL) & KTUI_FIELD_CHANGED)
+		search();
+}
+
+/*
+ * THE POINTER PICKS A CHARACTER AND COPIES IT. A character map is the surface
+ * somebody opens BECAUSE they do not know how to type the thing they want, so
+ * the one glyph they came for is taken by a press as well as by Enter.
+ */
+static int ch_mouse(const KtuiEvent *ev)
+{
+	KRect tr = krect(2, 3, ktui_w - 4, ktui_h - 6);
+	int i;
+
+	if (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN) {
+		ktui_table_key(&tbl, nhits, ktui_h - 6,
+			       ev->btn == KT_MB_WHEEL_UP ? KT_K_UP : KT_K_DOWN,
+			       NULL, NULL);
+		return SH_EV_TAKEN;
+	}
+	if (ev->press != KT_MP_PRESS)
+		return SH_EV_PASS;
+	if (ev->btn == KT_MB_RIGHT)
+		return SH_EV_CLOSE;
+	if (ev->btn != KT_MB_LEFT)
+		return SH_EV_PASS;
+	i = ktui_table_hit(tr, &tbl, nhits, CH_NCOL, CH_COL, ev->mx, ev->my);
+	if (i < 0)
+		return SH_EV_PASS;
+	if (i == tbl.sel)
+		copy_selected();
+	else
+		ktui_table_pick(&tbl, nhits, i, NULL, NULL);
+	return SH_EV_TAKEN;
+}
+
+static int ch_event(KtuiEvent *ev)
+{
+	if (ev->type == KT_EVT_MOUSE)
+		return ch_mouse(ev);
+	if (ev->type != KT_EVT_KEY)
+		return SH_EV_PASS;
+
+	note[0] = '\0';
+	if (ev->key == KT_K_ENTER) {
+		copy_selected();
+		return SH_EV_TAKEN;
+	}
+	/*
+	 * THE FOUR LIST KEYS BELONG TO THE LIST AND HOME AND END DO NOT. A
+	 * character map is read far more than it is retyped, so Up, Down and
+	 * the pages mean the list here as they do on every other surface — but
+	 * there is a text field on this one, and Home and End mean its caret.
+	 * The table answers all six, so the four are named rather than the
+	 * call being trusted to take only what this surface meant to give it.
+	 */
+	if (ev->key == KT_K_UP || ev->key == KT_K_DOWN ||
+	    ev->key == KT_K_PGUP || ev->key == KT_K_PGDN) {
+		ktui_table_key(&tbl, nhits, ktui_h - 6, ev->key, NULL, NULL);
+		return SH_EV_TAKEN;
+	}
+
+	/* Everything else is the query's, the toolkit's field. */
+	if (ktui_field_key(&qf, ev) & KTUI_FIELD_CHANGED)
+		search();
+	return SH_EV_TAKEN;
 }
 
 int chars_main(int argc, char **argv)
 {
-	const char *font = NULL;
-	int dump = 0;
-
-	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--font") && i + 1 < argc)
-			font = argv[++i];
-		else if (!strcmp(argv[i], "--dump"))
-			dump = 1;
-		else if (argv[i][0] != '-')
-			snprintf(query, sizeof(query), "%s", argv[i]);
-		else {
-			fprintf(stderr, "usage: kdos-chars [--font NAME] "
-					"[--dump] [QUERY]\n");
-			return 2;
-		}
-	}
-	caret = (int)strlen(query);
-
-	idx_open();
-	search();
-
-	KDispConfig cfg = {
-		.role = KDISP_ROLE_OVERLAY,
-		.cols = CH_COLS,
-		.rows = CH_ROWS,
-		.app_id = "kdos-chars",
-		.font = font,
-		.keyboard = 1,
+	static const ShSurface s = {
+		.cfg = {
+			.role = KDISP_ROLE_OVERLAY,
+			.cols = CH_COLS,
+			.rows = CH_ROWS,
+			.app_id = "kdos-chars",
+			.keyboard = 1,
+		},
+		.usage = "[--font NAME] [--dump] [QUERY]",
+		.keys = &keys,
+		.popup = 1,
+		.popup_bg = KT_SURFACE,
+		.arg = ch_arg,
+		.start = ch_start,
+		.draw = draw,
+		.event = ch_event,
+		.wake = ch_wake,
 	};
-
-	sh_theme_from_cache();
-	if (dump) {
-		ktui_offscreen_init(CH_COLS, CH_ROWS);
-		ktui_draw_init();
-		draw();
-		ktui_draw_dump();
-		return 0;
-	}
-	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-		fprintf(stderr, "kdos-chars: no display server\n");
-		return 1;
-	}
-	ktui_draw_init();
-	kch_px_popup(KT_SURFACE);
-
-	while (!kdisp_should_close()) {
-		draw();
-		ktui_draw_flush();
-
-		KtuiEvent ev;
-
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
-			if (ktui_resized) {
-				ktui_resized = 0;
-				ktui_draw_resize();
-				ktui_draw_invalidate();
-			}
-			continue;
-		}
-		/*
-		 * THE POINTER PICKS A CHARACTER AND COPIES IT. A character map
-		 * is the surface somebody opens BECAUSE they do not know how to
-		 * type the thing they want, and it answered no pointer event at
-		 * all: the one glyph they came for could be taken with Enter and
-		 * by no other means.
-		 */
-		if (ev.type == KT_EVT_MOUSE) {
-			KRect tr = krect(2, 3, ktui_w - 4, ktui_h - 6);
-			int i;
-
-			if (ev.btn == KT_MB_WHEEL_UP ||
-			    ev.btn == KT_MB_WHEEL_DOWN) {
-				ktui_table_key(&tbl, nhits, ktui_h - 6,
-					       ev.btn == KT_MB_WHEEL_UP
-					       ? KT_K_UP : KT_K_DOWN, NULL, NULL);
-				continue;
-			}
-			if (ev.press != KT_MP_PRESS)
-				continue;
-			if (ev.btn == KT_MB_RIGHT)
-				break;
-			if (ev.btn != KT_MB_LEFT)
-				continue;
-			i = ktui_table_hit(tr, &tbl, nhits, CH_NCOL, CH_COL,
-					   ev.mx, ev.my);
-			if (i < 0)
-				continue;
-			if (i == tbl.sel)
-				copy_selected();
-			else
-				ktui_table_pick(&tbl, nhits, i, NULL, NULL);
-			continue;
-		}
-		if (ev.type != KT_EVT_KEY)
-			continue;
-
-		/* FIRST, above this surface's own switch. */
-		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
-			break;
-
-		note[0] = '\0';
-		if (ev.key == KT_K_ENTER) {
-			copy_selected();
-			continue;
-		}
-		/*
-		 * THE FOUR LIST KEYS BELONG TO THE LIST AND HOME AND END DO
-		 * NOT. A character map is read far more than it is retyped, so
-		 * Up, Down and the pages mean the list here as they do on
-		 * every other surface — but there is a text field on this one,
-		 * and Home and End mean its caret. The table answers all six,
-		 * so the four are named rather than the call being trusted to
-		 * take only what this surface meant to give it.
-		 */
-		if (ev.key == KT_K_UP || ev.key == KT_K_DOWN ||
-		    ev.key == KT_K_PGUP || ev.key == KT_K_PGDN) {
-			ktui_table_key(&tbl, nhits, ktui_h - 6, ev.key, NULL,
-				       NULL);
-			continue;
-		}
-
-		int qn = (int)strlen(query);
-
-		if (ev.key == KT_K_BACKSPACE) {
-			if (caret > 0) {
-				memmove(query + caret - 1, query + caret,
-					(size_t)(qn - caret) + 1);
-				caret--;
-				search();
-			}
-		} else if (ev.key == KT_K_LEFT) {
-			if (caret > 0)
-				caret--;
-		} else if (ev.key == KT_K_RIGHT) {
-			if (caret < qn)
-				caret++;
-		} else if (ev.key == KT_K_HOME) {
-			caret = 0;
-		} else if (ev.key == KT_K_END) {
-			caret = qn;
-		} else if (ev.key >= 0x20 && ev.key < 0x7f &&
-		    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
-			   qn + 1 < CH_QUERY) {
-			memmove(query + caret + 1, query + caret,
-				(size_t)(qn - caret) + 1);
-			query[caret++] = (char)ev.key;
-			search();
-		}
-	}
+	int r = sh_run(&s, argc, argv);
 
 	if (mapped)
 		munmap((void *)idx, mapped);
-	kdisp_shutdown();
-	return 0;
+	return r;
 }

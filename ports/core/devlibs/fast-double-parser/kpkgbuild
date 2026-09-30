@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fast-double-parser
+version     = 0.8.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/lemire/fast_double_parser/archive/refs/tags/v$version.tar.gz
+sha256      = 685c1b7b9383f5fcd96264467bb2efa0c9995d7e8afb66ed9c84663466c3cefd  fast-double-parser-0.8.1.tar.gz
+description = Header-only C++ parser from decimal strings to doubles, several times faster than strtod
+homepage    = https://github.com/lemire/fast_double_parser
+depends     = cmake ninja

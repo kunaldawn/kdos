@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wine-mono
+version     = 10.4.1
+release     = 1
+source      = $name-$version.tar.xz::https://dl.winehq.org/wine/wine-mono/$version/wine-mono-$version-x86.tar.xz
+sha256      = a16606ef0724202e6a6848ece6e0cbba64d11e2f11aefe744af1d93c6d9f99bb  wine-mono-10.4.1.tar.xz
+description = Wine Mono — the .NET Framework runtime Wine installs into a prefix, as upstream builds it
+homepage    = https://gitlab.winehq.org/mono/wine-mono

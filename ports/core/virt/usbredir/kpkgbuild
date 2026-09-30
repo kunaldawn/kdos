@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = usbredir
+version     = 0.15.0
+release     = 1
+source      = https://www.spice-space.org/download/usbredir/usbredir-$version.tar.xz
+sha256      = 6dc2a380277688a068191245dac2ab7063a552999d8ac3ad8e841c10ff050961  usbredir-0.15.0.tar.xz
+description = USB-over-network redirection protocol libraries and usbredirect, for SPICE and QEMU
+homepage    = https://www.spice-space.org/usbredir.html
+depends     = meson ninja pkgconf libusb glib

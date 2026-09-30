@@ -22,9 +22,8 @@
 # both read this, and both of them look broken on a freshly booted machine
 # when it is empty. Delete every line for a bare desktop.
 #
-# The first three are terminal entries, which is what makes them the right
-# default: they open on a freshly installed machine, where the boxed rows still
-# need a bake.
+# The first four are terminal programs and Firefox ESR, Kate and GIMP are
+# native, so every pinned entry opens on a freshly installed machine.
 
 # A line is a desktop-entry id, optionally followed by `code=XX` — the
 # two-letter shorthand DESQview's Open Window menu had. Typing both letters in
@@ -39,5 +38,5 @@ btop code=MO
 lazygit code=GI
 foot code=TE
 firefox-esr code=WW
-org.xfce.mousepad code=ED
+org.kde.kate code=ED
 gimp code=IM

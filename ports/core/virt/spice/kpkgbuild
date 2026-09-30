@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = spice
+version     = 0.16.0
+release     = 1
+source      = https://www.spice-space.org/download/releases/spice-server/spice-$version.tar.bz2
+sha256      = 0a6ec9528f05371261bbb2d46ff35e7b5c45ff89bb975a99af95a5f20ff4717d  spice-0.16.0.tar.bz2
+description = SPICE server library — what QEMU links to offer a guest's display, sound and USB to a SPICE client
+homepage    = https://www.spice-space.org
+depends     = meson ninja pkgconf python3 python3-pyparsing spice-protocol glib pixman openssl libjpeg-turbo zlib opus lz4 cyrus-sasl gstreamer gst-plugins-base orc libcacard eudev

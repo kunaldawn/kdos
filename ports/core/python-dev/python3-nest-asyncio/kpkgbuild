@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-nest-asyncio
+version     = 1.6.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/n/nest-asyncio/nest_asyncio-$version.tar.gz
+sha256      = 6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe  python3-nest-asyncio-1.6.0.tar.gz
+description = nest_asyncio — re-entrant asyncio event loops, which ipykernel runs cells in
+homepage    = https://github.com/erdewit/nest_asyncio
+depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-wheel

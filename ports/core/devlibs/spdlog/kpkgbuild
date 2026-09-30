@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = spdlog
+version     = 1.17.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/gabime/spdlog/archive/refs/tags/v$version.tar.gz
+sha256      = d8862955c6d74e5846b3f580b1605d2428b11d97a410d86e2fb13e857cd3a744  spdlog-1.17.0.tar.gz
+description = Fast C++ logging library, over the system fmt
+homepage    = https://github.com/gabime/spdlog
+depends     = cmake ninja fmt

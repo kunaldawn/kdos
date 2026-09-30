@@ -7,7 +7,8 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   script/hooks/pre-push — refuse a push naming a source the archive lacks
+#   script/hooks/pre-push — refuse a push that breaks the ports layout, or
+#   names a source the archive lacks
 # ---------------------------------
 #
 # Enabled per clone with
@@ -15,6 +16,24 @@
 #     git config core.hooksPath script/hooks
 #
 # which replaces .git/hooks entirely, git-lfs's own hooks included.
+#
+# THE LAYOUT comes first, and needs no network. At the tip of every pushed
+# ref that the remotes do not already hold, read from git's tree and not the
+# working copy:
+#
+#   - every kpkgbuild under ports/core is exactly
+#     ports/core/<shelf>/<name>/kpkgbuild, nothing loose one level up and
+#     nothing a level deeper
+#   - every <shelf> is listed in that commit's ports/shelves
+#   - every bare port name is unique across ports/core and src/<area>/
+#   - no listed shelf is named `libs` or `core`, or after a port
+#
+# A port is found by bare name one shelf down, so a name held by two ports
+# resolves to neither, and a loose or over-deep recipe is a port no build
+# sees. Only the tip is checked, because only the tip is built: an
+# intermediate commit a later one repairs passes. testing/preflight.sh checks
+# the same and more; this holds when preflight is not run.
+# KDOS_SKIP_LAYOUT_CHECK=1 bypasses it.
 #
 # A recipe's `sha256 =` is a promise that ports/fetch can find those bytes. A
 # commit whose recipe names a hash the archive does not hold builds on the
@@ -34,9 +53,7 @@
 # AN UNREACHABLE ARCHIVE REFUSES THE PUSH, and so does one answering anything
 # but 200 or 404. Offline or mid-outage, absence cannot be ruled out, and a
 # silent pass is exactly the push this exists to stop.
-# KDOS_SKIP_PUBLISH_CHECK=1 bypasses the whole check.
-
-[ "${KDOS_SKIP_PUBLISH_CHECK:-}" = 1 ] && exit 0
+# KDOS_SKIP_PUBLISH_CHECK=1 bypasses the archive check, and not the layout.
 
 ROOT=$(git rev-parse --show-toplevel) || exit 1
 # shellcheck source=ports/srclib.sh
@@ -48,7 +65,67 @@ refuse() {
     exit 1
 }
 
+mapfile -t LINES
+
+# layout_problems <commit> — one line per breach of the ports layout at
+# <commit>, nothing when it holds.
+layout_problems() {
+    local shelves
+    shelves=$(git show "$1:ports/shelves" 2>/dev/null |
+              awk '!/^[[:space:]]*(#|$)/ { print $1 }')
+    git ls-tree -r --name-only "$1" -- ports/core src | awk -v shelves="$shelves" '
+        BEGIN {
+            n = split(shelves, s, "\n")
+            for (i = 1; i <= n; i++) if (s[i] != "") { listed[s[i]] = 1; nlisted++ }
+        }
+        !/\/kpkgbuild$/ { next }
+        {
+            k = split($0, p, "/")
+            if (p[1] == "ports") {
+                if (k != 5) { print $0 ": not at ports/core/<shelf>/<name>/kpkgbuild"; next }
+                if (nlisted && !(p[3] in listed)) bad[p[3]] = 1
+            } else if (k != 4) {
+                next
+            }
+            name = p[k - 1]
+            if (name in at) print "port " name " is in two places: " at[name] " and " $0
+            else at[name] = $0
+        }
+        END {
+            if (!nlisted) print "ports/shelves is missing or lists no shelf"
+            for (x in bad) print "shelf " x " is not listed in ports/shelves"
+            for (x in listed) {
+                if (x == "libs" || x == "core") print "shelf " x ": the name is reserved"
+                else if (x !~ /^[a-z0-9-]+$/) print "shelf " x ": an id is lowercase letters, digits and -"
+                if (x in at) print "shelf " x " shares its name with the port at " at[x]
+            }
+        }' | LC_ALL=C sort
+}
+
+if [ "${KDOS_SKIP_LAYOUT_CHECK:-}" != 1 ]; then
+    declare -A LAID=()
+    for line in "${LINES[@]}"; do
+        read -r _lref lsha _rref _rsha <<< "$line"
+        [ -n "$lsha" ] && [[ ! "$lsha" =~ ^0+$ ]] || continue
+        [ -z "${LAID[$lsha]:-}" ] || continue
+        LAID[$lsha]=1
+        # A commit every remote already holds is published history, not
+        # this push's to refuse.
+        [ -n "$(git rev-list -1 "$lsha" --not --remotes 2>/dev/null)" ] || continue
+        bad=$(layout_problems "$lsha")
+        [ -z "$bad" ] && continue
+        echo "pre-push: the ports layout is broken at $(git rev-parse --short "$lsha"):" >&2
+        sed 's/^/  /' <<< "$bad" >&2
+        echo "pre-push: (KDOS_SKIP_LAYOUT_CHECK=1 git push … skips this check)" >&2
+        exit 1
+    done
+fi
+
+[ "${KDOS_SKIP_PUBLISH_CHECK:-}" = 1 ] && exit 0
+
 [ -n "$KDOS_SOURCES_BASE" ] || refuse "KDOS_SOURCES_BASE is empty, so no source can be confirmed archived"
+# A directory holds a copy of the archive, and a push needs the published one.
+src_base_local && refuse "KDOS_SOURCES_BASE is a local directory, so no source can be confirmed published"
 
 LFS_POINTER='^version https://git-lfs.github.com/spec/v1'
 
@@ -59,7 +136,6 @@ hashes_at() {
     git grep -h -o -E '\b[0-9a-f]{64}\b' "$1" -- 'ports/core/*/kpkgbuild' 2>/dev/null
 }
 
-mapfile -t LINES
 declare -A CHECKED MISSING_LABEL
 MISSING=()
 
@@ -80,13 +156,17 @@ for line in "${LINES[@]}"; do
     git show "$lsha:ports/sources.idx" > "$IDX" 2>/dev/null || : > "$IDX"
     src_index_load "$IDX"
 
-    # "<hash> <port>/<file>" for every hash, and what git carries, at $lsha.
-    declare -A label=() ptr=() carried=()
+    # "<hash> <port>/<file>" for every hash, the real path of that file, and
+    # what git carries, at $lsha. The port is the directory holding the
+    # kpkgbuild, whatever shelf it sits on; carried[] is keyed by real path.
+    declare -A label=() lpath=() ptr=() carried=()
     while IFS= read -r m; do
-        m=${m#"$lsha":ports/core/}
-        port=${m%%/*}
+        m=${m#"$lsha":}
+        dir=${m%%:*}
+        dir=${dir%/kpkgbuild}
         read -r h f <<< "${m#*:}"
-        label[$h]=$port/$f
+        label[$h]=${dir##*/}/$f
+        lpath[$h]=$dir/$f
     done < <(git grep -o -E '[0-9a-f]{64}[[:space:]]+[^[:space:]]+' "$lsha" -- 'ports/core/*/kpkgbuild')
     while IFS= read -r -d '' p; do ptr[${p#"$lsha":}]=1; done < <(
         git grep -l -z -I -e "$LFS_POINTER" "$lsha" -- ports/core 2>/dev/null)
@@ -97,7 +177,7 @@ for line in "${LINES[@]}"; do
         [ -n "${CHECKED[$h]:-}" ] && continue
         CHECKED[$h]=1
         l=${label[$h]:-?}
-        [ -n "${carried[ports/core/$l]:-}" ] && continue
+        [ -n "${lpath[$h]:-}" ] && [ -n "${carried[${lpath[$h]}]:-}" ] && continue
         if ! url=$(src_url "$h"); then
             MISSING+=("$h"); MISSING_LABEL[$h]="$l — not in ports/sources.idx"
             continue
@@ -117,7 +197,7 @@ pre-push: whether $l ($h) is archived cannot be confirmed, so the push is refuse
 pre-push: whether $l ($h) is archived cannot be confirmed, so the push is refused" ;;
         esac
     done <<< "$new"
-    unset label ptr carried
+    unset label lpath ptr carried
 done
 
 [ "${#MISSING[@]}" = 0 ] && exit 0

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qutebrowser
+version     = 3.7.0
+release     = 1
+source      = https://github.com/qutebrowser/qutebrowser/releases/download/v$version/qutebrowser-$version.tar.gz
+sha256      = c7f95884ea5e6675e584025bea55cff950c47d749aff7f415f68da03fcce0f92  qutebrowser-3.7.0.tar.gz
+description = Keyboard-driven web browser with vim-like bindings, on Qt WebEngine
+homepage    = https://qutebrowser.org/
+depends     = python3 python3-pip python3-setuptools python3-wheel python3-pyqt6 python3-pyqt6-sip python3-pyqt6-webengine python3-jinja2 python3-markupsafe python3-yaml python3-pygments qt6-qtbase qt6-qtwebengine qt6-qtwayland

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rtmidi
+version     = 6.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/thestk/rtmidi/archive/refs/tags/$version.tar.gz
+sha256      = ef7bcda27fee6936b651c29ebe9544c74959d0b1583b716ce80a1c6fea7617f0  rtmidi-6.0.0.tar.gz
+description = C++ real-time MIDI input and output classes over the ALSA sequencer
+homepage    = https://www.music.mcgill.ca/~gary/rtmidi/
+depends     = cmake alsa-lib

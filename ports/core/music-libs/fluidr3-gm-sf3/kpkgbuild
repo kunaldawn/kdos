@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = fluidr3-gm-sf3
+version     = 4.7.5
+release     = 1
+source      = FluidR3Mono_GM-$version.sf3::https://raw.githubusercontent.com/musescore/MuseScore/v$version/share/sound/FluidR3Mono_GM.sf3
+source      = FluidR3Mono_License-$version.md::https://raw.githubusercontent.com/musescore/MuseScore/v$version/share/sound/FluidR3Mono_License.md
+sha256      = 2aacd036d7058d40a371846ef2f5dc5f130d648ab3837fe2626591ba49a71254  FluidR3Mono_GM-4.7.5.sf3
+sha256      = 0fa7d85b3114adb91cebd42fe955e22df6b19917e9c8e19c401080c075975636  FluidR3Mono_License-4.7.5.md
+description = FluidR3 Mono General MIDI SoundFont, compressed — the default instrument set for fluidsynth and every MIDI player
+homepage    = https://github.com/musescore/MuseScore/tree/master/share/sound

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-dbus
+version     = 1.5.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/d/dbus-python/dbus_python-$version.tar.gz
+sha256      = ac94ce330879108e5d37105164cc14b595bdf9326d2ce4a5acad6c1ab2bf6476  python3-dbus-1.5.0.tar.gz
+description = dbus-python — the libdbus bindings system-config-printer and PyQt6's D-Bus main loop use
+homepage    = https://dbus.freedesktop.org/doc/dbus-python/
+depends     = python3 meson ninja pkgconf dbus glib

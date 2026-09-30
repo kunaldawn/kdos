@@ -58,6 +58,20 @@ static unsigned long long engine_delta(void)
 	return now > before ? now - before : 0;
 }
 
+/* Only a driver that reports its busy share has a figure: engine time
+ * alone is a set of counters, not one number. */
+const char *res_gpu_figure(void)
+{
+	static char s[16];
+	if (!g_ngpu)
+		return NULL;
+	const KprGpu *g = &g_gpu[g_sel < g_ngpu ? g_sel : 0];
+	if (g->busy_percent < 0)
+		return NULL;
+	snprintf(s, sizeof(s), "%d%%", g->busy_percent);
+	return s;
+}
+
 const char *res_gpu_headline(void)
 {
 	static char s[96];

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = exo
+version     = 4.20.0
+release     = 1
+source      = https://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$version.tar.bz2
+sha256      = 4277f799245f1efde01cd917fd538ba6b12cf91c9f8a73fe2035fd5456ec078d  exo-4.20.0.tar.bz2
+description = Xfce extension library for GTK 3 applications
+homepage    = https://docs.xfce.org/xfce/exo/start
+depends     = pkgconf gettext perl-xml-parser glib gtk3 libxfce4util libxfce4ui

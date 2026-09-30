@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-blinker
+version     = 1.9.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/b/blinker/blinker-$version.tar.gz
+sha256      = b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf  python3-blinker-1.9.0.tar.gz
+description = Fast in-process object-to-object and broadcast signalling for Python
+homepage    = https://blinker.readthedocs.io/
+depends     = python3 python3-pip python3-flit-core

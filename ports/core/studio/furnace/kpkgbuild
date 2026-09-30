@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = furnace
+version     = 0.6.8.3
+release     = 1
+_adpcm      = ef7a217154badc3b99978ac481b268c8aab67bd8
+source      = https://github.com/tildearrow/furnace/archive/refs/tags/v$version.tar.gz
+source      = furnace-adpcm-${_adpcm:0:7}.tar.gz::https://github.com/superctr/adpcm/archive/$_adpcm.tar.gz
+sha256      = c54b93dc7211a8e86828ea6b436628920df7a7dc87b130b3752f2251f5466e9c  furnace-0.6.8.3.tar.gz
+sha256      = 46da29342d2968ff222ba00e07c646e038b76af2e6c86de037c653059a056251  furnace-adpcm-ef7a217.tar.gz
+description = Chiptune tracker for over fifty sound chips of consoles, computers and arcades
+homepage    = https://tildearrow.org/furnace/
+depends     = cmake ninja pkgconf sdl2-compat freetype2 fmt fftw libsndfile portaudio rtmidi alsa-lib zlib mesa libglvnd

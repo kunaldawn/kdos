@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libgit2
+version     = 1.9.7
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libgit2/libgit2/archive/refs/tags/v$version.tar.gz
+sha256      = 1a4fbe7589e814777ae76b64734ad80f4ecad22cd33a22682a2aaea4ae5375e7  libgit2-1.9.7.tar.gz
+description = libgit2 — portable, linkable C implementation of the Git core methods
+homepage    = https://libgit2.org/
+depends     = cmake ninja pkgconf openssl libssh2 pcre2 zlib

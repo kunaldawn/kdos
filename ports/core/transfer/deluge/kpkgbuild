@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = deluge
+version     = 2.2.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/d/deluge/deluge-$version.tar.gz
+sha256      = f0fc64e052334ef294ca3951975dd926f129d62813f6c909bb523d914abe6537  deluge-2.2.0.tar.gz
+sha256      = afca58b788d7f27361185513b03ba16f3742baa843d3c6fbf1a000f2dbface9a  deluge-vendor-2.2.0.tar.xz
+description = Deluge — BitTorrent client with a daemon, a GTK 3 interface, a web UI and a console UI
+homepage    = https://deluge-torrent.org/
+depends     = python3 python3-pip python3-setuptools python3-wheel python3-hatchling python3-hatch-vcs python3-setuptools-scm python3-versioneer python3-cython python3-packaging python3-attrs python3-typing-extensions python3-idna python3-cryptography python3-mako python3-pyxdg python3-pillow python3-gobject python3-cairo libtorrent-rasterbar gtk3 librsvg xdg-utils hicolor-icon-theme
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = twisted:26.4.0 automat:25.4.16 constantly:23.10.4 hyperlink:21.0.0 incremental:24.11.0 zope.interface:8.6 pyopenssl:26.4.0 service-identity:26.1.0 pyasn1:0.6.4 pyasn1-modules:0.4.2 rencode:1.0.9 setproctitle:1.3.7 distro:1.9.0 hatch-fancy-pypi-readme:25.1.0 rjsmin:1.2.5

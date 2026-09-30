@@ -1,0 +1,24 @@
+diff -ru a/src/flmsg.cxx b/src/flmsg.cxx
+--- a/src/flmsg.cxx	2026-09-28 04:13:05.350372418 +0530
++++ b/src/flmsg.cxx	2026-09-28 04:13:05.351555077 +0530
+@@ -2176,12 +2176,14 @@
+ 	mainwindow->show(argc, argv);
+ 
+ // read in the current window hints, then modify them to allow icon transparency
+-	Pixmap mask = -1; // create pixmaps to hold the icon image and its mask
+-	XWMHints* hints = XGetWMHints(fl_display, fl_xid(mainwindow));
+-	hints->flags |= IconMaskHint; // ensure transparency mask is enabled for the XPM icon
+-	hints->icon_mask = mask; // set the transparency mask
+-	XSetWMHints(fl_display, fl_xid(mainwindow), hints);
+-	XFree(hints);
++	if (fl_x11_display()) {
++		Pixmap mask = -1; // create pixmaps to hold the icon image and its mask
++		XWMHints* hints = XGetWMHints(fl_display, fl_xid(mainwindow));
++		hints->flags |= IconMaskHint; // ensure transparency mask is enabled for the XPM icon
++		hints->icon_mask = mask; // set the transparency mask
++		XSetWMHints(fl_display, fl_xid(mainwindow), hints);
++		XFree(hints);
++	}
+ 
+ #else
+ 	mainwindow->show(argc, argv);

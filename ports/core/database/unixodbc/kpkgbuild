@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = unixodbc
+version     = 2.3.14
+release     = 1
+source      = https://www.unixodbc.org/unixODBC-$version.tar.gz
+sha256      = 4e2814de3e01fc30b0b9f75e83bb5aba91ab0384ee951286504bb70205524771  unixodbc-2.3.14.tar.gz
+description = unixODBC — the ODBC driver manager KiCad and LibreOffice Base connect to databases through
+homepage    = https://www.unixodbc.org/
+depends     = readline libtool

@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libsavitar
+version     = 5.12.0
+release     = 1
+_commit     = c513049b0866d6903826c9be46dd84deb12ffcba
+_index      = c4077fc3e719b436d1cdc2032bf3f851b6f089bb
+source      = $name-$version.tar.gz::https://github.com/Ultimaker/libSavitar/archive/$_commit.tar.gz
+source      = conan-ultimaker-index-$_index.tar.gz::https://github.com/Ultimaker/conan-ultimaker-index/archive/$_index.tar.gz
+sha256      = b70d11807dbd5a078d27f104b87bf8cd80af3c42467b41c66349e1910cdb4f1c  libsavitar-5.12.0.tar.gz
+sha256      = b35b9b112085c299ee5e9e5e15612e5e065d07220d0c9954b776b15cfa5095b5  conan-ultimaker-index-c4077fc3e719b436d1cdc2032bf3f851b6f089bb.tar.gz
+description = Savitar — the 3MF scene reader and writer under Cura
+homepage    = https://github.com/Ultimaker/libSavitar
+depends     = cmake ninja pugixml

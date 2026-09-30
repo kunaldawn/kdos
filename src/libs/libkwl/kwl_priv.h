@@ -65,6 +65,16 @@ const char *kwl_font_name(void);
  */
 int kwl_font_use(const char *name);
 
+/*
+ * comp.conf's `motion`: 0 for `no`, `off`, `false` or `0`, 1 for anything
+ * else and for a file or key that is not there, which is the compositor's
+ * reading of the same line. The file is read again only when its mtime
+ * changes, so the question costs a stat() — it is asked at every animation's
+ * start (ktui_anim_set_motion_fn), which is how a changed setting reaches a
+ * surface that is already running.
+ */
+int kwl_conf_motion(void);
+
 /* The shm buffer the cells are painted into. */
 typedef struct {
 	pixman_image_t *img;
@@ -94,6 +104,17 @@ typedef struct {
 	 * paint of this buffer.
 	 */
 	bool stale;
+	/*
+	 * The backdrop picture THESE pixels were painted over: its key, and the
+	 * scale it was painted at. Two buffers alternate, so each may hold a
+	 * different one — a plate that moved while the other buffer was on
+	 * screen — and what a partial paint of this buffer must put back is
+	 * what moved since ITS key, not since the other buffer's. See
+	 * kwl_set_backdrop_cache().
+	 */
+	uint64_t bd_key;
+	int bd_scale;
+	bool bd_valid;
 } KwlBuffer;
 
 #endif /* KWL_PRIV_H */

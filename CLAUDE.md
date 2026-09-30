@@ -24,7 +24,7 @@ Read the map below before touching anything.
 | Where a window goes, tiling, snapping, workspaces | [`03-architecture/window-model.md`](docs/kdos/03-architecture/window-model.md) |
 | **Drawing anything** — colour, chrome, the pointer contract, glyph tiers | [`03-architecture/design-language.md`](docs/kdos/03-architecture/design-language.md) |
 | The compositor and its grafts | [`04-programs/kdos-comp.md`](docs/kdos/04-programs/kdos-comp.md) |
-| The panel and its 52 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
+| The panel and its 54 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
 | The resource monitor | [`04-programs/kdos-res.md`](docs/kdos/04-programs/kdos-res.md) |
 | The terminal, its keys and clipboards, and pictures in one | [`04-programs/kdos-term.md`](docs/kdos/04-programs/kdos-term.md) |
 | Launching boxed apps, launcher generation, box profiles | [`04-programs/kdos-appbox.md`](docs/kdos/04-programs/kdos-appbox.md) |
@@ -35,12 +35,13 @@ Read the map below before touching anything.
 | Build targets and the fast iteration loops | [`05-developer/developing.md`](docs/kdos/05-developer/developing.md) |
 | Phases, the chroot, snapshots, build plans | [`05-developer/build-system.md`](docs/kdos/05-developer/build-system.md) |
 | **Writing or changing a recipe** | [`05-developer/writing-ports.md`](docs/kdos/05-developer/writing-ports.md) |
+| Choosing a port's shelf (`ports/core/<shelf>/<name>/`, the closed list in `ports/shelves`) | [`05-developer/writing-ports.md`](docs/kdos/05-developer/writing-ports.md) |
 | **A build that failed** | [`05-developer/build-troubleshooting.md`](docs/kdos/05-developer/build-troubleshooting.md) |
 | The `libk*` libraries | [`05-developer/c-libraries.md`](docs/kdos/05-developer/c-libraries.md) |
 | **Writing a new surface** | [`05-developer/writing-desktop-software.md`](docs/kdos/05-developer/writing-desktop-software.md) |
 | Tests, fixtures, goldens, the rig | [`05-developer/testing.md`](docs/kdos/05-developer/testing.md) |
 | Every command / config key / socket / path | [`06-reference/`](docs/kdos/06-reference/command-index.md) |
-| Every port, by phase and group | [`06-reference/ports-catalogue.md`](docs/kdos/06-reference/ports-catalogue.md) |
+| Every port, by shelf and phase | [`06-reference/ports-catalogue.md`](docs/kdos/06-reference/ports-catalogue.md) |
 | What does not exist | [`06-reference/known-gaps.md`](docs/kdos/06-reference/known-gaps.md) |
 
 **If a page and the tree disagree, measure the tree and fix the page in the same
@@ -82,11 +83,19 @@ stale-pessimistic one makes them re-verify something that already works.
    replacements and what the choice costs.
 
 4. **No Xorg server.** No `xorg-server`, no display manager, nothing X on the
-   login path, and `fs/etc/X11/` must never exist. Xwayland is the single
-   carve-out; a recipe that wants the X client libraries for anything else gets
-   pushed back.
+   login path, and `fs/etc/X11/` must never exist. Xwayland is the one X
+   server: it serves boxed applications and host applications that have no
+   Wayland path. X client libraries may be linked by any application that
+   needs them.
 
-5. **No GTK and no Qt on the host.** Graphical applications go in a box.
+5. **Toolkits are for applications, never for the desktop.** Applications may
+   be ported natively with GTK 3/4, libadwaita, Qt 5/6, KDE Frameworks,
+   wxWidgets, FLTK or Tk, built with their Wayland backend as the run-time
+   default. The desktop itself (`kdos-comp`, `kdos-shell`, the daemons and
+   portals) draws cells and links no toolkit, and there is no Plasma or GNOME
+   shell. Why, and what is ported, is in
+   [`principles.md`](docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)
+   and [`applications.md`](docs/kdos/02-user-guide/applications.md).
 
 6. **No rationale comments in a recipe.** Banner header plus the metadata keys.
    Reasoning belongs in a commit message or in the book.
@@ -152,12 +161,12 @@ State the rule and its consequence. Never the story. See hard rule 2.
 ## Build and iteration
 
 ```sh
-git config core.hooksPath script/hooks           # once per clone: the pre-push source check
+git config core.hooksPath script/hooks           # once per clone: the pre-push layout and source checks
 make fetch                                       # every source; networked, as is the first builder-image build
 make fetch-check                                 # offline: what is missing or wrong
 make build                                       # everything — no network
 make build BUILD_ARGS=--fresh                    # skip the picker
-make build BUILD_ARGS="--continue-from 04_phase4"
+make build BUILD_ARGS="--continue-from 41_system"
 make run            # plain graphics: no phosphor pass
 make run-hw         # accelerated: the pass is on
 ```
@@ -166,10 +175,10 @@ make run-hw         # accelerated: the pass is on
 
 | Changed | Run |
 |---|---|
-| Something under `fs/` | `make build BUILD_ARGS="--phases 01_phase1,06_packaging --steps 01_phase1:00_file_system.sh"` |
-| One port | `make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild <port>"` |
-| A desktop program | `make build BUILD_ARGS="--phases 05_desktop --rebuild <port>"` |
-| Only packaging | `make build BUILD_ARGS="--phases 06_packaging"` |
+| Something under `fs/` | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:000_file_system.sh"` |
+| One port | `make build BUILD_ARGS="--phases <phase>,70_image --rebuild <port>"` — `<phase>` is the one whose list names the port (`grep -rlx <port> script/phases/*/packages*`), e.g. `41_system` |
+| A desktop program | `make build BUILD_ARGS="--phases 50_desktop --rebuild <port>"` |
+| Only packaging | `make build BUILD_ARGS="--phases 70_image"` |
 
 **Rules while building:**
 
@@ -197,7 +206,7 @@ make run-hw         # accelerated: the pass is on
   otherwise. See
   [`writing-ports.md`](docs/kdos/05-developer/writing-ports.md).
 - **A new opt-in packaging flag is two edits, not one.** The chroot is entered
-  with a cleared environment, so a variable must be named in `script/chroot_exec.sh`
+  with a cleared environment, so a variable must be named in `script/chroot/exec.sh`
   as well as passed by the `Makefile`, or it reaches every host step and no
   chroot one.
 
@@ -256,8 +265,8 @@ tree. The ISO is the pristine shipped system.
   phosphor pass is never in a rig photograph.
 - **Driving the session means a *login* shell** (`su - kdos -c`), or the
   container tooling resolves the home directory to `/` and every call fails.
-- **Goldens regenerate only where the Wayland dependencies exist** — a build
-  container, not a bare host.
+- **Goldens regenerate only where the Wayland dependencies exist** — the
+  development image (`testing/devdeps-image.sh`), not a bare host.
 
 Everything else about the harnesses is in
 [`testing.md`](docs/kdos/05-developer/testing.md).
@@ -267,11 +276,11 @@ Everything else about the harnesses is in
 ## Working-state markers
 
 ```bash
-ls ports/core | wc -l                                  # ports
+find ports/core -name kpkgbuild | wc -l                # ports
 ls build/fs/var/lib/kpkg/db/ | wc -l                   # installed packages
 git status --short | wc -l                             # tracked changes
-ls build/logs/04_phase4/*.log                          # which packages have logs
-tail -40 build/logs/04_phase4/<N>_<pkg>.install.log    # debug a failure
+ls build/logs/41_system/*.log                          # which packages have logs
+tail -40 build/logs/41_system/<N>_<pkg>.install.log    # debug a failure
 bash testing/docscheck.sh                              # the book: links, prose, page contract
 ```
 
@@ -286,9 +295,16 @@ bash testing/docscheck.sh                              # the book: links, prose,
 - **"audit"** → grep across recipes, phase lists and `fs/` for residual
   references. Be systematic.
 - **"add X"** → find the canonical upstream URL, pick the latest stable version,
-  write a recipe matching
+  pick its shelf from `ports/shelves`, write a recipe at
+  `ports/core/<shelf>/<name>/` matching
   [`writing-ports.md`](docs/kdos/05-developer/writing-ports.md), and wire it into
-  `depends` and the right `packages.txt`.
+  `depends` and the list of the phase its dependencies put it in
+  (`packages.d/<shelf>.txt` in `40_lang`…`44_apps`, `packages.txt` elsewhere);
+  `python3 testing/phaseclosure.py` says when the phase is wrong. A program of
+  our own goes at `src/<area>/<name>/` in one of the four areas that hold
+  ports (`system`, `art`, `desktop`, `daemons`), listed in
+  `packages.d/src-<area>.txt` of its phase, or in `50_desktop`'s `packages.txt`
+  for `desktop` and `daemons`.
 - **"why is X off"** → usually because dependencies weren't present when the port
   was added. Name the missing dependencies and offer to add them; don't pretend
   it was a deliberate choice.

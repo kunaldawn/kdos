@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   42_graphics: Graphics Stack
+# ---------------------------------
+#   security — Security applications: GnuPG and front-ends, password and secret
+#   managers, certificates, scanners, forensics and audit
+# ---------------------------------
+#
+# Ports whose dependency closure reaches wayland, libX11, mesa, libdrm, cairo,
+# pango, gstreamer, ffmpeg or pipewire but no toolkit, and that are not leaf
+# applications.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# With hostapd shipped, this machine can BE the access point — and the
+# questions that then matter (which channel is congested, why does this client
+# keep deauthenticating) are physical-layer ones nothing else here answers.
+# `iw` is a hard prerequisite: airmon-ng calls it to set monitor mode.
+aircrack-ng

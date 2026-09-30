@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gl2ps
+version     = 1.4.2
+release     = 1
+source      = $name-$version.tar.gz::https://geuz.org/gl2ps/src/gl2ps-$version.tgz
+sha256      = 8d1c00c1018f96b4b97655482e57dcb0ce42ae2f1d349cd6d4191e7848d9ffe9  gl2ps-1.4.2.tar.gz
+description = gl2ps — OpenGL scenes to PostScript, PDF and SVG, for Octave's figure printing
+homepage    = https://geuz.org/gl2ps/
+depends     = cmake ninja libglvnd mesa zlib libpng

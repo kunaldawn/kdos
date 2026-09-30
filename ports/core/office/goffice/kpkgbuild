@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = goffice
+version     = 0.10.62
+release     = 1
+_series     = ${version%.*}
+source      = https://download.gnome.org/sources/$name/$_series/$name-$version.tar.xz
+sha256      = 500eaff50628faa75adb3cd560236a4db498d9e7c52c036b78fa9a57f21805b3  goffice-0.10.62.tar.xz
+description = GLib/GTK office library — charts, formats and canvas shared by Gnumeric and AbiWord
+homepage    = https://gitlab.gnome.org/GNOME/goffice
+depends     = pkgconf glib gtk3 libgsf libxml2 libxslt pango cairo gdk-pixbuf librsvg libspectre ghostscript lasem gobject-introspection intltool gettext

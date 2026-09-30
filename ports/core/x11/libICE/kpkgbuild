@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libICE
+version     = 1.1.2
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = 974e4ed414225eb3c716985df9709f4da8d22a67a2890066bc6dfc89ad298625  libICE-1.1.2.tar.xz
+description = X11 Inter-Client Exchange library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libICE
+depends     = xorgproto xtrans libbsd

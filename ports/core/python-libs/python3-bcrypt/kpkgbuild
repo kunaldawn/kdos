@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-bcrypt
+version     = 5.0.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/b/bcrypt/bcrypt-$version.tar.gz
+sha256      = f748f7c2d6fd375cc93d3fba7ef4a9e3a092421b8dbf34d8d4dc06be9492dfdd  python3-bcrypt-5.0.0.tar.gz
+sha256      = dd877e16989e827b7ef5e7ba19a0036f76b259ca0c6607e32b0daf6e6c213909  python3-bcrypt-vendor-5.0.0.tar.xz
+description = bcrypt — the bcrypt password hash for Python, in Rust
+homepage    = https://github.com/pyca/bcrypt
+depends     = python3 python3-pip python3-setuptools python3-wheel python3-setuptools-rust rust
+vendoring   = rust
+vendordir   = src/_bcrypt

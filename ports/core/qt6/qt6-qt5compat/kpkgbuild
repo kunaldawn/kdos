@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qt5compat
+version     = 6.11.2
+release     = 1
+_module     = qt5compat
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 68c320fe3391096a9f2d870170edf1b67dac8af1d0e51c0c9e5343807f114287  qt6-qt5compat-6.11.2.tar.xz
+description = Qt 6 Core5Compat — QTextCodec, QRegExp and the Qt 5 graphical effects for code ported from Qt 5
+homepage    = https://www.qt.io/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtshadertools icu
+group       = qt6

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libvirt-glib
+version     = 5.0.0
+release     = 1
+source      = https://download.libvirt.org/glib/libvirt-glib-$version.tar.xz
+sha256      = 9bfec346382416a3575d87299bc641b2a464aa519fd9b1287e318aa43a2f3b8b  libvirt-glib-5.0.0.tar.xz
+description = GLib, GObject and GConfig wrappers of the libvirt API, with introspection data and Vala bindings
+homepage    = https://libvirt.org
+depends     = meson ninja pkgconf glib libvirt libxml2 gettext gobject-introspection vala

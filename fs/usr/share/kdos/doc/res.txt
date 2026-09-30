@@ -8,7 +8,8 @@ them; the page beside it is the one in front of you.
   [ and ]   step to the previous and next page.
   Tab       moves the focus between the page list and the page.
   Esc       steps back one level: out of a detail view to its list, out of
-            the page list to the page, and only then out of the program.
+            the page list to the page, off a chart's sample, and only then
+            out of the program.
   q         leaves, from anywhere except a question.
 
 Pages
@@ -20,6 +21,11 @@ Pages
 
   CPU, Memory, GPU, Drives, Network, Batteries and Energy are measurements.
   They sample on a timer and the charts are the last two minutes.
+
+  On CPU and Memory a chart reads one sample at a time: rest the pointer
+  on it, or press Left, and the reading top right says how long ago that
+  sample was and what it read. Left steps further back, Right steps
+  forward, and Escape goes back to the value now.
 
 Questions
 

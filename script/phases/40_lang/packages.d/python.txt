@@ -1,0 +1,57 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   40_lang: Languages
+# ---------------------------------
+#   python — The python3 interpreter, tkinter, and Python build, packaging and
+#   extension tooling
+# ---------------------------------
+#
+# Language modules and developer tools — the python3-* and perl-* modules,
+# language implementations, build and documentation tools, debuggers and
+# version control — whose dependency closure needs nothing past 31_compilers.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# THE BUILD BACKENDS ARE PORTS, NOT VENDORED WHEELS. numpy and matplotlib build
+# through `mesonpy`, pybind11, pikepdf and coolprop through `scikit-build-core`,
+# and the rest through `hatchling` or `setuptools`. Under pip's build isolation
+# each would fetch its backend from PyPI — whose own chain ends at the `ninja`
+# wrapper, whose sdist COMPILES CMAKE FROM SOURCE. This tree has cmake, ninja
+# and meson already. 30_foundation installs flit-core, hatchling, poetry-core,
+# setuptools-scm and what they build with.
+python3-scikit-build-core
+python3-nanobind
+python3-pyproject-metadata
+python3-meson-python
+python3-cython
+python3-pybind11
+
+python3-wheel
+python3-pycparser
+python3-cffi
+
+# maturin is the build backend of python3-cryptography and python3-orjson, and
+# bootstraps itself with setuptools-rust: these three exist only to compile
+# them.
+python3-semantic-version
+python3-setuptools-rust
+python3-maturin
+
+python3-cppy
+python3-pkgconfig
+python3-versioneer
+python3-extension-helpers
+python3-sip
+python3-pyqt-builder
+python3-hatch-jupyter-builder
+python3-hatch-nodejs-version

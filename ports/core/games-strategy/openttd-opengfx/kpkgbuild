@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = openttd-opengfx
+version     = 8.0
+release     = 1
+source      = https://cdn.openttd.org/opengfx-releases/$version/opengfx-$version-all.zip
+sha256      = 43a0c1dabf39cb865394f3a6cc36d4da5c10ecfaaf55652043104806810903be  openttd-opengfx-8.0.zip
+description = OpenGFX: the free graphics base set for OpenTTD
+homepage    = https://github.com/OpenTTD/OpenGFX
+depends     = libarchive

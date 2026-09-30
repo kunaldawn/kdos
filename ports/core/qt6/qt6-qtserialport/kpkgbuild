@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtserialport
+version     = 6.11.2
+release     = 1
+_module     = qtserialport
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = df3a733616444f31b2ecb689218ea1444be91d8628aa3ab8e464c5eb1b17ad8e  qt6-qtserialport-6.11.2.tar.xz
+description = Qt 6 SerialPort — serial and USB-serial device access
+homepage    = https://www.qt.io
+depends     = cmake ninja qt6-qtbase pkgconf eudev
+group       = qt6

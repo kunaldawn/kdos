@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyxdg
+version     = 0.28
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pyxdg/pyxdg-$version.tar.gz
+sha256      = 3267bb3074e934df202af2ee0868575484108581e6f3cb006af1da35395e88b4  python3-pyxdg-0.28.tar.gz
+description = pyxdg — freedesktop.org base directories, desktop entries, menus and icon themes in Python
+homepage    = https://www.freedesktop.org/wiki/Software/pyxdg/
+depends     = python3 python3-setuptools python3-pip

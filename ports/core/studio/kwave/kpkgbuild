@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kwave
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 7f64ac6a23a8e3d7600451f05e610e7d028220a1f0aedcbdcf7e249c3bab3f15  kwave-26.08.1.tar.xz
+description = KDE sound editor — record, cut, filter and convert WAV, FLAC, MP3, Ogg Vorbis and Opus
+homepage    = https://apps.kde.org/kwave/
+depends     = cmake ninja extra-cmake-modules gettext librsvg qt6-qtbase qt6-qtmultimedia qt6-qtwayland karchive kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes kio kservice ktextwidgets kwidgetsaddons kxmlgui audiofile libsamplerate fftw flac libogg libvorbis opus alsa-lib libpulse id3lib libmad lame

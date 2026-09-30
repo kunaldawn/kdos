@@ -1,0 +1,42 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   transfer — File transfer, synchronisation, backup and BitTorrent
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+rsync
+
+# A backup tool is one static binary or it is not a backup tool: the repository
+# has to restore from a machine that is NOT this one. `rclone check` is the
+# only thing here that compares two trees by content and says what differs.
+restic
+rclone
+
+# localAnnounce on, global/relay/NAT off: two machines on one LAN find each
+# other with no server anywhere, and nothing reaches outside it.
+syncthing
+
+# The default relay is a host on the internet and croc falls back to it
+# SILENTLY, so the shipped wrapper is `croc --local`.
+croc
+
+libtorrent-rasterbar
+libfilezilla
+fzssh

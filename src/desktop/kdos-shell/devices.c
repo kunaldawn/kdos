@@ -761,7 +761,7 @@ static int dv_span(int idx, void *user)
 
 /* ONE ELASTIC COLUMN: the four kinds of row below put their fields at four
  * different offsets, so the column set is the row's rather than the table's. */
-static const KtuiCol DV_COL[] = { { NULL, 0 } };
+static const KtuiCol DV_COL[] = { { NULL, 0, 0 } };
 
 static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		    void *user)

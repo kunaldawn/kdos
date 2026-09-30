@@ -14,18 +14,23 @@
  *
  * The grid is monospaced by construction, not by hope: the cell is the advance
  * of one CHARACTER — see cell_advance() for why that is not the face's maximum
- * — and a glyph wider than one cell is drawn clipped rather than allowed to
- * run into its neighbour. A fallback face answers with whatever metric it has,
- * and a bitmap exceeding the cell would otherwise overwrite the character
- * beside it, which that character has no reason to repaint. The box-drawing
- * and block characters do not depend on the clip: kcell_paint synthesises
- * them, so their tiling is arithmetic rather than a property of the face.
+ * — and as tall as the pixel size the name asked for wherever the face allows
+ * it (see take_twin() and pin_cell()); a glyph wider than one cell is drawn
+ * clipped rather than allowed to run into its neighbour. A fallback face
+ * answers with whatever metric it has, and a bitmap exceeding the cell would
+ * otherwise overwrite the character beside it, which that character has no
+ * reason to repaint. The box-drawing and block characters do not depend on
+ * the clip: kcell_paint synthesises them, so their tiling is arithmetic rather
+ * than a property of the face.
  * ---------------------------------
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+
+#include <fontconfig/fontconfig.h>
 
 #include "kcell.h"
 #include "kcell_priv.h"
@@ -88,6 +93,17 @@ static unsigned cache_count;
 static size_t cache_bytes;	/* the upscaled masks only; fcft owns the rest */
 static unsigned evict_cursor;
 static int cell_w, cell_h, ascent;
+/* The name the cell font was asked for, "" while none is loaded — see
+ * kcell_font_name() in kcell_priv.h. */
+static char font_name[224];
+/*
+ * The upright face's OWN line height, which is what a companion is measured
+ * against. It differs from cell_h exactly when the cell is pinned (see
+ * pin_cell()), and a companion from the same family at the same size has the
+ * same unpinned line, so comparing it with the pinned cell would refuse every
+ * one.
+ */
+static int face_h;
 
 /*
  * THE ONE OWNER OF FCFT INSIDE libkcell, AND IT COUNTS ITS HOLDERS. The pair
@@ -339,7 +355,7 @@ static struct fcft_font *companion(const char *base, const char *attrs)
 
 	snprintf(spec, sizeof(spec), "%s%s", base, attrs);
 	f = fcft_from_name(1, names, NULL);
-	if (f && (cell_advance(f) != cell_w || f->height != cell_h)) {
+	if (f && (cell_advance(f) != cell_w || f->height != face_h)) {
 		fcft_destroy(f);
 		f = NULL;
 	}
@@ -375,9 +391,308 @@ static void drop_faces(void)
 			fcft_destroy(face[i]);
 			face[i] = NULL;
 		}
-	cell_w = cell_h = ascent = 0;
+	cell_w = cell_h = ascent = face_h = 0;
+	font_name[0] = '\0';
 	kcell_ascii_forget();
 	kcell_tile_forget();
+}
+
+/* ── the size policy ───────────────────────────────────────────────────── */
+
+int kcell_name_px(const char *name)
+{
+	const char *at = name ? strstr(name, ":pixelsize=") : NULL;
+	int px;
+
+	if (!at)
+		return 0;
+	px = atoi(at + 11);
+	return px > 0 ? px : 0;
+}
+
+int kcell_name_at_px(const char *name, int px, char *out, size_t n)
+{
+	char base[192];
+	size_t bl = 0;
+
+	if (!out || !n || px <= 0)
+		return 0;
+	/*
+	 * `Terminus:pixelsize=32` with `:pixelsize=48` appended is
+	 * `pixelsize: 32 48` to fontconfig, which takes the size from the
+	 * first and draws at 32 — silently, since the text still renders. So
+	 * every size property is taken out, segment by segment, before the new
+	 * one goes on.
+	 */
+	for (const char *seg = name ? name : ""; *seg;) {
+		const char *end = strchr(seg, ':');
+		size_t sl = end ? (size_t)(end - seg) : strlen(seg);
+		int is_size = (sl > 10 && !strncmp(seg, "pixelsize=", 10)) ||
+			      (sl > 5 && !strncmp(seg, "size=", 5));
+
+		if (!is_size && sl && bl + sl + 2 < sizeof(base)) {
+			if (bl)
+				base[bl++] = ':';
+			memcpy(base + bl, seg, sl);
+			bl += sl;
+		}
+		seg = end ? end + 1 : seg + sl;
+	}
+	base[bl] = '\0';
+	return snprintf(out, n, "%s:pixelsize=%d", bl ? base : "monospace",
+			px) < (int)n;
+}
+
+double kcell_name_pixelsize(const char *name)
+{
+	FcPattern *pat;
+	double px = 0;
+	int named = kcell_name_px(name);
+
+	if (named > 0)
+		return named;
+	if (!name || !*name || !FcInit())
+		return 0;
+	pat = FcNameParse((const FcChar8 *)name);
+	if (!pat)
+		return 0;
+	/* The size a point size or no size at all comes to is fontconfig's
+	 * default substitution — the same one fcft's own load goes through. */
+	FcConfigSubstitute(NULL, pat, FcMatchPattern);
+	FcDefaultSubstitute(pat);
+	if (FcPatternGetDouble(pat, FC_PIXEL_SIZE, 0, &px) != FcResultMatch)
+		px = 0;
+	FcPatternDestroy(pat);
+	return px > 0 ? px : 0;
+}
+
+int kcell_face_short(int height, int px)
+{
+	return px > 0 && height > 0 && height * 10 < px * 9;
+}
+
+int kcell_strike_off(double strike, double fixup, int px)
+{
+	double n;
+
+	if (px <= 0 || strike <= 0 || fixup <= 0)
+		return 0;
+	n = (double)(long)(fixup + 0.5);
+	if (fixup - n > 0.01 || n - fixup > 0.01)
+		return 1;		/* a fractional scale */
+	if (n >= 2)
+		return 0;		/* a whole multiple: every pixel n x n */
+	return strike * 10 < px * 9;	/* unscaled, and short */
+}
+
+/*
+ * ASKED OF FONTCONFIG, NOT OF THE FACE. fcft draws a bitmap at a size it has no
+ * strike for by scaling the nearest one by the `pixelsizefixupfactor` the
+ * shipped 10-scale-bitmap-fonts.conf computes — so `Terminus:pixelsize=64` is
+ * the 32-pixel strike doubled and `=40` is the same strike at 1.25 — and the
+ * face it hands back reports the scaled height, which is the asked one. fcft
+ * reports neither the strike, the factor nor whether the face is an outline,
+ * so all three come from fontconfig's match for the same name. Where the size
+ * is equidistant from two strikes (Terminus at 13, 15, 26 and 30) fcft may draw
+ * the other one; for Terminus both are unscaled and within a tenth, so the
+ * answer is the same either way. fcft brought fontconfig up, so this runs after
+ * kcell_fcft_ref().
+ */
+static FcPattern *fc_match(const char *name)
+{
+	FcPattern *pat, *m;
+	FcResult r;
+
+	if (!name)
+		return NULL;
+	pat = FcNameParse((const FcChar8 *)name);
+	if (!pat)
+		return NULL;
+	FcConfigSubstitute(NULL, pat, FcMatchPattern);
+	FcDefaultSubstitute(pat);
+	m = FcFontMatch(NULL, pat, &r);
+	FcPatternDestroy(pat);
+	return m;
+}
+
+/* A match that does not say is taken for an outline: the answer only ever
+ * withholds the bitmap rules. */
+static int match_outline(FcPattern *m)
+{
+	FcBool outline = FcTrue;
+
+	if (FcPatternGetBool(m, FC_OUTLINE, 0, &outline) != FcResultMatch)
+		outline = FcTrue;
+	return outline != FcFalse;
+}
+
+int kcell_bitmap_off_strike(const char *name, int px)
+{
+	FcPattern *m;
+	double strike = 0, fixup = 1;
+	int off = 0;
+
+	if (px <= 0 || !(m = fc_match(name)))
+		return 0;
+	if (!match_outline(m) &&
+	    FcPatternGetDouble(m, FC_PIXEL_SIZE, 0, &strike) == FcResultMatch) {
+		if (FcPatternGetDouble(m, "pixelsizefixupfactor", 0, &fixup) !=
+		    FcResultMatch)
+			fixup = 1;
+		off = kcell_strike_off(strike, fixup, px);
+	}
+	FcPatternDestroy(m);
+	return off;
+}
+
+int kcell_name_outline(const char *name)
+{
+	FcPattern *m = fc_match(name);
+	int outline;
+
+	if (!m)
+		return 1;
+	outline = match_outline(m);
+	FcPatternDestroy(m);
+	return outline;
+}
+
+/* The first family of a fontconfig name: up to the first `,` (a family list)
+ * or `:` (the properties). */
+static size_t first_family(const char *spec)
+{
+	size_t n = strcspn(spec, ",:");
+
+	while (n > 0 && spec[n - 1] == ' ')
+		n--;
+	return n;
+}
+
+int kcell_twin_name(const char *name, char *out, size_t n)
+{
+	static const char tag[] = " (TTF)";
+	const size_t tl = sizeof(tag) - 1;
+	const char *rest;
+	size_t fl;
+
+	if (!name || !out || !n)
+		return 0;
+	fl = first_family(name);
+	if (fl == 0 || (fl >= tl - 1 &&
+			!strncasecmp(name + fl - (tl - 1), tag + 1, tl - 1)))
+		return 0;
+	rest = strchr(name, ':');
+	return snprintf(out, n, "%.*s%s%s", (int)fl, name, tag,
+			rest ? rest : "") < (int)n;
+}
+
+int kcell_face_named(const char *fullname, const char *spec)
+{
+	size_t fl;
+
+	if (!fullname || !spec)
+		return 0;
+	fl = first_family(spec);
+	return fl > 0 && !strncasecmp(fullname, spec, fl) &&
+	       (fullname[fl] == '\0' || fullname[fl] == ' ');
+}
+
+int kcell_pin_fits(int asc, int desc, int px)
+{
+	return px > 0 && asc + desc <= px + (px + 15) / 16;
+}
+
+int kcell_pin_ascent(int asc, int desc, int px)
+{
+	int line = asc + desc, a;
+
+	if (px <= 0 || asc <= 0 || line <= 0)
+		return asc;
+	a = (px * asc + line / 2) / line;
+	if (a < 1)
+		a = 1;
+	if (a > px)
+		a = px;
+	return a;
+}
+
+/*
+ * A SIZE NO BITMAP STRIKE DRAWS EXACTLY IS DRAWN FROM THE SCALABLE TWIN.
+ *
+ * Terminus ships as a PCF with strikes from 12 to 32 pixels. Asked for more,
+ * fontconfig picks the 32 strike and fcft scales it by nearest neighbour: at 64
+ * that is every pixel doubled, the same letters twice the size, but at 40 or 48
+ * it is some rows and columns doubled and some not, a stroke two pixels wide
+ * in one letter and three in the next. Between 33 and 38 fontconfig declines
+ * to scale and the grid comes out at 32, short of what was asked. Asking again
+ * with `:scalable=true` is no help — fontconfig then hands back Noto Sans, a
+ * proportional face.
+ *
+ * So where kcell_bitmap_off_strike() says the bitmap is not exact at the
+ * asked size, the face is replaced by `<family> (TTF)` at that size — the same
+ * typeface traced into outlines — and only when fcft's name for what came back
+ * really is that family: on a machine without the twin fontconfig substitutes
+ * a sans, and the bitmap, imperfect but the right shape, is the better answer.
+ * A strike at its own size, within a tenth of it, or at a whole multiple of it
+ * is kept, because an exact bitmap is sharper than any outline and is the cell
+ * tty1 draws.
+ *
+ * `used` is the name the upright face was finally loaded under, which is the
+ * one the companions are asked for.
+ */
+static void take_twin(const char *name, int px, char *used, size_t n)
+{
+	char twin[224];
+	const char *names[1] = { twin };
+	struct fcft_font *f;
+
+	if (!kcell_bitmap_off_strike(name, px) ||
+	    !kcell_twin_name(name, twin, sizeof(twin)))
+		return;
+	f = fcft_from_name(1, names, NULL);
+	if (!f)
+		return;
+	if (!kcell_face_named(f->name, twin) || !looks_monospaced(f)) {
+		fcft_destroy(f);
+		return;
+	}
+	fcft_destroy(face[0]);
+	face[0] = f;
+	snprintf(used, n, "%s", twin);
+}
+
+/*
+ * THE CELL IS THE PIXEL SIZE ASKED FOR, when the face is an outline and its ink
+ * allows it.
+ *
+ * An outline face reports a line taller than its pixel size — Terminus TTF is
+ * 35 at 32 and 70 at 64, the rest being line gap — and a cell cut to that is
+ * a grid with fewer rows than the same name as a bitmap gives, and a doubled
+ * cell that is not double. Where the ascent and the descent together exceed
+ * the asked size by no more than kcell_pin_fits() allows — a sixteenth of it,
+ * rounded up, so one row at the smallest sizes — the cell is `px` tall and
+ * the baseline is the ascent scaled into it. The line gap is dropped, and so
+ * are that many rows of ascent and descent: ink reaching the very top or
+ * bottom of the face's box loses at most that many rows, one for Terminus TTF
+ * (65 at 64, 9 at 8). A face whose ink is taller than that (DejaVu Sans Mono
+ * is 76 at 64) keeps its own line, because pinning it would clip its accents
+ * and descenders.
+ *
+ * A bitmap is never pinned, `outline` false. Its line is the strike's, and a
+ * Terminus strike puts ink on every row from its first to its last, so where
+ * fontconfig picks the strike above the asked size (14 for 13, 32 for 31) a
+ * cell cut to the asked size would lose the top of capitals' accents, `|`
+ * and `[`. The cell is the strike, one or two rows taller than asked.
+ */
+static void pin_cell(int px, int outline)
+{
+	int asc = face[0]->ascent, desc = face[0]->descent;
+
+	if (px <= 0 || !outline || face[0]->height <= px ||
+	    !kcell_pin_fits(asc, desc, px))
+		return;
+	cell_h = px;
+	ascent = kcell_pin_ascent(asc, desc, px);
 }
 
 int kcell_font_load(const char *name)
@@ -393,6 +708,8 @@ int kcell_font_load(const char *name)
 	 * docs/kdos/03-architecture/design-language.md.
 	 */
 	const char *names[1] = { name && *name ? name : "monospace:size=11" };
+	char used[224], drawn[224];
+	int px = kcell_name_px(names[0]);
 
 	/* A load REPLACES whatever stood before it, and replacing it is the
 	 * first thing it does: every cached glyph and every measurement names
@@ -419,6 +736,10 @@ int kcell_font_load(const char *name)
 		return -1;
 	}
 
+	snprintf(used, sizeof(used), "%s", names[0]);
+	take_twin(names[0], px, used, sizeof(used));
+	snprintf(drawn, sizeof(drawn), "%s", used);
+
 	if (!looks_monospaced(face[0])) {
 		/*
 		 * Retry at the same pixel size through `monospace`, which
@@ -435,14 +756,16 @@ int kcell_font_load(const char *name)
 		if (mono) {
 			fcft_destroy(face[0]);
 			face[0] = mono;
+			snprintf(drawn, sizeof(drawn), "%s", alt);
 		}
 		/* If even that is proportional there is nothing further to try,
 		 * and a wrong-shaped grid is still better than no desktop. */
 	}
 
 	cell_w = cell_advance(face[0]);
-	cell_h = face[0]->height;
+	cell_h = face_h = face[0]->height;
 	ascent = face[0]->ascent;
+	pin_cell(px, kcell_name_outline(drawn));
 	if (cell_w <= 0 || cell_h <= 0) {
 		/*
 		 * AND BACK ON THIS WAY OUT TOO. Every path that answers -1
@@ -452,19 +775,25 @@ int kcell_font_load(const char *name)
 		 */
 		fcft_destroy(face[0]);
 		face[0] = NULL;
-		cell_w = cell_h = ascent = 0;
+		cell_w = cell_h = ascent = face_h = 0;
 		kcell_fcft_unref();
 		fcft_held = false;
 		return -1;
 	}
 
-	face[KCELL_ST_ITALIC] = companion(names[0], ":slant=italic");
-	face[KCELL_ST_BOLD] = companion(names[0], ":weight=bold");
+	face[KCELL_ST_ITALIC] = companion(used, ":slant=italic");
+	face[KCELL_ST_BOLD] = companion(used, ":weight=bold");
 	face[KCELL_ST_BOLD | KCELL_ST_ITALIC] =
-		companion(names[0], ":weight=bold:slant=italic");
+		companion(used, ":weight=bold:slant=italic");
 
 	notdef_measure();
+	snprintf(font_name, sizeof(font_name), "%s", names[0]);
 	return 0;
+}
+
+const char *kcell_font_name(void)
+{
+	return font_name;
 }
 
 void kcell_font_free(void)

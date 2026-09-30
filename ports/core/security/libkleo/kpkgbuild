@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libkleo
+version     = 26.08.1
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 57868f2f89ec307423d4986aa181380be58bea311e45fc29a617f7f0a32e4eec  libkleo-26.08.1.tar.xz
+description = KDE PIM library for key management and cryptography widgets over GnuPG
+homepage    = https://invent.kde.org/pim/libkleo
+depends     = cmake ninja extra-cmake-modules qt6-qtbase boost ki18n kconfig kwidgetsaddons kcolorscheme kcompletion kcoreaddons kcodecs kitemmodels gpgmepp qgpgme libgpg-error gnupg

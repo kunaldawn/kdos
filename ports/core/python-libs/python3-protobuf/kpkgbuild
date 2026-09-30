@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-protobuf
+version     = 7.36.2
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/protobuf/protobuf-$version.tar.gz
+sha256      = 497d0463ff3316681da6c0b9e8d06cb465d61abce00b613ab42226175644d1bb  python3-protobuf-7.36.2.tar.gz
+description = Protocol Buffers runtime for Python, with the upb C extension
+homepage    = https://protobuf.dev/
+depends     = python3 python3-pip python3-setuptools

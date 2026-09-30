@@ -1,0 +1,73 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   42_graphics: Graphics Stack
+# ---------------------------------
+#   gpu — The GPU stack: Mesa, DRM, GL and Vulkan loaders and headers, shader
+#   compilers, VA-API, OpenCL
+# ---------------------------------
+#
+# Ports whose dependency closure reaches wayland, libX11, mesa, libdrm, cairo,
+# pango, gstreamer, ffmpeg or pipewire but no toolkit, and that are not leaf
+# applications.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libdrm
+libva
+vulkan-loader
+
+# mpv 0.41 has a bare dependency() on it — no port, no mpv, and its fallback is
+# a subproject wrap, which is a download.
+#
+# It names vulkan-headers AND vulkan-loader in its own `depends`: without the
+# loader installed first, libplacebo configures with no graphics API at all —
+# meson says so and carries on — and mpv has no Vulkan output.
+libplacebo
+
+libglvnd
+mesa
+libepoxy
+glu
+
+# The GLUT window mupdf-gl draws in.
+freeglut
+
+# THE GRAPHICS TOOLS ARE THE WAYLAND AND EGL ONES: es2gears_wayland and
+# eglinfo from mesa-demos, glmark2-es2-wayland, and vkcube/vulkaninfo from
+# vulkan-tools, which are also what says whether the machine has a Vulkan
+# driver at all. mesa is built with GLX and its X11 platform for the X11
+# programs that run under Xwayland, but mesa-demos is built -Dx11=disabled, so
+# glxgears and glxinfo are not among its programs.
+mesa-demos
+glmark2
+vulkan-tools
+
+# Intel's VA-API driver. mesa's gallium-va covers r600, radeonsi, nouveau and
+# virgl only, so without it every Intel iGPU from Broadwell forward has no
+# VA-API entry point at all and ffmpeg and mpv fall back to software decode.
+# The version coupling with intel-gmmlib is hard: media-driver 26.2.4 needs
+# igdgmm 12.10.x, and against an older one it fails 25 minutes into the compile
+# rather than at configure.
+intel-media-driver
+
+# The i965 driver, for the iGPUs iHD refuses: Sandy Bridge, Ivy Bridge and
+# Haswell. libva tries iHD first, so it loads only where iHD declines.
+libva-intel-driver
+
+# `vainfo` — the one command that answers which decode profiles a machine
+# actually has. A driver that did not load is otherwise silent.
+libva-utils
+
+# The GL loader and window the GL programs and games open.
+glew
+glfw

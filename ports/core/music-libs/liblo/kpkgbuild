@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = liblo
+version     = 0.36
+release     = 1
+source      = https://downloads.sourceforge.net/$name/$name-$version.tar.gz
+sha256      = c08d14832e8dcf8f06840405824a4f9611a0cb3daed0198946326c740941c8b6  liblo-0.36.tar.gz
+description = Open Sound Control implementation — OSC messages over UDP and TCP
+homepage    = https://liblo.sourceforge.net/
+depends     = pkgconf

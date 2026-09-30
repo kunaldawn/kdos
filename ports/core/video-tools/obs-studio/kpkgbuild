@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = obs-studio
+version     = 32.2.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/obsproject/obs-studio/releases/download/$version/OBS-Studio-$version-Sources.tar.gz
+sha256      = ec81fb66b03e75ddb3076b576f62679c39262e0e9960cef3e17a40dc5d68e6b4  obs-studio-32.2.2.tar.gz
+description = OBS Studio: screen recording and live streaming, with PipeWire screen capture on Wayland
+homepage    = https://obsproject.com/
+depends     = cmake ninja pkgconf extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtwayland ffmpeg x264 libva libdrm pciutils mbedtls zlib jansson uthash simde curl nlohmann-json swig luajit python3 speexdsp alsa-lib libpulse pipewire glib wayland libxkbcommon mesa libglvnd libX11 libxcb util-linux freetype2 fontconfig v4l-utils eudev

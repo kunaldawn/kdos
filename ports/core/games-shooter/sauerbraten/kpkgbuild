@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sauerbraten
+version     = 2020.12.29
+release     = 1
+source      = $name-$version.tar.bz2::https://downloads.sourceforge.net/sauerbraten/sauerbraten_${version//./_}_linux.tar.bz2
+sha256      = cdba7c4a47cefd30d0afdd6a912199a1384319cf1619923cb7189e72e468be70  sauerbraten-2020.12.29.tar.bz2
+description = Cube 2: Sauerbraten — the fast Cube 2 engine shooter with in-game co-operative map editing, and its data
+homepage    = http://sauerbraten.org
+depends     = pkgconf sdl2-compat sdl2-image sdl2-mixer zlib libX11 libglvnd mesa

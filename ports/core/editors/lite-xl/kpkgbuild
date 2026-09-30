@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lite-xl
+version     = 2.1.8
+release     = 1
+source      = https://github.com/lite-xl/lite-xl/archive/v$version/$name-$version.tar.gz
+sha256      = fcaffb946bc60583369cb040d533a4ac18075a6d474d49a2a5ff4bf87e2e9a10  lite-xl-2.1.8.tar.gz
+description = Lightweight text editor written in Lua, drawn with SDL3 and no toolkit
+homepage    = https://lite-xl.com
+depends     = meson ninja pkgconf sdl3 lua54 pcre2 freetype2 librsvg

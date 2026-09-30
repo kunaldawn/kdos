@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-xlib
+version     = 0.33
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/python-xlib/python-xlib-$version.tar.gz
+sha256      = 55af7906a2c75ce6cb280a584776080602444f75815a7aff4d287bb2d7018b32  python3-xlib-0.33.tar.gz
+description = python-xlib — the X11 client protocol implemented in pure Python
+homepage    = https://github.com/python-xlib/python-xlib
+depends     = python3 python3-setuptools python3-setuptools-scm python3-pip python3-six

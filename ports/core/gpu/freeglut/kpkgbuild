@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = freeglut
+version     = 3.8.0
+release     = 1
+source      = https://github.com/freeglut/freeglut/releases/download/v$version/$name-$version.tar.gz
+sha256      = 674dcaff25010e09e450aec458b8870d9e98c46f99538db457ab659b321d9989  freeglut-3.8.0.tar.gz
+description = The OpenGL Utility Toolkit (libglut), X11 and GLX, for GLUT programs run under Xwayland
+homepage    = https://freeglut.sourceforge.net/
+depends     = cmake ninja pkgconf libglvnd mesa glu libX11 libXrandr libXxf86vm libXi

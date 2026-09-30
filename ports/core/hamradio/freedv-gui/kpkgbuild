@@ -1,0 +1,36 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = freedv-gui
+version     = 2.4.0
+release     = 1
+_backend    = 1.0.0
+_rade       = cc17222acc597339199bdfd7253c3e6cf147f953
+_opus       = 940d4e5af64351ca8ba8390df3f555484c567fbb
+_opusdata   = 4ed9445b96698bad25d852e912b41495ddfa30c8dbc8a55f9cde5826ed793453
+_rnnoise    = 70f1d256acd4b34a572f999a05c87bf00b67730d
+_rnnoisedata = 0a8755f8e2d834eff6a54714ecc7d75f9932e845df35f8b59bc52a7cfe6e8b37
+source      = $name-$version.tar.gz::https://github.com/drowe67/freedv-gui/archive/refs/tags/v$version.tar.gz
+source      = freedv-backend-$_backend.tar.gz::https://github.com/tmiw/freedv-backend/archive/refs/tags/v$_backend.tar.gz
+source      = rade_c-$_rade.tar.gz::https://github.com/freedv/rade_c/archive/$_rade.tar.gz
+source      = opus-$_opus.tar.gz::https://github.com/xiph/opus/archive/$_opus.tar.gz
+source      = https://media.xiph.org/opus/models/opus_data-$_opusdata.tar.gz
+source      = rnnoise-$_rnnoise.tar.gz::https://github.com/xiph/rnnoise/archive/$_rnnoise.tar.gz
+source      = https://media.xiph.org/rnnoise/models/rnnoise_data-$_rnnoisedata.tar.gz
+sha256      = 9e4b1bcf5d4ce3b18a1b120acb4d4483d4f635990b18a97b98174fc51fae5678  freedv-gui-2.4.0.tar.gz
+sha256      = cdab91c479653eb6595c2f94461565e8a23603db246b5c9a578ea8d8c404c216  freedv-backend-1.0.0.tar.gz
+sha256      = 3d51bc21c823898531be932dcfff684904b6090db1b98dbd39a4fb8a2771c10b  rade_c-cc17222acc597339199bdfd7253c3e6cf147f953.tar.gz
+sha256      = 285c74f5130ee074f123aaad81cd52c2fc8db653ee130941afafe3ee0ae8cec2  opus-940d4e5af64351ca8ba8390df3f555484c567fbb.tar.gz
+sha256      = 4ed9445b96698bad25d852e912b41495ddfa30c8dbc8a55f9cde5826ed793453  opus_data-4ed9445b96698bad25d852e912b41495ddfa30c8dbc8a55f9cde5826ed793453.tar.gz
+sha256      = f61ee0b3f4c4cd337303e003d333357c5eaf25ef5d75a742109ee59e9a0a3932  rnnoise-70f1d256acd4b34a572f999a05c87bf00b67730d.tar.gz
+sha256      = 0a8755f8e2d834eff6a54714ecc7d75f9932e845df35f8b59bc52a7cfe6e8b37  rnnoise_data-0a8755f8e2d834eff6a54714ecc7d75f9932e845df35f8b59bc52a7cfe6e8b37.tar.gz
+description = FreeDV — HF digital voice for amateur radio: RADE, 700D, 700E and 1600 modes over a sound card
+homepage    = https://freedv.org/
+depends     = cmake pkgconf autoconf automake libtool wxwidgets gtk3 libpulse hamlib libsndfile libsamplerate libebur128 openssl dbus

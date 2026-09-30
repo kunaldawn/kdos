@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fheroes2
+version     = 1.1.17
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ihhub/fheroes2/archive/refs/tags/$version.tar.gz
+sha256      = 29f0be1a15ecce658e647b8c3d3fe2e6acddf6fa2144b1e05c82984846f568a1  fheroes2-1.1.17.tar.gz
+description = fheroes2 — the Heroes of Might and Magic II engine, for a player's own copy of the game data
+homepage    = https://ihhub.github.io/fheroes2/
+depends     = cmake ninja pkgconf sdl2-compat sdl2-mixer sdl2-image libpng zlib

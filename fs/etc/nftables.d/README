@@ -24,6 +24,10 @@ surface never touches.
 lets rootful podman's bridge networks (podman0, podman1, ...) route and reach
 aardvark-dns.
 
+40-libvirt.nft is installed by the libvirt package and does the same for
+libvirt's NAT networks (virbr0, ...): it forwards the guests' traffic and lets
+them reach the network's dnsmasq for DHCP and DNS. It goes when libvirt does.
+
 The load is checked before it is applied — see /etc/init.d/25_nftables.sh —
 so a file with a syntax error refuses the whole ruleset rather than leaving
 half of it applied. The previous ruleset stays in the kernel until a good one

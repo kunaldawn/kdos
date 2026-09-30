@@ -1,0 +1,6 @@
+testing/fixtures/verify — a checksum list kdos-verify runs `sha256sum -c` on
+
+`SHA256SUMS` names two files. `good.txt` matches its line. `bad.txt` does not:
+its line is the hash of text the file no longer holds, which is the shape of a
+download that changed after its list was published. One of each, so the
+golden holds a row of each verdict.

@@ -1,0 +1,50 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   44_apps: Applications
+# ---------------------------------
+#   graphics — Graphics applications: painting, vector, photo development and
+#   management, image viewers, screenshot and image optimisers
+# ---------------------------------
+#
+# Leaf applications whose dependency closure reaches a toolkit, or the graphics
+# stack on an application shelf.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Adds video frames to chafa's picture path and is the entry the file managers'
+# previewers call; it draws a PDF's pages through poppler's glib binding. A
+# photograph in a message is drawn by the same program that draws one in a file
+# manager.
+timg
+
+imv
+
+# The aa-project's image/FLI browser. Its asciiview front end shells out to
+# ImageMagick's `magick`, since IM7 does not build the legacy `convert` name.
+aview
+
+darktable
+rawtherapee
+flameshot
+swayimg
+kolourpaint
+gwenview
+inkscape
+krita
+digikam
+glaxnimate
+pencil2d
+converseen
+gthumb
+gimp
+grafx2

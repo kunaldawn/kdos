@@ -1,0 +1,40 @@
+--- a/src/updatemanager.cpp
++++ b/src/updatemanager.cpp
+@@ -1061,20 +1061,6 @@
+ 	});
+ }
+ 
+-/** This runs in a separate thread */
+-static int updateManagerThreadFunc(void *)
+-{
+-	WzUpdateManager::initUpdateCheck();
+-	return 0;
+-}
+-
+-/** This runs in a separate thread */
+-static int compatManagerThreadFunc(void *)
+-{
+-	WzCompatCheckManager::initCompatCheck();
+-	return 0;
+-}
+-
+ void WzInfoManager::initialize()
+ {
+ 	// Create the cache dir if it doesn't exist
+@@ -1087,13 +1073,9 @@
+ 		}
+ 	}
+ 
+-	WZ_THREAD* updateManagerThread = wzThreadCreate(updateManagerThreadFunc, nullptr, "updateManager");
+-	wzThreadStart(updateManagerThread);
+-	wzThreadDetach(updateManagerThread);
+-
+-	WZ_THREAD* compatManagerThread = wzThreadCreate(compatManagerThreadFunc, nullptr, "compatManager");
+-	wzThreadStart(compatManagerThread);
+-	wzThreadDetach(compatManagerThread);
++	// No update or compatibility data is fetched: report the compatibility
++	// check as done with nothing found, so its waiters are released.
++	setCompatCheckResults(CompatCheckResults(false), true);
+ }
+ 
+ void WzInfoManager::shutdown()

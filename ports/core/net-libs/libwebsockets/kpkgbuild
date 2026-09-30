@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libwebsockets
+version     = 4.5.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/warmcat/libwebsockets/archive/refs/tags/v$version.tar.gz
+sha256      = b6ade658f4af3a823d0dc806ae5ef0623f0f4f5e2aeb895a0f77c4783840c30e  libwebsockets-4.5.8.tar.gz
+description = Lightweight C library for WebSocket and HTTP/1 and HTTP/2 clients and servers
+homepage    = https://libwebsockets.org
+depends     = cmake ninja openssl zlib libuv

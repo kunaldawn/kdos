@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   60_kernel: Kernel
+# ---------------------------------
+#
+# The kernel, and pahole for its BTF. It runs after 50_desktop and before
+# 70_image packs the image.
+#
+# This list names every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# it, or when a shelf section names a port an earlier phase installs.
+
+# pahole, which turns the kernel's DWARF into the BTF that DEBUG_INFO_BTF
+# embeds; linux depends on it.
+dwarves
+
+linux

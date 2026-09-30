@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ddnet
+version     = 20.1
+release     = 1
+source      = $name-$version.tar.xz::https://ddnet.org/downloads/DDNet-$version.tar.xz
+sha256      = eed1b81a3a856f000db60ec47980ccbdcbbba53f34e32f3f5610f2d1963ec9bb  ddnet-20.1.tar.xz
+sha256      = 0baa3847d666ab9ec205dbf1e430da8fcdf81e263ac3ea73e2b5250d1c76e380  ddnet-vendor-20.1.tar.xz
+description = DDraceNetwork — the cooperative Teeworlds racing game, its client, server and map tools
+homepage    = https://ddnet.org
+depends     = cmake ninja pkgconf python3 rust sdl2-compat glew libglvnd mesa vulkan-loader vulkan-headers glslang spirv-tools freetype2 libpng zlib openssl curl sqlite libogg opus opusfile wavpack ffmpeg miniupnpc libnotify libwebsockets
+vendoring   = rust

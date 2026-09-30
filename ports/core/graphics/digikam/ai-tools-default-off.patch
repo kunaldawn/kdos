@@ -1,0 +1,21 @@
+The AI auto-tools, aesthetics and auto-tagging features default to on, and
+with them on, every start asks to download about a gigabyte of models from
+files.kde.org. They default to off here. The face models ship with the
+package; the other three can be turned on in the settings, which then asks
+for their models.
+
+--- a/core/utilities/setup/misc/systemsettings.cpp
++++ b/core/utilities/setup/misc/systemsettings.cpp
+@@ -80,9 +80,9 @@
+         enableFaceEngine = settings.value(QLatin1String("enableFaceEngine"),  true).toBool();
+     }
+ 
+-    enableAIAutoTools    = settings.value(QLatin1String("enableAIAutoTools"), true).toBool();
+-    enableAesthetic      = settings.value(QLatin1String("enableAesthetic"),   true).toBool();
+-    enableAutoTags       = settings.value(QLatin1String("enableAutoTags"),    true).toBool();
++    enableAIAutoTools    = settings.value(QLatin1String("enableAIAutoTools"), false).toBool();
++    enableAesthetic      = settings.value(QLatin1String("enableAesthetic"),   false).toBool();
++    enableAutoTags       = settings.value(QLatin1String("enableAutoTags"),    false).toBool();
+ 
+ #ifdef Q_OS_WIN
+ 

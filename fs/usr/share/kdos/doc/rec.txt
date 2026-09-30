@@ -57,8 +57,11 @@ Transcription
   enabled button. The header line names the model that was found, or the
   directory that was searched.
 
-  No model ships with KDOS and the desktop cannot fetch one. Upstream's
-  models/download-ggml-model.sh is the fetch, and where it writes is the
-  second path above.
+  KDOS ships one model, the English base model, as
+  /usr/share/whisper.cpp/models/ggml-base.en.bin (the whisper-model-base-en
+  package), so Transcribe works out of the box for English speech. Another
+  model, such as a multilingual one, goes in the second path above, where it
+  is found before the shipped one: `kdos speech get <name>` fetches one there,
+  and `kdos speech list` names them.
 
   [[doc:index]]

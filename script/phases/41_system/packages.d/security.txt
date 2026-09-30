@@ -1,0 +1,57 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   security — Security applications: GnuPG and front-ends, password and secret
+#   managers, certificates, scanners, forensics and audit
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libewf
+
+# Let's Encrypt needs the internet and a self-signed cert per host means a
+# warning per host that people learn to click through. One root, trusted once,
+# speaking ACME so caddy renews against it with its public config. `step`
+# creates that CA (`step ca init`) and is its client.
+step-cli
+step-ca
+
+# Reads a hash out of a LUKS header, a KeePass database, an encrypted PDF or
+# ZIP, or /etc/shadow, and answers "how long would this take" — about your own
+# material. No breach corpus is shipped.
+john
+
+# One key format, no options, no key server to be unreachable — an age
+# recipient is a short line somebody can read over a phone.
+age
+
+# testdisk repairs a partition table so the kernel will mount the thing; this
+# never asks the kernel at all and walks the metadata out of the image.
+sleuthkit
+
+# Ships inert and deliberately so: a rule set is somebody's judgement about
+# what is suspicious and it decays from the day it is written.
+yara
+
+# Scores a systemd/PAM/auditd machine, which this is not by rule — the value
+# is the report's explanations, not the number.
+lynis
+
+nmap
+libsecret
+clamav

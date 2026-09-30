@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = jfsutils
+version     = 1.1.15
+release     = 1
+source      = https://jfs.sourceforge.net/project/pub/jfsutils-$version.tar.gz
+sha256      = 244a15f64015ce3ea17e49bdf6e1a0fb4f9af92b82fa9e05aa64cb30b5f07a4d  jfsutils-1.1.15.tar.gz
+description = JFS filesystem utilities — mkfs.jfs, fsck.jfs, jfs_tune and the debugger
+homepage    = https://jfs.sourceforge.net/
+depends     = util-linux

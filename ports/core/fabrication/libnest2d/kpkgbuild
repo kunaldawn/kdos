@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libnest2d
+version     = 5.11.0.alpha0
+release     = 1
+_commit     = 1c9dc3c05005cadcbc2b49062c3d37b60e962c7f
+source      = $name-$version.tar.gz::https://github.com/Ultimaker/libnest2d/archive/$_commit.tar.gz
+sha256      = d4fc2f5cb353e0f5d81394ad516929546a8823d8aa6d47c8ac5a702f49d96abc  libnest2d-5.11.0.alpha0.tar.gz
+description = libnest2d — header-only 2D bin packing, which arranges parts on Cura's build plate
+homepage    = https://github.com/Ultimaker/libnest2d
+depends     = polyclipping nlopt boost

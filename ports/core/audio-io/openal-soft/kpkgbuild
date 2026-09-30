@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = openal-soft
+version     = 1.25.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/kcat/openal-soft/archive/refs/tags/$version.tar.gz
+sha256      = fb27e5839aa11f0e5b9d33756965291fad5d6909ab928ea1f796f4a1a6877894  openal-soft-1.25.2.tar.gz
+description = OpenAL 3D positional audio for games, played through PipeWire, Pulse or ALSA
+homepage    = https://openal-soft.org/
+depends     = cmake ninja pkgconf pipewire libpulse alsa-lib dbus libsndfile libmysofa

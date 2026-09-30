@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pystring
+version     = 1.2.0
+release     = 1
+source      = https://github.com/imageworks/pystring/archive/refs/tags/v$version.tar.gz
+sha256      = 020a603a757ba1e429f4b1ea6feb3afbe0fb34bcafa355032e1f1b8a0019d198  pystring-1.2.0.tar.gz
+description = C++ functions with the behaviour of Python's string methods
+homepage    = https://github.com/imageworks/pystring
+depends     = cmake ninja

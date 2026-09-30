@@ -19,8 +19,8 @@ for things it does not do. A reader with time for one section should read that o
 KDOS is a single-user workstation. One human account ships (`kdos`, uid 1000), that account is in
 the `wheel` group, and `wheel` is trusted. The design defends against four things:
 
-- **Outside software misbehaving.** A browser, an office suite or an application from another
-  distribution doing what a desktop application has no reason to do.
+- **Outside software misbehaving.** An application from another distribution, run in a box, doing
+  what a desktop application has no reason to do.
 - **A tampered artefact.** A package, an index or an application image that is not what it claims
   to be.
 - **Privilege escalation** through the small number of programs that need privilege.
@@ -74,8 +74,17 @@ These are deliberately not setuid:
   escalation is `sudo`, so it would be an entry point nobody uses and nobody audits. Kerberos is
   present for `kinit`, an ordinary program.
 - `pppd`, which NetworkManager starts as root, and `qemu-bridge-helper`, which serves only root.
-- `wireshark`'s `dumpcap`, `bandwhich` and `trippy`. Run them as root or grant the capability
-  yourself.
+- `wireshark`'s `dumpcap`, `bandwhich`, `trippy` and `sniffnet`. Run them as root or grant the
+  capability yourself. The Wireshark window started from the menu runs as you, so it lists no
+  capture interfaces until one of those is done; it opens a saved capture either way.
+- Chromium's `chrome-sandbox`, which the `chromium` recipe does not build. Chromium's renderer
+  sandbox, and QtWebEngine's, is built on unprivileged user namespaces, which the kernel has
+  (`CONFIG_USER_NS=y`). Turning user namespaces off would leave Chromium needing the setuid helper,
+  which would then join the list above.
+- `spice-client-glib-usb-acl-helper`, which `spice-gtk` is built without (`-Dpolkit=disabled`). USB
+  redirection from a SPICE viewer reaches only the devices whose nodes you can already open.
+- LinuxCNC's `rtapi_app` and `linuxcnc_module_helper`, whose bit the recipe removes, so LinuxCNC
+  runs its threads without realtime priority, which is its simulator.
 - `ping`. `/etc/sysctl.conf` sets `net.ipv4.ping_group_range` to `0 2147483647`, so every user may
   open an ICMP datagram socket and no privilege is needed.
 
@@ -175,7 +184,7 @@ and the file-system build step gives every non-executable file exactly that. A w
 shadow file hands every password hash to every account and makes `kdos-checkpass`'s setuid bit
 pointless.
 
-`script/01_phase1/00_file_system.sh` therefore carries a table (the `FSMODES` block near its end)
+`script/phases/10_bootstrap/000_file_system.sh` therefore carries a table (the `FSMODES` block near its end)
 of the paths whose mode or owner git cannot express:
 
 | Path | Mode | Owner |
@@ -247,15 +256,19 @@ in: each has `/sbin/nologin` as its shell and `!` as its password. The image shi
 | `sshd` | 996:996 | `sshd`'s privilege separation |
 | `tss` | 993:993 | The TPM: tpm2-tss's udev rules give `/dev/tpm*` to the user and `/dev/tpmrm*` to the group |
 | `lp` | 10:10 | CUPS |
-| `nobody` | 99:99 | Anything that asks for an unprivileged account by that name |
+| `nobody` | 99:99 | `kiwix-serve` and `llama-server`, which only read, and anything that asks for an unprivileged account by that name |
 
-Ten more are created when their port is installed, by the port's `postinstall.sh` with
-`groupadd -r` and `useradd -r`, which pick a free id: `polkitd`, `avahi`, `avahi-autoipd`,
-`geoclue`, `mosquitto`, `nm-openvpn`, `pcscd`, `postgres`, `prosody` and `tcpdump`. `brltty`'s
-hook creates the group `brlapi` and adds the desktop account to it; that is the group brltty's own
-polkit rule admits to its braille display interface. The file-system build step merges these
-files rather than overwriting them, so accounts a hook added survive a rebuild of `fs/`; where the
-repository and the image disagree about an entry, the repository wins.
+More are created when their port is installed, by the port's `postinstall.sh` with `groupadd -r` and
+`useradd -r`, which pick a free id: `polkitd`, `avahi`, `avahi-autoipd`, `clamav`, `geoclue`,
+`gnuhealth`, `kolibri`, `maddy`, `minidlna`, `mosquitto`, `mumble-server`, `ngircd`, `nm-openvpn`,
+`nut`, `pcscd`, `postgres`, `prosody`, `radicale`, `tcpdump` and `usbmux`. `nut` is also put in
+`dialout`, for a UPS on a serial line. `libvirt`'s hook creates the account `qemu`, whose primary
+group is the shipped `kvm`, so the guests `libvirtd` starts can open `/dev/kvm`, and the group
+`libvirt`, which libvirt's own polkit rule admits and which has no member. `brltty`'s hook creates
+the group `brlapi` and adds the desktop account to it; that is the group brltty's own polkit rule
+admits to its braille display interface. The file-system build step merges these files rather than
+overwriting them, so accounts a hook added survive a rebuild of `fs/`; where the repository and the
+image disagree about an entry, the repository wins.
 
 Two rules keep the tables consistent:
 
@@ -358,10 +371,23 @@ created or mounted.
 - a device node that differs from the one the scan recorded;
 - any format request unless `format = yes` is set in `/etc/kdos/mountd.conf`. With it set, a
   format request must repeat the device's kernel name (for example `sdb1`) exactly as
-  confirmation, and only `ext4`, `btrfs`, `vfat` and `exfat` are written.
+  confirmation, and only `ext4`, `btrfs`, `vfat` and `exfat` are written;
+- any image write unless `write = yes` is set there. With it set, a write request must repeat the
+  whole disk's name (for example `sdb`), must carry the image as an open file descriptor rather than
+  a path, and is refused for a descriptor that is not a regular file, an image larger than the disk,
+  a disk with any partition mounted or unlocked, and a disk with any partition that `/etc/fstab`
+  names or that holds the running system, including partitions the device list leaves out.
 
-The image does not ship `/etc/kdos/mountd.conf`, so formatting is off, and removable media mount
-`noexec`, until an administrator writes the file.
+**The image travels as a descriptor so that the daemon never opens a file on the caller's behalf.**
+The caller opens the image as itself and passes the open file over the socket (`SCM_RIGHTS`); the
+daemon reads only what that descriptor already grants. A root daemon that accepted a path would
+open it as root, and a request naming `/etc/shadow` would copy a file the caller cannot read onto a
+stick the caller can. The disk is opened with `O_EXCL`, the kernel's exclusive claim on a block
+device, so the write cannot start while anything on the disk is in use, and nothing else can open
+the disk for writing or mount it until the write ends.
+
+The image does not ship `/etc/kdos/mountd.conf`, so formatting and image writes are off, and
+removable media mount `noexec`, until an administrator writes the file.
 
 `kdos-energyd` exists because the CPU energy counter (RAPL) is root-only: fine-grained
 unprivileged reads can recover cryptographic keys through a side channel. What leaves the daemon
@@ -390,15 +416,18 @@ The shipped `inet filter` table:
 | `output` | accept | Everything |
 
 Every `*.nft` file in `/etc/nftables.d/` is included after it. `40-podman.nft` lets containers on
-a `podman*` bridge reach DNS and be forwarded. `50-kdos-services.nft` is written by `kdos-powerd`
+a `podman*` bridge reach DNS and be forwarded; `40-libvirt.nft`, from the libvirt package, does the
+same for guests on a `virbr*` bridge and lets them reach the network's dnsmasq for DHCP.
+`50-kdos-services.nft` is written by `kdos-powerd`
 and holds the services an administrator has opened.
 
 Opening a port goes through the same rule as every other daemon verb: the client names a service,
-never a port. `kdos-powerd` carries the table of thirteen names (`ssh`, `http`, `https`, `ipp`,
-`smb`, `kiwix`, `mdns`, `mqtt`, `xmpp`, `nfs`, `caddy`, `mosh`, `syncthing`), each with the one
-rule it adds, so a client that can only say `ssh` can open exactly TCP 22 and nothing else. The
-daemon rewrites `50-kdos-services.nft` whole from the names that are on, checks the full ruleset
-with `nft --check`, and then reloads it. A rule written by hand into that file is dropped on the
+never a port. `kdos-powerd` carries the table of twenty-five names (`ssh`, `http`, `https`, `ipp`,
+`smb`, `kiwix`, `mdns`, `mqtt`, `xmpp`, `nfs`, `babel`, `nut`, `snmp`, `mumble`, `caldav`, `mail`,
+`irc`, `dlna`, `tryton`, `caddy`, `mosh`, `syncthing`, `kdeconnect`, `vnc`, `xonotic`), each with the one rule it adds, so a client that
+can only say `ssh` can open exactly TCP 22 and nothing else. The daemon rewrites
+`50-kdos-services.nft` whole from the names that are on, checks the full ruleset with `nft --check`,
+and then reloads it. A rule written by hand into that file is dropped on the
 next change; a hand-written rule belongs in a file of its own beside it.
 
 ```sh
@@ -416,7 +445,9 @@ agent and no prompt, for reasons that follow from having no session manager.
 
 polkit is installed and `polkitd` is started by the init system. NetworkManager, ModemManager,
 `bolt`, `fwupd`, `upower`, `fprintd`, `pcscd` and brltty's braille server ask it, and GeoClue asks
-it on ModemManager's behalf. NetworkManager's actions are the only ones a KDOS program calls.
+it on ModemManager's behalf. NetworkManager's actions are the only ones a KDOS program calls. The
+native applications add their own askers: `udisksd`, `libvirtd`, `pkexec` on behalf of GParted and
+Resources, and the KAuth helpers of K3b and KTextEditor, which KAuth's polkit backend checks.
 
 ### Why a password prompt cannot work here
 
@@ -457,6 +488,18 @@ action without reading a rule.
 | `org.freedesktop.NetworkManager.wifi.share.open`, `…wifi.share.protected` | A hotspot |
 | `org.freedesktop.ModemManager1.Device.Control`, `…Messaging` | `mmcli`: unlocking a SIM, enabling a modem, reading its text messages |
 | `org.debian.pcsc-lite.access_pcsc`, `…access_card` | Smart cards (gpg's scdaemon, opensc, ykman, openconnect's certificate login) |
+| `org.freedesktop.udisks2.filesystem-mount`, `…filesystem-mount-system`, `…filesystem-unmount-others`, `…filesystem-take-ownership` | Mounting from Dolphin's and the file choosers' device lists, and from GNOME Disks |
+| `org.freedesktop.udisks2.encrypted-unlock`, `…encrypted-unlock-system`, `…encrypted-lock-others`, `…encrypted-change-passphrase` | Unlocking and locking an encrypted volume, and changing its passphrase |
+| `org.freedesktop.udisks2.eject-media`, `…eject-media-system`, `…power-off-drive` | Ejecting a disc or a card, and powering off a USB drive |
+| `org.freedesktop.udisks2.loop-setup`, `…loop-delete-others` | Attaching and detaching a disk image |
+| `org.freedesktop.udisks2.open-device`, `…open-device-system` | Raw access to a block device: Impression and GNOME Disks writing or reading an image |
+| `org.freedesktop.udisks2.modify-device`, `…modify-device-system` | Formatting and partitioning in GNOME Disks |
+| `org.freedesktop.udisks2.rescan`, `…cancel-job`, `…ata-check-power`, `…ata-smart-update`, `…nvme-smart-update` | Re-reading a device, cancelling a job, and reading a drive's health |
+| `org.gnome.gparted` | GParted, whose wrapper re-runs itself through `pkexec` |
+| `org.kde.k3b.updatepermissions` | K3b's helper, which sets the burner device's group and permissions |
+| `org.kde.ktexteditor6.katetextbuffer.savefile` | Kate and KDevelop saving a file the user cannot write |
+| `net.nokyan.Resources.kill` | Resources ending another user's process |
+| `org.libvirt.unix.manage` | virt-manager managing `qemu:///system` |
 
 Deliberately not granted, and so left to `sudo`:
 
@@ -467,6 +510,18 @@ Deliberately not granted, and so left to `sudo`:
 | `checkpoint-rollback` | Nothing here creates a checkpoint, so a rollback could only undo somebody else's |
 | `sleep-wake` | `kdos-powerd` owns suspend, with its own check |
 | `reload` | Re-reading NetworkManager's configuration is administration |
+| udisks2's `filesystem-fstab`, `encrypted-unlock-crypttab`, `modify-system-configuration`, `read-system-configuration-secrets` | `/etc/fstab` and `/etc/crypttab` belong to the installer |
+| udisks2's `manage-md-raid`, `manage-swapspace`, `lvm2.manage-lvm`, `btrfs.manage-btrfs` | The storage layout under a running system is administration |
+| udisks2's `ata-secure-erase`, `nvme-sanitize`, `nvme-format-namespace` | An irreversible firmware erase stays one deliberate `sudo` away |
+| udisks2's `…-other-seat` actions | Never asked: `udisksd` is built without logind and treats every drive as on the caller's seat |
+| `org.kde.k3b.addtogroup` | It edits `/etc/group` |
+| `org.gtk.vfs.file-operations` (gvfs `admin://`), `org.kde.ksysguard.processlisthelper.*` | No shipped surface depends on them |
+| `org.freedesktop.policykit.exec` | `pkexec` of an arbitrary command, which Resources' memory-module view asks for, would be `sudo` with no password |
+
+libvirt's own rule, `/usr/share/polkit-1/rules.d/50-libvirt.rules`, grants `org.libvirt.unix.manage`
+to the `libvirt` group its `postinstall.sh` creates; no account is placed in that group, so the
+grant to `wheel` is the one that applies. `org.libvirt.unix.monitor`, read-only access, is
+`allow_any` yes in libvirt's policy and needs no rule.
 
 Two further consumers work without a KDOS rule. brltty's own rule grants
 `org.a11y.brlapi.write-display` to the `brlapi` group with no session test. GeoClue's rule grants
@@ -503,14 +558,16 @@ service never starts, every call is refused, and the only trace is a `Spawn.Exec
 log. `kdos doctor` checks the helper's owner, group and mode for that reason.
 
 Left to D-Bus activation, and so dependent on the helper: `wpa_supplicant`, `fprintd`, `fwupd`,
-`boltd`, `upower`, `geoclue` and NetworkManager's dispatcher.
+`boltd`, `upower`, `geoclue`, `udisksd`, the KAuth helpers of K3b and KTextEditor, and
+NetworkManager's dispatcher.
 
 ### What the grant allows
 
-Anybody in `wheel` reconfigures networking with no prompt. That is the same group that can already
-change the firewall through `kdos-powerd`, so it is the existing boundary applied to one more thing.
-It is not a password prompt, because this system cannot produce one; a design that pretended
-otherwise would be a control that fails silently.
+Anybody in `wheel` reconfigures networking with no prompt, and mounts, formats, partitions and
+images disks, manages system virtual machines and saves root-owned files from Kate the same way.
+That is the same group that can already change the firewall through `kdos-powerd`, so it is the
+existing boundary applied to these actions too. It is not a password prompt, because this system cannot
+produce one; a design that pretended otherwise would be a control that fails silently.
 
 The list of action ids is the entire boundary, and the only record of its use is a log line.
 NetworkManager is built `-Dlibaudit=no`, so an authorised change leaves no audit record beyond
@@ -944,6 +1001,12 @@ not there is worse off than one who knows it is missing.
   read and destroy your files exactly as a native one could, reach the session bus, and connect to
   the compositor untagged through `wayland-0`. The sandbox limits what a cooperating application
   is offered by the desktop, not what a hostile one can reach.
+- **A native application is not sandboxed at all.** An application built from a port, a browser
+  or an office suite included, runs as you with no box around it, connects to the compositor on
+  the untagged `wayland-0`, and is offered the protocols the allowlist in
+  [Sandboxed clients](#sandboxed-clients) denies to a box, screen capture and the virtual keyboard
+  among them; the shipped `rc.xml` restricts none of them. Chromium's renderer sandbox and
+  QtWebEngine's confine their own web content; nothing confines the application itself.
 - **A box can widen its own grant.** The profile that holds `grant =` lives under the home
   directory a box shares by default, so a program in the box can add `input-method` to its own
   profile, and the compositor honours it the next time it reads that profile: after a `SIGHUP`, a

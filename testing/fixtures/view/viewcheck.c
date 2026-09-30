@@ -126,11 +126,11 @@ static void t_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 	ktui_draw_text(x, y, w, TROW[idx], fg, bg, KT_A_NONE);
 }
 
-static const KtuiCol TCOL[] = { { NULL, 0 } };
+static const KtuiCol TCOL[] = { { NULL, 0, 0 } };
 
 static void test_table(void)
 {
-	KtuiTable st = { 0, 0 };
+	KtuiTable st = { 0 };
 
 	/* The selection must not start on a heading. */
 	st.sel = 1;
@@ -162,7 +162,8 @@ static void test_table(void)
 	ok(!grid_has("video0"), "and the first is not");
 
 	/* Column layout: one elastic column takes what the fixed ones leave. */
-	const KtuiCol C[] = { { "PID", 7 }, { "USER", 9 }, { "NAME", 0 } };
+	const KtuiCol C[] = { { "PID", 7, 0 }, { "USER", 9, 0 },
+			      { "NAME", 0, 0 } };
 	int x[3], cw[3];
 
 	ktui_table_layout(C, 3, 40, x, cw);

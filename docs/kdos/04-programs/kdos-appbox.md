@@ -21,7 +21,7 @@ One binary answers to three names, dispatching on the name it was started under:
 | `xdg-open` | Opening a file or a link in whatever handles it, boxed or native |
 
 Any other name is a **shim**: a symbolic link named after an application, pointing at this binary,
-so that `gimp photo.png` runs GIMP in its box exactly as the Start menu would.
+so that `hugin shots.pto` runs Hugin in its box exactly as the Start menu would.
 
 Five terms recur. A **box** is a rootless Podman container that one application, or one
 development environment, runs in. A **pack** is a signed, read-only filesystem image that a box's
@@ -35,12 +35,12 @@ this repository does not compile and that runs in a box; the `alien-apps` table 
 ## Quick start
 
 ```sh
-kdos app install app.gimp             # the everyday command; runs kdos-appbox install
+kdos app install app.hugin            # the everyday command; runs kdos-appbox install
 kdos-appbox catalogue                 # everything the catalogue offers, and what is installed
-kdos-appbox install app.gimp          # build and install one application
-gimp photo.png                        # every installed application is also a command
+kdos-appbox install app.hugin         # build and install one application
+hugin shots.pto                       # every installed application is also a command
 kdos-appbox open report.pdf           # open a file in whatever handles its type
-kdos-box clone app.gimp work          # a second box on GIMP's base; a pack box's work is copied too
+kdos-box clone app.hugin work         # a second box on Hugin's base; a pack box's work is copied too
 kdos-box enter work                   # a shell inside it
 kdos-box profile work                 # what the box is allowed, and how that is enforced
 ```
@@ -106,14 +106,14 @@ There are two lanes, and they differ only in how a box's root filesystem is made
 
 | Lane | How the application arrives | What the box is | Profile `base` |
 |---|---|---|---|
-| Store | `kdos-appbox install` builds it on this machine from the catalogue, as a stack of container images `kdos/base`, `kdos/rt-gtk`, `kdos/app.gimp` … | A container that `distrobox create` makes over the top image | `image:kdos/<id>` |
+| Store | `kdos-appbox install` builds it on this machine from the catalogue, as a stack of container images `kdos/base`, `kdos/rt-gtk`, `kdos/app.hugin` … | A container that `distrobox create` makes over the top image | `image:kdos/<id>` |
 | Pack | A signed pack is installed through the pack daemon, `kdos-packd`: by `kdos-appbox import`, by `kdos-box import`, or from a medium that carries packs | A container made by `podman create --rootfs` over an overlay that `kdos-packd` composes from the pack and every pack it requires | `pack:<id>` |
 
 Both lanes share one launch path, one environment, one set of launchers and one profile format.
 Once a box exists, every launch goes through the same sequence of `podman start` and `podman exec`
 whichever lane created it.
 
-The box for an application is named after it, `app.gimp`, which is also the catalogue id and the
+The box for an application is named after it, `app.hugin`, which is also the catalogue id and the
 pack id. A box that a launch creates without a profile records its base in a new profile the first
 time it is composed, so every later reader knows what it is made of.
 
@@ -132,7 +132,7 @@ session bus through `gdbus`, with a two-second call timeout.
 
 ### Where it is installed
 
-The port is `src/packages/kdos-appbox`.
+The port is `src/system/kdos-appbox`.
 
 | Path | What |
 |---|---|
@@ -143,16 +143,15 @@ The port is `src/packages/kdos-appbox`.
 
 `/etc/profile` puts `/usr/local/bin` before `/usr/bin` on the shipped `PATH`, which is why this
 `xdg-open` answers ahead of the xdg-utils script. The recipe depends on `podman`, `distrobox`,
-`shared-mime-info` and `xdg-utils`; the container ports are listed under
-[Container Layer](../06-reference/ports-catalogue.md#container-layer-podman--distrobox) in the ports
-catalogue.
+`shared-mime-info` and `xdg-utils`; the container ports are on the
+[`containers` shelf](../06-reference/ports-catalogue.md#containers) in the ports catalogue.
 
 ## Commands
 
 ### run
 
 ```sh
-kdos-appbox run gimp-3.0 photo.png
+kdos-appbox run hugin shots.pto
 kdos-appbox -b scratch run bash
 ```
 
@@ -182,15 +181,16 @@ Resolves a file or a URI to the application that handles it and runs that applic
 
 ```text
 mime        application/pdf
-candidates  kdos-peek.desktop
+candidates  okularApplication_pdf.desktop   kdos-peek.desktop
 default     yes
-entry       /usr/share/applications/kdos-peek.desktop
-exec        kdos-peek   report.pdf
+entry       /usr/share/applications/okularApplication_pdf.desktop
+exec        okular   report.pdf
 ```
 
 Candidates are desktop ids exactly as the tables write them, `.desktop` suffix included, and a path
 argument is passed on as typed, not made absolute. The sample is the shipped machine, where
-`/etc/xdg/mimeapps.list` names `kdos-peek.desktop` for PDF; an installed boxed viewer adds its own
+`/etc/xdg/kdos-mimeapps.list` names Okular's PDF entry for PDF and the default comes first; every
+other installed entry that claims the type follows it, and an installed boxed viewer adds its own
 id to the candidates.
 
 A `choose` line appears when the chooser would be asked, followed by what a tree without the chooser
@@ -227,7 +227,7 @@ so it runs in a build container. `testing/selftest.sh` runs it against
 `testing/fixtures/catalogue/catalogue` and then reads the shipped catalogue with and without
 `--groups`. See [Testing](../05-developer/testing.md).
 
-The shipped catalogue carries 180 `app` rows and 2 `data` rows, built on 2 base rows (`alpine` and
+The shipped catalogue carries 73 `app` rows and 2 `data` rows, built on 2 base rows (`alpine` and
 `base`) and 7 runtimes (`rt-gtk`, `rt-qt`, `rt-kde`, `rt-media`, `rt-sci`, `rt-electron`,
 `rt-wine`), and groups them into 7 named groups: `essential`, `office`, `creative`, `dev`,
 `science`, `make` and `games`. Every runtime sits on `base` except `rt-kde`, which sits on `rt-qt`.
@@ -239,12 +239,12 @@ kdos-appbox install <id|group>... [--dry-run]
 kdos-appbox uninstall <id|group>...
 ```
 
-An argument is a catalogue id (`app.gimp`) or a group name (`creative`); a group expands to its
+An argument is a catalogue id (`app.hugin`) or a group name (`creative`); a group expands to its
 members and duplicates are dropped. An argument that is neither, or that names a base or runtime
 row, stops the command before anything is built.
 
 Install builds each application's chain bottom-up as a stack of images, one per catalogue row, each
-`FROM` the one below: `kdos/base`, then `kdos/rt-gtk`, then `kdos/app.gimp`. A second GTK
+`FROM` the one below: `kdos/base`, then `kdos/rt-gtk`, then `kdos/app.hugin`. A second GTK
 application is therefore one apt pass rather than three, because the base and the runtime images
 already exist and are skipped. The image build context is `/var/empty`, since nothing is copied in.
 
@@ -255,16 +255,16 @@ and a single `RUN`, so each image adds exactly one content layer over its parent
 packages gets no `RUN` at all, which is what lets a non-Debian base such as `alpine` exist, and a
 package list containing `:i386` enables that architecture first.
 
-A data row an application needs comes with it: `needs app.kicad data.kicad-packages3d` makes
-installing KiCad build the 3D model library too, as a box of its own, unless its image already
-exists. `--dry-run` prints the generated Containerfiles instead of building. It tracks what the same
-run has already covered, so a preview of two GTK applications shows the runtime once, as a real
-install would build it.
+A data row an application needs comes with it: a `needs <app> <data>` row makes installing the
+application build the data set too, as a box of its own, unless its image already exists. The
+shipped catalogue has no `needs` row. `--dry-run` prints the generated Containerfiles instead of
+building. It tracks what the same run has already covered, so a preview of two GTK applications
+shows the runtime once, as a real install would build it.
 
 Nothing rolls back. Six applications where the fourth fails to build leaves the other five's images
 built and names the fourth: what one application built is not harmed by a later one failing, and
-undoing it would throw away a long apt run. Progress is one flushed line per step (`==> building kdos/app.gimp`,
-`==> app.gimp installed`), so a program showing install progress can read standard output without
+undoing it would throw away a long apt run. Progress is one flushed line per step (`==> building kdos/app.hugin`,
+`==> app.hugin installed`), so a program showing install progress can read standard output without
 parsing the container engine. Such a program should start `kdos-appbox` itself and read its output
 directly. Reading it through the output of a service that `ksvc`, the service supervisor (see
 [The daemons](daemons.md)), runs never ends, because the supervisor keeps the pipe open.
@@ -338,8 +338,8 @@ apps.ktar
   SELECTION        what was picked, as text
   PACKAGES         the pack index: id, version, kind, size, sha256 and file name per pack
   PACKAGES.sig     present when a signing key was readable
-  app.gimp.kpack
-  app.inkscape.kpack
+  app.hugin.kpack
+  app.scribus.kpack
 ```
 
 Each pack is made by creating a throwaway container from `kdos/<id>`, flattening it with
@@ -407,7 +407,7 @@ shipped catalogue with the snapshot pinned.
 
 ## The catalogue file
 
-The catalogue is `src/packages/kdos-appbox/catalogue` in the tree and ships unchanged. It is read in
+The catalogue is `src/system/kdos-appbox/catalogue` in the tree and ships unchanged. It is read in
 one pass, line by line; a `#` starts a comment only as the first non-blank character of a line, so a
 tagline may contain one.
 
@@ -558,10 +558,10 @@ variables.
 
 The launch path therefore applies neither of the other two sources the program holds. The
 catalogue's `env <row> NAME=VALUE` rows (`rt-qt` sets `QT_QPA_PLATFORMTHEME=gtk3` and
-`QT_STYLE_OVERRIDE=Fusion`, `rt-kde` sets `QT_QPA_PLATFORMTHEME=kde`, `rt-media` points
-`LD_LIBRARY_PATH` at PipeWire's JACK library, `app.surf` sets `GDK_BACKEND=x11`) are not exported
-into a store box, and the `kdos.qt-kde-theme` and `kdos.qt-gtk-theme` image labels are not read for
-an image box. Both lookups sit behind the pack lookup in `box_env()` in `main.c`, and every launch
+`QT_STYLE_OVERRIDE=Fusion`, `rt-kde` sets `QT_QPA_PLATFORMTHEME=kde`, `app.heaptrack` sets the
+`rt-qt` pair again, `rt-media` points `LD_LIBRARY_PATH` at PipeWire's JACK library, `app.surf`
+sets `GDK_BACKEND=x11`) are not exported into a store box, and the `kdos.qt-kde-theme` and
+`kdos.qt-gtk-theme` image labels are not read for an image box. Both lookups sit behind the pack lookup in `box_env()` in `main.c`, and every launch
 passes that lookup a non-empty id.
 
 A value may begin with `$HOME`, which is replaced with your home directory; the catalogue cannot
@@ -607,8 +607,8 @@ preceded by how many packs were read.
 | The name-to-command table, `alien-apps` | A shim cannot find what to run |
 | A shim per application | The application is not a command |
 
-The MIME cache is written here rather than by `update-desktop-database`, because the host carries no
-desktop-file utilities.
+The MIME cache is written here because this directory is not `/usr/share/applications`, whose cache
+`kpkg`'s shared-index trigger writes, and no package install touches it.
 
 The table is tab-separated, `name`, `command` and an optional third field naming the pack, under a
 `#` header line. Readers split at the second tab, so a two-field row still parses.
@@ -625,14 +625,13 @@ dispatcher reads your table before the system one, and `/etc/profile.d/10-waylan
 `~/.local/bin` on the `PATH`. That is why an install needs no root.
 
 The system tree is reconciled at image-build time, in the
-[packaging phase](../05-developer/how-kdos-is-built.md#packaging-06_packaging), by
-`script/06_packaging/00_launchers.sh`, which
+[image phase](../05-developer/how-kdos-is-built.md#packaging-70_image), by
+`script/phases/70_image/030_launchers.sh`, which
 runs `kdos-appbox genlaunchers --packs-dir "$KDOS_PACK_EXTRACT" /` (default
 `/var/tmp/kdos-pack-extract`, created empty when absent) and then fails the build if alien desktop
-entries survive a run whose table has no rows. The alien desktop entries and the table are not under
-`fs/`, so nothing else would remove them. `fs/usr/local/bin` does carry 90 committed shim links,
-relative links to `kdos-appbox` named after boxed applications; this step's sweep removes them, so
-the image carries none unless a pack is baked. The step runs before `00_user.sh`, which copies
+entries survive a run whose table has no rows. The alien desktop entries, the table and the
+`/usr/local/bin` shims are not under `fs/`, so nothing else would remove them, and the image
+carries none unless a pack is baked. The step runs before `070_user.sh`, which copies
 `/etc/skel` into every home; a skeleton cleaned after that step would leave stale launchers in
 `/home/kdos`, which the Start menu reads first.
 
@@ -1090,7 +1089,7 @@ because "cannot tell" is not "no window". `--dry-run` prints what would be stopp
 Boxes that a launch or the warmup creates get a default profile with no `autostop`, so with the
 defaults a warmed box stays running for the rest of the session. To have warmed boxes given back
 when idle, set `autostop` on your favourites' boxes, for example
-`kdos-box profile app.gimp autostop=30m`.
+`kdos-box profile app.hugin autostop=30m`.
 
 ## Storage drivers
 
@@ -1138,7 +1137,7 @@ container first.
 | `KDOS_PACK_KEY` | The key `export` signs its index with |
 | `KDOS_A11Y` | `1` opts one launch in to accessibility, `0` out |
 | `KDOS_BOX_NOTERM` | Set to any value (even `0`): make `kdos-box enter` run in the current terminal |
-| `KDOS_PACK_EXTRACT` | Build time only: where `00_launchers.sh` looks for extracted packs |
+| `KDOS_PACK_EXTRACT` | Build time only: where `030_launchers.sh` looks for extracted packs |
 
 ## See also
 

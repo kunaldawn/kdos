@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libnsutils
+version     = 0.1.1
+release     = 1
+source      = https://download.netsurf-browser.org/libs/releases/libnsutils-$version-src.tar.gz
+sha256      = 5694b4526e458ed000413ce6027589cbe10a257a7ecf065a01421dc7299dea92  libnsutils-0.1.1.tar.gz
+description = NetSurf utility library — base64, time and unistd helpers shared by the browser and its libraries
+homepage    = https://www.netsurf-browser.org/projects/libnsutils/
+depends     = buildsystem

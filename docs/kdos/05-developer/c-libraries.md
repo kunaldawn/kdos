@@ -49,9 +49,9 @@ Some consumers are compiled outside a recipe, by a script that names its librari
 
 | Script | Builds | Libraries |
 |---|---|---|
-| `script/01_phase1/12_kpkg.sh` | `kpkg`, the package manager, into the phase-1 sysroot | `libkbase`, `libkpkg`, `libksig` |
-| `script/01_phase1/13_kinstall.sh` | `kinstall`, the installer, into the phase-1 sysroot | `libkbase`, `libktui`, `libkcolor` |
-| `script/kdosbuild.sh` | `kdosbuild`, the build screen, on the build host | `libkbase`, `libkbuild`, `libktui`, `libkcolor` |
+| `script/phases/10_bootstrap/120_kpkg.sh` | `kpkg`, the package manager, into the bootstrap sysroot | `libkbase`, `libkpkg`, `libksig` |
+| `script/phases/10_bootstrap/130_kinstall.sh` | `kinstall`, the installer, into the bootstrap sysroot | `libkbase`, `libktui`, `libkcolor` |
+| `script/kdosbuild.sh` | `kdosbuild`, the build screen, on the build host | `libkbase`, `libkbuild`, `libkpkg`, `libktui`, `libkcolor` |
 | `src_kpkg_ensure` in `ports/srclib.sh` | the host recipe reader `ports/fetch` and `ports/publish` use | `libkbase`, `libkpkg`, `libksig` |
 | `ports/update` | `kdos-portup`, the upstream version checker | `libkbase`, `libkpkg`, `libkbuild` |
 | `testing/selftest.sh` | `src/libs/selftest.c` and a compile of every consumer | all seventeen |
@@ -60,8 +60,9 @@ Some consumers are compiled outside a recipe, by a script that names its librari
 
 The libraries a terminal program needs link nothing but the C library.
 
-The reason is phase 1 of the build (see [The build system](build-system.md), and [How KDOS is
-built](how-kdos-is-built.md#phase-1-a-minimal-kdos) for the build told end to end). The installer,
+The reason is `10_bootstrap`, the second phase of the build (see
+[The build system](build-system.md), and [How KDOS is built](how-kdos-is-built.md) for the build
+told end to end). The installer,
 `kinstall`, and the package manager, `kpkg`, are both cross-compiled there against musl and the
 kernel headers alone, so that they exist on every tree from the first bootable image onward.
 `kinstall` uses `libkbase`, `libktui` and `libkcolor`; `kpkg` uses `libkbase`, `libkpkg` and
@@ -83,7 +84,7 @@ directory so that the twelve above stay clean, and so that a program pays only f
 
 | Library | External libraries it needs |
 |---|---|
-| `libkcell` | fcft (font rasterising) and pixman |
+| `libkcell` | fcft (font rasterising), fontconfig (which strike a bitmap face is drawn from) and pixman |
 | `libkicon` | pixman and libpng |
 | `libkimg` | pixman, plus libpng, libjpeg, libwebp, libsixel and libnsgif, each optional and switched on by a `KIMG_HAVE_*` define |
 | `libkwl` | wayland-client, xkbcommon, fontconfig, fcft and pixman |
@@ -106,19 +107,19 @@ their header.
 | `libkcolor` | `kcolor.h` | `kcol_` | The palette table, colour-space conversion, mixing, contrast, the readable muted colour, the hue-family classifier, remapping and retinting | `libkbase` | Everything that links `libktui`, plus `kdos-comp`, `kdos-theme`, `kdos-tools` and `kdos-powerd`; its header alone is used by `kdos-splash` and `xdg-desktop-portal-kdos` |
 | `libktui` | `ktui.h` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, the touch-gesture recogniser, character width, paste and drop, immediate-mode widgets, the draw-and-key views, menus, modals, the keys contract (the keys every surface answers; see [Writing desktop software](writing-desktop-software.md#the-keys-contract)), the selection rule every surface draws its rows with, the three glyph tiers, charts, the sprite table, offscreen rendering, and announcements | `libkcolor` (its palette macro), `libkbase` | `kinstall`, `kdosbuild`, `kdos-appbox`, `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
 | `libkxdg` | `kxdg.h` | `kxdg_` | Desktop entries, the MIME glob table, the one correct way to turn a command line into an argument vector, places, recent files and file verbs | `libkbase` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-appbox`, `kdos-tools` |
-| `libkpkg` | `kpkg.h` | `kp_` | Configuration, the package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` | `kpkg` (also compiled on the build host as the recipe reader), `kdos-portup`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
+| `libkpkg` | `kpkg.h` | `kp_` | Configuration, the package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` | `kpkg` (also compiled on the build host as the recipe reader), `kdosbuild`, `kdos-portup`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
 | `libksig` | `ksig.h` | `ksig_` | Ed25519 signing and verification, key files, keyrings; the one library with vendored third-party source | `libkbase` | `kpkg`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
-| `libkbuild` | `kbuild.h` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only JSON scanner | `libkbase` | `kdosbuild`, `kdos-portup` |
+| `libkbuild` | `kbuild.h` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only JSON scanner | `libkbase`, `libkpkg` | `kdosbuild`, `kdos-portup` |
 | `libkproc` | `kproc.h` | `kpr_` | Every reading about the running machine, from a movable root: processes, uptime, box identity, processor, memory and pressure, block devices, network, power, sensors, graphics, sound PCMs, and the sample ring | `libkbase` | `kdos-res`, `kdos-shell`, `kdos-tools`, `kdos-oomd`, `kdos-energyd` |
 | `libkpack` | `kpack.h` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` | `kdos-pack`, `kdos-packd`, `kdos-tools` |
 | `libkvt` | `kvt.h` | `kvt_`, `screen_` (internal) | The terminal: the VT100–VT520 state machine, the screen, scrollback, selection, the pty, and one render boundary that turns it all into cells. A hard fork of libtsm 4.7.1 | `libktui`, `libkbase` | `kdos-term` |
 | `libkimg` | `kimg.h` | `kimg_` | The only place untrusted image bytes are decoded: two entry points, five optional decoders, and a budget enforced from the header the format declares before any allocation | — | `kdos-shell`, `kdos-term` |
 | `libkwm` | `kwm.h` | `kwm_` | The window model the compositor obeys: placement, the tiled-state transition and its geometry, the neighbour-edge arithmetic, the nearest occupied workspace, and the drag threshold | — | `kdos-comp`, `kdos-shell` |
 | `libkdisp` | `kdisp.h` | `kdisp_` | Which display server, decided once: the surface configuration, the seven roles, the lifecycle every surface asks for, the font list, and the window list a panel manages | `libktui` (its `KRect` type) | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
-| `libkchrome` | `kchrome.h` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the tone ladder for plates, the pixel display list and the pixel tile | `libktui`, `libkcolor`, `libkicon`, `libkcell`, `libkdisp`, `libkwl` | `kdos-shell`, `kdos-res` |
+| `libkchrome` | `kchrome.h` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the tone ladder for plates, the pixel display list, the pixel tile and the chart drawn in one | `libktui`, `libkcolor`, `libkicon`, `libkcell`, `libkdisp`, `libkwl` | `kdos-shell`, `kdos-res` |
 | `libkicon` | `kicon.h` | `kicon_`, `ki_` (internal) | A name or a file path becomes a sprite slot, or −1 | `libktui`, `libkcolor`, `libkxdg` | `kdos-shell`, `kdos-res` |
 | `libkcell` | `kcell.h` | `kcell_` | The glyph cache and the cell painter (a grid of cells into a pixel buffer), the character ramp built from it, the pixel canvas, and the one scale-and-cut of a decoded picture into sprite tiles | `libktui` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
-| `libkwl` | `kwl.h` | `kwl_` | The toolkit's Wayland backend: surface roles, buffers, scale, the font in force, input, touch, clipboard, compose, cursors, frame throttling | `libkcell`, `libkdisp`, `libktui` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
+| `libkwl` | `kwl.h` | `kwl_` | The toolkit's Wayland backend: surface roles, buffers, scale, the font in force, input, touch, clipboard, compose, cursors, frame throttling and the frame clock | `libkcell`, `libkdisp`, `libktui` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
 
 ## Dependency direction
 
@@ -138,7 +139,7 @@ libkcolor  → libkbase
 libkxdg    → libkbase
 libkpkg    → libkbase
 libksig    → libkbase
-libkbuild  → libkbase
+libkbuild  → libkpkg, libkbase
 libkproc   → libkbase
 libkpack   → libksig, libkpkg, libkbase
 
@@ -149,8 +150,9 @@ libkimg    (no libk* library)
 Some edges carry a rule of their own:
 
 - `libktui` takes the palette from `libkcolor`'s X-macro at compile time. That is why
-  `script/01_phase1/13_kinstall.sh` puts `libkcolor` on the phase-1 command line: leaving it out
-  builds on a development host, where `testing/selftest.sh` supplies it, and fails only in phase 1.
+  `script/phases/10_bootstrap/130_kinstall.sh` puts `libkcolor` on the bootstrap command line:
+  leaving it out builds on a development host, where `testing/selftest.sh` supplies it, and fails
+  only in `10_bootstrap`.
 - `libkdisp` uses `libktui`'s `KRect` type and calls none of its functions, so adding it to a
   program costs a table of function pointers (`KDispImpl`, see [libkdisp](#libkdisp)) and a
   structure rather than a font renderer.
@@ -329,7 +331,7 @@ rounded differently would produce a diff against files already in version contro
 the arithmetic in `kcolor.c`. The self-test asserts that every scheme colour survives an HLS round
 trip unchanged.
 
-The library stays off the maths library for the same reason the toolkit does: a phase-1 consumer
+The library stays off the maths library for the same reason the toolkit does: a bootstrap consumer
 cannot link one. The modulo is done in a loop, the rounding by hand, and the sRGB transfer function
 behind `kcol_contrast` is a 256-entry table rather than a call to `pow`.
 
@@ -345,9 +347,9 @@ readable one, and every text role goes through it. See
 
 ## libktui
 
-The toolkit: terminal ownership, the cell buffer, the diff, input decoding, widgets, charts and the
-sprite table. It links nothing but the C library, which is what lets the installer use it in
-phase 1.
+The toolkit: terminal ownership, the cell buffer, the diff, input decoding, widgets, charts, the
+sprite table and motion. It links nothing but the C library, which is what lets the installer use it in
+`10_bootstrap`.
 
 Several sections below refer to a *guest*: another program's graphical output shown inside a
 surface's cells, an embedded client whose pixels the surface displays and whose input it
@@ -414,8 +416,42 @@ that cannot draw, so this is how one gets looked at; the committed reference fra
 ### Widgets
 
 A widget is either an immediate-mode call or a draw-and-key pair, and its callers decide which.
-`ktui_list`, the buttons, the checks and the input field read the frame's focus and return what
-happened in one call, for a surface built around the frame. The four views in `ktui_view.c` (the
+`ktui_list`, the buttons and the checks read the frame's focus and return what happened in one
+call, for a surface built around the frame. The slider and the text field are both: a
+`_draw`/`_key`/`_hit` trio for a surface with its own loop, and a frame call (`ktui_slider`,
+`ktui_input`) that is the trio with the focus ring around it, so the two kinds of caller share one
+implementation.
+
+A frame control is known by an integer id, and there are three kinds in three ranges. `ktui_id()`
+at the top of the id stack is *positional*: the n-th control of the frame is id n. A control drawn
+only some of the time therefore renumbers every control after it, and the focus and anything kept
+per id go with the numbers. Such a group is drawn between `ktui_id_push("name")` (or
+`ktui_id_push_int(n)` for a row of data) and `ktui_id_pop()`. Inside the scope `ktui_id()` is a
+hash of the scope and a counter local to it, from `KTUI_ID_HASHED` up, and the positional counter
+outside does not move, so what follows keeps its ids whether the group was drawn or not.
+`ktui_id_str()` names a single control outright. Chrome ids sit between the two ranges, from
+`KTUI_ID_CHROME`. Tab walks the ids in the order they were claimed that frame, whatever their kind,
+and a focus the frame did not draw goes to whatever now stands where it last stood.
+`ktui_id_base() + k` names the k-th control of a group only at depth 0, since inside a scope the
+next id is a hash. `ktui_state(id, n)` keeps a zeroed record of up to `KTUI_STATE_MAX` (64) bytes per
+id in a fixed 256-slot table; a record unasked-for in 600 frames can be reclaimed, and a full table
+answers NULL rather than growing, so a caller keeps a fallback. `ktui_input` keeps its caret there.
+
+The text field is a `KtuiField`: the caller's buffer and capacity, a byte caret, a secret flag and
+a placeholder. `ktui_field_key` owns Left and Right (by word with Ctrl), Home, End, Backspace,
+Delete, `Ctrl+U` (the whole line), `Ctrl+W` and `Ctrl+Backspace` (the word before the caret) and
+every printable key that is not a chord, and returns `KTUI_FIELD_USED` and `KTUI_FIELD_CHANGED`
+bits; Enter, Esc, Tab, Up, Down, every Alt chord and every Ctrl chord it does not own come back
+`KTUI_FIELD_PASS`, so a `Ctrl+S` meant for the surface never types an `s` and `Alt+Left` still
+turns the page. The caret is clamped onto the text and back to a
+UTF-8 boundary on every call, so a caller that loads a new value says "the end" by setting any large
+caret. A paste is a queue and not an event: the field takes it on its next `ktui_field_key`, whatever
+the event, so a loop offers the focused field every wake (NULL for a wake with no event). A secret
+field draws one bullet per codepoint and is one word to the word keys, because stopping at its
+spaces would show where they are. `ktui_field_col` is the caret's display column, for a surface that
+draws its own line and places `ktui_term_caret()` itself.
+
+The four views in `ktui_view.c` (the
 page strip, the column table, the dropdown and the text block) and the menu split drawing from input
 instead: the strip, the table and the dropdown each have a `_draw`, a `_key` and a `_hit`, the text
 block has `ktui_textarea_draw` and `ktui_textarea_key`, and the menu has `ktui_menu_draw` and
@@ -432,6 +468,56 @@ a network device heading is the row `Enter` rescans from, and a device-section c
 furniture. The row-kind callback answers per row rather than the widget choosing for both, and a
 row the selection steps over never lights.
 
+A table column carries flags. `KT_COL_SORT` makes a press on its title sort by it and a second
+press reverse the order; `ktui_table_event` returns `KTUI_TABLE_SORT`, and the title shows a
+direction arrow (`KT_G_UP` or `KT_G_DOWN`, `^` or `v` on the console). The table never reorders
+the caller's records: `ktui_table_sort()` puts an index array in the table's order with the
+caller's comparison. Records that compare equal keep the order of their indices, so the caller's
+own order breaks every tie, and the selection follows its record. `ktui_table_sort_next()` is the
+same sort for a key. `KT_COL_RIGHT` ends the title, and every cell drawn with `ktui_table_text()`,
+at the column's edge. `KT_COL_RESIZE` makes the cell right of a fixed-width column, on either
+header row, a handle; the remainder column has none, since it absorbs what the others give up. A drag moves it a cell at a time, no narrower than the title and no wider than leaves the
+remainder column one cell, and returns `KTUI_TABLE_RESIZED`. The widths it sets live in
+`KtuiTable.w[]`, and every draw holds them to the width it lays out: when the table narrows, a
+widened column gives cells back (never under the width its `KtuiCol` asks for) until the row fits
+again, so no column and no edge leaves the rect, and the stored width returns when it widens. The sort, the drag and three presentation fields (`page`, the slot the table
+stands on; `selrule`, the selected row by `ktui_sel_slots` instead of the accent fill; and `inset`,
+cells before the first column) are in `KtuiTable`, and every one of them is zero in a zeroed table,
+which draws exactly as a table with none of them.
+
+A page's rows come from a layout cursor, a `KtuiLay` (`ktui_layout.c`). `ktui_lay_begin()` starts
+it at the top of a rect, and `ktui_lay_row()`, `ktui_lay_gap()`, `ktui_lay_section()`,
+`ktui_lay_field()` and `ktui_lay_cols()` each take the next rows and move it on;
+`ktui_lay_indent()` and `ktui_lay_unindent()` move the rows after them in and out (by
+`KTUI_LAY_INDENT`, four cells, the width of a check box's mark, unless told), and
+`ktui_lay_left()` is the room left below the cursor. A field is its label in `KT_MID` in a column
+`KTUI_LAY_LABEL` (16) cells wide, the key column `ktui_kv()` draws, and the rect for its control
+one cell past that column; a NULL label keeps the column and draws nothing, for a meter under a
+field. The columns of a row are `ktui_table_layout()`'s. The cursor claims no id and reads no
+frame, and it draws through the calls a page would have made itself, so a page moved onto it
+draws the cells it drew before; the installer's *Accounts* page is laid out through it. A row
+past the bottom of the rect is still handed out at its real position, because clipping is the
+draw calls' business.
+
+The splitter and the fold are frame controls that are named rather than counted: each claims
+`ktui_id_str()` of its name and keeps what the hand did in `ktui_state()` under that id, so a
+control coming and going above one does not hand its state to the next. `ktui_split()` cuts a rect
+side by side (`KT_SPLIT_SIDE`) or stacked (`KT_SPLIT_STACK`) with a one-cell divider in `KT_DIM`
+(`KT_ACCENT` while focused, which a press gives it). A drag moves it and so do the arrows along its
+axis, a cell at a time; `Home` puts it back. `at` is the first pane's size, or, negative, the
+second pane's, and a moved divider keeps the size of that same pane, so a side panel keeps its
+width as the window grows. Each pane keeps `min` cells while there is room for both, and the stored
+place survives the rect narrowing. `ktui_fold_begin()` draws a section heading with its marker
+(`KT_G_ARROW_R` shut, `KT_G_ARROW_DOWN` open) and returns whether it is open; a press, `Enter` or
+`Space` toggles it, `Right` opens and `Left` shuts. While it is open its body is drawn inside an id
+scope the fold pushed, closed by `ktui_fold_end()`, so the body's controls come and go without
+moving an id after the fold. A full state store leaves both at their defaults, drawn and
+unmovable.
+
+`ktui_hit_count()` and `ktui_hit_at()` read the hit rects of the last frame ended, for
+`libkwl`'s inspector to outline. Only a frame control registers one, so a surface on its own loop
+reads none.
+
 Three rules hold about the library's own state, each guarding a link or focus failure:
 
 - Symbols are prefixed. Generic names collide with a consumer's own definitions of the same names
@@ -439,7 +525,8 @@ Three rules hold about the library's own state, each guarding a link or focus fa
 - The frame state is private, behind accessors. A public structure that applications assign to
   field by field is a second interface nobody can change.
 - Chrome identifiers are the library's business. Chrome registers with caller-local identifiers in
-  a reserved range that never joins the focus ring and never drags the page scroll.
+  a reserved range that never joins the focus ring and never drags the page scroll. The hashed
+  range sits above it, so neither kind of id can be taken for the other.
 
 ### The sprite table
 
@@ -597,6 +684,32 @@ press it swallowed. A handler may queue a key switch before the character it res
 event's number is raised by any cooked event queued before the caller drains it. The number is only
 ever raised, because a raw event delivered early is a chord the session ate and the guest also saw.
 
+### Motion
+
+A `KtuiAnim` (`ktui_anim.c`) is a value that moves from one number to another over a fixed time:
+a start time, a duration, a curve (`KT_EASE_OUT`, `KT_EASE_IN_OUT` or `KT_EASE_LINEAR`, each a
+cubic or a straight line, so nothing links libm) and a count of beats, where a pulse goes there and
+back that many times and ends where it began. `ktui_anim_start()` starts one and
+`ktui_anim_value()` is what it is worth now; nothing keeps a list of them, so one that is dropped
+mid-way costs nothing. `ktui_anim_running()` and `ktui_anim_left()` answer whether it is still
+inside its time, for a surface that shows a state for as long as one lasts, and
+`ktui_anim_stop()` settles it.
+
+An animation moves only where the backend keeps a frame clock (`KtuiBackend.animates`) and motion
+is on. Everywhere else, which is the terminal, a `--dump`, a capture backend swapped in for a golden,
+and `motion = no`, it is worth its end value from the moment it starts, so no frame from the middle
+of one reaches a golden or `tty1`. The value asks the backend again on every read, so a capture
+backend installed while one runs draws the end. Whether motion is on is asked through
+`ktui_anim_set_motion_fn()` at each start, and `libkwl` registers `comp.conf`'s `motion` key
+there. `ktui_anim_set_clock()` replaces the clock for a test.
+
+The one thing shared across a process is a deadline, the latest end of any animation started while
+it could move. `ktui_anim_live()` is whether it is still ahead, and it is the only question a
+backend with a frame clock asks: while it holds, `poll_event` returns a `KT_EVT_TICK` as an event
+once per display frame. A deadline rather than a count means an animation that is dropped rather
+than stopped cannot keep the clock running; a stopped one leaves the deadline where it was, and the
+ticks up to it draw nothing new.
+
 ## libkwm
 
 `libkwm` holds the window model and nothing else. Placement, tiling and the workspace walk live here
@@ -650,9 +763,9 @@ nothing.
 
 `libkdisp` decides in one place which display server a surface reaches.
 
-`kdos-shell` alone opens a surface from 54 call sites (`kdisp_init` calls, counted under
+`kdos-shell` alone opens a surface from 47 call sites (`kdisp_init` calls, counted under
 `src/desktop/kdos-shell/`), and each then asks whether it should close, resizes itself, or hides its
-panel. Branching on the server at every one of those would be the same decision written 54 times
+panel. Branching on the server at every one of those would be the same decision written 47 times
 in one program and again in the next. The lifecycle is therefore an interface, `KDispImpl`, and a
 display server is an implementation of it.
 
@@ -716,6 +829,34 @@ neutral answer rather than crashing. A `--tty` run has no server-side decoration
 nothing to hand out in place of a Wayland handle. `kwl_display()` is not in the vtable for that
 reason: it hands out the Wayland connection itself, for a program such as `kdos-shell` that binds
 protocols of its own on it, and nothing else can stand in for one.
+
+### The output scale
+
+A surface learns its output's scale only once it is on a screen, and again whenever it moves to
+another screen. A layer surface under `kdos-comp` is told as its role is given, before its first
+frame; a toplevel is told after it. The scale reaches a consumer in one of two shapes:
+
+- **A whole number.** `kdisp_scale()` answers it, `kdisp_cell_w()` and `kdisp_cell_h()` stay the
+  font's cell, and everything a consumer rasterises of its own is built at cell times scale.
+- **A fraction**, such as 1.5 on a laptop panel. `libkwl` loads the font at the device size, so
+  `kdisp_scale()` stays 1 and `kdisp_cell_w()` and `kdisp_cell_h()` grow instead, to 24×48 for the
+  16×32 chrome cell at 1.5. Every pixel a consumer draws beside its cells is then a device pixel.
+  See [The fractional scale](#the-fractional-scale) under `libkwl`.
+
+Anything rasterised for the cell and scale answered at start-up is therefore the wrong size once
+the output's arrive. `kdisp_on_scale(fn)` registers a function the backend calls after it has taken
+a new scale or a new cell, with the whole-number scale; the function reads the cell again itself,
+because on a fraction the argument alone does not change. The surface is then sent a redraw, because
+a function that drops pictures has dropped what the cells on screen name. It is called after
+`kdisp_init()`, since before it there is no display to register with; a function registered twice
+is called once, and `libkwl` keeps up to four. A backend whose scale never changes leaves the entry
+NULL. The dump harness stubs it, since an offscreen grid has no output.
+
+A number handed to another surface is a different kind of pixel. A popup's margin, a menu's anchor
+and a tray item's click position are logical pixels as the compositor counts them, and
+`kdisp_px_logical(px)` converts a pixel the surface draws in to one: `cx * kdisp_cell_w()` through
+it is where cell `cx` starts on the screen. It answers the number it was given on a whole-number
+scale and on a backend with one kind of pixel, whose `px_logical` entry is NULL.
 
 ### Other programs' windows
 
@@ -857,6 +998,26 @@ whose programs exist, and `testing/preflight.sh` refuses one that does not.
 
 `libkpkg` holds the package manager's configuration, the package database, the ports tree, the
 solver, version comparison and the two package hashes.
+
+It is the one place a port is found by name, and every tool that looks a port up goes through it:
+`kpkg`, `kdos update`, `kdos cve`, `kdos-portup` and the build's port index. A repository on
+`PORT_REPO` holds each port at `<repo>/<name>/` or one shelf down at `<repo>/<shelf>/<name>/`;
+`ports/core` is shelved and each `src/` area is flat (see
+[Shelves, and how a port is found](writing-ports.md#shelves-and-how-a-port-is-found)).
+
+| Function | Does |
+|---|---|
+| `kp_conf_set_repos(c, list)` | Replaces the repositories with a whitespace-separated list, lists each one's shelves once into the `KpConf`, and returns how many it kept. A list past `KP_MAX_REPOS` (8) warns and drops the rest, since a repository that is not kept is one whose every port reads as "no such port" |
+| `kp_port_find(c, name, &dir, err, errcap)` | 1 with the port's directory, from the first repository that holds the name; 0 when none does; -1 when one repository holds it at two paths, with `err` naming both. A name containing `/` is tried only as a path under each repository |
+| `kp_port_dir(c, name)` | `kp_port_find` for a caller that reads NULL as "no such port". A name filed twice dies with the message, because every answer a caller could make of NULL there (skip it, build without it, take one copy) builds something other than the tree says |
+| `kp_ports_scan(c, &count, err, errcap)` | Every port of every repository, sorted, at both depths; the first repository wins a name two of them hold. NULL with `err` set when one repository holds a name twice or a port sits deeper than one shelf. A repository that exists and yields no port warns, since that is a walker and a tree that disagree about the layout |
+| `kp_all_ports(c, &count)` | `kp_ports_scan` that dies on a malformed tree |
+
+A shelf is any directory of a repository with no `kpkgbuild` of its own, other than a dot-name. The
+shelf names are cached per repository when the repositories are set, so a shelf created afterwards
+is not seen until they are set again. No shelf may be named `libs`: a source-less port's recipe
+hash covers `<portdir>/../../libs`, which for a port under `ports/core` is `ports/core/libs`, and a
+shelf by that name would be hashed into every such port.
 
 Version comparison (`kp_vercmp`) and the version-shape filter (`kp_vershape`) live here rather than
 in either consumer, because the package manager and the upstream version checker ask the same
@@ -1117,8 +1278,10 @@ the oversized, truncated and malformed images the self-test feeds each decoder.
 
 ## libkchrome
 
-The window furniture: the header band, group headings, the button bar, the list and wheel rule, the
-scrollbar and its drag, the tone ladder, and the pixel tile.
+The window furniture: the header band, group headings, the button bar, the list and wheel rule
+(with `kch_list_view()`, which declares a list to `libkwl` so a scroll glides; see
+[Lists and the wheel](writing-desktop-software.md#lists-and-the-wheel)), the
+scrollbar and its drag, the tone ladder, the pixel tile, and the chart drawn in one.
 
 It exists so that there is one implementation of each. Two implementations of a button bar
 diverge as each is edited separately. The rules it enforces are in
@@ -1143,6 +1306,29 @@ one, and whatever presents the sprite rescales it, which is the same rule `libki
 icons. A change of cell size or output scale is a resize, and both canvases are discarded and cut
 again.
 
+A tile can be any size up to the grid. One sprite covers at most 16×16 cells, because a sprite
+cell's sub-cell coordinate is four bits each way, so a larger tile is a grid of sprites, one per
+16×16 block, under `libktui`'s tiled-key scheme (the half's key XOR the block index times
+`KTUI_TILE_STRIDE`). Each block's picture is a view onto the canvas (`kcell_canvas_view()`), made
+once when the tile is made, so publishing a tile of any size is table inserts and no pixel copy.
+`kch_tile_draw()` writes the cells of every block; `kch_tile_slot()` answers the first block's slot,
+and -1 unless every block is still in the table. A tile that fits one sprite is one view of the
+whole canvas under the key it has always had, so the panel's tiles draw the same codepoints.
+
+The sprite table holds a reference of its own on every view it names. It is taken only when the
+table accepts the put and does not already name that view, and it is given back by whoever makes
+the table stop naming it: `kch_tile.c` when it drops a half, the evictor when the table evicts one.
+The evictor is one per process — `kdos-shell`'s picture path registers `kcell_tile_free`, which
+unrefs — so a view held without that reference would be freed under the tile by the first eviction
+of the half that is not on the screen. The same reason keeps a commit off `ktui_sprite_put_tiled()`:
+it hands a refused picture to the evictor even while the table goes on naming it. A commit is all
+or nothing: a refused put, or a block evicted to make room for a later block of the same commit,
+takes the whole half out again and leaves the published half up. A half that is on the screen is
+referenced by its cells and cannot be evicted; one that went undrawn can, so "already showing this"
+checks every block and puts back what was evicted from the pixels the canvas still holds, with no
+raster. `testing/fixtures/tile/tilecheck.c` checks all of it (see
+[testing](testing.md#the-tile-lifetime-check)).
+
 A refused sprite put keeps the picture that is already up. The table refuses on a full table or a
 spent byte budget, and a frame of the previous picture is better than a flash back to the glyph
 layout mid-hover, so a tile remembers what it published separately from what it last tried;
@@ -1154,14 +1340,83 @@ content hash (for the Start button: the label, the hover state and the cell size
 again, and a spent cap that never came back would leave that button on its glyph layout for the
 rest of the session.
 
+`kch_tile_drop()` frees one tile, slots first and then canvases, for a caller whose tile stopped
+being drawn: a tile holds two canvases for as long as it lives, which for a page-wide chart is
+megabytes. It is called only once a frame that does not draw the tile has been flushed, so no
+presented cell names a slot the table has given back. A freed slot is handed to the next put, and
+`libkwl` compares each buffer against the cells it last painted, so a caller that drops a tile
+invalidates the next frame; otherwise a new tile given the same slot in the same cells would match
+the old buffer's cells and leave the dropped picture's pixels up.
+
+The chart (`kch_plot.c`) is the one area-chart renderer on the desktop: the panel's meters and
+every chart in `kdos-res` are drawn by it. A `KchPlot` names one series, or a pair on one shared
+axis mirrored about a midline, with every colour as a slot and an alpha: a plate, gridlines keyed to
+the absolute number of the newest sample (`seq`), a base line, then each series through
+`kcell_canvas_series()`, and last a *mark* if `mark` names one: a hard-edged line the plot's height
+through one sample (1 is the newest), which is how a chart says which sample a reading beside it is
+about. `kch_plot_draw()` rasterises into part of a canvas the caller owns, clipped
+to its rectangle, which is how the panel draws three bands and their readings in one tile.
+`kch_plot()` is the whole chart as a tile of its own: it hashes every input the raster reads with
+`kch_plot_hash()` (the sample values by their exact bits, the axis, the style, the mark and the
+sample number, never the palette), claims the tile only when that hash moves, and answers 0 when the chart
+is up or -1 when the caller must draw its cells, which is every terminal, every dump, `icons = no`
+and a full table. `per_cell` sets one sample per cell column, the time scale of a cell chart, so a
+caller's two tiers show the same history. `testing/fixtures/plot/plotcheck.c` checks the pixels (see
+[testing](testing.md#the-chart-pixel-check)).
+
 The pixel display list is recorded while a surface draws and replayed by the backdrop `libkwl`
 paints under its cells. Whether the plates moved is a question asked at flush time, not a flag set
 while recording. A frame is committed on a cell diff and a plate is not a cell, so a highlight
 following the pointer down a menu would never reach the screen; but a surface re-records its whole
 list on every draw, so a flag set from recording cannot tell a change from a redescription and
-would make every draw of a backdrop surface a full-surface upload. Installing a backdrop registers
-a callback that `libkwl` asks once the list is complete, and the answer compares the key of what is
-currently recorded against the key of the picture last painted.
+would make every draw of a backdrop surface a commit. Installing a backdrop registers the
+picture's *key* with `libkwl`, a hash of everything the picture depends on besides the buffer's
+size and scale: the recorded list, the body's salt (its alpha and edge) and the palette by value.
+`libkwl` asks it once the list is complete, and a key that differs from the one on screen is a
+change.
+
+The picture itself is kept (`kch_px.c`'s cache) and the key lets `libkwl` repaint a buffer in part.
+The cache also remembers the op list behind each of the last six keys it handed out, so it can
+answer which pixels differ between any of those pictures and the current one: the rectangles of the
+ops that are not in the longest common subsequence of the two lists (the ops both share in the same
+order). Order counts because the ops blend, so two plates that swap which is on top change their
+overlap. A different salt or palette changes the body under every pixel, and a key outside those
+six cannot be answered; both mean the whole picture. With an answer, the cache
+re-rasterises only those rectangles, by running the same draw under a pixman clip, and every
+primitive a picture is made of honours that clip and places each pixel by its own coordinates, so
+the part equals the whole. A buffer painted over an older key repaints the cells that differ from
+its shadow plus every cell over a moved pixel, each first laid back on its own rectangle of the
+cached picture (`kwl_set_backdrop_cache`); a moved pixel no cell covers sends that commit to a full
+paint. A salt that missed an input the drawing reads would
+leave that input's change off the screen, which is why each backdrop derives its salt from the same
+functions its drawing does. The cache also answers whether two runs of pixel rows are the same
+pixels, which is what lets `libkwl` move a scrolled band over a backdrop. It answers from the op
+list, because comparing the rows costs more than the move saves: the bare body is clear
+everywhere and the flat body one colour everywhere, so their rows are the same until an op reaches
+one (a flat rectangle covering both runs top to bottom is still the same on every row), and the
+popup and custom bodies are graded top to bottom, so they answer no and a list scrolled over one is
+repainted. `kch_px_popup()`, `kch_px_bare()`, `kch_px_flat()` (a window's page in one opaque slot,
+which `kdos-res` hands over) and `kch_px_custom()` (the taskbar's, with its adaptive alpha) all
+install through the one cache. A backdrop whose every pixel is opaque says so (`kwl_set_opaque`)
+with the key: a flat body always, the taskbar at full opacity, and a popup only if
+`kch_popup_alpha()` is 255, which it is not. A bare backdrop never does.
+
+Display text is the one op that is a string: `kch_px_text(cx, cy, cw, ch, s, fg, bg, align)`
+records it in cell coordinates at `ch` rows of the cell high, blanks the rectangle's cells on the
+slot the backdrop owns (the one handed to it, else any slot cleared to alpha 0), and records a
+flat rectangle of `bg` first when `bg` is not that slot. It answers 0 with nothing recorded and no
+cell touched where there is no backdrop, no such slot, no face at the size, or no room: the list
+holds `PX_MAX` (256) ops, shared with the plates, and the strings a 2048-byte pool emptied with the
+list. `kch_display_live()` answers whether it can draw at all, and `kch_display_cols()` how many
+columns a string takes at a given number of rows. `kch_display_text(r, s, fg, bg, align)`, in
+`kch_chrome.c` so the dump harness runs it, is the call a surface makes: the op where it records,
+and otherwise the rectangle filled with `bg` and the string as cells on its first row. The op
+compares by a hash of its string, never by where it sits in the pool, which is refilled on every
+recording, so a figure that changes re-rasterises and repaints only its own rectangle. Replay asks
+`libkcell` for the face at the recorded size times the output scale, centres the line top to
+bottom, aligns it by its measured advance and cuts every glyph to the rectangle by coordinates
+(`kcell_text_draw`), leaving the image's clip to the caller. `testing/fixtures/disptext/textcheck.c`
+checks it (see [testing](testing.md#the-display-text-check)).
 
 `kch_px_live()` is the one answer to whether a recorded operation can reach a screen. The list is
 replayed by a backdrop and a backdrop is painted by `libkwl`, so it reaches a screen only where one
@@ -1169,6 +1424,21 @@ is installed, which a `--dump` run never does. The cell size cannot stand in for
 asked of `libkwl` either way, and `libkwl` answers with a fallback rather than with nothing. A
 control whose only state cue is a plate has to draw the cell form of the same fact where this is
 false.
+
+A selected row is `kch_px_row()`, a plate with an accent bar down its leading edge, or
+`kch_px_row_anim()`, the same plate travelling. The second takes a key naming the selection (one
+per list) and an item naming what is selected in it. A new item eases the plate from where it stands
+to the new row over `KCH_ROW_ANIM_MS` (90 ms, `KT_EASE_OUT`), sliding and stretching when the row
+is in another column, and a second move mid-slide sets out from where the plate is. The same item
+somewhere else, which is a scroll or a new layout, lands at once, because the cells have already
+jumped and a plate gliding after them would sit under the wrong row. So does a plate that was not
+in the list recorded before this one (`kch_px_reset()` counts the lists), a changed cell size, a
+backdrop installed afresh, a backend with no frame clock and `motion = no`. Only the plate moves:
+the cells, their colours and the hit map say the new row from the first frame, so a key or a click
+never acts on the plate. At rest it records exactly what `kch_px_row()` does, and the dump harness
+stubs both. Four selections are remembered per process, and a fifth evicts the one drawn least
+recently, which then lands without a slide. `testing/fixtures/rowanim/rowcheck.c` checks it (see
+[testing](testing.md#the-selection-plate-check)).
 
 ## libkicon
 
@@ -1189,7 +1459,7 @@ Pictures come from two sources, and the split is by where a picture came from, n
 from its name:
 
 - The KDOS theme's own icons come from one memory-mapped atlas, `/usr/share/kdos/icons/atlas.kia`,
-  generated from the theme's artwork by `src/packages/kdos-icons/genatlas.py`, committed as
+  generated from the theme's artwork by `src/art/kdos-icons/genatlas.py`, committed as
   `atlas/atlas.kia`, and installed by the `kdos-icons` port. It holds every icon at every size it
   was rasterised at, sorted by name and size so a lookup is a binary search and the pager reads only
   the pages that are drawn. Every header field, directory entry and blob extent is checked against
@@ -1214,6 +1484,17 @@ clears it too, because a retint hands back every slot the memo can name. The nam
 application-id tables are not cleared by a retint: neither answer depends on the accent, and both
 live until the program is next started.
 
+Every picture is rasterised at the cell size times the output scale `kicon_init()` was given, and
+both move once the surface is on a screen: the scale on a whole-number output, the cell on a
+fractional one ([The output scale](#the-output-scale)). `kicon_recell(cell_w, cell_h, scale)` drops
+every picture and the path memo, as a retint does, and the next lookup builds each one again for the
+new pair; it does nothing when the pair is the one in force, before `kicon_init()`, or under the 4×4
+floor. A program calls it from the function it registers with `kdisp_on_scale()`, with the cell it
+gave `kicon_init()` read again: `kdos-shell` in `sh_pic_backend()`, which every surface with
+pictures calls and which also moves the sprite budget to the new cell, and `kdos-res` beside its
+`kicon_init()`. A pixel tile needs no hook, because `kch_tile_begin()` compares the display's cell
+and scale with the ones its canvases were cut to and re-cuts them itself.
+
 The dump harness stubs this library to exactly "no picture", so a committed reference frame is the
 character grid.
 
@@ -1225,7 +1506,73 @@ of a decoded picture into sprite tiles (`kcell_tile.c`).
 
 The canvas is what makes a pixel tile possible without a second renderer: a pixel image exactly
 some number of cells across, with fills and text at an arbitrary pixel size, handed to the toolkit
-as a sprite. See [kdos-shell](../04-programs/kdos-shell.md#the-start-button).
+as a sprite. See [kdos-shell](../04-programs/kdos-shell.md#the-start-button). Its size is bounded in
+pixels, not cells: at most 32,767 each way, because a fill is a pixman 16-bit rectangle.
+`kcell_canvas_view()` returns a new image over a block of its cells that shares the canvas's pixels
+and stride, which is how a canvas larger than one sprite reaches the table without a copy. A view
+has no pixels of its own, so every reference to it must be gone before the canvas is freed.
+
+Canvas text is drawn in the family `kcell_canvas_font()` named, else the cell font's
+(`kcell_font_load()`), else `monospace`, so text at any size is the chrome's own face unless a
+caller says otherwise; loading another cell font drops every size cached under the old family. The
+same walk draws into any 32-bit image with `kcell_text_draw()`, in an opaque colour and cut to a
+pixel rectangle by each glyph's coordinates, never by a clip region on the image, so a caller
+drawing under a clip of its own keeps it and a pixel drawn under that clip is the one an unclipped
+draw puts there. It is how `libkchrome`'s display text reaches a backdrop.
+`kcell_slot_alpha()` reads back the alpha a slot's background is filled at, 0 for a slot a backdrop
+owns.
+
+The canvas also draws the *data marks*, the only antialiased pixels in the library (the rule is in
+[the design language](../03-architecture/design-language.md#a-data-trace-is-antialiased-chrome-is-not)).
+`kcell_canvas_series()` draws one series of samples into a rectangle, newest at the right edge and
+linear between sample centres, as an area, a line or both, growing up from the bottom or, with
+`KCELL_SERIES_MIRROR`, down from the top, and with `KCELL_SERIES_HOLD` the oldest value runs to the
+left edge. It works one pixel column at a time: a column's coverage is an overlap of intervals, so
+every pixel is touched at most twice and no pixman call is made in the loop. A sample above zero is
+drawn at least a pixel high, and a trace lying on its base is kept inside the rectangle at
+`rest_alpha`. `kcell_canvas_line()` draws a segment of any width at any slope by the same method
+along its major axis. Both composite over what is there, take a slot and an alpha and never a
+colour, and are computed in 1/256-pixel fixed point from one conversion per input, so a given input
+is the same bytes on every build; the one square root is an integer one, because the library does
+not link libm. `kcell_canvas_clip_push()` and `_pop()` narrow every later fill, text and mark to a
+rectangle, intersected with the clip already in force, up to eight deep; the clip is kept both as
+pixman's clip region, which narrows fills and text, and as edges the marks read, because the marks
+write pixels directly. `kcell_canvas_clear()` empties the stack.
+
+### The changed span
+
+A partial paint repaints the changed span of each changed row, not the row: the first and last cell
+that differ from the previous frame, widened by one cell each way, because a double-width glyph's
+lead paints its continuation too, and then back onto a lead when the span would start on its
+continuation. `kcell_paint()` computes the spans as it paints. `kcell_diff_spans()` computes the
+same spans without painting and `kcell_paint_spans()` paints given ones, for a caller that has to
+act between the two: `libkwl` lays a backdrop back under exactly those cells first, and cuts the
+damage it reports from the same spans, so the cells a paint rewrites and the cells the compositor
+is told about cannot disagree about where a changed cell's pixels end.
+
+### Scrolling by moving pixels
+
+A grid that shifted vertically (a terminal taking a line of output, a list moved by a row) changes
+every row it moved, and the row diff would repaint every glyph of every one. A row's pixels depend
+on that row's cells alone, so the same pixels are already in the destination some rows away.
+`kcell_scroll_find()` takes the caller's `kcell_diff_spans()` result and looks for the one band of
+whole rows of the new grid that equals a shifted band of `prev`. It answers only when moving the
+band spares at least two rows that differ where they stand and at least half the band, and a frame
+with fewer than two changed rows costs it one pass over the spans. Every shift is tried and
+scored by the rows it spares, so a run of blank rows that matches at every shift does not win over
+the text that actually moved. Row hashes only propose the band; every row of it is compared before
+the answer. A row holding a shade character (U+2591 to U+2593) is not moved by a shift that is not
+a whole period of the shade pattern, because the pattern is anchored to the destination: with an
+odd cell height, an odd shift would put it half a period out of phase. `kcell_scroll_apply()` then
+moves the band's pixel rows inside the destination with `memmove`, in the order that never reads a
+row already overwritten, and moves the same rows of `prev`, so `prev` still describes the pixels
+row for row and the diff that follows finds only the rows the band exposed. Only the grid's
+columns move: the strip past the last cell is no cell's pixels (the body colour, or the backdrop's
+picture at its own position), and a strip moved with the band would keep the source row's picture
+wherever the destination row is restored and repainted, since that covers only its cells. `libkwl`
+passes the grid's pixel width as `dst_w` for that reason. A destination row fed
+by a partly clipped source row is marked stale, which is `KCELL_STALE` in every cell
+(`kcell_row_stale()`): no real cell carries that value, so the diff repaints the row whole.
 
 ### Synthesised frame characters
 
@@ -1266,6 +1613,62 @@ picture on a pixel display as on `tty1`, and the two tiers cannot drift apart. T
 two mixed single/double junctions `╪` and `╬`, which the VT font has. The heavy, dashed and rounded
 variants are not in it and still come from whatever face carries them.
 
+### The cell's size
+
+The cell is as wide as one character's advance and as tall as the pixel size the name asked for,
+wherever the face allows it, and a size that no bitmap strike draws exactly is drawn from the same
+typeface in outlines.
+
+Terminus, the chrome's face, is a PCF with strikes at 12, 14, 16, 18, 20, 22, 24, 28 and 32 pixels.
+Asked for any other size, fontconfig picks the nearest strike and, through the shipped
+`10-scale-bitmap-fonts.conf`, has fcft scale it by nearest neighbour: `Terminus:pixelsize=64` is the
+32 strike with every pixel doubled, but at 40 or 48 some rows and columns are doubled and some are
+not, so a stroke is two pixels wide in one letter and three in the next. Within a fifth of a strike
+fontconfig does not scale at all, so 36 comes out 32 pixels tall. Asking again with
+`:scalable=true` lands on Noto Sans, a proportional face.
+
+`kcell_font_load()` therefore asks fontconfig what it will hand fcft (the face is an outline or not,
+its strike, and the scale factor), because fcft reports none of it. A bitmap that is not exact at
+the asked size, meaning scaled by a fraction or unscaled and more than a tenth short, is replaced by
+`<family> (TTF)` at that size, the name the outline build of Terminus is published under. The
+replacement is kept only when fcft's name for the face really is that family, because on a machine
+without it fontconfig substitutes a sans, and the imperfect bitmap is then the better answer. A
+strike at its own size, within a tenth of it, or at a whole multiple of it is kept: an exact bitmap
+is sharper than any outline, and it is the cell tty1 draws. For Terminus that means 10 to 35, and
+64, 96 and every further multiple of 32, stay bitmaps, and 8, 9 and every other size above 35 are
+drawn from `Terminus (TTF)`. A kept strike keeps its own cell, which is a row or two taller than
+asked wherever fontconfig picks the strike above the size: 10 and 11 are the 12 strike, 31 is the 32.
+
+An outline face reports a line taller than its pixel size (Terminus TTF is 35 at 32 and 70 at 64,
+the rest being line gap), and a cell cut to that has fewer rows than the bitmap of the same size.
+Where the face's ascent and descent together exceed the asked size by no more than a sixteenth of
+it, rounded up (`kcell_pin_fits()`: one row up to 16 pixels, which is what lets Terminus TTF's 9 at
+8 pin), the cell is pinned to the asked size and the baseline is the ascent scaled into it, which at
+24 and 32 is the bitmap strike's own baseline. The line gap goes, and ink reaching the very top or
+bottom of the face's box can lose up to that many rows, one for Terminus TTF. A face whose ink is
+taller than that, such as DejaVu Sans Mono at 76 for 64, keeps its own line, because pinning would
+clip its accents and descenders. A bitmap is never pinned (`kcell_name_outline()` asks fontconfig
+which the face is): a Terminus strike has ink on its first and last rows, so a 31-row cut of the 32
+strike would lose the top of an accented capital, `|` and `[`. Only a size given as `:pixelsize=`
+takes part: a point size is not comparable with a face's pixel height without the DPI fcft chose,
+so a name sized in points is taken as it resolves.
+
+A caller that must draw the name it was given at another size moves it with
+`kcell_name_at_px(name, px)`, which removes every `pixelsize=` and `size=` property and appends
+`:pixelsize=px`. Removed and not overridden: fontconfig appends a repeated property and derives the
+size from the first, so `Terminus:pixelsize=32:pixelsize=48` draws at 32. `kcell_name_pixelsize()`
+is the size a name resolves to, its `pixelsize=` or what fontconfig makes of its point size, and is
+the base a scaled size counts from. This is how `libkwl` draws at a fractional output scale: the
+chrome's `Terminus:pixelsize=32` at 1.25, 1.5 and 1.75 is asked for at 40, 48 and 56, which the
+rules above draw from `Terminus (TTF)` in cells of exactly 20×40, 24×48 and 28×56. Other fractions
+are near that, never over it: at 1.2 the cell is 19×38 against 19.2×38.4, and at 1.33 it is 21×42.
+
+The canvas's text asks the same question at every pixel size it draws, and tries the `(TTF)` twin
+before the `:scalable=true` retry. Display text is sized in whole rows of the cell for this reason:
+two rows of the 16×32 cell ask for 64, the 32 strike doubled, and at output scale 2 for 128.
+`testing/fixtures/fontpolicy/fontcheck.c` measures the arithmetic everywhere and the loads, the
+three fractional cells among them, where Terminus and its twin are installed.
+
 ### Styles and companion faces
 
 A cell's style is drawn here, and two of the styles need a second face. Underline, strikethrough
@@ -1275,7 +1678,8 @@ dashed) is built as an array of rectangles and issued as one pixman fill, becaus
 starts with a region intersection and a curl is dozens of pieces.
 
 Italic and bold each ask fontconfig for the loaded name with `:slant=italic` or `:weight=bold`, and
-the answer is kept only if its advance and height match the upright face. fontconfig never fails a
+the answer is kept only if its advance and line height match the upright face's (its own line,
+not the pinned cell). fontconfig never fails a
 match, so asking for an italic Terminus returns a different family at a different size, and a
 companion that disagreed would draw a row out of step with the one above it. There are four faces,
 indexed by the two style bits, and the face is part of the glyph cache's key, because the same
@@ -1348,6 +1752,14 @@ so a span that began on the `KTUI_WIDE_CONT` marker beside it would fill the mar
 erasing the right half of the character, and then find nothing to redraw there. The span therefore
 takes one more step left when it starts on a continuation cell.
 
+A row's pixels are a function of that row's cells and nothing else, and the scroll move depends on
+it: a band moved some rows up or down must be the pixels a paint would put there. Every glyph,
+fill and rule is clipped to its own row, and a sprite cell names its sub-rectangle of the picture,
+so the pixels travel with the cell. The one mark anchored to the destination is the shade
+pattern, which `kcell_scroll_find()` keeps out of a band whose shift is not a whole period of it.
+Anything new that reads a pixel's absolute position, or reaches into the next row, has to be kept
+out of a moved band the same way, or a scrolled screen shows it shifted.
+
 A run of one picture's cells is composited in one call. A sprite cell names a picture and a
 sub-cell coordinate inside it, so cells that are consecutive columns of the same picture on the same
 sprite row are one contiguous rectangle of one image and go out as a single
@@ -1398,13 +1810,78 @@ shown in cells.
 - The cell painter leaves a clip on the image it was handed, so anything drawn into that same image
   afterwards (the panel's frame rule, for example) must drop the clip first or pixman writes
   nothing.
-- A surface with a backdrop installs `kwl_set_pixels_dirty_fn()` so `libkwl` can ask at flush time
-  whether its pixels moved. A latched dirty flag would not do: a backdrop redescribes the same
+- A surface with a backdrop tells `libkwl` at flush time whether its pixels moved: through the
+  backdrop's key (`kwl_set_backdrop_cache()`), or, for a backdrop with no key, through
+  `kwl_set_pixels_dirty_fn()`. A latched dirty flag would not do: a backdrop redescribes the same
   plates on every draw and cannot tell a change from a redescription, so latching from the
   description would make every frame a commit and defeat the unchanged-frame gate (the check that
   skips committing a frame identical to the last) for every surface that has a backdrop.
+- A backdrop with no key costs a full repaint and full damage on every commit. With a key and a
+  band painter (`kwl_set_backdrop_cache()`), a buffer whose recorded key matches repaints only the
+  cells that differ from its own shadow, each laid back on its band of the picture first. With a
+  differ as well, a buffer over an older key does the same with every cell over a pixel that moved
+  since its key added, and the damage is the changed cells plus the pixels that moved since the
+  key on screen. A differ that cannot answer, or a moved pixel outside the cell grid, means a full
+  repaint and full damage for that commit.
+- A grid that scrolled is not repainted row by row. Before a partial paint, `libkwl` takes the
+  buffer's own diff once, and when a band of rows is its shadow shifted
+  ([Scrolling by moving pixels](#scrolling-by-moving-pixels)) it moves the band's pixels and shadow
+  inside that buffer, so the paint covers only the rows the band exposed. Over a backdrop a row
+  moves correctly only where the picture is the same at both ends of the move, and, for a buffer
+  over an older key, where its source is not among the pixels that moved since; every other row of
+  the band is marked stale and restored and repainted whole, and a band that is mostly such rows is
+  not moved. The damage is unchanged, so the compositor uploads as much as before; the saving is
+  the client's paint. Measured with the real flush on a terminal-shaped grid taking one line of
+  output per frame (fastest of 300 frames, on a loaded host): 1080p 1.8–1.9 ms to 0.7–0.9 ms, 4K at
+  scale 2 5.3–5.4 ms to 3.5–3.7 ms, and a list over a bare backdrop with no drawing ops over the
+  moved rows at 1080p 2.3–2.5 ms to 0.8–1.0 ms. A frame that changed only a caret costs what it did.
+- `kwl_set_opaque()` claims every pixel of the next commit is opaque, and the claim is sent with
+  that commit as the surface's opaque region; the compositor then copies the surface instead of
+  blending it and skips what lies under it. A claim over a pixel that is not opaque shows whatever
+  the compositor had there.
 - `kwl_font_step()` owns its own copy of the font name: `KDispConfig.font` is the caller's pointer,
   and the surface outlives whatever the caller built it in.
+- On a fractional output scale the cell and every pixel a surface draws are the device's
+  ([The fractional scale](#the-fractional-scale)). A pixel handed to another surface, such as a
+  popup anchor, goes through `kdisp_px_logical()`, and anything cut for the cell is cut again from
+  a `kdisp_on_scale()` function, which reads the cell rather than trusting the scale it is given.
+- `KDOS_INSPECT=1` puts a developer overlay on every `libkwl` surface of the process: a tint over
+  each row whose cells changed, fading over a second; a corner panel with commits and stashed
+  frames a second, the last commit's paint time and the longest in the last second, the frame
+  callback's latency, the rows and cells the last commit changed, the sprite table's bytes and the
+  count of hit rects; and an outline round each hit rect of a frame surface (`KT_ACCENT` the
+  focused control, `KT_WARN` the others, `KT_MID` chrome). A surface too short for the panel gets
+  one line of it and one narrower than 30 cells none. It is painted into the shared-memory buffer
+  over a copy of the cells, so no dump, golden or `tty1` frame carries it.
+- The frame clock is `libkwl`'s. While `ktui_anim_live()` holds, `poll_event` returns a
+  `KT_EVT_TICK` with a return of 1 each time a frame callback is answered, so a loop that draws on
+  every return animates at the display's rate; one more tick follows the last frame drawn inside
+  the animation, which is the frame that draws its end value. A loop that waits on the display
+  descriptor itself and calls `kwl_pump()` gets no ticks. `kwl_init` registers `comp.conf`'s
+  `motion` key as the reduce-motion question (`kwl_conf_motion()`, re-read when the file's
+  modification time changes), so a surface and the compositor's fades answer to one setting.
+- A list declared with `kwl_list_view()` (through `libkchrome`'s `kch_list_view()`) glides between
+  two values of its first row (`kwl_glide.c`). At a commit whose declared `top` differs from the
+  last one, the list's pixels on the screen are copied out of the buffer the screen shows, and each
+  commit for the next 100 ms presents the list *lagging* the cells by an eased-out number of pixels:
+  the new picture moved down (or up) by the lag, and the rows that opens filled from the copy. A
+  second move while one is under way starts from the lag on the screen, so a list keeps sliding
+  instead of jumping to the first move's end. The cells are never fractional: the pointer, the hit
+  map and every dump see whole rows, and the last commit is the cells' own picture. The commits in
+  between are `libkwl`'s own, one per frame callback, with the cells on the screen again; a glide
+  that is owed a frame shortens the wait to the callback's stall and rides the caller's wait in
+  pieces, so a loop sees no early timeout. No glide starts where motion is off, under
+  `KDOS_INSPECT`, for a move as long as the list, or where the cells do not show a move (fewer than
+  half the rows the two frames share are the same rows shifted), and one lands at once when the
+  commit claims an opaque region its copy was not shown under. Up to four lists a frame
+  (`KWL_GLIDES`). The cost is the list's rows repainted in each frame in between — marked stale in
+  that buffer's shadow, because its pixels are not the cells' — and two row copies. What slides is
+  every pixel of the list's cells, the backdrop under them included, so over a graded popup body the
+  gradient behind the list is shifted by the lag until the glide lands.
+- `libkwl` binds `wl_seat` at up to version 9. A wheel's `axis_value120` fractions add up to one tick
+  a detent, the `axis_relative_direction` bit reaches the raw stream as `KT_RAW_INVERTED`, and a
+  finger that lifts while moving coasts: see
+  [Input the backend cleans](writing-desktop-software.md#input-the-backend-cleans).
 - `kwl_init` ignores `SIGPIPE` process-wide, because every clipboard and drag payload is written
   into a descriptor the receiver owns, and the default disposition would kill the surface when that
   receiver closes early. Any consumer that forks and executes a program must therefore call
@@ -1425,20 +1902,47 @@ presentation rules in [Presenting a frame](writing-desktop-software.md#presentin
   notch a wheel clicks through), and running it through the touchpad's accumulator leaves a
   remainder that makes the next notch move a list two rows; a touchpad is not quantised, and its
   ticks are synthesised from the accumulated values.
-- On the discrete path (the wheel's, as `axis_source` reports it) one pointer frame is one detent.
-  Honouring a frame's count of two moves a list twice as far as the one scroll that produced it.
+- On the discrete path (the wheel's, as `axis_source` reports it) one pointer frame is at most one
+  tick, whether the count is `axis_discrete` or `axis_value120`. Honouring a frame's count of two
+  moves a list twice as far as the one scroll that produced it. The duplicate gate is for detents
+  only: gating a finger's ticks throws away half of a fast two-finger scroll.
+- Every event a seat version adds needs a handler before that version is bound: libwayland calls
+  a NULL listener entry and the client dies on the first such event. The seat is bound at up to 9,
+  and every pointer, keyboard and touch event through 9 has one.
 - A motion that did not move is not a motion. A virtual machine's absolute pointer resends its
   position with every wheel event, and a handler that took that as motion would step the
   selection and put it straight back.
 - A double buffer needs a damage shadow per buffer: a record of what that buffer holds. With one
   shared record, rows that changed while the other buffer was in flight are never redrawn in it.
+- A partial repaint over a backdrop must repaint every cell over a pixel whose picture differs
+  from the one that buffer wears, and its damage must cover every pixel whose picture differs from
+  the one on screen. The cell painter leaves a backdrop-owned background alone, so a cell repainted
+  without its band of the picture restored first draws the new glyph over the old one; and damage
+  cut from the cell diff says nothing about a picture that differs from the one showing. Both are
+  answered by key, per buffer and for the screen, through the backdrop's differ, and
+  `KDOS_PAINT_FULL=1` turns both off to compare.
+- A scrolled band is moved only inside the buffer about to be painted, never out of the other one,
+  and its shadow moves with it. That buffer is not busy and its shadow is the exact record of what
+  it holds; the other buffer may be the one on screen and must not be written. A shadow left
+  unmoved makes the paint repaint every moved row, which is the cost the move exists to save.
 - A serial (the number the compositor attaches to an input event) must be retained, because
   setting the selection, starting a drag and setting the cursor shape each have to present one.
   Without it the clipboard, drags and cursor changes fail, and nothing points at the input code.
 - An enter event carries coordinates and they are not optional. Discarding them puts the first
   click after an enter at an impossible position and leaves hover stale until the pointer moves.
-- The scale and the resized buffer must land in one commit, or for one frame the compositor sees a
-  buffer whose size disagrees with its declared scale.
+- The scale, the viewport destination and the resized buffer must land in one commit, or for one
+  frame the compositor sees a buffer whose size disagrees with its declared scale, or one taken
+  for a surface 1.5 times its size.
+- A number that crosses between the compositor and the buffer is converted once, where it crosses:
+  a size in to the nearest device pixel, a position out to the logical pixel it lies in, an extent
+  out to the logical pixel covering its last device pixel. Every size asked of the compositor is
+  counted in the named cell (`lcell_w()`), never in `kcell_w()`, which is the device cell on a
+  fraction, and a device cell over the named cell times the scale is refused, because a surface
+  sized for N named cells would then hold N−1 device ones.
+- The fractional-scale object and the viewport are made with the surface, before its role.
+  `kdos-comp` tells a layer surface its scale as the role is given, and an object made after that
+  has missed it, so the first frame would go out at the rounded-up scale and the second at the
+  fraction.
 - A data source is destroyed on cancellation, never at set time, or the copy silently does nothing.
 - The clipboard and the primary selection are separate stores, and an in-flight send keeps the
   payload it started with. A terminal sets the primary selection on every mouse release, and one
@@ -1452,7 +1956,10 @@ presentation rules in [Presenting a frame](writing-desktop-software.md#presentin
   repaint that never clears, on every surface that draws at the display's rate.
 - A surface is clamped against the output's logical, upright box (the mode divided by that output's
   scale, with the axes exchanged on a 90 or 270 degree transform) and never against a slot whose
-  proxy is gone. Each omission lets a popup be sized for a screen that is not there.
+  proxy is gone. Each omission lets a popup be sized for a screen that is not there. The scale is
+  the compositor's preferred one for the output the surface is on, because `wl_output.scale`
+  rounds a fraction up and a 1.5 screen divided by 2 is a box a quarter smaller than the room
+  there is.
 - A stash is content for the grid it was taken from, so every resize drops it; publishing it would
   paint the old layout into the new geometry.
 - A compose table that fails to build is absent, never partial.
@@ -1460,6 +1967,33 @@ presentation rules in [Presenting a frame](writing-desktop-software.md#presentin
   what a cell looks like and not what it says, so the damage diff, both buffer shadows and the
   unchanged-frame gate would all find nothing to do while every glyph on the screen is drawn at the
   old size.
+- The inspector (`kwl_insp.c`) paints and damages every commit whole while it is on, because its
+  tint fades and its panel changes where no cell did, and a partial paint or damage would leave the
+  old overlay in whichever buffer, or whichever part of the compositor's copy, the diff did not
+  reach. What it lights is what the cell diff found, recorded before the forcing. Its own refresh
+  commits (a tenth of a second apart while a tint fades, one when the panel would read
+  differently, none on a still surface) go out only when the throttle is open, no frame is stashed
+  and a buffer is free, and they feed none of its numbers: a refresh that changed its own panel
+  would ask for the next refresh for ever. They ride the caller's wait in pieces
+  (`kwl_poll_event`) and never end it early, and a loop that waits on the display descriptor
+  itself gets them from `kwl_pump()`. Off, each call site tests a flag read once from the
+  environment.
+- A glide's pixels are not its cells', so every buffer a glide frame was composed into has the
+  list's cells marked stale in its shadow, and a commit that ends one damages the list whole: the
+  cells did not change, and without the mark and the damage the in-between picture would stay on
+  the screen. A list that stops being declared while it is in between gets one more commit for the
+  same reason. The copy of the screen's picture is taken from the buffer the last commit attached,
+  before anything is written into the buffer about to be painted, which may be that same buffer.
+  `testing/fixtures/kwl/paintcheck.c` in `glide` mode checks every commit in between against the list
+  painted independently at the position presented.
+- The frame clock costs an idle surface nothing: no tick, no commit and no shorter wait unless an
+  animation is live or the last frame presented was drawn inside one. While one is, a wait with no
+  frame callback in flight asks for one with an empty commit, because the last draw may have
+  changed no pixel and then no commit carried a callback; wlroots answers a callback committed on
+  its own when the output next presents, and not at all while the surface is on no output. So a
+  callback unanswered for `KWL_FRAME_STALL_MS` is dropped into a tick and asked for again, and the
+  tick owed after the end is paid once, whether or not the loop draws on it: a loop that ignores
+  ticks cannot keep the clock running. `testing/fixtures/kwl/tickcheck.c` holds all of this.
 - A lock surface must not receive the pre-configure commit, which is a protocol error there.
 - A drop's offer is owned separately from the drag's, because the leave that follows a drop arrives
   while the payload is still draining and a second drag may enter before it ends. One slot for both
@@ -1480,6 +2014,42 @@ presentation rules in [Presenting a frame](writing-desktop-software.md#presentin
   character, so a press with no release would be a key a pixel guest holds down for ever. Only codes
   this client reported down are released, which keeps the two halves symmetrical.
 
+### The fractional scale
+
+`kdos-comp` offers `wp_fractional_scale_v1` and `wp_viewporter`, and `libkwl` binds both and asks
+each surface's preferred scale, which arrives in 120ths. A whole number (120, 240) is the integer
+path: the buffer is the logical size times the scale, sent with `set_buffer_scale`, and each glyph
+is its scale-1 coverage blitted that many times with nearest-neighbour filtering. Where the protocol
+is absent the scale is `wl_output`'s, which is always a whole number.
+
+A fraction is not drawn as a larger whole number shrunk by the compositor. The font in force is
+loaded again at its own pixel size times the scale (`kcell_name_at_px()`, through
+[the size policy](#the-cells-size)), so the chrome's 32-pixel Terminus at 1.5 is drawn from
+`Terminus (TTF)` at 48 in a 24×48 cell. The buffer is the logical size times the scale in device
+pixels, at buffer scale 1, and `wp_viewport.set_destination` tells the compositor the logical size it
+covers. The grid is cut in device pixels, so a cell edge falls where its glyph was drawn. The buffer
+at 1.5 holds (1.5 / 2)² = 56% of the pixels the rounded-up scale 2 would, and nothing is resampled
+between a glyph and the screen but the compositor's own final pass.
+
+On that path every pixel a consumer counts is a device pixel: `kdisp_cell_w()`, the raw pointer, a
+backdrop's buffer, `libkchrome`'s pixel ops and display text. Pointer positions arrive in logical
+pixels with a fraction, and the fraction is kept, since at 1.5 it is a whole device pixel. What goes
+back to the compositor is logical: the input region is widened to every logical pixel a cell
+touches, and a position handed to another surface goes through `kdisp_px_logical()`. Every size
+`libkwl` asks for — a layer surface, an overlay, a toplevel's first size, an exclusive zone, a
+hidden panel's strip — is counted in the cell of the font as named, so a surface takes the same
+logical room at any scale. The device cell therefore may not exceed the named cell times the
+scale: a face that comes back larger is asked for a pixel smaller, up to four times, and where none
+fits the fraction is rounded up to the integer path, as it is without a viewporter.
+
+Entering a fraction, moving between two, or leaving one reloads the font and recuts the grid, and
+the `kdisp_on_scale()` functions are called; a font step on a fraction loads the new name at the
+device size. A toplevel is told its scale after it is mapped, so its first frame is drawn with the
+font as named and the next at the device size; a layer surface is told before its first frame.
+`testing/fixtures/kwl/paintcheck.c` checks the conversions at five scales and which path each scale
+takes, and walks the real flush through fractional scales with the partial paint held to the full
+one and the surface size the compositor derives held to the size configured.
+
 ## Adding a library
 
 1. Decide what it owns and what it must not link. A library is split where its link requirements
@@ -1489,20 +2059,20 @@ presentation rules in [Presenting a frame](writing-desktop-software.md#presentin
 2. Pick a prefix and use it on every exported symbol.
 3. Place it in the dependency order and confirm nothing points back up.
 4. Link nothing but the C library if a terminal program or a root daemon could ever want it. If it
-   needs an external library, keep it out of the phase-1 set (`libkbase`, `libkcolor`, `libktui`,
+   needs an external library, keep it out of the bootstrap set (`libkbase`, `libkcolor`, `libktui`,
    `libkpkg`, `libksig`) and out of everything they call, and add it to the table under
    [The constraint](#the-constraint).
 5. Add its sources and include path to the `build.sh` of every program that uses it. There is no
    archive to link; a program compiles the library's `.c` files itself. Check the consumers built
    outside a recipe as well, each of which names its libraries explicitly (see
    [How the libraries are built](#how-the-libraries-are-built)):
-   - `script/01_phase1/12_kpkg.sh` (`kpkg`) and `script/01_phase1/13_kinstall.sh` (`kinstall`),
-     the phase-1 builds. A library added under either program and missing here breaks the
-     bootstrap. `kinstall` is also built as a port by `src/packages/kdos-installer/build.sh`, and
+   - `script/phases/10_bootstrap/120_kpkg.sh` (`kpkg`) and
+     `script/phases/10_bootstrap/130_kinstall.sh` (`kinstall`), the bootstrap builds. A library added under either program and missing here breaks the
+     bootstrap. `kinstall` is also built as a port by `src/system/kdos-installer/build.sh`, and
      the two must compile the same sources.
    - `script/kdosbuild.sh`, which builds `kdosbuild` on the host.
    - `src_kpkg_ensure` in `ports/srclib.sh`, the host recipe reader. Its source list, the one in
-     `src/tools/kdos-portup/main.c` and the one in `testing/selftest.sh` must agree.
+     `src/devtools/kdos-portup/main.c` and the one in `testing/selftest.sh` must agree.
    - `ports/update`, which builds `kdos-portup` on the host.
    - The `libkdos.a` line in `src/desktop/kdos-comp/build.sh`, which meson links into the
      compositor.
@@ -1521,9 +2091,9 @@ presentation rules in [Presenting a frame](writing-desktop-software.md#presentin
 - [The design language](../03-architecture/design-language.md) — the rules the drawing libraries
   enforce
 - [Testing](testing.md) — the shared test program, the fixtures and the sanitizer runs
-- [The build system](build-system.md) — where `libkbuild` fits, and what phase 1 compiles
+- [The build system](build-system.md) — where `libkbuild` fits, and what `10_bootstrap` compiles
 - [How KDOS is built](how-kdos-is-built.md) — the whole build, from the cross toolchain that
-  compiles `kpkg` and `kinstall` to the desktop phase that compiles the rest
+  compiles `kpkg` and `kinstall` to the userland and desktop phases that compile the rest
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md#the-c-library) — musl, the C library
   every one of these libraries is compiled against, and what choosing it costs
 - [The ports catalogue](../06-reference/ports-catalogue.md) — every port, including the external

@@ -1,0 +1,44 @@
+setup.py imports setuptools' test command, which setuptools 72 and later
+do not have, and rebinds setup to distutils', which Python 3.12 and later
+do not have. Both go; setup() is setuptools' own.
+
+--- a/setup.py
++++ b/setup.py
+@@ -40,9 +40,7 @@
+ import platform
+ 
+ from setuptools import setup, find_packages
+-from setuptools.command.test import test as TestCommand
+ #from setuptools_behave import behave_test
+-from distutils.core import setup
+ 
+ from nordicsemi import version
+ 
+@@ -73,16 +71,6 @@
+ description = """Python 3 version of the Nordic nrfutil utility nordicsemi library (modified by Adafruit)"""
+ 
+ 
+-class NoseTestCommand(TestCommand):
+-    def finalize_options(self):
+-        TestCommand.finalize_options(self)
+-        self.test_args = []
+-        self.test_suite = True
+-
+-    def run_tests(self):
+-        import nose
+-        nose.run_exit(argv=['nosetests', '--with-xunit', '--xunit-file=test-reports/unittests.xml'])
+-
+ common_requirements=[]
+ 
+ # Get the long description from the README file
+@@ -127,10 +115,6 @@
+         'Programming Language :: Python :: 3.5',
+     ],
+     keywords='nordic nrf52 ble bluetooth dfu ota softdevice serialization nrfutil pc-nrfutil adafruit circuitpython',
+-    cmdclass={
+-        'test': NoseTestCommand
+-        # 'bdd_test': behave_test
+-    },
+     entry_points={
+         'console_scripts': [
+             'adafruit-nrfutil = nordicsemi.__main__:cli',

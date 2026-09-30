@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = opentimelineio
+version     = 0.18.1
+release     = 1
+_rjcommit   = 24b5e7a8b27f42fa16b96fc70aade9106cf7102f
+source      = $name-$version.tar.gz::https://github.com/AcademySoftwareFoundation/OpenTimelineIO/archive/refs/tags/v$version.tar.gz
+source      = rapidjson-$_rjcommit.tar.gz::https://github.com/Tencent/rapidjson/archive/$_rjcommit.tar.gz
+sha256      = bcb516a43a962dac0cde3e1f9da634c1fd409915d499ff8f3ce6f738a4637d72  opentimelineio-0.18.1.tar.gz
+sha256      = 2d2601a82d2d3b7e143a3c8d43ef616671391034bc46891a9816b79cf2d3e7a8  rapidjson-24b5e7a8b27f42fa16b96fc70aade9106cf7102f.tar.gz
+description = OpenTimelineIO: interchange format and C++ API for editorial timelines
+homepage    = https://opentimeline.io/
+depends     = cmake ninja imath

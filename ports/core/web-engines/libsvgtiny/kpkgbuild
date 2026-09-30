@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libsvgtiny
+version     = 0.1.8
+release     = 1
+source      = https://download.netsurf-browser.org/libs/releases/libsvgtiny-$version-src.tar.gz
+sha256      = c357227f02e83fb2a76b12b901191a082229db1f007362e8f31c754510c2a01c  libsvgtiny-0.1.8.tar.gz
+description = NetSurf SVG Tiny renderer — parses SVG into a list of path and text shapes
+homepage    = https://www.netsurf-browser.org/projects/libsvgtiny/
+depends     = buildsystem libdom libwapcaplet gperf

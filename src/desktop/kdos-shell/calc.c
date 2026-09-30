@@ -50,7 +50,7 @@
 static KtuiKeys keys;
 
 static char input[CALC_MAX];
-static int caret;
+static KtuiField qf = { input, sizeof(input), 0, 0, NULL };
 static char result[CALC_MAX];
 static int dirty;		/* the input changed since the last evaluate */
 
@@ -94,7 +94,7 @@ static void evaluate(void)
 static void input_set(const char *s)
 {
 	snprintf(input, sizeof(input), "%s", s ? s : "");
-	caret = (int)strlen(input);
+	qf.caret = (int)strlen(input);
 	dirty = 1;
 	result[0] = '\0';
 }
@@ -164,7 +164,7 @@ static void draw(void)
 	ktui_hint_if(nhist > 0, "Up/Down", "recall");
 	ktui_hint("Esc", ktui_esc_verb(&keys));
 	ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
-	ktui_term_caret(2 + caret, 1);
+	ktui_term_caret(2 + ktui_field_col(&qf), 1);
 }
 
 int calc_main(int argc, char **argv)
@@ -223,8 +223,12 @@ int calc_main(int argc, char **argv)
 		ktui_draw_flush();
 
 		KtuiEvent ev;
+		int got = ktui_backend()->poll_event(&ev, 180);
 
-		if (!ktui_backend()->poll_event(&ev, 180)) {
+		/* A paste is a queue and not an event: offered on every wake. */
+		if (ktui_field_key(&qf, NULL) & KTUI_FIELD_CHANGED)
+			dirty = 1;
+		if (!got) {
 			/*
 			 * IDLE, WHICH IS THE DEBOUNCE. The loop's own timeout
 			 * is what says a person has stopped typing, so the
@@ -262,17 +266,12 @@ int calc_main(int argc, char **argv)
 			if (ev.btn != KT_MB_LEFT)
 				continue;
 			if (ev.my == 1) {
-				/* The sum being typed. Bytes, because an
-				 * expression is printable ASCII and nothing
-				 * else reaches `input` — see the default arm
-				 * of the key switch. */
-				int c = ev.mx - 2;
-
-				if (c < 0)
-					c = 0;
-				if (c > (int)strlen(input))
-					c = (int)strlen(input);
-				caret = c;
+				/* The sum being typed. The field's text
+				 * starts two cells into its rectangle, which
+				 * is where the sum is drawn from the window's
+				 * edge, so the rectangle is the whole row. */
+				ktui_field_hit(krect(0, 1, w - 2, 1), &qf,
+					       ev.mx, ev.my);
 				continue;
 			}
 			if (ev.my >= 4 && ev.my < h - 2) {
@@ -312,23 +311,7 @@ int calc_main(int argc, char **argv)
 			 * is where a person looks for it. */
 			input[0] = '\0';
 			result[0] = '\0';
-			caret = 0;
-			break;
-		case KT_K_BACKSPACE:
-			if (caret > 0) {
-				memmove(input + caret - 1, input + caret,
-					strlen(input) - (size_t)caret + 1);
-				caret--;
-				dirty = 1;
-			}
-			break;
-		case KT_K_LEFT:
-			if (caret > 0)
-				caret--;
-			break;
-		case KT_K_RIGHT:
-			if (input[caret])
-				caret++;
+			qf.caret = 0;
 			break;
 		case KT_K_UP:
 			if (nhist && recall != 0)
@@ -346,17 +329,12 @@ int calc_main(int argc, char **argv)
 			}
 			break;
 		default:
-			/* Printable ASCII only: an expression is typed on a
-			 * keyboard and a control byte in one is a mistake, not
-			 * a character. */
-			if (ev.key >= 0x20 && ev.key < 0x7f &&
-			    !(ev.mods & (KT_MOD_CTRL | KT_MOD_ALT)) &&
-			    strlen(input) + 1 < sizeof(input)) {
-				memmove(input + caret + 1, input + caret,
-					strlen(input) - (size_t)caret + 1);
-				input[caret++] = (char)ev.key;
+			/* Everything else is the sum's, the toolkit's field.
+			 * What it takes is handed to qalc as typed; a
+			 * character qalc does not read is its parse error,
+			 * shown as the answer. */
+			if (ktui_field_key(&qf, &ev) & KTUI_FIELD_CHANGED)
 				dirty = 1;
-			}
 			break;
 		}
 	}

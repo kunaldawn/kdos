@@ -9,7 +9,7 @@ it is a lookup table, not an explanation, and assumes you have met the vocabular
 
 Software built from `ports/core/` (bash, foot, podman, mpv and the rest) is upstream's, and
 upstream's manual pages describe it; [the ports catalogue](ports-catalogue.md) lists every port by
-phase and group. This index lists only what this repository writes: the programs under `src/`,
+shelf, with its phase. This index lists only what this repository writes: the programs under `src/`,
 the scripts under `fs/`, and the handful of wrapper scripts that a port recipe writes into its
 package. Each entry below matches the source that installs it.
 
@@ -23,7 +23,7 @@ same `ksvc` binary but is in `/usr/bin`, because the initramfs build copies it b
 
 | Directory | What is there |
 |---|---|
-| `/usr/bin` | `kdos-shell` and its 52 other names, `kdos-comp`, `kdos-term`, `kdos-res`, `kdos-lock`, `kdos-record`, `kdos-boxsock`, `kdos-pack`, `kdos-splash`, `kdos-theme`, `kdos-bb`, `kinstall`, `kpkg` and its four other names, `kdos-bootctl`, the daemon clients, the two setuid helpers, and the wrapper scripts ports write |
+| `/usr/bin` | `kdos-shell` and its 54 other names, `kdos-comp`, `kdos-term`, `kdos-res`, `kdos-lock`, `kdos-record`, `kdos-boxsock`, `kdos-pack`, `kdos-splash`, `kdos-theme`, `kdos-bb`, `kinstall`, `kpkg` and its four other names, `kdos-bootctl`, the daemon clients, the two setuid helpers, and the wrapper scripts ports write |
 | `/usr/sbin` | The five root daemons, and `ksvc` with its second name `service` |
 | `/usr/local/bin` | `kdos` and the other session-side names of the `ksvc` binary, `kdos-appbox` with `kdos-box`, `xdg-open` and one shim per boxed application, and the session scripts from `fs/` |
 | `/usr/local/sbin` | `kdos-getty`, which `/etc/inittab` runs on `tty1` and `tty2`, and `kdos-login`, which it runs on `tty1` |
@@ -40,27 +40,26 @@ including `kdos-shell` and `kpkg`, the first argument is an ordinary argument.
 
 | Binary | Installed as | Names it answers to | Where the name table lives |
 |---|---|---|---|
-| `kdos-shell` | `/usr/bin/kdos-shell` | 53 | `src/desktop/kdos-shell/main.c` |
-| `ksvc` (the `kdos-tools` port) | `/usr/sbin/ksvc` | 12 | `src/packages/kdos-tools/main.c` |
-| `kpkg` | `/usr/bin/kpkg` | 5 | `src/packages/kdos-kpkg/main.c` |
-| `kdos-appbox` | `/usr/local/bin/kdos-appbox` | 3 fixed, plus one per application | `src/packages/kdos-appbox/main.c` |
-| `kdos-powerd` | `/usr/sbin/kdos-powerd` | 2: `kdos-powerd` and its client `kdos-power` | `src/desktop/kdos-powerd/build.sh` (the symlink) |
-| `kdos-mountd` | `/usr/sbin/kdos-mountd` | 2: `kdos-mountd` and its client `kdos-mount` | `src/desktop/kdos-mountd/build.sh` (the symlink) |
-| `kdos-energyd` | `/usr/sbin/kdos-energyd` | 2: `kdos-energyd` and its client `kdos-energy` | `src/desktop/kdos-energyd/build.sh` (the symlink) |
+| `kdos-shell` | `/usr/bin/kdos-shell` | 55 | `src/desktop/kdos-shell/main.c` |
+| `ksvc` (the `kdos-tools` port) | `/usr/sbin/ksvc` | 12 | `src/system/kdos-tools/main.c` |
+| `kpkg` | `/usr/bin/kpkg` | 5 | `src/system/kdos-kpkg/main.c` |
+| `kdos-appbox` | `/usr/local/bin/kdos-appbox` | 3 fixed, plus one per application | `src/system/kdos-appbox/main.c` |
+| `kdos-powerd` | `/usr/sbin/kdos-powerd` | 2: `kdos-powerd` and its client `kdos-power` | `src/daemons/kdos-powerd/build.sh` (the symlink) |
+| `kdos-mountd` | `/usr/sbin/kdos-mountd` | 2: `kdos-mountd` and its client `kdos-mount` | `src/daemons/kdos-mountd/build.sh` (the symlink) |
+| `kdos-energyd` | `/usr/sbin/kdos-energyd` | 2: `kdos-energyd` and its client `kdos-energy` | `src/daemons/kdos-energyd/build.sh` (the symlink) |
 
 The twelve names of the `ksvc` binary are `kdos`, `ksvc`, `service`, `kdos-getty`,
 `kdos-bootctl`, `kdos-shot`, `kdos-banner`, `kdos-fetch-app`, `kdos-fetch-static`, `kdos-sfx`,
 `kdos-mpctl` and `kdos-share`. The five names of `kpkg` are `kpkg`, `kpkgadd`, `kpkgdel`,
 `kpkgbuild` and `kpkgdepends`; `kpkg` itself is built and installed by
-`script/01_phase1/12_kpkg.sh` rather than by a port.
+`script/phases/10_bootstrap/120_kpkg.sh` rather than by a port.
 
 The three fixed `kdos-appbox` names are `kdos-appbox`, `kdos-box` and `xdg-open`. Any other name
 the binary is started under is taken as an application **shim**: a symlink in `/usr/local/bin`
-named after the application and pointing at `kdos-appbox`, which is what makes `gimp` an ordinary
+named after the application and pointing at `kdos-appbox`, which is what makes `scribus` an ordinary
 command. The build writes one such link per application in a pack the medium carries
-(`script/06_packaging/00_launchers.sh`, through `kdos-appbox genlaunchers`); the default medium
-carries no packs, so it ships none, and the same step sweeps the links committed under
-`fs/usr/local/bin/`. An application you install gets its shim in `~/.local/bin` instead. See
+(`script/phases/70_image/030_launchers.sh`, through `kdos-appbox genlaunchers`); the default medium
+carries no packs, so it ships none. An application you install gets its shim in `~/.local/bin` instead. See
 [the program map](../04-programs/README.md#binaries-that-answer-to-several-names).
 
 ## The `kdos` command
@@ -106,10 +105,10 @@ which prints them grouped by the question each answers. It is installed as
 
 ## Desktop surfaces
 
-A **surface** is one window or popup of the desktop. All 53 names below are the `kdos-shell`
-binary in `/usr/bin` (the binary itself and 52 symlinks to it), and they reach 52 distinct
+A **surface** is one window or popup of the desktop. All 55 names below are the `kdos-shell`
+binary in `/usr/bin` (the binary itself and 54 symlinks to it), and they reach 54 distinct
 programs: `kdos-launcher` and `kdos-palette` are one search program that shows only applications
-when started as `kdos-launcher` or with `--apps`. All but two of the 52 open a surface of their
+when started as `kdos-launcher` or with `--apps`. All but two of the 54 open a surface of their
 own; `kdos-mediad` raises its toasts through `kdos-notifyd`, and `kdos-ascii` is a filter that
 writes text to standard output. Every surface is drawn as a grid of character
 cells and handed to the compositor as an ordinary Wayland surface; the frame around a window is
@@ -148,14 +147,16 @@ drawn by the compositor.
 | `kdos-connect` | A folder on another machine, over SMB | [kdos-shell](../04-programs/kdos-shell.md#kdos-connect) |
 | `kdos-traymenu` | A tray item's own `com.canonical.dbusmenu` menu, as cells | [kdos-shell](../04-programs/kdos-shell.md#the-tray) |
 | `kdos-contacts` | The address book, through `khard` | [kdos-shell](../04-programs/kdos-shell.md#the-desk-accessories) |
-| `kdos-disks` | Disks: mount, unlock, SMART, partition, erase | [kdos-shell](../04-programs/kdos-shell.md#kdos-disks) |
+| `kdos-disks` | Disks: mount, unlock, SMART, partition, write an image, erase | [kdos-shell](../04-programs/kdos-shell.md#kdos-disks) |
 | `kdos-print` | Printers: what is set up, what is on the network | [kdos-shell](../04-programs/kdos-shell.md#kdos-print) |
 | `kdos-time` | The time zone, the clock, and whether the clock is right | [kdos-shell](../04-programs/kdos-shell.md#the-system-surfaces) |
 | `kdos-users` | The accounts, and which one `tty1` logs in automatically | [kdos-shell](../04-programs/kdos-shell.md#the-system-surfaces) |
 | `kdos-update` | What is behind, what is vulnerable, which root slot is live | [kdos-shell](../04-programs/kdos-shell.md#the-system-surfaces) |
 | `kdos-store` | What this machine can build, and one tick to build it | [kdos-shell](../04-programs/kdos-shell.md#kdos-store) |
 | `kdos-firewall` | Which services answer the network | [kdos-shell](../04-programs/kdos-shell.md#the-system-surfaces) |
-| `kdos-backup` | What is in the restic repository, and one key to add to it | [kdos-shell](../04-programs/kdos-shell.md#the-system-surfaces) |
+| `kdos-backup` | What is in the restic repository, one key to add to it, and a restore view | [kdos-shell](../04-programs/kdos-shell.md#the-system-surfaces) |
+| `kdos-burn` | A folder or an image onto a CD, DVD or Blu-ray, and the disc checked | [kdos-shell](../04-programs/kdos-shell.md#the-system-surfaces) |
+| `kdos-verify` | Files against a checksum list or a par2 set, and par2's repair | [kdos-shell](../04-programs/kdos-shell.md#the-system-surfaces) |
 | `kdos-note` | The scratch pad | [kdos-shell](../04-programs/kdos-shell.md#the-desk-accessories) |
 | `kdos-slit` | The slit: a narrow column of small status gadgets (dockapps) at the right edge of each screen, off unless `comp.conf` sets `slit = yes` | [kdos-shell](../04-programs/kdos-shell.md#the-small-dialogs) |
 | `kdos-doc` | The documentation viewer | [kdos-shell](../04-programs/kdos-shell.md#kdos-doc) |
@@ -409,15 +410,16 @@ uses them, from `make fetch` to a bootable ISO.
 
 | Command | What it does | Documented in |
 |---|---|---|
-| `ports/fetch [--check] [--tree DIR] [PORT…]` | What `make fetch` runs: each source from the port directory, the cache, the sources archive or upstream, generating a vendor bundle where one must be made | [Developing](../05-developer/developing.md#where-sources-come-from) |
-| `ports/publish [--dry-run] [--check] [--history] [--describe] [--freeze TAG] [PORT…]` | Upload sources to the sources archive and append their lines to `ports/sources.idx`; `--describe` rewrites the releases' notes, `--freeze` attaches a release's hash list | [Writing ports](../05-developer/writing-ports.md#portspublish) |
-| `script/hooks/pre-push` | Refuse a push naming a source the archive lacks; enabled with `git config core.hooksPath script/hooks` | [Writing ports](../05-developer/writing-ports.md#the-pre-push-hook) |
-| `kdosbuild` | The build orchestrator, compiled from `src/build/kdosbuild/` by `script/kdosbuild.sh`, which `make build` runs | [The build system](../05-developer/build-system.md#kdosbuild) |
-| `script/chroot_enter.sh` | A root shell, or one command, inside a built tree, for inspection by hand | [The build system](../05-developer/build-system.md#the-chroot) |
+| `ports/fetch [--check] [--tree DIR] [PORT…]` | What `make fetch` runs: each source from the port directory, the cache, the sources archive or upstream, generating a vendor bundle where one must be made. A port is named by its bare name on any shelf, and a name that is no port fails the run | [Developing](../05-developer/developing.md#where-sources-come-from) |
+| `ports/publish [--dry-run] [--check] [--history] [--describe] [--freeze TAG] [PORT…]` | Upload sources to the sources archive and append their lines to `ports/sources.idx`; `--describe` rewrites the releases' notes, `--freeze` attaches a release's hash list. Ports are named as for `ports/fetch` | [Writing ports](../05-developer/writing-ports.md#portspublish) |
+| `script/hooks/pre-push` | Refuse a push that breaks the ports layout, or names a source the archive lacks; enabled with `git config core.hooksPath script/hooks` | [Writing ports](../05-developer/writing-ports.md#the-pre-push-hook) |
+| `kdosbuild` | The build orchestrator, compiled from `src/devtools/kdosbuild/` by `script/kdosbuild.sh`, which `make build` runs | [The build system](../05-developer/build-system.md#kdosbuild) |
+| `script/chroot/enter.sh` | A root shell, or one command, inside a built tree, for inspection by hand | [The build system](../05-developer/build-system.md#the-chroot) |
 | `ports/update` | Check ports for newer upstream releases; compiles and runs `kdos-portup` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
-| `kdos-portup` | The version checker `ports/update` runs, from `src/tools/kdos-portup/`, compiled to `ports/.portup` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
+| `kdos-portup` | The version checker `ports/update` runs, from `src/devtools/kdos-portup/`, compiled to `ports/.portup` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/hackage-vendor` | The Hackage downloader `ports/fetch` runs to make a Haskell port's vendor bundle | [Writing ports](../05-developer/writing-ports.md#the-haskell-bundle) |
-| `testing/preflight.sh` | 48 checks over the wiring of the tree | [Testing](../05-developer/testing.md#preflightsh) |
+| `testing/preflight.sh` | 53 checks over the wiring of the tree | [Testing](../05-developer/testing.md#preflightsh) |
+| `testing/phaseclosure.py` | Check that every package phase installs exactly the ports its list names; preflight runs it | [Writing ports](../05-developer/writing-ports.md#which-phase-lists-a-port) |
 | `testing/selftest.sh` | The library and consumer suite, with the goldens | [Testing](../05-developer/testing.md#selftestsh) |
 | `testing/docscheck.sh` | This book: dead links, historical phrasing, the page contract | [Testing](../05-developer/testing.md#docschecksh) |
 | `testing/devdeps-image.sh` | Build the `kdos-devdeps` image and run the self-test in it, with nothing skipped | [Testing](../05-developer/testing.md#the-machine-where-nothing-is-skipped) |
@@ -445,7 +447,7 @@ uses them, from `make fetch` to a bootable ISO.
 - [The kdos command](../04-programs/kdos-command.md): every subcommand and every other name of the
   `ksvc` binary in full
 - [The ports catalogue](ports-catalogue.md): the upstream software this index leaves out, by
-  phase and group
+  shelf, with the phase that builds each port
 - [How KDOS is built](../05-developer/how-kdos-is-built.md): the host-only tools in the order a
   build runs them
 - [Configuration](configuration.md): every setting these commands read

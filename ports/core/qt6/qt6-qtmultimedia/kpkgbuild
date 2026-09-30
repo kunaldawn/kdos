@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtmultimedia
+version     = 6.11.2
+release     = 1
+_module     = qtmultimedia
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 967b5e02ec6b793cdb360622cd6e703132836af983208d678dae4b50f109cd9f  qt6-qtmultimedia-6.11.2.tar.xz
+description = Qt 6 Multimedia — audio, video playback and capture through FFmpeg and PipeWire
+homepage    = https://www.qt.io
+depends     = cmake ninja qt6-qtbase pkgconf qt6-qtdeclarative qt6-qtshadertools qt6-qtsvg qt6-qtquick3d ffmpeg pipewire libpulse libva mesa libglvnd libX11 libXrandr libXext
+group       = qt6

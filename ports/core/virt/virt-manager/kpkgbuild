@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = virt-manager
+version     = 5.1.0
+release     = 1
+source      = https://releases.pagure.org/$name/$name-$version.tar.xz
+sha256      = ccfc44b6c1c0be8398beb687c675d9ea4ca1c721dfb67bd639209a7b0dec11b1  virt-manager-5.1.0.tar.xz
+description = Virtual Machine Manager — create, run and connect to libvirt/QEMU virtual machines, with virt-install, virt-clone and virt-xml
+homepage    = https://virt-manager.org/
+depends     = meson ninja python3 glib gettext python3-docutils python3-gobject python3-cairo python3-libvirt python3-requests libxml2 gtk3 vte3 gtksourceview4 gtk-vnc spice-gtk libosinfo osinfo-db libvirt-glib libvirt qemu libisoburn

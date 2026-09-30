@@ -1,0 +1,34 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = translatelocally
+version     = 0.0.2.20250330
+release     = 1
+_commit     = 1d0d382cd6c9085cb4b8144c4a8962d74ed609c8
+_bergamot   = 9271618ebbdc5d21ac4dc4df9e72beb7ce644774
+_marian     = 2781d735d4a10dca876d61be587afdab2726293c
+_intgemm    = f7401513da71758dacce52fed1c7855549abee59
+_spm        = ae41b7740d7006596bb9257e83340b2620db9d00
+_ssplit     = a311f9865ade34db1e8e080e6cc146f55dafb067
+source      = $name-$version.tar.gz::https://github.com/XapaJIaMnu/translateLocally/archive/$_commit.tar.gz
+source      = bergamot-translator-$_bergamot.tar.gz::https://github.com/browsermt/bergamot-translator/archive/$_bergamot.tar.gz
+source      = marian-dev-$_marian.tar.gz::https://github.com/browsermt/marian-dev/archive/$_marian.tar.gz
+source      = intgemm-$_intgemm.tar.gz::https://github.com/kpu/intgemm/archive/$_intgemm.tar.gz
+source      = sentencepiece-$_spm.tar.gz::https://github.com/browsermt/sentencepiece/archive/$_spm.tar.gz
+source      = ssplit-cpp-$_ssplit.tar.gz::https://github.com/browsermt/ssplit-cpp/archive/$_ssplit.tar.gz
+sha256      = e61644b30be0bd698aabef52f19b48d2951ec7806072345d3725ad1839b363a1  bergamot-translator-9271618ebbdc5d21ac4dc4df9e72beb7ce644774.tar.gz
+sha256      = 8e827c445dbb1b117a9667616bac23b3c945e626da0a3466786cfd058ed2f41d  intgemm-f7401513da71758dacce52fed1c7855549abee59.tar.gz
+sha256      = 96f3f31a79899f26217b5fa0a78d6e8a6bc5e7a8e4c50de7bde4c3fa2858999d  marian-dev-2781d735d4a10dca876d61be587afdab2726293c.tar.gz
+sha256      = 4d2148ae7e240cd113586004d2cf0102f7ab1bae363b91b2934ee83c5ae3dbbe  sentencepiece-ae41b7740d7006596bb9257e83340b2620db9d00.tar.gz
+sha256      = 937ded1229ee69f340772056a4ff6daaede5b899f12c4c7b091c40f430c56fd8  ssplit-cpp-a311f9865ade34db1e8e080e6cc146f55dafb067.tar.gz
+sha256      = a0c98a54340a194588205d8cbd6db667bb73d6e9acb0fbc790d409287d31c4f6  translatelocally-0.0.2.20250330.tar.gz
+description = translateLocally: machine translation on the CPU with Bergamot models, with the text never leaving the machine
+homepage    = https://translatelocally.com/
+depends     = cmake ninja librsvg qt6-qtbase qt6-qttools qt6-qtsvg qt6-qtwayland openblas pcre2 libarchive hicolor-icon-theme

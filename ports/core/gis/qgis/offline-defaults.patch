@@ -1,0 +1,32 @@
+--- a/resources/qgis_global_settings.ini	2026-09-28 04:04:56.004342567 +0530
++++ b/resources/qgis_global_settings.ini	2026-09-28 04:05:03.444436256 +0530
+@@ -3,13 +3,13 @@
+ # If true, QGIS will automatically check for new versions on startup and notify users if a new version is available.
+ # This setting controls the default value for that setting. Users may still manually enable or disable this check
+ # through the QGIS settings dialog.
+-checkVersion=true
++checkVersion=false
+ 
+ # If true, users may control whether the version check is enabled or disabled through the QGIS settings dialog. (The default
+ # check behavior is determined by the 'checkVersion' setting). If false, no version checking will be performed and
+ # users will NOT have an option to enable this check in the settings dialog.
+ # This setting is intended for use in enterprise installs where QGIS version management is handled centrally.
+-allowVersionCheck=true
++allowVersionCheck=false
+ 
+ # If true, added layer names will be automatically capitalized and underscores replaced with spaces
+ formatLayerName=false
+@@ -271,3 +271,13 @@
+ # # URL list for which proxy configuration doesn't apply. In the case of these URLs, the default system proxy configuration
+ # # is applied
+ # proxyExcludedUrls=http://intranet,http://anotherproxy
++
++[core]
++# The welcome page's news feed is fetched from feed.qgis.org; a machine with no
++# network would show an empty panel and retry on every start.
++httpsfeedqgisorg\disabled=true
++
++[plugin-manager]
++# The plugin repository is online; checking it on every start fails offline.
++# Plugins can still be installed from a ZIP file.
++automatically-check-for-updates=false

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = opencsg
+version     = 1.8.2
+release     = 1
+source      = $name-$version.tar.gz::https://www.opencsg.org/OpenCSG-$version.tar.gz
+sha256      = 5ac5df73b1ad3340dd6705ff90e009f1a946bb9536c21c2263a6f974265664c0  opencsg-1.8.2.tar.gz
+description = Image-based constructive solid geometry rendering with OpenGL
+homepage    = https://www.opencsg.org/
+depends     = cmake ninja mesa libglvnd

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = kdenlive
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 8a0e2cc6451de6901fec778a8b6d00165399879233a264ca5bb1b1b283266513  kdenlive-26.08.1.tar.xz
+description = Kdenlive: the KDE multi-track video editor, on MLT
+homepage    = https://kdenlive.org/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtmultimedia qt6-qtnetworkauth qt6-qtwayland karchive kbookmarks kcodecs kcoreaddons kconfig kconfigwidgets kio kwidgetsaddons knotifyconfig knewstuff kxmlgui knotifications kguiaddons ktextwidgets kiconthemes solid kfilemetadata purpose kdoctools kcrash kdbusaddons kirigami qqc2-desktop-style breeze-icons kddockwidgets mlt ffmpeg opentimelineio imath frei0r-plugins

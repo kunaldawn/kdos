@@ -1,8 +1,8 @@
 +=[ Trash ]============================================+
-| notes.txt        15B       2026-09-05  /home/kdos/Do |
-| old-build        folder    2026-09-04  /home/kdos/sr |
-|                                                      |
-|                                                      |
+| Name                Size Deleted v  From             |
+|------------------------------------------------------|
+| notes.txt            15B 2026-09-05 /home/kdos/Docum |
+| old-build         folder 2026-09-04 /home/kdos/src/o |
 |                                                      |
 |                                                      |
 |                                                      |
@@ -20,5 +20,5 @@
 |                                                      |
 |                                                      |
 |------------------------------------------------------|
-| Enter put back | d delete | c empty | Esc Close      |
+| Enter put back | d delete | c empty | Esc Close |    |
 +======================================================+

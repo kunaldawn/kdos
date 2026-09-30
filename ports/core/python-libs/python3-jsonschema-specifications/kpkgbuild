@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-jsonschema-specifications
+version     = 2025.9.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/j/jsonschema_specifications/jsonschema_specifications-$version.tar.gz
+sha256      = b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d  python3-jsonschema-specifications-2025.9.1.tar.gz
+description = The JSON Schema meta-schemas and vocabularies, packaged for jsonschema
+homepage    = https://github.com/python-jsonschema/jsonschema-specifications
+depends     = python3 python3-pip python3-hatchling python3-hatch-vcs python3-setuptools-scm python3-referencing

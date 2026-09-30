@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = satdump
+version     = 1.2.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/SatDump/SatDump/archive/refs/tags/$version.tar.gz
+sha256      = 2ab7c6126e426ad79972b274cc380c0bb04c9e755d746d67f3af92c1dd569209  satdump-1.2.2.tar.gz
+description = SatDump — receive, demodulate and decode weather and science satellites into images and products
+homepage    = https://www.satdump.org/
+depends     = cmake ninja pkgconf libvolk fftw libpng zstd nng jemalloc curl libtiff hdf5 glfw mesa libglvnd libusb airspy hackrf bladerf rtl-sdr portaudio ocl-icd opencl-headers imagemagick

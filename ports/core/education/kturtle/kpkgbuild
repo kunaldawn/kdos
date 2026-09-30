@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kturtle
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 07be25f8754521ddb0d14510133cc0e82227b7a3d659abdc05b2268121df5e1c  kturtle-26.08.1.tar.xz
+description = KDE educational programming environment — steer a turtle with TurtleScript and learn to program
+homepage    = https://apps.kde.org/kturtle/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg kcoreaddons kcrash kdoctools ki18n kio knewstuff ktextwidgets kxmlgui

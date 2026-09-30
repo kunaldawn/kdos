@@ -238,6 +238,17 @@ output_get_tearing_allowance(struct output *output)
 	return view->force_tearing == LAB_STATE_ENABLED;
 }
 
+/* KDOS: skip painting the session when it exists but is not active. */
+static bool
+kdos_session_inactive(void)
+{
+#if WLR_HAS_SESSION
+	return server.session && !server.session->active;
+#else
+	return false;
+#endif
+}
+
 static void
 handle_output_frame(struct wl_listener *listener, void *data)
 {
@@ -250,33 +261,55 @@ handle_output_frame(struct wl_listener *listener, void *data)
 	 * ceiling on a high-refresh panel.
 	 */
 	struct output *output = wl_container_of(listener, output, frame);
-	if (!output_is_usable(output)) {
+	if (!output_is_usable(output) || kdos_session_inactive()) {
 		return;
 	}
 
-#if WLR_HAS_SESSION
-	/*
-	 * skip painting the session when it exists but is not active.
-	 */
-	if (server.session && !server.session->active) {
+	/* KDOS: frame tick (fallback clock) for stutter; then, with
+	 * `max_render_time` set, the composite may be moved to a timer
+	 * just before the next vertical blank (kdos-sched.c). */
+	kdos_frames_frame(output);
+	if (kdos_sched_defer(output)) {
 		return;
 	}
-#endif
+	kdos_output_repaint(output);
+}
+
+/*
+ * KDOS: the composite, from the frame event or from kdos-sched.c's timer,
+ * which can fire after the output went unusable or the session inactive.
+ */
+void
+kdos_output_repaint(struct output *output)
+{
+	if (!output_is_usable(output) || kdos_session_inactive()) {
+		return;
+	}
 
 	struct wlr_scene_output *scene_output = output->scene_output;
 	struct wlr_output_state *pending = &output->pending;
 
-	pending->tearing_page_flip = output_get_tearing_allowance(output);
-
-	/* KDOS: frame tick (fallback clock) + render duration for stutter.
-	 * The CRT pass commits the frame itself when it is on; false
-	 * means off or fallen back, and the plain path takes over. */
-	kdos_frames_frame(output);
+	/* KDOS: render duration for stutter. The CRT pass commits the
+	 * frame itself when it is on; false means off or fallen back, and
+	 * the plain path takes over — with direct scanout allowed, which
+	 * the pass turns off for its own build (the scene's switch is
+	 * global, so every frame sets it). */
+	kdos_motion_tick(); /* KDOS: fades step before the frame is built */
 	int64_t kdos_t0 = kdos_frames_now();
 	bool kdos_wanted = wlr_scene_output_needs_frame(scene_output); /* KDOS */
 
 	if (!kdos_crt_frame(output, scene_output)) {
+		pending->tearing_page_flip = output_get_tearing_allowance(output);
+		kdos_crt_scanout(true);
 		lab_wlr_scene_output_commit(scene_output, pending);
+		/*
+		 * KDOS: the flag is for this frame's buffer only. Left in
+		 * `pending` by the scene's no-damage early-out, it would ride
+		 * the next buffer-less commit of `pending` (adaptive sync on
+		 * a fullscreen change, a mode set), which wlroots refuses
+		 * whole: a tearing page flip needs a buffer.
+		 */
+		pending->tearing_page_flip = false;
 	}
 
 	kdos_frames_render_ns(output, kdos_frames_now() - kdos_t0); /* KDOS */
@@ -730,6 +763,7 @@ handle_new_output(struct wl_listener *listener, void *data)
 	output->frame.notify = handle_output_frame;
 	wl_signal_add(&wlr_output->events.frame, &output->frame);
 	kdos_frames_output_add(output); /* KDOS */
+	kdos_sched_output_add(output); /* KDOS: render-late timer */
 	/* KDOS: this screen gets its own panel, window list and desktop.
 	 * No-op until kdos_children_start() has run — outputs exist before
 	 * the wayland socket is being serviced. */

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = openmsx
+version     = 21.0
+release     = 1
+_tag        = RELEASE_${version//./_}
+source      = $name-$version.tar.gz::https://github.com/openMSX/openMSX/releases/download/$_tag/openmsx-$version.tar.gz
+sha256      = 28838bfa974a0b769b04a8820ad7953a7ad0835eb5d1764db173deac75984b6f  openmsx-21.0.tar.gz
+description = openMSX — MSX home computer emulator with C-BIOS, a built-in debugger and GUI
+homepage    = https://openmsx.org/
+depends     = python3 pkgconf sdl2-compat sdl2-ttf freetype2 libpng zlib tcl glew libglvnd mesa libogg libvorbis libtheora alsa-lib

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kconfigwidgets
+version     = 6.30.0
+release     = 1
+source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = 6efd9fc7786a7e979b32904aeadf1d2d8e69a5da110f8ebd45f95ec02de41f77  kconfigwidgets-6.30.0.tar.xz
+description = KDE Frameworks: widgets for configuration dialogs
+homepage    = https://invent.kde.org/frameworks/kconfigwidgets
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcodecs kcolorscheme kconfig kcoreaddons kguiaddons ki18n kwidgetsaddons gettext

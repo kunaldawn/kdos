@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = audiofile
+version     = 0.3.6
+release     = 1
+source      = https://audiofile.68k.org/$name-$version.tar.gz
+sha256      = cdc60df19ab08bfe55344395739bb08f50fc15c92da3962fac334d3bff116965  audiofile-0.3.6.tar.gz
+description = SGI Audio File Library — reads and writes AIFF, WAVE, NeXT/Sun, IRCAM, AVR, CAF and FLAC through one API
+homepage    = https://audiofile.68k.org/
+depends     = autoconf automake libtool pkgconf flac

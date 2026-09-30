@@ -1,6 +1,6 @@
 # The daemons
 
-KDOS has no logind, no udisks and no polkit agent on the path between the desktop and the kernel.
+KDOS has no logind and no polkit agent on the path between the desktop and the kernel.
 In their place are five small root daemons, each answering a few fixed questions on a Unix socket
 in `/run`: suspend the machine, mount a USB stick, say which application is spending the battery,
 kill a runaway program before the desktop freezes, and mount application packs. This chapter
@@ -378,9 +378,21 @@ carrying its own copy.
 | `mqtt` | TCP 1883, 8883 | An MQTT broker for LAN devices (`73_mosquitto`) |
 | `xmpp` | TCP 5222 | XMPP clients (`74_prosody`) |
 | `nfs` | TCP 2049 | Sharing files over NFSv4 (`72_nfsd`) |
+| `babel` | UDP 6696 | Babel mesh routing (`31_babeld`) |
+| `nut` | TCP 3493 | UPS status for other machines (`56_nut`) |
+| `snmp` | UDP 161 | SNMP queries of this machine (`71_snmpd`) |
+| `mumble` | TCP 64738, UDP 64738 | A Mumble voice server (`75_mumble-server`) |
+| `caldav` | TCP 5232 | Shared calendars and contacts (`77_radicale`) |
+| `mail` | TCP 25, 143, 465, 587, 993 | A LAN mail server (`78_maddy`) |
+| `irc` | TCP 6667, 6697 | An IRC server (`79_ngircd`) |
+| `dlna` | TCP 8200, UDP 1900 | A DLNA media server (`84_minidlna`) |
+| `tryton` | TCP 8000 | Tryton clients of GNU Health (`85_gnuhealth`) |
 | `caddy` | TCP 8443 | Caddy's shipped site (HTTPS) |
 | `mosh` | UDP 60000–61000 | Incoming mosh sessions (needs `ssh` on as well) |
 | `syncthing` | TCP 22000, UDP 22000, UDP 21027 | Syncthing sync and local discovery |
+| `kdeconnect` | TCP 1714–1764, UDP 1714–1764 | KDE Connect with a phone on the LAN |
+| `vnc` | TCP 5900 | This desktop over VNC (`wayvnc`, which listens on 127.0.0.1 until its config or `wayvnc 0.0.0.0` says otherwise) |
+| `xonotic` | UDP 26000 | Hosting a Xonotic game for the LAN |
 
 How a change is applied:
 
@@ -623,8 +635,10 @@ choose; which process the daemon picks on a busy desktop is what `--fixture` tes
 ## kdos-mountd
 
 Removable media, encrypted volumes, SMART health and network shares for a desktop that is not root.
-There is no general-purpose disk service (no udisks) on KDOS, so this daemon is the whole of what
-stands between the desktop and `mount`.
+udisks2 serves the natively ported toolkit applications (see
+[Administration](../02-user-guide/administration.md)); for the desktop's own surfaces this daemon is
+the whole of what stands between them and `mount`. Both read `/proc/mounts`, so a device udisks2
+mounted under `/run/media/<user>` is listed here as mounted, with its mountpoint.
 
 The client never names a path or a mountpoint. It asks for a row out of a list the daemon
 published, and the daemon decides the device, the mountpoint and the options. A design that takes
@@ -665,6 +679,7 @@ kdos-mount list
 kdos-mount mount <index>
 kdos-mount unmount <index>
 kdos-mount smart <index>
+kdos-mount write <index> <image> <disk>
 kdos-mount shares
 kdos-mount browse
 kdos-mount krb5 <server> <share> <user|-> <domain|->
@@ -692,14 +707,17 @@ be piped into another program.
 | 2 | No `kdos-mountd` to ask (`kdos-mount: no kdos-mountd on <socket path> (<reason>)`), or bad usage |
 
 The index is re-rendered as a number before it is sent, through `atoi`, so an argument that is not a
-number becomes row 0: `kdos-mount mount sdb1` acts on row 0 rather than being refused. The verbs
-that carry a secret (`unlock`, `format`, `cifs`), and `eject`, `close` and `disconnect`, are reached
-from the desktop's surfaces rather than from `kdos-mount`:
+number becomes row 0: `kdos-mount mount sdb1` acts on row 0 rather than being refused.
+`kdos-mount write <index> <image> <disk>` writes an image (see
+[Writing an image](#writing-an-image)): it opens the image itself, as you, and prints the daemon's
+progress lines as they arrive. The other verbs that carry a secret (`unlock`, `format`, `cifs`), and
+`eject`, `close` and `disconnect`, are reached from the desktop's surfaces rather than from
+`kdos-mount`:
 
 | Surface | Uses |
 |---|---|
 | `kdos-devices` | `list`, `mount`, `unmount` |
-| `kdos-disks` | `list`, `mount`, `unmount`, `unlock`, `close`, `format` (always as `ext4`), `smart` |
+| `kdos-disks` | `list`, `mount`, `unmount`, `unlock`, `close`, `format` (always as `ext4`), `smart`, `write` |
 | `kdos-connect` | `cifs`, `krb5`, `shares`, `browse`, `disconnect` |
 | `kdos-mediad` | `subscribe`, `list`, `mount`, `eject` |
 
@@ -715,6 +733,9 @@ A request is one line, plus a second frame where a secret is involved.
   passphrase travels as a frame and not a token because the tokeniser splits on spaces and a
   passphrase may contain them. A connection that closes before the whole frame arrives is answered
   `err short frame`.
+- **A descriptor** rides on frame one for `write` only: the image, attached as `SCM_RIGHTS`. The
+  daemon reads frame one with `recvmsg` so the descriptor is not lost, keeps at most one, and closes
+  one that arrives with any other verb before it looks at the verb.
 
 Every token is checked before it means anything, and the token count is fixed per verb:
 
@@ -787,10 +808,11 @@ request that needs it.
 |---|---|---|
 | `exec = yes` | `noexec` | Removable media and network shares are mounted without `noexec`, so programs on them can run |
 | `format = yes` | `format` refused | The `format` verb is allowed |
+| `write = yes` | `write` refused | The `write` verb is allowed |
 
-The daemon searches the whole file for the text `exec = yes` or `exec=yes` (and `format = yes` or
-`format=yes`) anywhere, comments included. A commented-out `# exec = yes` therefore still turns the
-setting on. To turn a setting off, delete the text rather than commenting it out.
+The daemon searches the whole file for the text `exec = yes` or `exec=yes` (and likewise for
+`format` and `write`) anywhere, comments included. A commented-out `# exec = yes` therefore still
+turns the setting on. To turn a setting off, delete the text rather than commenting it out.
 
 ### Encrypted volumes
 
@@ -884,8 +906,8 @@ That is why it is a verb of its own rather than `cifs` with an empty password.
 
 ### What a destructive verb refuses
 
-`eject`, `unlock` and `format` pass through one check before they act. It refuses a device that is
-mounted (`err unmount it first`), a device on the boot medium, and a device node that has changed
+`eject`, `unlock`, `format` and `write` pass through one check before they act. It refuses a device
+that is mounted (`err unmount it first`), a device on the boot medium, and a device node that has changed
 since the scan.
 
 The boot medium is refused by the disk, not by the partition. A live USB carries an ISO 9660
@@ -914,6 +936,55 @@ is labelled `KDOS`:
 | `btrfs` | `/usr/bin/mkfs.btrfs -f -L KDOS <node>` |
 | `vfat` | `/usr/sbin/mkfs.vfat -I -n KDOS <node>` |
 | `exfat` | `/usr/sbin/mkfs.exfat -n KDOS <node>` |
+
+### Writing an image
+
+`write <row> <count>` puts a disk image, such as an installer or a live system, over the whole disk
+the row is on, and then reads the disk back and compares it with the image. The image arrives as an
+open descriptor attached to the request, never as a path. The client opened it as the person asking,
+so it can only be a file that person can read; a root daemon that took a path would open it as root,
+and `write 0 /etc/shadow` would copy a file the caller cannot read onto a stick the caller can.
+
+**`write` is opt-in**: without `write = yes` in `/etc/kdos/mountd.conf` it answers
+``err write is off; set `write = yes` in /etc/kdos/mountd.conf``. It is a key of its own because
+turning on formatting says nothing about replacing a whole disk. Beyond the check every destructive
+verb passes, it refuses:
+
+| Refusal | Answer |
+|---|---|
+| No descriptor attached | `err no image: the file travels as a descriptor, not a name` |
+| Any row on the same disk mounted, or an unlocked mapping on it | `err unmount <kname> first`, `err close <kname> first` |
+| Any partition of the disk, or the disk itself, that `/etc/fstab` names or the running system is mounted from — partitions `list` leaves out, which the write would replace all the same | `err <name> is in /etc/fstab or holds the running system` |
+| A second frame that is not the disk's name (`sdb` for a row on `sdb1`) | `err type <disk> to confirm` |
+| A descriptor that is not a regular file with something in it | `err the image is not a file with something in it` |
+| An image larger than the disk | `err the image is <n>G and <disk> is <m>G` |
+| The disk opened by anyone else | `err <disk> is in use — unmount and close everything on it` |
+
+The disk is opened with `O_EXCL`, which on a block device is the kernel's exclusive claim: it fails
+while any partition of the disk is mounted, mapped or claimed, and while the write holds it a mount,
+a format or a second write of that disk fails in turn. The node is opened with `O_NOFOLLOW` and its
+device number is checked against `/sys`, like every other verb's.
+
+The copy runs in a double-forked worker, so the daemon goes on answering every other client for the
+minutes a write takes. The connection stays open and carries the worker's progress, one line per
+step of about one per cent:
+
+```text
+progress write 1048576 3000000
+progress verify 3000000 3000000
+ok sdb 3000000 verified
+```
+
+After the copy the data is synced and the device's cached pages are dropped (`BLKFLSBUF`), so the
+verify reads what the disk hands back rather than what the worker just wrote; a stick that wraps
+writes past its real capacity fails there with `err verify failed: <disk> does not hold the image
+at byte <n>`. Last, the daemon asks the kernel to re-read the partition table (`BLKRRPART`), which
+makes the new partitions appear and sends every subscriber `changed`. A worker whose client has gone
+carries on to the end; its progress lines are dropped.
+
+A disk with no filesystem the daemon recognises is not in `list` at all, so an image cannot be
+written onto it through this verb; and in a live session any disk carrying an ISO 9660 partition is
+treated as the boot disk, so a stick that already holds another system's image is refused there.
 
 Every program it runs is named by absolute path: `/usr/bin/eject`, `/usr/sbin/cryptsetup`,
 `/usr/sbin/smartctl`, the `mkfs` programs above, `/sbin/modprobe`, `/sbin/mount.cifs`,
@@ -966,11 +1037,14 @@ tree), one row per device with its size in bytes and a final `<n> eligible`, and
 fixture's trees, admits any caller, and prints each command it would run (with its environment and
 the byte count, never the bytes, of anything it would feed on standard input) instead of running
 it. No name is resolved and nothing is broadcast. That is how a `format` aimed at the boot medium
-is proved to be refused without a disk to lose.
+is proved to be refused without a disk to lose. A `write` in these modes prints `write <node>` and
+copies the image into the file `KDOS_MOUNTD_SINK` names instead of the disk, and verifies against
+that file, so the copy and the read-back really run with nothing that looks like a device touched.
 
 Only in these two modes does the daemon read the path overrides `KDOS_MOUNTD_SYS`,
 `KDOS_MOUNTD_DEV`, `KDOS_MOUNTD_MOUNTS`, `KDOS_MOUNTD_FSTAB`, `KDOS_MOUNTD_MEDIA`,
-`KDOS_MOUNTD_CONF` and `KDOS_MOUNTD_UEVENT` (a FIFO standing in for the kernel's hotplug socket).
+`KDOS_MOUNTD_CONF`, `KDOS_MOUNTD_SINK` and `KDOS_MOUNTD_UEVENT` (a FIFO standing in for the
+kernel's hotplug socket).
 The daemon started by the init script reads none of them: an environment variable that moved its
 idea of `/dev` would be a way to aim a format at any device on the machine.
 
@@ -1241,6 +1315,14 @@ its section: `kdos-mountd` breaks rule 6 (see
 9. It links only libraries whose every line you are willing to run as root.
 10. Its refusals are documented in this chapter, including the ones that look like limitations.
 
+Where the pieces go is fixed as well. The source and its recipe (`kpkgbuild` and `build.sh`) are
+`src/daemons/<name>/`, the area that holds the five root daemons above (`kdos-boxsock`,
+`xdg-desktop-portal-kdos` and `kdos-lock` are session programs, sources under `src/desktop/` and
+named under the list's `src-desktop` heading); the port is named under the `src-daemons` heading of
+`script/phases/50_desktop/packages.txt`, the only phase whose `PORT_REPO` includes `src/daemons`;
+and its init script is `fs/etc/init.d/<NN>_<service>.sh`, whose number places it after
+everything it needs, since `rcS` starts the scripts in numeric order (the five here are 55 to 59).
+
 ## See also
 
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md#init-and-service-supervision): the init
@@ -1254,9 +1336,9 @@ its section: `kdos-mountd` breaks rule 6 (see
   `kdos-boxsock`
 - [kdos-res](kdos-res.md): the monitor that shows the energy daemon's answer
 - [kinstall](kinstall.md): which groups the installed account ends up in
-- [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-05_desktop): the build
+- [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop): the build
   phase that compiles every daemon here
-- [The ports catalogue](../06-reference/ports-catalogue.md#the-desktop-phase): the daemon ports and
+- [The ports catalogue](../06-reference/ports-catalogue.md#srcdaemons): the daemon ports and
   their versions
 - [Filesystem and IPC](../06-reference/filesystem-and-ipc.md): every socket and verb in full
 - [Glossary](../06-reference/glossary.md): box, graft, pack, surface and the other terms used here

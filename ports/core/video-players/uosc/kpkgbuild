@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = uosc
+version     = 5.13.0
+release     = 1
+source      = https://github.com/tomasklaen/uosc/archive/refs/tags/$version.tar.gz
+sha256      = 18fb38bd7d3ff3ca03f394b4d57daaa5a3f68051dcc31fdbfff3fbc874468913  uosc-5.13.0.tar.gz
+sha256      = 177c3719236eb75b15c473687ff1a335ad1420952efb06d67563f0703f53ddf4  uosc-vendor-5.13.0.tar.xz
+description = Minimalist, proximity-based on-screen controls, menus and playlist for mpv
+homepage    = https://github.com/tomasklaen/uosc
+depends     = go mpv wl-clipboard
+vendoring   = go

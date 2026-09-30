@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = audacious
+version     = 4.6.1
+release     = 1
+source      = https://distfiles.audacious-media-player.org/$name-$version.tar.bz2
+sha256      = 62a5a609267eca7f6e3ce52ef6f42d5618d2961e3b4ddc227c6a5859026965d9  audacious-4.6.1.tar.bz2
+description = Playlist-oriented music player — Qt 6 interface, MPRIS on the session bus
+homepage    = https://audacious-media-player.org/
+depends     = meson ninja pkgconf gettext glib qt6-qtbase qt6-qtsvg qt6-qtwayland libarchive

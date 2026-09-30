@@ -107,6 +107,16 @@ typedef struct ResPage {
 	 */
 	void (*motion)(int mx, int my);
 	void (*release)(void);
+	/*
+	 * THE PAGE'S ONE NUMBER, for a page that has one — "37%", "62°C" — or
+	 * NULL. Where the pixel layer is up the frame draws it as display text
+	 * two rows high at the right of the band, the figure read from across
+	 * the room; the headline beside the title still says it in words. On a
+	 * terminal and in a dump it is not drawn at all, so a page's cells are
+	 * the same with or without one. Run after `headline`, and it may answer
+	 * NULL on a frame with nothing to show.
+	 */
+	const char *(*figure)(void);
 } ResPage;
 
 extern const ResPage RES_PAGES[RP_NPAGES];
@@ -189,9 +199,12 @@ const char *res_temp(double celsius);		/* honours fahrenheit    */
 const char *res_counter(unsigned long long v);
 const char *res_none(void);
 const char *res_cpu_headline(void);
+const char *res_cpu_figure(void);
 const char *res_mem_headline(void);
+const char *res_mem_figure(void);
 void res_sensor_prepare(void);
 const char *res_sensor_headline(void);
+const char *res_sensor_figure(void);
 void res_draw_sensors(int x, int y, int w, int h);
 const char *res_proc_headline(void);
 void res_draw_procs(int x, int y, int w, int h);
@@ -236,18 +249,48 @@ void res_draw_energy(int x, int y, int w, int h);
 int  res_energy_key(int k);
 void res_gpu_prepare(void);
 const char *res_gpu_headline(void);
+const char *res_gpu_figure(void);
 void res_draw_gpu(int x, int y, int w, int h);
 void res_batt_prepare(void);
 const char *res_batt_headline(void);
+const char *res_batt_figure(void);
 void res_draw_batt(int x, int y, int w, int h);
 void res_theme_from_cache(void);
+/* One sample's value as the reading beside a chart says it. */
+typedef void (*ResFmt)(double v, char *out, size_t n);
+/* `id` names the chart's tile: stable, and unique among this program's
+ * charts. With `fmt`, the chart answers the pointer resting on it and a
+ * keyboard scrub (res_graph_scrub): the sample under either is marked, and
+ * the reading says how long ago it was and what it read. */
 void res_graph(int id, KRect r, const KprHist *h, const char *label,
-	       const char *reading);
-/* A mirrored pair on ONE shared axis: `a` above the midline in the accent,
- * `b` below it in the secondary. Summing the two hides the direction, which
- * is the only thing anybody opens a rate chart to see. */
+	       const char *reading, ResFmt fmt);
+/* Where the pointer is, in screen cells; (-1, -1) is off the window. */
+void res_graph_pointer(int mx, int my);
+/* `←` starts a scrub on chart `id` at its newest sample and steps it back,
+ * `→` steps it forward and off the newest end. 1 when the key was taken. A
+ * scrub on a chart the last frame did not draw ends at the sweep. */
+int res_graph_scrub(int id, const KprHist *h, int key);
+/* Esc's rung for it (page.c): a scrub is up, and ending it. */
+int res_graph_scrubbing(void);
+void res_graph_scrub_end(void);
+/* ←, → on the CPU and Memory pages: the scrub, on each page's first chart. */
+int res_cpu_key(int k);
+int res_mem_key(int k);
+/* Percent, whole: the processor and memory charts' reading. */
+void res_fmt_pct(double v, char *out, size_t n);
+/* A pair on ONE shared axis: `a` above in the accent, `b` below in the
+ * secondary — mirrored about a midline as pixels, two stacked bands as cells.
+ * Summing the two hides the direction, which is the only thing anybody opens
+ * a rate chart to see. */
 void res_graph2(int id, KRect r, const KprHist *a, const KprHist *b,
 		const char *label, const char *reading);
+/* After every flush: a chart not drawn in that frame gives its tile back,
+ * and a scrub on one ends. */
+void res_graph_sweep(void);
+/* At start and on a reload, with the frame invalidated: every chart
+ * re-rasterises, every icon is retinted, and `icons` decides again whether
+ * charts are pixels. */
+void res_graph_reset(void);
 void res_draw_cpu(int x, int y, int w, int h);
 
 /* ── the detail page ─────────────────────────────────────────────────────

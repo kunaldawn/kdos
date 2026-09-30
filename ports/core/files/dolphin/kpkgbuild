@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dolphin
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f5635feff84e7070d35342d6defb46e9b42ff1c44e3896635f4bd9f43da947c1  dolphin-26.08.1.tar.xz
+description = File manager — tabs, split views, places, previews, a terminal panel and devices
+homepage    = https://apps.kde.org/dolphin/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtmultimedia kcmutils knewstuff kcoreaddons ki18n kdbusaddons kbookmarks kconfig kio kparts solid kiconthemes kcompletion ktextwidgets knotifications kcrash kwindowsystem kwidgetsaddons kcodecs kguiaddons kcolorscheme kfilemetadata baloo baloo-widgets kdoctools musl-fts konsole kio-extras udisks2 breeze-icons librsvg

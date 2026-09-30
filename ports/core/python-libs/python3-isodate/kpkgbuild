@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-isodate
+version     = 0.7.2
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/i/isodate/isodate-$version.tar.gz
+sha256      = 4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6  python3-isodate-0.7.2.tar.gz
+description = isodate — ISO 8601 date, time and duration parsing and formatting for Python
+homepage    = https://github.com/gweis/isodate
+depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-wheel

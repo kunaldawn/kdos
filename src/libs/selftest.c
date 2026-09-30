@@ -30,6 +30,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "kbase.h"
@@ -1184,10 +1185,10 @@ static void test_pkg(void)
 
 	/* Ownership, which is what a file conflict is actually about.
 	 *
-	 * Phases 0 and 1 install tar, musl, binutils and gcc by hand with
-	 * `make DESTDIR=$SYSROOT install`, so those files exist and NO
-	 * database entry owns them. Phase 2 — the self-hosting bootstrap —
-	 * then rebuilds exactly those packages with kpkg. If an unowned file
+	 * 00_cross and 10_bootstrap install tar, musl, binutils and gcc by
+	 * hand with `make DESTDIR=$SYSROOT install`, so those files exist and
+	 * NO database entry owns them. 20_selfhost — the self-hosting
+	 * bootstrap — then rebuilds exactly those packages with kpkg. If an unowned file
 	 * counts as a conflict the bootstrap cannot run at all, which is what
 	 * `tar` failed on. A file another PACKAGE owns is still a conflict. */
 	char *dbdir = kb_path_join(dir, "db");
@@ -1298,6 +1299,205 @@ static void test_pkg(void)
 
 	kb_rmtree(dir);
 	free(repo);
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+static void put_recipe(const char *root, const char *rel)
+{
+	char *d = kb_path_join(root, rel);
+	kb_mkdir_p(d);
+	char *r = kb_path_join(d, "kpkgbuild");
+	kb_write_file(r, "name = x\nversion = 1\nrelease = 1\n");
+	free(r);
+	free(d);
+}
+
+/* Whether `fn` makes the process exit 1, run in a child. kb_die is exit(1)
+ * and a leak check at exit would turn that into its own status, so the child
+ * leaves through _exit from an exit handler registered after the sanitiser's
+ * — handlers run last-registered first. */
+static void die_exit(void)
+{
+	_exit(1);
+}
+
+static int dies(void (*fn)(const KpConf *), const KpConf *c)
+{
+	fflush(stdout);
+	fflush(stderr);
+	pid_t pid = fork();
+	if (pid == 0) {
+		int nul = open("/dev/null", O_WRONLY);
+		if (nul >= 0)
+			dup2(nul, 2);
+		atexit(die_exit);
+		fn(c);
+		_exit(0);
+	}
+	int st = 0;
+	if (pid < 0 || waitpid(pid, &st, 0) < 0)
+		return 0;
+	return WIFEXITED(st) && WEXITSTATUS(st) == 1;
+}
+
+static void lookup_dup(const KpConf *c)
+{
+	free(kp_port_dir(c, "dup"));
+}
+
+static void walk_all(const KpConf *c)
+{
+	kb_strv_free(kp_all_ports(c, NULL));
+}
+
+/*
+ * The shelved ports tree. `ports/core/<shelf>/<name>/` holds the upstream
+ * ports and every `src/<area>/<name>/` holds its ports flat, and one resolver
+ * reads both. Each fixture here is a failure that is SILENT without the rule
+ * it pins: a walker that does not descend sees zero ports and reports success,
+ * a duplicate picks one of two recipes, a nested port is never found.
+ */
+static void test_shelves(void)
+{
+	printf("libkpkg shelves\n");
+
+	char dir[] = "/tmp/kdos-selftest-shelf.XXXXXX";
+	ok(mkdtemp(dir) != NULL, "scratch directory");
+
+	char *core = kb_path_join(dir, "core");
+	put_recipe(core, "archiver/zlib");
+	put_recipe(core, "base/musl");
+	put_recipe(core, "net/curl");
+	put_recipe(core, "loose");		/* flat beside the shelves */
+	put_recipe(core, ".cache/hidden");	/* never a shelf */
+	char *emp = kb_path_join(core, "empty/notes");
+	kb_mkdir_p(emp);		/* a shelf with no ports, only a stray */
+	free(emp);
+	emp = kb_path_join(core, "empty/README");
+	kb_write_file(emp, "nothing filed here yet\n");
+	free(emp);
+	char *flat = kb_path_join(dir, "flat");
+	put_recipe(flat, "kdos-tools");
+	put_recipe(flat, "zlib");		/* shadows core's: first repo wins */
+
+	KpConf *c = kb_calloc(1, sizeof(*c));
+	char list[1200];
+	snprintf(list, sizeof(list), "%s %s", core, flat);
+	ok(kp_conf_set_repos(c, list) == 2, "two repositories");
+	ok(c->shelf_cached[0], "the shelf list is cached");
+
+	char err[1600], *pd = NULL, *want = NULL;
+	ok(kp_port_find(c, "curl", &pd, err, sizeof(err)) == 1,
+	   "a shelved port resolves");
+	want = kb_path_join(core, "net/curl");
+	eq_str(pd, want, "at <repo>/<shelf>/<name>");
+	free(want);
+	free(pd);
+	pd = kp_port_dir(c, "loose");
+	want = kb_path_join(core, "loose");
+	eq_str(pd, want, "a flat port beside the shelves resolves");
+	free(want);
+	free(pd);
+	pd = kp_port_dir(c, "kdos-tools");
+	want = kb_path_join(flat, "kdos-tools");
+	eq_str(pd, want, "a flat repository resolves");
+	free(want);
+	free(pd);
+	pd = kp_port_dir(c, "zlib");
+	want = kb_path_join(core, "archiver/zlib");
+	eq_str(pd, want, "the first repository holding a name wins it");
+	free(want);
+	free(pd);
+	ok(kp_port_find(c, "archiver", &pd, err, sizeof(err)) == 0,
+	   "a shelf is not a port");
+	ok(kp_port_find(c, "empty", &pd, err, sizeof(err)) == 0,
+	   "nor is a shelf with no ports");
+	ok(kp_port_find(c, "hidden", &pd, err, sizeof(err)) == 0,
+	   "a dot-directory is never a shelf");
+	ok(kp_port_find(c, "nope", &pd, err, sizeof(err)) == 0 && !pd,
+	   "a missing port is not found");
+
+	int n = 0;
+	char **all = kp_ports_scan(c, &n, err, sizeof(err));
+	ok(all && n == 5, "the walker reads both depths of every repository");
+	if (all && n == 5) {
+		eq_str(all[0], "curl", "sorted across shelves");
+		eq_str(all[4], "zlib", "and a shadowed name counted once");
+	}
+	kb_strv_free(all);
+
+	/* The cache is only a speed-up: a KpConf whose repos were written by
+	 * hand lists the shelves live and answers the same. */
+	KpConf *live = kb_calloc(1, sizeof(*live));
+	live->nrepos = 1;
+	kb_strlcpy(live->repos[0], core, sizeof(live->repos[0]));
+	pd = kp_port_dir(live, "musl");
+	want = kb_path_join(core, "base/musl");
+	eq_str(pd, want, "an uncached repository resolves the same");
+	free(want);
+	free(pd);
+
+	/* A NAME FILED TWICE IS AN ERROR, never a silent first-wins. */
+	char *twice = kb_path_join(dir, "twice");
+	put_recipe(twice, "base/dup");
+	put_recipe(twice, "net/dup");
+	KpConf *d2 = kb_calloc(1, sizeof(*d2));
+	kp_conf_set_repos(d2, twice);
+	ok(kp_port_find(d2, "dup", &pd, err, sizeof(err)) == -1 && !pd,
+	   "a name on two shelves is refused");
+	ok(strstr(err, "base/dup") && strstr(err, "net/dup"),
+	   "naming both paths");
+	ok(!kp_ports_scan(d2, &n, err, sizeof(err)) && strstr(err, "dup"),
+	   "and the walker refuses it too");
+	ok(dies(lookup_dup, d2), "kp_port_dir dies rather than pick one");
+	ok(dies(walk_all, d2), "kp_all_ports dies rather than skip one");
+
+	char *mixed = kb_path_join(dir, "mixed");
+	put_recipe(mixed, "dup");
+	put_recipe(mixed, "base/dup");
+	kp_conf_set_repos(d2, mixed);
+	ok(kp_port_find(d2, "dup", &pd, err, sizeof(err)) == -1,
+	   "a name flat and shelved is refused");
+	ok(!kp_ports_scan(d2, &n, err, sizeof(err)),
+	   "by the walker as well");
+
+	/* One shelf level and no more: a port below it is found by nothing. */
+	char *deep = kb_path_join(dir, "deep");
+	put_recipe(deep, "base/group/lost");
+	put_recipe(deep, "base/ok");
+	kp_conf_set_repos(d2, deep);
+	ok(!kp_ports_scan(d2, &n, err, sizeof(err)) && strstr(err, "nested"),
+	   "a port nested below its shelf is an error");
+
+	/* KP_MAX_REPOS truncates, and says so on stderr. */
+	char many[4096] = "";
+	for (int i = 0; i < KP_MAX_REPOS + 2; i++)
+		snprintf(many + strlen(many), sizeof(many) - strlen(many),
+			 "%s%s/r%d", i ? " " : "", dir, i);
+	fflush(stderr);
+	int saved = dup(2), nul = open("/dev/null", O_WRONLY);
+	if (nul >= 0)
+		dup2(nul, 2);
+	int kept = kp_conf_set_repos(d2, many);
+	if (saved >= 0) {
+		dup2(saved, 2);
+		close(saved);
+	}
+	if (nul >= 0)
+		close(nul);
+	ok(kept == KP_MAX_REPOS, "PORT_REPO stops at KP_MAX_REPOS");
+
+	free(d2);
+	free(live);
+	free(c);
+	free(deep);
+	free(mixed);
+	free(twice);
+	free(flat);
+	free(core);
+	kb_rmtree(dir);
 }
 
 
@@ -1620,9 +1820,12 @@ static void test_build(void)
 	 * is only reachable with a synthetic one. */
 	char dir[] = "/tmp/kdos-selftest-bld.XXXXXX";
 	ok(mkdtemp(dir) != NULL, "scratch directory");
-	char *pd = kb_path_join(dir, "07_evil");
+	char *pd = kb_path_join(dir, "phases/07_evil");
 	kb_mkdir_p(pd);
-	char *env = kb_path_join(dir, "evil.env.sh");
+	char *step = kb_path_join(pd, "00_run.sh");
+	kb_write_file(step, "#!/bin/bash\n");
+	free(step);
+	char *env = kb_path_join(pd, "phase.env");
 	kb_write_file(env,
 		"export KDOS_PHASE_TITLE=\"Evil\"\n"
 		"export CHROOT=1\n"
@@ -1647,12 +1850,15 @@ static void test_build(void)
 	}
 
 	/* A phase with no declared paths is never snapshotted. */
-	char *pd2 = kb_path_join(dir, "08_bare");
+	char *pd2 = kb_path_join(dir, "phases/08_bare");
 	kb_mkdir_p(pd2);
 	n = kbuild_discover(dir, ph, KBUILD_MAX_PHASES);
 	ok(n == 2, "a phase without an env file still discovers");
 	ok(!kbuild_snapshottable(&ph[1]), "no paths means never snapshotted");
 	eq_str(ph[1].title, "bare", "title falls back to the tidied name");
+	/* ...but one with nothing to run is refused, or it reports success. */
+	ok(ph[1].error[0] != 0, "a phase with no list and no step is refused");
+	ok(!ph[0].error[0], "a phase with a step is not");
 
 	/* ----- the build plan ------------------------------------------- */
 
@@ -1702,6 +1908,120 @@ static void test_build(void)
 	ok(pl.nrebuild == 1 && kbuild_plan_forced(&pl, "zlib"),
 	   "rebuilds round-trip");
 	free(pf);
+
+	/* ----- the phase layout ----------------------------------------- */
+
+	char ldir[] = "/tmp/kdos-selftest-lst.XXXXXX";
+	ok(mkdtemp(ldir) != NULL, "scratch directory");
+	/* The script directory is the parent of phases/: a phase directory
+	 * directly under it is not a phase. */
+	char *stray = kb_path_join(ldir, "05_stray");
+	kb_mkdir_p(stray);
+	free(stray);
+	char *f;
+#define LPUT(rel, text) do { f = kb_path_join(ldir, rel); \
+	char *slash = strrchr(f, '/'); *slash = 0; kb_mkdir_p(f); *slash = '/'; \
+	kb_write_file(f, text); free(f); } while (0)
+	/* KDOS_* keys come from phase.env's own text; the file it sources is
+	 * NOT read, so a key written only there is not seen. */
+	LPUT("env/common.env", "export KDOS_PHASE_TITLE=\"Shared\"\n");
+	LPUT("phases/10_one/phase.env",
+	     "source script/env/common.env\n"
+	     "export KDOS_PHASE_DESC=\"own\"\n");
+	/* Out of order on disk, unterminated, commented, and beside files
+	 * that are not part of the list. */
+	LPUT("phases/10_one/packages.d/b.txt", "three\n# four\n  five  ");
+	LPUT("phases/10_one/packages.d/a.txt", "two");
+	LPUT("phases/10_one/packages.d/00-order.txt", "# pinned\none\n");
+	LPUT("phases/10_one/packages.d/README", "not-a-port\n");
+	LPUT("phases/10_one/packages.d/.x.txt", "hidden\n");
+	LPUT("phases/10_one/packages.d/c.sh", "not-a-step\n");
+	LPUT("phases/20_both/packages.txt", "a\n");
+	LPUT("phases/20_both/packages.d/x.txt", "b\n");
+	LPUT("phases/30_nolist/packages.d/README", "x\n");
+	LPUT("phases/40_flat/packages.txt", "solo\n");
+#undef LPUT
+
+	KbuildPhase lp[KBUILD_MAX_PHASES];
+	int ln = kbuild_discover(ldir, lp, KBUILD_MAX_PHASES);
+	ok(ln == 4, "phases are read from phases/ and nowhere else");
+	if (ln == 4) {
+		ok(strstr(lp[0].env_file, "/phases/10_one/phase.env") != NULL,
+		   "the environment is the phase's own phase.env");
+		eq_str(lp[0].desc, "own", "its keys are read");
+		eq_str(lp[0].title, "one", "a sourced file's keys are not");
+		ok(kbuild_is_package_phase(&lp[0]) == 1 && !lp[0].error[0],
+		   "packages.d/ makes a package phase");
+		int nst = 0;
+		kb_strv_free(kbuild_steps(&lp[0], &nst));
+		ok(nst == 0, "and a package phase has no steps");
+		int np = 0;
+		char **pk = kbuild_packages(&lp[0], &np);
+		ok(np == 4, "packages.d/ reads as one list");
+		if (np == 4) {
+			eq_str(pk[0], "one", "files in byte order: 00-order first");
+			eq_str(pk[1], "two", "an unterminated file keeps its last name");
+			eq_str(pk[2], "three", "and the next file its first");
+			eq_str(pk[3], "five", "names are trimmed");
+		}
+		kb_strv_free(pk);
+		int nf = 0;
+		kb_strv_free(kbuild_list_files(&lp[0], &nf));
+		ok(nf == 3, "only packages.d/*.txt is part of the list");
+
+		ok(kbuild_is_package_phase(&lp[1]) == -1,
+		   "packages.txt and packages.d/ together are refused");
+		ok(strstr(lp[1].error, "both") != NULL, "at discovery");
+		ok(strstr(lp[2].error, "no *.txt") != NULL,
+		   "a packages.d/ with no list is refused");
+		pk = kbuild_packages(&lp[3], &np);
+		ok(np == 1 && !strcmp(pk[0], "solo") && !lp[3].error[0],
+		   "a single packages.txt reads");
+		kb_strv_free(pk);
+	}
+
+	/* The port index walks ports/core at both depths through libkpkg, and
+	 * src/system and src/art flat. */
+	put_recipe(ldir, "ports/core/base/musl");
+	put_recipe(ldir, "ports/core/net/curl");
+	put_recipe(ldir, "src/system/kdos-tools");
+	put_recipe(ldir, "src/art/kdos-theme");
+	put_recipe(ldir, "src/desktop/kdos-shell");
+	char perr[512] = "";
+	int npo = 0;
+	char **po = kbuild_ports(ldir, &npo, perr, sizeof(perr));
+	ok(po && npo == 4, "the index sees ports/core, src/system and src/art");
+	kb_strv_free(po);
+	static KbuildPkgRef ref[64];
+	int nref = kbuild_package_index(lp, ln, ldir, ref, 64, perr,
+					sizeof(perr));
+	int solo_seen = 0, shell_seen = 0;
+	for (int i = 0; i < nref; i++) {
+		solo_seen |= !strcmp(ref[i].name, "solo") &&
+			     !strcmp(ref[i].phase, "40_flat");
+		shell_seen |= !strcmp(ref[i].name, "kdos-shell");
+	}
+	ok(solo_seen, "a listed name joins the index with its phase");
+	ok(!shell_seen, "src/desktop reaches it only through a list");
+	char *pc = kb_path_join(ldir, "ports/core");
+	kb_rmtree(pc);
+	kb_mkdir_p(pc);
+	free(pc);
+	perr[0] = 0;
+	fflush(stderr);
+	int esaved = dup(2), enul = open("/dev/null", O_WRONLY);
+	if (enul >= 0)
+		dup2(enul, 2);
+	po = kbuild_ports(ldir, &npo, perr, sizeof(perr));
+	if (esaved >= 0) {
+		dup2(esaved, 2);
+		close(esaved);
+	}
+	if (enul >= 0)
+		close(enul);
+	ok(!po && perr[0], "an empty ports/core is an error, not an empty list");
+	kb_strv_free(po);
+	kb_rmtree(ldir);
 
 	/* ----- the JSON manifests carry -------------------------------- */
 
@@ -2202,6 +2522,786 @@ static void test_slider(void)
  * press MOVES the caret, a press on the row it is already on PICKS, the wheel
  * walks, and the right button is Back.
  */
+/* ── sortable, right-aligned and resizable table columns ─────────────── */
+
+static const char *tc_name[] = { "pear", "apple", "fig", "apple", "kiwi" };
+static const int tc_size[] = { 30, 5, 30, 12, 7 };
+
+static int tc_cmp(int a, int b, int col, void *user)
+{
+	(void)user;
+	if (col == 0)
+		return strcmp(tc_name[a], tc_name[b]);
+	return (tc_size[a] > tc_size[b]) - (tc_size[a] < tc_size[b]);
+}
+
+static const KtuiCol tc_col[] = {
+	{ "Name", 8, KT_COL_SORT | KT_COL_RESIZE },
+	{ "Size", 6, KT_COL_SORT | KT_COL_RIGHT },
+	{ "Note", 0, 0 },
+};
+
+static int tc_order[5];
+
+static void tc_cell(int idx, int col, int x, int y, int w, int fg, int bg,
+		    void *user)
+{
+	char n[16];
+	int rec = tc_order[idx];
+
+	(void)user;
+	if (col == 1) {
+		snprintf(n, sizeof(n), "%d", tc_size[rec]);
+		ktui_table_text(&tc_col[1], x, y, w, n, fg, bg);
+	} else if (col == 0) {
+		ktui_table_text(&tc_col[0], x, y, w, tc_name[rec], fg, bg);
+	}
+}
+
+static uint32_t tc_ch(int x, int y)
+{
+	int w = 0, h = 0;
+	const KtuiCell *c = ktui_draw_cells(&w, &h);
+
+	return x < w && y < h ? c[y * w + x].ch : 0;
+}
+
+static const KtuiCell *tc_cellat(int x, int y)
+{
+	int w = 0, h = 0;
+	const KtuiCell *c = ktui_draw_cells(&w, &h);
+
+	return &c[y * w + x];
+}
+
+static void test_table_columns(void)
+{
+	KRect r = krect(0, 0, 30, 8);	/* 2 header rows, 6 body rows */
+	KtuiTable t = { 0 };
+	KtuiEvent ev = { 0 };
+	uint32_t up, down;
+
+	ktui_utf8_next(ktui_glyph[KT_G_UP], &up);
+	ktui_utf8_next(ktui_glyph[KT_G_DOWN], &down);
+	ktui_offscreen_init(30, 8);
+	ktui_draw_init();
+	for (int i = 0; i < 5; i++)
+		tc_order[i] = i;
+
+	/* ── a zeroed table: unsorted, unresized, the accent ─────── */
+	ktui_table_draw(r, &t, 5, tc_col, 3, tc_cell, NULL, NULL, -1);
+	ok(tc_ch(5, 0) == ' ' && tc_ch(4, 0) != up,
+	   "an unsorted table draws no sort marker");
+	eq_int((int)tc_ch(14, 2), '0',
+	       "a KT_COL_RIGHT cell ends at its column's edge");
+	eq_int((int)tc_ch(11, 2), ' ', "and leaves the left of it empty");
+	eq_int((int)tc_ch(14, 0), 'e',
+	       "and so does a KT_COL_RIGHT title");
+	eq_int(tc_cellat(3, 2)->bg, KT_ACCENT,
+	       "a zeroed table lights its selection with the accent");
+
+	/* ── a press on a sortable title sorts; again turns it round ── */
+	ev.type = KT_EVT_MOUSE;
+	ev.btn = KT_MB_LEFT;
+	ev.press = KT_MP_PRESS;
+	ev.mx = 2;
+	ev.my = 0;
+	t.sel = 0;		/* "pear" */
+	eq_int(ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL),
+	       KTUI_TABLE_SORT, "a press on a sortable title sorts");
+	ok(t.sort == 1 && !t.desc, "by that column, rising");
+	ktui_table_sort(&t, tc_order, 5, tc_cmp, NULL);
+	ok(tc_order[0] == 1 && tc_order[1] == 3 && tc_order[2] == 2 &&
+	   tc_order[3] == 4 && tc_order[4] == 0,
+	   "the order rises by name, and equal names keep their index order");
+	eq_int(t.sel, 4, "the selection follows its record");
+	{
+		int rev[5] = { 4, 3, 2, 1, 0 };
+		KtuiTable u = { 0 };
+
+		u.sort = 1;
+		ktui_table_sort(&u, rev, 5, tc_cmp, NULL);
+		ok(rev[0] == 1 && rev[1] == 3,
+		   "a tie is broken by index, not by where the array had it");
+	}
+	eq_int(ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL),
+	       KTUI_TABLE_SORT, "a second press on the same title");
+	ok(t.sort == 1 && t.desc, "turns the order round");
+	ktui_table_sort(&t, tc_order, 5, tc_cmp, NULL);
+	ok(tc_order[0] == 0 && tc_order[3] == 1 && tc_order[4] == 3,
+	   "falling by name, and equal names still keep their index order");
+	eq_int(t.sel, 0, "and the selection is still on pear");
+
+	ktui_table_draw(r, &t, 5, tc_col, 3, tc_cell, NULL, NULL, -1);
+	ok(tc_ch(5, 0) == down, "the sorted title carries a falling arrow");
+	ok(tc_cellat(0, 0)->fg == KT_TEXT && tc_cellat(5, 0)->fg == KT_ACCENT,
+	   "the title lifts to KT_TEXT and the arrow wears the accent");
+
+	ev.mx = 20;
+	eq_int(ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL),
+	       KTUI_TABLE_NONE, "a title that does not sort ignores a press");
+	ev.mx = 12;
+	eq_int(ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL),
+	       KTUI_TABLE_SORT, "a right-aligned sortable title sorts too");
+	ktui_table_sort(&t, tc_order, 5, tc_cmp, NULL);
+	ok(tc_order[0] == 1 && tc_order[1] == 4 && tc_order[2] == 3 &&
+	   tc_order[3] == 0 && tc_order[4] == 2,
+	   "rising by size, the tie at 30 broken by index");
+	ktui_table_draw(r, &t, 5, tc_col, 3, tc_cell, NULL, NULL, -1);
+	ok(tc_ch(9, 0) == up && tc_ch(11, 0) == 'S',
+	   "a right-aligned title's arrow stands before it");
+
+	/* ── the keyboard reaches every sort ─────────────────────── */
+	{
+		KtuiTable k = { 0 };
+		int seen = 0;
+
+		ok(ktui_table_sort_next(&k, tc_col, 3) && k.sort == 1 &&
+		   !k.desc, "the sort key starts on the first sortable column");
+		ok(ktui_table_sort_next(&k, tc_col, 3) && k.sort == 1 && k.desc,
+		   "then turns it round");
+		ok(ktui_table_sort_next(&k, tc_col, 3) && k.sort == 2 &&
+		   !k.desc, "then moves to the next sortable column");
+		ktui_table_sort_next(&k, tc_col, 3);
+		ktui_table_sort_next(&k, tc_col, 3);
+		ok(k.sort == 1 && !k.desc,
+		   "and skips the column that does not sort on the way round");
+		for (int i = 0; i < 8; i++) {
+			ktui_table_sort_next(&k, tc_col, 3);
+			seen |= 1 << ((k.sort - 1) * 2 + k.desc);
+		}
+		eq_int(seen, 0xf, "four presses visit all four orders");
+	}
+
+	/* ── a header edge follows the pointer ───────────────────── */
+	ev.mx = 8;		/* the cell right of "Name" (x 0, width 8) */
+	ev.my = 1;
+	ev.press = KT_MP_PRESS;
+	eq_int(ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL),
+	       KTUI_TABLE_NONE, "a press on a resizable edge takes hold of it");
+	eq_int(t.drag, 1, "and holds column 0");
+	ev.press = KT_MP_DRAG;
+	ev.btn = KT_MB_MOVE;
+	ev.mx = 12;
+	eq_int(ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL),
+	       KTUI_TABLE_RESIZED, "a motion while held resizes");
+	eq_int(t.w[0], 12, "to where the pointer is");
+	ev.mx = 1;
+	ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL);
+	eq_int(t.w[0], 4, "never narrower than its title");
+	ev.mx = 29;
+	ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL);
+	eq_int(t.w[0], 21, "never so wide that the remainder column is gone");
+	{
+		int x[3], cw[3], used = 0;
+		KtuiCol c[3] = { tc_col[0], tc_col[1], tc_col[2] };
+
+		c[0].width = t.w[0];
+		ktui_table_layout(c, 3, 30, x, cw);
+		for (int i = 0; i < 3; i++)
+			used += cw[i] + (i ? 1 : 0);
+		ok(used <= 30 && cw[2] == 1,
+		   "at the widest the row still fits the rect");
+	}
+	ev.press = KT_MP_RELEASE;
+	ev.btn = KT_MB_LEFT;
+	ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL);
+	eq_int(t.drag, 0, "the release lets go");
+	ev.press = KT_MP_DRAG;
+	ev.btn = KT_MB_MOVE;
+	ev.mx = 10;
+	eq_int(ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL),
+	       KTUI_TABLE_NONE, "and a motion after it moves nothing");
+	ev.press = KT_MP_PRESS;
+	ev.btn = KT_MB_LEFT;
+	ev.mx = 15;		/* right of Size, which is not resizable */
+	ev.my = 1;
+	ktui_table_event(r, &t, 5, 6, 3, tc_col, &ev, NULL, NULL);
+	eq_int(t.drag, 0, "an edge without KT_COL_RESIZE is not a handle");
+
+	/* ── a widened column in a table that has since narrowed ─── */
+	{
+		KRect n = krect(0, 0, 18, 8);
+		int past = 0, held = 0;
+
+		for (int y = 0; y < 8; y++)
+			for (int x = 0; x < 30; x++)
+				ktui_draw_text(x, y, 1, "X", KT_TEXT, KT_BG,
+					       KT_A_NONE);
+		ktui_table_draw(n, &t, 5, tc_col, 3, tc_cell, NULL, NULL, -1);
+		for (int y = 0; y < 8; y++)
+			for (int x = 18; x < 30; x++)
+				past += tc_ch(x, y) != 'X';
+		eq_int(past, 0, "a narrowed table writes nothing right of its rect");
+		eq_int((int)tc_ch(17, 0), 'N', "and keeps its remainder column");
+		ev.press = KT_MP_PRESS;
+		ev.btn = KT_MB_LEFT;
+		ev.my = 1;
+		for (int x = 0; x < 18 && !held; x++) {
+			t.drag = 0;
+			ev.mx = x;
+			ktui_table_event(n, &t, 5, 6, 3, tc_col, &ev, NULL, NULL);
+			held = t.drag ? x : 0;
+		}
+		eq_int(held, 9, "whose widened edge stays inside it to be held");
+		t.drag = 0;
+		eq_int(t.w[0], 21, "and the dragged width is kept for a wider rect");
+	}
+
+	/* ── page, selection rule and inset ──────────────────────── */
+	{
+		KtuiTable q = { 0 };
+		int hit;
+
+		q.page = KT_SURFACE;
+		q.selrule = 1;
+		q.inset = 1;
+		for (int i = 0; i < 5; i++)
+			tc_order[i] = i;
+		ktui_table_draw(r, &q, 5, tc_col, 3, tc_cell, NULL, NULL, 3);
+		ok(tc_cellat(0, 2)->bg == KT_DIM && tc_cellat(1, 2)->fg == KT_TEXT,
+		   "selrule fills the selected row KT_DIM with KT_TEXT on it");
+		ok(tc_cellat(0, 5)->bg == KT_SURFACE,
+		   "and draws no hover plate");
+		ok(tc_cellat(0, 7)->bg == KT_SURFACE &&
+		   tc_cellat(29, 0)->bg == KT_SURFACE,
+		   "the rows and the header stand on the page slot");
+		eq_int((int)tc_ch(1, 2), 'p', "the inset moves the columns in");
+		eq_int((int)tc_ch(1, 0), 'N', "the titles with them");
+		ev.mx = 9;
+		ev.my = 1;
+		ev.press = KT_MP_PRESS;
+		ktui_table_event(r, &q, 5, 6, 3, tc_col, &ev, NULL, NULL);
+		eq_int(q.drag, 1, "and the edge handles with them");
+		ev.mx = 0;
+		ev.my = 4;
+		hit = ktui_table_event(r, &q, 5, 6, 3, tc_col, &ev, NULL, NULL);
+		ok(hit == KTUI_TABLE_MOVED && q.sel == 2,
+		   "a press in the inset still lands on its row");
+	}
+}
+
+/* ── ids that do not move ─────────────────────────────────────────────── */
+
+static int idg_ids[8];
+
+/* One page: a check, a group drawn only while `on`, a field, a button. */
+static void idg_page(KtuiEvent *ev, int on, int scoped, char *a, char *b,
+		     char *x)
+{
+	KRect r = krect(0, 0, 20, 1);
+	int n = 0;
+
+	ktui_frame_begin(ev);
+	idg_ids[n++] = ktui_id_base();
+	ktui_button(krect(0, 1, 6, 1), "Top", 1, 0);
+	if (scoped)
+		ktui_id_push("group");
+	if (on) {
+		idg_ids[n++] = ktui_id_base();
+		ktui_input(r, a, 32, 0, NULL);
+		idg_ids[n++] = ktui_id_base();
+		ktui_input(r, b, 32, 0, NULL);
+	}
+	if (scoped)
+		ktui_id_pop();
+	idg_ids[6] = ktui_id_base();
+	ktui_input(r, x, 32, 0, NULL);
+	idg_ids[7] = ktui_id_base();
+	ktui_button(krect(0, 3, 6, 1), "Next", 1, 1);
+	ktui_frame_end();
+}
+
+static void test_ktui_ids(void)
+{
+	KtuiEvent ev;
+	char a[32] = "", b[32] = "", x[32] = "";
+
+	printf("libktui ids\n");
+	ktui_offscreen_init(40, 6);
+	ktui_draw_init();
+	ev.type = KT_EVT_NONE;
+
+	/* ── positional ids are what they were ───────────────────── */
+	feed(&ev, 0);
+	ev.type = KT_EVT_NONE;
+	idg_page(&ev, 0, 0, a, b, x);
+	ok(idg_ids[0] == 0 && idg_ids[6] == 1 && idg_ids[7] == 2,
+	   "at depth 0 the n-th control is id n");
+	idg_page(&ev, 1, 0, a, b, x);
+	eq_int(idg_ids[6], 3,
+	       "so an unscoped group renumbers the field after it");
+
+	/* ── a scoped group leaves every id after it alone ───────── */
+	idg_page(&ev, 0, 1, a, b, x);
+	int x_off = idg_ids[6], next_off = idg_ids[7];
+	idg_page(&ev, 1, 1, a, b, x);
+	ok(idg_ids[6] == x_off && idg_ids[7] == next_off,
+	   "a scoped group drawn or not, the field and button after it "
+	   "keep their ids");
+	ok(idg_ids[1] >= KTUI_ID_HASHED && idg_ids[2] >= KTUI_ID_HASHED &&
+	   idg_ids[1] != idg_ids[2],
+	   "the group's own ids are hashed, distinct, and above chrome");
+	int ga = idg_ids[1];
+	idg_page(&ev, 1, 1, a, b, x);
+	eq_int(idg_ids[1], ga, "and the same on every frame");
+
+	/* ── the caret stays with its field ──────────────────────── */
+	kb_strlcpy(x, "abc", sizeof(x));
+	ev.type = KT_EVT_NONE;
+	idg_page(&ev, 0, 1, a, b, x);
+	ktui_focus_set(x_off);
+	feed(&ev, KT_K_END);
+	idg_page(&ev, 0, 1, a, b, x);
+	feed(&ev, KT_K_LEFT);
+	idg_page(&ev, 0, 1, a, b, x);
+	feed(&ev, KT_K_ENTER);	/* passed: nothing typed, nothing moved */
+	idg_page(&ev, 1, 1, a, b, x);
+	ktui_focus_set(x_off);
+	feed(&ev, 'Z');
+	idg_page(&ev, 1, 1, a, b, x);
+	eq_str(x, "abZc",
+	       "the field keeps its caret across the group appearing");
+	ok(!a[0] && !b[0], "and the group's fields took nothing");
+
+	/* ── Tab walks the ring in drawn order ───────────────────── */
+	ev.type = KT_EVT_NONE;
+	idg_page(&ev, 1, 1, a, b, x);	/* resolve onto this layout */
+	ktui_focus_set(0);
+	feed(&ev, KT_K_TAB);
+	idg_page(&ev, 1, 1, a, b, x);
+	eq_int(ktui_focus_get(), idg_ids[1], "Tab from the top reaches the group");
+	idg_page(&ev, 1, 1, a, b, x);
+	eq_int(ktui_focus_get(), idg_ids[2], "then its second field");
+	idg_page(&ev, 1, 1, a, b, x);
+	eq_int(ktui_focus_get(), idg_ids[6], "then the field after it");
+	idg_page(&ev, 1, 1, a, b, x);
+	idg_page(&ev, 1, 1, a, b, x);
+	eq_int(ktui_focus_get(), 0, "and round to the top");
+	feed(&ev, KT_K_BTAB);
+	idg_page(&ev, 1, 1, a, b, x);
+	eq_int(ktui_focus_get(), idg_ids[7], "Shift+Tab goes round backwards");
+
+	/* ── a focused control that goes away ────────────────────── */
+	ktui_focus_set(idg_ids[2]);
+	ev.type = KT_EVT_NONE;
+	idg_page(&ev, 1, 1, a, b, x);	/* seen at ring position 2 */
+	idg_page(&ev, 0, 1, a, b, x);
+	eq_int(ktui_focus_get(), idg_ids[7],
+	       "focus on a vanished control goes to what stands in its place");
+	ktui_focus_set(99);
+	idg_page(&ev, 0, 1, a, b, x);
+	eq_int(ktui_focus_get(), idg_ids[7],
+	       "a positional focus past the page lands on the last control");
+
+	/* ── named ids ───────────────────────────────────────────── */
+	{
+		int s1, s2, s3, s4, s5, s6, s7, s8, base;
+
+		ktui_frame_begin(&ev);
+		s1 = ktui_id_str("a");
+		s2 = ktui_id_str("b");
+		ktui_id_push("ab");
+		s3 = ktui_id_str("c");
+		base = ktui_id_base();
+		s5 = ktui_id();
+		ktui_id_pop();
+		ktui_id_push("a");
+		s4 = ktui_id_str("bc");
+		ktui_id_pop();
+		ktui_id_push_int(7);
+		s6 = ktui_id_str("a");
+		ktui_id_pop();
+		/* The same four bytes, once a name and once a number: on a
+		 * little-endian machine only the tag keeps the scopes apart. */
+		ktui_id_push("abc");
+		s7 = ktui_id_str("q");
+		ktui_id_pop();
+		ktui_id_push_int((int)0x00636261);
+		s8 = ktui_id_str("q");
+		ktui_id_pop();
+		ktui_frame_end();
+		ok(s1 != s2 && s1 >= KTUI_ID_HASHED,
+		   "two names are two hashed ids");
+		ok(s3 != s4, "a scope and a name never run into each other");
+		ok(s6 != s1, "a numbered scope names its own ids");
+		ok(s7 != s8, "a named scope and a numbered one never meet");
+		eq_int(base, s5,
+		       "inside a scope ktui_id_base is the id ktui_id takes next");
+		ktui_frame_begin(&ev);
+		ok(ktui_id_str("a") == s1, "a name is the same id every frame");
+		ktui_frame_end();
+	}
+
+	/* ── the state store ─────────────────────────────────────── */
+	{
+		int *p, *q;
+		int n = 0, full = 0;
+
+		ktui_frame_begin(&ev);
+		p = ktui_state(KTUI_ID_HASHED + 12345, sizeof(int));
+		ok(p && *p == 0, "a first record is zeroed");
+		*p = 42;
+		ktui_frame_end();
+		ktui_frame_begin(&ev);
+		q = ktui_state(KTUI_ID_HASHED + 12345, sizeof(int));
+		ok(q == p && *q == 42, "and handed back on the next frame");
+		q = ktui_state(KTUI_ID_HASHED + 12345, 2 * sizeof(int));
+		ok(q && q[0] == 0, "asked for at another size it starts over");
+		ok(!ktui_state(1, KTUI_STATE_MAX + 1),
+		   "a record over KTUI_STATE_MAX is refused");
+		for (int i = 0; i < 300; i++) {
+			if (!ktui_state(KTUI_ID_HASHED + 50000 + i, 4)) {
+				full = 1;
+				break;
+			}
+			n++;
+		}
+		ok(full && n <= 256, "a store of live records refuses, not grows");
+		ktui_frame_end();
+		for (int i = 0; i < 602; i++) {
+			ktui_frame_begin(&ev);
+			ktui_frame_end();
+		}
+		ktui_frame_begin(&ev);
+		ok(ktui_state(KTUI_ID_HASHED + 99999, 4) != NULL,
+		   "a record unseen for 600 frames gives its slot up");
+		ktui_frame_end();
+	}
+	/* The focus is process state; the tests after this one start from
+	 * the first control, as a surface's first frame does. */
+	ktui_focus_set(0);
+}
+
+/* ── the layout cursor, the splitter and the fold ────────────────────── */
+
+/* The first codepoint of a glyph-table entry, which is what a cell holds. */
+static uint32_t lay_glyph(int g)
+{
+	uint32_t cp = 0;
+
+	ktui_utf8_next(ktui_glyph[g], &cp);
+	return cp;
+}
+
+static void lay_mouse(KtuiEvent *ev, int press, int x, int y)
+{
+	memset(ev, 0, sizeof(*ev));
+	ev->type = KT_EVT_MOUSE;
+	ev->btn = KT_MB_LEFT;
+	ev->press = press;
+	ev->mx = x;
+	ev->my = y;
+}
+
+/* One frame holding one splitter; the panes come back in a and b. */
+static int lay_split(KtuiEvent *ev, KRect r, int stack, int at, int min,
+		     KRect *a, KRect *b)
+{
+	int moved;
+
+	ktui_frame_begin(ev);
+	moved = ktui_split(r, "sp", stack, at, min, a, b);
+	ktui_frame_end();
+	return moved;
+}
+
+/* A fold between a field and a button: its body is a field too. */
+static int fold_after;
+static int lay_fold(KtuiEvent *ev, int def, char *in, char *body)
+{
+	int open;
+
+	ktui_frame_begin(ev);
+	ktui_input(krect(0, 0, 20, 1), in, 32, 0, NULL);
+	open = ktui_fold_begin(0, 1, 30, "More", def);
+	if (open) {
+		ktui_input(krect(2, 2, 20, 1), body, 32, 0, NULL);
+		ktui_fold_end();
+	}
+	fold_after = ktui_id_base();
+	ktui_button(krect(0, 4, 6, 1), "Go", 1, 1);
+	ktui_frame_end();
+	return open;
+}
+
+/* Two copies of one form: written out by hand as the installer's pages were,
+ * and through the cursor. They must be the same cells. */
+static void lay_form_hand(KRect b)
+{
+	int y = b.y;
+
+	ktui_section(b.x, y, b.w, "MACHINE");
+	y++;
+	ktui_draw_text(b.x, y, 16, "hostname", KT_MID, KT_BG, 0);
+	ktui_draw_text(b.x + 17, y, 10, "kdos", KT_TEXT, KT_BG, 0);
+	y += 2;
+	ktui_draw_text(b.x, y, 16, "password", KT_MID, KT_BG, 0);
+	ktui_draw_text(b.x + 17, y, 10, "****", KT_TEXT, KT_BG, 0);
+	y++;
+	ktui_pw_meter(b.x + 17, y, b.w - 17, "hunter22");
+	y++;
+	ktui_note(b.x + 4, y, b.w, "an indented note");
+}
+
+static void lay_form_cursor(KRect b)
+{
+	KtuiLay l;
+	KRect f;
+
+	ktui_lay_begin(&l, b);
+	ktui_lay_section(&l, "MACHINE");
+	f = ktui_lay_field(&l, "hostname", 0);
+	ktui_draw_text(f.x, f.y, 10, "kdos", KT_TEXT, KT_BG, 0);
+	ktui_lay_gap(&l, 1);
+	f = ktui_lay_field(&l, "password", 0);
+	ktui_draw_text(f.x, f.y, 10, "****", KT_TEXT, KT_BG, 0);
+	f = ktui_lay_field(&l, NULL, 0);
+	ktui_pw_meter(f.x, f.y, f.w, "hunter22");
+	ktui_lay_indent(&l, 0);
+	f = ktui_lay_row(&l, 1);
+	ktui_note(f.x, f.y, b.w, "an indented note");
+}
+
+static void test_ktui_layout(void)
+{
+	KtuiEvent ev;
+	KtuiLay l;
+	KRect r, a, b;
+	int w = 0, h = 0;
+
+	printf("libktui layout, splitter and fold\n");
+	ktui_offscreen_init(40, 12);
+	ktui_draw_init();
+	ktui_draw_clear();
+
+	/* ── the cursor ──────────────────────────────────────────── */
+	ktui_lay_begin(&l, krect(2, 1, 36, 10));
+	r = ktui_lay_row(&l, 1);
+	ok(r.x == 2 && r.y == 1 && r.w == 36 && r.h == 1,
+	   "a row is the page's width at the cursor");
+	r = ktui_lay_row(&l, 0);
+	ok(r.y == 2 && r.h == 1, "a row asked for 0 high is one row");
+	ktui_lay_gap(&l, 2);
+	r = ktui_lay_field(&l, "name", 0);
+	ok(r.x == 2 + KTUI_LAY_LABEL + 1 && r.y == 5 && r.h == 1 &&
+	   r.w == 36 - KTUI_LAY_LABEL - 1,
+	   "a field's control starts one cell past the label column");
+	ok(tc_ch(2, 5) == 'n' && tc_cellat(2, 5)->fg == KT_MID,
+	   "and its label is drawn in KT_MID");
+	r = ktui_lay_field(&l, NULL, 8);
+	ok(r.x == 11 && tc_ch(2, 6) == ' ',
+	   "a NULL label draws nothing and keeps the column asked for");
+	ktui_lay_indent(&l, 0);
+	r = ktui_lay_row(&l, 1);
+	ok(r.x == 2 + KTUI_LAY_INDENT && r.w == 36 - KTUI_LAY_INDENT,
+	   "an indent moves the row in and narrows it");
+	ktui_lay_indent(&l, 3);
+	ktui_lay_unindent(&l, 0);
+	r = ktui_lay_row(&l, 1);
+	eq_int(r.x, 5, "and an unindent takes back what it is asked to");
+	ktui_lay_unindent(&l, 99);
+	ktui_lay_indent(&l, 99);
+	r = ktui_lay_left(&l);
+	ok(r.x == 38 && r.w == 0, "an indent stops at the page's width");
+	ktui_lay_unindent(&l, 99);
+	r = ktui_lay_left(&l);
+	ok(r.x == 2 && r.y == 9 && r.h == 2, "what is left is below the cursor");
+	ktui_lay_gap(&l, 5);
+	r = ktui_lay_left(&l);
+	eq_int(r.h, 0, "and nothing once the cursor is past the bottom");
+	r = ktui_lay_row(&l, 1);
+	eq_int(r.y, 14, "a row past the page is still handed out where it is");
+	{
+		static const KtuiCol c[] = {
+			{ NULL, 10, 0 }, { NULL, 0, 0 }, { NULL, 6, 0 },
+		};
+		KRect out[3];
+		int x[3], cw[3], n;
+
+		ktui_lay_begin(&l, krect(2, 0, 36, 4));
+		ktui_lay_indent(&l, 4);
+		n = ktui_lay_cols(&l, c, 3, 2, out);
+		ktui_table_layout(c, 3, 32, x, cw);
+		ok(n == 3 && out[0].x == 6 + x[0] && out[1].x == 6 + x[1] &&
+		   out[2].x == 6 + x[2] && out[1].w == cw[1] &&
+		   out[2].w == 6 && out[1].h == 2 &&
+		   out[2].x + out[2].w == 38,
+		   "columns are the table's columns, across the indented row");
+		eq_int(ktui_lay_left(&l).y, 2, "and take the rows they asked for");
+	}
+	{
+		const KtuiCell *c;
+		KtuiCell hand[40 * 12];
+
+		ktui_draw_clear();
+		lay_form_hand(krect(1, 1, 38, 10));
+		c = ktui_draw_cells(&w, &h);
+		memcpy(hand, c, sizeof(hand));
+		ktui_draw_clear();
+		lay_form_cursor(krect(1, 1, 38, 10));
+		c = ktui_draw_cells(&w, &h);
+		ok(w == 40 && h == 12 && !memcmp(hand, c, sizeof(hand)),
+		   "a form through the cursor draws the cells written by hand");
+	}
+
+	/* ── the splitter ────────────────────────────────────────── */
+	ktui_draw_clear();
+	ev.type = KT_EVT_NONE;
+	r = krect(0, 0, 30, 5);
+	lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+	ok(a.x == 0 && a.w == 10 && b.x == 11 && b.w == 19 && a.h == 5 &&
+	   b.h == 5, "side by side: the first pane, the divider, the rest");
+	ok(tc_ch(10, 0) == lay_glyph(KT_G_VL) && tc_ch(10, 4) == lay_glyph(KT_G_VL) &&
+	   tc_cellat(10, 2)->fg == KT_DIM, "the divider is a KT_DIM rule");
+	lay_mouse(&ev, KT_MP_PRESS, 10, 2);
+	lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+	ok(tc_cellat(10, 2)->fg == KT_ACCENT, "held, it wears the accent");
+	lay_mouse(&ev, KT_MP_DRAG, 15, 4);
+	eq_int(lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b), 1,
+	       "a drag moves it");
+	ok(a.w == 15 && b.x == 16, "to the pointer's column");
+	lay_mouse(&ev, KT_MP_DRAG, 29, 9);
+	lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+	eq_int(b.w, 3, "no further than leaves the second pane its minimum");
+	lay_mouse(&ev, KT_MP_DRAG, 0, 0);
+	lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+	eq_int(a.w, 3, "nor the first");
+	lay_mouse(&ev, KT_MP_DRAG, 12, 0);
+	lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+	lay_mouse(&ev, KT_MP_RELEASE, 12, 0);
+	lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+	ev.type = KT_EVT_NONE;
+	lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+	eq_int(a.w, 12, "let go, it stays where it was left");
+	lay_split(&ev, krect(0, 0, 10, 5), KT_SPLIT_SIDE, 10, 3, &a, &b);
+	eq_int(a.w, 6, "a narrower rect holds it to the minimums");
+	lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+	eq_int(a.w, 12, "and the place comes back as it widens");
+	lay_split(&ev, krect(0, 0, 4, 5), KT_SPLIT_SIDE, 10, 3, &a, &b);
+	ok(a.w == 1 && b.w == 2, "with no room for both it halves what there is");
+	{
+		int id;
+
+		ktui_frame_begin(&ev);
+		id = ktui_id_str("sp");
+		ktui_frame_end();
+		ktui_focus_set(id);
+		feed(&ev, KT_K_RIGHT);
+		eq_int(lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b), 1,
+		       "Right moves the focused divider");
+		ok(a.w == 13 && ktui_consumed(), "a cell, and takes the key");
+		ok(ktui_announce_count() == 1 &&
+		   ktui_announce_at(0)->role == KT_A11Y_SLIDER &&
+		   !strcmp(ktui_announce_at(0)->value, "13"),
+		   "and says where it is");
+		feed(&ev, KT_K_UP);
+		lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+		ok(a.w == 13 && !ktui_consumed(),
+		   "Up is not a side-by-side divider's key");
+		feed(&ev, KT_K_HOME);
+		lay_split(&ev, r, KT_SPLIT_SIDE, 10, 3, &a, &b);
+		eq_int(a.w, 10, "Home puts it back at its default");
+		feed(&ev, KT_K_DOWN);
+		lay_split(&ev, r, KT_SPLIT_STACK, 2, 1, &a, &b);
+		ok(a.h == 3 && a.w == 30 && b.y == 4 && b.h == 1,
+		   "stacked: Down moves a horizontal divider");
+		ok(tc_ch(5, 3) == lay_glyph(KT_G_HL), "drawn as a rule across");
+		feed(&ev, KT_K_HOME);
+		lay_split(&ev, r, KT_SPLIT_SIDE, -8, 3, &a, &b);
+		ok(b.w == 8 && a.w == 21,
+		   "a negative `at` is the second pane's size");
+		feed(&ev, KT_K_LEFT);
+		lay_split(&ev, r, KT_SPLIT_SIDE, -8, 3, &a, &b);
+		ev.type = KT_EVT_NONE;
+		lay_split(&ev, krect(0, 0, 40, 5), KT_SPLIT_SIDE, -8, 3, &a,
+			  &b);
+		eq_int(b.w, 9,
+		       "and a moved one keeps that pane's size as the rect grows");
+		lay_mouse(&ev, KT_MP_PRESS, 30, 1);
+		lay_split(&ev, krect(0, 0, 40, 5), KT_SPLIT_SIDE, -8, 3, &a,
+			  &b);
+		lay_mouse(&ev, KT_MP_DRAG, 25, 1);
+		lay_split(&ev, krect(0, 0, 40, 5), KT_SPLIT_SIDE, -8, 3, &a,
+			  &b);
+		lay_mouse(&ev, KT_MP_RELEASE, 25, 1);
+		lay_split(&ev, krect(0, 0, 40, 5), KT_SPLIT_SIDE, -8, 3, &a,
+			  &b);
+		ev.type = KT_EVT_NONE;
+		lay_split(&ev, krect(0, 0, 50, 5), KT_SPLIT_SIDE, -8, 3, &a,
+			  &b);
+		eq_int(b.w, 14, "so does a dragged one");
+		ktui_focus_set(0);
+	}
+
+	/* ── the fold ────────────────────────────────────────────── */
+	{
+		char in[32] = "", body[32] = "";
+		int after_shut, id;
+
+		ktui_draw_clear();
+		ev.type = KT_EVT_NONE;
+		ok(!lay_fold(&ev, 0, in, body), "a fold starts as it is told");
+		ok(tc_ch(0, 1) == lay_glyph(KT_G_ARROW_R) &&
+		   tc_cellat(0, 1)->fg == KT_ACCENT && tc_ch(2, 1) == 'M',
+		   "shut: the marker, then the title");
+		ok(tc_ch(8, 1) == lay_glyph(KT_G_HL), "and the section rule after it");
+		after_shut = fold_after;
+		lay_mouse(&ev, KT_MP_PRESS, 5, 1);
+		ok(lay_fold(&ev, 0, in, body), "a press opens it");
+		ok(tc_ch(0, 1) == lay_glyph(KT_G_ARROW_DOWN),
+		   "and the marker turns down");
+		eq_int(fold_after, after_shut,
+		       "its body comes and goes without moving the id after it");
+		ev.type = KT_EVT_NONE;
+		ok(lay_fold(&ev, 0, in, body), "it stays open");
+		ktui_frame_begin(&ev);
+		id = ktui_id_str("More");
+		ktui_frame_end();
+		ktui_focus_set(id);
+		feed(&ev, KT_K_LEFT);
+		ok(!lay_fold(&ev, 1, in, body) && ktui_consumed(),
+		   "Left shuts the focused fold, over a default of open");
+		ok(ktui_announce_count() == 1 &&
+		   ktui_announce_at(0)->role == KT_A11Y_BUTTON &&
+		   !strcmp(ktui_announce_at(0)->value, "collapsed"),
+		   "and it says so");
+		feed(&ev, KT_K_LEFT);
+		lay_fold(&ev, 1, in, body);
+		ok(!ktui_consumed(), "Left on a shut fold is not its key");
+		feed(&ev, KT_K_RIGHT);
+		ok(lay_fold(&ev, 0, in, body), "Right opens it");
+		feed(&ev, KT_K_ENTER);
+		ok(!lay_fold(&ev, 0, in, body), "Enter toggles it");
+		feed(&ev, KT_K_TAB);
+		lay_fold(&ev, 0, in, body);
+		eq_int(ktui_focus_get(), fold_after, "Tab goes on past it");
+		ktui_focus_set(0);
+	}
+
+	/* ── the hit list a developer overlay outlines ───────────── */
+	{
+		int id = -2;
+
+		ev.type = KT_EVT_NONE;
+		ktui_frame_begin(&ev);
+		ktui_button(krect(3, 2, 6, 1), "One", 1, 0);
+		ktui_hit_chrome(krect(0, 0, 2, 1), 4);
+		ktui_frame_end();
+		eq_int(ktui_hit_count(), 2, "a frame's hit rects are counted");
+		ok(ktui_hit_at(0, &r, &id) && r.x == 3 && r.y == 2 && r.w == 6 &&
+		   id == 0, "and each is its rect and its id");
+		ok(ktui_hit_at(1, &r, &id) && id == KTUI_ID_CHROME + 4,
+		   "chrome among them");
+		ok(!ktui_hit_at(2, &r, &id), "nothing past the end");
+		ktui_frame_begin(&ev);
+		eq_int(ktui_hit_count(), 2, "the list stands through the next frame");
+		ktui_frame_end();
+		eq_int(ktui_hit_count(), 0, "until a frame that drew nothing ends");
+		ktui_focus_set(0);
+	}
+}
+
 static void test_rows(void)
 {
 	printf("libktui row and table pointers\n");
@@ -2266,7 +3366,7 @@ static void test_rows(void)
 
 	/* ── the table takes the same four answers ───────────────── */
 	{
-		static const KtuiCol col[] = { { "Name", 10 } };
+		static const KtuiCol col[] = { { "Name", 10, 0 } };
 		KtuiTable tbl = { 0 };
 		KRect tr = krect(2, 3, 20, 6);
 
@@ -2284,6 +3384,8 @@ static void test_rows(void)
 					NULL),
 		       KTUI_TABLE_CLOSE, "and its right button is Back too");
 	}
+
+	test_table_columns();
 }
 
 static void test_grid(void)
@@ -2479,6 +3581,93 @@ static void test_grid(void)
 	ktui_input(r, buf, sizeof(buf), 0, NULL);
 	ktui_frame_end();
 	eq_str(buf, "éllo", "left moves by sequence, so the delete lands on one");
+
+	/* ── the field trio, with no frame around it ────────────────────── */
+
+	/*
+	 * A surface with its own loop holds a KtuiField and calls the three.
+	 * The frame control is a wrapper over them, so what is asserted here
+	 * is also what ktui_input does — and the chord rule, which a frame
+	 * test cannot see from the buffer alone, is asserted from both sides.
+	 */
+	{
+		char fb[32] = "ab";
+		KtuiField f = { fb, sizeof(fb), 99, 0, NULL };
+		int rc;
+
+		feed(&ev, 'c');
+		rc = ktui_field_key(&f, &ev);
+		eq_str(fb, "abc", "a caret past the end is clamped, then types");
+		ok(rc == (KTUI_FIELD_USED | KTUI_FIELD_CHANGED),
+		   "a typed key is the field's and changes it");
+		feed(&ev, 's');
+		ev.mods = KT_MOD_CTRL;
+		ok(ktui_field_key(&f, &ev) == KTUI_FIELD_PASS &&
+		   !strcmp(fb, "abc"), "a Ctrl chord is passed back, not typed");
+		feed(&ev, KT_K_ENTER);
+		ok(ktui_field_key(&f, &ev) == KTUI_FIELD_PASS,
+		   "Enter is the surface's");
+		feed(&ev, KT_K_LEFT);
+		ev.mods = KT_MOD_ALT;
+		ok(ktui_field_key(&f, &ev) == KTUI_FIELD_PASS && f.caret == 3,
+		   "Alt+Left is the page's, not a caret move");
+		kb_strlcpy(fb, "git commit", sizeof(fb));
+		f.caret = 99;
+		feed(&ev, 'w');
+		ev.mods = KT_MOD_CTRL;
+		ktui_field_key(&f, &ev);
+		eq_str(fb, "git ", "Ctrl+W takes the word before the caret");
+		feed(&ev, KT_K_LEFT);
+		ev.mods = KT_MOD_CTRL;
+		ktui_field_key(&f, &ev);
+		ok(f.caret == 0, "Ctrl+Left walks back over a word");
+		f.secret = 1;
+		kb_strlcpy(fb, "a b", sizeof(fb));
+		f.caret = 3;
+		ktui_field_key(&f, &ev);
+		ok(f.caret == 0, "a secret field is one word");
+		f.secret = 0;
+		feed(&ev, 'u');
+		ev.mods = KT_MOD_CTRL;
+		ktui_field_key(&f, &ev);
+		eq_str(fb, "", "Ctrl+U clears the line");
+
+		/* A paste is a queue, taken on a call with no event at all. */
+		ktui_paste_push("x中", strlen("x中"));
+		rc = ktui_field_key(&f, NULL);
+		ok(rc == KTUI_FIELD_CHANGED && !strcmp(fb, "x中"),
+		   "a paste lands on a call with no event, which it does not use");
+		ok(ktui_field_col(&f) == 3, "the caret column counts a wide glyph twice");
+
+		/* The press maps through the window the draw showed: a line
+		 * wider than the field is scrolled to its caret, and a press
+		 * on the first text cell lands on the first character shown. */
+		kb_strlcpy(fb, "0123456789abcdef", sizeof(fb));
+		f.caret = 99;
+		ktui_field_draw(krect(0, 0, 8, 1), &f, 1, KT_SURFACE);
+		ok(ktui_field_hit(krect(0, 0, 8, 1), &f, 2, 0) && f.caret == 11,
+		   "a press lands on the character the scrolled field shows");
+		ok(!ktui_field_hit(krect(0, 0, 8, 1), &f, 2, 1),
+		   "and a press off its row is not the field's");
+	}
+
+	/* The frame control inherits both: Ctrl+U clears, and a chord it does
+	 * not own is left for the page instead of being typed. */
+	kb_strlcpy(buf, "abc", sizeof(buf));
+	feed(&ev, 'u');
+	ev.mods = KT_MOD_CTRL;
+	ktui_frame_begin(&ev);
+	ktui_focus_set(0);
+	ok(ktui_input(r, buf, sizeof(buf), 0, NULL) && !buf[0],
+	   "ktui_input clears on Ctrl+U");
+	ktui_frame_end();
+	feed(&ev, 's');
+	ev.mods = KT_MOD_CTRL;
+	ktui_frame_begin(&ev);
+	ktui_focus_set(0);
+	ktui_input(r, buf, sizeof(buf), 0, NULL);
+	ok(!buf[0] && !ktui_consumed(), "and leaves Ctrl+S to the page");
+	ktui_frame_end();
 
 	/* ── modals ──────────────────────────────────────────────────────── */
 
@@ -6693,6 +7882,211 @@ static void test_ktui_csi_u(void)
 	close(pv[1]);
 }
 
+/* ── motion: ktui_anim.c ──────────────────────────────────────────────── */
+
+static int64_t an_t;
+static int an_clock_on, an_motion_on, an_motion_asked;
+
+static int64_t an_now(void) { return an_t; }
+static int an_animates(void) { return an_clock_on; }
+static int an_motion(void)
+{
+	an_motion_asked++;
+	return an_motion_on;
+}
+static void an_flush(const KtuiCell *c, KtuiCell *p, int w, int h, int f)
+{
+	(void)c; (void)p; (void)w; (void)h; (void)f;
+}
+static int an_poll(KtuiEvent *ev, int ms)
+{
+	(void)ms;
+	ev->type = KT_EVT_TICK;
+	return 0;
+}
+static void an_size(int *w, int *h) { *w = 80; *h = 24; }
+static int an_caps(void) { return 0; }
+
+static const KtuiBackend an_backend = {
+	.name = "selftest-anim",
+	.flush = an_flush,
+	.poll_event = an_poll,
+	.size = an_size,
+	.caps = an_caps,
+	.animates = an_animates,
+};
+/* A capture backend: the shape every golden's is, with no frame clock. */
+static const KtuiBackend an_capture = {
+	.name = "selftest-capture",
+	.flush = an_flush,
+	.poll_event = an_poll,
+	.size = an_size,
+	.caps = an_caps,
+};
+
+static int near(float a, float b) { return a - b < 1e-4f && b - a < 1e-4f; }
+
+static void test_ktui_anim(void)
+{
+	printf("\n==> motion: the curves, the end value, the live window\n");
+
+	const KtuiBackend *was = ktui_backend();
+	KtuiAnim a, b, z;
+
+	ktui_anim_set_clock(an_now);
+	ktui_anim_set_motion_fn(an_motion);
+	an_t = 1000;
+	an_motion_on = 1;
+
+	/* The curves: pinned ends, clamped outside, a NaN at the start, and
+	 * each one never going backwards. */
+	for (int e = KT_EASE_OUT; e <= KT_EASE_LINEAR; e++) {
+		float last = -1.0f;
+		int mono = 1;
+
+		for (int i = 0; i <= 100; i++) {
+			float v = ktui_ease(e, (float)i / 100.0f);
+
+			if (v < last)
+				mono = 0;
+			last = v;
+		}
+		ok(near(ktui_ease(e, 0.0f), 0.0f) && near(ktui_ease(e, 1.0f), 1.0f),
+		   "ease: 0 at 0 and 1 at 1");
+		ok(near(ktui_ease(e, -3.0f), 0.0f) && near(ktui_ease(e, 7.0f), 1.0f),
+		   "ease: clamped outside [0, 1]");
+		ok(near(ktui_ease(e, __builtin_nanf("")), 0.0f), "ease: a NaN settles at 0");
+		ok(mono, "ease: never goes backwards");
+	}
+	ok(ktui_ease(KT_EASE_OUT, 0.25f) > 0.25f,
+	   "ease-out: ahead of linear early (fast, then settling)");
+	ok(ktui_ease(KT_EASE_IN_OUT, 0.25f) < 0.25f &&
+	   near(ktui_ease(KT_EASE_IN_OUT, 0.5f), 0.5f) &&
+	   ktui_ease(KT_EASE_IN_OUT, 0.75f) > 0.75f,
+	   "ease-in-out: slow at both ends, half way at the middle");
+
+	/* THE TERMINAL: no backend is the tty one, and nothing moves there. */
+	ktui_backend_set(NULL);
+	ktui_anim_start(&a, 10.0f, 20.0f, 200, KT_EASE_OUT, 0);
+	ok(a.still, "tty: an animation started there is still");
+	ok(near(ktui_anim_value(&a), 20.0f), "tty: worth its end value at once");
+	ok(!ktui_anim_live(), "tty: nothing is live, so nothing ticks");
+	ok(ktui_anim_running(&a) && ktui_anim_left(&a) == 200,
+	   "tty: still inside its time (a held state can ask)");
+	ok(!ktui_anim_moving(), "tty: not moving");
+
+	/* A capture backend — what a golden is drawn through — the same. */
+	ktui_backend_set(&an_capture);
+	ktui_anim_start(&a, 0.0f, 1.0f, 200, KT_EASE_OUT, 0);
+	ok(a.still && near(ktui_anim_value(&a), 1.0f) && !ktui_anim_live(),
+	   "capture backend (no frame clock): the end value, nothing live");
+
+	/* A FRAME CLOCK WITH MOTION ON: it moves, and the live window covers
+	 * it and no more. */
+	ktui_backend_set(&an_backend);
+	an_clock_on = 1;
+	an_motion_asked = 0;
+	ktui_anim_start(&a, 10.0f, 20.0f, 200, KT_EASE_OUT, 0);
+	ok(an_motion_asked == 1, "start asks the motion question once");
+	ok(!a.still && ktui_anim_moving(), "clocked, motion on: it moves");
+	ok(near(ktui_anim_value(&a), 10.0f), "at its start: `from`");
+	ok(ktui_anim_live(), "live while it runs");
+	an_t += 100;
+	{
+		float v = ktui_anim_value(&a);
+
+		ok(v > 15.0f && v < 20.0f,
+		   "half way through an ease-out: past half, not there");
+		ok(near(v, ktui_anim_value_at(&a, an_t)),
+		   "value and value_at agree on the same clock");
+	}
+	ok(ktui_anim_left(&a) == 100, "left counts down");
+	an_t += 100;
+	ok(near(ktui_anim_value(&a), 20.0f) && !ktui_anim_running(&a) &&
+	   ktui_anim_left(&a) == 0, "at its end: `to`, and over");
+	ok(!ktui_anim_live(), "the live window closes with the last one");
+
+	/* Two at once: the window is the later end, whichever started first. */
+	ktui_anim_start(&a, 0.0f, 1.0f, 300, KT_EASE_OUT, 0);
+	an_t += 50;
+	ktui_anim_start(&b, 0.0f, 1.0f, 100, KT_EASE_OUT, 0);
+	an_t += 200;
+	ok(ktui_anim_live() && !ktui_anim_running(&b) && ktui_anim_running(&a),
+	   "two: live until the later end");
+	an_t += 50;
+	ok(!ktui_anim_live(), "two: silent once both are over");
+
+	/* A PULSE goes there and back and settles where it began. */
+	ktui_anim_start(&a, 0.0f, 1.0f, 1000, KT_EASE_IN_OUT, 2);
+	ok(near(ktui_anim_end(&a), 0.0f), "pulse: its end is `from`");
+	an_t += 250;
+	ok(near(ktui_anim_value(&a), 1.0f), "pulse: at the top of the first beat");
+	an_t += 250;
+	ok(near(ktui_anim_value(&a), 0.0f), "pulse: back down between beats");
+	an_t += 250;
+	ok(near(ktui_anim_value(&a), 1.0f), "pulse: at the top of the second");
+	an_t += 125;
+	{
+		float v = ktui_anim_value(&a);
+
+		ok(v > 0.0f && v < 1.0f, "pulse: in between on the way down");
+	}
+	an_t += 125;
+	ok(near(ktui_anim_value(&a), 0.0f), "pulse: settled at rest");
+
+	/* Stopped: settled at once. The window is a deadline and stays. */
+	ktui_anim_start(&a, 0.0f, 1.0f, 400, KT_EASE_OUT, 0);
+	an_t += 100;
+	ktui_anim_stop(&a);
+	ok(near(ktui_anim_value(&a), 1.0f) && !ktui_anim_running(&a),
+	   "stop: the end value, and not running");
+	ok(ktui_anim_live(), "stop: the window is not shortened");
+	an_t += 300;
+
+	/* A capture swapped in mid-way draws the end: a golden taken while
+	 * something ran is still the settled picture. */
+	ktui_anim_start(&a, 0.0f, 1.0f, 400, KT_EASE_OUT, 0);
+	an_t += 100;
+	ktui_backend_set(&an_capture);
+	ok(near(ktui_anim_value(&a), 1.0f), "capture mid-way: the end value");
+	ok(!ktui_anim_live(), "capture mid-way: nothing ticks");
+	ktui_backend_set(&an_backend);
+	an_t += 300;
+
+	/* MOTION OFF: still from the start, and the window is not opened. */
+	an_motion_on = 0;
+	ktui_anim_start(&a, 0.0f, 1.0f, 400, KT_EASE_OUT, 0);
+	ok(a.still && near(ktui_anim_value(&a), 1.0f),
+	   "motion off: the end value at once");
+	ok(!ktui_anim_live(), "motion off: nothing live, nothing ticks");
+	ok(ktui_anim_running(&a) && !ktui_anim_moving(),
+	   "motion off: still inside its time, not moving");
+	an_motion_on = 1;
+
+	/* A zeroed one was never started, and a zero duration never moves. */
+	memset(&z, 0, sizeof(z));
+	z.to = 5.0f;
+	ok(near(ktui_anim_value(&z), 5.0f) && !ktui_anim_running(&z),
+	   "never started: its end value, not running");
+	an_t += 1000;
+	ktui_anim_start(&a, 0.0f, 1.0f, 0, KT_EASE_OUT, 0);
+	ok(a.still && near(ktui_anim_value(&a), 1.0f) && !ktui_anim_live(),
+	   "zero duration: settled, nothing live");
+
+	/* The clock turned off under a running one: no ticks promised. */
+	ktui_anim_start(&a, 0.0f, 1.0f, 400, KT_EASE_OUT, 0);
+	an_clock_on = 0;
+	ok(!ktui_anim_live() && near(ktui_anim_value(&a), 1.0f),
+	   "frame clock gone: not live, the end value");
+	an_clock_on = 1;
+	an_t += 400;
+
+	ktui_anim_set_clock(NULL);
+	ktui_anim_set_motion_fn(NULL);
+	ok(ktui_anim_now() > 0, "the real clock answers");
+	ktui_backend_set(was);
+}
+
 int main(void)
 {
 	kb_set_progname("selftest");
@@ -6707,6 +8101,7 @@ int main(void)
 	test_trash();
 	test_colour();
 	test_pkg();
+	test_shelves();
 	test_build();
 	test_proc();
 	test_chart();
@@ -6714,6 +8109,9 @@ int main(void)
 	test_shade();
 	test_slider();
 	test_rows();
+	test_ktui_ids();
+	test_ktui_layout();
+	test_ktui_anim();
 	test_pack();
 	test_portup();
 	test_wm();

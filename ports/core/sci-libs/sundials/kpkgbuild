@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sundials
+version     = 7.9.0
+release     = 1
+source      = https://github.com/LLNL/sundials/releases/download/v$version/sundials-$version.tar.gz
+sha256      = 13f898a27b48fe3449483f9e438a800ed545abf93bc2e2ceec2d1e00ae8db5ef  sundials-7.9.0.tar.gz
+description = SUNDIALS — ODE and DAE solvers, behind Octave's ode15s and ode15i
+homepage    = https://computing.llnl.gov/projects/sundials
+depends     = cmake ninja gcc openblas suitesparse

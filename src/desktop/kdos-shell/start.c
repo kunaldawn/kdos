@@ -1347,9 +1347,16 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 	 * than the title and the pinned marks and the thing it was pointing
 	 * at. A raised plate with a two-pixel accent bar down its left edge
 	 * says the same thing and lets the row's own contents be read.
+	 *
+	 * ONE PLATE FOR THE WHOLE MENU, travelling: the selection is one
+	 * value across both columns, so a move into the other column slides
+	 * the plate across and stretches it to that column's width. The item
+	 * names the column as well as the row — row 3 on the left and row 3
+	 * on the right are two places, not one moved by a scroll.
 	 */
 	if (selected) {
-		kch_px_row(x, y, w, KCH_T_ACTIVE);
+		kch_px_row_anim(0, focus_right ? -2 - rsel : sel, x, y, w,
+				KCH_T_ACTIVE);
 	/*
 	 * AND THE CELL FORM OF THE SAME FACT WHERE THERE IS NO PIXEL LAYER.
 	 * The plate is the whole highlight, so without one the selected row is
@@ -1358,7 +1365,7 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 	 * Enter will do.
 	 *
 	 * IT IS THE SAME SELECTION RULE EVERY OTHER ROW ON THIS DESKTOP USES,
-	 * and it has to be: `kch_px_row` above solves its plate along
+	 * and it has to be: the plate above is solved along
 	 * `dim`-to-`pdark`, so a cell fallback in the ACCENT would make the one
 	 * display without a pixel layer the loud one. A menu of a dozen rows is
 	 * where that is least affordable.
@@ -1625,6 +1632,8 @@ static void draw_frame(void)
 	 * rows' last one: a selected row is an accent fill, and a bar drawn on
 	 * top of it puts a notch in the highlight. */
 	left_row_w = nleft > body ? lw - 2 : lw - 1;
+	/* Each column glides on its own, as each scrolls on its own. */
+	kch_list_view(1, 1, left_row_w, body, top);
 	for (int i = 0; i < body; i++) {
 		int idx = top + i;
 		if (idx >= nleft)
@@ -1650,6 +1659,7 @@ static void draw_frame(void)
 	 */
 	kch_list_clamp(&rtop, rsel, n2, body,
 		       follow && focus_right && rsel < n2);
+	kch_list_view(G.c2x, 1, G.c2w, body, rtop);
 	for (int i = 0; i < body && rtop + i < n2; i++)
 		draw_row(rrow(rtop + i), G.c2x, 1 + i, G.c2w,
 			 focus_right && rtop + i == rsel);
@@ -1660,6 +1670,7 @@ static void draw_frame(void)
 
 		kch_list_clamp(&rtop2, rsel >= vsplit ? rsel - vsplit : 0, n3,
 			       body, follow && focus_right && rsel >= vsplit);
+		kch_list_view(G.c3x, 1, G.c3w, body, rtop2);
 		for (int i = 0; i < body && rtop2 + i < n3; i++)
 			draw_row(rrow(vsplit + rtop2 + i), G.c3x, 1 + i,
 				 G.c3w,

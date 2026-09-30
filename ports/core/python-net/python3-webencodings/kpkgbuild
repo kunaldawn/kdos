@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = python3-webencodings
+version     = 0.6.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/w/webencodings/webencodings-$version.tar.gz
+sha256      = 565f9ad031c702dae404e27a099e3e09186a3ab1b9520f06d215502b651fd910  python3-webencodings-0.6.1.tar.gz
+description = The WHATWG Encoding standard's labels and legacy decoders, for Python
+homepage    = https://github.com/gsnedders/python-webencodings
+depends     = python3 python3-pip python3-flit-core

@@ -14,6 +14,7 @@
 #include "common/mem.h"
 #include "common/scene-helpers.h"
 #include "input/keyboard.h"
+#include "kdos.h" /* KDOS */
 #include "labwc.h"
 #include "node.h"
 #include "output.h"
@@ -138,6 +139,7 @@ update_active_text_input(struct input_method_relay *relay)
 	}
 
 	relay->active_text_input = active_text_input;
+	kdos_a11y_text_input(active_text_input != NULL); /* KDOS: the OSK */
 }
 
 /*

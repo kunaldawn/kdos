@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = lasem
+version     = 0.5.1
+release     = 1
+source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$version.tar.xz
+sha256      = 51f019984bc94b8a0dec70bb7af2950345759304584a5cc3d990d9ff2c66b443  lasem-0.5.1.tar.xz
+description = MathML and SVG rendering library on cairo and pango, with itex-to-MathML conversion
+homepage    = https://gitlab.gnome.org/Archive/lasem
+depends     = glib gdk-pixbuf cairo pango libxml2 gobject-introspection intltool gettext flex bison

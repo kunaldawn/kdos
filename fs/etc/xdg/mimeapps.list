@@ -16,44 +16,16 @@
 # ---------------------------------
 
 [Default Applications]
-inode/directory=mc.desktop
-# THE ARCHIVES mc CANNOT BROWSE. Its VFS mounts a tar, a cpio, a zip or an `ar`
-# as a directory, which is the right answer when you want one file out of one —
-# and there is no helper on this image for 7z or rar, so Enter on those would
-# open an empty panel. `kdos-openarchive` extracts them instead. Only these two
-# families are listed: they are what `ouch` reads AND what shared-mime-info can
-# name, and a row for a type the image cannot produce is one nobody can tell is
-# dead.
-application/x-7z-compressed=kdos-openarchive.desktop
+# THE ARCHIVES NOTHING ELSE ON THIS IMAGE OPENS. Ark has no reader for rar,
+# and there is no unrar here, so `kdos-openarchive` extracts rar and the comic
+# books packed as 7z or rar. Only these families are listed: they are what
+# `ouch` reads AND what shared-mime-info can name, and a row for a type the
+# image cannot produce is one nobody can tell is dead.
 application/vnd.rar=kdos-openarchive.desktop
 application/x-cb7=kdos-openarchive.desktop
 application/vnd.comicbook-rar=kdos-openarchive.desktop
 
-# THE PAGES NOTHING ELSE ON THIS IMAGE RENDERS. `kdos-peek` draws one through
+# THE PAGES THAT HAVE NO DESKTOP DEFAULT. `kdos-peek` draws one through
 # `mutool` into a cell grid.
-application/pdf=kdos-peek.desktop
 application/vnd.comicbook+zip=kdos-peek.desktop
 application/oxps=kdos-peek.desktop
-
-# A BOOK IS READ, NOT LOOKED AT, so it goes to the reader and not to the page
-# viewer — `epy` keeps a position, a table of contents and a search, which is
-# the difference between reading one and glancing at a page of it. `kdos-peek`
-# still SHOWS any of them through the Peek verb, which asks no table at all.
-application/epub+zip=epy.desktop
-application/x-mobipocket-ebook=epy.desktop
-application/x-fictionbook+xml=epy.desktop
-
-# A MAIL ADDRESS. `aerc` is the only mail client on this image and it is a
-# terminal program, so the opener wraps it in the emulator.
-x-scheme-handler/mailto=aerc.desktop
-
-# A PAGE AND A LINK. `w3m` is the only browser this image carries and it is a
-# terminal program, so these four answer the same way with a compositor and
-# without one — which is why they sit in the plain table and not in the
-# desktop's. On a bare virtual terminal there is no emulator to wrap it in and
-# it runs in place, which is the whole reason a text browser is the default
-# here rather than a fallback.
-text/html=w3m.desktop
-application/xhtml+xml=w3m.desktop
-x-scheme-handler/http=w3m.desktop
-x-scheme-handler/https=w3m.desktop

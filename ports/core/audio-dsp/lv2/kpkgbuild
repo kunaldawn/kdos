@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lv2
+version     = 1.18.10
+release     = 1
+source      = https://lv2plug.in/spec/$name-$version.tar.xz
+sha256      = 78c51bcf21b54e58bb6329accbb4dae03b2ed79b520f9a01e734bd9de530953f  lv2-1.18.10.tar.xz
+description = LV2 audio plugin standard — the specification headers and bundle data
+homepage    = https://lv2plug.in/
+depends     = meson ninja

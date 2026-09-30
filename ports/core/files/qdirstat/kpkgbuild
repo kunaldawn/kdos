@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qdirstat
+version     = 2.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/shundhammer/qdirstat/archive/refs/tags/$version.tar.gz
+sha256      = a0b2ba91caf68ec4ee7705d5063bc542ac8aea4d421451103245c69d272bf19f  qdirstat-2.0.tar.gz
+description = QDirStat — disk usage as a tree and a treemap, with cleanup actions
+homepage    = https://github.com/shundhammer/qdirstat
+depends     = qt6-qtbase qt6-qt5compat qt6-qtsvg qt6-qtwayland zlib librsvg perl

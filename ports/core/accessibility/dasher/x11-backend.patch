@@ -1,0 +1,28 @@
+Description: prefer x11 backend over Wayland
+ Dasher uses X11 primitives to read the cursor position. It does not
+ works with the Wayland backend. This patch aknowledges this fact and
+ hard-codes that x11 is preferred over Wayland, so when running under
+ a Wayland session, Dasher still works. However, even with this patch,
+ Direct Mode works only in x11 windows.
+Author: Thibaut Paumard <thibaut@debian.org>
+Origin: vendor
+Bug: https://github.com/dasher-project/dasher/issues/103
+Bug-Debian: https://bugs.debian.org/852699
+Last-Update: 2018-03-21
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+--- a/Src/main.cc
++++ b/Src/main.cc
+@@ -147,6 +147,12 @@
+   bind_textdomain_codeset(PACKAGE, "UTF-8");
+   textdomain(PACKAGE);
+ 
++  // Disallow the wayland backend as Dasher does not work well, if at
++  // all, with this backend. TODO: check which other backends are
++  // needed for other platforms than Linux. This line needs to come
++  // before Gdk is initialized which occurs in g_option_context_parse().
++  gdk_set_allowed_backends ("x11");
++
+   //  gchar *szOptionAppstyle = NULL;
+ 
+   SCommandLine sCommandLine;

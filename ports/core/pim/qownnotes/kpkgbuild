@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qownnotes
+version     = 26.9.13
+release     = 1
+source      = https://github.com/pbek/QOwnNotes/releases/download/v$version/$name-$version.tar.xz
+sha256      = 0a017596de225309757728d38255ef9427eade4be0596d1eab642dc70773478d  qownnotes-26.9.13.tar.xz
+description = Plain-text Markdown notes with a live preview, to-do lists and optional Nextcloud sync
+homepage    = https://www.qownnotes.org/
+depends     = cmake ninja qt6-qtbase qt6-qtsvg qt6-qtdeclarative qt6-qttools qt6-qtwebsockets qt6-qtwayland libsecret

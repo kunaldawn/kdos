@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = xbitmaps
+version     = 1.1.4
+release     = 1
+source      = https://www.x.org/releases/individual/data/$name-$version.tar.xz
+sha256      = 895722f136e21e728c52f2d99fd2dae95018b9ddad1bac1f29d61bcd6593721d  xbitmaps-1.1.4.tar.xz
+description = X.Org bitmap files — the X11/bitmaps headers Motif compiles in
+homepage    = https://gitlab.freedesktop.org/xorg/data/bitmaps
+depends     = util-macros pkgconf

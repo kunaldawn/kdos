@@ -1,0 +1,77 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   sci-libs — Numerical and scientific-data libraries, and the unprefixed core
+#   Python science stack
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Three precisions, three configure runs: double for octave and scipy, single
+# for every SDR and audio path, long double for a few C2 solvers.
+fftw
+
+# DYNAMIC_ARCH is the OPPOSITE of `kdos march`'s discipline and is right here
+# for one reason: OpenBLAS carries a kernel per microarchitecture and picks by
+# cpuid at RUNTIME. That is the dispatch musl closes off everywhere else, and
+# upstream has maintained it for twenty years.
+openblas
+
+# The array type, and what makes the shipped python a calculator. No wheels
+# exist for musl+3.14, so this is a from-source meson build; openblas is what
+# the linear algebra lands on rather than numpy's bundled reference kernels.
+numpy
+
+# GSL's own reference CBLAS is correct and ~10x slower, so --with-external-cblas
+# is what stops every consumer silently getting the slow one.
+gsl
+
+# The 1.14 line, not 2.x — netcdf, octave and the python wheels here are built
+# against it, and a data format library is the wrong place to be first.
+hdf5
+
+# netCDF is the array format climate, ocean and atmosphere data ships in, and
+# it is HDF5 underneath. DAP and NCZarr are network clients and are off — on a
+# distro that builds offline they are the half nobody here can reach.
+netcdf-c
+
+# The complex error functions behind gnuplot's cerf(), faddeeva() and voigt().
+libcerf
+
+# Cheap once numpy exists, and it closes a real hole: scipy.constants IS the
+# CODATA table.
+scipy
+
+eigen
+
+# A unit is metadata until something can convert it.
+udunits
+
+# Subset, regrid and do arithmetic on a grid larger than memory.
+nco
+
+# MATLAB's .mat files, which libvips opens as images.
+matio
+
+xsimd
+libmed
+arpack-ng
+spooles
+suitesparse
+qrupdate
+sundials

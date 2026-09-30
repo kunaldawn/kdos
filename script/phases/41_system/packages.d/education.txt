@@ -1,0 +1,37 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   education — Learning software, offline encyclopedias and reference
+#   dictionaries
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# kiwix-serve puts a ZIM on localhost and every reader on the machine reaches
+# it over HTTP — including a browser. On a distro whose medium IS the
+# software library, this is the half that makes the library readable.
+libzim
+libkiwix
+kiwix-tools
+
+# StarDict is the one dictionary format with a large body of freely
+# redistributable data already converted into it. Shipping a dictionary would
+# be picking a language for everybody.
+sdcv
+
+kolibri

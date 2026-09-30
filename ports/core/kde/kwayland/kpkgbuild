@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kwayland
+version     = 6.7.5
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 8d4c83524919dc87b5dec546d0fb14c591c03957888cb7b240a4a9d1bbdc8269  kwayland-6.7.5.tar.xz
+description = Qt-style client library for the Wayland and Plasma Wayland protocols
+homepage    = https://invent.kde.org/plasma/kwayland
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland wayland wayland-protocols plasma-wayland-protocols mesa libglvnd

@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = musescore
+version     = 4.7.5
+release     = 1
+_mnxdom     = 488aa8757ec602c20ff8cf599a2c6857339d8e93
+_jsv        = 40af3ec39670e768fc3f01f935140af311d71024
+source      = $name-$version.tar.gz::https://github.com/musescore/MuseScore/archive/refs/tags/v$version.tar.gz
+source      = mnxdom-$_mnxdom.tar.gz::https://github.com/rpatters1/mnxdom/archive/$_mnxdom.tar.gz
+source      = json-schema-validator-$_jsv.tar.gz::https://github.com/pboettch/json-schema-validator/archive/$_jsv.tar.gz
+sha256      = b9db52e139e925adfc56e3ab59244f44da4db7e5e133d5084c5da5dfc3dfb9d1  musescore-4.7.5.tar.gz
+sha256      = 308b413cf8288e872715fcdede0ec8504693f7bbadcc50bd5969ed7ea1d35baa  mnxdom-488aa8757ec602c20ff8cf599a2c6857339d8e93.tar.gz
+sha256      = 36d7e99a73aa6076834736f0fb108fa8e232c4739aa4b3e2089fe96efb21fa8d  json-schema-validator-40af3ec39670e768fc3f01f935140af311d71024.tar.gz
+description = MuseScore Studio — music notation: write, play back, print and export scores, with the MS Basic soundfont
+homepage    = https://musescore.org/
+depends     = cmake ninja pkgconf gzip qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtshadertools qt6-qt5compat qt6-qtnetworkauth qt6-qttools qt6-qtwayland alsa-lib pipewire flac opus libopusenc lame harfbuzz freetype2 pugixml utfcpp nlohmann-json

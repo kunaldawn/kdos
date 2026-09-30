@@ -671,6 +671,20 @@ void res_batt_prepare(void)
 	g_nbat = kpr_power_list(&g_bat);
 }
 
+const char *res_batt_figure(void)
+{
+	static char s[16];
+	for (int i = 0; i < g_nbat; i++)
+		if (g_bat[i].is_battery) {
+			/* -1 is a charge the kernel did not report. */
+			if (g_bat[i].capacity < 0)
+				return NULL;
+			snprintf(s, sizeof(s), "%d%%", g_bat[i].capacity);
+			return s;
+		}
+	return NULL;
+}
+
 const char *res_batt_headline(void)
 {
 	static char s[64];

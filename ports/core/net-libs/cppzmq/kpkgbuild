@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cppzmq
+version     = 4.11.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/zeromq/cppzmq/archive/refs/tags/v$version.tar.gz
+sha256      = 0fff4ff311a7c88fdb76fceefba0e180232d56984f577db371d505e4d4c91afd  cppzmq-4.11.0.tar.gz
+description = Header-only C++ binding for ZeroMQ — Horizon EDA's pool updater and GNU Radio's gr-zeromq blocks
+homepage    = https://github.com/zeromq/cppzmq
+depends     = cmake ninja pkgconf zeromq

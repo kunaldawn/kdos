@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kwidgetsaddons
+version     = 6.30.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = ab1333c258678caa7562120a1c03bb71779f7232f1a0e75b9525d921dee3e0a3  kwidgetsaddons-6.30.0.tar.xz
+description = KDE Frameworks: add-on widgets and classes for Qt Widgets
+homepage    = https://api.kde.org/frameworks/kwidgetsaddons/html/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase

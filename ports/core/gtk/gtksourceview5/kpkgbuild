@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gtksourceview5
+version     = 5.22.0
+release     = 1
+source      = gtksourceview5-$version.tar.xz::https://download.gnome.org/sources/gtksourceview/${version%.*}/gtksourceview-$version.tar.xz
+sha256      = 3ebce33c781e65590a450ecd3ffade480d8e3135b52ee996f1620d6c7dffbbff  gtksourceview5-5.22.0.tar.xz
+description = Source code editing widget for GTK 4 — highlighting, completion, search
+homepage    = https://gitlab.gnome.org/GNOME/gtksourceview
+depends     = meson glib gtk4 libxml2 fribidi pango pcre2 fontconfig gobject-introspection glib-introspection vala

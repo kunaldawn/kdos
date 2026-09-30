@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-lsp-ruff
+version     = 2.3.4
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/python-lsp-ruff/python_lsp_ruff-$version.tar.gz
+sha256      = 0c101db5ba54390dd0d3401c73b291d909fe5e5295e85ab2cfe9c21d08ef0905  python3-lsp-ruff-2.3.4.tar.gz
+sha256      = b2834e5bff39895cb638f206b0d24af3bc2e50aff4d3a7eed571d67ac5d88a46  python3-lsp-ruff-vendor-2.3.4.tar.xz
+description = python-lsp-ruff — Ruff's diagnostics, fixes and formatting inside the Python language server
+homepage    = https://github.com/python-lsp/python-lsp-ruff
+depends     = python3 python3-pip python3-setuptools python3-wheel python3-flit-core python3-hatchling python3-hatch-vcs python3-lsp-server ruff python3-attrs python3-typing-extensions
+pypackages  = lsprotocol:2025.0.0 cattrs:26.2.1

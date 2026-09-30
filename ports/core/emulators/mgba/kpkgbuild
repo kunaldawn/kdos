@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = mgba
+version     = 0.10.5
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/mgba-emu/mgba/archive/$version.tar.gz
+sha256      = 91d6fbd32abcbdf030d58d3f562de25ebbc9d56040d513ff8e5c19bee9dacf14  mgba-0.10.5.tar.gz
+description = mGBA — Game Boy Advance, Game Boy and Game Boy Color emulator, SDL front end
+homepage    = https://mgba.io
+depends     = cmake ninja pkgconf sdl2-compat libepoxy mesa libglvnd libpng zlib libzip sqlite elfutils libedit
+group       = mgba

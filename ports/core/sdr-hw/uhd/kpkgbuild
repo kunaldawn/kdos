@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = uhd
+version     = 4.10.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/EttusResearch/uhd/archive/refs/tags/v$version.tar.gz
+sha256      = a9c66b52abcd586b513999f3a52345807b7551d01efac8c98eed813838be0297  uhd-4.10.0.0.tar.gz
+description = USRP Hardware Driver — Ettus/NI USRP radios for GNU Radio's gr-uhd, with the uhd_* utilities and Python API
+homepage    = https://www.ettus.com/sdr-software/uhd-usrp-hardware-driver/
+series      = 4.10
+depends     = cmake ninja pkgconf boost libusb python3 python3-mako python3-setuptools python3-pybind11 python3-requests numpy

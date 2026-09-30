@@ -648,6 +648,7 @@ static void draw_frame(void)
 	if (top < 0)
 		top = 0;
 
+	kch_list_view(1, 1, w - 2, body, top);
 	for (int i = 0; i < body && top + i < nrows; i++) {
 		const struct pick_row *r = &rows[top + i];
 		int y = 1 + i;

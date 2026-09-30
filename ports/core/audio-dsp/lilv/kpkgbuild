@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lilv
+version     = 0.28.0
+release     = 1
+source      = https://download.drobilla.net/$name-$version.tar.xz
+sha256      = 8dcb70adb5cf072335115a6b091f4113710bdc73abaadaa3f9e9c1e55957b149  lilv-0.28.0.tar.xz
+description = LV2 plugin host library — discovers, loads and instantiates LV2 plugins
+homepage    = https://drobilla.net/software/lilv.html
+depends     = meson ninja pkgconf lv2 serd sord sratom zix libsndfile python3

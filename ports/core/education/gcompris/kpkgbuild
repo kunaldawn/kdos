@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gcompris
+version     = 26.2
+release     = 1
+_box2d      = e3674e0fe030c406a1d915e47eab760624fffa55
+_words      = 2022-04-10-21-14-15
+_voices     = 2026-07-28-15-07-14
+_music      = 2024-03-19-11-10-30
+source      = $name-$version.tar.xz::https://download.kde.org/stable/gcompris/qt/src/gcompris-qt-$version.tar.xz
+source      = qml-box2d-$_box2d.tar.gz::https://github.com/qml-box2d/qml-box2d/archive/$_box2d.tar.gz
+source      = https://cdn.kde.org/gcompris/data3/words/words-webp-$_words.rcc
+source      = https://cdn.kde.org/gcompris/data3/voices-ogg/voices-en_US-$_voices.rcc
+source      = https://cdn.kde.org/gcompris/data3/voices-ogg/voices-en_GB-$_voices.rcc
+source      = https://cdn.kde.org/gcompris/data3/backgroundMusic/backgroundMusic-ogg-$_music.rcc
+sha256      = f876239f39397f554006f4218a3c229627e2af4317a8765ecf9462f0058dfcb4  gcompris-26.2.tar.xz
+sha256      = f7373c7faf74754523cb8a2425492349a8c9aa8cb15cd77105132377b5bf6f6d  qml-box2d-e3674e0fe030c406a1d915e47eab760624fffa55.tar.gz
+sha256      = 1e032186d2d900da803958648c8882fffe02a29295b55af10f8dd7b8061febb3  words-webp-2022-04-10-21-14-15.rcc
+sha256      = ed88033477018095e7849cfa4b827a64c0ae673e8ec6035d66cbb3b07622d8f6  voices-en_US-2026-07-28-15-07-14.rcc
+sha256      = c8f2a40a676e82f29a92e18e63a6e630572d0c8ca08d1353ac703f87f2d24b62  voices-en_GB-2026-07-28-15-07-14.rcc
+sha256      = 66187620c25dffefec8b243b66714af85235b77efaf98b6a7a4ce15c7b3bc852  backgroundMusic-ogg-2024-03-19-11-10-30.rcc
+description = Educational activities for children aged 2 to 10 — reading, counting, science, games and art
+homepage    = https://gcompris.net/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtmultimedia qt6-qtsvg qt6-qtimageformats qt6-qttools qt6-qtsensors qt6-qtgraphs qt6-qtquick3d qt6-qtwayland openssl

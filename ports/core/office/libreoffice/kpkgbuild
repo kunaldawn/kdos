@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libreoffice
+version     = 26.8.0.3
+release     = 1
+_series     = ${version%.*}
+source      = https://download.documentfoundation.org/libreoffice/src/$_series/$name-$version.tar.xz
+source      = https://download.documentfoundation.org/libreoffice/src/$_series/$name-help-$version.tar.xz
+sha256      = 42116e256933aa575974e420ffa04f7cd7096f4b7ca5d0907ddeaf2a07f68f94  libreoffice-26.8.0.3.tar.xz
+sha256      = 8443f21b7127cbd084b472c01ff494ec6a31814f0b1b382004b68103ece90e35  libreoffice-help-26.8.0.3.tar.xz
+sha256      = 4439491fd0dba904603de211d6509495c162cf44a48f52273edbb1cb82041485  libreoffice-vendor-26.8.0.3.tar.xz
+description = Office suite — Writer, Calc, Impress, Draw, Math and Base, with the gtk3 and qt6 front ends
+homepage    = https://www.libreoffice.org/
+depends     = python3 zip unzip gettext libintl libxml2 libxslt zlib bzip2 xz zstd expat curl openssl nss icu freetype2 fontconfig cairo libpng libjpeg-turbo libtiff libwebp lcms2 openjpeg libepoxy glm hunspell hyphen mythes zxing-cpp gpgmepp openldap postgresql sqlite sane-backends librevenge libwpd libwpg libcdr libvisio glib at-spi2-core gtk3 qt6-qtbase qt6-qtmultimedia gstreamer gst-plugins-base dbus cups libX11 libXext libICE libSM libXrender libXrandr libXinerama libxcb mesa hunspell-en font-liberation font-carlito font-caladea

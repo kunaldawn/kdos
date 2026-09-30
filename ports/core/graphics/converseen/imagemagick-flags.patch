@@ -1,0 +1,15 @@
+The build defines a non-HDRI, 16-bit quantum for Magick++ whatever the
+installed ImageMagick was configured with. Against an HDRI build every
+Quantum is the wrong type. The definitions are taken from Magick++.pc instead.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -197,8 +197,6 @@
+     add_definitions(
+         -Wall
+         -fPIC
+-        -DMAGICKCORE_HDRI_ENABLE=0
+-        -DMAGICKCORE_QUANTUM_DEPTH=16
+         ${QT_DEFINITIONS}
+     )
+ endif()

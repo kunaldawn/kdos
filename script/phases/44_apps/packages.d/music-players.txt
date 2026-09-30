@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   44_apps: Applications
+# ---------------------------------
+#   music-players — Music players, library managers and taggers
+# ---------------------------------
+#
+# Leaf applications whose dependency closure reaches a toolkit, or the graphics
+# stack on an application shelf.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The client half: rmpc speaks mpd's line protocol, so it attaches to a daemon
+# that is already playing rather than starting one.
+rmpc
+
+cmus
+elisa
+picard
+strawberry
+rhythmbox
+audacious-plugins

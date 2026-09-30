@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = koreader
+version     = 2026.07.2
+release     = 1
+source      = https://distfiles.alpinelinux.org/distfiles/edge/koreader-v$version.tar.gz
+sha256      = 67e3d2cd432ccfcfb29f4f3203376d595704b0cb562274086eb3bb25a1bc662d  koreader-2026.07.2.tar.gz
+sha256      = 6f67b8f0276d870967acc4a918f6035b34bea2a14b389b419cd5fe6771d4e9d0  koreader-thirdparty-2026.07.2.tar.xz
+description = E-book and document reader for EPUB, PDF, DjVu, FB2 and comics, on SDL3 with no toolkit
+homepage    = https://koreader.rocks
+depends     = autoconf automake cmake coreutils diffutils findutils gettext git libtool meson nasm ninja perl pkgconf curl sdl3 bash procps-ng librsvg

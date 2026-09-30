@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libcec
+version     = 8.1.7
+release     = 1
+source      = https://github.com/Pulse-Eight/libcec/archive/refs/tags/$name-$version.tar.gz
+sha256      = e4ac4d1dd3559cf83189d29ab40fc5537b5a2beceb82916ef173dac7e50dbfa0  libcec-8.1.7.tar.gz
+description = HDMI-CEC control library for Pulse-Eight adapters and the kernel CEC framework, with cec-client
+homepage    = https://libcec.pulse-eight.com/
+depends     = cmake pkgconf eudev ncurses python3 swig

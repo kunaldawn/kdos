@@ -357,6 +357,51 @@ typedef struct {
  * `why` is set only where the daemon could not be reached. */
 int sh_mountd_browse(ShServerRow *out, int max, char *why, size_t nwhy);
 
+/* AN IMAGE WRITE IN FLIGHT. The request carries the image as an open
+ * descriptor and the connection stays up for the worker's progress, so the
+ * surface owns this for as long as `running` is set and pumps it from its
+ * loop. `msg` is the daemon's last word — its refusal, or `sdb <bytes>
+ * verified`. */
+typedef struct {
+	int fd;
+	int running, ok, verifying;
+	unsigned long long done, total;
+	char msg[160];
+	char part[256];
+	size_t npart;
+} ShMountWrite;
+
+/* 0 when the request went out; -1 with `msg` set when it could not. `disk`
+ * is the disk's name as the person typed it — the daemon compares it. */
+int sh_mountd_write_start(ShMountWrite *w, int idx, const char *image,
+			  const char *disk);
+int sh_mountd_write_pump(ShMountWrite *w);
+
+/* ── a long child (job.c) ───────────────────────────────────────────────
+ * One program a surface runs and keeps drawing past: its stdout and stderr on
+ * one non-blocking pipe, read a line at a time by sh_job_pump() from the
+ * surface's loop. `line`, when set, is called with every line as it lands;
+ * `last` always holds the newest. */
+typedef struct {
+	pid_t pid;
+	int fd;
+	int running;
+	int status;		/* the exit status once finished; -1 by signal */
+	void (*line)(const char *ln, void *user);
+	void *user;
+	char last[256];
+	char part[1024];
+	size_t npart;
+} ShJob;
+
+/* -1 with `last` saying why when the program is not installed or will not
+ * start. `cwd` is where it runs, or NULL for here. */
+int sh_job_start(ShJob *j, const char *const argv[], const char *cwd);
+/* 1 when something arrived or the child finished. */
+int sh_job_pump(ShJob *j);
+/* To the end, for a `--dump` that draws the finished state. */
+int sh_job_wait(ShJob *j);
+
 int calc_main(int argc, char **argv);		/* kdos-calc     */
 int chars_main(int argc, char **argv);		/* kdos-chars    */
 int connect_main(int argc, char **argv);	/* kdos-connect  */
@@ -370,6 +415,8 @@ int update_main(int argc, char **argv);		/* kdos-update   */
 int store_main(int argc, char **argv);		/* kdos-store    */
 int firewall_main(int argc, char **argv);	/* kdos-firewall */
 int backup_main(int argc, char **argv);		/* kdos-backup   */
+int burn_main(int argc, char **argv);		/* kdos-burn     */
+int verify_main(int argc, char **argv);		/* kdos-verify   */
 int note_main(int argc, char **argv);		/* kdos-note     */
 int slit_main(int argc, char **argv);		/* kdos-slit     */
 int doc_main(int argc, char **argv);		/* kdos-doc      */
@@ -690,6 +737,106 @@ const char *sh_session_prog(void);
 extern const KDispImpl *const kdos_disp[];
 extern const int kdos_disp_n;
 
+/* ── the surface runner (shell.c) ───────────────────────────────────────────
+ * A front end states what it is and the runner owns everything every front
+ * end otherwise writes again: `--font` and `--dump` and the usage line, the
+ * theme, the offscreen dump through the same draw(), kdisp_init() and the
+ * line it prints when there is no display, the resize step, the theme poll,
+ * ktui_keys() before the surface's own dispatch, and the loop. A surface on
+ * the runner cannot leave any of those out, which is what makes them the
+ * runner's and not a checklist.
+ *
+ * OPT-IN. A front end whose loop has a shape of its own (the panel, the
+ * desktop, the savers, the bezels, anything with two surfaces) keeps it.
+ *
+ * THE ORDER. A surface's frames and its handlers see exactly this, and a
+ * framed surface's draws (the dump's too) run inside a ktui frame:
+ *
+ *   arguments -> start(dump) -> theme -> [dump] offscreen at cfg's size,
+ *   ready(), one draw(), the text dump, return 0
+ *                                     -> [live] kdisp_init(), popup plate,
+ *   ready(), then per pass: the theme poll, draw() + flush, poll for
+ *   timeout(), wake(), and either tick() + the resize step, or ktui_keys()
+ *   then event() before the next pass draws. An animation's frame tick
+ *   (KT_EVT_TICK returned as an event) is neither: the resize step, and
+ *   the next pass draws.
+ *   stop() runs after the loop and before kdisp_shutdown(), never on the
+ *   dump or the no-display path.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* What event() answers. TAKEN also marks the event consumed inside a frame,
+ * so a surface that answered Tab does not also walk the focus ring. */
+enum { SH_EV_PASS = 0, SH_EV_TAKEN, SH_EV_CLOSE };
+
+typedef struct {
+	/* The surface. `.font` is the runner's: it is `--font`. The dump is
+	 * drawn at `.cols` x `.rows`, so a surface that sizes itself from
+	 * what it found fills them in before calling sh_run(). */
+	KDispConfig cfg;
+	/* Everything after the program name on the usage line. NULL is
+	 * "[--font NAME] [--dump]", which is the whole of what the runner
+	 * itself accepts. */
+	const char *usage;
+	/* The surface's KtuiKeys, or NULL for one that answers no contract
+	 * key. Asked FIRST for every event: CLOSE ends the loop, TAKEN is not
+	 * passed on, MENU goes to menu() with the item's id. */
+	KtuiKeys *keys;
+	/* kch_px_popup(popup_bg) once the surface is up, for an overlay that
+	 * wears the popup plate. */
+	int popup;
+	int popup_bg;
+	/*
+	 * FRAME EVERY EVENT: the event is dispatched and draw() runs between
+	 * ktui_frame_begin() and ktui_frame_end(), and a second frame with no
+	 * event draws what the first one settled. For a surface drawn with
+	 * the immediate-mode controls (ktui_button, a Tab ring, ktui_modal);
+	 * it is what makes a press land on a control and Tab walk the ring.
+	 *
+	 * OFF BY DEFAULT BECAUSE IT CHANGES THREE THINGS a draw/key/hit
+	 * surface relies on. ktui_frame_end() walks the ring on any Tab that
+	 * event() did not answer TAKEN; ktui_id_base() stops restarting the
+	 * id counter, so a group that points the focus at its own members
+	 * counts from the page's ids; and the hit lists swap once per frame,
+	 * so a surface reading them must read the settled frame's.
+	 */
+	int frame;
+
+	/* A flag the runner does not know: 1 taken (advance `*i` past any
+	 * value it read), 0 not this surface's, and the usage line is
+	 * printed. */
+	int (*arg)(int argc, char **argv, int *i);
+	/* Before the theme and before either path: read what the surface
+	 * shows. `dump` is 1 when the one frame is all there will be. */
+	void (*start)(int dump);
+	/* After the cell buffer exists, on both paths: work that measures
+	 * the grid. */
+	void (*ready)(void);
+	void (*draw)(void);
+	/* One event, after ktui_keys() passed it. SH_EV_*. */
+	int (*event)(KtuiEvent *ev);
+	/* A menu item picked through ktui_keys(), by id. */
+	void (*menu)(int id);
+	/* 1 while a text field owns the keyboard: ktui_keys() is then asked
+	 * about Esc alone, so F1 and F10 type nothing and open nothing. */
+	int (*typing)(void);
+	/* The poll timeout in ms, asked every pass. NULL is 1000. */
+	int (*timeout)(void);
+	/* After every poll, event or not, before the event is dispatched: a
+	 * paste queue, a child's pipe. */
+	void (*wake)(void);
+	/* A poll that timed out, before the resize step. Never an
+	 * animation's frame tick. */
+	void (*tick)(void);
+	/* The loop ended: save what the surface holds. Live path only. */
+	void (*stop)(void);
+} ShSurface;
+
+/* 2 on a bad argument, 1 with no display, else 0. */
+int sh_run(const ShSurface *s, int argc, char **argv);
+/* End the loop after this pass, from draw() or any hook — a control drawn
+ * inside a frame that means Close has no return value to say it with. */
+void sh_run_close(void);
+
 
 /* ── the pinned list (chrome.c) ────────────────────────────────────────────
  * `~/.config/kdos/favorites`, one desktop-entry id per line — what the
@@ -778,7 +925,8 @@ void sh_theme_from_cache(void);
  * sh_theme_dirty each time round its loop: on set, clear it,
  * sh_theme_from_cache(), ktui_draw_invalidate().
  *
- * Everything else calls sh_theme_poll() once per loop instead. It needs no
+ * Everything else calls sh_theme_poll() once per loop instead, and sh_run()
+ * calls it before every draw of a surface on the runner. It needs no
  * signal and therefore no entry on that list — which matters, because SIGHUP
  * kills a process that installs no handler, so the list and the handlers are
  * two things that have to agree. A dialog is not short-lived merely because it

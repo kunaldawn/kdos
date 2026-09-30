@@ -1,0 +1,12 @@
+title: a file conflict is between PACKAGES — an unowned path is adopted
+cite: kpkg
+port: kdos-installer
+
+That is not a loosening for its own sake: it is what 20_selfhost IS. 00_cross
+and 10_bootstrap install tar, musl, binutils and gcc by hand with make DESTDIR
+install, leaving files no database entry owns, and the self-hosting bootstrap then
+rebuilds exactly those packages with kpkg.
+
+`kpkg install -f` is passed only for ports the plan selected, so the conflict
+scan runs for the rest; without adoption of unowned paths, 20_selfhost fails
+on `tar`.

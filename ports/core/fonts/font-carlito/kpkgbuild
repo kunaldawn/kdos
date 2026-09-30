@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = font-carlito
+version     = 20130920
+release     = 1
+_md5        = c74b7223abe75949b4af367942d96c7a
+source      = $name-$version.tar.gz::https://dev-www.libreoffice.org/src/$_md5-crosextrafonts-carlito-$version.tar.gz
+sha256      = 4bd12b6cbc321c1cf16da76e2c585c925ce956a08067ae6f6c64eff6ccfdaf5a  font-carlito-20130920.tar.gz
+description = Carlito — a sans face metric-compatible with Calibri
+homepage    = https://github.com/googlefonts/carlito
+depends     = fontconfig

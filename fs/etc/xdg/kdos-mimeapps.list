@@ -11,25 +11,163 @@
 # `mimeapps.list` beside it wherever $XDG_CURRENT_DESKTOP begins with KDOS —
 # which /etc/profile.d/10-wayland.sh makes true in every login shell, not only
 # under the compositor. A row here therefore answers on a bare virtual terminal
-# too, and every row here ends in a window: `imv` is a Wayland client and
-# `nvim` is run inside the emulator, which is one as well. A type whose opener
-# needs no display belongs in the plain table underneath, so that the two
-# layers keep meaning something.
+# too, and every row here ends in a window: each is a native application that
+# needs the compositor. On a bare virtual terminal the terminal programs (`mc`,
+# `w3m`, `aerc`, `epy`, `kdos-peek`) are run by name. A type whose opener needs
+# no display belongs in the plain table underneath, and a type is named in only
+# one of the two, so that the two layers keep meaning something.
+#
+# Several applications claim the same types (mpv and Haruna, Firefox and
+# LibreWolf, Kate and every editor, Okular and kdos-peek), so a row here is
+# what makes the choice. An id counts only when its entry is installed; a row
+# whose application is removed falls through to the other candidates.
 #
 # A person's own choices live in their config directory and outrank every row
 # here.
 # ---------------------------------
 
 [Default Applications]
-image/png=imv.desktop
-image/jpeg=imv.desktop
-image/gif=imv.desktop
-image/webp=imv.desktop
-image/bmp=imv.desktop
-image/tiff=imv.desktop
-image/svg+xml=imv.desktop
-text/plain=nvim.desktop
-text/markdown=nvim.desktop
-text/x-shellscript=nvim.desktop
-application/json=nvim.desktop
-application/x-shellscript=nvim.desktop
+# Every type is written by its canonical shared-mime-info name: the resolver
+# takes the type from the compiled glob table, which carries canonical names
+# only, so a row keyed by an alias (video/x-matroska, audio/x-wav) is never
+# read.
+#
+# Folders: Dolphin. Kate's entry claims inode/directory too.
+inode/directory=org.kde.dolphin.desktop
+
+# Documents: Okular, through its per-format entries for PDF, PostScript and
+# DjVu (the main org.kde.okular.desktop claims only Okular's own archive
+# type). *.djvu is globbed by vnd.djvu and vnd.djvu+multipage at equal weight,
+# so both are named; the DjVu generator serves the subclass.
+application/pdf=okularApplication_pdf.desktop
+application/postscript=okularApplication_ghostview.desktop
+image/x-eps=okularApplication_ghostview.desktop
+image/vnd.djvu=okularApplication_djvu.desktop
+image/vnd.djvu+multipage=okularApplication_djvu.desktop
+
+# Books: Calibre's viewer.
+application/epub+zip=calibre-ebook-viewer.desktop
+application/x-mobipocket-ebook=calibre-ebook-viewer.desktop
+application/x-fictionbook+xml=calibre-ebook-viewer.desktop
+
+# Offline library: a ZIM archive. shared-mime-info names it x-openzim and
+# kiwix-desktop's own MIME file adds a second type with the same *.zim glob;
+# which one a lookup lands on is the order of the compiled glob table, so both
+# are named.
+application/x-openzim=org.kiwix.desktop.desktop
+application/org.kiwix.desktop.x-zim=org.kiwix.desktop.desktop
+
+# Text: Kate. Its entry claims text/plain alone, and the opener reads the
+# exact type with no subclass walk, so every text subtype that should reach it
+# is named.
+text/plain=org.kde.kate.desktop
+text/markdown=org.kde.kate.desktop
+text/x-shellscript=org.kde.kate.desktop
+application/json=org.kde.kate.desktop
+text/x-csrc=org.kde.kate.desktop
+text/x-chdr=org.kde.kate.desktop
+text/x-c++src=org.kde.kate.desktop
+text/x-c++hdr=org.kde.kate.desktop
+text/x-python=org.kde.kate.desktop
+text/x-python3=org.kde.kate.desktop
+text/x-log=org.kde.kate.desktop
+text/x-patch=org.kde.kate.desktop
+text/x-makefile=org.kde.kate.desktop
+text/x-cmake=org.kde.kate.desktop
+text/x-go=org.kde.kate.desktop
+text/rust=org.kde.kate.desktop
+text/x-java=org.kde.kate.desktop
+text/x-lua=org.kde.kate.desktop
+text/css=org.kde.kate.desktop
+text/javascript=org.kde.kate.desktop
+text/x-tex=org.kde.kate.desktop
+application/x-perl=org.kde.kate.desktop
+application/x-ruby=org.kde.kate.desktop
+application/xml=org.kde.kate.desktop
+application/yaml=org.kde.kate.desktop
+application/toml=org.kde.kate.desktop
+application/sql=org.kde.kate.desktop
+
+# Pictures: Gwenview.
+image/png=org.kde.gwenview.desktop
+image/jpeg=org.kde.gwenview.desktop
+image/gif=org.kde.gwenview.desktop
+image/webp=org.kde.gwenview.desktop
+image/bmp=org.kde.gwenview.desktop
+image/tiff=org.kde.gwenview.desktop
+image/svg+xml=org.kde.gwenview.desktop
+image/avif=org.kde.gwenview.desktop
+image/heif=org.kde.gwenview.desktop
+image/jxl=org.kde.gwenview.desktop
+image/x-tga=org.kde.gwenview.desktop
+image/vnd.microsoft.icon=org.kde.gwenview.desktop
+image/x-portable-bitmap=org.kde.gwenview.desktop
+image/x-portable-graymap=org.kde.gwenview.desktop
+image/x-portable-pixmap=org.kde.gwenview.desktop
+image/x-portable-anymap=org.kde.gwenview.desktop
+image/vnd.adobe.photoshop=org.kde.gwenview.desktop
+
+# GIMP's own format: GIMP. Gwenview and KolourPaint claim it too, and only
+# preview it.
+image/x-xcf=gimp.desktop
+
+# Video: Haruna.
+video/mp4=org.kde.haruna.desktop
+video/matroska=org.kde.haruna.desktop
+video/webm=org.kde.haruna.desktop
+video/mpeg=org.kde.haruna.desktop
+video/quicktime=org.kde.haruna.desktop
+video/ogg=org.kde.haruna.desktop
+video/vnd.avi=org.kde.haruna.desktop
+video/mp2t=org.kde.haruna.desktop
+video/x-ms-wmv=org.kde.haruna.desktop
+video/x-theora+ogg=org.kde.haruna.desktop
+video/x-ogm+ogg=org.kde.haruna.desktop
+video/x-flv=org.kde.haruna.desktop
+video/3gpp=org.kde.haruna.desktop
+
+# Music: Strawberry. *.ogg and *.opus are globbed by several Ogg subtypes of
+# equal weight, and which one a lookup lands on is the order of the compiled
+# glob table, so every subtype is named, as with x-openzim above. Playlists
+# (*.m3u, *.pls) come here too.
+audio/mpeg=org.strawberrymusicplayer.strawberry.desktop
+audio/flac=org.strawberrymusicplayer.strawberry.desktop
+audio/ogg=org.strawberrymusicplayer.strawberry.desktop
+audio/x-vorbis+ogg=org.strawberrymusicplayer.strawberry.desktop
+audio/mp4=org.strawberrymusicplayer.strawberry.desktop
+audio/aac=org.strawberrymusicplayer.strawberry.desktop
+audio/vnd.wave=org.strawberrymusicplayer.strawberry.desktop
+audio/x-wavpack=org.strawberrymusicplayer.strawberry.desktop
+audio/x-ape=org.strawberrymusicplayer.strawberry.desktop
+audio/x-musepack=org.strawberrymusicplayer.strawberry.desktop
+audio/x-ms-wma=org.strawberrymusicplayer.strawberry.desktop
+audio/x-opus+ogg=org.strawberrymusicplayer.strawberry.desktop
+audio/x-flac+ogg=org.strawberrymusicplayer.strawberry.desktop
+audio/x-speex+ogg=org.strawberrymusicplayer.strawberry.desktop
+audio/x-aiff=org.strawberrymusicplayer.strawberry.desktop
+audio/matroska=org.strawberrymusicplayer.strawberry.desktop
+audio/x-mpegurl=org.strawberrymusicplayer.strawberry.desktop
+audio/x-scpls=org.strawberrymusicplayer.strawberry.desktop
+
+# Archives Ark writes as well as reads: zip, the tar family and 7z.
+application/zip=org.kde.ark.desktop
+application/x-tar=org.kde.ark.desktop
+application/x-compressed-tar=org.kde.ark.desktop
+application/x-bzip2-compressed-tar=org.kde.ark.desktop
+application/x-xz-compressed-tar=org.kde.ark.desktop
+application/x-zstd-compressed-tar=org.kde.ark.desktop
+application/x-7z-compressed=org.kde.ark.desktop
+
+# Disc images: Burn, the entry that exists for them. Ark claims the type too.
+application/vnd.efi.iso=kdos-burn.desktop
+
+# Mail and calendars: Thunderbird.
+x-scheme-handler/mailto=thunderbird.desktop
+message/rfc822=thunderbird.desktop
+text/calendar=thunderbird.desktop
+
+# The web: Firefox ESR. LibreWolf claims the same four types.
+text/html=firefox-esr.desktop
+application/xhtml+xml=firefox-esr.desktop
+x-scheme-handler/http=firefox-esr.desktop
+x-scheme-handler/https=firefox-esr.desktop

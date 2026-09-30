@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = flamp
+version     = 2.2.14
+release     = 1
+source      = https://downloads.sourceforge.net/project/fldigi/$name/$name-$version.tar.gz
+sha256      = db8f7dd481db7661c80d7afaa43b044360ee6072d3f3faa1f362b1043a421cb2  flamp-2.2.14.tar.gz
+description = flamp — Amateur Multicast Protocol file transfer to many stations at once through fldigi
+homepage    = http://www.w1hkj.org/
+depends     = pkgconf fltk libX11 flxmlrpc imagemagick

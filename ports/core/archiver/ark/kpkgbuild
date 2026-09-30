@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ark
+version     = 26.08.1
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 0b277a28263074359ce1a1b994c83e974187c0901e320dcbac6042e104b4d8ce  ark-26.08.1.tar.xz
+description = Archive manager — browse, extract and create tar, zip, 7z and compressed archives
+homepage    = https://apps.kde.org/ark/
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcrash kdbusaddons kfilemetadata ki18n kio kservice kparts kwidgetsaddons kwindowsystem kiconthemes kpty kdoctools libarchive libzip zlib 7zip zip unzip

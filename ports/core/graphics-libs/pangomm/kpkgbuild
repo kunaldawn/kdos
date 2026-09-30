@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pangomm
+version     = 2.58.0
+release     = 1
+source      = https://download.gnome.org/sources/pangomm/${version%.*}/pangomm-$version.tar.xz
+sha256      = 217514c1a65035c2fce6e69e33b0d92bafa2594cc474e995a4473441b10f3a33  pangomm-2.58.0.tar.xz
+description = C++ bindings for Pango, the 2.48 API (pangomm-2.48) that gtkmm 4 builds on
+homepage    = https://gtkmm.gnome.org/
+depends     = pango cairomm glibmm libsigc++3 meson python3
+devseries   = odd-minor

@@ -1,0 +1,114 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   embedded — Microcontroller and bare-metal development: cross toolchains, C
+#   libraries, flashers, debug probes and serial consoles
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libjaylink
+
+# gdb and the tracers debug a PROCESS; openocd halts a microcontroller through
+# its debug port — the only way to find out why a board does not boot far
+# enough to print anything. Its adapter list and the 70-kdos-*.rules list are
+# the same list on purpose.
+openocd
+
+# The only thing that writes a FUSE byte, which bricks a chip when it goes
+# wrong and cannot be undone from software after.
+avrdude
+
+# The one flashing route needing no second piece of hardware: a device held in
+# bootloader mode takes its own firmware over the standard USB class.
+dfu-util
+
+# The probe is soldered to every Nucleo and Discovery board, and
+# `st-flash write firmware.bin 0x8000000` is one command where openocd is
+# three config files.
+stlink
+
+# THE ORDER IS THE DEPENDENCY. binutils first, then a gcc built
+# --without-headers so libgcc can exist before a libc does, then the libc
+# built WITH that gcc. One recipe cannot do the last two: the compiler has to
+# be installed before the library it compiles can configure against it.
+#
+# Cortex-M and Cortex-R. --with-multilib-list=rmprofile is what keeps this to
+# the profiles a microcontroller actually is, rather than every ARM variant
+# since 1985.
+binutils-arm-none-eabi
+gcc-arm-none-eabi
+picolibc-arm-none-eabi
+libstdcxx-arm-none-eabi
+
+# RV32 and RV64 — the MCUs and the soft cores the FPGA flow (yosys, nextpnr)
+# synthesises.
+binutils-riscv64-unknown-elf
+gcc-riscv64-unknown-elf
+picolibc-riscv64-unknown-elf
+
+# The spare-parts drawer. avr-libc rather than picolibc: AVR is a Harvard
+# machine with its own address spaces and picolibc does not target it.
+binutils-avr
+gcc-avr
+avr-libc
+
+# The recovery path for a machine that will not POST, and the way a router's
+# flash gets read. The most destructive program in the tree; its own safety is
+# that nothing happens without naming a programmer.
+flashrom
+
+# It RECONNECTS, which is the whole difference from picocom: a board being
+# flashed leaves USB and comes back, and picocom exits every time.
+tio
+
+# The bootloader route for an STM32 with no debugger on the desk: the ROM
+# loader is on the chip already and answers over the same serial line the
+# board is being watched on.
+stm32flash
+
+# The bootloader route for an ESP32 or ESP8266. Espressif's own esptool is the
+# reference and is python reaching `cryptography` — seven new python ports and
+# a compiled crypto stack to write a binary down a serial line; espflash is
+# Espressif's Rust flasher, one binary, driving the same ROM bootloader.
+espflash
+
+# The terminal a board bring-up starts at, and the file transfer that reaches
+# a machine which has only that line. The rz/sz aliases are what every other
+# terminal program looks for, so lrzsz installs them too.
+minicom
+lrzsz
+
+# The 8-bit families gcc has no back end for at all: 8051, STM8, Z80 and PDK.
+sdcc
+srecord
+
+# RP2040/RP2350 UF2 inspection and USB loading — a host program that reads and
+# writes those images, needing the SDK's headers and no cross toolchain.
+picotool
+
+# RTT is the best embedded printf channel there is, and probe-rs is the one
+# free implementation that also flashes over CMSIS-DAP, ST-Link and J-Link.
+probe-rs
+
+# Every udev rule this tree ships grants `dialout` a device class with nothing
+# else on the host able to open it; picocom is the program those rules exist
+# for.
+picocom
+
+xa

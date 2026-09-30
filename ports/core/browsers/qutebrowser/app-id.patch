@@ -1,0 +1,19 @@
+--- a/misc/org.qutebrowser.qutebrowser.desktop	2026-09-28 03:12:47.257743877 +0530
++++ b/misc/org.qutebrowser.qutebrowser.desktop	2026-09-28 03:12:47.281581872 +0530
+@@ -1,6 +1,6 @@
+ [Desktop Entry]
+ Name=qutebrowser
+-StartupWMClass=qutebrowser
++StartupWMClass=org.qutebrowser.qutebrowser
+ GenericName=Web Browser
+ GenericName[ar]=ﻢﺘﺼﻔﺣ ﺎﻠﺸﺒﻛﺓ
+ GenericName[bg]=Уеб браузър
+@@ -50,7 +50,7 @@
+ Exec=qutebrowser --untrusted-args %u
+ Terminal=false
+ StartupNotify=true
+-MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/rdf+xml;image/gif;image/webp;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/qute;
++MimeType=x-scheme-handler/qute;
+ Keywords=Browser
+ Actions=new-window;preferences;
+ 

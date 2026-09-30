@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * KDOS-only configuration: ~/.config/kdos/comp.conf, `key = value` lines,
- * PARSED, never sourced. Ported from the pre-fork kdos-comp config.c —
- * only the keys the graft layer owns (crt*, idle_*, wallpaper) are read
- * here; `bind`, `startup` and the rest of the old schema are rc.xml's
- * business now and are skipped silently so an old file does not spam the
- * log.
+ * PARSED, never sourced. Only the keys the graft layer owns are read here
+ * (the phosphor pass, idle and lid, wallpaper, the chrome's command line,
+ * window memory, motion, frame scheduling, the accessibility aids); `bind`,
+ * `startup` and the rest of what rc.xml owns are named in the log as
+ * rc.xml's and otherwise ignored.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <ctype.h>
@@ -220,6 +220,61 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 		set_bool(path, lineno, value, &c->panel_autohide);
 	} else if (!strcmp(key, "window_memory")) {
 		set_bool(path, lineno, value, &c->window_memory);
+	} else if (!strcmp(key, "motion")) {
+		set_bool(path, lineno, value, &c->motion);
+	} else if (!strcmp(key, "window_motion")) {
+		set_bool(path, lineno, value, &c->window_motion);
+	} else if (!strcmp(key, "max_render_time")) {
+		/*
+		 * Milliseconds before the vertical blank, or off. 1 is the
+		 * timer's own resolution; above 100 no display's refresh is
+		 * long enough to leave anything to wait for, so the value is
+		 * a typo.
+		 */
+		if (!strcasecmp(value, "off")) {
+			c->max_render_time = 0;
+		} else {
+			set_int(path, lineno, value, 0, 100,
+				&c->max_render_time);
+		}
+	} else if (!strcmp(key, "sticky_keys")) {
+		set_bool(path, lineno, value, &c->sticky_keys);
+	} else if (!strcmp(key, "slow_keys")) {
+		set_bool(path, lineno, value, &c->slow_keys);
+	} else if (!strcmp(key, "bounce_keys")) {
+		set_bool(path, lineno, value, &c->bounce_keys);
+	} else if (!strcmp(key, "dwell_click")) {
+		set_bool(path, lineno, value, &c->dwell_click);
+	} else if (!strcmp(key, "slow_keys_delay")
+			|| !strcmp(key, "bounce_keys_delay")
+			|| !strcmp(key, "dwell_click_delay")) {
+		/*
+		 * Milliseconds, 100 to 5000. Below 100 a dwell click fires
+		 * wherever the pointer pauses between two motion events, and
+		 * slow and bounce keys filter nothing a person can feel; above
+		 * 5000 is a typo for seconds.
+		 */
+		int *out = !strcmp(key, "slow_keys_delay") ? &c->slow_keys_ms
+			: !strcmp(key, "bounce_keys_delay") ? &c->bounce_keys_ms
+			: &c->dwell_click_ms;
+		set_int(path, lineno, value, 100, 5000, out);
+	} else if (!strcmp(key, "cursor_size")) {
+		set_int(path, lineno, value, 0, 256, &c->cursor_size);
+	} else if (!strcmp(key, "large_cursor")) {
+		set_bool(path, lineno, value, &c->large_cursor);
+	} else if (!strcmp(key, "large_cursor_size")) {
+		set_int(path, lineno, value, 16, 256, &c->large_cursor_size);
+	} else if (!strcmp(key, "osk")) {
+		if (!strcasecmp(value, "off")) {
+			c->osk = KDOS_OSK_OFF;
+		} else if (!strcasecmp(value, "manual")) {
+			c->osk = KDOS_OSK_MANUAL;
+		} else if (!strcasecmp(value, "auto")) {
+			c->osk = KDOS_OSK_AUTO;
+		} else {
+			wlr_log(WLR_ERROR, "%s:%d: expected off, manual or auto",
+				path, lineno);
+		}
 	} else if (first_word_is(key, "bind") || first_word_is(key, "startup")
 			|| first_word_is(key, "workspaces")
 			|| first_word_is(key, "mouse")) {
@@ -279,12 +334,26 @@ kdos_conf_load(void)
 	c->desktop_icons = true;
 	c->panel_autohide = false;
 	c->window_memory = true;
+	c->motion = true;
+	c->window_motion = false;
+	c->max_render_time = 0;		/* off: composite at the frame event */
 	c->chrome_font[0] = '\0';	/* libkwl's Terminus:pixelsize=32 */
 	/* A 10x20 cell: two rows is a 40px bar. */
 	snprintf(c->panel_font, sizeof(c->panel_font), "Terminus:pixelsize=20");
 	c->panel_margin = 0;		/* edge to edge */
 	c->panel_opacity = 80;
 	c->clock_format[0] = '\0';	/* the panel's own %H:%M */
+	c->sticky_keys = false;
+	c->slow_keys = false;
+	c->bounce_keys = false;
+	c->slow_keys_ms = 300;
+	c->bounce_keys_ms = 300;
+	c->dwell_click = false;
+	c->dwell_click_ms = 1200;
+	c->cursor_size = 0;		/* XCURSOR_SIZE from the session */
+	c->large_cursor = false;
+	c->large_cursor_size = 48;
+	c->osk = KDOS_OSK_OFF;
 	snprintf(c->wallpaper, sizeof(c->wallpaper), "%s",
 		"/usr/share/backgrounds/kdos/default-wallpaper.png");
 
@@ -329,11 +398,13 @@ kdos_conf_load(void)
 }
 
 /*
- * SIGHUP/Reconfigure. The CRT knobs are per-frame uniforms and the lid
- * policy is read at event time, so re-parsing IS applying them; idle and
- * wallpaper need their modules told. The chrome keys are a child's argv
- * and stay what they were — logged, because a key that silently does
- * nothing is the bug this file's comments keep promising away.
+ * SIGHUP/Reconfigure. The CRT knobs are per-frame uniforms, and the lid
+ * policy, `motion`, `window_motion` and `max_render_time` are read at event
+ * time, so re-parsing IS applying them; idle,
+ * wallpaper and the accessibility switches need their modules told. The
+ * chrome keys are a child's argv and stay what they were — logged,
+ * because a key that silently does nothing is the bug this file's comments
+ * keep promising away.
  */
 void
 kdos_conf_reload(void)
@@ -382,9 +453,16 @@ kdos_conf_reload(void)
 			"%s", old.clock_format);
 	}
 
+	if (old.osk != kdos_conf.osk) {
+		wlr_log(WLR_INFO, "comp.conf: osk changed — applies at the "
+			"next login");
+		kdos_conf.osk = old.osk;
+	}
+
 	kdos_idle_reconfigure();
 	kdos_lid_reconfigure();
 	kdos_wallpaper_reload();
+	kdos_a11y_reconfigure();
 }
 
 /* The accent, from the same one-word file kdos-shell reads. Absent is

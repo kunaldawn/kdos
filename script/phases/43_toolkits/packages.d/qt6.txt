@@ -1,0 +1,60 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   43_toolkits: Toolkits
+# ---------------------------------
+#   qt6 — The Qt 6 modules, and everything in `group = qt6`
+# ---------------------------------
+#
+# Libraries whose dependency closure reaches GTK, Qt, wxWidgets, FLTK or Motif:
+# the toolkits themselves, KDE Frameworks, and what applications link over
+# them.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Built with the Wayland and xcb platforms. QT_QPA_PLATFORM is `wayland;xcb`, so
+# a Qt application falls back to Xwayland only when the Wayland plugin cannot
+# start, and QT_QPA_PLATFORMTHEME=kde makes it read its palette, fonts and icons
+# from the kdeglobals `kdos theme` writes.
+qt6-qtbase
+qt6-qtshadertools
+qt6-qtsvg
+qt6-qtlanguageserver
+qt6-qtimageformats
+qt6-qtdeclarative
+qt6-qtwayland
+qt6-qt5compat
+qt6-qttools
+qt6-qtwebsockets
+qt6-qtwebchannel
+qt6-qtnetworkauth
+qt6-qtserialport
+qt6-qtpositioning
+qt6-qtlocation
+qt6-qtsensors
+qt6-qtscxml
+qt6-qtremoteobjects
+qt6-qtcharts
+qt6-qttranslations
+qt6-qtquick3d
+qt6-qtgraphs
+qt6-qtmultimedia
+qt6-qtspeech
+qt6-qt3d
+qt6-qtconnectivity
+qt6-qtmqtt
+
+# Chromium inside Qt, for the web views of Calibre, kiwix-desktop,
+# GoldenDict-ng, Falkon and the rest.
+qt6-qtwebengine
+
+python3-pyside6

@@ -1,0 +1,35 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   44_apps: Applications
+# ---------------------------------
+#   containers — Container runtimes, image tools, container networking and
+#   sandbox primitives
+# ---------------------------------
+#
+# Leaf applications whose dependency closure reaches a toolkit, or the graphics
+# stack on an application shelf.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Every documented appbox failure is podman state — a box stuck in `stopping`,
+# a half-built init, a storage driver mismatch.
+podman-tui
+
+# The container layer is podman and distrobox, and nothing on the console shows
+# a container. lazydocker speaks the Docker API, which `podman system service`
+# serves over a socket; its entry runs behind kdos-podman-api, which starts
+# that service on demand and names it in $DOCKER_HOST.
+lazydocker
+
+buildah
+skopeo

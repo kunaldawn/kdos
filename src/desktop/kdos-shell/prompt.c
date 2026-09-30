@@ -121,15 +121,27 @@ static int wrap(const char *s, int w, char out[MAX_LINES][MAX_MSG])
  * An empty line is a cancel too — a caller handed "" would have to invent what
  * an empty reminder means.
  *
- * A LOOP OF ITS OWN, because the widget is immediate-mode: it wants the event
- * inside ktui_frame_begin() and consumes what it uses, which is the opposite
- * of the yes/no loop's hand-written key switch. One surface, two shapes, and
- * neither is the other with a flag threaded through it.
+ * THE SAME LOOP SHAPE AS THE QUESTION: the loop owns the keys and the presses
+ * and hands the field the ones it does not act on. Enter and Escape are the
+ * dialog's; everything else is the field's, through the toolkit's trio.
  */
+static void prompt_input_draw(const char *msg, const KtuiField *f)
+{
+	int w = ktui_w, h = ktui_h;
+
+	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
+	ktui_draw_box(krect(0, 0, w, h), "KDOS", KT_ACCENT, KT_SURFACE, 1);
+	ktui_draw_text(2, 1, w - 4, msg, KT_TEXT, KT_SURFACE, KT_A_NONE);
+	ktui_field_draw(krect(2, 2, w - 4, 1), f, 1, KT_SURFACE);
+	ktui_draw_text(2, h - 2, w - 4, "Enter keep   Esc cancel", KT_MID,
+		       KT_SURFACE, KT_A_NONE);
+}
+
 static int prompt_input(const char *msg, const char *font,
 			const char *placeholder)
 {
 	char buf[512] = { 0 };
+	KtuiField f = { buf, sizeof(buf), 0, 0, placeholder };
 	int cols = ktui_utf8_width(msg) + 6;
 
 	if (cols < 44)
@@ -157,42 +169,45 @@ static int prompt_input(const char *msg, const char *font,
 	int rc = EXIT_CANCELLED;
 
 	while (!kdisp_should_close()) {
-		KtuiEvent ev;
+		prompt_input_draw(msg, &f);
+		ktui_draw_flush();
 
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
+		KtuiEvent ev;
+		int got = ktui_backend()->poll_event(&ev, 1000);
+
+		/* A paste is a queue and not an event: offered on every wake. */
+		ktui_field_key(&f, NULL);
+		if (!got) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();
 				ktui_draw_invalidate();
 			}
-			ev.type = KT_EVT_NONE;
+			continue;
 		}
-		if (ev.type == KT_EVT_KEY && ev.key == KT_K_ESC)
-			break;
-
-		int w = ktui_w, h = ktui_h;
-
-		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-		ktui_draw_box(krect(0, 0, w, h), "KDOS", KT_ACCENT, KT_SURFACE,
-			      1);
-		ktui_frame_begin(&ev);
-		ktui_draw_text(2, 1, w - 4, msg, KT_TEXT, KT_SURFACE,
-			       KT_A_NONE);
-		if (ktui_input(krect(2, 2, w - 4, 1), buf, sizeof(buf), 0,
-			       placeholder)) {
-			/* The widget answers non-zero on Enter as well as on an
-			 * edit, so the text is what says whether there is an
-			 * answer — an empty box is a cancel. */
-			if (buf[0]) {
-				rc = EXIT_YES;
-				ktui_frame_end();
+		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			/* The shell-wide contract: a right press backs out. */
+			if (ev.btn == KT_MB_RIGHT)
 				break;
-			}
+			if (ev.btn == KT_MB_LEFT)
+				ktui_field_hit(krect(2, 2, ktui_w - 4, 1), &f,
+					       ev.mx, ev.my);
+			continue;
 		}
-		ktui_draw_text(2, h - 2, w - 4, "Enter keep   Esc cancel",
-			       KT_MID, KT_SURFACE, KT_A_NONE);
-		ktui_frame_end();
-		ktui_draw_flush();
+		if (ev.type != KT_EVT_KEY)
+			continue;
+		if (ev.key == KT_K_ESC)
+			break;
+		if (ev.key == KT_K_ENTER) {
+			/* The text is what says whether there is an answer:
+			 * an empty box is a cancel. */
+			if (buf[0])
+				rc = EXIT_YES;
+			break;
+		}
+		ktui_field_key(&f, &ev);
 	}
 
 	kdisp_shutdown();

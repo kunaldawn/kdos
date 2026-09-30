@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = stella
+version     = 7.0c
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/stella-emu/stella/archive/refs/tags/$version.tar.gz
+sha256      = b9309198aa5746cd568e91caaea10bbeab4ca8155493d0243694b41bdb39d7ca  stella-7.0c.tar.gz
+description = Stella — Atari 2600 VCS emulator with a built-in debugger
+homepage    = https://stella-emu.github.io/
+depends     = pkgconf sdl2-compat zlib libpng sqlite

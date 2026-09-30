@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = texstudio
+version     = 4.9.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/texstudio-org/texstudio/archive/refs/tags/$version.tar.gz
+sha256      = c056891b90f565350c88c1c7504bab979f8de55e035ae29203a7544001d4fd4e  texstudio-4.9.8.tar.gz
+description = LaTeX editor — completion, live PDF preview with SyncTeX, spelling and grammar checking
+homepage    = https://www.texstudio.org/
+depends     = cmake ninja qt6-qtbase qt6-qtsvg qt6-qtdeclarative qt6-qttools qt6-qtwayland poppler quazip hunspell zlib libX11 librsvg texlive

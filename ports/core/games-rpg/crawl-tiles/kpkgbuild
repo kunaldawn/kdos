@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = crawl-tiles
+version     = 0.34.1
+release     = 1
+source      = $name-$version.tar.xz::https://github.com/crawl/crawl/releases/download/$version/stone_soup-$version.tar.xz
+sha256      = 473b9cdc16be0b537ac11e43c6c77db4b290000e4a17f72a842eba59c6b7be2a  crawl-tiles-0.34.1.tar.xz
+description = Dungeon Crawl Stone Soup — the open-ended roguelike of the Orb of Zot, in its graphical tiles build
+homepage    = https://crawl.develz.org
+depends     = pkgconf perl python3 python3-yaml sdl2-compat sdl2-image sdl2-mixer freetype2 libpng zlib sqlite lua54 libglvnd mesa ttf-dejavu

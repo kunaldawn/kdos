@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = python3-wxpython
+version     = 4.2.5
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/w/wxpython/wxpython-$version.tar.gz
+sha256      = 44e836d1bccd99c38790bb034b6ecf70d9060f6734320560f7c4b0d006144793  python3-wxpython-4.2.5.tar.gz
+description = wxPython — the wxWidgets GTK 3 toolkit for Python programs such as CHIRP and Pronterface
+homepage    = https://wxpython.org/
+depends     = python3 python3-setuptools python3-cython wxwidgets gtk3 numpy python3-pillow python3-six
+series      = 4.2

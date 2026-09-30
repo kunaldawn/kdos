@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-cssselect
+version     = 1.5.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/cssselect/cssselect-$version.tar.gz
+sha256      = 3cbe82dd7acbee9ba9e5723b5f9e4749826912f1fb31cd7f92aabed5fde15b15  python3-cssselect-1.5.0.tar.gz
+description = CSS selectors translated to XPath — Inkscape's extension library selects with it
+homepage    = https://pypi.org/project/cssselect/
+depends     = python3 python3-pip python3-hatchling

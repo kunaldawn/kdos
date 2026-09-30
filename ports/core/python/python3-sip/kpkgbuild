@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-sip
+version     = 6.16.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/s/sip/sip-$version.tar.gz
+sha256      = 0a739c9cd2929de4e0884456d8caf3cfb22c10534757c7797bd8dc6bd9ed69bc  python3-sip-6.16.1.tar.gz
+description = SIP — the binding generator PyQt6, QScintilla and QGIS are built with
+homepage    = https://github.com/Python-SIP/sip
+depends     = python3 python3-setuptools python3-setuptools-scm python3-pip python3-packaging

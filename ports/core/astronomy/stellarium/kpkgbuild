@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = stellarium
+version     = 26.2
+release     = 1
+_qxlsx      = 9f545935a1effa0144ba76598e95a7597210553a
+_indi       = 2.1.3
+_md4c       = 0.5.2
+source      = https://github.com/Stellarium/stellarium/releases/download/v$version/$name-$version.tar.xz
+source      = stellarium-qxlsx-$_qxlsx.zip::https://github.com/QtExcel/QXlsx/archive/$_qxlsx.zip
+source      = stellarium-indi-$_indi.zip::https://github.com/indilib/indi/archive/v$_indi.zip
+source      = md4c-$_md4c.tar.gz::https://github.com/mity/md4c/archive/refs/tags/release-$_md4c.tar.gz
+sha256      = 9a068d00aac82151f2b24c7f278847a2f9416f31f17c0326fc56ee4cc4cb1aed  stellarium-26.2.tar.xz
+sha256      = 27dad1aa0e477b43990f6cbbfb30988f417a6f3629c880c397574ae17bfb4b34  stellarium-qxlsx-9f545935a1effa0144ba76598e95a7597210553a.zip
+sha256      = c3941d803ce94228cef0e74da1b72e2135ba2ea80c97f72f7e5056cdbb595536  stellarium-indi-2.1.3.zip
+sha256      = 55d0111d48fb11883aaee91465e642b8b640775a4d6993c2d0e7a8092758ef21  md4c-0.5.2.tar.gz
+description = Planetarium — a realistic sky in 3D, as seen with the eye, binoculars or a telescope
+homepage    = https://stellarium.org/
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtcharts qt6-qtmultimedia qt6-qtspeech qt6-qtpositioning qt6-qtserialport qt6-qttools qt6-qtimageformats qt6-qtwayland exiv2 gpsd nlopt zlib python3 noto-fonts ttf-dejavu

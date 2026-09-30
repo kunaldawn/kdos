@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = waylandpp
+version     = 1.0.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/NilsBrause/waylandpp/archive/refs/tags/$version.tar.gz
+sha256      = 49c362fa5db28ab5472968215b88f1fbe3a7b7f57818dde722fd7d38997d940a  waylandpp-1.0.1.tar.gz
+description = Wayland C++ bindings and the wayland-scanner++ protocol generator
+homepage    = https://github.com/NilsBrause/waylandpp
+depends     = cmake ninja pkgconf pugixml wayland wayland-protocols libglvnd mesa

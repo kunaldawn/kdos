@@ -1,0 +1,41 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   files — File managers, disk-usage analysers, duplicate finders and file
+#   locators
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The same question `fd` answers, asked of an INDEX instead of the disk: `fd`
+# walks the tree every time and is right where the tree is small, and a
+# whole-disk "where is that file called…" is the case it is slow at. The index
+# is built PER USER and the binary carries no setgid bit — the decision, and
+# what upstream does instead, is in docs/kdos/03-architecture/security-model.md.
+plocate
+
+dust
+duf
+ncdu
+
+# What linux-firmware's `make dedup` wants; that recipe skips the step without
+# it.
+rdfind
+
+mc
+lf

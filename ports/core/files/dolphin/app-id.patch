@@ -1,0 +1,8 @@
+--- a/src/org.kde.dolphin.desktop	2026-09-28 02:54:14.484998542 +0530
++++ b/src/org.kde.dolphin.desktop	2026-09-28 02:54:14.485179537 +0530
+@@ -227,4 +227,4 @@
+ Keywords[zh_TW]=files;file management;file browsing;samba;network shares;Explorer;Finder;檔案總管;檔案管理員;檔案;
+ X-DBUS-ServiceName=org.kde.dolphin
+ X-KDE-Shortcuts=Meta+E
+-StartupWMClass=dolphin
++StartupWMClass=org.kde.dolphin

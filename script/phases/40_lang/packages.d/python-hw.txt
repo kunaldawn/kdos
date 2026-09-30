@@ -1,0 +1,40 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   40_lang: Languages
+# ---------------------------------
+#   python-hw — python3-* hardware, serial, USB, instrument, CAN and
+#   device-protocol modules
+# ---------------------------------
+#
+# Language modules and developer tools — the python3-* and perl-* modules,
+# language implementations, build and documentation tools, debuggers and
+# version control — whose dependency closure needs nothing past 31_compilers.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+python3-pyserial
+
+# The ESP ROM bootloader is in mask ROM and cannot be bricked, which is what
+# makes esptool the one flashing tool that always answers.
+python3-esptool
+
+# The standard instrument-automation API with no proprietary VISA anywhere:
+# pyvisa is the API and pyvisa-py is the backend that speaks USB, TCPIP and
+# serial.
+python3-pyvisa
+
+# The one manufacturer-independent engine diagnostic there is, over a serial
+# adapter the dialout group and the CH341/CP210x udev rules already reach.
+python3-obd
+
+python3-adafruit-nrfutil

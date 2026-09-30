@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = qt6-qtwebengine
+version     = 6.11.2
+release     = 1
+_module     = qtwebengine
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 6101c1aa00ff933d1b65ee5d167f76e8d71b9ac5b378b0111277723ebda7c163  qt6-qtwebengine-6.11.2.tar.xz
+description = Qt 6 WebEngine and Qt PDF — the Chromium web engine as Qt widgets and Qt Quick types
+homepage    = https://www.qt.io/
+depends     = cmake ninja pkgconf python3 python3-html5lib nodejs gperf bison flex perl qt6-qtbase qt6-qtdeclarative qt6-qtwebchannel qt6-qtpositioning qt6-qttools nss nspr dbus glib icu fontconfig freetype2 harfbuzz libjpeg-turbo libpng libtiff libwebp openjpeg opus lcms2 zlib pciutils eudev alsa-lib libpulse pipewire krb5 libva libdrm mesa vulkan-headers cups libxkbcommon libxkbfile libxcb libX11 libXcomposite libXcursor libXdamage libXext libXfixes libXi libXrandr libXrender libXtst libxshmfence xorgproto
+group       = qt6

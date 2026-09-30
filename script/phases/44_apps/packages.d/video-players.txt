@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   44_apps: Applications
+# ---------------------------------
+#   video-players — Video players and media centres, and their front-end
+#   add-ons
+# ---------------------------------
+#
+# Leaf applications whose dependency closure reaches a toolkit, or the graphics
+# stack on an application shelf.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The plugin that puts mpv on the session bus: the media keys and the panel's
+# now-playing cell reach it through MPRIS.
+mpv-mpris
+
+haruna
+smplayer
+celluloid
+kodi
+uosc

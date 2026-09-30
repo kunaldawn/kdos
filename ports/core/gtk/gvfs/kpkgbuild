@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gvfs
+version     = 1.62.0
+release     = 1
+source      = https://download.gnome.org/sources/gvfs/${version%.*}/gvfs-$version.tar.xz
+sha256      = dd8e6c255fd3bed5eeb190b59027c88b38e63c1be0932ddce9cfeb48f3c43d0f  gvfs-1.62.0.tar.xz
+description = GIO virtual filesystem — sftp, smb, dav, trash, recent, MTP, camera and device volumes for GTK applications
+homepage    = https://gitlab.gnome.org/GNOME/gvfs
+depends     = meson ninja pkgconf glib gsettings-desktop-schemas dbus libsecret libsoup3 libxml2 libarchive openssh samba avahi fuse lsof libbluray libcdio libcdio-paranoia libgphoto2 libmtp libimobiledevice libplist libusb libgudev eudev udisks2 polkit libgcrypt libcap libxslt docbook-xml docbook-xsl gettext

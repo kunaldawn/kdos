@@ -309,6 +309,9 @@ typedef struct {
 
 typedef void (*KDispBackdropFn)(pixman_image_t *dst, int w, int h, int scale);
 
+/* Called with the new whole-number scale. See KDispImpl.on_scale. */
+typedef void (*KDispScaleFn)(int scale);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Somebody else's windows
  *
@@ -381,6 +384,17 @@ typedef struct {
 	int (*cell_w)(void);
 	int (*cell_h)(void);
 	int (*scale)(void);
+	/*
+	 * A PIXEL THIS SURFACE DRAWS IN, AS THE COMPOSITOR COUNTS IT. The
+	 * pixels kdisp_cell_w() measures are the ones a consumer draws beside
+	 * its cells; on a fractional output scale they are device pixels, and
+	 * a number handed to ANOTHER surface — a popup's margin, a menu's
+	 * anchor, a tray item's click position — has to be logical. This is
+	 * the conversion: `cx * kdisp_cell_w()` through it is where cell `cx`
+	 * starts on the screen. A backend with one kind of pixel leaves it
+	 * NULL, and the answer is the number it was given.
+	 */
+	int (*px_logical)(int px);
 	int (*decorated)(void);
 	int (*popup_offset)(void);
 	int (*edge_bottom)(void);
@@ -496,6 +510,26 @@ typedef struct {
 	int (*font_at)(int i, char *out, int cap);
 	int (*font_current)(void);
 	void (*font_set)(int index, int keep);
+
+	/*
+	 * THE PIXEL CELL CHANGED — the output scale, or on a fractional scale
+	 * the cell itself — and anything rasterised for the old one is the
+	 * wrong size. The server learns the scale only once the surface is on
+	 * a screen, and again whenever it moves to another, so a picture built
+	 * at the scale kdisp_scale() answered at start-up is built at 1 on a
+	 * HiDPI output and then cut into cells twice its size. On a fractional
+	 * scale kdisp_scale() stays 1 and kdisp_cell_w()/kdisp_cell_h() grow
+	 * instead, to the font's cell at the device size, so a follower reads
+	 * both again rather than trusting the argument alone.
+	 *
+	 * Each registered function is called with the new scale after the
+	 * backend has taken it, and the surface is then sent a redraw: a hook
+	 * that drops pictures has dropped what the cells on screen name, and
+	 * the next frame must ask for them again. A function registered twice
+	 * is called once. A backend whose scale never changes leaves this
+	 * NULL, and a registration there is a function that is never called.
+	 */
+	void (*on_scale)(KDispScaleFn fn);
 } KDispImpl;
 
 /*
@@ -524,11 +558,16 @@ int kdisp_drag_start(const char *mime, const char *data, size_t len);
 int kdisp_cell_w(void);
 int kdisp_cell_h(void);
 int kdisp_scale(void);
+/* A drawn pixel as the compositor counts it. See KDispImpl.px_logical. */
+int kdisp_px_logical(int px);
 int kdisp_decorated(void);
 int kdisp_popup_offset(void);
 int kdisp_edge_bottom(void);
 void kdisp_cursor_set(enum kdisp_cursor c);
 void kdisp_set_backdrop(KDispBackdropFn fn);
+/* Follow the output scale. AFTER kdisp_init: before it there is no display to
+ * register with, and the call does nothing. See KDispImpl.on_scale. */
+void kdisp_on_scale(KDispScaleFn fn);
 void kdisp_input_cells(const KRect *rects, int n);
 /* Rename this window after it was created. See KDispImpl.set_title. */
 void kdisp_set_title(const char *title);

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = audacity
+version     = 4.0.0
+release     = 1
+source      = $name-$version.tar.xz::https://github.com/audacity/audacity/releases/download/Audacity-$version/audacity-sources-$version.tar.xz
+sha256      = b29076f99fa5d2f522d001db472a896db81f9effefd15948c940571753858058  audacity-4.0.0.tar.xz
+description = Multitrack audio editor and recorder — the Qt 6 Audacity 4, with LV2, LADSPA and Nyquist effects
+homepage    = https://www.audacityteam.org/
+depends     = cmake ninja pkgconf git qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtshadertools qt6-qt5compat qt6-qtnetworkauth qt6-qttools qt6-qtwayland wxwidgets zlib expat libpng freetype2 harfbuzz pugixml libogg libvorbis flac opus opusfile lame mpg123 wavpack libsndfile portaudio alsa-lib ffmpeg

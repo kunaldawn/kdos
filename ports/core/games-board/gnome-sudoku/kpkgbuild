@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gnome-sudoku
+version     = 51.0.1
+release     = 1
+_series     = ${version%%.*}
+source      = https://download.gnome.org/sources/$name/$_series/$name-$version.tar.xz
+sha256      = 605f5efdd3e4c652fcc7d1ae70c49094a20c8f091a56011ae037182dfe42d0c8  gnome-sudoku-51.0.1.tar.xz
+description = GNOME Sudoku — the number-grid puzzle, generated at four difficulties
+homepage    = https://gitlab.gnome.org/GNOME/gnome-sudoku
+depends     = meson ninja vala blueprint-compiler glib gtk4 libadwaita libgee json-glib qqwing librsvg gettext itstool

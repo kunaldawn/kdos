@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = mkvtoolnix
+version     = 102.0
+release     = 1
+source      = https://mkvtoolnix.download/sources/$name-$version.tar.xz
+sha256      = 9f0a810f17c7df8adb9064a3a41d5784399be412d19704cf080745ad7d45da30  mkvtoolnix-102.0.tar.xz
+description = MKVToolNix: create, split, edit and inspect Matroska files, with the Qt 6 GUI
+homepage    = https://mkvtoolnix.download/
+depends     = ruby pkgconf boost gmp libebml libmatroska libogg libvorbis flac zlib fmt pugixml nlohmann-json libdvdread cmark qt6-qtbase qt6-qtsvg qt6-qtmultimedia qt6-qtwayland libxslt docbook-xsl librsvg

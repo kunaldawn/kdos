@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wine-gecko
+version     = 2.47.4
+release     = 1
+source      = $name-$version.tar.xz::https://dl.winehq.org/wine/wine-gecko/$version/wine-gecko-$version-x86.tar.xz
+source      = https://dl.winehq.org/wine/wine-gecko/$version/wine-gecko-$version-x86_64.tar.xz
+sha256      = 2cfc8d5c948602e21eff8a78613e1826f2d033df9672cace87fed56e8310afb6  wine-gecko-2.47.4.tar.xz
+sha256      = fd88fc7e537d058d7a8abf0c1ebc90c574892a466de86706a26d254710a82814  wine-gecko-2.47.4-x86_64.tar.xz
+description = Wine Gecko — the HTML engine Wine's MSHTML uses, 32- and 64-bit, as upstream builds it
+homepage    = https://gitlab.winehq.org/wine/wine-gecko

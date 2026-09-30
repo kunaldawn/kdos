@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = perl-file-which
+version     = 1.27
+release     = 1
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/P/PL/PLICEASE/File-Which-$version.tar.gz
+sha256      = 3201f1a60e3f16484082e6045c896842261fc345de9fb2e620fd2a2c7af3a93a  perl-file-which-1.27.tar.gz
+description = Find the full path of an executable on PATH, in pure perl
+homepage    = https://metacpan.org/dist/File-Which
+depends     = perl

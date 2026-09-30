@@ -1,0 +1,1346 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   kdos-powerd / kdos-power — suspend, poweroff, reboot
+ *
+ *     $ kdos-power suspend
+ *     $ kdos-power poweroff
+ *
+ * Suspending needs a write to /sys/power/state and powering off needs
+ * reboot(2). Both are root's, and the desktop is not root — so this is the
+ * smallest thing that can sit between them: a root daemon on a unix socket in
+ * /run, and a client that writes one word to it. ksvc supervises the daemon;
+ * one binary answers to both names, dispatched on its own basename, the same
+ * shape as kpkg and kdos-tools.
+ *
+ * WHY NOT THE OBVIOUS ALTERNATIVES. A setuid helper would put an
+ * argv-parsing root process in every user's reach for the sake of three verbs.
+ * polkit is installed here, but its answer is "ask the user's password", which a
+ * lid-close cannot do. logind does not exist on KDOS and is not coming.
+ *
+ * THE AUTHORISATION IS SO_PEERCRED, and it is checked on the SOCKET rather than
+ * trusted from the message. A client cannot lie about its uid — the kernel
+ * fills the credentials in — and there is nothing in the protocol that names a
+ * user, so there is nothing to forge. Who is allowed is TWO TIERS. `ping`,
+ * `suspend`, `poweroff` and `reboot` answer root and any member of `seat` or
+ * `wheel`: `seat` is the group seatd hands the display to, so it is exactly the
+ * person sitting at the machine, and the installer keeps the desktop user in it
+ * whether or not they are an administrator. Every verb that rewrites the
+ * system's configuration — `firewall`, `autologin`, `accent`, `timezone` —
+ * answers root and `wheel` only, the same group sudo and polkit treat as admin.
+ * A non-administrator can therefore still close the lid and shut the machine
+ * down, and cannot open a port or change who logs in.
+ *
+ * THE PROTOCOL IS ONE LINE PER CONNECTION. `suspend`, `poweroff`, `reboot`,
+ * `ping` are a bare word; `timezone <zone>` and `accent <scheme>` take one,
+ * then a one-line reply and the socket closes. No length prefixes, no
+ * multiplexing, no state: a parser is an attack surface and this one is a
+ * handful of strcmp.
+ *
+ * THE TIMEZONE IS HERE AND NOT IN A SECOND DAEMON because it is the same
+ * question: writing `/etc/localtime` and `/etc/profile.d/20-timezone.sh` is
+ * root's, the person doing it is the one administering the machine, and
+ * `wheel` is already the answer to who that is. A second socket with a second
+ * authorisation rule would be a second answer to one question.
+ */
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE	/* struct ucred */
+#endif
+#include <errno.h>
+#include <fcntl.h>
+#include <grp.h>
+#include <poll.h>
+#include <signal.h>
+#include <pwd.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/reboot.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include "kbase.h"
+#include "kcolor.h"
+
+#define KP_SOCKET "/run/kdos-powerd.sock"
+#define KP_SEAT   "seat"	/* the power verbs */
+#define KP_ADMIN  "wheel"	/* the power verbs, and every configuration verb */
+#define KP_MAX    64
+
+/*
+ * The socket, overridable so the daemon and its authorisation can be exercised
+ * without root — which is the only way this gets tested at all, since the real
+ * path is in /run and the real actions power the machine off. It grants
+ * nothing: authorisation is SO_PEERCRED on the connection, so pointing a client
+ * at a different socket only ever reaches a different daemon, and pointing the
+ * DAEMON somewhere else still needs privilege to actually suspend anything.
+ */
+static const char *sock_path(void)
+{
+	const char *p = getenv("KDOS_POWERD_SOCKET");
+	return p && *p ? p : KP_SOCKET;
+}
+
+/* ── the allowed set ───────────────────────────────────────────────────── */
+
+/*
+ * `kdos-powerd --explain <user>` — would that user be permitted, and why.
+ *
+ * A refused power key is otherwise unattributable: the daemon's stderr goes to
+ * the supervisor's log, which is the one place a user watching a dead
+ * Super+power will not look.
+ *
+ * IT ASKS libkbase THE QUESTION THE SOCKET ASKS, so the explanation cannot
+ * drift from the decision. It needs no privilege, so it is also how the wheel
+ * parse gets tested.
+ */
+static int explain(const char *user)
+{
+	struct passwd *pw = getpwnam(user);
+	if (!pw) {
+		printf("%s: no passwd entry — refused\n", user);
+		return 1;
+	}
+	if (pw->pw_uid == 0) {
+		printf("%s: uid 0 — permitted\n", user);
+		return 0;
+	}
+	bool admin = kb_uid_allowed(pw->pw_uid, KP_ADMIN) != 0;
+	bool ok = admin || kb_uid_allowed(pw->pw_uid, KP_SEAT) != 0;
+	printf("%s: uid %u, primary gid %u, %s — %s\n", user,
+	       (unsigned)pw->pw_uid, (unsigned)pw->pw_gid,
+	       admin ? "in " KP_ADMIN : ok ? "in " KP_SEAT " only"
+					   : "in neither " KP_SEAT " nor " KP_ADMIN,
+	       admin ? "permitted"
+	       : ok  ? "permitted to suspend, power off and reboot; "
+		       "refused the configuration verbs"
+		     : "refused");
+	return ok ? 0 : 1;
+}
+
+/* ── the actions ───────────────────────────────────────────────────────── */
+
+/*
+ * `sync` before every one of them. There is no filesystem unmount path here —
+ * the daemon is not init — so the data that has not reached the disk when the
+ * machine suspends or powers off is the data that is lost.
+ */
+/*
+ * THE SLEEP HOOKS. Nothing else on the machine learns of a suspend: there is
+ * no logind to broadcast PrepareForSleep, so whoever must act around one is
+ * told here, directly, by argv and never through a shell.
+ *
+ * NetworkManager is told through its own Sleep(b) method. Its D-Bus policy
+ * lets root alone call it, and it asks polkit nothing. Without it NM never
+ * takes its devices down, and wakes believing a Wi-Fi association and a DHCP
+ * lease that the time asleep has ended — a machine that resumes "connected"
+ * with no working network until the link drops on its own. It is waited for
+ * (--print-reply), so the devices are down before the kernel freezes them; a
+ * missing NM or bus fails the call at once, and the timeout caps the rest.
+ *
+ * TLP's `suspend` records the radio states and applies its pre-sleep settings;
+ * `resume` restores the radios and re-applies the profile, which firmware can
+ * reset across S3. Its own sleep hook is a systemd one and is not installed.
+ *
+ * Order: NM sleeps first and wakes last, so the radios TLP restores are back
+ * before NM rescans. None of the four can stop the suspend — a hook that
+ * failed is a hook that did not run, and the lid is still closed.
+ */
+#define KP_DBUS_SEND "/usr/bin/dbus-send"
+#define KP_TLP       "/usr/sbin/tlp"
+
+static void nm_sleep(bool asleep)
+{
+	if (access(KP_DBUS_SEND, X_OK) != 0)
+		return;
+	KbArgv a = {0};
+	kb_argv_add(&a, KP_DBUS_SEND);
+	kb_argv_add(&a, "--system");
+	kb_argv_add(&a, "--print-reply");
+	kb_argv_add(&a, "--reply-timeout=5000");
+	kb_argv_add(&a, "--dest=org.freedesktop.NetworkManager");
+	kb_argv_add(&a, "/org/freedesktop/NetworkManager");
+	kb_argv_add(&a, "org.freedesktop.NetworkManager.Sleep");
+	kb_argv_add(&a, asleep ? "boolean:true" : "boolean:false");
+	kb_argv_end(&a);
+	(void)kb_run(&a);
+}
+
+static void tlp_hook(const char *verb)
+{
+	if (access(KP_TLP, X_OK) != 0)
+		return;
+	KbArgv a = {0};
+	kb_argv_add(&a, KP_TLP);
+	kb_argv_add(&a, verb);
+	kb_argv_end(&a);
+	(void)kb_run(&a);
+}
+
+static int do_suspend(void)
+{
+	sync();
+	int fd = open("/sys/power/state", O_WRONLY | O_CLOEXEC);
+	if (fd < 0)
+		return -1;
+
+	nm_sleep(true);
+	tlp_hook("suspend");
+	/*
+	 * `mem` is suspend-to-RAM. Not `disk`: hibernation needs a resume=
+	 * kernel argument and a swap device big enough for RAM, neither of
+	 * which KDOS's initramfs sets up, and a hibernate that cannot resume is
+	 * a poweroff that eats your session.
+	 *
+	 * The write returns after the wake, or at once if the kernel refused —
+	 * either way the machine is awake and the hooks are undone.
+	 */
+	ssize_t w = write(fd, "mem", 3);
+	int err = errno;
+	close(fd);
+	tlp_hook("resume");
+	nm_sleep(false);
+	errno = err;
+	return w == 3 ? 0 : -1;
+}
+
+static int do_reboot(int cmd)
+{
+	sync();
+	/*
+	 * Ask init first: its first shutdown entry, /etc/init.d/rcK, runs
+	 * every service's stop action, and pulling the power out from under
+	 * NetworkManager and the appbox's containers is how a filesystem ends
+	 * up dirty. SIGUSR2 and SIGTERM to pid 1 are what toybox init answers
+	 * with a poweroff and a reboot.
+	 *
+	 * reboot(2) is the fallback for an init that ignored the signal, and
+	 * the wait before it must outlast rcK's walk down to 55_powerd, whose
+	 * stop ends this process: every supervised service ahead of it costs
+	 * ksvc a second. A wait shorter than that walk powers the machine off
+	 * mid-shutdown, before the mixer is saved or a filesystem unmounted.
+	 */
+	kill(1, cmd == RB_POWER_OFF ? SIGUSR2 : SIGTERM);
+	sleep(60);
+	reboot(cmd);
+	return -1;		/* only reached if reboot(2) itself failed */
+}
+
+/*
+ * THE FIREWALL, AS NAMED SERVICES AND NEVER AS PORTS.
+ *
+ * THE TABLE IS HERE, NOT IN THE SURFACE, AND THAT IS THE WHOLE POINT. A client
+ * that could name a port could open any port; a client that can only name
+ * `ssh` can open exactly what this table says `ssh` is. The surface asks for
+ * the list rather than carrying a copy, so there is one answer to what a name
+ * means.
+ *
+ * THE FILE IS REWRITTEN WHOLE from the names that are on. Merging into an
+ * existing file would mean parsing nftables syntax to find what to remove, and
+ * a parser that got it wrong would leave a port open that the surface showed
+ * as closed. What a person writes by hand goes in another file beside it,
+ * which this never reads or touches.
+ */
+static const struct {
+	const char *name;
+	const char *rule;
+	const char *what;
+} FW[] = {
+	{ "ssh",   "tcp dport 22 accept",   "incoming SSH (70_sshd.sh)" },
+	{ "http",  "tcp dport 80 accept",   "a web server on this machine" },
+	{ "https", "tcp dport 443 accept",  "a TLS web server on this machine" },
+	{ "ipp",   "tcp dport 631 accept",  "sharing a printer with CUPS" },
+	{ "smb",   "tcp dport 445 accept",  "sharing files over SMB" },
+	/* kiwix-serve's default, and the one offline-content port this desktop
+	 * ships a reason for. */
+	{ "kiwix", "tcp dport 8080 accept", "kiwix-serve" },
+	{ "mdns",  "udp dport 5353 accept", "mDNS beyond the default rule" },
+	/* The LAN servers whose ports ship a service script: each is
+	 * unreachable from another machine until its name is on, whatever its
+	 * own configuration says it listens on. */
+	{ "mqtt",  "tcp dport { 1883, 8883 } accept",
+	  "an MQTT broker for LAN devices (73_mosquitto)" },
+	{ "xmpp",  "tcp dport 5222 accept", "XMPP clients (74_prosody)" },
+	{ "nfs",   "tcp dport 2049 accept", "sharing files over NFSv4 (72_nfsd)" },
+	{ "babel", "udp dport 6696 accept", "Babel mesh routing (31_babeld)" },
+	{ "nut",   "tcp dport 3493 accept",
+	  "UPS status for other machines (56_nut)" },
+	{ "snmp",  "udp dport 161 accept",
+	  "SNMP queries of this machine (71_snmpd)" },
+	/* Voice runs over UDP and falls back to the TCP control channel, so
+	 * both halves are one rule, in the concatenated form `syncthing` uses. */
+	{ "mumble",
+	  "meta l4proto . th dport { tcp . 64738, udp . 64738 } accept",
+	  "a Mumble voice server (75_mumble-server)" },
+	{ "caldav", "tcp dport 5232 accept",
+	  "shared calendars and contacts (77_radicale)" },
+	{ "mail",  "tcp dport { 25, 143, 465, 587, 993 } accept",
+	  "a LAN mail server (78_maddy)" },
+	{ "irc",   "tcp dport { 6667, 6697 } accept",
+	  "an IRC server (79_ngircd)" },
+	/* SSDP discovery on 1900 is how a player finds the server; 8200 is
+	 * where it then fetches the media. */
+	{ "dlna",  "meta l4proto . th dport { tcp . 8200, udp . 1900 } accept",
+	  "a DLNA media server (84_minidlna)" },
+	{ "tryton", "tcp dport 8000 accept",
+	  "Tryton clients of GNU Health (85_gnuhealth)" },
+	/* The shipped /etc/caddy/Caddyfile's listener, in front of kiwix. */
+	{ "caddy", "tcp dport 8443 accept", "caddy's shipped site (HTTPS)" },
+	/* mosh-server binds the first free port of this range, one per session,
+	 * after an SSH login that `ssh` has to be on for. */
+	{ "mosh",  "udp dport 60000-61000 accept",
+	  "incoming mosh sessions (needs ssh too)" },
+	/* ONE RULE FOR THREE PORTS, because the state is read back by matching
+	 * the rule text: sync on 22000 over TCP and QUIC, and the local
+	 * discovery broadcast on 21027 that is how two machines find each
+	 * other with no server. */
+	{ "syncthing",
+	  "meta l4proto . th dport { tcp . 22000, udp . 22000, udp . 21027 } accept",
+	  "syncthing discovery and sync" },
+	/* KDE Connect listens, and a phone announces itself, on the first free
+	 * port of this range over both TCP and UDP (1716 in practice); file
+	 * transfers take further ports from the same range. */
+	{ "kdeconnect",
+	  "meta l4proto { tcp, udp } th dport 1714-1764 accept",
+	  "KDE Connect with a phone on the LAN" },
+	/* wayvnc binds 127.0.0.1 unless its config or command line names an
+	 * address, so this opens nothing until it is told to listen wider. */
+	{ "vnc",   "tcp dport 5900 accept",
+	  "this desktop over VNC (wayvnc)" },
+	{ "xonotic", "udp dport 26000 accept",
+	  "hosting a Xonotic game for the LAN" },
+};
+#define FW_N ((int)(sizeof(FW) / sizeof(FW[0])))
+
+#define FW_FILE "nftables.d/50-kdos-services.nft"
+
+static const char *fw_etc(void)
+{
+	const char *e = getenv("KDOS_POWERD_ETC");
+
+	return e && *e ? e : "/etc";
+}
+
+/* Which names the file currently carries, by looking for each table entry's
+ * own rule text — the file is this program's output, so an exact match is the
+ * right test and a partial one would report a name that is not really on. */
+static void fw_state(int *on)
+{
+	char path[320], buf[8192];
+
+	for (int i = 0; i < FW_N; i++)
+		on[i] = 0;
+	snprintf(path, sizeof(path), "%s/%s", fw_etc(), FW_FILE);
+	if (kb_read_file(path, buf, sizeof(buf)) <= 0)
+		return;
+	for (int i = 0; i < FW_N; i++)
+		if (strstr(buf, FW[i].rule))
+			on[i] = 1;
+}
+
+static int fw_write(const int *on, char *out, size_t nout)
+{
+	char path[320], tmp[336];
+	FILE *f;
+
+	snprintf(path, sizeof(path), "%s/%s", fw_etc(), FW_FILE);
+	snprintf(tmp, sizeof(tmp), "%s.new", path);
+	f = fopen(tmp, "w");
+	if (!f) {
+		snprintf(out, nout, "err cannot write the rules\n");
+		return -1;
+	}
+	fprintf(f,
+		"# Written by `kdos-firewall` through kdos-powerd. Rewritten\n"
+		"# WHOLE on every change, so a rule it does not recognise is\n"
+		"# dropped — anything hand-made belongs in a file beside this\n"
+		"# one, which this never touches.\n"
+		"#\n"
+		"# No `type`/`hook` line: that is what re-opens the existing\n"
+		"# input chain rather than declaring a second one.\n"
+		"\n"
+		"table inet filter {\n"
+		"\tchain input {\n");
+	for (int i = 0; i < FW_N; i++)
+		if (on[i])
+			fprintf(f, "\t\t%s\n", FW[i].rule);
+	fprintf(f, "\t}\n}\n");
+	fflush(f);
+	fsync(fileno(f));
+	if (fclose(f) != 0 || rename(tmp, path) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write the rules\n");
+		return -1;
+	}
+
+	/*
+	 * APPLIED BY RELOADING THE WHOLE FILE, because `/etc/nftables.conf`
+	 * deletes and rebuilds `inet filter` and the included files are only
+	 * reached from there. Only that table is replaced: netavark's and
+	 * NetworkManager's NAT tables stay, so a toggle does not cut off running
+	 * containers or hotspot clients. `nft --check` first: a bad ruleset refused is the
+	 * previous one still in the kernel, and a bad ruleset half-applied is
+	 * a machine with no firewall.
+	 */
+	if (!getenv("KDOS_POWERD_ETC")) {
+		KbArgv chk = { 0 }, app = { 0 };
+
+		kb_argv_add(&chk, "/usr/sbin/nft");
+		kb_argv_add(&chk, "--check");
+		kb_argv_add(&chk, "-f");
+		kb_argv_add(&chk, "/etc/nftables.conf");
+		kb_argv_end(&chk);
+		if (kb_run(&chk) != 0) {
+			snprintf(out, nout,
+				 "err the ruleset would not load; nothing changed\n");
+			return -1;
+		}
+		kb_argv_add(&app, "/usr/sbin/nft");
+		kb_argv_add(&app, "-f");
+		kb_argv_add(&app, "/etc/nftables.conf");
+		kb_argv_end(&app);
+		if (kb_run(&app) != 0) {
+			snprintf(out, nout, "err the ruleset did not apply\n");
+			return -1;
+		}
+	}
+	return 0;
+}
+
+static int fw_verb(const char *arg, char *out, size_t nout)
+{
+	int on[FW_N];
+	char name[64] = "", state[16] = "";
+
+	fw_state(on);
+
+	if (!strcmp(arg, "list")) {
+		/* One row per service: the surface draws this and carries no
+		 * table of its own. */
+		size_t used = 0;
+
+		for (int i = 0; i < FW_N; i++) {
+			int k = snprintf(out + used, nout - used,
+					 "%s\t%s\t%s\n", FW[i].name,
+					 on[i] ? "on" : "off", FW[i].what);
+
+			if (k < 0 || (size_t)k >= nout - used)
+				break;
+			used += (size_t)k;
+		}
+		snprintf(out + used, nout - used, "ok\n");
+		return 0;
+	}
+
+	if (sscanf(arg, "%63s %15s", name, state) != 2) {
+		snprintf(out, nout, "err usage: firewall list|<name> on|off\n");
+		return -1;
+	}
+	int want = !strcmp(state, "on");
+
+	if (!want && strcmp(state, "off")) {
+		snprintf(out, nout, "err a service is on or off\n");
+		return -1;
+	}
+	for (int i = 0; i < FW_N; i++) {
+		if (strcmp(FW[i].name, name))
+			continue;
+		on[i] = want;
+		if (fw_write(on, out, nout) != 0)
+			return -1;
+		snprintf(out, nout, "ok %s %s\n", name, want ? "on" : "off");
+		return 0;
+	}
+	/* A NAME THIS TABLE DOES NOT CARRY IS NOT A PORT TO OPEN. */
+	snprintf(out, nout, "err no service called that\n");
+	return -1;
+}
+
+/*
+ * WHICH ACCOUNT tty1 LOGS IN WITHOUT ASKING, or none.
+ *
+ * `/etc/kdos/login.conf` is root's and the choice is an administrator's, which
+ * is the same question `wheel` already answers — so it is a verb here rather
+ * than a second daemon or a setuid writer for one line.
+ *
+ * THE ACCOUNT MUST BE ONE THAT CAN LOG IN. `kb_users()` is the one place that
+ * decides who may, and pointing autologin at a name it would not list is a
+ * machine that boots to a login nobody can complete — a service account with
+ * `nologin`, or a name that is not there at all.
+ *
+ * OFF IS A COMMENTED LINE, NOT AN EMPTY VALUE. kdos-login asks for a password
+ * when it finds no key, and `autologin =` with nothing after it would be a key
+ * naming an account called "", which agetty would be handed.
+ */
+static int set_autologin(const char *who, char *out, size_t nout)
+{
+	const char *etc = getenv("KDOS_POWERD_ETC");
+	char path[320], tmp[336];
+	char *buf, *next;
+	size_t cap;
+	int off = !strcmp(who, "off");
+	FILE *f;
+
+	if (!etc || !*etc)
+		etc = "/etc";
+	if (!off) {
+		KbUser u[64];
+		int n = kb_users(u, 64), i;
+
+		for (i = 0; i < n; i++)
+			if (!strcmp(u[i].name, who))
+				break;
+		if (i == n) {
+			snprintf(out, nout, "err no such account\n");
+			return -1;
+		}
+	}
+
+	/*
+	 * ON THE HEAP, BECAUSE A CONFIGURATION FILE GROWS. `kb_read_file`
+	 * fills a fixed buffer and NUL-terminates whatever fitted, so a
+	 * login.conf past that size was read as its own first N bytes and this
+	 * rewrote the machine's login settings out of a truncated file —
+	 * silently, and the last comment came out cut in half. libkbase says
+	 * so in its own header: a file a PERSON edits wants kb_read_whole.
+	 */
+	size_t len = 0;
+
+	snprintf(path, sizeof(path), "%s/kdos/login.conf", etc);
+	buf = kb_read_whole(path, &len);
+	if (!buf || !len) {
+		free(buf);
+		snprintf(out, nout, "err cannot read login.conf\n");
+		return -1;
+	}
+
+	/* The one key may grow by a name and every line gains nothing else; the
+	 * slack is a name's worth per line, which no rewrite can exceed. */
+	cap = len + 1024;
+	next = malloc(cap);
+	if (!next) {
+		free(buf);
+		snprintf(out, nout, "err cannot read login.conf\n");
+		return -1;
+	}
+	next[0] = '\0';
+
+	size_t used = 0;
+
+	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp); ln;
+	     ln = strtok_r(NULL, "\n", &sp)) {
+		char row[512];
+
+		/* THE KEY, COMMENTED OR NOT, and nothing else on the line: a
+		 * comment ABOUT the key — prose that merely mentions it — must
+		 * not be rewritten into a setting, so the match is anchored at
+		 * the line and allows exactly one leading `#`. */
+		const char *key = ln;
+
+		if (*key == '#')
+			key++;
+		if (!strncmp(key, "autologin", 9) && strchr(key, '='))
+			snprintf(row, sizeof(row), off ? "#autologin = kdos"
+						       : "autologin = %s", who);
+		else
+			snprintf(row, sizeof(row), "%s", ln);
+		int k = snprintf(next + used, cap - used, "%s\n", row);
+
+		/* A file that would not fit is REFUSED rather than truncated:
+		 * writing half a config leaves a machine whose login settings
+		 * are whatever survived. */
+		if (k < 0 || (size_t)k >= cap - used) {
+			free(buf);
+			free(next);
+			snprintf(out, nout, "err login.conf is too large\n");
+			return -1;
+		}
+		used += (size_t)k;
+	}
+
+	snprintf(tmp, sizeof(tmp), "%s/kdos/login.conf.new", etc);
+	f = fopen(tmp, "w");
+	if (!f) {
+		free(buf);
+		free(next);
+		snprintf(out, nout, "err cannot write login.conf\n");
+		return -1;
+	}
+	fputs(next, f);
+	fflush(f);
+	fsync(fileno(f));
+	fclose(f);
+	free(buf);
+	free(next);
+	if (rename(tmp, path) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write login.conf\n");
+		return -1;
+	}
+	snprintf(out, nout, "ok %s\n", off ? "off" : who);
+	return 0;
+}
+
+/*
+ * SET THE MACHINE'S TIMEZONE, from a name in the shipped zoneinfo tree.
+ *
+ * THE NAME IS VALIDATED AS A PATH COMPONENT SET AND THEN AS A FILE, in that
+ * order. A zone is `Area/City` or `Area/Sub/City`, so a slash is legal — which
+ * makes `../../etc/shadow` legal-looking too, and the first check is what
+ * stops it: letters, digits, `+`, `-`, `_` and `/`, no dot at all, no leading
+ * or doubled slash. The second is that the file must exist under
+ * `/usr/share/zoneinfo`, so a name that passes the first and names nothing is
+ * refused rather than symlinked to.
+ *
+ * BOTH HALVES ARE WRITTEN OR NEITHER IS. `/etc/localtime` is what a program
+ * reading the zoneinfo tree follows; `TZ` in the profile is what musl reads
+ * when it is set, and it is set on every KDOS login — so writing only the
+ * symlink leaves `date` reporting the OLD zone for the life of every shell
+ * that had already sourced the profile, which reads as the setting having
+ * done nothing.
+ */
+static const char *KP_ZONEDIR = "/usr/share/zoneinfo";
+
+static bool zone_name_ok(const char *z)
+{
+	size_t n = strlen(z);
+
+	if (!n || n > 64 || z[0] == '/' || z[n - 1] == '/')
+		return false;
+	for (size_t i = 0; i < n; i++) {
+		char c = z[i];
+
+		if (c == '/' && z[i + 1] == '/')
+			return false;
+		if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		      (c >= '0' && c <= '9') || c == '+' || c == '-' ||
+		      c == '_' || c == '/'))
+			return false;
+	}
+	return true;
+}
+
+/* ── the accent, and the root-owned files that carry it ───────────────────
+ *
+ * HERE FOR THE REASON THE TIMEZONE IS HERE. `/etc/kdos/accent`, `/etc/vtrgb`
+ * and the ESP's
+ * `limine.conf` are root's, the person changing the look of their machine is
+ * the one administering it, and `wheel` is already the answer to who that is.
+ * A second socket with a second authorisation rule would be a second answer to
+ * one question.
+ *
+ * ITS ARGUMENT IS TIGHTER THAN EVERY OTHER VERB'S. A zone is `Area/City`, so a
+ * slash is legal and `../../etc/shadow` is legal-LOOKING — which is why
+ * `zone_name_ok` exists. An accent is one of seven strings compiled into
+ * libkcolor. There is no path to aim and nothing to traverse: a name that is
+ * not a scheme names nothing at all, and `kcol_find` is the whole check.
+ *
+ * WHAT IT DOES NOT DO IS RETINT THE DESKTOP. That is `kdos theme`'s, runs as
+ * the user, and touches only the user's own files. Root is needed for the
+ * accent name, the boot menu and the console palette and for nothing else, so
+ * those three are all this verb reaches.
+ */
+static int set_accent(const char *name, char *out, size_t nout)
+{
+	const char *etc = getenv("KDOS_POWERD_ETC");
+	const KcolScheme *sc = kcol_find(name);
+	/* `path` is `dir` plus a name, so it is the longer of the two — sized
+	 * the same, a compiler that can see the concatenation refuses the
+	 * build rather than the truncation. */
+	char path[352], dir[320];
+	KbArgv a = {0};
+
+	if (!sc) {
+		snprintf(out, nout, "err not an accent\n");
+		return -1;
+	}
+	if (!etc || !*etc)
+		etc = "/etc";
+
+	/* The name, for kdos-splash: it is started by the INITRAMFS, before any
+	 * root filesystem exists, so it cannot read this at the moment it
+	 * starts. `rcS` reads it after switch_root and tells the running splash
+	 * over the FIFO it is already holding. */
+	snprintf(dir, sizeof(dir), "%s/kdos", etc);
+	kb_mkdir_p(dir);
+	snprintf(path, sizeof(path), "%s/accent", dir);
+	if (kb_write_file_atomic(path, sc->name) != 0) {
+		snprintf(out, nout, "err cannot write the accent\n");
+		return -1;
+	}
+
+	/*
+	 * AND THE BOOT MENU AND THE TEXT CONSOLE, THROUGH kdos-bootctl, WHICH
+	 * OWNS limine.conf AND /etc/vtrgb — the two surfaces drawn before any
+	 * session exists. Exec'd rather than linked: the restamp is the
+	 * bootloader tool's rule about which keys a theme owns, and a copy of
+	 * that rule in a daemon is a copy that goes stale the next time Limine
+	 * gains a key.
+	 *
+	 * ITS FAILURE IS NOT THIS VERB'S FAILURE. A live medium is read-only
+	 * and a machine may have no ESP; the accent still applied to everything
+	 * else, and reporting `err` would make `kdos theme` look broken on the
+	 * ISO, where every surface retints perfectly.
+	 */
+	if (kb_have_prog("kdos-bootctl")) {
+		kb_argv_add(&a, "kdos-bootctl");
+		kb_argv_add(&a, "theme");
+		kb_argv_add(&a, sc->name);
+		kb_argv_end(&a);
+		if (kb_run(&a) != 0)
+			snprintf(out, nout, "ok %s (boot menu unchanged)\n",
+				 sc->name);
+		else
+			snprintf(out, nout, "ok %s\n", sc->name);
+	} else {
+		snprintf(out, nout, "ok %s (boot menu unchanged)\n", sc->name);
+	}
+	return 0;
+}
+
+/*
+ * THE WI-FI COUNTRY FOLLOWS THE ZONE. cfg80211 starts in the world regulatory
+ * domain until something names a country, and the world rules keep every 5 GHz
+ * DFS channel closed and cap transmit power — on the drivers that never take a
+ * country from an access point's beacons, for good. `zone.tab` maps each zone
+ * to exactly one country code, so the zone somebody has just chosen is the
+ * best answer this machine has. A zone with no country (UTC, `Etc/…`) removes
+ * the file rather than leaving an old country behind.
+ *
+ * The file is read when cfg80211 loads, so it holds from the next boot;
+ * `iw reg set` applies it now. Neither failing fails the verb: a machine with
+ * no radio still has a timezone. The installer writes the same file.
+ */
+#define KP_REGDOM "modprobe.d/kdos-regdom.conf"
+
+static bool zone_country(const char *dir, const char *zone, char cc[3])
+{
+	char path[352], line[512];
+	bool found = false;
+	FILE *f;
+
+	snprintf(path, sizeof(path), "%s/zone.tab", dir);
+	f = fopen(path, "r");
+	if (!f)
+		return false;
+	while (!found && fgets(line, sizeof(line), f)) {
+		char c[3], z[128];
+
+		/* `CC<TAB>coordinates<TAB>zone[<TAB>comment]` */
+		if (line[0] == '#' ||
+		    sscanf(line, "%2[A-Z]\t%*[^\t]\t%127[^\t\n]", c, z) != 2 ||
+		    strlen(c) != 2 || strcmp(z, zone))
+			continue;
+		memcpy(cc, c, 3);
+		found = true;
+	}
+	fclose(f);
+	return found;
+}
+
+static void set_regdom(const char *dir, const char *etc, const char *zone)
+{
+	char cc[3], path[352], mdir[336], body[256];
+	KbArgv a = {0};
+
+	snprintf(path, sizeof(path), "%s/%s", etc, KP_REGDOM);
+	if (!zone_country(dir, zone, cc)) {
+		unlink(path);
+		return;
+	}
+	snprintf(mdir, sizeof(mdir), "%s/modprobe.d", etc);
+	kb_mkdir_p(mdir);
+	snprintf(body, sizeof(body),
+		 "# Written by kdos-powerd from the timezone (%s): the country\n"
+		 "# the Wi-Fi radio's channels and transmit power are set for.\n"
+		 "options cfg80211 ieee80211_regdom=%s\n", zone, cc);
+	kb_write_file_atomic(path, body);
+
+	if (getenv("KDOS_POWERD_ETC") || !kb_have_prog("iw"))
+		return;
+	kb_argv_add(&a, "iw");
+	kb_argv_add(&a, "reg");
+	kb_argv_add(&a, "set");
+	kb_argv_add(&a, cc);
+	kb_argv_end(&a);
+	kb_run(&a);
+}
+
+static int set_timezone(const char *zone, char *out, size_t nout)
+{
+	const char *dir = getenv("KDOS_POWERD_ZONEDIR");
+	const char *etc = getenv("KDOS_POWERD_ETC");
+	char zi[320], link[320], prof[320], tmp[336];
+	FILE *f;
+
+	if (!zone_name_ok(zone)) {
+		snprintf(out, nout, "err not a zone name\n");
+		return -1;
+	}
+	if (!dir || !*dir)
+		dir = KP_ZONEDIR;
+	if (!etc || !*etc)
+		etc = "/etc";
+	snprintf(zi, sizeof(zi), "%s/%s", dir, zone);
+	if (!kb_path_exists(zi)) {
+		snprintf(out, nout, "err no such zone\n");
+		return -1;
+	}
+
+	snprintf(link, sizeof(link), "%s/localtime", etc);
+	snprintf(tmp, sizeof(tmp), "%s/localtime.new", etc);
+	unlink(tmp);
+	if (symlink(zi, tmp) != 0 || rename(tmp, link) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write localtime\n");
+		return -1;
+	}
+
+	snprintf(prof, sizeof(prof), "%s/profile.d/20-timezone.sh", etc);
+	snprintf(tmp, sizeof(tmp), "%s/profile.d/20-timezone.sh.new", etc);
+	f = fopen(tmp, "w");
+	if (!f) {
+		snprintf(out, nout, "err cannot write the profile\n");
+		return -1;
+	}
+	fprintf(f,
+		"# Written by kdos-powerd.\n"
+		"# `/etc/localtime` is what a program reading the zoneinfo\n"
+		"# tree follows; this is what musl reads, and it wins where it\n"
+		"# is set. Both say the same zone or `date` and the desktop\n"
+		"# disagree.\n"
+		"export TZ=':/etc/localtime'\n");
+	fflush(f);
+	fsync(fileno(f));
+	fclose(f);
+	if (rename(tmp, prof) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write the profile\n");
+		return -1;
+	}
+	set_regdom(dir, etc, zone);
+	snprintf(out, nout, "ok %s\n", zone);
+	return 0;
+}
+
+/* ── the daemon ────────────────────────────────────────────────────────── */
+
+static int serve(void)
+{
+	const char *path = sock_path();
+	if (geteuid() != 0) {
+		/*
+		 * Refused on the real socket, allowed on a test one — and said
+		 * out loud, because an unprivileged daemon answers `ok` to a
+		 * suspend it cannot perform.
+		 */
+		if (!strcmp(path, KP_SOCKET)) {
+			fprintf(stderr, "kdos-powerd: must run as root\n");
+			return 1;
+		}
+		fprintf(stderr, "kdos-powerd: not root — suspend, poweroff and "
+				"reboot will fail\n");
+	}
+
+	int srv = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (srv < 0) {
+		fprintf(stderr, "kdos-powerd: socket: %s\n", strerror(errno));
+		return 1;
+	}
+
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
+	/* A socket left behind by a previous run would make bind() fail with
+	 * EADDRINUSE forever; the supervisor would then restart us in a loop. */
+	unlink(path);
+	if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		fprintf(stderr, "kdos-powerd: bind %s: %s\n", path,
+			strerror(errno));
+		close(srv);
+		return 1;
+	}
+	/*
+	 * 0666 on the socket, with SO_PEERCRED as the real gate. The filesystem
+	 * mode cannot express "seat or wheel" without a group the socket would have
+	 * to be chowned to, and a mode that LOOKED like the authorisation would
+	 * invite someone to weaken the credential check because "the mode
+	 * already handles it".
+	 */
+	chmod(path, 0666);
+	if (listen(srv, 8) < 0) {
+		fprintf(stderr, "kdos-powerd: listen: %s\n", strerror(errno));
+		close(srv);
+		return 1;
+	}
+
+	for (;;) {
+		int c = accept(srv, NULL, NULL);
+		if (c < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+
+		struct ucred cred = {0};
+		socklen_t len = sizeof(cred);
+		/* Root, KP_SEAT or KP_ADMIN, each asked of libkbase — the one
+		 * answer every root daemon here gives to this question. The
+		 * socket's mode is not the gate. */
+		bool known = getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred,
+					&len) == 0;
+		bool admin = known && kb_uid_allowed(cred.uid, KP_ADMIN);
+		if (!known || (!admin && !kb_uid_allowed(cred.uid, KP_SEAT))) {
+			/* Refused with a reason, and logged: an unexplained
+			 * dead power key is unattributable, and this is the
+			 * message that attributes it. */
+			fprintf(stderr, "kdos-powerd: refused uid %u (not root "
+				"and in neither %s nor %s)\n",
+				(unsigned)cred.uid, KP_SEAT, KP_ADMIN);
+			(void)!write(c, "err not permitted\n", 18);
+			close(c);
+			continue;
+		}
+
+		char buf[KP_MAX] = {0};
+		ssize_t n = read(c, buf, sizeof(buf) - 1);
+		if (n <= 0) {
+			close(c);
+			continue;
+		}
+		buf[n] = '\0';
+		buf[strcspn(buf, "\r\n")] = '\0';
+
+		const char *reply = "err unknown command\n";
+
+		/* A KP_SEAT member gets the four power words and nothing else.
+		 * The list names what is ALLOWED, so a configuration verb added
+		 * below is an administrator's without anyone remembering to say
+		 * so here. */
+		if (!admin && strcmp(buf, "ping") && strcmp(buf, "suspend") &&
+		    strcmp(buf, "poweroff") && strcmp(buf, "reboot")) {
+			fprintf(stderr, "kdos-powerd: refused uid %u %.*s "
+				"(not root and not in %s)\n",
+				(unsigned)cred.uid, (int)strcspn(buf, " "), buf,
+				KP_ADMIN);
+			reply = "err not permitted\n";
+		} else if (!strcmp(buf, "ping")) {
+			reply = "ok\n";
+		} else if (!strcmp(buf, "suspend")) {
+			/* Answered BEFORE the machine goes down, or the client
+			 * waits for a reply from a suspended kernel and reports
+			 * a failure that did not happen. */
+			(void)!write(c, "ok\n", 3);
+			close(c);
+			if (do_suspend() != 0)
+				fprintf(stderr, "kdos-powerd: suspend failed: "
+					"%s\n", strerror(errno));
+			continue;
+		} else if (!strcmp(buf, "poweroff")) {
+			(void)!write(c, "ok\n", 3);
+			close(c);
+			do_reboot(RB_POWER_OFF);
+			continue;
+		} else if (!strncmp(buf, "firewall ", 9)) {
+			/* The list reply is many rows, so it gets a buffer of
+			 * its own rather than the one-line one above. */
+			static char fwmsg[4096];
+
+			fw_verb(buf + 9, fwmsg, sizeof(fwmsg));
+			(void)!write(c, fwmsg, strlen(fwmsg));
+			close(c);
+			continue;
+		} else if (!strncmp(buf, "autologin ", 10)) {
+			char msg[128];
+
+			set_autologin(buf + 10, msg, sizeof(msg));
+			(void)!write(c, msg, strlen(msg));
+			close(c);
+			continue;
+		} else if (!strncmp(buf, "accent ", 7)) {
+			char msg[128];
+
+			set_accent(buf + 7, msg, sizeof(msg));
+			(void)!write(c, msg, strlen(msg));
+			close(c);
+			continue;
+		} else if (!strncmp(buf, "timezone ", 9)) {
+			char msg[128];
+
+			set_timezone(buf + 9, msg, sizeof(msg));
+			(void)!write(c, msg, strlen(msg));
+			close(c);
+			continue;
+		} else if (!strcmp(buf, "reboot")) {
+			(void)!write(c, "ok\n", 3);
+			close(c);
+			do_reboot(RB_AUTOBOOT);
+			continue;
+		}
+
+		(void)!write(c, reply, strlen(reply));
+		close(c);
+	}
+
+	close(srv);
+	unlink(path);
+	return 1;
+}
+
+/* ── the client ────────────────────────────────────────────────────────── */
+
+/*
+ * Is a lock client already up? The everyday suspend is a lid close on a
+ * session kdos-idle locked minutes ago, and a SECOND ext-session-lock client
+ * is refused by the compositor — it exits 1 without ever printing `locked`, so
+ * the wait below would run its whole deadline and then blame the lock screen
+ * for a session that was locked all along. That warning is the one thing that
+ * makes an unlocked resume attributable, and it must not cry wolf.
+ */
+static bool lock_running(void)
+{
+	int n = 0;
+	char **names = kb_listdir("/proc", &n);
+	if (!names)
+		return false;
+	bool found = false;
+	for (int i = 0; i < n && !found; i++) {
+		if (names[i][0] < '1' || names[i][0] > '9')
+			continue;
+		char path[64];
+		size_t len = 0;
+		snprintf(path, sizeof(path), "/proc/%s/comm", names[i]);
+		char *comm = kb_read_all(path, &len);
+		if (!comm)
+			continue;	/* vanished, or not a pid at all */
+		comm[strcspn(comm, "\n")] = '\0';
+		found = !strcmp(comm, "kdos-lock");
+		free(comm);
+	}
+	kb_strv_free(names);
+	return found;
+}
+
+/*
+ * Lock the session before it suspends — a resume that hands back an unlocked
+ * desktop is the failure this exists to remove. Client-side only: the daemon
+ * protocol stays one word per connection, and the daemon has no session to
+ * lock anyway.
+ *
+ * kdos-lock prints exactly "locked\n" once the COMPOSITOR has confirmed the
+ * session locked (the ext-session-lock handshake), and then stays running as
+ * the lock client — so this waits for the line, never for the process. The
+ * suspend goes ahead REGARDLESS after two seconds: a broken lock screen must
+ * not turn the suspend key into a no-op, and the timeout is logged so the
+ * unlocked resume is attributable. Closing our end of the pipe afterwards is
+ * safe because that line is kdos-lock's only stdout write.
+ */
+static void lock_before_suspend(void)
+{
+	int pfd[2];
+	if (lock_running())
+		return;
+	if (pipe2(pfd, O_CLOEXEC) < 0)
+		return;
+
+	pid_t pid = fork();
+	if (pid < 0) {
+		close(pfd[0]);
+		close(pfd[1]);
+		return;
+	}
+	if (pid == 0) {
+		static char *lock_argv[] = { "kdos-lock", NULL };
+		/* Its own session: the lock client outlives this process, and
+		 * sharing our process group would hand it the terminal's ^C —
+		 * an abandoned lock with no prompt on it. */
+		setsid();
+		dup2(pfd[1], STDOUT_FILENO);
+		execvp(lock_argv[0], lock_argv);
+		_exit(127);
+	}
+	close(pfd[1]);
+
+	char buf[64] = {0};
+	size_t got = 0;
+	bool locked = false;
+	double deadline = kb_now_s() + 2.0;
+
+	while (got < sizeof(buf) - 1) {
+		int wait_ms = (int)((deadline - kb_now_s()) * 1000.0);
+		if (wait_ms <= 0)
+			break;
+		struct pollfd p = { .fd = pfd[0], .events = POLLIN };
+		int rc = poll(&p, 1, wait_ms);
+		if (rc < 0 && errno == EINTR)
+			continue;
+		if (rc <= 0)
+			break;
+		ssize_t n = read(pfd[0], buf + got, sizeof(buf) - 1 - got);
+		if (n <= 0)	/* EOF: kdos-lock is gone (or was never here) */
+			break;
+		got += (size_t)n;
+		buf[got] = '\0';
+		if (strstr(buf, "locked\n")) {
+			locked = true;
+			break;
+		}
+	}
+	close(pfd[0]);
+	if (!locked)
+		fprintf(stderr, "kdos-power: no lock confirmation within 2s — "
+				"suspending anyway\n");
+}
+
+static int usage(void)
+{
+	fprintf(stderr,
+		"usage: kdos-power [--no-lock] suspend|poweroff|reboot|ping\n"
+		"       kdos-power timezone <Area/City>\n"
+		"       kdos-power autologin <user>|off\n"
+		"       kdos-power firewall list|<service> on|off\n"
+		"       kdos-power accent <scheme>\n");
+	return 2;
+}
+
+/*
+ * One line, one connection: the whole protocol. 0 when the daemon answered
+ * `ok`, 1 otherwise.
+ *
+ * `show` is the firewall verb: its reply is the product, a row per service
+ * for `list` and the `ok`/`err` line for a toggle, so all of it goes to
+ * STDOUT. The kdos-firewall surface reads this through a capture that
+ * discards stderr, and a reply sent there is a table it draws empty. The
+ * reply is read to EOF into a buffer as large as the daemon's firewall one,
+ * or a 13-row table arrives as its first line.
+ */
+static int request(const char *cmd, bool show)
+{
+	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (fd < 0)
+		return 1;
+
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sock_path());
+	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		fprintf(stderr, "kdos-power: no kdos-powerd — `service "
+				"kdos-powerd start`\n");
+		close(fd);
+		return 1;
+	}
+
+	char line[KP_MAX];
+	int n = snprintf(line, sizeof(line), "%s\n", cmd);
+	if (n < 0 || n >= (int)sizeof(line) ||
+	    write(fd, line, (size_t)n) != n) {
+		close(fd);
+		return 1;
+	}
+
+	static char reply[4096];
+	size_t got = 0;
+
+	while (got < sizeof(reply) - 1) {
+		ssize_t r = read(fd, reply + got, sizeof(reply) - 1 - got);
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		got += (size_t)r;
+	}
+	reply[got] = '\0';
+	close(fd);
+	if (got == 0) {
+		/*
+		 * The daemon closed without answering. For suspend and poweroff
+		 * that is indistinguishable from "it worked and the machine went
+		 * away", so it is not reported as a failure — a poweroff that
+		 * prints an error on its way down is a bug report about nothing.
+		 */
+		return strcmp(cmd, "ping") ? 0 : 1;
+	}
+	/* The verdict is the LAST line: a list is its rows, then `ok`. */
+	char *last = reply + got;
+
+	while (last > reply && (last[-1] == '\n' || last[-1] == '\r'))
+		last--;
+	while (last > reply && last[-1] != '\n')
+		last--;
+	int ok = !strncmp(last, "ok", 2);
+
+	if (show) {
+		fputs(reply, stdout);
+		return ok ? 0 : 1;
+	}
+	if (ok)
+		return 0;
+	reply[strcspn(reply, "\r\n")] = '\0';
+	fprintf(stderr, "kdos-power: %s\n", reply);
+	return 1;
+}
+
+static int client(int argc, char **argv)
+{
+	const char *cmd = NULL;
+	bool no_lock = false;
+
+	const char *arg = NULL, *arg2 = NULL;
+
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "--no-lock"))
+			no_lock = true;
+		else if (!cmd)
+			cmd = argv[i];
+		else if (!arg)
+			arg = argv[i];
+		else if (!arg2)
+			arg2 = argv[i];
+		else
+			return usage();
+	}
+	if (!cmd)
+		return usage();
+
+	/*
+	 * `firewall` IS THE ONE VERB WITH TWO ARGUMENTS: `firewall list` or
+	 * `firewall <name> on|off`, joined into one request line. The surface
+	 * spawns exactly that argv, so a client that takes one argument is a
+	 * firewall no toggle can reach.
+	 */
+	if (!strcmp(cmd, "firewall")) {
+		char fw[KP_MAX];
+
+		if (!arg || (!strcmp(arg, "list") ? arg2 != NULL : !arg2))
+			return usage();
+		if (snprintf(fw, sizeof(fw), "firewall %s%s%s", arg,
+			     arg2 ? " " : "", arg2 ? arg2 : "") >=
+		    (int)sizeof(fw)) {
+			fprintf(stderr, "kdos-power: argument too long\n");
+			return 2;
+		}
+		return request(fw, true);
+	}
+	if (arg2)
+		return usage();
+
+	/*
+	 * THE ONE-ARGUMENT VERBS are joined here rather than in the daemon's
+	 * parser: the request line is `<verb> <arg>` and no zone, user or
+	 * scheme name carries a space, so one buffer and one strncmp on the
+	 * far side is the whole protocol.
+	 */
+	char line[KP_MAX];
+
+	if (!strcmp(cmd, "timezone") || !strcmp(cmd, "autologin") ||
+	    !strcmp(cmd, "accent")) {
+		if (!arg)
+			return usage();
+		if (snprintf(line, sizeof(line), "%s %s", cmd, arg) >=
+		    (int)sizeof(line)) {
+			fprintf(stderr, "kdos-power: argument too long\n");
+			return 2;
+		}
+		return request(line, false);
+	}
+	if (arg)
+		return usage();
+	if (strcmp(cmd, "suspend") && strcmp(cmd, "poweroff") &&
+	    strcmp(cmd, "reboot") && strcmp(cmd, "ping"))
+		return usage();
+
+	/* KDOS_NO_LOCK_ON_SUSPEND=1 is the scriptable escape hatch — the same
+	 * skip the flag gives, for a caller that cannot edit its own argv. */
+	const char *skip = getenv("KDOS_NO_LOCK_ON_SUSPEND");
+	if (!strcmp(cmd, "suspend") && !no_lock && !(skip && *skip)) {
+		/*
+		 * ASK FIRST, LOCK SECOND. `ping` runs the same SO_PEERCRED gate
+		 * suspend does, so a caller in neither `seat` nor `wheel` —
+		 * or a machine with no kdos-powerd at all — is refused BEFORE
+		 * the screen is locked. Locking and then not suspending is a password prompt
+		 * in exchange for nothing, off one click on the panel's power
+		 * item.
+		 */
+		if (request("ping", false) != 0)
+			return 1;
+		lock_before_suspend();
+	}
+
+	return request(cmd, false);
+}
+
+int main(int argc, char **argv)
+{
+	kb_set_progname("kdos-power");
+
+	/* Dispatch on the basename, busybox-style: one binary, two names. The
+	 * daemon and the client share the socket path and the command words, and
+	 * two programs would be two places to keep them the same. */
+	const char *me = strrchr(argv[0], '/');
+	me = me ? me + 1 : argv[0];
+
+	if (!strcmp(me, "kdos-powerd")) {
+		if (argc == 3 && !strcmp(argv[1], "--explain"))
+			return explain(argv[2]);
+		/*
+		 * THE TIMEZONE WRITE WITHOUT THE SOCKET, which is the only way
+		 * it gets tested at all: the gate is SO_PEERCRED on a
+		 * connection and cannot be exercised without two uids, so the
+		 * verb's own rules — what a zone name may contain, that the
+		 * file must exist, that both halves are written — would
+		 * otherwise be asserted by nothing.
+		 *
+		 * IT GRANTS NOTHING. It is this binary run by whoever ran it,
+		 * writing to an `/etc` that user could already write to; on
+		 * the real path that is root's and this changes neither who
+		 * may connect nor what the daemon does for them.
+		 */
+		if (argc >= 3 && !strcmp(argv[1], "--firewall")) {
+			static char msg[4096];
+			char joined[128] = "";
+			int rc;
+
+			for (int i = 2; i < argc && i < 5; i++) {
+				if (joined[0])
+					strncat(joined, " ",
+						sizeof(joined) - strlen(joined) - 1);
+				strncat(joined, argv[i],
+					sizeof(joined) - strlen(joined) - 1);
+			}
+			rc = fw_verb(joined, msg, sizeof(msg));
+			fputs(msg, rc == 0 ? stdout : stderr);
+			return rc == 0 ? 0 : 1;
+		}
+		if (argc == 3 && !strcmp(argv[1], "--set-autologin")) {
+			char msg[128];
+			int rc = set_autologin(argv[2], msg, sizeof(msg));
+
+			fputs(msg, rc == 0 ? stdout : stderr);
+			return rc == 0 ? 0 : 1;
+		}
+		if (argc == 3 && !strcmp(argv[1], "--set-timezone")) {
+			char msg[128];
+			int rc = set_timezone(argv[2], msg, sizeof(msg));
+
+			fputs(msg, rc == 0 ? stdout : stderr);
+			return rc == 0 ? 0 : 1;
+		}
+		if (argc > 1) {
+			fprintf(stderr, "usage: kdos-powerd [--explain USER]\n"
+					"       kdos-powerd --set-timezone "
+					"<Area/City>\n"
+					"       kdos-powerd --set-autologin "
+					"<user>|off\n");
+			return 2;
+		}
+		return serve();
+	}
+	return client(argc, argv);
+}

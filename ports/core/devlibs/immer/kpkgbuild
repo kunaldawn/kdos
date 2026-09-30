@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = immer
+version     = 0.9.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/arximboldi/immer/archive/refs/tags/v$version.tar.gz
+sha256      = b18b92ba60ec3186dc36ef671d3c2ae542cbb63eb6dc0e258476c6111a67c971  immer-0.9.1.tar.gz
+description = Immutable and persistent data structures for C++ (headers)
+homepage    = https://sinusoid.es/immer/
+depends     = cmake ninja

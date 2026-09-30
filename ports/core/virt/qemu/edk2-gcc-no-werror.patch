@@ -1,0 +1,11 @@
+--- a/roms/edk2/BaseTools/Conf/tools_def.template
++++ b/roms/edk2/BaseTools/Conf/tools_def.template
+@@ -894,7 +894,7 @@
+ *_*_*_DTCPP_PATH                   = DEF(DTCPP_BIN)
+ *_*_*_DTC_PATH                     = DEF(DTC_BIN)
+ 
+-DEFINE GCC_ALL_CC_FLAGS            = -g -Os -fshort-wchar -fno-builtin -fno-strict-aliasing -Wall -Werror -Wno-array-bounds -include AutoGen.h -fno-common
++DEFINE GCC_ALL_CC_FLAGS            = -g -Os -fshort-wchar -fno-builtin -fno-strict-aliasing -Wall -Werror -Wno-error -Wno-array-bounds -include AutoGen.h -fno-common
+ DEFINE GCC_ARM_CC_FLAGS            = DEF(GCC_ALL_CC_FLAGS) -mlittle-endian -mabi=aapcs -fno-short-enums -funsigned-char -ffunction-sections -fdata-sections -fomit-frame-pointer -Wno-address -mthumb -fno-pic -fno-pie
+ DEFINE GCC_LOONGARCH64_CC_FLAGS    = DEF(GCC_ALL_CC_FLAGS) -mabi=lp64d -fno-asynchronous-unwind-tables -Wno-address -fno-short-enums -fsigned-char -ffunction-sections -fdata-sections
+ DEFINE GCC_ARM_CC_XIPFLAGS         = -mno-unaligned-access

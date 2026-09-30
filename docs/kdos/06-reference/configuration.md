@@ -81,8 +81,9 @@ name it does not recognise, and skips an unknown key without a message.
 ### `~/.config/kdos/comp.conf`
 
 The compositor's KDOS settings: the phosphor pass (the CRT-imitating shader over the whole desktop;
-see the [Glossary](glossary.md)), the idle timers, the lid, the wallpaper, and
-the shape of the panel and other chrome the compositor starts. Keyboard bindings, mouse behaviour,
+see the [Glossary](glossary.md)), the idle timers, the lid, the wallpaper, the
+shape of the panel and other chrome the compositor starts, the accessibility aids, the desktop's
+reduce-motion switch, window transitions and frame scheduling. Keyboard bindings, mouse behaviour,
 workspaces and window rules belong to [`rc.xml`](#configkdos-comprcxml); a line of that kind here
 is reported by name and ignored.
 
@@ -93,13 +94,26 @@ The shipped file has every key commented out at its default, with an explanation
 | `wallpaper` | `/usr/share/backgrounds/kdos/default-wallpaper.png` | path or `none` | immediate | The desktop background, scaled to cover the output and centred. See the note below about the retinted copy |
 | `crt` | `55` | 0–100 | see below | Strength of the phosphor pass, in per cent. `0` turns it off. Any change is immediate except raising it from `0`, which waits for the next login. See the note on the phosphor pass below |
 | `crt_scanlines` | `0` | 0–100 | immediate | Scanline depth. `60` is the strength the rest of the pass is tuned against |
-| `crt_curve` | `0` | 0–100 | immediate | Screen curvature. Whether the pointer follows the curve is decided at login; see below |
-| `crt_fullscreen` | `yes` | yes/no | immediate | Whether the pass covers a fullscreen window. `off` skips it on an output whose topmost window on the current workspace, not counting minimised ones, is fullscreen, whether or not that window has focus |
+| `crt_curve` | `0` | 0–100 | immediate | Screen curvature. Above `0`, the pass redraws the whole screen every frame rather than what changed. Whether the pointer follows the curve is decided at login; see below |
+| `crt_fullscreen` | `yes` | yes/no | immediate | Whether the pass covers a fullscreen window. `off` skips it on an output whose topmost window on the current workspace, not counting minimised ones, is fullscreen, whether or not that window has focus, and that window's frames may then scan out and tear (see [`rc.xml`](#configkdos-comprcxml)) |
 | `idle_dim` | `300` | 0–86400 | immediate | Seconds of inactivity before the screen dims; `0` never |
 | `idle_lock` | `600` | 0–86400 | immediate | Seconds of inactivity before the session locks; `0` never |
 | `idle_off` | `900` | 0–86400 | immediate | Seconds of inactivity before the outputs power off; `0` never |
 | `lid_close` | `suspend` | `suspend`, `lock`, `off` | immediate | What closing the lid does |
 | `window_memory` | `yes` | yes/no | immediate | Whether an application opens where its window last was, per `app_id`, from `~/.local/state/kdos/winpos` |
+| `motion` | `yes` | yes/no | immediate | The desktop's reduce-motion switch. `no` makes every compositor fade a single frame: menus, toasts and other top- and overlay-layer surfaces opening and closing, peek, and window transitions. Every Wayland surface of the desktop reads it too, at each animation's start, and draws the animation's end state instead (the panel's launch pulse becomes a steady accent, a menu's selection highlight jumps to its row instead of sliding, and a scrolled list jumps to its new rows instead of gliding); a touchpad flick stops when the finger lifts instead of coasting on. See [kdos-comp](../04-programs/kdos-comp.md#motion) and [the design language](../03-architecture/design-language.md#motion) |
+| `window_motion` | `no` | yes/no | immediate | Window transitions: a window fades and rises into place as it opens or is restored, fades and sinks away as it closes or is minimised, and a workspace switch slides the windows sideways. Only with `motion = yes`. See [kdos-comp](../04-programs/kdos-comp.md#window-transitions) |
+| `max_render_time` | `off` | 1–100, or `off` | immediate | Render-late frame scheduling: each frame is composited this many milliseconds before the display's next vertical blank, so a program's frame that arrives in between is shown a refresh sooner. Too small a value misses the blank and shows the frame a refresh late, which `kdos stutter` reports. Only on a directly driven display with a fixed refresh. See [kdos-comp](../04-programs/kdos-comp.md#render-late-scheduling) |
+| `sticky_keys` | `no` | yes/no | immediate | A modifier tapped on its own applies to the next key; tapped twice it stays on until tapped again |
+| `slow_keys` | `no` | yes/no | immediate | A key counts only once held for `slow_keys_delay` |
+| `slow_keys_delay` | `300` | 100–5000 | immediate | Milliseconds a key must be held under slow keys |
+| `bounce_keys` | `no` | yes/no | immediate | A second press of the same key within `bounce_keys_delay` of its release is ignored |
+| `bounce_keys_delay` | `300` | 100–5000 | immediate | Milliseconds bounce keys waits after a release |
+| `dwell_click` | `no` | yes/no | immediate | Resting the pointer clicks the left button where it rests |
+| `dwell_click_delay` | `1200` | 100–5000 | immediate | Milliseconds the pointer rests before a dwell click |
+| `cursor_size` | `0` | 0–256 | immediate | The pointer size in pixels; `0` keeps `XCURSOR_SIZE` from the session |
+| `large_cursor` | `no` | yes/no | immediate | Draw the pointer at `large_cursor_size` |
+| `large_cursor_size` | `48` | 16–256 | immediate | The size `large_cursor` switches to |
 | `panel` | `bottom` | `bottom`, `top`, `off` (or `none`) | next login | Which edge the panel sits on |
 | `panel_cells` | `2` | 1–4 | next login | Panel height, in character cells |
 | `panel_font` | `Terminus:pixelsize=20` | fontconfig pattern | next login | The panel's own font |
@@ -112,21 +126,30 @@ The shipped file has every key commented out at its default, with an explanation
 | `clipboard` | `yes` | yes/no | next login | The clipboard history, which also keeps a copied selection alive after the program it came from closes |
 | `chrome_font` | `Terminus:pixelsize=32` | fontconfig pattern | next login | The font of the surfaces the compositor starts and supervises, apart from the panel bar. See the note on the two font keys below |
 | `clock_format` | `%H:%M` | `strftime` format | next login | The panel clock. `%a %d %H:%M` adds the day and date |
+| `osk` | `off` | `off`, `manual`, `auto` | next login | The on-screen keyboard, `wvkbd`: not started; started hidden and shown with `Super+Alt+K`; or also shown while a text field has the focus |
 
 **Values out of range are refused.** A number outside a key's range, or one that does not parse
 (`idle_dim = 5m`), is reported and the default stands. A line with an empty value is reported and
 ignored; to turn the wallpaper off, write `wallpaper = none`. `panel_opacity` stops at 20 because a
 panel much fainter than that is all but invisible, while its controls still catch the pointer.
 
-**The phosphor pass at login.** Three decisions about the pass are taken once, when the compositor
+**The phosphor pass at login.** Two decisions about the pass are taken once, when the compositor
 starts, from the `comp.conf` in force at that moment. Whether the pass exists at all: raising `crt`
-from `0` during a session logs that the pass is off until a new session and draws nothing. Direct
-scanout (a fullscreen client's buffer sent to the display without compositing) is switched off for
-the whole session while the pass is on, and lowering `crt` to `0` mid-session removes the effect but
-does not switch scanout back on. The hardware cursor: with `crt` and `crt_curve` both above `0` at
-login, the pointer is drawn in software so that it bends with the picture; turning `crt_curve` on
+from `0` during a session logs that the pass is off until a new session and draws nothing, while
+lowering it to `0` takes effect at once. Direct scanout (a fullscreen client's buffer sent to the
+display without compositing) is not one of them: it is decided per frame, off for every frame the
+pass draws and allowed for every other. The hardware cursor: with `crt` and `crt_curve` both above
+`0` at login, the pointer is drawn in software so that it bends with the picture; turning `crt_curve` on
 mid-session keeps the hardware cursor, which does not follow the distortion and drifts off its
 hotspot towards the screen edges.
+
+**The accessibility switches** are each flipped for the session by a key, `Super+Alt` with `S`
+(sticky), `L` (slow), `B` (bounce), `D` (dwell) or `C` (large pointer), and a notification says
+which way it went. A reload sets a switch from this file only when its line has changed since the
+last load, so the reload every `kdos theme` sends does not undo a switch made by key. The keyboard
+aids act on physical keyboards, and slow and bounce keys leave the modifier and lock keys alone; see
+[kdos-comp](../04-programs/kdos-comp.md#accessibility). A `cursor_size` or `large_cursor` change
+also sets `XCURSOR_SIZE` for the programs the compositor starts afterwards.
 
 **Paths.** A `wallpaper` value may begin `~/` or `$HOME/`; both are expanded. No other value is.
 
@@ -146,8 +169,8 @@ virtual from its DMI system-vendor string, or when the compositor runs nested or
 seat session; a hypervisor that string does not name leaves the timers on.
 
 **A startup-only key changed during a session** is reported in the log when the compositor
-reloads, and the running value is kept until the next login. `panel_font`, `chrome_font` and
-`clock_format` are each named in a message of their own. The other panel keys, `icons`, `slit`,
+reloads, and the running value is kept until the next login. `panel_font`, `chrome_font`,
+`clock_format` and `osk` are each named in a message of their own. The other panel keys, `icons`, `slit`,
 `desktop_icons` and `clipboard` share one message, which names all of them except `clipboard`.
 
 The two font keys have three writers besides your editor:
@@ -162,15 +185,28 @@ The two font keys have three writers besides your editor:
 
 Only the compositor reads the two keys, and it hands them on as a `--font` argument to the
 programs it starts and supervises: `panel_font` to the panel bar (`kdos-shell`), `chrome_font` to
-the others, such as the desktop icons (`kdos-desk`), the slit and the notifications (`kdos-notifyd`).
+the others, such as the desktop icons (`kdos-desk`), the slit and the notifications (`kdos-notifyd`),
+except the on-screen keyboard, which gets no font.
 They take a change at the next login. Every other surface, including the menus and popups the panel
 opens, is started without `--font` and draws in the toolkit's built-in `Terminus:pixelsize=32`
 whatever these keys say. A face chosen in `kdos-style`'s picker is live at once in that window
 alone.
 
-Terminus is a bitmap font with the sizes 12, 14, 16, 18, 20, 22, 24, 28 and 32. Name one of those,
-or the nearest size it does have is used instead. The sizes are pixels and there is no automatic
-HiDPI scaling: on a 4K screen, `Terminus:pixelsize=64` is the doubled cell.
+Terminus is a bitmap font with the sizes 12, 14, 16, 18, 20, 22, 24, 28 and 32. A size near one of
+those (10 to 35) is drawn from the nearest, in that size's own cell, which can be a pixel or two
+taller than asked (10 and 11 are the 12 size, 31 is the 32), and 64, 96 and every further multiple of 32 are the 32
+size with every pixel doubled, tripled and so on. Any other size is drawn from `Terminus (TTF)`, the
+same typeface in outlines, in a cell exactly as tall as the size and half as wide, rounded up at an
+odd size, so `Terminus:pixelsize=40` is a 20×40 cell and `Terminus:pixelsize=65` a 33×65 one. Naming
+`Terminus (TTF)` directly gets the same cell. On a machine without `Terminus (TTF)` such a size is
+the nearest bitmap size stretched, with uneven strokes.
+
+The sizes are logical pixels. A screen given an integer scale in `displays.conf` doubles or triples
+every surface's buffer and its glyphs, so at `scale 2000` the default 32 is already the doubled cell.
+A fractional scale draws the font at the size times the scale: at `scale 1500` the default 32 is
+drawn at 48, as `Terminus (TTF)` in a 24×48 cell, and at `scale 1250` and `scale 1750` in 20×40 and
+28×56 ones, so the screen holds as many cells as its logical size does at scale 1. On a 4K screen
+left at scale 1, `Terminus:pixelsize=64` is the doubled cell.
 
 ### `~/.config/kdos/panel.conf`
 
@@ -253,7 +289,7 @@ btop code=MO
 lazygit code=GI
 foot code=TE
 firefox-esr code=WW
-org.xfce.mousepad code=ED
+org.kde.kate code=ED
 gimp code=IM
 ```
 
@@ -517,6 +553,8 @@ ships 35 routes under eight verbs: `setup` (10), `system` (7), `style` (5), `cap
 | `system.monitor` | `kdos-res` |
 | `system.power` | `kdos-energy` |
 | `system.disks` | `kdos-disks` |
+| `system.burn` | `kdos-burn` |
+| `system.verify` | `kdos-verify` |
 | `system.connect` | `kdos-connect` |
 | `system.boxes` | `kdos-res --page boxes` |
 | `system.notifications` | `kdos-notify` |
@@ -730,6 +768,14 @@ buttons. Put your own bindings *after* `<default />`; of two identical bindings,
 The title-bar font (`<theme><font>`) must name a scalable face, sized in points (24 pt is 32 px at
 96 dpi). Naming the bitmap console font resolves, and then falls back silently to a generic sans.
 
+The shipped file sets `<core><adaptiveSync>fullscreen</adaptiveSync>` (variable refresh while a
+window is fullscreen, on a display that reports it) and `<core><allowTearing>fullscreen</allowTearing>`
+(a fullscreen window that asks to tear flips without waiting for the vertical blank). `no` turns
+either off; `yes` makes variable refresh permanent, and `fullscreenForced` tears every fullscreen
+window. Tearing reaches only frames the phosphor pass does not draw, so with `crt_fullscreen = yes`
+in `comp.conf` a fullscreen window does not tear. See
+[kdos-comp](../04-programs/kdos-comp.md#fullscreen-scanout-variable-refresh-and-tearing).
+
 Applies at next login, or on reload for the parts the compositor re-reads.
 
 ### `~/.config/kdos-comp/menu.xml`
@@ -756,15 +802,18 @@ without editing `/etc/profile.d` (see [Shell environment](#shell-environment)). 
 `~` and `$VARIABLE`. Do not write `FOO=$FOO:bar`: each reload would append again, and a value that
 grows past the compositor's size limit is refused.
 
-The pointer size is the usual case. The login sets `XCURSOR_SIZE=24`; the compositor reads the
-variable after this file, when it loads the cursor theme, so
+The pointer size can be set here, but `cursor_size` in [`comp.conf`](#configkdoscompconf) is the
+direct route. The login sets `XCURSOR_SIZE=24`, and a value here replaces it for the compositor
+and everything it starts:
 
 ```ini
 XCURSOR_SIZE=48
 ```
 
-gives a larger pointer from the next login, or from the next reload for the compositor's own
-pointer. The `KDOS-cursors` theme holds the sizes 24, 32, 48, 64 and 96.
+With `cursor_size = 0`, the default, the compositor draws its pointer at this size from the next
+reload. A non-zero `cursor_size`, or `large_cursor`, wins over it, and the compositor then writes
+its own size back into `XCURSOR_SIZE` for the programs it starts. The `KDOS-cursors` theme holds the
+sizes 24, 32, 48, 64 and 96.
 
 ---
 
@@ -806,15 +855,16 @@ stopping the service turns zswap back on and sets `vm.page-cluster` to the kerne
 ### `/etc/kdos/mountd.conf`
 
 The removable-media daemon, `kdos-mountd`. Not shipped; create it to change the defaults. It is
-read on each request, so a change applies to the next mount or format.
+read on each request, so a change applies to the next mount, format or image write.
 
 | Key | Default | Means |
 |---|---|---|
 | `exec` | `no` | Whether removable media are mounted with programs allowed to run |
 | `format` | `no` | Whether `kdos-mountd` will write a new filesystem over a device at all |
+| `write` | `no` | Whether `kdos-mountd` will write a disk image over a whole removable disk at all |
 
 **Spelling matters.** The daemon searches the file for the exact text `exec = yes` or `exec=yes`
-(and likewise `format = yes` or `format=yes`). Other spellings such as `exec = true` are not
+(and likewise `format = yes`, `format=yes`, `write = yes` or `write=yes`). Other spellings such as `exec = true` are not
 recognised, and the text counts even on a line that starts with `#`.
 
 Everything removable is mounted without setuid and without device nodes whatever this file says; a
@@ -824,6 +874,11 @@ accept programs on removable media.
 `format = yes` exists for the same reason. Writing a filesystem cannot be undone, so the verb is off
 unless you turn it on. Even then the daemon refuses the medium the system booted from and requires
 the device's kernel name to be typed back.
+
+`write = yes` is a key of its own because writing an image replaces the whole disk, partition table
+and all, and turning on formatting says nothing about that. With it set, the daemon still refuses
+the boot medium, any disk with a mounted or unlocked volume on it, and an image larger than the
+disk, and it requires the disk's name (`sdb`, not `sdb1`) to be typed back.
 
 ### `/etc/kdos/update.conf`
 
@@ -907,6 +962,7 @@ stale rules across a reload):
 | File | Written by | Does |
 |---|---|---|
 | `40-podman.nft` | Shipped | Lets rootful podman's bridges forward and reach their DNS |
+| `40-libvirt.nft` | The `libvirt` package | Lets libvirt's `virbr*` NAT bridges forward and reach their dnsmasq for DHCP and DNS |
 | `50-kdos-services.nft` | Shipped empty; rewritten by `kdos-firewall`, through `kdos-powerd` | Opens the services you turned on |
 
 The firewall is the one service `/etc/init.d/rcK` does not stop at shutdown, so the machine is
@@ -946,7 +1002,9 @@ Applies at boot. What each line starts:
 tty1 and tty2 both start through `kdos-getty`, which loads the console font and colour palette
 first, and both respawn when their login ends. On shutdown, `/etc/init.d/rcK` runs every enabled
 service script's `stop` in reverse order — except the firewall, which stays loaded to the end —
-then `swapoff -a` turns swap off and `umount -a -r` remounts every filesystem read-only.
+then `swapoff -a` turns swap off, `umount -a -r` remounts every filesystem read-only, and
+`/etc/init.d/killpower` tells a UPS to cut the power when NUT's `upsmon` began the shutdown on a low
+battery (its flag file `/etc/killpower` is present); otherwise it does nothing.
 
 ### `/etc/service.disabled/<name>`
 
@@ -993,12 +1051,13 @@ Where the package manager `kpkg` keeps its trees. The file is written as shell a
 `NAME="${NAME:-default}"`. `kpkg` parses it itself, reading `NAME=value` with no space before the
 `=` (a line spelt `NAME = value` is ignored) and unwrapping the `${...:-...}`. It is also sourced by
 bash at the start of every port's build, so a shell expression in it runs there. An exported
-environment variable of the same name always wins over the file, which is what the phase environment
-files of the build rely on. `KPKG_CONF` names a different file.
+environment variable of the same name always wins over the file, which is what the build phases
+from `40_lang` to `60_kernel` rely on: each one's `phase.env` exports `PORT_REPO` to add KDOS's own
+`src/<area>` repositories after `/ports/core`. `KPKG_CONF` names a different file.
 
 | Key | Default | Means |
 |---|---|---|
-| `PORT_REPO` | `/ports/core` | The ports tree, or several separated by spaces |
+| `PORT_REPO` | `/ports/core` | The port repositories, separated by spaces and searched in order, at most eight; more warn and are ignored. A port is found as `<repo>/<name>/` or one shelf down as `<repo>/<shelf>/<name>/`, and a name at two paths in one repository is an error. See [Writing ports](../05-developer/writing-ports.md#shelves-and-how-a-port-is-found) |
 | `SOURCE_DIR` | `/var/cache/kpkg/sources` | Downloaded source archives |
 | `PACKAGE_DIR` | `/var/cache/kpkg/packages` | Built packages |
 | `WORK_DIR` | `/var/cache/kpkg/work` | Where a port is unpacked and built |
@@ -1116,7 +1175,7 @@ inherits them.
 
 | Path | Sets |
 |---|---|
-| `/etc/profile.d/10-wayland.sh` | The session basics: `HOME` from `/etc/passwd` when it is empty, `XDG_RUNTIME_DIR` (created at `/run/user/<uid>`, mode 0700, if missing), `XDG_SESSION_TYPE=wayland`, `XDG_CURRENT_DESKTOP=KDOS` unless already set, `DBUS_SESSION_BUS_ADDRESS` when the session bus exists, the `XDG_*_HOME` and `XDG_DATA_DIRS` defaults, `~/.local/bin` and `/usr/games` on `PATH`, `XCURSOR_THEME=KDOS-cursors`, `XCURSOR_SIZE=24`, and Wayland back ends for Qt, GTK, Firefox, Java, SDL and Clutter |
+| `/etc/profile.d/10-wayland.sh` | The session basics: `HOME` from `/etc/passwd` when it is empty, `XDG_RUNTIME_DIR` (created at `/run/user/<uid>`, mode 0700, if missing), `XDG_SESSION_TYPE=wayland`, `XDG_CURRENT_DESKTOP=KDOS` unless already set, `DBUS_SESSION_BUS_ADDRESS` when the session bus exists, the `XDG_*_HOME` and `XDG_DATA_DIRS` defaults, `~/.local/bin` and `/usr/games` on `PATH`, `XCURSOR_THEME=KDOS-cursors`, `XCURSOR_SIZE=24`, the toolkit back ends (`QT_QPA_PLATFORM=wayland;xcb`, `MOZ_ENABLE_WAYLAND=1`, `SDL_VIDEODRIVER=wayland`, `CLUTTER_BACKEND=wayland`, and no `GDK_BACKEND`, so GDK tries Wayland first and an application that asks for X11 gets Xwayland), `_JAVA_AWT_WM_NONREPARENTING=1` for Swing and AWT under Xwayland, `GTK_USE_PORTAL=1` so GTK applications use the KDOS file chooser and the print portal, and `QT_QPA_PLATFORMTHEME=kde` so Qt 6 applications read the `kdeglobals` that `kdos theme` writes and Qt 5 applications read its qt5ct files |
 | `/etc/profile.d/20-timezone.sh` | `TZ=:/etc/localtime`. Written by the installer and by `kdos-power timezone`; not shipped with the image |
 | `/etc/profile.d/20-lesspipe.sh` | `LESSOPEN` to `lesspipe.sh`, and `LESS=-R` |
 | `/etc/profile.d/30-kdos-colors.sh` | Sources the generated `~/.config/kdos/fzf-colors` and appends its colours to `FZF_DEFAULT_OPTS` |
@@ -1148,8 +1207,8 @@ first checks that its program is installed:
 | `MANPAGER` | Set only when `bat` is installed: `/usr/libexec/bat/man-pager`, from `bat`: it strips the page's overstrike and hands it to `bat -l man`. It is a script rather than a pipeline because `mandoc`'s `man` splits the variable on spaces and runs it without a shell |
 | `BAT_THEME` | `ansi` |
 | `FZF_DEFAULT_OPTS`, `FZF_DEFAULT_COMMAND` | fzf's layout and a fixed phosphor-green colour set, and `fd --type f --hidden --follow --exclude .git` as the file source. This assignment replaces the accent colours `30-kdos-colors.sh` set at login |
-| `GPG_TTY` | This shell's terminal, where the curses `pinentry` asks for a passphrase |
-| `GNUTERM` | `sixelgd`, only in `kdos-term` and `foot`, which display sixel pictures. Elsewhere gnuplot's terminal is left unset, and `set term dumb` draws in characters |
+| `GPG_TTY` | This shell's terminal, where `pinentry` asks for a passphrase when the session has no display to draw its dialog on |
+| `GNUTERM` | `sixelgd`, only in `kdos-term` and `foot`, which display sixel pictures. Elsewhere it is left unset and gnuplot's terminal is `qt`, a window of its own; where there is no display, `set term dumb` draws in characters |
 | `lfcd` | A function from `lf`'s `lfcd.sh`: runs `lf` and leaves the shell in the directory `lf` quit in |
 | `j` | `zoxide`'s jump command |
 | `atuin init bash` | `Ctrl+R` searches atuin's history database, and every command is recorded there. The Up arrow stays readline's. atuin brings its own `bash-preexec`, which removes `ignorespace` from `HISTCONTROL`, so a command typed after a space is recorded too |
@@ -1222,8 +1281,9 @@ one part the preset splits between dark and light mode.
 
 ### Speech-to-text models
 
-`kdos-rec` cannot transcribe until a [whisper.cpp](https://github.com/ggml-org/whisper.cpp) model
-is on the machine; until then its *Transcribe* button reads *Get model*. There is no configuration
+`kdos-rec` transcribes with a [whisper.cpp](https://github.com/ggml-org/whisper.cpp) model. The
+image carries `base.en` in `/usr/share/whisper.cpp/models/`; with no model anywhere, its
+*Transcribe* button reads *Get model*. There is no configuration
 key; three locations are searched in order and the first hit wins.
 
 | Order | Location |
@@ -1246,7 +1306,7 @@ found, or the directory it searched.
 The directory name is upstream's own, so a model fetched by upstream's
 `models/download-ggml-model.sh` and one fetched by KDOS land in the same place.
 
-**Getting a model.** No model ships. `kdos speech list` prints the catalogue of twelve, grouped by
+**Getting a model.** `base.en` ships, in the third location. `kdos speech list` prints the catalogue of twelve, grouped by
 size from about 32 MB to about 3.1 GB: `tiny.en-q5_1`, `tiny.en`, `tiny`, `base.en-q5_1`, `base.en`,
 `base`, `small.en-q5_1`, `small.en`, `small`, `medium.en`, `large-v3-turbo` and `large-v3`. A name
 containing `.en` is English-only; a `-q5_1` suffix marks a quantised, smaller copy of the model
@@ -1295,13 +1355,15 @@ stream or file named in `video_source`. `x11.so` is not built. `fakevideo.so` (a
 
 | Path | Read by |
 |---|---|
-| `~/.themes/KDOS-<accent>/` | GTK applications in boxes. The accent is in the name because GTK reloads its styles only when the theme name changes |
+| `~/.themes/KDOS-<accent>/` | GTK applications, on the host and in boxes. The accent is in the name because GTK reloads its styles only when the theme name changes |
 | `~/.themes/KDOS` | A symlink to the above, for anything written against the fixed name |
 | `~/.icons/KDOS/`, `~/.icons/KDOS-cursors/` | Every toolkit, host and box |
 | `~/.config/gtk-3.0/settings.ini`, `~/.config/gtk-4.0/settings.ini` | The theme name, where a toolkit cannot reach the settings portal |
 | `~/.config/gtk-4.0/gtk.css` | libadwaita, which ignores GTK themes. There is no GTK 3 copy: GTK 3 reads that file once at startup, so colours pinned there would stop every GTK 3 application following an accent change |
-| `~/.config/kdeglobals` | Qt and KDE applications. Merged, so your own settings in it survive |
+| `~/.config/kdeglobals` | Qt and KDE applications. Merged: the theme owns the `[Colors:*]` and `[WM]` sections, `ColorScheme`, `Name`, `font` and `fixed` under `[General]`, `widgetStyle` under `[KDE]` and `Theme` under `[Icons]`, and your own settings in it survive |
 | `~/.local/share/color-schemes/KDOS.colors` | KDE applications' colour scheme |
+| `~/.config/qt5ct/colors/KDOS.conf`, `~/.config/qt6ct/colors/KDOS.conf` | The Qt palette, for an application under the `qt5ct` or `qt6ct` platform theme |
+| `~/.config/qt5ct/qt5ct.conf`, `~/.config/qt6ct/qt6ct.conf` | qt5ct and qt6ct. Merged: the theme owns `custom_palette`, `color_scheme_path`, `icon_theme`, `style` (`Fusion` for Qt 5, `Breeze` for Qt 6) and `standard_dialogs` under `[Appearance]`, and `general` and `fixed` under `[Fonts]` |
 | `~/.config/foot/themes/kdos` | The terminal `foot` |
 | `~/.config/btop/themes/kdos.theme` | `btop` |
 | `~/.config/tmux/themes/kdos.conf` | `tmux` |
@@ -1316,6 +1378,16 @@ stream or file named in `video_source`. `x11.so` is not built. `fakevideo.so` (a
 
 `kdos theme --audit` reports any of these that differ from what this machine's palette produces. See
 [`kdos theme`](../04-programs/kdos-command.md#kdos-theme) and [Theming](../02-user-guide/theming.md).
+
+One system file carries the same answers for a GTK application that reads GSettings instead of the
+settings portal. `/usr/share/glib-2.0/schemas/90_kdos.gschema.override` sets the defaults of
+`org.gnome.desktop.interface`: `gtk-theme='KDOS'`, `icon-theme='KDOS'`,
+`cursor-theme='KDOS-cursors'`, `cursor-size=24`, `color-scheme='prefer-dark'`,
+`font-name='Noto Sans 10'` and `monospace-font-name='Noto Sans Mono 10'`. It is a default, not a
+setting: `gsettings set` stores your own value in your dconf database, and that wins. The file takes
+effect through `gschemas.compiled`, which `glib-compile-schemas` rebuilds when a package installs a
+schema and when the image is built. See
+[The session](../03-architecture/session.md#the-kdos-backend).
 
 ## See also
 

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = serialdv
+version     = 1.1.5
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/f4exb/serialDV/archive/refs/tags/v$version.tar.gz
+sha256      = 9ff90d85ff613e81659a2d661515e01d3c1f3ad1cade58908838b97fdd7ab5d2  serialdv-1.1.5.tar.gz
+description = SerialDV — AMBE3000 hardware vocoder dongles over serial and UDP, and the dvtest tool
+homepage    = https://github.com/f4exb/serialDV
+depends     = cmake ninja

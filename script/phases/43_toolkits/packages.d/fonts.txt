@@ -1,0 +1,38 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   43_toolkits: Toolkits
+# ---------------------------------
+#   fonts — Font packages, and font libraries and tooling
+# ---------------------------------
+#
+# Libraries whose dependency closure reaches GTK, Qt, wxWidgets, FLTK or Motif:
+# the toolkits themselves, KDE Frameworks, and what applications link over
+# them.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Edits faces in its GTK window and compiles them from a script or from
+# Python. The script half is what turns DejaVu's drawing sources and
+# Terminus's bitmaps into the TrueType files ttf-dejavu and terminus-ttf
+# install.
+fontforge
+
+# Scalable GUI fonts (Sans/Mono/Serif) — terminus is console-only (PSF). Without
+# this, fontconfig has no fonts: foot fails ("failed to load primary fonts") and
+# the cell-grid shell has nothing to draw glyphs with.
+ttf-dejavu
+
+# A metric clone of the Microsoft document fonts. Without it and its siblings
+# font-carlito and font-caladea, a Word document paginates differently here
+# from the machine that wrote it.
+font-liberation

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = retroarch-joypad-autoconfig
+version     = 1.22.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libretro/retroarch-joypad-autoconfig/archive/v$version.tar.gz
+sha256      = ab5264ba2589cffb163b32ac779a9446a23cb09eb2ef4647484bf4f272d347e0  retroarch-joypad-autoconfig-1.22.0.tar.gz
+description = RetroArch controller profiles — a game pad is mapped the moment it is plugged in
+homepage    = https://github.com/libretro/retroarch-joypad-autoconfig
+depends     = coreutils

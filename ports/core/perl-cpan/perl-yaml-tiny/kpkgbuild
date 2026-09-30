@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = perl-yaml-tiny
+version     = 1.76
+release     = 1
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/E/ET/ETHER/YAML-Tiny-$version.tar.gz
+sha256      = a8d584394cf069bf8f17cba3dd5099003b097fce316c31fb094f1b1c171c08a3  perl-yaml-tiny-1.76.tar.gz
+description = Read and write a subset of YAML in pure perl
+homepage    = https://metacpan.org/dist/YAML-Tiny
+depends     = perl
