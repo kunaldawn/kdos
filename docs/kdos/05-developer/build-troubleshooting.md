@@ -149,7 +149,8 @@ lists everything preflight checks.
 Upstream sources are not in git. A recipe names each source by its `sha256 =` line, and
 `make fetch` (which runs `ports/fetch`) resolves every hash from the first place that has a copy
 that verifies: the port directory, the local cache `ports/.srccache`, the `kunaldawn/kdos` source
-archive (located through the committed index `ports/sources.idx`), and finally the URL in the
+archive (one pre-release per shelf, `src-<shelf>`, located through the committed index
+`ports/sources.idx`), and finally the URL in the
 recipe's `source =` line. `make fetch` is the only networked step. `make build` runs its container
 with `--network none` and mounts `ports/` read-only, so the build can only read what the fetch has
 already put beside each recipe. [Where sources come from](developing.md#where-sources-come-from)
@@ -329,16 +330,18 @@ preflight was not run. `KDOS_SKIP_LAYOUT_CHECK=1` skips this check only, and
 
 ```text
 pre-push: these sources are named by a recipe but not in the archive at that commit:
-  <port>/<file>  (<hash>)
+  <port>/<file> — indexed in src-<shelf> as <asset> but absent  (<hash>)
 pre-push: publish them and commit the index first:  ports/publish <port> && git commit ports/sources.idx
 ```
 
 The pre-push hook (`script/hooks/pre-push`, enabled with `git config core.hooksPath script/hooks`)
 checks every source hash the pushed commits add. Each must have a line in `ports/sources.idx` as of
-the pushed commit, and the archive release that line names must hold the file. A line reading
+the pushed commit, and the release that line names must hold the asset, or every one of its parts
+for a split file; the line names the first asset found absent. A line reading
 `<port>/<file> — not in ports/sources.idx` means the index line is missing: the upload may have
 happened, but the index change was not committed, and without it `ports/fetch` cannot find the
-file. Run the command the hook prints, which uploads from the port directory or the cache and
+file. An index that is not format 2 at the pushed commit counts as naming nothing, and the hook
+prints `ports/sources.idx is not format 2; the archive is skipped` first. Run the command the hook prints, which uploads from the port directory or the cache and
 writes the index lines, commit the index, and push again.
 
 Uploading needs a token with write access to the archive; the token, pacing and flags are in
@@ -360,6 +363,14 @@ file behaves the same way for that file: either it was never published, or the a
 is not publicly readable. With the archive switched off and no upstream URL for a file, the message
 is `<file> is in no cache, and the archive is off and no source names it`.
 
+When every archived file goes upstream and fetch printed
+`ports/sources.idx is not format 2; the archive is skipped` first, the index is of another format
+or was edited by hand; `testing/preflight.sh` names the lines it objects to. A file in parts
+prints one download line per part. A part that fails its own hash sends the whole file upstream,
+and a download that stops keeps the parts already verified in `ports/.srccache/.parts-<hash>/`
+for the next run to resume. Joining needs about twice the file's size free on the cache's and the
+port directory's filesystem.
+
 The pre-push hook refuses rather than passing, since absence cannot be ruled out offline:
 `cannot reach the source archive at <base> (curl exit N)`, or
 `source archive unreachable at <base> (HTTP N)` when the archive answers anything but 200 or 404.
@@ -371,9 +382,9 @@ Check that the machine can reach `https://github.com` at all. Then look at the v
 | Variable | Default | Effect |
 |---|---|---|
 | `KDOS_SOURCES_REPO` | `kunaldawn/kdos` | The GitHub repository holding the archive |
-| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | The download base. A mirror laid out as `sources-NNN/<hash>` works unchanged. Empty skips the archive and fetches from upstream alone; `ports/publish` and the pre-push hook then refuse to run |
+| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | The download base. A mirror or a directory laid out as `<tag>/<asset>`, parts as `<asset>.partNN`, works unchanged. Empty skips the archive and fetches from upstream alone; `ports/publish` and the pre-push hook then refuse to run |
 | `KDOS_SRCCACHE` | `ports/.srccache` | The local cache, one file per hash. Files already there need no network |
-| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | Which archive release holds each hash. A hash it does not name is fetched from upstream |
+| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | Which release and asset hold each hash, read only in format 2. A hash it does not name is fetched from upstream |
 
 ---
 

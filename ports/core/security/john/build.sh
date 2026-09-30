@@ -59,9 +59,9 @@ _opts=(--prefix=/usr --disable-native-tests --disable-mpi --enable-pcap --enable
 # every file with -m<level> except john.c, which is told the level by a
 # define and tests the processor for it first; the level must not go into
 # CFLAGS, or john.c itself is compiled for it and dies of SIGILL before the
-# test. -DCPU_FALLBACK makes a failed test execv()
-# the next build down under the name x86-64.h gives it, from
-# JOHN_SYSTEMWIDE_EXEC, which --prefix=/usr sets to /usr/bin:
+# test. -DCPU_FALLBACK makes a failed test execv() the next build down under
+# the name x86-64.h gives it, from JOHN_SYSTEMWIDE_EXEC, which --prefix=/usr
+# sets to /usr/bin:
 #   john (AVX-512BW) -> john-non-avx512bw (AVX2) -> john-non-avx2 (XOP)
 #   -> john-non-xop (AVX) -> john-non-avx (SSE2, the x86-64 baseline)
 # argv is passed on unchanged, so unshadow, zip2john and the other links to

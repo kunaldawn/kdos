@@ -123,6 +123,7 @@ int front_main(int argc, char **argv);
 
 int kp_cmd_index(const KpConf *c, int argc, char **argv);
 int kp_cmd_keygen(int argc, char **argv);
+int kp_cmd_sign(int argc, char **argv);
 int kp_cmd_verify_index(int argc, char **argv);
 int kp_cmd_binhost(const KpConf *c, int argc, char **argv);
 int kp_cmd_verify_pkg(int argc, char **argv);

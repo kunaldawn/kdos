@@ -547,8 +547,8 @@ static void grow_pipe(int fd)
 
 /* In the forked child of a level's port, before exec: slot `w` of N runs on
  * min(ncpu, 2k) of this process's CPUs, starting w*ncpu/N along the list, so
- * the ninja, cargo, rustc and go that size themselves from the CPUs they may
- * use size themselves to the window rather than to the whole machine. The
+ * the cargo, rustc and go that size themselves from the CPUs they may use
+ * size themselves to the window rather than to the whole machine. The
  * windows overlap, so a port whose neighbours are linking or idle still gets
  * twice its share. A refusal leaves the child on every CPU, which is slower
  * under contention, not wrong. */

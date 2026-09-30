@@ -1,0 +1,17 @@
+--- a/3rd_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/faiss/utils/misc.h
++++ b/3rd_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/faiss/utils/misc.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ #include <algorithm>
++#include <cstdint>
+ #include <vector>
+ 
+ namespace faiss {
+--- a/3rd_party/bergamot-translator/3rd_party/marian-dev/src/microsoft/quicksand.h
++++ b/3rd_party/bergamot-translator/3rd_party/marian-dev/src/microsoft/quicksand.h
+@@ -1,4 +1,5 @@
+ #pragma once
++#include <cstdint>
+ #include <memory>
+ #include <string>
+ #include <tuple>

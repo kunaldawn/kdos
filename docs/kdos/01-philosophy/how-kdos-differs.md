@@ -41,7 +41,7 @@ follow from where that line is drawn.
 | Toolkits | GTK and Qt under the desktop and its applications | None under the desktop, whose every surface is a grid of character cells; any toolkit for applications |
 | Desktop | GNOME, KDE Plasma, Xfce and others | One desktop written for KDOS, on a frozen fork of the labwc compositor |
 | Packages | Prebuilt binaries from an archive | Compiled from 2,024 recipes: on a build host for the installation image, on the machine itself for updates |
-| Sources | Fetched from the archive's mirrors | Pinned by sha256, held in a content-addressed archive, built offline |
+| Sources | Fetched from the archive's mirrors | Pinned by sha256, held in a release archive checked by hash, built offline |
 | Graphical applications | Distribution packages, Flatpak or Snap | Native ports carried on the medium, plus Debian packages in rootless podman containers, built on demand |
 | Updates | A package manager against a remote archive | A newer ports tree, compiled locally or matched against a binary host ([binhost](../06-reference/glossary.md)) you run yourself, optionally into a second root slot |
 | Architectures | Several | x86-64 only |
@@ -262,7 +262,7 @@ reproducible tarball of those dependencies that is itself hashed and archived; 1
 This is the Nix and Guix model of hash-pinned inputs applied to a conventional ports tree. The cost
 falls on whoever adds a port: vendoring, publishing new sources to the archive before pushing, and
 fixing every build system that wants the network. See
-[Decisions](decisions.md#upstream-archives-are-content-addressed-release-assets) and
+[Decisions](decisions.md#upstream-archives-are-hash-checked-release-assets) and
 [Principles](principles.md#offline-by-construction).
 
 ## Self-hosting

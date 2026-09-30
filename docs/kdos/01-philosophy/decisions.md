@@ -24,7 +24,7 @@ decisions that look like missing features.
 | [The base distribution in boxes](#debian-inside-boxes-not-alpine) | Debian trixie, with Alpine carried as a scratch base |
 | [The host C library](#musl-as-the-host-c-library) | musl, which forecloses runtime CPU dispatch |
 | [The host desktop](#no-kde-gnome-or-any-existing-desktop-on-the-host) | A desktop written for this system; KDE's and GNOME's applications, never their shells |
-| [Where upstream sources live](#upstream-archives-are-content-addressed-release-assets) | Release assets named by their sha256, fetched by `make fetch` |
+| [Where upstream sources live](#upstream-archives-are-hash-checked-release-assets) | One release per shelf, each file under its own name and checked by its sha256, fetched by `make fetch` |
 | [CPU optimisation](#-march-measured-per-machine-not-chosen-for-a-population) | Measured per machine by `kdos march`, never a shipped feature level |
 | [Compiler flags](#one-release-flag-set-raised-per-port) | `-O2` with hardening for every port; `-O3` per port on precedent; LTO only for a listed set of hot libraries |
 | [The vulnerability database](#alpines-security-database-not-nvd-or-osv) | A vendored, pruned copy of Alpine's secdb, answered offline |
@@ -214,59 +214,71 @@ catalogue carries more on the shared `rt-kde` and `rt-gtk` runtimes. None of the
 GNOME Shell running. See [Principles](principles.md#toolkits-are-for-applications-not-the-desktop)
 and [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
-## Upstream archives are content-addressed release assets
+## Upstream archives are hash-checked release assets
 
 Upstream source archives are not kept in git. Every source file a recipe names by a `sha256 =`
-line is a release asset in the GitHub repository `kunaldawn/kdos`, and the asset's name is the
-file's own sha256 — the same string as the recipe line. The exception is a small set of upstream
-files that git does carry, such as bash's and readline's patch levels, the IANA registries,
-`certdata.txt` and a Tesseract language model; those are never archived. The assets fill releases
-in order: `sources-001`, then `sources-002` once the first holds 1,000 files, and so on. The
-committed file `ports/sources.idx` records which release holds each hash, so a file's address is
+line is a release asset in the GitHub repository `kunaldawn/kdos`. The exception is a small set of
+upstream files that git does carry, such as bash's and readline's patch levels, the IANA
+registries, `certdata.txt` and a Tesseract language model; those are never archived. Each shelf of
+`ports/core` has one release, a pre-release tagged `src-<shelf>`, and a file goes into the release
+of the first shelf, in the tree's sorted order, whose recipe names it; `src-attic` holds files that
+only old history names. The asset carries the file's own name, so a file's address reads like what
+it is:
 
 ```
-https://github.com/kunaldawn/kdos/releases/download/sources-<NNN>/<hash>
+https://github.com/kunaldawn/kdos/releases/download/src-archiver/zstd-1.5.7.tar.gz
 ```
 
-The current recipes name 2,487 distinct files, 38.6 GiB in total: 39 that git carries, and 2,448
-that belong in the archive, of which the index names 1,186. Sixty of them exceed the 100 MiB a push
-to github.com refuses; they appear 74 times across the port directories, because a file such as the
-LLVM source tarball serves several ports. The largest, `texlive`'s texmf tree, is 4.6 GiB. In all
-the index names 1,678 files. A file enters it when `ports/publish` uploads it, and no line is ever
-removed, so the index also names the older versions that earlier commits use. `KDOS_SOURCES_REPO` names a
-different archive repository, and `KDOS_SOURCES_BASE` a different download base; setting
-`KDOS_SOURCES_BASE` empty makes `make fetch` skip the archive and go from the local cache straight
-to upstream.
+The committed file `ports/sources.idx` records the release and the asset for each hash. The
+current recipes name 2,487 distinct files, 38.6 GiB in total: 39 that git carries, and 2,448 that
+belong in the archive, spread over 102 shelves; the largest, `python-libs`, names 81, far under
+GitHub's 1,000 assets per release. Sixty of them exceed the 100 MiB a push to github.com refuses;
+they appear 74 times across the port directories, because a file such as the LLVM source tarball
+serves several ports. The largest, `texlive`'s texmf tree, is 4.96 GB, over GitHub's 2 GiB limit per
+asset, so any file larger than 1,900 MiB is stored as `<asset>.part01` onwards and joined by
+`ports/fetch`. `KDOS_SOURCES_REPO` names a different archive repository, and `KDOS_SOURCES_BASE` a
+different download base; setting `KDOS_SOURCES_BASE` empty makes `make fetch` skip the archive and
+go from the local cache straight to upstream.
 
-The hash is the identity and the URL is advisory. A recipe names contents, not a location, so a
+The hash is the identity and the name is advisory. A recipe names contents, not a location, so a
 file that verifies is the file the recipe meant whether it came from the archive, from upstream or
-from a mirror added in ten years, and none of those changes a commit. Two different upstream
-releases published under one filename cannot collide, and GitHub, which rewrites asset names
-containing characters outside `[A-Za-z0-9._-]`, never has to rewrite a bare hash.
+from a mirror added in ten years, and none of those changes a commit. A readable name is what lets
+a person browsing a release, or reading a URL in a log, see which file it is; the hash already
+guarantees which bytes it is. Two upstream files of different bytes under one filename would meet
+in one release, so the second is stored as `<port>--<file>`, and a third as
+`<port>--<hash12>--<file>`. GitHub rewrites every character outside `[A-Za-z0-9._-]` in an asset
+name to a dot, so the index records the name GitHub returned rather than the one asked for, and
+each asset's label keeps the true name for the release page.
 
-Filling releases in order keeps their number as small as the file count allows. A GitHub release
-holds at most 1,000 assets and has no limit on their total size, so 1,700 files need two releases
-and 50,000 need fifty. Deriving the release from the hash instead would need no index, but hashes
-are uniformly random, so every release such a scheme divides into exists from the first upload, and
-a scheme with few of them fills within years. The index is what the ordering costs: one committed
-line per file, `<hash> <NNN> <port>/<file>`, which `ports/publish` appends only after GitHub reports
-the uploaded asset's digest equal to its name. The index is append-only like the archive, so the
-newest index names every file ever archived, and an old checkout can be fetched with it
-(`ports/fetch --tree <dir>`).
+A release per shelf keeps each release a readable list of related sources, and far from the
+1,000-asset limit; a shelf that reached it would make `ports/publish` stop rather than open an
+overflow release. The index is what the naming costs: one committed line per file,
+`<hash> <tag> <asset> <port>/<file>`, with `parts=<N>:<h1>,…` for a split file, which
+`ports/publish` writes only after GitHub reports every uploaded asset's digest equal to the bytes it
+sent. Its first line, `# kdos-sources-index 2`, is its format; an index without it is not read at
+all, so a checkout with an index of another format fetches from upstream rather than misreading an
+address. The newest index says where every archived file is now, and an old checkout can be fetched
+with it (`ports/fetch --tree <dir>`).
 
-The archive is append-only. An asset whose digest matches its name is never replaced or deleted,
-because replacing one would silently change what an old commit builds; a checkout from five years
-ago finds the bytes it was written against after upstream has moved or gone. For each KDOS
-release, `ports/publish --freeze <tag>` attaches `sources.sha256`, the list of every hash that
-tag's recipes name, to the release of that tag, creating it as a draft when it does not exist. The
-list is a convenience, one file that says what the release needs. What pins the hashes is the tag
-itself: its recipes carry them, and git cannot change those without changing the tag.
+The archive is append-only by default. A verified asset is never replaced, because replacing one
+would silently change what an old commit builds; a checkout from five years ago finds the bytes it
+was written against after upstream has moved or gone. Two maintainer commands remove assets, and
+both say so by name. `ports/publish --rehome` moves a file whose port has changed shelf into the new
+shelf's release, and deletes the old copy only once the new one is verified and both the working and
+the pushed index place the file elsewhere. `ports/publish --orphans --prune=yes-delete` deletes
+files no current recipe names, sparing every file a recipe at any `v*` tag names or a freeze list
+under `build/freeze/` holds; a checkout older than the pruning fetches those files from upstream.
+For each KDOS release, `ports/publish --freeze <tag>` attaches `sources.sha256`, the list of every
+hash that tag's recipes name, to the release of that tag, creating it as a draft when it does not
+exist. The list is a convenience, one file that says what the release needs. What pins the hashes is
+the tag itself: its recipes carry them, and git cannot change those without changing the tag.
 
 The archive's releases share the repository's release page with the KDOS releases. Each one's
-notes list every file it holds, as `<hash>  <port>/<file>` lines, and they are created with
-`make_latest` off, so "latest" always means a KDOS release. GitHub's immutable releases stay off
-on the repository: the setting applies to every release in it, and it would freeze an archive
-release at its first publication, after which no source could be added to it.
+notes describe its shelf and list every file it holds, with version, size and hash, and each is a
+pre-release created with `make_latest` off, so "latest" always means a KDOS system release.
+GitHub's immutable releases stay off on the repository: the setting applies to every release in
+it, and it would freeze an archive release at its first publication, after which no source could be
+added to it.
 
 The first cost is that a clone alone does not build. `make fetch` has to run once after a clone
 and again after a recipe changes, and it is the only build step that uses the network. It takes
@@ -289,7 +301,7 @@ every repository the account owns. The current sources take 38.6 GiB, nearly fou
 storage, on their own, before any older version the history names, and a single clone uses most of a
 month's bandwidth. Past the allowance LFS reads are blocked outright, not slowed, so a repository
 that depends on LFS stops checking out. Release assets carry no total-size or bandwidth limit and
-allow 2 GiB per file. Plain git objects are not possible at all, since sixty of the files exceed the
+allow 2 GiB per asset, and the one larger file is stored in parts. Plain git objects are not possible at all, since sixty of the files exceed the
 push limit.
 
 ## `-march` measured per machine, not chosen for a population

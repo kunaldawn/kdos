@@ -241,8 +241,8 @@ taking each file from the first place that holds a copy that verifies:
 5. for a port's own vendor bundle only, regeneration.
 
 `make fetch-check` repeats the verification offline and reports what is missing or wrong. See
-[Decisions](decisions.md#upstream-archives-are-content-addressed-release-assets) for why the
-sources are held in an archive keyed by their hashes.
+[Decisions](decisions.md#upstream-archives-are-hash-checked-release-assets) for why the
+sources are held in an archive whose every file is checked by its hash.
 
 For recipes this creates a class of build failure that has to be fixed rather than tolerated: a
 meson subproject wrap, a CMake `file(DOWNLOAD)`, a `FetchContent` git clone, a Python build backend

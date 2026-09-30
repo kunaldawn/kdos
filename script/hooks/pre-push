@@ -42,8 +42,11 @@
 # the remote side's recipes do not must appear in ports/sources.idx AS OF THE
 # PUSHED COMMIT — the index is what tells fetch where a file lives, so an
 # uncommitted index line is as good as no upload — and is then HEAD-checked at
-# the release that line names. The push is refused while any is missing;
-# `ports/publish` uploads them and writes the index lines to commit.
+# every asset that line names: the file, or each of its parts, in the release
+# the line's tag names. One part missing is the file missing. An index at that
+# commit that is not format 2 names nothing, so every new hash is reported as
+# not in it. The push is refused while any is missing; `ports/publish` uploads
+# them and writes the index lines to commit.
 #
 # The remote side is the remote's current sha for the ref; for a new branch,
 # every refs/remotes/* tip. A file git itself carries at the pushed commit (a
@@ -178,24 +181,28 @@ for line in "${LINES[@]}"; do
         CHECKED[$h]=1
         l=${label[$h]:-?}
         [ -n "${lpath[$h]:-}" ] && [ -n "${carried[${lpath[$h]}]:-}" ] && continue
-        if ! url=$(src_url "$h"); then
+        if ! mapfile -t urls < <(src_urls "$h") || [ "${#urls[@]}" = 0 ]; then
             MISSING+=("$h"); MISSING_LABEL[$h]="$l — not in ports/sources.idx"
             continue
         fi
         # Only a 404 is absence. Any other status — a 403, a 5xx during an
         # outage — is an archive that cannot answer, and is reported as that,
         # not as a source to upload.
-        rc=0
-        code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
-                    --max-time 120 --retry 2 "$url") || rc=$?
-        [ "$rc" = 0 ] || refuse "cannot reach the source archive at $KDOS_SOURCES_BASE (curl exit $rc);
+        for url in "${urls[@]}"; do
+            rc=0
+            code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
+                        --max-time 120 --retry 2 "$url") || rc=$?
+            [ "$rc" = 0 ] || refuse "cannot reach the source archive at $KDOS_SOURCES_BASE (curl exit $rc);
 pre-push: whether $l ($h) is archived cannot be confirmed, so the push is refused"
-        case $code in
-            200) ;;
-            404) MISSING+=("$h"); MISSING_LABEL[$h]=$l ;;
-            *)   refuse "source archive unreachable at $KDOS_SOURCES_BASE (HTTP $code);
+            case $code in
+                200) ;;
+                404) MISSING+=("$h")
+                     MISSING_LABEL[$h]="$l — indexed in ${SRC_TAG[$h]} as ${url##*/} but absent"
+                     break ;;
+                *)   refuse "source archive unreachable at $KDOS_SOURCES_BASE (HTTP $code);
 pre-push: whether $l ($h) is archived cannot be confirmed, so the push is refused" ;;
-        esac
+            esac
+        done
     done <<< "$new"
     unset label lpath ptr carried
 done

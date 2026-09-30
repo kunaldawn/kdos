@@ -56,7 +56,7 @@ mount --bind /dev "$CHROOT_DIR/dev"
 mount -t proc proc "$CHROOT_DIR/proc"
 mount -t sysfs sysfs "$CHROOT_DIR/sys"
 # The cgroup tree, read-only, over the fresh sysfs's empty /sys/fs/cgroup.
-# ninja, cargo and go size themselves from cpu.max through it; without it they
+# cargo and go size themselves from cpu.max through it; without it they
 # see every host thread whatever --cpus cap the container runs under. The bind
 # and the remount are two steps because busybox mount ignores ro on a bind.
 if [ -d /sys/fs/cgroup ]; then

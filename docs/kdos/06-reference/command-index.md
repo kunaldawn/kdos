@@ -300,7 +300,7 @@ All five names are one binary in `/usr/bin`.
 | `kpkgdepends` | Print the resolved install order | [Packaging](../03-architecture/packaging.md#kpkg) |
 
 `kpkg` takes `install` (also `i`), `remove` (also `r`), `list` (also `l`, with `--json`), `info`
-(with `--json`), `meta`, `verify` (and `verify --repro`), `keygen`, `index` (with `--sign KEY`),
+(with `--json`), `meta`, `verify` (and `verify --repro`), `keygen`, `sign FILE KEY`, `index` (with `--sign KEY`),
 `verify-index`, `verify-pkg`, `delta`, `apply-delta`, `binhost`, `store gc DIR MAX-SIZE` and
 `help`, and the options
 `--root PATH`, `--keep-cache`, `-f`/`--force` and `--overwrite`. `install` also takes
@@ -409,6 +409,12 @@ uses them, from `make fetch` to a bootable ISO.
 | `make run-hw`, `make rundisk-hw` | The same with hardware-accelerated graphics, through `testing/qemu-hw/` | [Developing](../05-developer/developing.md#running-the-result) |
 | `make debug-boot` | Boot the built kernel and initramfs directly, with the serial console on the terminal | [Developing](../05-developer/developing.md#running-the-result) |
 | `make cleandisk`, `make cleanbuild`, `make clean` | Replace the test disk; empty `build/` except `snapshots`, `ccache`, `pkgstore` and `keys`; empty it except `keys` | [Developing](../05-developer/developing.md#make-targets) |
+| `make help` | List every target with a one-line description | [Developing](../05-developer/developing.md#make-targets) |
+| `make publish`, `publish-dry`, `publish-check`, `publish-describe`, `publish-rehome`, `publish-orphans` | `ports/publish` and its modes over the `src-<shelf>` source archive; `PORTS` and `PUBLISH_ARGS` narrow them | [Developing](../05-developer/developing.md#make-targets) |
+| `make freeze`, `make release`, `make release-publish` | The system release for `TAG`: `sources.sha256`, a draft with the ISO and signed `SHA256SUMS`, then public and Latest | [Developing](../05-developer/developing.md#make-targets) |
+| `make check`, `preflight`, `selftest`, `selftest-asan`, `docscheck`, `phaseclosure` | The checks that stand in for a build; `check` runs the four that need no built tree | [Developing](../05-developer/developing.md#make-targets) |
+| `make depdrift`, `make debuginfo` | Audit `build/fs` for undeclared link dependencies, or for shipped DWARF | [Developing](../05-developer/developing.md#make-targets) |
+| `make quick`, `make rig-image`, `make devdeps-image` | The fast loop, and the containers it and the rig run in | [Testing](../05-developer/testing.md#the-fast-loop) |
 
 `KDOS_RES` (default `1920x1080`) sets the virtual screen for `make run`, `rundisk`,
 `run-hw` and `rundisk-hw`.
@@ -418,7 +424,8 @@ uses them, from `make fetch` to a bootable ISO.
 | Command | What it does | Documented in |
 |---|---|---|
 | `ports/fetch [--check] [--tree DIR] [PORT…]` | What `make fetch` runs: each source from the port directory, the cache, the sources archive or upstream, generating a vendor bundle where one must be made. A port is named by its bare name on any shelf, and a name that is no port fails the run | [Developing](../05-developer/developing.md#where-sources-come-from) |
-| `ports/publish [--dry-run] [--check] [--history] [--describe] [--freeze TAG] [PORT…]` | Upload sources to the sources archive and append their lines to `ports/sources.idx`; `--describe` rewrites the releases' notes, `--freeze` attaches a release's hash list. Ports are named as for `ports/fetch` | [Writing ports](../05-developer/writing-ports.md#portspublish) |
+| `ports/publish [--dry-run \| --check] [--history] [PORT…]` | Upload sources the archive lacks into the `src-<shelf>` pre-release of the shelf that owns them, under their own names (in parts past 1,900 MiB), and write their lines into `ports/sources.idx`. `--describe` rewrites the releases' notes; `--rehome [PORT…]` moves files to the release of the shelf their port now sits on and, once the index is pushed, deletes the old copies; `--orphans` lists index lines no recipe names, and `--orphans --prune=yes-delete` deletes the unprotected ones; `--freeze TAG` attaches a release's hash list. Ports are named as for `ports/fetch` | [Writing ports](../05-developer/writing-ports.md#portspublish) |
+| `ports/publish --release TAG [--iso PATH] [--key PATH \| --unsigned] [--publish] [--dry-run]` | Put the system release `TAG` on `kunaldawn/kdos`: the ISO (in parts from 1,900 MiB), `sources.sha256`, a signed `SHA256SUMS` and the public key, as a draft until `--publish` makes it public and Latest | [Developing](../05-developer/developing.md#cutting-a-release) |
 | `script/hooks/pre-push` | Refuse a push that breaks the ports layout, or names a source the archive lacks; enabled with `git config core.hooksPath script/hooks` | [Writing ports](../05-developer/writing-ports.md#the-pre-push-hook) |
 | `kdosbuild [--fresh] [--restore PHASE] [--continue-from PHASE] [--phases LIST] [--steps LIST] [--rebuild LIST] [--plan] [--snapshot] [--no-snapshot] [--full-snapshots] [--port-jobs N] [--plain] [--json] [--list] [--delete PHASE]` | The build orchestrator, compiled from `src/devtools/kdosbuild/` by `script/kdosbuild.sh`, which `make build` runs with `BUILD_ARGS`. `--port-jobs N` builds up to `N` ports of a package phase at once, by dependency level | [The build system](../05-developer/build-system.md#flags) |
 | `script/chroot/enter.sh` | A root shell, or one command, inside a built tree, for inspection by hand | [The build system](../05-developer/build-system.md#the-chroot) |

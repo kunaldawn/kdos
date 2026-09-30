@@ -1581,7 +1581,7 @@ fi
 #
 # THE THREE SCRIPTS AND THE INDEX ARE THE WHOLE MECHANISM. ports/srclib.sh
 # (sourced) is the archive's addressing and ports/sources.idx says which
-# release holds each file; ports/fetch and ports/publish run it as programs, and
+# release and asset hold each file; ports/fetch and ports/publish run it as programs, and
 # script/hooks/pre-push is what git runs once `git config core.hooksPath
 # script/hooks` is set. A syntax error in any of them surfaces only on the
 # command that needed it.
@@ -1641,21 +1641,21 @@ if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
     done
     [ -n "$pa_scripts" ] && note "srclib.sh, fetch, publish, pre-push parse" "ok"
 
-    # ports/sources.idx is how fetch finds an archived file: a malformed line
-    # is a file nothing can locate, and a hash on two lines names two releases
-    # for one file. Absent is fine — nothing is archived yet.
+    # ports/sources.idx is how fetch finds an archived file, and fetch reads
+    # it only in format 2: a malformed line is a file nothing can locate, a
+    # hash on two lines names two places for one file, two assets one name
+    # apart in a tag are one download URL, and a format-1 index is one fetch
+    # skips whole. srclib.sh's src_index_problems holds every rule, so
+    # ports/publish and this check the same ones. Absent is fine — nothing is
+    # archived yet.
     if [ -f ports/sources.idx ]; then
-        pa_idx_bad=$(grep -vE '^(#|$)' ports/sources.idx \
-                     | grep -cvE '^[0-9a-f]{64} [0-9]{3,} [^ /]+/[^ ]+$')
-        pa_idx_dup=$(grep -E '^[0-9a-f]{64} ' ports/sources.idx | cut -d' ' -f1 \
-                     | LC_ALL=C sort | uniq -d | grep -c .)
+        pa_idx_bad=$(src_index_problems ports/sources.idx)
         pa_idx_n=$(grep -cE '^[0-9a-f]{64} ' ports/sources.idx)
-        if [ "$pa_idx_bad" != 0 ] || [ "$pa_idx_dup" != 0 ]; then
-            bad "ports/sources.idx" "$pa_idx_bad malformed line(s), $pa_idx_dup hash(es) listed twice"
-        elif ! grep -E '^[0-9a-f]{64} ' ports/sources.idx | LC_ALL=C sort -c -k1,1 2>/dev/null; then
-            bad "ports/sources.idx" "not sorted by hash — ports/publish writes it sorted"
+        pa_idx_p=$(grep -cE '^[0-9a-f]{64} .* parts=' ports/sources.idx)
+        if [ -n "$pa_idx_bad" ]; then
+            bad "ports/sources.idx" "$(printf '%s\n' "$pa_idx_bad" | grep -c .) problem(s): $(printf '%s\n' "$pa_idx_bad" | head -3 | tr '\n' ';')…"
         else
-            note "ports/sources.idx" "$pa_idx_n archived files, well-formed"
+            note "ports/sources.idx" "format 2, $pa_idx_n archived files ($pa_idx_p in parts), well-formed"
         fi
     else
         note "ports/sources.idx" "absent — nothing archived yet"
@@ -2765,6 +2765,47 @@ if ! grep -qE '! -name pkgstore' "$_cr"/Makefile; then
     _ps=$((_ps + 1))
 fi
 [ "$_ps" = 0 ] && note "package store" "knobs passed by the Makefile and named by exec.sh; cleanbuild keeps it"
+
+echo
+echo "==> ninja takes KDOS_JOBS, and only when no job count is given"
+# script/bin/ninja is on the chroot's PATH ahead of /usr/bin/ninja. It must add
+# -jN to a call with no job count and hand every other call on exactly: a -j
+# added twice is harmless, but one added to `-t` or `--version` changes what
+# meson and CMake read back, and a lost argument breaks every build. Run
+# against a stand-in ninja that prints its arguments one per line, so an
+# argument split or joined shows.
+_nj=0
+if [ -x script/bin/ninja ] && grep -q 'env/../bin\|%/\*}/../bin' script/env/chroot.env; then
+    printf '#!/bin/bash\nprintf "%%s\\n" "$@"\n' > "$SP/ninja-real"
+    chmod +x "$SP/ninja-real"
+    _njcase() {  # expected-output, then the arguments
+        local want=$1; shift
+        local got
+        got=$(KDOS_JOBS=7 KDOS_NINJA="$SP/ninja-real" script/bin/ninja "$@" | paste -sd'|')
+        if [ "$got" != "$want" ]; then
+            bad "ninja wrapper" "ninja $* gave '$got', want '$want'"
+            _nj=$((_nj + 1))
+        fi
+    }
+    _njcase "-j7"
+    _njcase "-j7|-C|build|install" -C build install
+    _njcase "-j7|-Cbuild|-v" -Cbuild -v
+    _njcase "-j7|-C|-j3" -C -j3
+    _njcase "-j3|-C|build" -j3 -C build
+    _njcase "-C|build|-j|3" -C build -j 3
+    _njcase "-vj2" -vj2
+    _njcase "-t|compdb|-x" -t compdb -x
+    _njcase "--version" --version
+    _njcase "-j7|a b|--|-j2" "a b" -- -j2
+    _got=$(KDOS_JOBS= KDOS_NINJA="$SP/ninja-real" script/bin/ninja all | paste -sd'|')
+    [ "$_got" = all ] || { bad "ninja wrapper" "empty KDOS_JOBS still added a count: '$_got'"; _nj=$((_nj + 1)); }
+    grep -qE '^real=\$\{KDOS_NINJA:-/usr/bin/ninja\}' script/bin/ninja ||
+        { bad "ninja wrapper" "script/bin/ninja must run /usr/bin/ninja by absolute path"; _nj=$((_nj + 1)); }
+else
+    bad "ninja wrapper" "script/bin/ninja is missing, or chroot.env does not put script/bin on PATH"
+    _nj=1
+fi
+[ "$_nj" = 0 ] && note "ninja jobs" "-jN only when absent; -t, --version and a given -j pass through"
 
 echo
 if [ "$fail" = 0 ]; then

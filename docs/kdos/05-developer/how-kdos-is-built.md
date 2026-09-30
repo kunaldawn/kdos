@@ -96,7 +96,7 @@ need any compiler toolchain of its own for the build, and its own libraries neve
 | `--network none` | The build must be a function of the fetched sources alone. A port that tries to download something during its build fails at once instead of quietly depending on the network |
 | `--privileged` | The later phases mount `/proc`, `/sys` and bind mounts inside the target tree and `chroot` into it, which needs those privileges |
 | `--cpu-shares=256` | A weight, not a cap: an idle host gives the build every thread; under contention it yields to other containers and services, and on a systemd cgroup-v2 host shares the CPU evenly with the user session. `KDOS_CPU_SHARES` changes the weight. The environment every phase shares sets one job count, `KDOS_JOBS`, for make, `cmake --build` and cargo: the host's thread count, clamped to one job per 2 GiB of memory |
-| `--cpus=N`, only with `KDOS_JOBS=N` | Caps the container at the job count, and at the host's thread count, so ninja, cargo and go, which size themselves from the container's cgroup `cpu.max` (bind-mounted read-only into the chroot), follow a lowered `KDOS_JOBS` too |
+| `--cpus=N`, only with `KDOS_JOBS=N` | Caps the container at the job count, and at the host's thread count, so cargo and go, which size themselves from the container's cgroup `cpu.max` (bind-mounted read-only into the chroot), follow a lowered `KDOS_JOBS` too; ninja is handed `-j$KDOS_JOBS` by `script/bin/ninja` |
 | `build/` mounted writable; `src/`, `fs/`, `script/` and `ports/` read-only | A build cannot modify its own sources |
 
 The container is a fixed, known starting point. Whatever distribution your machine runs, the
@@ -119,20 +119,23 @@ any copy that hashes to it is the right file, wherever it came from. For each fi
 1. **The port directory**, if the file is already there.
 2. **The local cache**, `ports/.srccache/sha256-XX/<hash>`, one file per hash, hard-linked into
    every port directory that names it.
-3. **The KDOS source archive**: numbered GitHub releases `sources-001`, `sources-002` and onwards,
-   each asset named by its bare hash. The committed file `ports/sources.idx` says which release
-   holds which hash, one line per file.
+3. **The KDOS source archive**: one GitHub pre-release per shelf, `src-<shelf>`, each asset under
+   the file's own name. The committed file `ports/sources.idx` says which release and which asset
+   hold which hash, one line per file; a file over GitHub's 2 GiB asset limit is held in parts,
+   joined and checked as a whole.
 4. **Upstream**, the URL on the recipe's `source =` line.
 5. **Regeneration**, for a port's own vendor bundle only (below).
 
-The archive is asked before upstream because it cannot disappear when an upstream host does. It is
-append-only: nothing in it is ever replaced or removed, so it also holds every file an older recipe
-named. For example, it carries both `pv-1.12.0.tar.gz`, which the current `pv` recipe names, and
-`pv-1.7.24.tar.gz`, so a checkout written against the older version can still be built.
-`ports/sources.idx` names 1,678 files, 1,000 in `sources-001` and 678 in `sources-002`. The current
-recipes name 2,487 distinct files; 39 of them are carried in git, and of the 2,448 that are fetched,
-1,186 have a line in the index. The rest are fetched from upstream. A complete cache holds those
-2,448 files; its size is in [What a build costs](#what-a-build-costs).
+The archive is asked before upstream because it cannot disappear when an upstream host does. Nothing
+in it is replaced, and nothing is removed except by the maintainer's explicit `--rehome` and
+`--prune=yes-delete` runs of `ports/publish`, which spare every file a recipe at a `v*` tag names.
+So it can hold what older recipes named as well: seeded with `ports/publish --history`, it carries
+both `pv-1.12.0.tar.gz`, which the current `pv` recipe names, and `pv-1.7.24.tar.gz`, both in
+`src-cli`, so a checkout written against the older version can still be built. `ports/sources.idx` is read only in its format 2, whose first line
+is `# kdos-sources-index 2`, and it names no file until `ports/publish` fills it; until then every
+file comes from upstream. The current recipes name 2,487 distinct files; 39 of them are carried in
+git, and 2,448 are fetched. A complete cache holds those 2,448 files; its size is in
+[What a build costs](#what-a-build-costs).
 
 **Vendor bundles.** Rust, Go, Python, Haskell and Node software usually downloads its own dependencies
 while it builds, which a build with no network cannot allow. For those ports the dependencies are
@@ -153,7 +156,7 @@ network. A tree fetched once builds offline for as long as its recipes stay the 
 
 The other side of fetching is publishing. A recipe whose `sha256 =` names a file the archive does
 not hold builds on the machine that wrote it and nowhere else, so `ports/publish` uploads new files
-and appends their lines to `ports/sources.idx`, and the `pre-push` hook in `script/hooks/` refuses
+and writes their lines into `ports/sources.idx`, and the `pre-push` hook in `script/hooks/` refuses
 a push whose recipes name a hash the archive lacks. That hook is enabled once per clone:
 
 ```sh

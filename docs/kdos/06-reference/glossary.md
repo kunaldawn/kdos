@@ -743,11 +743,12 @@ its chain and every layer above it in turn. `--full-snapshots` writes none. See
 
 ### source archive
 
-The content-addressed store of every upstream source file the recipes name: release assets of the
-GitHub repository `kunaldawn/kdos`, each named by its own SHA-256, in numbered releases
-`sources-001`, `sources-002` and onwards, each filled to 1,000 files before the next opens. Nothing
-in it is replaced or removed. `make fetch` reads it through *sources.idx*; `ports/publish` adds to
-it. See [Packaging](../03-architecture/packaging.md#where-sources-come-from) and [Writing
+The store of every upstream source file the recipes name: release assets of the GitHub repository
+`kunaldawn/kdos`, one pre-release per shelf tagged `src-<shelf>` plus `src-attic` for files only
+old history names, each asset under the file's own name and each file checked against its SHA-256
+before use. A file larger than 1,900 MiB is stored in parts. Nothing in it is replaced, and nothing is
+removed except by `ports/publish --rehome` and `--prune=yes-delete`. `make fetch` reads it through
+*sources.idx*; `ports/publish` adds to it. See [Packaging](../03-architecture/packaging.md#where-sources-come-from) and [Writing
 ports](../05-developer/writing-ports.md#publishing-sources).
 
 ### source cache
@@ -767,10 +768,12 @@ ports](../05-developer/writing-ports.md#checksums).
 
 ### sources.idx
 
-`ports/sources.idx`, the committed index of the *source archive*: one line per file, `<sha256> <NNN>
-<port>/<file>`, giving the release each hash lives in. `make fetch` and the pre-push hook read it
-from the tree, so a file uploaded to the archive is found only once its line is committed. It names
-1,678 files: 1,000 in `sources-001` and 678 in `sources-002`. See [Writing
+`ports/sources.idx`, the committed index of the *source archive*, in format 2: the line
+`# kdos-sources-index 2` first, then one line per file, `<sha256> <tag> <asset> <port>/<file>`, with
+`parts=<N>:<h1>,…` for a file stored in parts, giving the release and asset each hash lives in.
+`make fetch` and the pre-push hook read it from the tree, so a file uploaded to the archive is found
+only once its line is committed, and an index of any other format is not read at all. It names no
+file until `ports/publish` fills it. See [Writing
 ports](../05-developer/writing-ports.md#publishing-sources).
 
 ### splash

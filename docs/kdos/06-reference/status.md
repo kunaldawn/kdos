@@ -28,8 +28,8 @@ guarantee between lines and no tested hardware matrix: whoever runs it is the in
 [Why KDOS](../01-philosophy/why-kdos.md#the-trade).
 
 No v0.2 release has been cut and there is no `v0.2` tag. The releases published on `kunaldawn/kdos`
-are `v0.1`, which carries the v0.1 image, and `sources-001` and `sources-002`, which are the source
-archive described under [Host and packaging](#host-and-packaging) and carry no image. A v0.2 image
+are `v0.1`, which carries the v0.1 image, and the `src-<shelf>` pre-releases, one per shelf, which
+are the source archive described under [Host and packaging](#host-and-packaging) and carry no image. A v0.2 image
 is one you build from the repository; see [Getting started](../02-user-guide/getting-started.md).
 How a release is made is in [Developing](../05-developer/developing.md#cutting-a-release).
 
@@ -93,7 +93,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata`, `XZ_OPT='-e --check=sha256 -T1'` and a 300 MiB `XZ_DEFAULTS` memory limit, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times, and equal to their tar recompressed on two threads with `xz -9 --block-size=32MiB`. It also installs the port through `kpkg install`, once with the deleted `xz -0` package and once with a kept cache that must match the `-9` bytes. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry and the log classifier |
 | Snapshots and plans | Beta | Used by every incremental build, and by the synthetic-tree run above. Layered snapshots have been through synthetic trees only: the self-test's three-phase fixture, and a ten-phase tree emulating the distribution's phases with package installs, in which every phase's restore, including after a restore into fresh inodes and after a retaken phase, matched the tree it came from entry by entry. No real build has written a layered set yet |
-| Upstream sources | In progress | 1,678 files archived. Preflight checks the scripts and the index; no harness publishes to or fetches from the archive |
+| Upstream sources | In progress | The format-2 index names no file yet, so every source comes from upstream until `ports/publish` fills it. Preflight checks the scripts and the index; no harness publishes to or fetches from the archive |
 | The pack format | Stable | Malformed footers, both footer formats, signature states and a flipped payload byte are each asserted by the library self-test |
 | The binary host | In progress | Signing, the index and deltas are asserted against a synthetic port. `make build KDOS_MAKE_BINHOST=1` writes a signed one to `build/binhost/`; no public binary host exists |
 | The application catalogue | Stable | 73 applications and 2 datasets over 7 runtimes and 2 base packs, offered in 7 groups (17 `group` lines). Preflight checks the catalogue's rows against the tree. Applications are built on demand on the machine; the image carries the catalogue and no applications |
@@ -117,10 +117,12 @@ What each of the shortened rows above rests on:
   directory, the cache `ports/.srccache`, the `kunaldawn/kdos` archive or upstream, and regenerates
   a port's own vendor bundle when none of those holds it. `ports/publish` uploads new sources and
   can freeze a release's hash list; `script/hooks/pre-push` refuses a push that breaks the ports
-  layout or names an unarchived hash. `ports/sources.idx` lists 1,678 archived files, 1,000 in `sources-001` and 678 in
-  `sources-002`. Preflight checks that the four scripts parse, that git tracks no recipe-hashed
-  archive, that the ignore rules cover every source suffix, and that the index is well formed and
-  sorted. The pre-push hook runs only in a clone that has enabled it. See
+  layout or names an unarchived hash, checking every part of a file stored in parts.
+  `ports/sources.idx` is in format 2 and lists no file until `ports/publish` fills it; until then
+  `make fetch` takes every file from upstream. Preflight checks that the four scripts parse, that
+  git tracks no recipe-hashed archive, that the ignore rules cover every source suffix, and that the
+  index holds every format-2 rule: its first line, well-formed lines, known shelf tags, one line per
+  hash, unique asset names within a release, and hash order. The pre-push hook runs only in a clone that has enabled it. See
   [Packaging](../03-architecture/packaging.md#where-sources-come-from).
 - **The pack format.** The library self-test asserts that a footer with a wrong magic, an offset
   past the end of the file or too little file to hold it is refused; that a pack whose footer
@@ -253,7 +255,7 @@ a clean checkout and you should get the same number.
 | — in `src/desktop` | 8 | `find src/desktop -name kpkgbuild \| wc -l` |
 | — in `src/daemons` | 5 | `find src/daemons -name kpkgbuild \| wc -l` |
 | Shelves | 102 | `grep -cvE '^(#\|$)' ports/shelves` |
-| Archived source files | 1,678 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |
+| Archived source files | 0 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |
 | Catalogue applications | 73 | `grep -c '^app ' src/system/kdos-appbox/catalogue` |
 | Catalogue datasets | 2 | `grep -c '^data ' src/system/kdos-appbox/catalogue` |
 | Catalogue runtimes | 7 | `grep -c '^runtime ' src/system/kdos-appbox/catalogue` |

@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export CXXFLAGS="$CXXFLAGS -ffat-lto-objects -include cstdint"
+export CXXFLAGS="$CXXFLAGS -include cstdint"
 
 cmake -B build-shared -G Ninja \
 	-DCMAKE_INSTALL_PREFIX=/usr \

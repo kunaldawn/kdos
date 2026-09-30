@@ -129,7 +129,7 @@ commercial support.
 
 No v0.2 image is published. The [releases](https://github.com/kunaldawn/kdos/releases) on this
 repository are `v0.1`, whose ISO belongs to an earlier line that the book does not describe, and
-`sources-001` and `sources-002`, which hold the source archive and no image. To run v0.2, build it
+the `src-<shelf>` pre-releases, one per shelf, which hold the source archive and no image. To run v0.2, build it
 (next section), then boot the result in a virtual machine:
 
 ```sh

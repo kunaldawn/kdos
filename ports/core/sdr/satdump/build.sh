@@ -22,6 +22,15 @@ patch -p1 -i "$PORT_SRC/satdump-app-id.patch"
 # are opened RTLD_LOCAL, so the two copies' symbols never bind to each other.
 patch -p1 -i "$PORT_SRC/satdump-dvb-generic.patch"
 
+# calibration.h declares a function taking time_t without including <ctime>,
+# and neither <map> nor <math.h> is required to declare it.
+patch -p1 -i "$PORT_SRC/satdump-ctime.patch"
+
+# The bundled sol2 has a template member that names a member its class does
+# not have; GCC 15 checks template bodies nobody instantiates and rejects it
+# unless -Wtemplate-body is off.
+export CXXFLAGS="$CXXFLAGS -Wno-template-body"
+
 # Every decoder plugin is built (PLUGINS_ALL). Radios: RTL-SDR, Airspy,
 # HackRF, bladeRF, MiriSDR and RFNM (their drivers are built in over libusb),
 # and the network sources: rtl_tcp, SpyServer, SDR++ server, a raw network

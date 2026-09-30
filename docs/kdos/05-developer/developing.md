@@ -111,7 +111,7 @@ about what it produces:
 
 | Variable | Effect |
 |---|---|
-| `KDOS_JOBS=N` | The job count for every phase: `MAKEFLAGS=-jN`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, and a `--cpus` cap of N on the build container, no higher than the host's thread count, so ninja and cargo follow it. Unset, `script/env/common.env` takes the host's thread count clamped to one job per 2 GiB of memory. Lower it when a large C++ port is OOM-killed |
+| `KDOS_JOBS=N` | The job count for every phase: `MAKEFLAGS=-jN`, `CMAKE_BUILD_PARALLEL_LEVEL`, `CARGO_BUILD_JOBS` and `-jN` on every ninja call that names no job count, and a `--cpus` cap of N on the build container, no higher than the host's thread count, so cargo and go follow it. Unset, `script/env/common.env` takes the host's thread count clamped to one job per 2 GiB of memory. Lower it when a large C++ port is OOM-killed |
 | `KDOS_CPU_SHARES=N` | The build container's CPU weight, default `256`. It is not a cap: an idle host still gives the build every thread, and it only orders the build against other containers and system services |
 | `KDOS_CCACHE=0` | Turns off the compiler cache, default `1`: CMake ports inside the chroot compile through ccache into `build/ccache`, and a cached object is byte-identical to a compiled one (see [The compiler cache](how-kdos-is-built.md#the-compiler-cache)). Forwarded into the chroot by `script/chroot/exec.sh` |
 | `KDOS_PKG_STORE=1` | Turns on the package store, default `0`: a port whose recipe, environment and dependencies' exact bytes match a package built before is installed from `build/pkgstore` instead of being built, and every package built is stored. `check` builds every hit anyway and logs any difference to `build/logs/pkgstore-check.log`. Use `0` or `check` for a release. See [The package store](../03-architecture/packaging.md#the-package-store) |
@@ -165,6 +165,15 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `fetch` | Fetch every port's sources into `ports/core`, generating vendor bundles the archive lacks. `ports/fetch <port>` narrows it | Network; a container only to generate |
 | `fetch-check` | List, offline, every archived source that is missing or fails its hash | A C compiler |
 | `updates` | Check every port for a newer upstream release | Network, `curl`, `git`, `cc` |
+| `publish` | Upload every source a recipe names that the archive lacks, each into its shelf's `src-<shelf>` release; `PORTS` narrows it | Network, the archive token |
+| `publish-dry` | Print what `publish` would upload, under which names and into which releases | A C compiler |
+| `publish-check` | List every source the archive lacks, by anonymous requests | Network |
+| `publish-describe` | Rewrite every `src-<shelf>` release's notes from `ports/sources.idx` | Network, the archive token |
+| `publish-rehome` | Move archived files whose port changed shelf into its current shelf's release | Network, the archive token |
+| `publish-orphans` | List index entries no recipe names any more | |
+| `freeze` | Attach `sources.sha256` for `TAG` to that system release | Network, the archive token |
+| `release` | Create or update `TAG`'s system release as a draft: the ISO, `SHA256SUMS`, its signature and `sources.sha256` | Network, the archive token, a finished build |
+| `release-publish` | Make `TAG`'s release public and Latest | Network, the archive token |
 | `snapshots` | List the phase snapshots, compiling `build/.kdosbuild` with your machine's compiler when your compiler did not build it | A C compiler |
 | `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created at 20 GB if missing) | QEMU, OVMF |
 | `rundisk` | Boot `build/kdos.qcow2` instead of the ISO | QEMU, OVMF, an existing disk image |
@@ -176,6 +185,13 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `cleandisk` | Replace `build/kdos.qcow2` with a new, empty 20 GB disk image | QEMU |
 | `cleanbuild` | Delete everything in `build/` except `snapshots`, `ccache`, `pkgstore` and `keys`, and except what only root can remove (see below) | |
 | `clean` | Delete everything in `build/` except `keys`, and except what only root can remove | |
+| `help` | List every target with a one-line description | |
+| `check` | Run `preflight`, `selftest`, `docscheck` and `phaseclosure` in turn | |
+| `preflight`, `selftest`, `docscheck`, `phaseclosure` | Run that check alone; see [Working without a build at all](#working-without-a-build-at-all) | A C compiler; Python 3 for `phaseclosure` |
+| `selftest-asan` | `selftest` compiled with `SELFTEST_CC`, by default AddressSanitizer and UBSan | A compiler with the sanitizers |
+| `depdrift`, `debuginfo` | Read `build/fs` for undeclared same-phase link dependencies, or for installed files that still carry DWARF | Read access to `build/fs`: a container or root |
+| `quick` | The fast loop: rebuild the ports named by `QUICK` and patch them into a booted ISO; `QUICK_ARGS` reaches the rig | The rig image, a finished ISO |
+| `rig-image`, `devdeps-image` | Build the rig container, or the development container and run the suite in it | Docker, network once |
 
 Both cleans run on your machine as your user. `build/fs` is owned by root, so they cannot remove
 it, and the target ignores the failure: after `make clean` the old root filesystem is still there,
@@ -193,6 +209,14 @@ Arguments reach the orchestrator through `BUILD_ARGS` and the version checker th
 ```sh
 make build BUILD_ARGS="--continue-from 41_system"
 make updates PORTUP_ARGS="--check curl"
+```
+
+The archive targets take `PORTS` (a space-separated port list), `PUBLISH_ARGS` (passed to
+`ports/publish` unchanged) and `TAG` (the system tag `freeze` and the release targets act on):
+
+```sh
+make publish PORTS="zstd lz4"
+make release TAG=v0.2 PUBLISH_ARGS=--dry-run
 ```
 
 The orchestrator options used most often are these; the full list is in
@@ -288,13 +312,14 @@ no firmware.
 | `build/mark/` | The early phases' "already done" markers | See [Building from scratch](#building-from-scratch) |
 | `build/cross/` | The cross toolchain (binutils and GCC for `x86_64-kdos-linux-musl`) that the first two phases compile with | |
 | `build/tmp/` | Scratch space for the early phases | Emptied at the start of every step of those phases |
-| `build/keys/` | Kept by both cleans | Nothing in the build writes it; it is set aside so a signing key kept there survives a clean |
+| `build/keys/` | Signing keys: `kdos-release.key` and `kdos-release.pub`, which `ports/publish --release` signs a release's `SHA256SUMS` with | Kept by both cleans. Nothing in the build writes it; `kpkg keygen build/keys/kdos-release` does, once |
 | `build/kdos.qcow2` | The virtual machine's disk | Created by `make run` |
 | `build/.kdosbuild` | The compiled orchestrator, with `build/.kdosbuild.sum` beside it | Recompiled at the start of a build when its sources, flags or compiler changed |
 | `build/.devplan.json` | The build plan in force | |
 | `build/kdos-base/` | The base pack, with `KDOS_PACK_KDOS=1` | |
 | `build/fetch-home` | The fetch container's home and toolchain caches | Written as your user |
 | `build/freeze/` | `sources-<tag>.sha256`, written by `ports/publish --freeze` | |
+| `build/release/<tag>/` | What `ports/publish --release` uploads besides the ISO: `SHA256SUMS`, `SHA256SUMS.sig`, `kdos-release.pub`, `sources.sha256` and the notes | The ISO's parts are cut here and deleted when the run ends |
 
 `build/` is ignored by git in its entirety.
 
@@ -331,30 +356,43 @@ owned by an ordinary user. Reading it from your machine needs a container or roo
 ## Where sources come from
 
 Every source file that git does not carry is stored in the repository `kunaldawn/kdos` as a release
-asset named by its own SHA-256 hash. The assets fill numbered releases in order: `sources-001`
-holds the first 1,000 files (GitHub's limit on assets per release), `sources-002` the next 1,000,
-and so on. The committed file `ports/sources.idx` says which release holds which hash, one line
-per file, sorted by hash. At the time of writing it names 1,678 files, 1,000 in `sources-001` and
-678 in `sources-002`. A line looks like this:
+asset. Each shelf has one release, tagged `src-<shelf>`, which holds the files of the ports on that
+shelf under their own names; `src-attic` holds files only old history names. These releases are
+pre-releases and never the latest release, so the repository's latest release is always a KDOS
+system release. The committed file `ports/sources.idx` says which release and which asset hold
+each hash, one line per file, sorted by hash, after a header whose first line is
+`# kdos-sources-index 2`. A line looks like this:
 
 ```text
-f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7 002 curl/curl-8.22.0.tar.xz
+f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7 src-net-libs curl-8.22.0.tar.xz curl/curl-8.22.0.tar.xz
 ```
 
 so that file's address is
 
 ```text
-https://github.com/kunaldawn/kdos/releases/download/sources-002/f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7
+https://github.com/kunaldawn/kdos/releases/download/src-net-libs/curl-8.22.0.tar.xz
 ```
 
-The recipe hash, the asset's name and the digest GitHub computes for the asset are the same string,
-so a file that verifies is the file the recipe meant, whichever route it came by. The archive and
-the index are append-only: an asset whose digest matches its name is never replaced or deleted, so
-an old checkout can still find the exact bytes it was written against after upstream has moved on or
-gone. Each archive release's notes on GitHub list every file it holds, so a file can also be found
-by browsing the Releases page. `ports/srclib.sh` holds this addressing, and `ports/fetch`,
-`ports/publish` and the pre-push hook all read it from there, so the three cannot disagree about
-where a hash lives.
+The third field is the name GitHub stored, which is what the address uses; the fourth is the file's
+own name. The two differ when GitHub rewrote a character outside `[A-Za-z0-9._-]` (`libsigc++` is
+stored as `libsigc..`), or when a shorter name was already taken in that release and the file was
+stored as `<port>--<file>` or `<port>--<hash12>--<file>`. A file larger than 1900 MiB is stored in
+parts, `<asset>.part01` … `<asset>.partNN`, each under GitHub's 2 GiB limit per asset, and its line
+ends in `parts=<N>:<h1>,…,<hN>`, the hash of each part in order.
+
+A name is only an address. The recipe hash and the digest GitHub computes for the asset are the
+same string, so a file that verifies is the file the recipe meant, whichever route it came by. The
+archive is append-only by default: an asset whose digest matches its index line is never replaced
+or deleted, so an old checkout can still find the exact bytes it was written against after
+upstream has moved on or gone. The two deliberate exceptions are `ports/publish --rehome`, which
+moves a file to the release of the shelf its port now sits on and deletes the old copy only after
+an index naming the new one is pushed, and `ports/publish --orphans --prune=yes-delete`, which
+deletes files no current recipe and no recipe at any `v*` tag names. Each archive release's notes on
+GitHub list every file it holds in a table, with links, so a file can also be found by browsing the
+Releases page. `ports/srclib.sh` holds this addressing, and `ports/fetch`, `ports/publish` and the
+pre-push hook all read it from there, so the three cannot disagree about where a hash lives. An
+index whose first line is not the format-2 header is not read at all: `ports/fetch` warns once and
+goes upstream for everything.
 
 `ports/fetch` resolves each file a `sha256 =` line names, other than files git tracks itself (such
 as patches), by trying these locations in order and stopping at the first copy that verifies:
@@ -363,7 +401,7 @@ as patches), by trying these locations in order and stopping at the first copy t
 |---|---|
 | 1 | The port directory: a file already there |
 | 2 | The cache, `ports/.srccache/sha256-XX/<hash>` (`XX` is the hash's first two hex digits) |
-| 3 | The archive, `$KDOS_SOURCES_BASE/sources-NNN/<hash>`, with `NNN` from `ports/sources.idx`; a hash the index does not name skips this step |
+| 3 | The archive, `$KDOS_SOURCES_BASE/<tag>/<asset>` from the hash's line in `ports/sources.idx`; for a file in parts, every part, each checked against its own hash and then joined and checked as a whole. A hash the index does not name skips this step |
 | 4 | The recipe's `source =` URL for that file |
 | 5 | Generation, only for the port's own `<name>-vendor-<version>.tar.xz` |
 
@@ -432,8 +470,8 @@ checkout that has one instead:
 ports/fetch --tree ../other-checkout
 ```
 
-This works because the index only grows: the newest `ports/sources.idx` names every file an older
-checkout's recipes can ask for. In this mode, a file the other checkout tracks through a Git LFS
+This works because the newest `ports/sources.idx` names every file an older checkout's recipes can
+ask for, wherever it now sits, except a file pruned as an orphan, which comes from upstream. In this mode, a file the other checkout tracks through a Git LFS
 filter counts as an archive to fetch, because without LFS its working copy is only a pointer.
 
 | Variable | Default | Effect |
@@ -465,7 +503,7 @@ when preflight was not run. Set `KDOS_SKIP_LAYOUT_CHECK=1` to skip it.
 **The archive.** The hook then enforces the archive's side of fetching. For each ref pushed, it
 takes the hashes the pushed commit's recipes name and the remote's current commit does not, and
 requires each to be listed in `ports/sources.idx` as of the pushed commit and present at the archive
-address that line gives. A file git itself carries, such as a patch, is not checked. The hook also
+address that line gives, every part of a file stored in parts. A file git itself carries, such as a patch, is not checked. The hook also
 refuses the push when it cannot reach the archive, or the archive answers anything other than 200 or
 404, since it then cannot prove the sources are there. Set `KDOS_SKIP_PUBLISH_CHECK=1` for a push
 you know is safe; it skips this check only, not the layout check. Setting `core.hooksPath` replaces
@@ -643,20 +681,67 @@ Work through these in order:
 
 ## Cutting a release
 
-A KDOS release is three things: a git tag, an ISO, and a list of every source hash the tag's
-recipes name. The list is one file that says what the release needs to build; the hashes themselves
-are pinned by the tag, whose recipes git cannot change without changing the tag.
+A KDOS release is a git tag and the GitHub release of that tag on `kunaldawn/kdos`, which carries
+the ISO, a list of every source hash the tag's recipes name, and a signed checksum list over both.
+The source list says what the release needs to build; the hashes themselves are pinned by the tag,
+whose recipes git cannot change without changing the tag.
 
 ```sh
+kpkg keygen build/keys/kdos-release          # once; build/keys survives both cleans
 git tag <tag> && git push origin <tag>
-git switch --detach <tag>                 # build from the tag, not the working tree
+git switch --detach <tag>                     # build from the tag, not the working tree
 make fetch && make build
-# create a DRAFT release <tag> on kunaldawn/kdos, attach build/iso-build/kdos.iso
-ports/publish --freeze <tag>
-# publish the draft
+make release TAG=<tag> PUBLISH_ARGS=--dry-run   # the plan: no network, no token
+make release TAG=<tag>                          # a DRAFT release with every asset
+make release-publish TAG=<tag>                  # make it public and Latest
 ```
 
-`ports/publish --freeze <tag>`:
+The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, and with `--publish`.
+
+`ports/publish --release <tag>`:
+
+1. Requires the tag to exist locally and, by an anonymous `git ls-remote`, on `origin` at the same
+   commit, and exits 1 otherwise: a release names a tree everyone else must be able to check out.
+2. Runs the `--freeze` list below for the tag, and stops unless every source it names is archived.
+3. Takes the ISO from `--iso <path>`, by default `build/iso-build/kdos.iso`, as the asset
+   `kdos-<tag>.iso`. An ISO larger than `$KDOS_PART_SIZE` bytes (1,900 MiB) is cut into
+   `kdos-<tag>.iso.part01`, `.part02`, … under `build/release/<tag>/`, since GitHub refuses an
+   asset of 2 GiB. The parts are deleted when the run ends and cut again on the next.
+4. Writes `build/release/<tag>/SHA256SUMS` in `sha256sum` format. It names the whole ISO even when
+   only its parts are uploaded, each part, `sources.sha256` and `kdos-release.pub`.
+5. Signs it with `kpkg sign`, which writes `SHA256SUMS.sig`. The key is `--key <path>`, else
+   `$KDOS_RELEASE_KEY`, else `build/keys/kdos-release.key`, and its public half is the `.pub` beside
+   it, uploaded as `kdos-release.pub`. The signature is checked against that public key before
+   anything is uploaded. A missing key stops the run; `--unsigned` releases without the signature
+   and the key.
+6. Finds the release among all of the repository's releases, drafts included, and creates it as a
+   **draft** named `KDOS <tag>` when there is none. While it is a draft its notes are rewritten on
+   every run: the download, the joining of the parts, the check and the signature check.
+7. Uploads the ISO or its parts, `sources.sha256`, `SHA256SUMS`, `SHA256SUMS.sig` and
+   `kdos-release.pub`, hashing each again immediately before its upload. An asset already there
+   with the same bytes is kept, so an interrupted run is resumed by running it again. One with
+   other bytes stops the run with exit 2; delete it by hand, and only while the release is still a
+   draft.
+8. With `--publish`, makes the release public and Latest, then asks GitHub anonymously which
+   release is the latest, and exits 1 with a warning unless the answer is `<tag>`.
+
+The draft is visible only to the repository's writers, so the assets go out together when you
+publish it. The archive's `src-<shelf>` releases are pre-releases created with `make_latest`
+false, so none of them ever takes Latest from a system release.
+
+Someone who downloads the release checks it with:
+
+```sh
+cat kdos-<tag>.iso.part* > kdos-<tag>.iso     # only when the ISO is in parts
+sha256sum -c SHA256SUMS --ignore-missing
+KPKG_KEYRING=<dir holding kdos-release.pub> kpkg verify-pkg SHA256SUMS
+```
+
+A public key downloaded beside the list it signs proves only that the two agree; the key id that
+`kpkg keygen` and `kpkg sign` print, and the release notes repeat, is what to compare against a
+copy obtained another way.
+
+`ports/publish --freeze <tag>`, which `--release` runs as its step 2:
 
 1. Extracts the tag's recipes with `git archive`, so the list reflects the tag and not your working
    tree.
@@ -664,16 +749,16 @@ ports/publish --freeze <tag>
    line per source, sorted.
 3. Checks every hash against the archive, and exits 1 listing any that are missing. Publish those
    with `ports/publish` first.
-4. Attaches the list as `sources.sha256` to the release `<tag>` on `$KDOS_REPO` (default
-   `kunaldawn/kdos`), creating a draft release pointing at the tag when none exists.
+4. On its own, attaches the list as `sources.sha256` to the release `<tag>` on `$KDOS_REPO`
+   (default `kunaldawn/kdos`), creating a draft release pointing at the tag when none exists.
 
 It never replaces an existing `sources.sha256` with different contents; it exits 2 instead. With
-`--dry-run` or `--check` it stops after step 3 and says what it would attach. Uploading needs a
-token in `$KDOS_SOURCES_TOKEN` or `~/.config/kdos/sources-token`, which is refused when anyone but
-you can read it; see [Publishing sources](writing-ports.md#publishing-sources).
+`--check` it stops after step 3 and says what it would attach; with `--dry-run`, as with
+`--release --dry-run`, it stops after step 2, since it uses no network. Uploading needs a token in
+`$KDOS_SOURCES_TOKEN` or `~/.config/kdos/sources-token`, which is refused when anyone but you can
+read it; see [Publishing sources](writing-ports.md#publishing-sources).
 
-The release starts as a draft so the ISO and the list go out together when you publish it. Leave
-GitHub's immutable releases **off** on `kunaldawn/kdos`: the source archive's `sources-NNN`
+Leave GitHub's immutable releases **off** on `kunaldawn/kdos`: the source archive's `src-<shelf>`
 releases live in the same repository, the setting applies to all of them, and it would freeze each
 at its first publication, after which no new source could be added to it.
 

@@ -69,7 +69,8 @@ shelf and every `src/` area, and nothing that names a port (a `depends` line, a 
 `kpkg`, `ports/fetch`, `ports/publish`) spells the shelf. Moving a port to another shelf is one
 `git mv ports/core/<old>/<name> ports/core/<new>/`: the recipe hash covers the port's files and not
 their path, and the installed database, the binary host and `ports/sources.idx` are keyed by name or
-by hash. The one exception is a `.gitignore` pattern for files generated inside one port's
+by hash; the port's archived sources stay in the old shelf's release, where the index still finds
+them, until `ports/publish --rehome` moves them. The one exception is a `.gitignore` pattern for files generated inside one port's
 directory, which spells the shelf (`/ports/core/graphics/digikam/*.jpeg`); moving such a port means
 editing that line too, and `testing/preflight.sh` fails with "names a port directory that holds no
 port" until it is. For the same reason, prose, comments and notes
@@ -340,10 +341,14 @@ holds the compilers, the release flags and `PKG_CONFIG_PATH`, and sources `scrip
 turn: the reproducibility settings, the job count and `KPKG_STRICT_RECIPE=1`. `20_selfhost` unsets
 `CC` and `CXX` again, and a phase.env adds only what is its own, such as `PORT_REPO`. The flags
 from `20_selfhost` on are listed in [The release flags](#the-release-flags), and no phase adds
-`-Werror`. Extend the flags rather than replace them: `export CFLAGS="$CFLAGS -Wno-error"`. A recipe that
-has to pass a job count explicitly, to a bare `ninja` or a build system of its own, reads
-`$KDOS_JOBS`, never `nproc` and never a parse of `MAKEFLAGS`: `nproc` ignores both a lowered
-`KDOS_JOBS` and the memory clamp.
+`-Werror`. Extend the flags rather than replace them: `export CFLAGS="$CFLAGS -Wno-error"`. Ninja
+takes the job count without being told: once ninja is installed, `chroot.env` puts
+`script/bin/ninja` first on `PATH`, and it adds `-j$KDOS_JOBS` to every `ninja` call that names no
+job count before running `/usr/bin/ninja`, so a bare `ninja`, `meson compile`, `meson install` and a
+CMake Ninja build all follow `KDOS_JOBS`; a call that passes its own `-j`, a tool (`-t`) or
+`--version` goes through unchanged. A recipe that has to pass a job count explicitly, to a build
+system of its own, reads `$KDOS_JOBS`, never `nproc` and never a parse of `MAKEFLAGS`: `nproc`
+ignores both a lowered `KDOS_JOBS` and the memory clamp.
 
 The minimal autotools recipe is three lines:
 
@@ -483,7 +488,7 @@ Check each of these against the recipe, whichever build system it uses:
   level and let the program choose among them as it starts: `john` ships an AVX-512BW, AVX2, XOP,
   AVX and SSE2 build, each compiled with `-DCPU_FALLBACK` to hand over to the next when the
   processor lacks its level, and `satdump` builds its DVB plugin with SSE4.1 and again without,
-  and each copy loads only where the other does not. Watch for a
+  and each copy registers its decoders only where the other does not. Watch for a
   default that is above x86-64 v1 or taken from the build machine: numpy's `cpu-baseline` defaults
   to x86-64 v2, so its recipe passes `-Dcpu-baseline=none` and keeps the run-time dispatch, and
   OpenBLAS infers the CPU for its code outside the kernels unless `TARGET` names one. A floor
@@ -2158,21 +2163,21 @@ its one-a-second limit like any other request, and a 429 from it waits ten secon
 ## Publishing sources
 
 Upstream archives are not committed. Git carries the recipe, and the archive it names is a release
-asset in the `kunaldawn/kdos` repository, named by its own sha256, in one of the numbered
-releases `sources-001`, `sources-002`, …; the committed file `ports/sources.idx` says which. That
-is where every other checkout's `make fetch` looks for it first (see
-[Where sources come from](developing.md#where-sources-come-from)). A new or bumped source therefore
-has to reach the archive before the commit naming it is pushed, or the commit builds on the machine
-that wrote it and nowhere else. The same holds for the index line saying where it went, which is
-why `ports/sources.idx` is committed with the recipe. Patches, configuration files and anything
-else git tracks are not archived, even when a recipe hashes them.
+asset in the `kunaldawn/kdos` repository: one pre-release per shelf, tagged `src-<shelf>`, holds
+that shelf's files under their own names, and the committed file `ports/sources.idx` says which
+release and which asset hold each hash. That is where every other checkout's `make fetch` looks for
+it first (see [Where sources come from](developing.md#where-sources-come-from)). A new or bumped
+source therefore has to reach the archive before the commit naming it is pushed, or the commit
+builds on the machine that wrote it and nowhere else. The same holds for the index line saying
+where it went, which is why `ports/sources.idx` is committed with the recipe. Patches,
+configuration files and anything else git tracks are not archived, even when a recipe hashes them.
 
-The `sha256 =` line is a source's identity, and its URL is only a hint. With a hash, the local
-cache, the archive and upstream are interchangeable, and the nearest is used; `ports/fetch` keeps
-no copy that fails its hash, and `ports/publish` uploads none. Immediately after a version bump,
-before the new hash is recorded, upstream is the only possible source: the archive cannot hold a
-file that has never been hashed here, and another copy of a file with no recorded hash cannot be
-verified.
+The `sha256 =` line is a source's identity, and its URL and its asset name are only addresses.
+With a hash, the local cache, the archive and upstream are interchangeable, and the nearest is
+used; `ports/fetch` keeps no copy that fails its hash, and `ports/publish` uploads none.
+Immediately after a version bump, before the new hash is recorded, upstream is the only possible
+source: the archive cannot hold a file that has never been hashed here, and another copy of a file
+with no recorded hash cannot be verified.
 
 Uploading needs a token with write access to `kunaldawn/kdos`, so publishing is a maintainer's
 step. If you are contributing without that access, say in your pull request which ports carry new
@@ -2190,7 +2195,7 @@ A version bump, end to end:
 ```sh
 ports/update <port>                 # accept the bump: version and sha256 lines are rewritten, the source fetched
 make build BUILD_ARGS="--phases <phase>,70_image --rebuild <port>"   # the phase whose list names it
-ports/publish <port>                # upload what the archive lacks and add its lines to ports/sources.idx
+ports/publish <port>                # upload what the archive lacks and write its lines into ports/sources.idx
                                     # (maintainer token; else --check and say so in the PR)
 git commit ports/core/<shelf>/<port> ports/sources.idx   # the recipe and the index; the archive itself is gitignored
 git push                            # the pre-push hook checks the layout and that every new hash is archived
@@ -2204,55 +2209,116 @@ refuses the unhashed archive and `ports/publish` has nothing to publish.
 ### `ports/publish`
 
 ```text
-ports/publish [--dry-run] [--check] [--history] [--describe] [--freeze <kdos-tag>] [port…]
+ports/publish [--dry-run | --check] [--history] [port…]
+ports/publish --describe [--dry-run]
+ports/publish --rehome [--dry-run] [port…]
+ports/publish --orphans [--prune=yes-delete]
+ports/publish --freeze <kdos-tag> [--dry-run | --check]
+ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned] [--publish] [--dry-run]
 ```
 
 `ports/publish` uploads every file a `sha256 =` line names, under all of `ports/core` or only the
 named ports, that git does not carry and the archive does not hold yet. A port is named by its
 bare name, on whatever shelf it sits, and a named port that does not exist fails the run, with
-`--check` as without it. A path git tracks as a Git
-LFS pointer is not carried: the pointer names the file and is not the file. The bytes come from
-the port directory, the cache, or the local LFS store, and are hashed again immediately before
-upload, because an asset whose bytes do not match its name would poison every checkout that asks
-for it.
+`--check` as without it. A path git tracks as a Git LFS pointer is not carried: the pointer names
+the file and is not the file. The bytes come from the port directory, the cache, or the local LFS
+store, and are hashed again immediately before each upload, because an asset whose bytes are not
+the hash its index line names would poison every checkout that asks for it.
 
 A file is present when `ports/sources.idx` names its hash and an anonymous `HEAD` on the asset's
-download URL answers 200; the `HEAD` costs no API quota. A hash the index does not name is missing
-without asking. A rerun therefore uploads only what is still missing, and an interrupted run is
-resumed by running it again. Only a 404 counts as missing; any other status, or a network failure,
-stops the run with `archive unreachable`, because an outage proves nothing about what the archive
-holds.
+download URL (on every part's, for a file in parts) answers 200; the `HEAD` costs no API quota. A
+hash the index does not name is missing without asking. A rerun therefore uploads only what is
+still missing, and an interrupted run is resumed by running it again. Only a 404 counts as
+missing; any other status, or a network failure, stops the run with `archive unreachable`,
+because an outage proves nothing about what the archive holds.
 
-A new file goes into the highest-numbered archive release while that holds fewer than 1,000
-assets, counted on GitHub rather than in the index, since another branch may have added some; a
-full release opens the next, created with `make_latest` off. A file the index names but GitHub
-lacks goes back into the release its line names. An upload is accepted only when GitHub reports
-its digest as the expected hash, and its line, `<hash> <NNN> <port>/<file>`, is appended to
-`ports/sources.idx` at once, so a run that dies keeps every line it earned; the file is sorted when
-the run ends. Every release a run adds to has its notes rewritten from the index: a file count and
-a `sha256sum`-format list of `<hash>  <port>/<file>`. **Commit `ports/sources.idx`**: `make fetch`
-and the pre-push hook read it from the tree, and a file no committed line names cannot be found.
-Preflight fails an index with a malformed line, a hash listed twice, or lines out of hash order.
+**Which release.** Recipes are read shelf by shelf and port by port, both in C-locale order. A
+hash belongs to the shelf of the first port that names it, goes into release `src-<shelf>`, and
+takes its label `<port>/<file>` from that port. A missing release is created as a pre-release with
+`make_latest` off, and a `src-*` release found to be a full release is changed into a
+pre-release, so the repository's latest release is always a KDOS system release. A release holds
+at most 1,000 assets, parts counted one by one; a file that would pass that fails, and there is no
+overflow release. A file the index names but GitHub lacks goes back to the release and the asset
+name its line records.
+
+**Which name.** A file is stored under its own name, as GitHub will store it: every character
+outside `[A-Za-z0-9._-]` becomes `.`, so `libsigc++2-2.12.1.tar.xz` is stored as
+`libsigc..2-2.12.1.tar.xz`. When that name is taken in the release, by another hash's index line
+(compared ignoring case) or by an asset of other bytes, the next of `<port>--<file>` and
+`<port>--<first 12 hex digits of the hash>--<file>` is tried. The upload carries the label
+`<port>/<file>`, which the release page shows in place of the stored name. The index records the
+name GitHub returned, and prints a note when it differs from the name asked for. A run that
+stops after such an upload and before its index line finds it again by digest and label, since
+the name asked for is not in the release, and adopts it.
+
+**Files in parts.** A file larger than 1900 MiB (`KDOS_PART_SIZE`) is cut into parts of that size
+under `ports/.srccache/.parts/<hash>/`, never under `/tmp`, and each part is uploaded as
+`<asset>.part01` … `<asset>.partNN`. Its index line, carrying every part's hash, is written only
+after every part is stored with a verified digest, and the staging directory is removed when the
+run ends. A run that stops midway leaves the parts it stored; the next run finds them in the
+release listing with the right digests and adopts them without sending them again.
+
+**The index.** An upload is accepted only when GitHub reports its digest as the expected hash.
+Its line, `<hash> <tag> <asset> <port>/<file>` with `parts=<N>:<h1>,…,<hN>` after it for a file in
+parts, replaces any line for that hash at once, the file is sorted, and the result is checked
+against every rule preflight holds the index to before it replaces the index; a run that dies
+keeps every line it earned. `ports/publish` refuses to write an index that is not format 2, or
+one that already breaks those rules. **Commit `ports/sources.idx`**: `make fetch` and the pre-push
+hook read it from the tree, and a file no committed line names cannot be found.
+
+**Release notes.** Every release a run touches has its notes rewritten from the index: the
+shelf's description from `ports/shelves`, then a table of port, version, file (linked to its
+asset, or to each part), size and SHA-256. Past 120,000 characters the table drops its links and
+shows 16 hex digits of each hash, and past that again it is cut short with a pointer to
+`ports/sources.idx`, which is complete.
 
 | Flag | Does |
 |---|---|
-| `--dry-run` | List what would be uploaded, with sizes, totals and target releases (estimated from the index). Needs no token and makes no API call |
-| `--check` | Presence only: list what is missing from the archive; exit 1 if anything is |
-| `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`, or every object in the store when git-lfs is absent), to seed the archive with what old commits' recipes point at. With git-lfs, objects at other paths are never wanted, since no recipe asks the archive for them, and only objects the local LFS store or the cache holds are wanted; the rest (old versions and paths this clone never downloaded, which `ports/fetch` cannot supply) are counted on one line and skipped without failing the run. Without git-lfs no path is known, so every object in the local store is offered, whatever path it came from |
-| `--describe` | Rewrite every archive release's notes from the index, uploading nothing. Needs the token |
-| `--freeze <tag>` | Write `build/freeze/sources-<tag>.sha256` for the tag's recipes, found one shelf down or directly under `ports/core`, require every hash in it to be archived, and attach it as `sources.sha256` to release `<tag>` on `$KDOS_REPO`, creating a draft release when there is none. See [Cutting a release](developing.md#cutting-a-release) |
+| `--dry-run` | List what would be uploaded: the target release, the predicted asset name (resolved against the index and the rest of the plan, not against GitHub), the part count and the size. Makes no network call and needs no token, and takes every indexed file as present. With `--rehome`, lists the planned moves |
+| `--check` | Presence only: list what is missing from the archive, as `not in ports/sources.idx` or `indexed in <tag> as <asset> but absent`; exit 1 if anything is |
+| `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`), to seed the archive with what old commits' recipes point at. Each is labelled `<port>/<file>` from its old path and goes to its port's shelf today, or to `src-attic` when no port of that name exists today. Objects the local LFS store and the cache do not hold are counted on one line and skipped without failing the run. Without git-lfs no object can be labelled, so none is uploaded, and the count says to install it |
+| `--describe` | Rewrite the notes of every release the index names, uploading nothing. Needs the token |
+| `--rehome` | Move archived files to the release of the shelf that owns them now, then delete old copies; see below |
+| `--orphans` | List index lines no current recipe names; see below |
+| `--freeze <tag>` | Write `build/freeze/sources-<tag>.sha256` for the tag's recipes, found one shelf down or directly under `ports/core`, require every hash in it to be archived, and attach it as `sources.sha256` to release `<tag>` on `$KDOS_REPO`, creating a draft release when there is none. With `--dry-run`, only the list is written. See [Cutting a release](developing.md#cutting-a-release) |
+| `--release <tag>` | Build and attach the system release of `<tag>`. See [Cutting a release](developing.md#cutting-a-release) |
 
 Exit status is 0 when everything wanted is archived, 1 when something is missing or an upload
-failed, and 2 when an asset's digest disagrees with its name and could not be repaired. `--freeze`
-also exits 2 when the release already carries a different `sources.sha256`; replace that asset by
-hand, and only while the release is still a draft.
+failed, and 2 when every name for a file is held by other bytes, or an asset's digest disagrees
+with its index line and could not be repaired. `--freeze` also exits 2 when the release already
+carries a different `sources.sha256`; replace that asset by hand, and only while the release is
+still a draft.
 
-The archive is append-only. The one deletion `ports/publish` makes is of an asset whose name is a
-hash and whose digest is a different hash, or an upload GitHub never completed: that asset is
-corrupt by definition and holds the name, so it is deleted and uploaded once more. A second
-disagreement exits 2. GitHub may report a completed asset's digest as null; such an asset is asked
-for again and, if it still has none, downloaded and hashed. An unknown digest is never a reason to
-delete.
+**Moving files between shelves.** Moving a port to another shelf leaves its files where they
+were archived, and `make fetch` still finds them through the index. `ports/publish --rehome
+[port…]` tidies that. A file is where it belongs when any current recipe on shelf `S` names it and
+it sits in `src-S`, so a hash two shelves name is never moved back and forth. Every other file a
+current recipe names is uploaded to its owner's release (from the local copy, or downloaded from
+the archive and verified when there is none), and its index line is rewritten. A file no current
+recipe names is left alone. Then, in a second phase, an asset in a `src-*` release is deleted only
+when its digest is an indexed file's (or one of its parts'), the working index **and** the pushed
+one (`@{upstream}:ports/sources.idx`) both place that file somewhere else, and GitHub lists that
+other place with the right digest. So the first run after a move uploads and rewrites the index;
+commit and push it, and a second run deletes the old copies. Without an upstream branch the second
+phase deletes nothing. An asset whose digest no index line names is reported as a `stray` and
+never deleted.
+
+**Orphans.** `ports/publish --orphans` prints, with no network, every index line no current
+recipe names, as `<sha256> <tag> <asset> <port>/<file>`, and marks a line `protected` when a
+recipe at any `v*` tag names its hash or a `build/freeze/*.sha256` lists it, then counts both.
+`--orphans --prune=yes-delete` deletes the assets of every unprotected orphan, all its parts
+included, each checked against its index hash first, then removes the lines and rewrites the
+notes; any other `--prune` value, and `--prune` without `--orphans`, is refused. A checkout older
+than the pruning that still names a pruned file goes upstream for it.
+
+The archive is otherwise append-only. Beyond `--rehome` and `--prune=yes-delete`, `ports/publish`
+deletes an asset only when it is an upload GitHub never completed (a `starter`), or when it holds
+other bytes at a name the index gives this hash, or was just uploaded by this run and GitHub
+reports other bytes: that asset is corrupt, so it is deleted and uploaded once more, and a second
+disagreement fails the file. An asset of other bytes at any other name is someone else's, and the
+next name is tried instead. GitHub may report a completed asset's digest as null; such an asset is
+asked for again and, if it still has none, downloaded and hashed. An unknown digest is never a
+reason to delete.
 
 The token is read from `$KDOS_SOURCES_TOKEN`, or from `~/.config/kdos/sources-token`, which is
 refused when its group or others can read it. It needs write access to the contents of
@@ -2260,24 +2326,26 @@ refused when its group or others can read it. It needs write access to the conte
 process list shows it, and it is removed from the environment before any child starts.
 
 GitHub throttles content creation separately from its hourly quota, so at least
-`KDOS_PUBLISH_DELAY` seconds pass between creating calls: eight by default, which holds a long run
-under 75 a minute and 480 an hour. A 403 or 429 waits for `retry-after` or `x-ratelimit-reset`, or
-60 seconds for a bare 429 or a 403 naming a secondary rate limit, and retries. An upload that meets
-a 5xx or a dropped connection is retried twice; the partial `starter` asset it may leave is
-deleted and replaced.
+`KDOS_PUBLISH_DELAY` seconds pass between creating, changing and deleting calls: eight by default,
+which holds a long run under 75 a minute and 480 an hour. A 403 or 429 waits for `retry-after` or
+`x-ratelimit-reset`, or 60 seconds for a bare 429 or a 403 naming a secondary rate limit, and
+retries. An upload that meets a 5xx or a dropped connection is retried twice; the partial
+`starter` asset it may leave is deleted and replaced.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `KDOS_SOURCES_TOKEN` | `~/.config/kdos/sources-token` | The upload token |
-| `KDOS_PUBLISH_DELAY` | `8` | Seconds between creating calls |
-| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index read and appended to |
-| `KDOS_RELEASE_CAP` | `1000` | Files per archive release before the next opens; GitHub's limit is 1000 |
+| `KDOS_PUBLISH_DELAY` | `8` | Seconds between creating, changing and deleting calls |
+| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index read and written |
+| `KDOS_RELEASE_CAP` | `1000` | Assets per archive release, parts counted; a file that would pass it fails. GitHub's limit is 1000 |
+| `KDOS_PART_SIZE` | `1992294400` (1900 MiB) | A file larger than this is uploaded in parts of this size |
 | `KDOS_LFS_STORE` | `<git dir>/lfs/objects` | The LFS store read for bytes and by `--history` |
-| `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `--freeze` attaches to |
+| `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `--freeze` and `--release` attach to |
 | `KDOS_GITHUB_API`, `KDOS_GITHUB_UPLOADS` | `https://api.github.com`, `https://uploads.github.com` | The two endpoints, replaced to run against a local stand-in |
 
 `KDOS_SOURCES_REPO` and `KDOS_SOURCES_BASE` name the archive as they do for `ports/fetch`; an empty
-`KDOS_SOURCES_BASE` stops `ports/publish` at once, since there is nothing to publish to.
+`KDOS_SOURCES_BASE`, or one naming a local directory, stops every mode but a plain `--orphans` at
+once, since there is nothing to publish to.
 
 ### The pre-push hook
 

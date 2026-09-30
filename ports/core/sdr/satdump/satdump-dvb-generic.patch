@@ -6,7 +6,7 @@
      target_compile_definitions(dvb_support PRIVATE DVB_HAS_SSE41)
 +
 +    # Source properties are per directory, so the build without -msse4.1
-+    # lives in its own. It loads only on a CPU the SSE4.1 build refuses.
++    # lives in its own. It registers its modules only where that one does not.
 +    if(UNIX AND NOT ANDROID)
 +        add_subdirectory(generic)
 +    endif()

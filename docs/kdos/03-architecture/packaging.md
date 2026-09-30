@@ -292,8 +292,9 @@ at the first copy that verifies, looking in this order:
 2. the local cache, `ports/.srccache/sha256-XX/<hash>` (`XX` is the hash's first two hex digits),
    hard-linked into the port directory;
 3. the KDOS source archive,
-   `https://github.com/kunaldawn/kdos/releases/download/sources-NNN/<hash>`, where
-   `ports/sources.idx` gives `NNN` for each hash; a hash the index does not name skips this step;
+   `https://github.com/kunaldawn/kdos/releases/download/src-<shelf>/<asset>`, where
+   `ports/sources.idx` gives the release tag and the asset name for each hash; a hash the index
+   does not name skips this step;
 4. the recipe's own `source =` URL upstream;
 5. for a port's own vendor bundle only, generating it again.
 
@@ -304,18 +305,33 @@ inside the `kdos-fetch` container that `ports/Containerfile.fetch` describes.
 
 Whatever verifies is entered into the cache, so switching branches downloads nothing twice.
 
-The source archive is content-addressed and append-only. It is a series of numbered GitHub
-releases, `sources-001`, `sources-002` and onwards, filled in order up to 1,000 assets each (the
-limit GitHub places on one release), each asset named by its bare hash; nothing is ever replaced
-or removed. The committed index `ports/sources.idx` has one line per file,
-`<hash> <NNN> <port>/<file>`, and each release's notes list what it holds. A checkout years old
-therefore finds the exact bytes it was written against even after the upstream host has gone. The
-index names 1,678 files: 1,000 in `sources-001` and 678 in `sources-002`. The current `ports/core`
-recipes name 2,487 distinct hashed files. 39 of them are small files git tracks beside their
-recipes, and the other 2,448, about 38.6 GiB, are fetched. 1,186 of those are in the archive; the
-other 1,262 are not, so `make fetch` takes them from upstream. The remaining 492 files the index
-names are ones no current recipe names. Stored by hash, a file several
-ports use is one asset; the LLVM monorepo tarball, for example, is shared by eight ports.
+The source archive is one GitHub pre-release per shelf on `kunaldawn/kdos`, tagged `src-<shelf>`,
+plus `src-attic` for files that only old history names. Each is a pre-release and never "latest",
+so the repository's latest release is always a KDOS system release. An asset carries the file's own
+name, such as `zstd-1.5.7.tar.gz`; when that name is already taken in the release by other bytes it
+is `<port>--<file>`, and then `<port>--<hash12>--<file>`. GitHub turns every character outside
+`[A-Za-z0-9._-]` into a dot, so `libsigc++` is stored as `libsigc..`, and the index records the name
+GitHub stored. A file larger than 1,900 MiB, near GitHub's 2 GiB limit per asset, is stored in parts
+`<asset>.part01` onwards; `ports/fetch` downloads each part, checks it against its own hash, joins
+them and checks the whole. For a moment the parts and the joined file are on disk together, so a
+split file needs about twice its size free: 10 GB for the 4.96 GB TeX Live tree.
+
+The committed index `ports/sources.idx` starts with the line `# kdos-sources-index 2` and has one
+line per file, `<hash> <tag> <asset> <port>/<file>`, with `parts=<N>:<h1>,…` after it for a split
+file. An index without that first line is not read at all, and every file then comes from upstream.
+Whatever the name or the release, a file is used only once it hashes to the recipe's `sha256 =`.
+
+Nothing in the archive is replaced, and an asset is removed only by two explicit maintainer
+commands: `ports/publish --rehome`, which moves a file to the release of the shelf its port now
+sits on and deletes the old copy only after the new one is verified and the index is pushed, and
+`ports/publish --orphans --prune=yes-delete`, which deletes files no current recipe, no recipe at
+any `v*` tag and no freeze list names. A checkout years old therefore finds the exact bytes it was
+written against even after the upstream host has gone, fetched with the newest index through
+`ports/fetch --tree`. The index is empty until `ports/publish` fills it. The current `ports/core`
+recipes name 2,487 distinct hashed files over 102 shelves, the largest shelf, `python-libs`,
+naming 81. 39 of them are small files git tracks beside their recipes, and the other 2,448, about
+38.6 GiB, are fetched. Stored by hash, a file several ports use is one asset, in the release of the
+first shelf that names it; the LLVM monorepo tarball, for example, is shared by eight ports.
 
 The commands and settings:
 
@@ -327,7 +343,7 @@ The commands and settings:
 | `ports/fetch --tree <dir> [port…]` | Fetch for another checkout's `ports/core`; never generates a vendor bundle |
 | `KDOS_SOURCES_BASE=` (empty) | Skip the archive and go straight to upstream |
 | `KDOS_SOURCES_REPO` | The archive repository (default `kunaldawn/kdos`) |
-| `KDOS_SOURCES_INDEX` | The index to read (default `ports/sources.idx`) |
+| `KDOS_SOURCES_INDEX` | The index to read (default `ports/sources.idx`); only format 2 is read |
 | `KDOS_SRCCACHE` | Move the cache, for example to share one between checkouts |
 | `KDOS_FETCH_HOST=1` | Do everything in one pass on this host, generating bundles with its own toolchains |
 
@@ -338,7 +354,7 @@ vendor bundle with no hash is generated.
 The contributor's side of this is adding a new source to the archive: `ports/publish` uploads it
 and writes its index line, and an opt-in pre-push hook (`script/hooks/pre-push`, enabled with
 `git config core.hooksPath script/hooks`) refuses a push whose recipes name a hash that the pushed
-`ports/sources.idx` does not. Both are described in
+`ports/sources.idx` does not, or whose file, or any of whose parts, the archive does not answer for. Both are described in
 [Writing ports](../05-developer/writing-ports.md#publishing-sources); the fetch flow, step by step,
 is in [Developing](../05-developer/developing.md#where-sources-come-from).
 
@@ -372,6 +388,7 @@ The front end's commands:
 | `verify <pkg>` | Build the current recipe and a candidate written beside it as `kpkgbuild.new` (with an optional `build.sh.new`), then compare the two packages |
 | `verify --repro <pkg>` | Build the same recipe twice; the two packages must be byte-identical |
 | `keygen <name>` | Make an Ed25519 signing key pair |
+| `sign <file> <key>` | Write `<file>.sig`, one signature over any file, which `verify-pkg` checks; a release's `SHA256SUMS` is signed this way |
 | `index <dir> [--sign <key>]` | Write `PACKAGES` for a directory of packages, optionally signing it and every package |
 | `verify-index <dir>` | Check `PACKAGES` against the trusted keys |
 | `verify-pkg <file>` | Check `<file>.sig` against the trusted keys |

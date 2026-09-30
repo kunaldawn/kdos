@@ -80,6 +80,7 @@ static void usage(void)
 	       "  verify --repro <pkg>  Build the SAME recipe twice; the two\n"
 	       "                     packages must be byte-identical\n"
 	       "  keygen <name>      Make an Ed25519 signing key pair\n"
+	       "  sign <file> <key>  Write <file>.sig, a signature over <file>\n"
 	       "  index <dir>        Write PACKAGES for a directory of packages\n"
 	       "                     (--sign <key> signs it and every package)\n"
 	       "  verify-index <dir> Check PACKAGES against the trusted keys\n"
@@ -1240,6 +1241,8 @@ int front_main(int argc, char **argv)
 
 	if (!strcmp(cmd, "keygen"))
 		return kp_cmd_keygen(rest, restv);
+	if (!strcmp(cmd, "sign"))
+		return kp_cmd_sign(rest, restv);
 	if (!strcmp(cmd, "index"))
 		return kp_cmd_index(&c, rest, restv);
 	if (!strcmp(cmd, "delta"))

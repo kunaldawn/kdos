@@ -171,7 +171,7 @@ These run on a build host and never ship on the target.
 | `kdos-portup` | Checks every port for a newer upstream release. Compiled on demand by `ports/update` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/update` | The front end to the version checker | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/fetch` | Fetches every source a recipe names, from the cache, the source archive or upstream, and generates missing vendor bundles. `make fetch` runs it | [Developing](../05-developer/developing.md#where-sources-come-from) |
-| `ports/publish` | Uploads sources the archive lacks, and freezes a release's source list | [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `ports/publish` | Uploads sources the archive lacks into one pre-release per shelf, moves them when a port changes shelf, lists and prunes files no recipe names, freezes a release's source list, and puts a system release on GitHub | [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
 | `script/hooks/pre-push` | Refuses a push that breaks the ports layout (every recipe at `ports/core/<shelf>/<name>/` on a listed shelf, every port name used once), or whose recipes name a source the archive does not hold. Enabled with `git config core.hooksPath script/hooks` | [Developing](../05-developer/developing.md#the-pre-push-check) |
 | `testing/*` | The test harnesses, including the rig, which boots the ISO in QEMU and photographs it over VNC | [Testing](../05-developer/testing.md) |
 

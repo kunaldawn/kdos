@@ -168,12 +168,12 @@ make build        # no network
 A recipe's `sha256 =` line is what verifies a source file, wherever the file came from; [Writing
 ports](../05-developer/writing-ports.md#sources-and-what-each-one-becomes) says where `make fetch`
 looks for each one. The recipes name 2,487 distinct files, about 38.6 GiB in all. The 39 small ones
-that git carries itself stay in the repository. The source archive holds 1,186 of the rest under
-their own sha256, located through the committed index `ports/sources.idx`; the other 1,262 are not
-in the index, and `make fetch` takes them from their upstream URLs until `ports/publish` adds them.
-The archive is append-only, so a recipe whose sources it holds keeps building after its upstream URL
+that git carries itself stay in the repository. The source archive holds the rest, one release per
+shelf, each file under its own name and located through the committed index `ports/sources.idx`; a
+file the index does not name comes from its upstream URL until `ports/publish` adds it. Nothing in
+the archive is replaced, so a recipe whose sources it holds keeps building after its upstream URL
 disappears. Why the sources are held this way, and what it costs, is in
-[Decisions](decisions.md#upstream-archives-are-content-addressed-release-assets).
+[Decisions](decisions.md#upstream-archives-are-hash-checked-release-assets).
 
 ## Native applications, and boxes for the rest
 
@@ -275,7 +275,7 @@ lists and every `depends =` line, and the catalogue by counting its rows by kind
 | Catalogue data sets | 2 |
 | Catalogue groups offered by the installer and the store | 7 |
 | Boxed commands with no graphical launcher | 25 rows across 16 applications |
-| Distinct source files the recipes name | 2,487, about 38.6 GiB (39 carried in git, 1,186 in the source archive, 1,262 fetched from upstream) |
+| Distinct source files the recipes name | 2,487, about 38.6 GiB (39 carried in git, 2,448 fetched from the source archive or upstream) |
 
 ## What is not built from source
 

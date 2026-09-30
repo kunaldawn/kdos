@@ -35,7 +35,7 @@
 #
 #   1. the port directory      a file already there
 #   2. the cache               ports/.srccache/sha256-XX/<hash>, hard-linked in
-#   3. the archive             $KDOS_SOURCES_BASE/sources-NNN/<hash>, NNN from
+#   3. the archive             $KDOS_SOURCES_BASE/<tag>/<asset>, both from
 #                              ports/sources.idx; a hash it does not name skips this.
 #                              The base is a URL or a directory (an archive disk)
 #   4. the recipe's `source =` the URL that names this filename, if one does
@@ -48,13 +48,20 @@
 # no second download — nor does a second checkout or a re-clone, when
 # KDOS_SRCCACHE names a cache they share.
 #
+# A FILE IN PARTS — one larger than $SRC_PART_SIZE bytes, stored as
+# <asset>.part01 … — is downloaded part by part into
+# $KDOS_SRCCACHE/.parts-<hash>/, each part resumed and checked against its own
+# hash, then joined in order and checked as a whole. The joined copy and the
+# parts are on disk together for a moment, so the peak is about twice the
+# file. A part that does not verify sends the file upstream.
+#
 # A FILE WITH NO HASH comes from upstream only — you have just bumped
 # `version =` and the new tarball has never existed here. The archive cannot
 # hold it, and reaching for our own copy of an unverifiable file would be
 # trusting the wrong thing entirely. A vendor bundle with no hash is generated.
 #
 # Set KDOS_SOURCES_BASE empty to skip the archive, or to a directory laid out
-# as sources-NNN/<hash> to read the archive from a disk with no network;
+# as <tag>/<asset> to read the archive from a disk with no network;
 # KDOS_SRCCACHE moves the cache; KDOS_SOURCES_INDEX names another index. All
 # are read by ports/srclib.sh.
 
@@ -62,6 +69,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+# Whether the caller named an index, before srclib.sh supplies the default:
+# only a named one is handed to the container.
+INDEX_NAMED=${KDOS_SOURCES_INDEX:+1}
 
 # shellcheck source=ports/srclib.sh
 . "$SCRIPT_DIR/srclib.sh"
@@ -99,8 +109,9 @@ done
 PORT_REPO="${TREE:-$REPO_ROOT}/ports/core"
 [ -d "$PORT_REPO" ] || { echo "ports/fetch: no ports/core under ${TREE:-$REPO_ROOT}" >&2; exit 2; }
 
-# THIS tree's index, also for --tree: the index only ever grows, so the
-# newest one names every file an older checkout's recipes can ask for.
+# THIS tree's index, also for --tree: the newest index says where every file
+# the archive holds is now, and an older checkout's own may name places a file
+# has since moved from, or be of a format this cannot read.
 src_index_load
 
 # WHO MAY GENERATE A VENDOR BUNDLE. Downloading needs curl and sha256sum;
@@ -209,10 +220,75 @@ download() {
     return 1
 }
 
+# obtain_parts <port> <hash> <file> <dest> — the archive step for a file in
+# parts. Each part lands in $KDOS_SRCCACHE/.parts-<hash>/NN and is kept once it
+# verifies, so a run that stops resumes at the part it was on. The joined file
+# is written as <dest>.part and renamed only after the whole verifies. A part
+# that fails its hash, or a whole that does, removes what it was built from and
+# returns 1, and the caller goes upstream; a download that fails keeps the
+# parts already verified for the next run.
+obtain_parts() {
+    local port=$1 h=$2 f=$3 dest=$4 pdir="$KDOS_SRCCACHE/.parts-$2"
+    local n=${SRC_NPARTS[$2]} urls i u pp ph mode got
+    mapfile -t urls < <(src_urls "$h")
+    [ "${#urls[@]}" = "$n" ] || return 1
+    mkdir -p "$pdir"
+    for ((i = 1; i <= n; i++)); do
+        pp=$(printf '%s/%02d' "$pdir" "$i")
+        ph=${SRC_PHASH[$h,$i]}
+        u=${urls[i-1]}
+        src_hash_ok "$pp" "$ph" && continue
+        rm -f "$pp"
+        mode=""
+        [ -s "$pp.part" ] && mode=resume
+        while :; do
+            case $mode in
+                resume) echo "⬇  $port: $f part $i/$n <- $u (resuming)" ;;
+                fresh)  echo "⬇  $port: $f part $i/$n <- $u (from zero)" ;;
+                *)      echo "⬇  $port: $f part $i/$n <- $u" ;;
+            esac
+            download "$u" "$pp" "$mode" || return 1
+            if src_hash_ok "$pp.part" "$ph"; then
+                mv -f "$pp.part" "$pp"
+                break
+            fi
+            got=$(sha256sum "$pp.part" | cut -d' ' -f1)
+            rm -f "$pp.part"
+            if [ "$mode" = resume ]; then
+                mode=fresh
+                continue
+            fi
+            echo "✗  $port: sha256 MISMATCH for part $i of $f from $u"
+            echo "   expected $ph"
+            echo "   got      $got"
+            rm -rf "$pdir"
+            return 1
+        done
+    done
+    echo "⚙  $port: joining $n parts of $f"
+    rm -f "$dest.part"
+    for ((i = 1; i <= n; i++)); do
+        cat "$(printf '%s/%02d' "$pdir" "$i")"
+    done > "$dest.part" || { rm -f "$dest.part"; return 1; }
+    rm -rf "$pdir"
+    if ! src_hash_ok "$dest.part" "$h"; then
+        echo "✗  $port: sha256 MISMATCH for $f joined from $n parts"
+        echo "   expected $h"
+        echo "   got      $(sha256sum "$dest.part" | cut -d' ' -f1)"
+        rm -f "$dest.part"
+        return 1
+    fi
+    mv -f "$dest.part" "$dest"
+    src_cache_put "$dest" "$h" || echo "⚠  $port: could not enter $f into $KDOS_SRCCACHE"
+    echo "✓  $port: $f verified"
+    return 0
+}
+
 # obtain <portdir> <port> <hash> <file> [url] — steps 1 to 4 of the order in
 # the header. Returns 0 with <file> verified in place and in the cache.
 obtain() {
     local dir=$1 port=$2 h=$3 f=$4 url=${5:-} dest="$1/$4" u got mode
+    local where=()
     if [ -e "$dest" ]; then
         if src_hash_ok "$dest" "$h"; then
             src_cache_put "$dest" "$h" || echo "⚠  $port: could not enter $f into $KDOS_SRCCACHE"
@@ -226,12 +302,18 @@ obtain() {
         echo "✓  $port: $f (cache)"
         return 0
     fi
+    if [ "${SRC_NPARTS[$h]:-1}" -ge 2 ]; then
+        [ -n "$KDOS_SOURCES_BASE" ] && obtain_parts "$port" "$h" "$f" "$dest" && return 0
+    else
+        mapfile -t where < <(src_urls "$h")
+    fi
+    [ -n "$url" ] && where+=("$url")
     # A LEFTOVER .part IS ONLY A GUESS. It may hold the start of other bytes
     # — an interrupted download of a tarball upstream has since re-rolled —
     # and a resume onto it fails the hash however good the server is. So a
     # resumed download that fails is asked for once more from zero, from the
     # same URL, before the next location is tried.
-    for u in $(src_url "$h") $url; do
+    for u in "${where[@]}"; do
         mode=""
         [ -s "$dest.part" ] && mode=resume
         while :; do
@@ -897,6 +979,17 @@ in_container() {
     # file:// base srclib.sh made names the same files inside.
     local base_mount=()
     src_base_local && base_mount=(-v "${KDOS_SOURCES_BASE#file://}:${KDOS_SOURCES_BASE#file://}:ro")
+    # A named index is read inside as the same file: under the tree it has a
+    # /kdos path, anywhere else it is mounted read-only. Unnamed, the
+    # container reads the tree's own.
+    local index_env=() index_mount=()
+    if [ -n "$INDEX_NAMED" ]; then
+        case $KDOS_SOURCES_INDEX in
+            "$REPO_ROOT"/*) index_env=(-e KDOS_SOURCES_INDEX="/kdos/${KDOS_SOURCES_INDEX#"$REPO_ROOT"/}") ;;
+            *) index_mount=(-v "$KDOS_SOURCES_INDEX":/srcindex/sources.idx:ro)
+               index_env=(-e KDOS_SOURCES_INDEX=/srcindex/sources.idx) ;;
+        esac
+    fi
     case $KDOS_SRCCACHE in
         "$REPO_ROOT"/*) cache_in="/kdos/${KDOS_SRCCACHE#"$REPO_ROOT"/}" ;;
         *) cache_in=/srccache; cache_mount=(-v "$KDOS_SRCCACHE":/srccache) ;;
@@ -924,6 +1017,8 @@ in_container() {
         -v "$REPO_ROOT":/kdos \
         "${cache_mount[@]}" \
         "${base_mount[@]}" \
+        "${index_mount[@]}" \
+        "${index_env[@]}" \
         -e KDOS_FETCH_INNER=1 \
         -e HOME=/kdos/build/fetch-home \
         -e CARGO_HOME=/kdos/build/fetch-home/cargo \

@@ -337,11 +337,11 @@ the serial run, provided every recipe declares what it builds against (see
 
 The jobs are divided between the ports. `J` is `KDOS_JOBS` as the build was given it, or else every
 CPU the orchestrator may use, and each port gets `k = J / N` (at least 1) as its `KDOS_JOBS`, from
-which `common.env` sets `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`. Each port
-is also bound to a window of `min(CPUs, 2k)` CPUs, slot `w` of `N` starting `w × CPUs / N` along the
-list, so ninja, cargo, rustc and go, which size themselves from the CPUs they may use, size
-themselves to the window. The windows overlap, so a port beside an idle or linking neighbour still
-has twice its share.
+which `common.env` sets `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, and
+`script/bin/ninja` hands ninja as `-jk`. Each port is also bound to a window of `min(CPUs, 2k)`
+CPUs, slot `w` of `N` starting `w × CPUs / N` along the list, so cargo, rustc and go, which size
+themselves from the CPUs they may use, size themselves to the window. The windows overlap, so a
+port beside an idle or linking neighbour still has twice its share.
 
 A free slot takes the level's pending port with the longest recorded time, the earlier in the order
 on a tie, and only while `MemAvailable` is at least a quarter of `MemTotal`; with nothing running a
@@ -445,7 +445,7 @@ files under `script/env/`, and each `phase.env` sources one of them:
 |---|---|---|
 | `common.env` | Every phase, through one of the two below | The settings that make packages reproducible (`SOURCE_DATE_EPOCH`, `TZ`, `LC_ALL`, `-ffile-prefix-map`, `--build-id=sha1`), described in [Reproducible packages](../03-architecture/packaging.md#reproducible-packages); the job count `KDOS_JOBS` (when not given, the thread count clamped to one job per 2 GiB of memory) exported as `MAKEFLAGS=-j$KDOS_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`; `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross` and `10_bootstrap` | The target triplet, the paths of the workspace, `build/`, the sysroot and the cross toolchain, `pkg-config` pointed at the sysroot, the cross toolchain first on `PATH`, and the base compiler flags. It empties `build/tmp` |
-| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, the compiler named outright (`CC=gcc`, `CXX=g++`), the release compiler and linker flags, and after `common.env` the defaults for the build systems that do not read `CFLAGS` (`CMAKE_BUILD_TYPE=Release`, `CARGO_PROFILE_RELEASE_DEBUG=0`, `GOFLAGS`, `CGO_CFLAGS`, `CGO_CXXFLAGS`, `CGO_LDFLAGS`), all set out in [Writing ports](writing-ports.md#the-release-flags); the CMake compiler cache; `ac_cv_prog_cxx_cxx11` set empty, `TERM=dumb`, and `KPKG_SKIP_INDEX=man`, which leaves the manual index to `70_image`. It removes nothing: `kpkg` empties each port's own work directory before building it and again after a successful build |
+| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, the compiler named outright (`CC=gcc`, `CXX=g++`), the release compiler and linker flags, and after `common.env` the defaults for the build systems that do not read `CFLAGS` (`CMAKE_BUILD_TYPE=Release`, `CARGO_PROFILE_RELEASE_DEBUG=0`, `GOFLAGS`, `CGO_CFLAGS`, `CGO_CXXFLAGS`, `CGO_LDFLAGS`), all set out in [Writing ports](writing-ports.md#the-release-flags); `script/bin` first on `PATH` once `/usr/bin/ninja` exists, whose `ninja` adds `-j$KDOS_JOBS` to a ninja call that names no job count; the CMake compiler cache; `ac_cv_prog_cxx_cxx11` set empty, `TERM=dumb`, and `KPKG_SKIP_INDEX=man`, which leaves the manual index to `70_image`. It removes nothing: `kpkg` empties each port's own work directory before building it and again after a successful build |
 
 `common.env` appends its flags to `CFLAGS`, `CXXFLAGS` and `LDFLAGS`, so `host.env` and
 `chroot.env` set their base flags first and source it after them. A base assignment made after it
@@ -517,7 +517,7 @@ inside it:
 |---|---|---|
 | `HOME` | `/root` | Everything |
 | `TERM` | The caller's | Everything |
-| `PATH` | `/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin` | Everything |
+| `PATH` | `/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin`, with `/kdos/script/bin` put in front by `chroot.env` once ninja is installed; the directory holds only the `ninja` wrapper and is not in the image | Everything |
 | `KDOS_REPLAY` | `0` or `1` | A step whose "already done" guard must stand down because a plan named it (see [Build plans](#build-plans)) |
 | `KDOS_JOBS` | A number, or empty | `script/env/common.env`, which computes the job count inside the chroot when it is empty |
 | `KDOS_ISO_SOURCES` | `0` or `1` | `70_image/110_iso.sh`, to copy the sources onto the ISO (see [The packaging steps](#the-packaging-steps)) |
@@ -557,7 +557,7 @@ The phases from `20_selfhost` on run inside the target root filesystem, `build/f
    every entry has a private mount namespace of its own. It requires `build/fs` to exist.
 2. It bind-mounts `/dev`, and mounts a fresh `proc` at `/proc`, `sysfs` at `/sys` and a `tmpfs` at
    each of `/tmp` and `/run`. It bind-mounts the container's cgroup tree read-only over the fresh
-   sysfs's empty `/sys/fs/cgroup`: ninja, cargo and go size themselves from its `cpu.max`, and
+   sysfs's empty `/sys/fs/cgroup`: cargo and go size themselves from its `cpu.max`, and
    without it they see every host thread whatever `--cpus` cap the container has.
 3. It bind-mounts the repository at `/kdos`, `build/` at `/kdos/build`, `ports/` at `/ports`, and
    `script/`, `src/` and `fs/` under `/kdos`. The repository bind mount does not carry the

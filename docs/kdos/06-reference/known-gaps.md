@@ -986,7 +986,7 @@ Nothing publishes to an archive and fetches back from it under test. `ports/publ
 local stand-in could be used, but no test does so. What `testing/preflight.sh` checks is that the
 scripts parse and are executable, that git tracks no recipe-hashed archive, that the ignore rules
 cover every source suffix and `ports/.srccache/` and ignore no tracked fixture, and that
-`ports/sources.idx` is well-formed, free of duplicate hashes and sorted.
+`ports/sources.idx` holds every format-2 rule of `src_index_problems` in `ports/srclib.sh`.
 
 ### `kdos doctor` cannot check hardware a machine does not have
 

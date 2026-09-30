@@ -692,15 +692,17 @@ resolves a source and when the pre-push hook refuses a push are in
 | Variable | Default | Effect |
 |---|---|---|
 | `KDOS_SOURCES_REPO` | `kunaldawn/kdos` | The GitHub repository whose releases hold the source archive |
-| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | Where archived sources are downloaded from, as `$KDOS_SOURCES_BASE/sources-<NNN>/<sha256>`, with `NNN` from the index. Set it empty to fetch from upstream only |
+| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | Where archived sources are downloaded from, as `$KDOS_SOURCES_BASE/<tag>/<asset>` (parts as `<asset>.partNN`), with the tag and asset from the index. A directory laid out the same way works as an archive disk. Set it empty to fetch from upstream only |
 | `KDOS_SRCCACHE` | `ports/.srccache` | The local source cache, one file per hash, stored as `sha256-<first two hex digits>/<hash>`. Point two checkouts at one cache to download each file once |
-| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index saying which archive release holds each hash |
-| `KDOS_RELEASE_CAP` | `1000` | Files per archive release before `ports/publish` opens the next; GitHub's asset limit |
+| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index saying which archive release and asset hold each hash; read only in format 2 |
+| `KDOS_RELEASE_CAP` | `1000` | Assets one archive release may hold, each part of a split file counted; `ports/publish` stops on a file that would pass it. GitHub's asset limit |
+| `KDOS_PART_SIZE` | `1992294400` (1,900 MiB) | A file larger than this is stored in parts of this size, under GitHub's 2 GiB asset limit. Changed only by tests |
 | `FETCH_JOBS` | `1` | How many ports `ports/fetch` (and `make fetch`, `make fetch-check`) resolves or checks at once. Two ports naming one hash take turns on it; vendor bundles are still generated one at a time |
 | `KDOS_FETCH_HOST=1` | unset | Run `ports/fetch` entirely on this machine, generating vendor bundles with its own toolchains, instead of handing missing bundles to the fetch container |
 | `SOURCE_DATE_EPOCH` | `1735689600` | The timestamp written into generated vendor bundles, so they are reproducible |
 | `KDOS_SOURCES_TOKEN` | read from `~/.config/kdos/sources-token` (mode 600) | The GitHub token `ports/publish` uploads with |
-| `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `ports/publish --freeze <tag>` attaches `sources.sha256` to |
+| `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `<tag>` `ports/publish --freeze <tag>` attaches `sources.sha256` to, and `ports/publish --release <tag>` fills |
+| `KDOS_RELEASE_KEY` | `build/keys/kdos-release.key` | The secret key `ports/publish --release` signs `SHA256SUMS` with, when `--key` is not given; the `.pub` beside it is uploaded as `kdos-release.pub` |
 | `KDOS_PUBLISH_DELAY` | `8` | Seconds between uploads |
 | `KDOS_LFS_STORE` | the clone's `lfs/objects` | Where `ports/publish --history` reads Git LFS (Large File Storage) objects that earlier commits' recipes name, to archive them under their hashes |
 | `KDOS_GITHUB_API`, `KDOS_GITHUB_UPLOADS` | `https://api.github.com`, `https://uploads.github.com` | Replace the API and upload endpoints, for testing against a local stand-in |
