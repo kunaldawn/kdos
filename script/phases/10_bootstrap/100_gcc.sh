@@ -41,6 +41,7 @@ mkdir -p build && cd build
     --target=$KDOS_TARGET \
     --with-build-sysroot=$SYSROOT \
     --prefix=/usr \
+    --libexecdir=/usr/lib      \
     --enable-default-pie       \
     --enable-default-ssp       \
     --disable-nls              \
@@ -56,8 +57,8 @@ mkdir -p build && cd build
     CXXFLAGS_FOR_TARGET="$CXXFLAGS -nostdinc++" \
     LDFLAGS_FOR_TARGET=-L$PWD/$KDOS_TARGET/libgcc
 
-make
-make DESTDIR=$SYSROOT install
+make BUILD_INFO=no-info
+make DESTDIR=$SYSROOT install BUILD_INFO=no-info
 
 ln -sv gcc $SYSROOT/usr/bin/cc
 

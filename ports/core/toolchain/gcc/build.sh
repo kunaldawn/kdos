@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# fortran is in the language list because the numeric ring is built on it —
-# LAPACK, the ODE and FFT libraries and octave all want a Fortran compiler, and
-# there is no separate gfortran tarball to add later. It is paid twice:
-# 20_selfhost rebuilds this port with itself before 30_foundation builds it
-# again.
-#
-# zstd and isl are both probed and neither is reachable in 20_selfhost, which
-# builds this recipe too: left to probe, LTO's zstd compression and Graphite
-# would follow build order, and declaring zstd would pull it into the
-# bootstrap. No port provides isl.
 mkdir -v build
 cd       build
 
@@ -38,7 +28,8 @@ cd       build
 	--enable-default-pie \
 	--enable-default-ssp \
 	-with-pkgversion="KDOS" \
-	CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
+	CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}" \
+	CXXFLAGS_FOR_TARGET="$CXXFLAGS"
 make
 make DESTDIR=$PKG install
 

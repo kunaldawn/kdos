@@ -1012,6 +1012,9 @@ It is the one place a port is found by name, and every tool that looks a port up
 | `kp_port_dir(c, name)` | `kp_port_find` for a caller that reads NULL as "no such port". A name filed twice dies with the message, because every answer a caller could make of NULL there (skip it, build without it, take one copy) builds something other than the tree says |
 | `kp_ports_scan(c, &count, err, errcap)` | Every port of every repository, sorted, at both depths; the first repository wins a name two of them hold. NULL with `err` set when one repository holds a name twice or a port sits deeper than one shelf. A repository that exists and yields no port warns, since that is a walker and a tree that disagree about the layout |
 | `kp_all_ports(c, &count)` | `kp_ports_scan` that dies on a malformed tree |
+| `kp_owned_load(c)` | Every path an installed package claims, sorted, keyed on its canonical merged-`/usr` spelling, for `kp_owned_owner` and `kp_owned_other` to ask |
+| `kp_owned_load_some(c, rel, n)` | The same table holding only the claims on the `n` given paths, canonicalised the way a question is. Those two functions answer exactly as from the full table for those paths, and NULL for any other. It streams every manifest but keeps a handful of pairs, which is what an install, an upgrade's orphan sweep and a removal need |
+| `kp_db_lock(c)` | Takes the database's writer lock, an exclusive `flock` on `<db>/.lock`, blocking, and returns the descriptor; closing it releases the lock. -1 when the database directory cannot hold the file |
 
 A shelf is any directory of a repository with no `kpkgbuild` of its own, other than a dot-name. The
 shelf names are cached per repository when the repositories are set, so a shelf created afterwards

@@ -16,7 +16,7 @@
 # stops at configure. libthai is where a line of Thai may break: the
 # script has no spaces between words, and without it a paragraph wraps in the
 # middle of one.
-meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
+meson setup build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Dintrospection=enabled \
 	-Dxft=enabled \
 	-Dlibthai=enabled \

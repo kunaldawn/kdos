@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
@@ -1285,6 +1286,63 @@ static void test_pkg(void)
 	   "a sole claimant has no other");
 	kp_owned_free(ow);
 
+	/* The partial table answers exactly as the full one for the keys it
+	 * was asked for, under either spelling, and knows nothing else. The
+	 * lock and the sidecar directory sit in the database and are never
+	 * read as packages. */
+	mdb = kb_path_join(mroot, "db");
+	mf = kb_path_join(mdb, "extra");
+	kb_write_file(mf, "1 1\n./usr/bin/extra\n");
+	free(mf);
+	mf = kb_path_join(mdb, ".recipe");
+	kb_mkdir_p(mf);
+	free(mf);
+	free(mdb);
+	int lk = kp_db_lock(&mconf);
+	ok(lk >= 0, "the database takes its writer lock");
+	char *lpath = kb_path_join(mroot, "db/.lock");
+	int lk2 = open(lpath, O_RDWR | O_CLOEXEC);
+	ok(lk2 >= 0 && flock(lk2, LOCK_EX | LOCK_NB) != 0,
+	   "a second writer finds it held");
+	ow = kp_owned_load(&mconf);
+	ok(ow->nowner == 3, "the lock and .recipe/ are not packages");
+	char *want[] = { (char *)"bin/free", (char *)"./lib/x",
+			 (char *)"usr/bin/none" };
+	KpOwned *some = kp_owned_load_some(&mconf, want, 3);
+	ok(some->n == 3, "only the claims on the asked keys are kept");
+	eq_str(kp_owned_owner(some, "usr/bin/free"),
+	       kp_owned_owner(ow, "usr/bin/free"),
+	       "a partial table names the owner the full one names");
+	eq_str(kp_owned_other(some, "usr/bin/free", "toybox"), "procps",
+	       "and finds the other claimant under the other spelling");
+	eq_str(kp_owned_other(some, "bin/free", "procps"), "toybox",
+	       "from either side");
+	eq_str(kp_owned_owner(some, "lib/x"), "toybox",
+	       "a key asked with its ./ is found without it");
+	ok(kp_owned_other(some, "lib/x", "toybox") == NULL,
+	   "a sole claimant has no other in either table");
+	ok(kp_owned_owner(some, "usr/bin/none") == NULL &&
+	   kp_owned_owner(ow, "usr/bin/none") == NULL,
+	   "an unclaimed key is unclaimed in both");
+	ok(kp_owned_owner(ow, "usr/bin/extra") != NULL &&
+	   kp_owned_owner(some, "usr/bin/extra") == NULL,
+	   "a key not asked for is not in the partial table");
+	kp_owned_free(some);
+	some = kp_owned_load_some(&mconf, NULL, 0);
+	ok(some->n == 0 && kp_owned_owner(some, "bin/free") == NULL,
+	   "asking about nothing reads nothing");
+	kp_owned_free(some);
+	kp_owned_free(ow);
+	if (lk2 >= 0)
+		close(lk2);
+	close(lk);
+	lk2 = open(lpath, O_RDWR | O_CLOEXEC);
+	ok(lk2 >= 0 && flock(lk2, LOCK_EX | LOCK_NB) == 0,
+	   "and the lock is free once its descriptor closes");
+	if (lk2 >= 0)
+		close(lk2);
+	free(lpath);
+
 	char *mdrop[] = { (char *)"bin/free" };
 	ok(kp_db_drop_paths(&mconf, "toybox", mdrop, 1) == 1,
 	   "an overwrite takes the path under the other spelling");
@@ -1860,6 +1918,24 @@ static void test_build(void)
 	ok(ph[1].error[0] != 0, "a phase with no list and no step is refused");
 	ok(!ph[0].error[0], "a phase with a step is not");
 
+	/* The repositories a phase's kpkg searches, mapped onto the host. */
+	char repos[512];
+	ok(kbuild_phase_repos(&ph[0], "/r", repos, sizeof(repos)) == 1,
+	   "no PORT_REPO is one repository");
+	eq_str(repos, "/r/ports/core", "no PORT_REPO is kpkg.conf's /ports/core");
+	char *env2 = kb_path_join(pd2, "phase.env");
+	kb_write_file(env2,
+		"export PORT_REPO=\"/ports/old\"\n"
+		"  export PORT_REPO=\"/ports/core /kdos/src/system\" # last wins\n");
+	free(env2);
+	n = kbuild_discover(dir, ph, KBUILD_MAX_PHASES);
+	ok(n == 2 && kbuild_phase_repos(&ph[1], "/r", repos, sizeof(repos)) == 2,
+	   "the last PORT_REPO line is the one read");
+	eq_str(repos, "/r/ports/core /r/src/system",
+	       "/ports maps to <repo>/ports and /kdos to <repo>");
+	ok(kbuild_phase_repos(&ph[1], "/r", repos, 8) == -1 && !repos[0],
+	   "repositories that do not fit are refused, not cut short");
+
 	/* ----- the build plan ------------------------------------------- */
 
 	KbuildPlan pl;
@@ -1939,7 +2015,8 @@ static void test_build(void)
 	LPUT("phases/20_both/packages.txt", "a\n");
 	LPUT("phases/20_both/packages.d/x.txt", "b\n");
 	LPUT("phases/30_nolist/packages.d/README", "x\n");
-	LPUT("phases/40_flat/packages.txt", "solo\n");
+	LPUT("phases/40_flat/packages.txt",
+	     "solo\n# base \xe2\x80\x94 the base shelf\nlater\n");
 #undef LPUT
 
 	KbuildPhase lp[KBUILD_MAX_PHASES];
@@ -1975,9 +2052,21 @@ static void test_build(void)
 		ok(strstr(lp[2].error, "no *.txt") != NULL,
 		   "a packages.d/ with no list is refused");
 		pk = kbuild_packages(&lp[3], &np);
-		ok(np == 1 && !strcmp(pk[0], "solo") && !lp[3].error[0],
-		   "a single packages.txt reads");
+		ok(np == 2 && !strcmp(pk[0], "solo") && !strcmp(pk[1], "later") &&
+		   !lp[3].error[0], "a single packages.txt reads");
 		kb_strv_free(pk);
+
+		/* The order run: 00-order.txt of a packages.d/, the names
+		 * ahead of a packages.txt's first shelf banner. */
+		char **run = NULL;
+		int nrun = kbuild_packages_order_run(&lp[0], &run);
+		ok(nrun == 1 && !strcmp(run[0], "one"),
+		   "packages.d's order run is 00-order.txt");
+		kb_strv_free(run);
+		nrun = kbuild_packages_order_run(&lp[3], &run);
+		ok(nrun == 1 && !strcmp(run[0], "solo"),
+		   "a packages.txt's order run ends at its first shelf banner");
+		kb_strv_free(run);
 	}
 
 	/* The port index walks ports/core at both depths through libkpkg, and

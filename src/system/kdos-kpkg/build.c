@@ -7,8 +7,10 @@
  * ---------------------------------
  *   kpkgbuild — turn a port into a package
  *
- * Invoked with NO arguments and cwd == the port directory. That is the whole
- * interface, and `kpkg` is its only caller.
+ * kp_build_port() is the whole interface: it builds the port in one directory
+ * and reports the exact package file it wrote. `kpkg install` and `kpkg
+ * verify` call it directly; the `kpkgbuild` command is the same call on the
+ * current directory.
  *
  * A recipe is `kpkgbuild` (declarative metadata, parsed — no shell involved)
  * plus `build.sh` beside it, which IS bash. The sources are extracted and the
@@ -41,6 +43,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ftw.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -148,40 +152,33 @@ static const char *hash_for(const Recipe *r, const char *file, char out[65])
 }
 
 /*
- * Nothing is extracted before its bytes are checked. A recipe with no hash
- * for a source it names is a HARD failure, not a warning: a warning here is
- * indistinguishable from a hash that passed, and the whole point is that an
- * unverified tarball can never reach a build.
+ * Every extracted source is DECLARED. Its bytes were already checked by
+ * verify_declared(), which hashes every `sha256 =` entry found in the port
+ * directory or $SOURCE_DIR — the same two places, in the same order, that
+ * extract_sources() looks — before the work directory is touched; hashing the
+ * file again here would read every source twice for no new answer.
+ *
+ * A source the recipe names with no hash is a HARD failure, not a warning: a
+ * warning here is indistinguishable from a hash that passed, and an
+ * unverified tarball must never reach a build.
  *
  * KDOS_ALLOW_UNVERIFIED=1 is the bring-up escape hatch, for adding a port
  * before its hash is known. testing/preflight.sh asserts that no recipe in
  * the tree needs it.
  */
-static int verify_source(const Recipe *r, const char *path, const char *file)
+static int verify_source(const Recipe *r, const char *file)
 {
 	char want[65];
-	if (!hash_for(r, file, want)) {
-		if (getenv("KDOS_ALLOW_UNVERIFIED")) {
-			kp_msg("UNVERIFIED: no sha256 for %s", file);
-			return 0;
-		}
-		kp_err("No sha256 for %s in the recipe — refusing to extract "
-		       "an unverified source (KDOS_ALLOW_UNVERIFIED=1 to override)",
-		       file);
-		return -1;
+	if (hash_for(r, file, want))
+		return 0;
+	if (getenv("KDOS_ALLOW_UNVERIFIED")) {
+		kp_msg("UNVERIFIED: no sha256 for %s", file);
+		return 0;
 	}
-
-	char got[65];
-	if (kb_sha256_file(path, got) != 0) {
-		kp_err("Cannot read %s to verify it", path);
-		return -1;
-	}
-	if (!kb_str_ieq(got, want)) {
-		kp_err("sha256 MISMATCH for %s\n  expected %s\n  got      %s",
-		       file, want, got);
-		return -1;
-	}
-	return 0;
+	kp_err("No sha256 for %s in the recipe — refusing to extract "
+	       "an unverified source (KDOS_ALLOW_UNVERIFIED=1 to override)",
+	       file);
+	return -1;
 }
 
 /*
@@ -195,6 +192,10 @@ static int verify_source(const Recipe *r, const char *path, const char *file)
  * skipped: a source that must be there is caught by extract_sources(), and
  * refusing a port over a declared file its build never opens would fail builds
  * for a hash that cannot affect them.
+ *
+ * This is the only place a source's bytes are hashed, so it must look where
+ * extract_sources() looks — the port directory first, then $SOURCE_DIR. A
+ * lookup that differed would check one file and extract another.
  */
 static int verify_declared(const KpConf *c, const Recipe *r, const char *portdir)
 {
@@ -266,7 +267,7 @@ static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir
 			}
 		}
 
-		if (verify_source(r, path, file) != 0) {
+		if (verify_source(r, file) != 0) {
 			free(path);
 			return -1;
 		}
@@ -344,10 +345,10 @@ static int run_build(const KpConf *c, const KpDecl *d, const Recipe *r,
  * Rolling the package, reproducibly.
  *
  * A package built twice from the same tree must be BYTE-IDENTICAL, and that is
- * a property of this one function rather than of 396 recipes — which is the
+ * a property of this one function rather than of every recipe — which is the
  * whole reason kpkg rolls its own archive instead of letting each build.sh do
- * it. Everything below is a source of nondeterminism that was in the plain
- * `tar -cJf` this replaced:
+ * it. Everything below is a source of nondeterminism a plain `tar -cJf` would
+ * carry:
  *
  *   --sort=name        readdir order is filesystem order, and it is not stable
  *                      across machines or even across a copy of the same tree
@@ -358,9 +359,13 @@ static int run_build(const KpConf *c, const KpDecl *d, const Recipe *r,
  *                      ustar cannot hold a path over 255 bytes and some ports
  *                      have them, so gnu is the only format that is both
  *                      deterministic and sufficient
- *   XZ_OPT             xz is single-threaded by default and deterministic, but
- *                      -T0 in the environment silently changes the output, so
- *                      the compressor is pinned rather than inherited
+ *   XZ_OPT             -e or --check here changes the bytes
+ *   XZ_DEFAULTS        a memory limit here shrinks the dictionary, or fails
+ *                      the run under --no-adjust; both variables are held out
+ *                      of the environment while xz runs, and the compressor
+ *                      is pinned rather than inherited
+ *   the compressor     preset and block size decide the bytes; the thread
+ *                      count does not (kp_xz_args below)
  *
  * SOURCE_DATE_EPOCH is honoured when set (the phase env files set it) and 0
  * otherwise — either way the answer does not depend on when the build ran.
@@ -379,14 +384,99 @@ static long long source_date_epoch(void)
 	return v;
 }
 
+/*
+ * The two compressor settings (kdos-kpkg.h). kept is what every package that
+ * outlives its install is made with — the cache, the binhost, a verify, a
+ * delta's reconstruction — so changing it changes every package hash, and a
+ * published binhost and its deltas are then regenerated together. transient
+ * is -0: its package is read once by kpkgadd and deleted, so its size reaches
+ * nothing that ships.
+ */
+static const char *const kp_xz_kept[] = {
+	"xz", "-9", "-T0", "--block-size=32MiB", "--no-adjust", NULL
+};
+static const char *const kp_xz_transient[] = {
+	"xz", "-0", "-T0", "--block-size=8MiB", "--no-adjust", NULL
+};
+
+int kp_pack_transient;
+
+const char *const *kp_xz_args(int transient)
+{
+	return transient ? kp_xz_transient : kp_xz_kept;
+}
+
+const char *kp_xz_cmd(int transient)
+{
+	static char cmd[2][96];
+	char *s = cmd[!!transient];
+	size_t n = 0;
+	if (!*s)
+		for (const char *const *w = kp_xz_args(transient); *w; w++)
+			n += snprintf(s + n, sizeof(cmd[0]) - n, "%s%s",
+				      n ? " " : "", *w);
+	return s;
+}
+
+/* XZ_OPT and XZ_DEFAULTS are taken out of the environment while xz runs and
+ * put back afterwards: kpkg install builds every port of an order in one
+ * process, and the next port's build.sh must see the environment it was
+ * given. */
+static const char *const kp_xz_env[] = { "XZ_OPT", "XZ_DEFAULTS" };
+
+void kp_xz_env_hide(char *saved[2])
+{
+	for (int i = 0; i < 2; i++) {
+		const char *v = getenv(kp_xz_env[i]);
+		saved[i] = v ? kb_strdup(v) : NULL;
+		unsetenv(kp_xz_env[i]);
+	}
+}
+
+void kp_xz_env_restore(char *saved[2])
+{
+	for (int i = 0; i < 2; i++) {
+		if (saved[i])
+			setenv(kp_xz_env[i], saved[i], 1);
+		free(saved[i]);
+		saved[i] = NULL;
+	}
+}
+
+/* Bytes of regular files under the staged tree, for the packaging report. */
+static long long staged_bytes;
+
+static int staged_add(const char *path, const struct stat *st, int flag,
+		      struct FTW *ftw)
+{
+	(void)path;
+	(void)ftw;
+	if (flag == FTW_F && S_ISREG(st->st_mode))
+		staged_bytes += st->st_size;
+	return 0;
+}
+
+/*
+ * The archive is written to `<out>.part` and renamed to `<out>` only when tar
+ * succeeds, and the partial file is removed otherwise: a package file under
+ * its final name is always a whole one, never the remains of a failed or
+ * interrupted roll that kpkgadd would then read.
+ *
+ * A change here to what a package contains, or to how the same staged tree is
+ * archived, bumps KP_STORE_FORMAT (kpkg.h): the package store keys on inputs,
+ * not on this code, and would keep serving packages rolled the old way.
+ */
 static int roll_package(const char *pkg, const char *out)
 {
+	char part[1100];
+	if ((size_t)snprintf(part, sizeof(part), "%s.part", out) >= sizeof(part))
+		return -1;
+
 	char mtime[64];
 	snprintf(mtime, sizeof(mtime), "--mtime=@%lld", source_date_epoch());
 
-	/* The compressor, pinned: -9 for the size the ISO cares about, -T1 so a
-	 * builder with XZ_OPT=-T0 in their environment cannot change the bytes.
-	 * tar splits this on spaces itself; there is no shell involved. */
+	/* tar splits the compressor on spaces itself; there is no shell
+	 * involved. */
 	KbArgv t = {0};
 	kb_argv_add(&t, "tar");
 	kb_argv_add(&t, "--sort=name");
@@ -395,14 +485,27 @@ static int roll_package(const char *pkg, const char *out)
 	kb_argv_add(&t, "--owner=0");
 	kb_argv_add(&t, "--group=0");
 	kb_argv_add(&t, mtime);
-	kb_argv_add(&t, "--use-compress-program=xz -9 -T1");
+	char prog[128];
+	snprintf(prog, sizeof(prog), "--use-compress-program=%s",
+		 kp_xz_cmd(kp_pack_transient));
+	kb_argv_add(&t, prog);
 	kb_argv_add(&t, "-cf");
-	kb_argv_add(&t, out);
+	kb_argv_add(&t, part);
 	kb_argv_add(&t, "-C");
 	kb_argv_add(&t, pkg);
 	kb_argv_add(&t, ".");
 	kb_argv_end(&t);
-	return kb_run_tty(&t);
+	char *saved[2];
+	kp_xz_env_hide(saved);
+	int rc = kb_run_tty(&t);
+	kp_xz_env_restore(saved);
+	if (rc == 0 && rename(part, out) != 0) {
+		kp_err("cannot rename %s: %s", part, strerror(errno));
+		rc = -1;
+	}
+	if (rc != 0)
+		unlink(part);
+	return rc;
 }
 
 /*
@@ -493,11 +596,9 @@ static void strip_font_dirs(const char *pkg)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-int build_main(int argc, char **argv)
+/* The build, in the current directory, which is the port directory. */
+static int build_here(char *pkgout, size_t cap)
 {
-	(void)argc;
-	(void)argv;
-
 	KpConf c;
 	kp_conf_load(&c);
 
@@ -605,18 +706,53 @@ int build_main(int argc, char **argv)
 		 r.release);
 	char *out = kb_path_join(c.package_dir, pkgname);
 
+	struct timespec t0, t1;
+	staged_bytes = 0;
+	nftw(pkg, staged_add, 32, FTW_PHYS);
+	clock_gettime(CLOCK_MONOTONIC, &t0);
 	if (roll_package(pkg, out) != 0) {
 		kp_err("Failed to create %s", out);
 		return 1;
 	}
+	clock_gettime(CLOCK_MONOTONIC, &t1);
+	kp_msg("Packaged %s: %lld MB in %.1f s", r.name,
+	       staged_bytes / (1024 * 1024),
+	       (double)(t1.tv_sec - t0.tv_sec) +
+		       (double)(t1.tv_nsec - t0.tv_nsec) / 1e9);
 
 	kp_msg("Cleaning up...");
 	kb_rmtree(src_root);
 	kp_msg("Package created: %s", out);
+	if (pkgout)
+		kb_strlcpy(pkgout, out, cap);
 
 	free(src_root);
 	free(src_dir);
 	free(pkg);
 	free(out);
 	return 0;
+}
+
+int kp_build_port(const char *portdir, char *pkgout, size_t cap)
+{
+	char cwd[1024];
+	if (pkgout && cap)
+		pkgout[0] = '\0';
+	if (!getcwd(cwd, sizeof(cwd)))
+		return -1;
+	if (chdir(portdir) != 0) {
+		kp_err("Port not found: %s", portdir);
+		return -1;
+	}
+	int rc = build_here(pkgout, cap);
+	if (chdir(cwd) != 0)
+		kb_die("cannot return to %s", cwd);
+	return rc;
+}
+
+int build_main(int argc, char **argv)
+{
+	(void)argc;
+	(void)argv;
+	return kp_build_port(".", NULL, 0) != 0;
 }

@@ -198,7 +198,7 @@ port repository; it is the catalogue file `src/system/kdos-appbox/catalogue`.
 
 | Directory | Holds | Recipes | Layout |
 |---|---|---|---|
-| `ports/core/` | Upstream software: somebody else's source | 1,999 | `<shelf>/<name>/`, on 102 shelves |
+| `ports/core/` | Upstream software: somebody else's source | 2,000 | `<shelf>/<name>/`, on 102 shelves |
 | `src/system/` | The package manager, the `kdos` command and its services, packs and boxes, the installer | 5 | `<name>/` |
 | `src/art/` | Theme generators, the themes built from them, the boot splash, the demo | 6 | `<name>/` |
 | `src/desktop/` | Programs that draw the session or serve it over Wayland or D-Bus | 8 | `<name>/` |
@@ -263,7 +263,8 @@ first area that fits:
 
 `src/libs/` and `src/devtools/` are not port repositories. The libraries are compiled into each
 program by that program's own recipe. The two tools run only on the build host and are compiled on
-demand: `script/kdosbuild.sh` builds the orchestrator into `build/.kdosbuild`, and `ports/update`
+demand: `script/kdosbuild.sh` builds the orchestrator into `build/.kdosbuild`, recording what built
+it in `build/.kdosbuild.sum` so an unchanged one is not recompiled, and `ports/update`
 builds the version checker into `ports/.portup`. Preflight fails any other directory under `src/`
 and any recipe at another depth, and fails the orphan sweep in
 `script/phases/70_image/040_orphans.sh` when its list of repositories leaves out an area that holds
@@ -316,9 +317,9 @@ those keys are written in every `phase.env`. Everything shared is sourced from `
 
 | File | Sourced by | Holds |
 |---|---|---|
-| `common.env` | every phase, through one of the two below | The reproducibility settings, `MAKEFLAGS` and `KPKG_STRICT_RECIPE=1` |
+| `common.env` | every phase, through one of the two below | The reproducibility settings, the job count `KDOS_JOBS` with the `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS` it sets, and `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross`, `10_bootstrap` | The target triplet, the sysroot and cross-toolchain paths, and the cross `pkg-config` setup |
-| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the base flags, and a cleared work directory |
+| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the base flags, `KPKG_SKIP_INDEX=man`; it removes nothing, since `kpkg` empties each port's own work directory |
 
 `script/lib/port.sh` is sourced by the step scripts of `00_cross` and `10_bootstrap`, which run
 before `kpkg` exists; it reads a recipe and unpacks its source, and finds a port by name one shelf
@@ -432,7 +433,7 @@ included, stops running in that clone.
 
 | Path | Ignored by git | Notes |
 |---|---|---|
-| `build/` | entirely | The root filesystem, logs, snapshots, the ISO, signing keys, frozen source lists, and `build/podman/`, a podman container store that `script/kdosbuild.sh` leaves owned by root |
+| `build/` | entirely | The root filesystem, logs, snapshots, the compiler cache `build/ccache`, the package store `build/pkgstore` (`<key[0:2]>/<key>/`, one package and its `META` each, written only with `KDOS_PKG_STORE` on), the ISO, signing keys, frozen source lists, and `build/podman/`, a podman container store that `script/kdosbuild.sh` leaves owned by root |
 | `build_test/` | entirely | Where `testing/prepare_base.py` builds the minimal root filesystem that `testing/test_runner.py` builds ports against |
 | `ports/core/*/*/*.tar`, `*.tar.*`, `*.tgz`, `*.tbz2`, `*.txz`, `*.zip`, `*.7z`, `*.part`, and a few more suffixes | yes | Upstream archives, vendor bundles and partial downloads, put there by `make fetch`, matched in a port directory one shelf down. A pattern for one port's odd suffix names its shelf, and must be edited when the port changes shelf. A patch or configuration file a recipe hashes is tracked and unaffected, and the archive fixtures under `testing/fixtures/` stay tracked |
 | `ports/.srccache/` | yes | The source cache, `sha256-XX/<hash>`. Plain data: it survives `make clean` and `make cleanbuild` |

@@ -22,6 +22,10 @@
  * testing/selftest.sh can check the ENGINE rather than grep for "BUILD
  * COMPLETE". That is the point of it: testability, not a service interface.
  *
+ * A step is opened when it starts and closed when it ends, exactly once each.
+ * Under --port-jobs several run at once, so the opens and closes of a level
+ * interleave: a consumer pairs them by phase and step name, never by adjacency.
+ *
  * NDJSON, one object per line, never one document. A build runs for hours and
  * can be killed at any moment; a single top-level object is only valid once its
  * closing brace arrives, so the one case a machine-readable log exists for —
@@ -39,10 +43,12 @@
 
 /* ── text ──────────────────────────────────────────────────────────────── */
 
-/* Set while a step line is open and waiting for its "ok"/"FAILED". A snapshot
- * starts INSIDE that window, so its progress has to break the line rather than
- * land in the middle of it. */
+/* Set while a step line is open and waiting for its "ok"/"FAILED", and the
+ * step it is open for. A snapshot starts INSIDE that window, so its progress
+ * has to break the line rather than land in the middle of it; under
+ * --port-jobs another step's start does the same. */
 static int line_open;
+static const BStep *line_step;
 
 static void break_line(void)
 {
@@ -62,16 +68,20 @@ static void t_group(const Manager *m, const BStep *s)
 static void t_step_open(const Manager *m, const BStep *s)
 {
 	(void)m;
+	break_line();
 	printf("    %-40s ", s->title);
 	line_open = 1;
+	line_step = s;
 	fflush(stdout);
 }
 
 static void t_step_close(const Manager *m, const BStep *s)
 {
 	(void)m;
-	/* The title is reprinted when a notice or a snapshot broke the line
-	 * this result belongs on. */
+	/* The title is reprinted when a notice, a snapshot or another step's
+	 * start broke the line this result belongs on. */
+	if (line_open && line_step != s)
+		break_line();
 	if (!line_open)
 		printf("    %-40s ", s->title);
 	line_open = 0;
@@ -286,13 +296,16 @@ static void j_snap_tick(const Manager *m)
 static void j_finish(const Manager *m)
 {
 	KbBuf b = {0};
-	int ok = 0, failed = 0, skipped = 0;
+	int ok = 0, installed = 0, failed = 0, skipped = 0;
 
 	for (int i = 0; i < m->norder; i++) {
 		const BStep *s = m->order[i];
-		if (s->is_group)
+		/* A commit step that found nothing to install never ran. */
+		if (s->is_group || (s->is_commit && s->start_time <= 0))
 			continue;
-		if (s->status == ST_DONE)
+		if (s->installed)
+			installed++;
+		else if (s->status == ST_DONE)
 			ok++;
 		else if (s->status == ST_FAIL)
 			failed++;
@@ -302,8 +315,9 @@ static void j_finish(const Manager *m)
 
 	kb_buf_printf(&b, "{\"event\": \"result\", \"status\": \"%s\"",
 		      m->error_step ? "failed" : "complete");
-	kb_buf_printf(&b, ", \"seconds\": %.2f, \"ok\": %d, \"failed\": %d, "
-		      "\"skipped\": %d", kb_now_s() - m->start_time, ok, failed,
+	kb_buf_printf(&b, ", \"seconds\": %.2f, \"ok\": %d, \"installed\": %d, "
+		      "\"failed\": %d, \"skipped\": %d",
+		      kb_now_s() - m->start_time, ok, installed, failed,
 		      skipped);
 	if (m->error_step) {
 		kb_buf_str(&b, ", \"failed_step\": ");
@@ -381,10 +395,11 @@ void report_snapshots_json(const KbuildPhase *ph, int nph,
 		kb_buf_str(&b, ", \"commit\": ");
 		json_or_null(&b, sn->git_commit);
 		kb_buf_printf(&b, ", \"dirty\": %s, \"stale\": %s, "
-			      "\"complete\": %s",
+			      "\"complete\": %s, \"leftover\": %s",
 			      sn->git_dirty ? "true" : "false",
 			      stale ? "true" : "false",
-			      sn->complete ? "true" : "false");
+			      sn->complete ? "true" : "false",
+			      kbuild_snapshottable(&ph[i]) ? "false" : "true");
 		kb_buf_printf(&b, ", \"steps\": %d, \"total_steps\": %d, "
 			      "\"duration\": %.2f, \"snapshot_seconds\": %.2f",
 			      sn->steps, sn->total_steps, sn->duration_s,

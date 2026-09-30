@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-meson setup build \
+meson setup build --buildtype=release \
 	--prefix=/usr --libdir=lib \
 	-Dgrapheme-shaping=enabled \
 	-Drun-shaping=enabled \

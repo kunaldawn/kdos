@@ -27,6 +27,11 @@
  *    the new are one file, and deleting it deletes what was just installed.
  *  - `./.POSTINSTALL` is kept out of the manifest. It is deliberately never
  *    installed, so an entry for it has a removal try `rm -f /./.POSTINSTALL`.
+ *  - The database is edited under its writer lock (kp_db_lock), taken before
+ *    ownership is read and released after the index triggers, on every return.
+ *    Two installs deciding conflicts against one table while the other is
+ *    rewriting it each place a file the other then claims. A postinstall hook
+ *    runs inside the lock, so a hook that calls kpkg never returns.
  *  - Nothing cosmetic may abort the install. A path canonicalisation done only
  *    to pretty-print a destination in a log line fails on a symlink loop, and
  *    an install that dies there dies for a reason that never mattered.
@@ -71,26 +76,17 @@ static int split_pkgname(const char *base, char *name, char *ver, char *rel,
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-/* The manifest is `tar -tf` output verbatim — ./-prefixed, directories with a
- * trailing slash — because removal keys off that slash and because a decade of
- * database files are in that shape. `./.POSTINSTALL` is dropped: it is hoisted
- * out before installation and was never a file the package owns. */
-static char *manifest(const char *pkgfile, size_t *len)
+/* The manifest is the extraction's own listing: `tar -xpvf` prints to stdout
+ * exactly what `tar -tf` prints for the same archive, so the package is
+ * decompressed once and the listing is taken from that one pass. It stays
+ * verbatim — ./-prefixed, directories with a trailing slash — because removal
+ * keys off that slash and a decade of database files are in that shape.
+ * `./.POSTINSTALL` is dropped: it is hoisted out before installation and was
+ * never a file the package owns. `raw` is consumed. */
+static char *manifest(char *raw, size_t *len)
 {
-	KbBuf raw = {0};
-	KbArgv a = {0};
-	kb_argv_add(&a, "tar");
-	kb_argv_add(&a, "-tf");
-	kb_argv_add(&a, pkgfile);
-	kb_argv_end(&a);
-	if (kb_run_capture_buf(&a, &raw) != 0) {
-		kb_buf_free(&raw);
-		return NULL;
-	}
-	char *buf = raw.p;
-
 	KbBuf out = {0};
-	for (char *line = buf, *next; line && *line; line = next) {
+	for (char *line = raw, *next; line && *line; line = next) {
 		char *nl = strchr(line, '\n');
 		next = nl ? nl + 1 : NULL;
 		if (nl)
@@ -99,7 +95,9 @@ static char *manifest(const char *pkgfile, size_t *len)
 			continue;
 		kb_buf_printf(&out, "%s\n", line);
 	}
-	free(buf);
+	free(raw);
+	if (!out.p)
+		kb_buf_str(&out, "");
 	if (len)
 		*len = out.n;
 	return out.p;
@@ -226,6 +224,43 @@ static int check_conflict(const char *rel, void *u)
 	free(src);
 	free(dst);
 	return 0;
+}
+
+/* The paths check_conflict can say anything about: those already on disk. A
+ * staged path with nothing under it in the root cannot conflict, and on a
+ * fresh tree that is every path, so the ownership table is read only for the
+ * rest. */
+typedef struct {
+	const char *root;
+	char **v;
+	int n, cap;
+} Present;
+
+static int collect_present(const char *rel, void *u)
+{
+	Present *p = u;
+	char *dst = kb_path_join(p->root, rel);
+	struct stat st;
+	if (lstat(dst, &st) == 0) {
+		if (p->n == p->cap) {
+			p->cap = p->cap ? p->cap * 2 : 64;
+			char **nv = kb_calloc((size_t)p->cap, sizeof(*nv));
+			if (p->n)
+				memcpy(nv, p->v, (size_t)p->n * sizeof(*nv));
+			free(p->v);
+			p->v = nv;
+		}
+		p->v[p->n++] = kb_strdup(rel);
+	}
+	free(dst);
+	return 0;
+}
+
+static void present_free(Present *p)
+{
+	for (int i = 0; i < p->n; i++)
+		free(p->v[i]);
+	free(p->v);
 }
 
 static int mkdirs(const char *rel, void *u)
@@ -425,16 +460,20 @@ int add_main(int argc, char **argv)
 	 * something needed the privilege, in a program that had no way to say
 	 * why it could not have it.
 	 */
-	kb_argv_add(&x, "-xpf");
+	kb_argv_add(&x, "-xpvf");
 	kb_argv_add(&x, pkgfile);
 	kb_argv_add(&x, "-C");
 	kb_argv_add(&x, tmpl);
 	kb_argv_end(&x);
-	if (kb_run(&x) != 0) {
+	KbBuf listing = {0};
+	if (kb_run_capture_buf(&x, &listing) != 0) {
 		kp_err("Failed to extract %s", pkgfile);
+		kb_buf_free(&listing);
 		kb_rmtree(tmpl);
 		return 1;
 	}
+	size_t mn = 0;
+	char *m = manifest(listing.p, &mn);
 
 	/* The hook is hoisted out of the tree before anything is placed, so it
 	 * is never installed and never owned. */
@@ -453,21 +492,37 @@ int add_main(int argc, char **argv)
 
 	Ctx ctx = { tmpl, root, 0, NULL, NULL, overwrite, NULL, NULL, 0, 0 };
 
+	int lock = kp_db_lock(&c);
+	if (lock < 0) {
+		kp_err("cannot lock the package database %s: %s", db,
+		       strerror(errno));
+		kb_rmtree(tmpl);
+		return 1;
+	}
+
 	/* `--force` skips the scan outright, which is what it has always done.
 	 * `--overwrite` still runs it, because the paths it finds are exactly
 	 * the ones that have to change hands afterwards. */
 	if (!upgrade && !force) {
-		/* Loaded once: the scan asks it a question per staged file. */
-		KpOwned *owned = kp_owned_load(&c);
-		ctx.owned = owned;
+		Present pr = { root, NULL, 0, 0 };
+		for_each(files.p, collect_present, &pr);
 		KbBuf report = {0};
-		ctx.report = &report;
-		for_each(files.p, check_conflict, &ctx);
-		kp_owned_free(owned);
-		ctx.owned = NULL;
+		if (pr.n) {
+			/* Loaded once, for exactly the paths it is asked
+			 * about. */
+			KpOwned *owned = kp_owned_load_some(&c, pr.v, pr.n);
+			ctx.owned = owned;
+			ctx.report = &report;
+			for (int i = 0; i < pr.n; i++)
+				check_conflict(pr.v[i], &ctx);
+			kp_owned_free(owned);
+			ctx.owned = NULL;
+		}
+		present_free(&pr);
 		if (ctx.conflicts) {
 			kp_err("File conflict detected:%s", report.p);
 			kb_rmtree(tmpl);
+			close(lock);
 			return 1;
 		}
 		kb_buf_free(&report);
@@ -478,6 +533,7 @@ int add_main(int argc, char **argv)
 		kp_err("install of %s aborted; the tree is partially written",
 		       name);
 		kb_rmtree(tmpl);
+		close(lock);
 		return 1;
 	}
 
@@ -488,19 +544,18 @@ int add_main(int argc, char **argv)
 	if (upgrade) {
 		size_t on = 0;
 		char *old = kb_read_all(dbfile, &on);
-		size_t nn = 0;
-		char *nw = manifest(pkgfile, &nn);
-		if (old && nw) {
+		if (old) {
 			/* Both sides canonical, each line fenced by newlines so
 			 * that a path matches only as a whole line. */
-			KpOwned *owned = kp_owned_load(&c);
+			KpCanon canon;
+			kp_canon_load(&c, &canon);
 			KbBuf keep = {0};
 			kb_buf_str(&keep, "\n");
-			for (char *l = nw, *e; l && *l; l = e ? e + 1 : NULL) {
+			for (char *l = m, *e; l && *l; l = e ? e + 1 : NULL) {
 				e = strchr(l, '\n');
 				if (e)
 					*e = 0;
-				char *k = kp_canon_path(&owned->canon, l);
+				char *k = kp_canon_path(&canon, l);
 				kb_buf_printf(&keep, "%s\n", k);
 				free(k);
 				if (e)
@@ -532,14 +587,27 @@ int add_main(int argc, char **argv)
 				}
 				l = nl ? nl + 1 : NULL;
 			}
-			for (int i = lines - 1; i >= 0; i--) {
-				char *k = kp_canon_path(&owned->canon, paths[i]);
+			/* An orphan is a path of the old version the new one
+			 * does not list. Only an orphan FILE is asked about,
+			 * so only those claims are read. */
+			char *orphan = kb_calloc((size_t)(lines ? lines : 1), 1);
+			char **ask = kb_calloc((size_t)(lines ? lines : 1),
+					       sizeof(*ask));
+			int nask = 0;
+			for (int i = 0; i < lines; i++) {
+				char *k = kp_canon_path(&canon, paths[i]);
 				KbBuf pat = {0};
 				kb_buf_printf(&pat, "\n%s\n", k);
-				int kept = strstr(keep.p, pat.p) != NULL;
+				orphan[i] = strstr(keep.p, pat.p) == NULL;
 				kb_buf_free(&pat);
 				free(k);
-				if (kept)
+				size_t vl = strlen(paths[i]);
+				if (orphan[i] && vl && paths[i][vl - 1] != '/')
+					ask[nask++] = paths[i];
+			}
+			KpOwned *owned = kp_owned_load_some(&c, ask, nask);
+			for (int i = lines - 1; i >= 0; i--) {
+				if (!orphan[i])
 					continue;
 				char *victim = kb_path_join(root, paths[i]);
 				size_t vl = strlen(paths[i]);
@@ -560,30 +628,33 @@ int add_main(int argc, char **argv)
 				}
 				free(victim);
 			}
+			free(orphan);
+			free(ask);
 			free(paths);
 			kb_buf_free(&keep);
 			kp_owned_free(owned);
 		}
 		free(old);
-		free(nw);
 	}
 
 	kb_rmtree(tmpl);
 
-	size_t mn = 0;
-	char *m = manifest(pkgfile, &mn);
-	if (!m) {
-		kp_err("cannot list %s", pkgfile);
-		return 1;
-	}
 	kp_triggers_note(&trig, m);
 	kb_mkdir_p(db);
 	KbBuf entry = {0};
 	kb_buf_printf(&entry, "%s %s\n", ver, rel);
 	kb_buf_add(&entry, m, mn);
-	kb_write_all(dbfile, entry.p, entry.n);
+	int wrote = kb_write_all(dbfile, entry.p, entry.n);
 	kb_buf_free(&entry);
 	free(m);
+
+	/* The package file's hash, after the entry and only when it landed:
+	 * the package store keys every dependent port on it, and a hash beside
+	 * an entry that is not there names an install that did not happen. An
+	 * unwritten sidecar reads as unknown, which only costs a store hit. */
+	char pkgsha[65];
+	if (wrote == 0 && kb_sha256_file(pkgfile, pkgsha) == 0)
+		kp_record_pkg_sha(&c, name, pkgsha);
 
 	/* The new owner's entry is written FIRST and the old owners are edited
 	 * after: an interruption in between leaves a path claimed twice, which
@@ -629,6 +700,7 @@ int add_main(int argc, char **argv)
 	}
 
 	kp_triggers_run(&trig, root);
+	close(lock);
 
 	kp_msg("Package '%s' installed successfully", name);
 	free(dbfile);

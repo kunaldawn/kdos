@@ -19,6 +19,15 @@
  * There is deliberately no reverse-dependency check. `kpkgdel bash` will
  * remove bash. That is the distro this is.
  *
+ * The entry goes with its sidecars (`.recipe/<name>`, `.pkgsha/<name>`): one
+ * left behind describes a package that is not there, and the next install of
+ * that name inherits it.
+ *
+ * The whole run holds the database's writer lock (kp_db_lock), from the first
+ * ownership read to the last index trigger: an install that scans for
+ * conflicts while a removal is rewriting the table decides against files that
+ * are about to be gone.
+ *
  * A name that is not installed is reported and skipped, never fatal. A check
  * inside the loop with an `exit 1` makes `kpkgdel a bogus c` remove `a`, then
  * stop and never touch `c` — while reporting only that `bogus` was not
@@ -37,13 +46,13 @@ static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
 {
 	char *db = kp_db_dir(c);
 	char *dbfile = kb_path_join(db, name);
-	free(db);
 
 	size_t len = 0;
 	char *data = kb_read_all(dbfile, &len);
 	if (!data) {
 		kp_err("Package '%s' not installed", name);
 		free(dbfile);
+		free(db);
 		return 1;
 	}
 
@@ -66,8 +75,10 @@ static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
 	}
 
 	/* Loaded per package, after the previous one's entry is gone, so a
-	 * file two named packages both claim goes with the second. */
-	KpOwned *owned = kp_owned_load(c);
+	 * file two named packages both claim goes with the second. Only this
+	 * package's own paths are ever asked about, so only their claims are
+	 * kept. */
+	KpOwned *owned = kp_owned_load_some(c, paths, n);
 	for (int i = n - 1; i >= 0; i--) {
 		char *full = kb_path_join(root, paths[i]);
 		size_t pl = strlen(paths[i]);
@@ -88,6 +99,15 @@ static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
 	free(data);
 	unlink(dbfile);
 	free(dbfile);
+	static const char *const sidecar[] = { ".recipe", ".pkgsha" };
+	for (size_t i = 0; i < sizeof(sidecar) / sizeof(*sidecar); i++) {
+		char *dir = kb_path_join(db, sidecar[i]);
+		char *f = kb_path_join(dir, name);
+		unlink(f);
+		free(f);
+		free(dir);
+	}
+	free(db);
 	kp_msg("Package '%s' removed", name);
 	return 0;
 }
@@ -124,6 +144,14 @@ int del_main(int argc, char **argv)
 		return 1;
 	}
 
+	int lock = kp_db_lock(&c);
+	if (lock < 0) {
+		char *db = kp_db_dir(&c);
+		kp_err("cannot lock the package database %s", db);
+		free(db);
+		return 1;
+	}
+
 	/* Every named package is attempted; the worst status is the exit code. */
 	int rc = 0;
 	KpTriggers trig = {0};
@@ -131,5 +159,6 @@ int del_main(int argc, char **argv)
 		if (remove_one(&c, names[i], &trig))
 			rc = 1;
 	kp_triggers_run(&trig, root);
+	close(lock);
 	return rc;
 }

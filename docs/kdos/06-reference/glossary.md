@@ -507,7 +507,7 @@ confused with `phosphor`, one of the eight *accents*. See
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-five port repositories in one format, holding 2,023 recipes: 1,999 upstream ports in `ports/core/`,
+five port repositories in one format, holding 2,024 recipes: 2,000 upstream ports in `ports/core/`,
 each on a *shelf*, and 24 of KDOS's own in four *areas*: 5 in `src/system/`, 6 in `src/art/`, 8 in
 `src/desktop/` and 5 in `src/daemons/`. (The sixth directory in `src/system/`, `kdos-kpkg`, has no
 recipe; `10_bootstrap` compiles it by script.) A port is known by its bare name, which is unique
@@ -568,14 +568,16 @@ init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 ### recipe
 
 The files that describe how to build one *port*: its *kpkgbuild*, its `build.sh`, and any
-`postinstall.sh` and patches beside them. The *recipe hash* is taken over them. See [Writing
+`postinstall.sh` and patches beside them. The *recipe hash* is taken over them and every other
+file beside them that no `sha256 =` line names. See [Writing
 ports](../05-developer/writing-ports.md).
 
 ### recipe hash
 
 The other of the two package hashes: a SHA-256 over a port's recipe files (`kpkgbuild`, `build.sh`,
-`postinstall.sh` and every patch). For a port with no `source =` it also covers the port's whole
-directory, and for one of KDOS's own ports under `src/` all of `src/libs` as well, so editing a
+`postinstall.sh` and every patch) and every other file in its directory that no `sha256 =` line
+names, so editing a kernel config beside a recipe changes it. For a port with no `source =` that is
+the port's whole directory, and for one of KDOS's own ports under `src/` all of `src/libs` as well, so editing a
 program's source or a shared library changes it. Written `E:` in a package index. It decides what
 the build rebuilds. Not to be confused with a *source hash*. See
 [Packaging](../03-architecture/packaging.md#e--the-recipe-hash).

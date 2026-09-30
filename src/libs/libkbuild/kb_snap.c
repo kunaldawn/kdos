@@ -263,9 +263,10 @@ int kbuild_snap_interrupted(const char *build_dir, char *target, size_t cap)
 	return 1;
 }
 
-/* /proc/mounts, longest first — script/chroot/exec.sh's own bind mounts have
- * to be released before build/ can be deleted, and a snapshot taken over a
- * live bind mount would archive the host's /dev. */
+/* /proc/mounts, longest first. script/chroot/exec.sh mounts in a private
+ * namespace and leaves nothing here, so a mount found under build/ belongs to
+ * something else; it has to be released before build/ can be deleted, and a
+ * snapshot taken over a live bind mount would archive the host's /dev. */
 int kbuild_snap_mounts_under(const char *path, char out[][256], int max)
 {
 	size_t len = 0;

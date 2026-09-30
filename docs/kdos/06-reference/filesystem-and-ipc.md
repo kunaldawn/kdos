@@ -112,8 +112,10 @@ The state and caches of `kpkg`, the host package manager. Every directory is a d
 |---|---|
 | `/var/lib/kpkg/db/<name>` | One entry per installed package, with its file list |
 | `/var/lib/kpkg/db/.recipe/<name>` | The recipe hash a package was installed from |
+| `/var/lib/kpkg/db/.pkgsha/<name>` | The SHA-256 of the package file it was installed from, which the build's [package store](../03-architecture/packaging.md#the-package-store) keys dependent ports on |
+| `/var/lib/kpkg/db/.lock` | The database's writer lock: `kpkgadd` and `kpkgdel` hold an exclusive `flock` on it while they change the tree, so one runs at a time |
 | `/var/cache/kpkg/sources/` | Downloaded source files (`SOURCE_DIR`) |
-| `/var/cache/kpkg/packages/` | Built package archives (`PACKAGE_DIR`) |
+| `/var/cache/kpkg/packages/` | Built package archives (`PACKAGE_DIR`), and the `<name>.pending` record of each package `kpkg install --build-only` built and `--commit` has not yet installed |
 | `/var/cache/kpkg/work/` | Build working directories (`WORK_DIR`) |
 
 The ports tree `kpkg` builds from is named by `PORT_REPO`, `/ports/core` by default: a
@@ -657,16 +659,25 @@ Read by `make build` and the build scripts on the build machine; see
 |---|---|
 | `KDOS_ISO_SOURCES=1` | Copy `src/`, `script/`, `fs/` and `ports/` (every fetched source beside its recipe, without the source cache and the host helpers) onto the boot medium as `/sources`, with a `SOURCES` stamp; a live session sees it at `/mnt/iso/sources`. The `Makefile` and the `Dockerfile` are not on the medium |
 | `KDOS_MAKE_BINHOST=1` | Keep every package the chroot phases build, and have `70_image` write a signed binary host of them to `build/binhost/` |
+| `KDOS_ISO_COMP=` | The codec of `system.sfs`: `xz` or `zstd:<1-22>`; empty is `zstd:15`, the release setting. `zstd:3` is a faster developer image about 10% larger. Any other value stops the image step |
+| `KDOS_CCACHE=0` | Turn off the compiler cache, default `1`, which CMake ports in the chroot compile through into `build/ccache`; a cached object is byte-identical to a compiled one |
+| `KDOS_PKG_STORE=1` | Install a port from the package store `build/pkgstore` when its recipe, environment and dependencies' bytes match a stored package, and store every package built; `check` builds every hit anyway and logs differences to `build/logs/pkgstore-check.log`; default `0`, off. See [The package store](../03-architecture/packaging.md#the-package-store) |
+| `KDOS_PKG_STORE_MAX=SIZE` | The size `70_image` evicts the package store down to, least recently used first; default `60G` |
+| `KPKG_STORE`, `KPKG_STORE_CHECK`, `KPKG_STORE_SALT` | Set by the build from `KDOS_PKG_STORE`, never by hand: the store directory inside the chroot, check mode, and kdosbuild's hash of the bootstrap phases. `KPKG_STORE_BASE`, from `script/env/chroot.env`, names the ports every store key depends on |
 | `KDOS_PACK_KDOS=1` | Also pack this root filesystem as a base pack named `kdos`, written to `build/kdos-base` |
+| `KDOS_JOBS=N` | The job count every phase uses: `MAKEFLAGS=-jN`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, and a `--cpus` cap on the build container no higher than the host's thread count. Unset or empty, `script/env/common.env` computes it: the thread count, clamped to one job per 2 GiB of memory, at least 1 |
+| `KDOS_CPU_SHARES=N` | The build container's CPU weight, a `make build` variable only; default `256`. A weight, not a cap |
 | `KDOS_REPLAY=1` | A build step's "already done" guard stands down. Set for steps a build plan named explicitly |
 | `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY` | Recorded in each phase's snapshot manifest as `git_commit` and `git_dirty`, and shown by the snapshot picker, which marks a snapshot stale when either disagrees with the tree. Nothing on the image reads them; `/etc/os-release` carries a fixed version |
 | `KDOS_SNAPSHOT_PATHS`, `KDOS_SNAPSHOT_EXCLUDE`, `KDOS_PHASE_TITLE`, `KDOS_PHASE_DESC` | A phase's metadata block in its `script/phases/<phase>/phase.env`. The orchestrator parses these keys from the file's own text without sourcing it, so it follows none of the file's `source` lines and each `phase.env` sets them itself; the phase's steps source the whole file as shell |
 | `KDOS_RES=WxH` | The virtual screen size for `make run` and its variants; default `1920x1080` |
 
 The build runs its later steps inside a chroot entered with a cleared environment, so a variable a
-chroot step reads must also be named in `script/chroot/exec.sh`. Exactly four are forwarded:
-`KDOS_REPLAY`, `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS` and `KDOS_MAKE_BINHOST`, which also arrives as
-`KPKG_KEEP_CACHE`. A new one added to the `Makefile` and not
+chroot step reads must also be named in `script/chroot/exec.sh`. Exactly ten are forwarded:
+`KDOS_REPLAY`, `KDOS_JOBS`, `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_ISO_COMP`, `KDOS_CCACHE`,
+`KDOS_PKG_STORE`, `KDOS_PKG_STORE_MAX`, `KPKG_STORE_SALT` and `KDOS_MAKE_BINHOST`, which also
+arrives as `KPKG_KEEP_CACHE`; `KDOS_PKG_STORE` also arrives as `KPKG_STORE` and
+`KPKG_STORE_CHECK`. A new one added to the `Makefile` and not
 there reaches every host step and no chroot step; see
 [Entering the chroot](../05-developer/how-kdos-is-built.md#entering-the-chroot).
 
@@ -685,6 +696,7 @@ resolves a source and when the pre-push hook refuses a push are in
 | `KDOS_SRCCACHE` | `ports/.srccache` | The local source cache, one file per hash, stored as `sha256-<first two hex digits>/<hash>`. Point two checkouts at one cache to download each file once |
 | `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index saying which archive release holds each hash |
 | `KDOS_RELEASE_CAP` | `1000` | Files per archive release before `ports/publish` opens the next; GitHub's asset limit |
+| `FETCH_JOBS` | `1` | How many ports `ports/fetch` (and `make fetch`, `make fetch-check`) resolves or checks at once. Two ports naming one hash take turns on it; vendor bundles are still generated one at a time |
 | `KDOS_FETCH_HOST=1` | unset | Run `ports/fetch` entirely on this machine, generating vendor bundles with its own toolchains, instead of handing missing bundles to the fetch container |
 | `SOURCE_DATE_EPOCH` | `1735689600` | The timestamp written into generated vendor bundles, so they are reproducible |
 | `KDOS_SOURCES_TOKEN` | read from `~/.config/kdos/sources-token` (mode 600) | The GitHub token `ports/publish` uploads with |

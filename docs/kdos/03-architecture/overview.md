@@ -50,12 +50,12 @@ first field is `app`):
 
 | Where | Count |
 |---|---|
-| `ports/core` | 1,999 recipes, on 102 shelves |
+| `ports/core` | 2,000 recipes, on 102 shelves |
 | `src/system` | 5 recipes |
 | `src/art` | 6 recipes |
 | `src/desktop` | 8 recipes |
 | `src/daemons` | 5 recipes |
-| All port repositories | 2,023 recipes |
+| All port repositories | 2,024 recipes |
 | Catalogue `app` rows (outer ring) | 73 |
 
 `ports/core` files each port one level down, on a **shelf** named for its subject:

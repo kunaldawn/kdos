@@ -36,8 +36,8 @@ Plan for the cost before you start:
 
 | | |
 |---|---|
-| Wall time, first build | Many hours; budget a day or more. Every package is compiled, including GCC several times over and the kernel. The build container is limited to eight CPUs |
-| Disk | About 41.5 GB (38.6 GiB) of upstream source archives, fetched by `make fetch`. The build tree under `build/` needs room of its own, and a complete set of phase snapshots at least 84 GB more, of which the image phase alone is about 59 GB. Snapshots are optional |
+| Wall time, first build | Many hours; budget a day or more. Every package is compiled, including GCC several times over and the kernel. The build container uses every thread the host leaves idle; `make build KDOS_JOBS=N` caps it |
+| Disk | About 41.5 GB (38.6 GiB) of upstream source archives, fetched by `make fetch`. The build tree under `build/` needs room of its own, and a complete set of phase snapshots tens of gigabytes more; its size is not yet measured. Snapshots are optional |
 | Network | Needed to clone, to run `make fetch`, and for the first `make build` on a machine, which builds its container image from Alpine Linux packages. The compile itself runs with networking switched off |
 | Software on your machine | Docker, plus a few small tools listed in the next section. Every compiler runs inside a container |
 
@@ -76,7 +76,7 @@ reads nothing but what the fetch left in the port directories and runs offline.
 ### Fetching the sources
 
 A clone carries the recipes, not the upstream source archives. Each recipe (also called a *port*: a
-directory holding a declarative `kpkgbuild` file and a `build.sh`; 1,999 live under
+directory holding a declarative `kpkgbuild` file and a `build.sh`; 2,000 live under
 `ports/core/`, each on one of 102 subject shelves as `ports/core/<shelf>/<name>/`, and 24 under
 `src/`; see the [glossary](../06-reference/glossary.md#port)) names its source files with a
 `sha256 =` line, and `make fetch` downloads every such file that git does not carry.

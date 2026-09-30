@@ -55,7 +55,7 @@ cd src
 # /etc/OpenCL/vendors names, Mesa's rusticl, which offers a device only for the
 # drivers RUSTICL_ENABLE lists (/etc/profile.d/50-opencl.sh sets it), and
 # report no device when there is none.
-make -j1
+make
 
 # WHAT IT IS FOR: reading a hash out of a LUKS header, a KeePass database, an
 # encrypted PDF or ZIP, or /etc/shadow, and answering "how long would this

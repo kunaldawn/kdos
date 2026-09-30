@@ -15,6 +15,26 @@
  * kpkgdepends drops anything already installed, which would make `-f` resolve
  * to nothing at all, so under `-f` resolution runs against an EMPTY database
  * and the decision about what to actually rebuild is taken here, per package.
+ *
+ * `--build-only` and `--commit` split one install in two, so builds that do
+ * not depend on each other can run side by side while installs stay one at a
+ * time. `--build-only` resolves nothing: a dependency that is not installed
+ * and current is an error naming it, never a build. What it built is recorded
+ * in `<PACKAGE_DIR>/<name>.pending` — line 1 the package's path, line 2 the
+ * recipe hash taken at build start, line 3 `kept` or `transient` for the xz
+ * preset it was packed with, line 4 the package-store key taken before the
+ * build (empty when the store is off or the key unknown), further lines
+ * ignored — and `--commit` installs from exactly that record.
+ *
+ * THE PACKAGE STORE ($KPKG_STORE, kp_store.c) sits between the skip and the
+ * build. A port that is not forced and whose key has a usable entry is
+ * installed from the store (`Reusing <pkg> from the store (<key12>)`), or,
+ * under --build-only, copied into PACKAGE_DIR as if built. Otherwise it
+ * builds, and once installed its package is stored under the key computed
+ * BEFORE the build. With $KPKG_STORE_CHECK set a hit builds anyway, the two
+ * packages are compared, and a difference is logged to
+ * `<store>/../logs/pkgstore-check.log` and the entry replaced. No store
+ * failure fails an install; each is a warning.
  * ---------------------------------
  */
 
@@ -41,6 +61,11 @@ static void usage(void)
 	       "                     file-conflict scan for them\n"
 	       "  --overwrite        Let a package take a path another package\n"
 	       "                     owns; ownership moves with the file\n"
+	       "  --build-only       (install) Build exactly the named ports into\n"
+	       "                     the package cache; install nothing. Every\n"
+	       "                     dependency must already be installed\n"
+	       "  --commit           (install) Install what --build-only built\n"
+	       "                     for each named port, in the order named\n"
 	       "\n"
 	       "Commands:\n"
 	       "  install <pkg>...   Install package(s) with dependencies\n"
@@ -63,6 +88,9 @@ static void usage(void)
 	       "  apply-delta <old> <delta> -o <new>  Rebuild a package from one\n"
 	       "  binhost <dir> <p>  Install the prebuilt package, if arch, build\n"
 	       "                     config and recipe hash all match this machine\n"
+	       "  store gc <dir> <max-size>  Evict package-store entries, least\n"
+	       "                     recently used first, down to max-size\n"
+	       "                     (bytes, or K/M/G/T)\n"
 	       "  help               Show this help message\n"
 	       "\n"
 	       "Examples:\n"
@@ -73,22 +101,6 @@ static void usage(void)
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
-
-/* kpkgbuild is invoked with no arguments and cwd == the port directory. */
-static int build_port(const char *portdir)
-{
-	char cwd[1024];
-	if (!getcwd(cwd, sizeof(cwd)))
-		return -1;
-	if (chdir(portdir) != 0) {
-		kp_err("Port not found: %s", portdir);
-		return -1;
-	}
-	int rc = build_main(0, NULL);
-	if (chdir(cwd) != 0)
-		kb_die("cannot return to %s", cwd);
-	return rc;
-}
 
 static int install_pkgfile(const KpConf *c, const char *file, int force,
 			   int overwrite)
@@ -109,9 +121,392 @@ static int install_pkgfile(const KpConf *c, const char *file, int force,
 	return add_main(n, args);
 }
 
+/* ──────────────────────────────────────────────────────────────────────── */
+
+static int report_diff(FILE *out, const char *a, const char *b);
+static char *fingerprint_of(const char *pkgfile);
+
+/* $KPKG_STORE, or NULL when the store is off. */
+static const char *store_dir(void)
+{
+	const char *s = getenv("KPKG_STORE");
+	return s && *s ? s : NULL;
+}
+
+static int store_checking(void)
+{
+	const char *s = getenv("KPKG_STORE_CHECK");
+	return s && *s && strcmp(s, "0");
+}
+
+/* The key of `pkg` before its build, or "" when the store is off or the key
+ * is unknown; the reason for an unknown key is printed. */
+static void store_key(const KpConf *c, const char *pkg, const char *dir,
+		      int transient, char key[65])
+{
+	key[0] = '\0';
+	if (!store_dir())
+		return;
+	char **closure = kp_store_closure(c, pkg);
+	char why[300];
+	if (kp_store_key(c, pkg, dir, transient, closure, key, why,
+			 sizeof(why)) != 0) {
+		key[0] = '\0';
+		kp_msg("%s: store key unknown (%s); building, not storing",
+		       pkg, why);
+	}
+	kb_strv_free(closure);
+}
+
+/* A usable store entry for `key` that this run may install from: not in
+ * check mode, which always builds. */
+static int store_hit(const KpConf *c, const char *key, char *file, size_t cap)
+{
+	char sha[65];
+	if (!key[0] || store_checking())
+		return 0;
+	return kp_store_lookup(c, store_dir(), key, file, cap, sha);
+}
+
+/* `<PACKAGE_DIR>/<basename of file>`, a copy of the stored package. */
+static int store_copy_out(const KpConf *c, const char *file, char *out,
+			  size_t cap)
+{
+	kb_mkdir_p(c->package_dir);
+	char *dst = kb_path_join(c->package_dir, kb_basename(file));
+	int rc = kb_copy_file(file, dst);
+	kb_strlcpy(out, dst, cap);
+	free(dst);
+	return rc;
+}
+
+/* Check mode found `stored` where a build made `built`: one line, then the
+ * first members that differ. */
+static void store_log_mismatch(const char *pkg, const char *key,
+			       const char *stored, const char *ssha,
+			       const char *built, const char *bsha)
+{
+	char *parent = kb_strdup(store_dir());
+	char *sl = strrchr(parent, '/');
+	if (sl)
+		*sl = '\0';
+	char *logs = kb_path_join(sl && parent[0] ? parent : ".", "logs");
+	kb_mkdir_p(logs);
+	char *log = kb_path_join(logs, "pkgstore-check.log");
+	FILE *f = fopen(log, "a");
+	kp_msg("%s: the store holds different bytes for %.12s (see %s)", pkg,
+	       key, log);
+	if (f) {
+		fprintf(f, "%s %.12s stored=%s built=%s\n", pkg, key, ssha,
+			bsha);
+		char *a = fingerprint_of(stored);
+		char *b = fingerprint_of(built);
+		if (a && b)
+			report_diff(f, a, b);
+		free(a);
+		free(b);
+		fclose(f);
+	}
+	free(log);
+	free(logs);
+	free(parent);
+}
+
+/*
+ * After `pkg` is installed from `file`: store it under `key`, taken before the
+ * build. An entry already holding the same bytes is only touched; one holding
+ * different bytes is logged in check mode and replaced. An undeclared link
+ * whose owner has no `.pkgsha` cannot be guarded, so nothing is stored.
+ */
+static void store_after(const KpConf *c, const char *pkg, const char *key,
+			const char *file)
+{
+	const char *store = store_dir();
+	if (!store || !key[0])
+		return;
+	char **closure = kp_store_closure(c, pkg);
+	KbBuf x = {0};
+	int lrc = kp_store_links(c, pkg, closure, &x);
+	kb_strv_free(closure);
+	if (lrc != 0) {
+		kp_msg("%s: links a package with no .pkgsha; not stored", pkg);
+		kb_buf_free(&x);
+		return;
+	}
+	char bsha[65], sfile[1100], ssha[65];
+	if (kb_sha256_file(file, bsha) != 0) {
+		kb_warn("%s: cannot hash %s; not stored", pkg, file);
+		kb_buf_free(&x);
+		return;
+	}
+	if (kp_store_lookup(c, store, key, sfile, sizeof(sfile), ssha)) {
+		if (!strcmp(ssha, bsha)) {
+			kp_store_touch(store, key);
+			kb_buf_free(&x);
+			return;
+		}
+		if (store_checking())
+			store_log_mismatch(pkg, key, sfile, ssha, file, bsha);
+	}
+	if (kp_store_put(store, key, pkg, file, x.p ? x.p : "") != 0)
+		kb_warn("%s: cannot store %s under %.12s", pkg, file, key);
+	kb_buf_free(&x);
+}
+
+/* `kpkg store gc <dir> <max-size>`. */
+static int cmd_store(int argc, char **argv)
+{
+	if (argc != 3 || strcmp(argv[0], "gc")) {
+		printf("Usage: kpkg store gc <dir> <max-size>\n");
+		return 1;
+	}
+	char *end = NULL;
+	unsigned long long cap = strtoull(argv[2], &end, 10);
+	if (end == argv[2]) {
+		kp_err("not a size: %s", argv[2]);
+		return 1;
+	}
+	int shift = 0;
+	switch (*end) {
+	case 'T': case 't': shift = 40; end++; break;
+	case 'G': case 'g': shift = 30; end++; break;
+	case 'M': case 'm': shift = 20; end++; break;
+	case 'K': case 'k': shift = 10; end++; break;
+	default: break;
+	}
+	if (*end) {
+		kp_err("not a size: %s", argv[2]);
+		return 1;
+	}
+	cap <<= shift;
+	if (!kb_is_dir(argv[1])) {
+		kp_msg("No package store at %s", argv[1]);
+		return 0;
+	}
+	int n = kp_store_gc(argv[1], cap);
+	if (n < 0) {
+		kp_err("cannot read %s", argv[1]);
+		return 1;
+	}
+	kp_msg("Evicted %d store entr%s from %s", n, n == 1 ? "y" : "ies",
+	       argv[1]);
+	return 0;
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/* `<PACKAGE_DIR>/<name>.pending`. PACKAGE_DIR is where kpkgbuild wrote the
+ * package, whatever --root says, so the record sits beside the file it names. */
+static char *pending_path(const KpConf *c, const char *name)
+{
+	char base[160];
+	snprintf(base, sizeof(base), "%s.pending", name);
+	return kb_path_join(c->package_dir, base);
+}
+
+/*
+ * Read a `.pending` record: line 1 into `pkg`, line 2 into `hash` ("" when the
+ * build had none), into `*kept` whether line 3 says `kept`, and line 4 into
+ * `key` ("" when there is none). A record with no third line reads as
+ * transient: only a package known to carry the kept preset may stay in a kept
+ * cache. Lines after the fourth are ignored. -1 when the record is absent,
+ * unreadable or names no package.
+ */
+static int pending_read(const KpConf *c, const char *name, char *pkg,
+			size_t pcap, char hash[65], int *kept, char key[65])
+{
+	char *p = pending_path(c, name);
+	char *data = kb_read_whole(p, NULL);
+	free(p);
+	pkg[0] = hash[0] = key[0] = '\0';
+	*kept = 0;
+	if (!data)
+		return -1;
+	char *line[4] = { data, NULL, NULL, NULL };
+	for (int i = 0; i < 4 && line[i]; i++) {
+		char *e = strchr(line[i], '\n');
+		if (e) {
+			*e = '\0';
+			if (i < 3)
+				line[i + 1] = e + 1;
+		}
+	}
+	kb_strlcpy(pkg, line[0], pcap);
+	if (line[1] && strlen(line[1]) == 64)
+		kb_strlcpy(hash, line[1], 65);
+	*kept = line[2] && !strcmp(line[2], "kept");
+	if (line[3] && strlen(line[3]) == 64)
+		kb_strlcpy(key, line[3], 65);
+	free(data);
+	return pkg[0] ? 0 : -1;
+}
+
+/*
+ * `kpkg install --build-only <port>...` — build each named port, in the order
+ * named, and install nothing.
+ *
+ * NOTHING IS RESOLVED. The caller has already ordered the work and decides
+ * which ports build together, so a dependency that is not installed and
+ * current means the caller's order is wrong: building it here would put a
+ * second build of it beside the caller's, and building without it would link
+ * against whatever the tree happens to hold. It is an error that names it.
+ *
+ * A record that names an existing package built from the SAME recipe hash is
+ * the build already done: an interrupted run resumes without building again.
+ * Under a kept cache the record must also say `kept`: a transient package is
+ * xz -0, not the bytes kpkgbuild makes, and must not become the binhost's
+ * copy, so it is built again with the kept preset.
+ *
+ * A store hit is copied into PACKAGE_DIR and recorded exactly as a build
+ * would be; the key goes on line 4 for --commit to store under.
+ */
+static int build_only(KpConf *c, char **want, int nwant, int force,
+		      int keep_cache)
+{
+	for (int i = 0; i < nwant; i++) {
+		const char *pkg = want[i];
+		char *dir = kp_port_dir(c, pkg);
+		if (!dir) {
+			kp_err("Port not found: %s", pkg);
+			return 1;
+		}
+		if (!force && kp_installed_current(c, pkg)) {
+			kp_msg("Skipping %s (already installed)", pkg);
+			free(dir);
+			continue;
+		}
+
+		char deps[KP_MAX_DEPS][128];
+		int nd = kp_depends(dir, deps, KP_MAX_DEPS);
+		for (int d = 0; d < nd; d++) {
+			if (!kp_installed_current(c, deps[d])) {
+				kp_err("%s: dependency %s is not installed and "
+				       "current; --build-only builds nothing "
+				       "it was not named", pkg, deps[d]);
+				free(dir);
+				return 1;
+			}
+		}
+
+		char h[65];
+		if (kp_recipe_hash(dir, h) != 0)
+			h[0] = '\0';
+
+		char prev[1100], ph[65], pkey[65];
+		int pkept;
+		if (h[0] &&
+		    pending_read(c, pkg, prev, sizeof(prev), ph, &pkept,
+				 pkey) == 0 &&
+		    !strcmp(ph, h) && kb_path_exists(prev) &&
+		    (pkept || !keep_cache)) {
+			kp_msg("%s: already built (%s)", pkg, prev);
+			free(dir);
+			continue;
+		}
+
+		char key[65], sfile[1100], built[1100];
+		store_key(c, pkg, dir, !keep_cache, key);
+		if (!force && store_hit(c, key, sfile, sizeof(sfile)) &&
+		    store_copy_out(c, sfile, built, sizeof(built)) == 0) {
+			kp_msg("Reusing %s from the store (%.12s)", pkg, key);
+			kp_store_touch(store_dir(), key);
+			free(dir);
+		} else {
+			kp_msg(force ? "Rebuilding %s (forced)..."
+				     : "Building %s...", pkg);
+			kp_pack_transient = !keep_cache;
+			int rc = kp_build_port(dir, built, sizeof(built));
+			kp_pack_transient = 0;
+			free(dir);
+			if (rc != 0) {
+				kp_err("Failed to build %s", pkg);
+				return 1;
+			}
+			if (!built[0]) {
+				kp_err("no package produced for %s", pkg);
+				return 1;
+			}
+		}
+
+		/* Written only once the package is complete, and replaced whole:
+		 * a record is either absent or names a finished package. */
+		KbBuf rec = {0};
+		kb_buf_printf(&rec, "%s\n%s\n%s\n%s\n", built, h,
+			      keep_cache ? "kept" : "transient", key);
+		char *p = pending_path(c, pkg);
+		int wr = kb_write_file_atomic(p, rec.p);
+		kb_buf_free(&rec);
+		if (wr != 0) {
+			kp_err("cannot write %s", p);
+			free(p);
+			return 1;
+		}
+		kp_msg("%s: built %s", pkg, built);
+		free(p);
+	}
+	return 0;
+}
+
+/*
+ * `kpkg install --commit <port>...` — install what `--build-only` recorded for
+ * each named port, one at a time, in the order named: the caller's order is
+ * the dependency order, and a later package's hooks may need an earlier one.
+ *
+ * kpkgadd holds the database's writer lock for the install itself; the recipe
+ * hash is recorded under the same lock, taken once the install has returned
+ * it. Nesting the two would wait for ever (kp_db_lock). A name with no record
+ * stops the run: a port the caller believes is built and is not must not read
+ * as installed. A package the record calls transient is deleted after its
+ * install even under a kept cache: the cache keeps only kept-preset bytes.
+ * A record carrying a store key has its package stored under it once
+ * installed.
+ */
+static int commit(KpConf *c, char **want, int nwant, int force, int overwrite,
+		  int keep_cache)
+{
+	for (int i = 0; i < nwant; i++) {
+		const char *pkg = want[i];
+		char file[1100], h[65], key[65];
+		int kept;
+		if (pending_read(c, pkg, file, sizeof(file), h, &kept, key) !=
+		    0) {
+			kp_err("%s: nothing built to commit (no %s.pending in "
+			       "%s)", pkg, pkg, c->package_dir);
+			return 1;
+		}
+		if (!kb_path_exists(file)) {
+			kp_err("%s: %s.pending names %s, which does not exist",
+			       pkg, pkg, file);
+			return 1;
+		}
+		if (install_pkgfile(c, file, force, overwrite) != 0) {
+			kp_err("Failed to install %s", pkg);
+			return 1;
+		}
+		if (h[0]) {
+			int lock = kp_db_lock(c);
+			kp_record_recipe_hash(c, pkg, h);
+			if (lock >= 0)
+				close(lock);
+		}
+		store_after(c, pkg, key, file);
+		if (!keep_cache || !kept) {
+			kp_msg("Removing cached package %s...", file);
+			unlink(file);
+		}
+		char *p = pending_path(c, pkg);
+		unlink(p);
+		free(p);
+		/* The one line a caller reads to know the port is in. */
+		printf("kpkg: committed %s\n", pkg);
+		fflush(stdout);
+	}
+	return 0;
+}
+
 static int cmd_install(KpConf *c, int argc, char **argv)
 {
-	int force = 0, keep_cache = 0;
+	int force = 0, keep_cache = 0, build_only_mode = 0, commit_mode = 0;
 	char *want[KP_MAX_ORDER];
 	int nwant = 0;
 
@@ -133,6 +528,10 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 			overwrite = 1;
 		else if (!strcmp(argv[i], "--keep-cache"))
 			keep_cache = 1;
+		else if (!strcmp(argv[i], "--build-only"))
+			build_only_mode = 1;
+		else if (!strcmp(argv[i], "--commit"))
+			commit_mode = 1;
 		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c->root, argv[++i], sizeof(c->root));
 		else if (argv[i][0] == '-' && argv[i][1]) {
@@ -152,6 +551,14 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 		printf("Usage: kpkg install <package>...\n");
 		return 1;
 	}
+	if (build_only_mode && commit_mode) {
+		kp_err("--build-only and --commit are two separate runs");
+		return 1;
+	}
+	if (build_only_mode)
+		return build_only(c, want, nwant, force, keep_cache);
+	if (commit_mode)
+		return commit(c, want, nwant, force, overwrite, keep_cache);
 
 	kp_msg("Resolving dependencies...");
 
@@ -206,34 +613,56 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 			free(dir);
 			continue;
 		}
+		/*
+		 * The recipe hash is taken HERE, before the build starts, and
+		 * recorded only after the install succeeds. It is the hash of
+		 * the recipe this build ran from: an edit made to the port
+		 * while it builds leaves the record naming the older recipe,
+		 * so the next run sees a mismatch and rebuilds it. The store
+		 * key is taken here for the same reason.
+		 */
+		char h[65];
+		int have_hash = kp_recipe_hash(dir, h) == 0;
+		char key[65], sfile[1100];
+		store_key(c, pkg, dir, !keep_cache, key);
+		if (!forced && store_hit(c, key, sfile, sizeof(sfile))) {
+			free(dir);
+			kp_msg("Reusing %s from the store (%.12s)", pkg, key);
+			if (install_pkgfile(c, sfile, 0, overwrite) != 0) {
+				kp_err("Failed to install %s", pkg);
+				return 1;
+			}
+			if (have_hash)
+				kp_record_recipe_hash(c, pkg, h);
+			kp_store_touch(store_dir(), key);
+			char kept[1100];
+			if (keep_cache &&
+			    store_copy_out(c, sfile, kept, sizeof(kept)) != 0)
+				kb_warn("%s: cannot copy %s into %s", pkg,
+					sfile, c->package_dir);
+			continue;
+		}
 		kp_msg(forced ? "Rebuilding %s (forced)..." : "Building %s...",
 		       pkg);
-		char *dir_for_hash = kb_strdup(dir);
-		int rc = build_port(dir);
+		/* A package that is deleted right after kpkgadd reads it is
+		 * compressed with the cheap preset; a kept one never is. */
+		kp_pack_transient = !keep_cache;
+		char built[1100];
+		int rc = kp_build_port(dir, built, sizeof(built));
+		kp_pack_transient = 0;
 		free(dir);
 		if (rc != 0) {
 			kp_err("Failed to build %s", pkg);
-			free(dir_for_hash);
 			return 1;
 		}
-
-		/* kpkgbuild names the package after the recipe, so the file is
-		 * whatever landed in PACKAGE_DIR under that name. */
-		char **files = kb_listdir(c->package_dir, NULL);
-		char *found = NULL;
-		size_t plen = strlen(pkg);
-		for (char **f = files; f && *f; f++) {
-			if (strncmp(*f, pkg, plen) || (*f)[plen] != '-')
-				continue;
-			free(found);
-			found = kb_path_join(c->package_dir, *f);
-		}
-		kb_strv_free(files);
-		if (!found) {
+		if (!built[0]) {
 			kp_err("no package produced for %s", pkg);
-			free(dir_for_hash);
 			return 1;
 		}
+		/* The file this build wrote, by its exact path. A prefix scan
+		 * of PACKAGE_DIR would also match `<pkg>-<other>-...`, and
+		 * with a kept cache it picks whichever sorts last. */
+		char *found = kb_strdup(built);
 
 		/* Unlike -f, --overwrite applies to every package in the order:
 		 * it is a property of the RUN, not of what was named. A phase
@@ -241,8 +670,9 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 		 * claiming /usr/bin/sed, and whichever comes last wins. */
 		if (install_pkgfile(c, found, forced, overwrite) != 0) {
 			kp_err("Failed to install %s", pkg);
+			if (!keep_cache)
+				unlink(found);
 			free(found);
-			free(dir_for_hash);
 			return 1;
 		}
 		/*
@@ -253,12 +683,9 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 		 * optimisation hint, and its absence reads as "unknown", which
 		 * is the safe direction.
 		 */
-		{
-			char h[65];
-			if (kp_recipe_hash(dir_for_hash, h) == 0)
-				kp_record_recipe_hash(c, pkg, h);
-		}
-		free(dir_for_hash);
+		if (have_hash)
+			kp_record_recipe_hash(c, pkg, h);
+		store_after(c, pkg, key, found);
 
 		if (!keep_cache) {
 			kp_msg("Removing cached package %s...", found);
@@ -334,22 +761,6 @@ static int stage_recipe(const char *portdir, const char *recipe, char *out,
 	free(bs);
 	free(to);
 	return rc;
-}
-
-/* The built package for <name>, whatever version it came out as. */
-static char *find_package(const KpConf *c, const char *name)
-{
-	char **files = kb_listdir(c->package_dir, NULL);
-	char *found = NULL;
-	size_t plen = strlen(name);
-	for (char **f = files; f && *f; f++) {
-		if (strncmp(*f, name, plen) || (*f)[plen] != '-')
-			continue;
-		free(found);
-		found = kb_path_join(c->package_dir, *f);
-	}
-	kb_strv_free(files);
-	return found;
 }
 
 /*
@@ -436,8 +847,9 @@ static char *fingerprint_of(const char *pkgfile)
 	return out.p ? out.p : kb_strdup("");
 }
 
-/* The first few lines that differ, which is what a person needs to see. */
-static void report_diff(const char *a, const char *b)
+/* The first few lines that differ, which is what a person needs to see.
+ * Returns how many were written. */
+static int report_diff(FILE *out, const char *a, const char *b)
 {
 	const char *pa = a, *pb = b;
 	int shown = 0;
@@ -458,8 +870,9 @@ static void report_diff(const char *a, const char *b)
 		if (pb)
 			memcpy(lb, pb, kb);
 		if (strcmp(la, lb)) {
-			printf("  - %s\n  + %s\n", la[0] ? la : "(absent)",
-			       lb[0] ? lb : "(absent)");
+			fprintf(out, "  - %s\n  + %s\n",
+				la[0] ? la : "(absent)",
+				lb[0] ? lb : "(absent)");
 			shown++;
 		}
 		pa = na ? na + 1 : NULL;
@@ -467,6 +880,7 @@ static void report_diff(const char *a, const char *b)
 		if (!pa && !pb)
 			break;
 	}
+	return shown;
 }
 
 /* `kpkg meta` — the recipe's fields as shell assignments, single-quoted.
@@ -515,8 +929,7 @@ static int cmd_meta(const KpConf *c, const char *who)
  * same code path because it is the same comparison: two archives, one
  * fingerprint each.
  */
-static int build_and_keep(const KpConf *c, const char *portdir,
-			  const char *recipe, const char *name, int slot,
+static int build_and_keep(const char *portdir, const char *recipe, int slot,
 			  char **out)
 {
 	char stage[512];
@@ -526,18 +939,19 @@ static int build_and_keep(const KpConf *c, const char *portdir,
 		return 1;
 	}
 	kp_msg("Building with %s...", recipe);
-	if (build_port(stage) != 0) {
+	char path[1100];
+	if (kp_build_port(stage, path, sizeof(path)) != 0) {
 		kp_err("build with %s failed", recipe);
 		kb_rmtree(stage);
 		return 1;
 	}
 	kb_rmtree(stage);
 
-	char *built = find_package(c, name);
-	if (!built) {
+	if (!path[0]) {
 		kp_err("no package produced by %s", recipe);
 		return 1;
 	}
+	char *built = kb_strdup(path);
 	char keep[600];
 	snprintf(keep, sizeof(keep), "/tmp/kpkg-verify-%d.tar.xz", slot);
 	if (rename(built, keep) != 0 && kb_copy_file(built, keep) != 0) {
@@ -575,7 +989,7 @@ static int cmd_verify(const KpConf *c, const char *name, int repro)
 
 	char *pkg[2] = { NULL, NULL };
 	for (int i = 0; i < 2; i++)
-		if (build_and_keep(c, portdir, which[i], name, i, &pkg[i]) != 0) {
+		if (build_and_keep(portdir, which[i], i, &pkg[i]) != 0) {
 			free(pkg[0]);
 			free(portdir);
 			return 1;
@@ -609,7 +1023,7 @@ static int cmd_verify(const KpConf *c, const char *name, int repro)
 	} else {
 		kp_err("%s: the payloads DIFFER", name);
 		if (a && b)
-			report_diff(a, b);
+			report_diff(stdout, a, b);
 		printf("  old: %s\n  new: %s\n", pkg[0], pkg[1]);
 	}
 	free(a);
@@ -635,6 +1049,17 @@ static int cmd_list(const KpConf *c, int json)
 {
 	char *db = kp_db_dir(c);
 	char **v = kb_listdir(db, NULL);
+	/* A dot-name is not a package: `.recipe/` holds sidecars and `.lock` is
+	 * the writer lock, and an empty `.lock` reads as a version line. */
+	int keep = 0;
+	for (char **p = v; p && *p; p++) {
+		if ((*p)[0] == '.')
+			free(*p);
+		else
+			v[keep++] = *p;
+	}
+	if (v)
+		v[keep] = NULL;
 	int width = 0;
 	for (char **p = v; p && *p; p++) {
 		int n = (int)strlen(*p);
@@ -827,6 +1252,8 @@ int front_main(int argc, char **argv)
 		return kp_cmd_verify_index(rest, restv);
 	if (!strcmp(cmd, "binhost"))
 		return kp_cmd_binhost(&c, rest, restv);
+	if (!strcmp(cmd, "store"))
+		return cmd_store(rest, restv);
 
 	if (!strcmp(cmd, "verify")) {
 		int repro = 0;

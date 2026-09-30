@@ -176,6 +176,66 @@ char **kbuild_packages(const KbuildPhase *p, int *count)
 	return out;
 }
 
+/* A shelf banner, `# <shelf> — `, the shelf an id of lowercase letters,
+ * digits and `-`: testing/phaseclosure.py's SHELF_BANNER_RE. */
+static int shelf_banner(const char *s)
+{
+	if (s[0] != '#' || s[1] != ' ' ||
+	    !(islower((unsigned char)s[2]) || isdigit((unsigned char)s[2])))
+		return 0;
+	const char *p = s + 2;
+	while (islower((unsigned char)*p) || isdigit((unsigned char)*p) ||
+	       *p == '-')
+		p++;
+	return !strncmp(p, " \xe2\x80\x94 ", 5);
+}
+
+int kbuild_packages_order_run(const KbuildPhase *ph, char ***names)
+{
+	int split = !file_at(ph->dir_path, KBUILD_PKG_FILE);
+	int nfiles = 0;
+	char **files = kbuild_list_files(ph, &nfiles);
+
+	int cap = 16, n = 0;
+	char **out = kb_calloc((size_t)cap + 1, sizeof(*out));
+	for (int f = 0; f < nfiles; f++) {
+		if (split && strcmp(kb_basename(files[f]), KBUILD_ORDER_FILE))
+			continue;
+		size_t len = 0;
+		char *data = kb_read_all(files[f], &len);
+		for (char *line = data, *next; line && *line; line = next) {
+			char *nl = strchr(line, '\n');
+			next = nl ? nl + 1 : NULL;
+			if (nl)
+				*nl = 0;
+			char *s = line;
+			while (*s && isspace((unsigned char)*s))
+				s++;
+			char *e = s + strlen(s);
+			while (e > s && isspace((unsigned char)e[-1]))
+				e--;
+			*e = 0;
+			if (!split && shelf_banner(s))
+				break;
+			if (!*s || *s == '#')
+				continue;
+			if (n == cap) {
+				cap *= 2;
+				char **nv = kb_calloc((size_t)cap + 1,
+						      sizeof(*nv));
+				memcpy(nv, out, (size_t)n * sizeof(*out));
+				free(out);
+				out = nv;
+			}
+			out[n++] = kb_strdup(s);
+		}
+		free(data);
+	}
+	kb_strv_free(files);
+	*names = out;
+	return n;
+}
+
 char **kbuild_ports(const char *repo_root, int *count, char *err,
 		    size_t errcap)
 {
@@ -262,6 +322,93 @@ int kbuild_package_index(const KbuildPhase *ph, int nph, const char *repo_root,
 		kb_strv_free(pkgs);
 	}
 	return n;
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+/* A phase's repositories, as the host sees them                            */
+
+/* Nothing but blanks and an optional comment from here to the end. */
+static int tail_is_comment(const char *t)
+{
+	while (*t && isspace((unsigned char)*t))
+		t++;
+	return !*t || *t == '#';
+}
+
+/* The value of one `[export ]PORT_REPO=` line, or -1 when the line is not
+ * one. The match is testing/phaseclosure.py's REPO_RE, lazy value and all:
+ * a quoted value ends at the first matching quote followed only by blanks
+ * and a comment, and when no quote closes that way the quote is part of an
+ * unquoted value, which ends where only blanks and a comment remain. */
+static int port_repo_value(const char *line, char *out, size_t cap)
+{
+	const char *s = line;
+	while (*s && isspace((unsigned char)*s))
+		s++;
+	if (!strncmp(s, "export", 6) && isspace((unsigned char)s[6])) {
+		s += 6;
+		while (*s && isspace((unsigned char)*s))
+			s++;
+	}
+	if (strncmp(s, "PORT_REPO=", 10))
+		return -1;
+	s += 10;
+
+	const char *v = s;
+	size_t len = (size_t)-1;
+	if (*s == '"' || *s == '\'') {
+		for (const char *e = s + 1; *e; e++)
+			if (*e == *s && tail_is_comment(e + 1)) {
+				v = s + 1;
+				len = (size_t)(e - v);
+				break;
+			}
+	}
+	if (len == (size_t)-1)
+		for (len = 0; !tail_is_comment(v + len); len++)
+			;
+	if (len >= cap)
+		len = cap - 1;
+	memcpy(out, v, len);
+	out[len] = 0;
+	return 0;
+}
+
+int kbuild_phase_repos(const KbuildPhase *ph, const char *repo_root,
+		       char *out, size_t cap)
+{
+	/* The last assignment wins, as it would in the sourced file. */
+	char value[2048] = "/ports/core";
+	size_t len = 0;
+	char *data = ph->env_file[0] ? kb_read_all(ph->env_file, &len) : NULL;
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		next = nl ? nl + 1 : NULL;
+		if (nl)
+			*nl = 0;
+		port_repo_value(line, value, sizeof(value));
+	}
+	free(data);
+
+	KbBuf b = {0};
+	int n = 0;
+	for (char *t = strtok(value, " \t\r\n"); t; t = strtok(NULL, " \t\r\n")) {
+		const char *rel;
+		if (!strncmp(t, "/ports/", 7) || !strcmp(t, "/ports"))
+			rel = t + 1;			/* <repo>/ports/...  */
+		else if (!strncmp(t, "/kdos/", 6))
+			rel = t + 6;			/* <repo>/...        */
+		else
+			for (rel = t; *rel == '/'; rel++)
+				;
+		kb_buf_printf(&b, "%s%s/%s", n ? " " : "", repo_root, rel);
+		n++;
+	}
+	int fits = b.n < cap;
+	if (cap)
+		kb_strlcpy(out, fits && b.p ? b.p : "", cap);
+	kb_buf_free(&b);
+	return fits ? n : -1;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

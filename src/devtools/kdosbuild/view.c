@@ -362,6 +362,12 @@ void preview_fixture(Manager *m, Sampler *s, Timings *t)
 	m->current_phase = g1;
 	m->current_step = run;
 	m->error_step = bad;
+	/* --port-jobs at its ceiling with every slot busy: the header's
+	 * `running` count and approximate ETA at their widest. Only the count
+	 * is set — the fixture never pumps, so no slot needs a process. */
+	m->port_jobs = KB_MAX_WORKERS;
+	m->nrunning = KB_MAX_WORKERS;
+	m->lvl_from = m->lvl_commit = -1;
 
 	pv_log(run, "[142/318] Compiling wlroots v0.20.2");
 	pv_log(run, "  Compiling smithay v0.4.0");

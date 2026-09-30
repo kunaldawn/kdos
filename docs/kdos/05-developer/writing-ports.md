@@ -2,7 +2,7 @@
 
 This chapter is the reference for the recipe format: how a piece of upstream software is described
 so that KDOS can fetch it, verify it, build it offline and package it. A
-[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 1,999 of them
+[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 2,000 of them
 under `ports/core`, filed on 102 shelves by subject, and the 24 ports of KDOS's own under `src/` are
 written in the same format. The chapter is for anyone adding a port, changing one, or bumping one to a new
 upstream release. Read [How KDOS is built](how-kdos-is-built.md) for where ports sit in the build,
@@ -47,22 +47,17 @@ change a source, [publish it](#publishing-sources) so other checkouts can fetch 
 A few ports keep other files in git beside the recipe. Leaving out `kpkgbuild`, `build.sh`,
 `postinstall.sh` and `*.patch`, git tracks 41 files under `ports/core`. Thirty-five of them are named
 by a `sha256 =` line: small inputs that are part of the source, such as `bash`'s and `readline`'s
-upstream patch-level files and the IANA registries under `iana-etc`. A hashed file cannot change
+upstream patch-level files and the IANA registries under `iana-etc`. A named file cannot change
 without its `sha256 =` line changing, so an edit to it changes the recipe and rebuilds the port.
-The other six are not hashed, and the [recipe hash](../06-reference/glossary.md) does not see
-them:
 
-| File | Read by |
-|---|---|
-| `linux/kdos.config`, `linux/kdos-logo-mono.pbm` | `build.sh`, from `$PORT_SRC` |
-| `epy/epy.desktop` | `build.sh`, from `$PORT_SRC` |
-| `pandoc/cabal.project.freeze` | `ports/fetch`, when it generates the vendor bundle |
-| `linux/genlogo-mono.py` | nothing in the build; it regenerates the `.pbm` on the host |
-| `ffmpeg/LICENSE.notice` | nothing in the build; it is a record kept beside the recipe |
-
-After editing one that the build reads, bump `release` in `kpkgbuild`, or the port reports itself
-current and the image keeps what it was built with (see
-[Shipping a script the port carries](#shipping-a-script-the-port-carries)).
+Every other file beside the recipe is hashed into the
+[recipe hash](../06-reference/glossary.md) itself, subdirectories included, so an edit to it
+rebuilds the port too. The six such files in git are `linux/kdos.config`,
+`linux/kdos-logo-mono.pbm` and `epy/epy.desktop`, which `build.sh` reads from `$PORT_SRC`;
+`pandoc/cabal.project.freeze`, which `ports/fetch` reads when it generates the vendor bundle; and
+`linux/genlogo-mono.py` and `ffmpeg/LICENSE.notice`, which no build reads. The rule has no
+exceptions, so a stray file beside a recipe, such as an editor backup or a `kpkgbuild.new`, also
+changes the hash and rebuilds the port.
 
 ### Shelves, and how a port is found
 
@@ -336,15 +331,19 @@ shell sources first:
 | `$PKG` | `$SRC_ROOT/pkg`, the staging tree: install here, never into `/` |
 | `$SOURCE_DIR`, `$WORK_DIR`, `$PACKAGE_DIR`, `$PORT_REPO`, `$PKGDB_DIR` | From `/etc/kpkg.conf`: kpkg's source directory, work area, package output, ports tree and package database. Each takes the environment's value when one is set |
 
-The compiler flags (`CFLAGS`, `CXXFLAGS`, `LDFLAGS`), `MAKEFLAGS=-j12`, `CC=gcc` and `CXX=g++` from
+The compiler flags (`CFLAGS`, `CXXFLAGS`, `LDFLAGS`), the job count (`KDOS_JOBS`, exported as
+`MAKEFLAGS=-j$KDOS_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`), `CC=gcc` and `CXX=g++` from
 `30_foundation` on, and the reproducibility settings (`SOURCE_DATE_EPOCH`, `TZ=UTC`, `LC_ALL=C`,
 `-ffile-prefix-map` and `--build-id=sha1`) come from the phase's environment and are exported. The
 `script/phases/<phase>/phase.env` of every chroot phase sources `script/env/chroot.env`, which
 holds the compilers, the base flags and `PKG_CONFIG_PATH`, and sources `script/env/common.env` in
-turn: the reproducibility settings, `MAKEFLAGS` and `KPKG_STRICT_RECIPE=1`. `20_selfhost` unsets
+turn: the reproducibility settings, the job count and `KPKG_STRICT_RECIPE=1`. `20_selfhost` unsets
 `CC` and `CXX` again, and a phase.env adds only what is its own, such as `PORT_REPO`. The base
 `CFLAGS` from `20_selfhost` on is `-O2 -pipe -std=gnu11 -fPIC`, and no phase adds `-Werror`.
-Extend the flags rather than replace them: `export CFLAGS="$CFLAGS -Wno-error"`.
+Extend the flags rather than replace them: `export CFLAGS="$CFLAGS -Wno-error"`. A recipe that
+has to pass a job count explicitly, to a bare `ninja` or a build system of its own, reads
+`$KDOS_JOBS`, never `nproc` and never a parse of `MAKEFLAGS`: `nproc` ignores both a lowered
+`KDOS_JOBS` and the memory clamp.
 
 The minimal autotools recipe is three lines:
 
@@ -362,7 +361,8 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
    creates without an explicit mode, including what `make install` writes, have the same mode on
    every builder.
 2. Check every declared `sha256 =` entry, before the work directory is touched.
-3. Remove `$SRC_ROOT`, create `$SRC` and `$PKG`, and unpack or copy the sources.
+3. Remove `$SRC_ROOT`, create `$SRC` and `$PKG`, and unpack or copy the sources. Each source
+   must have a `sha256 =` entry; its bytes are not hashed again, having been checked at step 2.
 4. Run `build.sh`.
 5. Copy `postinstall.sh`, when there is one, into the package as `.POSTINSTALL`, preceded by the
    recipe's keys and helpers as shell assignments.
@@ -372,10 +372,21 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
    `kpkg` regenerates on install (see [Shared indexes](#shared-indexes)); shipped in two packages,
    one would conflict with the other.
 8. Roll `$PKG` into `$PACKAGE_DIR/$PKGNAME` reproducibly: names sorted, owner and group 0, every
-   modification time set to `SOURCE_DATE_EPOCH`, GNU tar format, and `xz -9 -T1`, so a package
-   built twice from the same tree is byte-identical.
+   modification time set to `SOURCE_DATE_EPOCH`, GNU tar format, and a pinned multi-threaded `xz`
+   (`-9 --block-size=32MiB`, or `-0` for a package `kpkg install` deletes once installed), so a
+   package built twice from the same tree is byte-identical. The archive is written as
+   `$PKGNAME.part` and renamed once complete. The time it took is logged as
+   `Packaged <name>: <N> MB in <s> s`.
 
 A recipe therefore does not delete `.la` files, write an info `dir`, or pack anything itself.
+
+`kpkg` strips nothing either: a package carries exactly what the port's flags compiled. No port
+ships DWARF, so a recipe overrides every upstream default that adds `-g` by flag, never by editing
+the source: meson's `--buildtype=release`, CMake's `-DCMAKE_BUILD_TYPE=Release`, Go's
+`-ldflags "-s -w"`, and the build system's own variable where it has one (GCC's
+`CFLAGS_FOR_TARGET` and `CXXFLAGS_FOR_TARGET` for the libraries it builds for its target, CPython's
+`OPT`). `testing/debuginfo.sh` lists what a built tree still carries; see
+[Testing](testing.md#debug-information-in-the-built-tree).
 
 ## Canonical build shapes
 
@@ -396,6 +407,11 @@ DESTDIR=$PKG meson install --no-rebuild -C build
 Every meson setup needs `--prefix=/usr --libdir=lib`. meson's default library directory is not on
 the runtime linker's search path, and the symptom is a shared library that cannot be loaded at run
 time, long after a clean build and install.
+
+Every meson setup also names its buildtype, `--buildtype=release` or `-Dbuildtype=release`.
+meson's default is `debug`, which compiles `-g -O0` into every object, and `kpkg` strips nothing,
+so the package ships unoptimised code and its DWARF. `testing/preflight.sh` fails a recipe that
+runs `meson setup` without naming a buildtype.
 
 Check option names against the tarball's own `meson_options.txt` or `meson.options`. meson fails at
 setup on an unknown option, before a line is compiled, and there is no universal spelling: one
@@ -463,6 +479,13 @@ export CGO_ENABLED=0
 go build -mod=vendor -ldflags "-s -w" -o <program> ./cmd/<program>
 install -Dm755 <program> $PKG/usr/bin/<program>
 ```
+
+Every `go build` and `go install` passes `-s -w` in its `-ldflags`. Without them the Go linker
+writes DWARF and a symbol table, which `kpkg` does not strip. A recipe that stamps a version puts
+both in the same string, `-ldflags "-s -w -X main.version=$version"`, because a second `-ldflags`
+replaces the first; `GOFLAGS` does not carry them, because a recipe's own `-ldflags` replaces the
+one it names. `testing/preflight.sh` fails a `go build` or `go install` whose `-ldflags` lacks
+either flag.
 
 Most Go ports build with cgo off. A program that binds a C library sets `CGO_ENABLED=1`, and one
 whose upstream builds through a makefile passes the vendor flag through it:
@@ -625,7 +648,9 @@ to the section that explains it.
    the line (`sha256 = <hash>  <file>`) straight away: `kpkg` refuses to extract an unhashed
    source, and nothing else can verify it. For a port with `vendoring =`, the same run generates
    `<name>-vendor-<version>.tar.xz`; hash and record that file too. `make fetch` takes no port name
-   and walks all 1,999 ports, so use `ports/fetch <port>` here.
+   and walks all 2,000 ports, so use `ports/fetch <port>` here. When you do want the whole tree,
+   `make fetch FETCH_JOBS=8` works on eight ports at once; each port's lines then print together
+   when it finishes.
 5. **Write `build.sh`** from the [canonical shape](#canonical-build-shapes) for its build system,
    applying any [patches](#patches) before it configures.
 6. **Wire it in.** Name the port in the `depends` line of whatever needs it, and name it in the
@@ -778,7 +803,13 @@ from that shelf; `src-<area>.txt` for ports of KDOS's own, where the phase insta
 and, in `40_lang` and `41_system`, `00-order.txt`, the order run, which sorts first and holds the runs whose order a comment
 pins, such as `toybox` followed by the ports that take back the names it compiles out. The files
 are read in byte order as one list, so which file a port is in changes nothing but where a reader
-finds it. A new port goes in its shelf's file, created with the same header as its siblings when
+finds it.
+
+The order run is also what `kdosbuild --port-jobs` keeps serial: its ports, and every port the
+resolved order puts among them, build one at a time and before any other port of the phase. Pin a
+pair there when their order matters for a reason `depends` cannot say, such as two ports that
+install the same path, where whoever installs last owns it; a build by level names such a pair when
+a commit moves a path the serial order would not have. A new port goes in its shelf's file, created with the same header as its siblings when
 the phase has none for that shelf yet. A phase has `packages.txt` or `packages.d/`, never both, and
 preflight fails a file in `packages.d/` whose name is not a listed shelf, a `src-` area or
 `00-order`, and a port in the file of a shelf or area it is not on.
@@ -793,6 +824,8 @@ checked by `testing/preflight.sh`.
 | No explanatory comments in `kpkgbuild`: the banner header plus the metadata keys, nothing else | The recipe is data. Reasoning belongs in the commit message or in this book. `build.sh` is a script and carries the comments any script does |
 | No source edits with stream editors (`sed -i` and the like) | Use a build flag. Patch only where no flag exists, and then ship a real `.patch` beside the recipe (see [Patches](#patches)), so the change is reviewable and covered by the recipe hash |
 | Every optional feature explicit, and every library it needs in `depends` | Many build systems answer a missing library by quietly disabling the feature. Dropping a dependency then gives a build that succeeds and is narrower than its recipe claims, and the library is absent from the host with nothing to say so |
+| Every port of the same phase it builds against in `depends`, tools included | A serial build installs a phase's ports in list order, which can hide a missing entry: the library happens to be installed first. `kdosbuild --port-jobs` builds a level's ports side by side against the lower levels only, and the levels come from `depends`, so an undeclared same-phase dependency is absent there and the port fails or loses the feature. See [Building a package phase by level](build-system.md#building-a-package-phase-by-level). `testing/depdrift.py` reads a built tree and names every same-phase library a package links or requires without declaring it; see [Undeclared link dependencies](testing.md#undeclared-link-dependencies) |
+| Every library the port links in `depends`, whatever its phase | The [package store](../03-architecture/packaging.md#the-package-store) keys a port on its declared dependencies. After an install `kpkg` reads the package's ELF files and prints `<port> links <owner> without declaring it` for each library owned by a port outside that closure; the store entry then re-checks that library's bytes on every lookup, but a library found and used without being linked (a plugin, a header, a tool) stays invisible to it. Add the owner to `depends` |
 | Every meson `-D` is an option the port defines | meson stops at setup on an unknown option. Preflight checks each one against the tarball's own option file, and checks the two option types that take a closed set of values |
 | A command named in a diagnostic is in single quotes | A backtick inside double quotes is a command substitution, not a name: an `echo` telling somebody to run something runs it instead. Preflight checks the build system's own scripts under `script/` |
 | Nothing reaches the network | The build runs with no network. A meson subproject fallback, a CMake download call, or a Python build backend fetching a tool from a package index all fail hours in. See [Build troubleshooting](build-troubleshooting.md#a-build-that-reaches-the-network) |
@@ -820,11 +853,10 @@ Write the diff with paths one directory deep (`a/src/…`, `b/src/…`), as `git
 `diff -ru old new` does, so `-p1` strips that directory and the paths resolve against `$SRC`;
 `patch -p1 -i "$PORT_SRC/<file>.patch"` is the form nearly every port uses.
 
-Only a name ending in `.patch` is covered by the [recipe hash](../06-reference/glossary.md). A patch
-named `*.diff` is invisible to it, so editing it leaves the port reporting itself current and the
-image keeps the build from the old patch (see
-[Shipping a script the port carries](#shipping-a-script-the-port-carries)). A patch is tracked by
-git with the recipe and is not published to the source archive.
+Name a patch `*.patch`. The [recipe hash](../06-reference/glossary.md) covers every file beside the
+recipe that no `sha256 =` names, so a `*.diff` rebuilds the port when edited too, but `.patch` is
+what the hash takes first and by name, and what a port of KDOS's own is read for. A patch is
+tracked by git with the recipe and is not published to the source archive.
 
 A numbered patch series that upstream publishes is a source, not a file of ours. `readline` names
 each of its official patches as a later `source =` with its own `sha256 =`; each is copied into
@@ -996,7 +1028,8 @@ A build that looks for `asciidoctor` on `$PATH` uses it whenever it is there, so
 does not name it ships a different package once any other port pulls it into the chroot. Name it
 in `depends` and set the documentation switches explicitly. Where upstream has no switch for the
 manual pages alone, build the pages' own targets (`newsboat`, `git-lfs`) or run upstream's page
-script (`ccache`): the package carries the pages and no HTML manual. An HTML manual ships only
+script (`ccache-manual`, a port of its own because ccache is built a phase before asciidoctor):
+the package carries the pages and no HTML manual. An HTML manual ships only
 where the program opens it itself: `wireshark`'s Help menu reads the HTML form of each page, so
 that package carries both forms.
 
@@ -1049,21 +1082,14 @@ Some ports install a small script of KDOS's own beside the upstream program, suc
 `aerc`. Where you keep that script matters.
 
 The [recipe hash](../06-reference/glossary.md), which decides whether a port needs rebuilding,
-covers `kpkgbuild`, `build.sh`, `postinstall.sh` and every file ending in `.patch`, and nothing else
-in the directory of a port that names a `source =`. Every phase sets
-`KPKG_STRICT_RECIPE=1`, under which an installed package whose recipe hash has changed counts as
-not installed and is rebuilt. A helper script kept in its own file beside the recipe, with no
-`sha256 =` line naming it, is invisible to the hash: after you edit it, the port still reports
-itself current, and the image keeps the copy it already had. Nothing fails; the machine runs the
-old script. The same holds for any unhashed file a `build.sh` reads, such as `linux/kdos.config`,
-and an edit to one needs a `release` bump to reach the image (see
-[Anatomy of a port](#anatomy-of-a-port)). A patch has the same exposure,
-which is why it must be named `*.patch` (see [Patches](#patches)).
+covers `kpkgbuild`, `build.sh`, `postinstall.sh`, every `.patch` and every other file in the port's
+directory that no `sha256 =` line names (see [Anatomy of a port](#anatomy-of-a-port)). Every
+phase sets `KPKG_STRICT_RECIPE=1`, under which an installed package whose recipe hash has changed
+counts as not installed and is rebuilt, so a helper script kept in its own file beside the recipe
+reaches the image on the next build after an edit. `testing/preflight.sh`, however, checks only a
+script written into `build.sh`.
 
-A port with no `source =` is different: its whole directory is hashed, subdirectories included,
-because its own files *are* its recipe (see [A port of KDOS's own](#a-port-of-kdoss-own)).
-
-Write such a script into `build.sh` instead, in a quoted heredoc whose delimiter is `KDOS_SH`:
+Write such a script into `build.sh`, in a quoted heredoc whose delimiter is `KDOS_SH`:
 
 ```bash
 install -d "$PKG/usr/libexec/aerc/filters"
@@ -1161,7 +1187,7 @@ removed and rebuild each index whose directory it touched, once, from what is th
 | `/usr/share/fonts/`, `/etc/fonts/` | `fc-cache -s`, into `/usr/lib/fontconfig/cache`, not `/var/cache`, which the image and every pack exclude |
 | `/usr/share/info/` | the info `dir`, regenerated with `install-info` over every page |
 | `/etc/udev/hwdb.d/`, `/usr/lib/udev/hwdb.d/`, `/lib/udev/hwdb.d/` | `udevadm hwdb --update`, into `/etc/udev/hwdb.bin` |
-| `/usr/share/man/` | `makewhatis`, the `mandoc.db` that `apropos` and `whatis` search |
+| `/usr/share/man/` | `makewhatis`, the `mandoc.db` that `apropos` and `whatis` search; skipped during the build, where `70_image` writes it once over the finished tree |
 | `/usr/share/fonts/` | `mkfontdir`, the `fonts.dir` of every subdirectory holding PCF or BDF faces, which Xwayland's core font path reads |
 | `/usr/share/texmf-dist/`, `/usr/share/texmf-local/` | `mktexlsr` over those two trees and `/usr/share/texmf-var`, the `ls-R` files through which every TeX program finds a file |
 | `/usr/share/applications/` | `update-desktop-database`, the `mimeinfo.cache` that `kdos-appbox open` and the shell's Open With read for a type no `mimeapps.list` names |
@@ -1169,6 +1195,11 @@ removed and rebuild each index whose directory it touched, once, from what is th
 A port therefore installs its schema, loader, MIME XML, font, info page, hwdb file, manual page,
 TeX file or desktop entry and does nothing else. A per-port hook would rebuild the index only when that port is installed,
 not when the next one adds to it or the last one leaves.
+
+`KPKG_SKIP_INDEX` names indexes to leave alone, space-separated, by the name `kpkg` prints in
+`index skipped: <name>`: `schemas`, `gio`, `pixbuf`, `mime`, `fonts`, `info`, `hwdb`, `man`,
+`xfonts`, `texmf` and `desktop`. The build's chroot phases set it to `man`; a running system does
+not set it, and there every index above is kept current.
 
 A missing tool is skipped: the index is written when the package carrying the tool arrives,
 because that package's own files touch a watched directory. fontconfig installs no font, so the
@@ -1187,7 +1218,8 @@ The manual index is the one that is merged rather than rebuilt, and only when no
 Two packages in three carry manual pages, and reading every page on the system again for each one
 would add seconds to every install. The pages an install places go to `makewhatis -d`. A removal,
 an upgrade that orphans a page, or a missing `mandoc.db` rebuilds the whole tree, because a merge
-cannot drop an entry for a file that is already gone.
+cannot drop an entry for a file that is already gone. The build skips this index altogether and
+`70_image` writes it once over the finished tree.
 
 Under `--root`, each tool is handed the root-prefixed directory, and `udevadm` and `fc-cache` get
 the root itself. The pixbuf loader cache cannot take a directory, because the tool writes the path
@@ -1343,8 +1375,9 @@ by name instead of reaching for the network. `--offline` is not passed, because 
 
 ### A vendor bundle hashes the same twice
 
-Bundles are packed with the same flag set packages use (names sorted, the pinned timestamp, owner
-and group 0, GNU format, single-threaded `xz -9`), because a plain archive records the extraction
+Bundles are packed with the tar flag set packages use (names sorted, the pinned timestamp, owner
+and group 0, GNU format) and a compressor of their own, single-threaded `xz -9 -T1`, which every
+bundle's `sha256 =` line depends on, because a plain archive records the extraction
 time and the builder's identity, so two generations of the same bundle would hash differently and
 the recipe's `sha256 =` line could never match a regenerated one.
 

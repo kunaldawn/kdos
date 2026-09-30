@@ -9,9 +9,13 @@
  * ---------------------------------
  */
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 
 #include "kpkg.h"
@@ -94,18 +98,21 @@ int kp_installed_version(const KpConf *c, const char *name, char *ver,
 }
 
 /*
- * The recipe-hash sidecar. See kpkg.h for why this is a separate file rather
- * than a third field on the database entry's first line.
+ * The sidecars: `<db>/.recipe/<name>` (kp_recipe_hash of the recipe the
+ * package was built from) and `<db>/.pkgsha/<name>` (sha256 of the package
+ * FILE it was installed from). See kpkg.h for why they are separate files
+ * rather than more fields on the database entry's first line.
  *
  * Returns 0 and fills `out` when a hash is recorded, -1 when it is not. -1 is
- * "unknown", and every caller must treat it as "do not know, so do not force a
- * rebuild": a tree that predates the sidecar has none, and reading their
- * absence as "changed" rebuilds the entire userland.
+ * "unknown", and every caller must treat it as "do not know": a tree that
+ * predates a sidecar has none, and reading its absence as "changed" rebuilds
+ * the entire userland.
  */
-int kp_installed_recipe_hash(const KpConf *c, const char *name, char out[65])
+static int sidecar_read(const KpConf *c, const char *kind, const char *name,
+			char out[65])
 {
 	char *db = kp_db_dir(c);
-	char *dir = kb_path_join(db, ".recipe");
+	char *dir = kb_path_join(db, kind);
 	char *p = kb_path_join(dir, name);
 	char line[128];
 	int rc = kb_read_line_file(p, line, sizeof(line));
@@ -132,12 +139,13 @@ int kp_installed_recipe_hash(const KpConf *c, const char *name, char out[65])
 	return 0;
 }
 
-int kp_record_recipe_hash(const KpConf *c, const char *name, const char *hash)
+static int sidecar_write(const KpConf *c, const char *kind, const char *name,
+			 const char *hash)
 {
 	if (!hash || strlen(hash) != 64)
 		return -1;
 	char *db = kp_db_dir(c);
-	char *dir = kb_path_join(db, ".recipe");
+	char *dir = kb_path_join(db, kind);
 	kb_mkdir_p(dir);
 	char *p = kb_path_join(dir, name);
 	char line[66];
@@ -148,6 +156,58 @@ int kp_record_recipe_hash(const KpConf *c, const char *name, const char *hash)
 	free(dir);
 	free(db);
 	return rc;
+}
+
+int kp_installed_recipe_hash(const KpConf *c, const char *name, char out[65])
+{
+	return sidecar_read(c, ".recipe", name, out);
+}
+
+int kp_record_recipe_hash(const KpConf *c, const char *name, const char *hash)
+{
+	return sidecar_write(c, ".recipe", name, hash);
+}
+
+int kp_installed_pkg_sha(const KpConf *c, const char *name, char out[65])
+{
+	return sidecar_read(c, ".pkgsha", name, out);
+}
+
+int kp_record_pkg_sha(const KpConf *c, const char *name, const char *hash)
+{
+	return sidecar_write(c, ".pkgsha", name, hash);
+}
+
+/*
+ * One writer at a time. The lock is a file IN the database directory so that
+ * it covers exactly one database: two roots are two locks, and a chroot and
+ * the host writing one tree through two paths still meet on one inode. It is
+ * a dot-name, which every walk of the directory skips, so it is never read as
+ * a package. flock rather than fcntl: an fcntl lock never excludes its own
+ * process and is dropped by any close() of any descriptor on the file, while a
+ * flock lock belongs to its open file description and is released only by
+ * closing this descriptor; O_CLOEXEC keeps it out of the hooks. A second
+ * kp_db_lock taken while one is held, in this process or in a hook, therefore
+ * waits forever: callers close it on every return before anything can install
+ * again (front.c's install_pkgfile and binhost.c call add_main in-process).
+ */
+int kp_db_lock(const KpConf *c)
+{
+	char *db = kp_db_dir(c);
+	kb_mkdir_p(db);
+	char *p = kb_path_join(db, ".lock");
+	free(db);
+	int fd = open(p, O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+	free(p);
+	if (fd < 0)
+		return -1;
+	while (flock(fd, LOCK_EX) != 0) {
+		if (errno == EINTR)
+			continue;
+		close(fd);
+		return -1;
+	}
+	return fd;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

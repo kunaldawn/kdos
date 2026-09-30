@@ -40,7 +40,7 @@ follow from where that line is drawn.
 | Display | Wayland and Xorg, a display manager | Wayland only, rootless Xwayland for X11 clients, no display manager |
 | Toolkits | GTK and Qt under the desktop and its applications | None under the desktop, whose every surface is a grid of character cells; any toolkit for applications |
 | Desktop | GNOME, KDE Plasma, Xfce and others | One desktop written for KDOS, on a frozen fork of the labwc compositor |
-| Packages | Prebuilt binaries from an archive | Compiled from 2,023 recipes: on a build host for the installation image, on the machine itself for updates |
+| Packages | Prebuilt binaries from an archive | Compiled from 2,024 recipes: on a build host for the installation image, on the machine itself for updates |
 | Sources | Fetched from the archive's mirrors | Pinned by sha256, held in a content-addressed archive, built offline |
 | Graphical applications | Distribution packages, Flatpak or Snap | Native ports carried on the medium, plus Debian packages in rootless podman containers, built on demand |
 | Updates | A package manager against a remote archive | A newer ports tree, compiled locally or matched against a binary host ([binhost](../06-reference/glossary.md)) you run yourself, optionally into a second root slot |
@@ -225,8 +225,8 @@ description = Compression library implementing the deflate compression method
 
 The package manager, `kpkg`, is written for KDOS in C. It builds a port into a compressed tar
 archive, records every path the package owns, removes files an upgrade drops, and resolves
-dependencies from the `depends` lines. There are 1,999 recipes under `ports/core` for upstream
-software and 24 under `src/` for KDOS's own, 2,023 in all, and all of them use the same format.
+dependencies from the `depends` lines. There are 2,000 recipes under `ports/core` for upstream
+software and 24 under `src/` for KDOS's own, 2,024 in all, and all of them use the same format.
 The upstream recipes are filed on 102 subject shelves, `ports/core/<shelf>/<name>/`, much as T2
 SDE files its packages by repository, while a port is still named by its bare name everywhere.
 [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf.
@@ -442,7 +442,7 @@ hardware matrix. See [Known gaps](../06-reference/known-gaps.md#hardware-and-pla
 ## What you give up
 
 Each section above states its own cost. Two are not stated elsewhere. The first build from a clean
-checkout takes most of a day, and about 84 GB more disk if it keeps phase snapshots; see
+checkout takes most of a day, and tens of gigabytes more disk if it keeps phase snapshots; see
 [Developing](../05-developer/developing.md). Commercial software that assumes glibc and systemd on
 the host does not run there; it runs in a box or not at all. Whether the trade as a whole is worth
 it depends on what you want the machine for; [Why KDOS](why-kdos.md#who-should-run-kdos) says who

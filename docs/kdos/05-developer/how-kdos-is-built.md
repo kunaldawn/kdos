@@ -59,7 +59,7 @@ own tools.
 Six terms recur throughout:
 
 - A **port** is the recipe for one piece of software: a `kpkgbuild` file of metadata and a
-  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 1,999 of them;
+  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 2,000 of them;
   KDOS's own programs have theirs under four areas of `src/`: `src/system/`, `src/art/`,
   `src/desktop/` and `src/daemons/`.
 - A **shelf** is the subject directory an upstream port is filed in, `ports/core/<shelf>/<port>/`:
@@ -94,7 +94,8 @@ need any compiler toolchain of its own for the build, and its own libraries neve
 |---|---|
 | `--network none` | The build must be a function of the fetched sources alone. A port that tries to download something during its build fails at once instead of quietly depending on the network |
 | `--privileged` | The later phases mount `/proc`, `/sys` and bind mounts inside the target tree and `chroot` into it, which needs those privileges |
-| `--cpus=8` | A fixed share of the host; the environment every phase shares sets `MAKEFLAGS=-j12` |
+| `--cpu-shares=256` | A weight, not a cap: an idle host gives the build every thread; under contention it yields to other containers and services, and on a systemd cgroup-v2 host shares the CPU evenly with the user session. `KDOS_CPU_SHARES` changes the weight. The environment every phase shares sets one job count, `KDOS_JOBS`, for make, `cmake --build` and cargo: the host's thread count, clamped to one job per 2 GiB of memory |
+| `--cpus=N`, only with `KDOS_JOBS=N` | Caps the container at the job count, and at the host's thread count, so ninja, cargo and go, which size themselves from the container's cgroup `cpu.max` (bind-mounted read-only into the chroot), follow a lowered `KDOS_JOBS` too |
 | `build/` mounted writable; `src/`, `fs/`, `script/` and `ports/` read-only | A build cannot modify its own sources |
 
 The container is a fixed, known starting point. Whatever distribution your machine runs, the
@@ -164,7 +165,8 @@ See [Publishing sources](writing-ports.md#publishing-sources).
 
 Inside the container, `make build` runs `script/kdosbuild.sh`. That script compiles the build
 orchestrator, **kdosbuild**, from `src/devtools/kdosbuild/` and the libraries it links (`libkbase`,
-`libkbuild`, `libkpkg`, `libktui` and `libkcolor`), and runs it. kdosbuild is the program that walks
+`libkbuild`, `libkpkg`, `libktui` and `libkcolor`) whenever those sources, the flags or the compiler
+changed since `build/.kdosbuild.sum` was written, and runs it. kdosbuild is the program that walks
 the phases, runs each step, writes its log under `build/logs/<phase>/`, and draws the build screen
 (or prints plain lines when there is no terminal).
 
@@ -180,14 +182,23 @@ which carry the compiler flags and the settings that make packages reproducible.
 A phase holds either numbered scripts, which run in sorted order, or a list of port names: one
 `packages.txt`, or a `packages.d/` directory of lists, one per shelf, read in order as one. For a
 list, kdosbuild asks `kpkgdepends` for the install order of every named port and its whole
-dependency closure, then turns each port into its own step, `kpkg install <port>`. Every list names
-exactly the ports its phase installs, and preflight checks it: a port cannot drift into another
-phase because a dependency changed, without a failed check saying so.
+dependency closure, then turns each port into its own step, `kpkg install <port>`, run one at a
+time. Every list names exactly the ports its phase installs, and preflight checks it: a port cannot
+drift into another phase because a dependency changed, without a failed check saying so.
+
+With `BUILD_ARGS="--port-jobs N"`, a package phase runs by dependency level instead: the ports
+whose same-phase dependencies sit on lower levels build side by side with `kpkg install
+--build-only`, up to `N` at once, and a commit step installs the whole level with `kpkg install
+--commit` in the serial order before the next level starts. The list's pinned run still builds one
+port at a time, first. Since nothing is installed while a level builds, each port sees exactly what
+it would see in a serial build, provided its recipe declares everything it builds against. See
+[Building a package phase by level](build-system.md#building-a-package-phase-by-level).
 
 When a phase completes, kdosbuild archives the paths it declared into `build/snapshots/<phase>/`.
 The first two phases declare `cross`, `fs` and `mark` (the cross toolchain, the target tree and the
-"already done" markers); the package phases declare `fs`; `70_image` adds the ISO tree, the ISO and
-the initramfs. A later build can restore any phase's snapshot and continue from the phase after it,
+"already done" markers); the package phases up to `50_desktop` declare `fs`; `60_kernel` and
+`70_image` declare nothing and are re-run on the tree they find. A later build can restore any
+snapshot and continue from the phase after it,
 so a failure hours in does not mean starting again. Before a build begins, a picker on the terminal
 asks which snapshot to start from and whether to write new ones. Snapshots, their disk cost and the
 rules that keep a restore safe are in [Snapshots](build-system.md#snapshots).
@@ -208,7 +219,7 @@ it sits, and install into `build/cross`:
 | Step | Builds |
 |---|---|
 | `00_binutils.sh` | The assembler and linker (binutils 2.47) for the target, with `build/fs` as their system root |
-| `01_gcc.sh` | GCC 16.2.0, with GMP, MPFR and MPC compiled into it, for C and C++ |
+| `01_gcc.sh` | GCC 16.2.0, with GMP, MPFR and MPC compiled into it, for C and C++, built without the info manuals |
 
 The cross GCC is deliberately incomplete. There is no C library for the target yet, so it is
 configured `--without-headers`, with no shared libraries, no threads and no C++ standard library.
@@ -237,7 +248,7 @@ thing it builds. Its sixteen scripts run in this order:
 | `050_xz.sh`, `060_gzip.sh`, `061_tar.sh` | The tools that unpack source archives | Inside the chroot, every build begins by extracting a `.tar.xz` or `.tar.gz` |
 | `062_toybox.sh` | toybox 0.8.14, a single binary providing most of the basic commands | The chroot needs `ls`, `cp`, `sed` and the rest. `tar` and `file` are compiled out, as are the applets whose real tool installs at a different path, whose real tool this phase has already installed at the same path (gzip's `gunzip` and `zcat`), or that no port provides, so a toybox link never shadows or replaces a real tool; applets such as `sed` and `find` stay, and the later port that installs the real tool at the same path overwrites the link |
 | `070_readline.sh`, `080_bash.sh` | readline and bash 5.3, with `sh` linked to `bash` | Every recipe's `build.sh` is a bash script |
-| `090_binutils.sh`, `100_gcc.sh` | A native binutils and GCC: built by the cross compiler, but running on KDOS and producing programs for KDOS | Inside the chroot there is no container compiler to fall back on |
+| `090_binutils.sh`, `100_gcc.sh` | A native binutils and GCC: built by the cross compiler, but running on KDOS and producing programs for KDOS. The GCC is built without the info manuals and installs to the package's own paths (`--libexecdir=/usr/lib`), so `20_selfhost`'s `gcc` package replaces every file it installed | Inside the chroot there is no container compiler to fall back on |
 | `110_make.sh` | GNU make | Almost every upstream build runs it |
 | `120_kpkg.sh` | `kpkg`, compiled from `src/system/kdos-kpkg` with `libkbase`, `libkpkg` and `libksig`, installed as `/usr/bin/kpkg` with four more names linked to it | Nothing can read a recipe before `kpkg` exists |
 | `130_kinstall.sh` | The installer, `kinstall`, from `src/system/kdos-installer` | It links nothing beyond musl, so it exists on every tree from this phase onwards |
@@ -266,12 +277,15 @@ At the end of `10_bootstrap`, `build/fs` is a tiny but complete Linux userland: 
 Every later phase sets `CHROOT=1`, so kdosbuild runs each of its steps through
 `script/chroot/exec.sh` instead of directly in the container. For each command, that script:
 
-1. clears any mounts a previous, killed run left under `build/fs`;
+1. takes a private mount namespace of its own (`unshare --mount`);
 2. mounts `/dev`, `/proc`, `/sys`, and fresh temporary filesystems on `/tmp` and `/run`;
 3. bind-mounts the repository at `/kdos`, `build/` at `/kdos/build` and `ports/` at `/ports`;
 4. runs the command with `chroot build/fs`, an empty environment (`env -i`) apart from `HOME`,
-   `TERM`, `PATH` and a handful of named build switches, and `/kdos` as the working directory;
-5. unmounts everything when the command exits.
+   `TERM`, `PATH` and a handful of named build switches, and `/kdos` as the working directory.
+
+Every one of those mounts exists only inside the command's namespace. Nothing is unmounted
+afterwards: the mounts vanish with the command's last process, even when it is killed, and two
+commands running at the same time never see each other's `/tmp` or `/proc`.
 
 A `chroot` makes `build/fs` the root directory for the command it runs. From that moment the
 compiler, the shell, the libraries and the tools a build uses are the ones `10_bootstrap` made, and
@@ -280,6 +294,43 @@ leaks into a build; a phase's settings reach a step only because the step source
 `phase.env` inside the chroot. The details, including why an opt-in flag has to be named in
 `script/chroot/exec.sh` as well as in the `Makefile`, are in [The
 chroot](build-system.md#the-chroot).
+
+### The compiler cache
+
+Once `30_foundation` has installed ccache, every CMake project a chroot step configures compiles
+through it. `script/env/chroot.env` sets `CMAKE_C_COMPILER_LAUNCHER` and
+`CMAKE_CXX_COMPILER_LAUNCHER` to `ccache`, and CMake still records `/usr/bin/gcc` and
+`/usr/bin/g++` as the compilers. Meson and autotools ports are not cached. The cache is
+`build/ccache`, outside the target tree, capped at 20 GB; `make cleanbuild` keeps it, `make clean`
+removes it, and `make build KDOS_CCACHE=0` turns it off.
+
+A cached object is byte-identical to the one a compile would write, and three settings hold that:
+
+- **No `base_dir`.** It rewrites absolute paths in the command line to relative ones, so
+  `-ffile-prefix-map` stops matching them and the paths recorded in the objects change.
+- **The compiler check is a string, never the compiler's modification time.** kpkg pins every
+  installed file's time to `SOURCE_DATE_EPOCH`, so a rebuilt gcc of the same size would look
+  unchanged. The string is the recipe hashes of gcc, binutils and the LLVM ports, gcc's version and
+  the epoch: any of them changing misses the whole cache.
+- **No masquerade directory on `PATH`.** CMake would record `/usr/lib/ccache/gcc` as the compiler,
+  and that path is written into CMake and pkg-config files the packages ship.
+
+With the cache off, `CCACHE_DISABLE=1` is set instead, because meson and several projects use ccache
+whenever they find it and would fill `/root/.cache/ccache` inside `build/fs`. `testing/preflight.sh`
+fails when any of these settings changes.
+
+### The package store
+
+`make build KDOS_PKG_STORE=1` also keeps every package the chroot phases build in `build/pkgstore`,
+keyed on the port's recipe hash, the build environment less its job counts, a hash of the bootstrap
+phases, and the exact package-file hash of every dependency the port declares plus the toolchain and
+base userland. A later build that reaches a port with the same key installs the stored package and
+prints `Reusing <pkg> from the store (<key12>)` instead of building it; a dependency rebuilt into
+different bytes changes the key of everything above it. It is off by default. `KDOS_PKG_STORE=check`
+builds every hit anyway and logs a difference, which is the setting for a release. `make cleanbuild`
+keeps the store, `make clean` removes it, and `70_image` evicts it down to `KDOS_PKG_STORE_MAX`
+(default `60G`). What the key covers and what it cannot see is in
+[The package store](../03-architecture/packaging.md#the-package-store).
 
 ## What a port build is
 
@@ -334,17 +385,21 @@ and `$version` itself. Only `build.sh` is bash. This is what installing it invol
    staging directory, not into the live tree. Everything the build prints is the step's log,
    `build/logs/41_system/<N>_pv.install.log`.
 5. **Packaging.** `kpkg` rolls the staging directory into `pv-1.12.0-1.tar.xz`, with sorted names,
-   owner 0, a pinned timestamp and single-threaded `xz`, so that the same recipe on the same tree
-   produces the same bytes.
+   owner 0, a pinned timestamp and a pinned multi-threaded `xz`, so that the same recipe on the same
+   tree produces the same bytes. A package the step deletes after installing it is compressed with
+   `xz -0`; with `KDOS_MAKE_BINHOST=1` every package is kept and gets `xz -9`.
 6. **Installing.** `kpkgadd` checks the package's paths against every other package's, places the
-   files, writes the package's manifest to `/var/lib/kpkg/db/pv`, and records the recipe hash in
-   `/var/lib/kpkg/db/.recipe/pv`. The built archive is then deleted; the tree keeps only the
-   installed files and the database entry.
+   files, writes the package's manifest to `/var/lib/kpkg/db/pv`, records the package file's hash in
+   `/var/lib/kpkg/db/.pkgsha/pv` and the recipe hash in `/var/lib/kpkg/db/.recipe/pv`. With the
+   package store on, the archive is copied into `build/pkgstore` under the key taken before the
+   build. The built archive is then deleted; the tree keeps only the installed files and the
+   database entry.
 
 The database under `/var/lib/kpkg/db` is how the build knows what is installed, what each package
 owns, and which recipe each came from. It ships in the image, and the running system's `kpkg` uses
-the same one. The recipe hash covers `kpkgbuild`, `build.sh`, any `postinstall.sh` and every
-patch, so editing any of them is enough for the next build to rebuild the port. For KDOS's own
+the same one. The recipe hash covers `kpkgbuild`, `build.sh`, any `postinstall.sh`, every
+patch and every other file beside them that no `sha256 =` line names, so editing any of them is
+enough for the next build to rebuild the port. For KDOS's own
 programs, which have no upstream archive, it also covers the port's whole directory and all of
 `src/libs`. The rules are in
 [Deciding what to rebuild](../03-architecture/packaging.md#deciding-what-to-rebuild), file
@@ -371,7 +426,7 @@ it with the container's compiler.
 These two phases install everything needed to rebuild KDOS from KDOS. They are split by one
 question: does a port need one of the big compilers?
 
-`30_foundation` names 125 ports and installs 115; the other ten were installed by `20_selfhost` and
+`30_foundation` names 126 ports and installs 116; the other ten were installed by `20_selfhost` and
 are named again so that a changed recipe is rebuilt here. The list opens with a pinned run: the 16
 build tools recipes use without naming them in `depends` (`musl`, `gcc`, `binutils`, `make`,
 `pkgconf`, the autotools, `m4`, `bison`, `flex`, `cmake`, `meson`, `ninja`, `python3` and `perl`),
@@ -380,12 +435,13 @@ rest of `20_selfhost`'s list and the libraries `gawk` links, so each is current 
 the phase uses it. The other names sit under a heading for each shelf. Here the build gains
 CMake, Meson and Ninja; Python, Perl and Lua; GNU `sed` and `findutils` over toybox's smaller
 applets (upstream build systems assume GNU extensions); `curl`, `git` and OpenSSL; `util-linux`,
-`eudev` and `shadow`. `bash`, which only `10_bootstrap` built, is built here as a package for the
+`eudev` and `shadow`; and ccache, the compiler cache every later CMake build uses. `bash`, which only `10_bootstrap` built, is built here as a package for the
 first time and adopts the files that phase left.
 
 `31_compilers` names 22 ports and installs all 22: LLVM, clang, lld, compiler-rt, libunwind and
 openmp, with the pinned 21 series some ports build against; Rust, cargo-c, bindgen and cbindgen; Go; GHC and
-cabal-install; Zig; Node.js; Ruby; pandoc and asciidoctor; and ccache. On the last measured build
+cabal-install; Zig; Node.js; Ruby; pandoc and asciidoctor; and `ccache-manual`, ccache's manual page, which needs
+asciidoctor. On the last measured build
 these 22 took about 7.6 of the 8.7 hours the two phases spend, which is why they are a phase of
 their own: a failure among them restores `30_foundation` and loses minutes, not the hour of
 foundation work before them.
@@ -475,11 +531,12 @@ merged-`/usr` link makes `/usr/lib/modules`.
 ## Packaging: `70_image`
 
 At this point `build/fs` holds the complete system. `70_image` turns it into a bootable medium.
-Its eleven scripts run inside the chroot in the order their numbers give:
+Its twelve scripts run inside the chroot in the order their numbers give:
 
 | Step | Does |
 |---|---|
 | `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into a signed binhost under `build/binhost/`; otherwise does nothing |
+| `015_pkgstore.sh` | With the package store on, evicts `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used first; otherwise does nothing |
 | `020_cleanup.sh` | Removes build-only files: the build user's caches, the kpkg work and package caches, podman's store, and Python bytecode, which it then recompiles as hash-checked bytecode so the image is reproducible |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries; with none, it removes every one |
 | `040_orphans.sh` | Removes every installed package that has no recipe in the tree |
@@ -512,7 +569,9 @@ for it. What the initramfs does at boot is in
 
 1. The kernel and initramfs are copied to `boot/`, outside the EFI system partition, because the
    bootloader reads the ISO filesystem directly.
-2. The whole root filesystem is compressed into `system.sfs` with `mksquashfs` and `xz`, leaving
+2. The whole root filesystem is compressed into `system.sfs` with `mksquashfs`, in zstd at level
+   15 by default (`KDOS_ISO_COMP` picks another; see
+   [The packaging steps](build-system.md#the-packaging-steps)), leaving
    out the pseudo-filesystems, caches, logs and the repository bind mounts, and recreating their
    mount points as empty directories.
 3. The Limine bootloader is copied in for both BIOS and UEFI, with a `limine.conf` that offers
@@ -538,9 +597,8 @@ safe.
 
 The first is that re-running is cheap by construction. The `00_cross` scripts and every
 `10_bootstrap` script but `000_file_system.sh` exit at once when their markers are current, and
-`kpkg` skips every
-port whose recipe hash matches what is installed. Running a package phase again walks its whole
-order, but builds only what changed.
+kdosbuild runs no step for a port whose recipe hash matches what is installed. Running a package
+phase again lists its whole order, but enters the chroot only for what changed.
 
 The second is the **build plan**: flags that tell kdosbuild which phases, which scripts and which
 ports to run on the tree already in `build/`, without restoring anything. After changing `pv`'s
@@ -551,9 +609,8 @@ make build BUILD_ARGS="--phases 41_system,70_image --rebuild pv"
 ```
 
 kdosbuild runs `41_system` and `70_image` only. `41_system` resolves its order as always; every
-other port
-in the order is installed and current, so `kpkg` skips it without building; `pv` is forced with
-`kpkg install -f` and rebuilt; its dependencies are not forced. `70_image` then produces a new ISO
+other port in the order is installed and current, so kdosbuild marks it `installed` and runs no
+step for it; `pv` is forced with `kpkg install -f` and rebuilt; its dependencies are not forced. `70_image` then produces a new ISO
 from the updated tree. A plan that narrows the build also stops kdosbuild writing snapshots,
 because a snapshot of a partly re-run tree would be filed under a phase whose contents it does not
 match. The recipe for each kind of change (a file under `fs/`, a port, a desktop program, a
@@ -573,8 +630,8 @@ These figures come from the chapters that measure them:
 |---|---|---|
 | Upstream sources, fetched once | About 41.5 GB (38.6 GiB), each file held once in `ports/.srccache` | [Developing](developing.md#what-a-development-machine-needs) |
 | A build from nothing | Most of a day | [Building from scratch](developing.md#building-from-scratch) |
-| A complete set of phase snapshots | Not yet measured for thirteen phases; the `70_image` snapshot alone is about 59 GB | [Snapshots](build-system.md#snapshots), [Developing](developing.md#what-a-development-machine-needs) |
-| One program rebuilt, with packaging | About seven and a half minutes, five and a half of them writing the ISO | [The fast loop](testing.md#the-fast-loop) |
+| A complete set of phase snapshots | Not yet measured for the eleven phases that take one | [Snapshots](build-system.md#snapshots), [Developing](developing.md#what-a-development-machine-needs) |
+| One program rebuilt, with packaging | Not yet measured with the zstd image; most of it is writing the ISO, and `KDOS_ISO_COMP=zstd:3` shortens that part | [The fast loop](testing.md#the-fast-loop) |
 | One program rebuilt without packaging, patched into a booted ISO | About three minutes, or 1m37s when nothing is rebuilt and the session is not restarted (`KDOS_QUICK_NOBUILD=1 KDOS_QUICK_KEEP=1`) | [The fast loop](testing.md#the-fast-loop) |
 
 Snapshots are optional, and the startup picker can turn them off. A build from scratch also needs

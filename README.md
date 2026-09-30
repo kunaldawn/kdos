@@ -162,7 +162,7 @@ other toolchain is installed on your machine.
 | Cost | |
 |---|---|
 | Time | Many hours for the first build: the whole system is compiled, GCC several times over and the kernel included. Later builds are narrow and short |
-| Disk | About 41.5 GB (38.6 GiB) of upstream sources, plus tens of gigabytes under `build/`, and at least 84 GB more for a complete set of the optional phase snapshots |
+| Disk | About 41.5 GB (38.6 GiB) of upstream sources, plus tens of gigabytes under `build/`, and more for a complete set of the optional phase snapshots, whose size is not yet re-measured |
 | Network | For `git clone`, `make fetch`, and the first `make build`, which builds its container image. The compile itself runs with the network off |
 
 ```sh

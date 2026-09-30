@@ -88,10 +88,10 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,023 recipes, 1,999 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
+| The ports tree | Stable | 2,024 recipes, 2,000 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted |
-| Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata` and `XZ_OPT=-T0`, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times. Full-size ports are not rebuilt twice by any harness |
-| The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream. `kdosbuild --selftest` separately asserts the view geometry and the log classifier |
+| Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata`, `XZ_OPT='-e --check=sha256 -T1'` and a 300 MiB `XZ_DEFAULTS` memory limit, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times, and equal to their tar recompressed on two threads with `xz -9 --block-size=32MiB`. It also installs the port through `kpkg install`, once with the deleted `xz -0` package and once with a kept cache that must match the `-9` bytes. Full-size ports are not rebuilt twice by any harness |
+| The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry and the log classifier |
 | Snapshots and plans | Stable | Used by every incremental build, and by the synthetic-tree run above |
 | Upstream sources | In progress | 1,678 files archived. Preflight checks the scripts and the index; no harness publishes to or fetches from the archive |
 | The pack format | Stable | Malformed footers, both footer formats, signature states and a flipped payload byte are each asserted by the library self-test |
@@ -100,7 +100,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,023 recipes, 889 are absent from the build tree's package
+- **The ports tree.** Of the 2,024 recipes, 889 are absent from the build tree's package
   database. 859 of them are in the lists of `40_lang` to `44_apps` and have not been through a
   build. Of the other 30, 22 are `50_desktop` ports and 2 are `60_kernel` ports, absent because
   this build tree stops before those phases, and 6 are recipes no phase list names. The figure is
@@ -246,8 +246,8 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,023 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 1,999 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 2,024 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 2,000 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/system` | 5 | `find src/system -name kpkgbuild \| wc -l` |
 | — in `src/art` | 6 | `find src/art -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 8 | `find src/desktop -name kpkgbuild \| wc -l` |

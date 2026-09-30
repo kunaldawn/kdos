@@ -33,12 +33,15 @@ KDOS_YRES = $(word 2,$(subst x, ,$(KDOS_RES)))
 # The only networked step: every port's sources from the archive, the cache or
 # upstream, verified against the recipe. `make build` never downloads, so run
 # this once after a clone and after any recipe change. fetch-check is offline
-# and exits 1 naming each archived source missing or corrupt.
+# and exits 1 naming each archived source missing or corrupt. FETCH_JOBS=N
+# works on N ports at once; the default, 1, is one after the other.
+FETCH_JOBS ?= 1
+
 fetch:
-	bash ports/fetch
+	FETCH_JOBS=$(FETCH_JOBS) bash ports/fetch
 
 fetch-check:
-	bash ports/fetch --check
+	FETCH_JOBS=$(FETCH_JOBS) bash ports/fetch --check
 
 # Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
 # release. Needs network, curl and git (tags are read with ls-remote); never
@@ -73,15 +76,45 @@ check-iso-free:
 # run from CI.
 DOCKER_TTY := $(shell test -t 0 && echo -it)
 
+# HOW MUCH OF THE HOST THE BUILD TAKES. --cpu-shares is a weight, not a cap:
+# an idle host gives the build every thread. Under contention the weight
+# counts only against other containers and services; on a systemd cgroup-v2
+# host the container sits under system.slice, which splits the CPU evenly
+# with the user session. KDOS_JOBS, when set, is the job count every phase
+# uses (make, cmake --build, cargo) and also becomes a --cpus cap, clamped to
+# the host because docker refuses a --cpus above it, so ninja, cargo and go,
+# which size themselves from the cgroup's cpu.max, follow it too. Unset, the
+# job count is computed inside the build by script/env/common.env, e.g.
+#   make build KDOS_JOBS=6
+KDOS_CPU_SHARES ?= 256
+
+# The compiler cache for CMake ports inside the chroot, kept in build/ccache.
+# A hit is byte-identical to a compile; 0 turns it off.
+KDOS_CCACHE ?= 1
+
+# The package store in build/pkgstore: 1 installs a port whose inputs match a
+# stored package instead of building it, check builds it anyway and logs any
+# difference, 0 (the default) is off. KDOS_PKG_STORE_MAX caps its size.
+KDOS_PKG_STORE ?= 0
+KDOS_PKG_STORE_MAX ?= 60G
+
 build: check-iso-free
+	@case "$(KDOS_JOBS)" in *[!0-9]*|0*) echo "KDOS_JOBS must be a positive integer, got '$(KDOS_JOBS)'" >&2; exit 1;; esac
 	mkdir -p build
 	docker build -t os-dev .
-	docker run --network none --cpus="8" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
+	docker run --network none --cpu-shares=$(KDOS_CPU_SHARES) \
+		$(if $(KDOS_JOBS),--cpus=$$(n=$$(nproc); j=$(KDOS_JOBS); [ $$j -lt $$n ] && echo $$j || echo $$n)) \
+		--rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
+		-e KDOS_JOBS="$(KDOS_JOBS)" \
 		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \
 		-e KDOS_PACK_KDOS="$(KDOS_PACK_KDOS)" \
 		-e KDOS_MAKE_BINHOST="$(KDOS_MAKE_BINHOST)" \
+		-e KDOS_ISO_COMP="$(KDOS_ISO_COMP)" \
+		-e KDOS_CCACHE="$(KDOS_CCACHE)" \
+		-e KDOS_PKG_STORE="$(KDOS_PKG_STORE)" \
+		-e KDOS_PKG_STORE_MAX="$(KDOS_PKG_STORE_MAX)" \
 		-v $$(pwd)/build:/workspace/build \
 		-v $$(pwd)/src:/workspace/src:ro \
 		-v $$(pwd)/fs:/workspace/fs:ro \
@@ -133,7 +166,9 @@ check-hw:
 cleandisk:
 	qemu-img create -f qcow2 build/kdos.qcow2 20G
 
-# Wipe the build tree but keep build/snapshots, so a phase can still be restored.
+# Wipe the build tree but keep build/snapshots, so a phase can still be
+# restored, and build/ccache and build/pkgstore, whose contents stay valid for
+# the next build.
 #
 # build/keys survives BOTH of these, and that is deliberate: the pack signing
 # key lives there and a key is not a build artefact. Lose it and every later
@@ -142,9 +177,11 @@ cleandisk:
 # KDOS_PACK_KEY to keep it outside the tree entirely.
 cleanbuild:
 	test -d build && find build -mindepth 1 -maxdepth 1 \
-		! -name snapshots ! -name keys -exec rm -rf {} + || true
+		! -name snapshots ! -name keys ! -name ccache ! -name pkgstore \
+		-exec rm -rf {} + || true
 
-# Removes build/snapshots along with everything else. Not build/keys.
+# Removes build/snapshots, build/ccache and build/pkgstore along with everything
+# else. Not build/keys.
 clean:
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name keys -exec rm -rf {} + || true

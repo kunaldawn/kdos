@@ -6,12 +6,15 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   script/kdosbuild.sh — compile the orchestrator, then run it
+#   script/kdosbuild.sh — compile the orchestrator when it changed, then run it
 #
-# `make build` comes through here. kdosbuild is built from source at run start
-# rather than shipped as a binary or baked into the Dockerfile: it is a
-# two-second compile of a program that links nothing but libc, and it keeps
-# the image independent of the source tree it builds.
+# `make build` comes through here. kdosbuild is built from source rather than
+# shipped as a binary or baked into the Dockerfile, which keeps the image
+# independent of the source tree it builds. It is compiled only when its
+# sources, its flags or the compiler differ from what built the binary beside
+# it: a hash of all three sits in "$OUT.sum", written only after a compile
+# succeeds, so a failed compile or a binary built by another machine's
+# compiler (the host's glibc one against the image's musl one) is never run.
 
 set -e
 cd "$(dirname "$0")/.."
@@ -19,15 +22,18 @@ cd "$(dirname "$0")/.."
 OUT=${KDOSBUILD_BIN:-build/.kdosbuild}
 mkdir -p "$(dirname "$OUT")"
 
-# libkpkg is on the list because libkbuild walks the ports tree through it:
-# the picker's port list comes from the same walker kpkg resolves names with.
-${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
-    -Isrc/libs/libkbase -Isrc/libs/libkbuild -Isrc/libs/libkpkg \
-    -Isrc/libs/libktui -Isrc/libs/libkcolor -Isrc/devtools/kdosbuild \
-    -o "$OUT" \
-    src/devtools/kdosbuild/*.c \
-    src/libs/libkbase/*.c src/libs/libkbuild/*.c src/libs/libkpkg/*.c \
-    src/libs/libktui/*.c src/libs/libkcolor/*.c
+# libkpkg is on the list twice over: libkbuild walks the ports tree through it
+# (the picker's port list comes from the same walker kpkg resolves names with),
+# and the orchestrator asks kpkg's kp_installed_current() on the host to decide
+# which ports of a chroot package phase become steps.
+LIBS=(libkbase libkbuild libkpkg libktui libkcolor)
+FLAGS=(-O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra)
+SRCS=(src/devtools/kdosbuild)
+for l in "${LIBS[@]}"; do
+    FLAGS+=("-Isrc/libs/$l")
+    SRCS+=("src/libs/$l")
+done
+FLAGS+=(-Isrc/devtools/kdosbuild)
 
 # THE BUILD RUNS AS THE CONTAINER'S ROOT and everything it writes under build/
 # would stay root's — snapshots the developer cannot delete, logs they cannot
@@ -57,7 +63,28 @@ hand_back() {
     [ -n "${HOST_UID:-}" ] || return 0
     find build -mindepth 1 -maxdepth 1 ! -name podman ! -name fs \
         -exec chown -R "$HOST_UID:${HOST_GID:-$HOST_UID}" {} + 2>/dev/null || true
+    chown "$HOST_UID:${HOST_GID:-$HOST_UID}" "$OUT" "$OUT.sum" 2>/dev/null || true
 }
 trap hand_back EXIT
+
+CCBIN=${CC:-cc}
+SUM=$({
+    printf '%s\n' "$CCBIN" "${FLAGS[@]}"
+    $CCBIN -dumpmachine
+    $CCBIN --version | head -n 1
+    find "${SRCS[@]}" -type f -name '*.[ch]' -print0 | LC_ALL=C sort -z \
+        | xargs -0 sha256sum
+} | sha256sum)
+SUM=${SUM%% *}
+
+if [ ! -x "$OUT" ] || [ "$(cat "$OUT.sum" 2>/dev/null)" != "$SUM" ]; then
+    rm -f "$OUT.sum"
+    CFILES=()
+    for d in "${SRCS[@]}"; do
+        CFILES+=("$d"/*.c)
+    done
+    $CCBIN "${FLAGS[@]}" -o "$OUT" "${CFILES[@]}"
+    printf '%s\n' "$SUM" > "$OUT.sum"
+fi
 
 "$OUT" --script-dir script "$@"

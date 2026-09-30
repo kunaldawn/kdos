@@ -17,7 +17,7 @@
 # introspection is on: GdkPixbuf-2.0.gir is included by GTK's, libnotify's and
 # librsvg's GIRs. It is generated against the GLib GIRs that
 # glib-introspection installs. glycin is not a port.
-meson setup build \
+meson setup build --buildtype=release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--wrap-mode=nodownload \
 	-D png=enabled \

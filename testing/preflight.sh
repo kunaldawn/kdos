@@ -667,6 +667,50 @@ $(printf '%s' "$flat" \
 done
 note "meson options" "$meson_checked meson ports checked against their own option files"
 
+echo
+echo "==> every meson port names its buildtype"
+# kpkg strips nothing, so the compiler flags decide what a package carries.
+# meson's default buildtype is `debug`, which compiles -g -O0 into every
+# object; a recipe that names none ships its DWARF and an unoptimised build.
+bt_checked=0
+for d in "${PORTS_ALL[@]}"; do
+    [ -f "$d/build.sh" ] || continue
+    grep -v '^[[:space:]]*#' "$d/build.sh" | grep -q 'meson setup' || continue
+    grep -v '^[[:space:]]*#' "$d/build.sh" | grep -qE -- '--buildtype[= ]|-Dbuildtype=' \
+        || bad "$(basename "$d")" "runs meson setup without --buildtype= or -Dbuildtype="
+    bt_checked=$((bt_checked + 1))
+done
+note "meson buildtype" "$bt_checked meson ports checked"
+
+echo
+echo "==> every go build and go install strips its binary"
+# The Go linker writes DWARF and a symbol table unless -ldflags carries -s and
+# -w, and kpkg strips nothing, so the binary ships at about twice its size.
+# A command is read whole, its backslash continuations joined, because the
+# flags routinely sit on a later line than `go build`. GOFLAGS is not read: a
+# recipe's own -ldflags replaces the one GOFLAGS names.
+go_checked=0
+for d in "${PORTS_ALL[@]}"; do
+    [ -f "$d/build.sh" ] || continue
+    grep -qE '(^|[[:space:];&|(])go[[:space:]]+(build|install)' "$d/build.sh" || continue
+    while IFS= read -r line; do
+        go_checked=$((go_checked + 1))
+        fl=$(printf '%s\n' "$line" \
+             | grep -oE -- "-ldflags[= ](\"[^\"]*\"|'[^']*'|[^[:space:]]+)" | head -1 \
+             | sed -E "s/^-ldflags[= ]//; s/^[\"']//; s/[\"']\$//")
+        printf ' %s ' "$fl" | grep -qE '[[:space:]]-s[[:space:]]' \
+            && printf ' %s ' "$fl" | grep -qE '[[:space:]]-w[[:space:]]' && continue
+        bad "$(basename "$d")" "go build/install without -ldflags \"-s -w\": ${line:0:100}"
+    done < <(awk '
+        { if (acc != "") { line = acc " " $0 } else { line = $0 } }
+        /\\$/ { sub(/\\$/, "", line); acc = line; next }
+        { acc = "" }
+        line ~ /^[[:space:]]*#/ { next }
+        line ~ /(^|[[:space:];&|(])go[[:space:]]+(build|install)([[:space:]]|$)/ { print line }
+    ' "$d/build.sh")
+done
+note "go strip flags" "$go_checked go build/install commands checked"
+
 #
 # WHAT AN ARCHIVE IS, READ OUT OF THE FILE RATHER THAN ASKED OF `file`.
 #
@@ -2662,6 +2706,65 @@ EOF
         note "desktop entries" \
              "$_de visible, every icon drawable, every command present, every name distinct"
 fi
+
+echo
+echo "==> the compiler cache cannot change a byte"
+# script/env/chroot.env puts ccache in front of every CMake compile. A hit must
+# be the object a compile would write, and four settings decide that:
+# CCACHE_BASEDIR rewrites paths so -ffile-prefix-map stops matching them; an
+# mtime compiler check cannot tell a rebuilt gcc from the old one, because kpkg
+# pins every mtime; a knob the Makefile passes but exec.sh's `env -i` does not
+# name never reaches the chroot; and a masquerade directory on PATH makes CMake
+# record /usr/lib/ccache/gcc as the compiler in shipped files.
+_cr=.
+_cc=0
+if grep -rqE '^[^#]*CCACHE_BASEDIR' "$_cr"/script/env/ 2>/dev/null; then
+    bad "ccache base_dir" "script/env sets CCACHE_BASEDIR — paths leave -ffile-prefix-map and bytes change"
+    _cc=$((_cc + 1))
+fi
+_ccon=$(sed -n '/^if \[ "\${KDOS_CCACHE:-1}" = 1 \]/,/^else/p' "$_cr"/script/env/chroot.env 2>/dev/null)
+if [ -z "$_ccon" ] || ! grep -qE '^[^#]*CCACHE_COMPILERCHECK="string:' <<<"$_ccon" \
+   || grep -qE '^[^#]*CCACHE_COMPILERCHECK=[^ ]*mtime' <<<"$_ccon"; then
+    bad "ccache compiler check" "chroot.env's enabled branch must set CCACHE_COMPILERCHECK to a string, never mtime"
+    _cc=$((_cc + 1))
+fi
+_ccm=0 _cce=0
+grep -qE '^[[:space:]]*-e KDOS_CCACHE=' "$_cr"/Makefile && _ccm=1
+grep -qE '^[[:space:]]*KDOS_CCACHE=' "$_cr"/script/chroot/exec.sh && _cce=1
+if [ "$_ccm" != "$_cce" ]; then
+    bad "ccache knob" "KDOS_CCACHE is passed by the Makefile ($_ccm) and named by exec.sh's env -i ($_cce) — both or neither"
+    _cc=$((_cc + 1))
+fi
+if grep -rqE '^[^#]*PATH=[^[:space:]]*/usr/lib/ccache' "$_cr"/script/ 2>/dev/null; then
+    bad "ccache masquerade" "a PATH under script/ holds /usr/lib/ccache — CMake records it as the compiler"
+    _cc=$((_cc + 1))
+fi
+[ "$_cc" = 0 ] && note "compiler cache" "no base_dir, string compiler check, knob forwarded, no masquerade PATH"
+
+echo
+echo "==> the package store's knobs reach the chroot"
+# KDOS_PKG_STORE and KDOS_PKG_STORE_MAX come from the Makefile; exec.sh's
+# `env -i` must name them and the three kpkg reads (KPKG_STORE,
+# KPKG_STORE_CHECK, KPKG_STORE_SALT), or `make build KDOS_PKG_STORE=1` builds
+# every port with the store silently off.
+_ps=0
+for _v in KDOS_PKG_STORE KDOS_PKG_STORE_MAX; do
+    if ! grep -qE "^[[:space:]]*-e $_v=" "$_cr"/Makefile; then
+        bad "package store knob" "the Makefile does not pass $_v into the container"
+        _ps=$((_ps + 1))
+    fi
+done
+for _v in KDOS_PKG_STORE KDOS_PKG_STORE_MAX KPKG_STORE KPKG_STORE_CHECK KPKG_STORE_SALT; do
+    if ! grep -qE "^[[:space:]]*$_v=" "$_cr"/script/chroot/exec.sh; then
+        bad "package store knob" "exec.sh's env -i does not name $_v"
+        _ps=$((_ps + 1))
+    fi
+done
+if ! grep -qE '! -name pkgstore' "$_cr"/Makefile; then
+    bad "package store cleanbuild" "make cleanbuild removes build/pkgstore"
+    _ps=$((_ps + 1))
+fi
+[ "$_ps" = 0 ] && note "package store" "knobs passed by the Makefile and named by exec.sh; cleanbuild keeps it"
 
 echo
 if [ "$fail" = 0 ]; then

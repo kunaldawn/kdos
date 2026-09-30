@@ -1053,7 +1053,13 @@ Where the package manager `kpkg` keeps its trees. The file is written as shell a
 bash at the start of every port's build, so a shell expression in it runs there. An exported
 environment variable of the same name always wins over the file, which is what the build phases
 from `40_lang` to `60_kernel` rely on: each one's `phase.env` exports `PORT_REPO` to add KDOS's own
-`src/<area>` repositories after `/ports/core`. `KPKG_CONF` names a different file.
+`src/<area>` repositories after `/ports/core`. `KPKG_CONF` names a different file. The variables
+that change what `kpkg` does rather than where its trees are (`KPKG_ROOT`, `KPKG_OVERWRITE`,
+`KPKG_REQUIRE_SIG`, `KPKG_STRICT_RECIPE`, `KPKG_KEEP_CACHE`, `KPKG_SKIP_INDEX`, the package
+store's `KPKG_STORE`, `KPKG_STORE_CHECK`, `KPKG_STORE_SALT` and `KPKG_STORE_BASE`, and the rest)
+are environment only and are listed in [Packaging](../03-architecture/packaging.md#kpkg). The build
+sets the store's from `make build KDOS_PKG_STORE=0|1|check` and `KDOS_PKG_STORE_MAX`; see
+[Build](filesystem-and-ipc.md#build).
 
 | Key | Default | Means |
 |---|---|---|

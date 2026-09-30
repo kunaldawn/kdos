@@ -45,10 +45,10 @@ or a container; see [Where the build puts things](#where-the-build-puts-things).
 **Disk.** The upstream sources for the current tree take about 41.5 GB (38.6 GiB): the 2,448
 distinct files the recipes fetch, which is what `ports/.srccache/` holds after a complete
 `make fetch`. Each distinct file is held once in the cache and hard-linked into every port directory
-that names it. Budget tens of gigabytes more for `build/`, and more again for phase snapshots: every
-one of the thirteen phases archives a compressed copy of the target tree, and the `70_image`
-snapshot alone is about 59 GB because it carries the ISO tree. A complete set of thirteen has not
-been measured. Snapshots are optional, per run and per phase; see
+that names it. Budget tens of gigabytes more for `build/`, and more again for phase snapshots: each
+of the eleven phases from `00_cross` to `50_desktop` archives a compressed copy of the target tree,
+and `60_kernel` and `70_image` take none. A complete set has not been measured. Snapshots are
+optional, per run and per phase; see
 [Snapshots](build-system.md#snapshots).
 
 ## Getting the source
@@ -81,14 +81,14 @@ make build            # compile everything; the orchestrator runs with no networ
 
 `make build` builds the `os-dev` container image from the repository's `Dockerfile` (Alpine 3.23
 with GCC, musl, bash and the other tools the orchestrator needs), then runs the orchestrator inside
-it with `--network none`, `--privileged` and eight CPUs. The repository is mounted with `build/`
+it with `--network none`, `--privileged` and `--cpu-shares=256`, a weight that lets an idle host give the build every thread; `KDOS_JOBS=N` also caps it with `--cpus`. The repository is mounted with `build/`
 writable and `src/`, `fs/`, `script/` and `ports/` read-only. The current commit and whether the
 working tree is dirty are passed in and recorded with each snapshot. Your user and group ids are
 passed in as well, and when the orchestrator exits it hands everything under `build/` back to you,
 except `build/fs`; see [Where the build puts things](#where-the-build-puts-things).
 
 The orchestrator is `kdosbuild`, compiled from `src/devtools/kdosbuild/` by `script/kdosbuild.sh` at
-the start of every build. On a terminal it first opens a picker that asks whether to start fresh or
+the start of a build when its sources, flags or compiler changed. On a terminal it first opens a picker that asks whether to start fresh or
 restore a snapshot, and whether to write snapshots as it goes; see
 [The startup picker](build-system.md#the-startup-picker). Without a terminal it prints plain lines
 instead, so a build can be logged to a file. A full build from scratch takes many hours. The
@@ -105,13 +105,25 @@ Two things to know before the first run:
   so rewriting it under a running guest turns every block the guest has not cached into an I/O
   error. Shut the guest down first, or override with `make build ALLOW_ISO_IN_USE=1`.
 
-Three opt-in variables change what the build produces. Each is passed by the `Makefile` and
+These variables change how much of the host the build takes, or how much it rebuilds, and nothing
+about what it produces:
+
+| Variable | Effect |
+|---|---|
+| `KDOS_JOBS=N` | The job count for every phase: `MAKEFLAGS=-jN`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, and a `--cpus` cap of N on the build container, no higher than the host's thread count, so ninja and cargo follow it. Unset, `script/env/common.env` takes the host's thread count clamped to one job per 2 GiB of memory. Lower it when a large C++ port is OOM-killed |
+| `KDOS_CPU_SHARES=N` | The build container's CPU weight, default `256`. It is not a cap: an idle host still gives the build every thread, and it only orders the build against other containers and system services |
+| `KDOS_CCACHE=0` | Turns off the compiler cache, default `1`: CMake ports inside the chroot compile through ccache into `build/ccache`, and a cached object is byte-identical to a compiled one (see [The compiler cache](how-kdos-is-built.md#the-compiler-cache)). Forwarded into the chroot by `script/chroot/exec.sh` |
+| `KDOS_PKG_STORE=1` | Turns on the package store, default `0`: a port whose recipe, environment and dependencies' exact bytes match a package built before is installed from `build/pkgstore` instead of being built, and every package built is stored. `check` builds every hit anyway and logs any difference to `build/logs/pkgstore-check.log`. Use `0` or `check` for a release. See [The package store](../03-architecture/packaging.md#the-package-store) |
+| `KDOS_PKG_STORE_MAX=SIZE` | The size `70_image` evicts the store down to, least recently used first, default `60G` |
+
+Four opt-in variables change what the build produces. Each is passed by the `Makefile` and
 forwarded into the chroot by `script/chroot/exec.sh`:
 
 | Variable | Effect |
 |---|---|
 | `KDOS_ISO_SOURCES=1` | Copies the tree onto the ISO under `/sources`, beside `system.sfs` rather than inside it: `src/`, `script/`, `fs/`, and `ports/` with every recipe and fetched source but without its caches, with a `SOURCES` stamp giving the port count, the size and the build time. The `Makefile` and `Dockerfile` are not mounted into the build, so neither is on the medium. It roughly doubles the size of the image |
 | `KDOS_PACK_KDOS=1` | Also packs the root filesystem as the base pack `kdos`, in `build/kdos-base/kdos.kpack`, and puts it on the ISO under `/packs`. `kdos-box create ports base=pack:kdos` then gives a running KDOS a clean KDOS to build ports in. Without the flag, a pack left from an earlier build is deleted |
+| `KDOS_ISO_COMP=zstd:3` | Compresses `system.sfs` with zstd at level 3 instead of the default level 15: a faster `70_image` and an image about 10% larger, for the rig, never a release. `xz` and `zstd:1` to `zstd:22` are accepted; any other value stops `110_iso.sh` |
 | `KDOS_MAKE_BINHOST=1` | Keeps every package the build makes and writes them into a signed binhost in `build/binhost/`, which `kdos update apply` can install from. Each run adds what it built, so a complete binhost needs one `--fresh` build with the flag set |
 
 For example, `make build KDOS_ISO_SOURCES=1`.
@@ -152,7 +164,7 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `fetch` | Fetch every port's sources into `ports/core`, generating vendor bundles the archive lacks. `ports/fetch <port>` narrows it | Network; a container only to generate |
 | `fetch-check` | List, offline, every archived source that is missing or fails its hash | A C compiler |
 | `updates` | Check every port for a newer upstream release | Network, `curl`, `git`, `cc` |
-| `snapshots` | List the phase snapshots, compiling `build/.kdosbuild` with your machine's compiler | A C compiler |
+| `snapshots` | List the phase snapshots, compiling `build/.kdosbuild` with your machine's compiler when your compiler did not build it | A C compiler |
 | `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created at 20 GB if missing) | QEMU, OVMF |
 | `rundisk` | Boot `build/kdos.qcow2` instead of the ISO | QEMU, OVMF, an existing disk image |
 | `run-hw` | Boot the ISO with hardware-accelerated graphics | Docker, the NVIDIA Container Toolkit |
@@ -161,7 +173,7 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `check-iso-free` | Refuse to rewrite an ISO a process has open | `fuser`; without it the check is skipped |
 | `check-hw` | Check the accelerated-graphics setup: an error without Docker, warnings without the `nvidia` runtime or `/dev/udmabuf` | |
 | `cleandisk` | Replace `build/kdos.qcow2` with a new, empty 20 GB disk image | QEMU |
-| `cleanbuild` | Delete everything in `build/` except `snapshots` and `keys`, and except what only root can remove (see below) | |
+| `cleanbuild` | Delete everything in `build/` except `snapshots`, `ccache`, `pkgstore` and `keys`, and except what only root can remove (see below) | |
 | `clean` | Delete everything in `build/` except `keys`, and except what only root can remove | |
 
 Both cleans run on your machine as your user. `build/fs` is owned by root, so they cannot remove
@@ -194,7 +206,20 @@ The orchestrator options used most often are these; the full list is in
 | `--steps LIST` | Run only these scripts, each written `PHASE:script.sh` |
 | `--rebuild LIST` | Rebuild these ports even though they are installed |
 | `--no-snapshot` | Write no snapshots during this build |
+| `--port-jobs N` | Build up to `N` ports of a package phase at once, by dependency level; 1, the default, builds one at a time |
 | `--plain`, `--json` | No interface: plain lines, or one JSON object per event |
+
+**Building ports side by side.** `make build BUILD_ARGS="--port-jobs 3"` runs each package phase
+level by level: the ports whose dependencies are all installed build together, each with
+`KDOS_JOBS` divided between them and on its own window of CPUs, and one commit step then installs
+the level in the serial order. What each port builds against is decided by the tree, not by timing,
+so the result matches a serial build as long as every recipe declares its dependencies. It pays
+where a phase has many ports too small to use every CPU, the configure, install and packaging time
+of a userland phase above all; a phase ruled by one large port gains little. 2 or 3 is the useful
+range: each running port has its own compilers and linkers, and a new port starts beside running
+ones only while a quarter of the memory is free, so on a machine with little memory to spare
+lower `KDOS_JOBS` as well or leave it at 1. How a level is built, and what a failure in one does,
+is in [Building a package phase by level](build-system.md#building-a-package-phase-by-level).
 
 `ports/update --check` exits 1 when it finds an update, so `make updates` treats status 1 as
 success and fails only on status 2 or higher.
@@ -251,14 +276,17 @@ no firmware.
 | `build/fs` | The target root filesystem | Owned by root on purpose; see below |
 | `build/iso-build/kdos.iso` | The ISO | |
 | `build/logs/<phase>/` | One log per step | The first thing to read when a build fails |
-| `build/logs/chroot.log` | Mount and unmount messages from entering the chroot | |
+| `build/logs/chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree it could not bind read-only, an open-files limit it could not raise | |
 | `build/snapshots/<phase>/` | Phase snapshots | Kept by `cleanbuild` |
+| `build/ccache/` | The compiler cache CMake ports compile through, up to 20 GB | Kept by `cleanbuild`, removed by `clean`. Written as root; remove it from a container |
+| `build/pkgstore/` | The package store, `<key[0:2]>/<key>/` holding one package and its `META`, up to `KDOS_PKG_STORE_MAX` | Written only with `KDOS_PKG_STORE` on. Kept by `cleanbuild`, removed by `clean` |
+| `build/logs/pkgstore-check.log` | What `KDOS_PKG_STORE=check` found: one line per port whose rebuild differed from its stored package, then the members that differ | See [Testing](testing.md#reading-pkgstore-checklog) |
 | `build/mark/` | The early phases' "already done" markers | See [Building from scratch](#building-from-scratch) |
 | `build/cross/` | The cross toolchain (binutils and GCC for `x86_64-kdos-linux-musl`) that the first two phases compile with | |
 | `build/tmp/` | Scratch space for the early phases | Emptied at the start of every step of those phases |
 | `build/keys/` | Kept by both cleans | Nothing in the build writes it; it is set aside so a signing key kept there survives a clean |
 | `build/kdos.qcow2` | The virtual machine's disk | Created by `make run` |
-| `build/.kdosbuild` | The compiled orchestrator | Rebuilt at the start of every build |
+| `build/.kdosbuild` | The compiled orchestrator, with `build/.kdosbuild.sum` beside it | Recompiled at the start of a build when its sources, flags or compiler changed |
 | `build/.devplan.json` | The build plan in force | |
 | `build/kdos-base/` | The base pack, with `KDOS_PACK_KDOS=1` | |
 | `build/fetch-home` | The fetch container's home and toolchain caches | Written as your user |
@@ -411,6 +439,7 @@ filter counts as an archive to fetch, because without LFS its working copy is on
 | `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index to read |
 | `KDOS_SRCCACHE` | `ports/.srccache` | The cache. A path outside the repository is mounted into the fetch container |
 | `KDOS_FETCH_HOST` | unset | `1`: one pass on your machine, generating vendor bundles with its own toolchains |
+| `FETCH_JOBS` | `1` | How many ports `ports/fetch` works on at once, `--check` included; `make fetch` and `make fetch-check` pass it through. Above 1, each port's lines print together when it finishes, and a run that generates vendor bundles still generates them one at a time |
 | `KDOS_ALLOW_UNVERIFIED` | unset | `1`: no warning for a file its recipe gives no hash |
 | `ENGINE_OUT` | `docker` if installed, else `podman` | The container engine for generating vendor bundles |
 | `CC` | `cc` | The compiler for the recipe reader, `ports/.kpkgbin/kpkg` |
@@ -451,6 +480,7 @@ A full build takes hours, and almost no change needs one. Find what you changed 
 | A library under `src/libs/` | `make build BUILD_ARGS="--phases 10_bootstrap,41_system,42_graphics,44_apps,50_desktop,70_image --steps 10_bootstrap:120_kpkg.sh,10_bootstrap:130_kinstall.sh"`; see below |
 | The installer (`src/system/kdos-installer`, or `kdos-appbox`'s `catalogue.c`) | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:130_kinstall.sh"`; see below |
 | Only packaging | `make build BUILD_ARGS="--phases 70_image"` |
+| Only packaging, for the rig | `make build KDOS_ISO_COMP=zstd:3 BUILD_ARGS="--phases 70_image"` |
 | Nothing; resuming an interrupted run | `make build BUILD_ARGS="--continue-from <the phase it stopped in>"` |
 | Every phase, on the existing tree, skipping the startup picker | `make build BUILD_ARGS="--fresh --no-snapshot"` |
 
@@ -484,7 +514,7 @@ The environments differ: `20_selfhost` names no compiler, while every later phas
 `CXX=g++`. `PORT_REPO` differs too: `src/system` and `src/art` are on it from `40_lang` on, and
 `src/desktop` and `src/daemons` only in `50_desktop`.
 
-Nine of the 1,999 ports in `ports/core` are named in no list. Four are installed because
+Nine of the 2,000 ports in `ports/core` are named in no list. Four are installed because
 `20_selfhost`'s list depends on them (`gmp`, `mpfr`, `mpc` and `xxhash`), and the second command
 finds their phase. The other five (`helix`, `icon-naming-utils`, `musl-locales`,
 `perl-xml-simple` and `setconf`) are named by no list and needed by no port, so no build installs
@@ -521,7 +551,7 @@ it shows is not evidence about the shipped image. See [Testing](testing.md#the-f
 
 `--fresh`, and *start fresh* in the picker, run every phase on the tree already in `build/`. They do
 not empty it: each `00_cross` and `10_bootstrap` script exits at once when its marker under
-`build/mark/` exists, and `kpkg` skips every port already installed from the same recipe. To build
+`build/mark/` exists, and the build skips every port already installed from the same recipe. To build
 from nothing, empty the three trees that record that progress first. `build/fs` belongs to root, so
 do it from a container:
 
@@ -531,14 +561,15 @@ make build BUILD_ARGS=--fresh
 ```
 
 Budget most of a day for the build that follows. If it writes snapshots, budget the disk as well:
-every one of the thirteen phases archives a compressed copy of `build/fs` and the `70_image`
-snapshot alone is about 59 GB. A complete set has not been measured; see
+each of the eleven phases from `00_cross` to `50_desktop` archives a compressed copy of `build/fs`.
+A complete set has not been measured; see
 [Snapshots](build-system.md#snapshots), which also says how a phase opts out of its snapshot.
 
 ## Things to avoid while a build runs
 
-- **Do not edit a port's sources while it is being rebuilt.** The recipe hash is taken when the port
-  is installed, so an edit in the middle records a hash for a tree that is not what got compiled.
+- **Do not edit a port's sources while it is being rebuilt.** The recipe hash is taken when the
+  build starts, so an edit in the middle is rebuilt on the next run, but the package being
+  installed now was compiled from a mix of the two trees.
 - **Do not re-run an early phase on a tree that is already past it while snapshots are being
   written**, as they are by `--fresh`, by `--continue-from` and by a plan run with `--snapshot`. The
   early phase's snapshot would be overwritten with the later tree, filed under its name. A
@@ -560,7 +591,7 @@ machine:
 ```sh
 testing/preflight.sh                              # the wiring: a few minutes
 testing/selftest.sh                               # libraries and their consumers: a few minutes
-make snapshots                                    # compiles build/.kdosbuild for this machine
+make snapshots                                    # compiles build/.kdosbuild for this machine if needed
 build/.kdosbuild --preview build 132x43 vt        # a build screen, drawn as text
 ```
 
@@ -576,15 +607,15 @@ machine, so those forms are what the self-test runs, not commands to type. On on
 machine each script took about two and a half minutes. What each harness proves is in
 [Testing](testing.md#what-each-tool-proves).
 
-`build/.kdosbuild` runs on your machine only when your machine's compiler built it, which
-`make snapshots` does. `make build` replaces it with a musl binary compiled in the build image, which
-a glibc machine cannot run; the shell then reports `No such file or directory` without mentioning the
-missing musl loader. Run `make snapshots` again after a build, or keep a separate copy with
-`KDOSBUILD_BIN=build/.kdosbuild-host script/kdosbuild.sh --list`. `--preview` draws one of the
-screens `build`, `activity`, `failure`, `pinned`, `complete`, `startup`, `plan` or `packages` at
-the given size, in one of the [glyph tiers](../06-reference/glossary.md) `rich`, `vt` or `ascii`
-(which set of drawing characters the screen may use).
-
+`build/.kdosbuild` runs on your machine only when your machine's compiler built it, which `make
+snapshots` does. `make build` replaces it with a musl binary compiled in the build image, which a
+glibc machine cannot run; the shell then reports `No such file or directory` without mentioning the
+missing musl loader. `build/.kdosbuild.sum` names the compiler as well as the sources, so each side
+recompiles when the other built the binary last. Run `make snapshots` again after a build, or keep a
+separate copy with `KDOSBUILD_BIN=build/.kdosbuild-host script/kdosbuild.sh --list`. `--preview`
+draws one of the screens `build`, `activity`, `failure`, `pinned`, `complete`, `startup`, `plan` or
+`packages` at the given size, in one of the [glyph tiers](../06-reference/glossary.md) `rich`, `vt`
+or `ascii` (which set of drawing characters the screen may use).
 The window model needs no display at all. `libkwm` links nothing but the C library, so the self-test
 replays `testing/fixtures/wm/geometry.txt` against it on any machine in milliseconds. It is the
 fastest way to answer a question about where a window lands, what a tiled window becomes, or which

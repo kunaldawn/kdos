@@ -169,7 +169,7 @@ expressible in cells.
 ## Everything that runs on the host is built from source
 
 Every program, library and module that the host installs and runs on its own processor is compiled
-in this tree from pinned source: 2,023 recipes, 1,999 under `ports/core` for upstream software, each
+in this tree from pinned source: 2,024 recipes, 2,000 under `ports/core` for upstream software, each
 pinned by hash, and 24 under `src/` for the software kept in this repository, most of it written for
 KDOS. [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf,
 with the phase that builds it, and [How KDOS is built](../05-developer/how-kdos-is-built.md) follows
@@ -262,10 +262,12 @@ and [A bundle no tool writes](../05-developer/writing-ports.md#a-bundle-no-tool-
 ## Reproducible by construction
 
 A package built twice from the same tree is byte-identical. That is a property of one function
-rather than of 2,023 recipes: `roll_package()` in `kpkg`, the package manager
+rather than of 2,024 recipes: `roll_package()` in `kpkg`, the package manager
 (`src/system/kdos-kpkg/build.c`), runs tar with `--sort=name`, `--format=gnu`, `--owner=0 --group=0
---numeric-owner`, an `--mtime` taken from `SOURCE_DATE_EPOCH`, and `xz -9 -T1` as a pinned
-compressor. The build also sets its umask to `022` before a recipe runs. The environment every build
+--numeric-owner`, an `--mtime` taken from `SOURCE_DATE_EPOCH`, and `xz -9 -T0 --block-size=32MiB
+--no-adjust` as a pinned compressor with `XZ_OPT` and `XZ_DEFAULTS` removed: xz's bytes follow its
+preset and block size, not the number of threads, so the compressor uses every core and stays
+reproducible. The build also sets its umask to `022` before a recipe runs. The environment every build
 phase sources, `script/env/common.env`, pins `SOURCE_DATE_EPOCH` to `1735689600`, and with the
 variable unset the mtime is `0`, so the answer never depends on when the build ran. Keeping all of
 this in one place is why `kpkg` rolls the package archive itself instead of letting each recipe do

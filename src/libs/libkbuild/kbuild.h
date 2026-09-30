@@ -40,6 +40,7 @@
 #define KBUILD_PHASE_ENV   "phase.env"
 #define KBUILD_PKG_FILE    "packages.txt"
 #define KBUILD_PKG_DIR     "packages.d"
+#define KBUILD_ORDER_FILE  "00-order.txt"	/* packages.d's order run */
 
 typedef struct {
 	int index;
@@ -150,6 +151,14 @@ char **kbuild_steps(const KbuildPhase *p, int *count);
  * list into files changes nothing a reader sees. */
 char **kbuild_packages(const KbuildPhase *p, int *count);
 
+/* The phase's order run, in list order: every name of packages.d/00-order.txt,
+ * or the names a packages.txt gives ahead of its first shelf banner
+ * (`# <shelf> — <description>`) — all of them when it has none. The rule is
+ * testing/phaseclosure.py's. kdosbuild builds the run strictly in order, one
+ * port at a time, before anything of the phase builds beside another. Returns
+ * the count; `*names` is a NULL-terminated strv the caller frees. */
+int kbuild_packages_order_run(const KbuildPhase *ph, char ***names);
+
 /* Every port name under ports/core, src/system and src/art, walked by
  * libkpkg's own walker at both depths, so a dependency-only port is
  * selectable too; src/desktop and src/daemons reach the index through the
@@ -166,6 +175,17 @@ typedef struct {
 /* -1 with `err` set when kbuild_ports fails. */
 int kbuild_package_index(const KbuildPhase *ph, int nph, const char *repo_root,
 			 KbuildPkgRef *out, int max, char *err, size_t errcap);
+
+/* The repositories a phase's `kpkg` searches, as paths on the host: the last
+ * `[export ]PORT_REPO=` line of its phase.env, read by the rule
+ * testing/phaseclosure.py uses, else kpkg.conf's /ports/core. The chroot binds
+ * the repository's ports/ at /ports and the repository at /kdos, so /ports/...
+ * maps to <repo_root>/ports/... and /kdos/... to <repo_root>/...; any other
+ * absolute path is taken under <repo_root>. `out` gets them space-separated,
+ * ready for kp_conf_set_repos. Returns the count, or -1 (with `out` empty) when
+ * they do not fit in `cap`. */
+int kbuild_phase_repos(const KbuildPhase *ph, const char *repo_root,
+		       char *out, size_t cap);
 
 typedef struct {
 	char dir[64];

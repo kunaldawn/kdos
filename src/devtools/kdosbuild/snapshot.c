@@ -87,12 +87,15 @@ const char *snap_codec(void)
 	return cached;
 }
 
+/* zstd -1: a snapshot is written every phase and read back rarely, so the
+ * level that keeps pace with tar wins over a smaller archive. The decompressor
+ * reads any level, so an archive written at another one still restores. */
 static void compress_cmd(KbArgv *a)
 {
 	const char *codec = snap_codec();
 	if (!strcmp(codec, "zstd")) {
 		kb_argv_add(a, "zstd");
-		kb_argv_add(a, "-3");
+		kb_argv_add(a, "-1");
 		kb_argv_add(a, "-T0");
 		kb_argv_add(a, "-q");
 		kb_argv_add(a, "-c");
@@ -166,13 +169,62 @@ void snap_git_info(const char *repo_root, char *commit, size_t ccap, int *dirty)
  * Directories are tracked by (st_dev, st_ino), live mountpoints are skipped
  * and depth is capped. A lazily-detached mount is gone from /proc/mounts but
  * still traversable from inside, so the inode check — not the mount list — is
- * what actually closes the loop.
+ * what actually closes the loop. The visited set is an open-addressing hash,
+ * so the check costs the same on the ten-thousandth directory as on the
+ * first; a list scanned per directory makes a large tree's walk quadratic.
  */
 
 typedef struct {
 	dev_t dev;
 	ino_t ino;
+	int used;
 } NodeKey;
+
+typedef struct {
+	NodeKey *slot;
+	size_t cap;	/* a power of two */
+	size_t n;
+} NodeSet;
+
+static size_t node_hash(dev_t dev, ino_t ino)
+{
+	return (size_t)(((unsigned long long)ino * 0x9E3779B97F4A7C15ULL) ^
+			(unsigned long long)dev);
+}
+
+static void node_put(NodeSet *s, dev_t dev, ino_t ino)
+{
+	size_t i = node_hash(dev, ino) & (s->cap - 1);
+	while (s->slot[i].used)
+		i = (i + 1) & (s->cap - 1);
+	s->slot[i].dev = dev;
+	s->slot[i].ino = ino;
+	s->slot[i].used = 1;
+	s->n++;
+}
+
+/* 1 when (dev, ino) was already in the set; otherwise adds it and returns 0.
+ * Grows at half full, which keeps every probe run short. */
+static int node_seen_or_add(NodeSet *s, dev_t dev, ino_t ino)
+{
+	size_t i = node_hash(dev, ino) & (s->cap - 1);
+	while (s->slot[i].used) {
+		if (s->slot[i].dev == dev && s->slot[i].ino == ino)
+			return 1;
+		i = (i + 1) & (s->cap - 1);
+	}
+	if ((s->n + 1) * 2 > s->cap) {
+		NodeSet g = { kb_calloc(s->cap * 2, sizeof(NodeKey)),
+			      s->cap * 2, 0 };
+		for (size_t k = 0; k < s->cap; k++)
+			if (s->slot[k].used)
+				node_put(&g, s->slot[k].dev, s->slot[k].ino);
+		free(s->slot);
+		*s = g;
+	}
+	node_put(s, dev, ino);
+	return 0;
+}
 
 typedef struct {
 	char path[1024];
@@ -198,11 +250,8 @@ Usage dir_usage(const char *path, double deadline,
 	int nmount = kbuild_snap_mounts_under("/", mounts, 512);
 
 	dev_t root_dev = st.st_dev;
-	int nkey = 0, keycap = 1024;
-	NodeKey *keys = kb_calloc((size_t)keycap, sizeof(*keys));
-	keys[nkey].dev = st.st_dev;
-	keys[nkey].ino = st.st_ino;
-	nkey++;
+	NodeSet keys = { kb_calloc(1024, sizeof(NodeKey)), 1024, 0 };
+	node_put(&keys, st.st_dev, st.st_ino);
 
 	int nstack = 0, stackcap = 256;
 	WalkItem *stack = kb_calloc((size_t)stackcap, sizeof(*stack));
@@ -260,24 +309,8 @@ Usage dir_usage(const char *path, double deadline,
 			if (is_mount)
 				continue;
 
-			int seen = 0;
-			for (int i = 0; i < nkey && !seen; i++)
-				seen = keys[i].dev == cs.st_dev &&
-				       keys[i].ino == cs.st_ino;
-			if (seen)
+			if (node_seen_or_add(&keys, cs.st_dev, cs.st_ino))
 				continue;	/* bind-mount loop back in */
-
-			if (nkey == keycap) {
-				keycap *= 2;
-				NodeKey *nk = kb_calloc((size_t)keycap,
-							sizeof(*nk));
-				memcpy(nk, keys, (size_t)nkey * sizeof(*nk));
-				free(keys);
-				keys = nk;
-			}
-			keys[nkey].dev = cs.st_dev;
-			keys[nkey].ino = cs.st_ino;
-			nkey++;
 
 			if (nstack == stackcap) {
 				stackcap *= 2;
@@ -296,7 +329,7 @@ Usage dir_usage(const char *path, double deadline,
 	}
 
 	free(mounts);
-	free(keys);
+	free(keys.slot);
 	free(stack);
 	return u;
 }
@@ -562,10 +595,12 @@ static int run_pipe(Manager *m, const KbArgv *first, const KbArgv *second,
 static void release_mounts(Manager *m, const char *path, KbBuf *released,
 			   KbBuf *blockers)
 {
-	/* These are script/chroot/exec.sh's own bind mounts and the phase's
-	 * steps have all finished by now, so releasing them is what the
-	 * wrapper intended anyway — one transient EBUSY at wrapper exit should
-	 * not cost the phase its snapshot. */
+	/* script/chroot/exec.sh leaves no mounts here: each entry mounts in a
+	 * private namespace that goes away with it. A mount found under
+	 * build/fs belongs to something else — a hand-made bind, a wrapper
+	 * from another tree — and the phase's steps have all finished, so it
+	 * is released rather than archived; the host's /dev or the repository
+	 * inside a snapshot is gigabytes of the wrong thing. */
 	(void)m;
 	char (*mnt)[256] = kb_calloc(256, sizeof(*mnt));
 	for (int lazy = 0; lazy < 2; lazy++) {
@@ -663,7 +698,7 @@ int snap_create(Manager *m, BStep *group, char *err, size_t errcap)
 		KbBuf released = {0}, blockers = {0};
 		release_mounts(m, fs_dir, &released, &blockers);
 		if (released.n)
-			mgr_notice(m, "released stale chroot mount(s): %s",
+			mgr_notice(m, "released leftover mount(s): %s",
 				   released.p);
 		if (blockers.n) {
 			snprintf(err, errcap,
@@ -689,6 +724,7 @@ int snap_create(Manager *m, BStep *group, char *err, size_t errcap)
 	 * when there is no previous figure to reuse, bound it, and stream
 	 * progress so it cannot look like a hang. */
 	long long raw[KBUILD_MAX_PATHS] = {0};
+	int raw_partial[KBUILD_MAX_PATHS] = {0};
 	double deadline = kb_now_s() + SIZE_ESTIMATE_BUDGET;
 	for (int i = 0; i < npath; i++) {
 		long long known = 0;
@@ -713,16 +749,21 @@ int snap_create(Manager *m, BStep *group, char *err, size_t errcap)
 			 paths[i]);
 		Usage u = dir_usage(full, deadline, measure_tick, m);
 		raw[i] = u.bytes;
+		/* A walk cut off by the budget undercounts. It still feeds
+		 * this run's disk guard, but is not recorded, so the next
+		 * snapshot measures again instead of reusing a short figure. */
+		if (!u.complete)
+			raw_partial[i] = 1;
 	}
 
-	/* No history for the first snapshot of a phase: zstd -3 on a rootfs
-	 * lands near 3x, so a third of the raw size is the estimate. */
+	/* No history for the first snapshot of a phase: zstd -1 on a rootfs
+	 * lands near 2x, so half the raw size is the estimate. */
 	long long needed = prev_total;
 	if (!needed) {
 		long long sum = 0;
 		for (int i = 0; i < npath; i++)
 			sum += raw[i];
-		needed = sum / 3;
+		needed = sum / 2;
 	}
 	long long freeb = free_bytes(m->build_dir);
 	if (needed && freeb >= 0 && freeb < needed + needed / 5) {
@@ -754,7 +795,7 @@ int snap_create(Manager *m, BStep *group, char *err, size_t errcap)
 		kb_strlcpy(e->path, paths[i], sizeof(e->path));
 		kbuild_snap_archive_name(paths[i], codec, e->archive,
 					 sizeof(e->archive));
-		e->bytes_raw = raw[i];
+		e->bytes_raw = raw_partial[i] ? 0 : raw[i];
 		snprintf(tmp_path[nentry], sizeof(tmp_path[0]), "%s/%s.tmp",
 			 dest, e->archive);
 

@@ -848,8 +848,8 @@ together with those ports, whose release bumps reinstall the names.
 The thirteen phases under `script/phases/`, the five userland phases `40_lang` to `44_apps` and the
 ports tree filed on shelves pass preflight, `testing/phaseclosure.py` and the self-test, and no
 build has run through them. How long each phase takes and how large its snapshot is are not
-measured. Every phase takes a snapshot; one that should not leaves `KDOS_SNAPSHOT_PATHS` empty in
-its `phase.env`.
+measured. Every phase up to `50_desktop` takes a snapshot; `60_kernel` and `70_image` leave
+`KDOS_SNAPSHOT_PATHS` empty in their `phase.env` and are re-run instead of restored.
 
 ### Some command-line programs build after Qt
 
@@ -879,6 +879,29 @@ mark, or name the step explicitly with `--steps 10_bootstrap:130_kinstall.sh`, w
 The `kdos-installer` port builds the same program from the same sources, and no phase list names
 it. Its recipe hash covers its own directory and `src/libs` but not `catalogue.c`, so a `kpkg`
 build of that port counts an edit to `catalogue.c` alone as nothing to do.
+
+### The package store keys only what a port declares
+
+With `KDOS_PKG_STORE=1` a port is installed from `build/pkgstore` when its key matches (see
+[The package store](../03-architecture/packaging.md#the-package-store)). The key covers the recipe,
+the environment, the bootstrap phases and the exact bytes of every declared dependency and of the
+base toolchain, and an `X:` line re-checks every library the package's ELF files link. It does not
+cover:
+
+- **A dependency the build detected by itself and did not link.** A configure script that switches
+  a feature on because it found a header, a `pkg-config` file or a tool, a plugin opened with
+  `dlopen`, or a static library leaves no `DT_NEEDED` entry, so a change to that port reuses a
+  package built against the old one.
+- **Files under `fs/`.** The overlay reaches the tree through `10_bootstrap` and later syncs; only
+  `fs/etc/passwd`, `group` and `ld-musl-x86_64.path` are in the salt.
+- **Side effects outside `$PKG`.** A `postinstall.sh` runs on a store hit as on a build, but
+  anything a `build.sh` writes into the live tree rather than the package is not in the stored
+  package and does not happen on a hit.
+- **Caches under `$HOME`.** A build that reads `/root/.cargo`, `/root/.cache` or a similar
+  directory depends on what an earlier build left there, which no key names.
+
+A release build uses `KDOS_PKG_STORE=0` or `check`; `check` rebuilds every hit and reports a
+difference in `build/logs/pkgstore-check.log`.
 
 ## Sources and publishing
 
@@ -921,19 +944,6 @@ because the missing source cannot then be ruled out; such a push made offline ne
 Every push is refused while `KDOS_SOURCES_BASE` is empty. `KDOS_SKIP_PUBLISH_CHECK=1 git push …`
 skips the archive check for one push and leaves the layout check in force;
 `KDOS_SKIP_LAYOUT_CHECK=1` skips the layout check.
-
-### A file beside a recipe that no `sha256 =` line names is outside the recipe hash
-
-For a port that names a `source =`, the recipe hash covers `kpkgbuild`, `build.sh`,
-`postinstall.sh` and every `.patch`, and each other file in the directory is expected to be checked
-by its own `sha256 =` line. A file committed beside the recipe that no such line names is in
-neither. Six are, counted as the git-tracked files under `ports/core/*/*/` that are not one of the
-four recipe kinds and that no `sha256 =` line names: `linux/kdos.config`,
-`linux/kdos-logo-mono.pbm`, `linux/genlogo-mono.py`, `epy/epy.desktop`,
-`ffmpeg/LICENSE.notice` and `pandoc/cabal.project.freeze`. Editing one of them changes nothing the
-build compares, so under `KPKG_STRICT_RECIPE=1` the installed package counts as current and keeps
-the old file. Bump the port's `release` in the same change. See
-[`E:` — the recipe hash](../03-architecture/packaging.md#e--the-recipe-hash).
 
 ### An offline `kdos rebuild` from the medium has not been run to the end
 

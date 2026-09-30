@@ -364,7 +364,7 @@ See [Writing ports](../05-developer/writing-ports.md) for the format as built.
 
 ## Ports are shelved by subject; identity is the bare name
 
-The 1,999 upstream ports are filed on 102 **shelves**, one directory per subject:
+The 2,000 upstream ports are filed on 102 **shelves**, one directory per subject:
 `ports/core/<shelf>/<name>/`, such as `ports/core/wl/wlroots/` or `ports/core/games-board/kpat/`.
 The shelf list is closed. It is the file `ports/shelves`, one line per shelf giving its id and what
 belongs on it, and a port may sit only on a shelf that file lists. A port's identity is its
@@ -529,9 +529,9 @@ The pre-push hook sits in `script/hooks/` and nowhere else, because every clone 
 `core.hooksPath` pointing at that directory, and a hook at any other path would silently not run on
 any of them.
 
-The cost is more phases and more snapshots. Every phase saves a compressed, cumulative copy of the
-tree when it finishes, so each restore point is paid for in disk; a phase opts out by leaving
-`KDOS_SNAPSHOT_PATHS` empty. A list that names every port it installs is also longer
+The cost is more phases and more snapshots. Every phase up to `50_desktop` saves a compressed,
+cumulative copy of the tree when it finishes, so each restore point is paid for in disk; a phase
+opts out by leaving `KDOS_SNAPSHOT_PATHS` empty, as `60_kernel` and `70_image` do. A list that names every port it installs is also longer
 than one that names only what it wants, and a new dependency that crosses a phase boundary fails
 preflight until a list moves. Some real edges in the graph become visible this way: `podman`,
 `distrobox`, `qemu`, `libvirt` and `sane-backends` build in `43_toolkits`, because `gpgme` reaches

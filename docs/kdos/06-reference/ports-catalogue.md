@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 1,999 recipes under `ports/core` and the
-24 recipes KDOS writes itself under `src/`, 2,023 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,000 recipes under `ports/core` and the
+24 recipes KDOS writes itself under `src/`, 2,024 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -99,7 +99,7 @@ leaving out any an earlier phase installed.
 | `00_cross` | Cross Toolchain | none: steps | — | — |
 | `10_bootstrap` | Base Userland | none: steps | — | — |
 | `20_selfhost` | Self-Hosting Bootstrap | `packages.txt` | 8 | 14 |
-| `30_foundation` | Build Foundation | `packages.txt` | 125 | 115 |
+| `30_foundation` | Build Foundation | `packages.txt` | 126 | 116 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
 | `40_lang` | Languages | `packages.d/`, 14 files | 195 | 167 |
 | `41_system` | System | `packages.d/`, 94 files | 967 | 967 |
@@ -109,10 +109,10 @@ leaving out any an earlier phase installed.
 | `50_desktop` | Desktop | `packages.txt` | 22 | 22 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,049 | 2,017 |
+| Total | | | 2,050 | 2,018 |
 
-The lists hold 2,049 lines naming 2,013 distinct ports; 34 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,017 ports. With `kdos-installer`, which
+The lists hold 2,050 lines naming 2,014 distinct ports; 34 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,018 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that leaves 5 recipes that no phase installs.
 
 ### Built by script
@@ -158,7 +158,7 @@ list or by script.
 | [`auth`](#auth) | 13 | 13 | 0 |
 | [`boot`](#boot) | 14 | 14 | 0 |
 | [`toolchain`](#toolchain) | 36 | 35 | 1 |
-| [`buildtools`](#buildtools) | 19 | 18 | 1 |
+| [`buildtools`](#buildtools) | 20 | 19 | 1 |
 | [`lang`](#lang) | 26 | 26 | 0 |
 | [`devtools`](#devtools) | 33 | 33 | 0 |
 | [`vcs`](#vcs) | 10 | 10 | 0 |
@@ -259,7 +259,7 @@ list or by script.
 | [`src/art`](#srcart) | 6 | 6 | 0 |
 | [`src/desktop`](#srcdesktop) | 8 | 8 | 0 |
 | [`src/daemons`](#srcdaemons) | 5 | 5 | 0 |
-| Total | 2,023 | 2,018 | 5 |
+| Total | 2,024 | 2,019 | 5 |
 
 ## The shelves
 
@@ -412,7 +412,7 @@ The native compilers, the linker, the C library, and the LLVM family. 36 ports, 
 
 ### buildtools
 
-Build systems and build helpers. 19 ports, under `ports/core/buildtools/`.
+Build systems and build helpers. 20 ports, under `ports/core/buildtools/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -421,7 +421,8 @@ Build systems and build helpers. 19 ports, under `ports/core/buildtools/`.
 | `automake` | 1.19 | Programs for generating Makefiles for use with Autoconf | `30_foundation`, named again by `40_lang` |
 | `buildsystem` | 1.10 | NetSurf shared build framework (Makefile fragments used by libnsgif and friends) | `40_lang` |
 | `cargo-c` | 0.10.25 | Cargo subcommand to build and install C-ABI-compatible dynamic and static libraries | `31_compilers` |
-| `ccache` | 4.14 | Compiler cache | `31_compilers` |
+| `ccache` | 4.14 | Compiler cache | `30_foundation` |
+| `ccache-manual` | 4.14 | The ccache manual page | `31_compilers` |
 | `cmake` | 4.4.3 | Cross-platform build-system generator | `30_foundation` |
 | `corrosion` | 0.6.1 | The CMake bridge that builds a cargo crate as a CMake target | `40_lang` |
 | `gn` | 0.2480 | Chromium's meta-build system, which writes ninja files from BUILD.gn | `40_lang` |

@@ -31,7 +31,7 @@ is the port name followed by `.install` (`build/logs/42_graphics/0123_mesa.insta
 orchestrator names the failing step, and in its failure panel `O` opens the log and `C` copies the
 path. The message at the very end of a build's output is usually not the error: read upward from the
 end of the log. Three other files sit under `build/logs/`: `snapshots.log` (every notice the build
-showed), `chroot.log` (mount warnings from `script/chroot/exec.sh`) and `<phase>/expansion.log` (why
+showed), `chroot.log` (warnings from `script/chroot/exec.sh`) and `<phase>/expansion.log` (why
 a phase's package list could not be resolved). [Step logs](build-system.md#step-logs) has the
 details.
 
@@ -47,7 +47,9 @@ defines the rest.
 
 When a port's own build fails, `kpkg` leaves its work directory in place: the unpacked source is
 at `/var/cache/kpkg/work/<name>/<name>-<version>/` inside the target tree, which is
-`build/fs/var/cache/kpkg/work/…` on the host. A configure script's `config.log` is there. The
+`build/fs/var/cache/kpkg/work/…` on the host. A configure script's `config.log` is there. It stays
+until that port is built again, which empties it first, or until `70_image` removes the whole work
+directory from the image; a later phase does not clear it. The
 target tree is owned by root, as the shipped system is, so reading it from the host needs a
 container or `sudo`.
 
@@ -87,10 +89,15 @@ lists everything preflight checks.
 | `snapshot <phase> FAILED: only <size> free, need ~<size>` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
 | `snapshot <phase> FAILED: build/ is mid-restore of <phase>`, or `a restore of <phase> never finished` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
 | `snapshot <phase> FAILED: mounts still active under build/fs: <paths>` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
-| A port you changed is reported `Skipping <port> (already installed)` | [A recipe change that did not rebuild its port](#a-recipe-change-that-did-not-rebuild-its-port) |
+| A port you changed is marked `installed` in the build, or `kpkg` reports `Skipping <port> (already installed)` | [A recipe change that did not rebuild its port](#a-recipe-change-that-did-not-rebuild-its-port) |
 | A variable passed to `make build` has no effect on a chroot phase | [A variable that does not reach the chroot](#a-variable-that-does-not-reach-the-chroot) |
+| A CMake port fails or misbehaves and the compiler cache is suspected | [A compiler cache under suspicion](#a-compiler-cache-under-suspicion) |
+| `Reusing <port> from the store (<key12>)`, or a port that behaves like an older build of itself with `KDOS_PKG_STORE=1` | [A port that came from the package store](#a-port-that-came-from-the-package-store) |
 | `Removing orphan` for a file another package still lists, then `not found` on that tool | [A package manager older than its source](#a-package-manager-older-than-its-source) |
 | `cmp`, `readelf` or another tool missing after toybox reinstalls | [A tool missing after toybox reinstalls](#a-tool-missing-after-toybox-reinstalls) |
+| A port that fails, or builds without a feature, only under `--port-jobs` | [A port that needs `--port-jobs 1`](#a-port-that-needs---port-jobs-1) |
+| `<port> took paths from <port>; the serial order had <port> last` | [A port that needs `--port-jobs 1`](#a-port-that-needs---port-jobs-1) |
+| `its kpkg has no --build-only; building one port at a time` | [A port that needs `--port-jobs 1`](#a-port-that-needs---port-jobs-1) |
 | `10_bootstrap` files over a later build, or a later tree filed under that phase's snapshot | [Re-running an early phase on a later tree](#re-running-an-early-phase-on-a-later-tree) |
 | A `ports/` helper that fails to start after you ran it in a container | [Helpers compiled against the other C library](#helpers-compiled-against-the-other-c-library) |
 | `Dynamic loading not supported` from a Rust crate, or a static archive's undefined references at its link | [Rust with a binding generator](#rust-with-a-binding-generator) |
@@ -124,6 +131,7 @@ lists everything preflight checks.
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
 | `No rule to make target` printed from the middle of an unrelated step | [A backtick inside double quotes](#a-backtick-inside-double-quotes) |
 | `No rule to make target '\'` during an install | [A parallel install race](#a-parallel-install-race) |
+| `Killed signal terminated program cc1plus`, or a compiler or linker ending with no message | [A compiler that was OOM-killed](#a-compiler-that-was-oom-killed) |
 | A BSD header missing on a fresh build only | [A dependency the list happened to satisfy](#a-dependency-the-list-happened-to-satisfy) |
 | GStreamer's core compiling or failing in a Rust helper (`gst-ptp-helper`) | [The time-protocol helper](#the-time-protocol-helper) |
 | `hGetContents: invalid argument (cannot decode byte sequence …)`, or `invalid or incomplete multibyte or wide character` from a tool reading a file | [A tool decoding files as ASCII](#a-tool-decoding-files-as-ascii) |
@@ -456,21 +464,21 @@ give that guest I/O errors on anything it has not already cached. Shut the virtu
 
 ### A recipe change that did not rebuild its port
 
-`kpkg` prints `Skipping <port> (already installed)` for a port you have just changed.
+The build marks a port you have just changed `installed` and runs no step for it, or `kpkg` prints
+`Skipping <port> (already installed)` for it.
 
-`kpkg` decides whether an installed port is current by comparing a *recipe hash* with the one it
-recorded at install time. For a port with a `source =` line, that hash covers `kpkgbuild`,
-`build.sh`, `postinstall.sh` and every `.patch` in the port directory, and nothing else; the
-tarballs are covered by their own `sha256 =` lines. For a port with no `source =`, which builds out
-of its own directory as the ports under `src/` do, every file in the directory counts. Two cases
-follow:
+`kpkg`, and the orchestrator before it with the same function, decides whether an installed port
+is current by comparing a *recipe hash* with the one `kpkg` recorded for the build that installed
+it. That hash covers every file in the port directory, subdirectories included, except the
+tarballs a `sha256 =` line names, which that line covers; a port with no `source =`, which builds
+out of its own directory as the ports under `src/` do, also counts all of `src/libs`. So:
 
-- A file beside a recipe that is none of those four kinds, such as a desktop entry or a
-  configuration file the build installs, changes nothing `kpkg` sees. Bump `release =` in the same
-  change, or rebuild the port by name.
-- The hash is recorded *after* the install succeeds, from the port directory as it is at that
-  moment. Editing a port's files while its rebuild is running records the edited recipe as built,
-  and the next build skips it. Do not edit a port during its own rebuild.
+- An edit that lives outside the port directory, such as a file under `fs/` that the port
+  installs, changes nothing `kpkg` sees. Bump `release =` in the same change, or rebuild the port
+  by name.
+- The hash is taken from the port directory when the build *starts*, and recorded only after the
+  install succeeds. An edit made while the port's rebuild is running is therefore not recorded as
+  built: the next build under `KPKG_STRICT_RECIPE=1` sees a mismatch and rebuilds the port.
 
 To force a rebuild:
 
@@ -484,11 +492,47 @@ A variable passed to `make build` changes the steps that run in the build contai
 effect on any step that runs inside the chroot, including every packaging step.
 
 `script/chroot/exec.sh` enters the chroot with `env -i`, which clears the environment, and names
-the few variables that pass through (`HOME`, `TERM`, `PATH`, `KDOS_REPLAY`, `KDOS_ISO_SOURCES`,
-`KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST` and `KPKG_KEEP_CACHE`). An opt-in flag therefore needs two
-edits: the `Makefile` passes it into the container with `-e`, and `script/chroot/exec.sh` names it
-on the `env -i` line. See
+the few variables that pass through (`HOME`, `TERM`, `PATH`, `KDOS_REPLAY`, `KDOS_JOBS`,
+`KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_ISO_COMP`, `KDOS_CCACHE`, `KDOS_MAKE_BINHOST`,
+`KPKG_KEEP_CACHE`, `KDOS_PKG_STORE`, `KDOS_PKG_STORE_MAX`, `KPKG_STORE`, `KPKG_STORE_CHECK` and
+`KPKG_STORE_SALT`). A build variable
+therefore needs two edits: the `Makefile` passes it into the container with `-e`, and
+`script/chroot/exec.sh` names it on the `env -i` line. See
 [`env -i` means every variable must be named](build-system.md#env--i-means-every-variable-must-be-named).
+
+### A compiler cache under suspicion
+
+Every CMake port in the chroot compiles through ccache into `build/ccache` (see [The compiler
+cache](how-kdos-is-built.md#the-compiler-cache)). A hit is byte-identical to a compile, and a
+change to gcc, binutils or an LLVM recipe misses the whole cache, so a cached object is rarely the
+cause. To rule it out, rebuild the port with the cache off:
+
+```sh
+make build KDOS_CCACHE=0 BUILD_ARGS="--phases <phase> --rebuild <port>"
+```
+
+To empty it, remove the directory from a container, since the build writes it as root:
+`docker run --rm -v $PWD/build:/b alpine rm -rf /b/ccache`.
+
+### A port that came from the package store
+
+With `KDOS_PKG_STORE=1` the port's log says `Reusing <port> from the store (<key12>)` and no build
+ran: every input the store key covers matched a package built before (see [The package
+store](../03-architecture/packaging.md#the-package-store)). A package that behaves like an older
+build of itself, after a change the key cannot see (a file under `fs/`, a library the port finds
+without declaring it and does not link, a `dlopen`ed plugin), is the usual reason to suspect it. To
+build it regardless:
+
+```sh
+make build BUILD_ARGS="--phases <phase> --rebuild <port>"   # forced: -f never reads the store
+make build KDOS_PKG_STORE=check BUILD_ARGS="--phases <phase>"   # build every hit, log differences
+```
+
+`check` writes each port whose rebuild differed from its stored package to
+`build/logs/pkgstore-check.log`; see [Testing](testing.md#reading-pkgstore-checklog). `<port>: store
+key unknown (<dep> is installed with no .pkgsha)` means a dependency was installed before the store
+recorded package hashes; the port builds and is not stored until that dependency is rebuilt. To
+empty the store, remove `build/pkgstore` from a container, as for the compiler cache.
 
 ### A package manager older than its source
 
@@ -554,9 +598,9 @@ continue from:
 
 | Message | Cause and fix |
 |---|---|
-| `snapshot <phase> FAILED: only <size> free, need ~<size>` | The new archives are written beside the old ones, so the free space on `build/` must hold the phase's previous compressed snapshot plus a fifth (a third of the raw size for a first snapshot). The `70_image` snapshot alone is about 59 GB. Free space, delete old snapshots from the startup picker (`D`), or run `make cleanbuild` (keeps `build/snapshots`) or `make clean` (removes them); both keep `build/keys` |
+| `snapshot <phase> FAILED: only <size> free, need ~<size>` | The new archives are written beside the old ones, so the free space on `build/` must hold the phase's previous compressed snapshot plus a fifth (half the raw size for a first snapshot). Free space, delete old snapshots from the startup picker (`D`) or with `--delete <phase>` (the only way to remove a snapshot `--list` marks as a leftover), or run `make cleanbuild` (keeps `build/snapshots`) or `make clean` (removes them); both keep `build/keys` |
 | `snapshot <phase> FAILED: build/ is mid-restore of <phase>; refusing to snapshot it` | `build/.restore-in-progress` exists: a restore was interrupted and the tree is part-extracted. A new build refuses to start in the same state with `a restore of <phase> never finished - build/ is inconsistent.` Restore a snapshot again, or run `make cleanbuild` |
-| `snapshot <phase> FAILED: mounts still active under build/fs: <paths>` | Something is still mounted under `build/fs`. The orchestrator first unmounts leftover chroot mounts itself, lazily if it has to (`released stale chroot mount(s)`), and names at most three it could not release. Find what holds them, such as a shell or process still inside the chroot, stop it, and unmount the paths |
+| `snapshot <phase> FAILED: mounts still active under build/fs: <paths>` | Something is still mounted under `build/fs`, and it is not the chroot wrapper's: `script/chroot/exec.sh` and `script/chroot/enter.sh` mount in a private namespace of their own and leave nothing behind, even when killed. Look for a bind made by hand or by a wrapper from another tree. The orchestrator first unmounts what it finds itself, lazily if it has to (`released leftover mount(s)`), and names at most three it could not release. Find what holds them, stop it, and unmount the paths |
 
 ### Snapshots the orchestrator does not see
 
@@ -583,6 +627,32 @@ follows looks like an ordinary build error. A full run would also overwrite that
 with the later tree filed under its name. Use `--continue-from` or a
 narrowed plan instead; a plan that narrows the run suppresses snapshots unless `--snapshot` is
 given. See [Snapshots](build-system.md#snapshots) and [Build plans](build-system.md#build-plans).
+
+### A port that needs `--port-jobs 1`
+
+A port that builds in a serial run and fails under `--port-jobs`, or builds there without a feature
+it has in a serial run, is missing a `depends` entry for a port of its own phase. Under
+`--port-jobs` a port builds against the earlier phases and the lower levels only, and its level
+comes from its `depends` line; in a serial run the list order may have installed the undeclared
+dependency first. Compare the port's step log with the serial run's for a configure check that
+found a library in one and not the other, name that port in `depends`, and the level follows. This
+is the same defect as [A dependency the list happened to satisfy](#a-dependency-the-list-happened-to-satisfy),
+found sooner.
+
+A failed level is not committed: the ports that built are held in the package cache as
+`<name>.pending` records, and a resumed build (`--continue-from <phase>`) reuses those whose recipe
+hash has not changed. The failing port's own log is the step log named in the failure, as in a
+serial run.
+
+The notice `<taker> took paths from <port>; the serial order had <port> last — pin the pair in
+00-order.txt` means two ports of the phase install the same path, and a level's commit installed
+them in the other order from the serial run, so the path has a different owner. Pin both in the
+phase's order run, `00-order.txt` or the names ahead of a `packages.txt`'s first shelf heading, in
+the order the serial run gives them; the order run builds one port at a time.
+
+`its kpkg has no --build-only; building one port at a time` means the `kpkg` in the tree predates the
+two-part install, as one restored from an early snapshot can. The phase runs serially and is
+correct; the next build of `kdos-kpkg` brings the option.
 
 ---
 
@@ -1062,15 +1132,31 @@ a port's `build.sh`, the rule is yours to keep.
 `No rule to make target '\'`, naming an object that compiled a moment earlier, during
 `make install`.
 
-Every phase exports `MAKEFLAGS=-j12`, from `script/env/common.env`, so the install runs in parallel
-as well as the build. A project whose install targets regenerate their own dependency files races
-itself: a half-written `.dep` file ends on a bare line continuation, and make reads the backslash as
+Every phase exports `MAKEFLAGS=-j$KDOS_JOBS`, from `script/env/common.env`, so the install runs in
+parallel as well as the build. A project whose install targets regenerate their own dependency files
+races itself: a half-written `.dep` file ends on a bare line continuation, and make reads the backslash as
 a target.
 
 Use `make -j1 … install` for that project, as the `libburn`, `libisofs`, `xfsprogs` and several
 other ports do. A `-j` on the command line overrides the one in `MAKEFLAGS`, and only that
 invocation is serialised; the compile keeps its parallelism. Being a race, it can pass on one
 run and fail on the next, so a recipe that has built before is not evidence against it.
+
+### A compiler that was OOM-killed
+
+`c++: fatal error: Killed signal terminated program cc1plus`, or a compile or link step that ends
+with no diagnostic at all, in a large C++ port such as WebKit, QtWebEngine, LLVM or a browser;
+`dmesg` on the host names the process the kernel's OOM killer chose.
+
+Every phase runs `KDOS_JOBS` jobs at once, and a heavy C++ translation unit or link can need more
+than 2 GiB on its own, which is the budget per job the default job count assumes. Lower the job
+count for the build: `make build KDOS_JOBS=6`. It reaches make, `cmake --build` (WebKit and most
+CMake ports build through it) and cargo, and it caps the container's CPUs, which the chroot sees
+through its read-only cgroup mount, so a bare `ninja` in a recipe follows it too. WebKit runs at
+most four links at once whatever the job count; its CMake reads `WEBKIT_NINJA_COMPILE_MAX` and
+`WEBKIT_NINJA_LINK_MAX` from the environment at configure time to size its compile and link pools
+apart from the job count, and since the chroot clears the environment, only `webkitgtk`'s own
+`build.sh` can export them.
 
 ### A dependency the list happened to satisfy
 
@@ -1084,7 +1170,9 @@ incremental build already has it. On an empty target tree the solver's order dec
 built before its accidental provider fails.
 
 Name the dependency in `depends`. The key exists so that the solver orders the build, and a
-dependency that holds only by accident fails the first time the order changes.
+dependency that holds only by accident fails the first time the order changes. A build with
+`--port-jobs` finds such a port on any tree, since a level builds against the lower levels only; see
+[A port that needs `--port-jobs 1`](#a-port-that-needs---port-jobs-1).
 
 ### The time-protocol helper
 

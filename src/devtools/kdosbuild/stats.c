@@ -44,7 +44,10 @@ static void rec_set(TimeRec **v, int *n, int *cap, const char *key, double secs)
 		if (*n == *cap) {
 			*cap = *cap ? *cap * 2 : 64;
 			TimeRec *nv = kb_calloc((size_t)*cap, sizeof(*nv));
-			memcpy(nv, *v, (size_t)*n * sizeof(*nv));
+			/* Guarded: the first record grows from NULL, and memcpy
+			 * from NULL is undefined even for zero bytes. */
+			if (*n)
+				memcpy(nv, *v, (size_t)*n * sizeof(*nv));
 			free(*v);
 			*v = nv;
 		}
@@ -176,6 +179,9 @@ void tm_free(Timings *t)
 /* ──────────────────────────────────────────────────────────────────────── */
 /* ETA                                                                      */
 
+/* The time left, from each step's recorded duration. Under --port-jobs it is
+ * approximate: a level is taken to divide evenly among its slots, which a
+ * level ruled by one long port does not. */
 double eta_seconds(const Manager *m, const Timings *t)
 {
 	double observed = 0;
@@ -205,8 +211,21 @@ double eta_seconds(const Manager *m, const Timings *t)
 			continue;
 
 		if (g->nchild) {
+			/* A level's ports run up to --port-jobs at once, so
+			 * what is left of one is its ports' sum over the
+			 * number that can still run side by side. A level's
+			 * rows are contiguous and end at its commit step. */
+			double level_sum = 0;
+			int level_left = 0;
 			for (int k = 0; k < g->nchild; k++) {
 				const BStep *c = g->child[k];
+				if (c->is_commit && level_left) {
+					int div = level_left < m->port_jobs
+						  ? level_left : m->port_jobs;
+					total += level_sum / (div > 0 ? div : 1);
+					level_sum = 0;
+					level_left = 0;
+				}
 				if (c->status == ST_DONE || c->status == ST_SKIPPED)
 					continue;
 				char key[192];
@@ -215,11 +234,17 @@ double eta_seconds(const Manager *m, const Timings *t)
 				if (est < 0)
 					continue;
 				have = 1;
+				double left = est;
 				if (c->status == ST_RUNNING) {
-					double left = est - step_duration(c);
-					total += left > 0 ? left : 0;
+					left = est - step_duration(c);
+					if (left < 0)
+						left = 0;
+				}
+				if (c->level && !c->is_commit) {
+					level_sum += left;
+					level_left++;
 				} else {
-					total += est;
+					total += left;
 				}
 			}
 		} else {

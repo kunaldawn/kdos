@@ -167,7 +167,7 @@ These run on a build host and never ship on the target.
 
 | Command | Does | Documented in |
 |---|---|---|
-| `kdosbuild` | The build orchestrator. `script/kdosbuild.sh` compiles it into `build/.kdosbuild` and runs it | [The build system](../05-developer/build-system.md) |
+| `kdosbuild` | The build orchestrator. `script/kdosbuild.sh` compiles it into `build/.kdosbuild` when its sources, flags or compiler changed, and runs it | [The build system](../05-developer/build-system.md) |
 | `kdos-portup` | Checks every port for a newer upstream release. Compiled on demand by `ports/update` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/update` | The front end to the version checker | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/fetch` | Fetches every source a recipe names, from the cache, the source archive or upstream, and generates missing vendor bundles. `make fetch` runs it | [Developing](../05-developer/developing.md#where-sources-come-from) |

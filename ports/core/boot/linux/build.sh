@@ -24,6 +24,7 @@ cat $PORT_SRC/kdos.config >> .config
 # Enable support for KDOS Live System (SquashFS + OverlayFS)
 ./scripts/config --enable CONFIG_SQUASHFS
 ./scripts/config --enable CONFIG_SQUASHFS_XZ
+./scripts/config --enable CONFIG_SQUASHFS_ZSTD
 ./scripts/config --enable CONFIG_OVERLAY_FS
 ./scripts/config --enable CONFIG_BLK_DEV_LOOP
 
@@ -334,7 +335,7 @@ make olddefconfig
 # rust-src library sources; CONFIG_DEBUG_INFO_BTF (bpftrace, sched_ext, CO-RE
 # BPF programs) needs pahole from dwarves. Stop here rather than build a
 # kernel without them.
-for opt in CONFIG_RUST CONFIG_DRM_PANIC_SCREEN_QR_CODE CONFIG_DEBUG_INFO_BTF CONFIG_DEBUG_INFO_BTF_MODULES; do
+for opt in CONFIG_RUST CONFIG_DRM_PANIC_SCREEN_QR_CODE CONFIG_DEBUG_INFO_BTF CONFIG_DEBUG_INFO_BTF_MODULES CONFIG_SQUASHFS_ZSTD CONFIG_SQUASHFS_XZ; do
 	grep -qx "$opt=y" .config || { echo "ERROR: $opt was dropped by olddefconfig" >&2; exit 1; }
 done
 

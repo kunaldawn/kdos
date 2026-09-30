@@ -545,12 +545,24 @@ char *kp_canon_path(const KpCanon *k, const char *rel)
 	return kb_strdup(rel);
 }
 
-/* Every path any installed package claims, as one sorted list.
+/* The paths installed packages claim, as one sorted list: every one of them
+ * (kp_owned_load), or only the claims on a given set of paths
+ * (kp_owned_load_some).
  *
  * The database is one file per package: line 1 is `<version> <release>` and
  * the rest is the `tar -tf` listing, `./`-prefixed, with directories carrying
- * a trailing slash. Loading it once and asking N questions of the result is
- * the difference between an install being instant and being quadratic.
+ * a trailing slash. A dot-name in the directory is not a package — `.recipe/`
+ * holds sidecars and `.lock` is the writer lock — and is never read as one.
+ * Loading once and asking N questions of the result is the difference between
+ * an install being instant and being quadratic.
+ *
+ * The full table is a pair per claimed path, over a million on a desktop tree,
+ * and building it costs seconds per install. An install asks about the staged
+ * paths that already exist on disk, which on a fresh tree is none of them, so
+ * kp_owned_load_some streams the same manifests and keeps only the pairs whose
+ * canonical key it was asked for. Both canonicalise and compare the same way,
+ * so for a requested key the two tables give the same answers; for any other
+ * key the partial one answers NULL.
  */
 typedef struct {
 	char *path;
@@ -562,14 +574,22 @@ static int cmp_owned(const void *a, const void *b)
 	return strcmp(((const OwnedPair *)a)->path, ((const OwnedPair *)b)->path);
 }
 
-KpOwned *kp_owned_load(const KpConf *c)
+static int cmp_str(const void *a, const void *b)
+{
+	return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+/* `want` is sorted bare canonical keys, or NULL for every path. */
+static KpOwned *owned_build(const KpConf *c, char **want, int nwant)
 {
 	KpOwned *o = kb_calloc(1, sizeof(*o));
 	kp_canon_load(c, &o->canon);
 	char *db = kp_db_dir(c);
-	char **names = kb_listdir(db, NULL);
+	char **names = want && !nwant ? NULL : kb_listdir(db, NULL);
 	if (!names) {
 		free(db);
+		o->path = kb_calloc(1, sizeof(*o->path));
+		o->owner = kb_calloc(1, sizeof(*o->owner));
 		return o;
 	}
 
@@ -578,6 +598,8 @@ KpOwned *kp_owned_load(const KpConf *c)
 	int ocap = 64;
 	o->ownerv = kb_calloc((size_t)ocap, sizeof(*o->ownerv));
 	for (char **n = names; *n; n++) {
+		if ((*n)[0] == '.')
+			continue;
 		char *f = kb_path_join(db, *n);
 		size_t len = 0;
 		char *data = kb_read_all(f, &len);
@@ -588,18 +610,9 @@ KpOwned *kp_owned_load(const KpConf *c)
 		/* One copy of the package name per package, shared by every
 		 * path it claims: a quarter of a million paths come from under
 		 * a thousand names, and a copy each is megabytes of identical
-		 * strings. Taken only once the file has been read, so a name
-		 * never enters the pool without a package behind it. */
-		if (o->nowner == ocap) {
-			ocap *= 2;
-			char **nv = kb_calloc((size_t)ocap, sizeof(*nv));
-			memcpy(nv, o->ownerv,
-			       (size_t)o->nowner * sizeof(*nv));
-			free(o->ownerv);
-			o->ownerv = nv;
-		}
-		char *owner = kb_strdup(*n);
-		o->ownerv[o->nowner++] = owner;
+		 * strings. Taken at the package's first kept path, so a name
+		 * never enters the pool without a claim behind it. */
+		char *owner = NULL;
 
 		int first = 1;
 		for (char *line = data, *next; line && *line; line = next) {
@@ -614,6 +627,31 @@ KpOwned *kp_owned_load(const KpConf *c)
 			size_t l = strlen(line);
 			if (!l || line[l - 1] == '/')
 				continue;	/* directories are shared */
+			char *key = kp_canon_path(&o->canon, line);
+			if (want) {
+				/* A stored line matches a bare key only past
+				 * its `./`, which is what owned_find asks. */
+				char *k = key + 2;
+				if (strncmp(key, "./", 2) ||
+				    !bsearch(&k, want, (size_t)nwant,
+					     sizeof(*want), cmp_str)) {
+					free(key);
+					continue;
+				}
+			}
+			if (!owner) {
+				if (o->nowner == ocap) {
+					ocap *= 2;
+					char **nv = kb_calloc((size_t)ocap,
+							      sizeof(*nv));
+					memcpy(nv, o->ownerv,
+					       (size_t)o->nowner * sizeof(*nv));
+					free(o->ownerv);
+					o->ownerv = nv;
+				}
+				owner = kb_strdup(*n);
+				o->ownerv[o->nowner++] = owner;
+			}
 			if (o->n == cap) {
 				cap *= 2;
 				OwnedPair *nv =
@@ -622,7 +660,7 @@ KpOwned *kp_owned_load(const KpConf *c)
 				free(pair);
 				pair = nv;
 			}
-			pair[o->n].path = kp_canon_path(&o->canon, line);
+			pair[o->n].path = key;
 			pair[o->n].owner = owner;
 			o->n++;
 		}
@@ -639,6 +677,34 @@ KpOwned *kp_owned_load(const KpConf *c)
 		o->owner[i] = pair[i].owner;
 	}
 	free(pair);
+	return o;
+}
+
+KpOwned *kp_owned_load(const KpConf *c)
+{
+	return owned_build(c, NULL, 0);
+}
+
+/* The keys go through kp_canon_path exactly as kp_owned_owner puts a question
+ * through it, against the same root's aliases, so `bin/x` asked here finds a
+ * claim stored as `./usr/bin/x` and the other way round. */
+KpOwned *kp_owned_load_some(const KpConf *c, char **rel, int n)
+{
+	KpCanon k;
+	kp_canon_load(c, &k);
+	char **want = kb_calloc((size_t)(n > 0 ? n : 1), sizeof(*want));
+	for (int i = 0; i < n; i++) {
+		const char *r = rel[i];
+		if (!strncmp(r, "./", 2))
+			r += 2;
+		want[i] = kp_canon_path(&k, r);
+	}
+	if (n > 1)
+		qsort(want, (size_t)n, sizeof(*want), cmp_str);
+	KpOwned *o = owned_build(c, want, n > 0 ? n : 0);
+	for (int i = 0; i < n; i++)
+		free(want[i]);
+	free(want);
 	return o;
 }
 

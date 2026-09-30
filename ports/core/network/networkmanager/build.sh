@@ -27,7 +27,7 @@
 #
 # suspend_resume is spelled out because 'auto' would switch to elogind the day
 # a libelogind appears; consolekit is the backend that listens for nothing here.
-meson setup build \
+meson setup build --buildtype=release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib --localstatedir=/var \
 	-Dintrospection=false \
 	-Ddocs=false \
