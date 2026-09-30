@@ -172,28 +172,32 @@ want() {  # <hash> <label>
 }
 
 # port_lines <dir holding ports/core> [port…] — "<hash>  <port>/<file>" for
-# every uncarried `sha256 =` file, on stdout. CARRIED must be loaded. It runs
-# in a subshell, so an unreadable recipe is reported by $TMP/badport, not RC.
+# every uncarried `sha256 =` file, on stdout. A port is named by its bare
+# name, and the label carries no shelf: the index is append-only and every
+# line in it is <port>/<file>. CARRIED is keyed by the real path, shelf
+# included, and must be loaded. It runs in a subshell, so an unreadable or
+# unknown port is reported by $TMP/badport, not RC.
 badport() { echo "  FAILED   $*" >&2; : > "$TMP/badport"; }
 port_lines() {
-    local core=$1/ports/core d port h f
+    local core=$1/ports/core d port h f rel
     shift
     local dirs=()
     if [ $# -gt 0 ]; then
         for port in "$@"; do
-            [ -f "$core/$port/kpkgbuild" ] || { badport "$port: no such port"; continue; }
-            dirs+=("$core/$port")
+            d=$(src_port_dir "$core" "$port") || { badport "$port: no such port"; continue; }
+            dirs+=("$d")
         done
     else
-        for d in "$core"/*/; do [ -f "$d/kpkgbuild" ] && dirs+=("${d%/}"); done
+        mapfile -t dirs < <(src_port_dirs "$core")
     fi
     for d in "${dirs[@]}"; do
         port=${d##*/}
+        rel=ports/core/${d#"$core"/}
         local lines
         lines=$(src_port_hashes "$d") || { badport "$port: kpkg cannot read its recipe"; continue; }
         while read -r h f; do
             [ -n "$h" ] || continue
-            [ -n "${CARRIED[ports/core/$port/$f]:-}" ] && continue
+            [ -n "${CARRIED[$rel/$f]:-}" ] && continue
             printf '%s  %s/%s\n' "$h" "$port" "$f"
         done <<< "$lines"
     done
@@ -217,10 +221,12 @@ present() {
     esac
 }
 
-# find_bytes <hash> <label> — a local file holding exactly those bytes.
+# find_bytes <hash> <label> — a local file holding exactly those bytes. The
+# label's port is found by name, on whatever shelf it sits.
 find_bytes() {
-    local c
-    for c in "$REPO_ROOT/ports/core/$2" "$(src_cache_path "$1")" \
+    local c d=""
+    d=$(src_port_dir "$REPO_ROOT/ports/core" "${2%%/*}" 2>/dev/null) && d=$d/${2#*/}
+    for c in ${d:+"$d"} "$(src_cache_path "$1")" \
              "$KDOS_LFS_STORE/${1:0:2}/${1:2:2}/$1"; do
         if src_hash_ok "$c" "$1"; then printf '%s\n' "$c"; return 0; fi
     done
@@ -390,7 +396,8 @@ IDX_HEADER='# ports/sources.idx — where the KDOS source archive keeps each fil
 
 # index_add <hash> <n> <label> — record one verified upload, at once.
 index_add() {
-    local name=${3#ports/core/}
+    local name
+    name=$(src_label "$3")
     [ -s "$KDOS_SOURCES_INDEX" ] || printf '%s\n' "$IDX_HEADER" > "$KDOS_SOURCES_INDEX"
     printf '%s %03d %s\n' "$1" "$2" "$name" >> "$KDOS_SOURCES_INDEX"
     SRC_REL[$1]=$2 SRC_NAME[$1]=$name
@@ -552,7 +559,7 @@ if [ -n "$FREEZE" ]; then
              git -C "$REPO_ROOT" rev-parse -q --verify "$FREEZE^{commit}") ||
         die "no such tag: $FREEZE"
     mapfile -t recipes < <(git -C "$REPO_ROOT" ls-tree -r --name-only "$commit" -- ports/core |
-                           grep -E '^ports/core/[^/]+/kpkgbuild$')
+                           grep -E '^ports/core/([^/]+/)?[^/]+/kpkgbuild$')
     [ "${#recipes[@]}" -gt 0 ] || die "$FREEZE has no ports/core"
     src_kpkg_ensure || die "cannot build the recipe reader"
     safe=${FREEZE//\//-}
@@ -631,7 +638,8 @@ while read -r h f; do want "$h" "$f"; done < <(port_lines "$REPO_ROOT" "${PORTS[
 # what a recipe hashes, and nothing asks it for anything else — and only one
 # held in the LFS store or the cache; the rest are counted and left to a clone
 # that holds them, since ports/fetch reads current recipes and cannot supply
-# them.
+# them. A path in history may carry a shelf or not; each is labelled
+# <port>/<file>, the form every index line has.
 if [ "$HISTORY" = 1 ]; then
     if git -C "$REPO_ROOT" lfs version >/dev/null 2>&1; then
         declare -A NOCOPY=()
@@ -640,7 +648,7 @@ if [ "$HISTORY" = 1 ]; then
             case $f in ports/core/*) ;; *) continue ;; esac
             if [ -n "${SEEN[$h]:-}" ] || [ -f "$KDOS_LFS_STORE/${h:0:2}/${h:2:2}/$h" ] ||
                [ -f "$(src_cache_path "$h")" ]; then
-                want "$h" "$f"
+                want "$h" "$(src_label "$f")"
             else
                 NOCOPY[$h]=1
             fi

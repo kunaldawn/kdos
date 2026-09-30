@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 CC=${CC:-cc}
 WARN="-Wall -Wextra -Werror"
 STD="-O2 -std=gnu11 -D_GNU_SOURCE"
-INC="-Isrc/libs/libkbase -Isrc/libs/libkwm -Isrc/libs/libkvt -Isrc/libs/libkdisp -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/tools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
+INC="-Isrc/libs/libkbase -Isrc/libs/libkwm -Isrc/libs/libkvt -Isrc/libs/libkdisp -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/devtools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
 OUT=$(mktemp -d)
 
 #
@@ -39,11 +39,25 @@ XDG_STATE_HOME="$OUT/state"
 export XDG_STATE_HOME
 mkdir -p "$XDG_STATE_HOME"
 
+# A PORT IS FOUND BY ITS NAME, NEVER BY A PATH SPELLED WITH ITS SHELF.
+# ports/core files every port one shelf down, ports/core/<shelf>/<name>/, and
+# a port changes shelf with one `git mv`: a path written out here would then
+# name nothing, and every block reading a tarball out of it would skip itself
+# as if the port were unfetched. Prints the directory, or nothing when no port
+# carries the name; it always succeeds, so `set -e` never ends the suite on a
+# lookup.
+port_dir() {
+    for _pd in ports/core/*/"$1"; do
+        [ -f "$_pd/kpkgbuild" ] && { printf '%s\n' "$_pd"; return 0; }
+    done
+    return 0
+}
+
 # WHICH sd-bus THIS HOST HAS, decided ONCE and up here because two blocks a
 # thousand lines apart both ask. KDOS ships basu; nearly every development host
-# has libsystemd, and the API is the same one. Deciding it late meant the
-# kdos-shell block read an unset variable and skipped itself on every host,
-# which is why the front-end goldens behind it went unlooked-at.
+# has libsystemd, and the API is the same one. A block that reads it unset
+# skips itself on every host, and the front-end goldens behind it stop being
+# checked without a failure.
 TRAY_SDBUS=""
 pkg-config --exists basu 2>/dev/null && TRAY_SDBUS=basu
 [ -z "$TRAY_SDBUS" ] && pkg-config --exists libsystemd 2>/dev/null && \
@@ -112,7 +126,7 @@ $CC $STD $WARN $INC $KIMG_FLAGS -o "$OUT/selftest" src/libs/selftest.c $KIMG_SRC
     src/libs/libkxdg/*.c src/libs/libksig/*.c src/libs/libksig/monocypher/*.c \
     src/libs/libkpack/*.c src/libs/libkwm/*.c src/libs/libkvt/*.c \
     src/libs/libkdisp/*.c \
-    src/tools/kdos-portup/extract.c $KIMG_LIBS
+    src/devtools/kdos-portup/extract.c $KIMG_LIBS
 ASAN_OPTIONS=detect_leaks=1 "$OUT/selftest"
 
 #
@@ -141,25 +155,25 @@ echo "==> every consumer still compiles against the libraries"
 # kinstall compiles catalogue.c IN — the Applications page reads the catalogue
 # rather than running kdos-appbox, because a live installer cannot assume
 # anything is on $PATH in the target it is building.
-$CC $STD $WARN $INC -Isrc/packages/kdos-installer -Isrc/packages/kdos-appbox \
+$CC $STD $WARN $INC -Isrc/system/kdos-installer -Isrc/system/kdos-appbox \
     -o "$OUT/kinstall" \
-    src/packages/kdos-installer/*.c src/packages/kdos-appbox/catalogue.c \
+    src/system/kdos-installer/*.c src/system/kdos-appbox/catalogue.c \
     src/libs/libkbase/*.c \
     src/libs/libktui/*.c src/libs/libkcolor/*.c -lcrypt
 echo "  kinstall"
 # The plan resolves over the SHIPPED catalogue, and the two renderings agree.
 # A disagreement between the text dump and the JSON is what makes a dump
 # untrustworthy, and it is the one thing an installer's dumps must not be.
-KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kinstall" \
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
     --dump plan >/dev/null
-KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kinstall" \
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
     --dump plan --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
 assert d["apps"], "the plan chose no applications"
 assert d["apps_bytes"] > 0, "the chosen set costs nothing"
 assert d["apps_route"] in ("none","import","network","pending"), d["apps_route"]'
 echo "  kinstall plan"
-$CC $STD $WARN $INC -Isrc/packages/kdos-appbox -o "$OUT/kdos-appbox" \
-    src/packages/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
+$CC $STD $WARN $INC -Isrc/system/kdos-appbox -o "$OUT/kdos-appbox" \
+    src/system/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
     src/libs/libkcolor/*.c src/libs/libkxdg/*.c
 echo "  kdos-appbox"
 # The catalogue parser, against a fixture AND against the shipped file. The
@@ -169,9 +183,9 @@ echo "  kdos-appbox"
 # error on the screen.
 KDOS_CATALOGUE=testing/fixtures/catalogue/catalogue "$OUT/kdos-appbox" \
     catalogue --selftest
-KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kdos-appbox" \
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kdos-appbox" \
     catalogue >/dev/null
-KDOS_CATALOGUE=src/packages/kdos-appbox/catalogue "$OUT/kdos-appbox" \
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kdos-appbox" \
     catalogue --groups >/dev/null
 echo "  catalogue"
 # The Containerfile generator. podman is not here and never will be, so what is
@@ -185,24 +199,24 @@ KDOS_CATALOGUE=testing/fixtures/catalogue/catalogue "$OUT/kdos-appbox" \
 # And the chain resolves over the SHIPPED catalogue, with the snapshot pinned
 # so the generator takes its longest path rather than the `off` short one.
 sed 's/^snapshot = auto/snapshot = 20260824T000000Z/' \
-    src/packages/kdos-appbox/catalogue > "$OUT/catalogue-pinned"
+    src/system/kdos-appbox/catalogue > "$OUT/catalogue-pinned"
 KDOS_CATALOGUE="$OUT/catalogue-pinned" "$OUT/kdos-appbox" \
     install essential --dry-run >/dev/null
 echo "  store"
-$CC $STD $WARN $INC -Isrc/packages/kdos-theme -o "$OUT/kdos-theme" \
-    src/packages/kdos-theme/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
+$CC $STD $WARN $INC -Isrc/art/kdos-theme -o "$OUT/kdos-theme" \
+    src/art/kdos-theme/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
 echo "  kdos-theme"
 # libkpack (over libksig) is `kdos app update`: reading a PACKAGES index and
 # picking the delta is the same parser kdos-packd uses.
 $CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/libs/libkpack \
-    -Isrc/packages/kdos-tools -o "$OUT/kdos-tools" \
-    src/packages/kdos-tools/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
+    -Isrc/system/kdos-tools -o "$OUT/kdos-tools" \
+    src/system/kdos-tools/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
     src/libs/libkpkg/*.c src/libs/libkxdg/*.c src/libs/libkproc/*.c \
     src/libs/libksig/*.c src/libs/libksig/monocypher/*.c src/libs/libkpack/*.c
 echo "  kdos-tools"
-$CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/packages/kdos-kpkg \
+$CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/system/kdos-kpkg \
     -o "$OUT/kdos-kpkg" \
-    src/packages/kdos-kpkg/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
+    src/system/kdos-kpkg/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
     src/libs/libksig/*.c src/libs/libksig/monocypher/*.c
 echo "  kdos-kpkg"
 # kdos-powerd is a root daemon and kdos-checkpass is the one setuid binary in
@@ -213,27 +227,27 @@ echo "  kdos-kpkg"
 # closed table rather than sanitised by a character class copied into the
 # daemon. Linking it here keeps this check the same link as the recipe's.
 $CC $STD $WARN $INC -Isrc/libs/libkcolor -o "$OUT/kdos-powerd" \
-    src/desktop/kdos-powerd/main.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
+    src/daemons/kdos-powerd/main.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
 ln -sf kdos-powerd "$OUT/kdos-power"
 echo "  kdos-powerd"
 
 # kdos-energyd is the other root daemon, and the only one whose ANSWER can be
 # checked without root: --fixture replays recorded /proc and powercap trees
 # through the same sampler and ledger the daemon runs.
-$CC $STD $WARN $INC -Isrc/libs/libkproc -Isrc/desktop/kdos-energyd \
+$CC $STD $WARN $INC -Isrc/libs/libkproc -Isrc/daemons/kdos-energyd \
     -o "$OUT/kdos-energyd" \
-    src/desktop/kdos-energyd/*.c src/libs/libkbase/*.c src/libs/libkproc/*.c
+    src/daemons/kdos-energyd/*.c src/libs/libkbase/*.c src/libs/libkproc/*.c
 ln -sf kdos-energyd "$OUT/kdos-energy"
 echo "  kdos-energyd"
 $CC $STD $WARN -o "$OUT/kdos-checkpass" src/desktop/kdos-lock/checkpass.c -lcrypt
 echo "  kdos-checkpass"
-$CC $STD $WARN $INC -Isrc/build/kdosbuild -o "$OUT/kdosbuild" \
-    src/build/kdosbuild/*.c src/libs/libkbase/*.c src/libs/libkbuild/*.c \
-    src/libs/libktui/*.c src/libs/libkcolor/*.c
+$CC $STD $WARN $INC -Isrc/devtools/kdosbuild -o "$OUT/kdosbuild" \
+    src/devtools/kdosbuild/*.c src/libs/libkbase/*.c src/libs/libkbuild/*.c \
+    src/libs/libkpkg/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c
 echo "  kdosbuild"
 "$OUT/kdosbuild" --selftest
-$CC $STD $WARN $INC -Isrc/tools/kdos-portup -o "$OUT/kdos-portup" \
-    src/tools/kdos-portup/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
+$CC $STD $WARN $INC -Isrc/devtools/kdos-portup -o "$OUT/kdos-portup" \
+    src/devtools/kdos-portup/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
     src/libs/libkbuild/*.c
 echo "  kdos-portup"
 "$OUT/kdos-portup" --selftest --fixture testing/fixtures/portup
@@ -242,19 +256,19 @@ echo "  kdos-portup"
 # mounts. Its ANSWER is checkable without root: --fixture runs the same scan,
 # the same solve and the same graft rules and mounts nothing, which is the seam
 # `kdos stutter`, `kdos-oomd` and `kdos-mountd` all use.
-$CC $STD $WARN $INC -Isrc/desktop/kdos-packd -o "$OUT/kdos-packd" \
-    src/desktop/kdos-packd/*.c src/libs/libkbase/*.c src/libs/libksig/*.c \
+$CC $STD $WARN $INC -Isrc/daemons/kdos-packd -o "$OUT/kdos-packd" \
+    src/daemons/kdos-packd/*.c src/libs/libkbase/*.c src/libs/libksig/*.c \
     src/libs/libksig/monocypher/*.c src/libs/libkpkg/*.c src/libs/libkpack/*.c
 echo "  kdos-packd"
 $CC $STD $WARN $INC -o "$OUT/kdos-pack" \
-    src/packages/kdos-pack/main.c src/libs/libkbase/*.c src/libs/libksig/*.c \
+    src/system/kdos-pack/main.c src/libs/libkbase/*.c src/libs/libksig/*.c \
     src/libs/libksig/monocypher/*.c src/libs/libkpkg/*.c src/libs/libkpack/*.c
 echo "  kdos-pack"
 
 echo
 echo "==> boxes: the profile says what it enforced, and what it could not"
-$CC $STD $WARN $INC -Isrc/packages/kdos-appbox -o "$OUT/kdos-box" \
-    src/packages/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
+$CC $STD $WARN $INC -Isrc/system/kdos-appbox -o "$OUT/kdos-box" \
+    src/system/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
     src/libs/libkcolor/*.c src/libs/libkxdg/*.c
 BH="$OUT/boxhome"
 mkdir -p "$BH/.config/kdos/boxes"
@@ -403,12 +417,12 @@ echo "  ok    a data pack is never composed into a box root"
 # libkcell and libkwl are the TWO libraries here with real external
 # dependencies — libkcell is the glyph cache and the cell painter, libkwl is
 # the Wayland half built on it. They are separate archives from libktui, whose
-# zero-`-l` property keeps kinstall in phase 1, and separate from EACH OTHER so
-# that a consumer wanting the cell painter is not made to link a Wayland CLIENT
-# library to get it. (kdos-comp does not link either: since the labwc fork its
-# window frames are labwc's own SSD, drawn with pango and coloured from the
-# generated `themerc-override`.) Skipped rather than failed when the deps are
-# absent:
+# zero-`-l` property keeps kinstall in the bootstrap phase, and separate from
+# EACH OTHER so that a consumer wanting the cell painter is not made to link a
+# Wayland CLIENT library to get it. (kdos-comp does not link either: it is a
+# labwc fork, and its window frames are labwc's own SSD, drawn with pango and
+# coloured from the generated `themerc-override`.) Skipped rather than failed
+# when the deps are absent:
 # this script's contract is that it runs on a bare host with no container and
 # no network.
 if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/null &&
@@ -417,7 +431,7 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
     mkdir -p "$PROTO"
     SCANNER=$(pkg-config --variable=wayland_scanner wayland-scanner)
     XDG=$(pkg-config --variable=pkgdatadir wayland-protocols)/stable/xdg-shell/xdg-shell.xml
-    LS=$(ls ports/core/wlroots/wlroots-*.tar.gz 2>/dev/null | head -1)
+    LS=$(ls "$(port_dir wlroots)"/wlroots-*.tar.gz 2>/dev/null | head -1)
     if [ -n "$LS" ]; then
         tar xf "$LS" -C "$PROTO" --strip-components=2 \
             "$(tar tf "$LS" | grep 'protocol/wlr-layer-shell-unstable-v1.xml$' | head -1)"
@@ -1019,7 +1033,7 @@ fi
 # (kdos-crt-pass.c) and wlroots' own damage ring (from the port's tarball, which
 # needs no installed wlroots) on a surfaceless EGL context; llvmpipe is enough.
 # The two broken modes must FAIL, or the comparison proves nothing.
-SCW=$(ls ports/core/wlroots/wlroots-*.tar.gz 2>/dev/null | head -1)
+SCW=$(ls "$(port_dir wlroots)"/wlroots-*.tar.gz 2>/dev/null | head -1)
 if [ -n "$SCW" ] && pkg-config --exists egl glesv2 pixman-1 wayland-server \
         2>/dev/null; then
     mkdir -p "$OUT/scwlr"
@@ -1636,7 +1650,7 @@ echo "  7 ports, all three outcomes reproduced from the recorded corpus"
 
 echo
 echo "==> kpkgdepends still agrees with the ports tree"
-PORT_REPO="$PWD/ports/core $PWD/src/packages" KPKG_CONF=/nonexistent \
+PORT_REPO="$PWD/ports/core $PWD/src/system $PWD/src/art" KPKG_CONF=/nonexistent \
     PKGDB_DIR=/dev/null "$OUT/kdos-kpkg" kpkgdepends bash >/dev/null
 echo "  ok"
 
@@ -1652,15 +1666,15 @@ echo "==> a game's desktop entry is what makes it reachable, and nothing checks 
 #
 # The entries are read out of the build.sh heredocs rather than out of a built
 # image, so this runs on any host and fails at the recipe rather than after a
-# seven-minute packaging run.
+# seven-minute image build.
 _gamefail=0
 for _p in nethack frotz bsd-games moon-buggy; do
-    _bs="ports/core/$_p/build.sh"
+    _bs="$(port_dir "$_p")/build.sh"
     [ -f "$_bs" ] || { echo "  $_p: no build.sh"; _gamefail=1; continue; }
     # The recipe parses AND its whole dependency closure resolves, which is
     # the same call the block above makes for bash — a `depends` naming a port
     # this tree does not have is the other way a game recipe fails late.
-    PORT_REPO="$PWD/ports/core $PWD/src/packages" KPKG_CONF=/nonexistent \
+    PORT_REPO="$PWD/ports/core $PWD/src/system $PWD/src/art" KPKG_CONF=/nonexistent \
         PKGDB_DIR=/dev/null "$OUT/kdos-kpkg" kpkgdepends "$_p" \
         > "$OUT/game-$_p.deps" 2>&1 \
         || { echo "  $_p: the recipe does not parse or its depends do not resolve"
@@ -1699,9 +1713,10 @@ fi
 # frotz's entry claims application/x-zmachine, and shared-mime-info — the
 # version this image builds — defines no such type, so without the XML the
 # recipe installs, the claim resolves to nothing and says so nowhere.
-_smi=$(ls ports/core/shared-mime-info/shared-mime-info-*.tar.xz 2>/dev/null | head -1)
-if grep -q 'MimeType=.*x-zmachine' ports/core/frotz/build.sh; then
-    grep -q 'mime/packages/kdos-zmachine.xml' ports/core/frotz/build.sh &&
+_smi=$(ls "$(port_dir shared-mime-info)"/shared-mime-info-*.tar.xz 2>/dev/null | head -1)
+_frotz="$(port_dir frotz)/build.sh"
+if grep -q 'MimeType=.*x-zmachine' "$_frotz"; then
+    grep -q 'mime/packages/kdos-zmachine.xml' "$_frotz" &&
         echo "  and the z-machine type frotz claims is one frotz installs" ||
         { echo "  frotz claims a MIME type nothing on this image defines"
           exit 1; }
@@ -2559,7 +2574,7 @@ rb "$PWD" --dry-run "$RBW" >/dev/null 2>&1 \
     || { echo "  this repo was not recognised as a KDOS tree"; exit 1; }
 # A tree without the fs/ overlay builds a root with no configuration.
 RBT="$OUT/rb-tree"
-mkdir -p "$RBT/script" "$RBT/ports/core" "$RBT/src/build/kdosbuild"
+mkdir -p "$RBT/script" "$RBT/ports/core" "$RBT/src/devtools/kdosbuild"
 : > "$RBT/script/kdosbuild.sh"
 rb "$RBT" --dry-run "$RBW" >/dev/null 2>&1 \
     && { echo "  a tree with no fs/ overlay was accepted"; exit 1; }
@@ -2588,7 +2603,7 @@ if ! command -v cpio >/dev/null 2>&1; then
 else
 # The early loader does not mount anything: it scans the raw initrd for one
 # literal path before decompression. So this builds an initrd shaped exactly
-# like 01_initramfs.sh's output -- an uncompressed cpio carrying both vendors'
+# like 090_initramfs.sh's output -- an uncompressed cpio carrying both vendors'
 # blobs, then the gzipped part -- and asserts doctor's answer flips with it.
 # Both blobs are present so the assertion does not depend on the host's CPU.
 UC="$OUT/ucode"
@@ -2809,7 +2824,7 @@ echo i > "$ES/esp/EFI/kdos/a/initramfs.cpio.gz"
 esb set-slot a AAAA-1111 LUKS-AAAA >/dev/null
 python3 - "$ES/esp/limine.conf" <<'PYEOF' || { echo "  could not render kinstall's limine.conf"; exit 1; }
 import re, sys
-s = open('src/packages/kdos-installer/install.c').read()
+s = open('src/system/kdos-installer/install.c').read()
 m = re.search(r'wr\("/boot/efi/limine.conf",\n(.*?)\n\t   theme, paper', s, re.S)
 fmt = ''.join(re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1)))
 fmt = fmt.encode().decode('unicode_escape')
@@ -2871,7 +2886,7 @@ test ! -e "$ES/esp/EFI/kdos/vmlinuz" && cmp -s "$ES/rc/boot/vmlinuz-kdos" "$ES/e
 # root has no /boot/initramfs.modules.
 if command -v cpio >/dev/null; then
     ( . /dev/stdin <<EOF
-$(sed -n '/^archive_modules() (/,/^)/p' ports/core/linux/postinstall.sh)
+$(sed -n '/^archive_modules() (/,/^)/p' "$(port_dir linux)/postinstall.sh")
 EOF
       test "$(archive_modules "$ES/rc/boot/initramfs.cpio.gz")" = vfat ) \
         || { echo "  the postinstall found no module set in the image's archive"; exit 1; }
@@ -3031,7 +3046,7 @@ echo "  the spec's load option, the confirmed slot's default kept, one boot then
 
 echo
 echo "==> the initramfs unlocks a LUKS root, or says why it cannot"
-# The generated init is a heredoc inside a packaging script, which is exactly
+# The generated init is a heredoc inside an image-phase script, which is exactly
 # the kind of code nothing ever tests until it is 3 a.m. and a laptop will not
 # boot. It is extracted, syntax-checked, and its unlock function is run against
 # stub tools — which is what PASS_TTY and CRYPT_MAPPER_DIR exist for.
@@ -3039,7 +3054,7 @@ IR="$OUT/initramfs"
 mkdir -p "$IR/bin" "$IR/mapper"
 python3 - "$IR/init" <<'PYEOF' || { echo "  could not extract the generated init"; exit 1; }
 import re, sys
-s = open('script/06_packaging/01_initramfs.sh').read()
+s = open('script/phases/70_image/090_initramfs.sh').read()
 m = re.search(r"cat > init <<EOF\n(.*?)\nEOF\n", s, re.S)
 if not m:
     sys.exit(1)
@@ -3166,11 +3181,11 @@ echo "  volume groups: no lvm without a PV, once per newly seen set of PVs, thin
 # toybox's applet implements no `-U` and cannot see `crypto_LUKS`. With the
 # applet, an installed machine drops to a shell with "Root device not found".
 # $PATH puts /usr/bin ahead of /usr/sbin, so the name alone decides it.
-grep -q 'cp /usr/sbin/blkid bin/blkid' script/06_packaging/01_initramfs.sh \
+grep -q 'cp /usr/sbin/blkid bin/blkid' script/phases/70_image/090_initramfs.sh \
     || { echo "  the initramfs no longer copies util-linux's blkid"; exit 1; }
-grep -q "rm -f bin/blkid" script/06_packaging/01_initramfs.sh \
+grep -q "rm -f bin/blkid" script/phases/70_image/090_initramfs.sh \
     || { echo "  the toybox blkid symlink is not removed first — cp writes THROUGH it"; exit 1; }
-grep -q "CONFIG_BLKID is not set" ports/core/toybox/build.sh \
+grep -q "CONFIG_BLKID is not set" "$(port_dir toybox)/build.sh" \
     || { echo "  toybox's blkid applet is back, and it shadows util-linux's on PATH"; exit 1; }
 echo "  the initramfs blkid is util-linux's, and toybox claims no such name"
 
@@ -3243,8 +3258,51 @@ echo "==> kdosbuild reads the build tree correctly"
 # over a real tree.
 "$OUT/kdosbuild" --script-dir script --list >/dev/null 2>&1 \
     || { echo "  kdosbuild cannot read script/"; exit 1; }
-phases=$("$OUT/kdosbuild" --script-dir script --build-dir "$OUT/empty" --list 2>&1)
+# --list still answers when a phase is unreadable, and names it on stderr: a
+# name there is a phase every real build refuses before its first step.
+mkdir -p "$OUT/empty"
+"$OUT/kdosbuild" --script-dir script --build-dir "$OUT/empty" --list \
+    >/dev/null 2>"$OUT/list-err"
+grep -q '^kdosbuild:' "$OUT/list-err" \
+    && { echo "  a phase in script/phases cannot run:"; cat "$OUT/list-err"; exit 1; }
 echo "  phase discovery and snapshot inventory"
+
+# A phase that cannot say what it installs refuses the whole build with exit 2
+# and runs nothing: both packages.txt and packages.d/ (which list is a guess),
+# a packages.d/ with no *.txt, a directory with no list and no step (each would
+# install nothing and report success), and a script directory with no phase.
+# Each is planted beside a step that would leave a mark had it run.
+kb_refuses() {  # <tree> <expected stderr text>
+    local rc=0
+    ( cd "$1" && "$OUT/kdosbuild" --script-dir script --build-dir build --fresh ) \
+        > "$1/out.log" 2>&1 || rc=$?
+    [ "$rc" = 2 ] || { echo "  $1: exit $rc, not 2"; cat "$1/out.log"; exit 1; }
+    grep -qF -- "$2" "$1/out.log" || { echo "  $1: no '$2'"; cat "$1/out.log"; exit 1; }
+    [ -e "$1/ran" ] && { echo "  $1: a step ran before the refusal"; exit 1; }
+    return 0
+}
+kb_tree() {  # <tree>: one runnable phase that marks the tree when it runs
+    mkdir -p "$1/script/phases/00_ok" "$1/build"
+    printf '#!/bin/bash\ntouch "$PWD/ran"\n' > "$1/script/phases/00_ok/00_mark.sh"
+    chmod +x "$1/script/phases/00_ok/00_mark.sh"
+}
+KR="$OUT/kbrefuse"
+kb_tree "$KR/both"
+mkdir -p "$KR/both/script/phases/10_pk/packages.d"
+echo zlib > "$KR/both/script/phases/10_pk/packages.txt"
+echo zlib > "$KR/both/script/phases/10_pk/packages.d/base.txt"
+kb_refuses "$KR/both" "10_pk has both packages.txt and packages.d/"
+kb_tree "$KR/nolist"
+mkdir -p "$KR/nolist/script/phases/10_pk/packages.d"
+echo zlib > "$KR/nolist/script/phases/10_pk/packages.d/base.list"
+kb_refuses "$KR/nolist" "10_pk/packages.d/ holds no *.txt"
+kb_tree "$KR/bare"
+mkdir -p "$KR/bare/script/phases/10_pk"
+echo 'export KDOS_PHASE_TITLE="Nothing"' > "$KR/bare/script/phases/10_pk/phase.env"
+kb_refuses "$KR/bare" "10_pk has no packages.txt, no packages.d/ and no *.sh"
+mkdir -p "$KR/none/script/phases" "$KR/none/build"
+kb_refuses "$KR/none" "no phase under script/phases/"
+echo "  an unreadable phase refuses the build before any step runs"
 
 echo
 echo "==> kdosbuild runs a build end to end"
@@ -3253,17 +3311,17 @@ echo "==> kdosbuild runs a build end to end"
 # logs, tarring the snapshot, extracting it again — rather than a decision.
 mkdir -p "$OUT/empty"
 E="$OUT/e2e"
-mkdir -p "$E/script/00_alpha" "$E/script/01_beta" "$E/build" "$E/bin"
-cat > "$E/script/alpha.env.sh" <<'EOF'
+mkdir -p "$E/script/phases/00_alpha" "$E/script/phases/01_beta" "$E/build" "$E/bin"
+cat > "$E/script/phases/00_alpha/phase.env" <<'EOF'
 export KDOS_PHASE_TITLE="Alpha Phase"
 export KDOS_SNAPSHOT_PATHS="fs"
 export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/*"
 rm -rf /var/cache/kpkg/work
 EOF
-cat > "$E/script/beta.env.sh" <<'EOF'
+cat > "$E/script/phases/01_beta/phase.env" <<'EOF'
 export KDOS_SNAPSHOT_PATHS="fs ports"
 EOF
-cat > "$E/script/00_alpha/00_tree.sh" <<'EOF'
+cat > "$E/script/phases/00_alpha/00_tree.sh" <<'EOF'
 #!/bin/bash
 # Title: build the rootfs
 set -e
@@ -3272,12 +3330,12 @@ echo hello > "$PWD/build/fs/usr/bin/hello"
 printf 'ansi \033[31mred\033[0m and\ttab\n'
 printf 'no trailing newline'
 EOF
-cat > "$E/script/01_beta/00_ports.sh" <<'EOF'
+cat > "$E/script/phases/01_beta/00_ports.sh" <<'EOF'
 #!/bin/bash
 mkdir -p "$PWD/build/ports"; echo port > "$PWD/build/ports/one"
 echo "replay=$KDOS_REPLAY"
 EOF
-chmod +x "$E"/script/*/*.sh
+chmod +x "$E"/script/phases/*/*.sh
 KB="$OUT/kdosbuild"
 
 ( cd "$E" && "$KB" --script-dir script --build-dir build --fresh ) > "$OUT/e2e.log" 2>&1
@@ -3314,11 +3372,11 @@ echo "  build plan narrowing and KDOS_REPLAY"
 
 # A failing step stops the build, exits 1, and does NOT snapshot the phase.
 F="$OUT/fail"
-mkdir -p "$F/script/00_a" "$F/build"
-echo 'export KDOS_SNAPSHOT_PATHS="fs"' > "$F/script/a.env.sh"
-printf '#!/bin/bash\necho starting\nexit 3\n' > "$F/script/00_a/00_boom.sh"
-printf '#!/bin/bash\necho unreachable\n' > "$F/script/00_a/01_after.sh"
-chmod +x "$F"/script/*/*.sh
+mkdir -p "$F/script/phases/00_a" "$F/build"
+echo 'export KDOS_SNAPSHOT_PATHS="fs"' > "$F/script/phases/00_a/phase.env"
+printf '#!/bin/bash\necho starting\nexit 3\n' > "$F/script/phases/00_a/00_boom.sh"
+printf '#!/bin/bash\necho unreachable\n' > "$F/script/phases/00_a/01_after.sh"
+chmod +x "$F"/script/phases/*/*.sh
 if ( cd "$F" && "$KB" --script-dir script --build-dir build --fresh ) \
         > "$OUT/fail.log" 2>&1; then
     echo "  a failing step did not fail the build"; exit 1
@@ -3416,11 +3474,11 @@ echo "  no secret reaches a dump or the answer file it writes"
 
 # ── the Applications page reads the CATALOGUE ───────────────────────────────
 # kinstall links libkbase, libktui and libkcolor and nothing else, which is what
-# lets it live in phase 1 — so catalogue.c is compiled IN rather than shelled
-# out to, and this asserts the four answers that decide what an install carries:
-# `essential` is preselected, an answer file's choice wins, an UNKNOWN id falls
-# back rather than failing after the point of no return, and the page says which
-# ROUTE the applications will take.
+# lets it live in the bootstrap phase — so catalogue.c is compiled IN rather
+# than shelled out to, and this asserts the four answers that decide what an
+# install carries: `essential` is preselected, an answer file's choice wins, an
+# UNKNOWN id falls back rather than failing after the point of no return, and
+# the page says which ROUTE the applications will take.
 mkdir -p "$OUT/cat"
 cat > "$OUT/cat/catalogue" <<'CAT'
 snapshot = 20260824T000000Z
@@ -4002,7 +4060,7 @@ echo "==> kdos-oomd picks the victim the desktop can afford to lose"
 # with an empty cmdline (1.2 G). If any one of those checks broke, the answer
 # would be that process and not firefox-esr.
 $CC $STD $WARN $INC -o "$OUT/kdos-oomd" \
-    src/desktop/kdos-oomd/main.c src/libs/libkbase/*.c src/libs/libkproc/*.c
+    src/daemons/kdos-oomd/main.c src/libs/libkbase/*.c src/libs/libkproc/*.c
 echo "  kdos-oomd"
 OM="$OUT/oomd.txt"
 "$OUT/kdos-oomd" --fixture testing/fixtures/oomd/preferred > "$OM" \
@@ -4061,7 +4119,7 @@ echo "==> kdos-mountd offers the stick and refuses everything else"
 # /etc/fstab is somebody's existing decision, which this daemon does not get to
 # second-guess.
 $CC $STD $WARN $INC -o "$OUT/kdos-mountd" \
-    src/desktop/kdos-mountd/main.c src/libs/libkbase/*.c
+    src/daemons/kdos-mountd/main.c src/libs/libkbase/*.c
 MF=testing/fixtures/mountd
 MO="$OUT/mountd.txt"
 # The mounts file is the fixture's too, for every invocation below: the
@@ -5025,7 +5083,7 @@ echo "==> the shell's front ends draw offscreen, and the boxes line up"
 # is the distinction this harness was built around and still keeps.
 DUMPCK=""
 DPROTO="$OUT/dproto"
-DWLR=$(ls ports/core/wlroots/wlroots-*.tar.gz 2>/dev/null | head -1)
+DWLR=$(ls "$(port_dir wlroots)"/wlroots-*.tar.gz 2>/dev/null | head -1)
 DSCAN=$(pkg-config --variable=wayland_scanner wayland-scanner 2>/dev/null || true)
 DWP=$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null || true)
 if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
@@ -5277,8 +5335,8 @@ PKEOF
         "$OUT/pkdrv" nosuchprogram | grep -qx "nosuchprogram known=0 rows=0" ||
             { echo "  a program with no reader did not answer nothing"
               _pkfail=1; }
-        # helix is NAMED by the plan and is in no packages.txt at all, so it
-        # has never been built or shipped: a reader for it could not run and
+        # helix is NAMED by the plan and is in no phase's package list, so it
+        # is neither built nor shipped: a reader for it could not run and
         # could not be checked, and it must not pretend otherwise.
         "$OUT/pkdrv" helix | grep -qx "helix known=0 rows=0" ||
             { echo "  helix answers as though a reader existed"; _pkfail=1; }
@@ -5441,8 +5499,7 @@ check_box() {
     ' || exit 1
 }
 
-# Body deliberately unindented: it is a long stretch of assertions that used to
-# be top-level, and reindenting all of it would bury the one thing that changed.
+# Body deliberately unindented.
 #
 # EVERY SURFACE ANSWERS THE CONTRACT, AND SAYS SO ON ITS BOTTOM ROW.
 #
@@ -7088,10 +7145,10 @@ cp fs/etc/skel/.config/starship.toml "$AH/.config/" 2>/dev/null || true
 # ships, in a file nobody re-reads.
 mkdir -p "$AH/.config/mc"
 cp fs/etc/skel/.config/mc/ini "$AH/.config/mc/ini"
-export KDOS_GTK_SRC="$PWD/src/packages/kdos-gtk-theme/theme"
-export KDOS_ICON_ART="$PWD/src/packages/kdos-icons/art"
-export KDOS_ICON_MARKS="$PWD/src/packages/kdos-icons/marks"
-export KDOS_CURSOR_ART="$PWD/src/packages/kdos-cursors/art"
+export KDOS_GTK_SRC="$PWD/src/art/kdos-gtk-theme/theme"
+export KDOS_ICON_ART="$PWD/src/art/kdos-icons/art"
+export KDOS_ICON_MARKS="$PWD/src/art/kdos-icons/marks"
+export KDOS_CURSOR_ART="$PWD/src/art/kdos-cursors/art"
 audit() {
     env -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u XDG_DATA_HOME \
         HOME="$AH" TMPDIR="$OUT" PATH="$OUT:$PATH" "$OUT/kdos" theme "$@"

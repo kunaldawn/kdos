@@ -227,7 +227,9 @@ The package manager, `kpkg`, is written for KDOS in C. It builds a port into a c
 archive, records every path the package owns, removes files an upgrade drops, and resolves
 dependencies from the `depends` lines. There are 1,999 recipes under `ports/core` for upstream
 software and 24 under `src/` for KDOS's own, 2,023 in all, and all of them use the same format.
-[The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by group.
+The upstream recipes are filed on 102 subject shelves, `ports/core/<shelf>/<name>/`, much as T2
+SDE files its packages by repository, while a port is still named by its bare name everywhere.
+[The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf.
 
 The closest relatives are Arch's `PKGBUILD` and CRUX's `Pkgfile`, with the metadata pulled out so
 that it can be parsed safely. Gentoo's USE flags, which let one ebuild build many configurations,
@@ -274,10 +276,11 @@ very small binary seed.
 
 KDOS is self-hosting in the Gentoo sense. The first build runs in numbered stages, called phases,
 inside a container whose starting compilers come from Alpine 3.23 packages, the base of the build
-image. A toolchain phase uses them to build a cross compiler, and phase 1 uses that to build a musl
-userland with a native compiler. Phase 2 then rebuilds the compiler, the C library and the tools
-they need inside a chroot, a directory tree the build enters as its root, using what phase 1 made,
-so everything from phase 3 onwards is built by a compiler KDOS produced. The finished image keeps
+image. The first phase, `00_cross`, uses them to build a cross compiler, and `10_bootstrap` uses
+that to build a musl userland with a native compiler. `20_selfhost` then rebuilds the compiler, the
+C library and the tools they need inside a chroot, a directory tree the build enters as its root,
+using what `10_bootstrap` made, so everything from `30_foundation` onwards is built by a compiler
+KDOS produced. The finished image keeps
 gcc, clang, Rust, Go, the build tools and `kpkg`, so any single port, the kernel included, can be
 rebuilt on the machine itself and offline; `kdos update apply` does that for every package that is
 behind. [`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild) runs the whole build on a
@@ -335,16 +338,18 @@ Gentoo and Arch users build or install applications into the base system like ev
 
 KDOS ports graphical applications natively, so that a machine installed from its media has a
 browser, an office suite, media and graphics tools, maps and an offline library with no network.
-They are ordinary recipes in the ports tree, grouped by purpose in the phase 4 package list; [The
-ports catalogue](../06-reference/ports-catalogue.md) lists them. Beside them, the catalogue of boxed
-applications lists 73 applications over 7 shared runtimes, each declared as a chain of Debian trixie
-packages. Installing one makes podman build a container image on the machine that asked, layer by
-layer over the shared runtime, pinned to a snapshot of the Debian archive, and creates a rootless
-container, a *box*, over the top image. The application then behaves like native software: it has a
-launcher entry, a command on your `PATH`, file-type associations and the desktop's theme, and it
-reaches the host through portals. A set of built applications can be exported as signed packs,
-read-only images in EROFS, a compressed read-only filesystem format, that another machine imports
-without a network; the pack daemon checks each pack's hash and signature when it installs it.
+They are ordinary recipes in the ports tree, filed on shelves named for what they are for and built
+mostly in the `43_toolkits` and `44_apps` phases, with those that need no toolkit, such as mpv, in
+`42_graphics`; [The ports catalogue](../06-reference/ports-catalogue.md)
+lists them. Beside them, the catalogue of boxed applications lists 73 applications over 7 shared
+runtimes, each declared as a chain of Debian trixie packages. Installing one makes podman build a
+container image on the machine that asked, layer by layer over the shared runtime, pinned to a
+snapshot of the Debian archive, and creates a rootless container, a *box*, over the top image. The
+application then behaves like native software: it has a launcher entry, a command on your `PATH`,
+file-type associations and the desktop's theme, and it reaches the host through portals. A set of
+built applications can be exported as signed packs, read-only images in EROFS, a compressed
+read-only filesystem format, that another machine imports without a network; the pack daemon checks
+each pack's hash and signature when it installs it.
 
 Compared with Flatpak, the model is similar in shape (shared runtimes, per-application artefacts,
 portals) and different in three ways. The packages come from Debian's archive rather than from a
@@ -452,7 +457,7 @@ it suits.
 - [Packaging](../03-architecture/packaging.md) — recipes, `kpkg`, the binhost and updates in depth
 - [How KDOS is built](../05-developer/how-kdos-is-built.md) — the build from checkout to ISO, told
   end to end
-- [The ports catalogue](../06-reference/ports-catalogue.md) — every port, by group
+- [The ports catalogue](../06-reference/ports-catalogue.md) — every port, by shelf
 - [Packs and boxes](../03-architecture/packs-and-boxes.md) — how applications are built and run
 - [The security model](../03-architecture/security-model.md) — what is protected and what is not
 - [Known gaps](../06-reference/known-gaps.md) — what does not exist

@@ -2490,7 +2490,7 @@ prints the usage line and exits 254, so a malformed call reads as a cancel and n
   checked against
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md#toolkits) — why the desktop is one cell-grid
   toolkit of its own rather than GTK or Qt under its surfaces
-- [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-05_desktop) — where the `kdos-shell` port is built
+- [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop) — where the `kdos-shell` port is built
   in the desktop phase, and how its links reach the image
 
 <!-- book-nav -->

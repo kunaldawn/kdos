@@ -866,8 +866,8 @@ The OpenCL filters run on Mesa's rusticl, which offers an Intel or AMD GPU becau
 
 The build passes `--enable-gpl` (which x264, x265 and rubberband require) together with
 `--enable-version3`, and ffmpeg's `configure` licenses that combination as GPL version 3 or later.
-Everything that links it inherits that licence. `ports/core/ffmpeg/LICENSE.notice` is the notice a
-redistributor should read.
+Everything that links it inherits that licence. `LICENSE.notice` in the ffmpeg port
+(`ports/core/media-frameworks/ffmpeg/`) is the notice a redistributor should read.
 
 **Hardware video decoding** goes through VA-API, and the driver depends on the GPU:
 
@@ -942,18 +942,20 @@ date, and warns when it is more than 180 days old.
 [glossary](../06-reference/glossary.md)). What counts as "an update" is a newer ports tree, so
 `kdos update` needs one on the machine. `PORT_REPO` in `/etc/kpkg.conf` names it: a
 space-separated list of recipe directories, `/ports/core` by default. The KDOS source tree keeps its
-recipes in three directories — `ports/core` for upstream software, `src/packages` and `src/desktop`
-for KDOS's own programs — so name all three. For a complete checkout of the KDOS repository at
-`DIR`:
+recipes in five directories — `ports/core` for upstream software, each port one shelf down in
+`ports/core/<shelf>/<name>/`, and `src/system`, `src/art`, `src/desktop` and `src/daemons` for
+KDOS's own programs — so name all five. A repository is searched for a port at `<name>/` and one
+shelf down, never deeper; the shelves are not listed separately. For a complete checkout of the
+KDOS repository at `DIR`:
 
 ```sh
-PORT_REPO="DIR/ports/core DIR/src/packages DIR/src/desktop"
+PORT_REPO="DIR/ports/core DIR/src/system DIR/src/art DIR/src/desktop DIR/src/daemons"
 ```
 
-A stick built with `KDOS_ISO_SOURCES=1` is not such a tree: its copy under `/mnt/iso/sources`
-has an empty `ports/` (see [kdos rebuild](#kdos-rebuild)). Without a ports tree `kdos update` says
+A stick built with `KDOS_ISO_SOURCES=1` carries such a tree under `/mnt/iso/sources` (see
+[kdos rebuild](#kdos-rebuild)), whose five directories can be named the same way. Without a ports tree `kdos update` says
 so and exits 2. The
-[ports catalogue](../06-reference/ports-catalogue.md) lists every port by phase and group, and
+[ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf, with the phase that builds it, and
 [How KDOS is built](../05-developer/how-kdos-is-built.md) follows a port from recipe to installed
 package.
 
@@ -1095,22 +1097,22 @@ and a counterfeit stick would pass.
 
 `kdos rebuild <work-directory>` runs the KDOS build on a booted system, with no network. It looks
 for a source tree wherever `KDOS_SOURCES` points, then at `/mnt/iso/sources`, `/kdos` and the
-current directory, and accepts one that has `script/kdosbuild.sh`, `ports/core` and
-`src/build/kdosbuild`.
+current directory, and accepts one that has `script/kdosbuild.sh`, `ports/core`, `fs/etc` and
+`src/devtools/kdosbuild`.
 
-A stick built with `make build KDOS_ISO_SOURCES=1` carries a copy under `/mnt/iso/sources`, but
-not a complete one: `src/` and `script/` arrive, `ports/` arrives empty, and the `fs/` overlay of
-system files, the `Makefile` and the `Dockerfile` are not copied. From that stick alone
-`kdos rebuild` finds no ports and stops before copying anything. Even with a complete tree named by
-`KDOS_SOURCES`, a full rebuild stops in phase 1, which reads the `fs/` overlay from
-`/workspace/fs`. A full rebuild needs a complete checkout on a build machine; see
+A stick built with `make build KDOS_ISO_SOURCES=1` carries a copy under `/mnt/iso/sources`: the
+ports tree with every fetched source beside its recipe, `src/`, `script/` and the `fs/` overlay of
+system files. The `Makefile` and the `Dockerfile` are not copied. `kdos rebuild` copies the tree to
+the work directory and runs the build there, with `KDOS_WORKSPACE` naming the copy so that the
+host phases read `fs/` from it rather than from `/workspace`. No rebuild from a medium has yet
+been run through every phase; see
 [Why KDOS](../01-philosophy/why-kdos.md#kdos-can-build-kdos) and
 [The kdos command](../04-programs/kdos-command.md#kdos-rebuild).
 
 | Option | Does |
 |---|---|
 | `--dry-run` | Run the checks and stop |
-| `--iso-only` | Rebuild only the packaging phase, which produces the ISO |
+| `--iso-only` | Rebuild only the image phase, `70_image`, which produces the ISO |
 
 The checks are what make it safe to start. The work directory needs about 25 GB, and is refused if
 it is on a temporary or overlay filesystem: a live stick's root is RAM, so a rebuild started there
@@ -1349,7 +1351,7 @@ Cloud pinyin is compiled out: it would send what you type to a remote service.
 - [Boot and init](../03-architecture/boot-and-init.md) — the boot path and the service convention
 - [The kdos command](../04-programs/kdos-command.md) — every diagnostic on this page
 - [Packaging](../03-architecture/packaging.md) — ports, the binary host and updates
-- [The ports catalogue](../06-reference/ports-catalogue.md) — every port `kdos update` can install, by group
+- [The ports catalogue](../06-reference/ports-catalogue.md) — every port `kdos update` can install, by shelf
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md) — why services, packages and settings are arranged this way
 - [Security model](../03-architecture/security-model.md) — what `wheel` means and what is not protected
 - [Installation](installation.md) — the services, accounts and swap the installer sets up

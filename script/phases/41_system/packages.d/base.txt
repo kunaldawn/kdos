@@ -1,0 +1,47 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   base — The minimal userland and system daemons that every KDOS image boots
+#   with
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+file
+iana-etc
+dbus
+
+# The logs. Without them every daemon's diagnostics go to /dev/null.
+sysklogd
+
+# Periodic jobs. snooze is one process per job under ksvc rather than a cron
+# daemon with its own scheduler — it fits the supervisor KDOS already has.
+snooze
+
+# musl reads /usr/share/zoneinfo directly. The appbox installs debian's own
+# tzdata, so without this the host and the box disagree about local time on one
+# machine in one session; a POSIX TZ string alone stays correct only until a
+# DST rule changes.
+tzdata
+
+procps-ng
+psmisc
+lsof
+
+# Seats with no logind — kdos-comp talks to it through libseat.
+seatd

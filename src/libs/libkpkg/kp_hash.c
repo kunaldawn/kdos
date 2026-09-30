@@ -187,6 +187,12 @@ int kp_recipe_hash(const char *portdir, char out[65])
 		 * beside the port, which every port under `src/` has; a
 		 * source-less port under `ports/core` has none and hashes
 		 * its own directory alone.
+		 *
+		 * A core port sits at `ports/core/<shelf>/<name>`, so its
+		 * `../../libs` is `ports/core/libs`: A SHELF MUST NEVER BE NAMED
+		 * `libs`. One that was would be hashed whole into every
+		 * source-less core port, and any edit on that shelf would
+		 * change their recipe hashes and rebuild them.
 		 */
 		snprintf(libs, sizeof(libs), "%s/../../libs", portdir);
 		if (kb_is_dir(libs))

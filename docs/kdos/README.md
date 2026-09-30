@@ -152,7 +152,7 @@ region of it.
     splash, A/B slot selection, unlocking an encrypted root, `rcS`, the console and the login
 14. [The session](03-architecture/session.md): what a login starts: the session bus, audio,
     portals, the supervised chrome, capture, the clipboard, input methods and a box's environment
-15. [Packaging](03-architecture/packaging.md): the ports tree and its phases and groups, where
+15. [Packaging](03-architecture/packaging.md): the ports tree, its shelves and its phases, where
     sources come from, `kpkg`, what a build verifies, reproducible packages, the binary host,
     deltas and vulnerability tracking
 16. [Packs and boxes](03-architecture/packs-and-boxes.md): the two lanes, the catalogue, the pack
@@ -206,7 +206,8 @@ failures that recur, the C libraries, desktop software and the test harnesses.
     `git clone` through fetching, the cross toolchain, the phases and the chroot, to a bootable ISO
 31. [Developing](05-developer/developing.md): what a development machine needs, the first build,
     every make target, rebuilding one thing, working without a build, and cutting a release
-32. [The build system](05-developer/build-system.md): phases, the chroot, syncing `fs/`, the
+32. [The build system](05-developer/build-system.md): the thirteen phases and their package
+    lists, where `kpkg` looks for a port, the phase environment, the chroot, syncing `fs/`, the
     orphan sweep, the packaging steps, snapshots, build plans and `kdosbuild`
 33. [Writing ports](05-developer/writing-ports.md): the recipe format, canonical build shapes, a
     worked example, adding a port end to end, vendoring, checking for new versions and publishing
@@ -226,8 +227,9 @@ Lookup tables and statements of state: every port, command, configuration key, p
 the layout of the source tree, what does not exist, how mature each part is, and the vocabulary of
 the book.
 
-38. [The ports catalogue](06-reference/ports-catalogue.md): every port KDOS can build, by phase
-    and group, with the ports installed only as dependencies and those not installed
+38. [The ports catalogue](06-reference/ports-catalogue.md): every port KDOS can build, by shelf
+    and by `src/` area, with the phase that builds it, the ports named in more than one list and
+    those not installed
 39. [Command index](06-reference/command-index.md): every command the tree installs, where it lives
     and which chapter documents it
 40. [Configuration](06-reference/configuration.md): every configuration file and key, with its
@@ -235,8 +237,8 @@ the book.
 41. [Filesystem and IPC](06-reference/filesystem-and-ipc.md): KDOS-owned paths, every socket and
     its verbs, files used as an interface, and environment variables
 42. [Repository layout](06-reference/repository-layout.md): the source tree directory by
-    directory: the port repositories, the library rule, where upstream sources are, and what git
-    ignores
+    directory: the port repositories, the shelves of `ports/core` and the areas of `src/`, the
+    `script/` directory, the library rule, where upstream sources are, and what git ignores
 43. [Known gaps](06-reference/known-gaps.md): what KDOS does not do, or has not been shown to do,
     and what to do instead
 44. [Status](06-reference/status.md): the maturity of each subsystem and the evidence behind each

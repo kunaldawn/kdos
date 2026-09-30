@@ -1,0 +1,74 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   40_lang: Languages
+# ---------------------------------
+#   00-order — runs whose order a comment pins
+# ---------------------------------
+#
+# Language modules and developer tools — the python3-* and perl-* modules,
+# language implementations, build and documentation tools, debuggers and
+# version control — whose dependency closure needs nothing past 31_compilers.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+#
+# This file sorts first, so its runs install before any shelf file's ports, in
+# the order written. A run is here because a comment pins its order; everything
+# else is in the file of its shelf.
+#
+# It is also the one file that may name a port an earlier phase installs: kpkg
+# skips that port while its recipe hash is current and rebuilds it here, in this
+# order, when the recipe has changed.
+
+toybox
+
+# A toybox upgrade removes the names its previous manifest held, and a toybox
+# installed after a port holds that port's names — cmp, readelf, strings,
+# gunzip, mount, insmod. So a name toybox compiles out needs a recipe change (a
+# release bump) to the port that owns it in the same change: kpkg skips a port
+# whose recipe hash is current wherever it is listed, and without the bump the
+# name stays missing. These are the owners 20_selfhost and 30_foundation
+# install before toybox, plus sed and findutils, which take back the sed, find
+# and xargs a toybox upgrade puts back; ncurses, e2fsprogs and procps-ng are
+# bumped the same way, and e2fsprogs and procps-ng reinstall in 41_system.
+#
+# Their place straight after toybox, at the head of the first phase after
+# 31_compilers, only brings the names back before anything later needs them —
+# bzip2's `make` runs `cmp` — and a port listed only in 30_foundation never
+# reinstalls in a run that continues from 40_lang.
+diffutils
+binutils
+sed
+findutils
+gzip
+bzip2
+attr
+kmod
+util-linux
+xz
+readline
+ncurses
+bash
+make
+flex
+bison
+pkgconf
+gettext
+intltool
+autoconf
+automake
+libtool
+texinfo
+bc
+elfutils
+python3
+eudev

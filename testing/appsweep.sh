@@ -210,14 +210,14 @@ for id in $ids; do
     appid=""; waited=0
     while [ "$waited" -lt "$LAUNCH_TIMEOUT" ]; do
         sleep 3; waited=$((waited + 3))
-        # the fifth column is the box; an exact match, because `kdos hey
-        # list` used to truncate it to twelve characters and a substring
-        # match on the whole line scored every long-named box as no window
+        # the fifth column is the box; an exact match, because a substring
+        # match on the whole line would credit this box with the window of
+        # any box whose name contains this one
         # AN X11 WINDOW HAS NO BOX. Its Wayland client is Xwayland, on the
         # host, with no security context, so the box column reads `-` and
-        # app_id is the WM_CLASS — hexchat, gerbv, bcnc. Measured: eleven
-        # X11-toolkit applications were running with a window on screen and
-        # scored "no window" because nothing on the line said which box.
+        # app_id is the WM_CLASS — hexchat, gerbv, bcnc. Without the next
+        # rule an X11-toolkit application with a window on screen scores
+        # "no window", because nothing on the line says which box.
         # They match on app_id against the shim's name instead, and the
         # row records that the attribution was by name.
         line=$(asuser "kdos hey list" | awk -v b="$id" -v sh="$shim" -v t="$term" '

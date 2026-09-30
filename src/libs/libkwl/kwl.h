@@ -13,11 +13,11 @@
  * knew where the cells went.
  *
  * WHY THIS IS A SEPARATE ARCHIVE. libktui links nothing but musl and must keep
- * doing so: kinstall links it in PHASE 1, before any library exists to link
- * against. This one links wayland-client, fcft, pixman and xkbcommon. Keeping
- * them apart is what stops kinstall being dragged to phase 4 — so if you are
- * about to add a `-l` to libktui to save a file here, that is the trade you are
- * actually making.
+ * doing so: kinstall links it in 10_bootstrap, before any library exists to
+ * link against. This one links wayland-client, fcft, pixman and xkbcommon.
+ * Keeping them apart is what stops kinstall waiting for 42_graphics, where
+ * wayland, fcft and xkbcommon are built — so if you are about to add a `-l`
+ * to libktui to save a file here, that is the trade you are actually making.
  *
  * Surface roles, because a shell needs both and neither is xdg-shell: a panel
  * is a layer-shell surface with an exclusive zone, and a lock screen is an

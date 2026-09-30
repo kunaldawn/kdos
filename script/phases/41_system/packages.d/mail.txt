@@ -1,0 +1,44 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   mail — Email clients, fetch and send tools, mail libraries, and feed
+#   readers
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# THE TOKEN A PROVIDER WANTS INSTEAD OF A PASSWORD. aerc and msmtp can both
+# present one; mbsync cannot, and no minter changes that — see
+# ports/core/mail/isync/build.sh. Rust, and its HTTP client is rustls, so
+# nothing links openssl for it.
+pizauth
+
+# THE WRITER notmuch indexes after. mbsync makes an IMAP mailbox and ~/Mail
+# equal in both directions and indexes nothing, which is why `notmuch new` runs
+# it from a pre-new hook and then indexes what it left: one command fetches and
+# files, and nothing has to remember the order. XOAUTH2 is reached through
+# cyrus-sasl and cyrus-sasl-xoauth2; OAUTHBEARER is not, and is aerc's.
+isync
+
+# The transport. `sendmail` on this image is a symlink to msmtp, so aerc, cron
+# and a shell script hand a message to one program instead of three settings.
+msmtp
+
+newsboat
+libpst
+libetpan

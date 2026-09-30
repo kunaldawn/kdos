@@ -5,7 +5,7 @@
 # chooser_cmd's stdin and captures the line it prints. It is the only type
 # that offers windows: `simple` (slurp) can name only an output, and a request
 # for a window answered with an output name records the whole screen. fuzzel
-# is a phase-4 port and a layer-shell client. The alternative,
+# is a 42_graphics port and a layer-shell client. The alternative,
 # chooser_type=none, silently captures the first output — right on a laptop,
 # wrong the moment a second screen is plugged in, and wrong in the direction
 # where the user does not find out.

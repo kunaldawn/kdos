@@ -65,10 +65,12 @@ between these and the stable core: their arithmetic is asserted against recorded
 `kdos-oomd` has made its one irreversible decision on a live machine once, with a single obvious
 candidate. KDOS builds for x86_64 only.
 
-The natively ported applications are the least proved part: 989 recipes for the graphical
-stacks, the applications and what they need are written, with every source fetched and hashed,
-and wired into the build through phase 4's package list, and none of them has been through a
-build. Of the recipes that do build, 73 carry changes that no build has carried out, among them
+The natively ported applications are the least proved part. The lists of the userland phases,
+`40_lang` to `44_apps`, name 1,870 recipes for the languages, the system, the graphical stacks,
+the toolkits and the applications, every source fetched and hashed; 859 of them have not been
+through a build: 55 of 195 in `40_lang`, 302 of 967 in `41_system`, 75 of 186 in `42_graphics`,
+183 of 242 in `43_toolkits` and 244 of 280 in `44_apps`. No application has been started on an
+image. Of the recipes that do build, 73 carry changes that no build has carried out, among them
 `pinentry` drawing a Qt dialog and `libdvdread` linking `libdvdcss`. See
 [Applications and boxes](#applications-and-boxes) below.
 
@@ -86,7 +88,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,023 recipes, listed by group in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses and every dependency resolves |
+| The ports tree | Stable | 2,023 recipes, 1,999 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata` and `XZ_OPT=-T0`, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream. `kdosbuild --selftest` separately asserts the view geometry and the log classifier |
@@ -98,17 +100,24 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,023 recipes, 989 are the native applications' stacks, applications
-  and dependencies, which have been fetched and hashed and have not been built.
+- **The ports tree.** Of the 2,023 recipes, 889 are absent from the build tree's package
+  database. 859 of them are in the lists of `40_lang` to `44_apps` and have not been through a
+  build. Of the other 30, 22 are `50_desktop` ports and 2 are `60_kernel` ports, absent because
+  this build tree stops before those phases, and 6 are recipes no phase list names. The figure is
+  the recipe names absent from the package database: the names of the directories holding a
+  `kpkgbuild` (`ports/core/*/*/kpkgbuild` and `src/*/*/kpkgbuild`), sorted under `LC_ALL=C`, and
+  `comm -23` of them against `ls build/fs/var/lib/kpkg/db`.
   `testing/preflight.sh` checks that every recipe parses as metadata, declares
   a name, version and release, has a `build.sh` that parses, carries the KDOS banner and names a
-  hash for every source; that every `depends` names a port that exists; and that every
-  `packages.txt` resolves to a dependency order.
+  hash for every source; that every recipe sits on a shelf `ports/shelves` lists, under a name no
+  other port has; that every `depends` names a port that exists; that every phase's list resolves
+  to a dependency order; and, through `testing/phaseclosure.py`, that every package phase from
+  `30_foundation` on installs exactly the ports its list names.
 - **Upstream sources.** `ports/fetch` (run by `make fetch`) resolves every recipe hash from the port
   directory, the cache `ports/.srccache`, the `kunaldawn/kdos` archive or upstream, and regenerates
   a port's own vendor bundle when none of those holds it. `ports/publish` uploads new sources and
-  can freeze a release's hash list; `script/hooks/pre-push` refuses a push naming an unarchived
-  hash. `ports/sources.idx` lists 1,678 archived files, 1,000 in `sources-001` and 678 in
+  can freeze a release's hash list; `script/hooks/pre-push` refuses a push that breaks the ports
+  layout or names an unarchived hash. `ports/sources.idx` lists 1,678 archived files, 1,000 in `sources-001` and 678 in
   `sources-002`. Preflight checks that the four scripts parse, that git tracks no recipe-hashed
   archive, that the ignore rules cover every source suffix, and that the index is well formed and
   sorted. The pre-push hook runs only in a clone that has enabled it. See
@@ -186,7 +195,7 @@ What the shortened rows above rest on:
   window to the desktop): signals for the preedit, the text still being composed, and a method
   call for the candidate list. Both are written against the shapes fcitx5 5.1 sends, read out of
   its source; the port ships 5.1.22. The engines ship: `fcitx5`, `fcitx5-anthy`,
-  `fcitx5-chinese-addons` and `fcitx5-hangul` are in `05_desktop`'s package list, and
+  `fcitx5-chinese-addons` and `fcitx5-hangul` are in `50_desktop`'s package list, and
   `/etc/skel/.config/fcitx5/profile` puts `keyboard-us`, `pinyin`, `anthy` and `hangul` in one
   group.
 
@@ -200,7 +209,7 @@ See [Packs and boxes](../03-architecture/packs-and-boxes.md) and
 | kdos-packd | Beta | The self-test runs `kdos-packd --fixture`, which solves and composes without mounting: it asserts the lowerdir order (application, runtime, base), signature verification, and the refusal to compose a data pack into a box root. On a booted machine that already holds packs, `testing/packlane.sh` installs a pack, mounts it read-only, composes a box and reports each skip with its reason. The image carries no packs, so they must be imported before that harness can pass. Rollback is not exercised by any harness |
 | Boxes | Stable | One box per application, in daily use. The self-test asserts that a box profile prints the podman flag behind every key, reports an unknown key by name, and says which keys it cannot enforce rather than reporting success |
 | kdos-appbox | Stable | Every application launcher on the system goes through it. The self-test asserts launcher generation from an image's desktop entries, that a second box's launcher cannot collide with the default's, and that `kdos-appbox open` resolves a path to the program that opens it |
-| Native applications | Experimental | 989 recipes, from the X11 client libraries, GTK, Qt 6 and 5, QtWebEngine, KDE Frameworks 6, WebKitGTK and wxWidgets up to the browsers, office suites, creative, science, radio and CAD applications, games and emulators, each named in `script/04_phase4/packages.txt` and grouped there by what it is for. Every source is fetched and its hash recorded; the published source archive holds almost none of them. No recipe has been through a build and no application has been started on an image. See [Known gaps](known-gaps.md#the-native-applications-have-not-been-built) |
+| Native applications | Experimental | 522 recipes in `43_toolkits` and `44_apps`, with their dependencies in `40_lang` to `42_graphics`, from the X11 client libraries, GTK, Qt 6 and 5, QtWebEngine, KDE Frameworks 6, WebKitGTK and wxWidgets up to the browsers, office suites, creative, science, radio and CAD applications, games and emulators, each named in the list of the userland phase that builds it, `40_lang` to `44_apps`, in the file of its shelf. Every source is fetched and its hash recorded; the published source archive holds almost none of them. Of those 522, 427 have not been through a build, and no application has been started on an image. See [Known gaps](known-gaps.md#the-native-applications-have-not-been-built) |
 | kdos-boxsock | Stable | Every boxed client is tagged through it with the `security-context-v1` protocol (which marks a Wayland connection as coming from a sandbox), and the compositor grants a box an interface only when its profile names it. The self-test compiles it against the protocol |
 
 ## Daemons
@@ -219,7 +228,7 @@ See [The daemons](../04-programs/daemons.md).
 | Subsystem | Status | Evidence |
 |---|---|---|
 | The C libraries | Stable | 17 libraries, compiled with warnings as errors, with one shared assertion program (`src/libs/selftest.c`) and a check that every consumer still compiles against them. The suite can be run under the address and undefined-behaviour sanitizers with `CC="cc -fsanitize=address,undefined -g" testing/selftest.sh`; see [The C libraries](../05-developer/c-libraries.md) |
-| The test harness | Stable | 49 preflight checks, 202 committed goldens, 40 recorded fixture sets |
+| The test harness | Stable | 53 preflight checks, 217 committed goldens, 49 recorded fixture sets |
 | The QEMU rig | Stable | Drives a real session, photographs it, and runs scripts inside the guest |
 | The documentation | In progress | This book. Structural facts are taken from the tree; some measurements, such as the `kdos-oomd` run above, are quoted rather than re-taken. See [Known gaps](known-gaps.md#documentation) |
 
@@ -237,36 +246,39 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,023 | `find ports/core src/packages src/desktop -name kpkgbuild \| wc -l` |
+| Port recipes | 2,023 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
 | — in `ports/core` | 1,999 | `find ports/core -name kpkgbuild \| wc -l` |
-| — in `src/packages` | 11 | `find src/packages -name kpkgbuild \| wc -l` |
-| — in `src/desktop` | 13 | `find src/desktop -name kpkgbuild \| wc -l` |
+| — in `src/system` | 5 | `find src/system -name kpkgbuild \| wc -l` |
+| — in `src/art` | 6 | `find src/art -name kpkgbuild \| wc -l` |
+| — in `src/desktop` | 8 | `find src/desktop -name kpkgbuild \| wc -l` |
+| — in `src/daemons` | 5 | `find src/daemons -name kpkgbuild \| wc -l` |
+| Shelves | 102 | `grep -cvE '^(#\|$)' ports/shelves` |
 | Archived source files | 1,678 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |
-| Catalogue applications | 73 | `grep -c '^app ' src/packages/kdos-appbox/catalogue` |
-| Catalogue datasets | 2 | `grep -c '^data ' src/packages/kdos-appbox/catalogue` |
-| Catalogue runtimes | 7 | `grep -c '^runtime ' src/packages/kdos-appbox/catalogue` |
-| Catalogue base packs | 2 | `grep -c '^base ' src/packages/kdos-appbox/catalogue` |
-| Catalogue `group` lines | 17 | `grep -c '^group ' src/packages/kdos-appbox/catalogue` |
-| Catalogue groups | 7 | `awk '$1=="group"{print $2}' src/packages/kdos-appbox/catalogue \| sort -u \| wc -l` |
-| Kernel | 7.2.7 | `grep '^version' ports/core/linux/kpkgbuild` |
+| Catalogue applications | 73 | `grep -c '^app ' src/system/kdos-appbox/catalogue` |
+| Catalogue datasets | 2 | `grep -c '^data ' src/system/kdos-appbox/catalogue` |
+| Catalogue runtimes | 7 | `grep -c '^runtime ' src/system/kdos-appbox/catalogue` |
+| Catalogue base packs | 2 | `grep -c '^base ' src/system/kdos-appbox/catalogue` |
+| Catalogue `group` lines | 17 | `grep -c '^group ' src/system/kdos-appbox/catalogue` |
+| Catalogue groups | 7 | `awk '$1=="group"{print $2}' src/system/kdos-appbox/catalogue \| sort -u \| wc -l` |
+| Kernel | 7.2.7 | `grep '^version' ports/core/*/linux/kpkgbuild` |
 | C libraries written here | 17 | `ls -d src/libs/*/ \| wc -l` |
 | Names `kdos-shell` answers to | 55 | the `TOOLS[]` table in `src/desktop/kdos-shell/main.c` |
 | Distinct `kdos-shell` surfaces | 54 | the distinct entry points in that table |
-| `kdos` subcommands | 31 | the dispatch in `kdos_main()`, `src/packages/kdos-tools/kdos.c`, counting `help` |
-| Names `kdos-tools` answers to | 12 | the `TOOLS[]` table in `src/packages/kdos-tools/main.c` |
-| Names `kpkg` answers to | 5 | the `TOOLS[]` table in `src/packages/kdos-kpkg/main.c` |
+| `kdos` subcommands | 31 | the dispatch in `kdos_main()`, `src/system/kdos-tools/kdos.c`, counting `help` |
+| Names `kdos-tools` answers to | 12 | the `TOOLS[]` table in `src/system/kdos-tools/main.c` |
+| Names `kpkg` answers to | 5 | the `TOOLS[]` table in `src/system/kdos-kpkg/main.c` |
 | `kdos-res` pages | 11 | `RES_PAGES[]` in `src/desktop/kdos-res/pages.c` |
 | Control-centre pages | 9 | the `CAT_NAMES[]` table in `src/desktop/kdos-shell/settings.c` |
 | Accents | 8 | the `KCOL_SCHEMES` macro in `src/libs/libkcolor/kcolor.h` |
-| Build phases | 8 | `ls -d script/0*/ \| wc -l` |
-| Preflight checks | 49 | `grep -c '==>' testing/preflight.sh`, less the one that builds `kpkg` |
-| Committed goldens | 202 | `ls testing/goldens/*.txt \| wc -l` |
+| Build phases | 13 | `ls -d script/phases/*/ \| wc -l` |
+| Preflight checks | 53 | `grep -c '==>' testing/preflight.sh`, less the one that builds `kpkg` |
+| Committed goldens | 217 | `ls testing/goldens/*.txt \| wc -l` |
 | — cell frames | 9 | `ls testing/goldens/cells-*.txt \| wc -l` |
 | — `libkvt` replays | 9 | `ls testing/goldens/vt-*.txt \| wc -l` |
 | — `kdos-term` frames | 4 | `ls testing/goldens/term-*.txt \| wc -l` |
-| — `kdos-res` frames | 36 | `ls testing/goldens/res-*.txt \| wc -l` |
-| Recorded fixture sets | 40 | `ls -d testing/fixtures/*/ \| wc -l` |
-| Distinct `KDOS_*` variables read | 131 | the command below |
+| — `kdos-res` frames | 37 | `ls testing/goldens/res-*.txt \| wc -l` |
+| Recorded fixture sets | 49 | `ls -d testing/fixtures/*/ \| wc -l` |
+| Distinct `KDOS_*` variables read | 136 | the command below |
 
 The variable count is the union of `getenv("KDOS_*")` calls under `src/` and `$KDOS_*` references in
 the build scripts, the sources, the root filesystem, the harnesses, the source-archive scripts and
@@ -286,7 +298,7 @@ the `Makefile`:
 - [Why KDOS](../01-philosophy/why-kdos.md) — the trade this chapter measures
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md) — the choices whose maturity this chapter rates
 - [How KDOS is built](../05-developer/how-kdos-is-built.md) — the build the host rows describe
-- [The ports catalogue](ports-catalogue.md) — every recipe counted under *Scale*, by group
+- [The ports catalogue](ports-catalogue.md) — every recipe counted under *Scale*, by shelf
 
 <!-- book-nav -->
 ---

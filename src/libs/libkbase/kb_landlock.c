@@ -15,7 +15,7 @@
  *
  * The UAPI structs and constants are written out here rather than pulled from
  * <linux/landlock.h>. That header comes from the kernel headers package, and
- * libkbase is built in phase 1 against a sysroot that has no kernel tree —
+ * libkbase is built in 10_bootstrap against a sysroot with no kernel tree —
  * including it would make the whole library conditional on a build order it
  * must not depend on. The values are ABI, so they cannot change.
  *

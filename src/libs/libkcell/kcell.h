@@ -17,8 +17,8 @@
  * WHAT THIS COSTS, stated rather than discovered. This archive carries real
  * `-l` dependencies — a font renderer and a pixel library — and kdos-comp
  * gains fcft by linking it. The load-bearing rule must stay untouched: NOTHING
- * IN PHASE 1 LINKS THIS OR libkwl, so kinstall links libkbase, libktui and
- * libkcolor and nothing else on the first bootable image. If you are about to
+ * IN 10_bootstrap LINKS THIS OR libkwl, so kinstall links libkbase, libktui
+ * and libkcolor and nothing else on the first bootable image. If you are about to
  * add a `-l` to libktui to save a file here, that is the trade you are making.
  *
  * Dependency direction gains one edge and reverses none:

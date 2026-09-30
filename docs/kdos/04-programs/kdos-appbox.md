@@ -132,7 +132,7 @@ session bus through `gdbus`, with a two-second call timeout.
 
 ### Where it is installed
 
-The port is `src/packages/kdos-appbox`.
+The port is `src/system/kdos-appbox`.
 
 | Path | What |
 |---|---|
@@ -143,9 +143,8 @@ The port is `src/packages/kdos-appbox`.
 
 `/etc/profile` puts `/usr/local/bin` before `/usr/bin` on the shipped `PATH`, which is why this
 `xdg-open` answers ahead of the xdg-utils script. The recipe depends on `podman`, `distrobox`,
-`shared-mime-info` and `xdg-utils`; the container ports are listed under
-[Container Layer](../06-reference/ports-catalogue.md#container-layer-podman--distrobox) in the ports
-catalogue.
+`shared-mime-info` and `xdg-utils`; the container ports are on the
+[`containers` shelf](../06-reference/ports-catalogue.md#containers) in the ports catalogue.
 
 ## Commands
 
@@ -408,7 +407,7 @@ shipped catalogue with the snapshot pinned.
 
 ## The catalogue file
 
-The catalogue is `src/packages/kdos-appbox/catalogue` in the tree and ships unchanged. It is read in
+The catalogue is `src/system/kdos-appbox/catalogue` in the tree and ships unchanged. It is read in
 one pass, line by line; a `#` starts a comment only as the first non-blank character of a line, so a
 tagline may contain one.
 
@@ -626,13 +625,13 @@ dispatcher reads your table before the system one, and `/etc/profile.d/10-waylan
 `~/.local/bin` on the `PATH`. That is why an install needs no root.
 
 The system tree is reconciled at image-build time, in the
-[packaging phase](../05-developer/how-kdos-is-built.md#packaging-06_packaging), by
-`script/06_packaging/00_launchers.sh`, which
+[image phase](../05-developer/how-kdos-is-built.md#packaging-70_image), by
+`script/phases/70_image/030_launchers.sh`, which
 runs `kdos-appbox genlaunchers --packs-dir "$KDOS_PACK_EXTRACT" /` (default
 `/var/tmp/kdos-pack-extract`, created empty when absent) and then fails the build if alien desktop
 entries survive a run whose table has no rows. The alien desktop entries, the table and the
 `/usr/local/bin` shims are not under `fs/`, so nothing else would remove them, and the image
-carries none unless a pack is baked. The step runs before `00_user.sh`, which copies
+carries none unless a pack is baked. The step runs before `070_user.sh`, which copies
 `/etc/skel` into every home; a skeleton cleaned after that step would leave stale launchers in
 `/home/kdos`, which the Start menu reads first.
 
@@ -1138,7 +1137,7 @@ container first.
 | `KDOS_PACK_KEY` | The key `export` signs its index with |
 | `KDOS_A11Y` | `1` opts one launch in to accessibility, `0` out |
 | `KDOS_BOX_NOTERM` | Set to any value (even `0`): make `kdos-box enter` run in the current terminal |
-| `KDOS_PACK_EXTRACT` | Build time only: where `00_launchers.sh` looks for extracted packs |
+| `KDOS_PACK_EXTRACT` | Build time only: where `030_launchers.sh` looks for extracted packs |
 
 ## See also
 

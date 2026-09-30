@@ -54,7 +54,7 @@ machine without one, and the one that carries a verification KDOS itself perform
 
 ## The catalogue
 
-`src/packages/kdos-appbox/catalogue` defines what can be built, and is installed to
+`src/system/kdos-appbox/catalogue` defines what can be built, and is installed to
 `/usr/share/kdos/appstore/catalogue`. The store lane, the installer (`kinstall`) and `kdos app` all
 read this one file; there is no second copy and no generated index, so a row added here is offered
 by every surface.
@@ -434,7 +434,7 @@ produces a pack that fails that comparison. Nothing in the tree applies deltas a
 
 No applications are baked onto the installation medium. The ISO carries the catalogue; the only pack
 it can carry is the opt-in KDOS base pack described below. The packaging step
-`script/06_packaging/01_packs.sh` creates the pack store's two directories,
+`script/phases/70_image/100_packs.sh` creates the pack store's two directories,
 `/var/lib/kdos/packs/staging` at mode `01777` and `/var/lib/kdos/packs/mnt`. Staging is the one
 place an unprivileged write may land. Its mode is set at build time as well as by the daemon, so a
 first boot does not refuse an import because `kdos-packd` has not yet run.
@@ -477,12 +477,12 @@ with a warning.
 
 The root-filesystem pack is opt-in because it costs a second `mkfs.erofs` over the whole tree on
 every build, for a base most machines will never use. The flag is passed by the `Makefile` and named
-in `script/chroot_exec.sh`. The pack is written to `build/kdos-base/` rather than into the pack
+in `script/chroot/exec.sh`. The pack is written to `build/kdos-base/` rather than into the pack
 store: the pack store is *inside* the root filesystem, so a pack written there would be squashed
-into `system.sfs` and the medium would carry the tree twice. `script/06_packaging/02_iso.sh` copies
+into `system.sfs` and the medium would carry the tree twice. `script/phases/70_image/110_iso.sh` copies
 it to `/packs/kdos.kpack` on the ISO9660 filesystem, beside `system.sfs`. A booted medium appears at
 `/mnt/iso`, and `kdos-packd` scans `/mnt/iso/packs` for `*.kpack`, so the pack is usable with
-nothing installed. The copy is gated on the flag, not on the file being present, and `01_packs.sh`
+nothing installed. The copy is gated on the flag, not on the file being present, and `100_packs.sh`
 deletes `build/kdos-base/` whenever the flag is off, so a pack left by an earlier opt-in build does
 not reach later images.
 
@@ -819,9 +819,9 @@ line. It has four forms:
 | `genlaunchers <desktop-dir> <fs-root>` | One directory of desktop entries | The system tree under `<fs-root>` |
 
 The system tree is `/etc/skel/.local/share/applications`, `/usr/share/kdos/alien-apps` and
-`/usr/local/bin`; the build's `script/06_packaging/00_launchers.sh` runs the `--packs-dir` form,
+`/usr/local/bin`; the build's `script/phases/70_image/030_launchers.sh` runs the `--packs-dir` form,
 which with no packs on the medium clears any stale launchers (its place in the build is in
-[How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-06_packaging)). Your own tree is
+[How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image)). Your own tree is
 `~/.local/share/applications`, `~/.local/share/kdos/alien-apps` and `~/.local/bin`, which every
 reader consults first.
 
@@ -856,7 +856,7 @@ The details (entry naming, quoting, field codes, the tables that skip or rename 
 - [Packaging](packaging.md) — the host's separate packaging system
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md#applications) — this model compared with
   Flatpak, Snap and distribution packages
-- [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-06_packaging) — the packaging
+- [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image) — the packaging
   phase that writes launchers and, on request, the base pack
 - [The ports catalogue](../06-reference/ports-catalogue.md) — the host's recipes, which this
   catalogue is not

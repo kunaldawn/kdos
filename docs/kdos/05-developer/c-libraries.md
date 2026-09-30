@@ -49,9 +49,9 @@ Some consumers are compiled outside a recipe, by a script that names its librari
 
 | Script | Builds | Libraries |
 |---|---|---|
-| `script/01_phase1/12_kpkg.sh` | `kpkg`, the package manager, into the phase-1 sysroot | `libkbase`, `libkpkg`, `libksig` |
-| `script/01_phase1/13_kinstall.sh` | `kinstall`, the installer, into the phase-1 sysroot | `libkbase`, `libktui`, `libkcolor` |
-| `script/kdosbuild.sh` | `kdosbuild`, the build screen, on the build host | `libkbase`, `libkbuild`, `libktui`, `libkcolor` |
+| `script/phases/10_bootstrap/120_kpkg.sh` | `kpkg`, the package manager, into the bootstrap sysroot | `libkbase`, `libkpkg`, `libksig` |
+| `script/phases/10_bootstrap/130_kinstall.sh` | `kinstall`, the installer, into the bootstrap sysroot | `libkbase`, `libktui`, `libkcolor` |
+| `script/kdosbuild.sh` | `kdosbuild`, the build screen, on the build host | `libkbase`, `libkbuild`, `libkpkg`, `libktui`, `libkcolor` |
 | `src_kpkg_ensure` in `ports/srclib.sh` | the host recipe reader `ports/fetch` and `ports/publish` use | `libkbase`, `libkpkg`, `libksig` |
 | `ports/update` | `kdos-portup`, the upstream version checker | `libkbase`, `libkpkg`, `libkbuild` |
 | `testing/selftest.sh` | `src/libs/selftest.c` and a compile of every consumer | all seventeen |
@@ -60,8 +60,9 @@ Some consumers are compiled outside a recipe, by a script that names its librari
 
 The libraries a terminal program needs link nothing but the C library.
 
-The reason is phase 1 of the build (see [The build system](build-system.md), and [How KDOS is
-built](how-kdos-is-built.md#phase-1-a-minimal-kdos) for the build told end to end). The installer,
+The reason is `10_bootstrap`, the second phase of the build (see
+[The build system](build-system.md), and [How KDOS is built](how-kdos-is-built.md) for the build
+told end to end). The installer,
 `kinstall`, and the package manager, `kpkg`, are both cross-compiled there against musl and the
 kernel headers alone, so that they exist on every tree from the first bootable image onward.
 `kinstall` uses `libkbase`, `libktui` and `libkcolor`; `kpkg` uses `libkbase`, `libkpkg` and
@@ -106,9 +107,9 @@ their header.
 | `libkcolor` | `kcolor.h` | `kcol_` | The palette table, colour-space conversion, mixing, contrast, the readable muted colour, the hue-family classifier, remapping and retinting | `libkbase` | Everything that links `libktui`, plus `kdos-comp`, `kdos-theme`, `kdos-tools` and `kdos-powerd`; its header alone is used by `kdos-splash` and `xdg-desktop-portal-kdos` |
 | `libktui` | `ktui.h` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, the touch-gesture recogniser, character width, paste and drop, immediate-mode widgets, the draw-and-key views, menus, modals, the keys contract (the keys every surface answers; see [Writing desktop software](writing-desktop-software.md#the-keys-contract)), the selection rule every surface draws its rows with, the three glyph tiers, charts, the sprite table, offscreen rendering, and announcements | `libkcolor` (its palette macro), `libkbase` | `kinstall`, `kdosbuild`, `kdos-appbox`, `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
 | `libkxdg` | `kxdg.h` | `kxdg_` | Desktop entries, the MIME glob table, the one correct way to turn a command line into an argument vector, places, recent files and file verbs | `libkbase` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-appbox`, `kdos-tools` |
-| `libkpkg` | `kpkg.h` | `kp_` | Configuration, the package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` | `kpkg` (also compiled on the build host as the recipe reader), `kdos-portup`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
+| `libkpkg` | `kpkg.h` | `kp_` | Configuration, the package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` | `kpkg` (also compiled on the build host as the recipe reader), `kdosbuild`, `kdos-portup`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
 | `libksig` | `ksig.h` | `ksig_` | Ed25519 signing and verification, key files, keyrings; the one library with vendored third-party source | `libkbase` | `kpkg`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
-| `libkbuild` | `kbuild.h` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only JSON scanner | `libkbase` | `kdosbuild`, `kdos-portup` |
+| `libkbuild` | `kbuild.h` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only JSON scanner | `libkbase`, `libkpkg` | `kdosbuild`, `kdos-portup` |
 | `libkproc` | `kproc.h` | `kpr_` | Every reading about the running machine, from a movable root: processes, uptime, box identity, processor, memory and pressure, block devices, network, power, sensors, graphics, sound PCMs, and the sample ring | `libkbase` | `kdos-res`, `kdos-shell`, `kdos-tools`, `kdos-oomd`, `kdos-energyd` |
 | `libkpack` | `kpack.h` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` | `kdos-pack`, `kdos-packd`, `kdos-tools` |
 | `libkvt` | `kvt.h` | `kvt_`, `screen_` (internal) | The terminal: the VT100–VT520 state machine, the screen, scrollback, selection, the pty, and one render boundary that turns it all into cells. A hard fork of libtsm 4.7.1 | `libktui`, `libkbase` | `kdos-term` |
@@ -138,7 +139,7 @@ libkcolor  → libkbase
 libkxdg    → libkbase
 libkpkg    → libkbase
 libksig    → libkbase
-libkbuild  → libkbase
+libkbuild  → libkpkg, libkbase
 libkproc   → libkbase
 libkpack   → libksig, libkpkg, libkbase
 
@@ -149,8 +150,9 @@ libkimg    (no libk* library)
 Some edges carry a rule of their own:
 
 - `libktui` takes the palette from `libkcolor`'s X-macro at compile time. That is why
-  `script/01_phase1/13_kinstall.sh` puts `libkcolor` on the phase-1 command line: leaving it out
-  builds on a development host, where `testing/selftest.sh` supplies it, and fails only in phase 1.
+  `script/phases/10_bootstrap/130_kinstall.sh` puts `libkcolor` on the bootstrap command line:
+  leaving it out builds on a development host, where `testing/selftest.sh` supplies it, and fails
+  only in `10_bootstrap`.
 - `libkdisp` uses `libktui`'s `KRect` type and calls none of its functions, so adding it to a
   program costs a table of function pointers (`KDispImpl`, see [libkdisp](#libkdisp)) and a
   structure rather than a font renderer.
@@ -329,7 +331,7 @@ rounded differently would produce a diff against files already in version contro
 the arithmetic in `kcolor.c`. The self-test asserts that every scheme colour survives an HLS round
 trip unchanged.
 
-The library stays off the maths library for the same reason the toolkit does: a phase-1 consumer
+The library stays off the maths library for the same reason the toolkit does: a bootstrap consumer
 cannot link one. The modulo is done in a loop, the rounding by hand, and the sRGB transfer function
 behind `kcol_contrast` is a 256-entry table rather than a call to `pow`.
 
@@ -347,7 +349,7 @@ readable one, and every text role goes through it. See
 
 The toolkit: terminal ownership, the cell buffer, the diff, input decoding, widgets, charts, the
 sprite table and motion. It links nothing but the C library, which is what lets the installer use it in
-phase 1.
+`10_bootstrap`.
 
 Several sections below refer to a *guest*: another program's graphical output shown inside a
 surface's cells, an embedded client whose pixels the surface displays and whose input it
@@ -761,9 +763,9 @@ nothing.
 
 `libkdisp` decides in one place which display server a surface reaches.
 
-`kdos-shell` alone opens a surface from 54 call sites (`kdisp_init` calls, counted under
+`kdos-shell` alone opens a surface from 47 call sites (`kdisp_init` calls, counted under
 `src/desktop/kdos-shell/`), and each then asks whether it should close, resizes itself, or hides its
-panel. Branching on the server at every one of those would be the same decision written 54 times
+panel. Branching on the server at every one of those would be the same decision written 47 times
 in one program and again in the next. The lifecycle is therefore an interface, `KDispImpl`, and a
 display server is an implementation of it.
 
@@ -996,6 +998,26 @@ whose programs exist, and `testing/preflight.sh` refuses one that does not.
 
 `libkpkg` holds the package manager's configuration, the package database, the ports tree, the
 solver, version comparison and the two package hashes.
+
+It is the one place a port is found by name, and every tool that looks a port up goes through it:
+`kpkg`, `kdos update`, `kdos cve`, `kdos-portup` and the build's port index. A repository on
+`PORT_REPO` holds each port at `<repo>/<name>/` or one shelf down at `<repo>/<shelf>/<name>/`;
+`ports/core` is shelved and each `src/` area is flat (see
+[Shelves, and how a port is found](writing-ports.md#shelves-and-how-a-port-is-found)).
+
+| Function | Does |
+|---|---|
+| `kp_conf_set_repos(c, list)` | Replaces the repositories with a whitespace-separated list, lists each one's shelves once into the `KpConf`, and returns how many it kept. A list past `KP_MAX_REPOS` (8) warns and drops the rest, since a repository that is not kept is one whose every port reads as "no such port" |
+| `kp_port_find(c, name, &dir, err, errcap)` | 1 with the port's directory, from the first repository that holds the name; 0 when none does; -1 when one repository holds it at two paths, with `err` naming both. A name containing `/` is tried only as a path under each repository |
+| `kp_port_dir(c, name)` | `kp_port_find` for a caller that reads NULL as "no such port". A name filed twice dies with the message, because every answer a caller could make of NULL there (skip it, build without it, take one copy) builds something other than the tree says |
+| `kp_ports_scan(c, &count, err, errcap)` | Every port of every repository, sorted, at both depths; the first repository wins a name two of them hold. NULL with `err` set when one repository holds a name twice or a port sits deeper than one shelf. A repository that exists and yields no port warns, since that is a walker and a tree that disagree about the layout |
+| `kp_all_ports(c, &count)` | `kp_ports_scan` that dies on a malformed tree |
+
+A shelf is any directory of a repository with no `kpkgbuild` of its own, other than a dot-name. The
+shelf names are cached per repository when the repositories are set, so a shelf created afterwards
+is not seen until they are set again. No shelf may be named `libs`: a source-less port's recipe
+hash covers `<portdir>/../../libs`, which for a port under `ports/core` is `ports/core/libs`, and a
+shelf by that name would be hashed into every such port.
 
 Version comparison (`kp_vercmp`) and the version-shape filter (`kp_vershape`) live here rather than
 in either consumer, because the package manager and the upstream version checker ask the same
@@ -1437,7 +1459,7 @@ Pictures come from two sources, and the split is by where a picture came from, n
 from its name:
 
 - The KDOS theme's own icons come from one memory-mapped atlas, `/usr/share/kdos/icons/atlas.kia`,
-  generated from the theme's artwork by `src/packages/kdos-icons/genatlas.py`, committed as
+  generated from the theme's artwork by `src/art/kdos-icons/genatlas.py`, committed as
   `atlas/atlas.kia`, and installed by the `kdos-icons` port. It holds every icon at every size it
   was rasterised at, sorted by name and size so a lookup is a binary search and the pager reads only
   the pages that are drawn. Every header field, directory entry and blob extent is checked against
@@ -2037,20 +2059,20 @@ one and the surface size the compositor derives held to the size configured.
 2. Pick a prefix and use it on every exported symbol.
 3. Place it in the dependency order and confirm nothing points back up.
 4. Link nothing but the C library if a terminal program or a root daemon could ever want it. If it
-   needs an external library, keep it out of the phase-1 set (`libkbase`, `libkcolor`, `libktui`,
+   needs an external library, keep it out of the bootstrap set (`libkbase`, `libkcolor`, `libktui`,
    `libkpkg`, `libksig`) and out of everything they call, and add it to the table under
    [The constraint](#the-constraint).
 5. Add its sources and include path to the `build.sh` of every program that uses it. There is no
    archive to link; a program compiles the library's `.c` files itself. Check the consumers built
    outside a recipe as well, each of which names its libraries explicitly (see
    [How the libraries are built](#how-the-libraries-are-built)):
-   - `script/01_phase1/12_kpkg.sh` (`kpkg`) and `script/01_phase1/13_kinstall.sh` (`kinstall`),
-     the phase-1 builds. A library added under either program and missing here breaks the
-     bootstrap. `kinstall` is also built as a port by `src/packages/kdos-installer/build.sh`, and
+   - `script/phases/10_bootstrap/120_kpkg.sh` (`kpkg`) and
+     `script/phases/10_bootstrap/130_kinstall.sh` (`kinstall`), the bootstrap builds. A library added under either program and missing here breaks the
+     bootstrap. `kinstall` is also built as a port by `src/system/kdos-installer/build.sh`, and
      the two must compile the same sources.
    - `script/kdosbuild.sh`, which builds `kdosbuild` on the host.
    - `src_kpkg_ensure` in `ports/srclib.sh`, the host recipe reader. Its source list, the one in
-     `src/tools/kdos-portup/main.c` and the one in `testing/selftest.sh` must agree.
+     `src/devtools/kdos-portup/main.c` and the one in `testing/selftest.sh` must agree.
    - `ports/update`, which builds `kdos-portup` on the host.
    - The `libkdos.a` line in `src/desktop/kdos-comp/build.sh`, which meson links into the
      compositor.
@@ -2069,9 +2091,9 @@ one and the surface size the compositor derives held to the size configured.
 - [The design language](../03-architecture/design-language.md) — the rules the drawing libraries
   enforce
 - [Testing](testing.md) — the shared test program, the fixtures and the sanitizer runs
-- [The build system](build-system.md) — where `libkbuild` fits, and what phase 1 compiles
+- [The build system](build-system.md) — where `libkbuild` fits, and what `10_bootstrap` compiles
 - [How KDOS is built](how-kdos-is-built.md) — the whole build, from the cross toolchain that
-  compiles `kpkg` and `kinstall` to the desktop phase that compiles the rest
+  compiles `kpkg` and `kinstall` to the userland and desktop phases that compile the rest
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md#the-c-library) — musl, the C library
   every one of these libraries is compiled against, and what choosing it costs
 - [The ports catalogue](../06-reference/ports-catalogue.md) — every port, including the external

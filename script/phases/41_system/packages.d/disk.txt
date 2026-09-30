@@ -1,0 +1,82 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   disk — Block devices: partitioning, RAID, LVM, block encryption, SMART,
+#   NVMe, recovery, image writing and async I/O
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+gptfdisk
+
+# The half smartmontools cannot do: it reports a drive's health and cannot
+# change its behaviour. APM, spindown and secure erase are here.
+hdparm
+
+liburing
+
+# ddrescue images a DYING disk sector by sector with a resumable mapfile;
+# partclone images a HEALTHY one by copying the blocks the filesystem says are
+# in use and skipping the rest. Both ship because they answer different
+# questions.
+ddrescue
+partclone
+
+# Writing an image OUT to a stick, which is the other direction and the one a
+# person does with a mistyped `dd` and a lost disk. caligula picks the target
+# from the removable devices only, shows a progress bar and verifies what it
+# wrote. Its privilege path is `sudo`, `doas`, `run0` or `su` in that order —
+# never pkexec, which matters here because this system has no authentication
+# agent and a pkexec path would be a control that could never succeed.
+caligula
+
+libaio
+libiscsi
+smartmontools
+
+# Linux software RAID. Without it an existing array is neither assembled at
+# boot nor readable afterwards, which is a disk that looks empty.
+mdadm
+
+libnvme
+lvm2
+
+# LVM shells out to thin_check before it will activate a thin pool and
+# refuses the pool when the call fails — and the shipped lvm.conf already
+# names /usr/sbin/thin_check by absolute path. The initramfs carries it and
+# cache_check, for a root on a thin or a cached volume.
+thin-provisioning-tools
+
+nvme-cli
+parted
+
+# A counterfeit stick wraps its writes over the same cells: every copy
+# completes, every checksum at write time passes, and the corpus is gone
+# months later. On a distro whose medium IS the library that is the failure
+# mode f3 exists for.
+f3
+
+# LUKS. Needed on the ISO rather than only on an installed system: kinstall
+# creates the container, and script/phases/70_image/090_initramfs.sh copies
+# cryptsetup into the initramfs so an encrypted root can be unlocked at boot.
+cryptsetup
+
+libbytesize
+libatasmart
+libstoragemgmt
+ndctl

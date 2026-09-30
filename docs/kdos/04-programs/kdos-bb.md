@@ -123,12 +123,12 @@ bare name in the working directory.
 | `/usr/share/man/man1/kdos-bb.1` | The manual page |
 | `/usr/share/licenses/kdos-bb/COPYING`, `AUTHORS` | The licence and the upstream authors |
 
-The port is `src/packages/kdos-bb`, version 1.3.0. It depends on `aalib` (1.4rc5), `libmikmod`
-(3.3.14) and `ncurses`, and it is built in phase 4 in the "ASCII art (aa-project)" group of
-`script/04_phase4/packages.txt`, beside AAlib's other consumers `aview` and `aa3d` (listed in
-[the ports catalogue](../06-reference/ports-catalogue.md#ascii-art-aa-project)). How
-`src/packages` joins the ports tree for that phase is in
-[How KDOS is built](../05-developer/how-kdos-is-built.md#phase-4-the-userland).
+The port is `src/art/kdos-bb`, version 1.3.0. It depends on `aalib` (1.4rc5), `libmikmod`
+(3.3.14) and `ncurses`, and it is built in the `41_system` phase, named in that phase's
+`packages.d/src-art.txt` beside the other `src/art` ports. `aalib` is on the
+[`image-libs` shelf](../06-reference/ports-catalogue.md#image-libs) of the ports catalogue; its
+other consumers are `aview` and `gimp` on `graphics`, `gst-plugins-good` on `media-frameworks`
+and `gphoto2` on `mobile`. How `src/art` joins the ports tree for that phase is in [How KDOS is built](../05-developer/how-kdos-is-built.md).
 
 ## The fork
 
@@ -169,7 +169,7 @@ theirs and are kept as they are. The fork differs from upstream in the following
 
 ## How the code is organised
 
-The rest of this chapter is for contributors. The code is under `src/packages/kdos-bb/src/`:
+The rest of this chapter is for contributors. The code is under `src/art/kdos-bb/src/`:
 
 | File | What it holds |
 |---|---|
@@ -727,11 +727,11 @@ on the shipped image with sound, the closing text reports 60 at 20 s and 278 at 
 ## Building and changing it
 
 The port compiles only where AAlib and libmikmod are installed, which means inside the build, not on
-a bare development host. After a change under `src/packages/kdos-bb`, rebuild the one port and
+a bare development host. After a change under `src/art/kdos-bb`, rebuild the one port and
 repackage:
 
 ```sh
-make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild kdos-bb"
+make build BUILD_ARGS="--phases 41_system,70_image --rebuild kdos-bb"
 ```
 
 To hear the music in the test rig the guest needs a sound device, which `testing/vnc-shot.py`
@@ -753,10 +753,10 @@ the table above.
 - [The kdos command](kdos-command.md#kdos-why-and-kdos-explain) — `kdos why`, which carries the
   library rules above
 - [Testing](../05-developer/testing.md) — the rig flag that gives a guest a sound device
-- [How KDOS is built](../05-developer/how-kdos-is-built.md#phase-4-the-userland) — the phase that
-  builds this port with the rest of the userland
-- [The ports catalogue](../06-reference/ports-catalogue.md#ascii-art-aa-project) — the port's group
-  and its neighbours
+- [How KDOS is built](../05-developer/how-kdos-is-built.md) — the phase that builds this port
+  with the rest of the userland
+- [The ports catalogue](../06-reference/ports-catalogue.md#srcart) — the port beside the other
+  `src/art` ports
 
 <!-- book-nav -->
 ---

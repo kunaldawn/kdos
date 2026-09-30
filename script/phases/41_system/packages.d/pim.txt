@@ -1,0 +1,51 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   pim — Personal information: calendars, contacts, tasks, time tracking,
+#   notes and genealogy
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libical
+
+# One bash script over a git repo of markdown: the notes outlive nb itself and
+# sync with anything that syncs a directory.
+nb
+
+# The half taskwarrior does not do — it records what should happen, this
+# records the interval it took.
+timewarrior
+
+# Its database is two plain text files — greppable, diffable, syncable with the
+# rest of $HOME, and a backup is a copy.
+calcurse
+
+# WHAT MAKES A REMOTE COLLECTION AND THE LOCAL vdir EQUAL, the way mbsync does
+# it for mail. Six of its dependencies carry C and three build through a PEP
+# 517 backend that lives inside their own sdists, which is why it is a port of
+# its own rather than another bundle inside khal's.
+vdirsyncer
+
+# 3.x moved its storage layer to a Rust crate, which is why a C++ program has a
+# cargo vendor bundle. Sync needs a server and is off by construction.
+taskwarrior
+
+# taskwarrior is a query language; this is the half you look at. It shells out
+# to the same `task` binary, so the two cannot disagree about what a task is.
+taskwarrior-tui

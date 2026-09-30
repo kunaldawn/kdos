@@ -184,7 +184,7 @@ and the file-system build step gives every non-executable file exactly that. A w
 shadow file hands every password hash to every account and makes `kdos-checkpass`'s setuid bit
 pointless.
 
-`script/01_phase1/00_file_system.sh` therefore carries a table (the `FSMODES` block near its end)
+`script/phases/10_bootstrap/000_file_system.sh` therefore carries a table (the `FSMODES` block near its end)
 of the paths whose mode or owner git cannot express:
 
 | Path | Mode | Owner |

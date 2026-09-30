@@ -87,19 +87,16 @@ path. An Xorg server would be a second complete display stack, with its own inpu
 own drivers and its own privileges, to build, secure and keep consistent with the first. See
 [How KDOS differs](how-kdos-differs.md#the-display-stack) for how other distributions carry both.
 
-Xwayland is the single exception, and the one X server. The compositor runs it rootlessly for
-every X11 client: applications inside boxes (the rootless containers the catalogue's applications
-run in) and host applications that have no Wayland path, such as Xastir, VLC 3 and programs written
-in Motif, Tk or Java's Swing. Any application may link the X client libraries it needs, and the
-host carries them: `script/04_phase4/packages.txt` has an "X11 client libraries" group (`libXext`,
-`libXi`, `libXrandr`, `libXt`, `libXft`, `motif` and the rest) that the X11 backends of Mesa, GTK,
-Qt and mpv are built against beside their Wayland ones. Xwayland itself depends on `xorgproto`,
-`xtrans`, `libXau`, `libXdmcp`, `libX11`, `libxkbfile`, `xkbcomp`, `libxshmfence`, `libXfont2`,
-`libxcvt` and `libepoxy`. All six `xcb-util` ports are built: `xcb-util-keysyms` and
-`xcb-util-wm` are named in the phase lists, `xcb-util-renderutil` arrives through the `depends`
-line of `wlroots`, and `xcb-util`, `xcb-util-image` and `xcb-util-cursor` through those of Qt's
-base modules. What stays out is a
-second X server, a display manager and anything X on the login path.
+Xwayland is the single exception, and the one X server. The compositor runs it rootlessly for every
+X11 client: applications inside boxes (the rootless containers the catalogue's applications run in)
+and host applications that have no Wayland path, such as Xastir, VLC 3 and programs written in
+Motif, Tk or Java's Swing. Any application may link the X client libraries it needs, and the host
+carries them: the `x11` shelf holds the X client libraries (`libXext`, `libXi`, `libXrandr`,
+`libXt`, `libXft` and the rest), the `toolkits` shelf holds `motif`, and the X11 backends of Mesa,
+GTK, Qt and mpv are built against them beside their Wayland ones. Xwayland itself depends on
+`xorgproto`, `xtrans`, `libXau`, `libXdmcp`, `libX11`, `libxkbfile`, `xkbcomp`, `libxshmfence`,
+`libXfont2`, `libxcvt` and `libepoxy`. All six `xcb-util` ports are built, and all six are
+named in the `41_system` phase's list, in its `x11` shelf file. What stays out is a second X server, a display manager and anything X on the login path.
 
 Two consequences follow for X clients.
 
@@ -109,8 +106,8 @@ Two consequences follow for X clients.
   for GLX finds it, and a Wayland client never loads the GLX library. An X11 client in a box uses
   the box's own Mesa over Xwayland's DRI3.
 - **The X core fonts are host ports.** `font-misc-misc`, `font-adobe-75dpi` and
-  `font-cursor-misc` are in `script/04_phase4/packages.txt`, and the tools that build them
-  (`bdftopcf`, `font-util`, `mkfontscale` and `encodings`) arrive through their `depends` lines.
+  `font-cursor-misc`, and the tools that build them (`bdftopcf`, `font-util`, `mkfontscale` and
+  `encodings`), are all named in the `41_system` phase's list, in its `fonts` shelf file.
   A Motif or Xt program, native or boxed, asks the host's Xwayland for `-misc-fixed` or
   `-adobe-helvetica`, and a font directory inside a box is invisible to a server running outside
   it.
@@ -147,16 +144,17 @@ is one more client of `kdos-comp`. It takes the KDOS palette through `~/.config/
 `kdos theme` writes and the `kde` platform theme reads, through the GTK stylesheets, and through the
 Settings portal, and `GTK_USE_PORTAL=1` sends a GTK application's file chooser to the desktop's own.
 
-The ported applications are recipes under `ports/core` like any other, listed in
-`script/04_phase4/packages.txt` after the toolkits they need. The list groups them by purpose:
-"Internet and communication" (Firefox ESR, Chromium, Thunderbird and others), "Documents and
-office" (LibreOffice, Okular, Kate), "Pictures" (GIMP, Inkscape, Krita, darktable), "Sound, video
-and discs", "Knowledge and learning offline", "CAD, electronics, 3D printing and 3D", "Science,
-data and development", "Games" and more; [The ports catalogue](../06-reference/ports-catalogue.md)
-lists every group. They are ported because a box is built from Debian packages over the network,
-and a machine that never sees a network has only what its medium carries. The
-[boxes](../03-architecture/packs-and-boxes.md) remain for software KDOS does not carry, and an
-application in a box draws whatever its toolkit draws.
+The ported applications are recipes under `ports/core` like any other. Most are built in `44_apps`,
+the leaf applications over `43_toolkits`; one that something else depends on (VLC, Wireshark,
+FontForge, GNU Radio) is built in `43_toolkits` or earlier. Each is filed on the shelf of what a person does with it, never by its toolkit
+or the desktop project that wrote it: `browsers` (Firefox ESR, Chromium), `mail` (Thunderbird),
+`office` (LibreOffice), `documents` (Okular), `editors` (Kate), `graphics` (GIMP, Inkscape, Krita,
+darktable), and on through `studio`, `video-tools`, `cad`, `eda`, `education` and the `games-*`
+shelves. The phase's list is split by the same shelves, one `packages.d/<shelf>.txt` each, and [The
+ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf. They are ported because a
+box is built from Debian packages over the network, and a machine that never sees a network has only
+what its medium carries. The [boxes](../03-architecture/packs-and-boxes.md) remain for software KDOS
+does not carry, and an application in a box draws whatever its toolkit draws.
 
 A library's toolkit front end is built where a ported application uses it and switched off where
 none does, so what a library installs does not depend on what happened to be built before it.
@@ -171,13 +169,13 @@ expressible in cells.
 ## Everything that runs on the host is built from source
 
 Every program, library and module that the host installs and runs on its own processor is compiled
-in this tree from pinned source: 2,023 recipes, 1,999 under `ports/core` for upstream software,
-each pinned by hash, and 24 under `src/` for the software kept in this repository, most of it
-written for KDOS. [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of
-them by phase and group, and [How KDOS is built](../05-developer/how-kdos-is-built.md) follows the
-build from the first source fetch to a bootable ISO. The application catalogue is outside the rule.
-It is Debian's packaging, built by podman into a box on the machine that asks for it, and it is
-never part of the host.
+in this tree from pinned source: 2,023 recipes, 1,999 under `ports/core` for upstream software, each
+pinned by hash, and 24 under `src/` for the software kept in this repository, most of it written for
+KDOS. [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf,
+with the phase that builds it, and [How KDOS is built](../05-developer/how-kdos-is-built.md) follows
+the build from the first source fetch to a bootable ISO. The application catalogue is outside the
+rule. It is Debian's packaging, built by podman into a box on the machine that asks for it, and it
+is never part of the host.
 
 A binary taken on trust cannot be read, cannot be rebuilt from the source tree by
 [`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild), and carries whatever its builder put
@@ -265,12 +263,13 @@ and [A bundle no tool writes](../05-developer/writing-ports.md#a-bundle-no-tool-
 
 A package built twice from the same tree is byte-identical. That is a property of one function
 rather than of 2,023 recipes: `roll_package()` in `kpkg`, the package manager
-(`src/packages/kdos-kpkg/build.c`), runs tar with `--sort=name`, `--format=gnu`,
-`--owner=0 --group=0 --numeric-owner`, an `--mtime` taken from `SOURCE_DATE_EPOCH`, and
-`xz -9 -T1` as a pinned compressor. The build also sets its umask to `022` before a recipe runs.
-Every phase's environment file pins `SOURCE_DATE_EPOCH` to `1735689600`, and with the variable
-unset the mtime is `0`, so the answer never depends on when the build ran. Keeping all of this in
-one place is why `kpkg` rolls the package archive itself instead of letting each recipe do it.
+(`src/system/kdos-kpkg/build.c`), runs tar with `--sort=name`, `--format=gnu`, `--owner=0 --group=0
+--numeric-owner`, an `--mtime` taken from `SOURCE_DATE_EPOCH`, and `xz -9 -T1` as a pinned
+compressor. The build also sets its umask to `022` before a recipe runs. The environment every build
+phase sources, `script/env/common.env`, pins `SOURCE_DATE_EPOCH` to `1735689600`, and with the
+variable unset the mtime is `0`, so the answer never depends on when the build ran. Keeping all of
+this in one place is why `kpkg` rolls the package archive itself instead of letting each recipe do
+it.
 
 Reproducibility is what gives the other package mechanisms their meaning. A signed
 [binhost](../06-reference/glossary.md) (a directory of prebuilt packages with a signed index) is
@@ -475,7 +474,7 @@ The price is that no change is ever only a code change.
 - [How KDOS is built](../05-developer/how-kdos-is-built.md) — the offline, from-source build told
   from `git clone` to a bootable ISO
 - [The ports catalogue](../06-reference/ports-catalogue.md) — every recipe the host is built from,
-  by phase and group
+  by shelf and phase
 - [The design language](../03-architecture/design-language.md) — these principles applied to what
   you see
 - [The security model](../03-architecture/security-model.md) — the enforcement behind the box

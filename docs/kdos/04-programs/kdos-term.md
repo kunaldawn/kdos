@@ -47,7 +47,7 @@ Use `kdos-term` when you want pictures in the terminal, clickable links, prompt 
 size per window.
 
 The binary is `/usr/bin/kdos-term`, built from `src/desktop/kdos-term/` by the `kdos-term` port in
-the `05_desktop` phase (`script/05_desktop/packages.txt`).
+the `50_desktop` phase (`script/phases/50_desktop/packages.txt`).
 
 ## Synopsis
 

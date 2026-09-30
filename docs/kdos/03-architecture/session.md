@@ -146,7 +146,7 @@ included. Where that directory is absent the layout is exported unchecked.
 
 ### What `kdos-desktop` does
 
-1. Refuses at once if `/usr/bin/kdos-comp` is missing, naming the build phase (`05_desktop`) it
+1. Refuses at once if `/usr/bin/kdos-comp` is missing, naming the build phase (`50_desktop`) it
    comes from.
 2. On a virtio GPU (a `card0` whose modalias is `virtio:*` or PCI vendor `1AF4`), sets
    `WLR_NO_HARDWARE_CURSORS=1`, because the virtual cursor plane misreports what it supports and
@@ -575,7 +575,7 @@ at the accent in force. A value set with `gsettings set` is stored in the user's
 wins over it. An application reading GSettings does not restyle on an accent switch, which only the
 portal announces. The override reaches GTK once `glib-compile-schemas` has read it into
 `gschemas.compiled`: kpkg rebuilds that index whenever a package installs into the directory, and
-`06_packaging/00_theme.sh` rebuilds it again for the image.
+`70_image/050_theme.sh` rebuilds it again for the image.
 
 The accent is read from `${XDG_CACHE_HOME:-~/.cache}/kdos/theme`, the same one-word file the
 panel and the compositor read. A missing file or an unknown name means the first scheme in the

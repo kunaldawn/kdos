@@ -1,0 +1,40 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   42_graphics: Graphics Stack
+# ---------------------------------
+#   image-libs — Raster image formats, codecs, metadata, processing, barcodes,
+#   and terminal image output
+# ---------------------------------
+#
+# Ports whose dependency closure reaches wayland, libX11, mesa, libdrm, cairo,
+# pango, gstreamer, ffmpeg or pipewire but no toolkit, and that are not leaf
+# applications.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libgd
+
+# Pictures in a terminal, on the one graphics protocol a VT understands. It is
+# the honest answer to "show me this image" on tty1, where no compositor is.
+libsixel
+
+# THE OTHER HALF OF THE PICTURE PATH. kdos-term decodes sixel, kitty and iTerm2
+# pictures and nothing else in the tree emits one, so an image in a terminal is
+# a filename without this or timg. chafa converts anything to whichever of
+# those the terminal admits to. A photograph in a message is drawn by the same
+# program that draws one in a file manager.
+chafa
+
+gexiv2
+opencolorio
+openimageio

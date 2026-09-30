@@ -1,0 +1,39 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   mobile — Phones, media players and cameras over USB or the network
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Android and every other MTP device. gphoto2 covers PTP-mode still cameras
+# only, so without this a phone plugged into a USB port does nothing.
+libmtp
+
+# adb and fastboot, for an Android phone's shell, logs, files and flashing. The
+# iPhone's side is usbmuxd and ifuse; ifuse mounts through fuse.
+android-tools
+
+libplist
+libimobiledevice-glue
+libusbmuxd
+libtatsu
+libimobiledevice
+usbmuxd
+ifuse
+libgpod

@@ -1,0 +1,52 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   net-diag — Network diagnostics, capture, measurement and low-level socket
+#   tools
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Watching a topic tree is how an MQTT problem is diagnosed; mosquitto_sub
+# prints a stream and this shows the tree it belongs to.
+mqttui
+
+# Which hop is losing packets and by how much, continuously — the question on
+# a link that works except when it does not. Needs CAP_NET_RAW, granted
+# deliberately rather than shipped setuid.
+trippy
+
+# Needs CAP_NET_RAW and is not given it — there is no third setuid program on
+# this system and a packet sniffer is not the one to add.
+bandwhich
+
+# A DNS client with readable output, on a machine expected to BE the DNS server
+# for an island network.
+doggo
+
+iftop
+tcpdump
+iperf3
+socat
+netcat
+mtr
+
+# Who owns a domain or an address range. Nothing else on the image answers it.
+whois
+
+net-snmp

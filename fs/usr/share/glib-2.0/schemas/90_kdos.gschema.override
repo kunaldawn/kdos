@@ -10,7 +10,7 @@
 #
 # An override takes effect only once glib-compile-schemas has read it into
 # gschemas.compiled. kpkg's schemas trigger rebuilds that index whenever an
-# installed package touches this directory, and 06_packaging/00_theme.sh
+# installed package touches this directory, and 70_image/050_theme.sh
 # rebuilds it once more, so a change here reaches an image without a schema
 # package being reinstalled.
 #

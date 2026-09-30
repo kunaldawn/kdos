@@ -1,0 +1,87 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   image-libs — Raster image formats, codecs, metadata, processing, barcodes,
+#   and terminal image output
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libpng
+libjpeg-turbo
+libtiff
+giflib
+libwebp
+imath
+
+# ffmpeg and imagemagick are configured against these and are only as capable
+# as what is installed: each build system answers a missing library by
+# disabling the feature rather than failing.
+openjpeg
+openexr
+
+libjxl
+zimg
+
+# leptonica answers a missing image library by dropping that format silently,
+# and the one it drops is usually multi-page TIFF — what every document feeder
+# writes. tesseract with no .traineddata starts and fails, which reads as a
+# broken build, so tesseract depends on tessdata-eng, the English model.
+leptonica
+
+# A QR code is a data path off this machine that needs no network: a device id
+# or a WiFi credential leaves through a phone camera. qrencode -t ANSI draws it
+# in block characters on the cell grid.
+qrencode
+
+libheif
+
+# The JPEG beside a raw file is a lossy preview the camera made — an archive
+# of raws with no decoder is one nobody can open in ten years.
+libraw
+
+jbigkit
+libimagequant
+libyuv
+libavif
+
+# 40 000 photos on a stick are 40 000 files named DSC_* until something reads
+# the date, the lens and the position out of them.
+exiv2
+
+# exiftool reads and writes the tags exiv2 has no table for: maker notes,
+# audio and video containers, PDF, and every RAW format a camera invents.
+exiftool
+
+libexif
+
+# `mutool barcode`: QR codes and barcodes read out of a page, and drawn.
+zxing-cpp
+
+# ASCII art from the aa-project, on the TTY. aalib's own demos are
+# aafire/aatest/aainfo/aasavefont.
+aalib
+
+farbfeld
+libdmtx
+exempi
+libiptcdata
+lensfun
+libmypaint
+mypaint-brushes
+graphicsmagick

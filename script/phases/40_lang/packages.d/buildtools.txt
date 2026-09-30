@@ -1,0 +1,43 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   40_lang: Languages
+# ---------------------------------
+#   buildtools — Build systems and build helpers
+# ---------------------------------
+#
+# Language modules and developer tools — the python3-* and perl-* modules,
+# language implementations, build and documentation tools, debuggers and
+# version control — whose dependency closure needs nothing past 31_compilers.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+util-macros
+
+# gpsd has no Makefile and no meson.build — scons IS its build system, so this
+# is the price of a GPS daemon rather than a preference between build tools.
+scons
+
+# A missing AX_* macro does not fail at aclocal time — it survives into the
+# generated configure as a literal word. calcurse needs AX_WITH_CURSES.
+autoconf-archive
+
+# taskwarrior 3 builds its Rust core through corrosion and fetches it with a
+# git clone unless SYSTEM_CORROSION finds one.
+corrosion
+
+buildsystem
+
+# The build system pdfium is built with; it exists for pdfium alone.
+gn
+
+unifdef

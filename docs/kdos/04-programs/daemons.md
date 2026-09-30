@@ -1315,6 +1315,14 @@ its section: `kdos-mountd` breaks rule 6 (see
 9. It links only libraries whose every line you are willing to run as root.
 10. Its refusals are documented in this chapter, including the ones that look like limitations.
 
+Where the pieces go is fixed as well. The source and its recipe (`kpkgbuild` and `build.sh`) are
+`src/daemons/<name>/`, the area that holds the five root daemons above (`kdos-boxsock`,
+`xdg-desktop-portal-kdos` and `kdos-lock` are session programs, sources under `src/desktop/` and
+named under the list's `src-desktop` heading); the port is named under the `src-daemons` heading of
+`script/phases/50_desktop/packages.txt`, the only phase whose `PORT_REPO` includes `src/daemons`;
+and its init script is `fs/etc/init.d/<NN>_<service>.sh`, whose number places it after
+everything it needs, since `rcS` starts the scripts in numeric order (the five here are 55 to 59).
+
 ## See also
 
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md#init-and-service-supervision): the init
@@ -1328,9 +1336,9 @@ its section: `kdos-mountd` breaks rule 6 (see
   `kdos-boxsock`
 - [kdos-res](kdos-res.md): the monitor that shows the energy daemon's answer
 - [kinstall](kinstall.md): which groups the installed account ends up in
-- [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-05_desktop): the build
+- [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop): the build
   phase that compiles every daemon here
-- [The ports catalogue](../06-reference/ports-catalogue.md#the-desktop-phase): the daemon ports and
+- [The ports catalogue](../06-reference/ports-catalogue.md#srcdaemons): the daemon ports and
   their versions
 - [Filesystem and IPC](../06-reference/filesystem-and-ipc.md): every socket and verb in full
 - [Glossary](../06-reference/glossary.md): box, graft, pack, surface and the other terms used here

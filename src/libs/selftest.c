@@ -30,6 +30,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "kbase.h"
@@ -1184,10 +1185,10 @@ static void test_pkg(void)
 
 	/* Ownership, which is what a file conflict is actually about.
 	 *
-	 * Phases 0 and 1 install tar, musl, binutils and gcc by hand with
-	 * `make DESTDIR=$SYSROOT install`, so those files exist and NO
-	 * database entry owns them. Phase 2 — the self-hosting bootstrap —
-	 * then rebuilds exactly those packages with kpkg. If an unowned file
+	 * 00_cross and 10_bootstrap install tar, musl, binutils and gcc by
+	 * hand with `make DESTDIR=$SYSROOT install`, so those files exist and
+	 * NO database entry owns them. 20_selfhost — the self-hosting
+	 * bootstrap — then rebuilds exactly those packages with kpkg. If an unowned file
 	 * counts as a conflict the bootstrap cannot run at all, which is what
 	 * `tar` failed on. A file another PACKAGE owns is still a conflict. */
 	char *dbdir = kb_path_join(dir, "db");
@@ -1298,6 +1299,205 @@ static void test_pkg(void)
 
 	kb_rmtree(dir);
 	free(repo);
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+static void put_recipe(const char *root, const char *rel)
+{
+	char *d = kb_path_join(root, rel);
+	kb_mkdir_p(d);
+	char *r = kb_path_join(d, "kpkgbuild");
+	kb_write_file(r, "name = x\nversion = 1\nrelease = 1\n");
+	free(r);
+	free(d);
+}
+
+/* Whether `fn` makes the process exit 1, run in a child. kb_die is exit(1)
+ * and a leak check at exit would turn that into its own status, so the child
+ * leaves through _exit from an exit handler registered after the sanitiser's
+ * — handlers run last-registered first. */
+static void die_exit(void)
+{
+	_exit(1);
+}
+
+static int dies(void (*fn)(const KpConf *), const KpConf *c)
+{
+	fflush(stdout);
+	fflush(stderr);
+	pid_t pid = fork();
+	if (pid == 0) {
+		int nul = open("/dev/null", O_WRONLY);
+		if (nul >= 0)
+			dup2(nul, 2);
+		atexit(die_exit);
+		fn(c);
+		_exit(0);
+	}
+	int st = 0;
+	if (pid < 0 || waitpid(pid, &st, 0) < 0)
+		return 0;
+	return WIFEXITED(st) && WEXITSTATUS(st) == 1;
+}
+
+static void lookup_dup(const KpConf *c)
+{
+	free(kp_port_dir(c, "dup"));
+}
+
+static void walk_all(const KpConf *c)
+{
+	kb_strv_free(kp_all_ports(c, NULL));
+}
+
+/*
+ * The shelved ports tree. `ports/core/<shelf>/<name>/` holds the upstream
+ * ports and every `src/<area>/<name>/` holds its ports flat, and one resolver
+ * reads both. Each fixture here is a failure that is SILENT without the rule
+ * it pins: a walker that does not descend sees zero ports and reports success,
+ * a duplicate picks one of two recipes, a nested port is never found.
+ */
+static void test_shelves(void)
+{
+	printf("libkpkg shelves\n");
+
+	char dir[] = "/tmp/kdos-selftest-shelf.XXXXXX";
+	ok(mkdtemp(dir) != NULL, "scratch directory");
+
+	char *core = kb_path_join(dir, "core");
+	put_recipe(core, "archiver/zlib");
+	put_recipe(core, "base/musl");
+	put_recipe(core, "net/curl");
+	put_recipe(core, "loose");		/* flat beside the shelves */
+	put_recipe(core, ".cache/hidden");	/* never a shelf */
+	char *emp = kb_path_join(core, "empty/notes");
+	kb_mkdir_p(emp);		/* a shelf with no ports, only a stray */
+	free(emp);
+	emp = kb_path_join(core, "empty/README");
+	kb_write_file(emp, "nothing filed here yet\n");
+	free(emp);
+	char *flat = kb_path_join(dir, "flat");
+	put_recipe(flat, "kdos-tools");
+	put_recipe(flat, "zlib");		/* shadows core's: first repo wins */
+
+	KpConf *c = kb_calloc(1, sizeof(*c));
+	char list[1200];
+	snprintf(list, sizeof(list), "%s %s", core, flat);
+	ok(kp_conf_set_repos(c, list) == 2, "two repositories");
+	ok(c->shelf_cached[0], "the shelf list is cached");
+
+	char err[1600], *pd = NULL, *want = NULL;
+	ok(kp_port_find(c, "curl", &pd, err, sizeof(err)) == 1,
+	   "a shelved port resolves");
+	want = kb_path_join(core, "net/curl");
+	eq_str(pd, want, "at <repo>/<shelf>/<name>");
+	free(want);
+	free(pd);
+	pd = kp_port_dir(c, "loose");
+	want = kb_path_join(core, "loose");
+	eq_str(pd, want, "a flat port beside the shelves resolves");
+	free(want);
+	free(pd);
+	pd = kp_port_dir(c, "kdos-tools");
+	want = kb_path_join(flat, "kdos-tools");
+	eq_str(pd, want, "a flat repository resolves");
+	free(want);
+	free(pd);
+	pd = kp_port_dir(c, "zlib");
+	want = kb_path_join(core, "archiver/zlib");
+	eq_str(pd, want, "the first repository holding a name wins it");
+	free(want);
+	free(pd);
+	ok(kp_port_find(c, "archiver", &pd, err, sizeof(err)) == 0,
+	   "a shelf is not a port");
+	ok(kp_port_find(c, "empty", &pd, err, sizeof(err)) == 0,
+	   "nor is a shelf with no ports");
+	ok(kp_port_find(c, "hidden", &pd, err, sizeof(err)) == 0,
+	   "a dot-directory is never a shelf");
+	ok(kp_port_find(c, "nope", &pd, err, sizeof(err)) == 0 && !pd,
+	   "a missing port is not found");
+
+	int n = 0;
+	char **all = kp_ports_scan(c, &n, err, sizeof(err));
+	ok(all && n == 5, "the walker reads both depths of every repository");
+	if (all && n == 5) {
+		eq_str(all[0], "curl", "sorted across shelves");
+		eq_str(all[4], "zlib", "and a shadowed name counted once");
+	}
+	kb_strv_free(all);
+
+	/* The cache is only a speed-up: a KpConf whose repos were written by
+	 * hand lists the shelves live and answers the same. */
+	KpConf *live = kb_calloc(1, sizeof(*live));
+	live->nrepos = 1;
+	kb_strlcpy(live->repos[0], core, sizeof(live->repos[0]));
+	pd = kp_port_dir(live, "musl");
+	want = kb_path_join(core, "base/musl");
+	eq_str(pd, want, "an uncached repository resolves the same");
+	free(want);
+	free(pd);
+
+	/* A NAME FILED TWICE IS AN ERROR, never a silent first-wins. */
+	char *twice = kb_path_join(dir, "twice");
+	put_recipe(twice, "base/dup");
+	put_recipe(twice, "net/dup");
+	KpConf *d2 = kb_calloc(1, sizeof(*d2));
+	kp_conf_set_repos(d2, twice);
+	ok(kp_port_find(d2, "dup", &pd, err, sizeof(err)) == -1 && !pd,
+	   "a name on two shelves is refused");
+	ok(strstr(err, "base/dup") && strstr(err, "net/dup"),
+	   "naming both paths");
+	ok(!kp_ports_scan(d2, &n, err, sizeof(err)) && strstr(err, "dup"),
+	   "and the walker refuses it too");
+	ok(dies(lookup_dup, d2), "kp_port_dir dies rather than pick one");
+	ok(dies(walk_all, d2), "kp_all_ports dies rather than skip one");
+
+	char *mixed = kb_path_join(dir, "mixed");
+	put_recipe(mixed, "dup");
+	put_recipe(mixed, "base/dup");
+	kp_conf_set_repos(d2, mixed);
+	ok(kp_port_find(d2, "dup", &pd, err, sizeof(err)) == -1,
+	   "a name flat and shelved is refused");
+	ok(!kp_ports_scan(d2, &n, err, sizeof(err)),
+	   "by the walker as well");
+
+	/* One shelf level and no more: a port below it is found by nothing. */
+	char *deep = kb_path_join(dir, "deep");
+	put_recipe(deep, "base/group/lost");
+	put_recipe(deep, "base/ok");
+	kp_conf_set_repos(d2, deep);
+	ok(!kp_ports_scan(d2, &n, err, sizeof(err)) && strstr(err, "nested"),
+	   "a port nested below its shelf is an error");
+
+	/* KP_MAX_REPOS truncates, and says so on stderr. */
+	char many[4096] = "";
+	for (int i = 0; i < KP_MAX_REPOS + 2; i++)
+		snprintf(many + strlen(many), sizeof(many) - strlen(many),
+			 "%s%s/r%d", i ? " " : "", dir, i);
+	fflush(stderr);
+	int saved = dup(2), nul = open("/dev/null", O_WRONLY);
+	if (nul >= 0)
+		dup2(nul, 2);
+	int kept = kp_conf_set_repos(d2, many);
+	if (saved >= 0) {
+		dup2(saved, 2);
+		close(saved);
+	}
+	if (nul >= 0)
+		close(nul);
+	ok(kept == KP_MAX_REPOS, "PORT_REPO stops at KP_MAX_REPOS");
+
+	free(d2);
+	free(live);
+	free(c);
+	free(deep);
+	free(mixed);
+	free(twice);
+	free(flat);
+	free(core);
+	kb_rmtree(dir);
 }
 
 
@@ -1620,9 +1820,12 @@ static void test_build(void)
 	 * is only reachable with a synthetic one. */
 	char dir[] = "/tmp/kdos-selftest-bld.XXXXXX";
 	ok(mkdtemp(dir) != NULL, "scratch directory");
-	char *pd = kb_path_join(dir, "07_evil");
+	char *pd = kb_path_join(dir, "phases/07_evil");
 	kb_mkdir_p(pd);
-	char *env = kb_path_join(dir, "evil.env.sh");
+	char *step = kb_path_join(pd, "00_run.sh");
+	kb_write_file(step, "#!/bin/bash\n");
+	free(step);
+	char *env = kb_path_join(pd, "phase.env");
 	kb_write_file(env,
 		"export KDOS_PHASE_TITLE=\"Evil\"\n"
 		"export CHROOT=1\n"
@@ -1647,12 +1850,15 @@ static void test_build(void)
 	}
 
 	/* A phase with no declared paths is never snapshotted. */
-	char *pd2 = kb_path_join(dir, "08_bare");
+	char *pd2 = kb_path_join(dir, "phases/08_bare");
 	kb_mkdir_p(pd2);
 	n = kbuild_discover(dir, ph, KBUILD_MAX_PHASES);
 	ok(n == 2, "a phase without an env file still discovers");
 	ok(!kbuild_snapshottable(&ph[1]), "no paths means never snapshotted");
 	eq_str(ph[1].title, "bare", "title falls back to the tidied name");
+	/* ...but one with nothing to run is refused, or it reports success. */
+	ok(ph[1].error[0] != 0, "a phase with no list and no step is refused");
+	ok(!ph[0].error[0], "a phase with a step is not");
 
 	/* ----- the build plan ------------------------------------------- */
 
@@ -1702,6 +1908,120 @@ static void test_build(void)
 	ok(pl.nrebuild == 1 && kbuild_plan_forced(&pl, "zlib"),
 	   "rebuilds round-trip");
 	free(pf);
+
+	/* ----- the phase layout ----------------------------------------- */
+
+	char ldir[] = "/tmp/kdos-selftest-lst.XXXXXX";
+	ok(mkdtemp(ldir) != NULL, "scratch directory");
+	/* The script directory is the parent of phases/: a phase directory
+	 * directly under it is not a phase. */
+	char *stray = kb_path_join(ldir, "05_stray");
+	kb_mkdir_p(stray);
+	free(stray);
+	char *f;
+#define LPUT(rel, text) do { f = kb_path_join(ldir, rel); \
+	char *slash = strrchr(f, '/'); *slash = 0; kb_mkdir_p(f); *slash = '/'; \
+	kb_write_file(f, text); free(f); } while (0)
+	/* KDOS_* keys come from phase.env's own text; the file it sources is
+	 * NOT read, so a key written only there is not seen. */
+	LPUT("env/common.env", "export KDOS_PHASE_TITLE=\"Shared\"\n");
+	LPUT("phases/10_one/phase.env",
+	     "source script/env/common.env\n"
+	     "export KDOS_PHASE_DESC=\"own\"\n");
+	/* Out of order on disk, unterminated, commented, and beside files
+	 * that are not part of the list. */
+	LPUT("phases/10_one/packages.d/b.txt", "three\n# four\n  five  ");
+	LPUT("phases/10_one/packages.d/a.txt", "two");
+	LPUT("phases/10_one/packages.d/00-order.txt", "# pinned\none\n");
+	LPUT("phases/10_one/packages.d/README", "not-a-port\n");
+	LPUT("phases/10_one/packages.d/.x.txt", "hidden\n");
+	LPUT("phases/10_one/packages.d/c.sh", "not-a-step\n");
+	LPUT("phases/20_both/packages.txt", "a\n");
+	LPUT("phases/20_both/packages.d/x.txt", "b\n");
+	LPUT("phases/30_nolist/packages.d/README", "x\n");
+	LPUT("phases/40_flat/packages.txt", "solo\n");
+#undef LPUT
+
+	KbuildPhase lp[KBUILD_MAX_PHASES];
+	int ln = kbuild_discover(ldir, lp, KBUILD_MAX_PHASES);
+	ok(ln == 4, "phases are read from phases/ and nowhere else");
+	if (ln == 4) {
+		ok(strstr(lp[0].env_file, "/phases/10_one/phase.env") != NULL,
+		   "the environment is the phase's own phase.env");
+		eq_str(lp[0].desc, "own", "its keys are read");
+		eq_str(lp[0].title, "one", "a sourced file's keys are not");
+		ok(kbuild_is_package_phase(&lp[0]) == 1 && !lp[0].error[0],
+		   "packages.d/ makes a package phase");
+		int nst = 0;
+		kb_strv_free(kbuild_steps(&lp[0], &nst));
+		ok(nst == 0, "and a package phase has no steps");
+		int np = 0;
+		char **pk = kbuild_packages(&lp[0], &np);
+		ok(np == 4, "packages.d/ reads as one list");
+		if (np == 4) {
+			eq_str(pk[0], "one", "files in byte order: 00-order first");
+			eq_str(pk[1], "two", "an unterminated file keeps its last name");
+			eq_str(pk[2], "three", "and the next file its first");
+			eq_str(pk[3], "five", "names are trimmed");
+		}
+		kb_strv_free(pk);
+		int nf = 0;
+		kb_strv_free(kbuild_list_files(&lp[0], &nf));
+		ok(nf == 3, "only packages.d/*.txt is part of the list");
+
+		ok(kbuild_is_package_phase(&lp[1]) == -1,
+		   "packages.txt and packages.d/ together are refused");
+		ok(strstr(lp[1].error, "both") != NULL, "at discovery");
+		ok(strstr(lp[2].error, "no *.txt") != NULL,
+		   "a packages.d/ with no list is refused");
+		pk = kbuild_packages(&lp[3], &np);
+		ok(np == 1 && !strcmp(pk[0], "solo") && !lp[3].error[0],
+		   "a single packages.txt reads");
+		kb_strv_free(pk);
+	}
+
+	/* The port index walks ports/core at both depths through libkpkg, and
+	 * src/system and src/art flat. */
+	put_recipe(ldir, "ports/core/base/musl");
+	put_recipe(ldir, "ports/core/net/curl");
+	put_recipe(ldir, "src/system/kdos-tools");
+	put_recipe(ldir, "src/art/kdos-theme");
+	put_recipe(ldir, "src/desktop/kdos-shell");
+	char perr[512] = "";
+	int npo = 0;
+	char **po = kbuild_ports(ldir, &npo, perr, sizeof(perr));
+	ok(po && npo == 4, "the index sees ports/core, src/system and src/art");
+	kb_strv_free(po);
+	static KbuildPkgRef ref[64];
+	int nref = kbuild_package_index(lp, ln, ldir, ref, 64, perr,
+					sizeof(perr));
+	int solo_seen = 0, shell_seen = 0;
+	for (int i = 0; i < nref; i++) {
+		solo_seen |= !strcmp(ref[i].name, "solo") &&
+			     !strcmp(ref[i].phase, "40_flat");
+		shell_seen |= !strcmp(ref[i].name, "kdos-shell");
+	}
+	ok(solo_seen, "a listed name joins the index with its phase");
+	ok(!shell_seen, "src/desktop reaches it only through a list");
+	char *pc = kb_path_join(ldir, "ports/core");
+	kb_rmtree(pc);
+	kb_mkdir_p(pc);
+	free(pc);
+	perr[0] = 0;
+	fflush(stderr);
+	int esaved = dup(2), enul = open("/dev/null", O_WRONLY);
+	if (enul >= 0)
+		dup2(enul, 2);
+	po = kbuild_ports(ldir, &npo, perr, sizeof(perr));
+	if (esaved >= 0) {
+		dup2(esaved, 2);
+		close(esaved);
+	}
+	if (enul >= 0)
+		close(enul);
+	ok(!po && perr[0], "an empty ports/core is an error, not an empty list");
+	kb_strv_free(po);
+	kb_rmtree(ldir);
 
 	/* ----- the JSON manifests carry -------------------------------- */
 
@@ -7781,6 +8101,7 @@ int main(void)
 	test_trash();
 	test_colour();
 	test_pkg();
+	test_shelves();
 	test_build();
 	test_proc();
 	test_chart();

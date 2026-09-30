@@ -194,13 +194,16 @@ static int numeric_prefix(const char *name)
 
 int kbuild_discover(const char *script_dir, KbuildPhase *out, int max)
 {
-	char **names = kb_listdir(script_dir, NULL);
-	if (!names)
+	char *phases = kb_path_join(script_dir, KBUILD_PHASES_DIR);
+	char **names = kb_listdir(phases, NULL);
+	if (!names) {
+		free(phases);
 		return 0;
+	}
 
 	int n = 0;
 	for (char **e = names; *e && n < max; e++) {
-		char *full = kb_path_join(script_dir, *e);
+		char *full = kb_path_join(phases, *e);
 		if (!kb_is_dir(full) || !numeric_prefix(*e)) {
 			free(full);
 			continue;
@@ -216,14 +219,31 @@ int kbuild_discover(const char *script_dir, KbuildPhase *out, int max)
 		const char *bare = strchr(*e, '_');
 		kb_strlcpy(p->name, bare ? bare + 1 : *e, sizeof(p->name));
 
-		char leaf[128];
-		snprintf(leaf, sizeof(leaf), "%s.env.sh", p->name);
-		char *env = kb_path_join(script_dir, leaf);
-		if (kb_path_exists(env)) {
+		char *env = kb_path_join(p->dir_path, KBUILD_PHASE_ENV);
+		if (kb_path_exists(env) && !kb_is_dir(env)) {
 			kb_strlcpy(p->env_file, env, sizeof(p->env_file));
 			parse_env(p);
 		}
 		free(env);
+
+		int kind = kbuild_is_package_phase(p), nfiles = 0, nsteps = 0;
+		kb_strv_free(kbuild_list_files(p, &nfiles));
+		kb_strv_free(kbuild_steps(p, &nsteps));
+		if (kind < 0)
+			snprintf(p->error, sizeof(p->error),
+				 "%s has both " KBUILD_PKG_FILE " and "
+				 KBUILD_PKG_DIR "/: a phase reads one list, "
+				 "and which one would be a guess", p->dir_name);
+		else if (kind > 0 && !nfiles)
+			snprintf(p->error, sizeof(p->error),
+				 "%s/" KBUILD_PKG_DIR "/ holds no *.txt: the "
+				 "phase would install nothing and report "
+				 "success", p->dir_name);
+		else if (!kind && !nsteps)
+			snprintf(p->error, sizeof(p->error),
+				 "%s has no " KBUILD_PKG_FILE ", no "
+				 KBUILD_PKG_DIR "/ and no *.sh: the phase would "
+				 "run nothing and report success", p->dir_name);
 
 		/* No declared title: the directory name, tidied. */
 		if (!p->title[0]) {
@@ -235,6 +255,7 @@ int kbuild_discover(const char *script_dir, KbuildPhase *out, int max)
 		n++;
 	}
 	kb_strv_free(names);
+	free(phases);
 	return n;
 }
 

@@ -1,0 +1,19 @@
+title: skip-if-installed compares the recipe during a build, and presence alone otherwise
+cite: kpkg
+port: wlroots
+
+The build exports KPKG_STRICT_RECIPE=1 (script/env/common.env), so the
+solver's kp_installed_current() treats an installed package whose recipe hash
+has changed as not installed: an edited kpkgbuild, build.sh, postinstall.sh or
+patch rebuilds on an incremental tree without being named on the command line.
+The hash is kp_recipe_hash(), the one the binhost's `E:` records.
+
+The flag is off for an interactive `kpkg install`, where skip-if-installed is
+kp_installed() alone — a database entry exists — whatever the version, release
+or recipe now say.
+
+A package with no recorded hash reads as UNKNOWN and is left alone, never as
+changed. A file under fs/ that a port installs is outside the hash, so
+`release = N` or `--rebuild <port>` (or `kpkg install -f`) is the lever for
+it. The smell is a package whose behaviour disagrees with a recipe you just
+read.

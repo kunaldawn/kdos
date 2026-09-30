@@ -1,0 +1,50 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   database — Database engines, embedded key-value stores, database servers,
+#   clients and full-text indexes
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+xapian-core
+
+# musl's collation is essentially byte order, so ORDER BY, LIKE and unique
+# indexes on case-folded text all quietly disagree with every other machine
+# the data touches. --with-icu is what makes them correct.
+postgresql
+
+# SQL over CSV, JSON and Parquet with no server and no import step. The two
+# autoload flags are the point: by default it DOWNLOADS an extension from
+# duckdb.org the first time a query needs one, so reading a Parquet file
+# offline fails at run time with a message about an extension.
+duckdb
+
+# Fifty drivers for two engines that are actually here is the default build;
+# this one is `no_base` plus postgres, sqlite3 and mysql.
+usql
+
+# Redis relicensed source-available in 2024; this is the BSD-3 continuation.
+valkey
+
+lmdb
+lmdbxx
+tdb
+unixodbc
+libspatialite
+db

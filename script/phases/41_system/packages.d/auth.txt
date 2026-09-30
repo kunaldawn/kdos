@@ -1,0 +1,53 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   auth — Authentication, authorisation, accounts and directory services
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# A TICKET, BECAUSE A CORPORATE FILE SERVER OFTEN WILL NOT TAKE A PASSWORD.
+# `kinit` gets one and `cifs.upcall` — which is what puts krb5 in cifs-utils'
+# `depends` — hands it to the kernel's cifs module, so `sec=krb5` has somewhere
+# to call out to. The client half only: no KDC and no administration daemon
+# are installed.
+krb5
+
+pam
+sudo
+polkit
+
+# `oathtool` is all that is kept of oath-toolkit, and pass-otp shells out to
+# it: the PAM module is a second way to log in that nobody asked for, and PSKC
+# is an XML container for provisioning tokens in bulk.
+oath-toolkit
+
+# The XOAUTH2 mechanism mbsync authenticates through, a plugin for the
+# cyrus-sasl loader 30_foundation installs. A provider that has withdrawn
+# application passwords requires it; without it, an account there can be read
+# in aerc and sent through msmtp and cannot be mirrored into a local Maildir.
+cyrus-sasl-xoauth2
+
+# Fingerprint authentication for sudo. libfprint is the drivers and fprintd is
+# the daemon plus pam_fprintd, which sudo's PAM stack consults before the
+# password.
+libfprint
+fprintd
+
+cracklib
+libpwquality

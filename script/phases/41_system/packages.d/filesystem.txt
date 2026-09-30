@@ -1,0 +1,61 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   filesystem — Filesystem utilities, FUSE, and network or encrypted
+#   filesystems
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+squashfs-tools
+mtools
+dosfstools
+fuse
+e2fsprogs
+
+# The kernel mounts btrfs, xfs, f2fs, ntfs3 and exfat, and these are what
+# create them. kinstall's filesystem menu depends on them.
+exfatprogs
+f2fs-tools
+ntfs-3g
+btrfs-progs
+xfsprogs
+
+# A container format is one enormous file that changes on every write, so
+# syncing it resends the whole thing and two writers corrupt it. gocryptfs
+# keeps a ciphertext file per plaintext file, which is why it is the one that
+# works inside syncthing.
+gocryptfs
+
+# samba is the INTEROPERABILITY answer (a Windows laptop, a phone or a printer
+# speaks SMB and often nothing else); nfs-utils is the CORRECTNESS one — SMB
+# does not carry POSIX ownership, symlinks or byte-range locks the way a Linux
+# program expects. The v3 helpers are built and never started.
+nfs-utils
+
+# The two remote filesystems a workstation actually mounts. cifs-utils pulls
+# talloc, which samba requires unconditionally.
+cifs-utils
+sshfs
+
+libnfs
+hfsprogs
+jfsutils
+nilfs-utils
+udftools
+erofs-utils

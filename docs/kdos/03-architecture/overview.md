@@ -21,8 +21,8 @@ it.
 | Ring | Lives in | Contains | Built by |
 |---|---|---|---|
 | Core | `ports/core/` | musl, toybox, the toolchain, the Linux kernel, Limine, wlroots, podman and distrobox, the libraries and tools of the base system, the GUI toolkits (GTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk) and the applications ported natively on them | Compiled on the build machine from upstream source archives, which `make fetch` downloads and verifies against each recipe's `sha256` |
-| Desktop | `src/desktop/`, `src/packages/`, `src/libs/` | The compositor, the panel, the terminal, the root daemons, the installer, the `kdos` command, the themes, and the `libk*` C libraries they share | Compiled on the build machine from this repository's own source |
-| Outer | `src/packages/kdos-appbox/catalogue` | Applications KDOS does not port natively, and alternatives to those it does: browsers, office suites, CAD, media tools, IDEs, games | Declared as Debian packages; built by podman on the machine that asks for them |
+| Desktop | `src/desktop/`, `src/daemons/`, `src/system/`, `src/art/`, `src/libs/` | The compositor, the panel, the terminal, the root daemons, the installer, the `kdos` command, the themes, and the `libk*` C libraries they share | Compiled on the build machine from this repository's own source |
+| Outer | `src/system/kdos-appbox/catalogue` | Applications KDOS does not port natively, and alternatives to those it does: browsers, office suites, CAD, media tools, IDEs, games | Declared as Debian packages; built by podman on the machine that asks for them |
 
 A **port** is one unit of the first two rings: a directory holding a recipe (`kpkgbuild`,
 declarative metadata that is parsed and never sourced) and a `build.sh` beside it. `kpkg`, the
@@ -37,40 +37,54 @@ hard fork of labwc 0.20.0, a stacking Wayland compositor, built against the wlro
 
 Applications, the programs a person opens to do work unrelated to the operating system, come from
 either of two places. A natively ported application is a core-ring recipe like any other: Firefox
-ESR, Thunderbird, LibreOffice, GIMP, Inkscape, Krita, KiCad, FreeCAD and VLC are among them, listed
-in the application sections of `script/04_phase4/packages.txt` and built against GTK 3 or 4, Qt 5
-or 6 and the other toolkits in the same list. Each toolkit is built with its Wayland back end as the
-default and its X11 back end compiled in, and Xwayland serves a program that has only an X11 path.
-Anything not ported natively is in the outer ring and runs in a container rather than on the host.
+ESR, Thunderbird, LibreOffice, GIMP, Inkscape, Krita, KiCad, FreeCAD and VLC are among them. The
+toolkits and the applications build in two phases of their own: `43_toolkits` builds GTK 3 and 4, Qt
+5 and 6 and the other toolkits with every library over them that something else links (VLC is one,
+since other programs depend on it), and `44_apps` builds the applications nothing depends on. Each
+toolkit is built with its Wayland back end as the default and its X11 back end compiled in, and
+Xwayland serves a program that has only an X11 path. Anything not ported natively is in the outer
+ring and runs in a container rather than on the host.
 
 The sizes, counted as directories holding a `kpkgbuild` (and, for the catalogue, lines whose
 first field is `app`):
 
 | Where | Count |
 |---|---|
-| `ports/core` | 1,999 recipes |
-| `src/packages` | 11 recipes |
-| `src/desktop` | 13 recipes |
+| `ports/core` | 1,999 recipes, on 102 shelves |
+| `src/system` | 5 recipes |
+| `src/art` | 6 recipes |
+| `src/desktop` | 8 recipes |
+| `src/daemons` | 5 recipes |
 | All port repositories | 2,023 recipes |
 | Catalogue `app` rows (outer ring) | 73 |
 
-`src/packages/` and `src/desktop/` are port repositories in their own right and use the same
-two-file recipe format as `ports/core`, so building the desktop is not a special case anywhere in
-the build system. `kpkg` searches the repositories named in `PORT_REPO`, which defaults to
-`/ports/core`; the environment file of each later phase widens it:
+`ports/core` files each port one level down, on a **shelf** named for its subject:
+`ports/core/<shelf>/<name>/`, such as `ports/core/wl/wlroots/` or `ports/core/fonts/noto-fonts/`.
+The closed list of 102 shelves, one line each with what belongs on it, is the file
+`ports/shelves`. A shelf is only where a recipe is filed. It subdivides the core ring and is not a
+ring of its own; a port is known everywhere by its bare name, and no dependency line, package or
+database entry records its shelf.
 
-```sh
-script/phase4.env.sh    PORT_REPO="/ports/core /kdos/src/packages"
-script/phase5.env.sh    PORT_REPO="/ports/core /kdos/src/packages"
-script/desktop.env.sh   PORT_REPO="/ports/core /kdos/src/packages /kdos/src/desktop"
-```
+The four `src/` areas that hold recipes are port repositories in their own right and use the same
+two-file recipe format as `ports/core`, so building the desktop is not a special case anywhere in
+the build system. Each area holds its ports directly, with no shelves. `kpkg` searches the
+repositories named in `PORT_REPO`, which defaults to `/ports/core`; the environment file of each
+later phase widens it:
+
+| Phases (`script/phases/<phase>/phase.env`) | `PORT_REPO` |
+|---|---|
+| `20_selfhost`, `30_foundation`, `31_compilers` | `/ports/core` (the default) |
+| `40_lang` to `44_apps`, `60_kernel` | `/ports/core /kdos/src/system /kdos/src/art` |
+| `50_desktop` | `/ports/core /kdos/src/system /kdos/src/art /kdos/src/desktop /kdos/src/daemons` |
 
 `src/libs/` holds no recipes: each desktop port compiles the library sources it needs into its
-own binaries. `src/packages/kdos-kpkg`, the package manager itself, is the one directory under
-`src/packages/` without a recipe: the phase 1 script `script/01_phase1/12_kpkg.sh` compiles it,
-because it has to exist before any recipe can be read. How the phases follow one another, and
-how ports are grouped in each phase's `packages.txt`, is the subject of
-[How KDOS is built](../05-developer/how-kdos-is-built.md); every port, listed by group, is in
+own binaries. `src/devtools/` holds none either: `kdosbuild` and `kdos-portup` run on the build
+machine and are never installed. `src/system/kdos-kpkg`, the package manager itself, is the one
+directory in a port area without a recipe: the bootstrap step
+`script/phases/10_bootstrap/120_kpkg.sh` compiles it, because it has to exist before any recipe can
+be read. How the phases follow one another, and how the package lists of `40_lang` to `44_apps`
+are split into one file per shelf under `packages.d/`, is the subject of
+[How KDOS is built](../05-developer/how-kdos-is-built.md); every port, listed by shelf, is in
 [The ports catalogue](../06-reference/ports-catalogue.md).
 
 ## From power-on to a drawn window
@@ -296,7 +310,7 @@ init (PID 1, toybox)
 `rcS` runs every executable `/etc/init.d/NN_name.sh` in the order the shell sorts them, skipping
 any whose name has a marker file in `/etc/service.disabled/`; `rcK`, which `/etc/inittab` runs at
 shutdown, stops the same set in reverse, except the firewall ruleset, which stays loaded through
-shutdown. Forty of the scripts ship in the image's `fs/` tree, and eighteen more are installed by
+shutdown. Forty of the scripts ship in the image's `fs/` tree, and twenty-two more are installed by
 the ports they start, such as `43_boltd` by `bolt` and `83_samba` by `samba`. A script that
 starts a long-running daemon runs it under `ksvc`, KDOS's service supervisor, which keeps the
 daemon in the foreground and restarts it when it exits; the one-shot scripts (modules, sysctl,
@@ -463,7 +477,7 @@ The full list of paths and sockets is in [Filesystem and IPC](../06-reference/fi
 - [The design language](design-language.md) — why every surface looks the same
 - [The window model](window-model.md) — where a window lands and how it tiles
 - [How KDOS is built](../05-developer/how-kdos-is-built.md) — the build side of this map, from clone to ISO
-- [The ports catalogue](../06-reference/ports-catalogue.md) — every core-ring port, by group
+- [The ports catalogue](../06-reference/ports-catalogue.md) — every core-ring port, by shelf, with its phase
 - [The kdos command](../04-programs/kdos-command.md) — the administrative command and its subcommands
 - [Repository layout](../06-reference/repository-layout.md) — where each ring lives in the tree
 - [Filesystem and IPC](../06-reference/filesystem-and-ipc.md) — every path and socket in full

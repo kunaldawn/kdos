@@ -1,0 +1,45 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   src-art — KDOS's own artwork and its generators, from src/art
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The 1997 AAlib demo, hard-forked as ours: see src/art/kdos-bb/KDOS-FORK.
+kdos-bb
+
+# Boot splash. Lives in src/art rather than ports/core because the source is
+# ours, not an upstream tarball. Draws the CRT power-on animation straight to
+# /dev/fb0 from the initramfs and keeps running until rcS hands the console to
+# agetty.
+kdos-splash
+
+# The GTK/icon/cursor generators (src/art, ours). Build-time step for
+# kdos-icons, kdos-cursors and kdos-gtk-theme AND the runtime engine behind
+# `kdos theme`, so python3 is not a runtime dependency of the shipped system.
+kdos-theme
+
+# KDOS phosphor icon theme (src/art, ours) — recolored Papirus.
+kdos-icons
+
+# KDOS phosphor pixel-art cursor theme (src/art, ours) — generated Xcursor.
+kdos-cursors
+
+# KDOS phosphor GTK theme (src/art, ours) — recolored adw-gtk3.
+kdos-gtk-theme

@@ -1,0 +1,43 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   accessibility — Screen readers, speech, braille and alternative input
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Contracted braille: grade 2 English and the literary and computer tables of
+# well over a hundred languages, which brltty's own tables do not carry.
+liblouis
+
+# A synthesiser, not a screen reader — what it buys alone is the corpus read
+# aloud on a machine whose 49 GB of documentation needs eyes.
+pcaudiolib
+espeak-ng
+
+# The speech API a screen reader talks to. espeak-ng is the voice behind it;
+# without this nothing on the image can drive it.
+speech-dispatcher
+
+# BRLTTY reads /dev/vcsa, so what it covers is tty1 and the installer — grids
+# of cells it takes verbatim, with none of the guessing a toolkit tree needs.
+# It does not read the graphical session: its AtSpi2 screen driver is not
+# built, and the session's reader is Orca, which reaches a braille display
+# through BrlAPI. The statement of record is
+# docs/kdos/02-user-guide/accessibility.md.
+brltty

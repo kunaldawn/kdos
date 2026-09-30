@@ -1,0 +1,53 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   hamradio — Amateur-radio operation: rig control, digital modes, logging,
+#   packet and APRS, propagation, and mesh radio
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Terrain-aware path loss, and the converters that turn an elevation model into
+# something it can read.
+splat
+
+# One control protocol for 200 radios — the program the CP210x/FTDI udev rules
+# exist for on the radio side, as picocom is on the console side.
+hamlib
+
+# A soundcard TNC: direwolf is the modem, and Pat and Xastir reach it over its
+# KISS and AGW ports. The kernel carries no AX.25 stack, so packet radio stays
+# in userspace.
+direwolf
+
+# HF propagation from a model rather than a guess, and a contest logger whose
+# one deliverable, the Cabrillo file, is entirely local.
+voacapl
+tlf
+
+ggmorse
+flxmlrpc
+ardopcf
+pat
+contact
+
+# An image for the radio, not a program for this machine.
+meshtastic-firmware
+
+# An image for the radio, not a program for this machine.
+rnode-firmware

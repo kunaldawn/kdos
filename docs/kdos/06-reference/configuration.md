@@ -1051,12 +1051,13 @@ Where the package manager `kpkg` keeps its trees. The file is written as shell a
 `NAME="${NAME:-default}"`. `kpkg` parses it itself, reading `NAME=value` with no space before the
 `=` (a line spelt `NAME = value` is ignored) and unwrapping the `${...:-...}`. It is also sourced by
 bash at the start of every port's build, so a shell expression in it runs there. An exported
-environment variable of the same name always wins over the file, which is what the phase environment
-files of the build rely on. `KPKG_CONF` names a different file.
+environment variable of the same name always wins over the file, which is what the build phases
+from `40_lang` to `60_kernel` rely on: each one's `phase.env` exports `PORT_REPO` to add KDOS's own
+`src/<area>` repositories after `/ports/core`. `KPKG_CONF` names a different file.
 
 | Key | Default | Means |
 |---|---|---|
-| `PORT_REPO` | `/ports/core` | The ports tree, or several separated by spaces |
+| `PORT_REPO` | `/ports/core` | The port repositories, separated by spaces and searched in order, at most eight; more warn and are ignored. A port is found as `<repo>/<name>/` or one shelf down as `<repo>/<shelf>/<name>/`, and a name at two paths in one repository is an error. See [Writing ports](../05-developer/writing-ports.md#shelves-and-how-a-port-is-found) |
 | `SOURCE_DIR` | `/var/cache/kpkg/sources` | Downloaded source archives |
 | `PACKAGE_DIR` | `/var/cache/kpkg/packages` | Built packages |
 | `WORK_DIR` | `/var/cache/kpkg/work` | Where a port is unpacked and built |

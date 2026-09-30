@@ -26,12 +26,12 @@ build/logs/<phase directory>/<NNNN>_<name>.log
 ```
 
 For a script step, `<name>` is the script's file name without its numeric prefix
-(`build/logs/01_phase1/0000_file_system.sh.log`); for a port built from a phase's package list it is
-the port name followed by `.install` (`build/logs/04_phase4/0123_mesa.install.log`). The
+(`build/logs/10_bootstrap/0000_file_system.sh.log`); for a port built from a phase's package list it
+is the port name followed by `.install` (`build/logs/42_graphics/0123_mesa.install.log`). The
 orchestrator names the failing step, and in its failure panel `O` opens the log and `C` copies the
 path. The message at the very end of a build's output is usually not the error: read upward from the
 end of the log. Three other files sit under `build/logs/`: `snapshots.log` (every notice the build
-showed), `chroot.log` (mount warnings from `script/chroot_exec.sh`) and `<phase>/expansion.log` (why
+showed), `chroot.log` (mount warnings from `script/chroot/exec.sh`) and `<phase>/expansion.log` (why
 a phase's package list could not be resolved). [Step logs](build-system.md#step-logs) has the
 details.
 
@@ -40,7 +40,9 @@ recipe and installs it, and `kpkgdepends` is its dependency solver. KDOS uses mu
 in place of glibc, and toybox, a single binary that provides most of the standard command-line tools
 as *applets*, as its base userland. *Preflight* is `testing/preflight.sh`, a static check of the
 repository's wiring. The *target tree* is `build/fs`, the root filesystem the build assembles and
-every phase from phase one onward installs into. The [Glossary](../06-reference/glossary.md)
+every phase from `10_bootstrap` onward installs into. A *shelf* is the subject directory an upstream
+port is filed in, `ports/core/<shelf>/<port>/`; a port is always named by its bare name, and
+`ls -d ports/core/*/<port>` shows where it is filed. The [Glossary](../06-reference/glossary.md)
 defines the rest.
 
 When a port's own build fails, `kpkg` leaves its work directory in place: the unpacked source is
@@ -52,7 +54,7 @@ container or `sudo`.
 Two checks run without a build and catch whole classes of failure before one starts:
 
 ```sh
-testing/preflight.sh     # the wiring: dependencies, hashes, meson options, recipe syntax
+testing/preflight.sh     # the wiring: layout, phase lists, dependencies, hashes, meson options, recipe syntax
 make fetch-check         # offline: every archived source present and matching its hash
 ```
 
@@ -73,9 +75,14 @@ lists everything preflight checks.
 | Preflight: `recipe-hashed archives are tracked by git`, or `make fetch-check` counting fewer sources than the recipes name | [Sources still in the git index](#sources-still-in-the-git-index) |
 | `sha256 MISMATCH for the generated <name>-vendor-<version>.tar.xz` | [A sha256 mismatch on a vendor bundle](#a-sha256-mismatch-on-a-vendor-bundle) |
 | `cannot generate <bundle> without its source`, `this needs docker or podman`, `failed to build the recipe reader`, or `--tree never generates` | [A vendor bundle that cannot be generated](#a-vendor-bundle-that-cannot-be-generated) |
+| `pre-push: the ports layout is broken at <commit>:` | [Pre-push refused: the ports layout](#pre-push-refused-the-ports-layout) |
 | `pre-push: these sources are named by a recipe but not in the archive at that commit` | [Pre-push refused: an unpublished source](#pre-push-refused-an-unpublished-source) |
 | `Failed to download` for every file, `is in no cache, and the archive is off`, or `pre-push: cannot reach the source archive` | [Fetch cannot reach the archive](#fetch-cannot-reach-the-archive) |
 | `package resolution failed - see build/logs/.../expansion.log` | [A package list that does not resolve](#a-package-list-that-does-not-resolve) |
+| `port <name> is filed twice: <path> and <path>`, or `is in two places` | [A port filed twice](#a-port-filed-twice) |
+| Preflight: `phase closure` fails, with `installed by <phase> (pulled in: …) but not named in its list` or `but named by <phase>` | [A phase that installs a port it does not name](#a-phase-that-installs-a-port-it-does-not-name) |
+| `kdosbuild: <phase> has both packages.txt and packages.d/`, `holds no *.txt`, `has no packages.txt, no packages.d/ and no *.sh`, or `no phase under script/phases/` | [A phase the orchestrator will not run](#a-phase-the-orchestrator-will-not-run) |
+| The startup picker offers only *start fresh* on a tree that has snapshots | [Snapshots the orchestrator does not see](#snapshots-the-orchestrator-does-not-see) |
 | `build/iso-build/kdos.iso is open by another process` | [The ISO is in use](#the-iso-is-in-use) |
 | `snapshot <phase> FAILED: only <size> free, need ~<size>` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
 | `snapshot <phase> FAILED: build/ is mid-restore of <phase>`, or `a restore of <phase> never finished` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
@@ -84,7 +91,7 @@ lists everything preflight checks.
 | A variable passed to `make build` has no effect on a chroot phase | [A variable that does not reach the chroot](#a-variable-that-does-not-reach-the-chroot) |
 | `Removing orphan` for a file another package still lists, then `not found` on that tool | [A package manager older than its source](#a-package-manager-older-than-its-source) |
 | `cmp`, `readelf` or another tool missing after toybox reinstalls | [A tool missing after toybox reinstalls](#a-tool-missing-after-toybox-reinstalls) |
-| Phase-one files over a later build, or a later tree filed under phase one's snapshot | [Re-running an early phase on a later tree](#re-running-an-early-phase-on-a-later-tree) |
+| `10_bootstrap` files over a later build, or a later tree filed under that phase's snapshot | [Re-running an early phase on a later tree](#re-running-an-early-phase-on-a-later-tree) |
 | A `ports/` helper that fails to start after you ran it in a container | [Helpers compiled against the other C library](#helpers-compiled-against-the-other-c-library) |
 | `Dynamic loading not supported` from a Rust crate, or a static archive's undefined references at its link | [Rust with a binding generator](#rust-with-a-binding-generator) |
 | `'cstddef' file not found` from clang or bindgen, in a header that compiles with gcc | [An LLVM that guessed its triple](#an-llvm-that-guessed-its-triple) |
@@ -93,7 +100,7 @@ lists everything preflight checks.
 | `no matching package named …` with the vendor tree present | [A vendor bundle in the wrong place](#a-vendor-bundle-in-the-wrong-place) |
 | CMake being compiled from source during a download step | [A Python backend resolving a system tool](#a-python-backend-resolving-a-system-tool) |
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
-| `'fenv_t' has not been declared`, then `Cannot compile std module`, in phase one | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
+| `'fenv_t' has not been declared`, then `Cannot compile std module`, in `10_bootstrap` | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
@@ -206,7 +213,7 @@ file and record its hash:
 
 ```sh
 ports/fetch <port>
-sha256sum ports/core/<port>/<file>
+sha256sum ports/core/*/<port>/<file>
 ```
 
 `KDOS_ALLOW_UNVERIFIED=1` lets a build extract an unhashed source while you bring a port up.
@@ -237,7 +244,7 @@ hook treat an LFS pointer as a file to archive. Take the tarballs out of the ind
 disk stay where they are) and commit that change:
 
 ```sh
-git rm --cached ports/core/<port>/<file>
+git rm --cached ports/core/*/<port>/<file>
 ```
 
 `make fetch-check` then counts and verifies them, and `.gitignore` keeps them out of the index.
@@ -279,6 +286,32 @@ check that `KDOS_SOURCES_BASE` is not empty and the archive is reachable. If it 
 recipe's hash names bytes that exist nowhere. Replace the `sha256 =` line with the hash printed on
 the `got` line, build the port, and run `ports/publish <port>` so every other clone fetches that
 bundle instead of generating its own.
+
+### Pre-push refused: the ports layout
+
+```text
+pre-push: the ports layout is broken at <commit>:
+  ports/core/<name>/kpkgbuild: not at ports/core/<shelf>/<name>/kpkgbuild
+  port <name> is in two places: <path> and <path>
+  shelf <shelf> is not listed in ports/shelves
+pre-push: (KDOS_SKIP_LAYOUT_CHECK=1 git push … skips this check)
+```
+
+Before it checks the archive, the pre-push hook reads the tree at the tip of each pushed ref that no
+remote already holds, with no network, and refuses the push when the ports tree breaks the layout every
+tool assumes. Each line names one breach:
+
+| Line | Fix |
+|---|---|
+| `…/kpkgbuild: not at ports/core/<shelf>/<name>/kpkgbuild` | A recipe sits directly under `ports/core`, or a level too deep. Move the port with `git mv` to `ports/core/<shelf>/<name>/`; the placement rules are in [Writing ports](writing-ports.md) |
+| `port <name> is in two places: <path> and <path>` | Two directories hold the same bare name, across `ports/core` and the `src/` areas. A port is found by name, so neither resolves; remove or rename one |
+| `shelf <shelf> is not listed in ports/shelves` | Add the shelf to `ports/shelves`, with a one-line description, or move its ports to a listed shelf |
+| `shelf <shelf>: the name is reserved`, `an id is lowercase letters, digits and -`, or `shares its name with the port at <path>` | A shelf is never `libs` or `core`, never named after a port, and uses only `[a-z0-9-]`. Rename it |
+| `ports/shelves is missing or lists no shelf` | The commit lost or emptied `ports/shelves` |
+
+`testing/preflight.sh` checks the same rules and more, so run it first; the hook holds when
+preflight was not run. `KDOS_SKIP_LAYOUT_CHECK=1` skips this check only, and
+`KDOS_SKIP_PUBLISH_CHECK=1` skips only the archive check that follows.
 
 ### Pre-push refused: an unpublished source
 
@@ -344,12 +377,72 @@ touched the build tree.
 <phase>: package resolution failed - see build/logs/.../expansion.log
 ```
 
-Before a package phase runs, the orchestrator asks `kpkgdepends` to turn the phase's
-`packages.txt` into a build order. When that fails, nothing in the phase is built, and
+Before a package phase runs, the orchestrator asks `kpkgdepends` to turn the phase's list into a
+build order. When that fails, nothing in the phase is built, and
 `build/logs/<phase>/expansion.log` holds the solver's output: usually a port name that does not
-exist, or a `depends` entry naming one. Preflight checks both (every package named in a
-`packages.txt` has a port, every `depends` entry names a port, every list resolves to a dependency
-order), so run it before re-running the build.
+exist, or a `depends` entry naming one. Preflight checks both (every package named in a phase list
+has a port, every `depends` entry names a port, every list resolves to a dependency order), so run
+it before re-running the build.
+
+### A port filed twice
+
+```text
+kpkg: port <name> is filed twice: /ports/core/<shelf>/<name> and /ports/core/<other>/<name>
+ERROR: port <name> is in two places: <path> and <path>
+```
+
+The first is `kpkg`, `kdos update` or `kdos cve`; the second is `script/lib/port.sh`, in
+`00_cross` or `10_bootstrap`. A port is known by its bare name and looked up at
+`<repository>/<name>/` and `<repository>/<shelf>/<name>/`, so two directories holding the same name
+inside one repository leave no right answer, and every tool refuses rather than pick one. The usual
+cause is a `git mv` to a new shelf that left a copy behind, or a new port given a name that is
+already taken. Remove one of the two. A recipe below its shelf (`port <name> is nested below its
+shelf`) is refused the same way. Preflight and the pre-push hook both report either before a
+build does.
+
+### A phase that installs a port it does not name
+
+```text
+  phase closure                                              FAIL
+      <N> line(s), first: FAIL <port>: installed by 41_system (pulled in: <port> <- <port>) but not named in its list
+```
+
+Every package phase from `30_foundation` on names exactly the ports it installs (see
+[Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)).
+A new `depends =` entry, or a port removed from a list, can make a phase pull in a port its list
+does not name, and `testing/phaseclosure.py` then names the port, the phase that installs it, the
+chain of dependencies that pulled it in, and the later phase that names it, if one does. Run
+`python3 testing/phaseclosure.py` for the whole report.
+
+- **`but not named in its list`.** Add the port to that phase's list: in a `packages.d/`, the
+  file of its shelf, `<shelf>.txt`, or for a port of KDOS's own `src-<area>.txt`; otherwise its
+  `packages.txt`.
+- **`but named by <later phase>`.** A dependency now reaches forward. Either move the port to the
+  earlier phase's list, which also moves everything that needs it into order, or remove the new
+  dependency. The port cannot stay in the later phase: the earlier one would build it anyway.
+
+The same run also refuses a name that is not a port on the phase's `PORT_REPO`, a name listed twice
+in one phase, a dependency that resolves only on a later phase's `PORT_REPO`, such as a port of
+`src/desktop` needed before `50_desktop`, and a name an earlier phase installs (`is installed by
+<phase>; a later phase may re-name it only in its order run`): a later phase names such a port
+again only in its order run, which is `00-order.txt` in a `packages.d/` and the names a
+`packages.txt` gives ahead of its first shelf banner, so that it is rebuilt there, in a pinned
+order, when its recipe changes. Preflight adds that a file in `packages.d/` names only ports filed on its shelf or `src/`
+area.
+
+### A phase the orchestrator will not run
+
+```text
+kdosbuild: 41_system has both packages.txt and packages.d/: a phase reads one list, and which one would be a guess
+kdosbuild: 41_system/packages.d/ holds no *.txt: the phase would install nothing and report success
+kdosbuild: 41_system has no packages.txt, no packages.d/ and no *.sh: the phase would run nothing and report success
+kdosbuild: no phase under script/phases/
+```
+
+`kdosbuild` names such a phase on every run and refuses to start a build, with exit status 2.
+Keep one kind of list per phase, give a `packages.d/` at least one `.txt` file, or remove a phase
+directory that holds nothing. The last message means `--script-dir` does not name the directory
+holding `phases/`; it defaults to `script`.
 
 ### The ISO is in use
 
@@ -382,7 +475,7 @@ follow:
 To force a rebuild:
 
 ```sh
-make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild <port>"
+make build BUILD_ARGS="--phases <its phase>,70_image --rebuild <port>"
 ```
 
 ### A variable that does not reach the chroot
@@ -390,17 +483,19 @@ make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild <port>"
 A variable passed to `make build` changes the steps that run in the build container and has no
 effect on any step that runs inside the chroot, including every packaging step.
 
-`script/chroot_exec.sh` enters the chroot with `env -i`, which clears the environment, and names
+`script/chroot/exec.sh` enters the chroot with `env -i`, which clears the environment, and names
 the few variables that pass through (`HOME`, `TERM`, `PATH`, `KDOS_REPLAY`, `KDOS_ISO_SOURCES`,
-`KDOS_PACK_KDOS`). An opt-in flag therefore needs two edits: the `Makefile` passes it into the
-container with `-e`, and `script/chroot_exec.sh` names it on the `env -i` line. See
+`KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST` and `KPKG_KEEP_CACHE`). An opt-in flag therefore needs two
+edits: the `Makefile` passes it into the container with `-e`, and `script/chroot/exec.sh` names it
+on the `env -i` line. See
 [`env -i` means every variable must be named](build-system.md#env--i-means-every-variable-must-be-named).
 
 ### A package manager older than its source
 
-`kpkg` is not a port. `script/01_phase1/12_kpkg.sh` compiles it straight into the target tree and
-records a hash of its sources in `build/mark/phase1/kpkg`. A run that includes phase one recompiles
-it when that hash changes; a run that starts later, such as `--continue-from 04_phase4`, never does,
+`kpkg` is not a port. `script/phases/10_bootstrap/120_kpkg.sh` compiles it straight into the target
+tree and records a hash of its sources in `build/mark/bootstrap/kpkg`. A run that includes
+`10_bootstrap` recompiles it when that hash changes; a run that starts later, such as
+`--continue-from 41_system`, never does,
 so every later install and upgrade uses the older binary in the target tree. The current `kpkg`
 keeps a file another installed package still lists (`Keeping <path>: <package> claims it`); an
 older one can remove it as an orphan instead. The tool is then missing for every port built after
@@ -409,10 +504,10 @@ it: an upgrade of toybox that takes `cmp`, for example, makes bzip2's test fail 
 
 Recompile `kpkg` in the target tree in place before continuing. A plan that names a step suppresses
 snapshots and sets `KDOS_REPLAY=1`, so the step's "already built" guard stands down and the
-phase-one snapshot is not overwritten:
+`10_bootstrap` snapshot is not overwritten:
 
 ```sh
-make build BUILD_ARGS="--phases 01_phase1 --steps 01_phase1:12_kpkg.sh"
+make build BUILD_ARGS="--phases 10_bootstrap --steps 10_bootstrap:120_kpkg.sh"
 ```
 
 Files an older `kpkg` has already removed come back only when their owning port reinstalls. That
@@ -429,17 +524,18 @@ every configure script before the GNU ports needs and which those ports install 
 toybox installed after a port that owns one of those names holds that name in its manifest, and a
 toybox upgrade removes every name its previous manifest held, taking the other port's file with it.
 `kpkg` skips a port whose recipe hash is current, wherever it is listed, so the owning port is not
-reinstalled on its own. The comment under the `toybox` line in `script/04_phase4/packages.txt`
-states the rule: a name toybox compiles out needs a `release =` bump to the port that owns it in the
-same change, and those owners are listed straight after toybox in phase four so that they reinstall
+reinstalled on its own. The comment under the `toybox` line in
+`script/phases/40_lang/packages.d/00-order.txt` states the rule: a name toybox compiles out needs a
+`release =` bump to the port that owns it in the same change, and those owners are listed straight
+after toybox at the head of `40_lang`, the first phase after the compilers, so that they reinstall
 before anything later needs them. bzip2's build runs `cmp`, which is why the order matters.
 
 ### Helpers compiled against the other C library
 
 `ports/fetch`, `ports/publish` and `ports/update` compile helpers on first use and keep them in
 `ports/.kpkgbin/`, `ports/.portup` and `ports/.portup-tools/`. `ports/.kpkgbin/kpkg` is recompiled
-when any of its sources is newer than the binary, and `ports/.portup` when a `.c` file under
-`src/tools/kdos-portup` is; `ports/.portup-tools/kpkg` is recompiled only when it is missing or
+when any of its sources is newer than the binary, and `ports/.portup` when a `.c` or `.h` file
+under `src/devtools/kdos-portup` or the libraries it links is; `ports/.portup-tools/kpkg` is recompiled only when it is missing or
 fails to execute. Run one of those tools inside a container that mounts the repository read-write,
 such as an Alpine-based development container, and the helpers are left compiled against that
 container's C library; a binary built against musl does not run under glibc, or the reverse, and the
@@ -458,18 +554,33 @@ continue from:
 
 | Message | Cause and fix |
 |---|---|
-| `snapshot <phase> FAILED: only <size> free, need ~<size>` | The new archives are written beside the old ones, so the free space on `build/` must hold the phase's previous compressed snapshot plus a fifth (a third of the raw size for a first snapshot). A complete set has measured at roughly 84 GB. Free space, delete old snapshots from the startup picker (`D`), or run `make cleanbuild` (keeps `build/snapshots`) or `make clean` (removes them); both keep `build/keys` |
+| `snapshot <phase> FAILED: only <size> free, need ~<size>` | The new archives are written beside the old ones, so the free space on `build/` must hold the phase's previous compressed snapshot plus a fifth (a third of the raw size for a first snapshot). The `70_image` snapshot alone is about 59 GB. Free space, delete old snapshots from the startup picker (`D`), or run `make cleanbuild` (keeps `build/snapshots`) or `make clean` (removes them); both keep `build/keys` |
 | `snapshot <phase> FAILED: build/ is mid-restore of <phase>; refusing to snapshot it` | `build/.restore-in-progress` exists: a restore was interrupted and the tree is part-extracted. A new build refuses to start in the same state with `a restore of <phase> never finished - build/ is inconsistent.` Restore a snapshot again, or run `make cleanbuild` |
 | `snapshot <phase> FAILED: mounts still active under build/fs: <paths>` | Something is still mounted under `build/fs`. The orchestrator first unmounts leftover chroot mounts itself, lazily if it has to (`released stale chroot mount(s)`), and names at most three it could not release. Find what holds them, such as a shell or process still inside the chroot, stop it, and unmount the paths |
 
+### Snapshots the orchestrator does not see
+
+The startup picker offers only *start fresh*, `--restore` answers `no snapshot for <phase>`, and
+`10_bootstrap` re-runs every step, although `build/snapshots/` is full.
+
+Snapshots, logs and timing history are filed by phase directory name, and the orchestrator looks
+only under the names of the directories in `script/phases/`. State filed under a name no phase
+directory has, such as a `build/` shared with a checkout whose phases are named differently, is
+invisible to it. For each phase, file its state under the name of the phase's directory: the
+snapshot directory under `build/snapshots/` and the `phase` and `phase_dir` fields of its
+`manifest.json`, the log directory under `build/logs/`, the phase and step keys of
+`build/snapshots/timings.json`, and the names in `build/.devplan.json`. The two host phases'
+markers are filed by the `MARK=` directory their `phase.env` names, `build/mark/cross` and
+`build/mark/bootstrap`, and a marker under any other name makes `10_bootstrap` re-run its steps.
+
 ### Re-running an early phase on a later tree
 
-Phase one run on a target tree that has already been through phase four works on files later
-phases have replaced. Its scripts skip on their markers (see
+`10_bootstrap` run on a target tree that has already been through the userland phases works on
+files later phases have replaced. Its scripts skip on their markers (see
 [Guards in the early phases](build-system.md#guards-in-the-early-phases)), but one whose guard
-stands down installs its phase-one build into `build/fs` over the newer versions, and a failure
-that follows looks like an ordinary build error. A full run would also overwrite phase one's
-snapshot with the later tree filed under phase one's name. Use `--continue-from` or a
+stands down installs its early build into `build/fs` over the newer versions, and a failure that
+follows looks like an ordinary build error. A full run would also overwrite that phase's snapshot
+with the later tree filed under its name. Use `--continue-from` or a
 narrowed plan instead; a plan that narrows the run suppresses snapshots unless `--snapshot` is
 given. See [Snapshots](build-system.md#snapshots) and [Build plans](build-system.md#build-plans).
 
@@ -477,7 +588,7 @@ given. See [Snapshots](build-system.md#snapshots) and [Build plans](build-system
 
 ## Toolchains and language runtimes
 
-KDOS is built on musl, with GCC as the system compiler (`CC=gcc` from phase three onward), LLVM
+KDOS is built on musl, with GCC as the system compiler (`CC=gcc` from `30_foundation` onward), LLVM
 and Clang as ports, and Rust linked against the system LLVM. Most of the failures in this group
 come from an upstream that assumes glibc, or a toolchain configured by guesswork.
 
@@ -596,13 +707,14 @@ each one's metadata to find that out.
 
 `unknown type name 'bool'` in a header under `gcc/config/`, while `libgcc` is being compiled.
 
-Every phase's `CFLAGS` pins a C standard older than C23 (`-std=gnu99` in the toolchain phase and
-phase one, `-std=gnu11` from phase two onward). GCC's configure copies `CFLAGS` into
+Every phase's `CFLAGS` pins a C standard older than C23 (`-std=gnu99` in `00_cross` and
+`10_bootstrap`, from `script/env/host.env`, and `-std=gnu11` from `20_selfhost` onward, from
+`script/env/chroot.env`). GCC's configure copies `CFLAGS` into
 `CFLAGS_FOR_TARGET`, the flags for the runtime libraries it builds with the compiler it has just
 built. That runtime includes the target's own headers, which are written for the new compiler's
 default standard and use `bool` without `<stdbool.h>`.
 
-`script/01_phase1/10_gcc.sh` and the `gcc`, `gcc-arm-none-eabi`, `gcc-avr`,
+`script/phases/10_bootstrap/100_gcc.sh` and the `gcc`, `gcc-arm-none-eabi`, `gcc-avr`,
 `gcc-riscv64-unknown-elf` and `libstdcxx-arm-none-eabi` ports each pass `CFLAGS_FOR_TARGET` with
 the `-std=` flag removed:
 
@@ -613,17 +725,17 @@ CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
 ### The installed C++ headers shadowing the ones being built
 
 `'fenv_t' has not been declared in '::'`, followed by `Cannot compile std module`, in the
-phase-one GCC log. Make carries on past it, so the step succeeds and the compiler ships with no
+`10_bootstrap` GCC log. Make carries on past it, so the step succeeds and the compiler ships with no
 `import std;`.
 
-Phase one builds the system compiler with the cross-compiler, whose own C++ headers are on its
+`10_bootstrap` builds the system compiler with the cross-compiler, whose own C++ headers are on its
 default search path. A libstdc++ wrapper such as `fenv.h` reaches the C library's header with
 `#include_next`, and the next directory holding that name is the cross-compiler's copy of the same
 wrapper. Its include guard is already set, so the C library's declarations never arrive.
 
-`script/01_phase1/10_gcc.sh` passes `CXXFLAGS_FOR_TARGET="$CXXFLAGS -nostdinc++"`, which leaves
-only the headers of the libstdc++ being built. GCC's own configure adds `-nostdinc++` when it
-builds the target libraries with the compiler in its own build directory; phase one builds them
+`script/phases/10_bootstrap/100_gcc.sh` passes `CXXFLAGS_FOR_TARGET="$CXXFLAGS -nostdinc++"`, which
+leaves only the headers of the libstdc++ being built. GCC's own configure adds `-nostdinc++` when it
+builds the target libraries with the compiler in its own build directory; `10_bootstrap` builds them
 with the cross-compiler instead, so the flag has to be passed.
 
 ### Gettext on musl
@@ -698,8 +810,8 @@ export LDFLAGS="$LDFLAGS -licuuc"
 
 KDOS's base userland is toybox, a single binary that provides most of the standard command-line
 tools as applets. Its applets implement less than the GNU tools, and upstream build systems
-routinely assume GNU behaviour. The GNU `gawk` (from phase two), `sed` and `findutils` (from
-phase three) ports install over their applets, and `coreutils` installs exactly two programs,
+routinely assume GNU behaviour. The GNU `gawk` (from `20_selfhost`), `sed` and `findutils` (from
+`30_foundation`) ports install over their applets, and `coreutils` installs exactly two programs,
 `expr` and `ln`, because installing all of it would take about a hundred paths off toybox.
 
 ### A stream-editor extension that is not there
@@ -712,10 +824,11 @@ NUL-separated input), but not all of GNU's: the `0,/regex/` address form and the
 case-conversion escapes are among those it lacks, and a script using one can produce no output
 rather than an error. A configure script that generates a header through a `0,/regex/d` script
 gets an empty file from toybox's `sed`, and the build fails several steps later on an error naming
-a type. GNU `sed` is built in phase three for that reason.
+a type. GNU `sed` is built in `30_foundation` for that reason.
 
-GNU `sed` is the `sed` port, listed in phases three and four. A port built in phase three before
-it, or one that relies on the ordering, names `sed` in its `depends` line.
+GNU `sed` is the `sed` port, listed in `30_foundation` and in `40_lang`'s `00-order.txt`. A port
+built in `30_foundation` before it, or one that relies on the ordering, names `sed` in its
+`depends` line.
 
 ### Missing compact-userland features
 
@@ -724,14 +837,14 @@ or a relative-symlink option in an install script.
 
 `expr length STRING` is undefined in POSIX, and toybox's `expr` yields an empty string for it. A
 configure script that then compares the result numerically prints `integer expected` and falls
-through to a misleading error; the `coreutils` recipe records brltty reporting a present speech
+through to a misleading error; the `coreutils` port's `build.sh` records brltty reporting a present speech
 driver as unknown. toybox's `ln` has `-r` but not the long spelling `--relative`, which meson
 install scripts use to make a symlink inside `DESTDIR` that stays correct once the tree is moved.
 The `coreutils` port installs GNU `expr` and `ln` for these two reasons.
 
 Each name added there replaces a toybox applet with a GNU program on every installed system,
 while KDOS keeps toybox as its base userland. Prefer a build flag; add a name to
-`INSTALL_PROGRAMS` in the `coreutils` recipe only when a toybox applet is missing a feature a port
+`INSTALL_PROGRAMS` in the `coreutils` port's `build.sh` only when a toybox applet is missing a feature a port
 cannot do without.
 
 ---
@@ -864,8 +977,8 @@ search path the whole time.
 
 The standard compiler-detection macro walks a preference list, and some projects put an
 alternative compiler first. The moment that alternative becomes a port, every such recipe silently
-changes toolchain. The environment of phase three and every later phase therefore sets `CC=gcc` by
-name: a distribution that builds itself cannot have its toolchain depend on which ports happen to
+changes toolchain. The environment of `30_foundation` and every later phase therefore sets `CC=gcc`
+by name: a distribution that builds itself cannot have its toolchain depend on which ports happen to
 be installed. A configuration script that ignores `CC` needs its own switch, passed in the recipe.
 
 ### A build calling `python`
@@ -890,9 +1003,11 @@ Autoconf 2.72 probes for C++11 with a test program that assigns a `u8""` literal
 Under GCC's default of C++20 that literal is `char8_t`, the probe fails, and `configure` adds the
 first option that passes, `-std=gnu++11`, to `CXX` itself. Setting the cache variable empty
 records that no option is needed and keeps the compiler's default, rather than naming a standard
-in `CXXFLAGS`, which pins one the code may outgrow. The environment files of phases 3, 4 and 5
-and of the desktop phase export it empty, so a port built in them does not meet this. A port that
-can be built in an earlier phase passes it on its own `configure` line, as `rdfind` does:
+in `CXXFLAGS`, which pins one the code may outgrow. `script/env/chroot.env` exports it empty for
+every package phase from `30_foundation` to `60_kernel`, so a port built in them does not meet this;
+`20_selfhost` unsets it, because it builds the compiler itself. A recipe that must not depend on
+the phase environment, such as one also built by hand or on an installed system with `kpkg`, passes
+it on its own `configure` line, as `rdfind` does:
 
 ```bash
 ./configure --prefix=/usr ac_cv_prog_cxx_cxx11=
@@ -947,9 +1062,10 @@ a port's `build.sh`, the rule is yours to keep.
 `No rule to make target '\'`, naming an object that compiled a moment earlier, during
 `make install`.
 
-Every phase exports `MAKEFLAGS=-j12`, so the install runs in parallel as well as the build. A
-project whose install targets regenerate their own dependency files races itself: a half-written
-`.dep` file ends on a bare line continuation, and make reads the backslash as a target.
+Every phase exports `MAKEFLAGS=-j12`, from `script/env/common.env`, so the install runs in parallel
+as well as the build. A project whose install targets regenerate their own dependency files races
+itself: a half-written `.dep` file ends on a bare line continuation, and make reads the backslash as
+a target.
 
 Use `make -j1 … install` for that project, as the `libburn`, `libisofs`, `xfsprogs` and several
 other ports do. A `-j` on the command line overrides the one in `MAKEFLAGS`, and only that
@@ -962,9 +1078,9 @@ A header that is plainly missing, in a port that has built many times before, on
 only. `sys/queue.h` is the one to expect on musl.
 
 The port never declared the dependency and was satisfied by whatever else had already pulled it
-in. In KDOS `sys/queue.h` (with `sys/tree.h` and `sys/cdefs.h`) comes from `libbsd`, which no
-`packages.txt` names; it arrives as a dependency of ports such as `netcat`, `libtirpc` and `samba`.
-An incremental build already has it. On an empty target tree the solver's order decides, and a port
+in. In KDOS `sys/queue.h` (with `sys/tree.h` and `sys/cdefs.h`) comes from `libbsd`, which
+`41_system` installs and which ports such as `netcat`, `libtirpc` and `samba` depend on. An
+incremental build already has it. On an empty target tree the solver's order decides, and a port
 built before its accidental provider fails.
 
 Name the dependency in `depends`. The key exists so that the solver orders the build, and a
@@ -1040,8 +1156,8 @@ Work through these in order:
 - [Testing](testing.md): everything preflight checks before a build starts
 - [How KDOS is built](how-kdos-is-built.md): the build from `git clone` to a bootable ISO, as one
   story
-- [The ports catalogue](../06-reference/ports-catalogue.md): every port by phase and group, to find
-  which phase builds the port that failed
+- [The ports catalogue](../06-reference/ports-catalogue.md): every port by shelf, with the phase
+  that builds it
 
 <!-- book-nav -->
 ---

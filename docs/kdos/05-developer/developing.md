@@ -42,12 +42,14 @@ to use Docker is equivalent to root on that machine, since a container can mount
 And `build/fs`, the target root filesystem, is owned by root, so reading or deleting it takes root
 or a container; see [Where the build puts things](#where-the-build-puts-things).
 
-**Disk.** The upstream sources for the current tree take about 41.5 GB (38.6 GiB): the 2,450
+**Disk.** The upstream sources for the current tree take about 41.5 GB (38.6 GiB): the 2,448
 distinct files the recipes fetch, which is what `ports/.srccache/` holds after a complete
-`make fetch`. Each distinct file is held once in the cache and hard-linked into every port directory that names it. Budget tens of gigabytes more for
-`build/`, and about 84 GB for a complete set of phase snapshots (measured on one full build), of
-which the packaging snapshot alone is about 59 GB because it carries the ISO tree. Snapshots are
-optional; see [The startup picker](build-system.md#the-startup-picker).
+`make fetch`. Each distinct file is held once in the cache and hard-linked into every port directory
+that names it. Budget tens of gigabytes more for `build/`, and more again for phase snapshots: every
+one of the thirteen phases archives a compressed copy of the target tree, and the `70_image`
+snapshot alone is about 59 GB because it carries the ISO tree. A complete set of thirteen has not
+been measured. Snapshots are optional, per run and per phase; see
+[Snapshots](build-system.md#snapshots).
 
 ## Getting the source
 
@@ -85,7 +87,7 @@ working tree is dirty are passed in and recorded with each snapshot. Your user a
 passed in as well, and when the orchestrator exits it hands everything under `build/` back to you,
 except `build/fs`; see [Where the build puts things](#where-the-build-puts-things).
 
-The orchestrator is `kdosbuild`, compiled from `src/build/kdosbuild/` by `script/kdosbuild.sh` at
+The orchestrator is `kdosbuild`, compiled from `src/devtools/kdosbuild/` by `script/kdosbuild.sh` at
 the start of every build. On a terminal it first opens a picker that asks whether to start fresh or
 restore a snapshot, and whether to write snapshots as it goes; see
 [The startup picker](build-system.md#the-startup-picker). Without a terminal it prints plain lines
@@ -103,35 +105,43 @@ Two things to know before the first run:
   so rewriting it under a running guest turns every block the guest has not cached into an I/O
   error. Shut the guest down first, or override with `make build ALLOW_ISO_IN_USE=1`.
 
-Two opt-in variables change what the ISO carries. Each is passed by the `Makefile` and forwarded
-into the chroot by `script/chroot_exec.sh`:
+Three opt-in variables change what the build produces. Each is passed by the `Makefile` and
+forwarded into the chroot by `script/chroot/exec.sh`:
 
 | Variable | Effect |
 |---|---|
-| `KDOS_ISO_SOURCES=1` | Copies `src/` and `script/` onto the ISO under `/sources`, beside `system.sfs` rather than inside it, with a `SOURCES` stamp giving the port count, the size and the build time. `sources/ports/` is on the medium but empty: the step copies the chroot's `/kdos/ports`, and `/kdos` is a non-recursive bind of the repository in which `ports/` is only a mount point (the recipes and fetched sources are mounted at `/ports` instead). `fs/` is not copied, and the `Makefile` and `Dockerfile` are not mounted into the build, so none of them is on the medium |
+| `KDOS_ISO_SOURCES=1` | Copies the tree onto the ISO under `/sources`, beside `system.sfs` rather than inside it: `src/`, `script/`, `fs/`, and `ports/` with every recipe and fetched source but without its caches, with a `SOURCES` stamp giving the port count, the size and the build time. The `Makefile` and `Dockerfile` are not mounted into the build, so neither is on the medium. It roughly doubles the size of the image |
 | `KDOS_PACK_KDOS=1` | Also packs the root filesystem as the base pack `kdos`, in `build/kdos-base/kdos.kpack`, and puts it on the ISO under `/packs`. `kdos-box create ports base=pack:kdos` then gives a running KDOS a clean KDOS to build ports in. Without the flag, a pack left from an earlier build is deleted |
+| `KDOS_MAKE_BINHOST=1` | Keeps every package the build makes and writes them into a signed binhost in `build/binhost/`, which `kdos update apply` can install from. Each run adds what it built, so a complete binhost needs one `--fresh` build with the flag set |
 
 For example, `make build KDOS_ISO_SOURCES=1`.
 
 ## The phases
 
-The orchestrator runs eight phases, each a directory under `script/`, in sorted order:
+The orchestrator runs thirteen phases, each a directory under `script/phases/`, in sorted order. A
+phase can be named by its directory or by its short name, the word after the number:
 
-| Directory | Title |
-|---|---|
-| `00_toolchain` | Cross Toolchain |
-| `01_phase1` | Base Userland |
-| `02_phase2` | Self-Hosting Bootstrap |
-| `03_phase3` | Toolchain & Core Libraries |
-| `04_phase4` | Userland & GUI Sliver |
-| `05_desktop` | Desktop |
-| `05_phase5` | Kernel |
-| `06_packaging` | Packaging |
+| Directory | Short name | Title |
+|---|---|---|
+| `00_cross` | `cross` | Cross Toolchain |
+| `10_bootstrap` | `bootstrap` | Base Userland |
+| `20_selfhost` | `selfhost` | Self-Hosting Bootstrap |
+| `30_foundation` | `foundation` | Build Foundation |
+| `31_compilers` | `compilers` | Compilers |
+| `40_lang` | `lang` | Languages |
+| `41_system` | `system` | System |
+| `42_graphics` | `graphics` | Graphics Stack |
+| `43_toolkits` | `toolkits` | Toolkits |
+| `44_apps` | `apps` | Applications |
+| `50_desktop` | `desktop` | Desktop |
+| `60_kernel` | `kernel` | Kernel |
+| `70_image` | `image` | Image |
 
-`05_desktop` sorts before `05_phase5` by design: the desktop is ordinary userland, and the kernel is
-the last thing built before packaging. `00_toolchain`, `01_phase1` and `06_packaging` are
-directories of numbered scripts; the other five install the ports named in their `packages.txt`.
-What each phase contains, and how one runs, is in [The build system](build-system.md#phases).
+`00_cross`, `10_bootstrap` and `70_image` are directories of numbered scripts; the other ten
+install the ports their package list names and the dependencies those need. From `30_foundation`
+on, each list names exactly the ports its phase installs; `20_selfhost`'s eight names pull in six
+more. The numbers leave gaps so that a phase can be added between two others without renaming
+any. What each phase contains, and how one runs, is in [The build system](build-system.md#phases).
 
 ## Make targets
 
@@ -168,7 +178,7 @@ Arguments reach the orchestrator through `BUILD_ARGS` and the version checker th
 `PORTUP_ARGS`:
 
 ```sh
-make build BUILD_ARGS="--continue-from 04_phase4"
+make build BUILD_ARGS="--continue-from 41_system"
 make updates PORTUP_ARGS="--check curl"
 ```
 
@@ -262,7 +272,7 @@ Some tools keep compiled helpers and data under `ports/`, all ignored by git:
 |---|---|
 | `ports/.srccache/` | The source cache. Plain data; survives both cleans |
 | `ports/.kpkgbin/` | The recipe reader `ports/fetch` and `ports/publish` compile, recompiled whenever its sources are newer than the binary |
-| `ports/.portup` | The version checker `ports/update` compiles, recompiled when a `.c` file under `src/tools/kdos-portup/` is newer than the binary; a change to a library it links does not trigger it |
+| `ports/.portup` | The version checker `ports/update` compiles, recompiled when a `.c` or `.h` file under `src/devtools/kdos-portup/` or the three libraries it links (`libkbase`, `libkpkg`, `libkbuild`) is newer than the binary |
 | `ports/.portup-tools/` | The version checker's own copy of the recipe reader, compiled when missing or when it cannot run; a change to its sources does not trigger it |
 | `ports/.update-cache.json` | The version checker's results, kept for 24 hours |
 
@@ -378,12 +388,16 @@ timestamp, owner 0, `xz -9 -T1`), so the same inputs give the same bytes.
 | `ports/fetch --check [port…]` | Offline: list each archived file that is missing or fails its hash, and each recipe that cannot be read; exit 1 if any. `make fetch-check` runs it over every port |
 | `ports/fetch --tree <dir> [port…]` | Fetch for the `ports/core` of another checkout `<dir>`, using this tree's archive logic, recipe reader, cache and index. Never generates a vendor bundle |
 
+A port is always named by its bare name, never by its shelf: `ports/fetch pv` fetches
+`ports/core/cli/pv`. A named port that does not exist fails the run, in every mode, so a typo is not
+mistaken for a port whose sources are all in place; `ports/publish <port>` behaves the same way.
+
 A checkout with no `ports/srclib.sh` cannot fetch from the archive by itself, and this tree's
 `ports/fetch` cannot be copied into it, because it needs `srclib.sh` beside it. Fetch for it from a
 checkout that has one instead:
 
 ```sh
-ports/fetch --tree ../kdos-old
+ports/fetch --tree ../other-checkout
 ```
 
 This works because the index only grows: the newest `ports/sources.idx` names every file an older
@@ -403,15 +417,27 @@ filter counts as an archive to fetch, because without LFS its working copy is on
 
 ### The pre-push check
 
-The `pre-push` hook enforces the archive's side of this. For each ref pushed, it takes the hashes
-the pushed commit's recipes name and the remote's current commit does not, and requires each to be
-listed in `ports/sources.idx` as of the pushed commit and present at the archive address that line
-gives. A file git itself carries, such as a patch, is not checked. The hook also refuses the push
-when it cannot reach the archive, or the archive answers anything other than 200 or 404, since it
-then cannot prove the sources are there. Set `KDOS_SKIP_PUBLISH_CHECK=1` for a push you know is
-safe. Setting `core.hooksPath` replaces `.git/hooks` entirely, including any hooks git-lfs
-installed. How a new source reaches the archive is in
-[Publishing sources](writing-ports.md#publishing-sources).
+The `pre-push` hook makes two checks, in this order.
+
+**The ports layout.** At the tip of each pushed ref that no remote already holds, read from git's
+own tree rather than your working copy, the hook requires every `kpkgbuild` under `ports/core` to be exactly
+at `ports/core/<shelf>/<name>/kpkgbuild`, with `<shelf>` listed in that commit's `ports/shelves`;
+every bare port name to be unique across `ports/core` and the `src/` areas; and no listed shelf to
+be named `libs` or `core`, to share its name with a port, or to use anything but lowercase letters,
+digits and `-`. It needs no network. Only the tip is checked, because only the tip is built: an
+intermediate commit whose breach a later commit repairs passes. A refusal starts `pre-push: the
+ports layout is broken at <commit>:` and lists each breach. `testing/preflight.sh` checks the same and more; the hook holds
+when preflight was not run. Set `KDOS_SKIP_LAYOUT_CHECK=1` to skip it.
+
+**The archive.** The hook then enforces the archive's side of fetching. For each ref pushed, it
+takes the hashes the pushed commit's recipes name and the remote's current commit does not, and
+requires each to be listed in `ports/sources.idx` as of the pushed commit and present at the archive
+address that line gives. A file git itself carries, such as a patch, is not checked. The hook also
+refuses the push when it cannot reach the archive, or the archive answers anything other than 200 or
+404, since it then cannot prove the sources are there. Set `KDOS_SKIP_PUBLISH_CHECK=1` for a push
+you know is safe; it skips this check only, not the layout check. Setting `core.hooksPath` replaces
+`.git/hooks` entirely, including any hooks git-lfs installed. How a new source reaches the archive
+is in [Publishing sources](writing-ports.md#publishing-sources).
 
 ## Rebuilding one thing
 
@@ -419,61 +445,72 @@ A full build takes hours, and almost no change needs one. Find what you changed 
 
 | Changed | Run |
 |---|---|
-| Something under `fs/` | `make build BUILD_ARGS="--phases 01_phase1,06_packaging --steps 01_phase1:00_file_system.sh"` |
-| One port's recipe | `make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild <port>"` |
-| A desktop program | `make build BUILD_ARGS="--phases 05_desktop --rebuild <port>"` |
-| A library under `src/libs/` | `make build BUILD_ARGS="--phases 01_phase1,04_phase4,05_desktop,06_packaging --steps 01_phase1:12_kpkg.sh,01_phase1:13_kinstall.sh"`; see below |
-| The installer (`src/packages/kdos-installer`, or `kdos-appbox`'s `catalogue.c`) | `make build BUILD_ARGS="--phases 01_phase1,06_packaging --steps 01_phase1:13_kinstall.sh"`; see below |
-| Only packaging | `make build BUILD_ARGS="--phases 06_packaging"` |
-| Nothing; resuming an interrupted run | `make build BUILD_ARGS="--continue-from 04_phase4"` |
+| Something under `fs/` | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:000_file_system.sh"` |
+| One port's recipe | `make build BUILD_ARGS="--phases <its phase>,70_image --rebuild <port>"`, for example `--phases 41_system,70_image --rebuild pv` |
+| A desktop program | `make build BUILD_ARGS="--phases 50_desktop --rebuild <port>"` |
+| A library under `src/libs/` | `make build BUILD_ARGS="--phases 10_bootstrap,41_system,42_graphics,44_apps,50_desktop,70_image --steps 10_bootstrap:120_kpkg.sh,10_bootstrap:130_kinstall.sh"`; see below |
+| The installer (`src/system/kdos-installer`, or `kdos-appbox`'s `catalogue.c`) | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:130_kinstall.sh"`; see below |
+| Only packaging | `make build BUILD_ARGS="--phases 70_image"` |
+| Nothing; resuming an interrupted run | `make build BUILD_ARGS="--continue-from <the phase it stopped in>"` |
 | Every phase, on the existing tree, skipping the startup picker | `make build BUILD_ARGS="--fresh --no-snapshot"` |
 
-Use the phase the port is listed in: a port named in `script/03_phase3/packages.txt` is rebuilt with
-`--phases 03_phase3,06_packaging`. Add `06_packaging` whenever you want a new ISO from the change.
-[The ports catalogue](../06-reference/ports-catalogue.md) lists every port by phase and group. To
-find the phase from the tree:
+Use the phase that installs the port. Add `70_image` whenever you want a new ISO from the change.
+A new port is built only once a phase list names it. In `40_lang` to `44_apps` the list is a
+directory, `packages.d/`, whose files are each named for a shelf (`<shelf>.txt`) or a `src/` area
+(`src-<area>.txt`) and name only ports filed there; `40_lang` and `41_system` also carry
+`00-order.txt` for the runs whose order a comment pins, the one file in a `packages.d/` that may name a
+port an earlier phase installs. Every other package phase has a single `packages.txt`. [Which phase lists a port](writing-ports.md#which-phase-lists-a-port)
+says which phase a new port belongs to.
+[The ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf with its phase.
+To find the phase from the tree:
 
 ```sh
-grep -l '^<port>$' script/*/packages.txt     # the phase(s) that name it
-ls build/logs/*/*_<port>.install.log      # the phase whose logs hold its install
+grep -lx '<port>' script/phases/*/packages.txt script/phases/*/packages.d/*.txt   # the lists that name it
+ls build/logs/*/*_<port>.install.log                                            # the phase whose logs hold its install
 ```
 
-38 ports are named in more than one list: 8 phase-2 bootstrap ports are named again in `03_phase3`
-(2 of them in `04_phase4` as well), 29 phase-3 ports again in `04_phase4`, and `xcb-util-wm` in both
-`04_phase4` and `05_desktop`. zlib, gcc, binutils and bash are among them. For these the first
-command prints several files. Pass only one of those phases: `--rebuild` forces the port in every
-selected phase whose resolved install order contains it, as a listed port or as a dependency, so
-selecting two such phases compiles it twice. The latest phase that names it is the usual choice,
-because a port rebuilt under a phase is built with that phase's environment file, and the latest one
-is the environment it was last built with. The files differ: `script/phase2.env.sh` names no
-compiler, while `phase3.env.sh` onwards set `CC=gcc` and `CXX=g++`, and `src/packages` is on
-`PORT_REPO` only from `phase4.env.sh` on (`phase4`, `phase5` and `desktop`).
+From `30_foundation` on, every port a phase installs is named in that phase's list, so for almost
+every port the first command prints one file, and the phase is the directory in its path. 34 ports
+are named in more than one list: 28 are named in `30_foundation` and again in `40_lang`'s
+`00-order.txt` (`toybox` and the ports that own the commands a toybox upgrade takes back), and 8 of
+`20_selfhost`'s ports are named again in `30_foundation`, two of them among those 28. A later list
+names a port again so that it is rebuilt there when its recipe has changed, before the ports after
+it use it. For these the first command prints several files. Pass
+only one of those phases: `--rebuild` forces the port in every selected phase whose resolved install
+order contains it, as a listed port or as a dependency, so selecting two such phases compiles it
+twice. The latest phase that names it is the usual choice, because a port rebuilt under a phase is
+built with that phase's environment, and the latest one is the environment it was last built with.
+The environments differ: `20_selfhost` names no compiler, while every later phase sets `CC=gcc` and
+`CXX=g++`. `PORT_REPO` differs too: `src/system` and `src/art` are on it from `40_lang` on, and
+`src/desktop` and `src/daemons` only in `50_desktop`.
 
-An eighth of the ports in `ports/core` are named in no `packages.txt` (249 of 1,999); almost all of
-them are installed because a listed port depends on them. For those, the second command finds the
-phase, or use the phase of the first listed port that depends on it.
+Nine of the 1,999 ports in `ports/core` are named in no list. Four are installed because
+`20_selfhost`'s list depends on them (`gmp`, `mpfr`, `mpc` and `xxhash`), and the second command
+finds their phase. The other five (`helix`, `icon-naming-utils`, `musl-locales`,
+`perl-xml-simple` and `setconf`) are named by no list and needed by no port, so no build installs
+them.
 
 **Editing a library rebuilds every port of KDOS's own**, not only the ones that use it. KDOS's own
-programs are recipes under `src/packages/` and `src/desktop/`, 24 in all. Such a recipe has no
-upstream tarball, so its recipe hash covers its own directory and the whole of `src/libs`; working
-out which libraries a `build.sh` actually compiles would need a shell parser inside the package
-manager. Each of these ports takes seconds to compile. Upstream ports are unaffected. The phase
-lists install 23 of the 24, in `04_phase4` and `05_desktop`, and their changed hash is enough to
-rebuild them, so they need no `--rebuild`. The 24th, `kdos-installer`, is in no phase list, so
-`--rebuild kdos-installer` reaches no phase and rebuilds nothing; the installer on the image comes
-from the phase-1 step `13_kinstall.sh` instead, which also compiles in `catalogue.c` from
-`src/packages/kdos-appbox`. An edit to that file rebuilds the `kdos-appbox` port through its
-directory hash but leaves `kinstall` as it was until the step is named, as in the installer row
-above.
+programs are recipes under `src/system/`, `src/art/`, `src/desktop/` and `src/daemons/`, 24 in all.
+Such a recipe has no upstream tarball, so its recipe hash covers its own directory and the whole of
+`src/libs`; working out which libraries a `build.sh` actually compiles would need a shell parser
+inside the package manager. Each of these ports takes seconds to compile. Upstream ports are
+unaffected. The phase lists install 23 of the 24, in `41_system`, `42_graphics`, `44_apps` and
+`50_desktop`, and their changed hash is enough to rebuild them, so they need no `--rebuild`. The
+24th, `kdos-installer`, is in no phase list, so `--rebuild kdos-installer` reaches no phase and
+rebuilds nothing; the installer on the image comes from the `10_bootstrap` step `130_kinstall.sh`
+instead, which also compiles in `catalogue.c` from `src/system/kdos-appbox`. An edit to that file
+rebuilds the `kdos-appbox` port through its directory hash but leaves `kinstall` as it was until the
+step is named, as in the installer row above.
 
 Three programs link the libraries outside any recipe. The orchestrator is recompiled at the start of
-every build. The package manager `kpkg` and the installer `kinstall` are compiled by the phase-1
-steps `12_kpkg.sh` and `13_kinstall.sh`, which is why the command above names them. `12_kpkg.sh`
-recompiles whenever its sources' hash differs from the one it recorded; `13_kinstall.sh` exits at
-once when its completion marker under `build/mark/` exists, unless the
+every build. The package manager `kpkg` and the installer `kinstall` are compiled by the
+`10_bootstrap` steps `120_kpkg.sh` and `130_kinstall.sh`, which is why the command above names
+them. `120_kpkg.sh` recompiles whenever its sources' hash differs from the one it recorded;
+`130_kinstall.sh` exits at once when its completion marker under `build/mark/` exists, unless the
 [build plan](build-system.md#build-plans) names it; that section also explains what a plan
-suppresses and why only the named ports are forced. Leave the `01_phase1` part out when your change
-touches neither program's libraries.
+suppresses and why only the named ports are forced. Leave the `10_bootstrap` part out when your
+change touches neither program's libraries.
 
 For a desktop program there is a faster loop still: `testing/quick.sh` builds only the named ports
 into `build/fs`, with no packaging, and patches the files they own into the RAM overlay of a booted
@@ -482,18 +519,21 @@ it shows is not evidence about the shipped image. See [Testing](testing.md#the-f
 
 ### Building from scratch
 
-`--fresh`, and *start fresh* in the picker, run every phase on the tree already in `build/`. They
-do not empty it: each toolchain and phase-1 script exits at once when its marker under `build/mark/`
-exists, and `kpkg` skips every port already installed from the same recipe. To build from nothing,
-empty the three trees that record that progress first. `build/fs` belongs to root, so do it from a
-container:
+`--fresh`, and *start fresh* in the picker, run every phase on the tree already in `build/`. They do
+not empty it: each `00_cross` and `10_bootstrap` script exits at once when its marker under
+`build/mark/` exists, and `kpkg` skips every port already installed from the same recipe. To build
+from nothing, empty the three trees that record that progress first. `build/fs` belongs to root, so
+do it from a container:
 
 ```sh
 docker run --rm -v "$PWD/build:/b" os-dev rm -rf /b/fs /b/mark /b/cross
 make build BUILD_ARGS=--fresh
 ```
 
-Budget most of a day for the build that follows, and about 84 GB more if it writes snapshots.
+Budget most of a day for the build that follows. If it writes snapshots, budget the disk as well:
+every one of the thirteen phases archives a compressed copy of `build/fs` and the `70_image`
+snapshot alone is about 59 GB. A complete set has not been measured; see
+[Snapshots](build-system.md#snapshots), which also says how a phase opts out of its snapshot.
 
 ## Things to avoid while a build runs
 
@@ -524,15 +564,16 @@ make snapshots                                    # compiles build/.kdosbuild fo
 build/.kdosbuild --preview build 132x43 vt        # a build screen, drawn as text
 ```
 
-`testing/preflight.sh` checks the wiring a full build would otherwise fail on: that every package a
-`packages.txt` names has a port, that every recipe parses, that the phase scripts are valid shell,
-and similar. `testing/selftest.sh` compiles `kdosbuild`, `kinstall` and the other programs it tests
-into a temporary directory, which it deletes when it exits, and runs their assertions. Among other
-things it resolves the installer's plan over the shipped catalogue (`kinstall --dump plan`) and,
-where the Wayland libraries are installed, draws the resource monitor's pages as text from recorded
-`/proc` trees (`kdos-res --fixture testing/fixtures/res --dump`). Neither program is installed on a
-development machine, so those forms are what the self-test runs, not commands to type. On one
-development machine each script took about two and a half minutes. What each harness proves is in
+`testing/preflight.sh` checks the wiring a full build would otherwise fail on: that the ports tree
+is shelved and every name is one port, that every package phase from `30_foundation` on installs exactly the ports its list names,
+that every recipe parses, that the phase scripts are valid shell, and similar. `testing/selftest.sh`
+compiles `kdosbuild`, `kinstall` and the other programs it tests into a temporary directory, which
+it deletes when it exits, and runs their assertions. Among other things it resolves the installer's
+plan over the shipped catalogue (`kinstall --dump plan`) and, where the Wayland libraries are
+installed, draws the resource monitor's pages as text from recorded `/proc` trees
+(`kdos-res --fixture testing/fixtures/res --dump`). Neither program is installed on a development
+machine, so those forms are what the self-test runs, not commands to type. On one development
+machine each script took about two and a half minutes. What each harness proves is in
 [Testing](testing.md#what-each-tool-proves).
 
 `build/.kdosbuild` runs on your machine only when your machine's compiler built it, which
@@ -606,7 +647,7 @@ at its first publication, after which no new source could be added to it.
 - [How KDOS is built](how-kdos-is-built.md): the whole build as one story, from clone to ISO
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md): why the sources are pinned and the
   build is self-hosting, compared with other distributions
-- [The ports catalogue](../06-reference/ports-catalogue.md): every port, by phase and group
+- [The ports catalogue](../06-reference/ports-catalogue.md): every port, by shelf and phase
 - [The build system](build-system.md): phases, snapshots, build plans, the chroot
 - [Writing ports](writing-ports.md): adding or changing a recipe, and publishing its sources
 - [Build troubleshooting](build-troubleshooting.md): recurring failures, by symptom

@@ -1,0 +1,48 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   40_lang: Languages
+# ---------------------------------
+#   doctools — Documentation toolchains, man pages, markup converters and TeX
+#   typesetting
+# ---------------------------------
+#
+# Language modules and developer tools — the python3-* and perl-* modules,
+# language implementations, build and documentation tools, debuggers and
+# version control — whose dependency closure needs nothing past 31_compilers.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The manual pages on the image; 30_foundation installs mandoc to read them.
+man-pages
+
+xmltoman
+
+# Here for its m4 MACRO, not its documentation: a GNOME-lineage configure.ac
+# calls GTK_DOC_CHECK, and a missing m4 macro survives into the generated
+# configure as a literal rather than failing at aclocal time.
+gtk-doc
+
+# MARKDOWN OUT, AND NOT MARKDOWN DRAWN. `glow` renders a document into a
+# terminal; this writes the HTML, which is what `w3m` reads and what a page
+# published anywhere needs. One C file.
+smu
+
+# A TeX Live install is gigabytes and answers a mistake with forty lines of
+# macro expansion; this is one binary that says which line is wrong. Where
+# nobody can search for the error text, that is whether a document gets
+# written.
+typst
+
+go-md2man
+discount
+cmark

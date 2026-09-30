@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+set -e
+source script/phases/10_bootstrap/phase.env
+source script/lib/port.sh
+
+if [ -f "$MARK/tar" ] && [ "${KDOS_REPLAY:-0}" != "1" ]; then
+    exit 0
+fi
+
+echo ">>> Building tar..."
+
+# Extract tar and dependencies from ports
+TAR_SRC=$(extract_port_source tar)
+
+cd "$TAR_SRC"
+
+FORCE_UNSAFE_CONFIGURE=1 ./configure --prefix=/usr --disable-nls
+make
+make DESTDIR=$SYSROOT install
+
+rm -rf "$TAR_SRC"
+touch "$MARK/tar"

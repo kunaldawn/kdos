@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+set -e
+source script/phases/00_cross/phase.env
+source script/lib/port.sh
+
+if [ -f "$MARK/binutils" ] && [ "${KDOS_REPLAY:-0}" != "1" ]; then
+    exit 0
+fi
+
+echo ">>> Building Binutils..."
+
+# Extract from port directory
+BINUTILS_SRC=$(extract_port_source binutils)
+cd "$BINUTILS_SRC"
+
+mkdir build && cd build
+../configure \
+    --target=$KDOS_TARGET \
+    --with-sysroot=$SYSROOT \
+    --prefix=$CROSS_SYSROOT \
+    --disable-nls \
+    --disable-werror \
+    --disable-multilib \
+    --enable-new-dtags \
+    --enable-gprofng=no \
+    --enable-default-hash-style=gnu
+make
+make install
+
+rm -rf "$BINUTILS_SRC"
+touch "$MARK/binutils"

@@ -12,13 +12,21 @@ RESULTS_FILE = os.path.join(REPO_ROOT, "testing", "test_results.json")
 LOGS_DIR = os.path.join(REPO_ROOT, "testing", "logs")
 
 def get_ports():
+    # Every port sits one shelf down, ports/core/<shelf>/<name>/, and is
+    # named by its directory alone: a shelf is where a port is filed, and
+    # handing one to `kpkg install` would ask for a package that does not
+    # exist.
     ports = []
     core_dir = os.path.join(REPO_ROOT, "ports", "core")
     if not os.path.isdir(core_dir):
         return []
-    for entry in os.listdir(core_dir):
-        if os.path.isdir(os.path.join(core_dir, entry)):
-            ports.append(entry)
+    for shelf in os.listdir(core_dir):
+        shelf_dir = os.path.join(core_dir, shelf)
+        if not os.path.isdir(shelf_dir):
+            continue
+        for entry in os.listdir(shelf_dir):
+            if os.path.isfile(os.path.join(shelf_dir, entry, "kpkgbuild")):
+                ports.append(entry)
     return sorted(ports)
 
 def test_package(pkg):

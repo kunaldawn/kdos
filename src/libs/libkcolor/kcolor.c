@@ -307,7 +307,7 @@ void kcol_format(uint32_t rgb, char *buf)
 
 /* Hue only ever arrives within a turn or two of range, so subtracting is both
  * exact and enough — and it keeps libkcolor off libm, which is what lets the
- * phase-1 consumers link it. */
+ * 10_bootstrap consumers link it. */
 static double pymod1(double x)
 {
 	while (x >= 1.0)
@@ -412,7 +412,7 @@ uint32_t kcol_muted(const KcolScheme *sc)
  * sRGB channel -> linear light, x65535, as a TABLE.
  *
  * The transfer function is a 2.4 power and this library does not link libm —
- * the phase-1 rule libktui keeps and libkcolor keeps with it. There are only
+ * the 10_bootstrap rule libktui keeps and libkcolor keeps with it. There are only
  * 256 possible inputs, so the honest answer is to have measured all of them:
  * generated as round(((c/255 + 0.055) / 1.055) ^ 2.4 * 65535), with the linear
  * segment c/12.92 below 0.04045, and checked against CPython to two decimals

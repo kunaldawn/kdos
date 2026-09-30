@@ -1,0 +1,60 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   crypto — Cryptographic libraries, PKCS#11, smartcards and TPM
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libgpg-error
+libgcrypt
+libtasn1
+p11-kit
+nettle
+libtpms
+
+# The TPM2 stack, so a LUKS key can be sealed to the chip instead of typed
+# on every boot.
+tpm2-tss
+tpm2-tools
+
+gnutls
+libcbor
+pcsc-lite
+libfido2
+ccid
+
+# The PKCS#11 module a smart card is used through. pcscd and ccid reach the
+# reader; without this nothing speaks PIV, CAC, OpenPGP or an eID card to it,
+# so `ssh -I`, openconnect's pkcs11: URIs and every p11-kit consumer see none.
+opensc
+
+libassuan
+libksba
+npth
+nspr
+nss
+
+# A guest's TPM, named on its command line: a Windows 11 installer refuses to
+# run without one.
+swtpm
+
+mbedtls
+libsodium
+argon2
+botan

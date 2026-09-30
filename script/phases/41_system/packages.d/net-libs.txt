@@ -1,0 +1,58 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   net-libs — Networking and protocol libraries
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libmnl
+rpcsvc-proto
+libtirpc
+
+# mDNS, and the only reason it is here: CUPS' driverless printer discovery is
+# compiled out without it. musl has no NSS module system, so `.local` name
+# resolution will never work — avahi's own API is what CUPS uses.
+avahi
+
+libnl
+libpcap
+libevent
+libndp
+libmicrohttpd
+
+# SRTP for webrtcbin in gst-plugins-bad.
+libsrtp
+
+libidn
+
+# The HTTP library souphttpsrc and the HLS/DASH demuxers load at run time, and
+# the GIO TLS module its https connections need.
+glib-networking
+libsoup3
+
+miniupnpc
+libssh
+uriparser
+poco
+nng
+zeromq
+cppzmq
+neon
+asio
+libwebsockets

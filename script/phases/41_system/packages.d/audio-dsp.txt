@@ -1,0 +1,60 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   audio-dsp — Audio DSP, resampling, analysis, spatial audio, and the
+#   LV2/LADSPA/Vamp plug-in APIs with their RDF libraries
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The converter with a published error floor. rubberband takes it rather than
+# its own builtin, which is correct and audibly worse on a long stretch.
+libsamplerate
+
+# Time-stretch and pitch-shift that keeps a transient a transient — the thing
+# a naive resampler destroys and nobody can un-hear.
+rubberband
+
+soxr
+webrtc-audio-processing
+libmysofa
+libebur128
+lv2
+serd
+zix
+sord
+sratom
+lilv
+
+# wireshark's FindSpeexDSP is a hard find_package: no resampler, no configure.
+speexdsp
+
+# Convert, resample, filter and analyse.
+sox
+
+libspatialaudio
+vamp-sdk
+soundtouch
+libsbsms
+ladspa
+aubio
+lrdf
+rnnoise
+libbs2b
+stk
+iir1

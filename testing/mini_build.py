@@ -29,23 +29,24 @@ def run_script(path, log_dir, use_chroot=False):
     log_file = os.path.join(log_dir, f"{os.path.basename(path)}.log")
     
     if use_chroot:
-        cmd = ["/workspace/script/chroot_exec.sh", "bash", rel_path]
+        cmd = ["/workspace/script/chroot/exec.sh", "bash", rel_path]
     else:
         cmd = ["bash", rel_path]
     
     run_with_logging(cmd, log_file)
 
 def main():
-    root = "/workspace/script"
+    root = "/workspace/script/phases"
     build_root = "/workspace/build"
     log_dir = os.path.join(build_root, "logs")
     
     # Phases to run
     phases = [
-        "00_toolchain",
-        "01_phase1",
-        "02_phase2",
-        "03_phase3"
+        "00_cross",
+        "10_bootstrap",
+        "20_selfhost",
+        "30_foundation",
+        "31_compilers"
     ]
     
     for phase in phases:
@@ -57,23 +58,27 @@ def main():
         phase_log_dir = os.path.join(log_dir, phase)
         
         # Check if phase needs chroot
-        parts = phase.split('_', 1)
-        phase_name = parts[1] if len(parts) > 1 else phase
-        env_file = os.path.join(root, f"{phase_name}.env.sh")
+        env_file = os.path.join(phase_dir, "phase.env")
         use_chroot = False
         if os.path.isfile(env_file):
             with open(env_file, 'r') as f:
                 if "export CHROOT=1" in f.read():
                     use_chroot = True
 
-        # Special case for packages.txt
+        # A package phase lists its ports in packages.txt or in
+        # packages.d/*.txt, read in sorted file order as one list.
         packages_file = os.path.join(phase_dir, "packages.txt")
+        list_files = sorted(glob.glob(os.path.join(phase_dir, "packages.d", "*.txt")))
         if os.path.isfile(packages_file):
-            with open(packages_file, 'r') as f:
-                pkgs = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
+            list_files = [packages_file]
+        if list_files:
+            pkgs = []
+            for lf in list_files:
+                with open(lf, 'r') as f:
+                    pkgs += [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
             
             if pkgs:
-                cmd_prefix = ["/workspace/script/chroot_exec.sh", "bash", "-c"] if use_chroot else ["bash", "-c"]
+                cmd_prefix = ["/workspace/script/chroot/exec.sh", "bash", "-c"] if use_chroot else ["bash", "-c"]
                 env_rel = os.path.relpath(env_file, "/workspace")
                 env_src = f"source {env_rel} && " if os.path.isfile(env_file) else ""
                 

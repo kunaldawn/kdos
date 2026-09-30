@@ -1,0 +1,37 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   42_graphics: Graphics Stack
+# ---------------------------------
+#   audio-io — The sound stack: ALSA, PipeWire and WirePlumber, PulseAudio
+#   client, and portable audio I/O APIs
+# ---------------------------------
+#
+# Ports whose dependency closure reaches wayland, libX11, mesa, libdrm, cairo,
+# pango, gstreamer, ffmpeg or pipewire but no toolkit, and that are not leaf
+# applications.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+pipewire
+
+# PipeWire is the audio stack and alsamixer cannot see it: this is the mixer
+# that shows the graph — every stream, its device and where it is routed.
+wiremix
+
+# PipeWire builds no session manager of its own, and the daemon routes
+# nothing without one: device discovery, which sink a stream lands on and a
+# headset's profile are all policy. media-session, its old in-tree example,
+# is dead upstream.
+wireplumber
+
+openal-soft

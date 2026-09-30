@@ -33,12 +33,14 @@ other distributions deliver the same software. How far along each part is, is re
 
 ## Native applications
 
-A native application is a *port*: a recipe under `ports/core/` that the build compiles and packages
-(see the [glossary](../06-reference/glossary.md#port)). The applications are listed in the phase 4
-package list, `script/04_phase4/packages.txt`, in named sections such as *Internet and
-communication*, *Documents and office*, *Pictures* and *Sound, video and discs*; the section below
-follows those sections. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port
-by phase and group, libraries included, and [How KDOS is built](../05-developer/how-kdos-is-built.md)
+A native application is a *port*: a recipe that the build compiles and packages (see the
+[glossary](../06-reference/glossary.md#port)). Every upstream port is filed on a subject *shelf*,
+`ports/core/<shelf>/<name>/`, such as `browsers`, `office`, `graphics`, `video-players` or
+`games-board`; the closed list of shelves, each with a line saying what belongs on it, is the file
+`ports/shelves`. The section below groups the applications by need instead, since one need often
+spans several shelves. KDOS's own programs, such as `kdos-term` and `kdos-res`, are ports under
+`src/<area>/<name>/` instead. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port
+by shelf, with the phase that builds it, libraries included, and [How KDOS is built](../05-developer/how-kdos-is-built.md)
 tells how the build runs.
 
 Because a native application is part of the system, it behaves like any other installed program. An
@@ -450,7 +452,7 @@ type at a prompt. The container shows only on the first launch of a session, whi
 ## What the catalogue carries
 
 The catalogue is the file `/usr/share/kdos/appstore/catalogue` (in the source tree,
-`src/packages/kdos-appbox/catalogue`). It describes software rather than containing it: nothing is
+`src/system/kdos-appbox/catalogue`). It describes software rather than containing it: nothing is
 baked into the ISO, and an application is built by Podman on the machine that asks for it. The
 store, the installer and `kdos app` all read this one file, so a row added to it is offered by all
 three.
@@ -937,7 +939,7 @@ applications are read by Orca on the host; see [Accessibility](accessibility.md)
 - [The desktop](desktop.md) — the Start menu, the launcher and the file manager
 - [Theming](theming.md) — how native and boxed applications get the palette
 - [The kdos command](../04-programs/kdos-command.md) — `kdos app` and `kdos doctor` in full
-- [The ports catalogue](../06-reference/ports-catalogue.md) — every native port, by phase and group
+- [The ports catalogue](../06-reference/ports-catalogue.md) — every native port, by shelf and phase
 - [Known gaps](../06-reference/known-gaps.md) — what does not exist, across the system
 
 <!-- book-nav -->

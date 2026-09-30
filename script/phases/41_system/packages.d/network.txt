@@ -1,0 +1,85 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   network — Host network configuration and connection management: links,
+#   Wi-Fi, DHCP, DNS forwarding, time, modems, firewall and VPN
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+iproute2
+
+# The clock. Without it a skewed clock breaks TLS, so ports/fetch, git and
+# every boxed app.
+chrony
+
+dhcpcd
+
+# dnsmasq is shipped, and drill, which comes with the library, is how this
+# machine asks a DNS question.
+ldns
+
+wpa_supplicant
+libnftnl
+nftables
+dnsmasq
+
+# resolvconf, which wg-quick runs for a config's DNS= line and NetworkManager
+# writes /etc/resolv.conf through.
+openresolv
+
+libmbim
+libqrtr-glib
+libqmi
+
+# Mobile broadband and PPPoE: ModemManager drives the modem, the provider
+# database supplies a carrier's APN, pppd carries PPPoE and serial modems.
+ppp
+mobile-broadband-provider-info
+modemmanager
+
+networkmanager
+ethtool
+iw
+
+# SocketCAN is in the kernel and these are the commands that use it. A vehicle
+# or a machine bus is otherwise a device node with nothing to point at it.
+can-utils
+
+# Corporate VPN: AnyConnect, GlobalProtect, Fortinet and Pulse. The script is
+# what gives the tunnel its routes — openconnect execs it on every connect.
+#
+# NO NetworkManager PLUGIN. Upstream's checks webkit2gtk UNCONDITIONALLY, and
+# the dialog it builds with it is the thing the VPN service delegates
+# authentication to. No recipe builds it against the webkitgtk port, and a
+# build with the dialog disabled would be a connection type the surface offers
+# and cannot authenticate.
+vpnc-script
+openconnect
+
+# hostapd completes the island network: dnsmasq is already here, so one
+# wireless card serves addresses, names, the corpus and a PXE boot with no
+# router in it. iw is its hard prerequisite, not a convenience.
+hostapd
+
+wireguard-tools
+openvpn
+networkmanager-openvpn
+iptables
+batctl
+babeld

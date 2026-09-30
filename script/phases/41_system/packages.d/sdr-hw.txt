@@ -1,0 +1,52 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   sdr-hw — SDR hardware drivers and the SoapySDR device layer
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# fs/etc/modprobe.d/kdos-sdr.conf blacklists dvb_usb_rtl28xxu and this is the
+# other half: without both, the kernel claims an RTL2832U as a DVB-T tuner on
+# plug-in and librtlsdr cannot open a device lsusb happily lists.
+rtl-sdr
+
+# One API in front of every radio, so rtl_433 and anything after it is written
+# once rather than per front end.
+soapysdr
+
+# The radios 70-kdos-sdr.rules grants, and the SoapySDR module for each:
+# without a module `SoapySDRUtil --find` lists nothing, whatever is plugged in.
+# SDRplay has no module: its API is a closed library.
+hackrf
+airspy
+bladerf
+soapyrtlsdr
+soapyhackrf
+soapyairspy
+soapybladerf
+
+airspyhf
+libfobos
+libiio
+libad9361
+libmirisdr
+libperseus-sdr
+librfnm
+limesuite
+uhd

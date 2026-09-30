@@ -19,12 +19,14 @@ cd "$(dirname "$0")/.."
 OUT=${KDOSBUILD_BIN:-build/.kdosbuild}
 mkdir -p "$(dirname "$OUT")"
 
+# libkpkg is on the list because libkbuild walks the ports tree through it:
+# the picker's port list comes from the same walker kpkg resolves names with.
 ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
-    -Isrc/libs/libkbase -Isrc/libs/libkbuild -Isrc/libs/libktui \
-    -Isrc/libs/libkcolor -Isrc/build/kdosbuild \
+    -Isrc/libs/libkbase -Isrc/libs/libkbuild -Isrc/libs/libkpkg \
+    -Isrc/libs/libktui -Isrc/libs/libkcolor -Isrc/devtools/kdosbuild \
     -o "$OUT" \
-    src/build/kdosbuild/*.c \
-    src/libs/libkbase/*.c src/libs/libkbuild/*.c \
+    src/devtools/kdosbuild/*.c \
+    src/libs/libkbase/*.c src/libs/libkbuild/*.c src/libs/libkpkg/*.c \
     src/libs/libktui/*.c src/libs/libkcolor/*.c
 
 # THE BUILD RUNS AS THE CONTAINER'S ROOT and everything it writes under build/
@@ -49,7 +51,7 @@ ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 # It bites on the SECOND build and every one after: the squashfs is made inside
 # the chroot before this trap runs, so a single-pass build ships correct bits
 # and an incremental one squashes what the previous build's exit stripped.
-# Reading `build/fs` from the host now needs a container or sudo, which is the
+# Reading `build/fs` from the host needs a container or sudo, which is the
 # correct price for a rootfs.
 hand_back() {
     [ -n "${HOST_UID:-}" ] || return 0

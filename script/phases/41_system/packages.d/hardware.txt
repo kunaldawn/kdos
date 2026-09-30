@@ -1,0 +1,82 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   hardware — Device access, bus and sensor tools, power management, and
+#   Bluetooth
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+libusb
+libftdi
+bluez
+hwdata
+libpciaccess
+lm-sensors
+pciutils
+usbutils
+
+# Laptop power saving: pure shell over /sys, no daemon, no compile. Conflicts
+# with power-profiles-daemon (both write the same knobs) — KDOS picks TLP.
+tlp
+
+# The measuring half of laptop power saving, beside tlp. powertop 2.15 made
+# libtracefs a hard requirement, so its two kernel.org libraries come with it;
+# 2.14 bundled traceevent in-tree and pinning that would freeze the tool at
+# 2022 to save two ports.
+powertop
+
+# What the flashing, SDR and instrument tools link against.
+hidapi
+
+# Opening /dev/ttyUSB0 is trivial; knowing it exists, that it is an FTDI, and
+# which of three identical adapters it is, is sysfs walking every bench
+# program would otherwise reimplement. Reachability is the other half:
+# fs/etc/group and fs/etc/udev/rules.d.
+libserialport
+
+# The chardev GPIO ABI — /sys/class/gpio is gone, and gpiomon on this is a poor
+# man's logic analyzer needing no hardware beyond the header pins.
+libgpiod
+
+# i2cdetect and i2cget on a bus a person is deliberately poking at. The I2C
+# permission is `video` and 70-kdos-i2c.rules, NOT dialout: the rule is scoped
+# to the adapters that hang off a display controller, because the same /dev
+# node class also carries the chipset SMBus and every DIMM's SPD EEPROM.
+i2c-tools
+
+upower
+
+# Intel thermal management. Without it a laptop reaches its throttle point
+# and stays there, which reads as a slow machine rather than a hot one.
+thermald
+
+gusb
+dmidecode
+
+# Thunderbolt authorisation. Where the firmware's security level is `user` or
+# `secure` — the shipping default on most business laptops — a TB3/TB4 dock is
+# enumerated and then never authorised, so the dock's ports stay dead.
+bolt
+
+numactl
+lirc
+libcec
+freeipmi
+powerman
+nut

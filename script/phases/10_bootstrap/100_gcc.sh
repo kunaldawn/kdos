@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+set -e
+source script/phases/10_bootstrap/phase.env
+source script/lib/port.sh
+
+if [ -f "$MARK/gcc" ] && [ "${KDOS_REPLAY:-0}" != "1" ]; then
+    exit 0
+fi
+
+echo ">>> Building gcc..."
+
+# Extract gcc and dependencies from ports
+GCC_SRC=$(extract_port_source gcc)
+GCC_VER=$(get_port_version gcc)
+GMP_SRC=$(extract_port_source gmp)
+MPFR_SRC=$(extract_port_source mpfr)
+MPC_SRC=$(extract_port_source mpc)
+
+cd "$GCC_SRC"
+
+# Link dependencies into GCC source tree
+ln -s "$GMP_SRC" gmp
+ln -s "$MPFR_SRC" mpfr
+ln -s "$MPC_SRC" mpc
+
+mkdir -p build && cd build
+
+../configure \
+    --host=$KDOS_TARGET \
+    --target=$KDOS_TARGET \
+    --with-build-sysroot=$SYSROOT \
+    --prefix=/usr \
+    --enable-default-pie       \
+    --enable-default-ssp       \
+    --disable-nls              \
+    --disable-multilib         \
+    --disable-libatomic        \
+    --disable-libgomp          \
+    --disable-libquadmath      \
+    --disable-libsanitizer     \
+    --disable-libssp           \
+    --disable-libvtv           \
+    --enable-languages=c,c++   \
+    CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}" \
+    CXXFLAGS_FOR_TARGET="$CXXFLAGS -nostdinc++" \
+    LDFLAGS_FOR_TARGET=-L$PWD/$KDOS_TARGET/libgcc
+
+make
+make DESTDIR=$SYSROOT install
+
+ln -sv gcc $SYSROOT/usr/bin/cc
+
+
+
+rm -rf "$GCC_SRC" "$GMP_SRC" "$MPFR_SRC" "$MPC_SRC"
+touch "$MARK/gcc"

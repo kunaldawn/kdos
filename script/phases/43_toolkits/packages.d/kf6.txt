@@ -1,0 +1,95 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   43_toolkits: Toolkits
+# ---------------------------------
+#   kf6 — KDE Frameworks 6: every port whose homepage is under
+#   invent.kde.org/frameworks, whatever it does
+# ---------------------------------
+#
+# Libraries whose dependency closure reaches GTK, Qt, wxWidgets, FLTK or Motif:
+# the toolkits themselves, KDE Frameworks, and what applications link over
+# them.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The libraries KDE applications are built on, without Plasma.
+karchive
+kcodecs
+kconfig
+kcoreaddons
+kdbusaddons
+kguiaddons
+ki18n
+kidletime
+kitemmodels
+kitemviews
+kwidgetsaddons
+kwindowsystem
+solid
+sonnet
+syntax-highlighting
+threadweaver
+attica
+kcolorscheme
+kplotting
+prison
+kholidays
+kirigami
+kcalendarcore
+kcontacts
+kdnssd
+kquickcharts
+kdoctools
+kcrash
+kglobalaccel
+kpty
+kunitconversion
+kcompletion
+kconfigwidgets
+kiconthemes
+kservice
+kpackage
+kstatusnotifieritem
+kbookmarks
+kxmlgui
+kded
+kdesu
+kpeople
+networkmanager-qt
+modemmanager-qt
+bluez-qt
+ktextwidgets
+kdeclarative
+knewstuff
+qqc2-desktop-style
+kauth
+knotifications
+kjobwidgets
+kwallet
+kio
+kparts
+knotifyconfig
+kcmutils
+frameworkintegration
+ktexteditor
+purpose
+kfilemetadata
+
+breeze-icons
+
+# Built without its indexer service.
+baloo
+
+kimageformats
+kmime
+ktexttemplate

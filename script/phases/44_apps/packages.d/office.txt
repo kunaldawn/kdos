@@ -1,0 +1,39 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   44_apps: Applications
+# ---------------------------------
+#   office — Office suites, word processors, spreadsheets, presentations,
+#   accounting and finance, and office-format import libraries
+# ---------------------------------
+#
+# Leaf applications whose dependency closure reaches a toolkit, or the graphics
+# stack on an application shelf.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The ledger IS a text file and the program only reads it. The data survives
+# the tool, which is not true of any accounting app with a database.
+ledger
+
+# A spreadsheet is a grid of cells, which is what this whole desktop is — so
+# it runs on tty1 at the console font with no compromise. libxml2 and libzip
+# are what let it read the .xlsx a spreadsheet actually arrives as, and
+# libxlsxwriter is what lets it write one back.
+sc-im
+
+libreoffice
+gnumeric
+abiword
+homebank
+gnucash
+tryton

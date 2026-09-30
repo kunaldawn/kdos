@@ -1009,6 +1009,10 @@ prebuilt package from a binary host is only a way to avoid compiling that recipe
 with no ports tree cannot update: it cannot tell what is newer, and `kpkg` cannot match a binhost
 package without the recipe. `check` and `apply` exit 2 in that case. The developer medium built
 with `KDOS_ISO_SOURCES=1` carries a ports tree; elsewhere, `PORT_REPO` can point at a checkout.
+Each directory `PORT_REPO` names is searched for a port at `<name>/` and one shelf down at
+`<shelf>/<name>/`, and the first directory holding a name wins. A tree that files one name twice
+inside one directory, or nests a port below its shelf, stops `check`, `apply` and `kdos cve` with
+both paths named, because either recipe could be the one that counts.
 
 | Verb | Does |
 |---|---|
@@ -1108,8 +1112,8 @@ archive and vendor bundle in `ports/`, the shipped system carries the compilers 
 packages are reproducible, so the result can be compared with what it was built from.
 
 The sources are looked for in `$KDOS_SOURCES`, then `/mnt/iso/sources`, `/kdos` and the current
-directory; a directory counts when it has `script/kdosbuild.sh`, `ports/core` and
-`src/build/kdosbuild`. The work directory is the one argument, and before anything is copied the
+directory; a directory counts when it has `script/kdosbuild.sh`, `ports/core`, `fs/etc` and
+`src/devtools/kdosbuild`. The work directory is the one argument, and before anything is copied the
 command refuses when:
 
 - a build tool is missing (`cc`, `make`, `bash`, `tar`, `xz`); a missing `mksquashfs`, `xorriso`
@@ -1122,7 +1126,7 @@ command refuses when:
 It then copies the tree to `<work-dir>/kdos` (a second run with the same work directory reuses
 the copy), compiles the build orchestrator `kdosbuild` from that copy into `<work-dir>/kdosbuild`,
 and runs it with `--fresh`. That is the same orchestrator `make build` runs, reading the same
-phase scripts. `--iso-only` runs only the `06_packaging` phase. `--dry-run` stops after the
+phase scripts. `--iso-only` runs only the `70_image` phase. `--dry-run` stops after the
 checks and prints the plan. [How KDOS is built](../05-developer/how-kdos-is-built.md) follows
 the same build from `git clone` to an ISO, and [The build system](../05-developer/build-system.md)
 describes the orchestrator.
@@ -1136,27 +1140,27 @@ A developer medium, one that carries the sources, is made and used in four steps
    `/mnt/disk`.
 4. Run `kdos rebuild /mnt/disk/work`.
 
-`KDOS_ISO_SOURCES=1` makes `script/06_packaging/02_iso.sh` copy `ports/`, `src/` and `script/`
-from `/kdos` onto the medium's ISO 9660 filesystem beside the system image, under `/sources`,
-together with the `Makefile`, `Dockerfile` and `CLAUDE.md` when they are present. The sources
+`KDOS_ISO_SOURCES=1` makes `script/phases/70_image/110_iso.sh` copy `ports/`, `src/`, `script/`
+and `fs/` onto the medium's ISO 9660 filesystem beside the system image, under `/sources`,
+together with the `Makefile`, `Dockerfile` and `CLAUDE.md` when they are present, and with the
+binary host at `/sources/binhost` when the same build wrote one (`KDOS_MAKE_BINHOST=1`). The sources
 cost the installed system nothing and are readable at `/mnt/iso/sources` as soon as the live
 system is up. The option is off by default because a medium that carried `ports/` would roughly
 double in size: `ports/` is about 39 GB of archives that are already compressed (`du -sh
 ports/core` with every source fetched). The fetch cache `ports/.srccache` is left off, because
 each port directory already holds its own copy of the bytes. A `SOURCES` stamp records the port
-count, size and build time, and `kdos rebuild` prints it before it starts; the port count is
-taken from `/ports/core`, so it counts the ports the build had rather than the ones on the
-medium.
+count, size and build time, and `kdos rebuild` prints it before it starts; the port count is the
+number of recipes in the medium's own `ports/core`, found at `<name>/` or one shelf down.
 
-**Limitation: the medium these steps make cannot be rebuilt from.** Inside the chroot, `/kdos`
-is a non-recursive bind of the build container's `/workspace`, and `script/chroot_exec.sh` binds
-`script/` and `src/` back over it but binds `ports/` at `/ports`. `/kdos/ports` is therefore the
-empty mount point, and `ports/` arrives on the medium empty, so `kdos rebuild` finds no
-`ports/core` and stops before copying anything. The build container mounts only `build/`,
-`src/`, `fs/`, `script/` and `ports/`, so the three top-level files are not there to copy, and
-the step does not copy `fs/`. A complete tree supplied through `$KDOS_SOURCES` must carry `fs/`
-as well: `kdos rebuild` names its copy in `KDOS_WORKSPACE`, and phase 1's file-system step copies
-the overlay from `$WORKSPACE/fs`, which `script/phase1.env.sh` takes from that variable.
+Inside the chroot, `/kdos` is a non-recursive bind of the build container's `/workspace`, and
+`script/chroot/exec.sh` binds `script/`, `src/` and `fs/` back over it and binds `ports/` at
+`/ports`; the step reads each from there. The build container mounts only `build/`, `src/`, `fs/`,
+`script/` and `ports/`, so the three top-level files are normally not there to copy. `kdos
+rebuild` names its copy of the tree in `KDOS_WORKSPACE`, and the host environment
+(`script/env/host.env`) takes `WORKSPACE` from that variable, so the bootstrap phase's file-system
+step copies the overlay from the copy's `fs/` rather than from `/workspace/fs`. No rebuild from a
+medium has been run through every phase; see
+[Known gaps](../06-reference/known-gaps.md#an-offline-kdos-rebuild-from-the-medium-has-not-been-run-to-the-end).
 
 ### kdos persist
 
@@ -1320,7 +1324,7 @@ another host. An unknown verb exits 1.
 ## The other names on this binary
 
 `kdos` is one of twelve names of a single program, built by the `kdos-tools` package from
-`src/packages/kdos-tools/` and installed as `/usr/sbin/ksvc` with symbolic links for the rest. It
+`src/system/kdos-tools/` and installed as `/usr/sbin/ksvc` with symbolic links for the rest. It
 chooses what to do from the name it was started under, the same technique `kdos-appbox` uses for
 its application shims: one binary and no shell wrapper anywhere in the chain. Started under a name
 it does not know (such as `kdos-tools`, the file the build produces), the first argument selects

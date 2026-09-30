@@ -11,7 +11,7 @@
 all: build
 
 # Extra flags for the orchestrator, e.g.
-#   make build BUILD_ARGS="--restore phase2"
+#   make build BUILD_ARGS="--restore 20_selfhost"
 #   make build BUILD_ARGS=--fresh
 #   make build BUILD_ARGS=--no-snapshot
 BUILD_ARGS ?=
@@ -66,11 +66,11 @@ check-iso-free:
 		test -n "$(ALLOW_ISO_IN_USE)" || exit 1; \
 	fi
 
-# `-it` unconditionally made `make build` impossible without a terminal —
-# docker refuses with "cannot attach stdin to a TTY-enabled container", which is
-# exactly the case kdosbuild's headless mode exists for (a non-tty stdout gets
-# plain lines instead of the TUI). Ask for a TTY only when there is one, so a
-# build can be logged to a file or run from CI.
+# A TTY is asked for only when there is one: with no terminal, docker refuses
+# `-it` with "cannot attach stdin to a TTY-enabled container", and no terminal
+# is exactly the case kdosbuild's headless mode exists for (a non-tty stdout
+# gets plain lines instead of the TUI). So a build can be logged to a file or
+# run from CI.
 DOCKER_TTY := $(shell test -t 0 && echo -it)
 
 build: check-iso-free

@@ -1,0 +1,47 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   servers — Daemons that serve other machines: remote shell, web, mail, XMPP,
+#   IRC, CalDAV/CardDAV, SMB and DLNA
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+openssh
+
+# A broker on the machine is what makes a sensor network testable without a
+# cloud account, which is the whole point on a distro that builds offline.
+mosquitto
+
+samba
+
+# Caddy's default config asks Let's Encrypt and fails at every start, so the
+# shipped Caddyfile uses `tls internal` — its own local CA, needing nothing
+# outside this machine.
+caddy
+
+mosh
+
+# The only entry in this tree that CREATES comms rather than reading somebody
+# else's archive: a LAN XMPP server, two people on one stick with no network
+# beyond the room. Dino is the graphical client.
+prosody
+
+radicale
+maddy
+ngircd

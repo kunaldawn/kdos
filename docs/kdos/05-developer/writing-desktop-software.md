@@ -43,23 +43,24 @@ window and in a test fixture.
 is a *front end*. Every surface on the KDOS desktop is one of these grids: the panel and the other
 `kdos-shell` front ends (including the file chooser that the desktop portal opens), the resource
 monitor, the terminal and the lock screen, each handed to `kdos-comp` as an ordinary Wayland
-surface. The installer (`src/packages/kdos-installer`) and the build screen
-(`src/build/kdosbuild`) are the same grids drawn on a terminal. Two things on the screen are not
+surface. The installer (`src/system/kdos-installer`) and the build screen
+(`src/devtools/kdosbuild`) are the same grids drawn on a terminal. Two things on the screen are not
 grids. The compositor draws its own chrome with Pango (window titlebars, the root menu and the
 window-switcher OSD) at a size matched to the cell grid, and an application, whether natively
 ported or running in a box, draws whatever its toolkit draws. The frame around your window is
 therefore not yours to lay out, and the pixels inside another program's window are not cells.
 
 The toolkits the applications use (GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK
-and Tk) are not available to a surface. A program under `src/desktop/` or `src/packages/` draws
+and Tk) are not available to a surface. A program of KDOS's own under `src/` draws
 through the `libk*` libraries and links no GUI toolkit and no Xlib; `testing/preflight.sh` reads the
 `NEEDED` entries of every ELF file those ports install and fails the run when one names such a
 library.
 
 Most new surfaces are a new front end inside `kdos-shell` (see
 [Adding a name to kdos-shell](#adding-a-name-to-kdos-shell)). A program with a separate life of its
-own, such as `kdos-res` or `kdos-term`, gets its own directory under `src/desktop/` with a recipe
-like the others there (see [A program of its own](#a-program-of-its-own)).
+own, such as `kdos-res` or `kdos-term`, gets its own directory under `src/desktop/`, or under
+another `src/` area when it is not a surface, with a recipe like the others there (see
+[A program of its own](#a-program-of-its-own)).
 
 ### Reaching a display
 
@@ -1028,17 +1029,40 @@ several places, and most of them fail silently.
 
 ## A program of its own
 
-A desktop program that is not a `kdos-shell` front end is a port of KDOS's own, wired in three
-places:
+A program that is not a `kdos-shell` front end is a port of KDOS's own. It sits at exactly
+`src/<area>/<name>/`, two levels below `src/`, because its `build.sh` reaches the libraries as
+`$PORT_SRC/../../libs` and that resolves at no other depth. The area says what the program is;
+take the first rule that fits:
+
+| Area | Holds | Searched by |
+|---|---|---|
+| `src/libs` | A library. Every one is a `libk*` directory here, and none is a port | Every port's `build.sh`, by path |
+| `src/devtools` | A program that is not installed on the target, such as `kdosbuild` and `kdos-portup` | Nothing: they are not ports |
+| `src/desktop` | A program that draws, or that speaks the session's Wayland or D-Bus: the compositor, the panel, the terminal, the portal | `50_desktop` |
+| `src/daemons` | A root daemon whose client is the desktop account, such as `kdos-powerd` | `50_desktop` |
+| `src/art` | Pictures, themes and their generators: the theme, icons, cursors, the boot splash | `40_lang` to `44_apps`, `50_desktop`, `60_kernel` |
+| `src/system` | Everything else: the package manager, the `kdos` command, packs and boxes, the installer | `40_lang` to `44_apps`, `50_desktop`, `60_kernel` |
+
+A port in `src/desktop` or `src/daemons` can be built only by `50_desktop`, the one phase whose
+`PORT_REPO` names those areas. A new area is not a new directory alone: it goes on the `PORT_REPO`
+of every phase that builds from it, in the orphan sweep's list in
+`script/phases/70_image/040_orphans.sh` (a package whose port the sweep cannot find is deleted from
+the image), and in preflight's list of areas. [The repository layout](../06-reference/repository-layout.md#the-src-areas)
+has every member of each area.
+
+A desktop program is wired in three places:
 
 1. A directory `src/desktop/<name>/` holding the sources, a `kpkgbuild` and a `build.sh`. The
    `kpkgbuild` names no source, so there is nothing to fetch, and `build.sh` compiles from
    `$PORT_SRC`, the port directory itself, together with the libraries under `src/libs` (see
-   [A port of KDOS's own](writing-ports.md#a-port-of-kdoss-own)). The desktop phase searches
-   `src/desktop` for recipes, so the directory name is the port name.
-2. A row naming the port in `script/05_desktop/packages.txt`, which is what puts it in the build
-   (the ports that phase already lists are in
-   [The ports catalogue](../06-reference/ports-catalogue.md#the-desktop-phase)).
+   [A port of KDOS's own](writing-ports.md#a-port-of-kdoss-own)). The directory name is the port
+   name, and no other port anywhere in the tree may have it.
+2. A row naming the port in `script/phases/50_desktop/packages.txt`, which is what puts it in the
+   build (the ports that phase already lists are in
+   [The ports catalogue](../06-reference/ports-catalogue.md)). A port in `src/system` or `src/art`
+   goes instead in the list of the phase that installs it, in that phase's
+   `packages.d/src-system.txt` or `src-art.txt` (see
+   [Which phase lists a port](writing-ports.md#which-phase-lists-a-port)).
 3. A `.desktop` file installed by its own `build.sh` into `$PKG/usr/share/applications/`, so that
    the package owns its menu entry (see
    [Desktop entries belong to the port](writing-ports.md#desktop-entries-belong-to-the-port)). Its
@@ -1046,14 +1070,14 @@ places:
 
 `kdos-res` is the example: `src/desktop/kdos-res/` holds `kpkgbuild`, `build.sh` and
 `kdos-res.desktop`, its `build.sh` installs the entry to
-`$PKG/usr/share/applications/kdos-res.desktop`, and `script/05_desktop/packages.txt` lists
+`$PKG/usr/share/applications/kdos-res.desktop`, and `script/phases/50_desktop/packages.txt` lists
 `kdos-res`. Once the window has been opened, `kdos appid` reports whether the entry and the window
 match.
 
 The recipe hash of such a port covers the whole port directory and the whole of `src/libs`, so an
 edit to any file under the directory rebuilds it, and an edit to any library rebuilds every port
 of KDOS's own, not only the ones that link that library. Where the desktop phase sits in the whole
-build is told in [How KDOS is built](how-kdos-is-built.md#the-desktop-05_desktop).
+build is told in [How KDOS is built](how-kdos-is-built.md).
 
 ## Building and trying a change
 
@@ -1063,19 +1087,19 @@ Most of the work on a surface happens without a build and without a display.
 |---|---|
 | Check the libraries, and that every consumer still compiles, on any host | `testing/selftest.sh` |
 | Run the same suite with every surface dump and golden, in the development image (`kdos-devdeps`) | `testing/devdeps-image.sh` |
-| Rebuild one desktop program in the build tree | `make build BUILD_ARGS="--phases 05_desktop --rebuild kdos-shell"` |
+| Rebuild one desktop program in the build tree | `make build BUILD_ARGS="--phases 50_desktop --rebuild kdos-shell"` |
 | See the change on a running desktop without rebuilding the ISO | `testing/quick.sh kdos-shell -- --sleep 3 --shot build/shots/x.png` |
 
 The dump harness builds only on a host with `libwayland-client`, `wayland-scanner`,
-`wayland-protocols` (including `ext-workspace-v1.xml`) and the fetched wlroots source tarball under
-`ports/core/wlroots/`; elsewhere `testing/selftest.sh` prints `front-end dumps (skipped …)`. A front
+`wayland-protocols` (including `ext-workspace-v1.xml`) and the fetched wlroots source tarball in the
+`wlroots` port's directory; elsewhere `testing/selftest.sh` prints `front-end dumps (skipped …)`. A front
 end whose headers are missing on the host (`pixman`, `fcft`, ALSA, PipeWire, the image decoders) is
 dropped from the harness with a note rather than failing it. A pass on a bare host therefore says
 little about how a surface draws. `testing/devdeps-image.sh` builds the `kdos-devdeps` container
 image and runs the whole suite inside it, which is the run where nothing is skipped (see
 [Testing](testing.md#the-machine-where-nothing-is-skipped)).
 
-`testing/quick.sh` builds the named ports with no packaging, packs exactly the files the package
+`testing/quick.sh` builds the named ports without the image phase, packs exactly the files the package
 database says those ports own, and patches them into the RAM overlay of a booted ISO (the
 writable in-memory layer the live system runs on; see [Testing](testing.md#the-fast-loop) and
 [Developing](developing.md)). It needs a built tree and the container image of the *rig*, the QEMU
@@ -1083,8 +1107,9 @@ harness that boots the ISO, drives it and photographs it ([Testing](testing.md#t
 the [glossary](../06-reference/glossary.md)); the rig writes a PPM file whatever the extension. A
 new symbolic link in the recipe travels with the package, but a new row under `fs/`, such as a
 `menu.conf` route, does not unless the file is named in `KDOS_QUICK_FILES` (a path relative to
-`build/fs`) after the phase-1 filesystem step (`01_phase1:00_file_system.sh`) has copied `fs/`
-into the build tree. When in doubt, run the narrowed `make build` with packaging. The fast loop is
+`build/fs`) after the bootstrap filesystem step (`10_bootstrap:000_file_system.sh`) has copied `fs/`
+into the build tree. When in doubt, build the image as well, with
+`make build BUILD_ARGS="--phases 50_desktop,70_image --rebuild <port>"`. The fast loop is
 not evidence about the shipped image.
 
 ## Looking at it without a screen

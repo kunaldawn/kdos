@@ -28,10 +28,11 @@ pair of files that make up that description, and a **package** is what building 
 an archive that `kpkg` installs and records. Every program on the KDOS host, the compiler and the
 kernel included, is built from a port.
 
-The build that turns ports into a system runs in numbered **phases**. From phase 2 onwards
-each runs inside the build [chroot](../06-reference/glossary.md): the directory tree holding the
-system built so far, which the build enters as its root. The phases are introduced under
-[Phases, package lists and groups](#phases-package-lists-and-groups), and run as described in
+The build that turns ports into a system runs in numbered **phases**, from `00_cross` to
+`70_image`. From `20_selfhost` onwards each runs inside the build
+[chroot](../06-reference/glossary.md): the directory tree holding the system built so far, which
+the build enters as its root. The phases are introduced under
+[Phases, package lists and shelves](#phases-package-lists-and-shelves), and run as described in
 [The build system](../05-developer/build-system.md#phases).
 
 ### What a port holds
@@ -60,52 +61,93 @@ A recipe's `depends =` line is the only dependency list. It names every port tha
 installed before this one builds, and serves as the runtime dependency list as well; there is no
 separate list of build-only dependencies.
 
-### The three repositories
+### Repositories and shelves
 
-There are three port repositories, all in the same format, searched in this order:
+There are five port repositories, all in the same format, searched in this order:
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 1,999 | Upstream software |
-| `/kdos/src/packages` | `src/packages/` | 11 | KDOS's own tools, theme, installer and packer |
-| `/kdos/src/desktop` | `src/desktop/` | 13 | KDOS's own compositor, shell, terminal, daemons and portal |
+| `/ports/core` | `ports/core/` | 1,999 | Upstream software, filed on 102 shelves |
+| `/kdos/src/system` | `src/system/` | 5 | KDOS's own `kdos` command and tools, the packer, the box runtime and its init, and the installer |
+| `/kdos/src/art` | `src/art/` | 6 | KDOS's own theme generator, icon, cursor and GTK themes, boot splash and demo |
+| `/kdos/src/desktop` | `src/desktop/` | 8 | KDOS's own compositor, panel, terminal, lock screen, resource monitor, box socket, recorder and portal |
+| `/kdos/src/daemons` | `src/daemons/` | 5 | KDOS's own root daemons |
 
-That is 2,023 recipes in all (counted as directories holding a `kpkgbuild`). When two repositories
-hold a port of the same name, the first one in the search order wins.
+That is 2,023 recipes in all (counted as directories holding a `kpkgbuild`).
 
-`PORT_REPO` lists the repositories `kpkg` may resolve against. Its default, from
-`/etc/kpkg.conf`, is `/ports/core` alone, and phases 2 and 3 use that default (phase 1 builds by
-script and resolves no ports). The phase 4 and
-kernel environments (`script/phase4.env.sh`, `script/phase5.env.sh`) add `/kdos/src/packages`; the
-desktop environment (`script/desktop.env.sh`) names all three. Building KDOS's own programs is
-therefore not a special case anywhere in the build system: they are ports like any other, found on
-a longer search path.
+A repository holds a port either directly, as `<repo>/<name>/`, or one level down, as
+`<repo>/<shelf>/<name>/`. The `src/` areas hold theirs directly. `ports/core` holds none directly:
+every upstream port sits on a **shelf**, a directory named for its subject, such as
+`ports/core/wl/wlroots/`, `ports/core/fonts/noto-fonts/` or
+`ports/core/python-net/python3-requests/`. The shelves are a closed list, the file `ports/shelves`,
+with one line per shelf giving its id and what belongs on it. [Writing
+ports](../05-developer/writing-ports.md) gives the rules for choosing one.
 
-Beside `ports/core`, the `ports/` directory holds the tools that operate on the tree rather than
-recipes: `fetch` and `publish` for sources, `srclib.sh` (the library both share), `update` for
-upstream version checks, `hackage-vendor` for Haskell vendor bundles, `Containerfile.fetch` for the
-container that generates vendor bundles, and the source index `sources.idx`.
+A shelf is only where a recipe is filed. A port's identity is its bare name: `depends =` lines,
+package lists, the package database, the binary host and the source index all name `wlroots`, never
+`wl/wlroots`, and there is no recipe key for the shelf, so moving a port to another shelf changes
+nothing but its path (and the `.gitignore` line of the few ports ignored by path, which spells the
+shelf). So a name must be unique across the whole tree: `kpkg` looks a name up in
+each repository, first as `<repo>/<name>/` and then on every shelf, and a name found at two paths
+inside one repository is an error that names both, never a choice between them. `kpkg`,
+`kdos update`, `kdos cve` and the version checker all stop on it. A port nested below its shelf is
+an error too. Across repositories the first in the search order wins a name. `testing/preflight.sh`
+refuses a tree in which any port sits anywhere but `ports/core/<shelf>/<name>/` or
+`src/<area>/<name>/`, a shelf is missing from `ports/shelves`, or a name is filed twice, and the
+pre-push hook makes the same checks of `ports/core` at the tip of every ref it pushes.
+
+`PORT_REPO` lists the repositories `kpkg` may resolve against, in order. It holds at most eight;
+an entry past the eighth is dropped with a warning. Shelves are never listed on it: `kpkg` finds
+them itself. Its default, from `/etc/kpkg.conf`, is `/ports/core` alone, and `20_selfhost`,
+`30_foundation`, `31_compilers` and `70_image` use that default (`00_cross` and `10_bootstrap` do not use `PORT_REPO`: their
+step scripts read recipes through `script/lib/port.sh`, which finds a name one shelf down in
+`ports/core` itself). The package-building phases from `40_lang` to `60_kernel` widen it in their
+environment files, `script/phases/<phase>/phase.env`:
+
+| Phases | `PORT_REPO` |
+|---|---|
+| `40_lang` to `44_apps`, `60_kernel` | `/ports/core /kdos/src/system /kdos/src/art` |
+| `50_desktop` | `/ports/core /kdos/src/system /kdos/src/art /kdos/src/desktop /kdos/src/daemons` |
+
+Building KDOS's own programs is therefore not a special case anywhere in the build system: they
+are ports like any other, found on a longer search path.
+
+Beside `ports/core`, the `ports/` directory holds the shelf list `shelves` and the tools that
+operate on the tree rather than recipes: `fetch` and `publish` for sources, `srclib.sh` (the
+library both share), `update` for upstream version checks, `hackage-vendor` for Haskell vendor
+bundles, `Containerfile.fetch` for the container that generates vendor bundles, and the source
+index `sources.idx`. Each of these tools names a port by its bare name and finds it on any shelf.
 
 ### The recipes under src/
 
-`src/packages` and `src/desktop` hold KDOS's own software. Each directory there is a port whose
-recipe names no `source =`: the code lives in the port directory itself, and `build.sh` compiles it
-from `$PORT_SRC` (the port directory; see [What a build verifies](#what-a-build-verifies)), usually
-together with some of the shared libraries under `src/libs` (see
-[The C libraries](../05-developer/c-libraries.md)). Two of those recipes carry an empty `source =`
-line, which means the same thing.
+The four `src/` areas that hold recipes hold KDOS's own software. Each directory there is a port
+whose recipe names no `source =`: the code lives in the port directory itself, and `build.sh`
+compiles it from `$PORT_SRC` (the port directory; see
+[What a build verifies](#what-a-build-verifies)), usually together with some of the shared
+libraries under `src/libs` (see [The C libraries](../05-developer/c-libraries.md)). Two of those
+recipes carry an empty `source =` line, which means the same thing.
 
-Two directories under `src/packages` are special:
+Every port there sits exactly two levels below `src/`, at `src/<area>/<name>/`. That depth is load
+bearing: a recipe finds the libraries at `$PORT_SRC/../../libs`, and `kdos-installer` compiles a
+file of its sibling `kdos-appbox`. The areas divide the programs by what they are:
 
-- `kdos-kpkg` is the package manager's own source and has no recipe. The phase 1 script
-  `script/01_phase1/12_kpkg.sh` cross-compiles it, because nothing can read a recipe before `kpkg`
-  exists. It is therefore not an installed package and is not in the package database.
-- `kdos-installer` has a recipe but is built by the phase 1 script `13_kinstall.sh`, from the same
-  sources, rather than from a package list.
+| Area | Holds |
+|---|---|
+| `src/desktop` | Programs that draw the session or serve it over Wayland or D-Bus |
+| `src/daemons` | Root daemons whose client is the desktop account |
+| `src/system` | The package manager, the `kdos` command and its services, packs and boxes, and the installer |
+| `src/art` | Themes, pictures and the programs that generate them |
+| `src/libs` | The shared `libk*` C libraries; no recipes |
+| `src/devtools` | The build orchestrator `kdosbuild` and the version checker `kdos-portup` behind `ports/update`; no recipes. They run on the build machine and are compiled on demand |
 
-The rest of `src/` holds no ports. `src/libs` is the shared C libraries, `src/build` is the build
-orchestrator `kdosbuild`, and `src/tools/kdos-portup` is the version checker behind
-`ports/update`. These run on the build host and are compiled on demand.
+Two directories under `src/system` are special:
+
+- `kdos-kpkg` is the package manager's own source and has no recipe. The bootstrap step
+  `script/phases/10_bootstrap/120_kpkg.sh` cross-compiles it, because nothing can read a recipe
+  before `kpkg` exists. It is therefore not an installed package and is not in the package
+  database.
+- `kdos-installer` has a recipe but is built by the bootstrap step `130_kinstall.sh`, from the
+  same sources, rather than from a package list.
 
 A source-less port is hashed differently from an upstream one when the build decides whether it is
 current: its whole directory, and all of `src/libs`, count as its recipe. The two source-less ports
@@ -113,49 +155,91 @@ in `ports/core`, `containers-common` and `musl-ldd`, hash their whole directory 
 `src/libs`. See
 [`E:` — the recipe hash](#e--the-recipe-hash).
 
-### Phases, package lists and groups
+### Phases, package lists and shelves
 
 The ports tree says how to build each piece of software; it does not say which pieces make up the
-system or in what order they are built. That is the job of the **phase package lists**, one
-`packages.txt` in each package-building phase directory under `script/`:
+system or in what order they are built. That is the job of the **phase package lists**, one per
+package-building phase directory under `script/phases/`. A list is either one file,
+`packages.txt`, or a directory of files, `packages.d/`, whose `*.txt` files are read in byte order
+as one list. A phase has one or the other, never both.
 
-| List | Names | Named sections |
-|---|---|---|
-| `script/02_phase2/packages.txt` | 8 | none: the self-hosting bootstrap, rebuilt inside the chroot |
-| `script/03_phase3/packages.txt` | 97 | 9, from "Build Toolchain" to "Documentation & Spec Tooling" |
-| `script/04_phase4/packages.txt` | 1,685 | 90, from "Core Build Utilities (host-side)" to "Data the applications read" |
-| `script/05_desktop/packages.txt` | 22 | 1: "The resource monitor" (see below) |
-| `script/05_phase5/packages.txt` | 1 | none: the kernel, `linux` |
+| Phase | List | Names | Installs |
+|---|---|---|---|
+| `20_selfhost` | `packages.txt` | 8 | 14 |
+| `30_foundation` | `packages.txt` | 125 | 115 |
+| `31_compilers` | `packages.txt` | 22 | 22 |
+| `40_lang` | `packages.d/`, 14 files | 195 | 167 |
+| `41_system` | `packages.d/`, 94 files | 967 | 967 |
+| `42_graphics` | `packages.d/`, 54 files | 186 | 186 |
+| `43_toolkits` | `packages.d/`, 46 files | 242 | 242 |
+| `44_apps` | `packages.d/`, 55 files | 280 | 280 |
+| `50_desktop` | `packages.txt` | 22 | 22 |
+| `60_kernel` | `packages.txt` | 2 | 2 |
 
-"Names" counts the non-comment lines. Between them the five lists name 1,773 distinct ports.
-The desktop list opens with an unnamed block under its banner, which titles the list "Phase 5:
-The desktop": `xcb-util-wm`, `wlroots`, the compositor, the box socket, the shell, the terminal
-and the lock screen. Its one named group, "The resource monitor", holds `kdos-res` and everything
-after it: the root daemons, the pack tools, the input method, the two portals and the recorder.
+"Names" counts the port names a list writes; "Installs" counts the packages the phase installs
+that no earlier phase did. Between them the lists name 2,013 distinct ports and install 2,017:
+1,994 of the 1,999 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
+the bootstrap builds by name. The 5 `ports/core` recipes nothing reaches (`helix`,
+`icon-naming-utils`, `musl-locales`, `perl-xml-simple` and `setconf`) are built only on request.
 
-A list names only the ports a phase wants; each port's `depends =` pulls in the rest. Following the
-`depends =` lines from the 1,773 names reaches 2,017 ports: 1,994 of the 1,999 in `ports/core`, and
-every recipe under `src/` except `kdos-installer`, which phase 1 builds by name. The 5 `ports/core`
-recipes nothing reaches are built only on request.
+Where a list names more ports than it installs, the extra names are ports an earlier phase already
+installed, named again so that one whose recipe changed is rebuilt at that point in the order. A
+name may be written again only in the list's *order run*: `packages.d/00-order.txt`, or the names
+a `packages.txt` gives ahead of its first shelf heading. `30_foundation`'s order run is the build
+tools recipes use without naming them in `depends =` (`make`, `pkgconf`, the autotools, `cmake`,
+`meson`, `ninja`, `python3`, `perl`, `bash` and `toybox`), led by the toolchain `20_selfhost`
+built (`musl`, `gcc`, `binutils`) and followed by the rest of `20_selfhost`'s ports, which
+reinstall after toybox to take back the names it leaves out. `40_lang` opens with `toybox` and
+those owners again (see [toybox and the tools it overlaps](#toybox-and-the-tools-it-overlaps)).
 
-A list is a plain file: one port name per line, with `#` comments. The comments do two jobs. After
-the file's banner, which holds the KDOS name and, in the phase 3, phase 4 and desktop lists, the
-phase's own title such as "Phase 4: User-space + Wayland base", a block of three lines, a rule, a
-title and a rule, heads a **package-list group** (or *list group*): a named section of related
-ports, such as "Core Services", "Network / SSH / Audio / Bluetooth / Print" or "Modern CLI tools
-(Rust / Go)" in phase 4. List groups exist for the reader. The build ignores them, and a port
-belongs to its list group only by where it is written in the file. Other comments state the
-constraint that pins a port's position, such as the block after `toybox` in phase 4 described in
-[toybox and the tools it overlaps](#toybox-and-the-tools-it-overlaps).
+**From `30_foundation` on, a list names exactly the ports its phase installs.** Each port's
+`depends =` still pulls in its dependencies, but every dependency the phase needs is either
+installed by an earlier phase or named in the list itself. So a phase means what it says: a port
+cannot drift into an earlier phase because something there started to depend on it, and a list
+cannot reach forward into a later one. `testing/phaseclosure.py`, which preflight runs, checks this
+for every phase and names each port that breaks it, with the phase that installs it and the phase
+that names it. It also refuses a name that is not a port on the phase's `PORT_REPO`, a name listed
+twice, and a dependency that only a later phase's `PORT_REPO` can resolve.
 
-The second half of the phase 4 list holds the natively ported graphical applications and what they
-link. The toolkit groups come first, from "GTK 3, GTK 4 and libadwaita" through "WebKitGTK",
-"Qt 6", "Qt 5", "KDE Frameworks 6", "QtWebEngine", "wxWidgets" and "OpenGL helpers, FLTK and Tk",
-followed by the libraries the applications share. The applications themselves are grouped by what
-a person does with them, from "Phones, remote desktops and virtual machines" through "Internet and
-communication", "Documents and office" and "Pictures" to "Games" and "Emulators", and the list
-ends with "Data the applications read". These toolkits serve applications only; the desktop's own
-programs, which phase 5 builds, link none of them (see
+The phases split the system by what a port's dependency closure reaches, not by subject:
+
+| Phase | Holds |
+|---|---|
+| `20_selfhost` | The C library, the compilers and the tools their builds run, rebuilt inside the chroot |
+| `30_foundation` | Build systems, the Perl and Python interpreters, and the base libraries every later recipe builds with |
+| `31_compilers` | LLVM and clang with their runtimes, Rust, Go, GHC, Zig, Node.js and Ruby, and the ports whose closure reaches one of them, such as `cargo-c`, `bindgen` and `pandoc`. They take most of the hours before `40_lang`, so `30_foundation` is a restore point in front of them |
+| `40_lang` | Language modules and developer tools whose closure needs nothing past `31_compilers` |
+| `41_system` | Everything whose closure reaches no graphics and no toolkit: services, networking, storage, the command line, codecs, and the science and hardware libraries |
+| `42_graphics` | Ports whose closure reaches Wayland, X11, Mesa, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit, other than ports nothing depends on that sit on an application shelf |
+| `43_toolkits` | GTK, Qt, KDE Frameworks, wxWidgets, FLTK and Motif, and every library over them that something else depends on |
+| `44_apps` | Ports nothing depends on whose closure reaches a toolkit, and those on an application shelf whose closure reaches the graphics stack. The application shelves are listed in [Which phase lists a port](../05-developer/writing-ports.md#which-phase-lists-a-port) |
+| `50_desktop` | KDOS's own desktop and daemons, with wlroots, the input method and the portal backends |
+| `60_kernel` | The kernel, `linux`, and `dwarves` for its BTF |
+
+A list is a plain file: one port name per line, with `#` comments. After the file's banner, which
+holds the KDOS name, the phase directory and its title, such as "41_system: System", comments do two
+jobs. The first is grouping, and **the lists are grouped by shelf**. In a `packages.d/` directory
+each file is one shelf's ports and is named after it, `<shelf>.txt`, such as
+`41_system/packages.d/network.txt`, or one `src/` area's, `src-<area>.txt`; a file's banner repeats
+the shelf's line from `ports/shelves`. In a single `packages.txt` a heading between two rules,
+`# <shelf> — <description>`, opens each shelf's ports, in the order `ports/shelves` lists them,
+and after the shelves a `# src-<area> — <description>` heading opens the ports of KDOS's own from
+that `src/` area, as `50_desktop`'s list does for `src-desktop` and `src-daemons`; the two shortest lists, `20_selfhost`'s and `60_kernel`'s, have no headings. The grouping exists
+for the reader, and the build ignores it. Preflight refuses a `packages.d/` file that names a port
+filed on another shelf, and `testing/phaseclosure.py` refuses a shelf's ports naming one an earlier
+phase installs.
+
+The second job is stating the constraint that pins a port's position, such as the block after
+`toybox` described in [toybox and the tools it overlaps](#toybox-and-the-tools-it-overlaps). A run
+of ports whose order a comment pins cannot be split across shelf files, so in a `packages.d/`
+directory it lives in `00-order.txt`, which sorts ahead of every shelf file and installs first, in
+the order written. `40_lang` keeps the toybox run there; `41_system` keeps `coreutils` ahead of
+the text games that install with GNU `install`, and each Python module straight after the program
+whose vendor bundle carries a copy of it, so that the port, installed last, owns the files.
+
+The toolkits and the natively ported graphical applications build last among the userland phases,
+in `43_toolkits` and `44_apps`. These toolkits serve applications only; the desktop's own
+programs, which `50_desktop` builds, link none of them (see
 [Principles](../01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)).
 
 Order within a list matters. The orchestrator hands the whole list to `kpkgdepends`, which walks
@@ -164,7 +248,8 @@ earlier unless a dependency says otherwise. Each port in the resulting order is 
 with `kpkg install`, which skips a package whose recipe has not changed; see
 [Deciding what to rebuild](#deciding-what-to-rebuild). How phases are discovered, entered and
 snapshotted is in [The build system](../05-developer/build-system.md#phases), and
-[The ports catalogue](../06-reference/ports-catalogue.md) lists every port by phase and list group.
+[The ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf, with the
+phase that installs it.
 
 ### The group key
 
@@ -186,6 +271,10 @@ are pairs taken from one upstream release: `glib` and `glib-introspection` carry
 from a host the derivation does not read: the Qt modules and PySide, fetched from `download.qt.io`,
 carry `group = qt6` (29 recipes) or `group = qt5` (11).
 [Writing ports](../05-developer/writing-ports.md) covers the key and the review it feeds.
+
+A `group =` family is not a shelf either, but it lives on one: every member of a group is filed on
+the same shelf, so a bump offered as one group touches one directory. Preflight refuses a group
+whose members sit on different shelves.
 
 ## Where sources come from
 
@@ -222,9 +311,9 @@ or removed. The committed index `ports/sources.idx` has one line per file,
 `<hash> <NNN> <port>/<file>`, and each release's notes list what it holds. A checkout years old
 therefore finds the exact bytes it was written against even after the upstream host has gone. The
 index names 1,678 files: 1,000 in `sources-001` and 678 in `sources-002`. The current `ports/core`
-recipes name 2,489 distinct hashed files. 39 of them are small files git tracks beside their
-recipes, and the other 2,450, about 38.6 GiB, are fetched. 1,191 of those are in the archive; the
-other 1,259 are not, so `make fetch` takes them from upstream. The remaining 487 files the index
+recipes name 2,487 distinct hashed files. 39 of them are small files git tracks beside their
+recipes, and the other 2,448, about 38.6 GiB, are fetched. 1,186 of those are in the archive; the
+other 1,262 are not, so `make fetch` takes them from upstream. The remaining 492 files the index
 names are ones no current recipe names. Stored by hash, a file several
 ports use is one asset; the LLVM monorepo tarball, for example, is shared by eight ports.
 
@@ -257,8 +346,8 @@ is in [Developing](../05-developer/developing.md#where-sources-come-from).
 
 `kpkg` is the package manager: one C program that builds ports, installs and removes packages,
 resolves dependencies, signs and verifies binary packages, and makes deltas. It is one binary
-answering to five names. Phase 1 installs it as `/usr/bin/kpkg` with the other four names as
-symbolic links, and what it does depends on the name it was run as:
+answering to five names. The bootstrap phase installs it as `/usr/bin/kpkg` with the other four
+names as symbolic links, and what it does depends on the name it was run as:
 
 | Name | Does |
 |---|---|
@@ -388,10 +477,12 @@ Dropping one more applet from toybox without bumping the release of the port tha
 leaves the name missing after a toybox upgrade. A toybox installed after the owning port holds the
 name in its manifest, its upgrade removes the name, and `kpkg` skips the owner because its recipe
 hash is current, so nothing puts the name back. A contributor who removes an applet therefore
-bumps the owning port's `release` in the same change. The owners that
-[phase 3](../05-developer/build-system.md#phases) (the toolchain and core libraries) installs before
-toybox are listed straight after it in [phase 4](../05-developer/build-system.md#phases) (the
-userland), so their names return before a later build step runs them.
+bumps the owning port's `release` in the same change. `toybox` and the owners that
+[`20_selfhost` and `30_foundation`](../05-developer/build-system.md#phases) install before it are
+named again at the head of `40_lang`, in `packages.d/00-order.txt`, with toybox first and the
+owners straight after it. That is the first phase after the long compiler phase, so a build that
+continues from `40_lang` reinstalls them too, and their names return before a later build step runs
+them: bzip2's `make`, for one, runs `cmp`.
 
 ### Upgrades and removals
 
@@ -507,10 +598,13 @@ an older one.
 
 So a source-less port hashes its whole directory, sorted at every level. A port under `src/`
 hashes all of `src/libs` with it: the library directory is found at `../../libs` from the port,
-which exists only for `src/packages` and `src/desktop`. Each `build.sh` names which libraries it
-compiles, and working that out would need a shell parser inside the package manager, so every
-library is included. The two source-less ports in `ports/core`, `containers-common` and
-`musl-ldd`, compile none of those libraries, and their hash covers their own directory alone.
+which from `src/<area>/<name>/` is `src/libs`. Each `build.sh` names which libraries it compiles,
+and working that out would need a shell parser inside the package manager, so every library is
+included. The two source-less ports in `ports/core`, `containers-common` and `musl-ldd`, compile
+none of those libraries. From `ports/core/<shelf>/<name>/`, `../../libs` is `ports/core/libs`,
+which does not exist, so their hash covers their own directory alone. This is why no shelf may be
+named `libs`: a shelf by that name would be hashed whole into both recipes, and preflight and the
+pre-push hook refuse it.
 
 The cost is that editing one library rebuilds every port of KDOS's own, not only the ones that use
 it. Upstream ports' hashes are unaffected.
@@ -527,10 +621,10 @@ two fields swap.
 
 ### The three states
 
-With `KPKG_STRICT_RECIPE=1`, which the environment file of every phase that installs with `kpkg`
-sets, `kpkg` compares an installed package's recorded recipe hash with the port as it stands.
-Without it, as in an interactive `kpkg install`, an installed package is skipped whatever its
-recipe says. With the check on:
+With `KPKG_STRICT_RECIPE=1`, which `script/env/common.env` sets for every build phase, `kpkg`
+compares an installed package's recorded recipe hash with the port as it stands. Without it, as in
+an interactive `kpkg install`, an installed package is skipped whatever its recipe says. With the
+check on:
 
 | State | Result |
 |---|---|
@@ -570,14 +664,14 @@ Each setting removes one source of difference between two builds:
 | `--use-compress-program=xz -9 -T1` | Multi-threaded compression is not deterministic, and `XZ_OPT` in the environment can silently enable it |
 | `umask(022)` before the build | A file created without an explicit mode takes the builder's umask: the one source of drift that is not in the archive call |
 
-The other half is five lines in every phase's environment file:
+The other half is five settings in `script/env/common.env`, which every phase's environment sources:
 
 | Line | Purpose |
 |---|---|
 | `SOURCE_DATE_EPOCH=1735689600` | A pinned epoch, not the current date and not derived from git: the build container mounts only `build`, `src`, `fs`, `script` and `ports`, not the repository's `.git` |
 | `TZ=UTC` | Dates formatted during the build do not depend on the builder's zone |
 | `LC_ALL=C` | Sorting and formatting do not depend on the builder's locale |
-| `-ffile-prefix-map=/var/cache/kpkg/work=/build` | Rewrites the build directory out of `__FILE__` and debug paths |
+| `-ffile-prefix-map=/var/cache/kpkg/work=/build`, on both `CFLAGS` and `CXXFLAGS` | Rewrites the build directory out of `__FILE__` and debug paths |
 | `-Wl,--build-id=sha1` | The build identifier is a function of the contents, not random |
 
 `ports/fetch` rolls vendor bundles with the same tar and xz settings, so regenerating a bundle
@@ -624,6 +718,12 @@ source. `kpkg binhost` says which test failed, and its exit status says what hap
 | 0 | The prebuilt package was used |
 | 1 | No match, so build it from source; also a usage error, or a matching package whose install failed |
 | 2 | Refused: no index, no trusted key, or verification failed |
+
+`make build KDOS_MAKE_BINHOST=1` writes such a directory at `build/binhost/`: every `kpkg install`
+of the build keeps the package it made, and the image phase, `70_image`, copies them there and
+indexes them with a key kept under `build/binhost-key/`. That phase runs with the default
+`PORT_REPO`, `/ports/core` alone, so the index finds no recipe for a package built from `src/` and
+gives it an empty `E:`. Such a package matches no client and always builds from source there.
 
 Gentoo solves the same problem by matching USE flags between the builder and the client. KDOS has
 no USE flags, so the whole question reduces to these equality tests;
@@ -737,7 +837,7 @@ version comparison, shared with the upstream-version checker (`ports/update`), s
 disagree about what "newer" means.
 
 The data is a vendored, pruned copy of Alpine's security database, installed as
-`/usr/share/kdos/secdb.txt` from `src/packages/kdos-tools/secdb/secdb.txt`; `KDOS_SECDB` names
+`/usr/share/kdos/secdb.txt` from `src/system/kdos-tools/secdb/secdb.txt`; `KDOS_SECDB` names
 another file. It is a committed, diffable text file generated by `vendor.py` beside it and merged
 from twelve Alpine branches (`main` and `community` for v3.19 to v3.24), so the answer needs no
 network. Alpine is a close proxy for KDOS because it is also a musl distribution building the same
@@ -769,7 +869,7 @@ vendored table is the everyday answer.
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md) — this packaging set against other distributions'
 - [The build system](../05-developer/build-system.md) — how phases are run and drive `kpkg`
 - [Writing ports](../05-developer/writing-ports.md) — the recipe format and how to add one
-- [The ports catalogue](../06-reference/ports-catalogue.md) — every port, by phase and list group
+- [The ports catalogue](../06-reference/ports-catalogue.md) — every port, by shelf, with its phase
 - [Developing](../05-developer/developing.md) — fetching sources and running the build
 - [Packs and boxes](packs-and-boxes.md) — the other packaging system, and why it is separate
 - [The security model](security-model.md) — the trust argument behind the keyrings

@@ -1,0 +1,48 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   astronomy — Astronomy, planetaria, ephemerides, FITS and satellite
+#   prediction
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Every instrument writes FITS and nothing else reads it.
+cfitsio
+
+# The IAU's own SOFA routines, relicensed so they can be shipped here at all.
+erfa
+
+# Pixel to sky and back. Without --disable-fortran configure builds a library
+# that is silently missing half its interface when no Fortran wrapper is made.
+wcslib
+
+# Where a planet, moon or satellite actually is. The JPL kernel is NOT shipped:
+# `load()` downloads it, which is the one thing this machine will not do.
+skyfield
+
+# Arithmetic, cropping, warping and photometry over FITS, from a prompt —
+# which is the shape the rest of this distro is already in.
+gnuastro
+
+# A satellite tracker, honest about TLE age.
+predict
+
+cspice
+sgp4
+libnova

@@ -1,0 +1,43 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   40_lang: Languages
+# ---------------------------------
+#   perl-cpan — The perl interpreter and every perl-* CPAN module
+# ---------------------------------
+#
+# Language modules and developer tools — the python3-* and perl-* modules,
+# language implementations, build and documentation tools, debuggers and
+# version control — whose dependency closure needs nothing past 31_compilers.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# git send-email's TLS and SMTP authentication are these perl modules, which it
+# loads only when a send needs them: without them every send over TLS or with a
+# login fails, and nothing else notices.
+perl-net-ssleay
+perl-io-socket-ssl
+perl-digest-hmac
+perl-crypt-urandom
+perl-authen-sasl
+
+perl-uri
+perl-io-string
+perl-font-ttf
+
+# samba builds pidl, its IDL compiler, with Parse::Yapp, and stops rather than
+# degrading when the module is absent.
+perl-parse-yapp
+
+perl-yaml-tiny
+perl-file-which
+perl-file-homedir

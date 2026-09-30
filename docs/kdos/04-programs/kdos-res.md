@@ -53,13 +53,13 @@ were, so everything else in the window looks as it did; the page is then opaque 
 a scrolled list still moves its pixels rather than repainting them.
 
 The source is `src/desktop/kdos-res/`, and the recipe (`kpkgbuild` and `build.sh`) sits beside it.
-The port is built in the [`05_desktop` phase](../05-developer/how-kdos-is-built.md#the-desktop-05_desktop)
-and is listed in `script/05_desktop/packages.txt`; the same recipe builds `kdos-resctl`.
-`kdos-res` ships beside `btop` rather than replacing it: `btop` is installed in phase 4 and stays
-installed; a left click on the two-row bar's meters strip opens `btop`, and on a one-row bar the
+The port is built in the [`50_desktop` phase](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop)
+and is listed in `script/phases/50_desktop/packages.txt`; the same recipe builds `kdos-resctl`.
+`kdos-res` ships beside `btop` rather than replacing it: `btop` is installed in the `41_system` phase and
+stays installed; a left click on the two-row bar's meters strip opens `btop`, and on a one-row bar the
 CPU applet opens `kdos-res` (see [Opening it](#opening-it)). The ports catalogue lists
-[`kdos-res`](../06-reference/ports-catalogue.md#the-resource-monitor) and
-[`btop`](../06-reference/ports-catalogue.md#power-user-cli-base) in their groups.
+[`kdos-res`](../06-reference/ports-catalogue.md#srcdesktop) with KDOS's own programs and
+[`btop`](../06-reference/ports-catalogue.md#sysmon) on the `sysmon` shelf.
 
 ## Opening it
 

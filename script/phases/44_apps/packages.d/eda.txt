@@ -1,0 +1,42 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   44_apps: Applications
+# ---------------------------------
+#   eda — Electronics: schematic and PCB, circuit simulation, antenna
+#   modelling, FPGA synthesis and simulation, logic analysers and bench
+#   instruments
+# ---------------------------------
+#
+# Leaf applications whose dependency closure reaches a toolkit, or the graphics
+# stack on an application shelf.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# An LXI device announces itself over mDNS, which avahi is already running — so
+# `lxi discover` finds a scope nobody typed an address for.
+lxi-tools
+
+# The front end that turns a SystemVerilog assertion into a problem for an SMT
+# solver such as yices2.
+symbiyosys
+
+# nextpnr compiles each fabric description INTO its binary, so both chip
+# databases, icestorm and prjtrellis, must be installed before it is built; its
+# `depends` names them.
+nextpnr
+
+qucs-s
+horizon-eda
+kicad
+xnec2c
+librepcb

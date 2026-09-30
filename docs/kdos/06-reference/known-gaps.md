@@ -14,7 +14,7 @@ and what to do instead where there is something. Some entries are known defects:
 code has today that contradicts its own documentation or usage text. They are listed so that a
 reader who meets one knows it is known. The sections follow the shape of the system: the desktop,
 applications and boxes, hardware, installation, boot and updates, security, ports built without a
-feature, upgrades, sources and publishing, testing, and this book. Every entry describes the tree
+feature, upgrades, building, sources and publishing, testing, and this book. Every entry describes the tree
 as it stands; a gap that closes is removed rather than marked as closed (see
 [Principles](../01-philosophy/principles.md#documentation-describes-the-present)).
 
@@ -405,8 +405,8 @@ model, and `base.en` ships.
 ### The native applications have not been built
 
 The browsers, office suites, editors, games and the rest of the graphical applications are recipes
-under `ports/core`, named in `script/04_phase4/packages.txt`, with every source fetched and
-hashed. None of them has been through a build, and none has been started on a KDOS image, so
+under `ports/core`, named in the lists of the userland phases, `40_lang` to `44_apps`, with every
+source fetched and hashed. None of them has been through a build, and none has been started on a KDOS image, so
 what is written about any of them here and in [the ports catalogue](ports-catalogue.md) describes
 its recipe. The published source archive holds almost none of their sources, so `make fetch` on
 another clone takes them from upstream. See
@@ -748,8 +748,8 @@ The full statement is
 
 ## Ports built without a feature
 
-Each port, the phase list and group it is built from, and the recipes that are not installed at
-all are in [The ports catalogue](ports-catalogue.md).
+Each port, its shelf and the phase that builds it, and the recipes that are not installed at all
+are in [The ports catalogue](ports-catalogue.md).
 
 ### Go has no race detector and no BoringCrypto
 
@@ -841,6 +841,45 @@ install to the same path takes the file into the later manifest, so the owning p
 not list it, and toybox's upgrade removes it as an orphan. On such a machine, upgrade toybox
 together with those ports, whose release bumps reinstall the names.
 
+## Building
+
+### The phase lists have not been through a build
+
+The thirteen phases under `script/phases/`, the five userland phases `40_lang` to `44_apps` and the
+ports tree filed on shelves pass preflight, `testing/phaseclosure.py` and the self-test, and no
+build has run through them. How long each phase takes and how large its snapshot is are not
+measured. Every phase takes a snapshot; one that should not leaves `KDOS_SNAPSHOT_PATHS` empty in
+its `phase.env`.
+
+### Some command-line programs build after Qt
+
+A port builds in the phase its whole dependency closure allows, and some closures reach further
+than the program does. Each of these builds in `43_toolkits`, after GTK and Qt, for its own reason:
+
+- `podman`, and `distrobox` with it, because `podman` depends on `gpgme`, `gpgme` on `gnupg`,
+  `gnupg` on `pinentry`, and `pinentry` on `qt6-qtbase` for its dialog. A terminal-only
+  `pinentry` would cut that chain.
+- `qemu`, and `libvirt` with it, because `qemu` depends on `gtk3` and `vte3` for its display
+  window. Only a `qemu` built without that display could build earlier.
+- `sane-backends`, because it depends on `poppler`, which depends on `qt6-qtbase` and on `gpgmepp`.
+  Cutting that chain takes a `poppler` without its Qt binding and its signature support.
+
+`kdos-tools` builds in `42_graphics` because `kbd` depends on `libxkbcommon`, which the graphics
+stack provides. A build that stops before those phases has none of them.
+
+### The image's installer is rebuilt only when its mark is gone
+
+The `kinstall` on the image is compiled by `10_bootstrap`'s `130_kinstall.sh`, straight from
+`src/system/kdos-installer` and `src/system/kdos-appbox/catalogue.c`. That step is skipped
+whenever `build/mark/bootstrap/kinstall` exists, whatever changed in either directory, so an edit
+to the installer or to `catalogue.c` reaches the image only when the step runs again: remove the
+mark, or name the step explicitly with `--steps 10_bootstrap:130_kinstall.sh`, which sets
+`KDOS_REPLAY=1` for it.
+
+The `kdos-installer` port builds the same program from the same sources, and no phase list names
+it. Its recipe hash covers its own directory and `src/libs` but not `catalogue.c`, so a `kpkg`
+build of that port counts an edit to `catalogue.c` alone as nothing to do.
+
 ## Sources and publishing
 
 ### There is no public binary host
@@ -866,22 +905,29 @@ image or a medium that is sold must leave both out.
 
 ### A clone does not check what it pushes unless you enable the hook
 
-`script/hooks/pre-push`, which refuses a push naming a source hash the archive does not hold, runs
-only after `git config core.hooksPath script/hooks`. Without it, a push can name a source nobody has
-published, and every other clone's `make fetch` then depends on upstream still serving that file.
-Setting `core.hooksPath` replaces `.git/hooks` as a whole, so git-lfs's hooks, or any other
-installed there, stop running in that clone. With the hook on, a push that introduces a new source
-hash is also refused when the archive cannot be reached or answers anything but 200 or 404, because
-the missing source cannot then be ruled out; such a push made offline needs the bypass. Every push
-is refused while `KDOS_SOURCES_BASE` is empty. `KDOS_SKIP_PUBLISH_CHECK=1 git push …` skips the
-check for one push.
+`script/hooks/pre-push` runs only after `git config core.hooksPath script/hooks`. It refuses a push
+that breaks the ports layout (a recipe not exactly one listed shelf down, a name held by two ports,
+a reserved or port-named shelf), and a push naming a source hash the archive does not hold. Without
+it, a push can carry a layout no build resolves, or name a source nobody has published, and every
+other clone's `make fetch` then depends on upstream still serving that file. Setting
+`core.hooksPath` replaces `.git/hooks` as a whole, so git-lfs's hooks, or any other installed
+there, stop running in that clone.
+
+The layout check reads the tree of each pushed ref's commit, not of every commit between it and the
+remote, so a commit in the middle of a push that breaks the layout passes when a later one repairs
+it; preflight is what checks the working tree. With the hook on, a push that introduces a new
+source hash is also refused when the archive cannot be reached or answers anything but 200 or 404,
+because the missing source cannot then be ruled out; such a push made offline needs the bypass.
+Every push is refused while `KDOS_SOURCES_BASE` is empty. `KDOS_SKIP_PUBLISH_CHECK=1 git push …`
+skips the archive check for one push and leaves the layout check in force;
+`KDOS_SKIP_LAYOUT_CHECK=1` skips the layout check.
 
 ### A file beside a recipe that no `sha256 =` line names is outside the recipe hash
 
 For a port that names a `source =`, the recipe hash covers `kpkgbuild`, `build.sh`,
 `postinstall.sh` and every `.patch`, and each other file in the directory is expected to be checked
 by its own `sha256 =` line. A file committed beside the recipe that no such line names is in
-neither. Six are, counted as the git-tracked files under `ports/core/*/` that are not one of the
+neither. Six are, counted as the git-tracked files under `ports/core/*/*/` that are not one of the
 four recipe kinds and that no `sha256 =` line names: `linux/kdos.config`,
 `linux/kdos-logo-mono.pbm`, `linux/genlogo-mono.py`, `epy/epy.desktop`,
 `ffmpeg/LICENSE.notice` and `pandoc/cabal.project.freeze`. Editing one of them changes nothing the
@@ -895,8 +941,8 @@ A stick built with `KDOS_ISO_SOURCES=1` carries, under `sources/`, the ports tre
 without its dot-directories, so every fetched source beside its recipe), `src/`, `script/` and
 `fs/`, and `sources/binhost` when the build wrote one.
 `kdos rebuild` refuses a tree without `fs/etc`, copies the tree somewhere writable and runs the
-orchestrator there with `KDOS_WORKSPACE` naming the copy, which the phase-1 and toolchain
-environments use in place of `/workspace`. No rebuild from a medium has been run through every
+orchestrator there with `KDOS_WORKSPACE` naming the copy, which `script/env/host.env`, the
+environment of `00_cross` and `10_bootstrap`, uses in place of `/workspace`. No rebuild from a medium has been run through every
 phase. See [kdos rebuild](../04-programs/kdos-command.md#kdos-rebuild) and, for the build it runs,
 [How KDOS is built](../05-developer/how-kdos-is-built.md); the copy itself is described in
 [Repository layout](repository-layout.md).

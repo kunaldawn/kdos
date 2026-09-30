@@ -15,21 +15,85 @@
 #include <string.h>
 
 #include "kbuild.h"
+#include "kpkg.h"
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Discovery                                                                */
+
+/* A regular file at <dir>/<leaf>. */
+static int file_at(const char *dir, const char *leaf)
+{
+	char *path = kb_path_join(dir, leaf);
+	int ok = kb_path_exists(path) && !kb_is_dir(path);
+	free(path);
+	return ok;
+}
+
+static int dir_at(const char *dir, const char *leaf)
+{
+	char *path = kb_path_join(dir, leaf);
+	int ok = kb_is_dir(path);
+	free(path);
+	return ok;
+}
+
+int kbuild_is_package_phase(const KbuildPhase *p)
+{
+	int file = file_at(p->dir_path, KBUILD_PKG_FILE);
+	int dir = dir_at(p->dir_path, KBUILD_PKG_DIR);
+	if (file && dir)
+		return -1;
+	return file || dir;
+}
+
+char **kbuild_list_files(const KbuildPhase *p, int *count)
+{
+	if (count)
+		*count = 0;
+	if (kbuild_is_package_phase(p) <= 0)
+		return kb_calloc(1, sizeof(char *));
+
+	if (file_at(p->dir_path, KBUILD_PKG_FILE)) {
+		char **out = kb_calloc(2, sizeof(*out));
+		out[0] = kb_path_join(p->dir_path, KBUILD_PKG_FILE);
+		if (count)
+			*count = 1;
+		return out;
+	}
+
+	/* packages.d/<name>.txt in byte order — kb_listdir sorts with strcmp,
+	 * which is the order `LC_ALL=C` gives the same glob in shell. Anything
+	 * else in the directory is not part of the list. */
+	char *dir = kb_path_join(p->dir_path, KBUILD_PKG_DIR);
+	int n = 0;
+	char **names = kb_listdir(dir, &n);
+	char **out = kb_calloc((size_t)n + 1, sizeof(*out));
+	int k = 0;
+	for (int i = 0; i < n; i++) {
+		size_t len = strlen(names[i]);
+		if (names[i][0] == '.' || len < 5 ||
+		    strcmp(names[i] + len - 4, ".txt") ||
+		    !file_at(dir, names[i]))
+			continue;
+		out[k++] = kb_path_join(dir, names[i]);
+	}
+	kb_strv_free(names);
+	free(dir);
+	if (count)
+		*count = k;
+	return out;
+}
 
 char **kbuild_steps(const KbuildPhase *p, int *count)
 {
 	if (count)
 		*count = 0;
 
-	/* A packages.txt phase has no steps at all — the package list IS the
-	 * work, and the driver runs it through kpkg rather than through *.sh. */
-	char *pkgs = kb_path_join(p->dir_path, "packages.txt");
-	int is_pkg_phase = kb_path_exists(pkgs) && !kb_is_dir(pkgs);
-	free(pkgs);
-	if (is_pkg_phase)
+	/* A package phase has no steps at all — the package list IS the
+	 * work, and the driver runs it through kpkg rather than through *.sh.
+	 * A phase with both lists is refused at discovery, and has no steps
+	 * either: running its scripts instead would be a third guess. */
+	if (kbuild_is_package_phase(p))
 		return kb_calloc(1, sizeof(char *));
 
 	int n = 0;
@@ -58,10 +122,24 @@ char **kbuild_packages(const KbuildPhase *p, int *count)
 	if (count)
 		*count = 0;
 
-	char *path = kb_path_join(p->dir_path, "packages.txt");
-	size_t len = 0;
-	char *data = kb_read_all(path, &len);
-	free(path);
+	/* Every list file read into one buffer, in order, as if it were one
+	 * file. The newline between two files is what keeps the last name of
+	 * one from joining the first name of the next when a file does not
+	 * end in one. */
+	KbBuf all = {0};
+	int nfiles = 0;
+	char **files = kbuild_list_files(p, &nfiles);
+	for (int f = 0; f < nfiles; f++) {
+		size_t len = 0;
+		char *data = kb_read_all(files[f], &len);
+		if (!data)
+			continue;
+		kb_buf_add(&all, data, len);
+		kb_buf_str(&all, "\n");
+		free(data);
+	}
+	kb_strv_free(files);
+	char *data = all.p;
 	if (!data)
 		return kb_calloc(1, sizeof(char *));
 
@@ -92,75 +170,64 @@ char **kbuild_packages(const KbuildPhase *p, int *count)
 		}
 		out[n++] = kb_strdup(s);
 	}
-	free(data);
+	kb_buf_free(&all);
 	if (count)
 		*count = n;
 	return out;
 }
 
-static int cmp_str(const void *a, const void *b)
+char **kbuild_ports(const char *repo_root, int *count, char *err,
+		    size_t errcap)
 {
-	return strcmp(*(char *const *)a, *(char *const *)b);
-}
-
-char **kbuild_ports(const char *repo_root, int *count)
-{
-	static const char *REPOS[] = { "ports/core", "src/packages", NULL };
+	/* The areas every package phase from 40 on can see. The desktop's own
+	 * areas reach the index through their phase's list instead. */
+	static const char *REPOS[] = { "ports/core", "src/system", "src/art",
+				       NULL };
 
 	if (count)
 		*count = 0;
-	/* The array grows: a fixed cap drops every recipe past it with nothing
-	 * said, and the picker cannot rebuild a port it never lists. */
-	int cap = 512, n = 0;
-	char **out = kb_calloc((size_t)cap + 1, sizeof(*out));
-
+	KbBuf list = {0};
 	for (int r = 0; REPOS[r]; r++) {
 		char *base = kb_path_join(repo_root, REPOS[r]);
-		char **names = kb_listdir(base, NULL);
-		if (!names) {
-			free(base);
-			continue;
-		}
-		for (char **e = names; *e; e++) {
-			char *dir = kb_path_join(base, *e);
-			char *recipe = kb_path_join(dir, "kpkgbuild");
-			int have = kb_path_exists(recipe) && !kb_is_dir(recipe);
-			free(recipe);
-			free(dir);
-			if (!have)
-				continue;
-
-			int dup = 0;		/* a set, so the second repo loses */
-			for (int i = 0; i < n && !dup; i++)
-				dup = !strcmp(out[i], *e);
-			if (dup)
-				continue;
-
-			if (n == cap) {
-				cap *= 2;
-				char **nv = kb_calloc((size_t)cap + 1,
-						      sizeof(*nv));
-				memcpy(nv, out, (size_t)n * sizeof(*out));
-				free(out);
-				out = nv;
-			}
-			out[n++] = kb_strdup(*e);
-		}
-		kb_strv_free(names);
+		kb_buf_printf(&list, "%s%s", r ? " " : "", base);
 		free(base);
 	}
 
-	qsort(out, (size_t)n, sizeof(*out), cmp_str);
-	if (count)
-		*count = n;
+	/* On the heap: a KpConf carries every repository's shelf list. */
+	KpConf *c = kb_calloc(1, sizeof(*c));
+
+	/*
+	 * NO CORE PORTS IS A BROKEN TREE, NOT AN EMPTY ONE. The picker lists
+	 * what this returns, and a list holding only our own ports is
+	 * indistinguishable from a tree the walker does not understand.
+	 * ports/core is walked alone first so the other areas cannot hide it.
+	 */
+	char *core = kb_path_join(repo_root, REPOS[0]);
+	kp_conf_set_repos(c, core);
+	int ncore = 0;
+	char **out = kp_ports_scan(c, &ncore, err, errcap);
+	kb_strv_free(out);
+	out = NULL;
+	if (!ncore) {
+		if (err && errcap && !err[0])
+			snprintf(err, errcap, "no port found under %s", core);
+	} else {
+		kp_conf_set_repos(c, list.p);
+		out = kp_ports_scan(c, count, err, errcap);
+	}
+	free(core);
+	free(c);
+	kb_buf_free(&list);
 	return out;
 }
 
 int kbuild_package_index(const KbuildPhase *ph, int nph, const char *repo_root,
-			 KbuildPkgRef *out, int max)
+			 KbuildPkgRef *out, int max, char *err, size_t errcap)
 {
 	int nports = 0;
-	char **ports = kbuild_ports(repo_root, &nports);
+	char **ports = kbuild_ports(repo_root, &nports, err, errcap);
+	if (!ports)
+		return -1;
 
 	int n = 0;
 	for (int i = 0; i < nports && n < max; i++) {
@@ -170,8 +237,8 @@ int kbuild_package_index(const KbuildPhase *ph, int nph, const char *repo_root,
 	}
 	kb_strv_free(ports);
 
-	/* A packages.txt entry with no port of its own still lands in the
-	 * index, which is how a missing port stays visible. */
+	/* A list entry with no port of its own still lands in the index,
+	 * which is how a missing port stays visible. */
 	for (int p = 0; p < nph; p++) {
 		int npkg = 0;
 		char **pkgs = kbuild_packages(&ph[p], &npkg);
@@ -362,7 +429,7 @@ int kbuild_plan_from_cli(KbuildPlan *pl, const char *phases_arg,
 		err[0] = 0;
 
 	/* A token is a phase's directory name or its short name, so both
-	 * `--phases phase4` and `--phases 04_phase4` resolve. */
+	 * `--phases system` and `--phases 41_system` resolve. */
 	char tok[KBUILD_MAX_PHASES][64];
 
 	if (phases_arg && *phases_arg) {

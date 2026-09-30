@@ -11,12 +11,18 @@
  * This is the part of the build system that is pure inspection of the repo: it
  * reads, it decides nothing, and it runs nothing.
  *
- * THE ENV FILES ARE PARSED, NEVER SOURCED. Several of them end with
- * `rm -rf /var/cache/kpkg/work`, which at source time hits the BUILD
+ * A phase is a directory `<script>/phases/<NN>_<name>/`, and its environment
+ * is the `phase.env` inside it.
+ *
+ * THE ENV FILES ARE PARSED, NEVER SOURCED. A chroot phase's environment ends
+ * with `rm -rf /var/cache/kpkg/work`, which at source time hits the BUILD
  * CONTAINER's own filesystem rather than the target's. That is why only
  * `export NAME=VALUE` lines are read, why only five keys are honoured, and
  * why a value has to be a literal — no expansion is performed and anything
- * that is not a plain literal reads as empty.
+ * that is not a plain literal reads as empty. Only the file's own text is
+ * read: a `source` line in it is not followed, so CHROOT and the KDOS_* keys
+ * have to be written in `phase.env` itself, or the phase runs on the host
+ * with no title and no snapshot.
  * ---------------------------------
  */
 
@@ -30,13 +36,17 @@
 #define KBUILD_MAX_STEPS   64
 #define KBUILD_MAX_REBUILD 256	/* also sizes the sort scratch in kb_plan.c */
 #define KBUILD_PLAN_FILE   ".devplan.json"
+#define KBUILD_PHASES_DIR  "phases"		/* under the script directory */
+#define KBUILD_PHASE_ENV   "phase.env"
+#define KBUILD_PKG_FILE    "packages.txt"
+#define KBUILD_PKG_DIR     "packages.d"
 
 typedef struct {
 	int index;
-	char dir_name[64];	/* 03_phase3                               */
+	char dir_name[64];	/* 30_foundation                           */
 	char dir_path[512];
-	char name[64];		/* phase3                                  */
-	char env_file[512];	/* script/phase3.env.sh, "" when absent    */
+	char name[64];		/* foundation                              */
+	char env_file[512];	/* <dir_path>/phase.env, "" when absent    */
 
 	int chroot;		/* CHROOT=1 — decides the execution wrapper */
 	char title[128];
@@ -51,17 +61,22 @@ typedef struct {
 	 * snapshot restore extracts these as root. */
 	char rejected[KBUILD_MAX_PATHS][256];
 	int nrejected;
+	/* Why this phase cannot run, "" when it can: both packages.txt and
+	 * packages.d/, a packages.d/ with no list in it, or no list and no
+	 * step at all. The driver refuses to start while any phase has one. */
+	char error[256];
 } KbuildPhase;
 
-/* Ordered by directory name, which is what the numeric prefix is for. Only
- * directories matching ^[0-9]+_ are phases; util/ and anything else beside
- * them are not. */
+/* The phases under <script_dir>/phases/, ordered by directory name, which is
+ * what the numeric prefix is for. Only directories matching ^[0-9]+_ are
+ * phases. `script_dir` is the script directory itself, not its phases/: the
+ * driver takes the repository root as the script directory's parent. */
 int kbuild_discover(const char *script_dir, KbuildPhase *out, int max);
 
 /* A phase with no KDOS_SNAPSHOT_PATHS is never snapshotted. */
 int kbuild_snapshottable(const KbuildPhase *p);
 
-/* "phase3" or "phase3 (Chroot)" — the label the picker shows. */
+/* "foundation" or "foundation (Chroot)" — the label the picker shows. */
 void kbuild_label(const KbuildPhase *p, char *out, size_t cap);
 
 /* A snapshot path must stay inside $BUILD_DIR. Snapshot and restore delete
@@ -74,8 +89,8 @@ int kbuild_safe_relpath(const char *path);
  * reads as empty. */
 void kbuild_unquote(const char *raw, char *out, size_t cap);
 
-/* A phase by its directory name OR its short name, so both `04_phase4` and
- * `phase4` resolve. NULL when neither matches. */
+/* A phase by its directory name OR its short name, so both `41_system` and
+ * `system` resolve. NULL when neither matches. */
 const KbuildPhase *kbuild_find(const KbuildPhase *ph, int n, const char *token);
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -116,24 +131,41 @@ int kj_bool(const KjNode *obj, const char *key, int def);
  * All three return a NULL-terminated strv the caller frees with kb_strv_free.
  */
 
-/* The *.sh a script-phase would run, in execution order. A packages.txt phase
+/* A package phase's list is packages.txt OR the files packages.d/<name>.txt.
+ * 1 when the phase has one of them, 0 when it has neither (a script phase),
+ * -1 when it has both. */
+int kbuild_is_package_phase(const KbuildPhase *p);
+
+/* The files that make up a package phase's list, in reading order:
+ * packages.txt alone, or every packages.d/<name>.txt in byte order. Empty for
+ * any other phase. */
+char **kbuild_list_files(const KbuildPhase *p, int *count);
+
+/* The *.sh a script-phase would run, in execution order. A package phase
  * has no steps — the package list IS the work. */
 char **kbuild_steps(const KbuildPhase *p, int *count);
 
-/* The names in a phase's packages.txt, comments and blanks stripped. */
+/* The names in a phase's list, comments and blanks stripped. packages.d/ is
+ * read as its files concatenated in kbuild_list_files order, so splitting a
+ * list into files changes nothing a reader sees. */
 char **kbuild_packages(const KbuildPhase *p, int *count);
 
-/* Every port name under ports/core and src/packages, so a dependency-only port
- * is selectable too; src/desktop reaches the index through packages.txt. */
-char **kbuild_ports(const char *repo_root, int *count);
+/* Every port name under ports/core, src/system and src/art, walked by
+ * libkpkg's own walker at both depths, so a dependency-only port is
+ * selectable too; src/desktop and src/daemons reach the index through the
+ * desktop phase's list. NULL with `err` set when the tree is malformed (a name
+ * filed twice, a port nested below its shelf) or ports/core yields no port. */
+char **kbuild_ports(const char *repo_root, int *count, char *err,
+		    size_t errcap);
 
 typedef struct {
 	char name[64];
-	char phase[64];		/* "" when no packages.txt claims it */
+	char phase[64];		/* "" when no phase's list claims it */
 } KbuildPkgRef;
 
+/* -1 with `err` set when kbuild_ports fails. */
 int kbuild_package_index(const KbuildPhase *ph, int nph, const char *repo_root,
-			 KbuildPkgRef *out, int max);
+			 KbuildPkgRef *out, int max, char *err, size_t errcap);
 
 typedef struct {
 	char dir[64];
@@ -179,7 +211,7 @@ int kbuild_plan_load(KbuildPlan *pl, const char *build_dir);
 /* Snapshots — the inventory and what a restore would extract
  *
  * Creating and extracting archives runs tar as root and belongs to the driver,
- * in src/build/kdosbuild/snapshot.c. What lives here is what DECIDES: which
+ * in src/devtools/kdosbuild/snapshot.c. What lives here is what DECIDES: which
  * snapshots exist, and which archive supplies each path.
  */
 

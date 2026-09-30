@@ -45,9 +45,11 @@ it names no implementation itself, and the one that ships is `kwl_impl` in `libk
 the resource monitor looks the same on `tty1`, in a window, and in a committed test file.
 
 `libktui` needs nothing beyond the C library and two of KDOS's own libraries that need nothing
-either, `libkbase` and `libkcolor`. The installer compiles all three into itself in the first build
-phase, before any other library is built, and that constraint shapes several rules below: anything
-that needs pixels, fonts or a display connection lives in another library.
+either, `libkbase` and `libkcolor`. The installer compiles all three into itself in the bootstrap
+phase (`10_bootstrap`, step `130_kinstall.sh`), with the cross compiler, against nothing but the
+C library and the kernel headers; a library that needed a real `-l` would move the installer out
+of that phase. That constraint shapes several rules below: anything that needs pixels, fonts or
+a display connection lives in another library.
 
 The consequence to keep in mind is that **a control is one row of text tall.** Where that is wrong,
 the answer is a picture drawn into whole cells, not a second renderer. See
@@ -799,7 +801,7 @@ What it does not have: eighth blocks, half blocks (`▀ ▄`), `▓`, braille, a
 `╠ ╣ ╦ ╩` and the mixed joins `╡ ╞`. The double set is only partly there: the rules and the
 corners are, the tees are not.
 
-The `terminus-font` recipe (`ports/core/terminus-font/build.sh`) builds the font from Terminus's
+The `terminus-font` recipe (`ports/core/fonts/terminus-font/build.sh`) builds the font from Terminus's
 `xos4-2` character set and swaps six spacing diacritics for the double box-drawing characters
 `═ ║ ╔ ╗ ╚ ╝`, which the KDOS block logo needs. The font answers to 627 codepoints in all, because
 its duplicate tables map extra codepoints onto existing shapes. `▲ ▼` are drawn as `↑ ↓`, and

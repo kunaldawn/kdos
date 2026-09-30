@@ -1,0 +1,85 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   40_lang: Languages
+# ---------------------------------
+#   devtools — Debuggers, tracers, profilers, analysers, linters, language
+#   servers and developer utilities
+# ---------------------------------
+#
+# Language modules and developer tools — the python3-* and perl-* modules,
+# language implementations, build and documentation tools, debuggers and
+# version control — whose dependency closure needs nothing past 31_compilers.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# Exists for bpftrace.
+libbpf
+
+bpftool
+libtraceevent
+libtracefs
+just
+capstone
+valgrind
+gdb
+
+# A single .py file that makes a gdb crash readable; the ported gdb is already
+# --with-python, so it costs one file and nothing else.
+gef
+
+# nvim-treesitter and Helix download and compile a grammar on FIRST USE, which
+# offline is a permanently broken feature that looks like a config bug.
+tree-sitter
+
+# Without the rust-src component it fails silently: navigation into std reports
+# nothing rather than erroring. ports/core/lang/rust installs that source.
+rust-analyzer
+
+# bpftrace's `find_package(LibBcc REQUIRED)` is unconditional.
+bcc
+
+# xh explores and hurl asserts: a request plus what the answer must contain,
+# in a file that diffs. On a machine with no CI, that file IS the CI.
+hurl
+
+# The module is not at the tarball root: x/tools tags a gopls release and
+# ships gopls as a subdirectory with its own go.mod, which is what the
+# `vendordir =` helper exists for.
+gopls
+
+# zls and zig are pinned to each other on purpose — zls parses Zig with the
+# compiler's own AST, so a mismatch reports syntax errors on correct code.
+zls
+
+# Every tree-sitter consumer in an editor downloads and compiles a grammar on
+# first use; difftastic links ~50 of them in at build time, so a syntax-aware
+# diff works on a machine that has never had a network.
+difftastic
+
+# `kdos march` already encodes this discipline for one question: several runs,
+# the median, the machine's own noise, and no "win" that does not clear it.
+hyperfine
+
+tokei
+
+# rustls rather than native-tls: a TLS stack chosen at build time by a probe
+# silently changes between two builds of one recipe.
+xh
+
+# preflight runs `bash -n` over ~470 build.sh files, which catches a syntax
+# error and nothing else. shfmt PARSES them.
+shfmt
+
+strace
+ltrace
+ruff

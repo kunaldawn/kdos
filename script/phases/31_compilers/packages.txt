@@ -1,0 +1,75 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   31_compilers: Compilers
+# ---------------------------------
+#
+# The ports whose dependency closure reaches one of the large compilers: LLVM
+# and clang with their runtimes and pinned 21 series, rust, go, ghc, zig and
+# nodejs, and what builds on them. They take most of the hours before 40_lang,
+# so 30_foundation is a restore point in front of them.
+#
+# This list names every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# it, or when a shelf section names a port an earlier phase installs.
+
+# ---------------------------------
+# toolchain — The native compilers, the linker, the C library, and the LLVM
+# family
+# ---------------------------------
+
+# clang and llvm are developer tools, not needed for self-hosting: they serve
+# the projects that prefer LLVM. lldb is its own port, in 41_system.
+clang
+llvm
+
+cbindgen
+
+# libomp, the runtime clang -fopenmp links.
+openmp
+
+bindgen
+llvm21
+clang21
+lld21
+lld
+
+# clang's own runtimes: builtins, profile (source-based coverage) and UBSan.
+compiler-rt
+
+# LLVM's libunwind, under /usr/lib/llvm-libunwind. Built in 31_compilers, ahead
+# of 40_lang, because /usr/include/libunwind.h and libunwind.so belong to
+# libunwind-nongnu there, and a tree that still has this package at /usr must
+# have it rebuilt into its prefix before the other one installs.
+libunwind
+
+# ---------------------------------
+# buildtools — Build systems and build helpers
+# ---------------------------------
+cargo-c
+ccache
+
+# ---------------------------------
+# lang — Language implementations, plus the modules of any language that has no
+# module shelf of its own
+# ---------------------------------
+rust
+nodejs
+go
+zig
+ghc
+cabal-install
+ruby
+
+# ---------------------------------
+# doctools — Documentation toolchains, man pages, markup converters and TeX
+# typesetting
+# ---------------------------------
+pandoc
+asciidoctor

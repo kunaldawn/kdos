@@ -1,0 +1,18 @@
+# GitHub Pages builds this repository's root with Jekyll, and Jekyll reads
+# every file it is not told to skip. The site is README.md, LICENSE, kdos.png
+# and the book under docs/; everything else stays out. The build dies on the
+# first file it cannot resolve, and the tree has plenty: testing/fixtures fakes
+# /proc with symlinks that point nowhere on purpose, and ports/ and build/ hold
+# thousands of files that are not pages.
+exclude:
+  - build
+  - fs
+  - ports
+  - script
+  - src
+  - testing
+  - CLAUDE.md
+  - plan.group.md
+  - Dockerfile
+  - Makefile
+  - kdos.xcf

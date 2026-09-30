@@ -37,7 +37,7 @@ application-first switcher); upstream files carry only small, marked hooks into 
 | Log | `$XDG_RUNTIME_DIR/kdos-comp.log`; the previous session's is kept as `kdos-comp.log.old` |
 | Command socket | `$XDG_RUNTIME_DIR/kdos-cmd.sock` |
 | Frame-timing socket | `$XDG_RUNTIME_DIR/kdos-frames.sock` |
-| Source and recipe | `src/desktop/kdos-comp/` in the repository, with its `kpkgbuild` and `build.sh`; built by meson in the `05_desktop` phase, with no source archive to fetch |
+| Source and recipe | `src/desktop/kdos-comp/` in the repository, with its `kpkgbuild` and `build.sh`; built by meson in the `50_desktop` phase, with no source archive to fetch |
 
 `KDOS-FORK` at the root of the source tree records the upstream tarball and its checksum. Upstream's
 licence (GPL-2.0) and copyright headers are kept.
@@ -1151,7 +1151,7 @@ The session start-up around these children is in
 The compositor runs Xwayland rootless, and it is the one X server on the system: it serves
 X11-only applications in boxes and host applications that have no Wayland path. Xwayland starts
 when the first X11 client connects, unless `rc.xml` asks for it to persist. It is built with
-glamor, DRI3 and GLX (`-Dglx=true` in `ports/core/xwayland/build.sh`), and Mesa is built with the
+glamor, DRI3 and GLX (`-Dglx=true` in `ports/core/x11/xwayland/build.sh`), and Mesa is built with the
 X11 platform and `-D glx=dri` behind libglvnd, so an X11 client on the host that draws through GLX
 gets OpenGL. An X11 client in a box draws with its box's Mesa. See
 [Principles](../01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
@@ -1293,14 +1293,16 @@ feels as it crosses one. See [The window model](../03-architecture/window-model.
 `build.sh` compiles `libkbase`, `libkcolor` and `libkwm` from `src/libs/` into one static archive,
 hands it to meson through `LDFLAGS`, and then runs the ordinary meson build and install. Editing
 any of those libraries therefore changes the compositor. The compositor is built in the
-`05_desktop` phase, after the Wayland base it needs (see
-[How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-05_desktop)); the ports it
-ships beside are listed in
-[The ports catalogue](../06-reference/ports-catalogue.md#unheaded-wlroots-the-compositor-box-socket-shell-terminal-and-lock-screen).
+`50_desktop` phase and named in its list, `script/phases/50_desktop/packages.txt`, under the
+`src-desktop` heading; the same list builds `wlroots` (`ports/core/wl/wlroots/`) ahead of it. The
+Wayland base under both comes from the `41_system` and `42_graphics` phases (see
+[How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop)). The ports it
+ships beside are listed under
+[`src/desktop` in the ports catalogue](../06-reference/ports-catalogue.md#srcdesktop).
 To rebuild only the compositor:
 
 ```sh
-make build BUILD_ARGS="--phases 05_desktop --rebuild kdos-comp"
+make build BUILD_ARGS="--phases 50_desktop --rebuild kdos-comp"
 ```
 
 Six checks cover it without a full build:

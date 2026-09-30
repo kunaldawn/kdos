@@ -1,0 +1,48 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   graphics-libs — 2D rendering, vector and SVG, text layout, colour
+#   management and graph drawing libraries
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+pixman
+
+# Colour management that ffmpeg, imagemagick and the gst plugin packages are
+# configured against. Each of those build systems answers a missing library by
+# disabling the feature rather than failing.
+lcms2
+
+gdk-pixbuf
+
+# libraw, the PNG tools and the rest rasterise; this goes the other way, which
+# is what turns a scanned logo or a photographed sketch into something a laser
+# cutter or a CNC can use.
+potrace
+
+# SVG to PNG with no browser engine behind it. resvg is what the desktop's own
+# artwork pipeline would reach for; the atlas is rasterised on the host, but a
+# machine that has the file should be able to render it too.
+resvg
+
+graphene
+plutovg
+plutosvg
+blend2d
+babl

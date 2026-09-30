@@ -60,7 +60,7 @@ tested by building the distribution with them.
 
 ## preflight.sh
 
-Preflight checks the tree's wiring without building anything. It runs 49 checks:
+Preflight checks the tree's wiring without building anything. It runs 53 checks:
 
 ```sh
 testing/preflight.sh
@@ -85,15 +85,16 @@ check that finds its directory there reports what is missing from it.
 
 | Group | Checks |
 |---|---|
-| Packages | Every package named in a phase list has a port; ports built from one tarball (`linux` and `perf`) agree on its version and hash; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone |
+| Layout | Every recipe under `ports/core` sits exactly at `ports/core/<shelf>/<name>/kpkgbuild`, and `ports/core` holds nothing but shelves; `ports/shelves` lists every shelf once, each with a description, an id of lowercase letters, digits and `-`, not `libs` or `core` and not a port's name, and each a non-empty directory; `src/` holds only its six areas and every port of KDOS's own sits at `src/<area>/<name>/`; the orphan sweep searches every `src/` area that holds a recipe; every bare name is one port across the shelves and the `src/` areas; every `name =` is its directory's name; every `group =` family sits on one shelf; every file of a `packages.d/` is `00-order.txt`, a listed shelf's `<shelf>.txt` or a `src-<area>.txt`, and names only ports filed there, and no phase has both `packages.txt` and `packages.d/` |
+| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball (`linux` and `perf`) agree on its version and hash; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone |
 | Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every recipe and build script carries the KDOS banner; every source a port declares is named by a checksum and is non-empty where it is on disk (one not yet fetched is reported as a `make fetch` note, not a failure) |
 | Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value option types validated; every recipe that runs cargo builds against a shared C library; every consumer of a shared library generates the Wayland protocols it includes |
 | Sources | Every source file in a port of KDOS's own is compiled by its recipe, unless that recipe globs its own `$PORT_SRC` directory (a glob of the shared `libk*` trees does not exempt it); a first source whose members are `./`-prefixed is accounted for; a flat first source is unpacked by its own recipe |
 | The sources archive | No archive a recipe hashes is tracked by git; `.gitignore` ignores every archive suffix under `ports/core` and the source cache, and none of the archive fixtures under `testing/fixtures`; `ports/srclib.sh`, `ports/fetch`, `ports/publish` and `script/hooks/pre-push` exist, are executable where they must be, and pass `bash -n`. An unset `core.hooksPath` is printed as a note, not a failure |
 | Shipped configuration | The shipped compositor configuration keeps labwc's default bindings; every command it, the menus and `menu.conf`'s routes name exists; every program `fs/etc/inittab` names is on the image; every filesystem the installer offers, the initramfs can mount; the ISO step builds every boot path (BIOS and UEFI, disc and written stick); the built `kinstall` is the installer in this tree |
 | Permissions and accounts | `/etc/shadow` on the built tree is mode 600 or 640 and the file-system step narrows it; the polkit and udev rule directories and files are owned by root; no udev rule sets `GROUP=`, `MODE=` or `OWNER=` on a device class that has no node, and every group a rule grants is one the desktop user is in; every account a shipped daemon drops to exists in `fs/etc/passwd`; the desktop user is in the groups its surfaces need |
-| Shell | All shipped and build shell is syntactically valid; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
-| Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/desktop` or `src/packages` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; only `kdos_crt_scanout()` in the compositor writes the scene's direct-scanout switch; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
+| Shell | All shipped and build shell is syntactically valid; every file a build script, a `phase.env` or a shared environment file sources exists, and a step sources its own phase's `phase.env`; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
+| Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; only `kdos_crt_scanout()` in the compositor writes the scene's direct-scanout switch; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
 | Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load |
 | Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; every icon name a surface asks for resolves on the image; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=` |
 
@@ -154,9 +155,11 @@ blocks fall into these groups, in roughly this order:
 3. **Boxes, packs and the terminal.** Box profiles, the pack store and its signature checks, and
    the terminal emulator library replaying recorded streams.
 4. **Packaging and the build.** The version checker against a recorded corpus, offline; the ports
-   tree resolving through `kpkgdepends`; a package built twice being byte-identical; the shared
-   indexes, file ownership, skip-if-installed, the binary host's signed index and delta packages;
-   and `kdosbuild` running a synthetic two-phase build end to end.
+   tree resolving through `kpkgdepends`, and `libkpkg`'s lookup over a fixture tree of shelves (a
+   port found one shelf down or loose beside the shelves, a name filed twice or nested below its
+   shelf refused, a shelf with no port ignored); a package built twice being byte-identical; the
+   shared indexes, file ownership, skip-if-installed, the binary host's signed index and delta
+   packages; and `kdosbuild` running a synthetic two-phase build end to end.
 5. **The system programs.** Timers, reminders, the boot slots and their rollback, the initramfs's
    encrypted-root unlock, the installer's plan, the polkit rules, the power, energy,
    out-of-memory and mount daemons, the tray and the file-chooser portal.
@@ -708,7 +711,7 @@ A parser gets a fixture *and* the shipped file. `kdos-appbox catalogue --selftes
 type including the awkward ones: a base with its own image, a two-deep runtime chain, a row whose
 package list is `-`, a row with no `meta`, and a member in two groups. It pins the rules: a chain
 is base-first, a `-` package list is empty, and an expansion removes duplicates. The shipped
-`src/packages/kdos-appbox/catalogue` is also parsed, because a hand-added row the parser rejects
+`src/system/kdos-appbox/catalogue` is also parsed, because a hand-added row the parser rejects
 is a store that opens empty with no error on screen. `KDOS_CATALOGUE` is the variable that points
 the parser at either file.
 
@@ -912,9 +915,9 @@ a check.
 Like the graft compile, both run in the image described next once wlroots is installed there, and
 are skipped everywhere else.
 
-`kdos-comp` is still buildable without a full build, because the tree's own recipe names
-the source: `ports/core/wlroots/wlroots-0.20.2.tar.gz`, which `make fetch` puts in place. Build it
-in an image derived from the development image:
+`kdos-comp` is still buildable without a full build, because the tree's own recipe names the
+source: `wlroots-0.20.2.tar.gz` in the `wlroots` port's directory, which `make fetch` puts in place.
+Build it in an image derived from the development image:
 
 ```dockerfile
 FROM kdos-devdeps:latest
@@ -925,7 +928,7 @@ RUN apk add --no-cache meson ninja pango-dev libdrm-dev libinput-dev libseat-dev
 # then meson setup / compile / install the wlroots tarball with -Dxwayland=enabled
 ```
 
-The recipe (`ports/core/wlroots/build.sh`) also applies `idle-capture-frame.patch` and builds with
+The recipe (the `wlroots` port's `build.sh`) also applies `idle-capture-frame.patch` and builds with
 `-Drenderers=gles2,vulkan` and `-Dcolor-management=enabled`. Those two options additionally need
 the Vulkan headers, `glslang` and `lcms2`, which the image above does not carry; apply the patch
 when the change under test touches screen capture.
@@ -1026,7 +1029,7 @@ testing/quick.sh kdos-comp,kdos-shell -- --keys meta_l-ret --sleep 3 \
 ```
 
 It needs an ISO from one full build. It rebuilds the named ports into `build/fs` with no packaging
-and no snapshot (`--phases 05_desktop --rebuild <ports> --no-snapshot`, about 1m09s), tars exactly
+and no snapshot (`--phases 50_desktop --rebuild <ports> --no-snapshot`, about 1m09s), tars exactly
 the files those ports own into `build/fix.tar`, and boots the ISO at 1280×800 with that tar on a
 raw disk. There `testing/quickpatch.sh` unpacks it over the live medium's in-memory overlay and
 restarts the session. Everything after `--` is passed to `vnc-shot.py`, after the patch and after
@@ -1035,7 +1038,7 @@ the key card is dismissed. A run takes about three minutes, or 1m37s with `KDOS_
 
 | Variable | Does |
 |---|---|
-| `KDOS_QUICK_PHASES` | The phases to build (default `05_desktop`); widen it, e.g. `04_phase4,05_desktop` |
+| `KDOS_QUICK_PHASES` | The phases to build (default `50_desktop`); widen it to the phase of a port outside the desktop, e.g. `42_graphics,50_desktop` |
 | `KDOS_QUICK_NOBUILD=1` | Reuse what is already in `build/fs` |
 | `KDOS_QUICK_KEEP=1` | Do not restart the session |
 | `KDOS_QUICK_FILES` | Extra paths under `build/fs` to carry, such as a configuration file or a chord table |
@@ -1254,7 +1257,7 @@ puts it in its port directory (see
 |---|---|---|
 | `make fetch-check` (`ports/fetch --check [port…]`) | Offline, about a minute | Every hashed source that git does not track is on disk and matches its hash; it lists what is missing or corrupt and exits 1 if anything is |
 | Preflight's source checks | `testing/preflight.sh` | No recipe-hashed archive is tracked by git, `.gitignore` keeps fetched sources and the cache out of commits, and the fetch and publish scripts parse |
-| The pre-push hook | Enabled with `git config core.hooksPath script/hooks` | A push naming a source hash that `ports/sources.idx` and the archive do not hold is refused; see [Writing ports](writing-ports.md#the-pre-push-hook) |
+| The pre-push hook | Enabled with `git config core.hooksPath script/hooks` | Offline first, a pushed tip whose ports layout breaks is refused: a recipe not exactly at `ports/core/<shelf>/<name>/`, a shelf missing from `ports/shelves` or named `libs`, `core` or after a port, or a bare name held twice across `ports/core` and `src/<area>/` (`KDOS_SKIP_LAYOUT_CHECK=1` skips it). Then a push naming a source hash that `ports/sources.idx` and the archive do not hold is refused, as is one made while the archive is unreachable (`KDOS_SKIP_PUBLISH_CHECK=1` skips that check only); see [Writing ports](writing-ports.md#the-pre-push-hook) |
 
 A file git tracks, such as a patch or a configuration file beside a recipe, is never treated as an
 archived source: `ports/fetch` and `--check` skip it. A recipe-hashed archive that git tracks fails
@@ -1453,13 +1456,13 @@ each in a fresh container, outside `make build`. They answer whether a single re
 a base system on its own, without the state an incremental build tree has accumulated; they do not
 replace the build. They need Docker, and `prepare_base.py` also runs `sudo`:
 
-- `prepare_base.py` builds the `os-dev` build container, runs phases `00_toolchain` to `03_phase3`
-  into `build_test/` through `mini_build.py` inside it, packs the result as
-  `testing/kdos_fs.tar.gz`, writes `testing/Dockerfile.base` and builds the image `kdos-base-test`
-  from it;
-- `test_runner.py` runs `kpkg install -f <port>` for each port under `ports/core` (or the one named
-  by `--package`) in a fresh `kdos-base-test` container, recording results in
-  `testing/test_results.json` and logs under `testing/logs/`;
+- `prepare_base.py` builds the `os-dev` build container, runs phases `00_cross` to `31_compilers`
+  into `build_test/` through `mini_build.py` inside it, reading each package phase's
+  `packages.txt` or `packages.d/`, packs the result as `testing/kdos_fs.tar.gz`, writes
+  `testing/Dockerfile.base` and builds the image `kdos-base-test` from it;
+- `test_runner.py` runs `kpkg install -f <port>` for each port under `ports/core`, found one shelf
+  down and named by its bare name (or the one named by `--package`), in a fresh `kdos-base-test`
+  container, recording results in `testing/test_results.json` and logs under `testing/logs/`;
 - `report_gen.py` summarises those results as `testing/report.html`.
 
 ## What is not tested

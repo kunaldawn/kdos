@@ -8,7 +8,7 @@
  *   libktui — the KDOS terminal toolkit
  *
  * Links nothing but libc. No terminfo, no ncurses: a KDOS program can use
- * this in phase 1, before any library exists to link against.
+ * this in 10_bootstrap, before any library exists to link against.
  *
  * It carries two things nothing off the shelf does. The palette is installed
  * into the Linux VT with PIO_CMAP and exactly restored, so a tty and a
@@ -457,10 +457,11 @@ extern const char *ktui_glyph[KT_G_N];
  * The cell buffer, the widgets, the glyph tiers and the layout do not care
  * where the cells end up. This vtable is that seam, and it exists so the
  * Wayland backend can live in a DIFFERENT ARCHIVE: libktui links nothing but
- * musl, and it has to keep doing so, because kinstall links it in phase 1
- * before any library exists to link against. libkwl is where wayland-client,
- * pixman, fcft and xkbcommon go. If libktui ever gains a real `-l`, kinstall
- * moves to phase 4 with it — which is not a trade anyone wants.
+ * musl, and it has to keep doing so, because kinstall links it in
+ * 10_bootstrap before any library exists to link against. libkwl is where
+ * wayland-client, pixman, fcft and xkbcommon go. If libktui ever gains a real
+ * `-l`, kinstall cannot be built before 42_graphics — which is not a trade
+ * anyone wants.
  *
  * `flush` receives both buffers and decides for itself what changed. It is not
  * handed a damage list because the tty backend's diff is fused into its

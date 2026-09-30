@@ -38,12 +38,24 @@ The program that installs, launches and exports boxed applications, `kdos-appbox
 word means the whole mechanism by which alien apps run. See
 [kdos-appbox](../04-programs/kdos-appbox.md).
 
+### area
+
+One of the six directories under `src/` that divide KDOS's own code by what each program is:
+`desktop` (programs that draw the session or serve it), `daemons` (root daemons the desktop account
+talks to), `system` (the package manager, the `kdos` command, packs, boxes and the installer),
+`art` (themes, pictures and their generators), `libs` (the `libk*` libraries) and `devtools` (build
+tools that are never installed). Every port of KDOS's own sits exactly at `src/<area>/<name>/`, so
+that `../../libs` from it is `src/libs`. The four areas that hold recipes are *port* repositories;
+`libs` and `devtools` hold none. An area is not a *shelf*. See
+[Packaging](../03-architecture/packaging.md#the-recipes-under-src) and
+[Decisions](../01-philosophy/decisions.md#kdoss-own-code-is-divided-by-what-each-program-is).
+
 ### bake
 
-The image build, and in particular its packaging phase, `06_packaging`, which turns the *target
-tree* into the ISO. Something **baked into the image** is put there at build time rather than
-installed on the running machine. See [How KDOS is
-built](../05-developer/how-kdos-is-built.md#packaging-06_packaging).
+The image build, and in particular its last phase, `70_image`, which turns the *target tree* into
+the ISO. Something **baked into the image** is put there at build time rather than installed on the
+running machine. See [How KDOS is
+built](../05-developer/how-kdos-is-built.md#packaging-70_image).
 
 ### base
 
@@ -93,7 +105,7 @@ Written `B:` in a package index. See also *recipe hash*, and
 ### catalogue
 
 The shipped list of every application KDOS knows how to build, as Debian packages:
-`src/packages/kdos-appbox/catalogue`, installed as `/usr/share/kdos/appstore/catalogue`. Its rows
+`src/system/kdos-appbox/catalogue`, installed as `/usr/share/kdos/appstore/catalogue`. Its rows
 are *bases*, *runtimes*, applications, data sets and groups of applications. Not to be confused with
 [the ports catalogue](ports-catalogue.md), the chapter that lists every host *port*. See [Packs and
 boxes](../03-architecture/packs-and-boxes.md#the-catalogue).
@@ -123,10 +135,10 @@ session](../03-architecture/session.md).
 ### chroot
 
 A process whose root directory has been changed, so that it sees one directory tree as `/`. Every
-build phase from `02_phase2` onwards runs each of its commands inside the *target tree* `build/fs`
-through `script/chroot_exec.sh`, with a cleared environment to which it adds only the variables it
+build phase from `20_selfhost` onwards runs each of its commands inside the *target tree* `build/fs`
+through `script/chroot/exec.sh`, with a cleared environment to which it adds only the variables it
 names, so a build uses only the compilers, libraries and tools that earlier phases put there and
-nothing from the build container. `script/chroot_enter.sh` is the interactive counterpart, for
+nothing from the build container. `script/chroot/enter.sh` is the interactive counterpart, for
 inspecting the tree by hand; the build does not use it. See [The build
 system](../05-developer/build-system.md#the-chroot).
 
@@ -162,10 +174,10 @@ software](../05-developer/writing-desktop-software.md#choosing-a-role).
 ### cross toolchain
 
 A compiler and linker that run on one system and produce programs for another. The first build
-phase, `00_toolchain`, builds one into `build/cross` for the target `x86_64-kdos-linux-musl`, a
-system that does not exist yet; phase 1 uses it to compile the C library and a minimal userland into
+phase, `00_cross`, builds one into `build/cross` for the target `x86_64-kdos-linux-musl`, a system
+that does not exist yet; `10_bootstrap` uses it to compile the C library and a minimal userland into
 the *target tree*. See [How KDOS is
-built](../05-developer/how-kdos-is-built.md#the-cross-toolchain-00_toolchain).
+built](../05-developer/how-kdos-is-built.md#the-cross-toolchain-00_cross).
 
 ### data pack
 
@@ -252,7 +264,7 @@ exists because the console font has 512 glyphs, and a character it lacks is draw
 ### golden
 
 A committed reference frame: a surface's *dump*, compared byte for byte by the self-test. Text
-frames catch geometry; cell frames catch colour as well. There are 193 under `testing/goldens/`,
+frames catch geometry; cell frames catch colour as well. There are 217 under `testing/goldens/`,
 counting every file there except its `README`. See [Testing](../05-developer/testing.md#goldens).
 
 ### graft
@@ -269,13 +281,8 @@ boxes](../03-architecture/packs-and-boxes.md#grafts-and-data-packs).
 
 ### group
 
-A word with two meanings in the ports tree, which the book keeps apart.
+A word with two unrelated meanings, which the book keeps apart.
 
-- A **package-list group** (a **list group** for short) is a named section of a phase's *package
-  list*, headed by a three-line comment block (a rule, a title, a rule), such as "Core Services",
-  "Network / SSH / Audio / Bluetooth / Print" or "Modern CLI tools (Rust / Go)" in
-  `script/04_phase4/packages.txt`. It exists for the reader; the build ignores it, and a port
-  belongs to it only by where it is written in the file.
 - The **`group =` key** in a recipe is read only by the upstream version checker, `ports/update`,
   which offers the members of one group as a single bump, and only when every member has the same
   newer version available. Without the key, the checker derives a group from the source URL's
@@ -284,11 +291,12 @@ A word with two meanings in the ports tree, which the book keeps apart.
   `glib-introspection` (`group = glib`) or `gcc-arm-none-eabi` and `libstdcxx-arm-none-eabi`
   (`group = gcc-arm-none-eabi`), and the Qt modules (`group = qt6`, `group = qt5`), which
   `download.qt.io` releases together; [The ports catalogue](ports-catalogue.md#how-the-catalogue-is-organised)
-  lists them all.
+  lists them all. The members of one group are filed on one *shelf*. See
+  [Packaging](../03-architecture/packaging.md#the-group-key).
+- A *catalogue* row of type `group` is a set of applications installed together.
 
-Both are explained in [Packaging](../03-architecture/packaging.md#phases-package-lists-and-groups),
-and [The ports catalogue](ports-catalogue.md) lists every port under its package-list group. A
-catalogue row of type `group`, a set of applications installed together, is a third, unrelated use.
+A *shelf* is a third thing, distinct from both: the subject directory a port is filed under, by
+which the *package lists* are also grouped.
 
 ### host
 
@@ -329,8 +337,9 @@ session](../03-architecture/session.md#input-methods).
 
 The host package manager. It reads a *port*'s recipe, builds it into a package, installs it into the
 package database under `/var/lib/kpkg/db/`, and decides what needs rebuilding from the *recipe
-hash*. Its source is `src/packages/kdos-kpkg`, which phase 1 compiles directly because nothing can
-be installed as a port until `kpkg` exists. See [Packaging](../03-architecture/packaging.md#kpkg).
+hash*. Its source is `src/system/kdos-kpkg`, which `10_bootstrap` compiles directly because nothing
+can be installed as a port until `kpkg` exists. See
+[Packaging](../03-architecture/packaging.md#kpkg).
 
 ### kpkgbuild
 
@@ -362,8 +371,8 @@ command](../04-programs/kdos-command.md#ksvc-and-service).
 ### labwc
 
 The Wayland compositor that `kdos-comp` is a frozen hard fork of, taken at labwc 0.20.0: its source
-tree renamed and extended in place, with sixteen KDOS additions each in its own `src/kdos-*.c` file,
-and no upstream changes merged. See [kdos-comp](../04-programs/kdos-comp.md) and
+tree renamed and extended in place, with twenty-three KDOS additions each in its own `src/kdos-*.c`
+file, and no upstream changes merged. See [kdos-comp](../04-programs/kdos-comp.md) and
 [Decisions](../01-philosophy/decisions.md#the-compositor-is-a-frozen-fork-of-labwc).
 
 ### Landlock
@@ -403,8 +412,8 @@ compositor. See [The C libraries](../05-developer/c-libraries.md#libkdisp).
 `libktui`'s Wayland backend: it paints the same *cell grid* into a shared-memory buffer with fcft
 and gives a surface its role (a layer surface, an xdg-shell window or a session lock). It is a
 separate source directory, so a program with no Wayland window never compiles it in. That keeps
-`libktui` free of any link beyond the C library, which lets the installer compile `libktui` in
-phase 1. See [The C libraries](../05-developer/c-libraries.md#libkwl).
+`libktui` free of any link beyond the C library, which lets the installer compile `libktui` in the
+`10_bootstrap` phase. See [The C libraries](../05-developer/c-libraries.md#libkwl).
 
 ### march ledger
 
@@ -428,13 +437,13 @@ application in a box uses its base's C library instead, which is glibc in the De
 
 ### native application
 
-A graphical application compiled by this repository as a *port* and installed on the *host*, such
-as Firefox ESR, LibreOffice, GIMP or Kate. It links the host's toolkits (GTK, Qt, KDE Frameworks,
-wxWidgets, FLTK, Tk or SDL), which are ports too. Each toolkit that has a Wayland backend is
-built with it as the run-time default and its X11 backend compiled in beside it; Tk has only X11,
-so a Tk window is an *Xwayland* client. It runs with no *box*, next to
-KDOS's own *surfaces*, which link none of those toolkits. The opposite is an *alien app*. Most are named in
-`script/04_phase4/packages.txt`; see [The ports catalogue](ports-catalogue.md) and
+A graphical application compiled by this repository as a *port* and installed on the *host*, such as
+Firefox ESR, LibreOffice, GIMP or Kate. It links the host's toolkits (GTK, Qt, KDE Frameworks,
+wxWidgets, FLTK, Tk or SDL), which are ports too. Each toolkit that has a Wayland backend is built
+with it as the run-time default and its X11 backend compiled in beside it; Tk has only X11, so a Tk
+window is an *Xwayland* client. It runs with no *box*, next to KDOS's own *surfaces*, which link
+none of those toolkits. The opposite is an *alien app*. Most are built in the `43_toolkits` and
+`44_apps` phases; see [The ports catalogue](ports-catalogue.md) and
 [Decisions](../01-philosophy/decisions.md#native-applications-on-the-medium-a-store-that-builds-the-rest).
 
 ### overlay
@@ -461,20 +470,30 @@ boxes](../03-architecture/packs-and-boxes.md#installing-a-pack).
 
 ### package list
 
-A phase's `packages.txt`: one port name per line, with `#` comments, naming the ports that phase
-wants. Each port's `depends =` line pulls in the rest. Five phases have one: `02_phase2`,
-`03_phase3`, `04_phase4`, `05_desktop` and `05_phase5`. The comments divide a list into *groups*.
-See [Packaging](../03-architecture/packaging.md#phases-package-lists-and-groups).
+The list of ports a *phase* installs: one port name per line, with `#` comments. A phase keeps it
+either in one file, `packages.txt`, or in a directory, `packages.d/`, whose `*.txt` files are read
+in byte order as one list; never both. Ten phases have one, from `20_selfhost` to `60_kernel`. The
+five userland phases, `40_lang` to `44_apps`, use `packages.d/`: one `<shelf>.txt` per *shelf* the
+phase draws on, one `src-<area>.txt` for the ports it builds from an *area*, and, in `40_lang` and
+`41_system`, an `00-order.txt` that sorts first and holds the runs whose order a comment pins. A
+`packages.txt` gives its pinned run first and, where it holds more, groups the rest by shelf under
+comment banners; the lists of `20_selfhost` and `60_kernel` are a pinned run alone.
+From `30_foundation` on, a list names exactly the ports its phase installs and no others, which
+`testing/phaseclosure.py` checks. See
+[Packaging](../03-architecture/packaging.md#phases-package-lists-and-shelves).
 
 ### phase
 
-One stage of the build: a directory under `script/` whose name is a number, an underscore and a
-word, run in sorted name order by the build orchestrator, `kdosbuild`. There are eight:
-`00_toolchain`, `01_phase1`, `02_phase2`, `03_phase3`, `04_phase4`, `05_desktop`, `05_phase5` and
-`06_packaging`. The first two and the last hold numbered scripts; the other five hold a *package
-list*. Each has an environment file named after the part of its name that follows the number
-(`script/phase3.env.sh` for `03_phase3`), which says whether it runs in the *chroot* and what its
-*snapshot* holds. See [The build system](../05-developer/build-system.md#phases).
+One stage of the build: a directory under `script/phases/` whose name is a two-digit number, an
+underscore and a word, run in sorted name order by the build orchestrator, `kdosbuild`. There are
+thirteen, numbered in bands of ten so that one can be added between two others: `00_cross`,
+`10_bootstrap`, `20_selfhost`, `30_foundation`, `31_compilers`, `40_lang`, `41_system`,
+`42_graphics`, `43_toolkits`, `44_apps`, `50_desktop`, `60_kernel` and `70_image`. `00_cross`,
+`10_bootstrap` and `70_image` hold numbered step scripts; the other ten hold a *package list*. Each
+has its environment in its own directory, `phase.env`, which says whether it runs in the *chroot*,
+which port repositories it searches beyond the default `/ports/core` and what its *snapshot* holds, and which sources the settings
+every phase shares from `script/env/`. See [The build
+system](../05-developer/build-system.md#phases).
 
 ### phosphor pass
 
@@ -488,10 +507,12 @@ confused with `phosphor`, one of the eight *accents*. See
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-three port repositories in one format, holding 2,023 recipes: 1,999 upstream ports in `ports/core/`,
-11 of KDOS's own in `src/packages/` and 13 in `src/desktop/`. (The twelfth directory in
-`src/packages/`, `kdos-kpkg`, has no recipe; phase 1 compiles it by script.) See [Writing
-ports](../05-developer/writing-ports.md) and [The ports catalogue](ports-catalogue.md).
+five port repositories in one format, holding 2,023 recipes: 1,999 upstream ports in `ports/core/`,
+each on a *shelf*, and 24 of KDOS's own in four *areas*: 5 in `src/system/`, 6 in `src/art/`, 8 in
+`src/desktop/` and 5 in `src/daemons/`. (The sixth directory in `src/system/`, `kdos-kpkg`, has no
+recipe; `10_bootstrap` compiles it by script.) A port is known by its bare name, which is unique
+across all five. See [Writing ports](../05-developer/writing-ports.md) and [The ports
+catalogue](ports-catalogue.md).
 
 ### portal
 
@@ -585,9 +606,10 @@ commands, and photographs the screen: `testing/vnc-shot.py` and the scripts arou
 
 ### ring
 
-Which of three divisions of the software a program belongs to: core (`ports/core/`), desktop
-(`src/desktop/`, `src/packages/`, `src/libs/`) or outer (the *catalogue*). Build cost and ownership
-decide the ring. See [Architecture overview](../03-architecture/overview.md#the-three-rings).
+Which of three divisions of the software a program belongs to: core (`ports/core/`), desktop (the
+*areas* under `src/` other than `devtools`, whose build-machine tools belong to no ring) or outer (the *catalogue*). A *shelf* subdivides the core ring; it is not a
+ring. Build cost and ownership decide the ring. See [Architecture
+overview](../03-architecture/overview.md#the-three-rings).
 
 ### root slot
 
@@ -632,10 +654,12 @@ security model](../03-architecture/security-model.md#sandboxed-clients).
 
 ### self-hosting
 
-Able to build itself. From phase 2 onwards the KDOS build is self-hosting: `02_phase2` rebuilds the
-C library, the compiler and their companions with the compiler phase 1 made, inside the *chroot*,
-and every later phase is built by those tools. Phase 3 installs every compiler, build system and
-language runtime needed to rebuild KDOS from KDOS. See [How KDOS is
+Able to build itself. From `20_selfhost` onwards the KDOS build is self-hosting: `20_selfhost`
+rebuilds the C library, the compiler and their companions with the compiler `10_bootstrap` made,
+inside the *chroot*, and every later phase is built by those tools. `30_foundation` and
+`31_compilers` install the build systems, interpreters and large compilers, and `40_lang` the
+remaining languages and build tools, such as `scons`, `gn` and `ocaml`, so that from the end of
+`40_lang` KDOS can rebuild KDOS. See [How KDOS is
 built](../05-developer/how-kdos-is-built.md).
 
 ### session
@@ -644,6 +668,19 @@ A running desktop: the compositor, its supervised chrome, and the per-user servi
 login shell on `tty1` starts one through `kdos-desktop`, and no other tty does; a session that fails
 to come up falls back to that shell's prompt rather than taking the terminal with it. See [The
 session](../03-architecture/session.md).
+
+### shelf
+
+The subject directory an upstream *port* is filed under: `ports/core/<shelf>/<name>/`, such as
+`ports/core/wl/wlroots/`. There are 102, a closed list kept in `ports/shelves` with one line each
+saying what belongs on it. The shelf is only where the recipe is filed: a port is named by its bare
+name everywhere, and no recipe key records the shelf, so moving a port between shelves changes
+no hash and no package: only its path, and the shelf file of its phase's package list that names
+it. The *package lists* and [the ports catalogue](ports-catalogue.md) are grouped
+by shelf. A shelf is neither a *group* nor a *ring*, and KDOS's own ports are not shelved; they sit
+in *areas* under `src/`. See [Packaging](../03-architecture/packaging.md#repositories-and-shelves)
+and
+[Decisions](../01-philosophy/decisions.md#ports-are-shelved-by-subject-identity-is-the-bare-name).
 
 ### shim
 
@@ -673,8 +710,9 @@ language](../03-architecture/design-language.md).
 ### snapshot
 
 An archive of a completed build *phase*'s result under `build/snapshots/<phase>/`: one compressed
-`tar` per declared path and a `manifest.json`. The first two phases archive `cross`, `fs` and
-`mark`; the package phases archive `fs`; packaging adds the ISO tree, the ISO and the initramfs. A
+`tar` per declared path and a `manifest.json`. `00_cross` and `10_bootstrap` archive `cross`, `fs`
+and `mark`; the package phases archive `fs`; `70_image` adds the ISO tree, the ISO and the
+initramfs. A
 later build restores a snapshot and continues from the phase after it instead of starting again. See
 [The build system](../05-developer/build-system.md#snapshots).
 
@@ -749,8 +787,8 @@ programs, helpers included. See [kdos-shell](../04-programs/kdos-shell.md).
 
 ### target tree
 
-`build/fs`, the root filesystem the build assembles and every phase from `02_phase2` onwards runs in
-as its *chroot*. Packaging turns it into the ISO. See [The build
+`build/fs`, the root filesystem the build assembles and every phase from `20_selfhost` onwards runs
+in as its *chroot*. `70_image` turns it into the ISO. See [The build
 system](../05-developer/build-system.md#the-chroot).
 
 ### tile
@@ -843,7 +881,8 @@ promise something the text cannot support.
 | First-person decision narration | State the decision and its reason in the present |
 | Past-tense narration of any kind | These pages describe the present. See [Principles](../01-philosophy/principles.md#documentation-describes-the-present) |
 | "sandbox" for a box, unqualified | A box limits what an application can do to the desktop, not to your data |
-| "group", unqualified, in build prose | *Package-list group* (or *list group*) or *the `group =` key*, whichever is meant |
+| "group", unqualified, in build prose | *The `group =` key*, or *shelf* where the grouping of the ports tree or a package list is meant |
+| "category" for where a port is filed | *Shelf*. "Category" belongs to the catalogue, the pack index and desktop entries |
 
 ## See also
 
@@ -853,7 +892,7 @@ promise something the text cannot support.
   meets them
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md) — the host's components beside their
   counterparts in other distributions
-- [The ports catalogue](ports-catalogue.md) — every port the *port* and *group* entries count
+- [The ports catalogue](ports-catalogue.md) — every port the *port* and *shelf* entries count
 - [Principles](../01-philosophy/principles.md) — the rules behind the vocabulary
 - [Command index](command-index.md) — every command by name
 - [Configuration](configuration.md) — every setting by name

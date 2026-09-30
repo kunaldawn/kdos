@@ -1,7 +1,7 @@
 # KDOS XDG user directories.
 # xdg-user-dirs is not installed (it wants a session manager), so this file is
 # seeded instead of generated. The directories themselves are created by
-# script/06_packaging/00_user.sh — git cannot carry empty ones.
+# script/phases/70_image/070_user.sh — git cannot carry empty ones.
 
 XDG_DESKTOP_DIR="$HOME/Desktop"
 XDG_DOWNLOAD_DIR="$HOME/Downloads"

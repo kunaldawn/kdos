@@ -1,0 +1,67 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   boot — Everything before userspace: the kernel, microcode, firmware for the
+#   host, bootloader and EFI tooling
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+limine
+
+# Firmware. Without it a real machine has no Wi-Fi, no Bluetooth and — this is
+# the one that surprises people — no GPU: from Vega/GFX9 on, amdgpu must load
+# PSP/SMU/GFX/SDMA blobs before it can bring the display up, and Xe and Gen12+
+# i915 refuse to load without GuC. You fall through to simpledrm on the EFI
+# framebuffer: a picture, no EGL, no compositor.
+#
+# Upstream's whole tree, installed by its own copy-firmware.sh.
+linux-firmware
+
+# CPU microcode. AMD's blobs come with linux-firmware; Intel ships its own tree
+# and this is the whole of it, no per-family curation —
+# script/phases/70_image/090_initramfs.sh turns both into the uncompressed cpio
+# the early loader scans for.
+intel-ucode
+
+# qemu's aarch64 and riscv64 targets require libfdt, and --disable-download
+# means its own submodule copy is never fetched. acpica's iasl compiles the
+# ACPI tables of the UEFI firmware qemu's recipe builds from its roms/ tree.
+dtc
+acpica
+
+# Not a program, an EFI payload: bad RAM is the one fault a tool running under
+# an OS cannot honestly diagnose, because it is in the memory being tested.
+memtest86plus
+
+# kinstall writes an EFI entry once. Every later firmware that reorders or
+# drops it needs a tool on the RUNNING system, or a KDOS install that stops
+# booting has no repair path outside a firmware menu.
+efivar
+efibootmgr
+
+gnu-efi
+fwupd-efi
+
+# Neither is part of linux-firmware; both are separate upstreams. The kernel
+# builds a driver for each — CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y and
+# CONFIG_SND_SOC_SOF=m — and requests these blobs by name at probe time.
+# Without them the failures are silent: a radio stuck in the world domain with
+# no 5 GHz, and a bound audio driver that makes no sound.
+wireless-regdb
+sof-firmware

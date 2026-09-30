@@ -1,0 +1,36 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   42_graphics: Graphics Stack
+# ---------------------------------
+#   virt — Virtual machines, their tooling, and remote-desktop and VNC
+#   protocols
+# ---------------------------------
+#
+# Ports whose dependency closure reaches wayland, libX11, mesa, libdrm, cairo,
+# pango, gstreamer, ffmpeg or pipewire but no toolkit, and that are not leaf
+# applications.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+spice
+
+# Reaching this desktop from another machine. kdos-comp already offers
+# zwlr_screencopy_manager_v1, so the server side needs no code of ours — only
+# aml, then neatvnc, the protocol library wayvnc drives, then wayvnc. neatvnc
+# must be 1.x; wayvnc 0.10.1 pins `>=1.0.0 <2.0.0` and fails at meson setup
+# against a 0.9 series.
+neatvnc
+wayvnc
+
+freerdp
+wlvncc

@@ -1,0 +1,53 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   chat — Instant messaging, IRC, XMPP, Matrix, fediverse and voice clients,
+#   with their protocol and E2E libraries
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# MATRIX, WITH vim'S KEYS. SQLite is bundled because every rust port here is a
+# static-pie binary and none of them can reach the shared libsqlite3 the image
+# carries; TLS is rustls for the same reason pizauth's is.
+iamb
+
+# IRC AS A DIRECTORY. A FIFO to write into and a text file to read, per channel
+# — so the client is `tail -f` and the composer is `echo`, and a bot is a shell
+# script with no library at all. There is no other IRC client on this image.
+ii
+
+# libre's version is pinned to baresip's — a mismatch aborts at call time, not
+# at link time.
+libre
+
+# The XMPP client library profanity links. A server nobody can connect to from
+# the machine it runs on is a daemon, not a way to talk to somebody.
+libstrophe
+
+# OMEMO, the end-to-end encryption Dino speaks too.
+libomemo-c
+
+# IRC and the rest of the chat networks, in cells. The three scripting plugins
+# are hard configure dependencies as well as runtime ones: dropping python3,
+# perl or lua from the recipe's depends stops the build rather than narrowing
+# it.
+weechat
+
+olm
+mtxclient

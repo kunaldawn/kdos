@@ -1,0 +1,52 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   gis — GIS, maps, projections, GPS, navigation and location
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# One daemon in front of every receiver, so a GPS is a socket rather than a
+# serial protocol every program reimplements. Plugging a receiver in starts it,
+# through the udev rule the port ships.
+gpsd
+
+# geos links nothing, which is why it is first in the GIS chain — proj and
+# gdal are both built against it.
+geos
+
+# The high-accuracy datum grids are a CDN download and that path is dead here,
+# so transformations fall back to the coarse analytic method: metres, not
+# kilometres, and `projinfo` says which pipeline it chose.
+proj
+
+# One file per map, and `pmtiles show` reads it off the disk. `extract` against
+# the hosted planet is the network verb and is not why this is here.
+go-pmtiles
+
+# Marble's "offline routing" IS this or it does not exist. planetsplitter
+# turns an OSM extract into the database the router reads.
+routino
+
+# xdg-desktop-portal's Location portal asks it.
+geoclue
+
+shapelib
+libspatialindex
+librttopo
+libgeotiff

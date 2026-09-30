@@ -659,11 +659,12 @@ and recoloured:
 `kdos-theme` is the generator that recolours them. The packages run it once at build time to make
 the system copies, always in `phosphor`. Those copies never follow the accent, and nothing in a
 session or a box reads them in preference to the copies in your home directory. The four ports
-(`kdos-theme` and the three above) are listed in
-[The ports catalogue](../06-reference/ports-catalogue.md#colour-management-and-codecs). `kdos theme` runs
+(`kdos-theme` and the three above) have their sources and recipes under `src/art/`, are built in the
+`41_system` phase from its list `script/phases/41_system/packages.d/src-art.txt`, and are listed in
+[The ports catalogue](../06-reference/ports-catalogue.md#srcart). `kdos theme` runs
 the generator on every accent switch to write the copies in `$HOME`. The image build runs
 `kdos theme` once more against `/etc/skel`, with the default accent, so a new account starts
-themed; [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-06_packaging) places that
+themed; [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image) places that
 step among the other packaging steps.
 
 ```sh
@@ -684,7 +685,7 @@ kdos-theme accents
 `kdos-theme accents` prints the eight accent names.
 
 The icons and cursors are recoloured rather than redrawn. A maintenance script (`vendor.py`, beside
-each package's recipe under `src/packages/`) prunes an upstream release into a source tree kept in
+each package's recipe under `src/art/`) prunes an upstream release into a source tree kept in
 the repository, and the generator recolours that tree into the palette. Each colour keeps its own
 lightness, and usually its saturation, and takes a hue from the palette.
 

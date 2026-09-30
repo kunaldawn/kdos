@@ -81,8 +81,8 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	ext-workspace-v1-protocol.c
 # The panel is not a lock screen and binds no lock role — but it compiles the
 # WHOLE of libkwl, and libkwl carries KDISP_ROLE_LOCK for kdos-lock, so kwl.c
-# includes this header unconditionally. Generating it only in kdos-lock's
-# recipe is what made kdos-shell the first package of this phase to fail.
+# includes this header unconditionally: generate it here as well, or kwl.c
+# fails to compile in this recipe.
 "$SCANNER" client-header \
 	"$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
 	ext-session-lock-v1-client-protocol.h

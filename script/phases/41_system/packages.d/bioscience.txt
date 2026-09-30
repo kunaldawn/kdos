@@ -1,0 +1,50 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   41_system: System
+# ---------------------------------
+#   bioscience — Bioinformatics, chemistry and medical informatics or imaging
+# ---------------------------------
+#
+# Everything with no graphics and no toolkit in its dependency closure:
+# services, networking, storage, the command line, codecs, and the science and
+# hardware libraries.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+# The three move together on one version number and each checks the library it
+# was built against — a mismatch is a runtime complaint, not a link error.
+# samtools bundles its own htslib, which is why --with-htslib=system matters.
+htslib
+samtools
+bcftools
+
+# A runtime dispatcher that the makefile still needs telling about: the default
+# target puts -msse4.1 on EVERYTHING, so a build here SIGILLs elsewhere.
+minimap2
+
+# Profile HMMs: the search Pfam is built on, and the one that finds a remote
+# homologue a pairwise aligner walks straight past.
+hmmer
+
+# BLASTP/BLASTX at a thousand times the speed, which is the difference between
+# a search that runs on this machine and one that does not.
+diamond
+
+# Multiple alignment that scales past a handful of sequences.
+mafft
+
+# FASTA/FASTQ manipulation at speed — the tool a sequence pipeline starts with,
+# before anything is aligned or searched.
+seqkit
+
+dcmtk

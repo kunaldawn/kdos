@@ -1,0 +1,14 @@
+title: a build plan that narrows execution must suppress snapshot writes
+cite: kdosbuild
+port: kdos-tools
+
+Re-running 10_bootstrap on a 60_kernel tree would otherwise file that tree
+under 10_bootstrap's name, and the snapshot that answers "go back" becomes the one that
+loses it.
+
+Two more from the same engine: `kpkg install -f` genuinely forces a rebuild,
+so it is passed only for ports the plan selected — blanketly it would rebuild
+every package — and `--overwrite` is a separate flag that lets an install take
+over a path another package owns, because the userland genuinely overlaps in
+about 70 paths and the path must CHANGE HANDS in the database rather than be
+claimed twice.
