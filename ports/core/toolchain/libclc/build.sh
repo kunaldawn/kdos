@@ -14,8 +14,8 @@ for triple in amdgcn-amd-amdhsa-llvm nvptx64-nvidia-cuda \
 	cmake -S libclc -B build-$triple -G Ninja \
 		-D CMAKE_INSTALL_PREFIX=/usr \
 		-D CMAKE_BUILD_TYPE=Release \
-		-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
-		-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+		-D CMAKE_C_FLAGS_RELEASE="$CFLAGS -DNDEBUG" \
+		-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -DNDEBUG" \
 		-D CMAKE_CLC_COMPILER=/usr/bin/clang \
 		-D LLVM_DIR=/usr/lib/cmake/llvm \
 		-D LLVM_DEFAULT_TARGET_TRIPLE=$triple \

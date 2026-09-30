@@ -26,13 +26,13 @@ export CARGO_NET_OFFLINE=true
 # is where a library reference has to be.
 #
 # NOT -liconv: musl carries iconv in libc and there is no library of that name.
-export LDFLAGS="-lintl"
+export LDFLAGS="$LDFLAGS -lintl"
 
 # The Makefile compiles with -Werror, and json-c's linkhash.h defines its
 # helpers `static` with _LH_INLINE, which is `inline` only for a C compiler: in
 # C++ every helper a file leaves unused is a -Wunused-function error. The
 # Makefile appends CXXFLAGS after its own warnings, so this demotes that one.
-export CXXFLAGS="$CXXFLAGS -Wno-error=unused-function"
+export CXXFLAGS="$CXXFLAGS -Wno-error=unused-function -g0"
 
 # THE GOALS ARE NAMED, NOT `make` AND `make install`. The default target's
 # `doc` builds the two manual pages and the HTML manual and FAQ, and

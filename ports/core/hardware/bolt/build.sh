@@ -56,7 +56,7 @@
 # `required: false` and umockdev is not on this image.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--localstatedir=/var \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	-Dman=true \
 	-Dinstall-tests=false \
 	-Dprivileged-group=wheel

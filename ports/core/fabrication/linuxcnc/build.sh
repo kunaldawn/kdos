@@ -38,7 +38,7 @@ _py=$(python3 -c 'import sys; print(f"{sys.version_info[0]}{sys.version_info[1]}
 # the one variable all of LinuxCNC's link rules use. The shared-library rules
 # put LDFLAGS before the objects, where --as-needed would drop it, so it is
 # linked unconditionally.
-export LDFLAGS="$LDFLAGS -Wl,--push-state,--no-as-needed -lintl -Wl,--pop-state"
+export LDFLAGS="$LDFLAGS -Wl,--push-state,--no-as-needed -lintl -Wl,--pop-state -Wl,--strip-debug"
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \

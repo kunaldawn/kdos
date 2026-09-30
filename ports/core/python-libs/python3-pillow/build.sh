@@ -17,6 +17,7 @@
 # probe would otherwise pick up whatever happens to be installed first. xcb
 # stays off: it links the X client libraries for ImageGrab, and there is no X
 # server to grab from.
+export CFLAGS="$CFLAGS -flto=auto"
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr \
 	-C tiff=enable \
 	-C freetype=enable \

@@ -32,7 +32,10 @@ cp $PORT_SRC/cargo-$_cargo-$_triplet.tar.xz build/cache/$_date/
 # profiler builds profiler_builtins from src/llvm-project/compiler-rt in this
 # tarball; without it -C instrument-coverage, cargo-llvm-cov and PGO fail.
 # jemalloc links the vendored tikv-jemalloc-sys into rustc in place of musl's
-# malloc, which is slow under rustc's allocation pattern.
+# malloc, which is slow under rustc's allocation pattern. codegen-units-std = 1
+# compiles the standard library, which every Rust program links, as one unit,
+# the setting of upstream's and Alpine's release builds; rustc itself keeps
+# the default of 16.
 cat << EOF > config.toml
 [llvm]
 targets = "X86"
@@ -54,6 +57,7 @@ prefix = "/usr"
 [rust]
 channel = "stable"
 jemalloc = true
+codegen-units-std = 1
 
 [target.$_triplet]
 llvm-config = "/usr/bin/llvm-config"
@@ -66,5 +70,5 @@ export RUST_BACKTRACE=1
 
 export LIBSSH2_SYS_USE_PKG_CONFIG=1
 
-python3 ./x.py build
-DESTDIR=$PKG python3 ./x.py install -v
+python3 ./x.py build --jobs "$KDOS_JOBS"
+DESTDIR=$PKG python3 ./x.py install -v --jobs "$KDOS_JOBS"

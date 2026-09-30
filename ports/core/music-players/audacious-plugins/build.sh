@@ -26,7 +26,7 @@
 meson setup build \
 	--prefix=/usr \
 	--libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	-Dqt=true \
 	-Dqt5=false \
 	-Dgtk=false \

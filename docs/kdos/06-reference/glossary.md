@@ -298,6 +298,14 @@ A word with two unrelated meanings, which the book keeps apart.
 A *shelf* is a third thing, distinct from both: the subject directory a port is filed under, by
 which the *package lists* are also grouped.
 
+### held snapshot
+
+A *snapshot* that was replaced, or deleted with `--delete` or the picker's `D`, while another
+snapshot's chain of *snapshot layers* still runs through it. It moves to
+`build/snapshots/.held/<phase>@<id>/`, so every snapshot built on it still restores, and is deleted
+as soon as no phase's snapshot needs it. `make snapshots` lists it with what needs it. See
+[The build system](../05-developer/build-system.md#what-a-snapshot-directory-holds).
+
 ### host
 
 The KDOS system itself: everything compiled from this repository, as opposed to what runs in a box.
@@ -713,9 +721,9 @@ language](../03-architecture/design-language.md).
 
 An archive of a completed build *phase*'s result under `build/snapshots/<phase>/`: one compressed
 `tar` per declared path and a `manifest.json`. `00_cross` and `10_bootstrap` archive `cross`, `fs`
-and `mark`; the package phases archive `fs`; `70_image` adds the ISO tree, the ISO and the
-initramfs. A
-later build restores a snapshot and continues from the phase after it instead of starting again. See
+and `mark`; the package phases up to `50_desktop` archive `fs`; `60_kernel` and `70_image` take
+none. Each path is archived whole or as a *snapshot layer* on an earlier snapshot. A later build
+restores a snapshot and continues from the phase after it instead of starting again. See
 [The build system](../05-developer/build-system.md#snapshots).
 
 Two unrelated uses share the word. The catalogue's `snapshot` key pins the date of the Debian
@@ -723,6 +731,15 @@ archive that boxes are built from (see [Packs and
 boxes](../03-architecture/packs-and-boxes.md#the-catalogue)), and `kdos-box snapshot <box> [tag]`
 saves a tagged copy of one box's writable layer (see
 [kdos-appbox](../04-programs/kdos-appbox.md#snapshots-and-rollback)).
+
+### snapshot layer
+
+A *snapshot*'s archive of one path that holds only what changed since another snapshot, its base:
+every entry that is new, changed type, or has a new inode or ctime, the directories those sit in,
+and a `.gone` list of what was removed. The changes are found by comparing a walk of the tree with
+the index in `build/.snap-lineage/`. Restoring a layer extracts the full archive at the bottom of
+its chain and every layer above it in turn. `--full-snapshots` writes none. See
+[The build system](../05-developer/build-system.md#layers-and-full-snapshots).
 
 ### source archive
 

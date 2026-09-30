@@ -26,7 +26,7 @@
 # switch; offline each finds nothing, and the scrobblers send nothing until an
 # account is signed in.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	-Dbrasero=enabled \
 	-Ddaap=disabled \
 	-Dfm_radio=enabled \

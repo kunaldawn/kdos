@@ -10,6 +10,7 @@
 # ---------------------------------
 
 ./configure \
-	--prefix=/usr
+	--prefix=/usr \
+	--enable-optimize
 make
 make DESTDIR=$PKG install

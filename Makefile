@@ -168,7 +168,8 @@ cleandisk:
 
 # Wipe the build tree but keep build/snapshots, so a phase can still be
 # restored, and build/ccache and build/pkgstore, whose contents stay valid for
-# the next build.
+# the next build. build/.snap-lineage goes with the tree it indexes, so the
+# next snapshot is full.
 #
 # build/keys survives BOTH of these, and that is deliberate: the pack signing
 # key lives there and a key is not a build artefact. Lose it and every later

@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-meson setup build --buildtype=release \
+meson setup build --buildtype=release -Db_ndebug=if-release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Dintrospection=disabled \
 	-Dvapi=disabled \

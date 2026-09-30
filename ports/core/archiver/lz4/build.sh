@@ -9,5 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
 make PREFIX=/usr
 make DESTDIR=$PKG PREFIX=/usr install

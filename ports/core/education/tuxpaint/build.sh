@@ -12,13 +12,22 @@
 # The makefile assigns CFLAGS and LDFLAGS itself and never reads them from the
 # environment; CPPFLAGS it does read, at the head of its own CFLAGS, so the
 # tree's flags travel there. LDFLAGS is empty in the makefile on Linux, so the
-# tree's value passed on the command line replaces nothing. The makefile is
-# not safe in parallel.
+# tree's value passed on the command line replaces nothing. OPTFLAGS and
+# MAGIC_CFLAGS are the makefile's -O2 -g and -g3 for the program and the magic
+# plugins; both are replaced, keeping upstream's $(FASTMATH), so neither ships
+# DWARF and the plugins build with the tree's flags. The makefile is not safe
+# in parallel.
 # PACKAGE_ONLY installs the desktop entries and hicolor icons into DESTDIR
 # instead of registering them with xdg-utils on the build machine.
 export CPPFLAGS="$CFLAGS -D_POSIX_PRIORITY_SCHEDULING -Wno-implicit-function-declaration"
-make -j1 PREFIX=/usr LDFLAGS="$LDFLAGS"
-make -j1 PREFIX=/usr LDFLAGS="$LDFLAGS" PACKAGE_ONLY=yes DESTDIR=$PKG install
+_make=(
+	PREFIX=/usr
+	LDFLAGS="$LDFLAGS"
+	OPTFLAGS='$(FASTMATH)'
+	MAGIC_CFLAGS="$CFLAGS"' $(FASTMATH) -fno-common $(MAGIC_SDL_CPPFLAGS) -Isrc/'
+)
+make -j1 "${_make[@]}"
+make -j1 "${_make[@]}" PACKAGE_ONLY=yes DESTDIR=$PKG install
 
 # Bundled data is English only: the interface catalogues go, and so do the
 # handbooks and manual pages in other languages.

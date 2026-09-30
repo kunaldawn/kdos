@@ -31,7 +31,7 @@ patch -p1 -i "$PORT_SRC/no-agent.patch"
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--libexecdir=/usr/lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	-Dlibgeoclue=true \
 	-Dintrospection=false \
 	-Dvapi=false \

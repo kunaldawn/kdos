@@ -74,7 +74,8 @@ Six terms recur throughout:
 - A **chroot** runs a command with `build/fs`, the tree the build fills, as its root directory, so
   the command sees only what the build has put there.
 - A **snapshot** is an archive of the build tree taken when a phase completes, so that a later
-  build can resume from it.
+  build can resume from it. After the first, each is a **layer**: only what changed since the
+  snapshot before it.
 
 Other terms, such as box and pack, are defined where they first appear, and every one
 is in the [Glossary](../06-reference/glossary.md).
@@ -197,8 +198,11 @@ it would see in a serial build, provided its recipe declares everything it build
 When a phase completes, kdosbuild archives the paths it declared into `build/snapshots/<phase>/`.
 The first two phases declare `cross`, `fs` and `mark` (the cross toolchain, the target tree and the
 "already done" markers); the package phases up to `50_desktop` declare `fs`; `60_kernel` and
-`70_image` declare nothing and are re-run on the tree they find. A later build can restore any
-snapshot and continue from the phase after it,
+`70_image` declare nothing and are re-run on the tree they find. The first snapshot of a path holds
+the whole tree; each later one is a layer holding only the entries that changed since the snapshot
+before it, found by comparing a walk of the tree with an index kept in `build/.snap-lineage/`, and
+a list of what was removed. A later build can restore any snapshot, by extracting the full archive
+at the bottom of its chain and each layer above it, and continue from the phase after it,
 so a failure hours in does not mean starting again. Before a build begins, a picker on the terminal
 asks which snapshot to start from and whether to write new ones. Snapshots, their disk cost and the
 rules that keep a restore safe are in [Snapshots](build-system.md#snapshots).
@@ -630,7 +634,7 @@ These figures come from the chapters that measure them:
 |---|---|---|
 | Upstream sources, fetched once | About 41.5 GB (38.6 GiB), each file held once in `ports/.srccache` | [Developing](developing.md#what-a-development-machine-needs) |
 | A build from nothing | Most of a day | [Building from scratch](developing.md#building-from-scratch) |
-| A complete set of phase snapshots | Not yet measured for the eleven phases that take one | [Snapshots](build-system.md#snapshots), [Developing](developing.md#what-a-development-machine-needs) |
+| A complete set of phase snapshots | Not yet measured for the eleven phases that take one. On a synthetic ten-phase tree of about 4.4 GB, layers took 1.86 GB against 7.99 GB for full snapshots, 23% | [Snapshots](build-system.md#layers-and-full-snapshots), [Developing](developing.md#what-a-development-machine-needs) |
 | One program rebuilt, with packaging | Not yet measured with the zstd image; most of it is writing the ISO, and `KDOS_ISO_COMP=zstd:3` shortens that part | [The fast loop](testing.md#the-fast-loop) |
 | One program rebuilt without packaging, patched into a booted ISO | About three minutes, or 1m37s when nothing is rebuilt and the session is not restarted (`KDOS_QUICK_NOBUILD=1 KDOS_QUICK_KEEP=1`) | [The fast loop](testing.md#the-fast-loop) |
 

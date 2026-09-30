@@ -61,7 +61,7 @@ kdos/
 ├── src/                   KDOS's own code; every port is at exactly src/<area>/<name>/
 │   ├── libs/              the C libraries, compiled by their consumers — see the rule below
 │   │   ├── libkbase/          allocation, strings, files, processes, the trash
-│   │   ├── libkbuild/         phases, plans, the snapshot inventory
+│   │   ├── libkbuild/         phases, plans, the snapshot inventory and its chains
 │   │   ├── libkcell/          the glyph cache and the cell painter
 │   │   ├── libkchrome/        the window furniture
 │   │   ├── libkcolor/         the palette table and colour arithmetic
@@ -319,7 +319,7 @@ those keys are written in every `phase.env`. Everything shared is sourced from `
 |---|---|---|
 | `common.env` | every phase, through one of the two below | The reproducibility settings, the job count `KDOS_JOBS` with the `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS` it sets, and `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross`, `10_bootstrap` | The target triplet, the sysroot and cross-toolchain paths, and the cross `pkg-config` setup |
-| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the base flags, `KPKG_SKIP_INDEX=man`; it removes nothing, since `kpkg` empties each port's own work directory |
+| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the release flags, `CMAKE_BUILD_TYPE`, `CARGO_PROFILE_RELEASE_DEBUG`, `GOFLAGS` and the `CGO_*FLAGS`, the CMake compiler cache, `KPKG_SKIP_INDEX=man`; it removes nothing, since `kpkg` empties each port's own work directory |
 
 `script/lib/port.sh` is sourced by the step scripts of `00_cross` and `10_bootstrap`, which run
 before `kpkg` exists; it reads a recipe and unpacks its source, and finds a port by name one shelf

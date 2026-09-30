@@ -15,8 +15,13 @@
 # with the Go binding.
 export BUILDTAGS="seccomp libsqlite3 exclude_graphdriver_btrfs"
 
-# `binaries` builds podman, podman-remote, rootlessport, quadlet, etc.
+# `binaries` builds podman, podman-remote, rootlessport, quadlet, etc. The
+# makefile passes no -s -w to the Go linker: EXTRA_LDFLAGS adds them to every
+# binary built with its -ldflags, and GOFLAGS to rootlessport, which is built
+# with none.
+export GOFLAGS="$GOFLAGS \"-ldflags=-s -w\""
 make BUILDTAGS="$BUILDTAGS" \
+	EXTRA_LDFLAGS="-s -w" \
 	PREFIX=/usr \
 	ETCDIR=/etc \
 	BINDIR=/usr/bin \

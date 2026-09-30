@@ -442,7 +442,7 @@ hardware matrix. See [Known gaps](../06-reference/known-gaps.md#hardware-and-pla
 ## What you give up
 
 Each section above states its own cost. Two are not stated elsewhere. The first build from a clean
-checkout takes most of a day, and tens of gigabytes more disk if it keeps phase snapshots; see
+checkout takes most of a day, and gigabytes more disk if it keeps phase snapshots; see
 [Developing](../05-developer/developing.md). Commercial software that assumes glibc and systemd on
 the host does not run there; it runs in a box or not at all. Whether the trade as a whole is worth
 it depends on what you want the machine for; [Why KDOS](why-kdos.md#who-should-run-kdos) says who

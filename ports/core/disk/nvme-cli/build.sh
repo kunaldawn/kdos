@@ -29,6 +29,7 @@ meson setup build \
 	--sysconfdir=/etc \
 	--libdir=lib \
 	--buildtype=release \
+	-Db_ndebug=if-release \
 	--wrap-mode=nodownload \
 	-Djson-c=enabled \
 	-Dlibkmod=enabled \

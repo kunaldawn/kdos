@@ -155,9 +155,10 @@ void tm_free(Timings *t);
 
 typedef struct {
 	int active;
-	char action[16];	/* preparing measuring snapshot restore     */
+	char action[16];	/* preparing indexing snapshot restore      */
 	char phase[64];
 	char path[128];
+	char layer[48];		/* "full", "layer on 40_lang", "layer 3/10" */
 	char current[256];
 	long long bytes, est_bytes;
 	long long files, est_files;
@@ -210,6 +211,7 @@ typedef struct {
 	int stop_requested;
 	int force_quit;		/* a second Q: kill the group and leave    */
 	int snapshot_enabled;
+	int full_snapshots;	/* --full-snapshots: never write a layer    */
 	double start_time;
 	long long total_lines;
 
@@ -284,7 +286,17 @@ BStep *mgr_phase_of(BStep *s);
 int snap_create(Manager *m, BStep *group, char *err, size_t errcap);
 int snap_restore(Manager *m, const KbuildRestoreItem *plan, int n,
 		 const char *target, char *err, size_t errcap);
-int snap_delete(Manager *m, const char *dir_name);
+/* 0 when there is no such snapshot, 1 deleted, 2 held: another snapshot's
+ * chain runs through it, so it moved to build/snapshots/.held/ and `deps`
+ * names what needs it. Either way, held snapshots nothing needs any more are
+ * deleted. */
+int snap_delete(Manager *m, const char *dir_name, char *deps, size_t cap);
+/* Deletes every held snapshot no phase directory's chain reaches; returns how
+ * many. */
+int snap_gc(Manager *m);
+/* "full", "layer on 40_lang", or one clause per path when they differ. */
+void snap_kind(const KbuildSnapshot *all, int n, const KbuildSnapshot *sn,
+	       char *out, size_t cap);
 /* A redraw hook, so a 40-minute tar keeps the screen alive. */
 void snap_set_tick(Manager *m, void (*fn)(Manager *));
 void snap_git_info(const char *repo_root, char *commit, size_t ccap, int *dirty);
@@ -378,7 +390,7 @@ typedef struct {
 
 const Reporter *reporter_for(int json);
 void report_snapshots_json(const KbuildPhase *ph, int nph,
-			   const KbuildSnapshot *snaps, int n,
+			   const KbuildSnapshot *all, int n,
 			   const char *commit);
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -390,8 +402,8 @@ enum { PICK_QUIT = 0, PICK_FRESH, PICK_RESTORE, PICK_PLAN };
  * PICK_RESTORE. `snapshot_enabled` carries the snapshot-writing choice BOTH
  * ways: in as the state the screen opens on (the command line's), out as what
  * the operator left it at. It is answered here rather than on the command line
- * because the cost being chosen — tens of gigabytes and a large part of the
- * run's wall clock — is only knowable once the phase list and the codec are on
+ * because the cost being chosen — gigabytes and a part of the run's wall
+ * clock — is only knowable once the phase list and the codec are on
  * screen beside it. */
 int screen_startup(Manager *m, int *index, const char *commit,
 		   int *snapshot_enabled);

@@ -14,6 +14,7 @@
 # giving a gtkmm that silently lacks Gdk::X11 for the programs that call it.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
+	-Db_ndebug=if-release \
 	-Dmaintainer-mode=false \
 	-Dwarnings=min \
 	-Dbuild-deprecated-api=true \

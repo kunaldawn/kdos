@@ -37,7 +37,7 @@ Plan for the cost before you start:
 | | |
 |---|---|
 | Wall time, first build | Many hours; budget a day or more. Every package is compiled, including GCC several times over and the kernel. The build container uses every thread the host leaves idle; `make build KDOS_JOBS=N` caps it |
-| Disk | About 41.5 GB (38.6 GiB) of upstream source archives, fetched by `make fetch`. The build tree under `build/` needs room of its own, and a complete set of phase snapshots tens of gigabytes more; its size is not yet measured. Snapshots are optional |
+| Disk | About 41.5 GB (38.6 GiB) of upstream source archives, fetched by `make fetch`. The build tree under `build/` needs room of its own, and a complete set of phase snapshots gigabytes more, the tree compressed once plus a layer per phase; its size is not yet measured. Snapshots are optional |
 | Network | Needed to clone, to run `make fetch`, and for the first `make build` on a machine, which builds its container image from Alpine Linux packages. The compile itself runs with networking switched off |
 | Software on your machine | Docker, plus a few small tools listed in the next section. Every compiler runs inside a container |
 

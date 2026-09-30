@@ -11,7 +11,7 @@
 
 
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	-Ddocs=false \
 	-Dintrospection=false \
 	-Dvapi=false \

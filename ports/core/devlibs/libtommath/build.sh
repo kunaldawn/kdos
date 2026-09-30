@@ -16,5 +16,6 @@
 # looks entirely healthy. Building tcl --with-system-libtommath puts
 # TCL_WITH_EXTERNAL_TOMMATH in tcl.pc, which is exactly what yosys's CMakeLists
 # tests for before importing this library alongside it.
+export CFLAGS="${CFLAGS/-O2/-O3}"
 make -f makefile.shared PREFIX=/usr LIBPATH=/usr/lib
 make -f makefile.shared PREFIX=/usr LIBPATH=/usr/lib DESTDIR=$PKG install

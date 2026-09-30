@@ -17,6 +17,7 @@
 # a port; Python 2 does not exist here. The demos are example programs.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
+	-Db_ndebug=if-release \
 	-Dpython3=true \
 	-Dpython2=false \
 	-Dlua51=false \

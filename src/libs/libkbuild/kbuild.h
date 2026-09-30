@@ -228,24 +228,48 @@ int kbuild_plan_save(const KbuildPlan *pl, const char *build_dir);
 int kbuild_plan_load(KbuildPlan *pl, const char *build_dir);
 
 /* ──────────────────────────────────────────────────────────────────────── */
-/* Snapshots — the inventory and what a restore would extract
+/* Snapshots — the inventory, the chains, and what a restore would extract
  *
  * Creating and extracting archives runs tar as root and belongs to the driver,
  * in src/devtools/kdosbuild/snapshot.c. What lives here is what DECIDES: which
- * snapshots exist, and which archive supplies each path.
+ * snapshots exist, which chain of archives supplies each path, what a layer
+ * holds, and which held snapshots nothing needs any more.
+ *
+ * A snapshot path is archived FULL (the whole tree) or as a LAYER: only the
+ * entries that changed since the snapshot named as its base, plus a `.gone`
+ * list of the paths to delete before extracting it. A layer's base is another
+ * snapshot's id, so restoring a path extracts its chain base first.
  */
 
 #define KBUILD_MANIFEST        "manifest.json"
 #define KBUILD_RESTORE_MARKER  ".restore-in-progress"
+#define KBUILD_SNAP_SCHEMA     4
+#define KBUILD_MAX_CHAIN       64	/* archives one path's restore may read */
+#define KBUILD_MAX_SNAPS       128	/* phase directories plus held ones   */
+#define KBUILD_MAX_RESTORE     (KBUILD_MAX_PATHS * KBUILD_MAX_CHAIN)
+#define KBUILD_LINEAGE_DIR     ".snap-lineage"	/* under build/             */
+#define KBUILD_HELD_DIR        ".held"		/* under build/snapshots/   */
+#define KBUILD_SNAP_ID         96
 
 typedef struct {
 	char path[128];		/* relative to build/, e.g. "fs"            */
 	char archive[192];	/* "fs.tar.zst", beside the manifest        */
+	/* bytes_raw and files describe THIS archive; tree_bytes and tree_files
+	 * the whole path as it stood when the snapshot was taken. */
 	long long bytes_raw, bytes_compressed, files;
+	int layer;		/* 0: the whole tree; 1: changes on base_id */
+	char base_id[KBUILD_SNAP_ID];
+	char removed[192];	/* "fs.gone" beside the manifest, "" if none */
+	long long removed_count;
+	long long tree_bytes, tree_files;
 } KbuildSnapEntry;
 
 typedef struct {
-	char dir_name[64];	/* the directory under build/snapshots/     */
+	/* Relative to build/snapshots/: "41_system", or for a held snapshot
+	 * ".held/41_system@<id>". */
+	char dir_name[192];
+	char id[KBUILD_SNAP_ID];
+	int held;
 	char phase_dir[64];
 	char phase[64];
 	char title[128];
@@ -266,8 +290,13 @@ typedef struct {
 typedef struct {
 	char path[128];
 	char archive[512];	/* absolute                                  */
-	char source[64];	/* the snapshot it came from                 */
+	char removed[512];	/* absolute .gone list, "" when there is none */
+	char source[64];	/* the phase directory the snapshot is from  */
+	char id[KBUILD_SNAP_ID];
 	char codec[16];
+	int layer;
+	int seq, nseq;		/* this archive's place in the path's chain  */
+	int complete;		/* of the snapshot this archive belongs to   */
 	long long bytes_raw, bytes_compressed, files;
 } KbuildRestoreItem;
 
@@ -275,18 +304,124 @@ const char *kbuild_snap_suffix(const char *codec);
 void kbuild_snap_decompressor(const char *codec, KbArgv *a);
 void kbuild_snap_archive_name(const char *path, const char *codec, char *out,
 			      size_t cap);
+/* "fs.gone" for "fs", with every '/' of the path turned into '_'. */
+void kbuild_snap_gone_name(const char *path, char *out, size_t cap);
 void kbuild_snap_dir(const char *root, const char *dir_name, char *out,
 		     size_t cap);
 
-/* 0 on success. A manifest that does not parse, carries no "entries", or names
- * an archive that is not on disk reads as ABSENT — never as partial. */
+/* One manifest, schema 4 (`paths`) or 3 and older (`entries`, always full,
+ * with the id "legacy-<phase_dir>-<created x 10>"). 0 on success. A manifest
+ * that does not parse, carries neither array, or names an archive or a .gone
+ * list that is not on disk reads as ABSENT — never as partial. Chains are not
+ * checked here. */
+int kbuild_snap_load_dir(const char *root, const char *dir_name,
+			 KbuildSnapshot *sn);
+/* The phase directory `dir_name`, by the same rules. */
 int kbuild_snap_load(const char *root, const char *dir_name, KbuildSnapshot *sn);
+
+/* Every snapshot: the phase directories, then build/snapshots/.held/. A name
+ * beginning with '.' in the root is never a phase snapshot. */
+int kbuild_snap_list_all(const char *root, KbuildSnapshot *out, int max);
+/* The phase directories whose every path's chain resolves. A snapshot whose
+ * base is gone is treated as absent: restoring its layer alone would produce
+ * a tree that never existed. */
 int kbuild_snap_list(const char *root, KbuildSnapshot *out, int max);
 const KbuildSnapshot *kbuild_snap_find(const KbuildSnapshot *snaps, int n,
 				       const char *dir_name);
+const KbuildSnapshot *kbuild_snap_by_id(const KbuildSnapshot *all, int n,
+					const char *id);
+const KbuildSnapEntry *kbuild_snap_entry(const KbuildSnapshot *sn,
+					 const char *path);
 
-/* Layered, newest-wins: each path comes from the newest snapshot at or below
- * target_index. Returned in path order, which is the extraction order. */
+/* The archives that rebuild `path` as `top` has it, base (a full archive)
+ * first. Returns the length, or -1 when a base is missing, lacks the path,
+ * the chain loops, or it is longer than `max` or KBUILD_MAX_CHAIN. */
+int kbuild_snap_chain(const KbuildSnapshot *all, int n,
+		      const KbuildSnapshot *top, const char *path,
+		      const KbuildSnapshot **out, int max);
+/* 1 when every path of `sn` has a chain. */
+int kbuild_snap_usable(const KbuildSnapshot *all, int n,
+		       const KbuildSnapshot *sn);
+/* Indices into `all` of the snapshots whose chain for any path passes
+ * through `id` (the snapshot itself excluded). */
+int kbuild_snap_dependants(const KbuildSnapshot *all, int n, const char *id,
+			   int *out, int max);
+/* Indices into `all` of the held snapshots no phase directory's chain
+ * reaches: what can be deleted without making anything unrestorable. */
+int kbuild_snap_gc_set(const KbuildSnapshot *all, int n, int *out, int max);
+
+/* KDOS_SNAPSHOT_EXCLUDE: fnmatch(pattern, relpath, 0), the path relative to
+ * build/ — `*` crosses '/'. An excluded directory is left out whole. */
+int kbuild_snap_exclude_match(const KbuildPhase *p, const char *relpath);
+/* Walk order: byte order with '/' below every other byte, which is the order
+ * of a pre-order walk that visits each directory's names sorted. */
+int kbuild_snap_path_cmp(const char *a, const char *b);
+/* A .gone entry is `path` itself or under it, relative, with no "..", "."
+ * or empty component. */
+int kbuild_snap_removal_ok(const char *path, const char *entry);
+
+/* ── The index of the live tree ───────────────────────────────────────────
+ *
+ * build/.snap-lineage/<path, '/' as '_'>.idx describes the tree as the
+ * snapshot `head` archived it (or as a restore of `head` left it): one record
+ * per entry in walk order, "<type-octal> <ino> <ctime_ns> <alloc>\t<path>\0",
+ * after a header of "kdos-snap-index 1", "head <id>", "phase <index>
+ * <phase_dir>", "partial 0|1" and "root <st_dev> <st_ino>" lines. Any change
+ * to an entry — content, mode, owner, xattr, link count, replacement — moves
+ * its ctime or its inode, so comparing two indexes finds every change.
+ */
+typedef struct {
+	unsigned mode;		/* st_mode & S_IFMT                          */
+	unsigned long long ino;
+	long long ctime_ns;
+	long long alloc;	/* allocated bytes of a regular file, else 0 */
+	size_t off;		/* the path, in `pool`                       */
+} KbuildIdxRec;
+
+typedef struct {
+	char head[KBUILD_SNAP_ID];
+	int phase_index;
+	char phase_dir[64];
+	int partial;
+	unsigned long long root_dev, root_ino;
+	KbuildIdxRec *rec;
+	size_t n, cap;
+	KbBuf pool;
+} KbuildSnapIndex;
+
+#define kbuild_idx_path(ix, i) ((ix)->pool.p + (ix)->rec[(i)].off)
+
+void kbuild_snap_idx_file(const char *build_dir, const char *path, char *out,
+			  size_t cap);
+void kbuild_snap_idx_add(KbuildSnapIndex *ix, unsigned mode,
+			 unsigned long long ino, long long ctime_ns,
+			 long long alloc, const char *path);
+void kbuild_snap_idx_free(KbuildSnapIndex *ix);
+/* 0 on success. A file that is short, malformed, or out of walk order reads
+ * as absent, and the next snapshot of that path is full. */
+int kbuild_snap_idx_read(const char *file, KbuildSnapIndex *ix);
+/* Written to "<file>.tmp" and renamed. 0 on success. */
+int kbuild_snap_idx_write(const char *file, const KbuildSnapIndex *ix);
+
+typedef struct {
+	long long listed;	/* entries in the layer                      */
+	long long removed;	/* entries in the .gone list                 */
+	long long listed_alloc;	/* allocated bytes of its regular files      */
+} KbuildSnapDiff;
+
+/* What a layer of `cur` over `base` holds, as two NUL-separated lists in walk
+ * order: `add` gets every entry that is new, changed type, or changed inode
+ * or ctime, the directory holding each changed or removed entry (extracting
+ * or deleting inside a directory resets its times, and the layer puts them
+ * back), and always the root of the path. `gone` gets the top-most removed
+ * paths and every path whose type changed, to delete before extracting. Both
+ * indexes must be in walk order. */
+void kbuild_snap_diff(const KbuildSnapIndex *base, const KbuildSnapIndex *cur,
+		      KbBuf *add, KbBuf *gone, KbuildSnapDiff *st);
+
+/* Newest-wins per path: each path comes from the newest phase snapshot at or
+ * below target_index, and is expanded into its chain. Returned sorted by path
+ * and then chain position, which is the extraction order. */
 int kbuild_snap_plan_restore(const char *root, const KbuildPhase *ph, int nph,
 			     int target_index, KbuildRestoreItem *out, int max);
 

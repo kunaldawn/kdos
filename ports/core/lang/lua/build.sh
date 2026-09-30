@@ -12,10 +12,11 @@
 patch -p1 -i $PORT_SRC/lua-root-usr.patch
 # linux-readline links readline into the lua interpreter only, for REPL
 # history and editing; liblua.so is built from liblua.a and does not link it.
-make CC=cc MYCFLAGS="-DLUA_COMPAT_5_2 -DLUA_COMPAT_5_1 -fPIC" linux-readline
+make CC=cc MYCFLAGS="$CFLAGS -DLUA_COMPAT_5_2 -DLUA_COMPAT_5_1 -fPIC" MYLDFLAGS="$LDFLAGS" \
+	linux-readline
 
 cd src
-cc -shared -ldl -Wl,-soname,liblua.so.${_majorver} -o liblua.so.$version -Wl,-whole-archive liblua.a -Wl,-no-whole-archive
+cc -shared $LDFLAGS -ldl -Wl,-soname,liblua.so.${_majorver} -o liblua.so.$version -Wl,-whole-archive liblua.a -Wl,-no-whole-archive
 ln -s liblua.so.$version liblua.so.${_majorver}
 ln -s liblua.so.$version liblua.so
 cd ..

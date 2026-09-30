@@ -9,8 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-meson build \
+meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
+	--buildtype=release \
 	-Dcompat-rules=true \
 	-Dxorg-rules-symlinks=true \
 	-Dnls=true

@@ -3927,6 +3927,141 @@ grep -q "01_img declares no snapshot paths; its snapshot is a leftover" \
 echo "  a leftover snapshot is listed, refused and never layered"
 
 echo
+echo "==> kdosbuild snapshots are layers, and every layer restores exactly"
+# Three phases whose steps make the changes a layer has to carry: a file
+# rewritten in place at the same size and mtime, one replaced by unlink and
+# create, a subtree deleted, a directory renamed, a file turned into a
+# directory and a directory into a symlink, a symlink retargeted, hard links
+# added and removed, a chmod alone, files changed inside a directory that
+# itself did not change, and files under an excluded path. Each
+# step saves the tree as it left it, outside fs; every restore is compared
+# with that, entry by entry, so a layer that missed a change or a .gone list
+# that deleted too much is a diff here.
+S="$OUT/layers"
+rm -rf "$S"
+mkdir -p "$S/build"
+for p in 01_a 02_b 03_c; do
+    mkdir -p "$S/script/phases/$p"
+    printf 'export KDOS_SNAPSHOT_PATHS="fs"\nexport KDOS_SNAPSHOT_EXCLUDE="fs/tmp/*"\n' \
+        > "$S/script/phases/$p/phase.env"
+    cat > "$S/script/phases/$p/00_edit.sh" <<EOF
+#!/bin/bash
+set -e
+N=$p
+EOF
+    cat >> "$S/script/phases/$p/00_edit.sh" <<'EOF'
+B=$PWD/build F=$PWD/build/fs
+[ -e "$B/stop" ] && { echo "stopped before $N"; exit 1; }
+if [ -e "$B/m$N" ]; then
+    date +%s%N > "$F/retake-$N"; rm -rf "$F/keep/f3"
+else case $N in
+01_a)
+    mkdir -p "$F/keep" "$F/del/sub" "$F/ren/in" "$F/d2s" "$F/tmp/junk"
+    for i in 1 2 3 4; do echo "file $i" > "$F/keep/f$i"; done
+    echo sub > "$F/del/sub/a"; echo ren > "$F/ren/in/b"; echo q > "$F/d2s/q"
+    printf AAAA > "$F/inplace"; touch -d @1700000000 "$F/inplace"
+    printf old > "$F/replace"; touch -d @1700000000 "$F/replace"
+    echo x > "$F/hl1"; ln "$F/hl1" "$F/hl2"; ln "$F/hl1" "$F/hl3"
+    echo t > "$F/f2d"; ln -s keep/f1 "$F/sym"; echo j > "$F/tmp/junk/j"
+    touch -d @1600000000 "$F/keep" ;;
+02_b)
+    printf BBBB | dd of="$F/inplace" conv=notrunc 2>/dev/null
+    touch -d @1700000000 "$F/inplace"
+    rm "$F/replace"; printf new > "$F/replace"; touch -d @1700000000 "$F/replace"
+    rm -rf "$F/del"; mv "$F/ren" "$F/renamed"; rm "$F/hl3"; ln "$F/keep/f2" "$F/f2link"
+    rm "$F/f2d"; mkdir "$F/f2d"; echo in > "$F/f2d/in"
+    rm -rf "$F/d2s"; ln -s keep "$F/d2s"; ln -sfn keep/f2 "$F/sym"
+    chmod 0600 "$F/keep/f4"; echo j2 > "$F/tmp/junk/j2"
+    printf CCCC | dd of="$F/keep/f1" conv=notrunc 2>/dev/null ;;
+03_c)
+    rm -rf "$F/renamed/in"; echo late > "$F/keep/f5"; chmod 0700 "$F/keep" ;;
+esac; fi
+( cd "$B" && find fs -path fs/tmp -prune -o -exec stat -c '%n %F %a %u:%g %Y %s %h %N' {} + \
+    | LC_ALL=C sort; find fs -path fs/tmp -prune -o -type f -exec sha1sum {} + | LC_ALL=C sort ) > "$B/m$N"
+EOF
+    chmod +x "$S/script/phases/$p/00_edit.sh"
+done
+KL() { ( cd "$S" && "$KB" --script-dir script --build-dir build --plain "$@" ); }
+kind_of() {  # <phase dir> -> "full" or "layer:<base id>"
+    grep -o '"kind": "[a-z]*"\|"base": "[^"]*"' "$S/build/snapshots/$1/manifest.json" \
+        | sed 's/.*": "//; s/"$//' | paste -sd: -
+}
+id_of() { grep -o '"id": "[^"]*"' "$S/build/snapshots/$1/manifest.json" | sed 's/.*": "//; s/"$//'; }
+same_tree() {  # <phase dir>: the restored tree against what its step saved
+    ( cd "$S/build" && find fs -path fs/tmp -prune -o -exec stat -c '%n %F %a %u:%g %Y %s %h %N' {} + \
+        | LC_ALL=C sort; find fs -path fs/tmp -prune -o -type f -exec sha1sum {} + | LC_ALL=C sort ) \
+        > "$S/now"
+    cmp -s "$S/now" "$S/build/m$1" \
+        || { echo "  restoring $1 did not give back its tree:"; diff "$S/build/m$1" "$S/now" | head; exit 1; }
+}
+restore_only() {  # <phase dir>, with the phase after it stopped before it runs
+    rm -rf "$S/build/fs"; touch "$S/build/stop"
+    KL --restore "$1" > "$OUT/layers-restore.log" 2>&1 || true
+    rm -f "$S/build/stop"
+    grep -q "restored $1" "$OUT/layers-restore.log" \
+        || { echo "  restore of $1 failed"; cat "$OUT/layers-restore.log"; exit 1; }
+}
+KL --fresh > "$OUT/layers.log" 2>&1
+grep -q "BUILD COMPLETE" "$OUT/layers.log" || { echo "  layered fixture did not build"; cat "$OUT/layers.log"; exit 1; }
+[ "$(kind_of 01_a)" = full ] || { echo "  the first snapshot is not full: $(kind_of 01_a)"; exit 1; }
+[ "$(kind_of 02_b)" = "layer:$(id_of 01_a)" ] || { echo "  02_b is not a layer on 01_a: $(kind_of 02_b)"; exit 1; }
+[ "$(kind_of 03_c)" = "layer:$(id_of 02_b)" ] || { echo "  03_c is not a layer on 02_b: $(kind_of 03_c)"; exit 1; }
+grep -q "snapshot 02_b -> .* (layer on 01_a)" "$OUT/layers.log" \
+    || { echo "  the snapshot notice does not name the base"; exit 1; }
+for p in 01_a 02_b 03_c 02_b; do restore_only $p; same_tree $p; done
+echo "  full, then layers on the snapshot before; each restores its own tree"
+
+# A tree already past 01_a: 01_a is taken full again, and everything the old
+# one supported is held until the snapshots replacing them no longer need it.
+restore_only 03_c
+KL --continue-from 01_a > "$OUT/layers-retake.log" 2>&1 \
+    || { echo "  the retake did not build"; cat "$OUT/layers-retake.log"; exit 1; }
+[ "$(kind_of 01_a)" = full ] || { echo "  a retake on a later tree is not full"; exit 1; }
+[ "$(kind_of 02_b)" = "layer:$(id_of 01_a)" ] || { echo "  02_b does not layer on the new 01_a"; exit 1; }
+[ -z "$(ls "$S/build/snapshots/.held" 2>/dev/null)" ] \
+    || { echo "  held snapshots outlived their dependants: $(ls "$S/build/snapshots/.held")"; exit 1; }
+for p in 01_a 02_b 03_c; do restore_only $p; same_tree $p; done
+echo "  a retaken phase is full; the old chain is held until nothing needs it"
+
+KL --delete 03_c > /dev/null
+KL --delete 01_a > "$OUT/layers-del.log"
+grep -q "deleted 01_a; kept as the base of 02_b" "$OUT/layers-del.log" \
+    || { echo "  deleting a base did not hold it"; cat "$OUT/layers-del.log"; exit 1; }
+KL --list | grep -q "needed by 02_b" || { echo "  --list does not show the held base"; exit 1; }
+restore_only 02_b; same_tree 02_b
+KL --delete 02_b > /dev/null
+[ -z "$(ls "$S/build/snapshots/.held" 2>/dev/null)" ] \
+    || { echo "  the held base outlived its last dependant"; exit 1; }
+echo "  a deleted base is held for its dependants and freed after them"
+
+# A schema-3 snapshot is a full one with a legacy id, and the next snapshot
+# layers on it once it has been restored.
+KL --fresh > /dev/null 2>&1
+mf="$S/build/snapshots/01_a/manifest.json"
+python3 - "$mf" <<'EOF' 2>/dev/null || sed -i 's/"schema": 4/"schema": 3/; s/"paths"/"entries"/' "$mf"
+import json, sys
+m = json.load(open(sys.argv[1]))
+m["schema"] = 3
+m.pop("id")
+m["entries"] = [{k: e[k] for k in ("path", "archive", "bytes_raw", "bytes_compressed", "files")}
+                for e in m.pop("paths")]
+json.dump(m, open(sys.argv[1], "w"))
+EOF
+restore_only 01_a; same_tree 01_a
+KL --continue-from 02_b > /dev/null 2>&1
+kind_of 02_b | grep -q "^layer:legacy-01_a-" \
+    || { echo "  no layer on the schema-3 snapshot: $(kind_of 02_b)"; exit 1; }
+restore_only 03_c; same_tree 03_c
+echo "  a schema-3 snapshot restores, and the next snapshot layers on it"
+
+rm -f "$S/build/snapshots/02_b/fs.tar.zst"
+KL --list | grep -q "^unusable" || { echo "  a snapshot with a lost base is not flagged"; exit 1; }
+KL --restore 03_c > "$OUT/layers-broken.log" 2>&1 && { echo "  restored a snapshot whose base is gone"; exit 1; }
+grep -q "the snapshot of 03_c is unusable" "$OUT/layers-broken.log" \
+    || { echo "  the broken chain is not explained"; cat "$OUT/layers-broken.log"; exit 1; }
+echo "  a snapshot whose base archive is gone is unusable, never half-restored"
+
+echo
 echo "==> kdosbuild runs no step for a port installed and current"
 # A chroot package phase over a real database: its ports are installed into
 # build/fs by the real kpkg, so the recipe-hash sidecars are the ones a build

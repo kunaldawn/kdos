@@ -112,14 +112,16 @@ static void t_restore(const Manager *m, const char *phase)
 static void t_snap_tick(const Manager *m)
 {
 	static double last;
-	static char seen[160];
+	static char seen[240];
 
-	char now[160];
-	snprintf(now, sizeof(now), "%s %s", m->snap.action, m->snap.path);
+	char now[240];
+	snprintf(now, sizeof(now), "%s %s%s%s%s", m->snap.action,
+		 m->snap.path, m->snap.layer[0] ? " (" : "", m->snap.layer,
+		 m->snap.layer[0] ? ")" : "");
 	if (strcmp(seen, now)) {
 		kb_strlcpy(seen, now, sizeof(seen));
 		break_line();
-		printf("    %s %s\n", m->snap.action, m->snap.path);
+		printf("    %s\n", now);
 		fflush(stdout);
 		last = kb_now_s();
 		return;
@@ -275,10 +277,11 @@ static void j_restore(const Manager *m, const char *phase)
  */
 static void j_snap_tick(const Manager *m)
 {
-	static char seen[160];
-	char now[160];
+	static char seen[240];
+	char now[240];
 
-	snprintf(now, sizeof(now), "%s %s", m->snap.action, m->snap.path);
+	snprintf(now, sizeof(now), "%s %s %s", m->snap.action, m->snap.path,
+		 m->snap.layer);
 	if (!strcmp(seen, now))
 		return;
 	kb_strlcpy(seen, now, sizeof(seen));
@@ -290,6 +293,8 @@ static void j_snap_tick(const Manager *m)
 	kb_json_str(&b, m->snap.phase);
 	kb_buf_str(&b, ", \"path\": ");
 	kb_json_str(&b, m->snap.path);
+	kb_buf_str(&b, ", \"layer\": ");
+	json_or_null(&b, m->snap.layer);
 	emit(&b);
 }
 
@@ -363,13 +368,71 @@ const Reporter *reporter_for(int json)
  * stale commit; both read the same inventory, and the flag decides only how it
  * is printed. `stale` is computed here rather than left to the consumer because
  * it is a comparison against the WORKING TREE's commit, which the consumer does
- * not have.
+ * not have; `chain` and `restore_bytes` likewise, because resolving a chain
+ * needs the held snapshots a consumer would otherwise have to go and find.
+ * `all` is every snapshot, phase directories and held ones alike.
  */
+static void json_chain(KbBuf *b, const KbuildSnapshot *all, int n,
+		       const KbuildSnapshot *sn, const char *path)
+{
+	const KbuildSnapshot *chain[KBUILD_MAX_CHAIN];
+	int len = kbuild_snap_chain(all, n, sn, path, chain, KBUILD_MAX_CHAIN);
+	long long bytes = 0;
+	kb_buf_str(b, ", \"chain\": ");
+	if (len < 0) {
+		kb_buf_str(b, "null, \"restore_bytes\": null");
+		return;
+	}
+	kb_buf_str(b, "[");
+	for (int i = 0; i < len; i++) {
+		char name[192];
+		if (chain[i]->held)
+			snprintf(name, sizeof(name), "%s@%s",
+				 chain[i]->phase_dir, chain[i]->id);
+		else
+			kb_strlcpy(name, chain[i]->dir_name, sizeof(name));
+		if (i)
+			kb_buf_str(b, ", ");
+		kb_json_str(b, name);
+		bytes += kbuild_snap_entry(chain[i], path)->bytes_compressed;
+	}
+	kb_buf_printf(b, "], \"restore_bytes\": %lld", bytes);
+}
+
+static void json_paths(KbBuf *b, const KbuildSnapshot *all, int n,
+		       const KbuildSnapshot *sn)
+{
+	kb_buf_str(b, ", \"entries\": [");
+	for (int k = 0; k < sn->nentries; k++) {
+		const KbuildSnapEntry *e = &sn->entry[k];
+		kb_buf_str(b, k ? ", {\"path\": " : "{\"path\": ");
+		kb_json_str(b, e->path);
+		kb_buf_str(b, ", \"archive\": ");
+		kb_json_str(b, e->archive);
+		kb_buf_printf(b, ", \"kind\": \"%s\", \"base\": ",
+			      e->layer ? "layer" : "full");
+		json_or_null(b, e->layer ? e->base_id : NULL);
+		kb_buf_printf(b, ", \"removed\": %lld, \"bytes\": %lld, "
+			      "\"bytes_raw\": %lld, \"files\": %lld, "
+			      "\"tree_bytes\": %lld, \"tree_files\": %lld",
+			      e->removed_count, e->bytes_compressed,
+			      e->bytes_raw, e->files, e->tree_bytes,
+			      e->tree_files);
+		json_chain(b, all, n, sn, e->path);
+		kb_buf_str(b, "}");
+	}
+	kb_buf_str(b, "]");
+}
+
 void report_snapshots_json(const KbuildPhase *ph, int nph,
-			   const KbuildSnapshot *snaps, int n,
+			   const KbuildSnapshot *all, int n,
 			   const char *commit)
 {
 	KbBuf b = {0};
+	long long on_disk = 0;
+	for (int i = 0; i < n; i++)
+		for (int k = 0; k < all[i].nentries; k++)
+			on_disk += all[i].entry[k].bytes_compressed;
 
 	kb_buf_str(&b, "{\n  \"commit\": ");
 	json_or_null(&b, commit);
@@ -377,7 +440,7 @@ void report_snapshots_json(const KbuildPhase *ph, int nph,
 
 	int written = 0;
 	for (int i = 0; i < nph; i++) {
-		const KbuildSnapshot *sn = kbuild_snap_find(snaps, n,
+		const KbuildSnapshot *sn = kbuild_snap_find(all, n,
 							   ph[i].dir_name);
 		if (!sn)
 			continue;
@@ -388,6 +451,8 @@ void report_snapshots_json(const KbuildPhase *ph, int nph,
 		kb_buf_printf(&b, "%s\n    {\"index\": %d, \"phase\": ",
 			      written++ ? "," : "", i + 1);
 		kb_json_str(&b, ph[i].dir_name);
+		kb_buf_str(&b, ", \"id\": ");
+		kb_json_str(&b, sn->id);
 		kb_buf_str(&b, ", \"title\": ");
 		kb_json_str(&b, sn->title);
 		kb_buf_str(&b, ", \"created\": ");
@@ -395,32 +460,52 @@ void report_snapshots_json(const KbuildPhase *ph, int nph,
 		kb_buf_str(&b, ", \"commit\": ");
 		json_or_null(&b, sn->git_commit);
 		kb_buf_printf(&b, ", \"dirty\": %s, \"stale\": %s, "
-			      "\"complete\": %s, \"leftover\": %s",
+			      "\"complete\": %s, \"leftover\": %s, "
+			      "\"usable\": %s",
 			      sn->git_dirty ? "true" : "false",
 			      stale ? "true" : "false",
 			      sn->complete ? "true" : "false",
-			      kbuild_snapshottable(&ph[i]) ? "false" : "true");
+			      kbuild_snapshottable(&ph[i]) ? "false" : "true",
+			      kbuild_snap_usable(all, n, sn) ? "true" : "false");
 		kb_buf_printf(&b, ", \"steps\": %d, \"total_steps\": %d, "
 			      "\"duration\": %.2f, \"snapshot_seconds\": %.2f",
 			      sn->steps, sn->total_steps, sn->duration_s,
 			      sn->snapshot_s);
 		kb_buf_str(&b, ", \"codec\": ");
 		kb_json_str(&b, sn->codec);
-		kb_buf_str(&b, ", \"entries\": [");
-		for (int k = 0; k < sn->nentries; k++) {
-			kb_buf_str(&b, k ? ", {\"path\": " : "{\"path\": ");
-			kb_json_str(&b, sn->entry[k].path);
-			kb_buf_str(&b, ", \"archive\": ");
-			kb_json_str(&b, sn->entry[k].archive);
-			kb_buf_printf(&b, ", \"bytes\": %lld, \"bytes_raw\": "
-				      "%lld, \"files\": %lld}",
-				      sn->entry[k].bytes_compressed,
-				      sn->entry[k].bytes_raw,
-				      sn->entry[k].files);
-		}
-		kb_buf_str(&b, "]}");
+		json_paths(&b, all, n, sn);
+		kb_buf_str(&b, "}");
 	}
-	kb_buf_printf(&b, "%s],\n  \"count\": %d\n}\n", written ? "\n  " : "",
+
+	kb_buf_printf(&b, "%s],\n  \"held\": [", written ? "\n  " : "");
+	int nheld = 0;
+	for (int i = 0; i < n; i++) {
+		if (!all[i].held)
+			continue;
+		const KbuildSnapshot *sn = &all[i];
+		kb_buf_printf(&b, "%s\n    {\"id\": ", nheld++ ? "," : "");
+		kb_json_str(&b, sn->id);
+		kb_buf_str(&b, ", \"phase\": ");
+		kb_json_str(&b, sn->phase_dir);
+		kb_buf_str(&b, ", \"created\": ");
+		kb_json_str(&b, sn->created_iso);
+		int dep[KBUILD_MAX_SNAPS];
+		int nd = kbuild_snap_dependants(all, n, sn->id, dep,
+						KBUILD_MAX_SNAPS);
+		kb_buf_str(&b, ", \"needed_by\": [");
+		for (int k = 0, w = 0; k < nd; k++) {
+			if (all[dep[k]].held)
+				continue;
+			if (w++)
+				kb_buf_str(&b, ", ");
+			kb_json_str(&b, all[dep[k]].dir_name);
+		}
+		kb_buf_str(&b, "]");
+		json_paths(&b, all, n, sn);
+		kb_buf_str(&b, "}");
+	}
+	kb_buf_printf(&b, "%s],\n  \"bytes_on_disk\": %lld,\n"
+		      "  \"count\": %d\n}\n", nheld ? "\n  " : "", on_disk,
 		      written);
 	fwrite(b.p, 1, b.n, stdout);
 	kb_buf_free(&b);

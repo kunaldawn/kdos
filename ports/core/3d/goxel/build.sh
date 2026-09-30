@@ -18,7 +18,7 @@ patch -p1 -i "$PORT_SRC/goxel-app-id.patch"
 # linked against the address and undefined-behaviour sanitisers. werror=false
 # keeps a newer compiler's warnings from failing the build. Sound stays off:
 # it is a few interface clicks and needs OpenAL.
-scons -j"$(nproc)" mode=release werror=false nfd_backend=portal sound=false
+scons -j"$KDOS_JOBS" mode=release werror=false nfd_backend=portal sound=false
 make PREFIX=/usr DESTDIR=$PKG install
 
 # UPSTREAM'S ENTRY IS REPLACED, with the app_id the patch sets.

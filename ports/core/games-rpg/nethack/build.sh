@@ -48,7 +48,7 @@ VARDIR=\$(INSTDIR)
 # -DNOCRASHREPORT BECAUSE config.h OTHERWISE POINTS A PANIC AT A BROWSER.
 # On Linux it compiles in /usr/bin/xdg-open as the crash reporter, which is a
 # program this image does not ship.
-CFLAGS=-O2 -D_GNU_SOURCE -I../include
+CFLAGS=$CFLAGS -D_GNU_SOURCE -I../include
 CFLAGS+=-DDLB
 CFLAGS+=-DZLIB_COMP
 CFLAGS+=-DHACKDIR=\"\$(HACKDIR)\"
@@ -64,10 +64,12 @@ CFLAGS+=-DNOCRASHREPORT
 # destroy the old game or quit, and nethack-recover is the sole way back.
 CFLAGS+=-DSELF_RECOVER
 
-# Lua's own build reads SYSCFLAGS and never sees CFLAGS above.
-SYSCFLAGS=-DLUA_USE_POSIX
+# Lua's own build reads SYSCFLAGS and never sees CFLAGS above, so the tree's
+# flags are repeated there. LFLAGS, not LDFLAGS, is what every link rule reads.
+SYSCFLAGS=-DLUA_USE_POSIX $CFLAGS
 
 LINK=\$(CC)
+LFLAGS=$LDFLAGS
 
 WINSRC = \$(WINTTYSRC) \$(WINCURSESSRC)
 WINOBJ = \$(WINTTYOBJ) \$(WINCURSESOBJ)
@@ -90,7 +92,10 @@ sh sys/unix/setup.sh sys/unix/hints/kdos
 
 # 'make all' would also build the Guidebook, which needs nroff, tbl and col.
 # 'make install' builds Lua, the game, recover, the data files and the DLB
-# archive and nothing else.
+# archive and nothing else. hacklib.a is built first: src/ and util/ both
+# archive it, and under a parallel make the two runs of ar can meet and leave
+# an archive with no index, which fails the makedefs link.
+make -C src LUA_VERSION=$_luaver hacklib.a
 make LUA_VERSION=$_luaver install
 
 # The binaries do not belong in a data directory. HACKDIR names where the read

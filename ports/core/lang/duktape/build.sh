@@ -10,7 +10,7 @@
 # ---------------------------------
 
 cd src
-cc -shared -fPIC -O2 \
+cc $CFLAGS -shared -fPIC $LDFLAGS \
 	-Wl,-soname,libduktape.so.207 \
 	-o libduktape.so.207.0.0 \
 	duktape.c -lm

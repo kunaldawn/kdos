@@ -9,6 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure PREFIX=/usr MANDIR=/usr/share/man
+./configure PREFIX=/usr MANDIR=/usr/share/man LDFLAGS="$LDFLAGS"
 bmake
 bmake DESTDIR=$PKG install

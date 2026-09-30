@@ -13,6 +13,9 @@
 # under PyQt6/bindings, so the two must be the same release.
 sip-build \
 	--qmake /usr/lib/qt6/bin/qmake \
+	--qmake-setting "QMAKE_CFLAGS_RELEASE = $CFLAGS" \
+	--qmake-setting "QMAKE_CXXFLAGS_RELEASE = $CXXFLAGS" \
+	--qmake-setting "QMAKE_LFLAGS_RELEASE = $LDFLAGS" \
 	--build-dir build \
 	--no-make \
 	--verbose

@@ -12,6 +12,6 @@
 meson setup build \
     --prefix=/usr \
     --datadir=/usr/share/hwdata \
-    --buildtype=release
+    --buildtype=release -Db_ndebug=if-release
 meson compile -C build
 meson install -C build --destdir=$PKG

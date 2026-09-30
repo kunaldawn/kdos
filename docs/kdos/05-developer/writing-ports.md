@@ -336,11 +336,11 @@ The compiler flags (`CFLAGS`, `CXXFLAGS`, `LDFLAGS`), the job count (`KDOS_JOBS`
 `30_foundation` on, and the reproducibility settings (`SOURCE_DATE_EPOCH`, `TZ=UTC`, `LC_ALL=C`,
 `-ffile-prefix-map` and `--build-id=sha1`) come from the phase's environment and are exported. The
 `script/phases/<phase>/phase.env` of every chroot phase sources `script/env/chroot.env`, which
-holds the compilers, the base flags and `PKG_CONFIG_PATH`, and sources `script/env/common.env` in
+holds the compilers, the release flags and `PKG_CONFIG_PATH`, and sources `script/env/common.env` in
 turn: the reproducibility settings, the job count and `KPKG_STRICT_RECIPE=1`. `20_selfhost` unsets
-`CC` and `CXX` again, and a phase.env adds only what is its own, such as `PORT_REPO`. The base
-`CFLAGS` from `20_selfhost` on is `-O2 -pipe -std=gnu11 -fPIC`, and no phase adds `-Werror`.
-Extend the flags rather than replace them: `export CFLAGS="$CFLAGS -Wno-error"`. A recipe that
+`CC` and `CXX` again, and a phase.env adds only what is its own, such as `PORT_REPO`. The flags
+from `20_selfhost` on are listed in [The release flags](#the-release-flags), and no phase adds
+`-Werror`. Extend the flags rather than replace them: `export CFLAGS="$CFLAGS -Wno-error"`. A recipe that
 has to pass a job count explicitly, to a bare `ninja` or a build system of its own, reads
 `$KDOS_JOBS`, never `nproc` and never a parse of `MAKEFLAGS`: `nproc` ignores both a lowered
 `KDOS_JOBS` and the memory clamp.
@@ -385,7 +385,12 @@ ships DWARF, so a recipe overrides every upstream default that adds `-g` by flag
 the source: meson's `--buildtype=release`, CMake's `-DCMAKE_BUILD_TYPE=Release`, Go's
 `-ldflags "-s -w"`, and the build system's own variable where it has one (GCC's
 `CFLAGS_FOR_TARGET` and `CXXFLAGS_FOR_TARGET` for the libraries it builds for its target, CPython's
-`OPT`). `testing/debuginfo.sh` lists what a built tree still carries; see
+`OPT`). A `-g` that a build puts ahead of `$CFLAGS` is cancelled by `-g0` at the end of `CFLAGS`
+or `CXXFLAGS` (`newsboat`, `aubio`); one a makefile appends after them, or one in compile rules
+that never read them, is dropped at the link by `-Wl,--strip-debug` in `LDFLAGS` (`frotz`,
+`linuxcnc`), or left out by a command-line `CFLAGS` that replaces the makefile's own line
+(`stfl`). `testing/debuginfo.sh` lists what a built
+tree still carries; see
 [Testing](testing.md#debug-information-in-the-built-tree).
 
 ## Canonical build shapes
@@ -395,11 +400,114 @@ project needs; most of the failures in [Build troubleshooting](build-troubleshoo
 leaving one of these flags out. Of the recipes under `ports/core`, about 580 run a `configure`
 script, 600 run CMake, 240 run meson and 57 run `cargo build`.
 
+Every shape below builds a release: optimised, with no debug information, with assertions compiled
+out where the build system's release mode does that, and with upstream's SIMD and assembly on. How
+the flags and the checks were chosen is in
+[Decisions](../01-philosophy/decisions.md#one-release-flag-set-raised-per-port).
+
+### The release flags
+
+From `20_selfhost` on, `script/env/chroot.env` exports these to every `build.sh`:
+
+| Variable | Value |
+|---|---|
+| `CFLAGS` | `-O2 -pipe -std=gnu11 -fPIC -fno-semantic-interposition -fstack-clash-protection -ffile-prefix-map=/var/cache/kpkg/work=/build` |
+| `CXXFLAGS` | the same, without `-std=gnu11` |
+| `LDFLAGS` | `-Wl,-O1,--sort-common,--as-needed,-z,now,-z,pack-relative-relocs -Wl,--build-id=sha1` |
+| `CMAKE_BUILD_TYPE` | `Release`, the type of a CMake project whose recipe names none |
+| `CARGO_PROFILE_RELEASE_DEBUG` | `0`, so no crate's release profile turns debug information back on |
+| `GOFLAGS` | `-trimpath -buildvcs=false` |
+| `CGO_CFLAGS`, `CGO_CXXFLAGS`, `CGO_LDFLAGS` | copies of `CFLAGS`, `CXXFLAGS` and `LDFLAGS` |
+
+The compiler adds PIE and the stack protector by default (`--enable-default-pie`,
+`--enable-default-ssp`). What each option costs a port:
+
+- `--as-needed` records a library only when an object before it on the link line uses it. A
+  makefile that names `-lfoo` ahead of its objects, or a library needed only for its constructor,
+  needs `-Wl,--no-as-needed`; see
+  [Build troubleshooting](build-troubleshooting.md#a-library-dropped-by---as-needed).
+- `-z,now` stops musl deferring an unresolved symbol in a plugin opened with `RTLD_LAZY`. A plugin
+  that takes symbols from a library loaded after it needs `-Wl,-z,lazy`; see
+  [Build troubleshooting](build-troubleshooting.md#a-plugin-that-needs-lazy-binding).
+- `-z,pack-relative-relocs` writes relative relocations as `DT_RELR`, which musl 1.2.4 and later
+  loads. A binary from this tree cannot run under an older C library.
+- `-fno-semantic-interposition` lets GCC inline an exported function into callers in the same
+  file. `LD_PRELOAD` then cannot replace that one call; calls from other files still can be.
+
+A recipe adds to these and never replaces them: `export CFLAGS="$CFLAGS -Wno-error"`, never
+`export CFLAGS="-O2 …"`, which drops the prefix map, the hardening and the interposition flag at
+once. A package's bytes change with every change to them, but `KPKG_STRICT_RECIPE` compares
+recipes, not flags: an installed port picks a flag change up only when it is rebuilt.
+
+### Every port
+
+Check each of these against the recipe, whichever build system it uses:
+
+- **Compare with Alpine and T2 SDE.** Alpine's recipe is
+  `https://gitlab.alpinelinux.org/alpine/aports/-/raw/master/<repo>/<pkg>/APKBUILD`, with `<repo>`
+  one of `main`, `community` and `testing`; T2 SDE's is under
+  `https://svn.exactcode.de/t2/trunk/package/<category>/<pkg>/` (`*.conf`, `*.desc`). Look for
+  `${CFLAGS/-Os/-O2}` or `-O3`, `-flto`, `--optflags`, `-DNDEBUG`, `--enable-*asm`, `nasm` among
+  the build dependencies, and `CMAKE_BUILD_TYPE`.
+- **No debug build.** Not `-O0`; not `-g` or `-ggdb` added by the recipe; not `--enable-debug`,
+  `--with-debug` or `-DDEBUG`; not CMake's `Debug`, `RelWithDebInfo` or an empty build type; not
+  meson's `debug`, `debugoptimized`, or `plain` with no flags; not `cargo build` without
+  `--release`; not zig without an optimize mode; not qmake's `CONFIG+=debug` or
+  `debug_and_release`. A switch that only makes a debug path available at run time is not a debug
+  build: `ocl-icd`'s `--enable-debug` is upstream's default and prints nothing unless
+  `OCL_ICD_DEBUG` is set.
+- **No machine-specific code.** Never `-march=`, `-mtune=`, `-mcpu=native`, zig's `-Dcpu=native`,
+  rustc's `target-cpu`, `GOAMD64` above v1, or a project's own "optimise for this machine" switch,
+  such as libsodium's `--enable-opt`. The build machine's CPU is not the one that runs the
+  package; the feature level is [`kdos march`](../04-programs/kdos-command.md#kdos-march)'s to
+  choose, per machine. Where upstream selects SIMD code at run time, turn that on: gmp's
+  `--enable-fat`, and the dispatch dav1d, x265, libjpeg-turbo and ffmpeg carry. Watch for a
+  default that is above x86-64 v1 or taken from the build machine: numpy's `cpu-baseline` defaults
+  to x86-64 v2, so its recipe passes `-Dcpu-baseline=none` and keeps the run-time dispatch, and
+  OpenBLAS infers the CPU for its code outside the kernels unless `TARGET` names one.
+- **SIMD and assembly on, with the assembler in `depends`.** `nasm` for ffmpeg, x264, x265, dav1d,
+  libvpx (`--as=nasm`), libjpeg-turbo (`-DWITH_SIMD=ON`) and libass (`--enable-asm`); openssl never
+  configured with `no-asm`. SIMD options above SSE2 stay off, since the baseline is x86-64 v1
+  (kodi's `ENABLE_SSE3=OFF` and its siblings), and lame keeps `--enable-nasm=no` as upstream
+  advises.
+- **`-O3` for a hot port by pattern.** Where upstream's own default is `-O3` and the exported
+  `CFLAGS` replaces it, as for zstd, lz4, xxhash, openssl and sqlite in Alpine, raise the level in
+  `build.sh`:
+
+  ```bash
+  export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
+  ```
+
+  meson needs this form: it puts the exported `CFLAGS` after its own `-O3`, so
+  `-Doptimization=3` alone loses to `-O2`.
+- **LTO only on precedent.** Link-time optimisation is for a hot interpreter or codec that Alpine
+  also builds with it. In this tree that is python, built with PGO and `--with-lto`, and Pillow's
+  imaging modules, built with `-flto=auto`. Use `-flto=auto`, add `-ffat-lto-objects` where the
+  port ships a `.a`, and keep the change only once the port builds byte-identically twice. An archive that
+  carries LTO sections fails that test: GCC names each object's `.gnu.lto_*` sections with a random
+  seed, so `libzstd.a` and `liblz4.a` differ from one build to the next while the shared libraries
+  and programs linked from the same objects do not. zstd and lz4 build at `-O3` without LTO for
+  that reason.
+- **The job count is `$KDOS_JOBS`**, never `nproc`: `scons -j"$KDOS_JOBS"`, not
+  `scons -j"$(nproc)"`.
+
+### autotools
+
+```bash
+./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib --disable-static
+make
+make DESTDIR=$PKG install
+```
+
+configure takes the exported flags. Read `./configure --help` for `--disable-debug`,
+`--disable-assert` (autoconf's `AC_HEADER_ASSERT`, which defines `NDEBUG`), and `--enable-asm`,
+`--enable-simd` or `--enable-sse2`, and pass the release side of each.
+
 ### meson
 
 ```bash
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
-      --buildtype=release -Dtests=disabled -Ddocs=disabled
+      --buildtype=release -Db_ndebug=if-release -Dtests=disabled -Ddocs=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
 ```
@@ -412,6 +520,13 @@ Every meson setup also names its buildtype, `--buildtype=release` or `-Dbuildtyp
 meson's default is `debug`, which compiles `-g -O0` into every object, and `kpkg` strips nothing,
 so the package ships unoptimised code and its DWARF. `testing/preflight.sh` fails a recipe that
 runs `meson setup` without naming a buildtype.
+
+The buildtype does not define `NDEBUG`; `-Db_ndebug=if-release` does, which is what CMake's
+Release already gives. Before adding it, read what else the project's `meson.build` hangs on
+`b_ndebug`: glib reads it for nothing, and takes `G_DISABLE_ASSERT` from its own `glib_debug`
+option. meson's release optimisation is `-O3`, but the exported `CFLAGS` follows it on the command
+line, so a meson port builds at `-O2` unless its recipe raises `CFLAGS` itself (see
+[Every port](#every-port)).
 
 Check option names against the tarball's own `meson_options.txt` or `meson.options`. meson fails at
 setup on an unknown option, before a line is compiled, and there is no universal spelling: one
@@ -440,17 +555,16 @@ The tree's CMake is 4.4.3, which refuses a project that declares a minimum versi
 `CMAKE_POLICY_VERSION_MINIMUM=3.5` raises that floor without a patch. `-G Ninja` with `ninja` and
 `DESTDIR=$PKG ninja install` works equally well and is common in the tree.
 
+Release appends `-O3 -DNDEBUG` after the exported `CFLAGS`, so a CMake port builds at `-O3` with
+assertions off. Name the build type in the recipe even though `CMAKE_BUILD_TYPE` is exported: the
+command line is what a reader sees. A recipe that sets `CMAKE_C_FLAGS_RELEASE` or
+`CMAKE_CXX_FLAGS_RELEASE` itself keeps `-DNDEBUG` in it. Turn on the project's SIMD options, such
+as `WITH_SIMD`, `ENABLE_ASSEMBLY` and `*_ENABLE_ASM`, and leave
+`CMAKE_INTERPROCEDURAL_OPTIMIZATION` off unless Alpine turns it on.
+
 A misspelt CMake option is a warning, not an error, the opposite of meson. Read the warning about
 unused variables in the log rather than trusting the exit status, and take option names from the
 project's own `option()` declarations.
-
-### autotools
-
-```bash
-./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib --disable-static
-make
-make DESTDIR=$PKG install
-```
 
 ### rust
 
@@ -471,6 +585,13 @@ no update to its port reaches. Preflight fails any recipe that runs `cargo build
 which loads `libclang` at build time and cannot do so from a static binary; `ports/fetch` warns
 when it vendors `bindgen` for a recipe that lacks the `RUSTFLAGS` line.
 
+`cargo build` always takes `--release`; `cargo install` builds the release profile by default, and
+no recipe passes `--profile dev` or `--debug`. The profile's optimisation level, codegen units and
+LTO stay at cargo's defaults: one codegen unit with LTO roughly doubles a Rust build. Where
+Alpine's recipe sets them for a hot program, set them in that recipe alone, with
+`CARGO_PROFILE_RELEASE_LTO=true` and `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1`. In a mixed build,
+meson's buildtype or corrosion's `CMAKE_BUILD_TYPE` chooses the cargo profile.
+
 ### go
 
 ```bash
@@ -487,11 +608,69 @@ replaces the first; `GOFLAGS` does not carry them, because a recipe's own `-ldfl
 one it names. `testing/preflight.sh` fails a `go build` or `go install` whose `-ldflags` lacks
 either flag.
 
-Most Go ports build with cgo off. A program that binds a C library sets `CGO_ENABLED=1`, and one
-whose upstream builds through a makefile passes the vendor flag through it:
-`make PREFIX=/usr GOFLAGS="-mod=vendor"`, then `make PREFIX=/usr DESTDIR=$PKG install` (`aerc` is
-the example). Build into an output name that is not also a directory in the source, or `go build`
-writes the binary inside that directory.
+`-trimpath` and `-buildvcs=false` come from the exported `GOFLAGS`. A recipe that sets `GOFLAGS`
+itself extends it, `GOFLAGS="$GOFLAGS -mod=vendor"`, or loses both. `GOAMD64` stays unset, which
+is v1.
+
+Most Go ports build with cgo off. A program that binds a C library sets `CGO_ENABLED=1`, and cgo
+then compiles and links its C with the exported `CGO_CFLAGS` and `CGO_LDFLAGS`. One whose
+upstream builds through a makefile passes the vendor flag through it:
+`make PREFIX=/usr GOFLAGS="$GOFLAGS -mod=vendor"`, then `make PREFIX=/usr DESTDIR=$PKG install`
+(`aerc` is the example). A makefile that writes its own `-ldflags` passes `-s -w` only when told:
+podman's, buildah's and skopeo's append `EXTRA_LDFLAGS="-s -w"` and aerc's
+`GO_EXTRA_LDFLAGS="-s -w"`, and a binary such a makefile builds with no `-ldflags` at all takes
+them from `GOFLAGS="$GOFLAGS \"-ldflags=-s -w\""`, which a command-line `-ldflags` replaces.
+Preflight does not see inside a makefile, so read its `go build` lines. Build into an output name
+that is not also a directory in the source, or `go build` writes the binary inside that directory.
+
+### zig
+
+```bash
+zig build -Doptimize=ReleaseSafe -Dcpu=baseline --prefix "$PKG/usr"
+```
+
+Name an optimize mode, `-Doptimize=ReleaseFast` or `ReleaseSafe` (or `--release` where the
+project's `build.zig` offers it), and always `-Dcpu=baseline`: zig compiles for the build
+machine's own CPU unless told otherwise, and the package then stops with an illegal instruction on
+an older one.
+
+### qmake
+
+```bash
+qmake6 CONFIG+=release QMAKE_CFLAGS_RELEASE="$CFLAGS" QMAKE_CXXFLAGS_RELEASE="$CXXFLAGS" \
+       QMAKE_LFLAGS_RELEASE="$LDFLAGS" PREFIX=/usr
+make
+make INSTALL_ROOT=$PKG install
+```
+
+`CONFIG+=release`, never `debug` or `debug_and_release`. Qt's qmake reads no flags from the
+environment, so the three flag variables carry them; each replaces the mkspec's release value
+(`-O2`, `-Wl,-O1`), which the exported flags already hold, and leaves the base `QMAKE_LFLAGS` a
+project's `.pro` adds to alone. A PyQt binding built by `sip-build` takes the same three as
+`--qmake-setting "QMAKE_CXXFLAGS_RELEASE = $CXXFLAGS"` and so on.
+
+### SCons, waf and other build tools
+
+SCons ignores the environment unless the project's `SConstruct` imports it: pass the release
+switch it defines (`mode=release`, `debug=no`, `optimize=yes`) and hand it `CFLAGS`, `CCFLAGS` or
+`LINKFLAGS` where it takes them. waf reads `CFLAGS` from the environment; check that no `--debug`
+or `--enable-debug` is passed.
+
+### Python, Perl, Haskell, Node and OCaml modules
+
+- **Python** (setuptools or a PEP 517 backend): a C extension compiles with the interpreter's own
+  `-DNDEBUG -O3` followed by the exported `CFLAGS`. Nothing to add; check that the package's
+  accelerated build is on, with no `*_NO_EXTENSIONS` set and its Cython build enabled. Where a
+  failed compile falls back to pure Python without an error, make the extension required:
+  MarkupSafe and wcwidth take `CIBUILDWHEEL=1` for that, PyYAML `PYYAML_FORCE_LIBYAML=1`.
+- **Perl**: `Configure` ignores the exported `CFLAGS` and `LDFLAGS`, so the `perl` port passes
+  them: `-Doptimize="$CFLAGS"` (as Alpine does), `-Dldflags="$LDFLAGS"` and
+  `-Dlddlflags="-shared $LDFLAGS"`. XS modules take perl's recorded settings, so a `perl-*` recipe
+  adds nothing.
+- **Haskell** (cabal): keep the default `-O1`, pass no `--enable-debug-info`, and `-O2` only where
+  upstream asks for it.
+- **Node** native modules: node-gyp builds Release by default; pass no `--debug`.
+- **OCaml**: build the native `ocamlopt` targets where upstream offers them beside bytecode.
 
 ### java
 
@@ -533,8 +712,12 @@ make DESTDIR=$PKG PREFIX=/usr install
 Export the compiler flags rather than passing them as a make argument. A variable on the make
 command line beats both the environment and the makefile's own assignment, which is the wrong end
 of that precedence for flags: a makefile's own definitions are its *configuration* (architecture
-width, installation paths, feature constants). Passing flags as arguments discards those, and the
-build then fails somewhere else, on an undeclared constant that reads like a missing header.
+width, installation paths, feature constants), and a makefile that appends with `+=` loses what it
+appends, `-fPIC` included. Passing flags as arguments discards those, and the build then fails
+somewhere else, on an undeclared constant that reads like a missing header. Check the makefile for
+a debug default of its own, such as `CFLAGS = -g -O0`. A plain assignment ignores the environment,
+so that one variable is the exception: once you have read that it carries nothing but flags, pass
+it on the command line, `make CFLAGS="$CFLAGS"`.
 
 ### A graphical application
 
@@ -594,6 +777,7 @@ whatever shape the URL takes.
 
 ```bash
 export CFLAGS="$CFLAGS -Wno-error"
+export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
 make curses PREFIX=/usr SOUND_TYPE=none
 make install PREFIX=/usr SOUND_TYPE=none DESTDIR=$PKG
 ```
@@ -603,8 +787,10 @@ model. `SOUND_TYPE=none` keeps an audio stack off every image for the handful of
 sound. frotz 2.55's makefile adds no `-Werror` and no phase adds one, so `-Wno-error` has no effect
 on this release; it keeps a `-Werror` in a later upstream release from turning this compiler's
 newer warnings into failures without a patch (see
-[An upstream `-Werror`](build-troubleshooting.md#an-upstream--werror)). The flags are exported
-through `CFLAGS` and the make variables are upstream's own configuration knobs, as the
+[An upstream `-Werror`](build-troubleshooting.md#an-upstream--werror)). The makefile appends
+`-O3 -g` after `CFLAGS`, so the objects carry debug information and `-Wl,--strip-debug` leaves it
+out of the linked program. The flags are exported
+through `CFLAGS` and `LDFLAGS` and the make variables are upstream's own configuration knobs, as the
 [make-only shape](#make-only) describes.
 
 The package carries no story. The desktop entry is `Exec=frotz %f` with `Terminal=true`, the shape
@@ -826,6 +1012,8 @@ checked by `testing/preflight.sh`.
 | Every optional feature explicit, and every library it needs in `depends` | Many build systems answer a missing library by quietly disabling the feature. Dropping a dependency then gives a build that succeeds and is narrower than its recipe claims, and the library is absent from the host with nothing to say so |
 | Every port of the same phase it builds against in `depends`, tools included | A serial build installs a phase's ports in list order, which can hide a missing entry: the library happens to be installed first. `kdosbuild --port-jobs` builds a level's ports side by side against the lower levels only, and the levels come from `depends`, so an undeclared same-phase dependency is absent there and the port fails or loses the feature. See [Building a package phase by level](build-system.md#building-a-package-phase-by-level). `testing/depdrift.py` reads a built tree and names every same-phase library a package links or requires without declaring it; see [Undeclared link dependencies](testing.md#undeclared-link-dependencies) |
 | Every library the port links in `depends`, whatever its phase | The [package store](../03-architecture/packaging.md#the-package-store) keys a port on its declared dependencies. After an install `kpkg` reads the package's ELF files and prints `<port> links <owner> without declaring it` for each library owned by a port outside that closure; the store entry then re-checks that library's bytes on every lookup, but a library found and used without being linked (a plugin, a header, a tool) stays invisible to it. Add the owner to `depends` |
+| The exported flags extended, never replaced: `CFLAGS="$CFLAGS …"`, `LDFLAGS="$LDFLAGS …"`, `GOFLAGS="$GOFLAGS …"` | A bare assignment drops the reproducibility flags, the hardening and the release options at once, and the package still builds. See [The release flags](#the-release-flags) |
+| No `-march`, `-mtune`, `native` CPU or feature level above x86-64 v1 | The build machine is not the one that runs the package; [`kdos march`](../04-programs/kdos-command.md#kdos-march) chooses a feature level per machine. zig needs `-Dcpu=baseline` to keep this |
 | Every meson `-D` is an option the port defines | meson stops at setup on an unknown option. Preflight checks each one against the tarball's own option file, and checks the two option types that take a closed set of values |
 | A command named in a diagnostic is in single quotes | A backtick inside double quotes is a command substitution, not a name: an `echo` telling somebody to run something runs it instead. Preflight checks the build system's own scripts under `script/` |
 | Nothing reaches the network | The build runs with no network. A meson subproject fallback, a CMake download call, or a Python build backend fetching a tool from a package index all fail hours in. See [Build troubleshooting](build-troubleshooting.md#a-build-that-reaches-the-network) |

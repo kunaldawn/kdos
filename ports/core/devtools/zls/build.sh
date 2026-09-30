@@ -44,4 +44,4 @@ unpack_zig_dep diffz         diffz-0.0.1-G2tlISzNAQCldmOcINavGmF1zdt20NFPXeM8d07
 unpack_zig_dep lsp_kit       lsp_kit-0.1.0-bi_PL3IyDACfp1xdTnkiOHEok2YpPCCCJHuuOcNzjl1D
 unpack_zig_dep tracy         N-V-__8AAOncKwEm1F9c5LrT7HMNmRMYX8-fAoqpc6YyTu9X
 
-zig build --system "$ZIG_GLOBAL_CACHE_DIR/p" -Doptimize=ReleaseSafe --prefix "$PKG/usr"
+zig build --system "$ZIG_GLOBAL_CACHE_DIR/p" -Doptimize=ReleaseSafe -Dcpu=baseline --prefix "$PKG/usr"

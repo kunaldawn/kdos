@@ -15,7 +15,7 @@
 # only. Lua is the copy freeciv bundles, which its tolua bindings are built
 # against.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	-Dclients=sdl2 \
 	-Dfcmp='[]' \
 	-Dserver=enabled \

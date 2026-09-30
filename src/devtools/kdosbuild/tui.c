@@ -133,6 +133,9 @@ typedef struct {
 	Manager *m;
 	const KbuildSnapshot *snaps;
 	int nsnap;
+	/* Every snapshot, held ones included: the chains a restore reads. */
+	const KbuildSnapshot *all;
+	int nall;
 	const int *row_phase;
 	int nrow;
 	int sel;
@@ -288,12 +291,28 @@ static void draw_startup_frame(StartupView *v)
 		const KbuildPhase *p = &m->phase[row_phase[sel]];
 		const KbuildSnapshot *sn =
 			kbuild_snap_find(snaps, nsnap, p->dir_name);
+		/* Its own archives, then what restoring it reads: a layer is
+		 * small, and its chain down to a full archive is not. */
 		KbBuf b = {0};
+		long long reads = 0;
+		int narch = 0;
 		kb_buf_str(&b, "restores: ");
-		for (int i = 0; i < sn->nentries; i++)
-			kb_buf_printf(&b, "%s%s %s", i ? "  " : "",
-				      sn->entry[i].path,
-				      human_bytes(sn->entry[i].bytes_compressed));
+		for (int i = 0; i < sn->nentries; i++) {
+			const KbuildSnapEntry *e = &sn->entry[i];
+			kb_buf_printf(&b, "%s%s %s %s", i ? "  " : "", e->path,
+				      human_bytes(e->bytes_compressed),
+				      e->layer ? "layer" : "full");
+			const KbuildSnapshot *chain[KBUILD_MAX_CHAIN];
+			int len = kbuild_snap_chain(v->all, v->nall, sn,
+						    e->path, chain,
+						    KBUILD_MAX_CHAIN);
+			for (int k = 0; k < len; k++)
+				reads += kbuild_snap_entry(chain[k], e->path)
+						 ->bytes_compressed;
+			narch += len > 0 ? len : 0;
+		}
+		kb_buf_printf(&b, " · restore reads %s from %d archive%s",
+			      human_bytes(reads), narch, narch == 1 ? "" : "s");
 		ktui_draw_text(2, y++, ktui_w - 4, b.p ? b.p : "",
 			       KT_MID, KT_BG, 0);
 		kb_buf_free(&b);
@@ -345,6 +364,8 @@ int screen_startup(Manager *m, int *index, const char *commit,
 {
 	KbuildSnapshot *snaps = kb_calloc(KBUILD_MAX_PHASES, sizeof(*snaps));
 	int nsnap = kbuild_snap_list(m->snap_root, snaps, KBUILD_MAX_PHASES);
+	KbuildSnapshot *all = kb_calloc(KBUILD_MAX_SNAPS, sizeof(*all));
+	int nall = kbuild_snap_list_all(m->snap_root, all, KBUILD_MAX_SNAPS);
 
 	/* Row 0 is "start fresh"; the rest are phases that have a snapshot and
 	 * still declare snapshot paths. A snapshot under a phase that declares
@@ -363,8 +384,9 @@ int screen_startup(Manager *m, int *index, const char *commit,
 	int result = PICK_QUIT;
 
 	for (;;) {
-		StartupView vw = { m, snaps, nsnap, row_phase, nrow, sel,
-				   commit, status, 0, *snapshot_enabled };
+		StartupView vw = { m, snaps, nsnap, all, nall, row_phase,
+				   nrow, sel, commit, status, 0,
+				   *snapshot_enabled };
 		draw_startup_frame(&vw);
 		int first_row = vw.first_row;
 		ktui_draw_flush();
@@ -424,11 +446,20 @@ int screen_startup(Manager *m, int *index, const char *commit,
 					   sizeof(status));
 			} else {
 				const KbuildPhase *p = &m->phase[row_phase[sel]];
-				snap_delete(m, p->dir_name);
-				snprintf(status, sizeof(status), "deleted %s",
-					 p->dir_name);
+				char deps[160];
+				if (snap_delete(m, p->dir_name, deps,
+						sizeof(deps)) == 2)
+					snprintf(status, sizeof(status),
+						 "deleted %s; kept as the base "
+						 "of %s until they go",
+						 p->dir_name, deps);
+				else
+					snprintf(status, sizeof(status),
+						 "deleted %s", p->dir_name);
 				nsnap = kbuild_snap_list(m->snap_root, snaps,
 							 KBUILD_MAX_PHASES);
+				nall = kbuild_snap_list_all(m->snap_root, all,
+							    KBUILD_MAX_SNAPS);
 				nrow = 1;
 				for (int i = 0; i < m->nphase; i++)
 					if (kbuild_snapshottable(&m->phase[i]) &&
@@ -450,6 +481,7 @@ int screen_startup(Manager *m, int *index, const char *commit,
 	}
 
 	free(snaps);
+	free(all);
 	return result;
 }
 
@@ -990,8 +1022,10 @@ static void draw_activity(Manager *m)
 
 	snap_sample(a);
 
-	char line[256];
-	snprintf(line, sizeof(line), "%s %s %s", a->action, a->phase, a->path);
+	char line[320];
+	snprintf(line, sizeof(line), "%s %s %s%s%s%s", a->action, a->phase,
+		 a->path, a->layer[0] ? " (" : "", a->layer,
+		 a->layer[0] ? ")" : "");
 	ktui_draw_text(r.x + 2, r.y + 1, w - 4, line, KT_TEXT, KT_SURFACE,
 		       KT_A_BOLD);
 
@@ -2599,7 +2633,7 @@ static void preview_startup(Manager *m)
 		if (kbuild_snap_find(snaps, nsnap, m->phase[i].dir_name))
 			row_phase[nrow++] = i;
 
-	StartupView vw = { m, snaps, nsnap, row_phase, nrow,
+	StartupView vw = { m, snaps, nsnap, snaps, nsnap, row_phase, nrow,
 			   nrow > 1 ? nrow - 1 : 0, "9f3a1c2", "", 0, 1 };
 	draw_startup_frame(&vw);
 	free(snaps);

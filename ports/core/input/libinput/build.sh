@@ -30,18 +30,18 @@
 # stylus with its pad, groups pad buttons and rings into modes, and says
 # whether a tablet is built into a screen, which touch arbitration and output
 # mapping read. Without it a tablet is a generic absolute pointer.
-meson \
---prefix=/usr \
---libdir=lib \
--Dudev-dir=/lib/udev \
--Ddebug-gui=false \
--Db_ndebug=false \
--Dtests=false \
--Ddocumentation=false \
--Dmtdev=true \
--Dlua-plugins=enabled \
--Dautoload-plugins=true \
--Dlibwacom=true \
-build
+meson setup build \
+	--prefix=/usr \
+	--libdir=lib \
+	--buildtype=release \
+	-Db_ndebug=false \
+	-Dudev-dir=/lib/udev \
+	-Ddebug-gui=false \
+	-Dtests=false \
+	-Ddocumentation=false \
+	-Dmtdev=true \
+	-Dlua-plugins=enabled \
+	-Dautoload-plugins=true \
+	-Dlibwacom=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

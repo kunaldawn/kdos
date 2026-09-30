@@ -34,7 +34,7 @@ meson setup build \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	-Dprogrammer=auto,internal,ch341a_spi,dediprog,ft2232_spi,jlink_spi \
 	-Drpmc=enabled \
 	-Dbash_completion=enabled \

@@ -21,7 +21,8 @@
 # Open and Save buttons run zenity for their file chooser and do nothing
 # without it. The Discord presence module is off; the scheduler,
 # DAB, RyFi, VOR and weather-satellite modules are upstream's experiments and
-# stay off with it. libcorrect is the copy upstream carries.
+# stay off with it. libcorrect is the copy upstream carries; HAVE_SSE=OFF
+# skips its -march=native probe, which would build it for SSE 4.1.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -31,6 +32,7 @@ cmake -B build -G Ninja \
 	-DOPT_BACKEND_ANDROID=OFF \
 	-DOPT_OVERRIDE_STD_FILESYSTEM=OFF \
 	-DUSE_INTERNAL_LIBCORRECT=ON \
+	-DHAVE_SSE=OFF \
 	-DUSE_BUNDLE_DEFAULTS=OFF \
 	-DOPT_BUILD_AIRSPY_SOURCE=ON \
 	-DOPT_BUILD_AIRSPYHF_SOURCE=ON \

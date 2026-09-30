@@ -18,6 +18,7 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 # localAnnounce is what makes two machines on the same LAN find each other with
 # no server anywhere, which is the entire feature.
 export CGO_ENABLED=0
+export EXTRA_LDFLAGS=-s
 go run -mod=vendor build.go -no-upgrade -version "v$version" build syncthing
 install -Dm755 syncthing $PKG/usr/bin/syncthing
 for s in 1 5 7; do

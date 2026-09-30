@@ -89,6 +89,8 @@ lists everything preflight checks.
 | `snapshot <phase> FAILED: only <size> free, need ~<size>` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
 | `snapshot <phase> FAILED: build/ is mid-restore of <phase>`, or `a restore of <phase> never finished` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
 | `snapshot <phase> FAILED: mounts still active under build/fs: <paths>` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
+| `refusing to remove <path>: a directory above it is a symlink`, `refusing removal of '<path>' listed by <file>`, or `the snapshot of <phase> is unusable` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
+| `deleted <phase>; kept as the base of <phases>` | [A snapshot the orchestrator refuses](#a-snapshot-the-orchestrator-refuses) |
 | A port you changed is marked `installed` in the build, or `kpkg` reports `Skipping <port> (already installed)` | [A recipe change that did not rebuild its port](#a-recipe-change-that-did-not-rebuild-its-port) |
 | A variable passed to `make build` has no effect on a chroot phase | [A variable that does not reach the chroot](#a-variable-that-does-not-reach-the-chroot) |
 | A CMake port fails or misbehaves and the compiler cache is suspected | [A compiler cache under suspicion](#a-compiler-cache-under-suspicion) |
@@ -129,6 +131,8 @@ lists everything preflight checks.
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
+| `undefined reference to` a symbol of a library that is on the link line, or a plugin or codec that registers itself missing at run time | [A library dropped by `--as-needed`](#a-library-dropped-by---as-needed) |
+| `Error relocating <library>: <symbol>: symbol not found` when a program opens a plugin | [A plugin that needs lazy binding](#a-plugin-that-needs-lazy-binding) |
 | `No rule to make target` printed from the middle of an unrelated step | [A backtick inside double quotes](#a-backtick-inside-double-quotes) |
 | `No rule to make target '\'` during an install | [A parallel install race](#a-parallel-install-race) |
 | `Killed signal terminated program cc1plus`, or a compiler or linker ending with no message | [A compiler that was OOM-killed](#a-compiler-that-was-oom-killed) |
@@ -598,9 +602,13 @@ continue from:
 
 | Message | Cause and fix |
 |---|---|
-| `snapshot <phase> FAILED: only <size> free, need ~<size>` | The new archives are written beside the old ones, so the free space on `build/` must hold the phase's previous compressed snapshot plus a fifth (half the raw size for a first snapshot). Free space, delete old snapshots from the startup picker (`D`) or with `--delete <phase>` (the only way to remove a snapshot `--list` marks as a leftover), or run `make cleanbuild` (keeps `build/snapshots`) or `make clean` (removes them); both keep `build/keys` |
+| `snapshot <phase> FAILED: only <size> free, need ~<size>` | A snapshot is staged beside the one it replaces, so the free space on `build/snapshots` must hold its estimate plus a fifth: the allocated bytes of the files it will archive, the whole tree for a full snapshot or only the changes for a layer, times the base's compression ratio (a half with no base). Free space, delete old snapshots from the startup picker (`D`) or with `--delete <phase>` (the only way to remove a snapshot `--list` marks as a leftover or unusable), or run `make cleanbuild` (keeps `build/snapshots`) or `make clean` (removes them); both keep `build/keys`. A snapshot other snapshots layer on is held, not freed, until they go; `make snapshots` shows what is held and why |
 | `snapshot <phase> FAILED: build/ is mid-restore of <phase>; refusing to snapshot it` | `build/.restore-in-progress` exists: a restore was interrupted and the tree is part-extracted. A new build refuses to start in the same state with `a restore of <phase> never finished - build/ is inconsistent.` Restore a snapshot again, or run `make cleanbuild` |
 | `snapshot <phase> FAILED: mounts still active under build/fs: <paths>` | Something is still mounted under `build/fs`, and it is not the chroot wrapper's: `script/chroot/exec.sh` and `script/chroot/enter.sh` mount in a private namespace of their own and leave nothing behind, even when killed. Look for a bind made by hand or by a wrapper from another tree. The orchestrator first unmounts what it finds itself, lazily if it has to (`released leftover mount(s)`), and names at most three it could not release. Find what holds them, stop it, and unmount the paths |
+| `refusing to remove <path>: a directory above it is a symlink` | A restore was deleting what a layer's `.gone` list names, and a directory above that path is a symlink in the tree the chain has extracted so far; deleting through it would delete outside `build/`. A chain `kdosbuild` wrote never produces this, so the layers do not belong together. The restore stops with `build/.restore-in-progress` in place: restore an earlier phase, and delete the snapshot that failed with `--delete <phase>` |
+| `refusing removal of '<path>' listed by <file>` | A `.gone` list names a path outside the snapshot path, or with a `..`, `.` or empty component. It is refused before anything is deleted. The snapshot was not written by `kdosbuild`, or was edited; delete it with `--delete <phase>` |
+| `the snapshot of <phase> is unusable: a snapshot its layers are built on is missing` | The phase's snapshot is a layer, and a snapshot in its chain is gone or damaged, so it cannot be restored and is not offered. `make snapshots` lists it under `unusable` with the base it misses. Restore another phase, or delete it with `--delete <phase>`; its next snapshot is taken again by the build |
+| `deleted <phase>; kept as the base of <phases>` | Not a failure. The deleted snapshot is a base of the snapshots named, so it moved to `build/snapshots/.held/` and they still restore. It is deleted with the last of them |
 
 ### Snapshots the orchestrator does not see
 
@@ -616,6 +624,12 @@ snapshot directory under `build/snapshots/` and the `phase` and `phase_dir` fiel
 `build/snapshots/timings.json`, and the names in `build/.devplan.json`. The two host phases'
 markers are filed by the `MARK=` directory their `phase.env` names, `build/mark/cross` and
 `build/mark/bootstrap`, and a marker under any other name makes `10_bootstrap` re-run its steps.
+
+The same symptom has a second cause: a `kdosbuild` older than the snapshots. Snapshots are written
+with manifest schema 4, whose per-path array is `paths`; a binary that knows only `entries` reads
+every such snapshot as absent. That is the case when `build/.kdosbuild` was compiled from an older
+checkout, as a host copy kept with `KDOSBUILD_BIN` can be. `make snapshots` recompiles it from the
+current sources whenever they changed, and `make build` does the same in the build image.
 
 ### Re-running an early phase on a later tree
 
@@ -784,13 +798,21 @@ Every phase's `CFLAGS` pins a C standard older than C23 (`-std=gnu99` in `00_cro
 built. That runtime includes the target's own headers, which are written for the new compiler's
 default standard and use `bool` without `<stdbool.h>`.
 
-`script/phases/10_bootstrap/100_gcc.sh` and the `gcc`, `gcc-arm-none-eabi`, `gcc-avr`,
-`gcc-riscv64-unknown-elf` and `libstdcxx-arm-none-eabi` ports each pass `CFLAGS_FOR_TARGET` with
-the `-std=` flag removed:
+`script/phases/10_bootstrap/100_gcc.sh` and the `gcc` port each pass `CFLAGS_FOR_TARGET` with the
+`-std=` flag removed:
 
 ```sh
 CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
 ```
+
+The bare-metal compilers take nothing from the host's flags. `gcc-arm-none-eabi`, `gcc-avr`,
+`gcc-riscv64-unknown-elf` and `libstdcxx-arm-none-eabi` pass
+`-O2 -pipe -ffunction-sections -fdata-sections` as `CFLAGS_FOR_TARGET` (and, for libstdc++,
+`CXXFLAGS_FOR_TARGET`), as Alpine's `gcc-cross-embedded` does: `-fPIC` and
+`-fstack-clash-protection` would make every microcontroller's `libgcc` position-independent and
+probed, and the per-function sections let `--gc-sections` drop what a firmware image does not
+call. The picolibc ports `unset CFLAGS CXXFLAGS LDFLAGS` before `meson setup` for the same reason:
+meson adds the exported flags to the cross compiler's command line as well as the native one's.
 
 ### The installed C++ headers shadowing the ones being built
 
@@ -854,12 +876,14 @@ with `-I`, as the `stfl` port does:
 
 ```sh
 mkdir -p compat/ncursesw && ln -sf /usr/include/ncurses.h compat/ncursesw/ncurses.h
-export CFLAGS="-I$PWD/compat -D_XOPEN_SOURCE_EXTENDED"
+export CFLAGS="$CFLAGS -I$PWD/compat -D_XOPEN_SOURCE_EXTENDED"
 ```
 
-Both are build flags; neither edits the source. Pass them through the environment when the
-Makefile appends its own with `+=`, because a command-line assignment replaces that variable
-instead of extending it and takes `-fPIC` with it.
+Both are build flags; neither edits the source. Passed through the environment, they are extended
+by a Makefile that appends its own with `+=`; passed on the command line, they replace that
+variable, so the assignment has to carry whatever the Makefile's line added that the build needs,
+such as `-fPIC`. `stfl` takes the command line, with `-I.`, `-D_GNU_SOURCE` and `-fPIC` spelled
+out, so that its Makefile's `-Os -ggdb` never reaches the compiler.
 
 ### An ICU component not propagated
 
@@ -1117,6 +1141,34 @@ a makefile's own flags are its configuration: architecture width, installation p
 constants. Export the flags instead of passing them as a make argument. A makefile that appends
 then appends to yours, and one that assigns has already discarded the environment and needs
 nothing from it.
+
+### A library dropped by `--as-needed`
+
+`undefined reference to` a symbol whose library is on the link line, or a program that links and
+then runs without a codec, driver or plugin that registers itself from a library's constructor.
+
+`LDFLAGS` from `20_selfhost` on carries `-Wl,--as-needed`, so the linker records a library only
+when an object before it on the command line uses one of its symbols. A makefile that names
+`-lfoo` ahead of the objects loses the library; a library the program needs only for what its
+constructor does is dropped as unused. Where the build system lets you, move the library after
+the objects; otherwise turn the option off for the port:
+
+```sh
+export LDFLAGS="$LDFLAGS -Wl,--no-as-needed"
+```
+
+### A plugin that needs lazy binding
+
+`Error relocating <library>: <symbol>: symbol not found`, from a program opening a plugin with
+`dlopen`, where the symbol is defined by another plugin or library the program opens later.
+
+musl defers an unresolved symbol in a library opened with `RTLD_LAZY`, and binds it once a later
+library supplies it, but only when the library was not linked with `-z now`, which `LDFLAGS` from
+`20_selfhost` on passes. Link that port's plugins lazily:
+
+```sh
+export LDFLAGS="$LDFLAGS -Wl,-z,lazy"
+```
 
 ### A backtick inside double quotes
 

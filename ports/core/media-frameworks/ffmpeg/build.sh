@@ -51,6 +51,7 @@
 	--prefix=/usr \
 	--mandir=/usr/share/man \
 	--disable-static \
+	--disable-debug \
 	--disable-stripping \
 	--enable-shared \
 	--enable-pic \

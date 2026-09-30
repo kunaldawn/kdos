@@ -34,6 +34,12 @@ export PATH="$SRC_ROOT/sdl-shim:$PATH"
 # those libraries is in depends so no component is quietly left out.
 # C-BIOS, the free MSX system ROMs from Contrib, is installed, so the
 # emulator starts with no copyrighted ROM.
+#
+# The makefile starts CXXFLAGS and LDFLAGS empty and never reads the
+# environment, so both go on the command line, where they also replace the
+# opt flavour's own "-O3 -DNDEBUG"; CXXFLAGS carries those back. LDFLAGS is
+# a list of linker arguments that the makefile prefixes with -Wl, word by
+# word, so it takes the exported flags without their own -Wl, prefix.
 _dirs=(
 	INSTALL_BINARY_DIR=/usr/bin
 	INSTALL_SHARE_DIR=/usr/share/openmsx
@@ -42,6 +48,8 @@ _dirs=(
 	SYMLINK_FOR_BINARY=false
 	OPENMSX_FLAVOUR=opt
 	3RDPARTY_FLAG=false
+	CXXFLAGS="${CXXFLAGS/-O2/-O3} -DNDEBUG"
+	LDFLAGS="${LDFLAGS//-Wl,/}"
 )
 ./configure
 make "${_dirs[@]}"

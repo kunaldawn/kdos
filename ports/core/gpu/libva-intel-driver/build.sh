@@ -23,7 +23,7 @@
 # with_x11=no: the only X path is libva-x11, which libva here is built
 # without. with_wayland=yes turns a missing libva-wayland into a setup error
 # rather than a driver that silently cannot present to a Wayland surface.
-meson setup build --prefix=/usr --libdir=lib --buildtype=release \
+meson setup build --prefix=/usr --libdir=lib --buildtype=release -Db_ndebug=if-release \
 	--wrap-mode=nodownload \
 	-Dwith_x11=no \
 	-Dwith_wayland=yes \

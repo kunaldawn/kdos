@@ -22,8 +22,8 @@ OPTS="-G Ninja \
 
 
 cmake -B build $OPTS \
-    -D CMAKE_C_FLAGS_RELEASE="${CFLAGS}" \
-    -D CMAKE_CXX_FLAGS_RELEASE="${CXXFLAGS}" \
+    -D CMAKE_C_FLAGS_RELEASE="$CFLAGS -DNDEBUG" \
+    -D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -DNDEBUG" \
     -D BUILD_SHARED_LIBS=ON
   cmake --build build
 DESTDIR=$PKG cmake --install build

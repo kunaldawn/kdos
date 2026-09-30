@@ -22,7 +22,7 @@
 # silently dropping the backend.
 meson setup build \
 	--prefix=/usr --libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	-Dwith_x11=no \
 	-Dwith_glx=no \
 	-Dwith_win32=no \

@@ -22,6 +22,9 @@ sip-build \
 	--api-dir /usr/share/qt6/qsci/api/python \
 	--build-dir build \
 	--no-make \
+	--qmake-setting "QMAKE_CFLAGS_RELEASE = $CFLAGS" \
+	--qmake-setting "QMAKE_CXXFLAGS_RELEASE = $CXXFLAGS" \
+	--qmake-setting "QMAKE_LFLAGS_RELEASE = $LDFLAGS" \
 	--verbose
 make -C build
 make -C build -j1 INSTALL_ROOT="$PKG" install

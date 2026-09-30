@@ -26,9 +26,10 @@
 # --default-library=shared is what pipewire's meson looks for: it resolves
 # liblc3 through pkg-config and dlopens nothing, so a static-only build gives
 # a `lc3.pc` that satisfies the probe and a bluez5 plugin that cannot link.
+export CFLAGS="${CFLAGS/-O2/-O3}"
 meson setup build \
 	--prefix=/usr --libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	--default-library=shared \
 	-Dtools=false \
 	-Dpython=false

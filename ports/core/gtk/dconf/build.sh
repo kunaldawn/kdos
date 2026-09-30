@@ -16,6 +16,7 @@ export XML_CATALOG_FILES=/etc/xml/catalog
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	--buildtype=release \
+	-Db_ndebug=if-release \
 	-Dbash_completion=true \
 	-Dman=true \
 	-Dgtk_doc=false \

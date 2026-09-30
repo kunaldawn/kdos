@@ -445,11 +445,12 @@ files under `script/env/`, and each `phase.env` sources one of them:
 |---|---|---|
 | `common.env` | Every phase, through one of the two below | The settings that make packages reproducible (`SOURCE_DATE_EPOCH`, `TZ`, `LC_ALL`, `-ffile-prefix-map`, `--build-id=sha1`), described in [Reproducible packages](../03-architecture/packaging.md#reproducible-packages); the job count `KDOS_JOBS` (when not given, the thread count clamped to one job per 2 GiB of memory) exported as `MAKEFLAGS=-j$KDOS_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`; `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross` and `10_bootstrap` | The target triplet, the paths of the workspace, `build/`, the sysroot and the cross toolchain, `pkg-config` pointed at the sysroot, the cross toolchain first on `PATH`, and the base compiler flags. It empties `build/tmp` |
-| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, the compiler named outright (`CC=gcc`, `CXX=g++`), the base compiler flags, `ac_cv_prog_cxx_cxx11` set empty, `TERM=dumb`, and `KPKG_SKIP_INDEX=man`, which leaves the manual index to `70_image`. It removes nothing: `kpkg` empties each port's own work directory before building it and again after a successful build |
+| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, the compiler named outright (`CC=gcc`, `CXX=g++`), the release compiler and linker flags, and after `common.env` the defaults for the build systems that do not read `CFLAGS` (`CMAKE_BUILD_TYPE=Release`, `CARGO_PROFILE_RELEASE_DEBUG=0`, `GOFLAGS`, `CGO_CFLAGS`, `CGO_CXXFLAGS`, `CGO_LDFLAGS`), all set out in [Writing ports](writing-ports.md#the-release-flags); the CMake compiler cache; `ac_cv_prog_cxx_cxx11` set empty, `TERM=dumb`, and `KPKG_SKIP_INDEX=man`, which leaves the manual index to `70_image`. It removes nothing: `kpkg` empties each port's own work directory before building it and again after a successful build |
 
 `common.env` appends its flags to `CFLAGS`, `CXXFLAGS` and `LDFLAGS`, so `host.env` and
-`chroot.env` set their base flags first and source it last. A base assignment made after it would
-drop the reproducibility flags without a word.
+`chroot.env` set their base flags first and source it after them. A base assignment made after it
+would drop the reproducibility flags without a word; `chroot.env`'s `CGO_*FLAGS` are copied after
+it for that reason.
 
 A `phase.env` carries what is the phase's own: a metadata block for the orchestrator at the top,
 `CHROOT=1` for a chroot phase, `PORT_REPO` where the phase needs more than the default, and after
@@ -746,16 +747,21 @@ from the beginning. `60_kernel` and `70_image` take no snapshot: they are re-run
 find, which costs minutes, where archiving the image phase's tree would cost more than running it.
 
 Each phase declares what its snapshot holds. `KDOS_SNAPSHOT_PATHS` lists paths relative to
-`build/`; `KDOS_SNAPSHOT_EXCLUDE` lists `tar` exclusion patterns that keep out work directories,
-the pseudo-filesystems and the chroot's bind mounts. The first two phases archive `cross`, `fs` and
+`build/`; `KDOS_SNAPSHOT_EXCLUDE` lists patterns that keep out work directories, the
+pseudo-filesystems and the chroot's bind mounts. The first two phases archive `cross`, `fs` and
 `mark`, since the cross toolchain and the markers are part of their result; the package phases
 archive `fs`. A declared path that does not exist yet is left out.
 
-What a snapshot of `fs` leaves out: `tmp`, `dev`, `proc`, `sys`, `run`, the bind-mounted `kdos` and
-`ports`, and, from `20_selfhost` on, `kpkg`'s work directory and the build caches `root/.cache`,
-`root/.cargo`, `root/.npm` and `var/tmp`. No recipe reads another port's output out of those caches
-(each cargo build keeps its own `CARGO_HOME` in its source tree), so a restored tree builds the same
-without them.
+**How exclude patterns match.** Each pattern is matched with `fnmatch(3)`, no flags, against an
+entry's whole path relative to `build/`. `*` therefore crosses `/` and matches a leading dot, and a
+pattern is anchored at `build/`: `fs/tmp/*` leaves out everything below `fs/tmp` but keeps the
+directory itself, and does not touch `fs/var/tmp`. An excluded directory is left out whole.
+
+What a snapshot of `fs` leaves out: the contents of `tmp`, `dev`, `proc`, `sys`, `run`, the
+bind-mounted `kdos` and `ports`, and, from `20_selfhost` on, `kpkg`'s work directory and the build
+caches `root/.cache`, `root/.cargo`, `root/.npm` and `var/tmp`. No recipe reads another port's
+output out of those caches (each cargo build keeps its own `CARGO_HOME` in its source tree), so a
+restored tree builds the same without them.
 
 A phase that declares no paths is never snapshotted. That is how a phase opts out of its snapshot
 for good: set `KDOS_SNAPSHOT_PATHS=""` in its `phase.env`, or remove the line, and nothing else has
@@ -766,7 +772,74 @@ restore, the picker does not offer it, and `--list` marks it `leftover (phase de
 so that `--delete` can remove it. To skip writing
 snapshots for one run only, use `--no-snapshot` or the picker's `S`.
 
-A snapshot directory holds one archive per path and a `manifest.json`:
+### Layers and full snapshots
+
+Each path of a snapshot is archived one of two ways:
+
+- **Full**: every entry of the path, the whole tree.
+- **Layer**: only what changed since another snapshot, its *base*, named by the base's id. Beside
+  the archive, `<path>.gone` lists, NUL-separated, the paths a restore deletes before extracting
+  it: the top of every removed subtree, and every path whose type changed.
+
+A layer holds each entry that is new, changed type, or has a different inode or ctime from the
+base. Any change to an entry, whether its content, mode, owner, an extended attribute, its link
+count or a replacement by a new file, moves its ctime or its inode, so nothing that changed is
+missed. It also holds the directory of every changed or removed entry, because extracting or
+deleting inside a directory resets that directory's times and the layer puts them back, and always
+the root of the path, so a layer is never an empty archive.
+
+A snapshot path is a layer when all of these hold, and full otherwise:
+
+- the `tar` in use accepts `--no-recursion`, `--null`, `--files-from` and `--verbatim-files-from`;
+- `--full-snapshots` was not given;
+- the path's index file (below) is readable, and the root it records is the same directory, by
+  device and inode, as the path now;
+- the snapshot the index names as its head exists, in a phase directory or held, and its whole
+  chain resolves;
+- the head's phase comes before this phase, or is this phase and the head is its own partial
+  snapshot;
+- the new chain would be at most 64 archives long.
+
+In practice: the first snapshot of a path is full; each later phase's is a layer on the one
+before; `--fresh` or `--continue-from K` on a tree already past `K` takes `K` full and layers the
+phases after it on that; after a restore, the next phase's snapshot is a layer on what was
+restored; and after a snapshot that failed, the next one is a layer on the last one that succeeded,
+and still carries everything since. The phase snapshots of one synthetic ten-phase tree, about 4.4
+GB at the end, took 1.86 GB as layers against 7.99 GB as full snapshots; a set from a real build
+has not been measured.
+
+**The index.** `build/.snap-lineage/<path, with / as _>.idx` describes the path as the snapshot
+named `head` archived it, or as a restore of `head` left it. It is a header,
+
+```
+kdos-snap-index 1
+head <snapshot id>
+phase <index> <phase directory>
+partial 0|1
+root <st_dev> <st_ino>
+```
+
+then one record per entry, `<type, octal> <inode> <ctime in ns> <allocated bytes>\t<path>\0`, in
+walk order: each directory's names sorted by byte, a directory before its contents, which is
+byte order with `/` below every other byte. The next snapshot compares a fresh walk with it in a
+single merge. It is rewritten, as a `.tmp` file and a rename, after every snapshot that commits,
+and after every restore; a restore deletes it before deleting anything else. An index that is
+missing, malformed or out of order reads as no index, and the path's next snapshot is full.
+`make cleanbuild` removes `build/.snap-lineage/` along with the tree, so the first snapshot after
+it is full.
+
+**The walk is the archive.** A snapshot walks each path itself, with the phase's exclude patterns,
+and hands `tar` the list with `--no-recursion`: the whole list for a full archive, the layer's list
+for a layer. The archive and the index describe the same entries by construction. The walk does
+not enter another filesystem, skips a live mount point, walks a directory it reaches twice only
+once, and fails the snapshot for a tree deeper than 1024 levels rather than archive it with a hole.
+With a `tar` that cannot take such a list, every snapshot is full and archived by `tar`'s own
+recursion with `--exclude`.
+
+### What a snapshot directory holds
+
+A snapshot directory holds one archive per path, a `<path>.gone` for a layer that removes
+anything, and a `manifest.json`:
 
 | Codec | Archive | Used when |
 |---|---|---|
@@ -775,39 +848,65 @@ A snapshot directory holds one archive per path and a `manifest.json`:
 | `none` | `<path>.tar` | Neither |
 
 `tar` is run with `--numeric-owner`, `--one-file-system`, `--sparse`, `--xattrs` and `--acls`, each
-only when the `tar` in use supports it. The manifest records the phase, the commit and whether the
-checkout was dirty (from `KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY`), the phase's duration and the
-snapshot's own, how many of the phase's steps had finished, whether the snapshot is complete, the
-codec, and each archive's raw size, compressed size and file count.
+only when the `tar` in use supports it. The manifest, schema 4, records the snapshot's `id`
+(`<phase directory>-<unix time>-<8 hex digits>`), the phase, the commit and whether the checkout
+was dirty (from `KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY`), the phase's duration and the snapshot's
+own, how many of the phase's steps had finished, whether the snapshot is complete, the codec, and
+under `paths`, for each path: its archive, `kind` (`full` or `layer`), `base` (the base's id, or
+`null`), `removed` (the `.gone` file, or `null`) and `removed_count`, the archive's raw size
+(allocated bytes of its files), compressed size and member count, and `tree_bytes` and
+`tree_files`, the whole path as it stood. A manifest of schema 3 or older names its array
+`entries`, is always full, and is given the id `legacy-<phase directory>-<created × 10>`; it is
+restored as a full archive, and can be a base once it has been restored. A `kdosbuild` that knows
+only `entries` finds no array in a schema-4 manifest and treats that snapshot as absent rather than
+restore a layer as a whole tree.
 `build/snapshots/timings.json`, beside the snapshots, keeps the step and phase timing history that
 the build screen's time estimate uses.
 
-**Writing.** Each new archive is written to a `.tmp` file beside the old one. Only when every archive
-of the snapshot is complete are they renamed into place and the manifest rewritten, so a snapshot
-interrupted part-way leaves the previous one intact and deletes its own partial files. Archives
-for paths the phase does not declare are removed afterwards. `tar` exiting 1, its
-status for warnings such as a file changing while it was read, is not treated as a failure.
+**Writing.** A snapshot is written into `build/snapshots/.new-<phase directory>/`: its archives,
+its `.gone` lists and its manifest. Then it commits:
 
-**Disk space.** Because the new archives sit beside the old ones until they are complete, a snapshot
-is refused unless the free space on `build/` holds the previous snapshot's compressed size plus a
-fifth. For a phase's first snapshot, half the raw size stands in for the compressed size, since
-`zstd -1` on a root filesystem lands near 2x; measuring the raw size is bounded to two minutes, and a
-measurement the bound cut short is not recorded, so the next snapshot measures again. Each of the
-eleven phases that snapshots archives `fs`, a compressed copy of the tree as it stood after that
-phase. The size of a complete set has not been measured with these settings, so check the free
-space before a full build with snapshot writing on; see
-[Building from scratch](developing.md#building-from-scratch). `make cleanbuild` empties `build/` but
-keeps `build/snapshots`, the compiler cache `build/ccache` and the package store `build/pkgstore`;
-`make clean` removes all three. Both keep `build/keys`, so a
+1. The snapshot it replaces is moved aside: into `.held/` (below) when any other snapshot's chain
+   runs through it, else to `.trash-<phase directory>`.
+2. The staging directory is renamed to the phase directory.
+3. The trash is deleted.
+4. The index files are written with the new id as head.
+5. Every held snapshot no phase snapshot's chain reaches any more is deleted.
+
+A snapshot interrupted or failed before step 2 deletes its staging directory and leaves the
+previous snapshot and the index files as they were. A `.new-*` or `.trash-*` left behind by a
+killed build is deleted when the next snapshot starts. `tar` exiting 1, its status for warnings
+such as a file changing while it was read, is not treated as a failure.
+
+**Held snapshots.** A snapshot that another snapshot's chain still runs through is never deleted
+outright. When its phase is taken again, or `--delete` or the picker's `D` removes it, it moves to
+`build/snapshots/.held/<phase directory>@<id>/`, so every snapshot that layers on it still
+restores exactly as before. It is deleted as soon as no phase snapshot's chain reaches it. A
+rebuild from phase `K` on therefore holds the old chain from `K` up while the new one is written,
+and frees each old snapshot as the one replacing it is taken; the peak is the old chain from `K`
+plus the new one.
+
+**Disk space.** A snapshot is refused unless the free space on `build/snapshots` holds its estimate
+plus a fifth. The estimate is the allocated bytes of the regular files it lists, from the walk,
+times the base's compressed-to-raw ratio for that path, or half when there is no base, since
+`zstd -1` on a root filesystem lands near 2x. Each of the eleven phases that snapshots archives
+`fs`; the first as the whole tree, the rest as layers, so a complete set is the tree compressed
+once plus what each phase added, changed or rewrote. Check the free space before a full build with
+snapshot writing on; see [Building from scratch](developing.md#building-from-scratch).
+`make cleanbuild` empties `build/` but keeps `build/snapshots`, the compiler cache `build/ccache`
+and the package store `build/pkgstore`; `make clean` removes all three. Both keep `build/keys`, so a
 signing key kept there survives a clean; the build itself neither writes nor reads it.
 
 **Safety rules.** Snapshot and restore delete and re-extract the declared paths as root, so a
 declared path is either accepted as written or rejected, never adjusted. An absolute path, a path
 starting with `~`, an empty one, a bare `.`, or any path with a `..` component is refused and
 reported as a notice. A name that merely begins with dots is allowed, and a trailing `/` is
-removed. A snapshot is also refused while anything is still mounted under `build/fs`. The chroot wrapper
-leaves no mounts there, so any the orchestrator finds belong to something else; it releases them
-first, lazily if it has to, and reports any it cannot.
+removed. Every name in a `.gone` list must be the path itself or lie under it, with no `..`, `.`
+or empty component, or the restore is refused before it touches anything; and a name with a
+symlink anywhere above it is refused at the moment of deletion, since deleting through the link
+would delete outside `build/`. A snapshot is also refused while anything is still mounted under
+`build/fs`. The chroot wrapper leaves no mounts there, so any the orchestrator finds belong to
+something else; it releases them first, lazily if it has to, and reports any it cannot.
 
 ### The startup picker
 
@@ -823,12 +922,14 @@ When the build has a terminal on both standard input and standard output, and no
 `--restore`, `--continue-from`, `--plan` or a command-line plan has already decided, the build
 opens a picker before running anything. It answers two questions:
 
-- **What to restore.** Row 0 is *start fresh*. Below it is one row per phase that has a snapshot,
-  showing when it was taken, its size, its commit, its step count and the phase's duration. A
-  commit marked `*` differs from the current one or was dirty; a step count such as `12/40!` marks a
-  partial snapshot. The selection opens on the last phase, in build order, that has a snapshot, and
-  the line beneath the list names what the selected row restores and which phase the build
-  continues from.
+- **What to restore.** Row 0 is *start fresh*. Below it is one row per phase that has a usable
+  snapshot, showing when it was taken, the size of its own archives, its commit, its step count and
+  the phase's duration. A commit marked `*` differs from the current one or was dirty; a step
+  count such as `12/40!` marks a partial snapshot. The selection opens on the last phase, in build
+  order, that has a snapshot. The line beneath the list names each path the selected row restores,
+  with its size and kind, and what restoring it reads, as in
+  `restores: fs 61M layer · restore reads 1.8G from 10 archives`; the next line names the phase the
+  build continues from.
 - **Whether to write snapshots during this build.** `S` toggles it, and the footer shows
   `writing: on|off`. `--no-snapshot` sets what the picker opens on. Writing off is shown as a
   warning, because a run with writing off that fails in its last phase has nothing to resume from.
@@ -839,11 +940,11 @@ opens a picker before running anything. It answers two questions:
 | `Enter`, or a second click on the selected row | Start: fresh, or from the selected snapshot |
 | `S` | Toggle snapshot writing |
 | `P` | Open the [plan picker](#the-plan-picker) instead |
-| `D` | Delete the selected snapshot |
+| `D` | Delete the selected snapshot. One that later snapshots layer on is held until they go, and the status line says which |
 | `Q`, `Esc` | Quit without building |
 
 The picker opens even when no snapshot exists: that is the from-scratch run, where writing
-snapshots costs tens of gigabytes and a large part of the time, and the choice matters most.
+snapshots costs gigabytes and a part of the time, and the choice matters most.
 
 `--restore`, `--continue-from` and `--delete` accept a phase by its short name (`selfhost`), its
 directory name (`20_selfhost`), its 1-based position, or `latest`, the last phase in build order
@@ -858,7 +959,8 @@ scratch](developing.md#building-from-scratch).
 
 `--continue-from` marks every phase before the one named as skipped and runs the rest on the
 current tree. The skipped phases are neither re-run nor re-snapshotted, so a later tree is never
-filed under an earlier phase's name.
+filed under an earlier phase's name. The first phase it runs on a tree that was already past it is
+snapshotted full, and the snapshots it replaces are held while anything layers on them.
 
 ### How a restore works
 
@@ -868,6 +970,10 @@ the phases they cover as done:
 - **Newest wins, per path.** Each path comes from the newest snapshot at or below the target phase,
   so a phase that declares only part of the tree does not lose the rest. Restoring `30_foundation`
   takes `fs` from `30_foundation` and `cross` and `mark` from `10_bootstrap`.
+- **Each path is its chain.** The snapshot chosen for a path is followed down its bases to a full
+  archive. The path is deleted and the full archive extracted; then each layer in turn has the
+  entries its `.gone` lists deleted and is extracted over the result. Restoring a middle phase
+  stops at that phase's own layer.
 - **Only phases that declare paths.** The plan is built from the phases whose `phase.env` declares
   snapshot paths; a leftover snapshot under any other phase is never layered in, and restoring such
   a phase is refused with `<phase> declares no snapshot paths; its snapshot is a leftover`.
@@ -875,22 +981,30 @@ the phases they cover as done:
   path that the target or any earlier phase declares has no snapshot at or below the target to come
   from (for example `cross`, once both the `00_cross` and `10_bootstrap` snapshots are deleted). A
   result missing a component would be a tree that never had it.
-- **Damaged means absent.** A manifest that does not parse, has no `entries` array, or names an
-  archive that is not on disk is treated as no snapshot at all, never as a partial one.
-- **Everything is checked first.** Every path and archive is validated before anything is deleted,
-  so a rejected restore leaves `build/` untouched.
+- **Damaged means absent.** A manifest that does not parse, has neither a `paths` nor an `entries`
+  array, or names an archive or a `.gone` list that is not on disk is treated as no snapshot at
+  all, never as a partial one. So is a snapshot whose chain does not resolve: a base that is gone,
+  a loop of bases, or a chain longer than 64. Restoring its layers alone would produce a tree that
+  never existed; `--list` shows it under `unusable` so that `--delete` can remove it.
+- **Everything is checked first.** Every path, archive and `.gone` list is validated before
+  anything is deleted, so a rejected restore leaves `build/` untouched.
 - **Interrupted restores block.** A restore writes `build/.restore-in-progress`, naming its target,
-  before it deletes anything, and removes it when the last archive is extracted. While the marker
-  exists, snapshotting and the next build both refuse to run, and the picker shows the interrupted
-  restore; restore a snapshot again or run `make cleanbuild`.
+  before it deletes anything, and removes it when the last archive is extracted and the paths are
+  indexed. While the marker exists, snapshotting and the next build both refuse to run, and the
+  picker shows the interrupted restore; restore a snapshot again or run `make cleanbuild`.
 
-Extraction keeps numeric owners, extended attributes and ACLs, and, when run as root, the recorded
-owners and the setuid and setgid bits.
+Extraction keeps numeric owners, every extended attribute (`--xattrs-include=*`, so file
+capabilities in `security.capability` come back as well as `user.*` attributes) and ACLs, and,
+when run as root, the recorded owners and the setuid and setgid bits. After the last archive,
+each restored path is walked with the exclude patterns of the phase its top snapshot came from and
+its index written with that snapshot as head, so the next snapshot is a layer on what was
+restored.
 
 **Partial snapshots.** Pressing `S` during a build queues a snapshot of the phase in progress, taken
 once a step finishes with no other step running, even when snapshot writing is off. It is recorded as partial, with
 the number of steps finished. Restoring a partial snapshot re-runs its phase rather than continuing
-after it, which is safe because a port already installed and current runs no step.
+after it, which is safe because a port already installed and current runs no step. The phase's
+snapshot when it completes is a layer on its own partial one, which is held while it does.
 
 ## Build plans
 
@@ -998,6 +1112,7 @@ compiler there; `make build` runs the script inside the container.
 | `--restore PHASE` | Restore a snapshot and continue after it. `PHASE` is a short name, directory name, 1-based index, or `latest` |
 | `--continue-from PHASE` | Resume at `PHASE` on the existing tree, with no restore. `PHASE` takes the same forms as `--restore` |
 | `--no-snapshot` | Do not write snapshots in this build. With the full-screen interface, this is what the picker opens on |
+| `--full-snapshots` | Archive every snapshot path whole in this build, never as a layer; see [Layers and full snapshots](#layers-and-full-snapshots) |
 | `--snapshot` | Write snapshots even for a narrowing plan |
 | `--plan` | Open the plan picker and run the plan on this tree |
 | `--phases LIST` | Run only these phases |
@@ -1007,25 +1122,33 @@ compiler there; `make build` runs the script inside the container.
 | `--plain` | No full-screen interface: plain lines |
 | `--json` | No full-screen interface: one JSON object per event. With `--list`, the snapshot inventory as one object |
 | `--list` | List snapshots and exit |
-| `--delete PHASE` | Delete one phase's snapshot and exit. `PHASE` takes the same forms as `--restore` |
+| `--delete PHASE` | Delete one phase's snapshot and exit. `PHASE` takes the same forms as `--restore`. A snapshot that others layer on is held until the last of them goes, and the message names them: `deleted 41_system; kept as the base of 42_graphics…50_desktop` |
 | `--build-dir DIR` | The build directory. Defaults to `$KDOS_BUILD_DIR`, then `build` |
 | `--script-dir DIR` | The script directory, whose `phases/` holds the phases. Defaults to `script`. The repository root is taken as its parent, which is where the chroot wrapper and every path handed into the chroot are resolved from, so it is never `script/phases` |
 | `--selftest` | Run the layout and log-classifier assertions and exit. Must be the first argument |
 | `--preview SCREEN WxH TIER` | Draw one screen offscreen and print it. Must be the first argument; see [Diagnostics with no build](#diagnostics-with-no-build) |
 | `-h`, `--help` | Print usage |
 
-`--list` prints one row per snapshot (phase, time, total size, commit with `*` when it differs from
-the checkout or was dirty, and step count) and, under it, each archive's compressed and raw size
-and file count. With `--json`, the inventory is one object, `{"commit": ..., "snapshots": [...]}`,
-and an empty inventory is that object with an empty `snapshots` array rather than a message.
+`--list` prints one row per usable snapshot (phase, time, the size of its own archives, commit with
+`*` when it differs from the checkout or was dirty, step count, and kind: `full`, or `on
+40_lang` for a layer) and, under it, each archive's compressed and raw size and member count, and
+for a layer how many paths it removes and what restoring it reads (`restore reads 1.8G from 10
+archives`). Below the table come an `unusable` section naming each snapshot whose chain does not
+resolve and the base it misses, a `held` section with each held snapshot's id, size and the
+snapshots that need it, and `on disk: X (held Y)`. With `--json`, the inventory is one object,
+`{"commit": ..., "snapshots": [...], "held": [...], "bytes_on_disk": ..., "count": ...}`: each
+snapshot carries its `id` and `usable`, and each of its `entries` its `kind`, `base`, `removed`,
+`chain` (the phase directories its restore reads, base first, a held one as
+`<phase>@<id>`) and `restore_bytes`; each held snapshot carries its `id`, `phase`, `needed_by` and
+`entries`. An empty inventory is that object with empty arrays rather than a message.
 
 **Exit status:** 0 when the build finished; 1 when a step failed, a restore failed during the run,
 or an unfinished restore blocks the build; 2 for a usage error (an unknown argument or phase,
 `--restore` with `--continue-from`, `--phases` or `--steps` with either of them, an invalid step or
 rebuild name, `--plan` without a terminal or with `--json`), for a phase that cannot run (see
 [Package lists](#package-lists)) or no phase at all, or for a `--restore` refused before the run
-starts (the target has no snapshot or declares no snapshot paths, a declared path has no source, or
-`latest` with no snapshot at all).
+starts (the target has no snapshot, its snapshot's chain does not resolve, it declares no
+snapshot paths, a declared path has no source, or `latest` with no snapshot at all).
 
 `KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY`, which `make build` sets from your checkout because `.git`
 is not mounted into the container, are recorded in each snapshot so the picker can show which
@@ -1165,7 +1288,7 @@ described with the other libraries in [The C libraries](c-libraries.md).
 |---|---|
 | `kb_phase.c` | Phase discovery under `script/phases/`, the checks that refuse a phase that cannot run, the metadata block, and the snapshot path rules |
 | `kb_plan.c` | A phase's list, from `packages.txt` or `packages.d/`, and its order run (`kbuild_packages_order_run`); a phase's `PORT_REPO` mapped onto the host by the rule `testing/phaseclosure.py` uses (`kbuild_phase_repos`); plan narrowing; the port list behind the picker, walked through `libkpkg`; and `build/.devplan.json` with its own strict reader |
-| `kb_snap.c` | The snapshot inventory, layered restore selection, the interrupted-restore marker, and mount detection |
+| `kb_snap.c` | The snapshot inventory, held snapshots included; the chains that decide which archives restore each path, and which held snapshots nothing needs; the index file and the diff that decides what a layer holds; restore selection; the interrupted-restore marker; and mount detection |
 | `kb_json.c` | A read-only JSON parser for snapshot manifests and the restore marker |
 
 The JSON parser refuses anything that does not parse completely, including truncation, trailing

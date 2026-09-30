@@ -185,6 +185,7 @@
 	--enable-spice \
 	--disable-xen \
 	--disable-docs \
+	--disable-debug-info \
 	--disable-guest-agent \
 	--disable-werror \
 	--disable-install-blobs \

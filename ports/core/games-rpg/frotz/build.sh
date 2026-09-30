@@ -15,9 +15,12 @@
 # pulled in an audio stack for the handful of stories that use sound would put
 # it on every image for a feature almost nothing exercises.
 #
-# -Wno-error because upstream's warnings meet this tree's -Werror, and a flag
-# is the answer where a patch is not needed.
+# -Wno-error keeps an upstream -Werror from turning this compiler's newer
+# warnings into failures; 2.55's Makefile adds none, so on this release it has
+# no effect. The Makefile appends -g after CFLAGS, so the debug information is
+# dropped at the link instead.
 export CFLAGS="$CFLAGS -Wno-error"
+export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
 make curses PREFIX=/usr SOUND_TYPE=none
 make install PREFIX=/usr SOUND_TYPE=none DESTDIR=$PKG
 

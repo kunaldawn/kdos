@@ -31,7 +31,7 @@ patch -p1 -i "$PORT_SRC/locate-path-replaces-default.patch"
 # liburing is `required: false` upstream and has no option, so the `depends`
 # line is what turns the io_uring lookup path on; without liburing installed
 # the build silently takes its own pread path instead.
-meson setup build --buildtype=release \
+meson setup build --buildtype=release -Db_ndebug=if-release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--localstatedir=/var \
 	-Dinstall_systemd=false \

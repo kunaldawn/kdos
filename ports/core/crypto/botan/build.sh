@@ -14,6 +14,7 @@
 # shipped, and the Python module is left out because nothing here imports it.
 # The documentation needs Sphinx, which is not a port. getrandom is the entropy
 # source; zlib, bzip2 and lzma are the compression filters.
+export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
 python3 ./configure.py \
 	--prefix=/usr \
 	--libdir=lib \

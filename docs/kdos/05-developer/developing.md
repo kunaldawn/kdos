@@ -45,10 +45,11 @@ or a container; see [Where the build puts things](#where-the-build-puts-things).
 **Disk.** The upstream sources for the current tree take about 41.5 GB (38.6 GiB): the 2,448
 distinct files the recipes fetch, which is what `ports/.srccache/` holds after a complete
 `make fetch`. Each distinct file is held once in the cache and hard-linked into every port directory
-that names it. Budget tens of gigabytes more for `build/`, and more again for phase snapshots: each
-of the eleven phases from `00_cross` to `50_desktop` archives a compressed copy of the target tree,
-and `60_kernel` and `70_image` take none. A complete set has not been measured. Snapshots are
-optional, per run and per phase; see
+that names it. Budget tens of gigabytes more for `build/`, and more again for phase snapshots: the
+first of the eleven phases from `00_cross` to `50_desktop` archives the target tree compressed, each
+later one a layer of what it added, changed or rewrote, and `60_kernel` and `70_image` take none.
+On a synthetic ten-phase tree the layers came to 23% of what full copies take; a complete set from
+a real build has not been measured. Snapshots are optional, per run and per phase; see
 [Snapshots](build-system.md#snapshots).
 
 ## Getting the source
@@ -206,6 +207,7 @@ The orchestrator options used most often are these; the full list is in
 | `--steps LIST` | Run only these scripts, each written `PHASE:script.sh` |
 | `--rebuild LIST` | Rebuild these ports even though they are installed |
 | `--no-snapshot` | Write no snapshots during this build |
+| `--full-snapshots` | Write every snapshot as a whole tree, never as a layer on the one before |
 | `--port-jobs N` | Build up to `N` ports of a package phase at once, by dependency level; 1, the default, builds one at a time |
 | `--plain`, `--json` | No interface: plain lines, or one JSON object per event |
 
@@ -278,6 +280,8 @@ no firmware.
 | `build/logs/<phase>/` | One log per step | The first thing to read when a build fails |
 | `build/logs/chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree it could not bind read-only, an open-files limit it could not raise | |
 | `build/snapshots/<phase>/` | Phase snapshots | Kept by `cleanbuild` |
+| `build/snapshots/.held/<phase>@<id>/` | Snapshots replaced or deleted while later snapshots still layer on them | Deleted by the orchestrator once nothing needs them |
+| `build/.snap-lineage/` | One index per snapshot path, describing the tree as the last snapshot or restore left it; the next snapshot is a layer of the difference | Removed by `cleanbuild`, which makes the next snapshot full |
 | `build/ccache/` | The compiler cache CMake ports compile through, up to 20 GB | Kept by `cleanbuild`, removed by `clean`. Written as root; remove it from a container |
 | `build/pkgstore/` | The package store, `<key[0:2]>/<key>/` holding one package and its `META`, up to `KDOS_PKG_STORE_MAX` | Written only with `KDOS_PKG_STORE` on. Kept by `cleanbuild`, removed by `clean` |
 | `build/logs/pkgstore-check.log` | What `KDOS_PKG_STORE=check` found: one line per port whose rebuild differed from its stored package, then the members that differ | See [Testing](testing.md#reading-pkgstore-checklog) |
@@ -561,8 +565,8 @@ make build BUILD_ARGS=--fresh
 ```
 
 Budget most of a day for the build that follows. If it writes snapshots, budget the disk as well:
-each of the eleven phases from `00_cross` to `50_desktop` archives a compressed copy of `build/fs`.
-A complete set has not been measured; see
+`00_cross` archives `build/fs` compressed, and each later phase to `50_desktop` a layer of what it
+changed. A complete set has not been measured; see
 [Snapshots](build-system.md#snapshots), which also says how a phase opts out of its snapshot.
 
 ## Things to avoid while a build runs

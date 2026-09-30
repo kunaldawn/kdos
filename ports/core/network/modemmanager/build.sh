@@ -16,6 +16,7 @@
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --localstatedir=/var \
 	--buildtype=release \
+	-Db_ndebug=if-release \
 	--auto-features=enabled \
 	-Dudev=true \
 	-Dudevdir=/lib/udev \

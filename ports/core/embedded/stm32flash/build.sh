@@ -9,5 +9,5 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-make
+make CFLAGS="$CFLAGS -Wall"
 make PREFIX=/usr DESTDIR=$PKG install

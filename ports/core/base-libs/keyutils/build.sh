@@ -9,5 +9,5 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-make
+make CFLAGS="$CFLAGS"
 make install DESTDIR=$PKG USRLIBDIR=/usr/lib LIBDIR=/usr/lib

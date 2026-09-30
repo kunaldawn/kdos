@@ -20,6 +20,9 @@
 sip-build \
 	--confirm-license \
 	--qmake /usr/lib/qt6/bin/qmake \
+	--qmake-setting "QMAKE_CFLAGS_RELEASE = $CFLAGS" \
+	--qmake-setting "QMAKE_CXXFLAGS_RELEASE = $CXXFLAGS" \
+	--qmake-setting "QMAKE_LFLAGS_RELEASE = $LDFLAGS" \
 	--api-dir /usr/share/qt6/qsci/api/python \
 	--disable QtPdf \
 	--disable QtPdfWidgets \

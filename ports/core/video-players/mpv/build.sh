@@ -66,6 +66,7 @@ meson setup build \
 	--prefix=/usr \
 	--libdir=lib \
 	--buildtype=release \
+	-Db_ndebug=if-release \
 	-Dlibmpv=true \
 	-Dcplayer=true \
 	-Dbuild-date=false \

@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+export CFLAGS="${CFLAGS/-O2/-O3}"
+
 # The licence is the point of this comment.
 #
 # x264 is GPL-2-or-later, and ffmpeg links it only under --enable-gpl, which

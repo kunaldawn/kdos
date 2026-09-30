@@ -20,6 +20,7 @@ meson setup build \
 	--prefix=/usr \
 	--libdir=lib \
 	--buildtype=release \
+	-D b_ndebug=if-release \
 	-D documentation=false \
 	-D man-pages=disabled \
 	-D nls=disabled \

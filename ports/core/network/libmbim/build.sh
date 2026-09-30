@@ -13,6 +13,7 @@
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
+	-Db_ndebug=if-release \
 	-Dmbim_username= \
 	-Dmbim_groupname= \
 	-Dintrospection=true \

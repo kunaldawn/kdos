@@ -11,7 +11,7 @@
 
 # utmp-backend=none: on Linux upstream's default execs a libutempter helper at
 # /usr/lib/utempter/utempter for every window, which no port installs.
-export CFLAGS="${CFLAGS:--O3 -pipe} -fno-strict-aliasing"
+export CFLAGS="${CFLAGS/-O2/-O3} -fno-strict-aliasing"
 meson setup build \
 	--prefix=/usr --libdir=lib \
 	--buildtype=release \

@@ -31,6 +31,7 @@ autoreconf -f -i
 # --enable-hwloc only permits the probe, which turns it off without an error
 # when the library is missing, so hwloc is in depends. libpcre (the ESSID regex
 # filter) has no switch and is not a port, so it is never found.
+export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -40,7 +41,6 @@ autoreconf -f -i
 	--enable-libnl \
 	--with-sqlite3 \
 	--without-gcrypt \
-	--enable-hwloc \
-	--without-opt
+	--enable-hwloc
 make
 make DESTDIR=$PKG install

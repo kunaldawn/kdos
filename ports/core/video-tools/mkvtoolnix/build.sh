@@ -23,7 +23,7 @@
 	--without-gettext \
 	--with-flac \
 	--with-dvdread
-./drake V=1 -j"${MAKEFLAGS#-j}"
+./drake V=1 -j"$KDOS_JOBS"
 ./drake DESTDIR=$PKG install
 
 # The panel draws application icons from hicolor PNGs only, and upstream

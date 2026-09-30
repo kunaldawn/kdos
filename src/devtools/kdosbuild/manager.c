@@ -1468,11 +1468,19 @@ static void do_snapshot(Manager *m, BStep *g, int forced)
 		return;
 	}
 
-	KbuildSnapshot sn;
+	/* The snapshot's OWN size: a layer's archives hold only what changed
+	 * since its base, and the kind says which base that is. */
+	KbuildSnapshot *all = kb_calloc(KBUILD_MAX_SNAPS, sizeof(*all));
+	int nall = kbuild_snap_list_all(m->snap_root, all, KBUILD_MAX_SNAPS);
+	const KbuildSnapshot *sn = kbuild_snap_find(all, nall, meta->dir_name);
 	long long total = 0;
-	if (kbuild_snap_load(m->snap_root, meta->dir_name, &sn) == 0)
-		for (int i = 0; i < sn.nentries; i++)
-			total += sn.entry[i].bytes_compressed;
+	char kind[256] = "";
+	if (sn) {
+		for (int i = 0; i < sn->nentries; i++)
+			total += sn->entry[i].bytes_compressed;
+		snap_kind(all, nall, sn, kind, sizeof(kind));
+	}
+	free(all);
 
 	int done = 0;
 	for (int i = 0; i < g->nchild; i++)
@@ -1482,16 +1490,16 @@ static void do_snapshot(Manager *m, BStep *g, int forced)
 
 	if (complete) {
 		set_snap_state(m, g, "ok", human_bytes(total));
-		mgr_notice(m, "snapshot %s -> %s", meta->dir_name,
-			   human_bytes(total));
+		mgr_notice(m, "snapshot %s -> %s (%s)", meta->dir_name,
+			   human_bytes(total), kind);
 	} else {
 		char detail[64];
 		snprintf(detail, sizeof(detail), "%s @ %d/%d",
 			 human_bytes(total), done, g->nchild);
 		set_snap_state(m, g, "partial", detail);
-		mgr_notice(m, "PARTIAL snapshot %s at step %d/%d -> %s "
-			   "(restoring it re-runs the phase)", meta->dir_name,
-			   done, g->nchild, human_bytes(total));
+		mgr_notice(m, "PARTIAL snapshot %s at step %d/%d -> %s (%s; "
+			   "restoring it re-runs the phase)", meta->dir_name,
+			   done, g->nchild, human_bytes(total), kind);
 	}
 }
 

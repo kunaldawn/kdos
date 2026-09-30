@@ -55,7 +55,7 @@ meson setup build \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	--wrap-mode=nofallback \
 	-Dalsa=enabled \
 	-Dpipewire=enabled \

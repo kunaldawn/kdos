@@ -18,6 +18,6 @@ export CFLAGS="$CFLAGS -Wno-error -Wno-address -Wno-free-nonheap-object -Wno-str
 
 # ERRORFILE is upstream's own escape hatch for exactly that; libdir must be
 # passed to both stages or the .pc lands beside a library that is elsewhere.
-make ERRORFILE= libdir=/usr/lib bindir=/usr/bin mandir=/usr/share/man
-make ERRORFILE= libdir=/usr/lib bindir=/usr/bin mandir=/usr/share/man DESTDIR=$PKG install
+make ERRORFILE= HOST_MARCH= libdir=/usr/lib bindir=/usr/bin mandir=/usr/share/man
+make ERRORFILE= HOST_MARCH= libdir=/usr/lib bindir=/usr/bin mandir=/usr/share/man DESTDIR=$PKG install
 install -Dm644 docs/efidp_make_generic.3 "$PKG/usr/share/man/man3/efidp_make_generic.3"

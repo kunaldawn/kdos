@@ -14,6 +14,9 @@
 # LUA_INC AND EXPAT_INC CARRY THEIR OWN -I. They are pasted straight into the
 # compiler line, so a bare path there is an argument the compiler reads as a
 # source file.
+#
+# The makefile's own flags carry -g ahead of CFLAGS; -g0 last takes it back.
+export CFLAGS="$CFLAGS -g0"
 make LUA_V=$_lv \
      LUA_INC="-I/usr/include/lua$_lv" \
      EXPAT_INC="-I/usr/include" \

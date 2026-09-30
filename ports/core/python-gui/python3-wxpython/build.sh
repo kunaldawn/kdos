@@ -22,7 +22,7 @@ patch -p1 -i "$PORT_SRC/no-stacktrace.patch"
 # --use_syswx links the installed wxWidgets through wx-config instead of
 # building the copy under ext/, so every wxPython program shares the one wx
 # the C++ programs use.
-python3 build.py build_py --use_syswx --gtk3 --release --jobs="$(nproc)"
+python3 build.py build_py --use_syswx --gtk3 --release --jobs="$KDOS_JOBS"
 python3 build.py install --use_syswx --gtk3 --release --destdir="$PKG" \
 	--extra_setup="--prefix=/usr"
 

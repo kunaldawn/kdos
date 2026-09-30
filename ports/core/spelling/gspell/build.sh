@@ -13,7 +13,7 @@
 # enchant providers find, so an empty menu means enchant has no dictionary.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	--wrap-mode=nodownload \
 	-Dgspell_app=false \
 	-Dgobject_introspection=true \

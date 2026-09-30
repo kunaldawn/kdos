@@ -13,7 +13,7 @@
 # include it and for PyGObject programs. g-ir-scanner needs GLib-2.0.gir,
 # GObject-2.0.gir and Gio-2.0.gir, and glib-introspection is what installs
 # them.
-meson setup build --buildtype=release \
+meson setup build --buildtype=release -Db_ndebug=if-release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Dintrospection=enabled \
 	-Dnls=enabled \

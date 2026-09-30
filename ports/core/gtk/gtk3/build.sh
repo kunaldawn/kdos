@@ -20,6 +20,7 @@ export XML_CATALOG_FILES=/etc/xml/catalog
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
+	-Db_ndebug=if-release \
 	-Dwayland_backend=true \
 	-Dx11_backend=true \
 	-Dbroadway_backend=false \

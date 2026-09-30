@@ -14,6 +14,6 @@
 # which is why lzip is a dependency of a program that has none of its own.
 lzip -dc $name-$version.tar.lz | tar -x --strip-components=1
 
-./configure --prefix=/usr CXX="${CXX:-c++}" CXXFLAGS="$CXXFLAGS"
+./configure --prefix=/usr CXX="${CXX:-c++}" CXXFLAGS="$CXXFLAGS" LDFLAGS="$LDFLAGS"
 make
 make DESTDIR=$PKG install

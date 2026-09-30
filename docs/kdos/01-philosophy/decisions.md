@@ -26,6 +26,7 @@ decisions that look like missing features.
 | [The host desktop](#no-kde-gnome-or-any-existing-desktop-on-the-host) | A desktop written for this system; KDE's and GNOME's applications, never their shells |
 | [Where upstream sources live](#upstream-archives-are-content-addressed-release-assets) | Release assets named by their sha256, fetched by `make fetch` |
 | [CPU optimisation](#-march-measured-per-machine-not-chosen-for-a-population) | Measured per machine by `kdos march`, never a shipped feature level |
+| [Compiler flags](#one-release-flag-set-raised-per-port) | `-O2` with hardening for every port; `-O3` and LTO only per port, on precedent |
 | [The vulnerability database](#alpines-security-database-not-nvd-or-osv) | A vendored, pruned copy of Alpine's secdb, answered offline |
 | [Recipe format](#the-build-shell-lives-beside-the-recipe) | Two files: parsed metadata, plus ordinary bash |
 | [The ports tree](#ports-are-shelved-by-subject-identity-is-the-bare-name) | 102 subject shelves under `ports/core`; a port is its bare name, unique across the tree |
@@ -316,6 +317,47 @@ Because KDOS rebuilds itself on the machine it runs on, rebuilding per machine i
 a way it is not for a binary distribution. That turns "which flags" into "did they help on this
 machine", which is a question with a measurable answer.
 
+## One release flag set, raised per port
+
+Every port from `20_selfhost` on builds with one set of flags, from `script/env/chroot.env`:
+`-O2 -pipe -fPIC -fno-semantic-interposition -fstack-clash-protection`, linked with
+`-Wl,-O1,--sort-common,--as-needed,-z,now,-z,pack-relative-relocs`. The whole set, with the
+defaults for CMake, cargo and Go, is in
+[Writing ports](../05-developer/writing-ports.md#the-release-flags).
+
+`-O2` is the level Arch, Fedora, Debian and Gentoo build with. Alpine's base is `-Os` and T2 SDE's
+is `-Os` with `-O2` for hot code; both raise single packages rather than the whole tree. `-O3`
+across every port means larger code and more exposure to undefined behaviour in code nobody here
+has tested at that level, for a gain that is mostly vectorisation, which on the baseline SSE2
+target is small. So `-O3`, LTO and PGO are per port: a recipe raises its own level where upstream's
+default or Alpine's recipe does, and uses LTO only for the hot interpreters and codecs Alpine also
+builds that way. CMake's Release `-O3` is left in place, because it is the configuration upstream
+tests.
+
+The global `-fPIC` keeps static archives linkable into shared libraries, but under it GCC may not
+inline an exported function into a caller in the same file, since a preloaded library could replace
+it. `-fno-semantic-interposition` gives that inlining back; the cost is that `LD_PRELOAD` cannot
+replace a library's call to a function defined in the same source file. Calls between files, and
+exported data, still go through the PLT and GOT.
+
+What is ruled out, and why:
+
+- **No feature level above x86-64 v1**, in any language: that is
+  [`kdos march`'s](#-march-measured-per-machine-not-chosen-for-a-population) question, per machine.
+- **No `-Ofast` or `-ffast-math`**: they break IEEE and `errno` semantics that numerical, database
+  and audio code depends on.
+- **No global `-DNDEBUG`**: some headers change a structure's layout under it, so a library and its
+  consumer built with different settings would disagree. Each build system's release mode sets it
+  for its own project.
+- **No global `RUSTFLAGS`**: it replaces a project's own `.cargo/config` flags. No global
+  `panic=abort`, which changes what `catch_unwind` does.
+- **No global `-Werror`** of any kind: it gains nothing at run time and fails ports hours into a
+  build.
+- **Hardening is not traded for speed**: default PIE and SSP from the compiler, stack-clash
+  probes, and a read-only GOT stay on every port.
+- **`00_cross` and `10_bootstrap` keep their own plain flags**, from `script/env/host.env`: a flag
+  the cross toolchain mishandled would break the compiler every later phase is built with.
+
 ## Alpine's security database, not NVD or OSV
 
 [`kdos cve`](../04-programs/kdos-command.md#kdos-cve) answers from a vendored, pruned copy of
@@ -529,8 +571,9 @@ The pre-push hook sits in `script/hooks/` and nowhere else, because every clone 
 `core.hooksPath` pointing at that directory, and a hook at any other path would silently not run on
 any of them.
 
-The cost is more phases and more snapshots. Every phase up to `50_desktop` saves a compressed,
-cumulative copy of the tree when it finishes, so each restore point is paid for in disk; a phase
+The cost is more phases and more snapshots. Every phase up to `50_desktop` saves a compressed
+layer of what it changed in the tree when it finishes, on top of the whole tree the first phase
+saved, so each restore point is paid for in disk; a phase
 opts out by leaving `KDOS_SNAPSHOT_PATHS` empty, as `60_kernel` and `70_image` do. A list that names every port it installs is also longer
 than one that names only what it wants, and a new dependency that crosses a phase boundary fails
 preflight until a list moves. Some real edges in the graph become visible this way: `podman`,

@@ -11,6 +11,8 @@
 
 autoreconf -f -i
 
+export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
+
 # A RAW FILE IS THE ONLY COPY AND NOTHING ELSE HERE READS IT. Every camera
 # above the cheapest writes CR3, NEF, ARW or DNG, and the JPEG beside it is a
 # lossy preview the camera made — so an archive of raws with no decoder is an

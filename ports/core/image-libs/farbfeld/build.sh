@@ -14,5 +14,5 @@
 # ff2pam and ff2ppm hand it to anything that speaks netpbm. Nothing is linked
 # into a library, so a missing codec is a missing pair of programs rather than
 # a build failure.
-make PREFIX=/usr MANPREFIX=/usr/share/man
+make PREFIX=/usr MANPREFIX=/usr/share/man CFLAGS="$CFLAGS -std=c99 -Wall -Wextra" LDFLAGS="$LDFLAGS"
 make DESTDIR=$PKG PREFIX=/usr MANPREFIX=/usr/share/man install

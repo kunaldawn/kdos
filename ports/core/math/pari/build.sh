@@ -24,6 +24,7 @@
 # back to SVG only when it finds neither.
 # --mt=pthread is what makes parapply, parfor and the other par* functions run
 # on more than one core; without it they are serial.
+export CFLAGS="${CFLAGS/-O2/-O3}"
 ./Configure --prefix=/usr --with-gmp --with-readline --graphic=svg --mt=pthread
 make all
 make DESTDIR=$PKG install

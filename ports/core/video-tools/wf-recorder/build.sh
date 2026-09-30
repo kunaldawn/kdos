@@ -21,7 +21,7 @@
 # to pick formats. The patch asks avcodec_get_supported_config() for the same
 # lists, and keeps the fields for a libavcodec older than 61.13.100.
 patch -p1 -i "$PORT_SRC/ffmpeg-supported-config.patch"
-meson setup build --prefix=/usr --libdir=lib --buildtype=release \
+meson setup build --prefix=/usr --libdir=lib --buildtype=release -Db_ndebug=if-release \
 	-Dpipewire=enabled \
 	-Dpulse=disabled \
 	-Ddefault_audio_backend=pipewire

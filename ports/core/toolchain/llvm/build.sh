@@ -26,8 +26,8 @@ cmake -S llvm -B build -G Ninja \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D LLVM_HOST_TRIPLE="$(cc -dumpmachine)" \
 	-D LLVM_DEFAULT_TARGET_TRIPLE="$(cc -dumpmachine)" \
-	-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
-	-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -include cstdint" \
+	-D CMAKE_C_FLAGS_RELEASE="$CFLAGS -DNDEBUG" \
+	-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -include cstdint -DNDEBUG" \
 	-D LLVM_BINUTILS_INCDIR=/usr/include \
 	-D LLVM_BUILD_LLVM_DYLIB=OFF \
 	-D LLVM_LINK_LLVM_DYLIB=OFF \

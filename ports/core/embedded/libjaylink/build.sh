@@ -25,7 +25,7 @@ meson setup build \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	-Dwerror=false \
 	-Dusb=enabled
 meson compile -C build

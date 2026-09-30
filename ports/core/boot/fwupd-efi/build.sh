@@ -24,7 +24,7 @@
 # The efi_sbat_* values are the distribution's line in the binary's .sbat
 # section, which Secure Boot revocation reads. KDOS boots with Secure Boot off,
 # but the section still names who built the binary.
-meson setup build --prefix=/usr --libdir=lib --buildtype=release \
+meson setup build --prefix=/usr --libdir=lib --buildtype=release -Db_ndebug=if-release \
 	-Dgenpeimg=disabled \
 	-Defi_sbat_distro_id=kdos \
 	-Defi_sbat_distro_summary=KDOS \

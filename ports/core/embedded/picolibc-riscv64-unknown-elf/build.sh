@@ -18,11 +18,12 @@
 # the compiler, the archiver and the host machine, so there is nothing here to
 # invent — and inventing one is how a cross build silently picks up the host's
 # own gcc.
+unset CFLAGS CXXFLAGS LDFLAGS
 meson setup build \
 	--cross-file scripts/cross-riscv64-unknown-elf.txt \
 	--prefix=/usr/riscv64-unknown-elf \
 	-Dsysroot-install=true \
 	-Dtests=false \
-	--buildtype=release
+	--buildtype=release -Db_ndebug=if-release
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

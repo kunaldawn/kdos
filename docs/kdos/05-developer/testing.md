@@ -164,7 +164,12 @@ blocks fall into these groups, in roughly this order:
    dependency without `.pkgsha`, a truncated stored file and `-f` all build; a job count does
    not; an undeclared link is recorded as `X:` and a change to it misses; check mode logs a
    port that differs on every build and exits 0; `store gc` evicts the oldest), the binary
-   host's signed index and delta packages; `kdosbuild` running a synthetic two-phase build end to end; and `kdosbuild` running no
+   host's signed index and delta packages; `kdosbuild` running a synthetic two-phase build end to end;
+   `kdosbuild` writing a three-phase build's snapshots as a full archive and then layers, each
+   restored and compared entry by entry with the tree its phase left, a retaken phase written full
+   with the old chain held until nothing needs it, a deleted base held for its dependants and
+   freed after them, a schema-3 snapshot restored and layered on, and a snapshot whose base is gone
+   refused as unusable; and `kdosbuild` running no
    step for a port installed and current in a chroot package phase over a real database, never
    announcing one as running, and running it after all when its recipe is edited while an earlier
    step of the phase runs; and `kdosbuild --port-jobs` over a stub `kpkg`: the order run first,

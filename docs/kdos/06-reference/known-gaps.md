@@ -848,8 +848,10 @@ together with those ports, whose release bumps reinstall the names.
 The thirteen phases under `script/phases/`, the five userland phases `40_lang` to `44_apps` and the
 ports tree filed on shelves pass preflight, `testing/phaseclosure.py` and the self-test, and no
 build has run through them. How long each phase takes and how large its snapshot is are not
-measured. Every phase up to `50_desktop` takes a snapshot; `60_kernel` and `70_image` leave
-`KDOS_SNAPSHOT_PATHS` empty in their `phase.env` and are re-run instead of restored.
+measured; layered snapshots have been measured only on a synthetic ten-phase tree, where they came
+to 23% of full ones. Every phase up to `50_desktop` takes a snapshot, the first of each path whole
+and the rest as layers; `60_kernel` and `70_image` leave `KDOS_SNAPSHOT_PATHS` empty in their
+`phase.env` and are re-run instead of restored.
 
 ### Some command-line programs build after Qt
 
@@ -967,7 +969,8 @@ most machines. `testing/devdeps-image.sh` builds a container where they run.
 ### No test builds the distribution
 
 `testing/selftest.sh` runs the orchestrator end to end against a synthetic two-phase tree (forking
-steps, writing logs, taking and restoring snapshots), and `kdosbuild --selftest` asserts its view
+steps, writing logs, taking and restoring snapshots) and a three-phase one whose snapshots are
+layers, each restored and compared entry by entry with the tree it came from, and `kdosbuild --selftest` asserts its view
 geometry and log classifier. `testing/selftest.sh` also builds `kpkg` and drives it against
 synthetic, source-less ports, covering reproducible packaging, shared indexes, file ownership,
 recipe-hash skipping, binhost signing and package deltas. A package built twice to compare its

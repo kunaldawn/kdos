@@ -17,7 +17,7 @@ patch -p1 -i "$PORT_SRC/poor-text-rendering-20260312-a17c0455.patch"
 
 # Lua, PCRE2 and FreeType are ports; wrap-mode=nofallback turns a missing one
 # into a configure error instead of a static copy from subprojects/.
-meson setup build --prefix=/usr --libdir=lib --buildtype=release \
+meson setup build --prefix=/usr --libdir=lib --buildtype=release -Db_ndebug=if-release \
 	--wrap-mode=nofallback \
 	-Duse_system_lua=true \
 	-Ddirmonitor_backend=inotify

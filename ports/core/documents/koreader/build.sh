@@ -33,9 +33,10 @@ patch -p1 -i "$PORT_SRC/koreader-sh-enable-ko-multiuser.patch"
 patch -p1 -i "$PORT_SRC/koreader-sdl-app-id.patch"
 
 # TARGET empty is the desktop ("emulator") build; KODEBUG empty is release.
+# TARGET_CFLAGS empty replaces the emulator build's -march=native.
 # The libraries base builds are private to KOReader and install under
 # /usr/lib/koreader; the window and audio come from the system's SDL3.
-make TARGET= KODEBUG= VERBOSE=
+make TARGET= KODEBUG= VERBOSE= TARGET_CFLAGS=
 
 install -d "$PKG/usr/lib" "$PKG/usr/bin"
 cp -RL koreader-emulator-*/koreader "$PKG/usr/lib/koreader"

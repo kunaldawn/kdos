@@ -13,7 +13,7 @@
 # an X11 client under Xwayland, and every build that asks for OpenGL::GL or
 # -lGL, needs them. libGLX dispatches to mesa's libGLX_mesa. A Wayland client
 # reaches desktop GL through libOpenGL and libEGL and never loads libGLX.
-meson setup build --buildtype=release \
+meson setup build --buildtype=release -Db_ndebug=if-release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-D x11=enabled \
 	-D glx=enabled \

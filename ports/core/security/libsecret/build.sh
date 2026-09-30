@@ -18,7 +18,7 @@
 export CFLAGS="$CFLAGS -include fcntl.h"
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release \
+	--buildtype=release -Db_ndebug=if-release \
 	--wrap-mode=nodownload \
 	-Dcrypto=libgcrypt \
 	-Dintrospection=true \

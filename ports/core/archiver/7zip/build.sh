@@ -10,9 +10,11 @@
 
 # Alone2 is the one bundle that builds 7zz, the standalone program with every
 # format and codec compiled in; the other bundles need a 7z.so loaded beside
-# them. The makefile assigns CFLAGS and CXXFLAGS itself, so the tree's flags
-# ride in through CFLAGS_BASE2 and CXXFLAGS_BASE2, the two slots it leaves
-# unassigned. Without them the reproducibility flags never reach the compiler.
+# them. The makefile assigns CFLAGS, CXXFLAGS and LDFLAGS itself, so the
+# tree's flags ride in through CFLAGS_BASE2, CXXFLAGS_BASE2 and
+# LDFLAGS_STATIC_3, the slots it leaves unassigned. Without them the
+# reproducibility flags never reach the compiler and the link flags never
+# reach the linker.
 #
 # The makefile also compiles with -Werror, and GCC 16's -Warray-bounds reports
 # the progress object ProgressUtils.h builds in HandlerCont.cpp as outside its
@@ -20,6 +22,7 @@
 # warning still stops the build.
 export CFLAGS_BASE2="$CFLAGS -Wno-error=array-bounds"
 export CXXFLAGS_BASE2="$CXXFLAGS -Wno-error=array-bounds"
+export LDFLAGS_STATIC_3="$LDFLAGS"
 cd CPP/7zip/Bundles/Alone2
 make -f ../../cmpl_gcc.mak
 install -Dm755 b/g/7zz "$PKG/usr/bin/7zz"
