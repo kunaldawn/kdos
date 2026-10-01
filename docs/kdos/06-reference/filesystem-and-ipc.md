@@ -694,8 +694,9 @@ resolves a source and when the pre-push hook refuses a push are in
 | `KDOS_SOURCES_REPO` | `kunaldawn/kdos` | The GitHub repository whose releases hold the source archive |
 | `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | Where archived sources are downloaded from, as `$KDOS_SOURCES_BASE/<tag>/<asset>` (parts as `<asset>.partNN`), with the tag and asset from the index. A directory laid out the same way works as an archive disk. Set it empty to fetch from upstream only |
 | `KDOS_SRCCACHE` | `ports/.srccache` | The local source cache, one file per hash, stored as `sha256-<first two hex digits>/<hash>`. Point two checkouts at one cache to download each file once |
-| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index saying which archive release and asset hold each hash; read only in format 2 |
-| `KDOS_RELEASE_CAP` | `1000` | Assets one archive release may hold, each part of a split file counted; `ports/publish` stops on a file that would pass it. GitHub's asset limit |
+| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index saying which archive volume (`sources-<N>`, or a legacy `src-<shelf>`) and asset hold each hash; read only in format 2 |
+| `KDOS_RELEASE_CAP` | `1000` | Assets one archive volume may hold, each part of a split file counted; `ports/publish` puts a file its volume has no room for into the lowest-numbered volume with room, or a new one. GitHub's asset limit |
+| `KDOS_VOLUME_FILL` | `650` | The assets per volume `ports/publish --plan` packs shelves to when it gives shelves without a volume one |
 | `KDOS_PART_SIZE` | `1992294400` (1,900 MiB) | A file larger than this is stored in parts of this size, under GitHub's 2 GiB asset limit. Changed only by tests |
 | `FETCH_JOBS` | `1` | How many ports `ports/fetch` (and `make fetch`, `make fetch-check`) resolves or checks at once. Two ports naming one hash take turns on it; vendor bundles are still generated one at a time |
 | `KDOS_FETCH_HOST=1` | unset | Run `ports/fetch` entirely on this machine, generating vendor bundles with its own toolchains, instead of handing missing bundles to the fetch container |

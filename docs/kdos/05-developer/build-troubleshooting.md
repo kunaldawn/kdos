@@ -79,6 +79,7 @@ lists everything preflight checks.
 | `cannot generate <bundle> without its source`, `this needs docker or podman`, `failed to build the recipe reader`, or `--tree never generates` | [A vendor bundle that cannot be generated](#a-vendor-bundle-that-cannot-be-generated) |
 | `pre-push: the ports layout is broken at <commit>:` | [Pre-push refused: the ports layout](#pre-push-refused-the-ports-layout) |
 | `pre-push: these sources are named by a recipe but not in the archive at that commit` | [Pre-push refused: an unpublished source](#pre-push-refused-an-unpublished-source) |
+| Preflight: `shelf <shelf> has no volume`, or `ports/publish` saying `shelf <shelf> has no volume; run ports/publish --plan` | [A shelf with no volume](#a-shelf-with-no-volume) |
 | `Failed to download` for every file, `is in no cache, and the archive is off`, or `pre-push: cannot reach the source archive` | [Fetch cannot reach the archive](#fetch-cannot-reach-the-archive) |
 | `package resolution failed - see build/logs/.../expansion.log` | [A package list that does not resolve](#a-package-list-that-does-not-resolve) |
 | `port <name> is filed twice: <path> and <path>`, or `is in two places` | [A port filed twice](#a-port-filed-twice) |
@@ -149,7 +150,7 @@ lists everything preflight checks.
 Upstream sources are not in git. A recipe names each source by its `sha256 =` line, and
 `make fetch` (which runs `ports/fetch`) resolves every hash from the first place that has a copy
 that verifies: the port directory, the local cache `ports/.srccache`, the `kunaldawn/kdos` source
-archive (one pre-release per shelf, `src-<shelf>`, located through the committed index
+archive (numbered pre-releases, `sources-<N>`, located through the committed index
 `ports/sources.idx`), and finally the URL in the
 recipe's `source =` line. `make fetch` is the only networked step. `make build` runs its container
 with `--network none` and mounts `ports/` read-only, so the build can only read what the fetch has
@@ -330,7 +331,7 @@ preflight was not run. `KDOS_SKIP_LAYOUT_CHECK=1` skips this check only, and
 
 ```text
 pre-push: these sources are named by a recipe but not in the archive at that commit:
-  <port>/<file> — indexed in src-<shelf> as <asset> but absent  (<hash>)
+  <port>/<file> — indexed in sources-<N> as <asset> but absent  (<hash>)
 pre-push: publish them and commit the index first:  ports/publish <port> && git commit ports/sources.idx
 ```
 
@@ -352,6 +353,20 @@ bypassed and name the ports in your pull request, so a maintainer publishes them
 ```sh
 KDOS_SKIP_PUBLISH_CHECK=1 git push …
 ```
+
+### A shelf with no volume
+
+```text
+ports/shelves                                              FAIL
+    shelf <shelf> has no volume (field 2 is a positive integer; make publish-plan assigns one)
+```
+
+The second field of every `ports/shelves` line is the number of the source-archive volume,
+`sources-<N>`, that keeps the shelf's files, and `ports/publish` cannot place a file of a shelf
+without one. A new shelf is written with `-` there, or with nothing. Run `make publish-plan`, which
+gives a volume to each shelf without one and changes no other line, and commit `ports/shelves`
+with the shelf. `make publish-plan PUBLISH_ARGS=--dry-run` shows the plan first. See
+[Publishing sources](writing-ports.md#publishing-sources).
 
 ### Fetch cannot reach the archive
 

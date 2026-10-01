@@ -3,10 +3,13 @@
 #
 #   <sha256> <tag> <asset> <port>/<file> [parts=<N>:<h1>,<h2>,…,<hN>]
 #
-# <tag> is the GitHub release on kunaldawn/kdos that holds the file: src-<shelf>
-# for the shelf of the first port that names it, or src-attic for a file only
-# old history names. <asset> is the name GitHub stored, which is what the
-# download URL uses; the file's own name is <port>/<file>. A file larger than
+# <tag> is the GitHub release on kunaldawn/kdos that holds the file: sources-<N>,
+# the volume ports/shelves gives the shelf of the first port that names it, or
+# another volume when that one was full. A src-<name> tag is the older layout,
+# one release per shelf, still read until ports/publish --rehome moves the file.
+# <asset> is the name GitHub stored, which is what the download URL uses:
+# <shelf>--<file>, longer when that is taken, attic--<file> for a file only old
+# history names. The file's own name is <port>/<file>. A file larger than
 # 1900 MiB is stored as <asset>.part01 … <asset>.partNN, whose SHA-256s are listed in
 # order after parts=. ports/fetch joins them and checks <sha256> over the whole.
 # One line per hash, sorted by hash. Written by ports/publish; the only hand edit

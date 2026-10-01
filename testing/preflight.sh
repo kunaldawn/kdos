@@ -136,13 +136,13 @@ for _e in ports/core/* ports/core/.[!.]*; do
     _lay=$((_lay + 1))
 done
 
-# The closed shelf list: `<id> <description>` per line.
+# The closed shelf list: `<id> <volume> <description>` per line.
 declare -A SHELF
 if [ -z "$(src_shelves)" ]; then
     bad "ports/shelves" "ports/shelves is missing or lists no shelf"
     _lay=$((_lay + 1))
 else
-    while read -r _s _rest || [ -n "$_s" ]; do
+    while read -r _s _vol _rest || [ -n "$_s" ]; do
         case "$_s" in ''|\#*) continue ;; esac
         if [ -n "${SHELF[$_s]:-}" ]; then
             bad "ports/shelves" "lists '$_s' twice"
@@ -154,6 +154,13 @@ else
         if ! printf '%s' "$_s" | grep -qxE '[a-z0-9][a-z0-9-]*'; then
             bad "ports/shelves" "shelf $_s: an id is lowercase letters, digits and -"
             _lay=$((_lay + 1))
+        fi
+        # The volume is the source-archive release the shelf's files go to;
+        # ports/publish cannot place a file of a shelf without one.
+        if ! printf '%s' "$_vol" | grep -qxE '[1-9][0-9]*'; then
+            bad "ports/shelves" "shelf $_s has no volume (field 2 is a positive integer; make publish-plan assigns one)"
+            _lay=$((_lay + 1))
+            case "$_vol" in -) ;; *) _rest="$_vol${_rest:+ $_rest}" ;; esac
         fi
         [ -n "$_rest" ] || { bad "ports/shelves" "shelf $_s has no description"; _lay=$((_lay + 1)); }
         # <portdir>/../../libs is the tree a source-less port hashes.
@@ -1656,6 +1663,11 @@ if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
             bad "ports/sources.idx" "$(printf '%s\n' "$pa_idx_bad" | grep -c .) problem(s): $(printf '%s\n' "$pa_idx_bad" | head -3 | tr '\n' ';')…"
         else
             note "ports/sources.idx" "format 2, $pa_idx_n archived files ($pa_idx_p in parts), well-formed"
+            # A legacy src-<name> line still fetches; it is a move not yet
+            # made, not a fault.
+            pa_idx_old=$(src_index_legacy ports/sources.idx)
+            [ "$pa_idx_old" = 0 ] ||
+                note "ports/sources.idx" "WARNING: $pa_idx_old lines in legacy src-* releases; make publish-rehome moves them"
         fi
     else
         note "ports/sources.idx" "absent — nothing archived yet"

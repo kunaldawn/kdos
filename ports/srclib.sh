@@ -13,19 +13,27 @@
 # does this hash live", "which hashes does this port name" and "is this index
 # well-formed", so the callers cannot disagree about any of them.
 #
-# THE ARCHIVE IS ONE PRE-RELEASE PER SHELF OF THE MAIN REPOSITORY, tagged
-# `src-<shelf>`, plus `src-attic` for files that only old history names. An
-# archived file is the asset
+# THE ARCHIVE IS A RUN OF NUMBERED VOLUMES, pre-releases of the main
+# repository tagged `sources-1`, `sources-2`, … . ports/shelves gives every
+# shelf the volume that holds its files, so one volume holds the files of a
+# run of shelves; a file that finds its volume full is kept in another one,
+# and a file no current recipe names is kept as `attic--<file>`. An archived
+# file is the asset
 #
-#     https://github.com/kunaldawn/kdos/releases/download/src-<shelf>/<asset>
+#     https://github.com/kunaldawn/kdos/releases/download/sources-<N>/<asset>
 #
-# where <asset> is the file's own name as GitHub stored it — `zstd-1.5.7.tar.gz`
-# — or `<port>--<file>` or `<port>--<hash12>--<file>` when a shorter name is
-# already taken in that release. GitHub rewrites every character outside
-# [A-Za-z0-9._-] in an asset name, so the index records the name GitHub
-# returned, never the one asked for. The name is only an address: the
-# identity is the recipe's `sha256 =`, and a file is used only after it hashes
-# to that, whatever path it came by.
+# where <asset> is `<shelf>--<file>` as GitHub stored it —
+# `archiver--zstd-1.5.7.tar.gz` — or `<shelf>--<port>--<file>` or
+# `<shelf>--<port>--<hash12>--<file>` when a shorter name is already taken in
+# that volume. GitHub rewrites every character outside [A-Za-z0-9._-] in an
+# asset name, so the index records the name GitHub returned, never the one
+# asked for. The name is only an address: the identity is the recipe's
+# `sha256 =`, and a file is used only after it hashes to that, whatever path
+# it came by.
+#
+# A tag `src-<name>` is the archive's older layout, one release per shelf.
+# Its index lines are read and fetched as any other until `ports/publish
+# --rehome` has moved every file into a volume.
 #
 # A FILE LARGER THAN $SRC_PART_SIZE BYTES IS STORED IN PARTS, `<asset>.part01`
 # … `<asset>.partNN`, each under GitHub's 2 GiB per-asset limit. ports/fetch
@@ -46,9 +54,10 @@
 # name is not archived as far as fetch is concerned, and comes from upstream.
 #
 # APPEND-ONLY. An asset is never replaced or deleted once its digest is
-# verified, with two deliberate exceptions in ports/publish: --rehome deletes
-# an old copy only after the new one is verified and pushed in the index, and
-# --prune=yes-delete deletes files no recipe at any v* tag names. A five-year-old
+# verified, with three deliberate exceptions in ports/publish: --rehome
+# deletes an old copy only after the new one is verified and pushed in the
+# index, --prune=yes-delete deletes files no recipe at any v* tag names, and
+# --retire deletes a `src-<name>` release only once it holds no asset. A five-year-old
 # checkout otherwise finds the exact bytes it was written against, fetched
 # with this tree's index through `ports/fetch --tree`.
 #
@@ -99,8 +108,8 @@ src_is_hash() {
 }
 
 # At most this many assets in one archive release, parts counted one by one:
-# GitHub's 1000-asset limit. A shelf that reaches it makes ports/publish stop
-# on that file; there is no overflow release.
+# GitHub's 1000-asset limit. A file whose volume would pass it goes to the
+# lowest-numbered volume with room, or opens the next volume.
 SRC_RELEASE_CAP="${KDOS_RELEASE_CAP:-1000}"
 
 # A file larger than this is stored in parts of this size: 1900 MiB, under
@@ -117,10 +126,16 @@ esac
 # Line 1 of a format-2 index, exactly. An index without it is not read.
 SRC_INDEX_MARKER='# kdos-sources-index 2'
 
-# src_release_tag <shelf> — the tag of the archive release holding <shelf>'s
-# files; `attic` for files no current port names.
-src_release_tag() {
-    printf 'src-%s\n' "$1"
+# src_volume_tag <N> — the tag of archive volume <N>.
+src_volume_tag() {
+    printf 'sources-%s\n' "$1"
+}
+
+# src_tag_volume <tag> — the volume number of a volume tag; fails for any
+# other tag, a legacy `src-<name>` one included.
+src_tag_volume() {
+    [[ $1 =~ ^sources-([1-9][0-9]*)$ ]] || return 1
+    printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
 # src_part_name <asset> <i> — the asset name of part <i> of a split file.
@@ -186,7 +201,7 @@ src_index_load() {
     while read -r h tag asset name parts extra; do
         src_is_hash "$h" || continue
         [ -z "$extra" ] || continue
-        [[ $tag =~ ^src-[a-z0-9][a-z0-9-]*$ ]] || continue
+        [[ $tag =~ ^(sources-[1-9][0-9]*|src-[a-z0-9][a-z0-9-]*)$ ]] || continue
         [[ $asset =~ ^[A-Za-z0-9._-]+$ ]] || continue
         [[ $name =~ ^[^/]+/.+$ ]] || continue
         n=1
@@ -228,7 +243,8 @@ src_urls() {
 #   - line 1 is $SRC_INDEX_MARKER; comments come before every data line
 #   - a data line is <hash> <tag> <asset> <port>/<file> [parts=N:<h1>,…,<hN>],
 #     N from 2 to 99 and exactly N part hashes
-#   - <tag> is src-<shelf> for a shelf ports/shelves lists, or src-attic
+#   - <tag> is sources-<N>, N a positive integer, or a legacy src-<name>,
+#     which src_index_legacy counts
 #   - a hash is field 1 of one line only, and no part hash is any line's
 #     field 1
 #   - within a tag every asset name is unique ignoring case; a split file
@@ -241,13 +257,8 @@ src_index_problems() {
     [ -f "$f" ] || return 0
     # No regex intervals: not every awk has them, and one without would pass
     # every line.
-    LC_ALL=C awk -v marker="$SRC_INDEX_MARKER" -v shelves="$(src_shelves | tr '\n' ' ')" '
+    LC_ALL=C awk -v marker="$SRC_INDEX_MARKER" '
         function ishash(x) { return length(x) == 64 && x ~ /^[0-9a-f]+$/ }
-        BEGIN {
-            n = split(shelves, s, " ")
-            for (i = 1; i <= n; i++) if (s[i] != "") okt["src-" s[i]] = 1
-            okt["src-attic"] = 1
-        }
         NR == 1 {
             if ($0 != marker) print "line 1 is not \"" marker "\""
             next
@@ -260,7 +271,8 @@ src_index_problems() {
             data++
             if ($2 ~ /^[0-9]+$/) { print "line " NR ": a format-1 line (a release number where the tag goes)"; next }
             ok = (NF == 4 || NF == 5) && $0 !~ /^ | $|  / && ishash($1) &&
-                 $2 ~ /^src-[a-z0-9][a-z0-9-]*$/ && $3 ~ /^[A-Za-z0-9._-]+$/ &&
+                 ($2 ~ /^sources-[1-9][0-9]*$/ || $2 ~ /^src-[a-z0-9][a-z0-9-]*$/) &&
+                 $3 ~ /^[A-Za-z0-9._-]+$/ &&
                  $4 ~ /^[^\/]+\/./
             np = 0; m = 0
             if (ok && NF == 5) {
@@ -274,7 +286,6 @@ src_index_problems() {
             }
             if (!ok) { print "line " NR ": malformed"; next }
             h = $1; tag = $2; asset = $3
-            if (!(tag in okt)) print "line " NR ": " tag " is not src-<a shelf in ports/shelves> or src-attic"
             if (h in key) print "line " NR ": " h " is also on line " key[h]
             else key[h] = NR
             if (prev != "" && h < prev) print "line " NR ": not sorted by hash"
@@ -295,6 +306,15 @@ src_index_problems() {
         END {
             for (p in parth) if (p in key) print "line " parth[p] ": part hash " p " is also the hash of line " key[p]
         }' "$f"
+}
+
+# src_index_legacy [file] — how many data lines still name a legacy
+# `src-<name>` release. They fetch as any other line; ports/publish --rehome
+# moves each into a volume.
+src_index_legacy() {
+    local f=${1:-$KDOS_SOURCES_INDEX}
+    [ -f "$f" ] || { echo 0; return 0; }
+    awk '/^[0-9a-f]/ && $2 ~ /^src-/ { n++ } END { print n + 0 }' "$f"
 }
 
 # src_cache_path <hash> — the cache splits by leading byte only to keep each
@@ -464,15 +484,28 @@ src_port_shelf() {
     printf '%s\n' "${d##*/}"
 }
 
+# A ports/shelves line is `<id> <volume> <description>`. <volume> is a
+# positive integer, or `-` for a shelf ports/publish --plan has not yet given
+# one; a line whose second word is neither has no volume and its description
+# starts there.
+
 # src_shelf_desc <shelf> — the description ports/shelves gives <shelf>,
-# everything after its id. Fails for a shelf it does not list.
+# everything after its id and volume. Fails for a shelf it does not list.
 src_shelf_desc() {
     [ -f "$SRCLIB_PORTS/shelves" ] || return 1
     awk -v s="$1" '
         !/^[[:space:]]*(#|$)/ && $1 == s {
-            if (NF > 1) sub(/^[[:space:]]*[^[:space:]]+[[:space:]]+/, "")
-            else $0 = ""
+            if ($2 ~ /^([1-9][0-9]*|-)$/) n = 2; else n = 1
+            for (i = 1; i <= n; i++) sub(/^[[:space:]]*[^[:space:]]+/, "")
+            sub(/^[[:space:]]+/, "")
             print; found = 1; exit
         }
         END { exit !found }' "$SRCLIB_PORTS/shelves"
+}
+
+# src_shelf_volumes — "<shelf> <volume>" for every shelf ports/shelves gives
+# a volume, one per line, in file order.
+src_shelf_volumes() {
+    [ -f "$SRCLIB_PORTS/shelves" ] || return 0
+    awk '!/^[[:space:]]*(#|$)/ && $2 ~ /^[1-9][0-9]*$/ { print $1, $2 + 0 }' "$SRCLIB_PORTS/shelves"
 }

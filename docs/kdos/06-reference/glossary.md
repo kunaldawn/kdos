@@ -683,7 +683,7 @@ session](../03-architecture/session.md).
 
 The subject directory an upstream *port* is filed under: `ports/core/<shelf>/<name>/`, such as
 `ports/core/wl/wlroots/`. There are 102, a closed list kept in `ports/shelves` with one line each
-saying what belongs on it. The shelf is only where the recipe is filed: a port is named by its bare
+giving the shelf's source-archive volume and saying what belongs on it. The shelf is only where the recipe is filed: a port is named by its bare
 name everywhere, and no recipe key records the shelf, so moving a port between shelves changes
 no hash and no package: only its path, and the shelf file of its phase's package list that names
 it. The *package lists* and [the ports catalogue](ports-catalogue.md) are grouped
@@ -744,10 +744,11 @@ its chain and every layer above it in turn. `--full-snapshots` writes none. See
 ### source archive
 
 The store of every upstream source file the recipes name: release assets of the GitHub repository
-`kunaldawn/kdos`, one pre-release per shelf tagged `src-<shelf>` plus `src-attic` for files only
-old history names, each asset under the file's own name and each file checked against its SHA-256
-before use. A file larger than 1,900 MiB is stored in parts. Nothing in it is replaced, and nothing is
-removed except by `ports/publish --rehome` and `--prune=yes-delete`. `make fetch` reads it through
+`kunaldawn/kdos`, in numbered pre-releases, the volumes `sources-1`, `sources-2` and on, each holding
+the shelves `ports/shelves` maps to it. An asset is named `<shelf>--<file>`, or `attic--<file>` for a
+file only old history names, and each file is checked against its SHA-256 before use. A file larger
+than 1,900 MiB is stored in parts. Nothing in it is replaced, and nothing is removed except by
+`ports/publish --rehome` and `--prune=yes-delete`. `make fetch` reads it through
 *sources.idx*; `ports/publish` adds to it. See [Packaging](../03-architecture/packaging.md#where-sources-come-from) and [Writing
 ports](../05-developer/writing-ports.md#publishing-sources).
 

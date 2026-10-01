@@ -62,15 +62,16 @@ changes the hash and rebuilds the port.
 ### Shelves, and how a port is found
 
 The `games-rpg` in the path is the port's **shelf**: the subject directory it is filed under. The
-shelves are a closed list, `ports/shelves`, one line per shelf giving its id and what belongs on it;
+shelves are a closed list, `ports/shelves`, one line per shelf giving its id, the source-archive
+volume that keeps its files, and what belongs on it;
 [Choosing a shelf](#choosing-a-shelf) is how a new port is placed. A port's identity is its bare
 name, never its shelf. `name =` equals the directory's name, one name is one port across every
 shelf and every `src/` area, and nothing that names a port (a `depends` line, a package list,
 `kpkg`, `ports/fetch`, `ports/publish`) spells the shelf. Moving a port to another shelf is one
 `git mv ports/core/<old>/<name> ports/core/<new>/`: the recipe hash covers the port's files and not
 their path, and the installed database, the binary host and `ports/sources.idx` are keyed by name or
-by hash; the port's archived sources stay in the old shelf's release, where the index still finds
-them, until `ports/publish --rehome` moves them. The one exception is a `.gitignore` pattern for files generated inside one port's
+by hash; the port's archived sources stay where they are, under the old shelf's name and in its
+volume, where the index still finds them, until `ports/publish --rehome` moves them. The one exception is a `.gitignore` pattern for files generated inside one port's
 directory, which spells the shelf (`/ports/core/graphics/digikam/*.jpeg`); moving such a port means
 editing that line too, and `testing/preflight.sh` fails with "names a port directory that holds no
 port" until it is. For the same reason, prose, comments and notes
@@ -988,8 +989,10 @@ line saying what belongs on each. Apply these rules in order; the first that mat
     [The shelves](../06-reference/ports-catalogue.md#the-shelves) in the ports catalogue lists what
     each shelf holds today, which is the quickest way to see where a port's neighbours are.
 
-A new shelf is a new line in `ports/shelves` and a new directory. Its id is lowercase letters,
-digits and `-`; it is never `libs`, because a source-less port hashes `<portdir>/../../libs` and a
+A new shelf is a new line in `ports/shelves`, `<id> - <description>`, and a new directory; `make
+publish-plan` then replaces the `-` with the shelf's source-archive volume (see [Volumes and
+shelves](#publishing-sources)), and preflight fails the line until it has one. Its id is
+lowercase letters, digits and `-`; it is never `libs`, because a source-less port hashes `<portdir>/../../libs` and a
 shelf by that name would be hashed into those ports; never `core`; and never the name of a port,
 which could not be told from a loose port. Preflight and the [pre-push hook](#the-pre-push-hook)
 refuse a tree that breaks any of this. A listed shelf must also hold at least one port, which
@@ -2163,9 +2166,10 @@ its one-a-second limit like any other request, and a 429 from it waits ten secon
 ## Publishing sources
 
 Upstream archives are not committed. Git carries the recipe, and the archive it names is a release
-asset in the `kunaldawn/kdos` repository: one pre-release per shelf, tagged `src-<shelf>`, holds
-that shelf's files under their own names, and the committed file `ports/sources.idx` says which
-release and which asset hold each hash. That is where every other checkout's `make fetch` looks for
+asset in the `kunaldawn/kdos` repository: numbered pre-releases, the volumes `sources-1`,
+`sources-2` and on, hold the files of the shelves `ports/shelves` maps to each, as
+`<shelf>--<file>`, and the committed file `ports/sources.idx` says which volume and which asset
+hold each hash. That is where every other checkout's `make fetch` looks for
 it first (see [Where sources come from](developing.md#where-sources-come-from)). A new or bumped
 source therefore has to reach the archive before the commit naming it is pushed, or the commit
 builds on the machine that wrote it and nowhere else. The same holds for the index line saying
@@ -2210,8 +2214,10 @@ refuses the unhashed archive and `ports/publish` has nothing to publish.
 
 ```text
 ports/publish [--dry-run | --check] [--history] [port…]
+ports/publish --plan [--dry-run]
 ports/publish --describe [--dry-run]
 ports/publish --rehome [--dry-run] [port…]
+ports/publish --retire [--dry-run]
 ports/publish --orphans [--prune=yes-delete]
 ports/publish --freeze <kdos-tag> [--dry-run | --check]
 ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned] [--publish] [--dry-run]
@@ -2232,20 +2238,25 @@ still missing, and an interrupted run is resumed by running it again. Only a 404
 missing; any other status, or a network failure, stops the run with `archive unreachable`,
 because an outage proves nothing about what the archive holds.
 
-**Which release.** Recipes are read shelf by shelf and port by port, both in C-locale order. A
-hash belongs to the shelf of the first port that names it, goes into release `src-<shelf>`, and
-takes its label `<port>/<file>` from that port. A missing release is created as a pre-release with
-`make_latest` off, and a `src-*` release found to be a full release is changed into a
-pre-release, so the repository's latest release is always a KDOS system release. A release holds
-at most 1,000 assets, parts counted one by one; a file that would pass that fails, and there is no
-overflow release. A file the index names but GitHub lacks goes back to the release and the asset
-name its line records.
+**Which volume.** Recipes are read shelf by shelf and port by port, both in C-locale order. A
+hash belongs to the shelf of the first port that names it, goes into that shelf's volume, the
+number the second field of its `ports/shelves` line gives, and takes its label `<port>/<file>` from
+that port. A file only old history names (`--history`) is shelved as `attic` and goes into the
+highest volume. A missing volume is created as a pre-release with `make_latest` off, titled
+`Sources N: <first shelf> … <last shelf>` after the shelves mapped to it, and a volume found to be a
+full release is changed into a pre-release, so the repository's latest release is always a KDOS
+system release. A release holds at most 1,000 assets, parts counted one by one. A file its volume
+has no room for goes to the lowest-numbered volume with room, or else opens the next volume, and
+the run prints a `spilled` line; the index records the volume it went to, so `make fetch` finds it
+there, and `--rehome` moves it home once its own volume has room. A file the index names in a
+volume but GitHub lacks goes back to the volume and the asset name its line records.
 
-**Which name.** A file is stored under its own name, as GitHub will store it: every character
-outside `[A-Za-z0-9._-]` becomes `.`, so `libsigc++2-2.12.1.tar.xz` is stored as
-`libsigc..2-2.12.1.tar.xz`. When that name is taken in the release, by another hash's index line
-(compared ignoring case) or by an asset of other bytes, the next of `<port>--<file>` and
-`<port>--<first 12 hex digits of the hash>--<file>` is tried. The upload carries the label
+**Which name.** A file is stored as `<shelf>--<file>`, as GitHub will store it: every character
+outside `[A-Za-z0-9._-]` becomes `.`, so `libsigc++2-2.12.1.tar.xz` on the `gtk` shelf is
+stored as `gtk--libsigc..2-2.12.1.tar.xz`. When that name is taken in the volume, by another
+hash's index line (compared ignoring case) or by an asset of other bytes, the next of
+`<shelf>--<port>--<file>` and `<shelf>--<port>--<first 12 hex digits of the hash>--<file>` is
+tried. The upload carries the label
 `<port>/<file>`, which the release page shows in place of the stored name. The index records the
 name GitHub returned, and prints a note when it differs from the name asked for. A run that
 stops after such an upload and before its index line finds it again by digest and label, since
@@ -2266,19 +2277,23 @@ keeps every line it earned. `ports/publish` refuses to write an index that is no
 one that already breaks those rules. **Commit `ports/sources.idx`**: `make fetch` and the pre-push
 hook read it from the tree, and a file no committed line names cannot be found.
 
-**Release notes.** Every release a run touches has its notes rewritten from the index: the
-shelf's description from `ports/shelves`, then a table of port, version, file (linked to its
-asset, or to each part), size and SHA-256. Past 120,000 characters the table drops its links and
-shows 16 hex digits of each hash, and past that again it is cut short with a pointer to
+**Release notes.** Every release a run touches has its notes rewritten from the index, and a
+volume its title. The notes hold one section per shelf, headed by the shelf's name and its
+description from `ports/shelves`, then a table of port, version, file (linked to its asset, or to
+each part), size and SHA-256; a file sits under the shelf its asset name starts with, and
+`attic--` files under `attic`, last. Past 120,000 characters the tables drop their links and show
+16 hex digits of each hash, and past that again they are cut short with a pointer to
 `ports/sources.idx`, which is complete.
 
 | Flag | Does |
 |---|---|
-| `--dry-run` | List what would be uploaded: the target release, the predicted asset name (resolved against the index and the rest of the plan, not against GitHub), the part count and the size. Makes no network call and needs no token, and takes every indexed file as present. With `--rehome`, lists the planned moves |
+| `--dry-run` | List what would be uploaded: the target volume, the predicted asset name (resolved against the index and the rest of the plan, not against GitHub), the part count and the size. Makes no network call and needs no token, takes every indexed file as present, and takes the index's count of each volume for its assets, so a spill is predicted as it would happen. With `--plan`, `--rehome` or `--retire`, lists what that mode would do |
 | `--check` | Presence only: list what is missing from the archive, as `not in ports/sources.idx` or `indexed in <tag> as <asset> but absent`; exit 1 if anything is |
-| `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`), to seed the archive with what old commits' recipes point at. Each is labelled `<port>/<file>` from its old path and goes to its port's shelf today, or to `src-attic` when no port of that name exists today. Objects the local LFS store and the cache do not hold are counted on one line and skipped without failing the run. Without git-lfs no object can be labelled, so none is uploaded, and the count says to install it |
-| `--describe` | Rewrite the notes of every release the index names, uploading nothing. Needs the token |
-| `--rehome` | Move archived files to the release of the shelf that owns them now, then delete old copies; see below |
+| `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`), to seed the archive with what old commits' recipes point at. Each is labelled `<port>/<file>` from its old path and goes to its port's shelf today, or, when no port of that name exists today, to the highest volume as `attic--<file>`. Objects the local LFS store and the cache do not hold are counted on one line and skipped without failing the run. Without git-lfs no object can be labelled, so none is uploaded, and the count says to install it |
+| `--plan` | Give every shelf `ports/shelves` lists without a volume one, and rewrite those lines; see below. No network, no token |
+| `--describe` | Rewrite the title and notes of every release the index names, uploading nothing. Needs the token |
+| `--rehome` | Move archived files into the volume and name of the shelf that owns them now, then delete old copies; see below |
+| `--retire` | Delete every emptied `src-<shelf>` release of the older layout, and its tag; see below |
 | `--orphans` | List index lines no current recipe names; see below |
 | `--freeze <tag>` | Write `build/freeze/sources-<tag>.sha256` for the tag's recipes, found one shelf down or directly under `ports/core`, require every hash in it to be archived, and attach it as `sources.sha256` to release `<tag>` on `$KDOS_REPO`, creating a draft release when there is none. With `--dry-run`, only the list is written. See [Cutting a release](developing.md#cutting-a-release) |
 | `--release <tag>` | Build and attach the system release of `<tag>`. See [Cutting a release](developing.md#cutting-a-release) |
@@ -2289,19 +2304,42 @@ with its index line and could not be repaired. `--freeze` also exits 2 when the 
 carries a different `sources.sha256`; replace that asset by hand, and only while the release is
 still a draft.
 
-**Moving files between shelves.** Moving a port to another shelf leaves its files where they
-were archived, and `make fetch` still finds them through the index. `ports/publish --rehome
-[port…]` tidies that. A file is where it belongs when any current recipe on shelf `S` names it and
-it sits in `src-S`, so a hash two shelves name is never moved back and forth. Every other file a
-current recipe names is uploaded to its owner's release (from the local copy, or downloaded from
-the archive and verified when there is none), and its index line is rewritten. A file no current
-recipe names is left alone. Then, in a second phase, an asset in a `src-*` release is deleted only
-when its digest is an indexed file's (or one of its parts'), the working index **and** the pushed
-one (`@{upstream}:ports/sources.idx`) both place that file somewhere else, and GitHub lists that
-other place with the right digest. So the first run after a move uploads and rewrites the index;
-commit and push it, and a second run deletes the old copies. Without an upstream branch the second
-phase deletes nothing. An asset whose digest no index line names is reported as a `stray` and
-never deleted.
+**Volumes and shelves.** The second field of every `ports/shelves` line is the shelf's volume. A
+new shelf is written with `-` in that field, or with none, and `ports/publish --plan` (`make
+publish-plan`) gives it one, with no network: it counts the files each shelf owns (every recipe
+hash whose first port is on it, a file in parts counted once per part), takes the shelves without
+a volume in C order, and adds each to the highest volume while that volume's count stays within
+`KDOS_VOLUME_FILL` (650), opening the next volume, numbered past any the index names, when it
+would not. A shelf larger than the fill gets a volume of its own. A shelf that already has a volume
+keeps it, so planning never moves a file. `--plan --dry-run` prints each volume's count, shelves
+and title and writes nothing. Preflight fails a shelf whose volume is not a positive integer.
+
+**Moving files between volumes.** Moving a port to another shelf leaves its files where they were
+archived, and `make fetch` still finds them through the index. `ports/publish --rehome [port…]`
+tidies that. A file is at home when it sits in the volume of a shelf `S` whose port names it, under
+a name starting `S--`, so a hash two shelves name is never moved back and forth. A file in a
+`src-<shelf>` release of the older layout, one release per shelf, or under a name no current shelf
+of its ports gives it, is placed as a new file is, spilling when its volume is full; one no current
+recipe names goes from such a release to the highest volume as `attic--<file>`, and one already in
+a volume stays where it is. A file that spilled moves home only when its own volume has room.
+Each move uploads the file (from the local copy, or downloaded from the archive and verified when
+there is none) and rewrites its index line, so a run that stops keeps every move it made and is
+resumed by running it again. Then, in a second phase, an asset in a `sources-*` or `src-*` release
+is deleted only when its digest is an indexed file's (or one of its parts'), the working index
+**and** the pushed one (`@{upstream}:ports/sources.idx`, as this clone last fetched or pushed it)
+both place that file somewhere else, and GitHub lists that other place with the right digest. So
+the first run after a move uploads and rewrites the index; commit and push it, and a second run
+deletes the old copies. Without an upstream branch the second phase deletes nothing. An asset whose
+digest no index line names is reported as a `stray` and never deleted.
+
+**Retiring the older layout.** `ports/publish --retire` deletes every `src-<shelf>` release that
+holds no asset, then its tag, which deleting a release leaves behind, and any `src-*` tag whose
+release is already gone. A `src-*` release that still holds any asset is refused and listed with
+its count, and the run exits 1; `--rehome`, before and after the push, is what empties it. It never
+touches a `sources-<N>` volume or a `v*` release. `--retire --dry-run` reads the archive with the
+token and deletes nothing. A clone that fetched the old tags keeps them until they are deleted
+locally (`git tag -l 'src-*' | xargs -r git tag -d`), and a `git push --tags` from it would create
+them again on GitHub.
 
 **Orphans.** `ports/publish --orphans` prints, with no network, every index line no current
 recipe names, as `<sha256> <tag> <asset> <port>/<file>`, and marks a line `protected` when a
@@ -2311,8 +2349,8 @@ included, each checked against its index hash first, then removes the lines and 
 notes; any other `--prune` value, and `--prune` without `--orphans`, is refused. A checkout older
 than the pruning that still names a pruned file goes upstream for it.
 
-The archive is otherwise append-only. Beyond `--rehome` and `--prune=yes-delete`, `ports/publish`
-deletes an asset only when it is an upload GitHub never completed (a `starter`), or when it holds
+The archive is otherwise append-only. Beyond `--rehome` and `--prune=yes-delete`, and `--retire`
+deleting emptied releases, `ports/publish` deletes an asset only when it is an upload GitHub never completed (a `starter`), or when it holds
 other bytes at a name the index gives this hash, or was just uploaded by this run and GitHub
 reports other bytes: that asset is corrupt, so it is deleted and uploaded once more, and a second
 disagreement fails the file. An asset of other bytes at any other name is someone else's, and the
@@ -2337,15 +2375,16 @@ retries. An upload that meets a 5xx or a dropped connection is retried twice; th
 | `KDOS_SOURCES_TOKEN` | `~/.config/kdos/sources-token` | The upload token |
 | `KDOS_PUBLISH_DELAY` | `8` | Seconds between creating, changing and deleting calls |
 | `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index read and written |
-| `KDOS_RELEASE_CAP` | `1000` | Assets per archive release, parts counted; a file that would pass it fails. GitHub's limit is 1000 |
+| `KDOS_RELEASE_CAP` | `1000` | Assets per archive release, parts counted; a file whose volume would pass it spills into another volume. GitHub's limit is 1000 |
+| `KDOS_VOLUME_FILL` | `650` | The planned assets per volume that `--plan` packs shelves to |
 | `KDOS_PART_SIZE` | `1992294400` (1900 MiB) | A file larger than this is uploaded in parts of this size |
 | `KDOS_LFS_STORE` | `<git dir>/lfs/objects` | The LFS store read for bytes and by `--history` |
 | `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `--freeze` and `--release` attach to |
 | `KDOS_GITHUB_API`, `KDOS_GITHUB_UPLOADS` | `https://api.github.com`, `https://uploads.github.com` | The two endpoints, replaced to run against a local stand-in |
 
 `KDOS_SOURCES_REPO` and `KDOS_SOURCES_BASE` name the archive as they do for `ports/fetch`; an empty
-`KDOS_SOURCES_BASE`, or one naming a local directory, stops every mode but a plain `--orphans` at
-once, since there is nothing to publish to.
+`KDOS_SOURCES_BASE`, or one naming a local directory, stops every mode but `--plan` and a plain
+`--orphans` at once, since there is nothing to publish to.
 
 ### The pre-push hook
 

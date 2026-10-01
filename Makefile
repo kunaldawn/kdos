@@ -48,19 +48,26 @@ fetch: ## download every source a recipe names (networked)
 fetch-check: ## offline: which archived sources are missing or corrupt
 	FETCH_JOBS=$(FETCH_JOBS) bash ports/fetch --check
 
-# The source archive and the system release, through ports/publish. Uploading
-# needs the token in ~/.config/kdos/sources-token (mode 600) or
-# KDOS_SOURCES_TOKEN; -dry and -check need none. PORTS narrows publish,
-# publish-dry and publish-rehome to those ports; PUBLISH_ARGS reaches any of
-# them unchanged. TAG names the system tag for freeze and the release targets.
+# The source archive and the system release, through ports/publish. The
+# archive is the numbered pre-releases sources-1, sources-2, …, and the volume
+# of each shelf is the second field of its line in ports/shelves; publish-plan
+# gives a volume to every shelf without one, and publish-retire deletes the
+# emptied src-<shelf> releases of the older one-release-per-shelf layout.
+# Uploading needs the token in ~/.config/kdos/sources-token (mode 600) or
+# KDOS_SOURCES_TOKEN; -dry, -check, -plan and -orphans need none. PORTS
+# narrows publish, publish-dry and publish-rehome to those ports;
+# PUBLISH_ARGS reaches any of them unchanged (--dry-run makes publish-plan,
+# publish-rehome and publish-retire report only). TAG names the system tag
+# for freeze and the release targets.
 #   make publish-dry
 #   make publish PORTS="zstd lz4"
+#   make publish-retire PUBLISH_ARGS=--dry-run
 #   make release TAG=v0.2
 PORTS ?=
 PUBLISH_ARGS ?=
 TAG ?=
 
-publish: ## upload every unarchived source to its src-<shelf> release
+publish: ## upload every unarchived source into its shelf's sources-N volume
 	bash ports/publish $(PUBLISH_ARGS) $(PORTS)
 
 publish-dry: ## offline: what publish would upload, and where
@@ -69,11 +76,17 @@ publish-dry: ## offline: what publish would upload, and where
 publish-check: ## which sources the archive lacks (anonymous, no token)
 	bash ports/publish --check $(PUBLISH_ARGS) $(PORTS)
 
-publish-describe: ## rewrite every src-<shelf> release's notes from the index
+publish-plan: ## offline: give every shelf without a volume one, in ports/shelves
+	bash ports/publish --plan $(PUBLISH_ARGS)
+
+publish-describe: ## rewrite every archive release's title and notes from the index
 	bash ports/publish --describe $(PUBLISH_ARGS)
 
-publish-rehome: ## move archived files into their port's current shelf
+publish-rehome: ## move archived files into their shelf's volume; run before and after pushing
 	bash ports/publish --rehome $(PUBLISH_ARGS) $(PORTS)
+
+publish-retire: ## delete every emptied legacy src-<shelf> release and its tag
+	bash ports/publish --retire $(PUBLISH_ARGS)
 
 publish-orphans: ## list index entries no recipe names any more
 	bash ports/publish --orphans $(PUBLISH_ARGS)
@@ -279,4 +292,4 @@ rig-image: ## build the rig container kdos-qemu-py:latest (networked, once)
 devdeps-image: ## build kdos-devdeps:latest and run the suite in it
 	testing/devdeps-image.sh
 
-.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-describe publish-rehome publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan docscheck phaseclosure depdrift debuginfo quick rig-image devdeps-image
+.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan docscheck phaseclosure depdrift debuginfo quick rig-image devdeps-image

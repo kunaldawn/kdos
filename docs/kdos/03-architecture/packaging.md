@@ -80,7 +80,8 @@ A repository holds a port either directly, as `<repo>/<name>/`, or one level dow
 every upstream port sits on a **shelf**, a directory named for its subject, such as
 `ports/core/wl/wlroots/`, `ports/core/fonts/noto-fonts/` or
 `ports/core/python-net/python3-requests/`. The shelves are a closed list, the file `ports/shelves`,
-with one line per shelf giving its id and what belongs on it. [Writing
+with one line per shelf giving its id, the source-archive volume that keeps its files, and what
+belongs on it. [Writing
 ports](../05-developer/writing-ports.md) gives the rules for choosing one.
 
 A shelf is only where a recipe is filed. A port's identity is its bare name: `depends =` lines,
@@ -292,7 +293,7 @@ at the first copy that verifies, looking in this order:
 2. the local cache, `ports/.srccache/sha256-XX/<hash>` (`XX` is the hash's first two hex digits),
    hard-linked into the port directory;
 3. the KDOS source archive,
-   `https://github.com/kunaldawn/kdos/releases/download/src-<shelf>/<asset>`, where
+   `https://github.com/kunaldawn/kdos/releases/download/sources-<N>/<asset>`, where
    `ports/sources.idx` gives the release tag and the asset name for each hash; a hash the index
    does not name skips this step;
 4. the recipe's own `source =` URL upstream;
@@ -305,33 +306,38 @@ inside the `kdos-fetch` container that `ports/Containerfile.fetch` describes.
 
 Whatever verifies is entered into the cache, so switching branches downloads nothing twice.
 
-The source archive is one GitHub pre-release per shelf on `kunaldawn/kdos`, tagged `src-<shelf>`,
-plus `src-attic` for files that only old history names. Each is a pre-release and never "latest",
-so the repository's latest release is always a KDOS system release. An asset carries the file's own
-name, such as `zstd-1.5.7.tar.gz`; when that name is already taken in the release by other bytes it
-is `<port>--<file>`, and then `<port>--<hash12>--<file>`. GitHub turns every character outside
-`[A-Za-z0-9._-]` into a dot, so `libsigc++` is stored as `libsigc..`, and the index records the name
-GitHub stored. A file larger than 1,900 MiB, near GitHub's 2 GiB limit per asset, is stored in parts
+The source archive is a run of numbered GitHub pre-releases on `kunaldawn/kdos`, the volumes
+`sources-1`, `sources-2` and on, titled by the first and last shelf they hold. `ports/shelves` gives
+each shelf its volume, and a volume holds the files of a run of shelves in sorted order. Each is a
+pre-release and never "latest", so the repository's latest release is always a KDOS system release.
+An asset carries its shelf and the file's own name, such as `archiver--zstd-1.5.7.tar.gz`; when that
+name is already taken in the volume by other bytes it is `<shelf>--<port>--<file>`, and then
+`<shelf>--<port>--<hash12>--<file>`. A file only old history names is `attic--<file>` in the highest
+volume. A volume holds at most 1,000 assets; a file whose volume is full goes to the lowest-numbered
+volume with room, or opens a new one, and the index records where. GitHub turns every character
+outside `[A-Za-z0-9._-]` into a dot, so `libsigc++` is stored as `libsigc..`, and the index records
+the name GitHub stored. A file larger than 1,900 MiB, near GitHub's 2 GiB limit per asset, is stored in parts
 `<asset>.part01` onwards; `ports/fetch` downloads each part, checks it against its own hash, joins
 them and checks the whole. For a moment the parts and the joined file are on disk together, so a
 split file needs about twice its size free: 10 GB for the 4.96 GB TeX Live tree.
 
 The committed index `ports/sources.idx` starts with the line `# kdos-sources-index 2` and has one
 line per file, `<hash> <tag> <asset> <port>/<file>`, with `parts=<N>:<h1>,…` after it for a split
-file. An index without that first line is not read at all, and every file then comes from upstream.
+file. A `<tag>` is `sources-<N>`, or `src-<shelf>` for a file still in the older layout of one
+release per shelf, which fetches the same way until `ports/publish --rehome` moves it. An index
+without that first line is not read at all, and every file then comes from upstream.
 Whatever the name or the release, a file is used only once it hashes to the recipe's `sha256 =`.
 
 Nothing in the archive is replaced, and an asset is removed only by two explicit maintainer
-commands: `ports/publish --rehome`, which moves a file to the release of the shelf its port now
-sits on and deletes the old copy only after the new one is verified and the index is pushed, and
+commands: `ports/publish --rehome`, which moves a file to the volume and name of the shelf its port
+now sits on and deletes the old copy only after the new one is verified and the index is pushed, and
 `ports/publish --orphans --prune=yes-delete`, which deletes files no current recipe, no recipe at
 any `v*` tag and no freeze list names. A checkout years old therefore finds the exact bytes it was
 written against even after the upstream host has gone, fetched with the newest index through
-`ports/fetch --tree`. The index is empty until `ports/publish` fills it. The current `ports/core`
-recipes name 2,487 distinct hashed files over 102 shelves, the largest shelf, `python-libs`,
-naming 81. 39 of them are small files git tracks beside their recipes, and the other 2,448, about
-38.6 GiB, are fetched. Stored by hash, a file several ports use is one asset, in the release of the
-first shelf that names it; the LLVM monorepo tarball, for example, is shared by eight ports.
+`ports/fetch --tree`. The current `ports/core` recipes name 2,487 distinct hashed files over 102
+shelves, the largest shelf, `python-libs`, naming 81. 39 of them are small files git tracks beside
+their recipes, and the other 2,448, about 38.6 GiB, are archived in four volumes. Stored by hash, a
+file several ports use is one asset, in the volume of the first shelf that names it; the LLVM monorepo tarball, for example, is shared by eight ports.
 
 The commands and settings:
 

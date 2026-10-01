@@ -22,7 +22,7 @@ The chapter follows these steps in order:
 
 The project does not publish an image built from this tree. The releases page of
 [github.com/kunaldawn/kdos](https://github.com/kunaldawn/kdos/releases) carries the source archive
-(the pre-releases named `src-<shelf>`, one per shelf, described below) and one ISO from an earlier line of KDOS that
+(the numbered pre-releases `sources-1`, `sources-2` and on, described below) and one ISO from an earlier line of KDOS that
 this book does not describe. The system this book describes is one you compile from the repository.
 That follows from what KDOS is: a distribution built from source, where every program on the image
 was compiled by the build you ran, apart from a short, named list of exceptions: firmware, bootstrap
@@ -86,7 +86,7 @@ they are 2,448 distinct files and about 41.5 GB (38.6 GiB); the LLVM tarball alo
 ports. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf, with the phase that builds it.
 
 For each file, `make fetch` takes the first copy it finds whose hash matches the recipe: the
-download cache under `ports/.srccache/`, then the KDOS source archive (the `src-<shelf>` pre-releases),
+download cache under `ports/.srccache/`, then the KDOS source archive (the `sources-<N>` pre-releases),
 then the upstream URL in the recipe. A verified file is entered in the cache and hard-linked into
 each port directory that names it, so switching branches fetches nothing twice. The full lookup
 order, the variables that change it and the container that regenerates a vendored dependency

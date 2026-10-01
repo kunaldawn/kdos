@@ -119,9 +119,9 @@ any copy that hashes to it is the right file, wherever it came from. For each fi
 1. **The port directory**, if the file is already there.
 2. **The local cache**, `ports/.srccache/sha256-XX/<hash>`, one file per hash, hard-linked into
    every port directory that names it.
-3. **The KDOS source archive**: one GitHub pre-release per shelf, `src-<shelf>`, each asset under
-   the file's own name. The committed file `ports/sources.idx` says which release and which asset
-   hold which hash, one line per file; a file over GitHub's 2 GiB asset limit is held in parts,
+3. **The KDOS source archive**: numbered GitHub pre-releases, the volumes `sources-<N>`, each
+   holding the shelves `ports/shelves` maps to it, each asset named `<shelf>--<file>`. The committed
+   file `ports/sources.idx` says which volume and which asset hold which hash, one line per file; a file over GitHub's 2 GiB asset limit is held in parts,
    joined and checked as a whole.
 4. **Upstream**, the URL on the recipe's `source =` line.
 5. **Regeneration**, for a port's own vendor bundle only (below).
@@ -129,11 +129,11 @@ any copy that hashes to it is the right file, wherever it came from. For each fi
 The archive is asked before upstream because it cannot disappear when an upstream host does. Nothing
 in it is replaced, and nothing is removed except by the maintainer's explicit `--rehome` and
 `--prune=yes-delete` runs of `ports/publish`, which spare every file a recipe at a `v*` tag names.
-So it can hold what older recipes named as well: seeded with `ports/publish --history`, it carries
-both `pv-1.12.0.tar.gz`, which the current `pv` recipe names, and `pv-1.7.24.tar.gz`, both in
-`src-cli`, so a checkout written against the older version can still be built. `ports/sources.idx` is read only in its format 2, whose first line
-is `# kdos-sources-index 2`, and it names no file until `ports/publish` fills it; until then every
-file comes from upstream. The current recipes name 2,487 distinct files; 39 of them are carried in
+So it can hold what older recipes named as well: `ports/publish --history` seeds it with the files
+old commits' recipes point at, a file no current port names kept as `attic--<file>` in the highest
+volume, so a checkout written against an older version can still be built. `ports/sources.idx` is
+read only in its format 2, whose first line is `# kdos-sources-index 2`; a hash it does not name
+comes from upstream. The current recipes name 2,487 distinct files; 39 of them are carried in
 git, and 2,448 are fetched. A complete cache holds those 2,448 files; its size is in
 [What a build costs](#what-a-build-costs).
 

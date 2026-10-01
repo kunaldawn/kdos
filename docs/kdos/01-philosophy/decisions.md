@@ -24,7 +24,7 @@ decisions that look like missing features.
 | [The base distribution in boxes](#debian-inside-boxes-not-alpine) | Debian trixie, with Alpine carried as a scratch base |
 | [The host C library](#musl-as-the-host-c-library) | musl, which forecloses runtime CPU dispatch |
 | [The host desktop](#no-kde-gnome-or-any-existing-desktop-on-the-host) | A desktop written for this system; KDE's and GNOME's applications, never their shells |
-| [Where upstream sources live](#upstream-archives-are-hash-checked-release-assets) | One release per shelf, each file under its own name and checked by its sha256, fetched by `make fetch` |
+| [Where upstream sources live](#upstream-archives-are-hash-checked-release-assets) | Numbered volumes of shelves, each file under `<shelf>--<file>` and checked by its sha256, fetched by `make fetch` |
 | [CPU optimisation](#-march-measured-per-machine-not-chosen-for-a-population) | Measured per machine by `kdos march`, never a shipped feature level |
 | [Compiler flags](#one-release-flag-set-raised-per-port) | `-O2` with hardening for every port; `-O3` per port on precedent; LTO only for a listed set of hot libraries |
 | [The vulnerability database](#alpines-security-database-not-nvd-or-osv) | A vendored, pruned copy of Alpine's secdb, answered offline |
@@ -219,20 +219,22 @@ and [Packs and boxes](../03-architecture/packs-and-boxes.md).
 Upstream source archives are not kept in git. Every source file a recipe names by a `sha256 =`
 line is a release asset in the GitHub repository `kunaldawn/kdos`. The exception is a small set of
 upstream files that git does carry, such as bash's and readline's patch levels, the IANA
-registries, `certdata.txt` and a Tesseract language model; those are never archived. Each shelf of
-`ports/core` has one release, a pre-release tagged `src-<shelf>`, and a file goes into the release
-of the first shelf, in the tree's sorted order, whose recipe names it; `src-attic` holds files that
-only old history names. The asset carries the file's own name, so a file's address reads like what
-it is:
+registries, `certdata.txt` and a Tesseract language model; those are never archived. The archive
+is a run of numbered volumes, pre-releases tagged `sources-1`, `sources-2` and on, and each shelf
+of `ports/core` has its volume, the second field of its line in `ports/shelves`. A file goes into
+the volume of the first shelf, in the tree's sorted order, whose recipe names it, under the name
+`<shelf>--<file>`; a file only old history names is kept as `attic--<file>` in the highest
+volume. The asset carries the shelf and the file's own name, so a file's address reads like what it
+is:
 
 ```
-https://github.com/kunaldawn/kdos/releases/download/src-archiver/zstd-1.5.7.tar.gz
+https://github.com/kunaldawn/kdos/releases/download/sources-1/archiver--zstd-1.5.7.tar.gz
 ```
 
 The committed file `ports/sources.idx` records the release and the asset for each hash. The
 current recipes name 2,487 distinct files, 38.6 GiB in total: 39 that git carries, and 2,448 that
-belong in the archive, spread over 102 shelves; the largest, `python-libs`, names 81, far under
-GitHub's 1,000 assets per release. Sixty of them exceed the 100 MiB a push to github.com refuses;
+belong in the archive, spread over 102 shelves and packed into four volumes of 583 to 646 assets
+each, under GitHub's 1,000 assets per release. Sixty of them exceed the 100 MiB a push to github.com refuses;
 they appear 74 times across the port directories, because a file such as the LLVM source tarball
 serves several ports. The largest, `texlive`'s texmf tree, is 4.96 GB, over GitHub's 2 GiB limit per
 asset, so any file larger than 1,900 MiB is stored as `<asset>.part01` onwards and joined by
@@ -244,15 +246,20 @@ The hash is the identity and the name is advisory. A recipe names contents, not 
 file that verifies is the file the recipe meant whether it came from the archive, from upstream or
 from a mirror added in ten years, and none of those changes a commit. A readable name is what lets
 a person browsing a release, or reading a URL in a log, see which file it is; the hash already
-guarantees which bytes it is. Two upstream files of different bytes under one filename would meet
-in one release, so the second is stored as `<port>--<file>`, and a third as
-`<port>--<hash12>--<file>`. GitHub rewrites every character outside `[A-Za-z0-9._-]` in an asset
+guarantees which bytes it is. Two upstream files of different bytes under one filename on one shelf
+would meet in one volume, so the second is stored as `<shelf>--<port>--<file>`, and a third as
+`<shelf>--<port>--<hash12>--<file>`. GitHub rewrites every character outside `[A-Za-z0-9._-]` in an asset
 name to a dot, so the index records the name GitHub returned rather than the one asked for, and
 each asset's label keeps the true name for the release page.
 
-A release per shelf keeps each release a readable list of related sources, and far from the
-1,000-asset limit; a shelf that reached it would make `ports/publish` stop rather than open an
-overflow release. The index is what the naming costs: one committed line per file,
+Volumes keep the release page short: four archive releases rather than one per shelf, each a
+readable run of neighbouring shelves in sorted order, its title naming the first and the last. A
+volume is planned to about 650 assets, so it has room for the versions to come before GitHub's
+limit of 1,000. The mapping is committed and never changes for a shelf that has one:
+`ports/publish --plan` gives a volume only to a shelf without one, packing those into the highest
+volume and then new ones, so no planning run moves a file. A file whose volume is full goes to the
+lowest-numbered volume with room, or opens the next volume, and the index records where it went; a
+later `--rehome` brings it home once its volume has room. The index is what the naming costs: one committed line per file,
 `<hash> <tag> <asset> <port>/<file>`, with `parts=<N>:<h1>,…` for a split file, which
 `ports/publish` writes only after GitHub reports every uploaded asset's digest equal to the bytes it
 sent. Its first line, `# kdos-sources-index 2`, is its format; an index without it is not read at
@@ -264,8 +271,9 @@ The archive is append-only by default. A verified asset is never replaced, becau
 would silently change what an old commit builds; a checkout from five years ago finds the bytes it
 was written against after upstream has moved or gone. Two maintainer commands remove assets, and
 both say so by name. `ports/publish --rehome` moves a file whose port has changed shelf into the new
-shelf's release, and deletes the old copy only once the new one is verified and both the working and
-the pushed index place the file elsewhere. `ports/publish --orphans --prune=yes-delete` deletes
+shelf's volume and name, and a file that spilled back into its own volume, and deletes the old copy
+only once the new one is verified and both the working and the pushed index place the file
+elsewhere. `ports/publish --orphans --prune=yes-delete` deletes
 files no current recipe names, sparing every file a recipe at any `v*` tag names or a freeze list
 under `build/freeze/` holds; a checkout older than the pruning fetches those files from upstream.
 For each KDOS release, `ports/publish --freeze <tag>` attaches `sources.sha256`, the list of every
@@ -273,9 +281,9 @@ hash that tag's recipes name, to the release of that tag, creating it as a draft
 exist. The list is a convenience, one file that says what the release needs. What pins the hashes is
 the tag itself: its recipes carry them, and git cannot change those without changing the tag.
 
-The archive's releases share the repository's release page with the KDOS releases. Each one's
-notes describe its shelf and list every file it holds, with version, size and hash, and each is a
-pre-release created with `make_latest` off, so "latest" always means a KDOS system release.
+The archive's releases share the repository's release page with the KDOS releases. Each volume's
+notes hold a section per shelf, with the shelf's description and every file of it the volume holds,
+with version, size and hash, and each is a pre-release created with `make_latest` off, so "latest" always means a KDOS system release.
 GitHub's immutable releases stay off on the repository: the setting applies to every release in
 it, and it would freeze an archive release at its first publication, after which no source could be
 added to it.
@@ -426,8 +434,9 @@ See [Writing ports](../05-developer/writing-ports.md) for the format as built.
 
 The 2,000 upstream ports are filed on 102 **shelves**, one directory per subject:
 `ports/core/<shelf>/<name>/`, such as `ports/core/wl/wlroots/` or `ports/core/games-board/kpat/`.
-The shelf list is closed. It is the file `ports/shelves`, one line per shelf giving its id and what
-belongs on it, and a port may sit only on a shelf that file lists. A port's identity is its
+The shelf list is closed. It is the file `ports/shelves`, one line per shelf giving its id, the
+source-archive volume that keeps its files, and what belongs on it, and a port may sit only on a
+shelf that file lists. A port's identity is its
 bare name: the shelf is where the recipe is filed and nothing more.
 
 The question was how a person finds, reviews and places a port among two thousand. A single flat

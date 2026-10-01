@@ -165,11 +165,13 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `fetch` | Fetch every port's sources into `ports/core`, generating vendor bundles the archive lacks. `ports/fetch <port>` narrows it | Network; a container only to generate |
 | `fetch-check` | List, offline, every archived source that is missing or fails its hash | A C compiler |
 | `updates` | Check every port for a newer upstream release | Network, `curl`, `git`, `cc` |
-| `publish` | Upload every source a recipe names that the archive lacks, each into its shelf's `src-<shelf>` release; `PORTS` narrows it | Network, the archive token |
-| `publish-dry` | Print what `publish` would upload, under which names and into which releases | A C compiler |
+| `publish` | Upload every source a recipe names that the archive lacks, each into its shelf's volume `sources-<N>` (or the lowest-numbered volume with room when that one is full); `PORTS` narrows it | Network, the archive token |
+| `publish-dry` | Print what `publish` would upload, under which names and into which volumes | A C compiler |
 | `publish-check` | List every source the archive lacks, by anonymous requests | Network |
-| `publish-describe` | Rewrite every `src-<shelf>` release's notes from `ports/sources.idx` | Network, the archive token |
-| `publish-rehome` | Move archived files whose port changed shelf into its current shelf's release | Network, the archive token |
+| `publish-plan` | Give every shelf in `ports/shelves` that has no volume one, packing them in sorted order to about 650 assets a volume; never changes an assigned shelf. `PUBLISH_ARGS=--dry-run` only prints the plan | A C compiler |
+| `publish-describe` | Rewrite every archive release's title and notes from `ports/sources.idx` | Network, the archive token |
+| `publish-rehome` | Move each archived file that is not in its shelf's volume under its `<shelf>--` name there; run it, push the index, and run it again to delete the old copies | Network, the archive token |
+| `publish-retire` | Delete every `src-<shelf>` release of the older one-release-per-shelf layout that holds no asset, and its tag; refuse any that still holds assets | Network, the archive token |
 | `publish-orphans` | List index entries no recipe names any more | |
 | `freeze` | Attach `sources.sha256` for `TAG` to that system release | Network, the archive token |
 | `release` | Create or update `TAG`'s system release as a draft: the ISO, `SHA256SUMS`, its signature and `sources.sha256` | Network, the archive token, a finished build |
@@ -356,27 +358,33 @@ owned by an ordinary user. Reading it from your machine needs a container or roo
 ## Where sources come from
 
 Every source file that git does not carry is stored in the repository `kunaldawn/kdos` as a release
-asset. Each shelf has one release, tagged `src-<shelf>`, which holds the files of the ports on that
-shelf under their own names; `src-attic` holds files only old history names. These releases are
-pre-releases and never the latest release, so the repository's latest release is always a KDOS
-system release. The committed file `ports/sources.idx` says which release and which asset hold
+asset. The archive is a run of numbered volumes, releases tagged `sources-1`, `sources-2` and on,
+each titled `Sources N: <first shelf> … <last shelf>` after the shelves it holds. The second field
+of a shelf's line in `ports/shelves` is its volume, and a volume holds the files of its shelves as
+`<shelf>--<file>`; a file only old history names is `attic--<file>` in the highest volume. These
+releases are pre-releases and never the latest release, so the repository's latest release is
+always a KDOS system release. The committed file `ports/sources.idx` says which release and which asset hold
 each hash, one line per file, sorted by hash, after a header whose first line is
 `# kdos-sources-index 2`. A line looks like this:
 
 ```text
-f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7 src-net-libs curl-8.22.0.tar.xz curl/curl-8.22.0.tar.xz
+f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7 sources-3 net-libs--curl-8.22.0.tar.xz curl/curl-8.22.0.tar.xz
 ```
 
 so that file's address is
 
 ```text
-https://github.com/kunaldawn/kdos/releases/download/src-net-libs/curl-8.22.0.tar.xz
+https://github.com/kunaldawn/kdos/releases/download/sources-3/net-libs--curl-8.22.0.tar.xz
 ```
 
-The third field is the name GitHub stored, which is what the address uses; the fourth is the file's
-own name. The two differ when GitHub rewrote a character outside `[A-Za-z0-9._-]` (`libsigc++` is
-stored as `libsigc..`), or when a shorter name was already taken in that release and the file was
-stored as `<port>--<file>` or `<port>--<hash12>--<file>`. A file larger than 1900 MiB is stored in
+The second field is the volume, which is the shelf's own unless that volume was full when the file
+was stored; the file then went to the lowest-numbered volume with room, or opened the next one. A
+line whose tag is `src-<shelf>` names a file still in the older layout of one release per shelf; it
+fetches the same way until `ports/publish --rehome` moves it. The third field is the name GitHub
+stored, which is what the address uses; the fourth is the file's own name. The asset name is
+`<shelf>--<file>`, and differs further when GitHub rewrote a character outside `[A-Za-z0-9._-]`
+(`libsigc++` is stored as `libsigc..`), or when that name was already taken in the volume and the
+file was stored as `<shelf>--<port>--<file>` or `<shelf>--<port>--<hash12>--<file>`. A file larger than 1900 MiB is stored in
 parts, `<asset>.part01` … `<asset>.partNN`, each under GitHub's 2 GiB limit per asset, and its line
 ends in `parts=<N>:<h1>,…,<hN>`, the hash of each part in order.
 
@@ -385,11 +393,11 @@ same string, so a file that verifies is the file the recipe meant, whichever rou
 archive is append-only by default: an asset whose digest matches its index line is never replaced
 or deleted, so an old checkout can still find the exact bytes it was written against after
 upstream has moved on or gone. The two deliberate exceptions are `ports/publish --rehome`, which
-moves a file to the release of the shelf its port now sits on and deletes the old copy only after
-an index naming the new one is pushed, and `ports/publish --orphans --prune=yes-delete`, which
-deletes files no current recipe and no recipe at any `v*` tag names. Each archive release's notes on
-GitHub list every file it holds in a table, with links, so a file can also be found by browsing the
-Releases page. `ports/srclib.sh` holds this addressing, and `ports/fetch`, `ports/publish` and the
+moves a file to the volume and name of the shelf its port now sits on and deletes the old copy only
+after an index naming the new one is pushed, and `ports/publish --orphans --prune=yes-delete`, which
+deletes files no current recipe and no recipe at any `v*` tag names. Each volume's notes on GitHub
+hold a section per shelf, its description and then every file of it the volume holds in a table,
+with links, so a file can also be found by browsing the Releases page. `ports/srclib.sh` holds this addressing, and `ports/fetch`, `ports/publish` and the
 pre-push hook all read it from there, so the three cannot disagree about where a hash lives. An
 index whose first line is not the format-2 header is not read at all: `ports/fetch` warns once and
 goes upstream for everything.
@@ -726,7 +734,7 @@ The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, an
    release is the latest, and exits 1 with a warning unless the answer is `<tag>`.
 
 The draft is visible only to the repository's writers, so the assets go out together when you
-publish it. The archive's `src-<shelf>` releases are pre-releases created with `make_latest`
+publish it. The archive's `sources-<N>` volumes are pre-releases created with `make_latest`
 false, so none of them ever takes Latest from a system release.
 
 Someone who downloads the release checks it with:
@@ -758,8 +766,8 @@ It never replaces an existing `sources.sha256` with different contents; it exits
 `$KDOS_SOURCES_TOKEN` or `~/.config/kdos/sources-token`, which is refused when anyone but you can
 read it; see [Publishing sources](writing-ports.md#publishing-sources).
 
-Leave GitHub's immutable releases **off** on `kunaldawn/kdos`: the source archive's `src-<shelf>`
-releases live in the same repository, the setting applies to all of them, and it would freeze each
+Leave GitHub's immutable releases **off** on `kunaldawn/kdos`: the source archive's `sources-<N>`
+volumes live in the same repository, the setting applies to all of them, and it would freeze each
 at its first publication, after which no new source could be added to it.
 
 ## See also

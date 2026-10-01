@@ -28,8 +28,8 @@ guarantee between lines and no tested hardware matrix: whoever runs it is the in
 [Why KDOS](../01-philosophy/why-kdos.md#the-trade).
 
 No v0.2 release has been cut and there is no `v0.2` tag. The releases published on `kunaldawn/kdos`
-are `v0.1`, which carries the v0.1 image, and the `src-<shelf>` pre-releases, one per shelf, which
-are the source archive described under [Host and packaging](#host-and-packaging) and carry no image. A v0.2 image
+are `v0.1`, which carries the v0.1 image, and the numbered `sources-<N>` pre-releases, which are
+the source archive described under [Host and packaging](#host-and-packaging) and carry no image. A v0.2 image
 is one you build from the repository; see [Getting started](../02-user-guide/getting-started.md).
 How a release is made is in [Developing](../05-developer/developing.md#cutting-a-release).
 

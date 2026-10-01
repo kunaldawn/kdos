@@ -11,18 +11,20 @@
 # ---------------------------------
 #
 #   ports/publish [--dry-run | --check] [--history] [port…]
+#   ports/publish --plan [--dry-run]
 #   ports/publish --describe [--dry-run]
 #   ports/publish --rehome [--dry-run] [port…]
+#   ports/publish --retire [--dry-run]
 #   ports/publish --orphans [--prune=yes-delete]
 #   ports/publish --freeze <kdos-tag> [--dry-run | --check]
 #   ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned]
 #                 [--publish] [--dry-run]
 #
-# THE ARCHIVE is one GitHub pre-release per shelf on $KDOS_SOURCES_REPO,
-# tagged src-<shelf>, plus src-attic for files only old history names; its
-# addressing is ports/srclib.sh's, and ports/sources.idx says where each file
-# is. A file's identity is never its name: every file is the bytes of a
-# recipe's `sha256 =`.
+# THE ARCHIVE is a run of numbered volumes on $KDOS_SOURCES_REPO, GitHub
+# pre-releases tagged sources-1, sources-2, …; ports/shelves gives each shelf
+# its volume. Its addressing is ports/srclib.sh's, and ports/sources.idx says
+# where each file is. A file's identity is never its name: every file is the
+# bytes of a recipe's `sha256 =`.
 #
 # THE WANTED SET is every `sha256 =` file named by a recipe under ports/core
 # (or by the named ports) that git does not carry. --history adds every Git
@@ -39,22 +41,27 @@
 #
 # WHERE A NEW FILE GOES. Recipes are walked shelf by shelf, port by port, in
 # C-locale order; a hash belongs to the shelf of the first port that names it,
-# and takes its label <port>/<file> from that port. A file the index names but
-# GitHub lacks goes back to the release and asset name its line records.
+# takes its label <port>/<file> from that port, and goes to that shelf's
+# volume. A file no current recipe names (--history) is shelved as `attic` and
+# goes to the highest volume. A volume holds at most $SRC_RELEASE_CAP assets,
+# parts counted: a file its volume has no room for goes to the lowest-numbered
+# volume with room, or else opens the next volume, and the run prints a
+# `spilled` line. A file the index names in a volume but GitHub lacks goes
+# back to the volume and asset name its line records; one whose line names a
+# legacy src-<name> release is placed afresh.
 #
-# ITS NAME is the file's own name as GitHub will store it (every character
-# outside [A-Za-z0-9._-] becomes `.`). When that name is taken in the release —
+# ITS NAME is <shelf>--<file> as GitHub will store it (every character
+# outside [A-Za-z0-9._-] becomes `.`). When that name is taken in the volume —
 # by another hash's index line, or by an asset of other bytes — the next of
-# <port>--<file> and <port>--<hash12>--<file> is tried. The upload carries the
-# label <port>/<file>, which the release page shows. The index records the
-# name GitHub RETURNED, never the one asked for.
+# <shelf>--<port>--<file> and <shelf>--<port>--<hash12>--<file> is tried. The
+# upload carries the label <port>/<file>, which the release page shows. The
+# index records the name GitHub RETURNED, never the one asked for.
 #
 # A FILE LARGER THAN $SRC_PART_SIZE is split, under $KDOS_SRCCACHE/.parts/,
 # into parts of that size, uploaded as <asset>.part01 … <asset>.partNN; its
 # index line carries every part's hash and is written only after every part
 # is stored with a verified digest. A run that stops leaves the parts it
-# stored, and the next run adopts them. A release holds at most
-# $SRC_RELEASE_CAP assets, parts counted; a file that would pass that fails.
+# stored, and the next run adopts them.
 #
 # PRESENCE means ports/sources.idx names the hash AND an anonymous HEAD on the
 # asset's download URL (on every part's) answers 200; a HEAD costs no API
@@ -68,18 +75,37 @@
 # and an upload no committed line names is invisible.
 #
 # RELEASE NOTES. Every archive release a run touches has its notes rewritten
-# from the index: the shelf's description from ports/shelves, then a table of
-# port, version, file (linked to its asset or parts), size and SHA-256.
+# from the index, and a volume its title too: `Sources N: <first shelf> …
+# <last shelf>` over the shelves ports/shelves maps to it. The notes hold one
+# section per shelf — its name and description from ports/shelves — and under
+# it a table of port, version, file (linked to its asset or parts), size and
+# SHA-256.
 #
 #   --check     presence only: print what is missing, exit 1 if anything is
-#   --dry-run   print each upload's release, predicted asset name, parts and
+#   --dry-run   print each upload's volume, predicted asset name, parts and
 #               size; makes no network call and needs no token, and takes
-#               every indexed file as present
-#   --describe  rewrite the notes of every release the index names; upload
-#               nothing
-#   --rehome    move each archived file whose release no current recipe's
-#               shelf matches into the release of the shelf that owns it now,
-#               then delete old copies the pushed index no longer names
+#               every indexed file as present and the index's own count of
+#               each volume as its assets
+#   --plan      give every shelf ports/shelves lists without a volume one:
+#               those shelves, in C order, join the highest volume while its
+#               planned file count (each recipe hash its shelf owns, parts
+#               counted) stays within $KDOS_VOLUME_FILL (default 650), and
+#               then open new volumes. A shelf that has a volume keeps it. It
+#               rewrites ports/shelves and reads no network; with --dry-run
+#               it only prints the plan
+#   --describe  rewrite the title and notes of every release the index
+#               names; upload nothing
+#   --rehome    move each archived file that is not at home into its home:
+#               its shelf's volume under its <shelf>-- name. A file in a
+#               legacy src-<name> release always moves (one no current recipe
+#               names goes to the highest volume as attic--<file>); a file
+#               that spilled into another volume moves only when its own has
+#               room. Then delete old copies the pushed index no longer names
+#   --retire    delete every legacy src-<name> release that holds no asset,
+#               and its tag; refuse, and list, any that still holds assets.
+#               A src-<name> tag left without a release is deleted too.
+#               Volumes and v* releases are never touched. With --dry-run it
+#               reads the archive and deletes nothing
 #   --orphans   list index lines no current recipe names, with no network;
 #               --prune=yes-delete deletes the unprotected ones
 #   --freeze    write build/freeze/sources-<tag>.sha256 for ports/core at
@@ -127,8 +153,9 @@
 # gives this hash, or was just uploaded by this run, and holds other bytes
 # (corrupt: deleted and uploaded once more); by --rehome, once the new copy is
 # verified and the pushed index no longer names the old one; and by
-# --prune=yes-delete. An unknown digest is asked for again and then hashed
-# from a download, and is never a reason to delete.
+# --prune=yes-delete. A release is deleted only by --retire, and only when it
+# is a legacy src-<name> release holding no asset. An unknown digest is asked
+# for again and then hashed from a download, and is never a reason to delete.
 #
 # KDOS_GITHUB_API and KDOS_GITHUB_UPLOADS replace the two GitHub endpoints,
 # for running this against a local stand-in.
@@ -161,8 +188,10 @@ die() { echo "ports/publish: $*" >&2; exit 1; }
 usage() {
     cat <<'EOF'
 usage: ports/publish [--dry-run | --check] [--history] [port…]
+       ports/publish --plan [--dry-run]
        ports/publish --describe [--dry-run]
        ports/publish --rehome [--dry-run] [port…]
+       ports/publish --retire [--dry-run]
        ports/publish --orphans [--prune=yes-delete]
        ports/publish --freeze <kdos-tag> [--dry-run | --check]
        ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned]
@@ -170,7 +199,7 @@ usage: ports/publish [--dry-run | --check] [--history] [port…]
 EOF
 }
 
-DRY=0 CHECK=0 HISTORY=0 DESCRIBE=0 FREEZE="" REHOME=0 ORPHANS=0 PRUNE=""
+DRY=0 CHECK=0 HISTORY=0 DESCRIBE=0 FREEZE="" REHOME=0 ORPHANS=0 PRUNE="" PLAN=0 RETIRE=0
 RELEASE="" ISO="" KEY="" UNSIGNED=0 PUBLISH=0
 PORTS=()
 while [ $# -gt 0 ]; do
@@ -180,6 +209,8 @@ while [ $# -gt 0 ]; do
         --history)  HISTORY=1 ;;
         --describe) DESCRIBE=1 ;;
         --rehome)   REHOME=1 ;;
+        --plan)     PLAN=1 ;;
+        --retire)   RETIRE=1 ;;
         --orphans)  ORPHANS=1 ;;
         --prune=*)  PRUNE=${1#--prune=}; [ -n "$PRUNE" ] || PRUNE="(empty)" ;;
         --prune)    PRUNE="(none)" ;;
@@ -200,8 +231,8 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-MODES=$(( DESCRIBE + REHOME + ORPHANS + (${#FREEZE} > 0) + (${#RELEASE} > 0) ))
-[ "$MODES" -le 1 ] || die "--describe, --rehome, --orphans, --freeze and --release are one per run"
+MODES=$(( DESCRIBE + REHOME + ORPHANS + PLAN + RETIRE + (${#FREEZE} > 0) + (${#RELEASE} > 0) ))
+[ "$MODES" -le 1 ] || die "--plan, --describe, --rehome, --retire, --orphans, --freeze and --release are one per run"
 [ "$DRY" = 0 ] || [ "$CHECK" = 0 ] || die "--dry-run and --check are one per run"
 if [ -n "$PRUNE" ]; then
     [ "$ORPHANS" = 1 ] || die "--prune works only with --orphans"
@@ -217,9 +248,10 @@ fi
     die "ports can be named only in a plain run or with --rehome"
 [ "$ORPHANS" = 0 ] || [ "$DRY" = 0 ] || die "--orphans alone makes no network call; it takes no --dry-run"
 
-# Listing orphans reads only the tree; everything else reads or writes the
-# published archive, which a directory base could not confirm.
-if [ "$ORPHANS" = 0 ] || [ -n "$PRUNE" ]; then
+# Listing orphans and planning volumes read only the tree; everything else
+# reads or writes the published archive, which a directory base could not
+# confirm.
+if { [ "$ORPHANS" = 0 ] || [ -n "$PRUNE" ]; } && [ "$PLAN" = 0 ]; then
     [ -n "$KDOS_SOURCES_BASE" ] || die "KDOS_SOURCES_BASE is empty; there is no archive to publish to"
     src_base_local && die "KDOS_SOURCES_BASE is a local directory; publish checks the published archive"
 fi
@@ -328,15 +360,124 @@ read_recipes() {
     return 0
 }
 
-# located_ok <hash> — true when the hash's recorded release is one a current
-# recipe's shelf gives it. A hash two shelves name is at home in either, so
-# --rehome never moves it back and forth.
-located_ok() {
-    local tag=${SRC_TAG[$1]:-} s
-    for s in ${R_SHELVES[$1]:-}; do
-        [ "$tag" = "$(src_release_tag "$s")" ] && return 0
+# ── volumes ───────────────────────────────────────────────────────────────
+#
+# VOL[shelf] is the volume ports/shelves gives the shelf. IDX_N[tag] is how
+# many assets the index places in release <tag>, parts counted one by one; a
+# dry run takes it for the release's own count, and every index write keeps
+# it current.
+VOLUME_FILL=${KDOS_VOLUME_FILL:-650}
+declare -A VOL=() IDX_N=()
+load_volumes() {
+    local s v
+    VOL=()
+    while read -r s v; do VOL[$s]=$v; done < <(src_shelf_volumes)
+    return 0
+}
+idx_count_load() {
+    local h
+    IDX_N=()
+    for h in "${!SRC_TAG[@]}"; do
+        IDX_N[${SRC_TAG[$h]}]=$(( ${IDX_N[${SRC_TAG[$h]}]:-0} + SRC_NPARTS[$h] ))
     done
-    return 1
+    return 0
+}
+
+# top_volume — the highest volume ports/shelves maps or the index names, 0
+# when neither names one. A volume a full one spilled into is mapped to no
+# shelf and still counts.
+top_volume() {
+    local t=0 v k
+    for v in "${VOL[@]}"; do [ "$v" -le "$t" ] || t=$v; done
+    for k in "${!IDX_N[@]}"; do
+        [[ $k =~ ^sources-([1-9][0-9]*)$ ]] || continue
+        [ "${BASH_REMATCH[1]}" -le "$t" ] || t=${BASH_REMATCH[1]}
+    done
+    echo "$t"
+}
+
+# home_tag <shelf> — the volume a file of <shelf> belongs in; for `attic`,
+# the highest volume. Fails for a shelf with no volume.
+home_tag() {
+    local v
+    if [ "$1" = attic ]; then
+        v=$(top_volume)
+        [ "$v" -gt 0 ] || v=1
+    else
+        v=${VOL[$1]:-}
+        [ -n "$v" ] || return 1
+    fi
+    src_volume_tag "$v"
+}
+
+# cand_tags <shelf> [home] — the volumes a new file of <shelf> may go to, in
+# the order they are tried: its home, every other volume from 1 up, then the
+# next volume, which does not exist yet. With `home`, its home only.
+cand_tags() {
+    local home t i
+    home=$(home_tag "$1") || return 1
+    printf '%s\n' "$home"
+    [ "${2:-}" != home ] || return 0
+    t=$(top_volume)
+    for ((i = 1; i <= t + 1; i++)); do
+        [ "sources-$i" = "$home" ] || src_volume_tag "$i"
+    done
+}
+
+# placement <hash> — set PL to where the index puts an archived file, and
+# PL_SHELF to the shelf whose name it carries:
+#
+#   home     the volume of a shelf whose port names it, under <shelf>--
+#   spilled  another volume, under the <shelf>-- of a shelf naming it
+#   attic    a volume, when no current recipe names it: it stays where it is
+#   (empty)  anything else — a legacy src-<name> release, or a name no
+#            current shelf of its ports gives it
+#
+# A hash two shelves name is at home under either, so --rehome never moves
+# it back and forth.
+PL="" PL_SHELF=""
+placement() {
+    local h=$1 tag=${SRC_TAG[$1]:-} asset=${SRC_ASSET[$1]:-} s
+    PL="" PL_SHELF=""
+    [[ $tag =~ ^sources-[1-9][0-9]*$ ]] || return 0
+    if [ -z "${R_LABEL[$h]:-}" ]; then PL=attic; return 0; fi
+    for s in ${R_SHELVES[$h]:-}; do
+        [[ $asset == "$s--"* ]] || continue
+        if [ -n "${VOL[$s]:-}" ] && [ "$tag" = "sources-${VOL[$s]}" ]; then
+            PL=home PL_SHELF=$s
+            return 0
+        fi
+    done
+    for s in ${R_SHELVES[$h]:-}; do
+        [[ $asset == "$s--"* ]] || continue
+        [ -n "${VOL[$s]:-}" ] || continue
+        PL=spilled PL_SHELF=$s
+        return 0
+    done
+    return 0
+}
+
+# volume_shelves <N> — the shelves ports/shelves maps to volume <N>, in C
+# order.
+volume_shelves() {
+    local s
+    for s in "${!VOL[@]}"; do [ "${VOL[$s]}" != "$1" ] || echo "$s"; done | LC_ALL=C sort
+}
+
+# release_title <tag> — "Sources N: <first shelf> … <last shelf>" for a
+# volume; a legacy release keeps the title it was created with, so this is
+# only asked for volumes.
+release_title() {
+    local v first last
+    local -a sh
+    v=$(src_tag_volume "$1") || return 1
+    mapfile -t sh < <(volume_shelves "$v")
+    case ${#sh[@]} in
+        0) echo "Sources $v" ;;
+        1) echo "Sources $v: ${sh[0]}" ;;
+        *) first=${sh[0]} last=${sh[${#sh[@]}-1]}
+           echo "Sources $v: $first … $last" ;;
+    esac
 }
 
 # named_ports <port…> — fill NAMED[port] for each port that exists; an
@@ -558,15 +699,15 @@ releases_list() {
     return 0
 }
 
-# shelf_intro <tag> — the paragraphs that open an archive release's notes.
-shelf_intro() {
-    local shelf=${1#src-} desc
-    if [ "$shelf" = attic ]; then
-        echo "Upstream sources for ports that no longer exist or have moved on to newer sources."
+# release_intro <tag> — the paragraphs that open an archive release's notes.
+release_intro() {
+    local v
+    if v=$(src_tag_volume "$1"); then
+        echo "Volume $v of the KDOS source archive: the upstream sources of the ports on the shelves below,"
+        echo "each file stored as <shelf>--<file>. A file no current recipe names is kept as attic--<file>."
     else
-        desc=$(src_shelf_desc "$shelf" 2>/dev/null) || desc=""
-        desc=${desc%.}
-        echo "Upstream sources for the KDOS ports on the $shelf shelf${desc:+: $desc}."
+        echo "Upstream sources from the archive's older layout, one release per shelf. ports/publish --rehome"
+        echo "moves each file into a numbered volume, sources-N, and this release is retired once it is empty."
     fi
     echo
     echo "This is an archive, not a KDOS release. ports/fetch finds each file through"
@@ -575,15 +716,17 @@ shelf_intro() {
 }
 
 # archive_release <tag> [nocreate] — sets REL_ID to the id of archive release
-# <tag>, creating it on 404 unless told not to. Every archive release is a
+# <tag>, creating it on 404 unless told not to; a 404 left alone sets
+# REL_ABSENT. Only a volume is ever created. Every archive release is a
 # pre-release that is never "latest", so the repository's latest release is
 # always a KDOS system release; one found otherwise is changed to that. It
 # runs in this shell, not a substitution, so the id cache and the pacing
 # clock survive it.
 declare -A RID=()
-REL_ID=""
+REL_ID="" REL_ABSENT=0
 archive_release() {
-    local tag=$1 id="" try
+    local tag=$1 id="" try title
+    REL_ABSENT=0
     REL_ID=${RID[$tag]:-}
     [ -n "$REL_ID" ] && return 0
     for try in 1 2; do
@@ -601,10 +744,11 @@ archive_release() {
             break
         fi
         [ "$HTTP" = 404 ] || { echo "  release $tag: HTTP $HTTP" >&2; return 1; }
-        [ "${2:-}" != nocreate ] || return 1
-        shelf_intro "$tag" > "$TMP/intro"
-        printf '{"tag_name":"%s","name":"Sources: %s","body":%s,"draft":false,"prerelease":true,"make_latest":"false"}' \
-            "$tag" "${tag#src-}" "$(json_text "$TMP/intro")" > "$TMP/create.json"
+        if [ "${2:-}" = nocreate ]; then REL_ABSENT=1; return 1; fi
+        title=$(release_title "$tag") || { echo "  release $tag: only a volume is created" >&2; return 1; }
+        release_intro "$tag" > "$TMP/intro"
+        printf '{"tag_name":"%s","name":"%s","body":%s,"draft":false,"prerelease":true,"make_latest":"false"}' \
+            "$tag" "$title" "$(json_text "$TMP/intro")" > "$TMP/create.json"
         pace
         gh POST "$GH_API/repos/$KDOS_SOURCES_REPO/releases" \
             -H 'Content-Type: application/json' --data-binary @"$TMP/create.json"
@@ -696,11 +840,16 @@ asset_info() {
 # GitHub stores a name other than the one asked for, a run stopped before its
 # index line was written finds the upload under that other name only: asking
 # for the requested name again answers 422 and the listing has no such name.
+# While PUT_TAG names the archive release being written, a name the index
+# already holds there is skipped: that is a file's current copy, which a move
+# within one volume must not take for its new one.
+PUT_TAG=""
 asset_by_bytes() {
     local k
     [ -n "$3" ] || return 0
     while IFS= read -r k; do
         [ -n "$k" ] || continue
+        [ -z "$PUT_TAG" ] || [ -z "${HELD[$PUT_TAG/$k]:-}" ] || continue
         if [ "${RA_DIG[$1/$k]:-}" = "$2" ] && [ "${RA_LABEL[$1/$k]:-}" = "$3" ] &&
            [ "${RA_STATE[$1/$k]:-}" = uploaded ]; then
             printf '%s\n' "${RA_NAME[$1/$k]}"
@@ -846,10 +995,13 @@ IDX_HEADER="$SRC_INDEX_MARKER
 #
 #   <sha256> <tag> <asset> <port>/<file> [parts=<N>:<h1>,<h2>,…,<hN>]
 #
-# <tag> is the GitHub release on kunaldawn/kdos that holds the file: src-<shelf>
-# for the shelf of the first port that names it, or src-attic for a file only
-# old history names. <asset> is the name GitHub stored, which is what the
-# download URL uses; the file's own name is <port>/<file>. A file larger than
+# <tag> is the GitHub release on kunaldawn/kdos that holds the file: sources-<N>,
+# the volume ports/shelves gives the shelf of the first port that names it, or
+# another volume when that one was full. A src-<name> tag is the older layout,
+# one release per shelf, still read until ports/publish --rehome moves the file.
+# <asset> is the name GitHub stored, which is what the download URL uses:
+# <shelf>--<file>, longer when that is taken, attic--<file> for a file only old
+# history names. The file's own name is <port>/<file>. A file larger than
 # 1900 MiB is stored as <asset>.part01 … <asset>.partNN, whose SHA-256s are listed in
 # order after parts=. ports/fetch joins them and checks <sha256> over the whole.
 # One line per hash, sorted by hash. Written by ports/publish; the only hand edit
@@ -877,13 +1029,6 @@ held_load() {
     return 0
 }
 
-# index_problems <file> — src_index_problems less its complaint about a tag
-# ports/shelves no longer lists: that is what --rehome moves files away from,
-# so it must not stop the run that repairs it.
-index_problems() {
-    src_index_problems "$1" | grep -v 'is not src-<a shelf' || true
-}
-
 # index_ready — refuse to write an index that is not format 2, or that
 # breaks its rules before this run touches it.
 index_ready() {
@@ -893,7 +1038,7 @@ index_ready() {
         [ "$first" = "$SRC_INDEX_MARKER" ] ||
             die "${KDOS_SOURCES_INDEX#"$REPO_ROOT"/} is not format 2; replace it with the format-2 header before publishing"
     fi
-    p=$(index_problems "$KDOS_SOURCES_INDEX")
+    p=$(src_index_problems "$KDOS_SOURCES_INDEX")
     [ -z "$p" ] || { printf '  %s\n' "$p" >&2; die "${KDOS_SOURCES_INDEX#"$REPO_ROOT"/} breaks its rules; fix it first"; }
 }
 
@@ -917,7 +1062,7 @@ index_write() {
             [ -z "${2:-}" ] || printf '%s\n' "$2"
         } | LC_ALL=C sort -k1,1
     } > "$f.tmp"
-    p=$(index_problems "$f.tmp")
+    p=$(src_index_problems "$f.tmp")
     if [ -n "$p" ]; then
         printf '  %s\n' "$p" >&2
         rm -f "$f.tmp"
@@ -929,6 +1074,7 @@ index_write() {
     if cmp -s "$f.tmp" "$f"; then rm -f "$f.tmp"; else mv -f "$f.tmp" "$f"; INDEX_CHANGED=1; fi
     if [ -n "${SRC_TAG[$1]:-}" ]; then
         held_set "${SRC_TAG[$1]}" "${SRC_ASSET[$1]}" "${SRC_NPARTS[$1]}" ""
+        IDX_N[${SRC_TAG[$1]}]=$(( ${IDX_N[${SRC_TAG[$1]}]:-0} - SRC_NPARTS[$1] ))
         unset "SRC_TAG[$1]" "SRC_ASSET[$1]" "SRC_NAME[$1]" "SRC_NPARTS[$1]"
     fi
 }
@@ -945,6 +1091,7 @@ index_put() {
     SRC_NPARTS[$h]=$(( n < 2 ? 1 : n ))
     for ((i = 1; n >= 2 && i <= n; i++)); do SRC_PHASH[$h,$i]=${!i}; done
     held_set "$tag" "$asset" "${SRC_NPARTS[$h]}" "$h"
+    IDX_N[$tag]=$(( ${IDX_N[$tag]:-0} + SRC_NPARTS[$h] ))
 }
 
 # index_del <hash>
@@ -954,13 +1101,14 @@ index_del() {
 
 # ── names ─────────────────────────────────────────────────────────────────
 #
-# name_tiers <hash> <label> — the candidate asset names, in order, as GitHub
-# will store them.
+# name_tiers <hash> <label> <shelf> — the candidate asset names, in order,
+# as GitHub will store them. The shelf prefix keeps every shelf's names
+# apart in a volume that holds many.
 name_tiers() {
     local port=${2%%/*} file=${2#*/}
-    src_asset_sanitize "$file"
-    src_asset_sanitize "$port--$file"
-    src_asset_sanitize "$port--${1:0:12}--$file"
+    src_asset_sanitize "$3--$file"
+    src_asset_sanitize "$3--$port--$file"
+    src_asset_sanitize "$3--$port--${1:0:12}--$file"
 }
 
 # name_free <tag> <rid|""> <name> <nparts> <hash> — true when <name> may
@@ -991,17 +1139,29 @@ name_free() {
     return 0
 }
 
-# predict <hash> <label> <tag> <nparts> — the name a dry run expects, from the
-# index alone, reserved for the rest of the plan; empty when every tier is
-# held.
+# predict <hash> <label> <shelf> <nparts> [home] — the volume (PRED_TAG) and
+# name (PRED) a dry run expects, from the index alone, reserved for the rest
+# of the plan. The index's count of each volume stands for GitHub's, so a
+# full volume spills as it would. PRED is empty when every tier is held in
+# the volume with room, PRED_TAG too when no volume has room ([home]: the
+# home volume only) or the shelf has no volume.
+PRED="" PRED_TAG=""
 predict() {
-    local c
-    PRED=""
-    while IFS= read -r c; do
-        name_free "$3" "" "$c" "$4" "$1" && { PRED=$c; break; }
-    done < <(name_tiers "$1" "$2")
-    [ -z "$PRED" ] || held_set "$3" "$PRED" "$4" "$1"
-    return 0
+    local c t
+    local -a tags
+    PRED="" PRED_TAG=""
+    mapfile -t tags < <(cand_tags "$3" ${5:+"$5"})
+    for t in "${tags[@]}"; do
+        [ $(( ${IDX_N[$t]:-0} + $4 )) -le "$SRC_RELEASE_CAP" ] || continue
+        PRED_TAG=$t
+        while IFS= read -r c; do
+            name_free "$t" "" "$c" "$4" "$1" && { PRED=$c; break; }
+        done < <(name_tiers "$1" "$2" "$3")
+        break
+    done
+    [ -n "$PRED" ] || return 0
+    held_set "$PRED_TAG" "$PRED" "$4" "$1"
+    IDX_N[$PRED_TAG]=$(( ${IDX_N[$PRED_TAG]:-0} + $4 ))
 }
 
 # ── uploading one file ────────────────────────────────────────────────────
@@ -1034,25 +1194,58 @@ split_file() {
     done
 }
 
-# store <hash> <file> <label> <tag> [asset] — upload one file into archive
-# release <tag>, whole or in parts, under [asset] (the name its index line
-# already gives it) or else the first free name tier, and write its index
-# line. 0 stored, 1 failed, 2 no name would take it.
+# store <hash> <file> <label> <shelf> [home | <tag> <asset>] — upload one
+# file into the archive, whole or in parts, and write its index line. With
+# <tag> and <asset> (the place its index line already gives it) it goes
+# there and nowhere else. Otherwise the volumes cand_tags names are tried in
+# order, each under the first free name tier, and a volume with no room for
+# it is passed over; with `home`, only its home volume is tried. 0 stored,
+# 1 failed, 2 no name would take it, 3 no volume tried had room.
 declare -A TOUCHED=()
 store() {
-    local h=$1 file=$2 label=$3 tag=$4 fixed=${5:-} rid n i cand rc new owned p stored
+    local h=$1 file=$2 label=$3 shelf=$4 fixed="" only="" n tag rc first=""
+    local -a tags
+    case ${5:-} in
+        "")   ;;
+        home) only=home ;;
+        *)    tags=("$5"); fixed=$6 ;;
+    esac
+    if [ -z "$fixed" ]; then
+        mapfile -t tags < <(cand_tags "$shelf" ${only:+"$only"})
+        [ "${#tags[@]}" -gt 0 ] || { echo "  $label: shelf $shelf has no volume; run ports/publish --plan" >&2; return 1; }
+    fi
+    split_file "$h" "$file" || return 1
+    n=1
+    [ "${#NEW_PH[@]}" -lt 3 ] || n=$(( ${#NEW_PH[@]} - 1 ))
+    if [ -n "$fixed" ] && [ "$n" != "${SRC_NPARTS[$h]}" ]; then
+        echo "  $label: the index stores it in ${SRC_NPARTS[$h]} part(s); KDOS_PART_SIZE=$SRC_PART_SIZE cuts $n" >&2
+        return 1
+    fi
+    for tag in "${tags[@]}"; do
+        [ -n "$first" ] || first=$tag
+        rc=0
+        store_in "$h" "$file" "$label" "$shelf" "$tag" "$n" "$fixed" || rc=$?
+        PUT_TAG=""
+        [ "$rc" = 3 ] && [ -z "$fixed" ] && continue
+        [ "$rc" = 0 ] || return "$rc"
+        [ "$tag" = "$first" ] || echo "  spilled  $label: $first is full; stored in $tag"
+        return 0
+    done
+    echo "  $label: no volume tried has room for $n more asset(s)" >&2
+    return 3
+}
+
+# store_in <hash> <file> <label> <shelf> <tag> <nparts> [asset] — store's
+# work in one release; the file is already split. 3 when the release has no
+# room for it.
+store_in() {
+    local h=$1 file=$2 label=$3 shelf=$4 tag=$5 n=$6 fixed=${7:-} rid i cand rc new owned p stored
     local -a cands
     archive_release "$tag" || { echo "  $label: no release $tag" >&2; return 1; }
     rid=$REL_ID
     release_assets "$KDOS_SOURCES_REPO" "$rid" || return 1
-    split_file "$h" "$file" || return 1
-    n=1
-    [ "${#NEW_PH[@]}" -lt 3 ] || n=$(( ${#NEW_PH[@]} - 1 ))
+    PUT_TAG=$tag
     if [ -n "$fixed" ]; then
-        if [ "$n" != "${SRC_NPARTS[$h]}" ]; then
-            echo "  $label: the index stores it in ${SRC_NPARTS[$h]} part(s); KDOS_PART_SIZE=$SRC_PART_SIZE cuts $n" >&2
-            return 1
-        fi
         for ((i = 1; n >= 2 && i <= n; i++)); do
             [ "${NEW_PH[i]}" = "${SRC_PHASH[$h,$i]}" ] && continue
             echo "  $label: part $i does not hash as the index says; set KDOS_PART_SIZE to the size it was cut with" >&2
@@ -1060,7 +1253,7 @@ store() {
         done
         cands=("$fixed")
     else
-        mapfile -t cands < <(name_tiers "$h" "$label")
+        mapfile -t cands < <(name_tiers "$h" "$label" "$shelf")
     fi
     for cand in "${cands[@]}"; do
         [ -n "$cand" ] || continue
@@ -1075,7 +1268,7 @@ store() {
         done < <(held_names "$cand" "$n")
         if [ $(( ${RA_N[$rid]:-0} + new )) -gt "$SRC_RELEASE_CAP" ]; then
             echo "  $label: $tag holds ${RA_N[$rid]:-0} assets; $new more would pass $SRC_RELEASE_CAP" >&2
-            return 1
+            return 3
         fi
         owned=0
         [ "${HELD[$tag/${cand,,}]:-}" != "$h" ] || owned=1
@@ -1111,13 +1304,18 @@ store() {
 
 # ── release notes ─────────────────────────────────────────────────────────
 #
-# describe <tag> — rewrite archive release <tag>'s notes from the index. A
-# body holds 125,000 characters: past 120,000 the table drops its links and
-# shows 16 hex digits of each hash, and past that again it is cut short with
-# a pointer to the index, which is complete. The version is the recipe's of
-# the port that names the hash today, or — when none does.
+# describe <tag> — rewrite archive release <tag>'s notes from the index, and
+# a volume's title. The notes hold one section per shelf: its name and its
+# description from ports/shelves, then its table. A file sits in the section
+# of the shelf its asset name starts with (attic, last, for attic--), or in a
+# legacy src-<name> release under <name>. A body holds 125,000 characters:
+# past 120,000 the tables drop their links and show 16 hex digits of each
+# hash, and past that again they are cut short with a pointer to the index,
+# which is complete. The version is the recipe's of the port that names the
+# hash today, or — when none does.
 describe() {
-    local tag=$1 h lab port ver size urls n nm rid
+    local tag=$1 h lab port ver size urls n nm rid sec key desc title=""
+    declare -A secs=()
     archive_release "$tag" nocreate || { echo "  $tag: no such release" >&2; return 1; }
     rid=$REL_ID
     : > "$TMP/rows"
@@ -1137,11 +1335,27 @@ describe() {
             done < <(held_names "${SRC_ASSET[$h]}" "$n")
         fi
         urls=$(src_urls "$h" | tr '\n' ' ')
-        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$lab" "$ver" "$n" "$size" "$h" "${urls% }" >> "$TMP/rows"
+        case $tag in
+            src-*) sec=${tag#src-} ;;
+            *)     sec=${SRC_ASSET[$h]%%--*}; [ "$sec" != "${SRC_ASSET[$h]}" ] || sec=attic ;;
+        esac
+        secs[$sec]=1
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$lab" "$ver" "$n" "$size" "$h" "${urls% }" \
+            "$([ "$sec" = attic ] && echo 2 || echo 1)$sec" >> "$TMP/rows"
     done
-    LC_ALL=C sort -t$'\t' -k1,1 -o "$TMP/rows" "$TMP/rows"
+    : > "$TMP/secs"
+    for sec in "${!secs[@]}"; do
+        if [ "$sec" = attic ]; then
+            desc="Files no current recipe names: ports that are gone, and older sources of ports that have moved on."
+        else
+            desc=$(src_shelf_desc "$sec" 2>/dev/null) || desc="A shelf ports/shelves no longer lists."
+        fi
+        key=$([ "$sec" = attic ] && echo 2 || echo 1)$sec
+        printf '%s\t%s\t%s\n' "$key" "$sec" "$desc" >> "$TMP/secs"
+    done
+    LC_ALL=C sort -t$'\t' -k7,7 -k1,1 -o "$TMP/rows" "$TMP/rows"
     n=$(wc -l < "$TMP/rows")
-    shelf_intro "$tag" > "$TMP/intro"
+    release_intro "$tag" > "$TMP/intro"
     awk -F'\t' -v limit=120000 '
         function hsize(b,  u, i) {
             if (b + 0 <= 0) return "—"
@@ -1160,31 +1374,39 @@ describe() {
             hs = full ? hash[i] : substr(hash[i], 1, 16)
             return "| " port " | " ver[i] " | " f " | " hsize(size[i]) " | `" hs "` |\n"
         }
-        function build(full, cut,   b, i, r, tail) {
-            b = head
+        function heading(k) {
+            return "\n## " sname[k] "\n\n" sdesc[k] "\n\n| Port | Version | File | Size | SHA-256 |\n|---|---|---|---|---|\n"
+        }
+        function build(full, cut,   b, i, r, tail, cur) {
+            b = intro; cur = ""
             for (i = 1; i <= n; i++) {
                 r = row(i, full)
+                if (sec[i] != cur) { r = heading(sec[i]) r; cur = sec[i] }
                 tail = "\n… " (n - i + 1) " more; ports/sources.idx lists every file.\n"
                 if (cut && length(b) + length(r) + length(tail) > limit) return b tail
                 b = b r
             }
             return b
         }
-        FNR == NR { intro = intro $0 "\n"; next }
-        { n++; lab[n] = $1; ver[n] = $2; np[n] = $3; size[n] = $4; hash[n] = $5; urls[n] = $6 }
+        FILENAME == ARGV[1] { intro = intro $0 "\n"; next }
+        FILENAME == ARGV[2] { sname[$1] = $2; sdesc[$1] = $3; next }
+        { n++; lab[n] = $1; ver[n] = $2; np[n] = $3; size[n] = $4; hash[n] = $5; urls[n] = $6; sec[n] = $7 }
         END {
-            head = intro "\n| Port | Version | File | Size | SHA-256 |\n|---|---|---|---|---|\n"
             b = build(1, 0)
             if (length(b) > limit) b = build(0, 0)
             if (length(b) > limit) b = build(0, 1)
             printf "%s", b
-        }' "$TMP/intro" "$TMP/rows" > "$TMP/notes.md"
-    printf '{"body":%s}' "$(json_text "$TMP/notes.md")" > "$TMP/notes.json"
+        }' "$TMP/intro" "$TMP/secs" "$TMP/rows" > "$TMP/notes.md"
+    if title=$(release_title "$tag"); then
+        printf '{"name":"%s","body":%s}' "$title" "$(json_text "$TMP/notes.md")" > "$TMP/notes.json"
+    else
+        printf '{"body":%s}' "$(json_text "$TMP/notes.md")" > "$TMP/notes.json"
+    fi
     pace
     gh PATCH "$GH_API/repos/$KDOS_SOURCES_REPO/releases/$rid" \
         -H 'Content-Type: application/json' --data-binary @"$TMP/notes.json"
     [ "$HTTP" = 200 ] || { echo "  $tag: notes HTTP $HTTP $(json_str message)" >&2; return 1; }
-    echo "  notes    $tag  ($n files)"
+    echo "  notes    $tag  ($n files${title:+, \"$title\"})"
 }
 
 describe_touched() {
@@ -1272,6 +1494,8 @@ release_by_tag_any() {
 
 src_index_load
 held_load
+idx_count_load
+load_volumes
 
 if [ -n "$FREEZE" ]; then
     if [ "$DRY" = 1 ]; then freeze_list "$FREEZE" nocheck; else freeze_list "$FREEZE"; fi
@@ -1461,7 +1685,7 @@ if [ -n "$RELEASE" ]; then
       fi
       echo "## Sources"
       echo
-      echo "\`sources.sha256\` lists every upstream source file the recipes at $tag name, as \`<sha256>  <port>/<file>\`. Each is kept in the \`src-<shelf>\` pre-releases of this repository, and \`ports/fetch\` finds it through \`ports/sources.idx\`."
+      echo "\`sources.sha256\` lists every upstream source file the recipes at $tag name, as \`<sha256>  <port>/<file>\`. Each is kept in the numbered \`sources-N\` pre-releases of this repository, and \`ports/fetch\` finds it through \`ports/sources.idx\`."
     } > "$out/notes.md"
 
     load_token
@@ -1536,7 +1760,10 @@ if [ "$DESCRIBE" = 1 ]; then
     for h in "${!SRC_TAG[@]}"; do TOUCHED[${SRC_TAG[$h]}]=1; done
     if [ "$DRY" = 1 ]; then
         echo "==> would rewrite the notes of ${#TOUCHED[@]} releases:"
-        printf '%s\n' "${!TOUCHED[@]}" | LC_ALL=C sort | sed 's/^/  /'
+        for tag in $(printf '%s\n' "${!TOUCHED[@]}" | LC_ALL=C sort); do
+            title=$(release_title "$tag") || title="(title kept)"
+            printf '  %-20s %s\n' "$tag" "$title"
+        done
         exit 0
     fi
     read_recipes
@@ -1545,8 +1772,160 @@ if [ "$DESCRIBE" = 1 ]; then
     exit "$RC"
 fi
 
+# ── --retire ──────────────────────────────────────────────────────────────
+#
+# A legacy src-<name> release goes once --rehome has emptied it: the release
+# first, then its tag, which deleting a release leaves behind. A src-<name>
+# tag with no release — one a stopped run deleted the release of — goes too.
+# A release still holding any asset, a starter included, is refused: its
+# files may be the only copy a pushed index names. Volumes and system
+# releases never match src-*, and nothing here touches them.
+if [ "$RETIRE" = 1 ]; then
+    load_token
+    declare -A TAGRID=() SEEN_REF=()
+    releases_list "$KDOS_SOURCES_REPO" > "$TMP/rels" || die "cannot list the releases of $KDOS_SOURCES_REPO"
+    while IFS=$'\037' read -r id t; do
+        case $t in src-*) TAGRID[$t]=$id ;; esac
+    done < "$TMP/rels"
+    # delete_tag <tag> — the git ref; one already gone is no failure.
+    delete_tag() {
+        if [ "$DRY" = 1 ]; then echo "  would delete tag $1"; return 0; fi
+        pace
+        gh DELETE "$GH_API/repos/$KDOS_SOURCES_REPO/git/refs/tags/$1"
+        case $HTTP in
+            204|404|422) echo "  deleted  tag $1" ;;
+            *) fail "tag $1: delete HTTP $HTTP $(json_str message)"; return 1 ;;
+        esac
+    }
+    nret=0 nheld=0
+    for t in $(printf '%s\n' "${!TAGRID[@]}" | LC_ALL=C sort); do
+        r=${TAGRID[$t]}
+        release_assets "$KDOS_SOURCES_REPO" "$r" || { fail "cannot list $t"; continue; }
+        if [ "${RA_N[$r]:-0}" -gt 0 ]; then
+            echo "  holds    $t  ${RA_N[$r]} assets; kept (make publish-rehome empties it)"
+            nheld=$((nheld + 1)); RC=1
+            continue
+        fi
+        if [ "$DRY" = 1 ]; then
+            echo "  would retire $t (empty)"
+        else
+            pace
+            gh DELETE "$GH_API/repos/$KDOS_SOURCES_REPO/releases/$r"
+            case $HTTP in
+                204|404) echo "  retired  $t" ;;
+                *) fail "$t: delete HTTP $HTTP $(json_str message)"; continue ;;
+            esac
+        fi
+        delete_tag "$t" || continue
+        SEEN_REF[$t]=1
+        nret=$((nret + 1))
+    done
+    # Tags whose release is already gone. The listing is asked for page by
+    # page and read until a page adds no tag, whether or not GitHub pages it.
+    page=1
+    while [ "$page" -le 50 ]; do
+        gh GET "$GH_API/repos/$KDOS_SOURCES_REPO/git/matching-refs/tags/src-?per_page=100&page=$page"
+        [ "$HTTP" = 200 ] || { fail "listing src-* tags: HTTP $HTTP"; break; }
+        added=0
+        while IFS= read -r t; do
+            [ -n "$t" ] && [ -z "${SEEN_REF[$t]:-}" ] || continue
+            SEEN_REF[$t]=1 added=1
+            [ -z "${TAGRID[$t]:-}" ] || continue
+            delete_tag "$t" && nret=$((nret + 1))
+        done < <(grep -o '"ref": *"refs/tags/src-[^"]*"' "$TMP/body" | sed 's/.*refs\/tags\///; s/"$//')
+        [ "$added" = 1 ] || break
+        page=$((page + 1))
+    done
+    if [ "$DRY" = 1 ]; then
+        echo "==> would retire $nret src-* releases or tags; $nheld still hold assets"
+    else
+        echo "==> retired $nret src-* releases or tags; $nheld still hold assets"
+    fi
+    exit "$RC"
+fi
+
 read_recipes
 [ ! -e "$TMP/badport" ] || RC=1
+
+# ── --plan ────────────────────────────────────────────────────────────────
+#
+# A shelf's planned count is every recipe hash it owns (the first port to
+# name a hash owns it), parts counted: from the index for an archived file,
+# from a local copy's size otherwise, and 1 when there is neither. Shelves
+# without a volume are taken in C order and join the highest volume
+# ports/shelves maps while its count stays within $VOLUME_FILL; then the
+# next volume opens, numbered past any volume the index already names. A
+# shelf larger than the fill has a volume to itself. The fill sits well under
+# the 1000-asset cap so a volume has room for the versions to come.
+if [ "$PLAN" = 1 ]; then
+    [[ $VOLUME_FILL =~ ^[1-9][0-9]*$ ]] || die "KDOS_VOLUME_FILL=$VOLUME_FILL is not a positive integer"
+    declare -A CNT=() FILL=() NEWV=()
+    for h in "${R_ORDER[@]}"; do
+        sh=${R_SHELF[$h]}
+        n=${SRC_NPARTS[$h]:-}
+        if [ -z "$n" ]; then
+            size=$(local_size "$h" "${R_LABEL[$h]}")
+            n=1
+            [ -z "$size" ] || [ "$size" -le "$SRC_PART_SIZE" ] || n=$(( (size + SRC_PART_SIZE - 1) / SRC_PART_SIZE ))
+        fi
+        CNT[$sh]=$(( ${CNT[$sh]:-0} + n ))
+    done
+    cur=0
+    for sh in "${!VOL[@]}"; do
+        v=${VOL[$sh]}
+        FILL[$v]=$(( ${FILL[$v]:-0} + ${CNT[$sh]:-0} ))
+        [ "$v" -le "$cur" ] || cur=$v
+    done
+    top=$(top_volume)
+    mapfile -t ALL < <(src_shelves | LC_ALL=C sort)
+    for sh in "${ALL[@]}"; do
+        [ -z "${VOL[$sh]:-}" ] || continue
+        c=${CNT[$sh]:-0}
+        if [ "$cur" -gt 0 ] && [ $(( ${FILL[$cur]:-0} + c )) -le "$VOLUME_FILL" ]; then
+            v=$cur
+        else
+            [ "$top" -ge "$cur" ] || top=$cur
+            top=$((top + 1)); v=$top; cur=$v
+        fi
+        VOL[$sh]=$v NEWV[$sh]=1
+        FILL[$v]=$(( ${FILL[$v]:-0} + c ))
+    done
+    norph=0
+    for h in "${!SRC_TAG[@]}"; do [ -n "${R_LABEL[$h]:-}" ] || norph=$((norph + 1)); done
+    for v in $(printf '%s\n' "${VOL[@]}" | sort -nu); do
+        mapfile -t sh < <(volume_shelves "$v")
+        nnew=0
+        for x in "${sh[@]}"; do [ -z "${NEWV[$x]:-}" ] || nnew=$((nnew + 1)); done
+        printf '  %-11s %4d files  %3d shelves%s  %s\n' "sources-$v" "${FILL[$v]:-0}" "${#sh[@]}" \
+            "$([ "$nnew" = 0 ] || echo " ($nnew new)")" "$(release_title "sources-$v")"
+        printf '%s\n' "${sh[@]}" | fmt -w 92 | sed 's/^/                /'
+    done
+    echo "==> ${#NEWV[@]} shelves given a volume, fill $VOLUME_FILL; $norph indexed files no recipe names stay where they are, or go to the highest volume as attic--<file> when --rehome moves them"
+    if [ "${#NEWV[@]}" = 0 ]; then
+        echo "==> every shelf already has a volume"
+        exit "$RC"
+    fi
+    if [ "$DRY" = 1 ]; then
+        echo "==> dry run: ports/shelves unchanged"
+        exit "$RC"
+    fi
+    f=$SRCLIB_PORTS/shelves
+    for sh in "${!NEWV[@]}"; do printf '%s %s\n' "$sh" "${VOL[$sh]}"; done > "$TMP/newv"
+    # Only the lines given a volume are rewritten: id, volume, description,
+    # the id padded as the file pads it. A `-` placeholder is replaced; a
+    # line with no volume field has one inserted before its description.
+    awk 'FNR == NR { nv[$1] = $2; next }
+         /^[[:space:]]*(#|$)/ || !($1 in nv) { print; next }
+         {
+             id = $1; rest = $0
+             sub(/^[[:space:]]*[^[:space:]]+[[:space:]]*/, "", rest)
+             if ($2 == "-") sub(/^-[[:space:]]*/, "", rest)
+             printf "%-17s %-2s %s\n", id, nv[id], rest
+         }' "$TMP/newv" "$f" > "$TMP/shelves"
+    cat "$TMP/shelves" > "$f"
+    echo "==> ports/shelves now maps ${#NEWV[@]} more shelves — commit it"
+    exit "$RC"
+fi
 
 # ── --orphans ─────────────────────────────────────────────────────────────
 #
@@ -1615,56 +1994,83 @@ fi
 
 # ── --rehome ──────────────────────────────────────────────────────────────
 #
-# PHASE 1 moves each archived file whose release no current recipe's shelf
-# gives it into its owner's release: uploaded and verified there, then its
-# index line rewritten. A file no current recipe names stays where it is;
-# that is --orphans' business.
+# PHASE 1 moves each archived file that is not at home (placement) into its
+# home: uploaded and verified there, then its index line rewritten. A file in
+# a legacy src-<name> release, or under a name no current shelf of its ports
+# gives it, is placed as a new file is, and spills when its volume is full; a
+# file no current recipe names goes from a legacy release to the highest
+# volume as attic--<file>, and one already in a volume stays, which is
+# --orphans' business. A file that spilled moves to its own volume only when
+# that has room, and otherwise stays where it is.
 #
 # PHASE 2 deletes old copies. An asset X in release T goes only when its
 # digest is an indexed file's (or one of its parts'), both the working index
-# and the pushed one (@{upstream}) place that file somewhere other than
-# (T, X), and GitHub lists the working index's place with the right digests.
-# Nothing is deleted until an index naming the new place is pushed, so a
-# checkout of the pushed tree always finds its file. An asset whose digest no
-# line names is a stray: reported, never deleted.
+# and the pushed one (@{upstream}, as this clone last fetched or pushed it)
+# place that file somewhere other than (T, X), and GitHub lists the working
+# index's place with the right digests. Nothing is deleted until an index
+# naming the new place is pushed, so a checkout of the pushed tree always
+# finds its file. An asset whose digest no line names is a stray: reported,
+# never deleted.
 if [ "$REHOME" = 1 ]; then
     named_ports "${PORTS[@]}"
     MOVE=()
+    declare -A M_SHELF=() M_LABEL=() M_ONLY=()
     for h in $(printf '%s\n' "${!SRC_TAG[@]}" | LC_ALL=C sort); do
-        [ -n "${R_LABEL[$h]:-}" ] || continue
-        located_ok "$h" && continue
-        [ "${#PORTS[@]}" = 0 ] || names_named "$h" || continue
+        if [ -n "${R_LABEL[$h]:-}" ]; then
+            [ "${#PORTS[@]}" = 0 ] || names_named "$h" || continue
+        else
+            [ "${#PORTS[@]}" = 0 ] || continue
+        fi
+        placement "$h"
+        case $PL in
+            home|attic) continue ;;
+            spilled) M_SHELF[$h]=$PL_SHELF M_LABEL[$h]=${R_LABEL[$h]} M_ONLY[$h]=home ;;
+            *) if [ -n "${R_LABEL[$h]:-}" ]; then
+                   M_SHELF[$h]=${R_SHELF[$h]} M_LABEL[$h]=${R_LABEL[$h]}
+               else
+                   M_SHELF[$h]=attic M_LABEL[$h]=${SRC_NAME[$h]}
+               fi ;;
+        esac
         MOVE+=("$h")
     done
     if [ "$DRY" = 1 ]; then
+        nstay=0
         for h in "${MOVE[@]}"; do
-            tag=$(src_release_tag "${R_SHELF[$h]}")
             n=${SRC_NPARTS[$h]}
-            predict "$h" "${R_LABEL[$h]}" "$tag" "$n"
+            predict "$h" "${M_LABEL[$h]}" "${M_SHELF[$h]}" "$n" "${M_ONLY[$h]:-}"
+            if [ -z "$PRED_TAG" ] && [ -n "${M_ONLY[$h]:-}" ]; then
+                printf '  stays    %s  %s/%s: %s is full\n' "$h" "${SRC_TAG[$h]}" "${SRC_ASSET[$h]}" "$(home_tag "${M_SHELF[$h]}")"
+                nstay=$((nstay + 1)); continue
+            fi
             printf '  move     %s  %s/%s -> %s/%s (predicted)%s\n' "$h" "${SRC_TAG[$h]}" "${SRC_ASSET[$h]}" \
-                "$tag" "${PRED:-(no free name)}" "$([ "$n" -lt 2 ] || echo ", $n parts")"
+                "${PRED_TAG:-(no volume)}" "${PRED:-(no free name)}" "$([ "$n" -lt 2 ] || echo ", $n parts")"
         done
-        echo "==> would move ${#MOVE[@]} files; a run after the index is pushed deletes the old copies"
+        echo "==> would move $(( ${#MOVE[@]} - nstay )) files; a run after the index is pushed deletes the old copies"
         exit "$RC"
     fi
     index_ready
     load_token
-    nmoved=0
+    nmoved=0 nstay=0
     for h in "${MOVE[@]}"; do
         old=${SRC_TAG[$h]}
-        tag=$(src_release_tag "${R_SHELF[$h]}")
-        file=$(find_bytes "$h" "${R_LABEL[$h]}") || file=$(fetch_archived "$h") ||
-            { fail "$h  ${R_LABEL[$h]}: no local copy, and the archive's did not verify"; continue; }
+        file=$(find_bytes "$h" "${M_LABEL[$h]}") || file=$(fetch_archived "$h") ||
+            { fail "$h  ${M_LABEL[$h]}: no local copy, and the archive's did not verify"; continue; }
         rc=0
-        store "$h" "$file" "${R_LABEL[$h]}" "$tag" || rc=$?
+        store "$h" "$file" "${M_LABEL[$h]}" "${M_SHELF[$h]}" ${M_ONLY[$h]:+"${M_ONLY[$h]}"} || rc=$?
         case $rc in
             0) TOUCHED[$old]=1; nmoved=$((nmoved + 1))
-               echo "  moved    $h  $old -> $tag/${SRC_ASSET[$h]}" ;;
-            2) conflict "$h  ${R_LABEL[$h]}" ;;
-            *) fail "$h  ${R_LABEL[$h]}" ;;
+               echo "  moved    $h  $old -> ${SRC_TAG[$h]}/${SRC_ASSET[$h]}" ;;
+            2) conflict "$h  ${M_LABEL[$h]}" ;;
+            3) if [ -n "${M_ONLY[$h]:-}" ]; then
+                   echo "  stays    $h  $old/${SRC_ASSET[$h]}: its own volume is full"
+                   nstay=$((nstay + 1))
+               else
+                   fail "$h  ${M_LABEL[$h]}"
+               fi ;;
+            *) fail "$h  ${M_LABEL[$h]}" ;;
         esac
     done
-    echo "==> phase 1: $nmoved of ${#MOVE[@]} files moved"
+    echo "==> phase 1: $nmoved of $(( ${#MOVE[@]} - nstay )) files moved$([ "$nstay" = 0 ] || echo "; $nstay spilled files stay")"
 
     if ! up=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null) ||
        ! git -C "$REPO_ROOT" show "@{upstream}:ports/sources.idx" > "$TMP/upidx" 2>/dev/null; then
@@ -1686,7 +2092,7 @@ if [ "$REHOME" = 1 ]; then
             done
         done
         while IFS=$'\037' read -r id t; do
-            [[ $t == src-* ]] && TAGRID[$t]=$id
+            case $t in src-*|sources-*) TAGRID[$t]=$id ;; esac
         done < <(releases_list "$KDOS_SOURCES_REPO")
         for t in "${!TAGRID[@]}"; do
             RID[$t]=${TAGRID[$t]}
@@ -1761,8 +2167,8 @@ fi
 # what a recipe hashes, and nothing asks it for anything else — and only one
 # held in the LFS store or the cache; the rest are counted and left to a clone
 # that holds them. A path in history may carry a shelf or not; each is
-# labelled <port>/<file> and goes to its port's shelf today, or to the attic
-# when the port is gone. Without git-lfs no object can be labelled, and an
+# labelled <port>/<file> and goes to its port's shelf today, or, when the
+# port is gone, to the highest volume as attic--<file>. Without git-lfs no object can be labelled, and an
 # unlabelled file has no name to be stored under.
 if [ "$HISTORY" = 1 ]; then
     if git -C "$REPO_ROOT" lfs version >/dev/null 2>&1; then
@@ -1833,15 +2239,20 @@ if [ "$DRY" = 1 ]; then
     declare -A TARGETS=()
     for p in "${PLAN[@]}"; do
         IFS='|' read -r h file label size <<< "$p"
-        tag=$(src_release_tag "${W_SHELF[$h]}")
         n=$(( (size + SRC_PART_SIZE - 1) / SRC_PART_SIZE ))
         [ "$n" -ge 2 ] || n=1
-        predict "$h" "$label" "$tag" "$n"
-        TARGETS[$tag]=1
-        printf '  upload   %-20s %8s  %s  %s -> %s (predicted)%s\n' "$tag" "$(human "$size")" "$h" "$label" \
+        predict "$h" "$label" "${W_SHELF[$h]}" "$n"
+        if [ -z "$PRED_TAG" ]; then
+            printf '  upload   %s  %s: shelf %s has no volume; run ports/publish --plan\n' "$h" "$label" "${W_SHELF[$h]}"
+            RC=1; continue
+        fi
+        home=$(home_tag "${W_SHELF[$h]}")
+        [ "$PRED_TAG" = "$home" ] || echo "  spilled  $label: $home is full; $PRED_TAG has room"
+        TARGETS[$PRED_TAG]=1
+        printf '  upload   %-12s %8s  %s  %s -> %s (predicted)%s\n' "$PRED_TAG" "$(human "$size")" "$h" "$label" \
             "${PRED:-(no free name)}" "$([ "$n" -lt 2 ] || echo ", $n parts")"
     done
-    echo "==> would upload ${#PLAN[@]} files, $(human "$total"), into ${#TARGETS[@]} releases"
+    echo "==> would upload ${#PLAN[@]} files, $(human "$total"), into ${#TARGETS[@]} volumes"
     exit "$RC"
 fi
 
@@ -1853,15 +2264,15 @@ for p in "${PLAN[@]}"; do
     IFS='|' read -r h file label size <<< "$p"
     n=$((n + 1))
     rc=0
-    if [ -n "${SRC_TAG[$h]:-}" ]; then
-        tag=${SRC_TAG[$h]}
-        store "$h" "$file" "${SRC_NAME[$h]}" "$tag" "${SRC_ASSET[$h]}" || rc=$?
+    # A line naming a volume is repaired in place; one naming a legacy
+    # release is placed afresh, since no legacy release is ever created.
+    if [[ ${SRC_TAG[$h]:-} =~ ^sources-[1-9][0-9]*$ ]]; then
+        store "$h" "$file" "${SRC_NAME[$h]}" "${W_SHELF[$h]}" "${SRC_TAG[$h]}" "${SRC_ASSET[$h]}" || rc=$?
     else
-        tag=$(src_release_tag "${W_SHELF[$h]}")
-        store "$h" "$file" "$label" "$tag" || rc=$?
+        store "$h" "$file" "$label" "${W_SHELF[$h]}" || rc=$?
     fi
     case $rc in
-        0) printf '  [%d/%d] %s/%s  %s  %s\n' "$n" "${#PLAN[@]}" "$tag" "${SRC_ASSET[$h]}" "$(human "$size")" "$label" ;;
+        0) printf '  [%d/%d] %s/%s  %s  %s\n' "$n" "${#PLAN[@]}" "${SRC_TAG[$h]}" "${SRC_ASSET[$h]}" "$(human "$size")" "$label" ;;
         2) conflict "$h  $label" ;;
         *) fail "$h  $label" ;;
     esac

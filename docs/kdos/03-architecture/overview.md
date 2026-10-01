@@ -60,10 +60,10 @@ first field is `app`):
 
 `ports/core` files each port one level down, on a **shelf** named for its subject:
 `ports/core/<shelf>/<name>/`, such as `ports/core/wl/wlroots/` or `ports/core/fonts/noto-fonts/`.
-The closed list of 102 shelves, one line each with what belongs on it, is the file
-`ports/shelves`. A shelf is only where a recipe is filed. It subdivides the core ring and is not a
-ring of its own; a port is known everywhere by its bare name, and no dependency line, package or
-database entry records its shelf.
+The closed list of 102 shelves, one line each with its source-archive volume and what belongs on
+it, is the file `ports/shelves`. A shelf is only where a recipe is filed. It subdivides the core
+ring and is not a ring of its own; a port is known everywhere by its bare name, and no dependency
+line, package or database entry records its shelf.
 
 The four `src/` areas that hold recipes are port repositories in their own right and use the same
 two-file recipe format as `ports/core`, so building the desktop is not a special case anywhere in

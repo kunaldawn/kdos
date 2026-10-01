@@ -17,8 +17,8 @@ compiles the unpacked source. `kpkg` turns a port into a **package**, the archiv
 **Shelves.** Upstream software lives one level down in `ports/core`, on a **shelf**: a directory
 named for a subject, holding the ports that belong to it. `wlroots` is at `ports/core/wl/wlroots/`,
 `ffmpeg` at `ports/core/media-frameworks/ffmpeg/`. The 102 shelves form a closed list,
-`ports/shelves`, one line per shelf giving its name and what belongs on it, and the order of that
-file is the order this chapter uses. A shelf is only a place to file a port. A port's identity is
+`ports/shelves`, one line per shelf giving its name, its source-archive volume and what belongs
+on it, and the order of that file is the order this chapter uses. A shelf is only a place to file a port. A port's identity is
 its bare name: `depends =`, the package lists, `kpkg install` and the package database all use
 `wlroots`, never `wl/wlroots`, and no name appears twice anywhere in the tree. `kpkg` finds a port
 by looking for `<name>/` and then `<shelf>/<name>/` in each directory on `PORT_REPO`, and refuses a

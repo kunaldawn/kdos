@@ -46,11 +46,11 @@ kdos/
 │   │   ├── *.patch            optional patches, tracked (436 files)
 │   │   ├── other support files  configuration, data files, single-file sources — tracked
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
-│   ├── shelves                the closed list of shelves, one `<id> <description>` per line
+│   ├── shelves                the closed list of shelves, one `<id> <volume> <description>` per line
 │   ├── Containerfile.fetch    the image that generates vendor bundles, pinning this tree's toolchains
 │   ├── hackage-vendor         the Hackage downloader behind `vendoring = haskell`
 │   ├── .srccache/             the local source cache, one file per hash — ignored
-│   ├── sources.idx            which source-archive release and asset hold each hash — committed
+│   ├── sources.idx            which source-archive volume and asset hold each hash — committed
 │   ├── .kpkgbin/, .portup, .portup-tools/   host helpers compiled on demand — ignored
 │   ├── srclib.sh              the source archive's addressing, and the port lookup by name,
 │   │                          shared by fetch, publish, the hook and preflight
@@ -390,11 +390,11 @@ build and are skipped. A binary host the build wrote goes beside the tree as `so
 ## Where the upstream sources are
 
 Upstream source archives are not stored in git. A recipe names each of its files by its SHA-256
-hash, and each archived file is a release asset of the `kunaldawn/kdos` repository, under the
-file's own name, in the pre-release `src-<shelf>` of the shelf whose port first names it; a file
-over GitHub's 2 GiB asset limit is stored in parts. `make fetch` puts every file in its port
-directory; it is the only build step that uses the network. `ports/sources.idx` names no file until
-`ports/publish` fills it, and every file comes from upstream until then. The lookup order, the cache, the vendor bundles and the environment variables are
+hash, and each archived file is a release asset of the `kunaldawn/kdos` repository, named
+`<shelf>--<file>`, in the numbered pre-release `sources-<N>` that `ports/shelves` gives the shelf
+whose port first names it; a file over GitHub's 2 GiB asset limit is stored in parts. `make fetch`
+puts every file in its port directory; it is the only build step that uses the network. A hash
+`ports/sources.idx` does not name comes from upstream. The lookup order, the cache, the vendor bundles and the environment variables are
 described in [Developing](../05-developer/developing.md#where-sources-come-from).
 
 Five files in the tree make this work:
@@ -404,7 +404,7 @@ Five files in the tree make this work:
 | `ports/srclib.sh` | The archive's addressing and hash checks, the lookup of a port by bare name on any shelf, and the on-demand build of the recipe reader; sourced by `ports/fetch`, `ports/publish`, the pre-push hook and `testing/preflight.sh` |
 | `ports/sources.idx` | Format 2: the first line is `# kdos-sources-index 2`, then one line per archived file, `<sha256> <tag> <asset> <port>/<file>`, with `parts=<N>:<h1>,…,<hN>` after it for a file stored in parts. The file is asset `<asset>` (or `<asset>.part01` onwards) of release `<tag>`. Written by `ports/publish`, read by `ports/fetch` and the pre-push hook, checked by `testing/preflight.sh`, and committed with the recipe that needs it; an index of any other format is not read |
 | `ports/fetch` | Resolves every recipe hash from the port directory, `ports/.srccache/`, the archive, or the recipe's `source =` URL, in that order, and generates a port's own vendor bundle when none of those holds it. `make fetch` runs it; `make fetch-check` runs `ports/fetch --check`, which is offline |
-| `ports/publish` | Uploads sources the archive does not hold into their shelf's release (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--rehome` moves files whose port changed shelf, `--orphans` lists files no recipe names; `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `ports/publish` | Uploads sources the archive does not hold into their shelf's volume (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--plan` gives a new shelf its volume in `ports/shelves`; `--rehome` moves files whose port changed shelf, `--retire` deletes the emptied releases of the older one-per-shelf layout, `--orphans` lists files no recipe names; `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
 | `script/hooks/pre-push` | Refuses a `git push` that breaks the ports layout, or whose recipes name a hash the archive does not hold, every part of a split file included |
 
 The hook runs only in a clone that has opted in:
