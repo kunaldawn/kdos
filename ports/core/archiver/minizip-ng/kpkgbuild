@@ -10,9 +10,12 @@
 
 name        = minizip-ng
 version     = 4.2.2
-release     = 1
+release     = 2
+_7zip       = 26.03
 source      = https://github.com/zlib-ng/minizip-ng/archive/refs/tags/$version.tar.gz
+source      = 7zip-$_7zip.tar.gz::https://github.com/ip7z/7zip/archive/refs/tags/$_7zip.tar.gz
 sha256      = 71af7b9799856d8b03619df3949e9c1be9703f8de0795af71399ba283cb27aac  minizip-ng-4.2.2.tar.gz
+sha256      = 74b11efd8559f9b3dc652e89dc8ebdf4acb66e514a745e44cf75582cdf4512fd  7zip-26.03.tar.gz
 description = Zip archive manipulation library, the zlib-ng fork of minizip
 homepage    = https://github.com/zlib-ng/minizip-ng
 depends     = cmake ninja zlib bzip2 xz openssl

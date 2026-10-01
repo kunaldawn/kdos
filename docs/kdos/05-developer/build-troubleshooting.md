@@ -1003,6 +1003,9 @@ Which fix is right depends on what the thing being fetched actually is:
 CMake's `FetchContent` has a generic override: `-DFETCHCONTENT_FULLY_DISCONNECTED=ON` forbids
 downloads, and `-DFETCHCONTENT_SOURCE_DIR_<NAME>=<dir>` points one dependency at a directory you
 supply. The `libavif` port does this for `libargparse`, which it carries as a second source.
+`minizip-ng` does it for PPMd, which it clones from 7-Zip whatever its own `MZ_FETCH_LIBS` says:
+its second source is the 7zip port's tarball under the same name and hash, so the archive holds
+the file once and both ports read it.
 
 The `qemu` port is the worked example of the fourth shape. Its configuration builds a Python
 environment and, with downloads enabled (its default), drops the offline flag, so the installer
