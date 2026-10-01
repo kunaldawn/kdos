@@ -131,6 +131,7 @@ lists everything preflight checks.
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
 | `error: 'int64_t' was not declared in this scope` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
+| `error: invalid use of incomplete type 'const ASN1_GENERALIZEDTIME'`, or another `ASN1_*` type | [An OpenSSL structure read field by field](#an-openssl-structure-read-field-by-field) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
 | `undefined reference to` a symbol of a library that is on the link line, or a plugin or codec that registers itself missing at run time | [A library dropped by `--as-needed`](#a-library-dropped-by---as-needed) |
@@ -1157,6 +1158,16 @@ way to their own, so a source file that uses a type without including its header
 adds the include: ship a `.patch` that adds the `#include` the note names, to the header it points
 at. `onnxruntime`'s `gcc16-cstdint.patch` is the example. Build the rest of the port with
 `ninja -k 0` (or `make -k`) before writing the patch, so it names every file at once.
+
+### An OpenSSL structure read field by field
+
+`error: invalid use of incomplete type 'const ASN1_GENERALIZEDTIME'` (or `ASN1_STRING`,
+`ASN1_TIME`, `ASN1_INTEGER`), with a note pointing at `struct asn1_string_st` in OpenSSL's headers.
+The `openssl` port is OpenSSL 4, whose `ASN1_STRING` is opaque: code reads it through
+`ASN1_STRING_type()`, `ASN1_STRING_length()` and `ASN1_STRING_get0_data()`, which every OpenSSL
+since 1.1.0 has. Look for the upstream commit that adapts the project to OpenSSL 4 and ship it as a
+`.patch`; `dcmtk`'s `openssl4.patch` is the example. A program that must stay on OpenSSL 3 links the
+`openssl3` slot instead (see [A second version beside the first](writing-ports.md#a-second-version-beside-the-first)).
 
 ### An upstream `-Werror`
 

@@ -10,7 +10,7 @@
 
 name        = docbook-xsl
 version     = 1.79.2
-release     = 3
+release     = 4
 source      = https://github.com/docbook/xslt10-stylesheets/releases/download/release/$version/$name-nons-$version.tar.bz2
 source      = $name-ns-$version.tar.bz2::https://github.com/docbook/xslt10-stylesheets/releases/download/release/$version/$name-$version.tar.bz2
 sha256      = ee8b9eca0b7a8f89075832a2da7534bce8c5478fc8fc2676f512d5d87d832102  docbook-xsl-1.79.2.tar.bz2
