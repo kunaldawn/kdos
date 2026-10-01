@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/cython-redeclared.patch"
+
 _pydevd=src/debugpy/_vendored/pydevd
 
 # The C files beside pydevd's Cython sources are generated, so they are

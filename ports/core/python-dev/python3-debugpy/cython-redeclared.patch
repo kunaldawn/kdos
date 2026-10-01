@@ -1,0 +1,56 @@
+--- a/src/debugpy/_vendored/pydevd/_pydevd_sys_monitoring/_pydevd_sys_monitoring_cython.pyx
++++ b/src/debugpy/_vendored/pydevd/_pydevd_sys_monitoring/_pydevd_sys_monitoring_cython.pyx
+@@ -925,7 +925,7 @@
+         # threads may still want it...
+         return
+ 
+-    func_code_info: FuncCodeInfo = _get_func_code_info(code, 1)
++    func_code_info = _get_func_code_info(code, 1)
+     if func_code_info.always_skip_code:
+         return
+ 
+@@ -1001,7 +1001,7 @@
+         # threads may still want it...
+         return
+ 
+-    func_code_info: FuncCodeInfo = _get_func_code_info(code, 1)
++    func_code_info = _get_func_code_info(code, 1)
+     if func_code_info.always_skip_code:
+         return
+ 
+@@ -1116,7 +1116,7 @@
+         # threads may still want it...
+         return
+ 
+-    func_code_info: FuncCodeInfo = _get_func_code_info(code, 1)
++    func_code_info = _get_func_code_info(code, 1)
+     if func_code_info.always_skip_code:
+         return monitor.DISABLE
+ 
+@@ -1250,7 +1250,7 @@
+         return
+ 
+     while frame is not None:
+-        func_code_info: FuncCodeInfo = _get_func_code_info(frame.f_code, frame)
++        func_code_info = _get_func_code_info(frame.f_code, frame)
+         if func_code_info.always_skip_code:
+             frame = frame.f_back
+             continue
+@@ -1438,7 +1438,7 @@
+         # threads may still want it...
+         return
+ 
+-    func_code_info: FuncCodeInfo = _get_func_code_info(code, 1)
++    func_code_info = _get_func_code_info(code, 1)
+     if func_code_info.always_skip_code or func_code_info.always_filtered_out:
+         return monitor.DISABLE
+ 
+@@ -1505,7 +1505,7 @@
+         # threads may still want it...
+         return
+     
+-    func_code_info: FuncCodeInfo = _get_func_code_info(code, 1)
++    func_code_info = _get_func_code_info(code, 1)
+     if func_code_info.always_skip_code or func_code_info.always_filtered_out:
+         return monitor.DISABLE
+ 
