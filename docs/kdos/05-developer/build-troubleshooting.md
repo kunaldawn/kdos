@@ -130,6 +130,7 @@ lists everything preflight checks.
 | `python: command not found`, or `make: python: No such file or directory` | [A build calling `python`](#a-build-calling-python) |
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
+| `error: 'int64_t' was not declared in this scope` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
 | `undefined reference to` a symbol of a library that is on the link line, or a plugin or codec that registers itself missing at run time | [A library dropped by `--as-needed`](#a-library-dropped-by---as-needed) |
@@ -1144,6 +1145,15 @@ compilers. GCC 14 made this one an error; disable it for the port:
 ```sh
 export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
 ```
+
+### A standard header the source never includes
+
+`error: 'int64_t' was not declared in this scope`, with GCC's note that it `is defined in header
+'<cstdint>'`. GCC 16's C++ library headers do not include `<cstdint>` and similar headers on the
+way to their own, so a source file that uses a type without including its header fails. No flag
+adds the include: ship a `.patch` that adds the `#include` the note names, to the header it points
+at. `onnxruntime`'s `gcc16-cstdint.patch` is the example. Build the rest of the port with
+`ninja -k 0` (or `make -k`) before writing the patch, so it names every file at once.
 
 ### An upstream `-Werror`
 
