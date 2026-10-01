@@ -765,6 +765,14 @@ The `ghc` port builds Hadrian's `release` flavour without its profiled variants,
 are not, so `cabal haddock` writes pages whose references into `base` and the other GHC libraries
 are plain text rather than links.
 
+### SpatiaLite cannot load a WFS layer from a URL
+
+libxml2 2.15 has no HTTP client, and the `libxml2` port builds none of its stand-in stubs, so
+SpatiaLite's WFS functions (`load_from_wfs`, the `ImportWFS()` SQL function and the GetCapabilities
+helpers) read a local file and fail on an `http://` address. The `libspatialite` port compiles its
+proxy reset only where libxml2 has one. Fetch the document first, for example with
+`curl -o layer.xml '<GetFeature URL>'`, and load the file.
+
 ### nmap has no `jdwp-exec` and no `jdwp-info` script
 
 Both inject Java classes that upstream compiles and ships inside the source tarball, and the `nmap`

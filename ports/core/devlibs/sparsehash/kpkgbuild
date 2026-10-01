@@ -10,7 +10,7 @@
 
 name        = sparsehash
 version     = 2.0.4
-release     = 1
+release     = 2
 source      = https://github.com/sparsehash/sparsehash/archive/refs/tags/$name-$version.tar.gz
 sha256      = 8cd1a95827dfd8270927894eb77f62b4087735cbede953884647f16c521c7e58  sparsehash-2.0.4.tar.gz
 description = Memory-efficient and fast C++ hash map and set templates
