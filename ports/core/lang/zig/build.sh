@@ -23,5 +23,5 @@ cmake -B build -G Ninja \
 	-D ZIG_STATIC_ZSTD=ON \
 	-D ZIG_PIE=OFF \
 	-Wno-dev
-cmake --build build
+CCACHE_DISABLE=1 cmake --build build
 DESTDIR=$PKG cmake --install build

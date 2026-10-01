@@ -309,7 +309,10 @@ through it. `script/env/chroot.env` sets `CMAKE_C_COMPILER_LAUNCHER` and
 `CMAKE_CXX_COMPILER_LAUNCHER` to `ccache`, and CMake still records `/usr/bin/gcc` and
 `/usr/bin/g++` as the compilers. Meson and autotools ports are not cached. The cache is
 `build/ccache`, outside the target tree, capped at 20 GB; `make cleanbuild` keeps it, `make clean`
-removes it, and `make build KDOS_CCACHE=0` turns it off.
+removes it, and `make build KDOS_CCACHE=0` turns it off. `zig` compiles with `CCACHE_DISABLE=1`: ccache
+preprocesses a file before compiling it and holds the result in memory to hash it, and the
+preprocessed form of zig's generated 222 MB `zig2.c` runs past 300 GB, so ccache fails on
+`std::bad_alloc` where gcc alone compiles the file in under 7 GB.
 
 A cached object is byte-identical to the one a compile would write, and three settings hold that:
 
