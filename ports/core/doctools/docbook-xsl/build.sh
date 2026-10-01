@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/string-subst.patch"
+
 # TWO RELEASES, TWO TREES. The main tarball is the nons release, which both
 # the sourceforge release/xsl URIs and the cdn xsl-nons URIs name. The
 # namespaced release is a different set of stylesheets, written for DocBook 5
@@ -33,6 +35,7 @@ nsdest=$PKG/usr/share/xml/docbook/xsl-stylesheets-$version
 install -v -m755 -d $nsdest $nsdest/webhelp
 mkdir ns
 tar xf "$PORT_SRC/$name-ns-$version.tar.bz2" --strip-components=1 -C ns
+patch -d ns -p1 -i "$PORT_SRC/string-subst.patch"
 cp -v -R ns/VERSION ns/VERSION.xsl ns/assembly ns/common ns/eclipse ns/epub \
          ns/epub3 ns/fo ns/highlighting ns/html ns/htmlhelp ns/images      \
          ns/javahelp ns/lib ns/manpages ns/params ns/profiling ns/roundtrip \

@@ -402,7 +402,10 @@ BDF through `configure` and `make` into the PSF that
 
 ### Data with no other source form
 
-`hwdata`, `iso-codes`, `docbook-xml` and `docbook-xsl` are text or tables installed as they arrive.
+`hwdata`, `iso-codes` and `docbook-xml` are text or tables installed as they arrive. `docbook-xsl`
+is too, but for one patch to both of its trees: `string.subst` calls `str:replace` where the
+processor has it, because the stock template recurses once per match and a page as long as
+`git-config.1` passes `xsltproc`'s 3000-deep limit and fails.
 `xkeyboard-config` is text upstream too, and its own meson build assembles the rules files from
 upstream's fragments and compiles the translations. `iana-etc` is tables too, but generated at
 build time from IANA's own XML registries, each pinned by its hash, rather than taken as text
