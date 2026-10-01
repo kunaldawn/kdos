@@ -1520,6 +1520,12 @@ by walking up from the current directory, so a build that invokes it from a subd
 reads a configuration placed next to the manifest, and every crate in the bundle resolves as
 *missing* while sitting in the vendor directory.
 
+A Python bundle goes outside the source tree, in `$SRC_ROOT/vendor`, when the package keeps its
+code at the top of the tree and names no packages of its own. setuptools then discovers packages
+by itself, takes a `vendor/` beside the real one for a second top-level package, and refuses to
+build. `python3-keyring` is the example; a `src/` layout, or a `packages` list in the project's
+configuration, is safe with `vendor/` in the tree.
+
 `vendordir` is the other half: it says where the vendoring tool must run, which is beside the
 manifest. The two directories are not always the same place. Five ports set it: `gopls`
 (`gopls`), `lnav` (`src/third-party/lnav-rs-ext`), `python3-bcrypt` (`src/_bcrypt`),
