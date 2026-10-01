@@ -564,24 +564,31 @@ fetch_archived() {
 
 # ── presence ──────────────────────────────────────────────────────────────
 #
-# Only a 404 is evidence of absence. Any other status (a 403, a 5xx during an
-# outage) or a curl failure says the archive cannot answer, and publish stops
+# Only a 404 is evidence of absence. GitHub's download host answers a few of
+# thousands of HEADs with a 5xx or a dropped connection, so such an answer is
+# asked again, after 10, 30 and 60 seconds; one that persists (an outage, a
+# 403) says the archive cannot answer, and publish stops, naming the URL,
 # rather than report archived files missing or upload blind. A file in parts
 # is present only when every part is.
 present() {
-    local rc code url
+    local rc code url wait
     local -a urls
     mapfile -t urls < <(src_urls "$1")
     [ "${#urls[@]}" -gt 0 ] || return 1
     for url in "${urls[@]}"; do
-        rc=0
-        code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
-                    --max-time 120 --retry 2 "$url") || rc=$?
-        [ "$rc" = 0 ] || die "cannot reach the archive at $KDOS_SOURCES_BASE (curl exit $rc)"
+        for wait in 10 30 60 0; do
+            rc=0
+            code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
+                        --max-time 120 --retry 2 "$url") || rc=$?
+            [ "$rc" != 0 ] || [ "${code:0:1}" != 5 ] || rc=-1
+            [ "$rc" != 0 ] && [ "$wait" != 0 ] || break
+            sleep "$wait"
+        done
+        [ "$rc" -le 0 ] || die "cannot reach the archive for $url (curl exit $rc)"
         case $code in
             200) ;;
             404) return 1 ;;
-            *)   die "archive unreachable at $KDOS_SOURCES_BASE (HTTP $code)" ;;
+            *)   die "archive unreachable for $url (HTTP $code)" ;;
         esac
     done
     return 0
@@ -1030,9 +1037,17 @@ held_load() {
 }
 
 # index_ready — refuse to write an index that is not format 2, or that
-# breaks its rules before this run touches it.
+# breaks its rules before this run touches it, and hold the index's lock for
+# the rest of the run. Two runs writing one index each rewrite the whole file
+# from what they last read, so the second drops the first's lines; the lock
+# (flock on <index>.lock, released when the run exits however it exits) makes
+# a second writer stop at once instead.
 index_ready() {
     local first="" p
+    if command -v flock >/dev/null 2>&1; then
+        exec 9> "$KDOS_SOURCES_INDEX.lock"
+        flock -n 9 || die "another ports/publish is writing ${KDOS_SOURCES_INDEX#"$REPO_ROOT"/}; let it finish first"
+    fi
     if [ -s "$KDOS_SOURCES_INDEX" ]; then
         IFS= read -r first < "$KDOS_SOURCES_INDEX" || true
         [ "$first" = "$SRC_INDEX_MARKER" ] ||
@@ -1045,12 +1060,20 @@ index_ready() {
 # index_write <hash> [line] — replace the hash's line with [line], or drop
 # it, keeping the header, and sort by hash. Removing the old line first is
 # what lets a plain sort keep one line per hash. The result is checked before
-# it replaces the index; one that would break a rule is not written and the
-# run stops, since every later line would be judged against it.
+# it replaces the index; one that would break a rule, or that does not hold
+# exactly the lines it should (every other hash's, plus [line]), is not
+# written and the run stops, since every later line would be judged against
+# it. The scratch file is this run's own, beside the index so the rename is
+# atomic.
 INDEX_CHANGED=0
 index_write() {
-    local f=$KDOS_SOURCES_INDEX first="" p
+    local f=$KDOS_SOURCES_INDEX first="" p was want got
     [ ! -s "$f" ] || { IFS= read -r first < "$f" || true; }
+    was=0
+    [ "$first" != "$SRC_INDEX_MARKER" ] || was=$(grep -c '^[0-9a-f]' "$f" || true)
+    want=$was
+    if [ "$first" = "$SRC_INDEX_MARKER" ] && grep -q "^$1 " "$f"; then want=$((want - 1)); fi
+    [ -z "${2:-}" ] || want=$((want + 1))
     {
         if [ "$first" = "$SRC_INDEX_MARKER" ]; then
             awk '/^[0-9a-f]/ { exit } { print }' "$f"
@@ -1061,17 +1084,20 @@ index_write() {
             [ "$first" != "$SRC_INDEX_MARKER" ] || awk -v h="$1" '/^[0-9a-f]/ && $1 != h' "$f"
             [ -z "${2:-}" ] || printf '%s\n' "$2"
         } | LC_ALL=C sort -k1,1
-    } > "$f.tmp"
-    p=$(src_index_problems "$f.tmp")
+    } > "$f.tmp.$$"
+    p=$(src_index_problems "$f.tmp.$$")
+    got=$(grep -c '^[0-9a-f]' "$f.tmp.$$" || true)
+    [ "$got" = "$want" ] || p="${p:+$p
+}it would hold $got lines where $want are due ($was before)"
     if [ -n "$p" ]; then
         printf '  %s\n' "$p" >&2
-        rm -f "$f.tmp"
+        rm -f "$f.tmp.$$"
         echo "ports/publish: writing $1 would break ${f#"$REPO_ROOT"/}; stopped" >&2
         exit 2
     fi
     # A line rewritten to what it already was (a repaired asset) is no change
     # to commit.
-    if cmp -s "$f.tmp" "$f"; then rm -f "$f.tmp"; else mv -f "$f.tmp" "$f"; INDEX_CHANGED=1; fi
+    if cmp -s "$f.tmp.$$" "$f"; then rm -f "$f.tmp.$$"; else mv -f "$f.tmp.$$" "$f"; INDEX_CHANGED=1; fi
     if [ -n "${SRC_TAG[$1]:-}" ]; then
         held_set "${SRC_TAG[$1]}" "${SRC_ASSET[$1]}" "${SRC_NPARTS[$1]}" ""
         IDX_N[${SRC_TAG[$1]}]=$(( ${IDX_N[${SRC_TAG[$1]}]:-0} - SRC_NPARTS[$1] ))

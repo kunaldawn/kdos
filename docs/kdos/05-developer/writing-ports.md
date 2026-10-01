@@ -2245,8 +2245,16 @@ A file is present when `ports/sources.idx` names its hash and an anonymous `HEAD
 download URL (on every part's, for a file in parts) answers 200; the `HEAD` costs no API quota. A
 hash the index does not name is missing without asking. A rerun therefore uploads only what is
 still missing, and an interrupted run is resumed by running it again. Only a 404 counts as
-missing; any other status, or a network failure, stops the run with `archive unreachable`,
-because an outage proves nothing about what the archive holds.
+missing. A 5xx or a dropped connection is asked again after 10, 30 and 60 seconds, since GitHub's
+download host fails a few of thousands of requests; one that persists, or any other status, stops
+the run with `archive unreachable` and the URL, because an outage proves nothing about what the
+archive holds.
+
+One run writes the index at a time. A run that is about to change `ports/sources.idx` takes a lock
+on `ports/sources.idx.lock` for the rest of the run, and a second writer stops at once with
+`another ports/publish is writing ports/sources.idx`. Each rewrite of the index is checked to hold
+exactly the lines it should, every other hash's plus the one written, before it replaces the file;
+one that does not stops the run and leaves the index as it was.
 
 **Which volume.** Recipes are read shelf by shelf and port by port, both in C-locale order. A
 hash belongs to the shelf of the first port that names it, goes into that shelf's volume, the

@@ -28,6 +28,10 @@ ports/.portup
 ports/.portup-tools/
 # Per-port check results, 24h TTL, written by kdos-portup on every run.
 ports/.update-cache.json
+# ports/publish's lock on the index, and its per-run scratch copy while it
+# rewrites it.
+ports/sources.idx.lock
+ports/sources.idx.tmp.*
 
 # Upstream sources are not in git. `make fetch` puts each one in the local
 # cache (ports/.srccache/sha256-XX/<hash>, split by the hash's leading byte;
