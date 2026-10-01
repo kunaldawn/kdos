@@ -523,7 +523,11 @@ Check each of these against the recipe, whichever build system it uses:
   `CXXFLAGS` for C++). GCC names each object's `.gnu.lto_*` sections with a random number unless
   that flag fixes it, and an archive keeps those sections, so without it a port that ships a `.a`
   differs on every build. A port that ships a `.a` also adds `-ffat-lto-objects`, or the archive
-  holds only bytecode and links only through GCC's plugin; zstd and lz4 do both. Keep the change
+  holds only bytecode and links only through GCC's plugin; zstd and lz4 do both. binutils' own
+  `ar` and `nm` load no such plugin here (`/usr/lib/bfd-plugins` holds none), so a build that
+  links its programs against internal archives of LTO objects exports `AR=gcc-ar NM=gcc-nm
+  RANLIB=gcc-ranlib`, or the archive index is empty and the link fails on every symbol in it;
+  flac does. Meson and CMake's own LTO switches choose the `gcc-` tools themselves. Keep the change
   only once the port builds byte-identically twice.
 - **The job count is `$KDOS_JOBS`**, never `nproc`: `scons -j"$KDOS_JOBS"`, not
   `scons -j"$(nproc)"`.
