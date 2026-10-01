@@ -21,6 +21,7 @@ patch -p1 -i "$PORT_SRC/x11-include-order.patch"
 # libsysprof-capture is used because sysprof is not a port. WebKitWebDriver
 # has one path for both APIs, so only the GTK 3 build installs it. The Swift
 # features need swiftc, which is not a port, and gcc cannot build them.
+export LDFLAGS="$LDFLAGS -fuse-ld=lld"
 cmake -S . -B build -G Ninja \
 	-DPORT=GTK \
 	-DCMAKE_BUILD_TYPE=Release \

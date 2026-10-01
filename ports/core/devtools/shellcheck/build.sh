@@ -20,7 +20,7 @@ mkdir -p "$CABAL_DIR"
 printf 'repository hackage.haskell.org\n  url: file+noindex://%s\n' "$SRC_ROOT/vendor" \
 	> "$CABAL_DIR/config"
 
-cabal v2-install -j \
+cabal v2-install -j$KDOS_JOBS \
 	--enable-split-sections \
 	--enable-executable-stripping \
 	--installdir="$PKG/usr/bin" --install-method=copy \

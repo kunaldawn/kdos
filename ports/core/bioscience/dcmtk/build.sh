@@ -12,6 +12,8 @@
 # find_package(DCMTK) fail in a consumer as soon as one tool is missing.
 patch -p1 -i "$PORT_SRC/dont-export-executables.patch"
 
+patch -p1 -i "$PORT_SRC/openssl4.patch"
+
 # DCMTK_ENABLE_LFS=lfs: musl's off_t is 64-bit already, and the lfs64 route
 # calls fopen64() and friends, which musl declares only as macros under
 # _LARGEFILE64_SOURCE. Character sets are converted by the bundled oficonv,

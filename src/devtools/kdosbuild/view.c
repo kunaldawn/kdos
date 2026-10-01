@@ -362,6 +362,12 @@ void preview_fixture(Manager *m, Sampler *s, Timings *t)
 	m->current_phase = g1;
 	m->current_step = run;
 	m->error_step = bad;
+	/* --port-jobs at its ceiling with every slot busy: the header's
+	 * `running` count and approximate ETA at their widest. Only the count
+	 * is set — the fixture never pumps, so no slot needs a process. */
+	m->port_jobs = KB_MAX_WORKERS;
+	m->nrunning = KB_MAX_WORKERS;
+	m->lvl_from = m->lvl_commit = -1;
 
 	pv_log(run, "[142/318] Compiling wlroots v0.20.2");
 	pv_log(run, "  Compiling smithay v0.4.0");
@@ -431,6 +437,7 @@ void preview_fixture(Manager *m, Sampler *s, Timings *t)
 	kb_strlcpy(m->snap.action, "snapshot", sizeof(m->snap.action));
 	kb_strlcpy(m->snap.phase, "42_graphics", sizeof(m->snap.phase));
 	kb_strlcpy(m->snap.path, "fs", sizeof(m->snap.path));
+	kb_strlcpy(m->snap.layer, "layer on 41_system", sizeof(m->snap.layer));
 	kb_strlcpy(m->snap.current,
 		   "fs/usr/lib/gstreamer-1.0/libgstvideoconvert.so",
 		   sizeof(m->snap.current));
@@ -508,7 +515,19 @@ int preview_snapshots(Manager *m, KbuildSnapshot *out, int max)
 		sn->entry[0].bytes_compressed = SN[i].comp;
 		sn->entry[0].bytes_raw = SN[i].raw;
 		sn->entry[0].files = SN[i].files;
+		sn->entry[0].tree_bytes = SN[i].raw;
+		sn->entry[0].tree_files = SN[i].files;
 		sn->nentries = 1;
+		snprintf(sn->id, sizeof(sn->id), "%s-1786518000-0000000%d",
+			 SN[i].dir, i % 10);
+		/* 00_cross archives cross and 10_bootstrap is the first full
+		 * fs; every later fs is a layer on the one before, so the
+		 * picker's "restore reads" line walks a real chain. */
+		if (i >= 2) {
+			sn->entry[0].layer = 1;
+			kb_strlcpy(sn->entry[0].base_id, out[i - 1].id,
+				   sizeof(sn->entry[0].base_id));
+		}
 	}
 	return n;
 }

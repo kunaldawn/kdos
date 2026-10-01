@@ -109,7 +109,7 @@ their header.
 | `libkxdg` | `kxdg.h` | `kxdg_` | Desktop entries, the MIME glob table, the one correct way to turn a command line into an argument vector, places, recent files and file verbs | `libkbase` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-appbox`, `kdos-tools` |
 | `libkpkg` | `kpkg.h` | `kp_` | Configuration, the package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` | `kpkg` (also compiled on the build host as the recipe reader), `kdosbuild`, `kdos-portup`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
 | `libksig` | `ksig.h` | `ksig_` | Ed25519 signing and verification, key files, keyrings; the one library with vendored third-party source | `libkbase` | `kpkg`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
-| `libkbuild` | `kbuild.h` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only JSON scanner | `libkbase`, `libkpkg` | `kdosbuild`, `kdos-portup` |
+| `libkbuild` | `kbuild.h` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory and its chains, the layer diff, a read-only JSON scanner | `libkbase`, `libkpkg` | `kdosbuild`, `kdos-portup` |
 | `libkproc` | `kproc.h` | `kpr_` | Every reading about the running machine, from a movable root: processes, uptime, box identity, processor, memory and pressure, block devices, network, power, sensors, graphics, sound PCMs, and the sample ring | `libkbase` | `kdos-res`, `kdos-shell`, `kdos-tools`, `kdos-oomd`, `kdos-energyd` |
 | `libkpack` | `kpack.h` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` | `kdos-pack`, `kdos-packd`, `kdos-tools` |
 | `libkvt` | `kvt.h` | `kvt_`, `screen_` (internal) | The terminal: the VT100–VT520 state machine, the screen, scrollback, selection, the pty, and one render boundary that turns it all into cells. A hard fork of libtsm 4.7.1 | `libktui`, `libkbase` | `kdos-term` |
@@ -1012,6 +1012,9 @@ It is the one place a port is found by name, and every tool that looks a port up
 | `kp_port_dir(c, name)` | `kp_port_find` for a caller that reads NULL as "no such port". A name filed twice dies with the message, because every answer a caller could make of NULL there (skip it, build without it, take one copy) builds something other than the tree says |
 | `kp_ports_scan(c, &count, err, errcap)` | Every port of every repository, sorted, at both depths; the first repository wins a name two of them hold. NULL with `err` set when one repository holds a name twice or a port sits deeper than one shelf. A repository that exists and yields no port warns, since that is a walker and a tree that disagree about the layout |
 | `kp_all_ports(c, &count)` | `kp_ports_scan` that dies on a malformed tree |
+| `kp_owned_load(c)` | Every path an installed package claims, sorted, keyed on its canonical merged-`/usr` spelling, for `kp_owned_owner` and `kp_owned_other` to ask |
+| `kp_owned_load_some(c, rel, n)` | The same table holding only the claims on the `n` given paths, canonicalised the way a question is. Those two functions answer exactly as from the full table for those paths, and NULL for any other. It streams every manifest but keeps a handful of pairs, which is what an install, an upgrade's orphan sweep and a removal need |
+| `kp_db_lock(c)` | Takes the database's writer lock, an exclusive `flock` on `<db>/.lock`, blocking, and returns the descriptor; closing it releases the lock. -1 when the database directory cannot hold the file |
 
 A shelf is any directory of a repository with no `kpkgbuild` of its own, other than a dot-name. The
 shelf names are cached per repository when the repositories are set, so a shelf created afterwards
@@ -1052,7 +1055,8 @@ entropy; and a secret key is held only for the duration of the call that uses it
 ## libkbuild
 
 The deciding half of the build orchestrator: phase discovery, the phase metadata block, the build
-plan, the snapshot inventory, and `kj_*`, a JSON reader that refuses a document that does not parse
+plan, the snapshot inventory with the chains of layers each restore reads, the index and diff that
+decide what a layer holds, and `kj_*`, a JSON reader that refuses a document that does not parse
 whole. Covered in [The build system](build-system.md#libkbuild).
 
 ## libkproc

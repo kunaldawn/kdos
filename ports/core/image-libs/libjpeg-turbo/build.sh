@@ -17,8 +17,8 @@ cmake -S . -B build -G Ninja \
         -DCMAKE_INSTALL_LIBDIR=/usr/lib \
         -DCMAKE_INSTALL_LIBEXECDIR=/usr/lib \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_FLAGS_RELEASE="$CFLAGS" \
-        -DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+        -DCMAKE_C_FLAGS_RELEASE="$CFLAGS -DNDEBUG" \
+        -DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -DNDEBUG" \
         -DWITH_JPEG8=ON \
         -DWITH_SIMD=ON \
         -DREQUIRE_SIMD=ON \

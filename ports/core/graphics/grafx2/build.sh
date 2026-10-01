@@ -25,6 +25,8 @@ printf '#!/bin/sh\nexec pkg-config sdl2 "$@"\n' > "$SRC_ROOT/shim/sdl2-config"
 chmod 755 "$SRC_ROOT/shim/sdl2-config"
 export PATH="$SRC_ROOT/shim:$PATH"
 
+export CFLAGS="$CFLAGS -g0"
+
 # API=sdl2: the default is SDL 1.2. NO_X11=1 drops the X11 clipboard and
 # window calls, which SDL3 underneath could never reach with no X11 driver.
 # LUAPKG names Lua 5.4. The makefile's own search tries 5.3 and older, then

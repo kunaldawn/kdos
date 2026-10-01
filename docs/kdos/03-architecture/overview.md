@@ -50,20 +50,20 @@ first field is `app`):
 
 | Where | Count |
 |---|---|
-| `ports/core` | 1,999 recipes, on 102 shelves |
+| `ports/core` | 2,000 recipes, on 102 shelves |
 | `src/system` | 5 recipes |
 | `src/art` | 6 recipes |
 | `src/desktop` | 8 recipes |
 | `src/daemons` | 5 recipes |
-| All port repositories | 2,023 recipes |
+| All port repositories | 2,024 recipes |
 | Catalogue `app` rows (outer ring) | 73 |
 
 `ports/core` files each port one level down, on a **shelf** named for its subject:
 `ports/core/<shelf>/<name>/`, such as `ports/core/wl/wlroots/` or `ports/core/fonts/noto-fonts/`.
-The closed list of 102 shelves, one line each with what belongs on it, is the file
-`ports/shelves`. A shelf is only where a recipe is filed. It subdivides the core ring and is not a
-ring of its own; a port is known everywhere by its bare name, and no dependency line, package or
-database entry records its shelf.
+The closed list of 102 shelves, one line each with its source-archive volume and what belongs on
+it, is the file `ports/shelves`. A shelf is only where a recipe is filed. It subdivides the core
+ring and is not a ring of its own; a port is known everywhere by its bare name, and no dependency
+line, package or database entry records its shelf.
 
 The four `src/` areas that hold recipes are port repositories in their own right and use the same
 two-file recipe format as `ports/core`, so building the desktop is not a special case anywhere in

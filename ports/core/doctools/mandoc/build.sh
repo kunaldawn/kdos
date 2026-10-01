@@ -17,7 +17,12 @@
 # script rather than guessed, because it silently ignores anything else.
 # BINM_* install mandoc under the names people actually type; nothing else on
 # KDOS provides man/apropos/whatis, so there is no conflict to arbitrate.
-cat > configure.local <<'EOF'
+# ./configure empties CFLAGS and LDFLAGS before it reads this file, so the
+# exported flags reach the build only through the two lines here; without
+# them it compiles `-g` with no optimisation at all.
+cat > configure.local <<EOF
+CFLAGS="$CFLAGS"
+LDFLAGS="$LDFLAGS"
 PREFIX="/usr"
 BINDIR="/usr/bin"
 SBINDIR="/usr/sbin"

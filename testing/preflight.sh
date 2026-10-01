@@ -136,13 +136,13 @@ for _e in ports/core/* ports/core/.[!.]*; do
     _lay=$((_lay + 1))
 done
 
-# The closed shelf list: `<id> <description>` per line.
+# The closed shelf list: `<id> <volume> <description>` per line.
 declare -A SHELF
 if [ -z "$(src_shelves)" ]; then
     bad "ports/shelves" "ports/shelves is missing or lists no shelf"
     _lay=$((_lay + 1))
 else
-    while read -r _s _rest || [ -n "$_s" ]; do
+    while read -r _s _vol _rest || [ -n "$_s" ]; do
         case "$_s" in ''|\#*) continue ;; esac
         if [ -n "${SHELF[$_s]:-}" ]; then
             bad "ports/shelves" "lists '$_s' twice"
@@ -154,6 +154,13 @@ else
         if ! printf '%s' "$_s" | grep -qxE '[a-z0-9][a-z0-9-]*'; then
             bad "ports/shelves" "shelf $_s: an id is lowercase letters, digits and -"
             _lay=$((_lay + 1))
+        fi
+        # The volume is the source-archive release the shelf's files go to;
+        # ports/publish cannot place a file of a shelf without one.
+        if ! printf '%s' "$_vol" | grep -qxE '[1-9][0-9]*'; then
+            bad "ports/shelves" "shelf $_s has no volume (field 2 is a positive integer; make publish-plan assigns one)"
+            _lay=$((_lay + 1))
+            case "$_vol" in -) ;; *) _rest="$_vol${_rest:+ $_rest}" ;; esac
         fi
         [ -n "$_rest" ] || { bad "ports/shelves" "shelf $_s has no description"; _lay=$((_lay + 1)); }
         # <portdir>/../../libs is the tree a source-less port hashes.
@@ -666,6 +673,50 @@ $(printf '%s' "$flat" \
     meson_checked=$((meson_checked + 1))
 done
 note "meson options" "$meson_checked meson ports checked against their own option files"
+
+echo
+echo "==> every meson port names its buildtype"
+# kpkg strips nothing, so the compiler flags decide what a package carries.
+# meson's default buildtype is `debug`, which compiles -g -O0 into every
+# object; a recipe that names none ships its DWARF and an unoptimised build.
+bt_checked=0
+for d in "${PORTS_ALL[@]}"; do
+    [ -f "$d/build.sh" ] || continue
+    grep -v '^[[:space:]]*#' "$d/build.sh" | grep -q 'meson setup' || continue
+    grep -v '^[[:space:]]*#' "$d/build.sh" | grep -qE -- '--buildtype[= ]|-Dbuildtype=' \
+        || bad "$(basename "$d")" "runs meson setup without --buildtype= or -Dbuildtype="
+    bt_checked=$((bt_checked + 1))
+done
+note "meson buildtype" "$bt_checked meson ports checked"
+
+echo
+echo "==> every go build and go install strips its binary"
+# The Go linker writes DWARF and a symbol table unless -ldflags carries -s and
+# -w, and kpkg strips nothing, so the binary ships at about twice its size.
+# A command is read whole, its backslash continuations joined, because the
+# flags routinely sit on a later line than `go build`. GOFLAGS is not read: a
+# recipe's own -ldflags replaces the one GOFLAGS names.
+go_checked=0
+for d in "${PORTS_ALL[@]}"; do
+    [ -f "$d/build.sh" ] || continue
+    grep -qE '(^|[[:space:];&|(])go[[:space:]]+(build|install)' "$d/build.sh" || continue
+    while IFS= read -r line; do
+        go_checked=$((go_checked + 1))
+        fl=$(printf '%s\n' "$line" \
+             | grep -oE -- "-ldflags[= ](\"[^\"]*\"|'[^']*'|[^[:space:]]+)" | head -1 \
+             | sed -E "s/^-ldflags[= ]//; s/^[\"']//; s/[\"']\$//")
+        printf ' %s ' "$fl" | grep -qE '[[:space:]]-s[[:space:]]' \
+            && printf ' %s ' "$fl" | grep -qE '[[:space:]]-w[[:space:]]' && continue
+        bad "$(basename "$d")" "go build/install without -ldflags \"-s -w\": ${line:0:100}"
+    done < <(awk '
+        { if (acc != "") { line = acc " " $0 } else { line = $0 } }
+        /\\$/ { sub(/\\$/, "", line); acc = line; next }
+        { acc = "" }
+        line ~ /^[[:space:]]*#/ { next }
+        line ~ /(^|[[:space:];&|(])go[[:space:]]+(build|install)([[:space:]]|$)/ { print line }
+    ' "$d/build.sh")
+done
+note "go strip flags" "$go_checked go build/install commands checked"
 
 #
 # WHAT AN ARCHIVE IS, READ OUT OF THE FILE RATHER THAN ASKED OF `file`.
@@ -1537,7 +1588,7 @@ fi
 #
 # THE THREE SCRIPTS AND THE INDEX ARE THE WHOLE MECHANISM. ports/srclib.sh
 # (sourced) is the archive's addressing and ports/sources.idx says which
-# release holds each file; ports/fetch and ports/publish run it as programs, and
+# release and asset hold each file; ports/fetch and ports/publish run it as programs, and
 # script/hooks/pre-push is what git runs once `git config core.hooksPath
 # script/hooks` is set. A syntax error in any of them surfaces only on the
 # command that needed it.
@@ -1597,21 +1648,26 @@ if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
     done
     [ -n "$pa_scripts" ] && note "srclib.sh, fetch, publish, pre-push parse" "ok"
 
-    # ports/sources.idx is how fetch finds an archived file: a malformed line
-    # is a file nothing can locate, and a hash on two lines names two releases
-    # for one file. Absent is fine — nothing is archived yet.
+    # ports/sources.idx is how fetch finds an archived file, and fetch reads
+    # it only in format 2: a malformed line is a file nothing can locate, a
+    # hash on two lines names two places for one file, two assets one name
+    # apart in a tag are one download URL, and a format-1 index is one fetch
+    # skips whole. srclib.sh's src_index_problems holds every rule, so
+    # ports/publish and this check the same ones. Absent is fine — nothing is
+    # archived yet.
     if [ -f ports/sources.idx ]; then
-        pa_idx_bad=$(grep -vE '^(#|$)' ports/sources.idx \
-                     | grep -cvE '^[0-9a-f]{64} [0-9]{3,} [^ /]+/[^ ]+$')
-        pa_idx_dup=$(grep -E '^[0-9a-f]{64} ' ports/sources.idx | cut -d' ' -f1 \
-                     | LC_ALL=C sort | uniq -d | grep -c .)
+        pa_idx_bad=$(src_index_problems ports/sources.idx)
         pa_idx_n=$(grep -cE '^[0-9a-f]{64} ' ports/sources.idx)
-        if [ "$pa_idx_bad" != 0 ] || [ "$pa_idx_dup" != 0 ]; then
-            bad "ports/sources.idx" "$pa_idx_bad malformed line(s), $pa_idx_dup hash(es) listed twice"
-        elif ! grep -E '^[0-9a-f]{64} ' ports/sources.idx | LC_ALL=C sort -c -k1,1 2>/dev/null; then
-            bad "ports/sources.idx" "not sorted by hash — ports/publish writes it sorted"
+        pa_idx_p=$(grep -cE '^[0-9a-f]{64} .* parts=' ports/sources.idx)
+        if [ -n "$pa_idx_bad" ]; then
+            bad "ports/sources.idx" "$(printf '%s\n' "$pa_idx_bad" | grep -c .) problem(s): $(printf '%s\n' "$pa_idx_bad" | head -3 | tr '\n' ';')…"
         else
-            note "ports/sources.idx" "$pa_idx_n archived files, well-formed"
+            note "ports/sources.idx" "format 2, $pa_idx_n archived files ($pa_idx_p in parts), well-formed"
+            # A legacy src-<name> line still fetches; it is a move not yet
+            # made, not a fault.
+            pa_idx_old=$(src_index_legacy ports/sources.idx)
+            [ "$pa_idx_old" = 0 ] ||
+                note "ports/sources.idx" "WARNING: $pa_idx_old lines in legacy src-* releases; make publish-rehome moves them"
         fi
     else
         note "ports/sources.idx" "absent — nothing archived yet"
@@ -2662,6 +2718,106 @@ EOF
         note "desktop entries" \
              "$_de visible, every icon drawable, every command present, every name distinct"
 fi
+
+echo
+echo "==> the compiler cache cannot change a byte"
+# script/env/chroot.env puts ccache in front of every CMake compile. A hit must
+# be the object a compile would write, and four settings decide that:
+# CCACHE_BASEDIR rewrites paths so -ffile-prefix-map stops matching them; an
+# mtime compiler check cannot tell a rebuilt gcc from the old one, because kpkg
+# pins every mtime; a knob the Makefile passes but exec.sh's `env -i` does not
+# name never reaches the chroot; and a masquerade directory on PATH makes CMake
+# record /usr/lib/ccache/gcc as the compiler in shipped files.
+_cr=.
+_cc=0
+if grep -rqE '^[^#]*CCACHE_BASEDIR' "$_cr"/script/env/ 2>/dev/null; then
+    bad "ccache base_dir" "script/env sets CCACHE_BASEDIR — paths leave -ffile-prefix-map and bytes change"
+    _cc=$((_cc + 1))
+fi
+_ccon=$(sed -n '/^if \[ "\${KDOS_CCACHE:-1}" = 1 \]/,/^else/p' "$_cr"/script/env/chroot.env 2>/dev/null)
+if [ -z "$_ccon" ] || ! grep -qE '^[^#]*CCACHE_COMPILERCHECK="string:' <<<"$_ccon" \
+   || grep -qE '^[^#]*CCACHE_COMPILERCHECK=[^ ]*mtime' <<<"$_ccon"; then
+    bad "ccache compiler check" "chroot.env's enabled branch must set CCACHE_COMPILERCHECK to a string, never mtime"
+    _cc=$((_cc + 1))
+fi
+_ccm=0 _cce=0
+grep -qE '^[[:space:]]*-e KDOS_CCACHE=' "$_cr"/Makefile && _ccm=1
+grep -qE '^[[:space:]]*KDOS_CCACHE=' "$_cr"/script/chroot/exec.sh && _cce=1
+if [ "$_ccm" != "$_cce" ]; then
+    bad "ccache knob" "KDOS_CCACHE is passed by the Makefile ($_ccm) and named by exec.sh's env -i ($_cce) — both or neither"
+    _cc=$((_cc + 1))
+fi
+if grep -rqE '^[^#]*PATH=[^[:space:]]*/usr/lib/ccache' "$_cr"/script/ 2>/dev/null; then
+    bad "ccache masquerade" "a PATH under script/ holds /usr/lib/ccache — CMake records it as the compiler"
+    _cc=$((_cc + 1))
+fi
+[ "$_cc" = 0 ] && note "compiler cache" "no base_dir, string compiler check, knob forwarded, no masquerade PATH"
+
+echo
+echo "==> the package store's knobs reach the chroot"
+# KDOS_PKG_STORE and KDOS_PKG_STORE_MAX come from the Makefile; exec.sh's
+# `env -i` must name them and the three kpkg reads (KPKG_STORE,
+# KPKG_STORE_CHECK, KPKG_STORE_SALT), or `make build KDOS_PKG_STORE=1` builds
+# every port with the store silently off.
+_ps=0
+for _v in KDOS_PKG_STORE KDOS_PKG_STORE_MAX; do
+    if ! grep -qE "^[[:space:]]*-e $_v=" "$_cr"/Makefile; then
+        bad "package store knob" "the Makefile does not pass $_v into the container"
+        _ps=$((_ps + 1))
+    fi
+done
+for _v in KDOS_PKG_STORE KDOS_PKG_STORE_MAX KPKG_STORE KPKG_STORE_CHECK KPKG_STORE_SALT; do
+    if ! grep -qE "^[[:space:]]*$_v=" "$_cr"/script/chroot/exec.sh; then
+        bad "package store knob" "exec.sh's env -i does not name $_v"
+        _ps=$((_ps + 1))
+    fi
+done
+if ! grep -qE '! -name pkgstore' "$_cr"/Makefile; then
+    bad "package store cleanbuild" "make cleanbuild removes build/pkgstore"
+    _ps=$((_ps + 1))
+fi
+[ "$_ps" = 0 ] && note "package store" "knobs passed by the Makefile and named by exec.sh; cleanbuild keeps it"
+
+echo
+echo "==> ninja takes KDOS_JOBS, and only when no job count is given"
+# script/bin/ninja is on the chroot's PATH ahead of /usr/bin/ninja. It must add
+# -jN to a call with no job count and hand every other call on exactly: a -j
+# added twice is harmless, but one added to `-t` or `--version` changes what
+# meson and CMake read back, and a lost argument breaks every build. Run
+# against a stand-in ninja that prints its arguments one per line, so an
+# argument split or joined shows.
+_nj=0
+if [ -x script/bin/ninja ] && grep -q 'env/../bin\|%/\*}/../bin' script/env/chroot.env; then
+    printf '#!/bin/bash\nprintf "%%s\\n" "$@"\n' > "$SP/ninja-real"
+    chmod +x "$SP/ninja-real"
+    _njcase() {  # expected-output, then the arguments
+        local want=$1; shift
+        local got
+        got=$(KDOS_JOBS=7 KDOS_NINJA="$SP/ninja-real" script/bin/ninja "$@" | paste -sd'|')
+        if [ "$got" != "$want" ]; then
+            bad "ninja wrapper" "ninja $* gave '$got', want '$want'"
+            _nj=$((_nj + 1))
+        fi
+    }
+    _njcase "-j7"
+    _njcase "-j7|-C|build|install" -C build install
+    _njcase "-j7|-Cbuild|-v" -Cbuild -v
+    _njcase "-j7|-C|-j3" -C -j3
+    _njcase "-j3|-C|build" -j3 -C build
+    _njcase "-C|build|-j|3" -C build -j 3
+    _njcase "-vj2" -vj2
+    _njcase "-t|compdb|-x" -t compdb -x
+    _njcase "--version" --version
+    _njcase "-j7|a b|--|-j2" "a b" -- -j2
+    _got=$(KDOS_JOBS= KDOS_NINJA="$SP/ninja-real" script/bin/ninja all | paste -sd'|')
+    [ "$_got" = all ] || { bad "ninja wrapper" "empty KDOS_JOBS still added a count: '$_got'"; _nj=$((_nj + 1)); }
+    grep -qE '^real=\$\{KDOS_NINJA:-/usr/bin/ninja\}' script/bin/ninja ||
+        { bad "ninja wrapper" "script/bin/ninja must run /usr/bin/ninja by absolute path"; _nj=$((_nj + 1)); }
+else
+    bad "ninja wrapper" "script/bin/ninja is missing, or chroot.env does not put script/bin on PATH"
+    _nj=1
+fi
+[ "$_nj" = 0 ] && note "ninja jobs" "-jN only when absent; -t, --version and a given -j pass through"
 
 echo
 if [ "$fail" = 0 ]; then

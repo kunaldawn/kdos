@@ -28,12 +28,21 @@
 #
 # libnuma is OFF: it is not a port, the probe is automatic, and it only pays
 # on multi-socket machines.
-export CXXFLAGS="$CXXFLAGS -include cstdint"
+#
+# LTO is on in all three, with a fixed -frandom-seed so the archives the 8-bit
+# link reads are the same on every build. The final link then warns that
+# x265_analysis_distortion_data breaks the ODR: its ctuDistortion points at
+# sse_t, 32 bits wide at 8-bit depth and 64 above. The structure's layout is
+# the same at every depth and the depths reach one another only through the
+# API table, so the warning is expected.
+export CXXFLAGS="$CXXFLAGS -include cstdint -frandom-seed=x265"
+export CFLAGS="$CFLAGS -frandom-seed=x265"
 common=(
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5
 	-DCMAKE_BUILD_TYPE=Release
 	-DCMAKE_INSTALL_PREFIX=/usr
 	-DCMAKE_INSTALL_LIBDIR=lib
+	-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
 	-DENABLE_ASSEMBLY=ON
 	-DENABLE_HDR10_PLUS=ON
 	-DENABLE_LIBNUMA=OFF

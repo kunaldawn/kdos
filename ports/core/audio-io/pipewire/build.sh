@@ -72,9 +72,11 @@
 # RLIMIT_MEMLOCK as the last root process on either login path, and rlimits are
 # inherited through setuid and execve to the session, to pipewire and to every
 # ALSA client under them.
+export CFLAGS="$CFLAGS -frandom-seed=pipewire" CXXFLAGS="$CXXFLAGS -frandom-seed=pipewire"
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	-Dbuildtype=release \
+	-Db_lto=true \
 	-Ddocs=disabled \
 	-Dman=enabled \
 	-Dtests=disabled \

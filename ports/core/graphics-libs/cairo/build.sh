@@ -15,7 +15,8 @@ export XML_CATALOG_FILES=/etc/xml/catalog
 # build their X11 backend against cairo-xlib and stop at setup without it, and
 # FLTK, cairomm and Ardour draw on Xlib surfaces under Xwayland.
 
-meson setup build \
+export CFLAGS="$CFLAGS -frandom-seed=cairo"
+meson setup build --buildtype=release -D b_lto=true \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-D fontconfig=enabled \
 	-D freetype=enabled \

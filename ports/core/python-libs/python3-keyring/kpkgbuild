@@ -10,7 +10,7 @@
 
 name        = python3-keyring
 version     = 25.7.0
-release     = 1
+release     = 2
 source      = https://files.pythonhosted.org/packages/source/k/keyring/keyring-$version.tar.gz
 sha256      = fe01bd85eb3f8fb3dd0405defdeac9a5b4f6f0439edbb3149577f244a2e8245b  python3-keyring-25.7.0.tar.gz
 sha256      = 75872cb59dfb519b715c795e92f9a3cc7c2846e525c48a42381eadf8102b2e06  python3-keyring-vendor-25.7.0.tar.xz

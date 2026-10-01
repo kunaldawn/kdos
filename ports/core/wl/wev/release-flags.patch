@@ -1,0 +1,16 @@
+The link takes the exported LDFLAGS, and no -g follows CFLAGS to put DWARF
+into the installed binary.
+
+--- a/Makefile
++++ b/Makefile
+@@ -22,8 +22,8 @@
+ 		$(WAYLAND_PROTOCOLS)/stable/tablet/tablet-v2.xml $@
+ 
+ wev: wev.c shm.c xdg-shell-protocol.c wayland-tablet-protocol.c
+-	$(CC) $(CFLAGS) \
+-		-g -std=c11 -I. \
++	$(CC) $(CFLAGS) $(LDFLAGS) \
++		-std=c11 -I. \
+ 		-o wev wev.c shm.c xdg-shell-protocol.c wayland-tablet-protocol.c \
+ 		$(LIBS) -lrt
+ 

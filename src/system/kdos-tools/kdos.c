@@ -3438,6 +3438,10 @@ static int count_dir(const char *path, const char *suffix)
 	int n = 0, total = 0;
 	char **v = kb_listdir(path, &total);
 	for (char **p = v; p && *p; p++) {
+		/* A dot-name is never an entry: the package database keeps
+		 * its sidecars and its lock beside the packages. */
+		if ((*p)[0] == '.')
+			continue;
 		if (!suffix) {
 			n++;
 			continue;

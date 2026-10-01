@@ -57,8 +57,8 @@ mkdir build && cd build
     --disable-libstdcxx \
     --disable-bootstrap
 
-make all
-make install
+make all BUILD_INFO=no-info
+make install BUILD_INFO=no-info
 
 cd ..
 cat gcc/limitx.h gcc/glimits.h gcc/limity.h > \

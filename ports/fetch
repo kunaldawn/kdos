@@ -16,6 +16,8 @@
 #   ports/fetch --check [port…]       offline: list what is missing or corrupt
 #   ports/fetch --tree <dir> [port…]  fetch for another checkout's ports/core
 #
+#   FETCH_JOBS=N                      up to N ports at once, in any mode; default 1
+#
 # A port is named by its bare name, never by its shelf: ports/core/<shelf>/<name>
 # is fetched as `ports/fetch <name>`, in this tree or the one --tree names. A
 # named port that does not exist fails the run.
@@ -33,7 +35,7 @@
 #
 #   1. the port directory      a file already there
 #   2. the cache               ports/.srccache/sha256-XX/<hash>, hard-linked in
-#   3. the archive             $KDOS_SOURCES_BASE/sources-NNN/<hash>, NNN from
+#   3. the archive             $KDOS_SOURCES_BASE/<tag>/<asset>, both from
 #                              ports/sources.idx; a hash it does not name skips this.
 #                              The base is a URL or a directory (an archive disk)
 #   4. the recipe's `source =` the URL that names this filename, if one does
@@ -46,13 +48,20 @@
 # no second download — nor does a second checkout or a re-clone, when
 # KDOS_SRCCACHE names a cache they share.
 #
+# A FILE IN PARTS — one larger than $SRC_PART_SIZE bytes, stored as
+# <asset>.part01 … — is downloaded part by part into
+# $KDOS_SRCCACHE/.parts-<hash>/, each part resumed and checked against its own
+# hash, then joined in order and checked as a whole. The joined copy and the
+# parts are on disk together for a moment, so the peak is about twice the
+# file. A part that does not verify sends the file upstream.
+#
 # A FILE WITH NO HASH comes from upstream only — you have just bumped
 # `version =` and the new tarball has never existed here. The archive cannot
 # hold it, and reaching for our own copy of an unverifiable file would be
 # trusting the wrong thing entirely. A vendor bundle with no hash is generated.
 #
 # Set KDOS_SOURCES_BASE empty to skip the archive, or to a directory laid out
-# as sources-NNN/<hash> to read the archive from a disk with no network;
+# as <tag>/<asset> to read the archive from a disk with no network;
 # KDOS_SRCCACHE moves the cache; KDOS_SOURCES_INDEX names another index. All
 # are read by ports/srclib.sh.
 
@@ -60,6 +69,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+# Whether the caller named an index, before srclib.sh supplies the default:
+# only a named one is handed to the container.
+INDEX_NAMED=${KDOS_SOURCES_INDEX:+1}
 
 # shellcheck source=ports/srclib.sh
 . "$SCRIPT_DIR/srclib.sh"
@@ -97,8 +109,9 @@ done
 PORT_REPO="${TREE:-$REPO_ROOT}/ports/core"
 [ -d "$PORT_REPO" ] || { echo "ports/fetch: no ports/core under ${TREE:-$REPO_ROOT}" >&2; exit 2; }
 
-# THIS tree's index, also for --tree: the index only ever grows, so the
-# newest one names every file an older checkout's recipes can ask for.
+# THIS tree's index, also for --tree: the newest index says where every file
+# the archive holds is now, and an older checkout's own may name places a file
+# has since moved from, or be of a format this cannot read.
 src_index_load
 
 # WHO MAY GENERATE A VENDOR BUNDLE. Downloading needs curl and sha256sum;
@@ -128,10 +141,12 @@ NEEDGEN=()
 # A VENDOR BUNDLE IS AN ARTEFACT AND MUST HASH THE SAME TWICE. Plain `tar -cJf`
 # records the extraction time and the builder's uid, so two runs of the same
 # `cargo vendor` produce two different files and the `sha256 =` line beside it
-# is a hash of one particular afternoon. These are `roll_package()`'s flags,
-# for the same reason and with the same effect: sorted names, the pinned epoch,
-# uid/gid 0, and single-threaded xz, whose output XZ_OPT=-T0 in the environment
-# would otherwise change.
+# is a hash of one particular afternoon. The tar flags are `roll_package()`'s:
+# sorted names, the pinned epoch, uid/gid 0 and gnu format. The compressor is
+# not the package compressor but the bundle's own pinned `xz -9 -T1`, and it is
+# part of every bundle's `sha256 =`: single-threaded mode writes different bytes
+# from multi-threaded mode, so changing the mode or the preset re-hashes every
+# vendored source.
 vendor_tar() {
     local out="$1"; shift
     tar --sort=name \
@@ -205,10 +220,75 @@ download() {
     return 1
 }
 
+# obtain_parts <port> <hash> <file> <dest> — the archive step for a file in
+# parts. Each part lands in $KDOS_SRCCACHE/.parts-<hash>/NN and is kept once it
+# verifies, so a run that stops resumes at the part it was on. The joined file
+# is written as <dest>.part and renamed only after the whole verifies. A part
+# that fails its hash, or a whole that does, removes what it was built from and
+# returns 1, and the caller goes upstream; a download that fails keeps the
+# parts already verified for the next run.
+obtain_parts() {
+    local port=$1 h=$2 f=$3 dest=$4 pdir="$KDOS_SRCCACHE/.parts-$2"
+    local n=${SRC_NPARTS[$2]} urls i u pp ph mode got
+    mapfile -t urls < <(src_urls "$h")
+    [ "${#urls[@]}" = "$n" ] || return 1
+    mkdir -p "$pdir"
+    for ((i = 1; i <= n; i++)); do
+        pp=$(printf '%s/%02d' "$pdir" "$i")
+        ph=${SRC_PHASH[$h,$i]}
+        u=${urls[i-1]}
+        src_hash_ok "$pp" "$ph" && continue
+        rm -f "$pp"
+        mode=""
+        [ -s "$pp.part" ] && mode=resume
+        while :; do
+            case $mode in
+                resume) echo "⬇  $port: $f part $i/$n <- $u (resuming)" ;;
+                fresh)  echo "⬇  $port: $f part $i/$n <- $u (from zero)" ;;
+                *)      echo "⬇  $port: $f part $i/$n <- $u" ;;
+            esac
+            download "$u" "$pp" "$mode" || return 1
+            if src_hash_ok "$pp.part" "$ph"; then
+                mv -f "$pp.part" "$pp"
+                break
+            fi
+            got=$(sha256sum "$pp.part" | cut -d' ' -f1)
+            rm -f "$pp.part"
+            if [ "$mode" = resume ]; then
+                mode=fresh
+                continue
+            fi
+            echo "✗  $port: sha256 MISMATCH for part $i of $f from $u"
+            echo "   expected $ph"
+            echo "   got      $got"
+            rm -rf "$pdir"
+            return 1
+        done
+    done
+    echo "⚙  $port: joining $n parts of $f"
+    rm -f "$dest.part"
+    for ((i = 1; i <= n; i++)); do
+        cat "$(printf '%s/%02d' "$pdir" "$i")"
+    done > "$dest.part" || { rm -f "$dest.part"; return 1; }
+    rm -rf "$pdir"
+    if ! src_hash_ok "$dest.part" "$h"; then
+        echo "✗  $port: sha256 MISMATCH for $f joined from $n parts"
+        echo "   expected $h"
+        echo "   got      $(sha256sum "$dest.part" | cut -d' ' -f1)"
+        rm -f "$dest.part"
+        return 1
+    fi
+    mv -f "$dest.part" "$dest"
+    src_cache_put "$dest" "$h" || echo "⚠  $port: could not enter $f into $KDOS_SRCCACHE"
+    echo "✓  $port: $f verified"
+    return 0
+}
+
 # obtain <portdir> <port> <hash> <file> [url] — steps 1 to 4 of the order in
 # the header. Returns 0 with <file> verified in place and in the cache.
 obtain() {
     local dir=$1 port=$2 h=$3 f=$4 url=${5:-} dest="$1/$4" u got mode
+    local where=()
     if [ -e "$dest" ]; then
         if src_hash_ok "$dest" "$h"; then
             src_cache_put "$dest" "$h" || echo "⚠  $port: could not enter $f into $KDOS_SRCCACHE"
@@ -222,12 +302,18 @@ obtain() {
         echo "✓  $port: $f (cache)"
         return 0
     fi
+    if [ "${SRC_NPARTS[$h]:-1}" -ge 2 ]; then
+        [ -n "$KDOS_SOURCES_BASE" ] && obtain_parts "$port" "$h" "$f" "$dest" && return 0
+    else
+        mapfile -t where < <(src_urls "$h")
+    fi
+    [ -n "$url" ] && where+=("$url")
     # A LEFTOVER .part IS ONLY A GUESS. It may hold the start of other bytes
     # — an interrupted download of a tarball upstream has since re-rolled —
     # and a resume onto it fails the hash however good the server is. So a
     # resumed download that fails is asked for once more from zero, from the
     # same URL, before the next location is tried.
-    for u in $(src_url "$h") $url; do
+    for u in "${where[@]}"; do
         mode=""
         [ -s "$dest.part" ] && mode=resume
         while :; do
@@ -635,6 +721,49 @@ gen_vendor() {
 CHECK_BAD=0
 CHECK_SEEN=0
 
+# FETCH_JOBS=N RUNS UP TO N PORTS AT ONCE; 1, the default, is one port after
+# the other with every line printed as it happens. With more, each port runs
+# in a background subshell that writes its lines to a buffer, printed whole
+# when that port is done, and its counters to a result file the parent sums:
+# a subshell's CHECK_BAD, CHECK_SEEN and NEEDGEN are its own copies, and
+# anything it adds to them is lost unless it is handed back. A run that
+# generates vendor bundles itself (the container's, or KDOS_FETCH_HOST=1) is
+# always one port at a time: five toolchains resolving registries at once
+# share their caches under one home.
+FETCH_JOBS="${FETCH_JOBS:-1}"
+case $FETCH_JOBS in
+    ''|*[!0-9]*|0) echo "ports/fetch: FETCH_JOBS must be a positive number, not '$FETCH_JOBS'" >&2; exit 2 ;;
+esac
+[ "$GENERATE" = 1 ] && FETCH_JOBS=1
+JOBDIR=""
+
+# hash_lock <hash> / hash_unlock — hold one hash while it is resolved. Two
+# ports that name the same file resolve the same cache entry, and without the
+# lock one can remove an entry the other is linking, or read a copy the other
+# is still writing across filesystems. Only a parallel run takes it. The lock
+# lives in the run's own directory, so a run that is killed leaves none behind
+# to block the next; flock where it exists, a directory otherwise.
+HASH_LOCK=""
+hash_lock() {
+    [ -n "$JOBDIR" ] || return 0
+    HASH_LOCK="$JOBDIR/lock-$1"
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>"$HASH_LOCK"
+        flock 9
+    else
+        until mkdir "$HASH_LOCK.d" 2>/dev/null; do sleep 0.2; done
+    fi
+}
+hash_unlock() {
+    [ -n "$HASH_LOCK" ] || return 0
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>&-
+    else
+        rmdir "$HASH_LOCK.d" 2>/dev/null || true
+    fi
+    HASH_LOCK=""
+}
+
 # unreadable — a recipe the reader rejects is a failure in both modes. Its
 # files were never looked at, so a pass would vouch for sources nobody checked.
 unreadable() {
@@ -706,7 +835,12 @@ fetch_port() {
             continue
         fi
 
-        obtain "$portdir" "$port" "$h" "$f" "${url_of[$f]:-}" && continue
+        hash_lock "$h"
+        if obtain "$portdir" "$port" "$h" "$f" "${url_of[$f]:-}"; then
+            hash_unlock
+            continue
+        fi
+        hash_unlock
         if [ "$f" = "$vendor_file" ]; then
             need_gen=1
             continue
@@ -845,6 +979,17 @@ in_container() {
     # file:// base srclib.sh made names the same files inside.
     local base_mount=()
     src_base_local && base_mount=(-v "${KDOS_SOURCES_BASE#file://}:${KDOS_SOURCES_BASE#file://}:ro")
+    # A named index is read inside as the same file: under the tree it has a
+    # /kdos path, anywhere else it is mounted read-only. Unnamed, the
+    # container reads the tree's own.
+    local index_env=() index_mount=()
+    if [ -n "$INDEX_NAMED" ]; then
+        case $KDOS_SOURCES_INDEX in
+            "$REPO_ROOT"/*) index_env=(-e KDOS_SOURCES_INDEX="/kdos/${KDOS_SOURCES_INDEX#"$REPO_ROOT"/}") ;;
+            *) index_mount=(-v "$KDOS_SOURCES_INDEX":/srcindex/sources.idx:ro)
+               index_env=(-e KDOS_SOURCES_INDEX=/srcindex/sources.idx) ;;
+        esac
+    fi
     case $KDOS_SRCCACHE in
         "$REPO_ROOT"/*) cache_in="/kdos/${KDOS_SRCCACHE#"$REPO_ROOT"/}" ;;
         *) cache_in=/srccache; cache_mount=(-v "$KDOS_SRCCACHE":/srccache) ;;
@@ -872,6 +1017,8 @@ in_container() {
         -v "$REPO_ROOT":/kdos \
         "${cache_mount[@]}" \
         "${base_mount[@]}" \
+        "${index_mount[@]}" \
+        "${index_env[@]}" \
         -e KDOS_FETCH_INNER=1 \
         -e HOME=/kdos/build/fetch-home \
         -e CARGO_HOME=/kdos/build/fetch-home/cargo \
@@ -934,15 +1081,71 @@ for p in "${UNKNOWN[@]}"; do
     failed=$((failed + 1))
     [ "$MODE" = check ] && CHECK_BAD=$((CHECK_BAD + 1))
 done
-for portdir in "${DIRS[@]}"; do
-    total=$((total + 1))
+if [ "$FETCH_JOBS" = 1 ]; then
+    for portdir in "${DIRS[@]}"; do
+        total=$((total + 1))
 
-    if fetch_port "$portdir"; then
-        success=$((success + 1))
-    else
-        failed=$((failed + 1))
-    fi
-done
+        if fetch_port "$portdir"; then
+            success=$((success + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+else
+    # THE RUN'S SCRATCH IS UNDER THE CACHE, never /tmp: the cache is already
+    # the one directory this script may fill, and /tmp can be a small tmpfs.
+    mkdir -p "$KDOS_SRCCACHE"
+    JOBDIR=$(mktemp -d "$KDOS_SRCCACHE/.fetch-jobs.XXXXXX")
+    trap 'rm -rf "$JOBDIR"' EXIT
+
+    # job_run <index> <portdir> — one port, in a subshell. The result file is
+    # written last and renamed into place, so its presence means the port is
+    # done: `<rc> <check bad> <check seen> [port to generate]`.
+    job_run() {
+        local rc=0
+        CHECK_BAD=0 CHECK_SEEN=0 NEEDGEN=()
+        fetch_port "$2" > "$JOBDIR/$1.out" 2>&1 || rc=1
+        printf '%s %s %s %s\n' "$rc" "$CHECK_BAD" "$CHECK_SEEN" "${NEEDGEN[*]}" > "$JOBDIR/$1.res.part"
+        mv -f "$JOBDIR/$1.res.part" "$JOBDIR/$1.res"
+    }
+
+    # job_reap — print and count every port whose result has arrived.
+    declare -A RUNNING=()
+    GEN_AT=()
+    job_reap() {
+        local i r bad seen gen
+        for i in "${!RUNNING[@]}"; do
+            [ -e "$JOBDIR/$i.res" ] || continue
+            cat "$JOBDIR/$i.out"
+            read -r r bad seen gen < "$JOBDIR/$i.res"
+            if [ "$r" = 0 ]; then success=$((success + 1)); else failed=$((failed + 1)); fi
+            CHECK_BAD=$((CHECK_BAD + bad))
+            CHECK_SEEN=$((CHECK_SEEN + seen))
+            [ -n "$gen" ] && GEN_AT[i]=$gen
+            rm -f "$JOBDIR/$i.out" "$JOBDIR/$i.res"
+            unset "RUNNING[$i]"
+        done
+    }
+
+    i=0
+    for portdir in "${DIRS[@]}"; do
+        total=$((total + 1))
+        while [ ${#RUNNING[@]} -ge "$FETCH_JOBS" ]; do
+            wait -n 2>/dev/null || true
+            job_reap
+        done
+        job_run "$i" "$portdir" &
+        RUNNING[$i]=1
+        i=$((i + 1))
+    done
+    wait
+    job_reap
+    # Ports to generate in the order they were named, whatever order they
+    # finished in, so the container's run is the same run every time.
+    for i in "${!GEN_AT[@]}"; do
+        NEEDGEN+=("${GEN_AT[i]}")
+    done
+fi
 
 if [ "$MODE" = check ]; then
     if [ "$CHECK_BAD" -gt 0 ]; then

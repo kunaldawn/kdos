@@ -1,0 +1,10 @@
+--- a/include/onnxruntime/core/framework/tensor_shape.h
++++ b/include/onnxruntime/core/framework/tensor_shape.h
+@@ -4,6 +4,7 @@
+ #pragma once
+ 
+ #include <algorithm>
++#include <cstdint>
+ #include <cstring>
+ #include <iosfwd>
+ #include <string>

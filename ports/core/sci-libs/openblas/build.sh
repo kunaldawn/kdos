@@ -15,8 +15,11 @@
 # carries a kernel per microarchitecture and picks at RUNTIME by cpuid, which
 # is the dispatch musl closes off for everything else and which upstream has
 # maintained for twenty years. Without it, a package built on this machine
-# runs the generic kernel on every other one — or SIGILLs, if TARGET was
-# inferred.
+# runs the generic kernel on every other one.
+#
+# TARGET=CORE2 names the CPU the code outside the kernels is built for.
+# Unset, getarch infers it from the build machine, and the library can then
+# SIGILL on an older CPU before it reaches a kernel.
 #
 # USE_OPENMP=0: there is no libgomp runtime worth pulling in for a library
 # whose consumers here are single-process command-line tools, and OpenMP plus
@@ -27,6 +30,7 @@
 # every solver in C2 want LAPACK, and a BLAS without it is half a package.
 make \
 	DYNAMIC_ARCH=1 \
+	TARGET=CORE2 \
 	USE_OPENMP=0 \
 	USE_THREAD=1 \
 	NUM_THREADS=64 \
@@ -35,6 +39,7 @@ make \
 	FC=gfortran
 make \
 	DYNAMIC_ARCH=1 \
+	TARGET=CORE2 \
 	USE_OPENMP=0 \
 	USE_THREAD=1 \
 	NUM_THREADS=64 \

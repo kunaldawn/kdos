@@ -36,6 +36,11 @@
  *    system for each of them costs seconds per install. A placed page is
  *    merged; any removed page, or a missing database, rebuilds the whole
  *    tree, because a merge cannot drop an entry for a file already gone.
+ *  - `KPKG_SKIP_INDEX` names indexes (space-separated, by the names in
+ *    t_name) that are not rebuilt, with one line saying so. The build sets
+ *    `man` in the chroot: 70_image writes every manual index from scratch,
+ *    so a merge per install is work the image step throws away. Nothing
+ *    else sets it, so a running system keeps every index current.
  *  - `--root`: tools are handed the root-prefixed directory. The pixbuf
  *    loader cache cannot take one — the tool writes the path it was
  *    compiled with — so under `--root` it runs inside the root through
@@ -83,6 +88,21 @@ static const char *const t_dir[T_COUNT][T_MAXDIRS] = {
 	[T_XFONTS] = { "usr/share/fonts/" },
 	[T_TEXMF] = { "usr/share/texmf-dist/", "usr/share/texmf-local/" },
 	[T_DESKTOP] = { "usr/share/applications/" },
+};
+
+/* What `KPKG_SKIP_INDEX` calls each index. */
+static const char *const t_name[T_COUNT] = {
+	[T_SCHEMAS] = "schemas",
+	[T_GIO] = "gio",
+	[T_PIXBUF] = "pixbuf",
+	[T_MIME] = "mime",
+	[T_FONTS] = "fonts",
+	[T_INFO] = "info",
+	[T_HWDB] = "hwdb",
+	[T_MAN] = "man",
+	[T_XFONTS] = "xfonts",
+	[T_TEXMF] = "texmf",
+	[T_DESKTOP] = "desktop",
 };
 
 static const char *const t_tool[T_COUNT] = {
@@ -432,12 +452,32 @@ static int have_tool(int i, const char *root, int rooted)
 	return kb_have_prog(t_tool[i]);
 }
 
+/* `name` as a whole word of the space-separated $KPKG_SKIP_INDEX. */
+static int skipped(const char *name)
+{
+	const char *v = getenv("KPKG_SKIP_INDEX");
+	size_t nl = strlen(name);
+	for (const char *p = v; p && *p;) {
+		while (*p == ' ')
+			p++;
+		size_t n = strcspn(p, " ");
+		if (n == nl && !strncmp(p, name, nl))
+			return 1;
+		p += n;
+	}
+	return 0;
+}
+
 void kp_triggers_run(KpTriggers *t, const char *root)
 {
 	int rooted = strcmp(root, "/") != 0;
 	for (int i = 0; i < T_COUNT; i++) {
 		if (!(t->hit & (1u << i)))
 			continue;
+		if (skipped(t_name[i])) {
+			kp_msg("index skipped: %s", t_name[i]);
+			continue;
+		}
 		if (!have_tool(i, root, rooted))
 			continue;
 		kp_msg("Updating index: %s", t_tool[i]);

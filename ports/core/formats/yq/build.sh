@@ -12,7 +12,7 @@
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
 export CGO_ENABLED=0
-go build -ldflags "-s -w" -o yq
+go build -mod=vendor -ldflags "-s -w" -o yq
 install -Dm755 yq $PKG/usr/bin/yq
 ./yq completion bash > yq.bash
 ./yq completion zsh  > _yq

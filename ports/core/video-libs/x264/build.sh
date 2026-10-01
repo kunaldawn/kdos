@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+export CFLAGS="${CFLAGS/-O2/-O3} -frandom-seed=x264"
+
 # The licence is the point of this comment.
 #
 # x264 is GPL-2-or-later, and ffmpeg links it only under --enable-gpl, which
@@ -23,6 +25,7 @@
 	--libdir=/usr/lib \
 	--enable-shared \
 	--enable-pic \
+	--enable-lto \
 	--disable-cli \
 	--disable-opencl
 make

@@ -58,7 +58,7 @@ _hadrian="$SRC/hadrian/bootstrap/_build/bin/hadrian"
 # C.UTF-8 because Hadrian reads Sphinx's log in the locale's encoding, and the
 # manual page's source has characters outside ASCII: under the phase env's
 # LC_ALL=C the read fails and the build with it.
-LC_ALL=C.UTF-8 "$_hadrian" -j \
+LC_ALL=C.UTF-8 "$_hadrian" -j"$KDOS_JOBS" \
 	--flavour=release+no_profiled_libs \
 	--docs=no-haddocks \
 	--docs=no-sphinx-pdfs \

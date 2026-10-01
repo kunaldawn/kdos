@@ -16,5 +16,5 @@ export CGO_ENABLED=0
 # INSIDE that directory rather than over it. install then reports
 # "Skipped dir" on a path that looks exactly like the binary it wanted.
 mkdir -p out
-go build -mod=vendor -o out/seqkit ./seqkit
+go build -mod=vendor -ldflags "-s -w" -o out/seqkit ./seqkit
 install -Dm755 out/seqkit $PKG/usr/bin/seqkit

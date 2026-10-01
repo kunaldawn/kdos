@@ -1736,8 +1736,10 @@ echo "==> a package built twice is byte-identical"
 # needed and the test costs milliseconds.
 #
 # The second build runs under a HOSTILE environment on purpose — a different
-# umask, XZ_OPT asking for threads, and another time zone — because each of
-# those silently changed the archive before kpkg pinned them.
+# umask, another time zone, XZ_OPT asking for extreme mode, a stronger check
+# and the single-threaded encoder, and XZ_DEFAULTS capping memory below the
+# -9 dictionary — because each of those changes the archive unless kpkg pins
+# it.
 RP="$OUT/repro"
 rm -rf "$RP"
 mkdir -p "$RP/ports/tiny" "$RP/work" "$RP/pkgs"
@@ -1768,7 +1770,8 @@ kbuild_pkg() {
 }
 kbuild_pkg TZ=UTC || { echo "  the synthetic port did not build"; exit 1; }
 mv "$RP/pkgs/tiny-1.0-1.tar.xz" "$RP/one.tar.xz"
-( umask 077; kbuild_pkg TZ=Asia/Kolkata XZ_OPT=-T0 ) \
+( umask 077; kbuild_pkg TZ=Asia/Kolkata XZ_OPT='-e --check=sha256 -T1' \
+      XZ_DEFAULTS=--memlimit-compress=300MiB ) \
     || { echo "  the second build failed"; exit 1; }
 cmp -s "$RP/one.tar.xz" "$RP/pkgs/tiny-1.0-1.tar.xz" \
     || { echo "  the same recipe produced two different packages"; exit 1; }
@@ -1776,7 +1779,61 @@ cmp -s "$RP/one.tar.xz" "$RP/pkgs/tiny-1.0-1.tar.xz" \
 # luck: uid/gid 0, and the pinned epoch rather than the wall clock.
 TZ=UTC tar -tvf "$RP/one.tar.xz" | grep -q "0/0 .*2025-01-01" \
     || { echo "  the archive is not normalised (uid/gid or mtime)"; exit 1; }
-echo "  identical under a different umask, TZ and XZ_OPT; uid/gid 0, epoch mtime"
+echo "  identical under a different umask, TZ, XZ_OPT and XZ_DEFAULTS; uid/gid 0, epoch mtime"
+# The kept compressor is stated, not only stable: anyone with xz reproduces the
+# package from its tar on two threads where kpkg used all of them, which is also
+# the proof that the thread count does not reach the bytes. -T2 is multi-threaded
+# mode on every xz release (-T+1 needs 5.4), and the reference xz gets the same
+# cleared XZ_OPT and XZ_DEFAULTS as kpkg's, or the caller's shell decides.
+if command -v xz >/dev/null 2>&1; then
+    xz -dc "$RP/one.tar.xz" \
+        | env -u XZ_OPT -u XZ_DEFAULTS xz -9 -T2 --block-size=32MiB -c \
+        | cmp -s - "$RP/one.tar.xz" \
+        || { echo "  the package is not xz -9 --block-size=32MiB of its tar"; exit 1; }
+    echo "  the package is xz -9 --block-size=32MiB of its tar, recompressed on two threads"
+fi
+
+echo "==> kpkg install compresses cheaply only what it deletes"
+KI="$OUT/kinst"
+rm -rf "$KI"; mkdir -p "$KI/work" "$KI/pkgs" "$KI/root"
+ln -sf kdos-kpkg "$OUT/kpkg"
+for t in kpkgbuild kpkgadd kpkgdepends; do ln -sf kdos-kpkg "$OUT/$t"; done
+kinst() {
+    env PORT_REPO="$RP/ports" WORK_DIR="$KI/work" PACKAGE_DIR="$KI/pkgs" \
+        PKGDB_DIR=/db KPKG_CONF=/nonexistent SOURCE_DATE_EPOCH=1735689600 \
+        TZ=UTC "$@" "$OUT/kpkg" install --root "$KI/root" tiny
+}
+# A logging xz in front of the real one records which preset each build used.
+if _xz=$(command -v xz); then
+    mkdir -p "$KI/bin"
+    printf '#!/bin/sh\necho "$*" >> "%s/xzargs"\nexec %s "$@"\n' "$KI" "$_xz" \
+        > "$KI/bin/xz"
+    chmod +x "$KI/bin/xz"
+fi
+kinst PATH="$KI/bin:$PATH" >"$KI/log" 2>&1 \
+    || { echo "  kpkg install of the synthetic port failed"; cat "$KI/log"; exit 1; }
+if [ -n "$_xz" ]; then
+    grep -qx -- '-0 -T0 --block-size=8MiB --no-adjust' "$KI/xzargs" \
+        || { echo "  a deleted package was not given the transient preset"; exit 1; }
+fi
+test "$(cat "$KI/root/usr/share/tiny/b.txt" 2>/dev/null)" = two \
+    || { echo "  the transient package did not install its files"; exit 1; }
+test -z "$(ls -A "$KI/pkgs")" \
+    || { echo "  a package was left behind with no cache kept"; exit 1; }
+grep -q '^==> Packaged tiny: [0-9]* MB in [0-9.]* s$' "$KI/log" \
+    || { echo "  no packaging time was reported"; exit 1; }
+if command -v xz >/dev/null 2>&1; then
+    rm -rf "$KI/root"; mkdir -p "$KI/root"
+    kinst KPKG_KEEP_CACHE=1 >/dev/null 2>&1 \
+        || { echo "  kpkg install with a kept cache failed"; exit 1; }
+    xz -lvv "$KI/pkgs/tiny-1.0-1.tar.xz" | grep -q 'dict=64MiB' \
+        || { echo "  a kept package is not compressed with the -9 dictionary"; exit 1; }
+    cmp -s "$KI/pkgs/tiny-1.0-1.tar.xz" "$RP/one.tar.xz" \
+        || { echo "  kpkg install's kept package differs from kpkgbuild's"; exit 1; }
+    echo "  installed from a deleted cheap package; a kept one is kpkgbuild's -9 bytes"
+else
+    echo "  installed from a deleted cheap package (kept check skipped — no xz)"
+fi
 
 echo
 
@@ -1871,6 +1928,13 @@ grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
     || { echo "  removing a manual page did not rebuild the whole manual index"; exit 1; }
 grep -qx "update-desktop-database -q $TR/root/usr/share/applications" "$TR/calls" \
     || { echo "  removing a desktop entry left mimeinfo.cache naming it"; exit 1; }
+mkdir -p "$TR/root2"; : > "$TR/calls"
+ktrig KPKG_SKIP_INDEX=man "$OUT/kpkgadd" --root "$TR/root2" "$TR/pkgs/page-1.0-1.tar.xz" \
+    > "$TR/skip.log" || { echo "  the page package did not install with the index skipped"; exit 1; }
+grep -q 'index skipped: man' "$TR/skip.log" \
+    || { echo "  KPKG_SKIP_INDEX=man did not say it skipped the manual index"; exit 1; }
+[ -e "$TR/root2/usr/share/man/mandoc.db" ] || grep -q makewhatis "$TR/calls" \
+    && { echo "  KPKG_SKIP_INDEX=man still ran makewhatis"; exit 1; }
 echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index, ls-R and desktop database"
 
 echo
@@ -1938,6 +2002,58 @@ kmu "$OUT/kpkgdel" --root "$MU/root" fonta fontb >/dev/null
 [ -e "$MU/root/usr/share/fonts/misc" ] \
     && { echo "  removing the last face left misc/ and its fonts.dir behind"; exit 1; }
 echo "  one owner under either spelling; fonts.dir written from the directory and removed with it"
+
+# One extraction is both the install and the manifest; ownership is read only
+# for staged paths already on disk; the writer lock serialises two installers.
+echo "==> kpkgadd lists what it extracted, and two installers share one database"
+mkport hooked 1.0 'install -Dm644 /dev/null "$PKG/usr/share/hooked/a b.txt"
+ln -s "a b.txt" "$PKG/usr/share/hooked/link"
+ln "$PKG/usr/share/hooked/a b.txt" "$PKG/usr/share/hooked/hard"'
+printf 'echo hooked-ran\n' > "$MU/ports/hooked/postinstall.sh"
+( cd "$MU/ports/hooked" && kmu "$OUT/kpkgbuild" >/dev/null ) \
+    || { echo "  the synthetic port hooked did not build"; exit 1; }
+tar -tf "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -qx './.POSTINSTALL' \
+    || { echo "  the fixture carries no hook to leave out"; exit 1; }
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -q hooked-ran \
+    || { echo "  the hooked package did not install or run its hook"; exit 1; }
+tar -tf "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -vx './.POSTINSTALL' > "$MU/want"
+tail -n +2 "$MU/root/db/hooked" | cmp -s - "$MU/want" \
+    || { echo "  the database entry is not tar -tf minus ./.POSTINSTALL"; exit 1; }
+install -Dm644 /dev/null "$MU/root/usr/share/stray/left"
+mkport stray 1.0 'install -Dm644 /dev/null "$PKG/usr/share/stray/left"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/stray-1.0-1.tar.xz" >/dev/null \
+    || { echo "  a file no package claims was refused instead of adopted"; exit 1; }
+grep -qx './usr/share/stray/left' "$MU/root/db/stray" \
+    || { echo "  the adopted file is not in its new owner's entry"; exit 1; }
+mkport lower 1.0 'install -Dm755 /dev/null "$PKG/bin/lower"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/lower-1.0-1.tar.xz" >/dev/null
+mkport upper 1.0 'install -Dm755 /dev/null "$PKG/usr/bin/lower"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/upper-1.0-1.tar.xz" 2>&1 \
+    | grep -q "File conflict" \
+    || { echo "  a path owned as ./bin/x did not conflict as ./usr/bin/x"; exit 1; }
+[ -f "$MU/root/db/.lock" ] \
+    || { echo "  kpkgadd left no writer lock in the database"; exit 1; }
+kmu "$OUT/kpkg" list --root "$MU/root" 2>/dev/null | grep -q '^\.' \
+    && { echo "  kpkg list reports a dot-file of the database as a package"; exit 1; }
+for i in 1 2 3 4; do
+    mkport "par$i" 1.0 "for f in \$(seq 1 200); do install -Dm644 /dev/null \"\$PKG/usr/share/par$i/\$f\"; done"
+done
+for i in 1 2 3 4; do
+    kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/par$i-1.0-1.tar.xz" > "$MU/par$i.log" &
+done
+wait
+for i in 1 2 3 4; do
+    grep -q "installed successfully" "$MU/par$i.log" \
+        || { echo "  concurrent install par$i did not complete"; cat "$MU/par$i.log"; exit 1; }
+    tar -tf "$MU/pkgs/par$i-1.0-1.tar.xz" | cmp -s - <(tail -n +2 "$MU/root/db/par$i") \
+        || { echo "  concurrent install par$i wrote a short database entry"; exit 1; }
+done
+mkdir -p "$MU/root/db/.recipe" "$MU/root/db/.pkgsha"
+echo x > "$MU/root/db/.recipe/par1"; echo x > "$MU/root/db/.pkgsha/par1"
+kmu "$OUT/kpkgdel" --root "$MU/root" par1 >/dev/null
+[ -e "$MU/root/db/.recipe/par1" ] || [ -e "$MU/root/db/.pkgsha/par1" ] \
+    && { echo "  kpkgdel left a sidecar of the package it removed"; exit 1; }
+echo "  the entry is the extraction's listing; unowned adopted, owned refused across /bin; four installers at once all recorded"
 
 echo
 
@@ -2032,6 +2148,354 @@ printf 'garbage\n' > "$SIDE"
 kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
     || { echo "  a CORRUPT sidecar was treated as a changed recipe"; exit 1; }
 echo "  match skips, drift rebuilds, unknown and corrupt are left alone"
+
+# ── kpkg build: one hash per source, the exact package, the recipe at start ─
+#
+# verify_declared() is the only place a source's bytes are hashed; extraction
+# checks only that each source is declared. kp_build_port() reports the file it
+# wrote, so `kpkg install foo` cannot pick up `foo-bar`'s package from a kept
+# cache. The recipe hash is taken before the build, so a recipe edited during
+# its own build is rebuilt on the next strict run.
+echo "==> kpkg build: sources hashed once, the exact package, the recipe at build start"
+KB="$OUT/kbuild"
+rm -rf "$KB"; mkdir -p "$KB/ports/withsrc" "$KB/work" "$KB/pkgs" "$KB/src" \
+    "$KB/tree/withsrc-1.0"
+printf 'hello\n' > "$KB/tree/withsrc-1.0/hello.txt"
+tar -C "$KB/tree" -czf "$KB/ports/withsrc/withsrc-1.0.tar.gz" withsrc-1.0
+KB_GOOD=$(sha256sum "$KB/ports/withsrc/withsrc-1.0.tar.gz" | cut -c1-64)
+kb_recipe() {
+    { printf 'name        = withsrc\nversion     = 1.0\nrelease     = 1\n'
+      printf 'source      = https://example.invalid/withsrc-1.0.tar.gz\n'
+      [ -n "$1" ] && printf 'sha256      = %s  withsrc-1.0.tar.gz\n' "$1"
+      printf 'description = a synthetic port with one source tarball\n'
+    } > "$KB/ports/withsrc/kpkgbuild"
+}
+cat > "$KB/ports/withsrc/build.sh" <<'EOF'
+install -Dm644 hello.txt "$PKG/usr/share/withsrc/hello.txt"
+EOF
+ln -sf kdos-kpkg "$OUT/kpkgbuild"
+kb_build() {
+    ( cd "$KB/ports/withsrc" &&
+      env PORT_REPO="$KB/ports" WORK_DIR="$KB/work" PACKAGE_DIR="$KB/pkgs" \
+          SOURCE_DIR="$KB/src" PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent \
+          SOURCE_DATE_EPOCH=1735689600 TZ=UTC "$@" "$OUT/kpkgbuild" 2>&1 )
+}
+kb_recipe "$KB_GOOD"
+kb_build >"$KB/log" || { echo "  a source with the right hash did not build"; cat "$KB/log"; exit 1; }
+[ -f "$KB/pkgs/withsrc-1.0-1.tar.xz" ] && [ -z "$(ls "$KB/pkgs" | grep '\.part$')" ] \
+    || { echo "  the package is missing, or a .part file was left"; exit 1; }
+rm -f "$KB/pkgs/"*
+# A wrong hash is refused before the work directory is touched.
+kb_recipe 0000000000000000000000000000000000000000000000000000000000000000
+mkdir -p "$KB/work/withsrc"; : > "$KB/work/withsrc/keep"
+kb_build >"$KB/log" && { echo "  a source with the WRONG hash built"; exit 1; }
+grep -q 'sha256 MISMATCH for withsrc-1.0.tar.gz' "$KB/log" \
+    || { echo "  a wrong hash was not reported as a MISMATCH"; cat "$KB/log"; exit 1; }
+! grep -q 'Extracting' "$KB/log" && [ -e "$KB/work/withsrc/keep" ] \
+    || { echo "  a wrong hash was reported only after extraction began"; exit 1; }
+# A source the recipe declares no hash for is refused, unless bring-up asks.
+kb_recipe ""
+kb_build >"$KB/log" && { echo "  an UNDECLARED source was extracted"; exit 1; }
+grep -q 'No sha256 for withsrc-1.0.tar.gz' "$KB/log" \
+    || { echo "  an undeclared source was refused for the wrong reason"; cat "$KB/log"; exit 1; }
+kb_build KDOS_ALLOW_UNVERIFIED=1 >"$KB/log" \
+    || { echo "  KDOS_ALLOW_UNVERIFIED=1 no longer admits an undeclared source"; cat "$KB/log"; exit 1; }
+grep -q 'UNVERIFIED: no sha256 for withsrc-1.0.tar.gz' "$KB/log" \
+    || { echo "  an unverified source was admitted silently"; exit 1; }
+rm -f "$KB/pkgs/"*
+kb_recipe "$KB_GOOD"
+echo "  a wrong hash fails before extraction; an undeclared source is refused unless KDOS_ALLOW_UNVERIFIED=1"
+
+# Two ports, one name the prefix of the other, both packages kept.
+for p in foo foo-bar; do
+    mkdir -p "$KB/ports/$p"
+    printf 'name        = %s\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port\n' \
+        "$p" > "$KB/ports/$p/kpkgbuild"
+    printf 'install -Dm644 /dev/null "$PKG/usr/share/%s/who"\n' "$p" > "$KB/ports/$p/build.sh"
+done
+ln -sf kdos-kpkg "$OUT/kpkg"
+for t in kpkgbuild kpkgadd kpkgdepends; do ln -sf kdos-kpkg "$OUT/$t"; done
+kb_install() {
+    _root=$1 _port=$2; shift 2
+    mkdir -p "$_root"
+    env PORT_REPO="$KB/ports" WORK_DIR="$KB/work" PACKAGE_DIR="$KB/pkgs" \
+        SOURCE_DIR="$KB/src" PKGDB_DIR=/db KPKG_CONF=/nonexistent \
+        SOURCE_DATE_EPOCH=1735689600 TZ=UTC "$@" \
+        "$OUT/kpkg" install --root "$_root" "$_port" 2>&1
+}
+kb_install "$KB/r1" foo-bar KPKG_KEEP_CACHE=1 >"$KB/log" \
+    || { echo "  foo-bar did not install"; cat "$KB/log"; exit 1; }
+kb_install "$KB/r2" foo KPKG_KEEP_CACHE=1 >"$KB/log" \
+    || { echo "  foo did not install"; cat "$KB/log"; exit 1; }
+[ -e "$KB/r2/usr/share/foo/who" ] && [ ! -e "$KB/r2/usr/share/foo-bar" ] \
+    || { echo "  kpkg install foo installed another port's package"; exit 1; }
+echo "  kpkg install foo installs foo's package beside a kept foo-bar"
+
+# A recipe edited by its own build: the record is of the recipe the build
+# started from, so the edit reads as a change on the next strict run.
+mkdir -p "$KB/ports/selfedit"
+printf 'name        = selfedit\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port that edits its own recipe\n' \
+    > "$KB/ports/selfedit/kpkgbuild"
+cat > "$KB/ports/selfedit/build.sh" <<'EOF'
+grep -q '^# edited' "$PORT_SRC/kpkgbuild" || printf '# edited\n' >> "$PORT_SRC/kpkgbuild"
+install -Dm644 /dev/null "$PKG/usr/share/selfedit/who"
+EOF
+kb_install "$KB/r3" selfedit >"$KB/log" \
+    || { echo "  selfedit did not install"; cat "$KB/log"; exit 1; }
+grep -q '^# edited' "$KB/ports/selfedit/kpkgbuild" \
+    || { echo "  the self-editing fixture did not edit its recipe"; exit 1; }
+KB_H1=$(cat "$KB/r3/db/.recipe/selfedit")
+kb_install "$KB/r3" selfedit KPKG_STRICT_RECIPE=1 | grep -q "Building selfedit" \
+    || { echo "  a recipe edited during its own build was recorded as built"; exit 1; }
+[ "$KB_H1" != "$(cat "$KB/r3/db/.recipe/selfedit")" ] \
+    || { echo "  the rebuild did not record the edited recipe"; exit 1; }
+kb_install "$KB/r3" selfedit KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  the edited recipe did not settle after one rebuild"; exit 1; }
+echo "  the recorded hash is of the recipe the build started from"
+
+# kpkg verify --repro reaches its two packages through the same reported path.
+env PORT_REPO="$KB/ports" WORK_DIR="$KB/work" PACKAGE_DIR="$KB/pkgs" \
+    SOURCE_DIR="$KB/src" PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent \
+    SOURCE_DATE_EPOCH=1735689600 TZ=UTC \
+    "$OUT/kpkg" verify --repro withsrc >"$KB/log" 2>&1 \
+    || { echo "  kpkg verify --repro failed"; cat "$KB/log"; exit 1; }
+grep -q 'BYTE-IDENTICAL' "$KB/log" \
+    || { echo "  kpkg verify --repro did not report BYTE-IDENTICAL"; exit 1; }
+echo "  kpkg verify --repro reports BYTE-IDENTICAL"
+
+# A sourced port's other files are its recipe too: a kernel config or a freeze
+# file beside the recipe is read by the build and named by no `sha256 =`, so
+# an edit to it must rebuild the port. The tarball its `sha256 =` names is not
+# hashed, and a port holding nothing else settles on the first strict run.
+kb_install "$KB/r4" withsrc >"$KB/log" \
+    || { echo "  withsrc did not install"; cat "$KB/log"; exit 1; }
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  a sourced port with only named files did not settle"; exit 1; }
+printf 'CONFIG_DEMO=y\n' > "$KB/ports/withsrc/demo.config"
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Building withsrc" \
+    || { echo "  a file beside a sourced recipe was not part of its hash"; exit 1; }
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  the extra file's hash is not stable across runs"; exit 1; }
+printf 'CONFIG_DEMO=n\n' > "$KB/ports/withsrc/demo.config"
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Building withsrc" \
+    || { echo "  EDITING a file beside a sourced recipe did not rebuild it"; exit 1; }
+rm -f "$KB/ports/withsrc/demo.config"
+echo "  a file beside a sourced recipe that no sha256 names is part of its hash"
+
+# ── kpkg install --build-only / --commit ────────────────────────────────────
+#
+# The split install: --build-only resolves nothing and refuses a dependency
+# that is not installed; a second --build-only of an unchanged recipe builds
+# nothing, unless the cache is now kept and the record's package is transient;
+# --commit installs from the .pending record, records the recipe hash, and
+# removes the package unless the cache is kept. A name with no record is an
+# error, never a silent success.
+echo "==> kpkg install --build-only / --commit"
+BC="$OUT/buildcommit"
+rm -rf "$BC"; mkdir -p "$BC/ports/a" "$BC/ports/b" "$BC/work" "$BC/pkgs" "$BC/root"
+printf 'name        = a\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic dependency\n' \
+    > "$BC/ports/a/kpkgbuild"
+printf 'name        = b\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic dependent\ndepends     = a\n' \
+    > "$BC/ports/b/kpkgbuild"
+for p in a b; do
+    printf 'install -Dm644 /dev/null "$PKG/usr/share/%s/who"\n' "$p" > "$BC/ports/$p/build.sh"
+done
+ln -sf kdos-kpkg "$OUT/kpkg"
+for t in kpkgbuild kpkgadd kpkgdepends; do ln -sf kdos-kpkg "$OUT/$t"; done
+kbc() {
+    env PORT_REPO="$BC/ports" WORK_DIR="$BC/work" PACKAGE_DIR="$BC/pkgs" \
+        PKGDB_DIR=/db KPKG_CONF=/nonexistent SOURCE_DATE_EPOCH=1735689600 \
+        TZ=UTC "$@" 2>&1
+}
+"$OUT/kpkg" help | grep -q -- '--build-only' \
+    || { echo "  kpkg help does not name --build-only"; exit 1; }
+kbc "$OUT/kpkg" install --root "$BC/root" --build-only b >"$BC/log" \
+    && { echo "  --build-only b built with its dependency missing"; exit 1; }
+grep -q 'dependency a ' "$BC/log" \
+    || { echo "  --build-only b did not name the missing dependency"; cat "$BC/log"; exit 1; }
+[ ! -e "$BC/pkgs/b.pending" ] && [ ! -e "$BC/pkgs/a.pending" ] \
+    || { echo "  a refused --build-only left a record"; exit 1; }
+kbc "$OUT/kpkg" install --root "$BC/root" --build-only a >"$BC/log" \
+    || { echo "  --build-only a failed"; cat "$BC/log"; exit 1; }
+grep -q 'Building a' "$BC/log" || { echo "  --build-only a built nothing"; exit 1; }
+[ "$(sed -n 1p "$BC/pkgs/a.pending")" = "$BC/pkgs/a-1.0-1.tar.xz" ] \
+    && [ -f "$BC/pkgs/a-1.0-1.tar.xz" ] \
+    || { echo "  a.pending does not name the package it built"; cat "$BC/pkgs/a.pending"; exit 1; }
+BC_H=$(sed -n 2p "$BC/pkgs/a.pending")
+[ "${#BC_H}" = 64 ] || { echo "  a.pending carries no recipe hash"; exit 1; }
+[ "$(sed -n 3p "$BC/pkgs/a.pending")" = transient ] \
+    || { echo "  a.pending does not call its xz -0 package transient"; exit 1; }
+[ ! -e "$BC/root/db/a" ] || { echo "  --build-only installed the package"; exit 1; }
+kbc "$OUT/kpkg" install --root "$BC/root" --build-only a >"$BC/log" \
+    || { echo "  a second --build-only a failed"; cat "$BC/log"; exit 1; }
+grep -q 'already built' "$BC/log" && ! grep -q 'Building a' "$BC/log" \
+    || { echo "  a second --build-only of an unchanged recipe built again"; cat "$BC/log"; exit 1; }
+kbc "$OUT/kpkg" install --root "$BC/root" --commit a >"$BC/log" \
+    || { echo "  --commit a failed"; cat "$BC/log"; exit 1; }
+grep -qx 'kpkg: committed a' "$BC/log" || { echo "  --commit a did not say so"; exit 1; }
+[ -e "$BC/root/usr/share/a/who" ] && [ "$(cat "$BC/root/db/.recipe/a")" = "$BC_H" ] \
+    || { echo "  --commit a did not install it, or recorded another hash"; exit 1; }
+[ ! -e "$BC/pkgs/a.pending" ] && [ ! -e "$BC/pkgs/a-1.0-1.tar.xz" ] \
+    || { echo "  --commit a left its record or its package behind"; exit 1; }
+kbc "$OUT/kpkg" install --root "$BC/root" --build-only b >"$BC/log" \
+    || { echo "  --build-only b failed with a installed"; cat "$BC/log"; exit 1; }
+kbc KPKG_KEEP_CACHE=1 "$OUT/kpkg" install --root "$BC/root" --build-only b >"$BC/log" \
+    || { echo "  --build-only b under KPKG_KEEP_CACHE=1 failed"; cat "$BC/log"; exit 1; }
+grep -q 'Building b' "$BC/log" && ! grep -q 'already built' "$BC/log" \
+    && [ "$(sed -n 3p "$BC/pkgs/b.pending")" = kept ] \
+    || { echo "  a transient record was reused for a kept cache"; cat "$BC/log"; exit 1; }
+kbc KPKG_KEEP_CACHE=1 "$OUT/kpkg" install --root "$BC/root" --commit b >"$BC/log" \
+    || { echo "  --commit b failed"; cat "$BC/log"; exit 1; }
+[ -e "$BC/root/usr/share/b/who" ] && [ -f "$BC/pkgs/b-1.0-1.tar.xz" ] \
+    && [ ! -e "$BC/pkgs/b.pending" ] \
+    || { echo "  --commit under KPKG_KEEP_CACHE=1 did not keep the package"; exit 1; }
+kbc "$OUT/kpkg" install --root "$BC/root" --commit b >"$BC/log" \
+    && { echo "  --commit of a name with no .pending succeeded"; exit 1; }
+grep -q 'no b.pending' "$BC/log" || { echo "  a missing record was not named"; cat "$BC/log"; exit 1; }
+echo "  --build-only refuses a missing dependency and resumes; --commit installs from the record"
+
+# ── The package store ───────────────────────────────────────────────────────
+#
+# A hit installs the stored package without running build.sh and leaves the
+# same files and sidecars a build would; a change to a dependency's bytes, to
+# the build environment or to the stored file misses; a job count does not; a
+# dependency with no .pkgsha, or no $KPKG_STORE_SALT, makes the key unknown and
+# nothing is stored; an undeclared link is re-checked on lookup; check mode builds every hit and logs
+# a difference without failing.
+echo "==> the package store reuses only what a build would have made"
+ST="$OUT/pkgstore"
+rm -rf "$ST"; mkdir -p "$ST/ports" "$ST/work" "$ST/pkgs" "$ST/root" "$ST/marks"
+st_port() {   # name depends build-body
+    mkdir -p "$ST/ports/$1"
+    { printf 'name        = %s\nversion     = 1.0\nrelease     = 1\n' "$1"
+      printf 'description = a synthetic port for the package store\n'
+      [ -n "$2" ] && printf 'depends     = %s\n' "$2"
+    } > "$ST/ports/$1/kpkgbuild"
+    printf 'touch "$ST_MARKS/%s"\n%s\n' "$1" "$3" > "$ST/ports/$1/build.sh"
+}
+st_port demo-a "" 'install -Dm644 /dev/null "$PKG/usr/share/demo-a/v"; printf one > "$PKG/usr/share/demo-a/v"'
+st_port demo-b demo-a 'install -Dm644 /dev/null "$PKG/usr/share/demo-b/v"; printf b > "$PKG/usr/share/demo-b/v"'
+ln -sf kdos-kpkg "$OUT/kpkg"
+for t in kpkgbuild kpkgadd kpkgdel kpkgdepends; do ln -sf kdos-kpkg "$OUT/$t"; done
+kst() {
+    env PORT_REPO="$ST/ports" WORK_DIR="$ST/work" PACKAGE_DIR="$ST/pkgs" \
+        PKGDB_DIR=/db KPKG_CONF=/nonexistent SOURCE_DATE_EPOCH=1735689600 \
+        TZ=UTC ST_MARKS="$ST/marks" KPKG_STORE="$ST/store" DEMO_ROOT="$ST/root" \
+        KPKG_STORE_SALT=selftest "$@" 2>&1
+}
+st_wipe() { rm -rf "$ST/root" "$ST/marks"; mkdir -p "$ST/root" "$ST/marks"; }
+kst KPKG_STORE_SALT= "$OUT/kpkg" install --root "$ST/root" demo-a >"$ST/log" \
+    || { echo "  a build with no salt failed"; cat "$ST/log"; exit 1; }
+[ -z "$(ls "$ST/store"/*/*/META 2>/dev/null)" ] \
+    || { echo "  a build with no salt was stored"; exit 1; }
+st_wipe; rm -rf "$ST/pkgs" "$ST/work"; mkdir -p "$ST/pkgs" "$ST/work"
+kst "$OUT/kpkg" install --root "$ST/root" demo-b >"$ST/log" \
+    || { echo "  the first store build failed"; cat "$ST/log"; exit 1; }
+[ -e "$ST/marks/demo-a" ] && [ -e "$ST/marks/demo-b" ] \
+    || { echo "  an empty store did not build both ports"; exit 1; }
+[ "$(cat "$ST/root/db/.pkgsha/demo-a")" != "" ] && [ -s "$ST/root/db/.recipe/demo-b" ] \
+    || { echo  "  kpkgadd recorded no .pkgsha"; exit 1; }
+[ "$(ls "$ST/store"/*/*/META | wc -l)" = 2 ] \
+    || { echo "  the store did not hold both packages"; ls -R "$ST/store"; exit 1; }
+st_files() { (cd "$ST/root" && find usr -type f -exec sha256sum {} + | sort); }
+BEFORE=$(st_files)
+st_wipe
+kst "$OUT/kpkg" install --root "$ST/root" demo-b >"$ST/log" \
+    || { echo "  the reinstall failed"; cat "$ST/log"; exit 1; }
+[ ! -e "$ST/marks/demo-b" ] && grep -q '^==> Reusing demo-b from the store ([0-9a-f]\{12\})$' "$ST/log" \
+    || { echo "  a hit ran build.sh, or did not say it reused"; cat "$ST/log"; exit 1; }
+[ "$BEFORE" = "$(st_files)" ] && [ -s "$ST/root/db/.recipe/demo-b" ] && [ -s "$ST/root/db/.pkgsha/demo-b" ] \
+    || { echo "  a hit installed different files, or no sidecars"; exit 1; }
+# A job count is not an input.
+st_wipe
+kst MAKEFLAGS=-j3 KDOS_JOBS=3 "$OUT/kpkg" install --root "$ST/root" demo-b >"$ST/log"
+[ ! -e "$ST/marks/demo-b" ] || { echo "  MAKEFLAGS/KDOS_JOBS missed the store"; exit 1; }
+# The flags are.
+st_wipe
+kst CFLAGS=-O3 "$OUT/kpkg" install --root "$ST/root" demo-b >"$ST/log"
+[ -e "$ST/marks/demo-b" ] || { echo "  a changed CFLAGS hit the store"; exit 1; }
+# -f always builds.
+st_wipe
+kst "$OUT/kpkg" install --root "$ST/root" demo-a >/dev/null
+kst "$OUT/kpkg" install --root "$ST/root" -f demo-b >"$ST/log"
+[ -e "$ST/marks/demo-b" ] || { echo "  -f installed from the store"; exit 1; }
+# A dependency with different bytes misses.
+st_wipe
+kst "$OUT/kpkg" install --root "$ST/root" demo-a >/dev/null
+kst "$OUT/kpkgdel" --root "$ST/root" demo-a >/dev/null
+st_port demo-a "" 'install -Dm644 /dev/null "$PKG/usr/share/demo-a/v"; printf two > "$PKG/usr/share/demo-a/v"'
+rm -f "$ST/marks/"*
+kst "$OUT/kpkg" install --root "$ST/root" demo-b >"$ST/log"
+[ -e "$ST/marks/demo-a" ] && [ -e "$ST/marks/demo-b" ] \
+    || { echo "  demo-b hit the store over a changed demo-a"; cat "$ST/log"; exit 1; }
+# A dependency with no .pkgsha: build, do not store.
+st_wipe
+kst "$OUT/kpkg" install --root "$ST/root" demo-a >/dev/null
+rm -f "$ST/root/db/.pkgsha/demo-a"
+N=$(ls "$ST/store"/*/*/META | wc -l)
+kst CFLAGS=-Os "$OUT/kpkg" install --root "$ST/root" demo-b >"$ST/log"
+[ -e "$ST/marks/demo-b" ] && grep -q 'store key unknown' "$ST/log" \
+    && [ "$(ls "$ST/store"/*/*/META | wc -l)" = "$N" ] \
+    || { echo "  an unknown dependency hash was keyed or stored"; cat "$ST/log"; exit 1; }
+# A truncated stored file is not a hit.
+st_wipe
+kst "$OUT/kpkg" install --root "$ST/root" demo-a >/dev/null
+for f in "$ST/store"/*/*/demo-b-*.tar.xz; do : > "$f"; done
+kst "$OUT/kpkg" install --root "$ST/root" demo-b >"$ST/log" \
+    || { echo "  a truncated entry broke the install"; cat "$ST/log"; exit 1; }
+[ -e "$ST/marks/demo-b" ] || { echo "  a truncated stored package was installed"; exit 1; }
+echo "  hit without build.sh; deps, flags, -f, unknown and truncated all build"
+
+# The ELF reader.
+"$OUT/kpkg" help | grep -q 'store gc' || { echo "  kpkg help does not name store gc"; exit 1; }
+if command -v cc >/dev/null 2>&1; then
+    mkdir -p "$ST/elf"
+    printf 'int demo_lib(void) { return 7; }\n' > "$ST/elf/lib.c"
+    st_port demo-lib "" 'mkdir -p "$PKG/usr/lib" "$PKG/usr/include"; cc -shared -fPIC -o "$PKG/usr/lib/libdemolib.so" '"$ST/elf/lib.c"
+    printf 'int demo_lib(void);\nint main(void) { return demo_lib(); }\n' > "$ST/elf/app.c"
+    st_port demo-app "" 'mkdir -p "$PKG/usr/bin"; cc -o "$PKG/usr/bin/demo-app" '"$ST/elf/app.c"' -L"$DEMO_ROOT/usr/lib" -ldemolib'
+    st_wipe
+    kst "$OUT/kpkg" install --root "$ST/root" demo-lib >/dev/null
+    kst "$OUT/kpkg" install --root "$ST/root" demo-app >"$ST/log" \
+        || { echo "  demo-app did not build"; cat "$ST/log"; exit 1; }
+    grep -q 'demo-app links demo-lib without declaring it' "$ST/log" \
+        || { echo "  the undeclared link was not reported"; cat "$ST/log"; exit 1; }
+    grep -q '^X:demo-lib ' "$ST/store"/*/*/META \
+        || { echo  "  no X: line for the undeclared link"; exit 1; }
+    kst "$OUT/kpkgdel" --root "$ST/root" demo-app >/dev/null
+    rm -f "$ST/marks/"*
+    kst "$OUT/kpkg" install --root "$ST/root" demo-app >/dev/null
+    [ ! -e "$ST/marks/demo-app" ] || { echo "  an unchanged undeclared link missed"; exit 1; }
+    kst "$OUT/kpkgdel" --root "$ST/root" demo-app demo-lib >/dev/null
+    printf 'int demo_lib(void) { return 8; }\n' > "$ST/elf/lib.c"
+    kst "$OUT/kpkg" install --root "$ST/root" -f demo-lib >/dev/null
+    kst "$OUT/kpkg" install --root "$ST/root" demo-app >/dev/null
+    [ -e "$ST/marks/demo-app" ] || { echo "  demo-app hit over a changed undeclared library"; exit 1; }
+    echo "  an undeclared link is recorded and a change to it misses"
+fi
+
+# Check mode: a port whose bytes differ every build.
+st_port demo-rand "" 'install -Dm644 /dev/null "$PKG/usr/share/demo-rand/v"; echo $RANDOM$RANDOM > "$PKG/usr/share/demo-rand/v"'
+st_wipe
+kst "$OUT/kpkg" install --root "$ST/root" demo-rand >/dev/null
+kst "$OUT/kpkgdel" --root "$ST/root" demo-rand >/dev/null
+rm -f "$ST/marks/"*
+kst KPKG_STORE_CHECK=1 "$OUT/kpkg" install --root "$ST/root" demo-rand >"$ST/log" \
+    || { echo "  check mode failed the install"; cat "$ST/log"; exit 1; }
+[ -e "$ST/marks/demo-rand" ] && grep -q '^demo-rand [0-9a-f]\{12\} stored=[0-9a-f]\{64\} built=[0-9a-f]\{64\}$' "$ST/logs/pkgstore-check.log" \
+    || { echo "  check mode did not build, or logged no mismatch"; cat "$ST/log"; exit 1; }
+grep -q 'usr/share/demo-rand/v' "$ST/logs/pkgstore-check.log" \
+    || { echo "  the check log does not name the differing member"; exit 1; }
+echo "  check mode builds a hit and logs the difference"
+
+# gc: a tiny cap keeps the newest.
+N=$(ls "$ST/store"/*/*/META | wc -l)
+OLDEST=$(ls -tr "$ST/store"/*/*/META | head -n 1)
+"$OUT/kpkg" store gc "$ST/store" 1 >/dev/null || { echo "  store gc failed"; exit 1; }
+[ ! -e "$OLDEST" ] && [ "$(ls "$ST/store"/*/*/META 2>/dev/null | wc -l)" -lt "$N" ] \
+    || { echo "  store gc did not evict the oldest entry"; exit 1; }
+"$OUT/kpkg" store gc "$ST/store" 1x >/dev/null 2>&1 && { echo "  store gc took a bad size"; exit 1; }
+echo "  gc evicts least recently used first"
 
 echo
 echo "==> the binhost signs an index and a client checks it"
@@ -3423,6 +3887,409 @@ EOF
 else
     echo "  --json: NDJSON events and the inventory (no python3: not parsed)"
 fi
+
+# A snapshot under a phase that declares no paths is a leftover: `latest`
+# skips it, restoring it is refused, the layered plan leaves it out, and the
+# inventory marks it so `--delete` can find it.
+L="$OUT/leftover"
+rm -rf "$L"
+mkdir -p "$L/script/phases/00_base" "$L/script/phases/01_img" "$L/build"
+echo 'export KDOS_SNAPSHOT_PATHS="fs"' > "$L/script/phases/00_base/phase.env"
+echo 'export KDOS_SNAPSHOT_PATHS=""' > "$L/script/phases/01_img/phase.env"
+printf '#!/bin/bash
+mkdir -p "$PWD/build/fs"; echo base > "$PWD/build/fs/who"
+' \
+    > "$L/script/phases/00_base/00_tree.sh"
+printf '#!/bin/bash
+echo img > "$PWD/build/fs/who"
+' > "$L/script/phases/01_img/00_img.sh"
+chmod +x "$L"/script/phases/*/*.sh
+( cd "$L" && "$KB" --script-dir script --build-dir build --fresh ) > "$OUT/leftover.log" 2>&1
+grep -q "BUILD COMPLETE" "$OUT/leftover.log" || { echo "  leftover fixture did not build"; cat "$OUT/leftover.log"; exit 1; }
+[ -d "$L/build/snapshots/01_img" ] && { echo "  a phase with no paths was snapshotted"; exit 1; }
+cp -a "$L/build/snapshots/00_base" "$L/build/snapshots/01_img"
+( cd "$L" && "$KB" --script-dir script --build-dir build --restore latest ) \
+    > "$OUT/leftover-restore.log" 2>&1
+grep -q "restored 00_base" "$OUT/leftover-restore.log" \
+    || { echo "  --restore latest took the leftover"; cat "$OUT/leftover-restore.log"; exit 1; }
+[ "$(cat "$L/build/fs/who")" = img ] \
+    || { echo "  the phase after the restore did not re-run"; exit 1; }
+( cd "$L" && "$KB" --script-dir script --build-dir build --restore 01_img ) \
+    > "$OUT/leftover-refuse.log" 2>&1 && { echo "  restored a leftover"; exit 1; }
+grep -q "01_img declares no snapshot paths; its snapshot is a leftover" \
+    "$OUT/leftover-refuse.log" || { echo "  leftover refusal not explained"; cat "$OUT/leftover-refuse.log"; exit 1; }
+( cd "$L" && "$KB" --script-dir script --build-dir build --list ) 2>&1 \
+    | grep "01_img" | grep -q "leftover (phase declares no paths)" \
+    || { echo "  --list does not mark the leftover"; exit 1; }
+( cd "$L" && "$KB" --script-dir script --build-dir build --list --json ) 2>&1 \
+    | grep -q '"phase": "01_img".*"leftover": true' \
+    || { echo "  --list --json does not mark the leftover"; exit 1; }
+echo "  a leftover snapshot is listed, refused and never layered"
+
+echo
+echo "==> kdosbuild snapshots are layers, and every layer restores exactly"
+# Three phases whose steps make the changes a layer has to carry: a file
+# rewritten in place at the same size and mtime, one replaced by unlink and
+# create, a subtree deleted, a directory renamed, a file turned into a
+# directory and a directory into a symlink, a symlink retargeted, hard links
+# added and removed, a chmod alone, files changed inside a directory that
+# itself did not change, and files under an excluded path. Each
+# step saves the tree as it left it, outside fs; every restore is compared
+# with that, entry by entry, so a layer that missed a change or a .gone list
+# that deleted too much is a diff here.
+S="$OUT/layers"
+rm -rf "$S"
+mkdir -p "$S/build"
+for p in 01_a 02_b 03_c; do
+    mkdir -p "$S/script/phases/$p"
+    printf 'export KDOS_SNAPSHOT_PATHS="fs"\nexport KDOS_SNAPSHOT_EXCLUDE="fs/tmp/*"\n' \
+        > "$S/script/phases/$p/phase.env"
+    cat > "$S/script/phases/$p/00_edit.sh" <<EOF
+#!/bin/bash
+set -e
+N=$p
+EOF
+    cat >> "$S/script/phases/$p/00_edit.sh" <<'EOF'
+B=$PWD/build F=$PWD/build/fs
+[ -e "$B/stop" ] && { echo "stopped before $N"; exit 1; }
+if [ -e "$B/m$N" ]; then
+    date +%s%N > "$F/retake-$N"; rm -rf "$F/keep/f3"
+else case $N in
+01_a)
+    mkdir -p "$F/keep" "$F/del/sub" "$F/ren/in" "$F/d2s" "$F/tmp/junk"
+    for i in 1 2 3 4; do echo "file $i" > "$F/keep/f$i"; done
+    echo sub > "$F/del/sub/a"; echo ren > "$F/ren/in/b"; echo q > "$F/d2s/q"
+    printf AAAA > "$F/inplace"; touch -d @1700000000 "$F/inplace"
+    printf old > "$F/replace"; touch -d @1700000000 "$F/replace"
+    echo x > "$F/hl1"; ln "$F/hl1" "$F/hl2"; ln "$F/hl1" "$F/hl3"
+    echo t > "$F/f2d"; ln -s keep/f1 "$F/sym"; echo j > "$F/tmp/junk/j"
+    touch -d @1600000000 "$F/keep" ;;
+02_b)
+    printf BBBB | dd of="$F/inplace" conv=notrunc 2>/dev/null
+    touch -d @1700000000 "$F/inplace"
+    rm "$F/replace"; printf new > "$F/replace"; touch -d @1700000000 "$F/replace"
+    rm -rf "$F/del"; mv "$F/ren" "$F/renamed"; rm "$F/hl3"; ln "$F/keep/f2" "$F/f2link"
+    rm "$F/f2d"; mkdir "$F/f2d"; echo in > "$F/f2d/in"
+    rm -rf "$F/d2s"; ln -s keep "$F/d2s"; ln -sfn keep/f2 "$F/sym"
+    chmod 0600 "$F/keep/f4"; echo j2 > "$F/tmp/junk/j2"
+    printf CCCC | dd of="$F/keep/f1" conv=notrunc 2>/dev/null ;;
+03_c)
+    rm -rf "$F/renamed/in"; echo late > "$F/keep/f5"; chmod 0700 "$F/keep" ;;
+esac; fi
+( cd "$B" && find fs -path fs/tmp -prune -o -exec stat -c '%n %F %a %u:%g %Y %s %h %N' {} + \
+    | LC_ALL=C sort; find fs -path fs/tmp -prune -o -type f -exec sha1sum {} + | LC_ALL=C sort ) > "$B/m$N"
+EOF
+    chmod +x "$S/script/phases/$p/00_edit.sh"
+done
+KL() { ( cd "$S" && "$KB" --script-dir script --build-dir build --plain "$@" ); }
+kind_of() {  # <phase dir> -> "full" or "layer:<base id>"
+    grep -o '"kind": "[a-z]*"\|"base": "[^"]*"' "$S/build/snapshots/$1/manifest.json" \
+        | sed 's/.*": "//; s/"$//' | paste -sd: -
+}
+id_of() { grep -o '"id": "[^"]*"' "$S/build/snapshots/$1/manifest.json" | sed 's/.*": "//; s/"$//'; }
+same_tree() {  # <phase dir>: the restored tree against what its step saved
+    ( cd "$S/build" && find fs -path fs/tmp -prune -o -exec stat -c '%n %F %a %u:%g %Y %s %h %N' {} + \
+        | LC_ALL=C sort; find fs -path fs/tmp -prune -o -type f -exec sha1sum {} + | LC_ALL=C sort ) \
+        > "$S/now"
+    cmp -s "$S/now" "$S/build/m$1" \
+        || { echo "  restoring $1 did not give back its tree:"; diff "$S/build/m$1" "$S/now" | head; exit 1; }
+}
+restore_only() {  # <phase dir>, with the phase after it stopped before it runs
+    rm -rf "$S/build/fs"; touch "$S/build/stop"
+    KL --restore "$1" > "$OUT/layers-restore.log" 2>&1 || true
+    rm -f "$S/build/stop"
+    grep -q "restored $1" "$OUT/layers-restore.log" \
+        || { echo "  restore of $1 failed"; cat "$OUT/layers-restore.log"; exit 1; }
+}
+KL --fresh > "$OUT/layers.log" 2>&1
+grep -q "BUILD COMPLETE" "$OUT/layers.log" || { echo "  layered fixture did not build"; cat "$OUT/layers.log"; exit 1; }
+[ "$(kind_of 01_a)" = full ] || { echo "  the first snapshot is not full: $(kind_of 01_a)"; exit 1; }
+[ "$(kind_of 02_b)" = "layer:$(id_of 01_a)" ] || { echo "  02_b is not a layer on 01_a: $(kind_of 02_b)"; exit 1; }
+[ "$(kind_of 03_c)" = "layer:$(id_of 02_b)" ] || { echo "  03_c is not a layer on 02_b: $(kind_of 03_c)"; exit 1; }
+grep -q "snapshot 02_b -> .* (layer on 01_a)" "$OUT/layers.log" \
+    || { echo "  the snapshot notice does not name the base"; exit 1; }
+for p in 01_a 02_b 03_c 02_b; do restore_only $p; same_tree $p; done
+echo "  full, then layers on the snapshot before; each restores its own tree"
+
+# A tree already past 01_a: 01_a is taken full again, and everything the old
+# one supported is held until the snapshots replacing them no longer need it.
+restore_only 03_c
+KL --continue-from 01_a > "$OUT/layers-retake.log" 2>&1 \
+    || { echo "  the retake did not build"; cat "$OUT/layers-retake.log"; exit 1; }
+[ "$(kind_of 01_a)" = full ] || { echo "  a retake on a later tree is not full"; exit 1; }
+[ "$(kind_of 02_b)" = "layer:$(id_of 01_a)" ] || { echo "  02_b does not layer on the new 01_a"; exit 1; }
+[ -z "$(ls "$S/build/snapshots/.held" 2>/dev/null)" ] \
+    || { echo "  held snapshots outlived their dependants: $(ls "$S/build/snapshots/.held")"; exit 1; }
+for p in 01_a 02_b 03_c; do restore_only $p; same_tree $p; done
+echo "  a retaken phase is full; the old chain is held until nothing needs it"
+
+KL --delete 03_c > /dev/null
+KL --delete 01_a > "$OUT/layers-del.log"
+grep -q "deleted 01_a; kept as the base of 02_b" "$OUT/layers-del.log" \
+    || { echo "  deleting a base did not hold it"; cat "$OUT/layers-del.log"; exit 1; }
+KL --list | grep -q "needed by 02_b" || { echo "  --list does not show the held base"; exit 1; }
+restore_only 02_b; same_tree 02_b
+KL --delete 02_b > /dev/null
+[ -z "$(ls "$S/build/snapshots/.held" 2>/dev/null)" ] \
+    || { echo "  the held base outlived its last dependant"; exit 1; }
+echo "  a deleted base is held for its dependants and freed after them"
+
+# A schema-3 snapshot is a full one with a legacy id, and the next snapshot
+# layers on it once it has been restored.
+KL --fresh > /dev/null 2>&1
+mf="$S/build/snapshots/01_a/manifest.json"
+python3 - "$mf" <<'EOF' 2>/dev/null || sed -i 's/"schema": 4/"schema": 3/; s/"paths"/"entries"/' "$mf"
+import json, sys
+m = json.load(open(sys.argv[1]))
+m["schema"] = 3
+m.pop("id")
+m["entries"] = [{k: e[k] for k in ("path", "archive", "bytes_raw", "bytes_compressed", "files")}
+                for e in m.pop("paths")]
+json.dump(m, open(sys.argv[1], "w"))
+EOF
+restore_only 01_a; same_tree 01_a
+KL --continue-from 02_b > /dev/null 2>&1
+kind_of 02_b | grep -q "^layer:legacy-01_a-" \
+    || { echo "  no layer on the schema-3 snapshot: $(kind_of 02_b)"; exit 1; }
+restore_only 03_c; same_tree 03_c
+echo "  a schema-3 snapshot restores, and the next snapshot layers on it"
+
+rm -f "$S/build/snapshots/02_b/fs.tar.zst"
+KL --list | grep -q "^unusable" || { echo "  a snapshot with a lost base is not flagged"; exit 1; }
+KL --restore 03_c > "$OUT/layers-broken.log" 2>&1 && { echo "  restored a snapshot whose base is gone"; exit 1; }
+grep -q "the snapshot of 03_c is unusable" "$OUT/layers-broken.log" \
+    || { echo "  the broken chain is not explained"; cat "$OUT/layers-broken.log"; exit 1; }
+echo "  a snapshot whose base archive is gone is unusable, never half-restored"
+
+echo
+echo "==> kdosbuild runs no step for a port installed and current"
+# A chroot package phase over a real database: its ports are installed into
+# build/fs by the real kpkg, so the recipe-hash sidecars are the ones a build
+# writes. The chroot wrapper is a pass-through and kpkgdepends and kpkg are
+# stubs, the second logging what it was asked. The order comes from a file so
+# each run can change it.
+HS="$OUT/hostskip"
+rm -rf "$HS"
+mkdir -p "$HS/script/phases/10_pk" "$HS/script/phases/20_after" \
+    "$HS/script/chroot" "$HS/build/fs" "$HS/bin"
+printf '#!/bin/bash\nexec "$@"\n' > "$HS/script/chroot/exec.sh"
+printf 'export CHROOT=1\nexport PORT_REPO="/ports/core"\nexport KDOS_SNAPSHOT_PATHS="fs"\n' \
+    > "$HS/script/phases/10_pk/phase.env"
+printf 'cur\nnew\nfrc\ngone\n' > "$HS/script/phases/10_pk/packages.txt"
+printf '#!/bin/bash\ntouch "$PWD/after"\n' > "$HS/script/phases/20_after/00_mark.sh"
+printf '#!/bin/bash\ncat "%s/order"\n' "$HS" > "$HS/bin/kpkgdepends"
+# A step for `new` runs whatever $HS/during holds first: an edit made while
+# the phase is running.
+printf '#!/bin/bash\n[ "${@: -1}" = new ] && [ -f "%s/during" ] && . "%s/during"\necho "$*" >> "%s/kpkg.log"\n' \
+    "$HS" "$HS" "$HS" > "$HS/bin/kpkg"
+chmod +x "$HS/script/chroot/exec.sh" "$HS/script/phases/20_after/00_mark.sh" \
+    "$HS/bin/kpkgdepends" "$HS/bin/kpkg"
+for p in cur new frc gone; do
+    mkdir -p "$HS/ports/core/demo/$p"
+    printf 'name        = %s\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port\n' \
+        "$p" > "$HS/ports/core/demo/$p/kpkgbuild"
+    printf 'install -Dm644 /dev/null "$PKG/usr/share/%s/who"\n' "$p" \
+        > "$HS/ports/core/demo/$p/build.sh"
+done
+hs_install() {
+    env PORT_REPO="$HS/ports/core" WORK_DIR="$HS/work" PACKAGE_DIR="$HS/pkgs" \
+        SOURCE_DIR="$HS/src" PKGDB_DIR=/var/lib/kpkg/db KPKG_CONF=/nonexistent \
+        SOURCE_DATE_EPOCH=1735689600 TZ=UTC \
+        "$OUT/kpkg" install --root "$HS/build/fs" "$@" >"$HS/install.log" 2>&1 \
+        || { echo "  the fixture ports did not install"; cat "$HS/install.log"; exit 1; }
+}
+hs_run() {  # <order> [kdosbuild args...]: the kpkg calls land in kpkg.log
+    echo "$1" > "$HS/order"; shift
+    rm -f "$HS/kpkg.log" "$HS/after"; : > "$HS/kpkg.log"
+    ( cd "$HS" && PATH="$HS/bin:$PATH" "$KB" --script-dir script \
+        --build-dir build --json "$@" ) > "$HS/run.json" 2>&1
+    grep -q '"event": "result", "status": "complete"' "$HS/run.json" \
+        || { echo "  the build did not complete"; cat "$HS/run.json"; exit 1; }
+    [ -e "$HS/after" ] || { echo "  the phase after it never ran"; exit 1; }
+}
+hs_install cur frc gone
+[ -s "$HS/build/fs/var/lib/kpkg/db/.recipe/cur" ] \
+    || { echo "  no recipe-hash sidecar in the fixture database"; exit 1; }
+rm -rf "$HS/ports/core/demo/gone"
+
+# cur is current: never handed to kpkg. frc is current too, but forced. new is
+# not installed. gone is installed but has no port the host can find, which
+# kp_installed_current alone reads as current: it keeps its step.
+hs_run "cur new frc gone" --rebuild frc
+grep -qx "install cur" "$HS/kpkg.log" \
+    && { echo "  an installed and current port was passed to kpkg"; cat "$HS/kpkg.log"; exit 1; }
+for want in "install new" "install -f frc" "install gone"; do
+    grep -qx -- "$want" "$HS/kpkg.log" \
+        || { echo "  no '$want' step"; cat "$HS/kpkg.log"; exit 1; }
+done
+grep -q '"installed": 1,' "$HS/run.json" \
+    || { echo "  the result does not count the installed port"; cat "$HS/run.json"; exit 1; }
+
+# Every port current: no step runs, and the phase still finishes — its
+# snapshot is taken, and counts every port as done.
+hs_install new
+rm -rf "$HS/build/snapshots"
+hs_run "cur new frc"
+[ -s "$HS/kpkg.log" ] && { echo "  kpkg ran for a phase that was all current"; cat "$HS/kpkg.log"; exit 1; }
+grep -q '"complete": true' "$HS/build/snapshots/10_pk/manifest.json" 2>/dev/null \
+    || { echo "  a phase with every port current was not finished"; exit 1; }
+
+# An edited recipe is no longer current, and its step comes back.
+printf '# edited\n' >> "$HS/ports/core/demo/cur/build.sh"
+hs_run "cur new frc"
+[ "$(cat "$HS/kpkg.log")" = "install cur" ] \
+    || { echo "  an edited recipe was not passed to kpkg alone"; cat "$HS/kpkg.log"; exit 1; }
+
+# An order that ends on installed ports: a front end announces only a step
+# that starts, so neither is reported running.
+hs_install -f cur
+hs_run "new cur frc" --rebuild new
+grep -q '"status": "running", "step": "\(cur\|frc\)"' "$HS/run.json" \
+    && { echo "  an installed port was announced as running"; cat "$HS/run.json"; exit 1; }
+[ "$(cat "$HS/kpkg.log")" = "install -f new" ] \
+    || { echo "  a trailing installed port was passed to kpkg"; cat "$HS/kpkg.log"; exit 1; }
+
+# The host's answer is asked again when a port's turn comes: a recipe edited
+# while an earlier step ran brings that port's step back in the same run.
+printf 'printf "# edited during\\n" >> "%s/ports/core/demo/cur/build.sh"\n' "$HS" > "$HS/during"
+rm -rf "$HS/build/snapshots"
+hs_run "new cur frc" --rebuild new
+rm -f "$HS/during"
+[ "$(tr '\n' ' ' < "$HS/kpkg.log")" = "install -f new install cur " ] \
+    || { echo "  a recipe edited mid-phase kept its installed mark"; cat "$HS/kpkg.log"; exit 1; }
+echo "  installed and current ports are skipped on the host, re-asked on their turn; forced, edited and unknown ones run"
+
+echo
+echo "==> kdosbuild --port-jobs builds a phase by level"
+# A host package phase: c depends on a and b, e on c, and d, which depends on
+# nothing, is the order run. kpkgdepends is a stub printing the order; kpkg is
+# a stub that logs each --build-only's start and end a second apart, each
+# --commit, and each plain install, one line per event, in the order they
+# happen. What the levels promise is read back off that log.
+PJ="$OUT/portjobs"
+rm -rf "$PJ"
+mkdir -p "$PJ/script/phases/10_pk/packages.d" "$PJ/build" "$PJ/bin"
+echo 'export KDOS_PHASE_TITLE="Levels"' > "$PJ/script/phases/10_pk/phase.env"
+printf '# pinned\nd\n' > "$PJ/script/phases/10_pk/packages.d/00-order.txt"
+printf 'c\ne\n' > "$PJ/script/phases/10_pk/packages.d/demo.txt"
+for p in a b c d e; do
+    case $p in c) dep="a b" ;; e) dep=c ;; *) dep= ;; esac
+    mkdir -p "$PJ/ports/core/demo/$p"
+    printf 'name        = %s\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port\ndepends     = %s\n' \
+        "$p" "$dep" > "$PJ/ports/core/demo/$p/kpkgbuild"
+done
+printf '#!/bin/bash\necho d a b c e\n' > "$PJ/bin/kpkgdepends"
+cat > "$PJ/bin/kpkg" <<EOF
+#!/bin/bash
+L="$PJ/kpkg.log"
+[ "\$1" = help ] && { echo "  --build-only       (install) build only"; exit 0; }
+shift
+case \$1 in
+--build-only)
+    p=\${@: -1}
+    echo "start \$p jobs=\$KDOS_JOBS cpus=\$(nproc)" >> "\$L"
+    if [ "\$(cat "$PJ/fail" 2>/dev/null)" = "\$p" ]; then
+        echo "fail \$p" >> "\$L"; exit 1
+    fi
+    sleep 1
+    echo "end \$p" >> "\$L" ;;
+--commit)
+    shift
+    echo "commit \$*" >> "\$L"
+    for p; do
+        [ "\$p" = a ] && [ -e "$PJ/take" ] && echo "==> Taking 1 path from b"
+        echo "kpkg: committed \$p"
+    done ;;
+*)
+    echo "install \$*" >> "\$L" ;;
+esac
+EOF
+chmod +x "$PJ/bin/kpkgdepends" "$PJ/bin/kpkg"
+pj_run() {  # <expected exit> [kdosbuild args...]
+    local want=$1 rc=0; shift
+    rm -rf "$PJ/build"; mkdir -p "$PJ/build"; : > "$PJ/kpkg.log"
+    ( cd "$PJ" && PATH="$PJ/bin:$PATH" KDOS_JOBS=6 "$KB" --script-dir script \
+        --build-dir build --json "$@" ) > "$PJ/run.json" 2>&1 || rc=$?
+    [ "$rc" = "$want" ] || { echo "  exit $rc, not $want"; cat "$PJ/run.json" "$PJ/kpkg.log"; exit 1; }
+}
+pj_line() { grep -n -m1 -- "$1" "$PJ/kpkg.log" | cut -d: -f1; }
+pj_steps() {  # the step events, in order, without their timings
+    python3 -c '
+import json, sys
+for l in open(sys.argv[1]):
+    e = json.loads(l)
+    if e.get("event") == "step":
+        print(e["status"], e["phase"], e["step"])' "$1"
+}
+
+pj_run 0 --port-jobs 3
+for p in a b; do
+    [ "$(pj_line "start $p")" -lt "$(pj_line 'end a')" ] && [ "$(pj_line "start $p")" -lt "$(pj_line 'end b')" ] \
+        || { echo "  a and b did not build side by side"; cat "$PJ/kpkg.log"; exit 1; }
+    [ "$(pj_line 'commit d')" -lt "$(pj_line "start $p")" ] \
+        || { echo "  $p started before the order run was committed"; cat "$PJ/kpkg.log"; exit 1; }
+done
+[ "$(pj_line 'end d')" -lt "$(pj_line 'start a')" ] \
+    || { echo "  the order run did not finish first"; cat "$PJ/kpkg.log"; exit 1; }
+grep -qx 'commit a b' "$PJ/kpkg.log" \
+    || { echo "  a and b were not committed together in serial order"; cat "$PJ/kpkg.log"; exit 1; }
+[ "$(pj_line 'commit a b')" -lt "$(pj_line 'start c')" ] \
+    && [ "$(pj_line 'commit c')" -lt "$(pj_line 'start e')" ] \
+    || { echo "  a port started before its dependencies were committed"; cat "$PJ/kpkg.log"; exit 1; }
+grep -q '^install' "$PJ/kpkg.log" && { echo "  a level ran a plain install"; cat "$PJ/kpkg.log"; exit 1; }
+# KDOS_JOBS=6 over three slots is 2 each, and each runs on a window of at most
+# twice that.
+grep '^start' "$PJ/kpkg.log" | grep -qv 'jobs=2 ' \
+    && { echo "  a port was not given KDOS_JOBS=2"; cat "$PJ/kpkg.log"; exit 1; }
+grep '^start' "$PJ/kpkg.log" | grep -qvE 'cpus=[1-4]$' \
+    && { echo "  a port ran outside its CPU window"; cat "$PJ/kpkg.log"; exit 1; }
+if command -v python3 >/dev/null 2>&1; then
+    pj_steps "$PJ/run.json" | sort | uniq -d | grep -q . \
+        && { echo "  a step event was reported twice"; cat "$PJ/run.json"; exit 1; }
+    [ "$(pj_steps "$PJ/run.json" | grep -c '^running')" = 9 ] \
+        && [ "$(pj_steps "$PJ/run.json" | grep -c '^ok')" = 9 ] \
+        || { echo "  not every step opened and closed once"; cat "$PJ/run.json"; exit 1; }
+fi
+echo "  a level builds side by side, commits in serial order, and the next waits for it"
+
+# --port-jobs 1 is the serial runner: the same kpkg calls and the same step
+# events as a run without the flag.
+pj_run 0
+cp "$PJ/kpkg.log" "$PJ/serial.log"
+[ "$(tr '\n' ' ' < "$PJ/serial.log")" = "install d install a install b install c install e " ] \
+    || { echo "  the serial run changed"; cat "$PJ/serial.log"; exit 1; }
+if command -v python3 >/dev/null 2>&1; then
+    pj_steps "$PJ/run.json" > "$PJ/serial.steps"
+    pj_run 0 --port-jobs 1
+    pj_steps "$PJ/run.json" | cmp -s - "$PJ/serial.steps" \
+        || { echo "  --port-jobs 1 reported other steps"; cat "$PJ/run.json"; exit 1; }
+else
+    pj_run 0 --port-jobs 1
+fi
+cmp -s "$PJ/kpkg.log" "$PJ/serial.log" \
+    || { echo "  --port-jobs 1 ran other commands"; cat "$PJ/kpkg.log"; exit 1; }
+echo "  --port-jobs 1 runs exactly what the serial runner runs"
+
+# A path taken from a port the serial order installs later is named.
+touch "$PJ/take"
+pj_run 0 --port-jobs 3
+rm -f "$PJ/take"
+grep -q 'a took paths from b; the serial order had b last' "$PJ/run.json" \
+    || { echo "  an ownership inversion went unreported"; cat "$PJ/run.json"; exit 1; }
+
+# b fails at once: a, already running beside it, finishes; the level is not
+# committed; nothing past it starts; the build fails.
+echo b > "$PJ/fail"
+pj_run 1 --port-jobs 3
+rm -f "$PJ/fail"
+grep -qx 'end a' "$PJ/kpkg.log" \
+    || { echo "  a running sibling was stopped by the failure"; cat "$PJ/kpkg.log"; exit 1; }
+grep -q 'commit a\|commit b\|start c' "$PJ/kpkg.log" \
+    && { echo "  a failed level was committed or passed"; cat "$PJ/kpkg.log"; exit 1; }
+grep -q '"event": "result", "status": "failed".*"failed_step": "b"' "$PJ/run.json" \
+    || { echo "  the failure is not b's"; cat "$PJ/run.json"; exit 1; }
+"$KB" --port-jobs 9 --list >/dev/null 2>&1 && { echo "  --port-jobs 9 was accepted"; exit 1; }
+echo "  a failure drains its level, commits none of it, and stops the build"
 
 echo
 echo "==> kinstall says what it would do, without doing it"

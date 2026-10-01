@@ -1,0 +1,16 @@
+Subject: [PATCH] Build the stack trace only where <execinfo.h> exists
+
+musl has no <execinfo.h> and no backtrace(); without it crash.cc falls
+back to the platform-neutral write_stack_trace().
+---
+--- a/source/crash.cc
++++ b/source/crash.cc
+@@ -10,7 +10,7 @@
+ #if defined(UNIX)
+ #include <unistd.h>
+ #include <sys/param.h>
+-#ifndef __HAIKU__
++#if !defined(__HAIKU__) && __has_include(<execinfo.h>)
+         #define BACKTRACE_SUPPORTED
+ #endif
+ #endif

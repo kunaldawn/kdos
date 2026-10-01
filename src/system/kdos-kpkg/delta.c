@@ -54,16 +54,20 @@ static int decompress(const char *in, const char *out)
 
 static int compress(const char *in, const char *out)
 {
-	/* The same pinned compressor the packager uses, for the same reason:
-	 * a delta that is regenerated must come out identical. */
+	/* The packager's kept compressor, from the same table, with the
+	 * environment that could change its bytes removed: the rebuilt package
+	 * is checked against the index hash of what roll_package wrote. */
 	KbArgv a = {0};
-	kb_argv_add(&a, "xz");
-	kb_argv_add(&a, "-9");
-	kb_argv_add(&a, "-T1");
+	for (const char *const *w = kp_xz_args(0); *w; w++)
+		kb_argv_add(&a, *w);
 	kb_argv_add(&a, "-c");
 	kb_argv_add(&a, in);
 	kb_argv_end(&a);
-	return kb_run_to_file(&a, out);
+	char *saved[2];
+	kp_xz_env_hide(saved);
+	int rc = kb_run_to_file(&a, out);
+	kp_xz_env_restore(saved);
+	return rc;
 }
 
 static long long file_size(const char *path)

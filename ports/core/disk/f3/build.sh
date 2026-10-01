@@ -25,13 +25,14 @@
 # `$(LDFLAGS) -lm`, so that is the variable the flag has to reach. LDLIBS is
 # never referenced.
 export LDFLAGS="$LDFLAGS -largp"
+f3_cflags="$CFLAGS -std=c17 -Wall -Wextra -pedantic -MMD"
 
-make
-make DESTDIR=$PKG PREFIX=/usr install
+make CFLAGS="$f3_cflags"
+make DESTDIR=$PKG PREFIX=/usr CFLAGS="$f3_cflags" install
 
 # f3probe, f3brew and f3fix are the extra tools and they need parted and
 # libudev. They are built separately upstream because those deps are optional —
 # they are not optional here: f3probe is the fast test, and without it the only
 # answer takes as long as filling the device.
-make extra
-make DESTDIR=$PKG PREFIX=/usr install-extra
+make extra CFLAGS="$f3_cflags"
+make DESTDIR=$PKG PREFIX=/usr CFLAGS="$f3_cflags" install-extra

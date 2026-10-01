@@ -52,7 +52,7 @@ cmake .. -G Ninja -Wno-dev \
 	-DFEATURE_qtpdf_build=ON \
 	-DFEATURE_webengine_build_gn=ON \
 	-DFEATURE_webengine_rust_build=OFF \
-	-DFEATURE_webengine_jumbo_build=OFF \
+	-DFEATURE_webengine_jumbo_build=8 \
 	-DFEATURE_webengine_developer_build=OFF \
 	-DFEATURE_webengine_full_debug_info=OFF \
 	-DFEATURE_webengine_embedded_build=OFF \

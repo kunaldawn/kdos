@@ -20,6 +20,7 @@ patch -p1 -i "$PORT_SRC/nodevel.patch"
 # remote control through liblo. Rubber Band is off: upstream marks its use
 # experimental, with wrong timing. The test suite and the API reference are
 # not built.
+export CMAKE_CXX_FLAGS="$CXXFLAGS"
 cmake -S . -B build -G Ninja \
 	-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-D CMAKE_INSTALL_PREFIX=/usr \

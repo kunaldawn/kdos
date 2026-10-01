@@ -13,9 +13,10 @@
 # libpng is named so pdfioFileCreateImageObjFromFile reads PNG rather than
 # refusing it, which is what it does when the probe finds nothing.
 ./configure --prefix=/usr --libdir=/usr/lib \
-	--enable-shared --disable-static --enable-libpng
-make
-make DESTDIR=$PKG install
+	--enable-shared --disable-static --enable-libpng \
+	--with-dsoflags="$LDFLAGS"
+make OPTIM=
+make OPTIM= DESTDIR=$PKG install
 
 # The examples directory also carries the Roboto and code128 fonts md2pdf and
 # code128 demonstrate with — five TrueType files and their licences under

@@ -129,7 +129,7 @@ commercial support.
 
 No v0.2 image is published. The [releases](https://github.com/kunaldawn/kdos/releases) on this
 repository are `v0.1`, whose ISO belongs to an earlier line that the book does not describe, and
-`sources-001` and `sources-002`, which hold the source archive and no image. To run v0.2, build it
+the numbered `sources-<N>` pre-releases, which hold the source archive and no image. To run v0.2, build it
 (next section), then boot the result in a virtual machine:
 
 ```sh
@@ -162,7 +162,7 @@ other toolchain is installed on your machine.
 | Cost | |
 |---|---|
 | Time | Many hours for the first build: the whole system is compiled, GCC several times over and the kernel included. Later builds are narrow and short |
-| Disk | About 41.5 GB (38.6 GiB) of upstream sources, plus tens of gigabytes under `build/`, and at least 84 GB more for a complete set of the optional phase snapshots |
+| Disk | About 41.5 GB (38.6 GiB) of upstream sources, plus tens of gigabytes under `build/`, and more for a complete set of the optional phase snapshots (the tree compressed once plus a layer per phase), whose size is not yet measured |
 | Network | For `git clone`, `make fetch`, and the first `make build`, which builds its container image. The compile itself runs with the network off |
 
 ```sh

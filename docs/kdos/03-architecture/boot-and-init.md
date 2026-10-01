@@ -922,8 +922,9 @@ the installed path does not, and `01_udev` starts a `udevd` from the real root e
 ## The live medium and persistence
 
 On the live medium the init mounts `system.sfs` read-only through a loop device and puts an
-overlay on top of it as the new root. `system.sfs` is the whole root filesystem, xz-compressed by
-`mksquashfs` in the image phase (`110_iso.sh`), with the pseudo-filesystem mount points recreated empty. The
+overlay on top of it as the new root. `system.sfs` is the whole root filesystem, compressed by
+`mksquashfs` in the image phase (`110_iso.sh`) with zstd at level 15 unless `KDOS_ISO_COMP` names
+another codec, with the pseudo-filesystem mount points recreated empty. The
 contents of `/var/cache` and `/var/log` are left out, and both directories are recreated empty too,
 because a daemon makes its own directory under them with a single `mkdir` that needs the parent.
 The overlay's writable upper layer decides whether the session survives a power-off:

@@ -49,7 +49,22 @@ else
 fi
 
 # 2. Create System SquashFS
-echo "Squashing Root Filesystem..."
+#
+# zstd BY DEFAULT, because the medium is read far more often than it is
+# written: a zstd image decompresses about 2.6x cheaper than an xz one, on
+# every boot and every first launch. Level 15, because 19 and 22 cost more CPU
+# than xz does for about 0.6% more space. KDOS_ISO_COMP=zstd:3 is a developer
+# image — about 10% larger, for the rig — and never a release; xz remains
+# selectable. ANY OTHER VALUE IS FATAL, so a typo cannot quietly ship a medium
+# in a codec nobody chose.
+ISO_COMP="${KDOS_ISO_COMP:-zstd:15}"
+case "$ISO_COMP" in
+    xz) SFS_COMP=(-comp xz) ;;
+    zstd:[1-9]|zstd:1[0-9]|zstd:2[0-2])
+        SFS_COMP=(-comp zstd -Xcompression-level "${ISO_COMP#zstd:}") ;;
+    *) echo "FATAL: KDOS_ISO_COMP=$ISO_COMP is not xz or zstd:<1-22>" >&2; exit 1 ;;
+esac
+echo "Squashing Root Filesystem ($ISO_COMP)..."
 # The pseudo filesystems, build artifacts and caches are excluded, and the
 # mountpoints they need are recreated as empty directories — an excluded /proc
 # is a root that cannot mount one. /var/cache and /var/log come back empty for
@@ -64,7 +79,7 @@ echo "Squashing Root Filesystem..."
 # pseudo-directory, and appends to an existing system.sfs instead of replacing
 # it.
 mksquashfs / $ISO_ROOT/system.sfs \
-    -noappend -comp xz \
+    -noappend "${SFS_COMP[@]}" \
     -p "proc d 555 0 0" \
     -p "sys d 555 0 0" \
     -p "dev d 755 0 0" \

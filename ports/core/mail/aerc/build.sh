@@ -15,7 +15,7 @@ export CGO_ENABLED=1
 # database directly, so mail that is already indexed on the machine is
 # searchable from the client with no second index. That binding is cgo, which
 # is why CGO_ENABLED is on for this port and off for every other Go one.
-make PREFIX=/usr GOFLAGS="-mod=vendor -tags=notmuch"
+make PREFIX=/usr GOFLAGS="$GOFLAGS -mod=vendor -tags=notmuch" GO_EXTRA_LDFLAGS="-s -w"
 make PREFIX=/usr DESTDIR=$PKG install
 
 # THE FILTER THAT SPOOLS, written HERE and not in a file beside the recipe

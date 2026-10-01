@@ -231,6 +231,8 @@ static int collect(const KpConf *c, char names[][128], char vers[][64],
 	if (installed && installed[0]) {
 		*from_db = 1;
 		for (char **p = installed; *p && n < max; p++) {
+			if ((*p)[0] == '.')
+				continue;	/* sidecars and the lock */
 			char ver[128] = "", rel[32] = "";
 			if (kp_installed_version(c, *p, ver, sizeof(ver), rel,
 						 sizeof(rel)) != 0)

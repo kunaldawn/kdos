@@ -18,6 +18,7 @@
 # the compiler, the archiver and the host machine, so there is nothing here to
 # invent — and inventing one is how a cross build silently picks up the host's
 # own gcc.
+unset CFLAGS CXXFLAGS LDFLAGS
 meson setup build \
 	--cross-file scripts/cross-arm-none-eabi.txt \
 	--prefix=/usr/arm-none-eabi \

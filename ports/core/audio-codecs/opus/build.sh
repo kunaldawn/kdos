@@ -9,6 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+export CFLAGS="$CFLAGS -flto=auto -frandom-seed=opus"
+export LDFLAGS="$LDFLAGS -flto=auto"
+
 # THE NEURAL DECODER TOOLS ARE BUILT IN, AND THEIR WEIGHTS SHIP IN THE
 # RELEASE ARCHIVE, so nothing is fetched. --enable-deep-plc conceals lost
 # packets with a model instead of repeating the last one, --enable-dred

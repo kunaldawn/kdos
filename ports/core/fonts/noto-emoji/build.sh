@@ -38,7 +38,7 @@
 rm -f fonts/*.ttf
 nototools="$SRC_ROOT/notofonttools-$_nototools"
 export PYTHONPATH="$nototools:$SRC/third_party/color_emoji"
-make -j"$(nproc)" NotoColorEmoji.ttf \
+make -j"$KDOS_JOBS" NotoColorEmoji.ttf \
 	VIRTUAL_ENV=/usr BYPASS_SEQUENCE_CHECK=True \
 	VS_ADDER="python3 $nototools/nototools/add_vs_cmap.py"
 install -Dm644 NotoColorEmoji.ttf \

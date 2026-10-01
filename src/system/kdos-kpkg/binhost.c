@@ -8,6 +8,7 @@
  *   the binary repository: an index, a signature, and three equality tests
  *
  *   kpkg keygen <name>            make a signing key
+ *   kpkg sign <file> <key>        write <file>.sig over any one file
  *   kpkg index <dir> [--sign K]   write PACKAGES (+ PACKAGES.sig, + sidecars)
  *   kpkg verify-index <dir>       check it against the keyring
  *   kpkg binhost <dir> <port>     install the prebuilt package IF it matches
@@ -423,6 +424,64 @@ int kp_cmd_keygen(int argc, char **argv)
 	kp_msg("  secret: %s (mode 0600 — this is the whole of the trust)", sk);
 	kp_msg("  public: %s (copy into %s on every machine that should trust "
 	       "it)", pk, keyring_dir());
+	return 0;
+}
+
+/*
+ * One signature over one file's bytes, as `<file>.sig` — the same sidecar
+ * `index --sign` writes beside each package, so `verify-pkg` checks it. It
+ * exists for files that are not packages: a system release's SHA256SUMS.
+ */
+int kp_cmd_sign(int argc, char **argv)
+{
+	if (argc != 2) {
+		printf("Usage: kpkg sign <file> <key>   (writes <file>.sig)\n");
+		return 1;
+	}
+	const char *file = argv[0], *keyfile = argv[1];
+
+	uint8_t seed[KSIG_SEED_LEN], pub[KSIG_PUB_LEN];
+	int kr = ksig_read_secret(keyfile, seed, pub);
+	if (kr == -2) {
+		kp_err("%s is readable by other users — refusing to sign "
+		       "with it", keyfile);
+		return 1;
+	}
+	if (kr != 0) {
+		kp_err("cannot read the signing key %s", keyfile);
+		return 1;
+	}
+
+	size_t len = 0;
+	char *data = kb_read_all(file, &len);
+	if (!data) {
+		kp_err("cannot read %s", file);
+		memset(seed, 0, sizeof(seed));
+		return 1;
+	}
+
+	char sigpath[1024];
+	if ((size_t)snprintf(sigpath, sizeof(sigpath), "%s.sig", file) >=
+	    sizeof(sigpath)) {
+		kp_err("%s: path too long", file);
+		memset(seed, 0, sizeof(seed));
+		free(data);
+		return 1;
+	}
+	/* Removed first: an old signature appended beside a new one would
+	 * leave a line that no longer matches the bytes. */
+	unlink(sigpath);
+	int rc = ksig_sig_append(sigpath, seed, pub, data, len);
+	/* The seed does not outlive its use. */
+	memset(seed, 0, sizeof(seed));
+	free(data);
+	if (rc != 0) {
+		kp_err("cannot write %s", sigpath);
+		return 1;
+	}
+	char id[KSIG_ID_HEX];
+	ksig_keyid(pub, id);
+	kp_msg("%s: signed with key %s", sigpath, id);
 	return 0;
 }
 

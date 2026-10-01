@@ -39,6 +39,7 @@
 # strings that scipy resolves through pkg-config, and openblas is the port this
 # tree builds. The reference kernels would be an order of magnitude slower and
 # nothing would say so.
+export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr \
 	--config-settings=setup-args=-Duse-pythran=false \
 	--config-settings=setup-args=-Dblas=openblas \

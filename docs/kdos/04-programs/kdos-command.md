@@ -1126,7 +1126,10 @@ command refuses when:
 It then copies the tree to `<work-dir>/kdos` (a second run with the same work directory reuses
 the copy), compiles the build orchestrator `kdosbuild` from that copy into `<work-dir>/kdosbuild`,
 and runs it with `--fresh`. That is the same orchestrator `make build` runs, reading the same
-phase scripts. `--iso-only` runs only the `70_image` phase. `--dry-run` stops after the
+phase scripts. The job count is `KDOS_JOBS` when the caller sets it; otherwise the build
+environment computes it from this machine, one job per thread but no more than one per 2 GiB of
+memory, so a laptop with little memory builds slower rather than having its compilers killed.
+`--iso-only` runs only the `70_image` phase. `--dry-run` stops after the
 checks and prints the plan. [How KDOS is built](../05-developer/how-kdos-is-built.md) follows
 the same build from `git clone` to an ISO, and [The build system](../05-developer/build-system.md)
 describes the orchestrator.

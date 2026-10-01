@@ -2,7 +2,7 @@
 
 This chapter is the reference for the recipe format: how a piece of upstream software is described
 so that KDOS can fetch it, verify it, build it offline and package it. A
-[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 1,999 of them
+[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds 2,000 of them
 under `ports/core`, filed on 102 shelves by subject, and the 24 ports of KDOS's own under `src/` are
 written in the same format. The chapter is for anyone adding a port, changing one, or bumping one to a new
 upstream release. Read [How KDOS is built](how-kdos-is-built.md) for where ports sit in the build,
@@ -47,34 +47,31 @@ change a source, [publish it](#publishing-sources) so other checkouts can fetch 
 A few ports keep other files in git beside the recipe. Leaving out `kpkgbuild`, `build.sh`,
 `postinstall.sh` and `*.patch`, git tracks 41 files under `ports/core`. Thirty-five of them are named
 by a `sha256 =` line: small inputs that are part of the source, such as `bash`'s and `readline`'s
-upstream patch-level files and the IANA registries under `iana-etc`. A hashed file cannot change
+upstream patch-level files and the IANA registries under `iana-etc`. A named file cannot change
 without its `sha256 =` line changing, so an edit to it changes the recipe and rebuilds the port.
-The other six are not hashed, and the [recipe hash](../06-reference/glossary.md) does not see
-them:
 
-| File | Read by |
-|---|---|
-| `linux/kdos.config`, `linux/kdos-logo-mono.pbm` | `build.sh`, from `$PORT_SRC` |
-| `epy/epy.desktop` | `build.sh`, from `$PORT_SRC` |
-| `pandoc/cabal.project.freeze` | `ports/fetch`, when it generates the vendor bundle |
-| `linux/genlogo-mono.py` | nothing in the build; it regenerates the `.pbm` on the host |
-| `ffmpeg/LICENSE.notice` | nothing in the build; it is a record kept beside the recipe |
-
-After editing one that the build reads, bump `release` in `kpkgbuild`, or the port reports itself
-current and the image keeps what it was built with (see
-[Shipping a script the port carries](#shipping-a-script-the-port-carries)).
+Every other file beside the recipe is hashed into the
+[recipe hash](../06-reference/glossary.md) itself, subdirectories included, so an edit to it
+rebuilds the port too. The six such files in git are `linux/kdos.config`,
+`linux/kdos-logo-mono.pbm` and `epy/epy.desktop`, which `build.sh` reads from `$PORT_SRC`;
+`pandoc/cabal.project.freeze`, which `ports/fetch` reads when it generates the vendor bundle; and
+`linux/genlogo-mono.py` and `ffmpeg/LICENSE.notice`, which no build reads. The rule has no
+exceptions, so a stray file beside a recipe, such as an editor backup or a `kpkgbuild.new`, also
+changes the hash and rebuilds the port.
 
 ### Shelves, and how a port is found
 
 The `games-rpg` in the path is the port's **shelf**: the subject directory it is filed under. The
-shelves are a closed list, `ports/shelves`, one line per shelf giving its id and what belongs on it;
+shelves are a closed list, `ports/shelves`, one line per shelf giving its id, the source-archive
+volume that keeps its files, and what belongs on it;
 [Choosing a shelf](#choosing-a-shelf) is how a new port is placed. A port's identity is its bare
 name, never its shelf. `name =` equals the directory's name, one name is one port across every
 shelf and every `src/` area, and nothing that names a port (a `depends` line, a package list,
 `kpkg`, `ports/fetch`, `ports/publish`) spells the shelf. Moving a port to another shelf is one
 `git mv ports/core/<old>/<name> ports/core/<new>/`: the recipe hash covers the port's files and not
 their path, and the installed database, the binary host and `ports/sources.idx` are keyed by name or
-by hash. The one exception is a `.gitignore` pattern for files generated inside one port's
+by hash; the port's archived sources stay where they are, under the old shelf's name and in its
+volume, where the index still finds them, until `ports/publish --rehome` moves them. The one exception is a `.gitignore` pattern for files generated inside one port's
 directory, which spells the shelf (`/ports/core/graphics/digikam/*.jpeg`); moving such a port means
 editing that line too, and `testing/preflight.sh` fails with "names a port directory that holds no
 port" until it is. For the same reason, prose, comments and notes
@@ -336,15 +333,23 @@ shell sources first:
 | `$PKG` | `$SRC_ROOT/pkg`, the staging tree: install here, never into `/` |
 | `$SOURCE_DIR`, `$WORK_DIR`, `$PACKAGE_DIR`, `$PORT_REPO`, `$PKGDB_DIR` | From `/etc/kpkg.conf`: kpkg's source directory, work area, package output, ports tree and package database. Each takes the environment's value when one is set |
 
-The compiler flags (`CFLAGS`, `CXXFLAGS`, `LDFLAGS`), `MAKEFLAGS=-j12`, `CC=gcc` and `CXX=g++` from
+The compiler flags (`CFLAGS`, `CXXFLAGS`, `LDFLAGS`), the job count (`KDOS_JOBS`, exported as
+`MAKEFLAGS=-j$KDOS_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`), `CC=gcc` and `CXX=g++` from
 `30_foundation` on, and the reproducibility settings (`SOURCE_DATE_EPOCH`, `TZ=UTC`, `LC_ALL=C`,
 `-ffile-prefix-map` and `--build-id=sha1`) come from the phase's environment and are exported. The
 `script/phases/<phase>/phase.env` of every chroot phase sources `script/env/chroot.env`, which
-holds the compilers, the base flags and `PKG_CONFIG_PATH`, and sources `script/env/common.env` in
-turn: the reproducibility settings, `MAKEFLAGS` and `KPKG_STRICT_RECIPE=1`. `20_selfhost` unsets
-`CC` and `CXX` again, and a phase.env adds only what is its own, such as `PORT_REPO`. The base
-`CFLAGS` from `20_selfhost` on is `-O2 -pipe -std=gnu11 -fPIC`, and no phase adds `-Werror`.
-Extend the flags rather than replace them: `export CFLAGS="$CFLAGS -Wno-error"`.
+holds the compilers, the release flags and `PKG_CONFIG_PATH`, and sources `script/env/common.env` in
+turn: the reproducibility settings, the job count and `KPKG_STRICT_RECIPE=1`. `20_selfhost` unsets
+`CC` and `CXX` again, and a phase.env adds only what is its own, such as `PORT_REPO`. The flags
+from `20_selfhost` on are listed in [The release flags](#the-release-flags), and no phase adds
+`-Werror`. Extend the flags rather than replace them: `export CFLAGS="$CFLAGS -Wno-error"`. Ninja
+takes the job count without being told: once ninja is installed, `chroot.env` puts
+`script/bin/ninja` first on `PATH`, and it adds `-j$KDOS_JOBS` to every `ninja` call that names no
+job count before running `/usr/bin/ninja`, so a bare `ninja`, `meson compile`, `meson install` and a
+CMake Ninja build all follow `KDOS_JOBS`; a call that passes its own `-j`, a tool (`-t`) or
+`--version` goes through unchanged. A recipe that has to pass a job count explicitly, to a build
+system of its own, reads `$KDOS_JOBS`, never `nproc` and never a parse of `MAKEFLAGS`: `nproc`
+ignores both a lowered `KDOS_JOBS` and the memory clamp.
 
 The minimal autotools recipe is three lines:
 
@@ -362,7 +367,8 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
    creates without an explicit mode, including what `make install` writes, have the same mode on
    every builder.
 2. Check every declared `sha256 =` entry, before the work directory is touched.
-3. Remove `$SRC_ROOT`, create `$SRC` and `$PKG`, and unpack or copy the sources.
+3. Remove `$SRC_ROOT`, create `$SRC` and `$PKG`, and unpack or copy the sources. Each source
+   must have a `sha256 =` entry; its bytes are not hashed again, having been checked at step 2.
 4. Run `build.sh`.
 5. Copy `postinstall.sh`, when there is one, into the package as `.POSTINSTALL`, preceded by the
    recipe's keys and helpers as shell assignments.
@@ -372,10 +378,27 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
    `kpkg` regenerates on install (see [Shared indexes](#shared-indexes)); shipped in two packages,
    one would conflict with the other.
 8. Roll `$PKG` into `$PACKAGE_DIR/$PKGNAME` reproducibly: names sorted, owner and group 0, every
-   modification time set to `SOURCE_DATE_EPOCH`, GNU tar format, and `xz -9 -T1`, so a package
-   built twice from the same tree is byte-identical.
+   modification time set to `SOURCE_DATE_EPOCH`, GNU tar format, and a pinned multi-threaded `xz`
+   (`-9 --block-size=32MiB`, or `-0` for a package `kpkg install` deletes once installed), so a
+   package built twice from the same tree is byte-identical. The archive is written as
+   `$PKGNAME.part` and renamed once complete. The time it took is logged as
+   `Packaged <name>: <N> MB in <s> s`.
 
 A recipe therefore does not delete `.la` files, write an info `dir`, or pack anything itself.
+
+`kpkg` strips nothing either: a package carries exactly what the port's flags compiled. No port
+ships DWARF, so a recipe overrides every upstream default that adds `-g` by flag, never by editing
+the source: meson's `--buildtype=release`, CMake's `-DCMAKE_BUILD_TYPE=Release`, Go's
+`-ldflags "-s -w"`, and the build system's own variable where it has one (GCC's
+`CFLAGS_FOR_TARGET` and `CXXFLAGS_FOR_TARGET` for the libraries it builds for its target, CPython's
+`OPT`). A `-g` that a build puts ahead of `$CFLAGS` is cancelled by `-g0` at the end of `CFLAGS`
+or `CXXFLAGS` (`newsboat`, `aubio`); one in a make variable of its own is cancelled or left out
+through that variable (`linuxcnc`'s `EXTRA_DEBUG=-g0` and `ULFLAGS`); one a makefile appends after
+them, or one in compile rules that never read them, is dropped at the link by `-Wl,--strip-debug`
+in `LDFLAGS` (`frotz`), or left out by a command-line `CFLAGS` that replaces the makefile's own
+line (`stfl`, `hfsprogs`, `routino`). `testing/debuginfo.sh` lists what a built
+tree still carries; see
+[Testing](testing.md#debug-information-in-the-built-tree).
 
 ## Canonical build shapes
 
@@ -383,6 +406,143 @@ Each build system has one shape that works on this tree. Start from it and chang
 project needs; most of the failures in [Build troubleshooting](build-troubleshooting.md) come from
 leaving one of these flags out. Of the recipes under `ports/core`, about 580 run a `configure`
 script, 600 run CMake, 240 run meson and 57 run `cargo build`.
+
+Every shape below builds a release: optimised, with no debug information, with assertions compiled
+out where the build system's release mode does that, and with upstream's SIMD and assembly on. How
+the flags and the checks were chosen is in
+[Decisions](../01-philosophy/decisions.md#one-release-flag-set-raised-per-port).
+
+### The release flags
+
+From `20_selfhost` on, `script/env/chroot.env` exports these to every `build.sh`:
+
+| Variable | Value |
+|---|---|
+| `CFLAGS` | `-O2 -pipe -std=gnu11 -fPIC -fno-semantic-interposition -fstack-clash-protection -ffile-prefix-map=/var/cache/kpkg/work=/build` |
+| `CXXFLAGS` | the same, without `-std=gnu11` |
+| `LDFLAGS` | `-Wl,-O1,--sort-common,--as-needed,-z,now,-z,pack-relative-relocs -Wl,--build-id=sha1` |
+| `CMAKE_BUILD_TYPE` | `Release`, the type of a CMake project whose recipe names none |
+| `CARGO_PROFILE_RELEASE_DEBUG` | `0`, so no crate's release profile turns debug information back on |
+| `GOFLAGS` | `-trimpath -buildvcs=false` |
+| `CGO_CFLAGS`, `CGO_CXXFLAGS`, `CGO_LDFLAGS` | copies of `CFLAGS`, `CXXFLAGS` and `LDFLAGS` |
+
+The compiler adds PIE and the stack protector by default (`--enable-default-pie`,
+`--enable-default-ssp`). What each option costs a port:
+
+- `--as-needed` records a library only when an object before it on the link line uses it. A
+  makefile that names `-lfoo` ahead of its objects, or a library needed only for its constructor,
+  needs `-Wl,--no-as-needed`; see
+  [Build troubleshooting](build-troubleshooting.md#a-library-dropped-by---as-needed).
+- `-z,now` stops musl deferring an unresolved symbol in a plugin opened with `RTLD_LAZY`. A plugin
+  that takes symbols from a library loaded after it needs `-Wl,-z,lazy`; see
+  [Build troubleshooting](build-troubleshooting.md#a-plugin-that-needs-lazy-binding).
+- `-z,pack-relative-relocs` writes relative relocations as `DT_RELR`, which musl 1.2.4 and later
+  loads. A binary from this tree cannot run under an older C library.
+- `-fno-semantic-interposition` lets GCC inline an exported function into callers in the same
+  file. `LD_PRELOAD` then cannot replace that one call; calls from other files still can be.
+
+A recipe adds to these and never replaces them: `export CFLAGS="$CFLAGS -Wno-error"`, never
+`export CFLAGS="-O2 …"`, which drops the prefix map, the hardening and the interposition flag at
+once. A package's bytes change with every change to them, but `KPKG_STRICT_RECIPE` compares
+recipes, not flags: an installed port picks a flag change up only when it is rebuilt.
+
+### Every port
+
+Check each of these against the recipe, whichever build system it uses:
+
+- **Compare with Alpine and T2 SDE.** Alpine's recipe is
+  `https://gitlab.alpinelinux.org/alpine/aports/-/raw/master/<repo>/<pkg>/APKBUILD`, with `<repo>`
+  one of `main`, `community` and `testing`; T2 SDE's is under
+  `https://svn.exactcode.de/t2/trunk/package/<category>/<pkg>/` (`*.conf`, `*.desc`). Look for
+  `${CFLAGS/-Os/-O2}` or `-O3`, `-flto`, `--optflags`, `-DNDEBUG`, `--enable-*asm`, `nasm` among
+  the build dependencies, and `CMAKE_BUILD_TYPE`.
+- **No debug build.** Not `-O0`; not `-g` or `-ggdb` added by the recipe; not `--enable-debug`,
+  `--with-debug` or `-DDEBUG`; not CMake's `Debug`, `RelWithDebInfo` or an empty build type; not
+  meson's `debug`, `debugoptimized`, or `plain` with no flags; not `cargo build` without
+  `--release`; not zig without an optimize mode; not qmake's `CONFIG+=debug` or
+  `debug_and_release`. A switch that only makes a debug path available at run time is not a debug
+  build: `ocl-icd`'s `--enable-debug` is upstream's default and prints nothing unless
+  `OCL_ICD_DEBUG` is set.
+- **Every compile and link line takes the exported flags.** A build system that reads none from
+  the environment is handed them through its own variable, and the build log's compile and link
+  lines are the check, not the recipe: b2's toolset declaration in a `user-config.jam` (`boost`,
+  as Alpine does; a b2 argument would split `LDFLAGS` at its commas), qmake's release variables
+  through `--qmake-setting` (`python3-pyqt6`, `python3-qscintilla`), a makefile's link command or
+  flag variable given on the command line with the makefile's own entries restated after the
+  exported flags (`zip`'s `BIND`, `stk`, `ladspa`, `hfsprogs`, `routino`), or the one variable a
+  makefile appends to its own (DarkPlaces' `CPUOPTIMIZATIONS` in `xonotic`, which carries
+  `LDFLAGS` as well because its release link line repeats it). Where the build system overwrites
+  the flags and no variable reaches the compile, a patch puts them first:
+  `translatelocally`'s `marian-honour-flags.patch`, because marian sets `CMAKE_CXX_FLAGS`
+  outright. Upstream's own level and maths options come after the exported flags and stand, even
+  `-Ofast`, `-ffast-math` or `-Os`, where upstream chose them for its code: `goxel`, `hydrogen`,
+  `sauerbraten`, `cataclysm-dda`, `retroarch` and `routino` build as upstream intends. A realtime
+  or kernel-side part upstream compiles with fixed flags keeps them (`linuxcnc`'s realtime
+  components).
+- **No machine-specific code.** Never `-march=`, `-mtune=`, `-mcpu=native`, zig's `-Dcpu=native`,
+  rustc's `target-cpu`, `GOAMD64` above v1, or a project's own "optimise for this machine" switch,
+  such as libsodium's `--enable-opt`. The build machine's CPU is not the one that runs the
+  package; the feature level is [`kdos march`](../04-programs/kdos-command.md#kdos-march)'s to
+  choose, per machine. Where upstream selects SIMD code at run time, turn that on: gmp's
+  `--enable-fat`, stockfish's `ARCH=x86-64-universal`, and the dispatch dav1d, x265,
+  libjpeg-turbo and ffmpeg carry. Where upstream selects it only at build time, build one copy per
+  level and let the program choose among them as it starts: `john` ships an AVX-512BW, AVX2, XOP,
+  AVX and SSE2 build, each compiled with `-DCPU_FALLBACK` to hand over to the next when the
+  processor lacks its level, and `satdump` builds its DVB plugin with SSE4.1 and again without,
+  and each copy registers its decoders only where the other does not. Watch for a
+  default that is above x86-64 v1 or taken from the build machine: numpy's `cpu-baseline` defaults
+  to x86-64 v2, so its recipe passes `-Dcpu-baseline=none` and keeps the run-time dispatch, and
+  OpenBLAS infers the CPU for its code outside the kernels unless `TARGET` names one. A floor
+  upstream's code cannot go below stays, with nothing added above it: marian, in
+  `translatelocally`, compiles with `-msse4.1` whatever it is given, so its `BUILD_ARCH` is
+  `x86-64` rather than its default `native`, and the package needs SSE4.1.
+- **SIMD and assembly on, with the assembler in `depends`.** `nasm` for ffmpeg, x264, x265, dav1d,
+  libvpx (`--as=nasm`), libjpeg-turbo (`-DWITH_SIMD=ON`) and libass (`--enable-asm`); openssl never
+  configured with `no-asm`. SIMD options above SSE2 stay off, since the baseline is x86-64 v1
+  (kodi's `ENABLE_SSE3=OFF` and its siblings), and lame keeps `--enable-nasm=no` as upstream
+  advises.
+- **`-O3` for a hot port by pattern.** Where upstream's own default is `-O3` and the exported
+  `CFLAGS` replaces it, as for zstd, lz4, xxhash, openssl and sqlite in Alpine, raise the level in
+  `build.sh`:
+
+  ```bash
+  export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
+  ```
+
+  meson needs this form: it puts the exported `CFLAGS` after its own `-O3`, so
+  `-Doptimization=3` alone loses to `-O2`.
+- **LTO only for the hot libraries.** Link-time optimisation is for code that most of the
+  desktop's time is spent in. In this tree that is python, built with PGO and `--with-lto`;
+  Pillow's imaging modules; cmake, through its own `CMake_BUILD_LTO`; and the media and drawing
+  libraries: ffmpeg, x264, x265, dav1d, libvpx, zstd, lz4, flac, opus, pipewire, pixman, cairo and
+  harfbuzz. Nothing else gets it, however large: not Qt, nodejs, perl, R, LibreOffice, WebKit, the
+  browsers or the applications. Use the project's own switch where it has one (`--enable-lto` in
+  x264, `--enable-lto=auto` in ffmpeg, `-Db_lto=true` in meson,
+  `-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON` in CMake) and `-flto=auto` in both `CFLAGS` and
+  `LDFLAGS` otherwise. Each of those thirteen libraries also adds `-frandom-seed=<port>` to `CFLAGS` (and
+  `CXXFLAGS` for C++). GCC names each object's `.gnu.lto_*` sections with a random number unless
+  that flag fixes it, and an archive keeps those sections, so without it a port that ships a `.a`
+  differs on every build. A port that ships a `.a` also adds `-ffat-lto-objects`, or the archive
+  holds only bytecode and links only through GCC's plugin; zstd and lz4 do both. binutils' own
+  `ar` and `nm` load no such plugin here (`/usr/lib/bfd-plugins` holds none), so a build that
+  links its programs against internal archives of LTO objects exports `AR=gcc-ar NM=gcc-nm
+  RANLIB=gcc-ranlib`, or the archive index is empty and the link fails on every symbol in it;
+  flac does. Meson and CMake's own LTO switches choose the `gcc-` tools themselves. Keep the change
+  only once the port builds byte-identically twice.
+- **The job count is `$KDOS_JOBS`**, never `nproc`: `scons -j"$KDOS_JOBS"`, not
+  `scons -j"$(nproc)"`.
+
+### autotools
+
+```bash
+./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib --disable-static
+make
+make DESTDIR=$PKG install
+```
+
+configure takes the exported flags. Read `./configure --help` for `--disable-debug`,
+`--disable-assert` (autoconf's `AC_HEADER_ASSERT`, which defines `NDEBUG`), and `--enable-asm`,
+`--enable-simd` or `--enable-sse2`, and pass the release side of each.
 
 ### meson
 
@@ -396,6 +556,37 @@ DESTDIR=$PKG meson install --no-rebuild -C build
 Every meson setup needs `--prefix=/usr --libdir=lib`. meson's default library directory is not on
 the runtime linker's search path, and the symptom is a shared library that cannot be loaded at run
 time, long after a clean build and install.
+
+Every meson setup also names its buildtype, `--buildtype=release` or `-Dbuildtype=release`.
+meson's default is `debug`, which compiles `-g -O0` into every object, and `kpkg` strips nothing,
+so the package ships unoptimised code and its DWARF. `testing/preflight.sh` fails a recipe that
+runs `meson setup` without naming a buildtype.
+
+The buildtype does not define `NDEBUG`, so a meson port keeps its `assert()` checks, and a
+recipe leaves them on. In a library that parses a file, a peer's message or a kernel interface, an
+assertion is the last check between bad input and memory corruption, and outside an inner loop it
+costs nothing that can be measured. The security- and hardware-facing libraries — p11-kit,
+pcsc-lite, ccid, libdrm, libepoxy, libglvnd, libva, libva-intel-driver, libplacebo, wayland,
+wlroots, bubblewrap and xdg-dbus-proxy — never turn them off.
+
+`-Db_ndebug=if-release` is for a port whose assertions sit in a hot path it spends its time in,
+and only these pass it:
+
+| Port | What `NDEBUG` removes |
+|---|---|
+| gtk4 | the checks in the roaring bitmaps under `GtkBitset`, walked on every list-view update |
+| openh264 | the encoder's per-slice checks; upstream's own release `Makefile` defines `NDEBUG` |
+| mesa | `-D b_ndebug=true`, the driver's checks on every draw call |
+
+harfbuzz sets `b_ndebug=if-release` in its own `default_options` and needs nothing from the
+recipe. Before adding a port to that table, read what its `meson.build` hangs on the buildtype
+rather than on `b_ndebug`: gtk3 and gtk4 take `G_DISABLE_ASSERT` and `G_DISABLE_CAST_CHECKS` from
+`optimization`, and glib takes `G_DISABLE_ASSERT` from its own `glib_debug` option, so for gtk3 and
+glib `b_ndebug` changes nothing.
+
+meson's release optimisation is `-O3`, but the exported `CFLAGS` follows it on the command
+line, so a meson port builds at `-O2` unless its recipe raises `CFLAGS` itself (see
+[Every port](#every-port)).
 
 Check option names against the tarball's own `meson_options.txt` or `meson.options`. meson fails at
 setup on an unknown option, before a line is compiled, and there is no universal spelling: one
@@ -424,17 +615,20 @@ The tree's CMake is 4.4.3, which refuses a project that declares a minimum versi
 `CMAKE_POLICY_VERSION_MINIMUM=3.5` raises that floor without a patch. `-G Ninja` with `ninja` and
 `DESTDIR=$PKG ninja install` works equally well and is common in the tree.
 
+Release appends `-O3 -DNDEBUG` after the exported `CFLAGS`, so a CMake port builds at `-O3` with
+assertions off. Name the build type in the recipe even though `CMAKE_BUILD_TYPE` is exported: the
+command line is what a reader sees. A recipe that sets `CMAKE_C_FLAGS_RELEASE` or
+`CMAKE_CXX_FLAGS_RELEASE` itself keeps `-DNDEBUG` in it. A project can put `-UNDEBUG` back behind
+its own switch whatever the build type: LLVM's `LLVM_ENABLE_ASSERTIONS` follows the build type and
+is off in Release, but `LIBUNWIND_ENABLE_ASSERTIONS` defaults to on, so the `libunwind` recipe
+names it off. Look for an `*_ENABLE_ASSERTIONS` option before trusting Release alone. Turn on the
+project's SIMD options, such as `WITH_SIMD`, `ENABLE_ASSEMBLY` and `*_ENABLE_ASM`, and leave
+`CMAKE_INTERPROCEDURAL_OPTIMIZATION` off except in a port on the LTO list in
+[Every port](#every-port).
+
 A misspelt CMake option is a warning, not an error, the opposite of meson. Read the warning about
 unused variables in the log rather than trusting the exit status, and take option names from the
 project's own `option()` declarations.
-
-### autotools
-
-```bash
-./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib --disable-static
-make
-make DESTDIR=$PKG install
-```
 
 ### rust
 
@@ -455,6 +649,13 @@ no update to its port reaches. Preflight fails any recipe that runs `cargo build
 which loads `libclang` at build time and cannot do so from a static binary; `ports/fetch` warns
 when it vendors `bindgen` for a recipe that lacks the `RUSTFLAGS` line.
 
+`cargo build` always takes `--release`; `cargo install` builds the release profile by default, and
+no recipe passes `--profile dev` or `--debug`. The profile's optimisation level, codegen units and
+LTO stay at cargo's defaults: one codegen unit with LTO roughly doubles a Rust build. Where
+Alpine's recipe sets them for a hot program, set them in that recipe alone, with
+`CARGO_PROFILE_RELEASE_LTO=true` and `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1`. In a mixed build,
+meson's buildtype or corrosion's `CMAKE_BUILD_TYPE` chooses the cargo profile.
+
 ### go
 
 ```bash
@@ -464,11 +665,76 @@ go build -mod=vendor -ldflags "-s -w" -o <program> ./cmd/<program>
 install -Dm755 <program> $PKG/usr/bin/<program>
 ```
 
-Most Go ports build with cgo off. A program that binds a C library sets `CGO_ENABLED=1`, and one
-whose upstream builds through a makefile passes the vendor flag through it:
-`make PREFIX=/usr GOFLAGS="-mod=vendor"`, then `make PREFIX=/usr DESTDIR=$PKG install` (`aerc` is
-the example). Build into an output name that is not also a directory in the source, or `go build`
-writes the binary inside that directory.
+Every `go build` and `go install` passes `-s -w` in its `-ldflags`. Without them the Go linker
+writes DWARF and a symbol table, which `kpkg` does not strip. A recipe that stamps a version puts
+both in the same string, `-ldflags "-s -w -X main.version=$version"`, because a second `-ldflags`
+replaces the first; `GOFLAGS` does not carry them, because a recipe's own `-ldflags` replaces the
+one it names. `testing/preflight.sh` fails a `go build` or `go install` whose `-ldflags` lacks
+either flag.
+
+`-trimpath` and `-buildvcs=false` come from the exported `GOFLAGS`. A recipe that sets `GOFLAGS`
+itself extends it, `GOFLAGS="$GOFLAGS -mod=vendor"`, or loses both. `GOAMD64` stays unset, which
+is v1.
+
+Most Go ports build with cgo off. A program that binds a C library sets `CGO_ENABLED=1`, and cgo
+then compiles and links its C with the exported `CGO_CFLAGS` and `CGO_LDFLAGS`. One whose
+upstream builds through a makefile passes the vendor flag through it:
+`make PREFIX=/usr GOFLAGS="$GOFLAGS -mod=vendor"`, then `make PREFIX=/usr DESTDIR=$PKG install`
+(`aerc` is the example). A makefile that writes its own `-ldflags` passes `-s -w` only when told:
+podman's, buildah's and skopeo's append `EXTRA_LDFLAGS="-s -w"` and aerc's
+`GO_EXTRA_LDFLAGS="-s -w"`, and a binary such a makefile builds with no `-ldflags` at all takes
+them from `GOFLAGS="$GOFLAGS \"-ldflags=-s -w\""`, which a command-line `-ldflags` replaces.
+Preflight does not see inside a makefile, so read its `go build` lines. Build into an output name
+that is not also a directory in the source, or `go build` writes the binary inside that directory.
+
+### zig
+
+```bash
+zig build -Doptimize=ReleaseSafe -Dcpu=baseline --prefix "$PKG/usr"
+```
+
+Name an optimize mode, `-Doptimize=ReleaseFast` or `ReleaseSafe` (or `--release` where the
+project's `build.zig` offers it), and always `-Dcpu=baseline`: zig compiles for the build
+machine's own CPU unless told otherwise, and the package then stops with an illegal instruction on
+an older one.
+
+### qmake
+
+```bash
+qmake6 CONFIG+=release QMAKE_CFLAGS_RELEASE="$CFLAGS" QMAKE_CXXFLAGS_RELEASE="$CXXFLAGS" \
+       QMAKE_LFLAGS_RELEASE="$LDFLAGS" PREFIX=/usr
+make
+make INSTALL_ROOT=$PKG install
+```
+
+`CONFIG+=release`, never `debug` or `debug_and_release`. Qt's qmake reads no flags from the
+environment, so the three flag variables carry them; each replaces the mkspec's release value
+(`-O2`, `-Wl,-O1`), which the exported flags already hold, and leaves the base `QMAKE_LFLAGS` a
+project's `.pro` adds to alone. A PyQt binding built by `sip-build` takes the same three as
+`--qmake-setting "QMAKE_CXXFLAGS_RELEASE = $CXXFLAGS"` and so on.
+
+### SCons, waf and other build tools
+
+SCons ignores the environment unless the project's `SConstruct` imports it: pass the release
+switch it defines (`mode=release`, `debug=no`, `optimize=yes`) and hand it `CFLAGS`, `CCFLAGS` or
+`LINKFLAGS` where it takes them. waf reads `CFLAGS` from the environment; check that no `--debug`
+or `--enable-debug` is passed.
+
+### Python, Perl, Haskell, Node and OCaml modules
+
+- **Python** (setuptools or a PEP 517 backend): a C extension compiles with the interpreter's own
+  `-DNDEBUG -O3` followed by the exported `CFLAGS`. Nothing to add; check that the package's
+  accelerated build is on, with no `*_NO_EXTENSIONS` set and its Cython build enabled. Where a
+  failed compile falls back to pure Python without an error, make the extension required:
+  MarkupSafe and wcwidth take `CIBUILDWHEEL=1` for that, PyYAML `PYYAML_FORCE_LIBYAML=1`.
+- **Perl**: `Configure` ignores the exported `CFLAGS` and `LDFLAGS`, so the `perl` port passes
+  them: `-Doptimize="$CFLAGS"` (as Alpine does), `-Dldflags="$LDFLAGS"` and
+  `-Dlddlflags="-shared $LDFLAGS"`. XS modules take perl's recorded settings, so a `perl-*` recipe
+  adds nothing.
+- **Haskell** (cabal): keep the default `-O1`, pass no `--enable-debug-info`, and `-O2` only where
+  upstream asks for it.
+- **Node** native modules: node-gyp builds Release by default; pass no `--debug`.
+- **OCaml**: build the native `ocamlopt` targets where upstream offers them beside bytecode.
 
 ### java
 
@@ -510,8 +776,12 @@ make DESTDIR=$PKG PREFIX=/usr install
 Export the compiler flags rather than passing them as a make argument. A variable on the make
 command line beats both the environment and the makefile's own assignment, which is the wrong end
 of that precedence for flags: a makefile's own definitions are its *configuration* (architecture
-width, installation paths, feature constants). Passing flags as arguments discards those, and the
-build then fails somewhere else, on an undeclared constant that reads like a missing header.
+width, installation paths, feature constants), and a makefile that appends with `+=` loses what it
+appends, `-fPIC` included. Passing flags as arguments discards those, and the build then fails
+somewhere else, on an undeclared constant that reads like a missing header. Check the makefile for
+a debug default of its own, such as `CFLAGS = -g -O0`. A plain assignment ignores the environment,
+so that one variable is the exception: once you have read that it carries nothing but flags, pass
+it on the command line, `make CFLAGS="$CFLAGS"`.
 
 ### A graphical application
 
@@ -571,6 +841,7 @@ whatever shape the URL takes.
 
 ```bash
 export CFLAGS="$CFLAGS -Wno-error"
+export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
 make curses PREFIX=/usr SOUND_TYPE=none
 make install PREFIX=/usr SOUND_TYPE=none DESTDIR=$PKG
 ```
@@ -580,8 +851,10 @@ model. `SOUND_TYPE=none` keeps an audio stack off every image for the handful of
 sound. frotz 2.55's makefile adds no `-Werror` and no phase adds one, so `-Wno-error` has no effect
 on this release; it keeps a `-Werror` in a later upstream release from turning this compiler's
 newer warnings into failures without a patch (see
-[An upstream `-Werror`](build-troubleshooting.md#an-upstream--werror)). The flags are exported
-through `CFLAGS` and the make variables are upstream's own configuration knobs, as the
+[An upstream `-Werror`](build-troubleshooting.md#an-upstream--werror)). The makefile appends
+`-O3 -g` after `CFLAGS`, so the objects carry debug information and `-Wl,--strip-debug` leaves it
+out of the linked program. The flags are exported
+through `CFLAGS` and `LDFLAGS` and the make variables are upstream's own configuration knobs, as the
 [make-only shape](#make-only) describes.
 
 The package carries no story. The desktop entry is `Exec=frotz %f` with `Terminal=true`, the shape
@@ -625,7 +898,9 @@ to the section that explains it.
    the line (`sha256 = <hash>  <file>`) straight away: `kpkg` refuses to extract an unhashed
    source, and nothing else can verify it. For a port with `vendoring =`, the same run generates
    `<name>-vendor-<version>.tar.xz`; hash and record that file too. `make fetch` takes no port name
-   and walks all 1,999 ports, so use `ports/fetch <port>` here.
+   and walks all 2,000 ports, so use `ports/fetch <port>` here. When you do want the whole tree,
+   `make fetch FETCH_JOBS=8` works on eight ports at once; each port's lines then print together
+   when it finishes.
 5. **Write `build.sh`** from the [canonical shape](#canonical-build-shapes) for its build system,
    applying any [patches](#patches) before it configures.
 6. **Wire it in.** Name the port in the `depends` line of whatever needs it, and name it in the
@@ -718,8 +993,10 @@ line saying what belongs on each. Apply these rules in order; the first that mat
     [The shelves](../06-reference/ports-catalogue.md#the-shelves) in the ports catalogue lists what
     each shelf holds today, which is the quickest way to see where a port's neighbours are.
 
-A new shelf is a new line in `ports/shelves` and a new directory. Its id is lowercase letters,
-digits and `-`; it is never `libs`, because a source-less port hashes `<portdir>/../../libs` and a
+A new shelf is a new line in `ports/shelves`, `<id> - <description>`, and a new directory; `make
+publish-plan` then replaces the `-` with the shelf's source-archive volume (see [Volumes and
+shelves](#publishing-sources)), and preflight fails the line until it has one. Its id is
+lowercase letters, digits and `-`; it is never `libs`, because a source-less port hashes `<portdir>/../../libs` and a
 shelf by that name would be hashed into those ports; never `core`; and never the name of a port,
 which could not be told from a loose port. Preflight and the [pre-push hook](#the-pre-push-hook)
 refuse a tree that breaks any of this. A listed shelf must also hold at least one port, which
@@ -778,7 +1055,13 @@ from that shelf; `src-<area>.txt` for ports of KDOS's own, where the phase insta
 and, in `40_lang` and `41_system`, `00-order.txt`, the order run, which sorts first and holds the runs whose order a comment
 pins, such as `toybox` followed by the ports that take back the names it compiles out. The files
 are read in byte order as one list, so which file a port is in changes nothing but where a reader
-finds it. A new port goes in its shelf's file, created with the same header as its siblings when
+finds it.
+
+The order run is also what `kdosbuild --port-jobs` keeps serial: its ports, and every port the
+resolved order puts among them, build one at a time and before any other port of the phase. Pin a
+pair there when their order matters for a reason `depends` cannot say, such as two ports that
+install the same path, where whoever installs last owns it; a build by level names such a pair when
+a commit moves a path the serial order would not have. A new port goes in its shelf's file, created with the same header as its siblings when
 the phase has none for that shelf yet. A phase has `packages.txt` or `packages.d/`, never both, and
 preflight fails a file in `packages.d/` whose name is not a listed shelf, a `src-` area or
 `00-order`, and a port in the file of a shelf or area it is not on.
@@ -793,6 +1076,10 @@ checked by `testing/preflight.sh`.
 | No explanatory comments in `kpkgbuild`: the banner header plus the metadata keys, nothing else | The recipe is data. Reasoning belongs in the commit message or in this book. `build.sh` is a script and carries the comments any script does |
 | No source edits with stream editors (`sed -i` and the like) | Use a build flag. Patch only where no flag exists, and then ship a real `.patch` beside the recipe (see [Patches](#patches)), so the change is reviewable and covered by the recipe hash |
 | Every optional feature explicit, and every library it needs in `depends` | Many build systems answer a missing library by quietly disabling the feature. Dropping a dependency then gives a build that succeeds and is narrower than its recipe claims, and the library is absent from the host with nothing to say so |
+| Every port of the same phase it builds against in `depends`, tools included | A serial build installs a phase's ports in list order, which can hide a missing entry: the library happens to be installed first. `kdosbuild --port-jobs` builds a level's ports side by side against the lower levels only, and the levels come from `depends`, so an undeclared same-phase dependency is absent there and the port fails or loses the feature. See [Building a package phase by level](build-system.md#building-a-package-phase-by-level). `testing/depdrift.py` reads a built tree and names every same-phase library a package links or requires without declaring it; see [Undeclared link dependencies](testing.md#undeclared-link-dependencies) |
+| Every library the port links in `depends`, whatever its phase | The [package store](../03-architecture/packaging.md#the-package-store) keys a port on its declared dependencies. After an install `kpkg` reads the package's ELF files and prints `<port> links <owner> without declaring it` for each library owned by a port outside that closure; the store entry then re-checks that library's bytes on every lookup, but a library found and used without being linked (a plugin, a header, a tool) stays invisible to it. Add the owner to `depends` |
+| The exported flags extended, never replaced: `CFLAGS="$CFLAGS …"`, `LDFLAGS="$LDFLAGS …"`, `GOFLAGS="$GOFLAGS …"` | A bare assignment drops the reproducibility flags, the hardening and the release options at once, and the package still builds. See [The release flags](#the-release-flags) |
+| No `-march`, `-mtune`, `native` CPU or feature level above x86-64 v1 | The build machine is not the one that runs the package; [`kdos march`](../04-programs/kdos-command.md#kdos-march) chooses a feature level per machine. zig needs `-Dcpu=baseline` to keep this |
 | Every meson `-D` is an option the port defines | meson stops at setup on an unknown option. Preflight checks each one against the tarball's own option file, and checks the two option types that take a closed set of values |
 | A command named in a diagnostic is in single quotes | A backtick inside double quotes is a command substitution, not a name: an `echo` telling somebody to run something runs it instead. Preflight checks the build system's own scripts under `script/` |
 | Nothing reaches the network | The build runs with no network. A meson subproject fallback, a CMake download call, or a Python build backend fetching a tool from a package index all fail hours in. See [Build troubleshooting](build-troubleshooting.md#a-build-that-reaches-the-network) |
@@ -820,11 +1107,10 @@ Write the diff with paths one directory deep (`a/src/…`, `b/src/…`), as `git
 `diff -ru old new` does, so `-p1` strips that directory and the paths resolve against `$SRC`;
 `patch -p1 -i "$PORT_SRC/<file>.patch"` is the form nearly every port uses.
 
-Only a name ending in `.patch` is covered by the [recipe hash](../06-reference/glossary.md). A patch
-named `*.diff` is invisible to it, so editing it leaves the port reporting itself current and the
-image keeps the build from the old patch (see
-[Shipping a script the port carries](#shipping-a-script-the-port-carries)). A patch is tracked by
-git with the recipe and is not published to the source archive.
+Name a patch `*.patch`. The [recipe hash](../06-reference/glossary.md) covers every file beside the
+recipe that no `sha256 =` names, so a `*.diff` rebuilds the port when edited too, but `.patch` is
+what the hash takes first and by name, and what a port of KDOS's own is read for. A patch is
+tracked by git with the recipe and is not published to the source archive.
 
 A numbered patch series that upstream publishes is a source, not a file of ours. `readline` names
 each of its official patches as a later `source =` with its own `sha256 =`; each is copied into
@@ -996,7 +1282,8 @@ A build that looks for `asciidoctor` on `$PATH` uses it whenever it is there, so
 does not name it ships a different package once any other port pulls it into the chroot. Name it
 in `depends` and set the documentation switches explicitly. Where upstream has no switch for the
 manual pages alone, build the pages' own targets (`newsboat`, `git-lfs`) or run upstream's page
-script (`ccache`): the package carries the pages and no HTML manual. An HTML manual ships only
+script (`ccache-manual`, a port of its own because ccache is built a phase before asciidoctor):
+the package carries the pages and no HTML manual. An HTML manual ships only
 where the program opens it itself: `wireshark`'s Help menu reads the HTML form of each page, so
 that package carries both forms.
 
@@ -1049,21 +1336,14 @@ Some ports install a small script of KDOS's own beside the upstream program, suc
 `aerc`. Where you keep that script matters.
 
 The [recipe hash](../06-reference/glossary.md), which decides whether a port needs rebuilding,
-covers `kpkgbuild`, `build.sh`, `postinstall.sh` and every file ending in `.patch`, and nothing else
-in the directory of a port that names a `source =`. Every phase sets
-`KPKG_STRICT_RECIPE=1`, under which an installed package whose recipe hash has changed counts as
-not installed and is rebuilt. A helper script kept in its own file beside the recipe, with no
-`sha256 =` line naming it, is invisible to the hash: after you edit it, the port still reports
-itself current, and the image keeps the copy it already had. Nothing fails; the machine runs the
-old script. The same holds for any unhashed file a `build.sh` reads, such as `linux/kdos.config`,
-and an edit to one needs a `release` bump to reach the image (see
-[Anatomy of a port](#anatomy-of-a-port)). A patch has the same exposure,
-which is why it must be named `*.patch` (see [Patches](#patches)).
+covers `kpkgbuild`, `build.sh`, `postinstall.sh`, every `.patch` and every other file in the port's
+directory that no `sha256 =` line names (see [Anatomy of a port](#anatomy-of-a-port)). Every
+phase sets `KPKG_STRICT_RECIPE=1`, under which an installed package whose recipe hash has changed
+counts as not installed and is rebuilt, so a helper script kept in its own file beside the recipe
+reaches the image on the next build after an edit. `testing/preflight.sh`, however, checks only a
+script written into `build.sh`.
 
-A port with no `source =` is different: its whole directory is hashed, subdirectories included,
-because its own files *are* its recipe (see [A port of KDOS's own](#a-port-of-kdoss-own)).
-
-Write such a script into `build.sh` instead, in a quoted heredoc whose delimiter is `KDOS_SH`:
+Write such a script into `build.sh`, in a quoted heredoc whose delimiter is `KDOS_SH`:
 
 ```bash
 install -d "$PKG/usr/libexec/aerc/filters"
@@ -1161,7 +1441,7 @@ removed and rebuild each index whose directory it touched, once, from what is th
 | `/usr/share/fonts/`, `/etc/fonts/` | `fc-cache -s`, into `/usr/lib/fontconfig/cache`, not `/var/cache`, which the image and every pack exclude |
 | `/usr/share/info/` | the info `dir`, regenerated with `install-info` over every page |
 | `/etc/udev/hwdb.d/`, `/usr/lib/udev/hwdb.d/`, `/lib/udev/hwdb.d/` | `udevadm hwdb --update`, into `/etc/udev/hwdb.bin` |
-| `/usr/share/man/` | `makewhatis`, the `mandoc.db` that `apropos` and `whatis` search |
+| `/usr/share/man/` | `makewhatis`, the `mandoc.db` that `apropos` and `whatis` search; skipped during the build, where `70_image` writes it once over the finished tree |
 | `/usr/share/fonts/` | `mkfontdir`, the `fonts.dir` of every subdirectory holding PCF or BDF faces, which Xwayland's core font path reads |
 | `/usr/share/texmf-dist/`, `/usr/share/texmf-local/` | `mktexlsr` over those two trees and `/usr/share/texmf-var`, the `ls-R` files through which every TeX program finds a file |
 | `/usr/share/applications/` | `update-desktop-database`, the `mimeinfo.cache` that `kdos-appbox open` and the shell's Open With read for a type no `mimeapps.list` names |
@@ -1169,6 +1449,11 @@ removed and rebuild each index whose directory it touched, once, from what is th
 A port therefore installs its schema, loader, MIME XML, font, info page, hwdb file, manual page,
 TeX file or desktop entry and does nothing else. A per-port hook would rebuild the index only when that port is installed,
 not when the next one adds to it or the last one leaves.
+
+`KPKG_SKIP_INDEX` names indexes to leave alone, space-separated, by the name `kpkg` prints in
+`index skipped: <name>`: `schemas`, `gio`, `pixbuf`, `mime`, `fonts`, `info`, `hwdb`, `man`,
+`xfonts`, `texmf` and `desktop`. The build's chroot phases set it to `man`; a running system does
+not set it, and there every index above is kept current.
 
 A missing tool is skipped: the index is written when the package carrying the tool arrives,
 because that package's own files touch a watched directory. fontconfig installs no font, so the
@@ -1187,7 +1472,8 @@ The manual index is the one that is merged rather than rebuilt, and only when no
 Two packages in three carry manual pages, and reading every page on the system again for each one
 would add seconds to every install. The pages an install places go to `makewhatis -d`. A removal,
 an upgrade that orphans a page, or a missing `mandoc.db` rebuilds the whole tree, because a merge
-cannot drop an entry for a file that is already gone.
+cannot drop an entry for a file that is already gone. The build skips this index altogether and
+`70_image` writes it once over the finished tree.
 
 Under `--root`, each tool is handed the root-prefixed directory, and `udevadm` and `fc-cache` get
 the root itself. The pixbuf loader cache cannot take a directory, because the tool writes the path
@@ -1237,6 +1523,12 @@ Unpack it where the tool will be standing, not beside the manifest. Cargo finds 
 by walking up from the current directory, so a build that invokes it from a subdirectory never
 reads a configuration placed next to the manifest, and every crate in the bundle resolves as
 *missing* while sitting in the vendor directory.
+
+A Python bundle goes outside the source tree, in `$SRC_ROOT/vendor`, when the package keeps its
+code at the top of the tree and names no packages of its own. setuptools then discovers packages
+by itself, takes a `vendor/` beside the real one for a second top-level package, and refuses to
+build. `python3-keyring` is the example; a `src/` layout, or a `packages` list in the project's
+configuration, is safe with `vendor/` in the tree.
 
 `vendordir` is the other half: it says where the vendoring tool must run, which is beside the
 manifest. The two directories are not always the same place. Five ports set it: `gopls`
@@ -1343,8 +1635,9 @@ by name instead of reaching for the network. `--offline` is not passed, because 
 
 ### A vendor bundle hashes the same twice
 
-Bundles are packed with the same flag set packages use (names sorted, the pinned timestamp, owner
-and group 0, GNU format, single-threaded `xz -9`), because a plain archive records the extraction
+Bundles are packed with the tar flag set packages use (names sorted, the pinned timestamp, owner
+and group 0, GNU format) and a compressor of their own, single-threaded `xz -9 -T1`, which every
+bundle's `sha256 =` line depends on, because a plain archive records the extraction
 time and the builder's identity, so two generations of the same bundle would hash differently and
 the recipe's `sha256 =` line could never match a regenerated one.
 
@@ -1883,21 +2176,22 @@ its one-a-second limit like any other request, and a 429 from it waits ten secon
 ## Publishing sources
 
 Upstream archives are not committed. Git carries the recipe, and the archive it names is a release
-asset in the `kunaldawn/kdos` repository, named by its own sha256, in one of the numbered
-releases `sources-001`, `sources-002`, …; the committed file `ports/sources.idx` says which. That
-is where every other checkout's `make fetch` looks for it first (see
-[Where sources come from](developing.md#where-sources-come-from)). A new or bumped source therefore
-has to reach the archive before the commit naming it is pushed, or the commit builds on the machine
-that wrote it and nowhere else. The same holds for the index line saying where it went, which is
-why `ports/sources.idx` is committed with the recipe. Patches, configuration files and anything
-else git tracks are not archived, even when a recipe hashes them.
+asset in the `kunaldawn/kdos` repository: numbered pre-releases, the volumes `sources-1`,
+`sources-2` and on, hold the files of the shelves `ports/shelves` maps to each, as
+`<shelf>--<file>`, and the committed file `ports/sources.idx` says which volume and which asset
+hold each hash. That is where every other checkout's `make fetch` looks for
+it first (see [Where sources come from](developing.md#where-sources-come-from)). A new or bumped
+source therefore has to reach the archive before the commit naming it is pushed, or the commit
+builds on the machine that wrote it and nowhere else. The same holds for the index line saying
+where it went, which is why `ports/sources.idx` is committed with the recipe. Patches,
+configuration files and anything else git tracks are not archived, even when a recipe hashes them.
 
-The `sha256 =` line is a source's identity, and its URL is only a hint. With a hash, the local
-cache, the archive and upstream are interchangeable, and the nearest is used; `ports/fetch` keeps
-no copy that fails its hash, and `ports/publish` uploads none. Immediately after a version bump,
-before the new hash is recorded, upstream is the only possible source: the archive cannot hold a
-file that has never been hashed here, and another copy of a file with no recorded hash cannot be
-verified.
+The `sha256 =` line is a source's identity, and its URL and its asset name are only addresses.
+With a hash, the local cache, the archive and upstream are interchangeable, and the nearest is
+used; `ports/fetch` keeps no copy that fails its hash, and `ports/publish` uploads none.
+Immediately after a version bump, before the new hash is recorded, upstream is the only possible
+source: the archive cannot hold a file that has never been hashed here, and another copy of a file
+with no recorded hash cannot be verified.
 
 Uploading needs a token with write access to `kunaldawn/kdos`, so publishing is a maintainer's
 step. If you are contributing without that access, say in your pull request which ports carry new
@@ -1915,7 +2209,7 @@ A version bump, end to end:
 ```sh
 ports/update <port>                 # accept the bump: version and sha256 lines are rewritten, the source fetched
 make build BUILD_ARGS="--phases <phase>,70_image --rebuild <port>"   # the phase whose list names it
-ports/publish <port>                # upload what the archive lacks and add its lines to ports/sources.idx
+ports/publish <port>                # upload what the archive lacks and write its lines into ports/sources.idx
                                     # (maintainer token; else --check and say so in the PR)
 git commit ports/core/<shelf>/<port> ports/sources.idx   # the recipe and the index; the archive itself is gitignored
 git push                            # the pre-push hook checks the layout and that every new hash is archived
@@ -1929,55 +2223,158 @@ refuses the unhashed archive and `ports/publish` has nothing to publish.
 ### `ports/publish`
 
 ```text
-ports/publish [--dry-run] [--check] [--history] [--describe] [--freeze <kdos-tag>] [port…]
+ports/publish [--dry-run | --check] [--history] [port…]
+ports/publish --plan [--dry-run]
+ports/publish --describe [--dry-run]
+ports/publish --rehome [--dry-run] [port…]
+ports/publish --retire [--dry-run]
+ports/publish --orphans [--prune=yes-delete]
+ports/publish --freeze <kdos-tag> [--dry-run | --check]
+ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned] [--publish] [--dry-run]
 ```
 
 `ports/publish` uploads every file a `sha256 =` line names, under all of `ports/core` or only the
 named ports, that git does not carry and the archive does not hold yet. A port is named by its
 bare name, on whatever shelf it sits, and a named port that does not exist fails the run, with
-`--check` as without it. A path git tracks as a Git
-LFS pointer is not carried: the pointer names the file and is not the file. The bytes come from
-the port directory, the cache, or the local LFS store, and are hashed again immediately before
-upload, because an asset whose bytes do not match its name would poison every checkout that asks
-for it.
+`--check` as without it. A path git tracks as a Git LFS pointer is not carried: the pointer names
+the file and is not the file. The bytes come from the port directory, the cache, or the local LFS
+store, and are hashed again immediately before each upload, because an asset whose bytes are not
+the hash its index line names would poison every checkout that asks for it.
 
 A file is present when `ports/sources.idx` names its hash and an anonymous `HEAD` on the asset's
-download URL answers 200; the `HEAD` costs no API quota. A hash the index does not name is missing
-without asking. A rerun therefore uploads only what is still missing, and an interrupted run is
-resumed by running it again. Only a 404 counts as missing; any other status, or a network failure,
-stops the run with `archive unreachable`, because an outage proves nothing about what the archive
-holds.
+download URL (on every part's, for a file in parts) answers 200; the `HEAD` costs no API quota. A
+hash the index does not name is missing without asking. A rerun therefore uploads only what is
+still missing, and an interrupted run is resumed by running it again. Only a 404 counts as
+missing. A 5xx or a dropped connection is asked again after 10, 30 and 60 seconds, since GitHub's
+download host fails a few of thousands of requests; one that persists, or any other status, stops
+the run with `archive unreachable` and the URL, because an outage proves nothing about what the
+archive holds.
 
-A new file goes into the highest-numbered archive release while that holds fewer than 1,000
-assets, counted on GitHub rather than in the index, since another branch may have added some; a
-full release opens the next, created with `make_latest` off. A file the index names but GitHub
-lacks goes back into the release its line names. An upload is accepted only when GitHub reports
-its digest as the expected hash, and its line, `<hash> <NNN> <port>/<file>`, is appended to
-`ports/sources.idx` at once, so a run that dies keeps every line it earned; the file is sorted when
-the run ends. Every release a run adds to has its notes rewritten from the index: a file count and
-a `sha256sum`-format list of `<hash>  <port>/<file>`. **Commit `ports/sources.idx`**: `make fetch`
-and the pre-push hook read it from the tree, and a file no committed line names cannot be found.
-Preflight fails an index with a malformed line, a hash listed twice, or lines out of hash order.
+One run writes the index at a time. A run that is about to change `ports/sources.idx` takes a lock
+on `ports/sources.idx.lock` for the rest of the run, and a second writer stops at once with
+`another ports/publish is writing ports/sources.idx`. Each rewrite of the index is checked to hold
+exactly the lines it should, every other hash's plus the one written, before it replaces the file;
+one that does not stops the run and leaves the index as it was.
+
+**Which volume.** Recipes are read shelf by shelf and port by port, both in C-locale order. A
+hash belongs to the shelf of the first port that names it, goes into that shelf's volume, the
+number the second field of its `ports/shelves` line gives, and takes its label `<port>/<file>` from
+that port. A file only old history names (`--history`) is shelved as `attic` and goes into the
+highest volume. A missing volume is created as a pre-release with `make_latest` off, titled
+`Sources N: <first shelf> … <last shelf>` after the shelves mapped to it, and a volume found to be a
+full release is changed into a pre-release, so the repository's latest release is always a KDOS
+system release. A release holds at most 1,000 assets, parts counted one by one. A file its volume
+has no room for goes to the lowest-numbered volume with room, or else opens the next volume, and
+the run prints a `spilled` line; the index records the volume it went to, so `make fetch` finds it
+there, and `--rehome` moves it home once its own volume has room. A file the index names in a
+volume but GitHub lacks goes back to the volume and the asset name its line records.
+
+**Which name.** A file is stored as `<shelf>--<file>`, as GitHub will store it: every character
+outside `[A-Za-z0-9._-]` becomes `.`, so `libsigc++2-2.12.1.tar.xz` on the `gtk` shelf is
+stored as `gtk--libsigc..2-2.12.1.tar.xz`. When that name is taken in the volume, by another
+hash's index line (compared ignoring case) or by an asset of other bytes, the next of
+`<shelf>--<port>--<file>` and `<shelf>--<port>--<first 12 hex digits of the hash>--<file>` is
+tried. The upload carries the label
+`<port>/<file>`, which the release page shows in place of the stored name. The index records the
+name GitHub returned, and prints a note when it differs from the name asked for. A run that
+stops after such an upload and before its index line finds it again by digest and label, since
+the name asked for is not in the release, and adopts it.
+
+**Files in parts.** A file larger than 1900 MiB (`KDOS_PART_SIZE`) is cut into parts of that size
+under `ports/.srccache/.parts/<hash>/`, never under `/tmp`, and each part is uploaded as
+`<asset>.part01` … `<asset>.partNN`. Its index line, carrying every part's hash, is written only
+after every part is stored with a verified digest, and the staging directory is removed when the
+run ends. A run that stops midway leaves the parts it stored; the next run finds them in the
+release listing with the right digests and adopts them without sending them again.
+
+**The index.** An upload is accepted only when GitHub reports its digest as the expected hash.
+Its line, `<hash> <tag> <asset> <port>/<file>` with `parts=<N>:<h1>,…,<hN>` after it for a file in
+parts, replaces any line for that hash at once, the file is sorted, and the result is checked
+against every rule preflight holds the index to before it replaces the index; a run that dies
+keeps every line it earned. `ports/publish` refuses to write an index that is not format 2, or
+one that already breaks those rules. **Commit `ports/sources.idx`**: `make fetch` and the pre-push
+hook read it from the tree, and a file no committed line names cannot be found.
+
+**Release notes.** Every release a run touches has its notes rewritten from the index, and a
+volume its title. The notes hold one section per shelf, headed by the shelf's name and its
+description from `ports/shelves`, then a table of port, version, file (linked to its asset, or to
+each part), size and SHA-256; a file sits under the shelf its asset name starts with, and
+`attic--` files under `attic`, last. Past 120,000 characters the tables drop their links and show
+16 hex digits of each hash, and past that again they are cut short with a pointer to
+`ports/sources.idx`, which is complete.
 
 | Flag | Does |
 |---|---|
-| `--dry-run` | List what would be uploaded, with sizes, totals and target releases (estimated from the index). Needs no token and makes no API call |
-| `--check` | Presence only: list what is missing from the archive; exit 1 if anything is |
-| `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`, or every object in the store when git-lfs is absent), to seed the archive with what old commits' recipes point at. With git-lfs, objects at other paths are never wanted, since no recipe asks the archive for them, and only objects the local LFS store or the cache holds are wanted; the rest (old versions and paths this clone never downloaded, which `ports/fetch` cannot supply) are counted on one line and skipped without failing the run. Without git-lfs no path is known, so every object in the local store is offered, whatever path it came from |
-| `--describe` | Rewrite every archive release's notes from the index, uploading nothing. Needs the token |
-| `--freeze <tag>` | Write `build/freeze/sources-<tag>.sha256` for the tag's recipes, found one shelf down or directly under `ports/core`, require every hash in it to be archived, and attach it as `sources.sha256` to release `<tag>` on `$KDOS_REPO`, creating a draft release when there is none. See [Cutting a release](developing.md#cutting-a-release) |
+| `--dry-run` | List what would be uploaded: the target volume, the predicted asset name (resolved against the index and the rest of the plan, not against GitHub), the part count and the size. Makes no network call and needs no token, takes every indexed file as present, and takes the index's count of each volume for its assets, so a spill is predicted as it would happen. With `--plan`, `--rehome` or `--retire`, lists what that mode would do |
+| `--check` | Presence only: list what is missing from the archive, as `not in ports/sources.idx` or `indexed in <tag> as <asset> but absent`; exit 1 if anything is |
+| `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`), to seed the archive with what old commits' recipes point at. Each is labelled `<port>/<file>` from its old path and goes to its port's shelf today, or, when no port of that name exists today, to the highest volume as `attic--<file>`. Objects the local LFS store and the cache do not hold are counted on one line and skipped without failing the run. Without git-lfs no object can be labelled, so none is uploaded, and the count says to install it |
+| `--plan` | Give every shelf `ports/shelves` lists without a volume one, and rewrite those lines; see below. No network, no token |
+| `--describe` | Rewrite the title and notes of every release the index names, uploading nothing. Needs the token |
+| `--rehome` | Move archived files into the volume and name of the shelf that owns them now, then delete old copies; see below |
+| `--retire` | Delete every emptied `src-<shelf>` release of the older layout, and its tag; see below |
+| `--orphans` | List index lines no current recipe names; see below |
+| `--freeze <tag>` | Write `build/freeze/sources-<tag>.sha256` for the tag's recipes, found one shelf down or directly under `ports/core`, require every hash in it to be archived, and attach it as `sources.sha256` to release `<tag>` on `$KDOS_REPO`, creating a draft release when there is none. With `--dry-run`, only the list is written. See [Cutting a release](developing.md#cutting-a-release) |
+| `--release <tag>` | Build and attach the system release of `<tag>`. See [Cutting a release](developing.md#cutting-a-release) |
 
 Exit status is 0 when everything wanted is archived, 1 when something is missing or an upload
-failed, and 2 when an asset's digest disagrees with its name and could not be repaired. `--freeze`
-also exits 2 when the release already carries a different `sources.sha256`; replace that asset by
-hand, and only while the release is still a draft.
+failed, and 2 when every name for a file is held by other bytes, or an asset's digest disagrees
+with its index line and could not be repaired. `--freeze` also exits 2 when the release already
+carries a different `sources.sha256`; replace that asset by hand, and only while the release is
+still a draft.
 
-The archive is append-only. The one deletion `ports/publish` makes is of an asset whose name is a
-hash and whose digest is a different hash, or an upload GitHub never completed: that asset is
-corrupt by definition and holds the name, so it is deleted and uploaded once more. A second
-disagreement exits 2. GitHub may report a completed asset's digest as null; such an asset is asked
-for again and, if it still has none, downloaded and hashed. An unknown digest is never a reason to
-delete.
+**Volumes and shelves.** The second field of every `ports/shelves` line is the shelf's volume. A
+new shelf is written with `-` in that field, or with none, and `ports/publish --plan` (`make
+publish-plan`) gives it one, with no network: it counts the files each shelf owns (every recipe
+hash whose first port is on it, a file in parts counted once per part), takes the shelves without
+a volume in C order, and adds each to the highest volume while that volume's count stays within
+`KDOS_VOLUME_FILL` (650), opening the next volume, numbered past any the index names, when it
+would not. A shelf larger than the fill gets a volume of its own. A shelf that already has a volume
+keeps it, so planning never moves a file. `--plan --dry-run` prints each volume's count, shelves
+and title and writes nothing. Preflight fails a shelf whose volume is not a positive integer.
+
+**Moving files between volumes.** Moving a port to another shelf leaves its files where they were
+archived, and `make fetch` still finds them through the index. `ports/publish --rehome [port…]`
+tidies that. A file is at home when it sits in the volume of a shelf `S` whose port names it, under
+a name starting `S--`, so a hash two shelves name is never moved back and forth. A file in a
+`src-<shelf>` release of the older layout, one release per shelf, or under a name no current shelf
+of its ports gives it, is placed as a new file is, spilling when its volume is full; one no current
+recipe names goes from such a release to the highest volume as `attic--<file>`, and one already in
+a volume stays where it is. A file that spilled moves home only when its own volume has room.
+Each move uploads the file (from the local copy, or downloaded from the archive and verified when
+there is none) and rewrites its index line, so a run that stops keeps every move it made and is
+resumed by running it again. Then, in a second phase, an asset in a `sources-*` or `src-*` release
+is deleted only when its digest is an indexed file's (or one of its parts'), the working index
+**and** the pushed one (`@{upstream}:ports/sources.idx`, as this clone last fetched or pushed it)
+both place that file somewhere else, and GitHub lists that other place with the right digest. So
+the first run after a move uploads and rewrites the index; commit and push it, and a second run
+deletes the old copies. Without an upstream branch the second phase deletes nothing. An asset whose
+digest no index line names is reported as a `stray` and never deleted.
+
+**Retiring the older layout.** `ports/publish --retire` deletes every `src-<shelf>` release that
+holds no asset, then its tag, which deleting a release leaves behind, and any `src-*` tag whose
+release is already gone. A `src-*` release that still holds any asset is refused and listed with
+its count, and the run exits 1; `--rehome`, before and after the push, is what empties it. It never
+touches a `sources-<N>` volume or a `v*` release. `--retire --dry-run` reads the archive with the
+token and deletes nothing. A clone that fetched the old tags keeps them until they are deleted
+locally (`git tag -l 'src-*' | xargs -r git tag -d`), and a `git push --tags` from it would create
+them again on GitHub.
+
+**Orphans.** `ports/publish --orphans` prints, with no network, every index line no current
+recipe names, as `<sha256> <tag> <asset> <port>/<file>`, and marks a line `protected` when a
+recipe at any `v*` tag names its hash or a `build/freeze/*.sha256` lists it, then counts both.
+`--orphans --prune=yes-delete` deletes the assets of every unprotected orphan, all its parts
+included, each checked against its index hash first, then removes the lines and rewrites the
+notes; any other `--prune` value, and `--prune` without `--orphans`, is refused. A checkout older
+than the pruning that still names a pruned file goes upstream for it.
+
+The archive is otherwise append-only. Beyond `--rehome` and `--prune=yes-delete`, and `--retire`
+deleting emptied releases, `ports/publish` deletes an asset only when it is an upload GitHub never completed (a `starter`), or when it holds
+other bytes at a name the index gives this hash, or was just uploaded by this run and GitHub
+reports other bytes: that asset is corrupt, so it is deleted and uploaded once more, and a second
+disagreement fails the file. An asset of other bytes at any other name is someone else's, and the
+next name is tried instead. GitHub may report a completed asset's digest as null; such an asset is
+asked for again and, if it still has none, downloaded and hashed. An unknown digest is never a
+reason to delete.
 
 The token is read from `$KDOS_SOURCES_TOKEN`, or from `~/.config/kdos/sources-token`, which is
 refused when its group or others can read it. It needs write access to the contents of
@@ -1985,24 +2382,27 @@ refused when its group or others can read it. It needs write access to the conte
 process list shows it, and it is removed from the environment before any child starts.
 
 GitHub throttles content creation separately from its hourly quota, so at least
-`KDOS_PUBLISH_DELAY` seconds pass between creating calls: eight by default, which holds a long run
-under 75 a minute and 480 an hour. A 403 or 429 waits for `retry-after` or `x-ratelimit-reset`, or
-60 seconds for a bare 429 or a 403 naming a secondary rate limit, and retries. An upload that meets
-a 5xx or a dropped connection is retried twice; the partial `starter` asset it may leave is
-deleted and replaced.
+`KDOS_PUBLISH_DELAY` seconds pass between creating, changing and deleting calls: eight by default,
+which holds a long run under 75 a minute and 480 an hour. A 403 or 429 waits for `retry-after` or
+`x-ratelimit-reset`, or 60 seconds for a bare 429 or a 403 naming a secondary rate limit, and
+retries. An upload that meets a 5xx or a dropped connection is retried twice; the partial
+`starter` asset it may leave is deleted and replaced.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `KDOS_SOURCES_TOKEN` | `~/.config/kdos/sources-token` | The upload token |
-| `KDOS_PUBLISH_DELAY` | `8` | Seconds between creating calls |
-| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index read and appended to |
-| `KDOS_RELEASE_CAP` | `1000` | Files per archive release before the next opens; GitHub's limit is 1000 |
+| `KDOS_PUBLISH_DELAY` | `8` | Seconds between creating, changing and deleting calls |
+| `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index read and written |
+| `KDOS_RELEASE_CAP` | `1000` | Assets per archive release, parts counted; a file whose volume would pass it spills into another volume. GitHub's limit is 1000 |
+| `KDOS_VOLUME_FILL` | `650` | The planned assets per volume that `--plan` packs shelves to |
+| `KDOS_PART_SIZE` | `1992294400` (1900 MiB) | A file larger than this is uploaded in parts of this size |
 | `KDOS_LFS_STORE` | `<git dir>/lfs/objects` | The LFS store read for bytes and by `--history` |
-| `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `--freeze` attaches to |
+| `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `--freeze` and `--release` attach to |
 | `KDOS_GITHUB_API`, `KDOS_GITHUB_UPLOADS` | `https://api.github.com`, `https://uploads.github.com` | The two endpoints, replaced to run against a local stand-in |
 
 `KDOS_SOURCES_REPO` and `KDOS_SOURCES_BASE` name the archive as they do for `ports/fetch`; an empty
-`KDOS_SOURCES_BASE` stops `ports/publish` at once, since there is nothing to publish to.
+`KDOS_SOURCES_BASE`, or one naming a local directory, stops every mode but `--plan` and a plain
+`--orphans` at once, since there is nothing to publish to.
 
 ### The pre-push hook
 

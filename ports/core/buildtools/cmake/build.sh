@@ -27,7 +27,8 @@ export CXXFLAGS="$CXXFLAGS -include cstdint"
 	--no-system-cppdap   \
 	--no-system-librhash \
 	--system-libs \
-	-- -D CMake_BUILD_LTO=ON \
+	-- -D CMAKE_BUILD_TYPE=Release \
+	-D CMake_BUILD_LTO=ON \
 	-D BUILD_CursesDialog=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_Curses=ON \
 	-D BUILD_TESTING=OFF

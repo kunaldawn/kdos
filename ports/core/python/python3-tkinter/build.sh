@@ -18,7 +18,8 @@
 	--with-system-expat \
 	--without-system-libmpdec \
 	--with-ensurepip=no \
-	--disable-test-modules
+	--disable-test-modules \
+	OPT="-O3 -Wall"
 
 _ext=$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX"))')
 make "Modules/_tkinter$_ext"

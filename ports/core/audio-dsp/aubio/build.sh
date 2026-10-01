@@ -24,7 +24,9 @@ WAF="python3 $WAFDIR/waf-light"
 # name. avcodec is off: the reader is written against an FFmpeg API older than
 # the one here, and libsndfile reads the formats the tools take. fftw3f is the
 # single-precision FFT matching aubio's float samples. JACK is not on this
-# system. The manual pages need txt2man, which is not a port.
+# system. The manual pages need txt2man, which is not a port. The wscript
+# puts -g ahead of CFLAGS in its release build; -g0 last takes it back.
+export CFLAGS="$CFLAGS -g0"
 OPTS="--disable-jack --disable-avcodec --enable-fftw3f --enable-sndfile
       --enable-samplerate --disable-docs --disable-tests --enable-examples"
 $WAF configure --prefix=/usr --libdir=/usr/lib $OPTS

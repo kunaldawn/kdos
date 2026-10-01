@@ -19,6 +19,7 @@ case "$(uname -m)" in
 	aarch64) _lgpage=16 ;;
 	*) _lgpage=12 ;;
 esac
+export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
 ./configure --prefix=/usr --libdir=/usr/lib --sysconfdir=/etc \
 	--localstatedir=/var \
 	--disable-static \

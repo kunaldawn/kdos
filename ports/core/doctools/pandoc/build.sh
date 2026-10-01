@@ -39,7 +39,7 @@ printf 'repository hackage.haskell.org\n  url: file+noindex://%s\n' "$SRC_ROOT/v
 # system's lua port is. zlib is the system library, found by pkg-config.
 # Split sections let the link drop the unused code of 229 libraries, and the
 # stripped binary carries no debug information.
-cabal v2-install -j \
+cabal v2-install -j"$KDOS_JOBS" \
 	--flags="+lua +server" \
 	--constraint="pandoc +embed_data_files" \
 	--enable-split-sections \

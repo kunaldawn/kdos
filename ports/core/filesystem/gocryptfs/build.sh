@@ -29,8 +29,8 @@ export CGO_ENABLED=1
 # directory of that same name, and `go build -o gocryptfs-xray` writes the
 # binary inside it instead of over it.
 mkdir -p out
-go build -mod=vendor -ldflags "-X main.GitVersion=v$version -X main.GitVersionFuse=vendored -X main.BuildDate=offline" -o out/gocryptfs
-go build -mod=vendor -o out/gocryptfs-xray ./gocryptfs-xray
+go build -mod=vendor -ldflags "-s -w -X main.GitVersion=v$version -X main.GitVersionFuse=vendored -X main.BuildDate=offline" -o out/gocryptfs
+go build -mod=vendor -ldflags "-s -w" -o out/gocryptfs-xray ./gocryptfs-xray
 install -Dm755 out/gocryptfs       $PKG/usr/bin/gocryptfs
 install -Dm755 out/gocryptfs-xray  $PKG/usr/bin/gocryptfs-xray
 # The manual is pandoc-style markdown with `%` title blocks, which lowdown

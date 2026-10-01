@@ -17,6 +17,5 @@
 # and its pkg-config file in `/usr/usr/lib` — where nothing looks, and where
 # the symptom is pipewire's meson reporting `Dependency "libfreeaptx" not
 # found` while the file plainly exists.
-export CFLAGS="$CFLAGS -O2"
-make PREFIX=/usr LIBDIR=lib
+make PREFIX=/usr LIBDIR=lib CFLAGS="${CFLAGS/-O2/-O3}" LDFLAGS="$LDFLAGS"
 make DESTDIR=$PKG PREFIX=/usr LIBDIR=lib install

@@ -25,7 +25,7 @@ FS=/kdos/build/fs
 
 # ── Phase gates ─────────────────────────────────────────────────────────
 CLEAN_BUILD_CACHE=1     # /root/.cache, ~/.cargo, ~/.npm, /tmp, kpkg work dir
-CLEAN_KPKG_PACKAGES=1   # /var/cache/kpkg/packages (built .tar.xz cache)
+CLEAN_KPKG_PACKAGES=1   # /var/cache/kpkg/packages (built .tar.xz cache, .pending records)
 CLEAN_PYCACHE=1         # __pycache__ / *.pyc / *.pyo, then recompiled
 
 # ── Helpers ─────────────────────────────────────────────────────────────
@@ -60,14 +60,18 @@ if [ "$CLEAN_BUILD_CACHE" = 1 ]; then
 fi
 
 # ── Kpkg package cache (on-disk built tarballs) ─────────────────────────
+#
+# A `.pending` record names a package in this directory, so the two go
+# together: a record left without its package reads as a build to commit that
+# no longer exists.
 if [ "$CLEAN_KPKG_PACKAGES" = 1 ]; then
     section "kpkg package cache"
     target="$FS/var/cache/kpkg/packages"
     if [ -d "$target" ]; then
         before=$(size_of "$target")
-        find "$target" -maxdepth 1 -name "*.tar.*" -delete
+        find "$target" -maxdepth 1 \( -name "*.tar.*" -o -name "*.pending*" \) -delete
         after=$(size_of "$target")
-        report "var/cache/kpkg/packages/*.tar.*" "$before" "$after"
+        report "var/cache/kpkg/packages/{*.tar.*,*.pending*}" "$before" "$after"
     fi
 fi
 
@@ -83,10 +87,15 @@ fi
 #
 # checked-hash, because it is the mode that is both reproducible and safe
 # across updates. The .pyc records a hash of its source rather than an mtime,
-# so the same tree compiles to the same bytes; and the interpreter checks that
-# hash on import, so a source file a later `kpkg` upgrade replaces is
-# recompiled in memory rather than served stale. unchecked-hash would skip
-# that check and run the old bytecode.
+# so no timestamp enters it; and the interpreter checks that hash on import, so
+# a source file a later `kpkg` upgrade replaces is recompiled in memory rather
+# than served stale. unchecked-hash would skip that check and run the old
+# bytecode.
+#
+# -j 0 compiles on every CPU. The output is byte-stable run to run, parallel
+# or not; what is not stable, in any mode, is the bytecode of a module the
+# compiling interpreter itself had imported, whose marshal reference flags can
+# differ from a fresh compile of the same source.
 #
 # compileall's status is not the assertion: one file of Python 2 syntax in a
 # site-packages tree fails its compile and sets it, while every other file is
@@ -102,7 +111,7 @@ if [ "$CLEAN_PYCACHE" = 1 ]; then
     if command -v python3 >/dev/null 2>&1; then
         for _py in /usr/lib/python3*; do
             [ -d "$_py" ] || continue
-            python3 -m compileall -q --invalidation-mode checked-hash "$_py" \
+            python3 -m compileall -q -j 0 --invalidation-mode checked-hash "$_py" \
                 >/dev/null || echo "  compileall: some files under $_py did not compile" >&2
         done
         after=$(find "$FS/usr/lib" -path "*/__pycache__/*.pyc" \

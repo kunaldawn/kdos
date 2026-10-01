@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   script/bin/ninja — the build's ninja, sized by KDOS_JOBS
+# ---------------------------------
+
+# script/env/chroot.env puts this directory first on PATH for every chroot
+# phase once /usr/bin/ninja exists, so a recipe's bare `ninja`, meson's
+# `meson compile` and `meson install`, and CMake's Ninja generator all come
+# through here. Ninja reads no job count from the environment and otherwise
+# runs one job per CPU it may use, whatever the memory; this adds
+# -j"$KDOS_JOBS" and runs the real ninja.
+#
+# NOTHING IS ADDED when KDOS_JOBS is unset or empty, or when the arguments
+# already carry a job count (-j N, -jN, or -j inside a cluster such as -vj8),
+# a tool (-t), --version or help: those are passed on exactly as given, so a
+# recipe's own -j wins and `ninja --version`, which meson and CMake read to
+# accept a ninja, prints the real one's version.
+#
+# THE REAL NINJA IS NAMED BY ITS ABSOLUTE PATH. Searching PATH would find this
+# file again and never return. KDOS_NINJA names another only for a test.
+#
+# This file never ships: script/ is bound into the chroot at /kdos/script and
+# is not in the image. CMake records the path in the build directory's
+# CMakeCache.txt, which is not installed either.
+
+real=${KDOS_NINJA:-/usr/bin/ninja}
+
+[ -n "${KDOS_JOBS:-}" ] || exec "$real" "$@"
+
+# ninja's own option string is "d:f:j:k:l:nt:vw:C:h": d f j k l t w C take a
+# value, attached or as the next argument, and getopt permutes, so an option
+# may follow a target. `--` ends the options.
+skip=0
+for a in "$@"; do
+    if [ "$skip" = 1 ]; then
+        skip=0
+        continue
+    fi
+    case $a in
+        --) break ;;
+        --version|--help) exec "$real" "$@" ;;
+        --*|-|[!-]*) continue ;;
+    esac
+    i=1
+    while [ "$i" -lt "${#a}" ]; do
+        c=${a:i:1}
+        case $c in
+            j|t|h) exec "$real" "$@" ;;
+            d|f|k|l|w|C)
+                [ "$((i + 1))" -lt "${#a}" ] || skip=1
+                break ;;
+        esac
+        i=$((i + 1))
+    done
+done
+
+exec "$real" -j"$KDOS_JOBS" "$@"

@@ -34,5 +34,6 @@ install -Dm755 target/release/tree-sitter $PKG/usr/bin/tree-sitter
 # "No targets specified and no makefile found" AFTER the two-and-a-half-minute
 # cargo build has already succeeded. lib/ still holds the sources; only the
 # build file moved.
+export CFLAGS="${CFLAGS/-O2/-O3}"
 make PREFIX=/usr LIBDIR=/usr/lib
 make PREFIX=/usr LIBDIR=/usr/lib DESTDIR=$PKG install

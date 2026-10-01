@@ -38,6 +38,10 @@ _py=$(python3 -c 'import sys; print(f"{sys.version_info[0]}{sys.version_info[1]}
 # the one variable all of LinuxCNC's link rules use. The shared-library rules
 # put LDFLAGS before the objects, where --as-needed would drop it, so it is
 # linked unconditionally.
+#
+# The makefile puts its own -Os and -g ahead of CFLAGS and CXXFLAGS, so the
+# exported level wins and a trailing -g0 takes the debug information back.
+export CFLAGS="$CFLAGS -g0" CXXFLAGS="$CXXFLAGS -g0"
 export LDFLAGS="$LDFLAGS -Wl,--push-state,--no-as-needed -lintl -Wl,--pop-state"
 ./configure \
 	--prefix=/usr \
@@ -51,8 +55,18 @@ export LDFLAGS="$LDFLAGS -Wl,--push-state,--no-as-needed -lintl -Wl,--pop-state"
 	--disable-gtk2 \
 	--disable-check-runtime-deps \
 	--disable-build-documentation
-make
-make DESTDIR="$PKG" install
+
+# Three make variables put -g where the -g0 above cannot follow it, and are
+# given here. ULFLAGS, which the Tcl, Togl and Python-embedding objects add
+# after CFLAGS, is its own value without -g and -Os; its paths and defines stay
+# make references. The realtime components compile with upstream's -Os and
+# none of the exported flags; EXTRA_DEBUG=-g0 follows their -g.
+# XHC_WHB04B6_DEBUG is that pendant driver's -g -funwind-tables, kept without
+# the -g.
+_ulflags='-Wall -I. -I$(RTDIR)/include -DULAPI -D_GNU_SOURCE -DLOCALE_DIR=\"$(localedir)\" -DPACKAGE=\"$(package)\"'
+_mkflags=(EXTRA_DEBUG=-g0 ULFLAGS="$_ulflags" XHC_WHB04B6_DEBUG=-funwind-tables)
+make "${_mkflags[@]}"
+make "${_mkflags[@]}" DESTDIR="$PKG" install
 
 # The install marks rtapi_app and linuxcnc_module_helper setuid root. The
 # package ships no setuid file: without the bit rtapi_app runs its threads

@@ -21,6 +21,10 @@ export BUILD_ZLIB=False BUILD_BZIP2=0
 # GDBM_File, NDBM_File and ODBM_File are built when Configure finds gdbm and
 # its dbm/ndbm compatibility headers, with no switch to demand them: gdbm in
 # depends is what keeps them.
+#
+# Configure reads neither CFLAGS nor LDFLAGS: optimize carries the compile
+# flags and ldflags and lddlflags the link flags. Config records all three, so
+# every XS module built afterwards compiles and links with them as well.
 ./Configure -des \
 	-Dprefix=/usr \
 	-Dvendorprefix=/usr \
@@ -32,6 +36,9 @@ export BUILD_ZLIB=False BUILD_BZIP2=0
 	-Dvendorarch=/usr/lib/perl5/vendor_perl \
 	-Dman1dir=/usr/share/man/man1 \
 	-Dman3dir=/usr/share/man/man3 \
+	-Doptimize="$CFLAGS" \
+	-Dldflags="$LDFLAGS" \
+	-Dlddlflags="-shared $LDFLAGS" \
 	-Duseshrplib \
 	-Ud_eaccess -Ud_euidaccess
 make

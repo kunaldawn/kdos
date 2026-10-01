@@ -1,0 +1,58 @@
+--- a/plugins/dvb_support/CMakeLists.txt
++++ b/plugins/dvb_support/CMakeLists.txt
+@@ -40,6 +40,12 @@
+     endforeach()
+ 
+     target_compile_definitions(dvb_support PRIVATE DVB_HAS_SSE41)
++
++    # Source properties are per directory, so the build without -msse4.1
++    # lives in its own. It registers its modules only where that one does not.
++    if(UNIX AND NOT ANDROID)
++        add_subdirectory(generic)
++    endif()
+ else()
+     message("SSE Features not found! This is only an error on x86 CPUs that should support SSE4.1")
+ endif()
+--- a/plugins/dvb_support/generic/CMakeLists.txt
++++ b/plugins/dvb_support/generic/CMakeLists.txt
+@@ -0,0 +1,10 @@
++cmake_minimum_required(VERSION 3.12)
++project(dvb_support_generic)
++
++file(GLOB_RECURSE dvb_support_generic_CPPS ${CMAKE_CURRENT_SOURCE_DIR}/../*.cpp)
++add_library(dvb_support_generic SHARED ${dvb_support_generic_CPPS})
++target_link_libraries(dvb_support_generic PUBLIC satdump_core)
++target_include_directories(dvb_support_generic PUBLIC ../src ..)
++target_compile_definitions(dvb_support_generic PRIVATE DVB_GENERIC)
++
++install(TARGETS dvb_support_generic DESTINATION ${CMAKE_INSTALL_LIBDIR}/satdump/plugins)
+--- a/plugins/dvb_support/main.cpp
++++ b/plugins/dvb_support/main.cpp
+@@ -12,7 +12,11 @@
+ public:
+     std::string getID()
+     {
++#ifdef DVB_GENERIC
++        return "dvb_support_generic";
++#else
+         return "dvb_support";
++#endif
+     }
+ 
+     void init()
+@@ -20,10 +24,14 @@
+ #ifdef DVB_HAS_SSE41
+         if (!cpu_features::get_cpu_features().CPU_X86_SSE41)
+         {
+-            logger->error("CPU Does not support SSE4_1. Extension plugin NOT loading!");
++            logger->info("CPU Does not support SSE4_1. dvb_support_generic serves DVB instead.");
+             return;
+         }
+ #endif
++#ifdef DVB_GENERIC
++        if (cpu_features::get_cpu_features().CPU_X86_SSE41)
++            return;
++#endif
+         satdump::eventBus->register_handler<RegisterModulesEvent>(registerPluginsHandler);
+     }
+ 

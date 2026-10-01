@@ -52,7 +52,18 @@
 	--with-icu=/usr \
 	--with-python=/usr/bin/python3 \
 	--with-libraries=iostreams,system,filesystem,regex,date_time,test,program_options,thread,atomic,charconv,chrono,container,locale,random,coroutine,context,graph,process,log,nowide,serialization,stacktrace,python
+
+# b2 reads no flags from the environment. The toolset declaration carries
+# them, as Alpine's does: a flag given as a b2 argument would be split at its
+# commas. b2 puts cflags (C) and cxxflags (C++) ahead of its own options, so
+# the release variant's -O3 still decides the level; linkflags go last on the
+# link line. bootstrap's project-config.jam declares gcc only when no
+# configuration has, so this one is the one used.
+cat > user-config.jam <<JAM
+using gcc : : $CXX : <cflags>"$CFLAGS" <cxxflags>"$CXXFLAGS" <linkflags>"$LDFLAGS" ;
+JAM
 ./b2 \
+	--user-config=user-config.jam \
 	--prefix=$PKG/usr \
 	--libdir=$PKG/usr/lib \
 	--with-iostreams \

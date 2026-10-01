@@ -10,7 +10,7 @@
 # ---------------------------------
 
 export CFLAGS="$CFLAGS -Uunix"
-meson setup build \
+meson setup build --buildtype=release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Dlibseat-builtin=enabled \
 	-Dlibseat-logind=disabled \

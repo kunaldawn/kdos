@@ -22,20 +22,21 @@
 # implicit declarations against a widec library: the narrow API from the wide
 # build, which is a link error at best and the wrong call at worst.
 #
-# CFLAGS reaches the compile through the ENVIRONMENT and not the command line:
-# the Makefile appends its own flags with `+=`, which extends an environment
-# value and REPLACES a command-line one — assigning it on the command line
-# would drop -fPIC and the shared library would not link.
+# CFLAGS is given on the COMMAND LINE, which replaces the Makefile's own
+# `CFLAGS += … -Os -ggdb …` rather than being extended by it, so no object
+# carries debug information. It therefore carries the rest of that line
+# itself: without -fPIC the shared library does not link.
 mkdir -p compat/ncursesw
 ln -sf /usr/include/ncurses.h compat/ncursesw/ncurses.h
-export CFLAGS="$CFLAGS -I$PWD/compat -D_XOPEN_SOURCE_EXTENDED"
+_cflags="$CFLAGS -I. -I$PWD/compat -Wall -D_GNU_SOURCE -D_XOPEN_SOURCE_EXTENDED -fPIC"
 
 # libdir is joined to prefix by the Makefile, so it is a leaf and not a path.
 #
 # Every binding is named off. FOUND_SWIG=0 drops perl, python and ruby, which
 # go through SWIG; SPL has its own probe.
-make FOUND_SWIG=0 FOUND_SPL=0
-make FOUND_SWIG=0 FOUND_SPL=0 prefix=/usr libdir=lib DESTDIR=$PKG install
+make FOUND_SWIG=0 FOUND_SPL=0 CFLAGS="$_cflags"
+make FOUND_SWIG=0 FOUND_SPL=0 CFLAGS="$_cflags" \
+	prefix=/usr libdir=lib DESTDIR=$PKG install
 
 # The install target creates the LINKER name and not the SONAME. The library
 # is built -Wl,-soname,libstfl.so.0, so that is the name a program linked

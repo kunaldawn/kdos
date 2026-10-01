@@ -27,7 +27,7 @@ scons prefix=/usr libdir=/usr/lib \
 	dbus_export=yes bluez=yes usb=yes ncurses=yes \
 	manbuild=no magic_hat=no \
 	python_libdir="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
-	--jobs=$(nproc) \
+	--jobs="$KDOS_JOBS" \
 	install DESTDIR=$PKG
 
 # A RECEIVER THAT IS PLUGGED IN STARTS gpsd, AND NOTHING ELSE DOES. No init

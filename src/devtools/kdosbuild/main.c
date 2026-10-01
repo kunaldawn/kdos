@@ -26,6 +26,7 @@ typedef struct {
 	const char *restore;
 	const char *continue_from;
 	int no_snapshot;
+	int full_snapshots;
 	int want_plan;
 	const char *phases;
 	const char *steps;
@@ -35,6 +36,7 @@ typedef struct {
 	int plain;
 	int json;
 	const char *del;
+	int port_jobs;
 } Args;
 
 /* Text or NDJSON, chosen once in main() and read by everything headless. */
@@ -54,16 +56,21 @@ static void usage(void)
 "  --continue-from PHASE resume at PHASE on the existing tree, no restore\n"
 "  --no-snapshot         do not write snapshots during this build; with a TUI\n"
 "                        this is what the picker opens on, and S toggles it\n"
+"  --full-snapshots      archive every snapshot path whole, never as a layer\n"
+"                        on the snapshot before it\n"
 "  --plan                open the build-plan picker and run it on this tree\n"
 "  --phases LIST         only run these phases\n"
 "  --steps LIST          only run these scripts, PHASE:script.sh\n"
 "  --rebuild LIST        force-rebuild these ports even though installed\n"
 "  --snapshot            write snapshots even for a partial plan\n"
+"  --port-jobs N         build up to N ports of a package phase at once, by\n"
+"                        dependency level (1-8; default 1, one at a time)\n"
 "  --plain               no TUI: plain lines (implied by a non-tty stdout)\n"
 "  --json                no TUI: one JSON object per event (NDJSON), and\n"
 "                        --list prints the snapshot inventory as one object\n"
 "  --list                list snapshots and exit\n"
-"  --delete PHASE        delete one snapshot and exit\n"
+"  --delete PHASE        delete one snapshot and exit; one that others layer\n"
+"                        on is held until the last of them goes\n"
 "\n"
 "  --selftest            run the view-geometry and log-classifier assertions\n"
 "  --preview SCREEN WxH TIER\n"
@@ -85,7 +92,8 @@ static const KbuildPhase *resolve_phase(Manager *m, const char *token)
 		int n = kbuild_snap_list(m->snap_root, snaps, KBUILD_MAX_PHASES);
 		const KbuildPhase *best = NULL;
 		for (int i = 0; i < m->nphase; i++)
-			if (kbuild_snap_find(snaps, n, m->phase[i].dir_name))
+			if (kbuild_snapshottable(&m->phase[i]) &&
+			    kbuild_snap_find(snaps, n, m->phase[i].dir_name))
 				best = &m->phase[i];
 		free(snaps);
 		return best;
@@ -102,10 +110,33 @@ static const KbuildPhase *resolve_phase(Manager *m, const char *token)
 	return NULL;
 }
 
+/* The bytes a restore of `sn` reads for `path`: every archive in its chain. */
+static long long chain_bytes(const KbuildSnapshot *all, int n,
+			     const KbuildSnapshot *sn, const char *path,
+			     int *count)
+{
+	const KbuildSnapshot *chain[KBUILD_MAX_CHAIN];
+	int len = kbuild_snap_chain(all, n, sn, path, chain, KBUILD_MAX_CHAIN);
+	long long total = 0;
+	for (int i = 0; i < len; i++)
+		total += kbuild_snap_entry(chain[i], path)->bytes_compressed;
+	if (count)
+		*count = len < 0 ? 0 : len;
+	return total;
+}
+
+static long long own_bytes(const KbuildSnapshot *sn)
+{
+	long long total = 0;
+	for (int k = 0; k < sn->nentries; k++)
+		total += sn->entry[k].bytes_compressed;
+	return total;
+}
+
 static int cmd_list(Manager *m, int json)
 {
-	KbuildSnapshot *snaps = kb_calloc(KBUILD_MAX_PHASES, sizeof(*snaps));
-	int n = kbuild_snap_list(m->snap_root, snaps, KBUILD_MAX_PHASES);
+	KbuildSnapshot *all = kb_calloc(KBUILD_MAX_SNAPS, sizeof(*all));
+	int n = kbuild_snap_list_all(m->snap_root, all, KBUILD_MAX_SNAPS);
 
 	char commit[64];
 	int dirty = 0;
@@ -115,27 +146,47 @@ static int cmd_list(Manager *m, int json)
 	 * snapshots" is an answer, and a consumer that has to tell it apart
 	 * from a failure by reading prose has been handed the wrong thing. */
 	if (json) {
-		report_snapshots_json(m->phase, m->nphase, snaps, n, commit);
-		free(snaps);
+		report_snapshots_json(m->phase, m->nphase, all, n, commit);
+		free(all);
 		return 0;
 	}
 
 	if (!n) {
 		printf("no snapshots in %s\n", m->snap_root);
-		free(snaps);
+		free(all);
 		return 0;
 	}
 
-	printf("%-3s %-16s %-17s %9s %10s %6s\n", "#", "PHASE", "WHEN", "SIZE",
-	       "COMMIT", "STEPS");
+	long long on_disk = 0, held_bytes = 0;
+	for (int i = 0; i < n; i++) {
+		on_disk += own_bytes(&all[i]);
+		if (all[i].held)
+			held_bytes += own_bytes(&all[i]);
+	}
+
+	printf("%-3s %-16s %-17s %9s %10s %6s  %s\n", "#", "PHASE", "WHEN",
+	       "SIZE", "COMMIT", "STEPS", "KIND");
+	KbBuf unusable = {0};
 	for (int i = 0; i < m->nphase; i++) {
-		const KbuildSnapshot *sn = kbuild_snap_find(snaps, n,
+		const KbuildSnapshot *sn = kbuild_snap_find(all, n,
 							   m->phase[i].dir_name);
 		if (!sn)
 			continue;
-		long long total = 0;
-		for (int k = 0; k < sn->nentries; k++)
-			total += sn->entry[k].bytes_compressed;
+		if (!kbuild_snap_usable(all, n, sn)) {
+			for (int k = 0; k < sn->nentries; k++) {
+				const KbuildSnapshot *chain[KBUILD_MAX_CHAIN];
+				if (kbuild_snap_chain(all, n, sn,
+						      sn->entry[k].path, chain,
+						      KBUILD_MAX_CHAIN) >= 0)
+					continue;
+				kb_buf_printf(&unusable, "    %-16s %s: base %s "
+					      "missing\n", sn->dir_name,
+					      sn->entry[k].path,
+					      sn->entry[k].base_id);
+				break;
+			}
+			continue;
+		}
 		int stale = sn->git_dirty ||
 			    (commit[0] && sn->git_commit[0] &&
 			     strcmp(sn->git_commit, commit));
@@ -143,23 +194,74 @@ static int cmd_list(Manager *m, int json)
 		snprintf(cm, sizeof(cm), "%s%s",
 			 sn->git_commit[0] ? sn->git_commit : "-",
 			 stale ? "*" : "");
-		char when[32], size[32];
+		char when[32], size[32], kind[96] = "full";
 		kb_strlcpy(when, format_when(sn->created), sizeof(when));
-		kb_strlcpy(size, human_bytes(total), sizeof(size));
-		printf("%-3d %-16s %-17s %9s %10s %6d\n", i + 1,
-		       m->phase[i].dir_name, when, size, cm, sn->steps);
+		kb_strlcpy(size, human_bytes(own_bytes(sn)), sizeof(size));
 		for (int k = 0; k < sn->nentries; k++) {
-			char comp[32], raw[32];
-			kb_strlcpy(comp, human_bytes(sn->entry[k].bytes_compressed),
+			if (!sn->entry[k].layer)
+				continue;
+			const KbuildSnapshot *b = kbuild_snap_by_id(
+				all, n, sn->entry[k].base_id);
+			snprintf(kind, sizeof(kind), "on %s%s",
+				 b ? b->phase_dir : "?",
+				 b && b->held ? " (held)" : "");
+			break;
+		}
+		printf("%-3d %-16s %-17s %9s %10s %6d  %s%s\n", i + 1,
+		       m->phase[i].dir_name, when, size, cm, sn->steps, kind,
+		       kbuild_snapshottable(&m->phase[i]) ? "" :
+		       "  leftover (phase declares no paths)");
+		for (int k = 0; k < sn->nentries; k++) {
+			const KbuildSnapEntry *e = &sn->entry[k];
+			char comp[32], raw[32], reads[32];
+			kb_strlcpy(comp, human_bytes(e->bytes_compressed),
 				   sizeof(comp));
-			kb_strlcpy(raw, human_bytes(sn->entry[k].bytes_raw),
-				   sizeof(raw));
-			printf("      %-12s %9s <- %9s  %s files\n",
-			       sn->entry[k].path, comp, raw,
-			       human_count(sn->entry[k].files));
+			kb_strlcpy(raw, human_bytes(e->bytes_raw), sizeof(raw));
+			int links = 0;
+			kb_strlcpy(reads, human_bytes(chain_bytes(all, n, sn,
+								  e->path,
+								  &links)),
+				   sizeof(reads));
+			printf("      %-12s %9s <- %9s  %s files", e->path, comp,
+			       raw, human_count(e->files));
+			if (e->layer)
+				printf(", %lld removed; restore reads %s from "
+				       "%d archives", e->removed_count, reads,
+				       links);
+			printf("\n");
 		}
 	}
-	free(snaps);
+
+	if (unusable.n)
+		printf("\nunusable (a base is missing; --delete removes it):\n%s",
+		       unusable.p);
+	kb_buf_free(&unusable);
+
+	int any_held = 0;
+	for (int i = 0; i < n; i++) {
+		if (!all[i].held)
+			continue;
+		if (!any_held++)
+			printf("\nheld (bases of the snapshots named; freed "
+			       "with the last of them):\n");
+		int dep[KBUILD_MAX_SNAPS];
+		int nd = kbuild_snap_dependants(all, n, all[i].id, dep,
+						KBUILD_MAX_SNAPS);
+		KbBuf needs = {0};
+		for (int k = 0; k < nd; k++)
+			if (!all[dep[k]].held)
+				kb_buf_printf(&needs, "%s%s", needs.n ? " " : "",
+					      all[dep[k]].dir_name);
+		printf("    %-44s %9s  needed by %s\n", all[i].id,
+		       human_bytes(own_bytes(&all[i])),
+		       needs.n ? needs.p : "-");
+		kb_buf_free(&needs);
+	}
+
+	char od[32];
+	kb_strlcpy(od, human_bytes(on_disk), sizeof(od));
+	printf("\non disk: %s (held %s)\n", od, human_bytes(held_bytes));
+	free(all);
 	return 0;
 }
 
@@ -169,13 +271,51 @@ static int cmd_list(Manager *m, int json)
  * layered, so it is non-empty whenever any earlier phase has a snapshot, and
  * marking the requested phase skipped on that basis would build the remaining
  * phases against a rootfs that never had the target's packages. */
+/* The phases that declare snapshot paths, in order and with their .index
+ * kept. A phase that declares none is re-run, never restored: a snapshot
+ * directory left under its name by an earlier layout is a leftover, and
+ * layering it into a restore would put an older tree back over the newer
+ * layers below it. Freed by the caller. */
+static KbuildPhase *snap_phases(const Manager *m, int *count)
+{
+	KbuildPhase *out = kb_calloc((size_t)(m->nphase ? m->nphase : 1),
+				     sizeof(*out));
+	int n = 0;
+	for (int i = 0; i < m->nphase; i++)
+		if (kbuild_snapshottable(&m->phase[i]))
+			out[n++] = m->phase[i];
+	*count = n;
+	return out;
+}
+
 static const char *check_restorable(Manager *m, const KbuildPhase *target,
 				    char *err, size_t errcap)
 {
+	if (!kbuild_snapshottable(target)) {
+		snprintf(err, errcap,
+			 "%s declares no snapshot paths; its snapshot is a "
+			 "leftover", target->dir_name);
+		return err;
+	}
+
 	KbuildSnapshot *snaps = kb_calloc(KBUILD_MAX_PHASES, sizeof(*snaps));
 	int n = kbuild_snap_list(m->snap_root, snaps, KBUILD_MAX_PHASES);
 
 	if (!kbuild_snap_find(snaps, n, target->dir_name)) {
+		/* On disk but with a base gone: absent, and said so, since the
+		 * directory is right there in a listing. */
+		KbuildSnapshot *one = kb_calloc(1, sizeof(*one));
+		int there = kbuild_snap_load(m->snap_root, target->dir_name,
+					     one) == 0;
+		free(one);
+		if (there) {
+			snprintf(err, errcap, "the snapshot of %s is unusable: "
+				 "a snapshot its layers are built on is "
+				 "missing (--list names it; --delete removes "
+				 "it)", target->dir_name);
+			free(snaps);
+			return err;
+		}
 		KbBuf b = {0};
 		for (int i = 0; i < n; i++)
 			kb_buf_printf(&b, "%s%s", b.n ? ", " : "",
@@ -191,10 +331,13 @@ static const char *check_restorable(Manager *m, const KbuildPhase *target,
 	/* Every path any earlier phase declares must come from somewhere, or
 	 * the restored tree is missing a component (cross/ when 00 and 01 were
 	 * deleted, say). */
-	KbuildRestoreItem *plan = kb_calloc(KBUILD_MAX_PATHS * 4, sizeof(*plan));
-	int np = kbuild_snap_plan_restore(m->snap_root, m->phase, m->nphase,
+	int nsp;
+	KbuildPhase *sp = snap_phases(m, &nsp);
+	KbuildRestoreItem *plan = kb_calloc(KBUILD_MAX_RESTORE, sizeof(*plan));
+	int np = kbuild_snap_plan_restore(m->snap_root, sp, nsp,
 					  target->index, plan,
-					  KBUILD_MAX_PATHS * 4);
+					  KBUILD_MAX_RESTORE);
+	free(sp);
 	/* A SET, sorted — several phases declare `cross` and `mark`, and
 	 * listing one of them twice reads as two different problems. */
 	char miss[KBUILD_MAX_PATHS * KBUILD_MAX_PHASES][128];
@@ -264,10 +407,13 @@ static const KbuildPhase *effective_source(Manager *m,
 static int do_restore(Manager *m, const KbuildPhase *target, int plain,
 		      char *err, size_t errcap)
 {
-	KbuildRestoreItem *plan = kb_calloc(KBUILD_MAX_PATHS * 4, sizeof(*plan));
-	int n = kbuild_snap_plan_restore(m->snap_root, m->phase, m->nphase,
+	int nsp;
+	KbuildPhase *sp = snap_phases(m, &nsp);
+	KbuildRestoreItem *plan = kb_calloc(KBUILD_MAX_RESTORE, sizeof(*plan));
+	int n = kbuild_snap_plan_restore(m->snap_root, sp, nsp,
 					 target->index, plan,
-					 KBUILD_MAX_PATHS * 4);
+					 KBUILD_MAX_RESTORE);
+	free(sp);
 	if (!n) {
 		snprintf(err, errcap, "no snapshot data for %s",
 			 target->dir_name);
@@ -302,7 +448,9 @@ static int do_restore(Manager *m, const KbuildPhase *target, int plain,
 
 	KbBuf paths = {0};
 	for (int i = 0; i < n; i++)
-		kb_buf_printf(&paths, "%s%s", i ? ", " : "", plan[i].path);
+		if (!plan[i].seq)
+			kb_buf_printf(&paths, "%s%s", paths.n ? ", " : "",
+				      plan[i].path);
 	mgr_notice(m, "restored %s%s (%s)", eff->dir_name,
 		   partial ? " [partial - phase re-runs]" : "",
 		   paths.p ? paths.p : "");
@@ -330,34 +478,50 @@ static void run_plain(Manager *m, Sampler *sam, Timings *tm)
 		rep->begin(m);
 	mgr_start(m);
 
-	BStep *announced = NULL;
+	const BStep *announced = NULL;
 	int shown_notices = 0;
+	int low = 0;
 
 	/* A step's result and any notice it produced are printed on the SAME
 	 * pump turn the child exited on, because finish_phase() — which is
 	 * where a snapshot happens — runs in that turn too. Deferring either
 	 * to the next turn interleaves a snapshot line into the middle of the
-	 * step line it belongs after. */
+	 * step line it belongs after.
+	 *
+	 * Steps are opened when they start and closed when they end, each once,
+	 * found by walking the order: a level runs several at once, so opens
+	 * and closes interleave, and a consumer matches them by phase and step.
+	 * Everything before `low` has been reported or will never run, and the
+	 * walk ends past the cursor and the level open at it — nothing later
+	 * has started. */
 	while (m->is_running) {
 		int wait_ms = mgr_pump(m);
 		sam_pump(sam, m);
 
-		BStep *s = m->current_step;
-		if (s && !s->is_group && s->reported)
-			s = NULL;
-		if (s && s != announced) {
-			announced = s;
-			if (s->is_group)
-				rep->group(m, s);
-			else
+		BStep *g = m->current_step;
+		if (g && g->is_group && g != announced) {
+			announced = g;
+			rep->group(m, g);
+		}
+		int end = m->cursor > m->lvl_commit ? m->cursor : m->lvl_commit;
+		for (int i = low; i < m->norder && i <= end; i++) {
+			BStep *s = m->order[i];
+			if (s->is_group || s->reported)
+				continue;
+			if (!s->opened && s->start_time > 0) {
+				s->opened = 1;
 				rep->step_open(m, s);
+			}
+			if (s->opened && s->end_time > 0 &&
+			    s->status != ST_RUNNING) {
+				rep->step_close(m, s);
+				s->reported = 1;
+			}
 		}
-		if (announced && !announced->is_group && announced->end_time > 0 &&
-		    announced->status != ST_RUNNING) {
-			rep->step_close(m, announced);
-			announced->reported = 1;
-			announced = NULL;
-		}
+		while (low < m->cursor && low < m->norder &&
+		       (m->order[low]->is_group || m->order[low]->reported ||
+			m->order[low]->start_time <= 0))
+			low++;
 		for (; shown_notices < m->nnotice; shown_notices++)
 			rep->notice(m, m->notice[shown_notices].text);
 
@@ -447,6 +611,8 @@ int main(int argc, char **argv)
 			a.continue_from = argv[++i];
 		else if (!strcmp(argv[i], "--no-snapshot"))
 			a.no_snapshot = 1;
+		else if (!strcmp(argv[i], "--full-snapshots"))
+			a.full_snapshots = 1;
 		else if (!strcmp(argv[i], "--plan"))
 			a.want_plan = 1;
 		else if (!strcmp(argv[i], "--phases") && v)
@@ -465,6 +631,17 @@ int main(int argc, char **argv)
 			a.list = 1;
 		else if (!strcmp(argv[i], "--delete") && v)
 			a.del = argv[++i];
+		else if (!strcmp(argv[i], "--port-jobs") && v) {
+			char *end = NULL;
+			long n = strtol(v, &end, 10);
+			if (!*v || *end || n < 1 || n > KB_MAX_WORKERS) {
+				fprintf(stderr, "--port-jobs takes 1 to %d, "
+					"got '%s'\n", KB_MAX_WORKERS, v);
+				return 2;
+			}
+			a.port_jobs = (int)n;
+			i++;
+		}
 		else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
 			usage();
 			return 0;
@@ -478,7 +655,24 @@ int main(int argc, char **argv)
 
 	Manager m;
 	mgr_init(&m, a.script_dir, a.build_dir);
+	if (a.port_jobs)
+		m.port_jobs = a.port_jobs;
+	m.full_snapshots = a.full_snapshots;
 	kb_mkdir_p(a.build_dir);
+
+	/* The package store's salt: what the bootstrap phases built the chroot
+	 * from, which no chroot-side key can see. Exported before any phase
+	 * runs, so every chroot entry inherits it through exec.sh. */
+	const char *ps = getenv("KDOS_PKG_STORE");
+	if (ps && (!strcmp(ps, "1") || !strcmp(ps, "check"))) {
+		char salt[65];
+		if (kp_store_salt(m.repo_root, salt) == 0)
+			setenv("KPKG_STORE_SALT", salt, 1);
+		else
+			fprintf(stderr, "kdosbuild: no package-store salt "
+				"under %s; the store stays off\n",
+				m.repo_root);
+	}
 
 	/* A phase that cannot run is named on every invocation, and refuses a
 	 * build before its first step: found half-way through, it is hours of
@@ -499,9 +693,14 @@ int main(int argc, char **argv)
 			fprintf(stderr, "unknown phase: %s\n", a.del);
 			return 2;
 		}
-		printf(snap_delete(&m, t->dir_name) ? "deleted %s\n"
-						    : "no snapshot for %s\n",
-		       t->dir_name);
+		char deps[256];
+		int drc = snap_delete(&m, t->dir_name, deps, sizeof(deps));
+		if (drc == 2)
+			printf("deleted %s; kept as the base of %s\n",
+			       t->dir_name, deps);
+		else
+			printf(drc ? "deleted %s\n" : "no snapshot for %s\n",
+			       t->dir_name);
 		return 0;
 	}
 
@@ -669,8 +868,8 @@ plain_out:
 	 * THE PICKER OPENS WHETHER OR NOT A SNAPSHOT EXISTS. Both questions it
 	 * answers — restore from which phase, and write snapshots at all —
 	 * have to be asked on a tree with none, because that is precisely the
-	 * from-scratch run where the second one costs tens of gigabytes and
-	 * hours. Its row 0 is "start fresh", so a tree with no snapshot simply
+	 * from-scratch run where the second one costs gigabytes and a part of
+	 * the run's time. Its row 0 is "start fresh", so a tree with no snapshot simply
 	 * opens on the only restore choice there is. */
 	if (!m.have_plan && a.want_plan) {
 		if (!screen_plan(&m, &m.plan))

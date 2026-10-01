@@ -12,10 +12,11 @@
 #
 # Index the manual tree so `apropos` and `whatis` have something to search.
 #
-# kpkg's manual trigger keeps /usr/share/man/mandoc.db current on every
-# install and removal. This step rebuilds every root from scratch over the
-# finished tree and asserts on the result, so the image never ships an index a
-# partial build left behind.
+# The build skips kpkg's manual trigger (KPKG_SKIP_INDEX=man, from
+# script/env/chroot.env), so no install writes /usr/share/man/mandoc.db. This
+# step writes the index: it rebuilds every root from scratch over the finished
+# tree and asserts on the result. The installed system never sets the
+# variable, so there kpkg keeps the index current on every install and removal.
 #
 # `man foo` works without an index because it falls back to walking the
 # filesystem; apropos and whatis do not — they reach mansearch() only. Without

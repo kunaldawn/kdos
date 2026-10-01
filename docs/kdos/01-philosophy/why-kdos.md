@@ -47,7 +47,7 @@ built and who maintains it:
 
 | Ring | Where it is in the repository | What it holds | How it is built |
 |---|---|---|---|
-| Core | `ports/core/`, 1,999 recipes | musl, toybox, the toolchains, the libraries, the services, the kernel and its firmware, and the natively ported applications | Compiled here from upstream source archives, each pinned by its sha256 |
+| Core | `ports/core/`, 2,000 recipes | musl, toybox, the toolchains, the libraries, the services, the kernel and its firmware, and the natively ported applications | Compiled here from upstream source archives, each pinned by its sha256 |
 | Desktop | `src/`, 24 recipes | The compositor, the panel, the terminal, the root daemons, the installer, the `kdos` command and the 17 C libraries they share | Compiled here from source written for KDOS; `kpkg` and the installer by two bootstrap scripts |
 | Outer | `src/system/kdos-appbox/catalogue` | 73 graphical and command-line applications over 7 shared runtimes | Declared as Debian packages and built by podman on the machine that asks for them |
 
@@ -71,7 +71,7 @@ process on a working desktop and says where each kind of state is kept.
 
 ## Built from source, with named exceptions
 
-The host is compiled in this repository from 2,023 recipes, 1,999 under `ports/core` for upstream
+The host is compiled in this repository from 2,024 recipes, 2,000 under `ports/core` for upstream
 software and 24 under `src/` for the desktop, the daemons and the tools written for KDOS, and
 from two scripts: one builds `kpkg` itself, which has no recipe, and the other builds the
 installer, `kinstall`, whose recipe exists but is named in no phase list.
@@ -90,7 +90,7 @@ back on: the container the build runs in, an Alpine 3.23 image with a host compi
 tools that build the cross toolchain and the first userland, and nothing from it is installed. Every
 recipe that a phase list (`script/phases/*/packages.txt` or `packages.d/`) names is installed on the
 finished system, together with everything those recipes depend on. That reaches all but 5 of the
-1,999 upstream recipes; the other 5 stay in the tree unbuilt. A *phase* is defined in the
+2,000 upstream recipes; the other 5 stay in the tree unbuilt. A *phase* is defined in the
 [Glossary](../06-reference/glossary.md). [How KDOS is built](../05-developer/how-kdos-is-built.md)
 follows the build from `git clone` to a bootable ISO, [The build
 system](../05-developer/build-system.md) describes the orchestrator that runs the phases, and [The
@@ -168,12 +168,12 @@ make build        # no network
 A recipe's `sha256 =` line is what verifies a source file, wherever the file came from; [Writing
 ports](../05-developer/writing-ports.md#sources-and-what-each-one-becomes) says where `make fetch`
 looks for each one. The recipes name 2,487 distinct files, about 38.6 GiB in all. The 39 small ones
-that git carries itself stay in the repository. The source archive holds 1,186 of the rest under
-their own sha256, located through the committed index `ports/sources.idx`; the other 1,262 are not
-in the index, and `make fetch` takes them from their upstream URLs until `ports/publish` adds them.
-The archive is append-only, so a recipe whose sources it holds keeps building after its upstream URL
+that git carries itself stay in the repository. The source archive holds the rest, one release per
+shelf, each file under its own name and located through the committed index `ports/sources.idx`; a
+file the index does not name comes from its upstream URL until `ports/publish` adds it. Nothing in
+the archive is replaced, so a recipe whose sources it holds keeps building after its upstream URL
 disappears. Why the sources are held this way, and what it costs, is in
-[Decisions](decisions.md#upstream-archives-are-content-addressed-release-assets).
+[Decisions](decisions.md#upstream-archives-are-hash-checked-release-assets).
 
 ## Native applications, and boxes for the rest
 
@@ -263,7 +263,7 @@ lists and every `depends =` line, and the catalogue by counting its rows by kind
 
 | | |
 |---|---|
-| Port recipes in `ports/core` | 1,999 |
+| Port recipes in `ports/core` | 2,000 |
 | Port recipes under `src/` for KDOS's own software | 24 (5 in `src/system`, 6 in `src/art`, 8 in `src/desktop`, 5 in `src/daemons`) |
 | Shelves the upstream recipes are filed on | 102 |
 | Upstream recipes that no phase list or dependency reaches, and so are not built | 5 |
@@ -275,7 +275,7 @@ lists and every `depends =` line, and the catalogue by counting its rows by kind
 | Catalogue data sets | 2 |
 | Catalogue groups offered by the installer and the store | 7 |
 | Boxed commands with no graphical launcher | 25 rows across 16 applications |
-| Distinct source files the recipes name | 2,487, about 38.6 GiB (39 carried in git, 1,186 in the source archive, 1,262 fetched from upstream) |
+| Distinct source files the recipes name | 2,487, about 38.6 GiB (39 carried in git, 2,448 fetched from the source archive or upstream) |
 
 ## What is not built from source
 
@@ -402,7 +402,10 @@ BDF through `configure` and `make` into the PSF that
 
 ### Data with no other source form
 
-`hwdata`, `iso-codes`, `docbook-xml` and `docbook-xsl` are text or tables installed as they arrive.
+`hwdata`, `iso-codes` and `docbook-xml` are text or tables installed as they arrive. `docbook-xsl`
+is too, but for one patch to both of its trees: `string.subst` calls `str:replace` where the
+processor has it, because the stock template recurses once per match and a page as long as
+`git-config.1` passes `xsltproc`'s 3000-deep limit and fails.
 `xkeyboard-config` is text upstream too, and its own meson build assembles the rules files from
 upstream's fragments and compiles the translations. `iana-etc` is tables too, but generated at
 build time from IANA's own XML registries, each pinned by its hash, rather than taken as text

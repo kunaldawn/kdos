@@ -28,6 +28,9 @@ install -m644 "/usr/share/icu/$(pkg-config --modversion icu-uc)/zoneinfo64.res" 
 # --shared-sqlite holds node:sqlite to the system library, which it can link
 # only while that library is built with the session extension and column
 # metadata: node:sqlite calls sqlite3session_* and sqlite3_column_table_name.
+# Node's Release configuration compiles at -O3 and the exported CFLAGS come
+# after it on every compile line, so the level is raised here to match.
+export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
 ./configure \
 	--prefix=/usr \
 	--shared-cares \

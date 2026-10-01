@@ -12,5 +12,5 @@
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
 export CGO_ENABLED=0
-make
-make DESTDIR=$PKG PREFIX=/usr install
+make GO_LDFLAGS="-s -w"
+make GO_LDFLAGS="-s -w" DESTDIR=$PKG PREFIX=/usr install

@@ -12,7 +12,8 @@
  * equality tests over two hashes:
  *
  *   E:  the RECIPE — kpkgbuild, build.sh, postinstall.sh and every .patch,
- *       sorted by name, each contributing its name AND its bytes. A recipe hash
+ *       sorted by name, each contributing its name AND its bytes, then every
+ *       other file beside them that no `sha256 =` line names. A recipe hash
  *       is an exact statement of what a package was built FROM.
  *   B:  the BUILD CONFIG — the flags, the target, the libc and the compiler.
  *       Two machines with the same B produce comparable binaries; two with
@@ -30,12 +31,11 @@
 
 #include "kpkg.h"
 
-/* The files that DEFINE a build. For a port that names a `source =`, anything
- * else in its directory — a tarball, a vendor bundle — is covered by its own
- * `sha256 =` line, which `kpkgbuild` checks for EVERY declared entry present
- * beside the recipe and not only for the ones `source =` reaches, so hashing
- * it here would only make the key change for no reason. A file beside the
- * recipe that no `sha256 =` names is in neither this key nor that check. */
+/* The files that DEFINE a build, hashed first and by name. Every other file
+ * beside them is hashed after them by hash_tree(), unless a `sha256 =` line
+ * names it: a tarball or vendor bundle is covered by that line, which
+ * `kpkgbuild` checks for EVERY declared entry present beside the recipe, and
+ * hashing it here too would only make the key change for no reason. */
 static int recipe_file(const char *name)
 {
 	size_t n = strlen(name);
@@ -44,20 +44,66 @@ static int recipe_file(const char *name)
 	       (n > 6 && !strcmp(name + n - 6, ".patch"));
 }
 
+/* Does a `sha256 = <hash> <file>` line of this kpkgbuild text name `name`?
+ * The value is hash/file pairs, so the file names are its odd tokens. The key
+ * must start its line, as kp_recipe_key() reads it. */
+static int sha256_names(const char *recipe, const char *name)
+{
+	size_t nl = strlen(name);
+
+	for (const char *line = recipe; line && *line;) {
+		const char *end = strchr(line, '\n');
+		const char *stop = end ? end : line + strlen(line);
+		const char *p = line + 6;
+
+		if (stop - line > 6 && !strncmp(line, "sha256", 6)) {
+			while (p < stop && (*p == ' ' || *p == '\t'))
+				p++;
+			if (p < stop && *p == '=') {
+				int tok = 0;
+
+				p++;
+				while (p < stop) {
+					const char *t;
+
+					while (p < stop && (*p == ' ' || *p == '\t' || *p == '\r'))
+						p++;
+					t = p;
+					while (p < stop && *p != ' ' && *p != '\t' && *p != '\r')
+						p++;
+					if (p > t && (tok++ & 1) && (size_t)(p - t) == nl &&
+					    !strncmp(t, name, nl))
+						return 1;
+				}
+			}
+		}
+		line = end ? end + 1 : NULL;
+	}
+	return 0;
+}
+
 /*
- * A SOURCE-LESS PORT'S OWN FILES ARE ITS RECIPE, and this is the half that
- * makes `E:` true for the ports in `src/`. A port with no `source =` builds
- * out of `$PORT_SRC`: nothing names those files and no `sha256 =` covers
- * them, so with only the four recipe files hashed, editing a `.c` changes
- * nothing the build can see — the port is reported installed and current, and
- * the tree keeps the binary it already had. The symptom is never a build
- * error; it is a shipped program that behaves like an older one.
+ * EVERY FILE A BUILD CAN READ IS PART OF ITS RECIPE, unless something else
+ * already vouches for its bytes. A port with no `source =` builds out of
+ * `$PORT_SRC`, and a sourced port reads its own directory for a kernel config,
+ * a desktop entry or a freeze file: nothing names those files, so with only
+ * the four recipe files hashed, editing one changes nothing the build can
+ * see — the port is reported installed and current, and the tree keeps the
+ * binary it already had. The symptom is never a build error; it is a shipped
+ * program that behaves like an older one. The price is that any stray file
+ * beside a recipe — an editor backup, a `kpkgbuild.new` — changes the hash
+ * and rebuilds the port.
+ *
+ * `recipe`, when not NULL, is the kpkgbuild text, and a top-level file one of
+ * its `sha256 =` lines names is skipped. A port with nothing beyond its recipe
+ * and its named sources therefore hashes exactly as its recipe files alone.
  *
  * Sorted at EVERY level, because readdir order is the filesystem's and two
  * machines would otherwise disagree about the same tree. Directories are
  * descended into, since a fork keeps its sources under `src/`.
  */
-static void hash_tree(KbSha256 *s, const char *root, const char *rel, int depth)
+static void hash_tree(KbSha256 *s, const char *root, const char *rel, int depth,
+		      const char *recipe)
 {
 	char here[1024];
 	char **names;
@@ -91,8 +137,10 @@ static void hash_tree(KbSha256 *s, const char *root, const char *rel, int depth)
 		char *data;
 
 		/* Hashed already by the caller, and hashing them twice would
-		 * make the two loops' order load-bearing. */
-		if (!*rel && recipe_file(names[i]))
+		 * make the two loops' order load-bearing; or vouched for by
+		 * their own `sha256 =` line. */
+		if (!*rel && (recipe_file(names[i]) ||
+			      (recipe && sha256_names(recipe, names[i]))))
 			continue;
 		if (*rel)
 			snprintf(sub, sizeof(sub), "%s/%s", rel, names[i]);
@@ -101,7 +149,7 @@ static void hash_tree(KbSha256 *s, const char *root, const char *rel, int depth)
 		path = kb_path_join(root, sub);
 		if (kb_is_dir(path)) {
 			free(path);
-			hash_tree(s, root, sub, depth + 1);
+			hash_tree(s, root, sub, depth + 1, recipe);
 			continue;
 		}
 		data = kb_read_all(path, &len);
@@ -170,10 +218,20 @@ int kp_recipe_hash(const char *portdir, char out[65])
 	kb_strv_free(names);
 	if (!any)
 		return -1;
-	if (!has_source(portdir)) {
+	if (has_source(portdir)) {
+		char *path = kb_path_join(portdir, "kpkgbuild");
+		size_t len = 0;
+		char *recipe = kb_read_all(path, &len);
+
+		free(path);
+		if (recipe) {
+			hash_tree(&s, portdir, "", 0, recipe);
+			free(recipe);
+		}
+	} else {
 		char libs[1024];
 
-		hash_tree(&s, portdir, "", 0);
+		hash_tree(&s, portdir, "", 0, NULL);
 		/*
 		 * AND THE SHARED LIBRARIES, because a source-less port
 		 * compiles them into itself. `build.sh` names which — a glob
@@ -196,7 +254,7 @@ int kp_recipe_hash(const char *portdir, char out[65])
 		 */
 		snprintf(libs, sizeof(libs), "%s/../../libs", portdir);
 		if (kb_is_dir(libs))
-			hash_tree(&s, libs, "", 0);
+			hash_tree(&s, libs, "", 0, NULL);
 	}
 	kb_sha256_final(&s, out);
 	return 0;

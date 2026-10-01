@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/LibRaw/LibRaw/archive/re
 sha256      = 627928088300ecde6ca91ffd202e189203f04ad61ad12f0fe9dc57b9a7a0fb3c  libraw-0.22.2.tar.gz
 description = Decode a camera raw file — the format the picture actually is
 homepage    = https://www.libraw.org/
-depends     = autoconf automake libtool pkgconf libjpeg-turbo lcms2 zlib
+depends     = gcc autoconf automake libtool pkgconf libjpeg-turbo lcms2 zlib

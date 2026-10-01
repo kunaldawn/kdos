@@ -47,13 +47,16 @@
 # hwaccels are built with. Its probe only disables them when it fails, so the
 # check after configure is what turns a missing compiler into an error.
 
+export CFLAGS="$CFLAGS -frandom-seed=ffmpeg"
 ./configure \
 	--prefix=/usr \
 	--mandir=/usr/share/man \
 	--disable-static \
+	--disable-debug \
 	--disable-stripping \
 	--enable-shared \
 	--enable-pic \
+	--enable-lto=auto \
 	--enable-pthreads \
 	--enable-version3 \
 	--enable-gnutls \

@@ -14,6 +14,7 @@ export CFLAGS="$CFLAGS -Wno-unterminated-string-initialization"
 # the feature off without an error, so acl and zlib in depends are what keep
 # ACLs and zisofs in the image. libjte (jigdo templates) is not a port.
 ./configure --prefix=/usr \
+	--disable-debug \
 	--enable-libacl \
 	--enable-xattr \
 	--enable-zlib \

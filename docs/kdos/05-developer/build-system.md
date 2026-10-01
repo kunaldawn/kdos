@@ -20,10 +20,10 @@ at `build/iso-build/kdos.iso`. Four layers take part, each started by the one be
    process, since rewriting an image a virtual machine is reading gives that guest I/O errors
    (`make build ALLOW_ISO_IN_USE=1` overrides the check). It then builds the `os-dev` image from the
    repository's `Dockerfile` (Alpine 3.23 with GCC, GNU make, bison, flex, tar, zstd and Python) and
-   runs it with no network, eight CPUs and `--privileged`. It asks for a terminal only when it has
+   runs it with no network, `--privileged` and a CPU weight rather than a cap (see below). It asks for a terminal only when it has
    one, so a build whose output is redirected to a file still starts.
-2. **`script/kdosbuild.sh`**, inside that container, compiles the orchestrator from source and runs
-   it.
+2. **`script/kdosbuild.sh`**, inside that container, compiles the orchestrator from source when
+   its sources, flags or compiler changed, and runs it.
 3. **`kdosbuild`**, the orchestrator, discovers the phases under `script/phases/` and runs them in
    order, writing logs, snapshots and timing history as it goes.
 4. **The phases** do the work: the first two in the container itself, the rest inside the target
@@ -31,10 +31,14 @@ at `build/iso-build/kdos.iso`. Four layers take part, each started by the one be
 
 The container sees the repository at `/workspace`, with `src/`, `fs/`, `script/` and `ports/`
 mounted read-only and only `build/` writable, so a build cannot modify its own sources. The
-`Makefile` passes seven variables in: `HOST_UID` and `HOST_GID` (see [kdosbuild](#kdosbuild)),
-`KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY` (recorded in each snapshot), and the three opt-in packaging
-flags `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS` and `KDOS_MAKE_BINHOST`. `make build` downloads nothing;
-every source has to be in place beforehand, which is what `make fetch` does (see
+`Makefile` passes twelve variables in: `HOST_UID` and `HOST_GID` (see [kdosbuild](#kdosbuild)),
+`KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY` (recorded in each snapshot), the job count `KDOS_JOBS`
+(empty unless the developer set it), the `system.sfs` codec `KDOS_ISO_COMP`, the compiler-cache
+switch `KDOS_CCACHE`, the package-store switch `KDOS_PKG_STORE` and its cap `KDOS_PKG_STORE_MAX`,
+and the three opt-in
+packaging flags `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS` and `KDOS_MAKE_BINHOST`. It runs the container with `--cpu-shares=256`, a weight
+rather than a cap, and adds a `--cpus` cap only when `KDOS_JOBS` is set. `make build` downloads
+nothing; every source has to be in place beforehand, which is what `make fetch` does (see
 [Fetching sources in a container](#fetching-sources-in-a-container)).
 
 Four terms are used throughout:
@@ -70,16 +74,16 @@ share, `chroot/` the chroot wrappers, `lib/port.sh` the port reader the first tw
 | `00_cross` | Cross Toolchain | Container | 2 scripts: cross binutils and gcc for `x86_64-kdos-linux-musl` (musl is the C library KDOS is built on) | `cross fs mark` |
 | `10_bootstrap` | Base Userland | Container | 16 scripts, `000_file_system.sh` to `130_kinstall.sh`: the `fs/` overlay, kernel headers, musl, libstdc++, ncurses, xz, gzip, tar, toybox, readline, bash, binutils, gcc, make, kpkg, kinstall | `cross fs mark` |
 | `20_selfhost` | Self-Hosting Bootstrap | Chroot | `packages.txt`, 8 names, 14 ports installed: tar, musl, zlib, binutils, diffutils, m4, gawk and gcc rebuilt inside the chroot, with what they depend on | `fs` |
-| `30_foundation` | Build Foundation | Chroot | `packages.txt`, 125 names, 115 installed: build systems, perl and python3, base libraries, archive, TLS and documentation tooling | `fs` |
-| `31_compilers` | Compilers | Chroot | `packages.txt`, 22 names, 22 installed: LLVM, clang, lld and their pinned 21 series, compiler-rt, libunwind, openmp, rust, cargo-c, bindgen, cbindgen, go, ghc, cabal-install, pandoc, zig, nodejs, ruby, asciidoctor, ccache | `fs` |
+| `30_foundation` | Build Foundation | Chroot | `packages.txt`, 126 names, 116 installed: build systems, perl and python3, base libraries, archive, TLS and documentation tooling, ccache | `fs` |
+| `31_compilers` | Compilers | Chroot | `packages.txt`, 22 names, 22 installed: LLVM, clang, lld and their pinned 21 series, compiler-rt, libunwind, openmp, rust, cargo-c, bindgen, cbindgen, go, ghc, cabal-install, pandoc, zig, nodejs, ruby, asciidoctor, the ccache manual page | `fs` |
 | `40_lang` | Languages | Chroot | `packages.d/`, 14 files, 195 names, 167 installed: language modules, language implementations, build, documentation and developer tools, version control | `fs` |
 | `41_system` | System | Chroot | `packages.d/`, 94 files, 967 names, 967 installed: everything with no graphics and no toolkit in its dependency closure, among it services, networking, storage, command-line tools, codecs, firmware, fonts, science and hardware libraries, and KDOS's theme, icons, cursors, splash and pack tools | `fs` |
 | `42_graphics` | Graphics Stack | Chroot | `packages.d/`, 54 files, 186 names, 186 installed: the Wayland and X11 libraries, Xwayland, Mesa, the media frameworks, and `kdos-tools` | `fs` |
 | `43_toolkits` | Toolkits | Chroot | `packages.d/`, 46 files, 242 names, 242 installed: GTK, Qt 5 and 6, KDE Frameworks and the libraries built on them | `fs` |
 | `44_apps` | Applications | Chroot | `packages.d/`, 55 files, 280 names, 280 installed: the natively ported graphical applications, and `kdos-appbox` | `fs` |
 | `50_desktop` | Desktop | Chroot | `packages.txt`, 22 names, 22 installed: wlroots, `kdos-comp`, `kdos-shell`, `kdos-term`, `kdos-lock`, `kdos-res`, `kdos-boxsock`, `kdos-record`, the five root daemons, fcitx5 and its engines, the portals | `fs` |
-| `60_kernel` | Kernel | Chroot | `packages.txt`, 2 names: `dwarves` and `linux` | `fs` |
-| `70_image` | Image | Chroot | 11 scripts: see [The packaging steps](#the-packaging-steps) | `fs iso_root iso-build initramfs initramfs.cpio.gz` |
+| `60_kernel` | Kernel | Chroot | `packages.txt`, 2 names: `dwarves` and `linux` | none |
+| `70_image` | Image | Chroot | 11 scripts: see [The packaging steps](#the-packaging-steps) | none |
 
 "Container" means the build container itself, running as root; "Chroot" means inside `build/fs`,
 described in [The chroot](#the-chroot). A phase runs in the chroot when its `phase.env` sets
@@ -194,7 +198,7 @@ for the first time. `coreutils` goes ahead of the text games that install with G
 `python3-pyxdg` and `python3-pysocks` straight after `khal` and `toot`, whose vendor bundles carry
 their own copies: whoever installs last owns the path, and it has to be the port.
 
-The lists install 2,017 of the 2,023 recipes in the tree. The six they do not are `kdos-installer`,
+The lists install 2,018 of the 2,024 recipes in the tree. The six they do not are `kdos-installer`,
 which `10_bootstrap` compiles directly, and five core ports no list reaches: `helix`,
 `icon-naming-utils` and the `perl-xml-simple` only it depends on, `musl-locales` and `setconf`. The
 four other ports no list names, `gmp`, `mpfr`, `mpc` and `xxhash`, are `20_selfhost`'s
@@ -224,8 +228,10 @@ at most eight repositories; an entry past the eighth is dropped with a warning.
 
 ## How a phase runs
 
-When the orchestrator reaches a phase, it expands the phase into steps and runs them one at a time.
-How the steps are made depends on what the phase holds.
+When the orchestrator reaches a phase, it expands the phase into steps and runs them one at a time;
+with `--port-jobs` a package phase runs several of its ports at once, level by level (see
+[Building a package phase by level](#building-a-package-phase-by-level)). How the steps are made
+depends on what the phase holds.
 
 **A script phase** has one step per `*.sh` file in its directory, in sorted order (a name starting
 with a dot is ignored). The step runs `bash <script>` in the container, or
@@ -243,17 +249,35 @@ source script/phases/41_system/phase.env && export PKGDB_DIR=/dev/null && kpkgde
 
 Pointing `PKGDB_DIR` at `/dev/null` makes the package database look empty, so `kpkgdepends` prints
 the full install order for the list and its whole dependency closure, not only what is missing.
-Each name in that order becomes a step of its own:
+Each name in that order becomes a row of the phase, and each row that has work to do is a step:
 
 ```sh
 source script/phases/41_system/phase.env && export KPKG_OVERWRITE=1 && kpkg install <port>
 ```
 
-`kpkg` skips a port that is already installed from the same recipe, so a re-run of a phase installs
-only what is new or changed. The shared environment sets `KPKG_STRICT_RECIPE=1`, which makes "the
-same recipe" mean the same recipe hash rather than merely an entry in the database: a port whose
+Before the first step runs, the orchestrator asks of every row the question `kpkg install` would
+ask, on the host, without entering the chroot: is this port installed, and does its recipe hash
+still match the port as it stands? It reads the database the chroot reads,
+`build/fs/var/lib/kpkg/db`, and finds each port in the phase's `PORT_REPO` mapped onto the
+repository (`/ports/...` is `ports/...`, `/kdos/...` is the repository root), with the check that
+`KPKG_STRICT_RECIPE=1` turns on. A port that is installed and current is marked done with the note
+`installed`; it stays in the list, dimmed, so the phase still shows its whole closure. That first
+answer is provisional: when the run reaches the row, the orchestrator asks again, so a recipe or a
+library edited while earlier ports built still reaches a later port in the same run, as it would
+have if `kpkg` had asked when the step started. A row still current is passed over and never runs,
+and is never announced as a running step; a row that is not current by then loses its mark and its step runs.
+The phase finishes, and its snapshot counts it complete, only once every marked row has been asked
+again. In a phase re-run on a
+built tree that is most of the order, and each of those rows would otherwise cost a chroot entry to
+print `Skipping`. Three kinds of row always run: a port the build plan forces with `--rebuild`, a
+port the host cannot find in exactly one place under those repositories, and every row of a phase
+whose `phase.env` names `PKGDB_DIR`, `KPKG_ROOT`, `KPKG_CONF` or `--root`, whose database the host
+cannot follow. The decision is `libkpkg`'s own `kp_installed_current()`, so the host and `kpkg` have
+one rule between them, and `kpkg` asks it again for every step that does run: a port whose
 `kpkgbuild`, `build.sh`, `postinstall.sh` or patches changed is rebuilt without being named. See
-[Deciding what to rebuild](../03-architecture/packaging.md#deciding-what-to-rebuild).
+[Deciding what to rebuild](../03-architecture/packaging.md#deciding-what-to-rebuild). The
+completion panel and the `--json` result count these rows as `installed`, apart from the steps that
+ran.
 
 `KPKG_OVERWRITE=1` lets a package take over a path another package already owns. The userland
 overlaps on purpose (toybox and GNU sed, findutils, gawk and coreutils ship some of the same
@@ -274,6 +298,77 @@ failure is written to `build/logs/<phase>/expansion.log`.
 
 A phase whose list names no ports, or whose plan selects none of its scripts, finishes at once.
 
+### Building a package phase by level
+
+`kdosbuild --port-jobs N`, given through `BUILD_ARGS` (`make build BUILD_ARGS="--port-jobs 3"`),
+builds up to `N` ports of a package phase at once, `N` from 1 to 8. The default, 1, is the serial
+run described above, with the same steps and the same commands. Script phases always run one step
+at a time.
+
+With `N` above 1, the orchestrator first runs `kpkg help` through the phase's wrapper; a `kpkg`
+without `--build-only`, as a tree restored from an old snapshot can carry, runs the phase serially
+and says so in a notice. Otherwise it gives every port of the resolved order a **level**, on the
+host, from the recipes the phase's `PORT_REPO` finds:
+
+- A port's edges are the names on its `depends =` line that are ports of the same phase and come
+  earlier in the order. A port the host cannot find in exactly one place depends on every port
+  before it.
+- The list's **order run**, `00-order.txt` in a `packages.d/` or the names ahead of the first shelf
+  heading in a `packages.txt`, is a serial prefix: every port up to the last of its names in the
+  resolved order depends on the port before it, and every later port depends on that last one. A
+  run a comment pinned stays one at a time, and finishes before anything else of the phase starts.
+- A port's level is one more than the highest level among its edges.
+
+The rows of the phase are then its ports level by level, each level in the resolved order and
+followed by one commit step titled `install L<n> (<count>)`. The ports of a level build side by
+side, each with:
+
+```sh
+export KDOS_JOBS=<k> && source script/phases/41_system/phase.env && export KPKG_OVERWRITE=1 && kpkg install --build-only <port>
+```
+
+`--build-only` builds the port into the package cache and installs nothing. Once every port of the
+level has built, the commit step runs `kpkg install --commit <ports>`, which installs them one at a
+time in the resolved order. Nothing is installed while a build runs, so every port builds against
+the earlier phases and the lower levels and nothing else: what it sees is decided by the tree, not
+by which port finished first. `--port-jobs 2` and `--port-jobs 3` therefore build the same thing as
+the serial run, provided every recipe declares what it builds against (see
+[Writing ports](writing-ports.md)).
+
+The jobs are divided between the ports. `J` is `KDOS_JOBS` as the build was given it, or else every
+CPU the orchestrator may use, and each port gets `k = J / N` (at least 1) as its `KDOS_JOBS`, from
+which `common.env` sets `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, and
+`script/bin/ninja` hands ninja as `-jk`. Each port is also bound to a window of `min(CPUs, 2k)`
+CPUs, slot `w` of `N` starting `w × CPUs / N` along the list, so cargo, rustc and go, which size
+themselves from the CPUs they may use, size themselves to the window. The windows overlap, so a
+port beside an idle or linking neighbour still has twice its share.
+
+A free slot takes the level's pending port with the longest recorded time, the earlier in the order
+on a tie, and only while `MemAvailable` is at least a quarter of `MemTotal`; with nothing running a
+port always starts. A port the host found installed and current is asked again when its level opens,
+as the serial run asks when it reaches the row. A port `--build-only` reports as current builds
+nothing and is left out of the commit, and a commit with nothing to install is marked done without
+running.
+
+**A failure drains the level.** The first port to fail is the build's failed step; no port starts
+after it, the ports already running finish, and the build then stops. The level is not committed:
+the packages its ports built stay in the package cache, each recorded in a
+`<name>.pending` file beside it, and a resumed build's `--build-only` reuses one whose recipe hash
+still matches rather than building it again. `Q` sends `SIGTERM` to every running port's process
+group, and a second `Q` sends `SIGKILL`.
+
+**Ownership.** `KPKG_OVERWRITE=1` gives a contested path to whoever installs last, which within a
+commit is the resolved order, as in the serial run. A path one port takes from a port of the same
+phase that the resolved order puts after it can still end with a different owner, since the later
+port may have been committed at a lower level. The commit step watches for kpkgadd's
+`Taking <n> path(s) from <port>` and names such a pair in a notice, `<taker> took paths from
+<port>; the serial order had <port> last — pin the pair in 00-order.txt`; pinning both in the order
+run puts them back in serial order.
+
+The header shows how many steps are running, and its ETA is marked `~`: it divides each level's
+remaining time evenly between its slots, which a level ruled by one long port does not. A phase's
+recorded duration is the wall-clock span of its steps.
+
 ### Running a step
 
 Each step runs in a child process with standard input from `/dev/null` and standard output and
@@ -284,7 +379,7 @@ after ten seconds the orchestrator stops waiting for the step, records it as fai
 143, and ends the run.
 
 A step that exits non-zero stops the build: the step and its phase are marked failed and nothing
-after it runs. A step that cannot be started at all, because the pipe or the fork is refused on a
+after it runs. A port that fails inside a level first lets the ports running beside it finish. A step that cannot be started at all, because the pipe or the fork is refused on a
 machine out of file descriptors or memory, fails the same way with return code 999 and a named
 notice.
 
@@ -316,12 +411,16 @@ build/logs/<phase directory>/<NNNN>_<name>.log
 
 `NNNN` is the step's position within its phase, counted from zero. For a script step, `<name>` is
 the script's file name with its numeric prefix removed; for a package step it is the port name
-followed by `.install`. For example:
+followed by `.install`, and for the commit step of level `n` it is `L<n>.commit`. For example:
 
 ```text
 build/logs/10_bootstrap/0000_file_system.sh.log
 build/logs/42_graphics/0123_mesa.install.log
+build/logs/42_graphics/0131_L7.commit.log
 ```
+
+Under `--port-jobs` the positions follow the rows, level by level, and each running port writes its
+own file.
 
 The file is verbatim, escape sequences included. The full-screen interface keeps only the last
 2000 lines of each step in memory; the file keeps everything. Three further files sit under
@@ -330,7 +429,7 @@ The file is verbatim, escape sequences included. The full-screen interface keeps
 | File | Holds |
 |---|---|
 | `snapshots.log` | Every notice the build shows (snapshots taken, skipped or failed, restores, plans, stop requests), with a time stamp, so a notice survives the interface that displayed it |
-| `chroot.log` | Mount warnings and errors from `script/chroot/exec.sh` |
+| `chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree it could not bind read-only, an open-files limit it could not raise |
 | `<phase>/expansion.log` | Why a package phase could not be resolved |
 
 Reading a failed step's log is covered in [Build troubleshooting](build-troubleshooting.md).
@@ -344,13 +443,14 @@ files under `script/env/`, and each `phase.env` sources one of them:
 
 | File | Sourced by | Holds |
 |---|---|---|
-| `common.env` | Every phase, through one of the two below | The settings that make packages reproducible (`SOURCE_DATE_EPOCH`, `TZ`, `LC_ALL`, `-ffile-prefix-map`, `--build-id=sha1`), described in [Reproducible packages](../03-architecture/packaging.md#reproducible-packages); `MAKEFLAGS=-j12`; `KPKG_STRICT_RECIPE=1` |
+| `common.env` | Every phase, through one of the two below | The settings that make packages reproducible (`SOURCE_DATE_EPOCH`, `TZ`, `LC_ALL`, `-ffile-prefix-map`, `--build-id=sha1`), described in [Reproducible packages](../03-architecture/packaging.md#reproducible-packages); the job count `KDOS_JOBS` (when not given, the thread count clamped to one job per 2 GiB of memory) exported as `MAKEFLAGS=-j$KDOS_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`; `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross` and `10_bootstrap` | The target triplet, the paths of the workspace, `build/`, the sysroot and the cross toolchain, `pkg-config` pointed at the sysroot, the cross toolchain first on `PATH`, and the base compiler flags. It empties `build/tmp` |
-| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, the compiler named outright (`CC=gcc`, `CXX=g++`), the base compiler flags, `ac_cv_prog_cxx_cxx11` set empty, and `TERM=dumb`. It empties the `kpkg` work directory, so no port builds on top of a tree an interrupted run left behind |
+| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, the compiler named outright (`CC=gcc`, `CXX=g++`), the release compiler and linker flags, and after `common.env` the defaults for the build systems that do not read `CFLAGS` (`CMAKE_BUILD_TYPE=Release`, `CARGO_PROFILE_RELEASE_DEBUG=0`, `GOFLAGS`, `CGO_CFLAGS`, `CGO_CXXFLAGS`, `CGO_LDFLAGS`), all set out in [Writing ports](writing-ports.md#the-release-flags); `script/bin` first on `PATH` once `/usr/bin/ninja` exists, whose `ninja` adds `-j$KDOS_JOBS` to a ninja call that names no job count; the CMake compiler cache; `ac_cv_prog_cxx_cxx11` set empty, `TERM=dumb`, and `KPKG_SKIP_INDEX=man`, which leaves the manual index to `70_image`. It removes nothing: `kpkg` empties each port's own work directory before building it and again after a successful build |
 
 `common.env` appends its flags to `CFLAGS`, `CXXFLAGS` and `LDFLAGS`, so `host.env` and
-`chroot.env` set their base flags first and source it last. A base assignment made after it would
-drop the reproducibility flags without a word.
+`chroot.env` set their base flags first and source it after them. A base assignment made after it
+would drop the reproducibility flags without a word; `chroot.env`'s `CGO_*FLAGS` are copied after
+it for that reason.
 
 A `phase.env` carries what is the phase's own: a metadata block for the orchestrator at the top,
 `CHROOT=1` for a chroot phase, `PORT_REPO` where the phase needs more than the default, and after
@@ -388,10 +488,10 @@ are present. The empty `ac_cv_prog_cxx_cxx11` stops an Autoconf `configure` lowe
 standard to C++11 (see
 [Build troubleshooting](build-troubleshooting.md#autoconf-lowering-the-c-standard)).
 
-The orchestrator **parses** each `phase.env` and never sources it. The shared files remove a work
-directory (`rm -rf /var/cache/kpkg/work` in `chroot.env`, `rm -rf $BUILD_DIR/tmp` in `host.env`),
-and sourcing a `phase.env` in the orchestrator's own process would run that removal against the
-build container instead of the target. The parser therefore:
+The orchestrator **parses** each `phase.env` and never sources it. `host.env` removes a work
+directory (`rm -rf $BUILD_DIR/tmp`), and sourcing a `phase.env` in the orchestrator's own process
+would run that removal, and every other line, in the orchestrator's process instead of the step's.
+The parser therefore:
 
 - reads only the `phase.env` file's own text, and follows no `source` line;
 - reads only lines of the form `export NAME=VALUE`;
@@ -417,17 +517,26 @@ inside it:
 |---|---|---|
 | `HOME` | `/root` | Everything |
 | `TERM` | The caller's | Everything |
-| `PATH` | `/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin` | Everything |
+| `PATH` | `/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin`, with `/kdos/script/bin` put in front by `chroot.env` once ninja is installed; the directory holds only the `ninja` wrapper and is not in the image | Everything |
 | `KDOS_REPLAY` | `0` or `1` | A step whose "already done" guard must stand down because a plan named it (see [Build plans](#build-plans)) |
+| `KDOS_JOBS` | A number, or empty | `script/env/common.env`, which computes the job count inside the chroot when it is empty |
 | `KDOS_ISO_SOURCES` | `0` or `1` | `70_image/110_iso.sh`, to copy the sources onto the ISO (see [The packaging steps](#the-packaging-steps)) |
 | `KDOS_PACK_KDOS` | `0` or `1` | `70_image/100_packs.sh`, to pack this root filesystem as the base pack `kdos`, and `110_iso.sh`, to put that pack on the ISO |
 | `KDOS_MAKE_BINHOST` | `0` or `1` | `70_image/010_binhost.sh`, to write the packages this build made into a signed binhost |
-| `KPKG_KEEP_CACHE` | The value of `KDOS_MAKE_BINHOST` | Every chroot `kpkg install`, which then keeps the package it built for `010_binhost.sh` to index |
+| `KDOS_ISO_COMP` | `xz`, `zstd:1` to `zstd:22`, or empty for `zstd:15` | `70_image/110_iso.sh`, as the codec of `system.sfs`; any other value stops the step |
+| `KDOS_CCACHE` | `1` (the default) or `0` | `script/env/chroot.env`, which sends CMake compiles through ccache into `build/ccache` once the `ccache` port is installed, and sets `CCACHE_DISABLE=1` otherwise (see [The compiler cache](how-kdos-is-built.md#the-compiler-cache)) |
+| `KPKG_KEEP_CACHE` | The value of `KDOS_MAKE_BINHOST` | Every chroot `kpkg install`, which then keeps the package it built, compressed with `xz -9` instead of the `xz -0` a deleted package gets, for `010_binhost.sh` to index |
+| `KDOS_PKG_STORE` | `0` (the default), `1` or `check` | `script/chroot/exec.sh` itself, which sets the next two from it |
+| `KPKG_STORE` | `/kdos/build/pkgstore` when `KDOS_PKG_STORE` is `1` or `check`, else empty | Every chroot `kpkg install`, which installs a port from the [package store](../03-architecture/packaging.md#the-package-store) when its key is there and stores what it builds |
+| `KPKG_STORE_CHECK` | `1` for `check`, else `0` | `kpkg install`, which then builds every store hit and logs a difference to `build/logs/pkgstore-check.log` |
+| `KPKG_STORE_SALT` | Set by kdosbuild on the host when the store is on | `kpkg install`, as the store key's hash of the bootstrap phases |
+| `KDOS_PKG_STORE_MAX` | A size, default `60G` | `70_image/015_pkgstore.sh`, the cap the store is evicted down to |
 
 A variable the `Makefile` passes into the build container but `script/chroot/exec.sh` does not
 name reaches the container phases and none of the chroot ones. `70_image` is a chroot phase, so an
-opt-in packaging flag that is not forwarded silently produces an ordinary image. Adding such a flag
-is therefore two edits: the `Makefile` passes it into the container with `-e`, and
+opt-in packaging flag that is not forwarded silently produces an ordinary image, and a `KDOS_JOBS`
+that is not forwarded is recomputed in the chroot from the host. Adding any build variable is
+therefore two edits: the `Makefile` passes it into the container with `-e`, and
 `script/chroot/exec.sh` names it on the `env -i` line.
 
 `/usr/local/bin`, where KDOS's own tools such as `kdos` and `kdos-appbox` install, comes last in
@@ -444,26 +553,31 @@ The phases from `20_selfhost` on run inside the target root filesystem, `build/f
 `script/chroot/exec.sh` enters it once for every command the orchestrator runs there (every
 `kpkgdepends`, every `kpkg install`, every image step):
 
-1. It requires root, and requires `build/fs` to exist.
-2. It unmounts anything a previous, killed run left mounted under `build/fs`, deepest first, retrying
-   a busy mount up to three times and finally detaching it lazily.
-3. It bind-mounts `/dev`, and mounts a fresh `proc` at `/proc`, `sysfs` at `/sys` and a `tmpfs` at
-   each of `/tmp` and `/run`.
-4. It bind-mounts the repository at `/kdos`, `build/` at `/kdos/build`, `ports/` at `/ports`, and
+1. It requires root, then runs itself again under `unshare --mount --propagation private`, so
+   every entry has a private mount namespace of its own. It requires `build/fs` to exist.
+2. It bind-mounts `/dev`, and mounts a fresh `proc` at `/proc`, `sysfs` at `/sys` and a `tmpfs` at
+   each of `/tmp` and `/run`. It bind-mounts the container's cgroup tree read-only over the fresh
+   sysfs's empty `/sys/fs/cgroup`: cargo and go size themselves from its `cpu.max`, and
+   without it they see every host thread whatever `--cpus` cap the container has.
+3. It bind-mounts the repository at `/kdos`, `build/` at `/kdos/build`, `ports/` at `/ports`, and
    `script/`, `src/` and `fs/` under `/kdos`. The repository bind mount does not carry the
    container's own mounts beneath it, so each directory a step needs is mounted explicitly.
-5. It raises the open-files limit, soft and hard, to at least 4096. QtWebEngine's link runs
+4. It raises the open-files limit, soft and hard, to at least 4096. QtWebEngine's link runs
    `ulimit -n 4096` itself and fails when the hard limit is lower; a limit it cannot raise is
    logged to `build/logs/chroot.log`.
-6. It enters with `env -i` and the variables above, and changes to `/kdos`, so a relative path such
+5. It enters with `env -i` and the variables above, and changes to `/kdos`, so a relative path such
    as `script/phases/30_foundation/phase.env` means the same inside as outside.
-7. It unmounts everything again when the command exits.
 
-Because `/tmp` and `/run` are fresh for every command, nothing a step leaves there survives into the
-next one.
+Nothing is unmounted, because nothing needs to be. Every mount the wrapper makes lives in its own
+namespace: no other entry and not the container sees it, and it disappears when the entry's last
+process exits, killed or not. Two entries running at once each have their own `/proc`, `/dev`,
+`/sys`, `/tmp`, `/run` and repository binds, and because `/tmp` and `/run` are fresh for every
+command, nothing a step leaves there survives into the next one. A mount the orchestrator finds
+under `build/fs` before a snapshot was made by something other than the wrapper.
 
 `script/chroot/enter.sh` is the interactive counterpart, for inspecting a tree by hand as root. It
-mounts only `/dev`, `/proc`, `/sys`, `/tmp` and `/run`, copies the host's `/etc/resolv.conf` into
+takes a private mount namespace the same way, mounts only `/dev`, `/proc`, `/sys`, `/tmp` and
+`/run` there, copies the host's `/etc/resolv.conf` into
 the tree, and starts a login shell there (or runs the command it is given). It does not mount the
 repository, and it is not used by the build.
 
@@ -533,7 +647,8 @@ the initramfs and ISO carry it into the image.
 | Step | Does |
 |---|---|
 | `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into `build/binhost/` and signs an index over them with `kpkg index --sign`, making the key in `build/binhost-key/` on first use; without it, does nothing. The directory accumulates across runs, so a complete binhost needs one `--fresh` build with the flag set |
-| `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory and built-package cache, and any podman container store left in `/home/kdos/.local/share/containers` (applications are built on the machine that wants them). Replaces Python bytecode (see below) |
+| `015_pkgstore.sh` | With the package store on, runs `kpkg store gc` over `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used entries first; with it off, does nothing |
+| `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory, and the built-package cache with its `.pending` records, and any podman container store left in `/home/kdos/.local/share/containers` (applications are built on the machine that wants them). Replaces Python bytecode (see below) |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries, through `kdos-appbox genlaunchers` |
 | `040_orphans.sh` | Removes installed packages that have no recipe in the tree |
 | `050_theme.sh` | Checks that `KDOS_ACCENT` is libkcolor's compiled default, then seeds that theme into `/etc/skel` with `kdos theme` |
@@ -542,7 +657,7 @@ the initramfs and ISO carry it into the image.
 | `080_whatis.sh` | Builds the manual-page index for `apropos` and `whatis` |
 | `090_initramfs.sh` | Builds the initramfs (the small RAM filesystem the kernel boots into first) in `build/initramfs` and `build/initramfs.cpio.gz` |
 | `100_packs.sh` | Creates the pack store directories, and with `KDOS_PACK_KDOS=1` the base pack `kdos` in `build/kdos-base` |
-| `110_iso.sh` | Squashes the tree into `system.sfs`, a compressed read-only squashfs image, assembles `iso_root` with the kernel, the initramfs and Limine (the bootloader), and writes `build/iso-build/kdos.iso`. With `KDOS_PACK_KDOS=1` it also copies the base pack onto the ISO9660 filesystem at `/packs/kdos.kpack`. It draws the boot menu in the console's own font, converted by `psf2limine.py`, which sits beside it in `70_image/` |
+| `110_iso.sh` | Squashes the tree into `system.sfs`, a read-only squashfs image compressed with zstd at level 15, or with the codec `KDOS_ISO_COMP` names (`xz` or `zstd:<1-22>`; anything else is fatal), assembles `iso_root` with the kernel, the initramfs and Limine (the bootloader), and writes `build/iso-build/kdos.iso`. With `KDOS_PACK_KDOS=1` it also copies the base pack onto the ISO9660 filesystem at `/packs/kdos.kpack`. It draws the boot menu in the console's own font, converted by `psf2limine.py`, which sits beside it in `70_image/` |
 
 The ISO carries no applications. `100_packs.sh` always creates `/var/lib/kdos/packs/staging` (mode
 01777) and `/var/lib/kdos/packs/mnt`; the only pack a medium can carry is the opt-in base pack
@@ -564,10 +679,12 @@ image, because the fetched upstream sources are already compressed and are not s
 ## Databases stamped into the image
 
 Two tools read a compiled database that no single package installs, because each is built from
-every package's files. `kpkg` keeps both current on every install and removal (they are
-[shared indexes](writing-ports.md#shared-indexes)). `060_udev_hwdb.sh` and `080_whatis.sh` rebuild
-them from scratch over the finished tree and check the result, so the image never carries an index
-left half-built by an interrupted build.
+every package's files (they are [shared indexes](writing-ports.md#shared-indexes)). `kpkg` keeps
+the hardware database current on every install and removal. It skips the manual index throughout
+the build, because `chroot.env` sets `KPKG_SKIP_INDEX=man`: merging each port's pages would be
+thrown away here. `060_udev_hwdb.sh` rebuilds the hardware database and `080_whatis.sh` writes the
+manual index, both from scratch over the finished tree, and each checks the result, so the image
+never carries an index left half-built by an interrupted build.
 
 **The hardware database.** `udevadm hwdb --update` compiles `/etc/udev/hwdb.bin` from the `hwdb.d`
 text files eudev ships. Many of eudev's rules import properties from it, and without the file those
@@ -590,9 +707,11 @@ and checks that the file it wrote is not empty; the manual step fails unless at 
 `mandoc.db` was written.
 
 **Python bytecode.** `020_cleanup.sh` deletes every `__pycache__`, `.pyc` and `.pyo` the build
-left, then compiles `/usr/lib/python3*` again with `--invalidation-mode checked-hash`, and fails if
-no bytecode was written. Hash-checked bytecode is the same bytes from the same tree, so the image
-is reproducible, and the interpreter checks the hash on import, so a source file a later upgrade
+left, then compiles `/usr/lib/python3*` again with `--invalidation-mode checked-hash` on every CPU
+(`-j 0`), and fails if no bytecode was written. Hash-checked bytecode carries no timestamp, and the
+parallel compile writes the same bytes run to run; the exception, in any mode, is a module the
+compiling interpreter had itself imported, whose marshal reference flags can differ from a fresh
+compile of the same source. The interpreter checks the hash on import, so a source file a later upgrade
 replaces is recompiled rather than served stale. Deleting without recompiling would make every
 Python program compile everything it imports on every start, because `/usr` is read-only to it.
 
@@ -622,62 +741,172 @@ with your machine's own toolchains.
 
 ## Snapshots
 
-A full build takes many hours. Every completed phase is therefore archived to
-`build/snapshots/<phase directory>/`, so that a later build can start from it instead of from the
-beginning.
+A full build takes many hours. Every completed phase from `00_cross` to `50_desktop` is therefore
+archived to `build/snapshots/<phase directory>/`, so that a later build can start from it instead of
+from the beginning. `60_kernel` and `70_image` take no snapshot: they are re-run on the tree they
+find, which costs minutes, where archiving the image phase's tree would cost more than running it.
 
 Each phase declares what its snapshot holds. `KDOS_SNAPSHOT_PATHS` lists paths relative to
-`build/`; `KDOS_SNAPSHOT_EXCLUDE` lists `tar` exclusion patterns that keep out work directories,
-the pseudo-filesystems and the chroot's bind mounts. The first two phases archive `cross`, `fs` and
+`build/`; `KDOS_SNAPSHOT_EXCLUDE` lists patterns that keep out work directories, the
+pseudo-filesystems and the chroot's bind mounts. The first two phases archive `cross`, `fs` and
 `mark`, since the cross toolchain and the markers are part of their result; the package phases
-archive `fs`; `70_image` adds the ISO tree, the ISO and the initramfs. A declared path that does not
-exist yet is left out.
+archive `fs`. A declared path that does not exist yet is left out.
+
+**How exclude patterns match.** Each pattern is matched with `fnmatch(3)`, no flags, against an
+entry's whole path relative to `build/`. `*` therefore crosses `/` and matches a leading dot, and a
+pattern is anchored at `build/`: `fs/tmp/*` leaves out everything below `fs/tmp` but keeps the
+directory itself, and does not touch `fs/var/tmp`. An excluded directory is left out whole.
+
+What a snapshot of `fs` leaves out: the contents of `tmp`, `dev`, `proc`, `sys`, `run`, the
+bind-mounted `kdos` and `ports`, and, from `20_selfhost` on, `kpkg`'s work directory and the build
+caches `root/.cache`, `root/.cargo`, `root/.npm` and `var/tmp`. No recipe reads another port's
+output out of those caches (each cargo build keeps its own `CARGO_HOME` in its source tree), so a
+restored tree builds the same without them.
 
 A phase that declares no paths is never snapshotted. That is how a phase opts out of its snapshot
 for good: set `KDOS_SNAPSHOT_PATHS=""` in its `phase.env`, or remove the line, and nothing else has
 to change. A restore past it takes `fs` from the newest snapshot below it, and a build resumed from
-there re-runs the phase, which `kpkg` makes cheap for every port already installed. To skip writing
+there re-runs the phase, which `kpkg` makes cheap for every port already installed. A snapshot
+directory still under such a phase's name is a leftover: it is never restored or layered into a
+restore, the picker does not offer it, and `--list` marks it `leftover (phase declares no paths)`
+so that `--delete` can remove it. To skip writing
 snapshots for one run only, use `--no-snapshot` or the picker's `S`.
 
-A snapshot directory holds one archive per path and a `manifest.json`:
+### Layers and full snapshots
+
+Each path of a snapshot is archived one of two ways:
+
+- **Full**: every entry of the path, the whole tree.
+- **Layer**: only what changed since another snapshot, its *base*, named by the base's id. Beside
+  the archive, `<path>.gone` lists, NUL-separated, the paths a restore deletes before extracting
+  it: the top of every removed subtree, and every path whose type changed.
+
+A layer holds each entry that is new, changed type, or has a different inode or ctime from the
+base. Any change to an entry, whether its content, mode, owner, an extended attribute, its link
+count or a replacement by a new file, moves its ctime or its inode, so nothing that changed is
+missed. It also holds the directory of every changed or removed entry, because extracting or
+deleting inside a directory resets that directory's times and the layer puts them back, and always
+the root of the path, so a layer is never an empty archive.
+
+A snapshot path is a layer when all of these hold, and full otherwise:
+
+- the `tar` in use accepts `--no-recursion`, `--null`, `--files-from` and `--verbatim-files-from`;
+- `--full-snapshots` was not given;
+- the path's index file (below) is readable, and the root it records is the same directory, by
+  device and inode, as the path now;
+- the snapshot the index names as its head exists, in a phase directory or held, and its whole
+  chain resolves;
+- the head's phase comes before this phase, or is this phase and the head is its own partial
+  snapshot;
+- the new chain would be at most 64 archives long.
+
+In practice: the first snapshot of a path is full; each later phase's is a layer on the one
+before; `--fresh` or `--continue-from K` on a tree already past `K` takes `K` full and layers the
+phases after it on that; after a restore, the next phase's snapshot is a layer on what was
+restored; and after a snapshot that failed, the next one is a layer on the last one that succeeded,
+and still carries everything since. The phase snapshots of one synthetic ten-phase tree, about 4.4
+GB at the end, took 1.86 GB as layers against 7.99 GB as full snapshots; a set from a real build
+has not been measured.
+
+**The index.** `build/.snap-lineage/<path, with / as _>.idx` describes the path as the snapshot
+named `head` archived it, or as a restore of `head` left it. It is a header,
+
+```
+kdos-snap-index 1
+head <snapshot id>
+phase <index> <phase directory>
+partial 0|1
+root <st_dev> <st_ino>
+```
+
+then one record per entry, `<type, octal> <inode> <ctime in ns> <allocated bytes>\t<path>\0`, in
+walk order: each directory's names sorted by byte, a directory before its contents, which is
+byte order with `/` below every other byte. The next snapshot compares a fresh walk with it in a
+single merge. It is rewritten, as a `.tmp` file and a rename, after every snapshot that commits,
+and after every restore; a restore deletes it before deleting anything else. An index that is
+missing, malformed or out of order reads as no index, and the path's next snapshot is full.
+`make cleanbuild` removes `build/.snap-lineage/` along with the tree, so the first snapshot after
+it is full.
+
+**The walk is the archive.** A snapshot walks each path itself, with the phase's exclude patterns,
+and hands `tar` the list with `--no-recursion`: the whole list for a full archive, the layer's list
+for a layer. The archive and the index describe the same entries by construction. The walk does
+not enter another filesystem, skips a live mount point, walks a directory it reaches twice only
+once, and fails the snapshot for a tree deeper than 1024 levels rather than archive it with a hole.
+With a `tar` that cannot take such a list, every snapshot is full and archived by `tar`'s own
+recursion with `--exclude`.
+
+### What a snapshot directory holds
+
+A snapshot directory holds one archive per path, a `<path>.gone` for a layer that removes
+anything, and a `manifest.json`:
 
 | Codec | Archive | Used when |
 |---|---|---|
-| `zstd` | `<path>.tar.zst`, compressed with `zstd -3` on all cores | `zstd` is installed, as it is in the build image |
+| `zstd` | `<path>.tar.zst`, compressed with `zstd -1` on all cores; an archive written at another level restores the same | `zstd` is installed, as it is in the build image |
 | `gzip` | `<path>.tar.gz`, compressed with `gzip -1` | No `zstd` |
 | `none` | `<path>.tar` | Neither |
 
 `tar` is run with `--numeric-owner`, `--one-file-system`, `--sparse`, `--xattrs` and `--acls`, each
-only when the `tar` in use supports it. The manifest records the phase, the commit and whether the
-checkout was dirty (from `KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY`), the phase's duration and the
-snapshot's own, how many of the phase's steps had finished, whether the snapshot is complete, the
-codec, and each archive's raw size, compressed size and file count.
+only when the `tar` in use supports it. The manifest, schema 4, records the snapshot's `id`
+(`<phase directory>-<unix time>-<8 hex digits>`), the phase, the commit and whether the checkout
+was dirty (from `KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY`), the phase's duration and the snapshot's
+own, how many of the phase's steps had finished, whether the snapshot is complete, the codec, and
+under `paths`, for each path: its archive, `kind` (`full` or `layer`), `base` (the base's id, or
+`null`), `removed` (the `.gone` file, or `null`) and `removed_count`, the archive's raw size
+(allocated bytes of its files), compressed size and member count, and `tree_bytes` and
+`tree_files`, the whole path as it stood. A manifest of schema 3 or older names its array
+`entries`, is always full, and is given the id `legacy-<phase directory>-<created × 10>`; it is
+restored as a full archive, and can be a base once it has been restored. A `kdosbuild` that knows
+only `entries` finds no array in a schema-4 manifest and treats that snapshot as absent rather than
+restore a layer as a whole tree.
 `build/snapshots/timings.json`, beside the snapshots, keeps the step and phase timing history that
 the build screen's time estimate uses.
 
-**Writing.** Each new archive is written to a `.tmp` file beside the old one. Only when every archive
-of the snapshot is complete are they renamed into place and the manifest rewritten, so a snapshot
-interrupted part-way leaves the previous one intact and deletes its own partial files. Archives
-for paths the phase does not declare are removed afterwards. `tar` exiting 1, its
-status for warnings such as a file changing while it was read, is not treated as a failure.
+**Writing.** A snapshot is written into `build/snapshots/.new-<phase directory>/`: its archives,
+its `.gone` lists and its manifest. Then it commits:
 
-**Disk space.** Because the new archives sit beside the old ones until they are complete, a snapshot
-is refused unless the free space on `build/` holds the previous snapshot's compressed size plus a
-fifth. For a phase's first snapshot, a third of the raw size stands in for the compressed size;
-measuring the raw size is bounded to two minutes. Every one of the thirteen phases archives `fs`,
-each a compressed copy of the tree as it stood after that phase, and the `70_image` snapshot alone
-is about 59 GB because it carries `iso_root` and `iso-build` beside `fs`. A complete set of thirteen
-has not been measured, so check the free space before a full build with snapshot writing on; see
-[Building from scratch](developing.md#building-from-scratch). `make cleanbuild` empties `build/` but
-keeps `build/snapshots`; `make clean` removes the snapshots too. Both keep `build/keys`, so a
+1. The snapshot it replaces is moved aside: into `.held/` (below) when any other snapshot's chain
+   runs through it, else to `.trash-<phase directory>`.
+2. The staging directory is renamed to the phase directory.
+3. The trash is deleted.
+4. The index files are written with the new id as head.
+5. Every held snapshot no phase snapshot's chain reaches any more is deleted.
+
+A snapshot interrupted or failed before step 2 deletes its staging directory and leaves the
+previous snapshot and the index files as they were. A `.new-*` or `.trash-*` left behind by a
+killed build is deleted when the next snapshot starts. `tar` exiting 1, its status for warnings
+such as a file changing while it was read, is not treated as a failure.
+
+**Held snapshots.** A snapshot that another snapshot's chain still runs through is never deleted
+outright. When its phase is taken again, or `--delete` or the picker's `D` removes it, it moves to
+`build/snapshots/.held/<phase directory>@<id>/`, so every snapshot that layers on it still
+restores exactly as before. It is deleted as soon as no phase snapshot's chain reaches it. A
+rebuild from phase `K` on therefore holds the old chain from `K` up while the new one is written,
+and frees each old snapshot as the one replacing it is taken; the peak is the old chain from `K`
+plus the new one.
+
+**Disk space.** A snapshot is refused unless the free space on `build/snapshots` holds its estimate
+plus a fifth. The estimate is the allocated bytes of the regular files it lists, from the walk,
+times the base's compressed-to-raw ratio for that path, or half when there is no base, since
+`zstd -1` on a root filesystem lands near 2x. Each of the eleven phases that snapshots archives
+`fs`; the first as the whole tree, the rest as layers, so a complete set is the tree compressed
+once plus what each phase added, changed or rewrote. Check the free space before a full build with
+snapshot writing on; see [Building from scratch](developing.md#building-from-scratch).
+`make cleanbuild` empties `build/` but keeps `build/snapshots`, the compiler cache `build/ccache`
+and the package store `build/pkgstore`; `make clean` removes all three. Both keep `build/keys`, so a
 signing key kept there survives a clean; the build itself neither writes nor reads it.
 
 **Safety rules.** Snapshot and restore delete and re-extract the declared paths as root, so a
 declared path is either accepted as written or rejected, never adjusted. An absolute path, a path
 starting with `~`, an empty one, a bare `.`, or any path with a `..` component is refused and
 reported as a notice. A name that merely begins with dots is allowed, and a trailing `/` is
-removed. A snapshot is also refused while anything is still mounted under `build/fs`: the
-orchestrator first releases leftover chroot mounts, lazily if it has to, and reports any it cannot.
+removed. Every name in a `.gone` list must be the path itself or lie under it, with no `..`, `.`
+or empty component, or the restore is refused before it touches anything; and a name with a
+symlink anywhere above it is refused at the moment of deletion, since deleting through the link
+would delete outside `build/`. A snapshot is also refused while anything is still mounted under
+`build/fs`. The chroot wrapper leaves no mounts there, so any the orchestrator finds belong to
+something else; it releases them first, lazily if it has to, and reports any it cannot.
 
 ### The startup picker
 
@@ -693,12 +922,14 @@ When the build has a terminal on both standard input and standard output, and no
 `--restore`, `--continue-from`, `--plan` or a command-line plan has already decided, the build
 opens a picker before running anything. It answers two questions:
 
-- **What to restore.** Row 0 is *start fresh*. Below it is one row per phase that has a snapshot,
-  showing when it was taken, its size, its commit, its step count and the phase's duration. A
-  commit marked `*` differs from the current one or was dirty; a step count such as `12/40!` marks a
-  partial snapshot. The selection opens on the last phase, in build order, that has a snapshot, and
-  the line beneath the list names what the selected row restores and which phase the build
-  continues from.
+- **What to restore.** Row 0 is *start fresh*. Below it is one row per phase that has a usable
+  snapshot, showing when it was taken, the size of its own archives, its commit, its step count and
+  the phase's duration. A commit marked `*` differs from the current one or was dirty; a step
+  count such as `12/40!` marks a partial snapshot. The selection opens on the last phase, in build
+  order, that has a snapshot. The line beneath the list names each path the selected row restores,
+  with its size and kind, and what restoring it reads, as in
+  `restores: fs 61M layer · restore reads 1.8G from 10 archives`; the next line names the phase the
+  build continues from.
 - **Whether to write snapshots during this build.** `S` toggles it, and the footer shows
   `writing: on|off`. `--no-snapshot` sets what the picker opens on. Writing off is shown as a
   warning, because a run with writing off that fails in its last phase has nothing to resume from.
@@ -709,25 +940,27 @@ opens a picker before running anything. It answers two questions:
 | `Enter`, or a second click on the selected row | Start: fresh, or from the selected snapshot |
 | `S` | Toggle snapshot writing |
 | `P` | Open the [plan picker](#the-plan-picker) instead |
-| `D` | Delete the selected snapshot |
+| `D` | Delete the selected snapshot. One that later snapshots layer on is held until they go, and the status line says which |
 | `Q`, `Esc` | Quit without building |
 
 The picker opens even when no snapshot exists: that is the from-scratch run, where writing
-snapshots costs tens of gigabytes and a large part of the time, and the choice matters most.
+snapshots costs gigabytes and a part of the time, and the choice matters most.
 
 `--restore`, `--continue-from` and `--delete` accept a phase by its short name (`selfhost`), its
 directory name (`20_selfhost`), its 1-based position, or `latest`, the last phase in build order
-that has a snapshot.
+that declares snapshot paths and has a snapshot. `--continue-from 60_kernel` or `70_image` runs
+those phases on the existing tree.
 
 *Start fresh* and `--fresh` run every phase on the target tree already in `build/fs`; they do not
-empty it. A `00_cross` or `10_bootstrap` script whose marker exists exits at once, and `kpkg` skips
-each port already installed from the same recipe. A build from nothing needs `build/fs`,
+empty it. A `00_cross` or `10_bootstrap` script whose marker exists exits at once, and a package
+phase runs no step for a port already installed from the same recipe. A build from nothing needs `build/fs`,
 `build/mark` and `build/cross` emptied first; see [Building from
 scratch](developing.md#building-from-scratch).
 
 `--continue-from` marks every phase before the one named as skipped and runs the rest on the
 current tree. The skipped phases are neither re-run nor re-snapshotted, so a later tree is never
-filed under an earlier phase's name.
+filed under an earlier phase's name. The first phase it runs on a tree that was already past it is
+snapshotted full, and the snapshots it replaces are held while anything layers on them.
 
 ### How a restore works
 
@@ -737,26 +970,41 @@ the phases they cover as done:
 - **Newest wins, per path.** Each path comes from the newest snapshot at or below the target phase,
   so a phase that declares only part of the tree does not lose the rest. Restoring `30_foundation`
   takes `fs` from `30_foundation` and `cross` and `mark` from `10_bootstrap`.
+- **Each path is its chain.** The snapshot chosen for a path is followed down its bases to a full
+  archive. The path is deleted and the full archive extracted; then each layer in turn has the
+  entries its `.gone` lists deleted and is extracted over the result. Restoring a middle phase
+  stops at that phase's own layer.
+- **Only phases that declare paths.** The plan is built from the phases whose `phase.env` declares
+  snapshot paths; a leftover snapshot under any other phase is never layered in, and restoring such
+  a phase is refused with `<phase> declares no snapshot paths; its snapshot is a leftover`.
 - **Nothing may be missing.** A restore is refused when the target phase has no snapshot, or when a
   path that the target or any earlier phase declares has no snapshot at or below the target to come
   from (for example `cross`, once both the `00_cross` and `10_bootstrap` snapshots are deleted). A
   result missing a component would be a tree that never had it.
-- **Damaged means absent.** A manifest that does not parse, has no `entries` array, or names an
-  archive that is not on disk is treated as no snapshot at all, never as a partial one.
-- **Everything is checked first.** Every path and archive is validated before anything is deleted,
-  so a rejected restore leaves `build/` untouched.
+- **Damaged means absent.** A manifest that does not parse, has neither a `paths` nor an `entries`
+  array, or names an archive or a `.gone` list that is not on disk is treated as no snapshot at
+  all, never as a partial one. So is a snapshot whose chain does not resolve: a base that is gone,
+  a loop of bases, or a chain longer than 64. Restoring its layers alone would produce a tree that
+  never existed; `--list` shows it under `unusable` so that `--delete` can remove it.
+- **Everything is checked first.** Every path, archive and `.gone` list is validated before
+  anything is deleted, so a rejected restore leaves `build/` untouched.
 - **Interrupted restores block.** A restore writes `build/.restore-in-progress`, naming its target,
-  before it deletes anything, and removes it when the last archive is extracted. While the marker
-  exists, snapshotting and the next build both refuse to run, and the picker shows the interrupted
-  restore; restore a snapshot again or run `make cleanbuild`.
+  before it deletes anything, and removes it when the last archive is extracted and the paths are
+  indexed. While the marker exists, snapshotting and the next build both refuse to run, and the
+  picker shows the interrupted restore; restore a snapshot again or run `make cleanbuild`.
 
-Extraction keeps numeric owners, extended attributes and ACLs, and, when run as root, the recorded
-owners and the setuid and setgid bits.
+Extraction keeps numeric owners, every extended attribute (`--xattrs-include=*`, so file
+capabilities in `security.capability` come back as well as `user.*` attributes) and ACLs, and,
+when run as root, the recorded owners and the setuid and setgid bits. After the last archive,
+each restored path is walked with the exclude patterns of the phase its top snapshot came from and
+its index written with that snapshot as head, so the next snapshot is a layer on what was
+restored.
 
 **Partial snapshots.** Pressing `S` during a build queues a snapshot of the phase in progress, taken
-after the current step finishes, even when snapshot writing is off. It is recorded as partial, with
+once a step finishes with no other step running, even when snapshot writing is off. It is recorded as partial, with
 the number of steps finished. Restoring a partial snapshot re-runs its phase rather than continuing
-after it, which is safe because `kpkg` skips the packages already installed.
+after it, which is safe because a port already installed and current runs no step. The phase's
+snapshot when it completes is a layer on its own partial one, which is held while it does.
 
 ## Build plans
 
@@ -828,7 +1076,7 @@ and `src/art`, found by the same walker `kpkg` resolves names with, plus every n
 list. That last source is what puts the `src/desktop` and `src/daemons` recipes on it, since each is
 named in `50_desktop`'s list, and it keeps a listed name that has no recipe visible. A name is
 listed once, and a list entry records its phase beside it. The list holds up to 4096 names; this
-repository gives it 2,023. A tree the walker refuses, because a name is filed twice or a recipe sits
+repository gives it 2,024. A tree the walker refuses, because a name is filed twice or a recipe sits
 below its shelf, leaves the list empty and says why on the status line.
 
 ## kdosbuild
@@ -836,9 +1084,14 @@ below its shelf, leaves the list empty and says why on the status line.
 `kdosbuild` is the orchestrator. Its source is `src/devtools/kdosbuild/`. It is a C program that
 links the KDOS libraries `libkbase`, `libkbuild`, `libkpkg`, `libktui` and `libkcolor` and nothing
 but the C library besides; `libkpkg` is there because the picker's port list is walked by `kpkg`'s
-own code. `script/kdosbuild.sh` compiles it before every run with `$CC` (default `cc`), to
-`build/.kdosbuild` (or `$KDOSBUILD_BIN`), then runs it with `--script-dir script` and your
-arguments.
+own code. `script/kdosbuild.sh` compiles it with `$CC` (default `cc`) to `build/.kdosbuild` (or
+`$KDOSBUILD_BIN`), then runs it with `--script-dir script` and your arguments. It compiles only when
+the binary is missing or `build/.kdosbuild.sum` (`$KDOSBUILD_BIN.sum`) does not match a SHA-256 over
+the compiler's name, the flags, the compiler's target triplet and version line, and every `.c` and
+`.h` file under `src/devtools/kdosbuild/` and the five libraries. The sum is written only after a
+compile succeeds, so a failed compile is retried on the next run, and a binary another compiler
+built (the host's glibc one or the image's musl one) is replaced rather than run. An unchanged
+orchestrator starts in a few hundredths of a second instead of about ten.
 
 The build runs as the container's root, so everything it writes is root's. When the run ends,
 whether it succeeded or not, `script/kdosbuild.sh` hands every top-level entry of `build/` back to
@@ -859,33 +1112,43 @@ compiler there; `make build` runs the script inside the container.
 | `--restore PHASE` | Restore a snapshot and continue after it. `PHASE` is a short name, directory name, 1-based index, or `latest` |
 | `--continue-from PHASE` | Resume at `PHASE` on the existing tree, with no restore. `PHASE` takes the same forms as `--restore` |
 | `--no-snapshot` | Do not write snapshots in this build. With the full-screen interface, this is what the picker opens on |
+| `--full-snapshots` | Archive every snapshot path whole in this build, never as a layer; see [Layers and full snapshots](#layers-and-full-snapshots) |
 | `--snapshot` | Write snapshots even for a narrowing plan |
 | `--plan` | Open the plan picker and run the plan on this tree |
 | `--phases LIST` | Run only these phases |
 | `--steps LIST` | Run only these scripts, `PHASE:script.sh` |
 | `--rebuild LIST` | Force-rebuild these ports |
+| `--port-jobs N` | Build up to `N` ports of a package phase at once, by dependency level, `N` from 1 to 8. The default, 1, runs one port at a time; see [Building a package phase by level](#building-a-package-phase-by-level) |
 | `--plain` | No full-screen interface: plain lines |
 | `--json` | No full-screen interface: one JSON object per event. With `--list`, the snapshot inventory as one object |
 | `--list` | List snapshots and exit |
-| `--delete PHASE` | Delete one phase's snapshot and exit. `PHASE` takes the same forms as `--restore` |
+| `--delete PHASE` | Delete one phase's snapshot and exit. `PHASE` takes the same forms as `--restore`. A snapshot that others layer on is held until the last of them goes, and the message names them: `deleted 41_system; kept as the base of 42_graphics…50_desktop` |
 | `--build-dir DIR` | The build directory. Defaults to `$KDOS_BUILD_DIR`, then `build` |
 | `--script-dir DIR` | The script directory, whose `phases/` holds the phases. Defaults to `script`. The repository root is taken as its parent, which is where the chroot wrapper and every path handed into the chroot are resolved from, so it is never `script/phases` |
 | `--selftest` | Run the layout and log-classifier assertions and exit. Must be the first argument |
 | `--preview SCREEN WxH TIER` | Draw one screen offscreen and print it. Must be the first argument; see [Diagnostics with no build](#diagnostics-with-no-build) |
 | `-h`, `--help` | Print usage |
 
-`--list` prints one row per snapshot (phase, time, total size, commit with `*` when it differs from
-the checkout or was dirty, and step count) and, under it, each archive's compressed and raw size
-and file count. With `--json`, the inventory is one object, `{"commit": ..., "snapshots": [...]}`,
-and an empty inventory is that object with an empty `snapshots` array rather than a message.
+`--list` prints one row per usable snapshot (phase, time, the size of its own archives, commit with
+`*` when it differs from the checkout or was dirty, step count, and kind: `full`, or `on
+40_lang` for a layer) and, under it, each archive's compressed and raw size and member count, and
+for a layer how many paths it removes and what restoring it reads (`restore reads 1.8G from 10
+archives`). Below the table come an `unusable` section naming each snapshot whose chain does not
+resolve and the base it misses, a `held` section with each held snapshot's id, size and the
+snapshots that need it, and `on disk: X (held Y)`. With `--json`, the inventory is one object,
+`{"commit": ..., "snapshots": [...], "held": [...], "bytes_on_disk": ..., "count": ...}`: each
+snapshot carries its `id` and `usable`, and each of its `entries` its `kind`, `base`, `removed`,
+`chain` (the phase directories its restore reads, base first, a held one as
+`<phase>@<id>`) and `restore_bytes`; each held snapshot carries its `id`, `phase`, `needed_by` and
+`entries`. An empty inventory is that object with empty arrays rather than a message.
 
 **Exit status:** 0 when the build finished; 1 when a step failed, a restore failed during the run,
 or an unfinished restore blocks the build; 2 for a usage error (an unknown argument or phase,
 `--restore` with `--continue-from`, `--phases` or `--steps` with either of them, an invalid step or
 rebuild name, `--plan` without a terminal or with `--json`), for a phase that cannot run (see
 [Package lists](#package-lists)) or no phase at all, or for a `--restore` refused before the run
-starts (the target has no snapshot, a declared path has no source, or `latest` with no snapshot at
-all).
+starts (the target has no snapshot, its snapshot's chain does not resolve, it declares no
+snapshot paths, a declared path has no source, or `latest` with no snapshot at all).
 
 `KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY`, which `make build` sets from your checkout because `.git`
 is not mounted into the container, are recorded in each snapshot so the picker can show which
@@ -903,15 +1166,20 @@ commit it came from. Run outside the container, `kdosbuild` asks `git` instead.
 | `view.c` | The layout and log-classification decisions, the `--selftest` assertions, and the preview fixture |
 | `report.c` | The plain and structured output, from one traversal |
 
-The build is a single loop with no threads: check the running step, take those samples, draw, wait
-for a key with a deadline. Because nothing runs concurrently, nothing has to guard against drawing
-while something else changes state. The one expensive sample, the size and file count of
+The build is a single loop with no threads: check each running step, take those samples, draw, wait
+for a key with a deadline. The steps of a level run as separate processes, one slot each, and the
+loop drains them all in turn; nothing in the program itself runs concurrently, so nothing has to
+guard against drawing while something else changes state. The one expensive sample, the size and file count of
 `build/fs`, is taken by a forked child that writes one line back through a pipe, so a slow walk
-cannot stall the screen.
+cannot stall the screen. A step's output is read once per turn of the loop from a pipe of 1 MiB
+(where the kernel allows it; 64 KiB otherwise), one pipe per running step, and that capacity is what
+a step may write per turn before it waits, so a step that prints fast is not held to the loop's pace.
 
 The screen's writes time out after two seconds. A snapshot drains `tar`'s output in the same loop
 that redraws the screen, so a terminal that stops reading (a paused pager, a stalled `ssh`) would
-otherwise stall the snapshot; with the timeout it costs a dropped frame instead.
+otherwise stall the snapshot; with the timeout it costs a dropped frame instead. The snapshot
+screen is redrawn at most ten times a second, however often the snapshot reports progress, and
+reads keys on every report, so `Q` cancels at once.
 
 ### Keys
 
@@ -928,7 +1196,7 @@ otherwise stall the snapshot; with the timeout it costs a dropped frame instead.
 | `E` | Jump to the first line classified as an error |
 | `O` | Open the step's log in `$PAGER` (default `less`), started directly and never through a shell |
 | `T` | Cycle through the colour schemes |
-| `Q` | Stop: the running step's process group gets `SIGTERM` at once, then `SIGKILL` after five seconds, and nothing after it runs. Press again to kill it at once and quit |
+| `Q` | Stop: every running step's process group gets `SIGTERM` at once, then `SIGKILL` after five seconds, and nothing after it runs. Press again to kill them at once and quit |
 
 A click selects a step, and a second click on a selected phase's fold marker folds it.
 
@@ -957,8 +1225,11 @@ kdosbuild --list --json   # the snapshot inventory
 ```
 
 The plain and structured reporters are two implementations of one interface, driven by the same
-traversal, so they cannot disagree about what ran. Errors go to standard error and stay out of the
-structured stream.
+traversal, so they cannot disagree about what ran. Each step is opened when it starts and closed when
+it ends, once each; under `--port-jobs` the opens and closes of a level interleave, so a consumer
+pairs a `running` event with its result by phase and step name, never by position. The plain
+reporter prints a step's title again on its result line when another line came between. Errors
+go to standard error and stay out of the structured stream.
 
 Structured output is one JSON object per line rather than one document, because a build can be
 killed at any moment and the point of a machine-readable log is being able to read the end of one
@@ -998,10 +1269,10 @@ make snapshots
 build/.kdosbuild --preview failure 100x30 vt
 ```
 
-The next `make build` replaces `build/.kdosbuild` with one compiled in the Alpine build image,
-against musl. A glibc machine cannot run that binary, and the shell's error (`No such file or
-directory`, or `required file not found`) does not mention the missing musl loader. To keep a host
-copy beside the build's, compile it to another path:
+The next `make build` finds the image's compiler in place of yours and replaces `build/.kdosbuild`
+with one compiled in the Alpine build image, against musl. A glibc machine cannot run that binary,
+and the shell's error (`No such file or directory`, or `required file not found`) does not mention
+the missing musl loader. To keep a host copy beside the build's, compile it to another path:
 
 ```sh
 KDOSBUILD_BIN=build/.kdosbuild-host script/kdosbuild.sh --list
@@ -1016,8 +1287,8 @@ described with the other libraries in [The C libraries](c-libraries.md).
 | File | Owns |
 |---|---|
 | `kb_phase.c` | Phase discovery under `script/phases/`, the checks that refuse a phase that cannot run, the metadata block, and the snapshot path rules |
-| `kb_plan.c` | A phase's list, from `packages.txt` or `packages.d/`; plan narrowing; the port list behind the picker, walked through `libkpkg`; and `build/.devplan.json` with its own strict reader |
-| `kb_snap.c` | The snapshot inventory, layered restore selection, the interrupted-restore marker, and mount detection |
+| `kb_plan.c` | A phase's list, from `packages.txt` or `packages.d/`, and its order run (`kbuild_packages_order_run`); a phase's `PORT_REPO` mapped onto the host by the rule `testing/phaseclosure.py` uses (`kbuild_phase_repos`); plan narrowing; the port list behind the picker, walked through `libkpkg`; and `build/.devplan.json` with its own strict reader |
+| `kb_snap.c` | The snapshot inventory, held snapshots included; the chains that decide which archives restore each path, and which held snapshots nothing needs; the index file and the diff that decides what a layer holds; restore selection; the interrupted-restore marker; and mount detection |
 | `kb_json.c` | A read-only JSON parser for snapshot manifests and the restore marker |
 
 The JSON parser refuses anything that does not parse completely, including truncation, trailing

@@ -298,6 +298,14 @@ A word with two unrelated meanings, which the book keeps apart.
 A *shelf* is a third thing, distinct from both: the subject directory a port is filed under, by
 which the *package lists* are also grouped.
 
+### held snapshot
+
+A *snapshot* that was replaced, or deleted with `--delete` or the picker's `D`, while another
+snapshot's chain of *snapshot layers* still runs through it. It moves to
+`build/snapshots/.held/<phase>@<id>/`, so every snapshot built on it still restores, and is deleted
+as soon as no phase's snapshot needs it. `make snapshots` lists it with what needs it. See
+[The build system](../05-developer/build-system.md#what-a-snapshot-directory-holds).
+
 ### host
 
 The KDOS system itself: everything compiled from this repository, as opposed to what runs in a box.
@@ -507,7 +515,7 @@ confused with `phosphor`, one of the eight *accents*. See
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-five port repositories in one format, holding 2,023 recipes: 1,999 upstream ports in `ports/core/`,
+five port repositories in one format, holding 2,024 recipes: 2,000 upstream ports in `ports/core/`,
 each on a *shelf*, and 24 of KDOS's own in four *areas*: 5 in `src/system/`, 6 in `src/art/`, 8 in
 `src/desktop/` and 5 in `src/daemons/`. (The sixth directory in `src/system/`, `kdos-kpkg`, has no
 recipe; `10_bootstrap` compiles it by script.) A port is known by its bare name, which is unique
@@ -568,14 +576,16 @@ init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 ### recipe
 
 The files that describe how to build one *port*: its *kpkgbuild*, its `build.sh`, and any
-`postinstall.sh` and patches beside them. The *recipe hash* is taken over them. See [Writing
+`postinstall.sh` and patches beside them. The *recipe hash* is taken over them and every other
+file beside them that no `sha256 =` line names. See [Writing
 ports](../05-developer/writing-ports.md).
 
 ### recipe hash
 
 The other of the two package hashes: a SHA-256 over a port's recipe files (`kpkgbuild`, `build.sh`,
-`postinstall.sh` and every patch). For a port with no `source =` it also covers the port's whole
-directory, and for one of KDOS's own ports under `src/` all of `src/libs` as well, so editing a
+`postinstall.sh` and every patch) and every other file in its directory that no `sha256 =` line
+names, so editing a kernel config beside a recipe changes it. For a port with no `source =` that is
+the port's whole directory, and for one of KDOS's own ports under `src/` all of `src/libs` as well, so editing a
 program's source or a shared library changes it. Written `E:` in a package index. It decides what
 the build rebuilds. Not to be confused with a *source hash*. See
 [Packaging](../03-architecture/packaging.md#e--the-recipe-hash).
@@ -673,7 +683,7 @@ session](../03-architecture/session.md).
 
 The subject directory an upstream *port* is filed under: `ports/core/<shelf>/<name>/`, such as
 `ports/core/wl/wlroots/`. There are 102, a closed list kept in `ports/shelves` with one line each
-saying what belongs on it. The shelf is only where the recipe is filed: a port is named by its bare
+giving the shelf's source-archive volume and saying what belongs on it. The shelf is only where the recipe is filed: a port is named by its bare
 name everywhere, and no recipe key records the shelf, so moving a port between shelves changes
 no hash and no package: only its path, and the shelf file of its phase's package list that names
 it. The *package lists* and [the ports catalogue](ports-catalogue.md) are grouped
@@ -711,9 +721,9 @@ language](../03-architecture/design-language.md).
 
 An archive of a completed build *phase*'s result under `build/snapshots/<phase>/`: one compressed
 `tar` per declared path and a `manifest.json`. `00_cross` and `10_bootstrap` archive `cross`, `fs`
-and `mark`; the package phases archive `fs`; `70_image` adds the ISO tree, the ISO and the
-initramfs. A
-later build restores a snapshot and continues from the phase after it instead of starting again. See
+and `mark`; the package phases up to `50_desktop` archive `fs`; `60_kernel` and `70_image` take
+none. Each path is archived whole or as a *snapshot layer* on an earlier snapshot. A later build
+restores a snapshot and continues from the phase after it instead of starting again. See
 [The build system](../05-developer/build-system.md#snapshots).
 
 Two unrelated uses share the word. The catalogue's `snapshot` key pins the date of the Debian
@@ -722,13 +732,24 @@ boxes](../03-architecture/packs-and-boxes.md#the-catalogue)), and `kdos-box snap
 saves a tagged copy of one box's writable layer (see
 [kdos-appbox](../04-programs/kdos-appbox.md#snapshots-and-rollback)).
 
+### snapshot layer
+
+A *snapshot*'s archive of one path that holds only what changed since another snapshot, its base:
+every entry that is new, changed type, or has a new inode or ctime, the directories those sit in,
+and a `.gone` list of what was removed. The changes are found by comparing a walk of the tree with
+the index in `build/.snap-lineage/`. Restoring a layer extracts the full archive at the bottom of
+its chain and every layer above it in turn. `--full-snapshots` writes none. See
+[The build system](../05-developer/build-system.md#layers-and-full-snapshots).
+
 ### source archive
 
-The content-addressed store of every upstream source file the recipes name: release assets of the
-GitHub repository `kunaldawn/kdos`, each named by its own SHA-256, in numbered releases
-`sources-001`, `sources-002` and onwards, each filled to 1,000 files before the next opens. Nothing
-in it is replaced or removed. `make fetch` reads it through *sources.idx*; `ports/publish` adds to
-it. See [Packaging](../03-architecture/packaging.md#where-sources-come-from) and [Writing
+The store of every upstream source file the recipes name: release assets of the GitHub repository
+`kunaldawn/kdos`, in numbered pre-releases, the volumes `sources-1`, `sources-2` and on, each holding
+the shelves `ports/shelves` maps to it. An asset is named `<shelf>--<file>`, or `attic--<file>` for a
+file only old history names, and each file is checked against its SHA-256 before use. A file larger
+than 1,900 MiB is stored in parts. Nothing in it is replaced, and nothing is removed except by
+`ports/publish --rehome` and `--prune=yes-delete`. `make fetch` reads it through
+*sources.idx*; `ports/publish` adds to it. See [Packaging](../03-architecture/packaging.md#where-sources-come-from) and [Writing
 ports](../05-developer/writing-ports.md#publishing-sources).
 
 ### source cache
@@ -748,10 +769,12 @@ ports](../05-developer/writing-ports.md#checksums).
 
 ### sources.idx
 
-`ports/sources.idx`, the committed index of the *source archive*: one line per file, `<sha256> <NNN>
-<port>/<file>`, giving the release each hash lives in. `make fetch` and the pre-push hook read it
-from the tree, so a file uploaded to the archive is found only once its line is committed. It names
-1,678 files: 1,000 in `sources-001` and 678 in `sources-002`. See [Writing
+`ports/sources.idx`, the committed index of the *source archive*, in format 2: the line
+`# kdos-sources-index 2` first, then one line per file, `<sha256> <tag> <asset> <port>/<file>`, with
+`parts=<N>:<h1>,…` for a file stored in parts, giving the release and asset each hash lives in.
+`make fetch` and the pre-push hook read it from the tree, so a file uploaded to the archive is found
+only once its line is committed, and an index of any other format is not read at all. It names no
+file until `ports/publish` fills it. See [Writing
 ports](../05-developer/writing-ports.md#publishing-sources).
 
 ### splash

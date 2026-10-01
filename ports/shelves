@@ -8,12 +8,21 @@
 #   ports/shelves — the closed list of shelves under ports/core
 # ---------------------------------
 #
-#   <id> <description>
+#   <id> <volume> <description>
 #
-# One shelf per line: its id, whitespace, then one line saying what belongs on
-# it. Every port lives at exactly ports/core/<id>/<name>/, and <id> must be
+# One shelf per line: its id, its volume, then one line saying what belongs
+# on it. Every port lives at exactly ports/core/<id>/<name>/, and <id> must be
 # listed here; a listed shelf holds at least one port. A line starting with '#'
 # and a blank line are skipped.
+#
+# <volume> is the number N of the source-archive release `sources-N` that
+# keeps the shelf's upstream files (docs/kdos/05-developer/writing-ports.md,
+# "Publishing sources"). A new shelf is written with `-` there, or with no
+# volume at all, and `make publish-plan` gives it one: it packs the shelves
+# with none, in C order, into the highest volume and then new ones, and never
+# changes a number already written. testing/preflight.sh refuses a shelf
+# whose volume is not a positive integer. A description never starts with a
+# bare number, which would be read as the volume.
 #
 # An id is lowercase letters, digits and '-'. It is never `libs`: a source-less
 # port hashes <portdir>/../../libs, and a shelf by that name would put the
@@ -29,105 +38,105 @@
 # follow. A packages.d/ phase reads its <shelf>.txt files in byte order,
 # whatever the order here.
 
-base              The minimal userland and system daemons that every KDOS image boots with
-base-libs         Low-level C libraries that the base system links
-auth              Authentication, authorisation, accounts and directory services
-boot              Everything before userspace: the kernel, microcode, firmware for the host, bootloader and EFI tooling
-toolchain         The native compilers, the linker, the C library, and the LLVM family
-buildtools        Build systems and build helpers
-lang              Language implementations, plus the modules of any language that has no module shelf of its own
-devtools          Debuggers, tracers, profilers, analysers, linters, language servers and developer utilities
-vcs               Version control and diff/merge tools
-editors           Text editors, IDEs, notebooks and REPLs
-doctools          Documentation toolchains, man pages, markup converters and TeX typesetting
-devlibs           General-purpose C and C++ utility libraries with no domain
-formats           Data-format and serialisation libraries (XML, JSON, YAML, TOML, INI, RDF, protobuf, thrift), plus data query and convert tools
-database          Database engines, embedded key-value stores, database servers, clients and full-text indexes
-archiver          Compression libraries and archive tools
-shells            Interactive shells and their add-ons, terminal multiplexers, and terminal emulators
-cli               Command-line productivity utilities: search, view, navigation and text wrangling in the terminal
-files             File managers, disk-usage analysers, duplicate finders and file locators
-sysmon            Process, resource and system-information monitors
-hardware          Device access, bus and sensor tools, power management, and Bluetooth
-input             Input-device libraries, keyboard data, input methods and on-screen keyboards
-mobile            Phones, media players and cameras over USB or the network
-disk              Block devices: partitioning, RAID, LVM, block encryption, SMART, NVMe, recovery, image writing and async I/O
-filesystem        Filesystem utilities, FUSE, and network or encrypted filesystems
-optical           CD, DVD and Blu-ray burning, mastering and CD reading or ripping
-crypto            Cryptographic libraries, PKCS#11, smartcards and TPM
-security          Security applications: GnuPG and front-ends, password and secret managers, certificates, scanners, forensics and audit
-containers        Container runtimes, image tools, container networking and sandbox primitives
-virt              Virtual machines, their tooling, and remote-desktop and VNC protocols
-net-libs          Networking and protocol libraries
-network           Host network configuration and connection management: links, Wi-Fi, DHCP, DNS forwarding, time, modems, firewall and VPN
-net-diag          Network diagnostics, capture, measurement and low-level socket tools
-servers           Daemons that serve other machines: remote shell, web, mail, XMPP, IRC, CalDAV/CardDAV, SMB and DLNA
-transfer          File transfer, synchronisation, backup and BitTorrent
-mail              Email clients, fetch and send tools, mail libraries, and feed readers
-chat              Instant messaging, IRC, XMPP, Matrix, fediverse and voice clients, with their protocol and E2E libraries
-browsers          Web, Gemini and text-mode browsers
-web-engines       Browser engines and the libraries that make them up
-x11               X11 protocol, client libraries and data, plus Xwayland, the one X server
-wl                Wayland libraries and protocols, wlroots, and Wayland-only desktop utilities
-gpu               The GPU stack: Mesa, DRM, GL and Vulkan loaders and headers, shader compilers, VA-API, OpenCL
-graphics-libs     2D rendering, vector and SVG, text layout, colour management and graph drawing libraries
-image-libs        Raster image formats, codecs, metadata, processing, barcodes, and terminal image output
-graphics          Graphics applications: painting, vector, photo development and management, image viewers, screenshot and image optimisers
-3d                3D modelling, animation, voxel and mesh tools and libraries, and scientific visualisation
-cad               Mechanical, architectural and 2D CAD, geometry kernels, meshing and FEM
-fabrication       3D-printing slicers and hosts, and CNC control
-fonts             Font packages, and font libraries and tooling
-themes            Icon, cursor, sound and widget themes, and theme-configuration tools
-xdg               freedesktop desktop integration: portals, MIME, desktop entries, AppStream, tray and indicators, notifications, event sounds, script dialogs
-accessibility     Screen readers, speech, braille and alternative input
-i18n              Unicode, locale, text shaping and segmentation, conversion, and translation
-spelling          Spell checking, hyphenation, thesaurus and their dictionaries
-gtk               The GLib and GTK platform and GNOME/Xfce desktop-platform libraries: widgets, settings, bindings, GIO plug-ins
-qt6               The Qt 6 modules, and everything in `group = qt6`
-qt5               The Qt 5 modules, `group = qt5`
-qt-extra          Third-party and KDE-hosted Qt add-on libraries that are not in KF6
-kf6               KDE Frameworks 6: every port whose homepage is under invent.kde.org/frameworks, whatever it does
-kde               KDE Plasma and Gear platform pieces outside Frameworks that have no other domain: KIO workers, thumbnailers, Plasma integration, KDE Wayland glue
-toolkits          Other GUI and TUI toolkits for applications
-audio-io          The sound stack: ALSA, PipeWire and WirePlumber, PulseAudio client, and portable audio I/O APIs
-audio-codecs      Audio codecs, containers and tagging, including the Bluetooth audio codecs
-audio-dsp         Audio DSP, resampling, analysis, spatial audio, and the LV2/LADSPA/Vamp plug-in APIs with their RDF libraries
-music-libs        Music-format libraries: tracker modules, chip emulation, MIDI, OSC, synthesis and soundfonts
-studio            Music production: DAWs, audio editors, trackers, drum machines and notation
-music-players     Music players, library managers and taggers
-video-libs        Video codecs, containers, subtitles, disc playback and effects libraries
-media-frameworks  Multimedia frameworks, capture, and media inspection
-video-players     Video players and media centres, and their front-end add-ons
-video-tools       Video editing, transcoding, muxing, recording, streaming and webcam apps
-game-libs         Game engines and game-development libraries, SDL in all versions, and shared game libraries
-games-action      Action, arcade, racing, platform and sandbox games
-games-shooter     First-person shooters, Doom and Quake engines, and their data
-games-strategy    Strategy, simulation and space-trading games, and their data
-games-rpg         RPGs, roguelikes and interactive fiction
-games-board       Board, card, puzzle, chess and classic small games, whatever toolkit or desktop project they come from
-emulators         Standalone emulators of computers and consoles, and compatibility layers
-libretro          RetroArch, its assets, databases and libretro cores
-education         Learning software, offline encyclopedias and reference dictionaries
-office            Office suites, word processors, spreadsheets, presentations, accounting and finance, and office-format import libraries
-documents         PDF, PostScript, DjVu, EPUB, CHM and DOCX viewers, libraries and tools, and ebook managers
-pim               Personal information: calendars, contacts, tasks, time tracking, notes and genealogy
-printing          Printing, printer drivers, labels, scanning and OCR
-math              Mathematics applications and libraries: computer algebra, arbitrary precision, solvers, calculators, statistics and plotting apps
-sci-libs          Numerical and scientific-data libraries, and the unprefixed core Python science stack
-astronomy         Astronomy, planetaria, ephemerides, FITS and satellite prediction
-bioscience        Bioinformatics, chemistry and medical informatics or imaging
-gis               GIS, maps, projections, GPS, navigation and location
-eda               Electronics: schematic and PCB, circuit simulation, antenna modelling, FPGA synthesis and simulation, logic analysers and bench instruments
-embedded          Microcontroller and bare-metal development: cross toolchains, C libraries, flashers, debug probes and serial consoles
-sdr-hw            SDR hardware drivers and the SoapySDR device layer
-sdr               SDR DSP libraries, GNU Radio and its blocks, receivers, decoders and signal analysis
-hamradio          Amateur-radio operation: rig control, digital modes, logging, packet and APRS, propagation, and mesh radio
-ai                Machine learning inference, speech recognition, computer vision and neural translation
-python            The python3 interpreter, tkinter, and Python build, packaging and extension tooling
-python-libs       General-purpose python3-* runtime libraries: text, templating, markup, parsing, config, CLI, system, files, crypto, imaging
-python-net        python3-* HTTP, web-framework, TLS-trust and network-stack modules
-python-sci        python3-* science, numerics, astronomy and geo modules
-python-gui        python3-* GUI toolkit, desktop and D-Bus bindings
-python-dev        python3-* Jupyter, kernel, language-server and debugger modules
-python-hw         python3-* hardware, serial, USB, instrument, CAN and device-protocol modules
-perl-cpan         The perl interpreter and every perl-* CPAN module
+base              1  The minimal userland and system daemons that every KDOS image boots with
+base-libs         1  Low-level C libraries that the base system links
+auth              1  Authentication, authorisation, accounts and directory services
+boot              1  Everything before userspace: the kernel, microcode, firmware for the host, bootloader and EFI tooling
+toolchain         4  The native compilers, the linker, the C library, and the LLVM family
+buildtools        1  Build systems and build helpers
+lang              3  Language implementations, plus the modules of any language that has no module shelf of its own
+devtools          1  Debuggers, tracers, profilers, analysers, linters, language servers and developer utilities
+vcs               4  Version control and diff/merge tools
+editors           2  Text editors, IDEs, notebooks and REPLs
+doctools          1  Documentation toolchains, man pages, markup converters and TeX typesetting
+devlibs           1  General-purpose C and C++ utility libraries with no domain
+formats           2  Data-format and serialisation libraries (XML, JSON, YAML, TOML, INI, RDF, protobuf, thrift), plus data query and convert tools
+database          1  Database engines, embedded key-value stores, database servers, clients and full-text indexes
+archiver          1  Compression libraries and archive tools
+shells            4  Interactive shells and their add-ons, terminal multiplexers, and terminal emulators
+cli               1  Command-line productivity utilities: search, view, navigation and text wrangling in the terminal
+files             2  File managers, disk-usage analysers, duplicate finders and file locators
+sysmon            4  Process, resource and system-information monitors
+hardware          3  Device access, bus and sensor tools, power management, and Bluetooth
+input             3  Input-device libraries, keyboard data, input methods and on-screen keyboards
+mobile            3  Phones, media players and cameras over USB or the network
+disk              1  Block devices: partitioning, RAID, LVM, block encryption, SMART, NVMe, recovery, image writing and async I/O
+filesystem        2  Filesystem utilities, FUSE, and network or encrypted filesystems
+optical           3  CD, DVD and Blu-ray burning, mastering and CD reading or ripping
+crypto            1  Cryptographic libraries, PKCS#11, smartcards and TPM
+security          4  Security applications: GnuPG and front-ends, password and secret managers, certificates, scanners, forensics and audit
+containers        1  Container runtimes, image tools, container networking and sandbox primitives
+virt              4  Virtual machines, their tooling, and remote-desktop and VNC protocols
+net-libs          3  Networking and protocol libraries
+network           3  Host network configuration and connection management: links, Wi-Fi, DHCP, DNS forwarding, time, modems, firewall and VPN
+net-diag          3  Network diagnostics, capture, measurement and low-level socket tools
+servers           4  Daemons that serve other machines: remote shell, web, mail, XMPP, IRC, CalDAV/CardDAV, SMB and DLNA
+transfer          4  File transfer, synchronisation, backup and BitTorrent
+mail              3  Email clients, fetch and send tools, mail libraries, and feed readers
+chat              1  Instant messaging, IRC, XMPP, Matrix, fediverse and voice clients, with their protocol and E2E libraries
+browsers          1  Web, Gemini and text-mode browsers
+web-engines       4  Browser engines and the libraries that make them up
+x11               4  X11 protocol, client libraries and data, plus Xwayland, the one X server
+wl                4  Wayland libraries and protocols, wlroots, and Wayland-only desktop utilities
+gpu               2  The GPU stack: Mesa, DRM, GL and Vulkan loaders and headers, shader compilers, VA-API, OpenCL
+graphics-libs     2  2D rendering, vector and SVG, text layout, colour management and graph drawing libraries
+image-libs        3  Raster image formats, codecs, metadata, processing, barcodes, and terminal image output
+graphics          2  Graphics applications: painting, vector, photo development and management, image viewers, screenshot and image optimisers
+3d                1  3D modelling, animation, voxel and mesh tools and libraries, and scientific visualisation
+cad               1  Mechanical, architectural and 2D CAD, geometry kernels, meshing and FEM
+fabrication       2  3D-printing slicers and hosts, and CNC control
+fonts             2  Font packages, and font libraries and tooling
+themes            4  Icon, cursor, sound and widget themes, and theme-configuration tools
+xdg               4  freedesktop desktop integration: portals, MIME, desktop entries, AppStream, tray and indicators, notifications, event sounds, script dialogs
+accessibility     1  Screen readers, speech, braille and alternative input
+i18n              3  Unicode, locale, text shaping and segmentation, conversion, and translation
+spelling          4  Spell checking, hyphenation, thesaurus and their dictionaries
+gtk               2  The GLib and GTK platform and GNOME/Xfce desktop-platform libraries: widgets, settings, bindings, GIO plug-ins
+qt6               4  The Qt 6 modules, and everything in `group = qt6`
+qt5               4  The Qt 5 modules, `group = qt5`
+qt-extra          4  Third-party and KDE-hosted Qt add-on libraries that are not in KF6
+kf6               3  KDE Frameworks 6: every port whose homepage is under invent.kde.org/frameworks, whatever it does
+kde               3  KDE Plasma and Gear platform pieces outside Frameworks that have no other domain: KIO workers, thumbnailers, Plasma integration, KDE Wayland glue
+toolkits          4  Other GUI and TUI toolkits for applications
+audio-io          1  The sound stack: ALSA, PipeWire and WirePlumber, PulseAudio client, and portable audio I/O APIs
+audio-codecs      1  Audio codecs, containers and tagging, including the Bluetooth audio codecs
+audio-dsp         1  Audio DSP, resampling, analysis, spatial audio, and the LV2/LADSPA/Vamp plug-in APIs with their RDF libraries
+music-libs        3  Music-format libraries: tracker modules, chip emulation, MIDI, OSC, synthesis and soundfonts
+studio            4  Music production: DAWs, audio editors, trackers, drum machines and notation
+music-players     3  Music players, library managers and taggers
+video-libs        4  Video codecs, containers, subtitles, disc playback and effects libraries
+media-frameworks  3  Multimedia frameworks, capture, and media inspection
+video-players     4  Video players and media centres, and their front-end add-ons
+video-tools       4  Video editing, transcoding, muxing, recording, streaming and webcam apps
+game-libs         2  Game engines and game-development libraries, SDL in all versions, and shared game libraries
+games-action      2  Action, arcade, racing, platform and sandbox games
+games-shooter     2  First-person shooters, Doom and Quake engines, and their data
+games-strategy    2  Strategy, simulation and space-trading games, and their data
+games-rpg         2  RPGs, roguelikes and interactive fiction
+games-board       2  Board, card, puzzle, chess and classic small games, whatever toolkit or desktop project they come from
+emulators         2  Standalone emulators of computers and consoles, and compatibility layers
+libretro          3  RetroArch, its assets, databases and libretro cores
+education         2  Learning software, offline encyclopedias and reference dictionaries
+office            3  Office suites, word processors, spreadsheets, presentations, accounting and finance, and office-format import libraries
+documents         1  PDF, PostScript, DjVu, EPUB, CHM and DOCX viewers, libraries and tools, and ebook managers
+pim               3  Personal information: calendars, contacts, tasks, time tracking, notes and genealogy
+printing          3  Printing, printer drivers, labels, scanning and OCR
+math              3  Mathematics applications and libraries: computer algebra, arbitrary precision, solvers, calculators, statistics and plotting apps
+sci-libs          4  Numerical and scientific-data libraries, and the unprefixed core Python science stack
+astronomy         1  Astronomy, planetaria, ephemerides, FITS and satellite prediction
+bioscience        1  Bioinformatics, chemistry and medical informatics or imaging
+gis               2  GIS, maps, projections, GPS, navigation and location
+eda               2  Electronics: schematic and PCB, circuit simulation, antenna modelling, FPGA synthesis and simulation, logic analysers and bench instruments
+embedded          2  Microcontroller and bare-metal development: cross toolchains, C libraries, flashers, debug probes and serial consoles
+sdr-hw            4  SDR hardware drivers and the SoapySDR device layer
+sdr               4  SDR DSP libraries, GNU Radio and its blocks, receivers, decoders and signal analysis
+hamradio          3  Amateur-radio operation: rig control, digital modes, logging, packet and APRS, propagation, and mesh radio
+ai                1  Machine learning inference, speech recognition, computer vision and neural translation
+python            3  The python3 interpreter, tkinter, and Python build, packaging and extension tooling
+python-libs       4  General-purpose python3-* runtime libraries: text, templating, markup, parsing, config, CLI, system, files, crypto, imaging
+python-net        4  python3-* HTTP, web-framework, TLS-trust and network-stack modules
+python-sci        4  python3-* science, numerics, astronomy and geo modules
+python-gui        4  python3-* GUI toolkit, desktop and D-Bus bindings
+python-dev        3  python3-* Jupyter, kernel, language-server and debugger modules
+python-hw         4  python3-* hardware, serial, USB, instrument, CAN and device-protocol modules
+perl-cpan         3  The perl interpreter and every perl-* CPAN module

@@ -10,6 +10,11 @@
 
 all: build
 
+# `make help` lists every target that carries a `## ` description on its rule
+# line, in file order. A target without one does not appear.
+help: ## list every target
+	@awk -F':.*## ' '/^[a-zA-Z0-9_-]+:.*## /{printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
 # Extra flags for the orchestrator, e.g.
 #   make build BUILD_ARGS="--restore 20_selfhost"
 #   make build BUILD_ARGS=--fresh
@@ -33,12 +38,70 @@ KDOS_YRES = $(word 2,$(subst x, ,$(KDOS_RES)))
 # The only networked step: every port's sources from the archive, the cache or
 # upstream, verified against the recipe. `make build` never downloads, so run
 # this once after a clone and after any recipe change. fetch-check is offline
-# and exits 1 naming each archived source missing or corrupt.
-fetch:
-	bash ports/fetch
+# and exits 1 naming each archived source missing or corrupt. FETCH_JOBS=N
+# works on N ports at once; the default, 1, is one after the other.
+FETCH_JOBS ?= 1
 
-fetch-check:
-	bash ports/fetch --check
+fetch: ## download every source a recipe names (networked)
+	FETCH_JOBS=$(FETCH_JOBS) bash ports/fetch
+
+fetch-check: ## offline: which archived sources are missing or corrupt
+	FETCH_JOBS=$(FETCH_JOBS) bash ports/fetch --check
+
+# The source archive and the system release, through ports/publish. The
+# archive is the numbered pre-releases sources-1, sources-2, …, and the volume
+# of each shelf is the second field of its line in ports/shelves; publish-plan
+# gives a volume to every shelf without one, and publish-retire deletes the
+# emptied src-<shelf> releases of the older one-release-per-shelf layout.
+# Uploading needs the token in ~/.config/kdos/sources-token (mode 600) or
+# KDOS_SOURCES_TOKEN; -dry, -check, -plan and -orphans need none. PORTS
+# narrows publish, publish-dry and publish-rehome to those ports;
+# PUBLISH_ARGS reaches any of them unchanged (--dry-run makes publish-plan,
+# publish-rehome and publish-retire report only). TAG names the system tag
+# for freeze and the release targets.
+#   make publish-dry
+#   make publish PORTS="zstd lz4"
+#   make publish-retire PUBLISH_ARGS=--dry-run
+#   make release TAG=v0.2
+PORTS ?=
+PUBLISH_ARGS ?=
+TAG ?=
+
+publish: ## upload every unarchived source into its shelf's sources-N volume
+	bash ports/publish $(PUBLISH_ARGS) $(PORTS)
+
+publish-dry: ## offline: what publish would upload, and where
+	bash ports/publish --dry-run $(PUBLISH_ARGS) $(PORTS)
+
+publish-check: ## which sources the archive lacks (anonymous, no token)
+	bash ports/publish --check $(PUBLISH_ARGS) $(PORTS)
+
+publish-plan: ## offline: give every shelf without a volume one, in ports/shelves
+	bash ports/publish --plan $(PUBLISH_ARGS)
+
+publish-describe: ## rewrite every archive release's title and notes from the index
+	bash ports/publish --describe $(PUBLISH_ARGS)
+
+publish-rehome: ## move archived files into their shelf's volume; run before and after pushing
+	bash ports/publish --rehome $(PUBLISH_ARGS) $(PORTS)
+
+publish-retire: ## delete every emptied legacy src-<shelf> release and its tag
+	bash ports/publish --retire $(PUBLISH_ARGS)
+
+publish-orphans: ## list index entries no recipe names any more
+	bash ports/publish --orphans $(PUBLISH_ARGS)
+
+need-tag:
+	@test -n "$(TAG)" || { echo "ERROR: name the system tag, e.g. TAG=v0.2"; exit 1; }
+
+freeze: need-tag ## attach sources.sha256 for TAG to its release
+	bash ports/publish --freeze $(TAG) $(PUBLISH_ARGS)
+
+release: need-tag ## create or update TAG's system release as a draft
+	bash ports/publish --release $(TAG) $(PUBLISH_ARGS)
+
+release-publish: need-tag ## make TAG's system release public and Latest
+	bash ports/publish --release $(TAG) --publish $(PUBLISH_ARGS)
 
 # Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
 # release. Needs network, curl and git (tags are read with ls-remote); never
@@ -49,7 +112,7 @@ fetch-check:
 # that worked perfectly. 2 is the tool's own "unrecoverable" status (a revert
 # itself failed) and anything else is a crash — both of those still have to
 # fail the target.
-updates:
+updates: ## check ports for newer upstream releases (networked)
 	@ports/update $(PORTUP_ARGS); rc=$$?; [ $$rc -le 1 ] || exit $$rc
 
 # Rewriting the ISO while a VM boots from it corrupts that VM: QEMU reads the
@@ -73,15 +136,46 @@ check-iso-free:
 # run from CI.
 DOCKER_TTY := $(shell test -t 0 && echo -it)
 
-build: check-iso-free
+# HOW MUCH OF THE HOST THE BUILD TAKES. --cpu-shares is a weight, not a cap:
+# an idle host gives the build every thread. Under contention the weight
+# counts only against other containers and services; on a systemd cgroup-v2
+# host the container sits under system.slice, which splits the CPU evenly
+# with the user session. KDOS_JOBS, when set, is the job count every phase
+# uses (make, cmake --build, cargo) and also becomes a --cpus cap, clamped to
+# the host because docker refuses a --cpus above it, so cargo and go, which
+# size themselves from the cgroup's cpu.max, follow it too; ninja is handed
+# -jN by script/bin/ninja. Unset, the
+# job count is computed inside the build by script/env/common.env, e.g.
+#   make build KDOS_JOBS=6
+KDOS_CPU_SHARES ?= 256
+
+# The compiler cache for CMake ports inside the chroot, kept in build/ccache.
+# A hit is byte-identical to a compile; 0 turns it off.
+KDOS_CCACHE ?= 1
+
+# The package store in build/pkgstore: 1 installs a port whose inputs match a
+# stored package instead of building it, check builds it anyway and logs any
+# difference, 0 (the default) is off. KDOS_PKG_STORE_MAX caps its size.
+KDOS_PKG_STORE ?= 0
+KDOS_PKG_STORE_MAX ?= 60G
+
+build: check-iso-free ## build everything in the container (BUILD_ARGS narrows it)
+	@case "$(KDOS_JOBS)" in *[!0-9]*|0*) echo "KDOS_JOBS must be a positive integer, got '$(KDOS_JOBS)'" >&2; exit 1;; esac
 	mkdir -p build
 	docker build -t os-dev .
-	docker run --network none --cpus="8" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
+	docker run --network none --cpu-shares=$(KDOS_CPU_SHARES) \
+		$(if $(KDOS_JOBS),--cpus=$$(n=$$(nproc); j=$(KDOS_JOBS); [ $$j -lt $$n ] && echo $$j || echo $$n)) \
+		--rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
+		-e KDOS_JOBS="$(KDOS_JOBS)" \
 		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \
 		-e KDOS_PACK_KDOS="$(KDOS_PACK_KDOS)" \
 		-e KDOS_MAKE_BINHOST="$(KDOS_MAKE_BINHOST)" \
+		-e KDOS_ISO_COMP="$(KDOS_ISO_COMP)" \
+		-e KDOS_CCACHE="$(KDOS_CCACHE)" \
+		-e KDOS_PKG_STORE="$(KDOS_PKG_STORE)" \
+		-e KDOS_PKG_STORE_MAX="$(KDOS_PKG_STORE_MAX)" \
 		-v $$(pwd)/build:/workspace/build \
 		-v $$(pwd)/src:/workspace/src:ro \
 		-v $$(pwd)/fs:/workspace/fs:ro \
@@ -89,23 +183,23 @@ build: check-iso-free
 		-v $$(pwd)/ports:/workspace/ports:ro \
 		$(DOCKER_TTY) os-dev script/kdosbuild.sh $(BUILD_ARGS)
 
-snapshots:
+snapshots: ## list the phase snapshots
 	script/kdosbuild.sh --list
 
-run:
+run: ## boot the ISO in QEMU (software graphics)
 	test -f build/iso-build/kdos.iso || { echo "ERROR: ISO not found at build/iso-build/kdos.iso — run 'make build' first"; exit 1; }
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd — install ovmf (debian: ovmf, arch: edk2-ovmf)"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
 	test -f build/kdos.qcow2 || qemu-img create -f qcow2 build/kdos.qcow2 20G
 	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga,xres=$(KDOS_XRES),yres=$(KDOS_YRES) -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
-rundisk:
+rundisk: ## boot the installed disk image build/kdos.qcow2
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
 	test -f build/kdos.qcow2 || { echo "ERROR: disk image not found at build/kdos.qcow2 — run 'make run' first to create it"; exit 1; }
 	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -vga none -device virtio-vga,xres=$(KDOS_XRES),yres=$(KDOS_YRES) -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
-debug-boot:
+debug-boot: ## boot the kernel and initramfs directly, serial console
 	test -f build/fs/boot/vmlinuz-kdos || { echo "ERROR: kernel not found at build/fs/boot/vmlinuz-kdos — run 'make build' first"; exit 1; }
 	test -f build/iso-build/kdos.iso || { echo "ERROR: ISO not found at build/iso-build/kdos.iso — run 'make build' first"; exit 1; }
 	qemu-system-x86_64 -smp $$(nproc) -m 4G -serial stdio \
@@ -119,10 +213,10 @@ debug-boot:
 # software-GL for the desktop; these render kdos-comp on the real GPU. GPU and
 # display flags (including gl=es — gl=on blanks the window) live in
 # testing/qemu-hw/run.sh. Needs Docker + NVIDIA Container Toolkit.
-run-hw: check-hw
+run-hw: check-hw ## boot the ISO with GPU acceleration (containerised QEMU)
 	KDOS_RES=$(KDOS_RES) testing/qemu-hw/run.sh iso
 
-rundisk-hw: check-hw
+rundisk-hw: check-hw ## boot the disk image with GPU acceleration
 	KDOS_RES=$(KDOS_RES) testing/qemu-hw/run.sh disk
 
 check-hw:
@@ -130,23 +224,72 @@ check-hw:
 	docker info 2>/dev/null | grep -q ' nvidia' || { echo "WARNING: docker has no 'nvidia' runtime — virgl will fall back to software or fail"; }
 	test -c /dev/udmabuf || { echo "WARNING: /dev/udmabuf not found — blob resources unavailable, kdos-comp will blank"; }
 
-cleandisk:
+cleandisk: ## recreate an empty build/kdos.qcow2
 	qemu-img create -f qcow2 build/kdos.qcow2 20G
 
-# Wipe the build tree but keep build/snapshots, so a phase can still be restored.
+# Wipe the build tree but keep build/snapshots, so a phase can still be
+# restored, and build/ccache and build/pkgstore, whose contents stay valid for
+# the next build. build/.snap-lineage goes with the tree it indexes, so the
+# next snapshot is full.
 #
 # build/keys survives BOTH of these, and that is deliberate: the pack signing
 # key lives there and a key is not a build artefact. Lose it and every later
 # bake is unsigned while every medium already written keeps trusting a key you
 # can no longer sign with — libksig has no revocation and no expiry. Set
 # KDOS_PACK_KEY to keep it outside the tree entirely.
-cleanbuild:
+cleanbuild: ## wipe build/ except snapshots, ccache, pkgstore and keys
 	test -d build && find build -mindepth 1 -maxdepth 1 \
-		! -name snapshots ! -name keys -exec rm -rf {} + || true
+		! -name snapshots ! -name keys ! -name ccache ! -name pkgstore \
+		-exec rm -rf {} + || true
 
-# Removes build/snapshots along with everything else. Not build/keys.
-clean:
+# Removes build/snapshots, build/ccache and build/pkgstore along with everything
+# else. Not build/keys.
+clean: ## wipe build/ except keys
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name keys -exec rm -rf {} + || true
 
-.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates
+# The checks that stand in for a build. check runs the four that need no built
+# tree; depdrift and debuginfo read build/fs, which is root's, so they are run
+# from a container or as root. SELFTEST_CC is the compiler selftest-asan uses.
+SELFTEST_CC ?= cc -fsanitize=address,undefined -g
+
+check: preflight selftest docscheck phaseclosure ## preflight + selftest + docscheck + phaseclosure
+
+preflight: ## the build's wiring, minus the build (~2.5 min)
+	testing/preflight.sh
+
+selftest: ## the libk* libraries and their consumers (~2.5 min)
+	testing/selftest.sh
+
+selftest-asan: ## selftest under AddressSanitizer and UBSan (parsers)
+	CC="$(SELFTEST_CC)" testing/selftest.sh
+
+docscheck: ## the book: links, prose, page contract
+	bash testing/docscheck.sh
+
+phaseclosure: ## every phase installs exactly the ports its list names
+	python3 testing/phaseclosure.py
+
+depdrift: ## undeclared same-phase link dependencies in build/fs
+	python3 testing/depdrift.py
+
+debuginfo: ## installed files in build/fs that still carry DWARF
+	testing/debuginfo.sh
+
+# The fast loop and the images it and the rig run in. QUICK names the ports
+# (comma-separated); QUICK_ARGS goes to the rig after `--`, e.g.
+#   make quick QUICK=kdos-shell QUICK_ARGS="--keys meta_l-ctrl-q --sleep 3 --shot build/shots/x.png"
+QUICK ?=
+QUICK_ARGS ?=
+
+quick: ## rebuild QUICK's ports and patch them into a booted ISO
+	@test -n "$(QUICK)" || { echo "ERROR: name the ports, e.g. QUICK=kdos-shell"; exit 1; }
+	testing/quick.sh $(QUICK) -- $(QUICK_ARGS)
+
+rig-image: ## build the rig container kdos-qemu-py:latest (networked, once)
+	testing/rig-image.sh
+
+devdeps-image: ## build kdos-devdeps:latest and run the suite in it
+	testing/devdeps-image.sh
+
+.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan docscheck phaseclosure depdrift debuginfo quick rig-image devdeps-image

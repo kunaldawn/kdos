@@ -16,6 +16,7 @@
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
+	-Db_ndebug=if-release \
 	-Dwayland-backend=true \
 	-Dx11-backend=true \
 	-Dbroadway-backend=false \

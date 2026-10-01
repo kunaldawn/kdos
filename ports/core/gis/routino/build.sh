@@ -17,5 +17,13 @@
 # HAVE_SWIG= keeps the Python binding out. python/Makefile builds it whenever
 # swig and python3 answer, its typemap calls the Python 2 PyString_FromString,
 # and its install rule installs nothing, so the build could only fail on it.
-make prefix=/usr docdir=/usr/share/doc/routino LDFLAGS_LDSO= HAVE_SWIG=
-make prefix=/usr docdir=/usr/share/doc/routino LDFLAGS_LDSO= HAVE_SWIG= DESTDIR=$PKG install
+#
+# Makefile.conf assigns CFLAGS and LDFLAGS outright, with -g, so both are passed
+# here: the exported flags, then upstream's -O3 -ffast-math and every define
+# and library the file would add, without its -g.
+_cflags="$CFLAGS -O3 -ffast-math -pthread -DUSE_PTHREADS -DUSE_BZIP2 -DUSE_GZIP -D_FILE_OFFSET_BITS=64 -D_POSIX_C_SOURCE=200809L"
+_ldflags="$LDFLAGS -lm -pthread -lbz2 -lz"
+make prefix=/usr docdir=/usr/share/doc/routino LDFLAGS_LDSO= HAVE_SWIG= \
+	CFLAGS="$_cflags" LDFLAGS="$_ldflags"
+make prefix=/usr docdir=/usr/share/doc/routino LDFLAGS_LDSO= HAVE_SWIG= \
+	CFLAGS="$_cflags" LDFLAGS="$_ldflags" DESTDIR=$PKG install

@@ -15,7 +15,7 @@
 # reach the binary. lrelease compiles every catalogue the project lists and
 # the install copies all of them, so all but English are removed from the
 # package: bundled data is English only. Plotting runs gnuplot at run time.
-qmake6 PREFIX=/usr \
+qmake6 PREFIX=/usr CONFIG+=release \
 	QMAKE_CFLAGS_RELEASE="$CFLAGS" \
 	QMAKE_CXXFLAGS_RELEASE="$CXXFLAGS" \
 	QMAKE_LFLAGS_RELEASE="$LDFLAGS"

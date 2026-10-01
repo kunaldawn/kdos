@@ -8,45 +8,61 @@
 #   ports/srclib.sh — the source archive's addressing, shared
 # ---------------------------------
 #
-# Sourced by ports/fetch, ports/publish and script/hooks/pre-push. Nothing here
-# downloads or uploads; it answers "where does this hash live" and "which
-# hashes does this port name", so the three callers cannot disagree about
-# either.
+# Sourced by ports/fetch, ports/publish, script/hooks/pre-push and
+# testing/preflight.sh. Nothing here downloads or uploads; it answers "where
+# does this hash live", "which hashes does this port name" and "is this index
+# well-formed", so the callers cannot disagree about any of them.
 #
-# THE ARCHIVE IS A SERIES OF RELEASES OF THE MAIN REPOSITORY, filled in order:
-# `sources-001`, `sources-002`, … Each holds up to $SRC_RELEASE_CAP files, and
-# a new one is opened only when the last is full, so the release page carries
-# as few of them as the file count allows — a release holds at most 1000
-# assets, and nothing else about it is limited. An archived file is the asset
+# THE ARCHIVE IS A RUN OF NUMBERED VOLUMES, pre-releases of the main
+# repository tagged `sources-1`, `sources-2`, … . ports/shelves gives every
+# shelf the volume that holds its files, so one volume holds the files of a
+# run of shelves; a file that finds its volume full is kept in another one,
+# and a file no current recipe names is kept as `attic--<file>`. An archived
+# file is the asset
 #
-#     https://github.com/kunaldawn/kdos/releases/download/sources-<NNN>/<h>
+#     https://github.com/kunaldawn/kdos/releases/download/sources-<N>/<asset>
 #
-# where <h> is the 64-hex `sha256 =` the recipe already carries. The recipe
-# hash, the asset name and the digest GitHub computes for the asset are the
-# same string, so a file that verifies is the file the recipe meant whatever
-# path it came by. The name is the bare hash because GitHub rewrites asset
-# names containing anything outside [A-Za-z0-9._-] — a `+` in an upstream
-# filename would otherwise produce a URL nothing requests — and because two
-# upstream releases of different bytes under one filename cannot collide on a
-# hash.
+# where <asset> is `<shelf>--<file>` as GitHub stored it —
+# `archiver--zstd-1.5.7.tar.gz` — or `<shelf>--<port>--<file>` or
+# `<shelf>--<port>--<hash12>--<file>` when a shorter name is already taken in
+# that volume. GitHub rewrites every character outside [A-Za-z0-9._-] in an
+# asset name, so the index records the name GitHub returned, never the one
+# asked for. The name is only an address: the identity is the recipe's
+# `sha256 =`, and a file is used only after it hashes to that, whatever path
+# it came by.
 #
-# WHICH RELEASE HOLDS A HASH IS RECORDED IN ports/sources.idx, committed:
+# A tag `src-<name>` is the archive's older layout, one release per shelf.
+# Its index lines are read and fetched as any other until `ports/publish
+# --rehome` has moved every file into a volume.
 #
-#     <hash> <NNN> <port>/<file>
+# A FILE LARGER THAN $SRC_PART_SIZE BYTES IS STORED IN PARTS, `<asset>.part01`
+# … `<asset>.partNN`, each under GitHub's 2 GiB per-asset limit. ports/fetch
+# downloads every part, checks each part's own hash, joins them in order and
+# checks the recipe's hash over the whole.
 #
-# one line per archived file, sorted by hash. ports/publish appends a line
-# only after GitHub reports the uploaded asset's digest equal to its name. The
-# index is append-only like the archive, so the newest one names every file
-# ever archived, and an old checkout is fetched with it (ports/fetch --tree)
-# as well as with its own. A hash the index does not name is not archived as
-# far as fetch is concerned, and comes from upstream.
+# WHICH RELEASE AND ASSET HOLD A HASH IS RECORDED IN ports/sources.idx,
+# committed, format 2:
 #
-# APPEND-ONLY. An asset is never replaced or deleted once its digest matches
-# its name: a five-year-old checkout finds the exact bytes it was written
-# against because nothing was allowed to take them away.
+#     # kdos-sources-index 2                      (line 1, exactly)
+#     <hash> <tag> <asset> <port>/<file> [parts=<N>:<h1>,…,<hN>]
 #
-# The archive's releases sit on the repository's release page beside the KDOS
-# releases; make_latest false keeps "latest" on a KDOS release. GitHub's
+# one line per archived file, sorted by hash. ports/publish writes a line only
+# after GitHub reports every uploaded asset's digest equal to the bytes it
+# sent. An index whose first line is not the format-2 marker is not read at
+# all: fetch warns once and goes upstream for everything, so a checkout never
+# takes a line of another format for an address. A hash the index does not
+# name is not archived as far as fetch is concerned, and comes from upstream.
+#
+# APPEND-ONLY. An asset is never replaced or deleted once its digest is
+# verified, with three deliberate exceptions in ports/publish: --rehome
+# deletes an old copy only after the new one is verified and pushed in the
+# index, --prune=yes-delete deletes files no recipe at any v* tag names, and
+# --retire deletes a `src-<name>` release only once it holds no asset. A five-year-old
+# checkout otherwise finds the exact bytes it was written against, fetched
+# with this tree's index through `ports/fetch --tree`.
+#
+# The archive's releases are pre-releases and never "latest", so the latest
+# release of the repository is always a KDOS system release. GitHub's
 # immutable releases must stay OFF on the repository: the setting is
 # repository-wide, and it freezes an archive release at its first
 # publication, after which no source can be added to it.
@@ -56,9 +72,10 @@ KDOS_SOURCES_REPO="${KDOS_SOURCES_REPO:-kunaldawn/kdos}"
 KDOS_SOURCES_BASE="${KDOS_SOURCES_BASE-https://github.com/$KDOS_SOURCES_REPO/releases/download}"
 
 # A BASE WITH NO SCHEME IS A DIRECTORY: an archive disk, or any copy of the
-# release assets laid out as <dir>/sources-NNN/<hash>. It is made absolute and
-# served as a file:// URL, so every caller reads it through the same curl call
-# as the network archive — a relative path would follow each caller's later cd.
+# release assets laid out as <dir>/<tag>/<asset>, a split file's parts beside
+# each other as <asset>.partNN. It is made absolute and served as a file://
+# URL, so every caller reads it through the same curl call as the network
+# archive — a relative path would follow each caller's later cd.
 case $KDOS_SOURCES_BASE in
     ""|*://*) ;;
     /*) KDOS_SOURCES_BASE="file://$KDOS_SOURCES_BASE" ;;
@@ -90,38 +107,214 @@ src_is_hash() {
     [[ "$1" =~ ^[0-9a-f]{64}$ ]]
 }
 
-# At most this many files per archive release: GitHub's 1000-asset limit.
+# At most this many assets in one archive release, parts counted one by one:
+# GitHub's 1000-asset limit. A file whose volume would pass it goes to the
+# lowest-numbered volume with room, or opens the next volume.
 SRC_RELEASE_CAP="${KDOS_RELEASE_CAP:-1000}"
 
-KDOS_SOURCES_INDEX="${KDOS_SOURCES_INDEX:-$SRCLIB_PORTS/sources.idx}"
+# A file larger than this is stored in parts of this size: 1900 MiB, under
+# GitHub's 2 GiB per-asset limit with room for its own accounting.
+# KDOS_PART_SIZE exists so a test can split a small file.
+SRC_PART_SIZE="${KDOS_PART_SIZE:-1992294400}"
 
-# src_release_tag <n> — the tag of archive release <n>.
-src_release_tag() {
-    printf 'sources-%03d\n' "$((10#$1))"
+KDOS_SOURCES_INDEX="${KDOS_SOURCES_INDEX:-$SRCLIB_PORTS/sources.idx}"
+case $KDOS_SOURCES_INDEX in
+    /*) ;;
+    *) KDOS_SOURCES_INDEX="$PWD/$KDOS_SOURCES_INDEX" ;;
+esac
+
+# Line 1 of a format-2 index, exactly. An index without it is not read.
+SRC_INDEX_MARKER='# kdos-sources-index 2'
+
+# src_volume_tag <N> — the tag of archive volume <N>.
+src_volume_tag() {
+    printf 'sources-%s\n' "$1"
 }
 
-# src_index_load [file] — read an index into SRC_REL (hash -> release number)
-# and SRC_NAME (hash -> port/file). A missing file is an empty index. Lines
-# that are blank, comments or malformed are skipped, not trusted.
-declare -gA SRC_REL=() SRC_NAME=()
+# src_tag_volume <tag> — the volume number of a volume tag; fails for any
+# other tag, a legacy `src-<name>` one included.
+src_tag_volume() {
+    [[ $1 =~ ^sources-([1-9][0-9]*)$ ]] || return 1
+    printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
+# src_part_name <asset> <i> — the asset name of part <i> of a split file.
+src_part_name() {
+    printf '%s.part%02d\n' "$1" "$((10#$2))"
+}
+
+# src_asset_sanitize <name> — the asset name GitHub will store for <name>:
+# every character outside [A-Za-z0-9._-] becomes `.`, and leading and
+# trailing dots go. It predicts; ports/publish records what GitHub returns.
+src_asset_sanitize() {
+    local s=${1//[^A-Za-z0-9._-]/.}
+    while [[ $s == .* ]]; do s=${s#.}; done
+    while [[ $s == *. ]]; do s=${s%.}; done
+    printf '%s\n' "$s"
+}
+
+# src_urlencode <string> — percent-encode everything outside
+# [A-Za-z0-9._~-], byte by byte, for a URL path segment.
+src_urlencode() {
+    local LC_ALL=C s=$1 out="" c i
+    for ((i = 0; i < ${#s}; i++)); do
+        c=${s:i:1}
+        case $c in
+            [A-Za-z0-9._~-]) out+=$c ;;
+            *) printf -v c '%%%02X' "'$c"; out+=$c ;;
+        esac
+    done
+    printf '%s\n' "$out"
+}
+
+# src_asset_url <tag> <asset> — the download URL of one asset.
+src_asset_url() {
+    printf '%s/%s/%s\n' "$KDOS_SOURCES_BASE" "$1" "$(src_urlencode "$2")"
+}
+
+# src_index_load [file] — read a format-2 index into
+#
+#   SRC_TAG[h]      the release tag
+#   SRC_ASSET[h]    the stored asset name (the base name of a split file)
+#   SRC_NAME[h]     <port>/<file>
+#   SRC_NPARTS[h]   1, or the part count of a split file
+#   SRC_PHASH[h,i]  the hash of part i, 1-based, of a split file
+#
+# A missing or empty file is an empty index. A file whose first line is not
+# $SRC_INDEX_MARKER loads nothing and says so once on stderr. Lines that are
+# blank, comments or malformed are skipped, not trusted.
+declare -gA SRC_TAG=() SRC_ASSET=() SRC_NAME=() SRC_NPARTS=() SRC_PHASH=()
+SRC_INDEX_WARNED=0
 src_index_load() {
-    local f=${1:-$KDOS_SOURCES_INDEX} h n name
-    SRC_REL=() SRC_NAME=()
-    [ -f "$f" ] || return 0
-    while read -r h n name; do
+    local f=${1:-$KDOS_SOURCES_INDEX} first h tag asset name parts extra n i
+    local -a ph
+    SRC_TAG=() SRC_ASSET=() SRC_NAME=() SRC_NPARTS=() SRC_PHASH=()
+    [ -s "$f" ] || return 0
+    IFS= read -r first < "$f" || true
+    if [ "$first" != "$SRC_INDEX_MARKER" ]; then
+        if [ "$SRC_INDEX_WARNED" = 0 ]; then
+            echo "⚠  ports/sources.idx is not format 2; the archive is skipped" >&2
+            SRC_INDEX_WARNED=1
+        fi
+        return 0
+    fi
+    while read -r h tag asset name parts extra; do
         src_is_hash "$h" || continue
-        [[ $n =~ ^[0-9]+$ ]] || continue
-        SRC_REL[$h]=$((10#$n))
+        [ -z "$extra" ] || continue
+        [[ $tag =~ ^(sources-[1-9][0-9]*|src-[a-z0-9][a-z0-9-]*)$ ]] || continue
+        [[ $asset =~ ^[A-Za-z0-9._-]+$ ]] || continue
+        [[ $name =~ ^[^/]+/.+$ ]] || continue
+        n=1
+        if [ -n "$parts" ]; then
+            [[ $parts =~ ^parts=([0-9]{1,2}):([0-9a-f]{64}(,[0-9a-f]{64})*)$ ]] || continue
+            n=$((10#${BASH_REMATCH[1]}))
+            IFS=, read -ra ph <<< "${BASH_REMATCH[2]}"
+            [ "$n" -ge 2 ] && [ "${#ph[@]}" = "$n" ] || continue
+            for ((i = 1; i <= n; i++)); do SRC_PHASH[$h,$i]=${ph[i-1]}; done
+        fi
+        SRC_TAG[$h]=$tag
+        SRC_ASSET[$h]=$asset
         SRC_NAME[$h]=$name
+        SRC_NPARTS[$h]=$n
     done < "$f"
 }
 
-# src_url <hash> — where the archive serves it: the release the loaded index
-# names. Fails when the archive is off or the index does not name the hash.
-src_url() {
+# src_urls <hash> — every URL the archive serves the file from, one per line:
+# the asset, or each part in order. Fails when the archive is off or the
+# loaded index does not name the hash.
+src_urls() {
+    local h=$1 i n
     [ -n "$KDOS_SOURCES_BASE" ] || return 1
-    [ -n "${SRC_REL[$1]:-}" ] || return 1
-    printf '%s/%s/%s\n' "$KDOS_SOURCES_BASE" "$(src_release_tag "${SRC_REL[$1]}")" "$1"
+    [ -n "${SRC_TAG[$h]:-}" ] || return 1
+    n=${SRC_NPARTS[$h]}
+    if [ "$n" -lt 2 ]; then
+        src_asset_url "${SRC_TAG[$h]}" "${SRC_ASSET[$h]}"
+        return 0
+    fi
+    for ((i = 1; i <= n; i++)); do
+        src_asset_url "${SRC_TAG[$h]}" "$(src_part_name "${SRC_ASSET[$h]}" "$i")"
+    done
+}
+
+# src_index_problems [file] — one line per breach of the format-2 rules,
+# nothing when the index holds them. ports/publish writes only indexes that
+# pass, and testing/preflight.sh refuses one that does not:
+#
+#   - line 1 is $SRC_INDEX_MARKER; comments come before every data line
+#   - a data line is <hash> <tag> <asset> <port>/<file> [parts=N:<h1>,…,<hN>],
+#     N from 2 to 99 and exactly N part hashes
+#   - <tag> is sources-<N>, N a positive integer, or a legacy src-<name>,
+#     which src_index_legacy counts
+#   - a hash is field 1 of one line only, and no part hash is any line's
+#     field 1
+#   - within a tag every asset name is unique ignoring case; a split file
+#     holds <asset>.partNN and reserves its bare <asset> as well
+#   - data lines are in `LC_ALL=C sort -k1,1` order
+#
+# A missing file is an empty index and passes.
+src_index_problems() {
+    local f=${1:-$KDOS_SOURCES_INDEX}
+    [ -f "$f" ] || return 0
+    # No regex intervals: not every awk has them, and one without would pass
+    # every line.
+    LC_ALL=C awk -v marker="$SRC_INDEX_MARKER" '
+        function ishash(x) { return length(x) == 64 && x ~ /^[0-9a-f]+$/ }
+        NR == 1 {
+            if ($0 != marker) print "line 1 is not \"" marker "\""
+            next
+        }
+        /^[[:space:]]*$/ || /^#/ {
+            if (data) print "line " NR ": a comment or blank line after the data"
+            next
+        }
+        {
+            data++
+            if ($2 ~ /^[0-9]+$/) { print "line " NR ": a format-1 line (a release number where the tag goes)"; next }
+            ok = (NF == 4 || NF == 5) && $0 !~ /^ | $|  / && ishash($1) &&
+                 ($2 ~ /^sources-[1-9][0-9]*$/ || $2 ~ /^src-[a-z0-9][a-z0-9-]*$/) &&
+                 $3 ~ /^[A-Za-z0-9._-]+$/ &&
+                 $4 ~ /^[^\/]+\/./
+            np = 0; m = 0
+            if (ok && NF == 5) {
+                ok = $5 ~ /^parts=[0-9][0-9]?:[0-9a-f,]+$/
+                if (ok) {
+                    split($5, pv, /[=:]/)
+                    np = pv[2] + 0
+                    m = split(pv[3], ph, ",")
+                    for (i = 1; i <= m; i++) if (!ishash(ph[i])) ok = 0
+                }
+            }
+            if (!ok) { print "line " NR ": malformed"; next }
+            h = $1; tag = $2; asset = $3
+            if (h in key) print "line " NR ": " h " is also on line " key[h]
+            else key[h] = NR
+            if (prev != "" && h < prev) print "line " NR ": not sorted by hash"
+            prev = h
+            if (NF == 5) {
+                if (np < 2 || np > 99) print "line " NR ": parts=" pv[2] " — a split file has 2 to 99 parts"
+                if (m != np) print "line " NR ": parts=" pv[2] " lists " m " part hash(es)"
+                for (i = 1; i <= m; i++) parth[ph[i]] = NR
+            }
+            k = 1; nm[1] = asset
+            for (i = 1; i <= np && i <= 99; i++) nm[++k] = sprintf("%s.part%02d", asset, i)
+            for (i = 1; i <= k; i++) {
+                a = tag SUBSEP tolower(nm[i])
+                if (a in held && held[a] != NR) print "line " NR ": asset " nm[i] " in " tag " is also held by line " held[a]
+                else held[a] = NR
+            }
+        }
+        END {
+            for (p in parth) if (p in key) print "line " parth[p] ": part hash " p " is also the hash of line " key[p]
+        }' "$f"
+}
+
+# src_index_legacy [file] — how many data lines still name a legacy
+# `src-<name>` release. They fetch as any other line; ports/publish --rehome
+# moves each into a volume.
+src_index_legacy() {
+    local f=${1:-$KDOS_SOURCES_INDEX}
+    [ -f "$f" ] || { echo 0; return 0; }
+    awk '/^[0-9a-f]/ && $2 ~ /^src-/ { n++ } END { print n + 0 }' "$f"
 }
 
 # src_cache_path <hash> — the cache splits by leading byte only to keep each
@@ -278,4 +471,41 @@ src_label() {
     fi
     [ -n "${SRC_SHELF[${rel%%/*}]:-}" ] && rel=${rel#*/}
     printf '%s\n' "$rel"
+}
+
+# src_port_shelf <name> [repo] — the shelf port <name> sits on under <repo>
+# (default ports/core): the parent directory's name. Fails for a port that
+# does not exist, and for one sitting loose in <repo> with no shelf.
+src_port_shelf() {
+    local repo=${2:-$SRCLIB_ROOT/ports/core} d
+    d=$(src_port_dir "$repo" "$1") || return 1
+    d=${d%/*}
+    [ "$d" != "$repo" ] || return 1
+    printf '%s\n' "${d##*/}"
+}
+
+# A ports/shelves line is `<id> <volume> <description>`. <volume> is a
+# positive integer, or `-` for a shelf ports/publish --plan has not yet given
+# one; a line whose second word is neither has no volume and its description
+# starts there.
+
+# src_shelf_desc <shelf> — the description ports/shelves gives <shelf>,
+# everything after its id and volume. Fails for a shelf it does not list.
+src_shelf_desc() {
+    [ -f "$SRCLIB_PORTS/shelves" ] || return 1
+    awk -v s="$1" '
+        !/^[[:space:]]*(#|$)/ && $1 == s {
+            if ($2 ~ /^([1-9][0-9]*|-)$/) n = 2; else n = 1
+            for (i = 1; i <= n; i++) sub(/^[[:space:]]*[^[:space:]]+/, "")
+            sub(/^[[:space:]]+/, "")
+            print; found = 1; exit
+        }
+        END { exit !found }' "$SRCLIB_PORTS/shelves"
+}
+
+# src_shelf_volumes — "<shelf> <volume>" for every shelf ports/shelves gives
+# a volume, one per line, in file order.
+src_shelf_volumes() {
+    [ -f "$SRCLIB_PORTS/shelves" ] || return 0
+    awk '!/^[[:space:]]*(#|$)/ && $2 ~ /^[1-9][0-9]*$/ { print $1, $2 + 0 }' "$SRCLIB_PORTS/shelves"
 }

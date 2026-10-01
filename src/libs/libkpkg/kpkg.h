@@ -176,8 +176,10 @@ void kp_vershape(const char *v, char *out, size_t cap);
  * ──────────────────────────────────────────────────────────────────────── */
 
 /* SHA-256 over kpkgbuild, build.sh, postinstall.sh and every .patch, sorted,
- * each contributing its name, its length and its bytes. -1 when the directory
- * holds none of them. */
+ * each contributing its name, its length and its bytes, then over every other
+ * file beside them, recursively and sorted, except the files a `sha256 =` line
+ * names. A port with no `source =` also hashes `../../libs`. -1 when the
+ * directory holds none of the four. */
 int kp_recipe_hash(const char *portdir, char out[65]);
 
 /* SHA-256 over arch, libc, target triplet, compiler version and the three flag
@@ -203,9 +205,9 @@ int kp_installed(const KpConf *c, const char *name);
  * binary from a build that reports success, which is indistinguishable from a
  * change that did not work.
  *
- * The hash is kp_recipe_hash() — the same SHA-256 over kpkgbuild, build.sh,
- * postinstall.sh and every patch that the binhost's `E:` uses. One definition
- * of "the recipe changed", not two.
+ * The hash is kp_recipe_hash() — the same SHA-256 over the recipe files and
+ * every file beside them that no `sha256 =` names that the binhost's `E:`
+ * uses. One definition of "the recipe changed", not two.
  *
  * It lives in a SIDECAR (`<db>/.recipe/<name>`) rather than on the database
  * entry's first line. That line is `"<version> <release>"` and
@@ -220,6 +222,18 @@ int kp_installed_current(const KpConf *c, const char *name);
 
 int kp_installed_recipe_hash(const KpConf *c, const char *name, char out[65]);
 int kp_record_recipe_hash(const KpConf *c, const char *name, const char *hash);
+
+/*
+ * THE PACKAGE-FILE HASH OF WHAT IS INSTALLED: sha256 of the `.tar.xz` kpkgadd
+ * installed, in `<db>/.pkgsha/<name>`, written by kpkgadd after the database
+ * entry and removed with it. The package store (kp_store.c) keys a port on its
+ * dependencies' values. Same contract as `.recipe`: 64 lowercase hex or it
+ * reads as absent, and absent is "unknown". The hash covers the compressed
+ * bytes, so the same tree packed with the transient and the kept xz preset
+ * records two different values.
+ */
+int kp_installed_pkg_sha(const KpConf *c, const char *name, char out[65]);
+int kp_record_pkg_sha(const KpConf *c, const char *name, const char *hash);
 
 /* The merged-/usr aliases of the install root: each top-level name (`bin`,
  * `sbin`, `lib`, `lib64`, `lib32`) that is a symlink to `usr/<same>` there.
@@ -266,6 +280,13 @@ typedef struct {
 } KpOwned;
 
 KpOwned *kp_owned_load(const KpConf *c);
+/* The same table holding only the claims on `rel[0..n)` (relative, with or
+ * without `./`), canonicalised the way kp_owned_owner canonicalises a
+ * question. kp_owned_owner and kp_owned_other answer exactly as they would
+ * from kp_owned_load for those keys, and NULL for any other. It reads every
+ * manifest but keeps a handful of pairs, so a caller that knows which paths it
+ * will ask about pays for a scan, not for a million-entry sort. */
+KpOwned *kp_owned_load_some(const KpConf *c, char **rel, int n);
 /* The package claiming `rel` (`usr/bin/tar`; the database spells it
  * `./usr/bin/tar`), under either spelling of a merged-/usr path, or NULL. A
  * path no package claims is NOT a conflict: the bootstrap phases install tar,
@@ -285,9 +306,103 @@ void kp_owned_free(KpOwned *o);
  * left as they were. Returns the number dropped. */
 int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 		     int n);
+/* THE WRITER LOCK: `<db>/.lock`, flock(LOCK_EX), blocking. Returns the open
+ * descriptor, or -1 when the database directory cannot hold one. kpkgadd and
+ * kpkgdel take it before they read ownership and release it after the index
+ * triggers, so two installs into one root serialise their database edits and
+ * their placement instead of each deciding against a table the other is
+ * rewriting. One writer at a time: a postinstall hook that calls kpkg waits
+ * for the lock its own installer holds, for ever. close() releases it. */
+int kp_db_lock(const KpConf *c);
+
 /* Version and release from line 1. Returns 0 when the package is installed. */
 int kp_installed_version(const KpConf *c, const char *name, char *ver,
 			 size_t vcap, char *rel, size_t rcap);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The package store (kp_store.c)
+ *
+ * `$KPKG_STORE/<key[0:2]>/<key>/` holds one built package and its META, and a
+ * port whose key is there is installed from it instead of being built. The key
+ * is SHA-256 over `field=value` lines:
+ *
+ *   format=  KP_STORE_FORMAT
+ *   recipe=  kp_recipe_hash of the port
+ *   pack=    kept | transient, the xz preset the package carries
+ *   salt=    $KPKG_STORE_SALT, the bootstrap scripts and what they build
+ *   env=     sha256 of the sorted environment minus kp_store_env_denied()
+ *   dep=     `<name> <pkgsha|->` for every port in the declared transitive
+ *            closure and $KPKG_STORE_BASE, sorted
+ *
+ * An installed closure member with no `.pkgsha` makes the key UNKNOWN: the
+ * port builds and nothing is stored. META is K:value lines — P V R F, C (sha256
+ * of the file) and one `X:<name> <pkgsha>` per package the port's ELF files
+ * link and its closure does not name; a hit needs every X: to match what is
+ * installed now. A directory without META is not an entry.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Bump whenever build.c changes what a package contains or how it is packed
+ * for the same inputs: every stored entry then misses. */
+#define KP_STORE_FORMAT 1
+
+/* The environment names the key ignores: job counts, launchers, the store's
+ * own knobs, kpkg's run options and the terminal. 1 when `name` is one. */
+int kp_store_env_denied(const char *name);
+
+/* The declared transitive closure of `name` (kp_depends, recursively, cycles
+ * cut) with the words of $KPKG_STORE_BASE, sorted and unique, `name` itself
+ * left out. kb_strv_free the result; never NULL. */
+char **kp_store_closure(const KpConf *c, const char *name);
+
+/* The key of `name`, built from `portdir` with the `transient` preset, over
+ * `closure`. 0 with `out` set; -1 when the key is unknown (no recipe hash, no
+ * $KPKG_STORE_SALT, or an installed closure member without a `.pkgsha`), and
+ * `why` says which. */
+int kp_store_key(const KpConf *c, const char *name, const char *portdir,
+		 int transient, char *const *closure, char out[65], char *why,
+		 size_t wcap);
+
+/* DT_NEEDED of an ELF64 little-endian file, read with no process: the
+ * sonames, NULL-terminated (kb_strv_free), or NULL for anything that is not
+ * such a file or has no dynamic section. */
+char **kp_store_needed(const char *path);
+
+/* The `X:<owner> <pkgsha>\n` lines of installed package `name`: the owner of
+ * every library its ELF files need, resolved in usr/lib, lib and
+ * usr/local/lib, that is not `name` and not in `closure`. Each such owner is
+ * also reported as `<name> links <owner> without declaring it`. -1 when an
+ * owner has no `.pkgsha`, and then the package must not be stored. */
+int kp_store_links(const KpConf *c, const char *name, char *const *closure,
+		   KbBuf *x);
+
+/* A usable entry: META present, every X: matching the installed `.pkgsha`,
+ * the file present and hashing to C:. 1 with `file` (the package's path) and
+ * `sha` set, 0 otherwise. */
+int kp_store_lookup(const KpConf *c, const char *store, const char *key,
+		    char *file, size_t fcap, char sha[65]);
+
+/* Store `pkgfile` under `key`, replacing any entry there: the package first,
+ * META last, each written to `.tmp.<pid>` and renamed. `x` is the X: lines.
+ * 0, or -1 with the store left without a META for this key. */
+int kp_store_put(const char *store, const char *key, const char *name,
+		 const char *pkgfile, const char *x);
+
+/* Mark an entry used: META's mtime is what gc evicts by. */
+void kp_store_touch(const char *store, const char *key);
+
+/* Delete entries, least recently used META first, until the store's files
+ * total at most `cap` bytes. Directories with no META go first. Returns the
+ * number of entries removed, -1 when `store` cannot be read. */
+int kp_store_gc(const char *store, unsigned long long cap);
+
+/* KPKG_STORE_SALT: sha256 over the sorted contents of script/phases/00_cross,
+ * script/phases/10_bootstrap, script/lib and script/env under `repo`, the
+ * recipe hash of every port those scripts name through extract_port_source,
+ * get_port_version or port_dir (looked up in `repo`/ports/core), and
+ * fs/etc/passwd, group and ld-musl-x86_64.path. -1 when none can be read.
+ * Absent or empty in the environment, every kp_store_key() is unknown and each
+ * port builds without storing. */
+int kp_store_salt(const char *repo, char out[65]);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Solver

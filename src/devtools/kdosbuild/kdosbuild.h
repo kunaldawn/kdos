@@ -11,9 +11,10 @@
  * — the one TUI toolkit in the tree, shared with kinstall and kdos-appbox.
  *
  * THE BUILD IS THE MAIN LOOP. libktui's input has a timeout, so the running
- * child and the terminal are polled together and whichever is ready is read.
- * There is no worker thread, which is why no progress callback has to guard
- * against drawing concurrently with the caller — none can.
+ * children and the terminal are polled together and whichever is ready is
+ * read. Several steps run at once only as processes (--port-jobs); there is no
+ * worker thread, which is why no progress callback has to guard against
+ * drawing concurrently with the caller — none can.
  *
  * The pieces that only INSPECT the tree — phase discovery, the metadata
  * block, build plans, the snapshot inventory — are libkbuild's, and
@@ -29,9 +30,13 @@
 
 #include "kbase.h"
 #include "kbuild.h"
+#include "kpkg.h"
 #include "ktui.h"
 
-#define KB_MAX_STEPS   8192	/* phases + every package they expand to    */
+/* Phases, every package they expand to, and under --port-jobs one commit step
+ * per level: a level holds at least one port, so a phase of n ports never
+ * grows past 2n rows. */
+#define KB_MAX_STEPS   8192
 /* The ceiling on ONE package phase's resolved order, and it is libkpkg's
  * KP_MAX_ORDER rather than a fraction of KB_MAX_STEPS: kpkgdepends cannot
  * return more than that, so a phase that reaches this has already been
@@ -39,6 +44,7 @@
 #define KB_MAX_PKGS    4096
 #define KB_MAX_LOG     2000	/* lines kept per step                      */
 #define KB_MAX_NOTICE  50
+#define KB_MAX_WORKERS 8	/* --port-jobs ceiling: steps run at once   */
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* The step tree                                                            */
@@ -91,6 +97,27 @@ typedef struct BStep {
 	double start_time, end_time;
 	int expanded;
 	int reported;		/* headless mode has printed its result   */
+	/* ST_DONE without ever running: the host found the port installed
+	 * and current before the phase entered the chroot for it. Until the
+	 * run loop reaches it and asks again (`confirmed`), the phase is not
+	 * finished: an edit made while earlier ports built can still bring
+	 * its step back. */
+	int installed;
+	int confirmed;
+
+	/* A package phase run by level (--port-jobs above 1). A port's
+	 * `level` is one more than the highest of the ports it depends on;
+	 * 0 in a phase that runs serially. A commit step (`is_commit`) carries
+	 * the level it installs, and at its start the ports it names, in
+	 * serial order (`commits`), `ncommitted` of them confirmed so far. */
+	int level;
+	int is_commit;
+	int serial_pos;		/* position in kpkgdepends's order          */
+	int no_commit;		/* --build-only skipped it as current       */
+	struct BStep **commits;
+	int ncommits, ncommitted;
+
+	int opened;		/* headless mode has printed its start    */
 } BStep;
 
 typedef struct {
@@ -128,9 +155,10 @@ void tm_free(Timings *t);
 
 typedef struct {
 	int active;
-	char action[16];	/* preparing measuring snapshot restore     */
+	char action[16];	/* preparing indexing snapshot restore      */
 	char phase[64];
 	char path[128];
+	char layer[48];		/* "full", "layer on 40_lang", "layer 3/10" */
 	char current[256];
 	long long bytes, est_bytes;
 	long long files, est_files;
@@ -140,6 +168,18 @@ typedef struct {
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* The manager                                                              */
+
+/* One running step: its process group, its output pipe and its log. */
+typedef struct {
+	BStep *step;		/* NULL while the slot is free              */
+	pid_t pid;
+	int fd;
+	int log_fd;
+	int killed;
+	double killed_at;
+	char buf[8192];
+	size_t len;
+} BWorker;
 
 typedef struct {
 	char script_dir[512];
@@ -171,6 +211,7 @@ typedef struct {
 	int stop_requested;
 	int force_quit;		/* a second Q: kill the group and leave    */
 	int snapshot_enabled;
+	int full_snapshots;	/* --full-snapshots: never write a layer    */
 	double start_time;
 	long long total_lines;
 
@@ -189,19 +230,34 @@ typedef struct {
 	BStep *pending_finish;
 	BStep *snapshot_request;	/* [S] — force a snapshot right here */
 
+	/* The package phase being run: the configuration its `installed`
+	 * rows were decided with, asked again when the loop reaches each. */
+	KpConf *host_conf;
+
 	char forced_seen[KBUILD_MAX_REBUILD][64];
 	int nforced_seen;
 
 	Timings *timings;
 
-	/* The child of the step that is running, and its pipe. */
-	pid_t child;
-	int child_killed;
-	double child_killed_at;
-	int child_fd;
-	char child_buf[8192];
-	size_t child_len;
-	int log_fd;
+	/* The steps running, one per busy slot. A serial phase uses slot 0
+	 * alone; a level of a phase run with --port-jobs N fills up to N. */
+	BWorker worker[KB_MAX_WORKERS];
+	int nrunning;
+
+	/* --port-jobs: 1 runs every phase one port at a time. `port_k` is the
+	 * KDOS_JOBS each port of a level is given, and `cpu` the CPUs this
+	 * process may use, from which each slot's affinity window is cut. */
+	int port_jobs;
+	int port_k;
+	int cpu[1024];
+	int ncpu;
+
+	/* The level being built: order[lvl_from .. lvl_commit - 1] are its
+	 * ports and order[lvl_commit] its commit step; lvl_commit is -1 when
+	 * no level is open. `draining` is a level whose port failed: nothing
+	 * new starts, and the build stops once the running ones finish. */
+	int lvl_from, lvl_commit;
+	int draining;
 } Manager;
 
 void mgr_init(Manager *m, const char *script_dir, const char *build_dir);
@@ -230,7 +286,17 @@ BStep *mgr_phase_of(BStep *s);
 int snap_create(Manager *m, BStep *group, char *err, size_t errcap);
 int snap_restore(Manager *m, const KbuildRestoreItem *plan, int n,
 		 const char *target, char *err, size_t errcap);
-int snap_delete(Manager *m, const char *dir_name);
+/* 0 when there is no such snapshot, 1 deleted, 2 held: another snapshot's
+ * chain runs through it, so it moved to build/snapshots/.held/ and `deps`
+ * names what needs it. Either way, held snapshots nothing needs any more are
+ * deleted. */
+int snap_delete(Manager *m, const char *dir_name, char *deps, size_t cap);
+/* Deletes every held snapshot no phase directory's chain reaches; returns how
+ * many. */
+int snap_gc(Manager *m);
+/* "full", "layer on 40_lang", or one clause per path when they differ. */
+void snap_kind(const KbuildSnapshot *all, int n, const KbuildSnapshot *sn,
+	       char *out, size_t cap);
 /* A redraw hook, so a 40-minute tar keeps the screen alive. */
 void snap_set_tick(Manager *m, void (*fn)(Manager *));
 void snap_git_info(const char *repo_root, char *commit, size_t ccap, int *dirty);
@@ -324,7 +390,7 @@ typedef struct {
 
 const Reporter *reporter_for(int json);
 void report_snapshots_json(const KbuildPhase *ph, int nph,
-			   const KbuildSnapshot *snaps, int n,
+			   const KbuildSnapshot *all, int n,
 			   const char *commit);
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -336,8 +402,8 @@ enum { PICK_QUIT = 0, PICK_FRESH, PICK_RESTORE, PICK_PLAN };
  * PICK_RESTORE. `snapshot_enabled` carries the snapshot-writing choice BOTH
  * ways: in as the state the screen opens on (the command line's), out as what
  * the operator left it at. It is answered here rather than on the command line
- * because the cost being chosen — tens of gigabytes and a large part of the
- * run's wall clock — is only knowable once the phase list and the codec are on
+ * because the cost being chosen — gigabytes and a part of the run's wall
+ * clock — is only knowable once the phase list and the codec are on
  * screen beside it. */
 int screen_startup(Manager *m, int *index, const char *commit,
 		   int *snapshot_enabled);

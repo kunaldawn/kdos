@@ -53,7 +53,7 @@ libunwind
 # buildtools — Build systems and build helpers
 # ---------------------------------
 cargo-c
-ccache
+ccache-manual
 
 # ---------------------------------
 # lang — Language implementations, plus the modules of any language that has no

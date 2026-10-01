@@ -15,9 +15,11 @@
 # (btrfs headers, libsubid, systemd, sqlite), so this list is the whole set:
 # the btrfs graphdriver builds against btrfs-progs' headers, and libsqlite3
 # links the sqlite port instead of go-sqlite3's bundled amalgamation.
+# EXTRA_LDFLAGS carries -s -w, which the makefile does not pass to the Go
+# linker.
 export BUILDTAGS="seccomp libsqlite3"
 
-make BUILDTAGS="$BUILDTAGS" PREFIX=/usr buildah
+make BUILDTAGS="$BUILDTAGS" EXTRA_LDFLAGS="-s -w" PREFIX=/usr buildah
 install -Dm755 bin/buildah $PKG/usr/bin/buildah
 
 make docs

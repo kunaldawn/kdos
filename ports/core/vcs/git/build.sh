@@ -10,6 +10,7 @@
 # ---------------------------------
 
 _mk=(CFLAGS="$CFLAGS"
+	LDFLAGS="$LDFLAGS"
 	prefix=/usr
 	gitexecdir=/usr/lib/git-core
 	perllibdir="$(/usr/bin/perl -MConfig -wle 'print $Config{installvendorlib}')"

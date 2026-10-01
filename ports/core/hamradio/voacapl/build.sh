@@ -17,7 +17,7 @@
 # gfortran comes from the gcc port — this tree builds the compiler with
 # `--enable-languages=c,c++,fortran`, so there is no separate package.
 # configure ships in the tag archive, so autoreconf is not needed.
-./configure --prefix=/usr
+./configure --prefix=/usr FFLAGS="$CXXFLAGS" FCFLAGS="$CXXFLAGS"
 
 # -j1, AND IT IS NOT CAUTION. gfortran writes a `.mod` file when it compiles a
 # module and every user of that module must be compiled AFTER it; this

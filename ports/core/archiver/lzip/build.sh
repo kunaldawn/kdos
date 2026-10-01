@@ -11,6 +11,7 @@
 
 # Not autoconf despite the name: this configure is hand-written and rejects
 # --disable-static and the other flags every other recipe here passes.
-./configure --prefix=/usr CXX="${CXX:-c++}" CXXFLAGS="$CXXFLAGS"
+./configure --prefix=/usr CXX="${CXX:-c++}" CPPFLAGS="$CPPFLAGS" CXXFLAGS="$CXXFLAGS" \
+	LDFLAGS="$LDFLAGS"
 make
 make DESTDIR=$PKG install

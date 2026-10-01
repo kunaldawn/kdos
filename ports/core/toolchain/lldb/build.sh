@@ -40,8 +40,8 @@ cmake -S lldb -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
-	-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
-	-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+	-D CMAKE_C_FLAGS_RELEASE="$CFLAGS -DNDEBUG" \
+	-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -DNDEBUG" \
 	-D LLVM_DIR=/usr/lib/cmake/llvm \
 	-D Clang_DIR=/usr/lib/cmake/clang \
 	-D LLVM_ENABLE_RTTI=ON \

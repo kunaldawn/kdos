@@ -20,10 +20,10 @@
 patch -p1 -i $PORT_SRC/lua-root-usr.patch
 # linux-readline links readline into lua5.4 only; `linux` is the
 # no-readline build. liblua5.4.so is built from liblua.a and does not link it.
-make CC=cc MYCFLAGS="-DLUA_COMPAT_5_3 -fPIC" linux-readline
+make CC=cc MYCFLAGS="$CFLAGS -DLUA_COMPAT_5_3 -fPIC" MYLDFLAGS="$LDFLAGS" linux-readline
 
 cd src
-cc -shared -ldl -Wl,-soname,liblua${_majorver}.so.${_majorver} \
+cc -shared $LDFLAGS -ldl -Wl,-soname,liblua${_majorver}.so.${_majorver} \
    -o liblua${_majorver}.so.$version \
    -Wl,-whole-archive liblua.a -Wl,-no-whole-archive
 cd ..

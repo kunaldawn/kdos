@@ -10,7 +10,7 @@
 
 name        = python3-debugpy
 version     = 1.8.22
-release     = 1
+release     = 2
 source      = https://files.pythonhosted.org/packages/source/d/debugpy/debugpy-$version.tar.gz
 sha256      = e489c7268e1c7b41e13b438d9c533d2a7af73fb59bf8cd30fead8286c1c39c4e  python3-debugpy-1.8.22.tar.gz
 description = debugpy — the Debug Adapter Protocol server for Python, behind the debuggers of Spyder and the IPython kernel

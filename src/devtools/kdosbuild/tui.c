@@ -133,6 +133,9 @@ typedef struct {
 	Manager *m;
 	const KbuildSnapshot *snaps;
 	int nsnap;
+	/* Every snapshot, held ones included: the chains a restore reads. */
+	const KbuildSnapshot *all;
+	int nall;
 	const int *row_phase;
 	int nrow;
 	int sel;
@@ -288,12 +291,28 @@ static void draw_startup_frame(StartupView *v)
 		const KbuildPhase *p = &m->phase[row_phase[sel]];
 		const KbuildSnapshot *sn =
 			kbuild_snap_find(snaps, nsnap, p->dir_name);
+		/* Its own archives, then what restoring it reads: a layer is
+		 * small, and its chain down to a full archive is not. */
 		KbBuf b = {0};
+		long long reads = 0;
+		int narch = 0;
 		kb_buf_str(&b, "restores: ");
-		for (int i = 0; i < sn->nentries; i++)
-			kb_buf_printf(&b, "%s%s %s", i ? "  " : "",
-				      sn->entry[i].path,
-				      human_bytes(sn->entry[i].bytes_compressed));
+		for (int i = 0; i < sn->nentries; i++) {
+			const KbuildSnapEntry *e = &sn->entry[i];
+			kb_buf_printf(&b, "%s%s %s %s", i ? "  " : "", e->path,
+				      human_bytes(e->bytes_compressed),
+				      e->layer ? "layer" : "full");
+			const KbuildSnapshot *chain[KBUILD_MAX_CHAIN];
+			int len = kbuild_snap_chain(v->all, v->nall, sn,
+						    e->path, chain,
+						    KBUILD_MAX_CHAIN);
+			for (int k = 0; k < len; k++)
+				reads += kbuild_snap_entry(chain[k], e->path)
+						 ->bytes_compressed;
+			narch += len > 0 ? len : 0;
+		}
+		kb_buf_printf(&b, " · restore reads %s from %d archive%s",
+			      human_bytes(reads), narch, narch == 1 ? "" : "s");
 		ktui_draw_text(2, y++, ktui_w - 4, b.p ? b.p : "",
 			       KT_MID, KT_BG, 0);
 		kb_buf_free(&b);
@@ -345,13 +364,19 @@ int screen_startup(Manager *m, int *index, const char *commit,
 {
 	KbuildSnapshot *snaps = kb_calloc(KBUILD_MAX_PHASES, sizeof(*snaps));
 	int nsnap = kbuild_snap_list(m->snap_root, snaps, KBUILD_MAX_PHASES);
+	KbuildSnapshot *all = kb_calloc(KBUILD_MAX_SNAPS, sizeof(*all));
+	int nall = kbuild_snap_list_all(m->snap_root, all, KBUILD_MAX_SNAPS);
 
-	/* Row 0 is "start fresh"; the rest are phases that have a snapshot. */
+	/* Row 0 is "start fresh"; the rest are phases that have a snapshot and
+	 * still declare snapshot paths. A snapshot under a phase that declares
+	 * none is a leftover it can never be restored from, and `--delete`
+	 * removes it. */
 	int row_phase[KBUILD_MAX_PHASES + 1];
 	int nrow = 1;
 	row_phase[0] = -1;
 	for (int i = 0; i < m->nphase; i++)
-		if (kbuild_snap_find(snaps, nsnap, m->phase[i].dir_name))
+		if (kbuild_snapshottable(&m->phase[i]) &&
+		    kbuild_snap_find(snaps, nsnap, m->phase[i].dir_name))
 			row_phase[nrow++] = i;
 
 	int sel = nrow > 1 ? nrow - 1 : 0;
@@ -359,8 +384,9 @@ int screen_startup(Manager *m, int *index, const char *commit,
 	int result = PICK_QUIT;
 
 	for (;;) {
-		StartupView vw = { m, snaps, nsnap, row_phase, nrow, sel,
-				   commit, status, 0, *snapshot_enabled };
+		StartupView vw = { m, snaps, nsnap, all, nall, row_phase,
+				   nrow, sel, commit, status, 0,
+				   *snapshot_enabled };
 		draw_startup_frame(&vw);
 		int first_row = vw.first_row;
 		ktui_draw_flush();
@@ -420,14 +446,24 @@ int screen_startup(Manager *m, int *index, const char *commit,
 					   sizeof(status));
 			} else {
 				const KbuildPhase *p = &m->phase[row_phase[sel]];
-				snap_delete(m, p->dir_name);
-				snprintf(status, sizeof(status), "deleted %s",
-					 p->dir_name);
+				char deps[160];
+				if (snap_delete(m, p->dir_name, deps,
+						sizeof(deps)) == 2)
+					snprintf(status, sizeof(status),
+						 "deleted %s; kept as the base "
+						 "of %s until they go",
+						 p->dir_name, deps);
+				else
+					snprintf(status, sizeof(status),
+						 "deleted %s", p->dir_name);
 				nsnap = kbuild_snap_list(m->snap_root, snaps,
 							 KBUILD_MAX_PHASES);
+				nall = kbuild_snap_list_all(m->snap_root, all,
+							    KBUILD_MAX_SNAPS);
 				nrow = 1;
 				for (int i = 0; i < m->nphase; i++)
-					if (kbuild_snap_find(snaps, nsnap,
+					if (kbuild_snapshottable(&m->phase[i]) &&
+					    kbuild_snap_find(snaps, nsnap,
 							     m->phase[i].dir_name))
 						row_phase[nrow++] = i;
 				if (sel >= nrow)
@@ -445,6 +481,7 @@ int screen_startup(Manager *m, int *index, const char *commit,
 	}
 
 	free(snaps);
+	free(all);
 	return result;
 }
 
@@ -985,8 +1022,10 @@ static void draw_activity(Manager *m)
 
 	snap_sample(a);
 
-	char line[256];
-	snprintf(line, sizeof(line), "%s %s %s", a->action, a->phase, a->path);
+	char line[320];
+	snprintf(line, sizeof(line), "%s %s %s%s%s%s", a->action, a->phase,
+		 a->path, a->layer[0] ? " (" : "", a->layer,
+		 a->layer[0] ? ")" : "");
 	ktui_draw_text(r.x + 2, r.y + 1, w - 4, line, KT_TEXT, KT_SURFACE,
 		       KT_A_BOLD);
 
@@ -1045,19 +1084,31 @@ static void draw_activity(Manager *m)
 		       KT_SURFACE, KT_A_BOLD);
 }
 
+/* When the activity screen was last drawn; 0 forces the next tick to draw. */
+static double activity_drawn;
+
 /* The redraw hook handed to the snapshot engine. Also the place a cancel is
- * noticed, because a tar can run for forty minutes. */
+ * noticed, because a tar can run for forty minutes. The engine calls it after
+ * every read of the archiver's output, which on a tree of small files is
+ * hundreds of times a second, so the frame is redrawn at most every 100 ms
+ * — a full clear-draw-flush per read costs more than the read — while input
+ * is read on every call, so Q is noticed at once. */
 static void activity_tick(Manager *m)
 {
-	ktui_draw_clear();
-	draw_activity(m);
-	ktui_draw_flush();
+	double now = kb_now_s();
+	if (now - activity_drawn >= 0.1) {
+		activity_drawn = now;
+		ktui_draw_clear();
+		draw_activity(m);
+		ktui_draw_flush();
+	}
 
 	KtuiEvent ev;
 	while (ktui_input_next(&ev, 0)) {
-		if (ev.type == KT_EVT_RESIZE)
+		if (ev.type == KT_EVT_RESIZE) {
 			ktui_draw_resize();
-		else if (ev.type == KT_EVT_KEY &&
+			activity_drawn = 0;
+		} else if (ev.type == KT_EVT_KEY &&
 			 (ev.key == 'q' || ev.key == 'Q'))
 			m->stop_requested = 1;
 	}
@@ -1066,6 +1117,7 @@ static void activity_tick(Manager *m)
 void screen_progress(Manager *m, const char *title)
 {
 	kb_strlcpy(progress_title, title, sizeof(progress_title));
+	activity_drawn = 0;
 	snap_set_tick(m, activity_tick);
 }
 
@@ -1201,9 +1253,16 @@ static void draw_header(BuildView *v)
 
 	double pct = total ? (double)done / total : 0;
 	double eta = v->tm ? eta_seconds(m, v->tm) : -1;
-	char suffix[64];
-	snprintf(suffix, sizeof(suffix), "%3d%%   %d/%d   eta %s",
-		 (int)(pct * 100), done, total, human_time(eta));
+	/* Under --port-jobs the header says how many steps are running, and
+	 * the ETA carries a `~`: it assumes a level divides evenly among its
+	 * slots. */
+	char running[24] = "";
+	if (m->nrunning > 1)
+		snprintf(running, sizeof(running), "   %d running", m->nrunning);
+	char suffix[96];
+	snprintf(suffix, sizeof(suffix), "%3d%%   %d/%d%s   eta %s%s",
+		 (int)(pct * 100), done, total, running,
+		 m->port_jobs > 1 ? "~" : "", human_time(eta));
 	int sw = ktui_utf8_width(suffix) + 2;
 	int bar_w = hr.w - sw;
 	if (bar_w < 10)
@@ -1248,7 +1307,7 @@ static void node_icon(BStep *n, char *out, size_t cap, int *fg)
 		break;
 	case ST_DONE:
 		kb_strlcpy(out, " OK ", cap);
-		*fg = KT_ACCENT;
+		*fg = n->installed ? KT_MID : KT_ACCENT;
 		break;
 	default:
 		kb_strlcpy(out, " !! ", cap);
@@ -1308,6 +1367,8 @@ static void draw_tree_row(BStep *n, int rx, int y, int width, int bg, int sel)
 	char t[32] = "";
 	if (n->status == ST_SKIPPED)
 		kb_strlcpy(t, "(skip)", sizeof(t));
+	else if (n->installed)
+		kb_strlcpy(t, "(installed)", sizeof(t));
 	else if (dur > 0 || n->status == ST_RUNNING) {
 		int s = (int)dur;
 		if (s < 60)
@@ -1342,7 +1403,8 @@ static void draw_tree_row(BStep *n, int rx, int y, int width, int bg, int sel)
 	int room = width - x - reserved;
 	if (room < 1)
 		room = 1;
-	ktui_draw_text(x, y, room, n->title, sel ? KT_BG : KT_TEXT, bg,
+	ktui_draw_text(x, y, room, n->title,
+		       sel ? KT_BG : n->installed ? KT_MID : KT_TEXT, bg,
 		       sel ? KT_A_BOLD : 0);
 
 	if (n->is_group && n->nchild) {
@@ -1539,6 +1601,8 @@ static void draw_detail(BuildView *v)
 				: n->status == ST_RUNNING ? "Starting..."
 				: n->status == ST_SKIPPED
 					? "Skipped (restored from snapshot)"
+				: n->installed
+					? "Installed and current: not run."
 					: "No logs.";
 		ktui_draw_text(x, log_y, w, msg, KT_DIM, KT_BG, 0);
 		draw_search_bar(v, x, w, bottom);
@@ -2012,14 +2076,16 @@ static void draw_success_panel(Manager *m)
 	int y = r.y + 1;
 	char buf[700];
 
-	int phases = 0, done = 0, skipped = 0;
+	int phases = 0, done = 0, installed = 0, skipped = 0;
 	for (int i = 0; i < m->nroot; i++)
 		if (m->root[i]->status == ST_DONE)
 			phases++;
 	for (int i = 0; i < m->norder; i++) {
 		if (m->order[i]->is_group)
 			continue;
-		if (m->order[i]->status == ST_DONE)
+		if (m->order[i]->installed)
+			installed++;
+		else if (m->order[i]->status == ST_DONE)
 			done++;
 		else if (m->order[i]->status == ST_SKIPPED)
 			skipped++;
@@ -2028,8 +2094,8 @@ static void draw_success_panel(Manager *m)
 	snprintf(buf, sizeof(buf), "phases      %d of %d", phases, m->nroot);
 	ktui_draw_text(x, y++, iw, buf, KT_TEXT, KT_SURFACE, KT_A_BOLD);
 
-	snprintf(buf, sizeof(buf), "steps       %d run, %d skipped", done,
-		 skipped);
+	snprintf(buf, sizeof(buf), "steps       %d run, %d installed, %d skipped",
+		 done, installed, skipped);
 	ktui_draw_text(x, y++, iw, buf, KT_MID, KT_SURFACE, 0);
 
 	/* Two disjoint spans, the same rule draw_activity and the failure
@@ -2331,18 +2397,20 @@ void screen_build(Manager *m, Sampler *sam, Timings *tm)
 			if (!m->is_running) {
 				v.quit_requested = 1;
 			} else if (m->stop_requested) {
-				/* Asked twice: kill the step's process group
-				 * outright and leave. A build that cannot be
-				 * quit is worse than a build that is killed
-				 * untidily. */
+				/* Asked twice: kill every running step's
+				 * process group outright and leave. A build
+				 * that cannot be quit is worse than a build
+				 * that is killed untidily. */
 				m->force_quit = 1;
 				v.quit_requested = 1;
 				mgr_notice(m, "force quit — killing the "
-					   "current step");
+					   "running steps");
 			} else {
+				/* Once: SIGTERM to every running step's
+				 * process group, SIGKILL five seconds on. */
 				m->stop_requested = 1;
-				mgr_notice(m, "stop requested — finishing the "
-					   "current step (Q again to force)");
+				mgr_notice(m, "stop requested — terminating the "
+					   "running steps (Q again to force)");
 			}
 			break;
 		case KT_K_UP:
@@ -2369,8 +2437,8 @@ void screen_build(Manager *m, Sampler *sam, Timings *tm)
 			BStep *g = mgr_phase_of(m->current_step);
 			if (g) {
 				m->snapshot_request = g;
-				mgr_notice(m, "snapshot of %s queued after this "
-					   "step", g->title);
+				mgr_notice(m, "snapshot of %s queued for when "
+					   "no step is running", g->title);
 			}
 			break;
 		}
@@ -2565,7 +2633,7 @@ static void preview_startup(Manager *m)
 		if (kbuild_snap_find(snaps, nsnap, m->phase[i].dir_name))
 			row_phase[nrow++] = i;
 
-	StartupView vw = { m, snaps, nsnap, row_phase, nrow,
+	StartupView vw = { m, snaps, nsnap, snaps, nsnap, row_phase, nrow,
 			   nrow > 1 ? nrow - 1 : 0, "9f3a1c2", "", 0, 1 };
 	draw_startup_frame(&vw);
 	free(snaps);

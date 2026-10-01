@@ -22,8 +22,9 @@
 #
 # USE_SYSTEMD=no: left unset, the Makefile probes pkg-config for libsystemd and
 # links it when it finds one.
-make MALLOC=libc BUILD_TLS=yes USE_SYSTEMD=no PREFIX=/usr
-make MALLOC=libc BUILD_TLS=yes USE_SYSTEMD=no PREFIX=$PKG/usr install
+export CFLAGS="${CFLAGS/-O2/-O3} -DUSE_MALLOC_USABLE_SIZE"
+make MALLOC=libc BUILD_TLS=yes USE_SYSTEMD=no DEBUG= PREFIX=/usr
+make MALLOC=libc BUILD_TLS=yes USE_SYSTEMD=no DEBUG= PREFIX=$PKG/usr install
 
 install -Dm644 valkey.conf   $PKG/etc/valkey/valkey.conf
 install -Dm644 sentinel.conf $PKG/etc/valkey/sentinel.conf

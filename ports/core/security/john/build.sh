@@ -31,6 +31,14 @@ patch -p1 -i "$PORT_SRC/blake2-align.patch"
 # CL_DEVICE_TOPOLOGY_TYPE_PCIE_AMD, which those headers do not define.
 patch -p1 -i "$PORT_SRC/opencl-topology.patch"
 
+# cpu-fallback-first.patch has no flag either. main() runs sig_preinit() and
+# path_init() before it tests the CPU, and both are compiled for the build's
+# SIMD level, so the AVX-512 build dies of SIGILL on an AVX2 machine before
+# it can hand over to the next build down. The patch runs the test first,
+# only in a build with a fallback and a fixed exec directory, where the test
+# needs nothing those two set up.
+patch -p1 -i "$PORT_SRC/cpu-fallback-first.patch"
+
 # -fcommon: the OpenCL formats declare file-scope globals (psalt, insize,
 # keyfiles_data, ...) under the same names as their CPU twins without `static`,
 # and GCC's -fno-common default turns every such pair into a multiple-definition
@@ -38,14 +46,30 @@ patch -p1 -i "$PORT_SRC/opencl-topology.patch"
 export CFLAGS="$CFLAGS -fcommon"
 
 cd src
-./configure --prefix=/usr --disable-native-tests --disable-mpi \
-	--enable-pcap --enable-opencl
+_opts=(--prefix=/usr --disable-native-tests --disable-mpi --enable-pcap --enable-opencl)
 
 # --disable-native-tests IS WHAT MAKES THIS REPRODUCIBLE. john's configure
-# probes THIS CPU's instruction set and bakes the best it finds into the
-# binary, so a package built on a machine with AVX-512 crashes on one without
-# it — and the failure is SIGILL at run time, not a link error. That is exactly
-# the blind optimisation `kdos march` exists to replace with a measurement.
+# otherwise probes THIS CPU's instruction set and bakes the best it finds into
+# the binary, so a package built on a machine with AVX-512 crashes on one
+# without it — and the failure is SIGILL at run time, not a link error.
+#
+# ONE BUILD PER LEVEL, CHOSEN AT RUN TIME. john selects its SIMD code only at
+# compile time, and a build for one level is either slow everywhere or an
+# illegal instruction on an older machine. --enable-simd=<level> compiles
+# every file with -m<level> except john.c, which is told the level by a
+# define and tests the processor for it first; the level must not go into
+# CFLAGS, or john.c itself is compiled for it and dies of SIGILL before the
+# test. -DCPU_FALLBACK makes a failed test execv() the next build down under
+# the name x86-64.h gives it, from JOHN_SYSTEMWIDE_EXEC, which --prefix=/usr
+# sets to /usr/bin:
+#   john (AVX-512BW) -> john-non-avx512bw (AVX2) -> john-non-avx2 (XOP)
+#   -> john-non-xop (AVX) -> john-non-avx (SSE2, the x86-64 baseline)
+# argv is passed on unchanged, so unshadow, zip2john and the other links to
+# john keep their meaning through the chain. The baseline build is made last:
+# the helper programs it leaves in run/ (calc_stat, SIPdump, the *2john
+# converters written in C) are the only copies shipped, and they run on any
+# x86-64. A new level must keep the chain's names; a name x86-64.h does not
+# expect is never exec'd.
 #
 # --enable-pcap fails configure without libpcap rather than dropping the
 # vncpcap2john / SIPdump / eapmd5tojohn helpers. --enable-opencl only asks:
@@ -55,7 +79,21 @@ cd src
 # /etc/OpenCL/vendors names, Mesa's rusticl, which offers a device only for the
 # drivers RUSTICL_ENABLE lists (/etc/profile.d/50-opencl.sh sets it), and
 # report no device when there is none.
-make -j1
+_base_cflags="$CFLAGS"
+for _lvl in avx512bw:john avx2:john-non-avx512bw xop:john-non-avx2 avx:john-non-xop; do
+	CFLAGS="$_base_cflags -DCPU_FALLBACK" ./configure "${_opts[@]}" \
+		--enable-simd="${_lvl%%:*}"
+	make clean
+	make
+	mv ../run/john ../run/.simd-"${_lvl#*:}"
+done
+CFLAGS="$_base_cflags" ./configure "${_opts[@]}"
+make clean
+make
+mv ../run/john ../run/john-non-avx
+for _f in ../run/.simd-*; do
+	mv "$_f" ../run/"${_f#../run/.simd-}"
+done
 
 # WHAT IT IS FOR: reading a hash out of a LUKS header, a KeePass database, an
 # encrypted PDF or ZIP, or /etc/shadow, and answering "how long would this

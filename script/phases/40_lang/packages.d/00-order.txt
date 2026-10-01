@@ -25,6 +25,13 @@
 # the order written. A run is here because a comment pins its order; everything
 # else is in the file of its shelf.
 #
+# Under `kdosbuild --port-jobs` this file is also the phase's serial prefix:
+# its ports, and every port the resolved order puts among them, build and
+# install one at a time, and no other port of the phase starts before the last
+# of them is installed. A pair whose order matters only because both install
+# the same path is pinned here too; kdosbuild names such a pair when a level's
+# commit moves a path the serial order would not have.
+#
 # It is also the one file that may name a port an earlier phase installs: kpkg
 # skips that port while its recipe hash is current and rebuilds it here, in this
 # order, when the recipe has changed.

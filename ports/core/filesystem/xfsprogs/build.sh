@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export DEBUG=-DNDEBUG
+export DEBUG=-DNDEBUG OPTIMIZER=-O2
 # The unit, udev-rule and crontab directories stay off: every file they
 # install exists only to start the xfs_scrub and xfs_healer systemd services,
 # and the udev rule would otherwise land wherever eudev's udev.pc points.

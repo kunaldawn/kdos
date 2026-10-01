@@ -23,7 +23,8 @@ make BUILD_OPT=1 USE_64=1 \
 	USE_SYSTEM_ZLIB=1 ZLIB_LIBS=-lz \
 	NSS_USE_SYSTEM_SQLITE=1 \
 	NSS_ENABLE_WERROR=0 \
-	NSS_DISABLE_GTESTS=1
+	NSS_DISABLE_GTESTS=1 \
+	XCFLAGS="$CFLAGS"
 
 cd ../dist
 install -d "$PKG/usr/lib/pkgconfig" "$PKG/usr/bin" "$PKG/usr/include/nss"

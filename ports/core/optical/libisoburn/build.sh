@@ -17,6 +17,7 @@
 # used: jigdo templates need a library that is not a port, and libcdio would
 # replace libburn's own Linux SCSI adapter.
 ./configure --prefix=/usr \
+	--disable-debug \
 	--enable-libreadline \
 	--disable-libedit \
 	--enable-libacl \

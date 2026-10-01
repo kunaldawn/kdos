@@ -48,6 +48,8 @@
 	ac_cv_header_bluetooth_bluetooth_h=no \
 	ac_cv_header_bluetooth_h=no \
 	py_cv_module__tkinter=n/a \
+	OPT="-O3 -Wall" \
+	CFLAGS_ALIASING=-fno-strict-aliasing \
 	CPPFLAGS="$CPPFLAGS -DOPENSSL_NO_SSL3 -DOPENSSL_NO_SSL3_METHOD -DOPENSSL_NO_TLS1_METHOD -DOPENSSL_NO_TLS1_1_METHOD -DOPENSSL_NO_TLS1_2_METHOD"
 make EXTRA_CFLAGS="$CFLAGS"
 make EXTRA_CFLAGS="$CFLAGS" DESTDIR=$PKG install maninstall

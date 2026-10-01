@@ -22,7 +22,7 @@
 # or Linyaps. A KDOS box is none of them, so the front end treats a boxed
 # application as an unsandboxed host program and hands it a position without
 # asking.
-meson setup build \
+meson setup build --buildtype=release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	-Ddocumentation=disabled \
 	-Dman-pages=enabled \

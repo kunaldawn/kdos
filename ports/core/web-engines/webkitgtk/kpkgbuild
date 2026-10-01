@@ -15,6 +15,6 @@ source      = https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
 sha256      = 846fd19ccedbae1dbfe904f26dbf2d68a800a33a50caf2ad5222c8dcb3f25682  webkitgtk-2.54.0.tar.xz
 description = WebKitGTK web engine for GTK 3: the webkit2gtk-4.1 and javascriptcoregtk-4.1 APIs over libsoup 3
 homepage    = https://webkitgtk.org/
-depends     = gtk3 cmake ninja perl python3 ruby gperf bison flex unifdef pkgconf gettext glib gobject-introspection glib-introspection libsoup3 glib-networking cairo harfbuzz icu freetype2 brotli fontconfig libjpeg-turbo libpng libwebp libavif libjxl lcms2 openjpeg libxml2 libxslt sqlite zlib libgcrypt libtasn1 libepoxy libdrm mesa wayland wayland-protocols libxkbcommon libX11 at-spi2-core gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav enchant hyphen libsecret libseccomp bubblewrap xdg-dbus-proxy
+depends     = lld gtk3 cmake ninja perl python3 ruby gperf bison flex unifdef pkgconf gettext glib gobject-introspection glib-introspection libsoup3 glib-networking cairo harfbuzz icu freetype2 brotli fontconfig libjpeg-turbo libpng libwebp libavif libjxl lcms2 openjpeg libxml2 libxslt sqlite zlib libgcrypt libtasn1 libepoxy libdrm mesa wayland wayland-protocols libxkbcommon libX11 at-spi2-core gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav enchant hyphen libsecret libseccomp bubblewrap xdg-dbus-proxy
 devseries   = odd-minor
 group       = webkitgtk

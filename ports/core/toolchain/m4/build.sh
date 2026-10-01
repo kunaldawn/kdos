@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export CFLAGS="-O2 -pipe -std=gnu17 -D_GL_ATTRIBUTE_NODISCARD=\"\""
+export CFLAGS="$CFLAGS -std=gnu17 -D_GL_ATTRIBUTE_NODISCARD=\"\""
 ./configure --prefix=/usr
 make
 make DESTDIR=$PKG install

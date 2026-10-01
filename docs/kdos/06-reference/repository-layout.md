@@ -46,11 +46,11 @@ kdos/
 │   │   ├── *.patch            optional patches, tracked (436 files)
 │   │   ├── other support files  configuration, data files, single-file sources — tracked
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
-│   ├── shelves                the closed list of shelves, one `<id> <description>` per line
+│   ├── shelves                the closed list of shelves, one `<id> <volume> <description>` per line
 │   ├── Containerfile.fetch    the image that generates vendor bundles, pinning this tree's toolchains
 │   ├── hackage-vendor         the Hackage downloader behind `vendoring = haskell`
 │   ├── .srccache/             the local source cache, one file per hash — ignored
-│   ├── sources.idx            which source-archive release holds each hash — committed
+│   ├── sources.idx            which source-archive volume and asset hold each hash — committed
 │   ├── .kpkgbin/, .portup, .portup-tools/   host helpers compiled on demand — ignored
 │   ├── srclib.sh              the source archive's addressing, and the port lookup by name,
 │   │                          shared by fetch, publish, the hook and preflight
@@ -61,7 +61,7 @@ kdos/
 ├── src/                   KDOS's own code; every port is at exactly src/<area>/<name>/
 │   ├── libs/              the C libraries, compiled by their consumers — see the rule below
 │   │   ├── libkbase/          allocation, strings, files, processes, the trash
-│   │   ├── libkbuild/         phases, plans, the snapshot inventory
+│   │   ├── libkbuild/         phases, plans, the snapshot inventory and its chains
 │   │   ├── libkcell/          the glyph cache and the cell painter
 │   │   ├── libkchrome/        the window furniture
 │   │   ├── libkcolor/         the palette table and colour arithmetic
@@ -198,7 +198,7 @@ port repository; it is the catalogue file `src/system/kdos-appbox/catalogue`.
 
 | Directory | Holds | Recipes | Layout |
 |---|---|---|---|
-| `ports/core/` | Upstream software: somebody else's source | 1,999 | `<shelf>/<name>/`, on 102 shelves |
+| `ports/core/` | Upstream software: somebody else's source | 2,000 | `<shelf>/<name>/`, on 102 shelves |
 | `src/system/` | The package manager, the `kdos` command and its services, packs and boxes, the installer | 5 | `<name>/` |
 | `src/art/` | Theme generators, the themes built from them, the boot splash, the demo | 6 | `<name>/` |
 | `src/desktop/` | Programs that draw the session or serve it over Wayland or D-Bus | 8 | `<name>/` |
@@ -263,7 +263,8 @@ first area that fits:
 
 `src/libs/` and `src/devtools/` are not port repositories. The libraries are compiled into each
 program by that program's own recipe. The two tools run only on the build host and are compiled on
-demand: `script/kdosbuild.sh` builds the orchestrator into `build/.kdosbuild`, and `ports/update`
+demand: `script/kdosbuild.sh` builds the orchestrator into `build/.kdosbuild`, recording what built
+it in `build/.kdosbuild.sum` so an unchanged one is not recompiled, and `ports/update`
 builds the version checker into `ports/.portup`. Preflight fails any other directory under `src/`
 and any recipe at another depth, and fails the orphan sweep in
 `script/phases/70_image/040_orphans.sh` when its list of repositories leaves out an area that holds
@@ -316,9 +317,9 @@ those keys are written in every `phase.env`. Everything shared is sourced from `
 
 | File | Sourced by | Holds |
 |---|---|---|
-| `common.env` | every phase, through one of the two below | The reproducibility settings, `MAKEFLAGS` and `KPKG_STRICT_RECIPE=1` |
+| `common.env` | every phase, through one of the two below | The reproducibility settings, the job count `KDOS_JOBS` with the `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS` it sets, and `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross`, `10_bootstrap` | The target triplet, the sysroot and cross-toolchain paths, and the cross `pkg-config` setup |
-| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the base flags, and a cleared work directory |
+| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the release flags, `CMAKE_BUILD_TYPE`, `CARGO_PROFILE_RELEASE_DEBUG`, `GOFLAGS` and the `CGO_*FLAGS`, the CMake compiler cache, `KPKG_SKIP_INDEX=man`; it removes nothing, since `kpkg` empties each port's own work directory |
 
 `script/lib/port.sh` is sourced by the step scripts of `00_cross` and `10_bootstrap`, which run
 before `kpkg` exists; it reads a recipe and unpacks its source, and finds a port by name one shelf
@@ -389,10 +390,11 @@ build and are skipped. A binary host the build wrote goes beside the tree as `so
 ## Where the upstream sources are
 
 Upstream source archives are not stored in git. A recipe names each of its files by its SHA-256
-hash, and each archived file is a release asset of the `kunaldawn/kdos` repository, named by that
-hash. `make fetch` puts every file in its port directory; it is the only build step that uses the
-network. `ports/sources.idx` holds 1,678 entries, spread over the releases `sources-001` and
-`sources-002`. The lookup order, the cache, the vendor bundles and the environment variables are
+hash, and each archived file is a release asset of the `kunaldawn/kdos` repository, named
+`<shelf>--<file>`, in the numbered pre-release `sources-<N>` that `ports/shelves` gives the shelf
+whose port first names it; a file over GitHub's 2 GiB asset limit is stored in parts. `make fetch`
+puts every file in its port directory; it is the only build step that uses the network. A hash
+`ports/sources.idx` does not name comes from upstream. The lookup order, the cache, the vendor bundles and the environment variables are
 described in [Developing](../05-developer/developing.md#where-sources-come-from).
 
 Five files in the tree make this work:
@@ -400,10 +402,10 @@ Five files in the tree make this work:
 | File | Does |
 |---|---|
 | `ports/srclib.sh` | The archive's addressing and hash checks, the lookup of a port by bare name on any shelf, and the on-demand build of the recipe reader; sourced by `ports/fetch`, `ports/publish`, the pre-push hook and `testing/preflight.sh` |
-| `ports/sources.idx` | One line per archived file, `<sha256> <NNN> <port>/<file>`: the file is asset `<sha256>` of release `sources-<NNN>`. Written by `ports/publish`, read by `ports/fetch` and the pre-push hook; append-only, and committed with the recipe that needs it |
+| `ports/sources.idx` | Format 2: the first line is `# kdos-sources-index 2`, then one line per archived file, `<sha256> <tag> <asset> <port>/<file>`, with `parts=<N>:<h1>,…,<hN>` after it for a file stored in parts. The file is asset `<asset>` (or `<asset>.part01` onwards) of release `<tag>`. Written by `ports/publish`, read by `ports/fetch` and the pre-push hook, checked by `testing/preflight.sh`, and committed with the recipe that needs it; an index of any other format is not read |
 | `ports/fetch` | Resolves every recipe hash from the port directory, `ports/.srccache/`, the archive, or the recipe's `source =` URL, in that order, and generates a port's own vendor bundle when none of those holds it. `make fetch` runs it; `make fetch-check` runs `ports/fetch --check`, which is offline |
-| `ports/publish` | Uploads sources the archive does not hold (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
-| `script/hooks/pre-push` | Refuses a `git push` that breaks the ports layout, or whose recipes name a hash the archive does not hold |
+| `ports/publish` | Uploads sources the archive does not hold into their shelf's volume (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--plan` gives a new shelf its volume in `ports/shelves`; `--rehome` moves files whose port changed shelf, `--retire` deletes the emptied releases of the older one-per-shelf layout, `--orphans` lists files no recipe names; `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `script/hooks/pre-push` | Refuses a `git push` that breaks the ports layout, or whose recipes name a hash the archive does not hold, every part of a split file included |
 
 The hook runs only in a clone that has opted in:
 
@@ -432,7 +434,7 @@ included, stops running in that clone.
 
 | Path | Ignored by git | Notes |
 |---|---|---|
-| `build/` | entirely | The root filesystem, logs, snapshots, the ISO, signing keys, frozen source lists, and `build/podman/`, a podman container store that `script/kdosbuild.sh` leaves owned by root |
+| `build/` | entirely | The root filesystem, logs, snapshots, the compiler cache `build/ccache`, the package store `build/pkgstore` (`<key[0:2]>/<key>/`, one package and its `META` each, written only with `KDOS_PKG_STORE` on), the ISO, signing keys, frozen source lists, and `build/podman/`, a podman container store that `script/kdosbuild.sh` leaves owned by root |
 | `build_test/` | entirely | Where `testing/prepare_base.py` builds the minimal root filesystem that `testing/test_runner.py` builds ports against |
 | `ports/core/*/*/*.tar`, `*.tar.*`, `*.tgz`, `*.tbz2`, `*.txz`, `*.zip`, `*.7z`, `*.part`, and a few more suffixes | yes | Upstream archives, vendor bundles and partial downloads, put there by `make fetch`, matched in a port directory one shelf down. A pattern for one port's odd suffix names its shelf, and must be edited when the port changes shelf. A patch or configuration file a recipe hashes is tracked and unaffected, and the archive fixtures under `testing/fixtures/` stay tracked |
 | `ports/.srccache/` | yes | The source cache, `sha256-XX/<hash>`. Plain data: it survives `make clean` and `make cleanbuild` |

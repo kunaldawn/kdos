@@ -61,7 +61,8 @@ mkdir -p build && cd build
 	--enable-multilib \
 	--with-multilib-list=rmprofile \
 	--with-pkgversion="KDOS" \
-	CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
+	CFLAGS_FOR_TARGET="-Os -pipe -ffunction-sections -fdata-sections" \
+	CXXFLAGS_FOR_TARGET="-Os -pipe -ffunction-sections -fdata-sections"
 make all-target-libstdc++-v3
 # The install runs in the libstdc++ directory, not through the top-level
 # install-target-libstdc++-v3, which installs libgcc first and would give this

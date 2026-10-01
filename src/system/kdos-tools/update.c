@@ -139,6 +139,10 @@ static int survey(const KpConf *c, Behind **out, int *norphan)
 	int n = 0;
 
 	for (int i = 0; i < ndb; i++) {
+		/* `.recipe/` and `.lock` live beside the entries and are not
+		 * packages; counted, each would be an orphan. */
+		if (names[i][0] == '.')
+			continue;
 		char *pd = kp_port_dir(c, names[i]);
 		if (!pd) {
 			(*norphan)++;

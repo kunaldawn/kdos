@@ -28,7 +28,8 @@
 	--idn-library=idn \
 	--with-random=getrandom \
 	--no-example-certs \
-	--ostype=linux
+	--add-cflags="$CFLAGS" \
+	--add-ldflags="$LDFLAGS"
 make
 make DESTDIR=$PKG install
 

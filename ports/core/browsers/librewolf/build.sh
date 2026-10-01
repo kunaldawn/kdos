@@ -22,9 +22,11 @@
 # (MOZ_APP_REMOTINGNAME) all carry the one name librewolf, and StartupWMClass
 # has to equal it or the panel groups the window under no entry.
 #
-# Four of Alpine's firefox patches, verbatim: lfs64, musl-no-linux-prctl,
-# sandbox-sched_setscheduler and glean-stub, each for the reason firefox-esr's
-# build.sh gives. fix-rust-target takes the rustc target from RUST_TARGET:
+# Five of Alpine's firefox patches: lfs64, musl-no-linux-prctl,
+# sandbox-sched_setscheduler, glean-stub and rust-lto-thin, each for the reason
+# firefox-esr's build.sh gives; rust-lto-thin is rebased onto this tree's
+# rust.mk, the rest are verbatim.
+# fix-rust-target takes the rustc target from RUST_TARGET:
 # configure matches the C triple against rustc's target list, where a musl
 # x86_64 triple fits both x86_64-unknown-linux-musl and
 # x86_64-unikraft-linux-musl and the vendor `kdos` picks neither, so
@@ -33,6 +35,7 @@ patch -p1 -i "$PORT_SRC/fix-rust-target.patch"
 patch -p1 -i "$PORT_SRC/glean-stub.patch"
 patch -p1 -i "$PORT_SRC/lfs64.patch"
 patch -p1 -i "$PORT_SRC/musl-no-linux-prctl.patch"
+patch -p1 -i "$PORT_SRC/rust-lto-thin.patch"
 patch -p1 -i "$PORT_SRC/sandbox-sched_setscheduler.patch"
 
 # Clang and lld, as for firefox-esr; bindgen needs libclang whichever compiler

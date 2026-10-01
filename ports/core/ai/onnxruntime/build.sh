@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/gcc16-cstdint.patch"
+
 # EVERY THIRD-PARTY LIBRARY IS THE ONE THIS RELEASE PINS, built into
 # libonnxruntime. cmake/deps.txt names each by URL and SHA1, and FetchContent
 # reads onnxruntime_CMAKE_DEPS_MIRROR_DIR first: a file at <mirror>/<URL

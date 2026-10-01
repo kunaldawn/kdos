@@ -20,7 +20,7 @@
 # under no entry. It also keeps clear of `firefox`, the name kdos-appbox gives
 # the boxed browser's shim.
 #
-# Five of Alpine's patches, verbatim. lfs64: musl has no stat64 or
+# Six of Alpine's patches, verbatim. lfs64: musl has no stat64 or
 # lstat64, and a configure that finds the declarations still links nothing.
 # musl-no-linux-prctl: <linux/prctl.h> and musl's <sys/prctl.h> both define
 # struct prctl_mm_map, and libwebrtc includes both. sandbox-sched_setscheduler:
@@ -31,11 +31,14 @@
 # and a vendor other than `unknown` picks neither, so configure stops; the
 # patch takes the target from RUST_TARGET.
 # glean-stub: the metric accessors only tests call are stubbed out; compiled
-# into gkrust they can exhaust rustc's LLVM memory.
+# into gkrust they can exhaust rustc's LLVM memory. rust-lto-thin: gkrust is
+# linked with thin rather than fat LTO, which takes a fraction of the time
+# and memory.
 patch -p1 -i "$PORT_SRC/fix-rust-target.patch"
 patch -p1 -i "$PORT_SRC/glean-stub.patch"
 patch -p1 -i "$PORT_SRC/lfs64.patch"
 patch -p1 -i "$PORT_SRC/musl-no-linux-prctl.patch"
+patch -p1 -i "$PORT_SRC/rust-lto-thin.patch"
 patch -p1 -i "$PORT_SRC/sandbox-sched_setscheduler.patch"
 
 # Clang and lld, the toolchain Mozilla builds and tests Firefox with; bindgen

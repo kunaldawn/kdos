@@ -12,6 +12,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sched.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,19 @@
 #include <unistd.h>
 
 #include "kdosbuild.h"
+#include "kpkg.h"
+
+/*
+ * A PACKAGE PHASE RUNS ONE PORT AT A TIME unless --port-jobs asks for more.
+ * Then it runs BY LEVEL: a port's level is one more than the highest level of
+ * the ports of the same phase its recipe depends on, a level's ports build
+ * side by side with `kpkg install --build-only`, and once every one of them has
+ * built, one commit step installs them all with `kpkg install --commit`, in
+ * the serial order. Nothing installs while a build runs, so each port builds
+ * against the earlier phases and the lower levels and nothing else: what it
+ * sees is a function of the tree, never of which sibling finished first.
+ * expand_levels() has the graph and its rules.
+ */
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Steps                                                                    */
@@ -143,13 +157,24 @@ static void step_log(BStep *s, const char *line)
 	s->log[s->nlog++] = kb_strdup(out);
 }
 
+/* A group's duration is the wall-clock span of its steps, first start to last
+ * end: under --port-jobs its steps overlap, and their sum would count the
+ * overlap twice. */
 double step_duration(const BStep *s)
 {
 	if (s->is_group) {
-		double total = 0;
-		for (int i = 0; i < s->nchild; i++)
-			total += step_duration(s->child[i]);
-		return total;
+		double first = 0, last = 0;
+		for (int i = 0; i < s->nchild; i++) {
+			const BStep *c = s->child[i];
+			if (c->start_time <= 0)
+				continue;
+			double end = c->end_time > 0 ? c->end_time : kb_now_s();
+			if (!first || c->start_time < first)
+				first = c->start_time;
+			if (end > last)
+				last = end;
+		}
+		return first > 0 ? last - first : 0;
 	}
 	if (s->start_time <= 0)
 		return 0;
@@ -174,6 +199,7 @@ static void step_free(BStep *s)
 		free(s->log[i]);
 	free(s->log);
 	free(s->cmd_line);
+	free(s->commits);
 	free(s);
 }
 
@@ -192,10 +218,24 @@ static void renumber(Manager *m)
 void mgr_init(Manager *m, const char *script_dir, const char *build_dir)
 {
 	memset(m, 0, sizeof(*m));
-	m->child = -1;
-	m->child_fd = -1;
-	m->log_fd = -1;
+	for (int w = 0; w < KB_MAX_WORKERS; w++) {
+		m->worker[w].pid = -1;
+		m->worker[w].fd = -1;
+		m->worker[w].log_fd = -1;
+	}
 	m->snapshot_enabled = 1;
+	m->port_jobs = 1;
+	m->lvl_from = m->lvl_commit = -1;
+
+	/* The CPUs this process may run on, in order: a level's slots are
+	 * windows cut from this list, never from the host's whole set. */
+	cpu_set_t set;
+	CPU_ZERO(&set);
+	if (sched_getaffinity(0, sizeof(set), &set) == 0)
+		for (int c = 0; c < CPU_SETSIZE && m->ncpu < (int)(sizeof(m->cpu) /
+								sizeof(m->cpu[0])); c++)
+			if (CPU_ISSET(c, &set))
+				m->cpu[m->ncpu++] = c;
 
 	char *abs = realpath(script_dir, NULL);
 	kb_strlcpy(m->script_dir, abs ? abs : script_dir, sizeof(m->script_dir));
@@ -263,6 +303,8 @@ void mgr_apply_plan(Manager *m)
 
 void mgr_free(Manager *m)
 {
+	free(m->host_conf);
+	m->host_conf = NULL;
 	for (int i = 0; i < m->nroot; i++)
 		step_free(m->root[i]);
 	m->nroot = m->norder = 0;
@@ -318,8 +360,9 @@ void mgr_mark_continued(Manager *m, int phase_index)
 }
 
 /* `resume_inside` is for a PARTIAL snapshot: the phase it was taken from
- * still has steps left, so it is left pending and re-runs. kpkg skips
- * packages that are already installed, so re-running is cheap. */
+ * still has steps left, so it is left pending and re-runs. A port already
+ * installed and current runs no step (mark_installed), so re-running is
+ * cheap. */
 void mgr_mark_restored(Manager *m, int phase_index, int resume_inside)
 {
 	int ceiling = resume_inside ? phase_index - 1 : phase_index;
@@ -465,27 +508,68 @@ static void set_family_status(BStep *s, int status)
 
 /* A step the driver cannot even start is a FAILED step, and the stamp has to
  * be terminal: the cursor only advances past a step that reached ST_DONE or
- * stopped the run, so leaving one at ST_RUNNING re-enters start_step() on it
- * for ever and leaks the log descriptor on every pass. */
-static void fail_start(Manager *m, BStep *s, const char *why)
+ * stopped the run, so leaving one at ST_RUNNING re-enters start_step_on() on
+ * it for ever and leaks the log descriptor on every pass. With other steps of
+ * a level still running, the level drains rather than stopping under them. */
+static void fail_start(Manager *m, BWorker *wk, BStep *s, const char *why)
 {
 	step_log(s, why);
-	if (m->log_fd >= 0) {
-		dprintf(m->log_fd, "%s\n", why);
-		close(m->log_fd);
-		m->log_fd = -1;
+	if (wk->log_fd >= 0) {
+		dprintf(wk->log_fd, "%s\n", why);
+		close(wk->log_fd);
+		wk->log_fd = -1;
 	}
 	s->return_code = 999;
 	s->end_time = kb_now_s();
 	set_family_status(s, ST_FAIL);
-	m->error_step = s;
-	m->stop_requested = 1;
-	m->is_running = 0;
+	if (!m->error_step)
+		m->error_step = s;
+	if (m->nrunning) {
+		m->draining = 1;
+	} else {
+		m->stop_requested = 1;
+		m->is_running = 0;
+	}
 	mgr_notice(m, "%s: %s", s->title, why);
 }
 
-static void start_step(Manager *m, BStep *s)
+/* Give a child's output pipe 1 MiB. Failure is ignored: the kernel may cap a
+ * pipe below that (fs.pipe-max-size), and the default 64 KiB is slower, not
+ * wrong. */
+static void grow_pipe(int fd)
 {
+#ifdef F_SETPIPE_SZ
+	(void)fcntl(fd, F_SETPIPE_SZ, 1 << 20);
+#else
+	(void)fd;
+#endif
+}
+
+/* In the forked child of a level's port, before exec: slot `w` of N runs on
+ * min(ncpu, 2k) of this process's CPUs, starting w*ncpu/N along the list, so
+ * the cargo, rustc and go that size themselves from the CPUs they may use
+ * size themselves to the window rather than to the whole machine. The
+ * windows overlap, so a port whose neighbours are linking or idle still gets
+ * twice its share. A refusal leaves the child on every CPU, which is slower
+ * under contention, not wrong. */
+static void pin_window(const Manager *m, int w)
+{
+	if (m->ncpu < 1 || m->port_jobs < 2)
+		return;
+	int width = 2 * m->port_k;
+	if (width > m->ncpu)
+		width = m->ncpu;
+	int first = w * m->ncpu / m->port_jobs;
+	cpu_set_t set;
+	CPU_ZERO(&set);
+	for (int i = 0; i < width; i++)
+		CPU_SET(m->cpu[(first + i) % m->ncpu], &set);
+	(void)sched_setaffinity(0, sizeof(set), &set);
+}
+
+static void start_step_on(Manager *m, int w, BStep *s)
+{
+	BWorker *wk = &m->worker[w];
 	set_family_status(s, ST_RUNNING);
 	s->start_time = kb_now_s();
 	s->end_time = 0;
@@ -499,7 +583,7 @@ static void start_step(Manager *m, BStep *s)
 		*slash = 0;
 		kb_mkdir_p(dir);
 	}
-	m->log_fd = open(logp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+	wk->log_fd = open(logp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 
 	/* `rel` outlives the branch that fills it: KbArgv stores the pointer
 	 * and the exec happens after the fork, not inside the branch. */
@@ -521,15 +605,16 @@ static void start_step(Manager *m, BStep *s)
 
 	int pipefd[2];
 	if (pipe(pipefd) < 0) {
-		fail_start(m, s, "INTERNAL ERROR: pipe failed");
+		fail_start(m, wk, s, "INTERNAL ERROR: pipe failed");
 		return;
 	}
+	grow_pipe(pipefd[1]);
 
 	pid_t pid = fork();
 	if (pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
-		fail_start(m, s, "INTERNAL ERROR: fork failed");
+		fail_start(m, wk, s, "INTERNAL ERROR: fork failed");
 		return;
 	}
 	if (pid == 0) {
@@ -548,6 +633,8 @@ static void start_step(Manager *m, BStep *s)
 			dup2(devnull, STDIN_FILENO);
 			close(devnull);
 		}
+		if (s->level && !s->is_commit)
+			pin_window(m, w);
 		setenv("KDOS_REPLAY", explicitly_selected(m, s) ? "1" : "0", 1);
 		kb_child_reset_signals();
 		execvp(a.v[0], (char *const *)a.v);
@@ -556,20 +643,108 @@ static void start_step(Manager *m, BStep *s)
 
 	close(pipefd[1]);
 	/* Non-blocking: the build IS the main loop, so a step that goes quiet
-	 * for ten minutes must not stop the screen from redrawing. */
+	 * for ten minutes must not stop the screen from redrawing. The loop
+	 * drains once per turn, so the pipe's capacity is the most a step can
+	 * write per turn before it blocks: the 1 MiB set above lets a noisy
+	 * step run at tens of MB/s where the default 64 KiB held it to a few. */
 	fcntl(pipefd[0], F_SETFL, O_NONBLOCK);
-	m->child = pid;
-	m->child_fd = pipefd[0];
-	m->child_len = 0;
+	wk->pid = pid;
+	wk->fd = pipefd[0];
+	wk->len = 0;
+	wk->killed = 0;
+	wk->step = s;
+	m->nrunning++;
 	m->current_step = s;
 }
 
-/* Drain whatever the child has written. Returns 1 while it is still running. */
-static int pump_child(Manager *m, BStep *s)
+/* The slot is free again. The step that ran in it becomes current only if
+ * nothing else is running; otherwise the most recently started running step
+ * does, which is what a front end follows. */
+static void release_worker(Manager *m, BWorker *wk)
 {
+	BStep *s = wk->step;
+	wk->step = NULL;
+	wk->pid = -1;
+	wk->killed = 0;
+	wk->len = 0;
+	if (wk->log_fd >= 0) {
+		close(wk->log_fd);
+		wk->log_fd = -1;
+	}
+	m->nrunning--;
+	if (m->current_step != s || !m->nrunning)
+		return;
+	BStep *latest = NULL;
+	for (int w = 0; w < KB_MAX_WORKERS; w++) {
+		BStep *r = m->worker[w].step;
+		if (r && (!latest || r->start_time > latest->start_time))
+			latest = r;
+	}
+	m->current_step = latest;
+}
+
+/*
+ * What a level's steps say that the orchestrator acts on. A port's
+ * `--build-only` that finds it installed and current builds nothing and
+ * records nothing, so the commit must not name it. A commit prints `kpkg:
+ * committed <port>` after each install, and kpkgadd prints `Taking <n>
+ * path(s) from <owner>` inside the install of the port that takes them: a
+ * path that changes hands from a port the serial order installs AFTER the
+ * taker ends up with the other owner here than it would one at a time, and
+ * that pair has to be pinned for the result not to depend on --port-jobs.
+ */
+static void watch_line(Manager *m, BStep *s, const char *line)
+{
+	if (!s->level)
+		return;
+	if (!s->is_commit) {
+		char skip[200];
+		snprintf(skip, sizeof(skip), "==> Skipping %s (already installed)",
+			 s->title);
+		if (!strcmp(line, skip))
+			s->no_commit = 1;
+		return;
+	}
+	if (!strncmp(line, "kpkg: committed ", 16)) {
+		s->ncommitted++;
+		return;
+	}
+	const char *from = strncmp(line, "==> Taking ", 11) ? NULL
+				: strstr(line, " from ");
+	if (!from || s->ncommitted >= s->ncommits)
+		return;
+	from += 6;
+	const BStep *taker = s->commits[s->ncommitted];
+	const BStep *g = s->parent;
+	for (int i = 0; g && i < g->nchild; i++) {
+		const BStep *c = g->child[i];
+		if (c->is_commit || strcmp(c->title, from))
+			continue;
+		if (c->serial_pos > taker->serial_pos)
+			mgr_notice(m, "%s took paths from %s; the serial order had "
+				   "%s last — pin the pair in 00-order.txt",
+				   taker->title, c->title, c->title);
+		break;
+	}
+}
+
+static void take_line(Manager *m, BWorker *wk, const char *line)
+{
+	step_log(wk->step, line);
+	m->total_lines++;
+	if (wk->log_fd >= 0)
+		dprintf(wk->log_fd, "%s\n", line);
+	watch_line(m, wk->step, line);
+}
+
+/* Drain whatever the child has written. Returns 1 while it is still running;
+ * 0 once it has exited, with its step stamped and its slot released. */
+static int pump_child(Manager *m, BWorker *wk)
+{
+	BStep *s = wk->step;
 	for (;;) {
-		ssize_t r = read(m->child_fd, m->child_buf + m->child_len,
-				 sizeof(m->child_buf) - m->child_len - 1);
+		ssize_t r = read(wk->fd, wk->buf + wk->len,
+				 sizeof(wk->buf) - wk->len - 1);
 		if (r < 0) {
 			if (errno == EINTR)
 				continue;
@@ -577,60 +752,46 @@ static int pump_child(Manager *m, BStep *s)
 		}
 		if (r == 0) {
 			/* EOF: flush whatever has no newline on it. */
-			if (m->child_len) {
-				m->child_buf[m->child_len] = 0;
-				step_log(s, m->child_buf);
-				m->total_lines++;
-				if (m->log_fd >= 0)
-					dprintf(m->log_fd, "%s\n", m->child_buf);
-				m->child_len = 0;
+			if (wk->len) {
+				wk->buf[wk->len] = 0;
+				take_line(m, wk, wk->buf);
+				wk->len = 0;
 			}
-			close(m->child_fd);
-			m->child_fd = -1;
+			close(wk->fd);
+			wk->fd = -1;
 
 			int status = 0;
-			while (waitpid(m->child, &status, 0) < 0 && errno == EINTR)
+			while (waitpid(wk->pid, &status, 0) < 0 && errno == EINTR)
 				;
-			m->child = -1;
 			s->return_code = WIFEXITED(status) ? WEXITSTATUS(status)
 							  : 128 + WTERMSIG(status);
 			s->end_time = kb_now_s();
-			m->child_killed = 0;
-			if (m->log_fd >= 0) {
-				close(m->log_fd);
-				m->log_fd = -1;
-			}
+			release_worker(m, wk);
 			return 0;
 		}
 
-		m->child_len += (size_t)r;
-		m->child_buf[m->child_len] = 0;
+		wk->len += (size_t)r;
+		wk->buf[wk->len] = 0;
 
-		char *start = m->child_buf, *nl;
+		char *start = wk->buf, *nl;
 		while ((nl = strchr(start, '\n'))) {
 			*nl = 0;
 			char *e = nl;
 			while (e > start && (e[-1] == '\r' || e[-1] == ' ' ||
 					     e[-1] == '\t'))
 				*--e = 0;
-			step_log(s, start);
-			m->total_lines++;
-			if (m->log_fd >= 0)
-				dprintf(m->log_fd, "%s\n", start);
+			take_line(m, wk, start);
 			start = nl + 1;
 		}
-		size_t left = m->child_len - (size_t)(start - m->child_buf);
-		memmove(m->child_buf, start, left);
-		m->child_len = left;
+		size_t left = wk->len - (size_t)(start - wk->buf);
+		memmove(wk->buf, start, left);
+		wk->len = left;
 
 		/* A line longer than the buffer: flush it rather than spin. */
-		if (m->child_len >= sizeof(m->child_buf) - 1) {
-			m->child_buf[m->child_len] = 0;
-			step_log(s, m->child_buf);
-			m->total_lines++;
-			if (m->log_fd >= 0)
-				dprintf(m->log_fd, "%s\n", m->child_buf);
-			m->child_len = 0;
+		if (wk->len >= sizeof(wk->buf) - 1) {
+			wk->buf[wk->len] = 0;
+			take_line(m, wk, wk->buf);
+			wk->len = 0;
 		}
 	}
 	return 1;
@@ -701,6 +862,8 @@ static int run_capture2(const KbArgv *a, KbBuf *out, KbBuf *err)
 		close(op[1]);
 		return -1;
 	}
+	grow_pipe(op[1]);
+	grow_pipe(ep[1]);
 
 	pid_t pid = fork();
 	if (pid < 0) {
@@ -757,6 +920,308 @@ static int valid_port_token(const char *t)
 		if (!isalnum((unsigned char)*c) && !strchr("._+-", *c))
 			return 0;
 	return 1;
+}
+
+/* Whether a phase.env points its `kpkg` at a database other than the
+ * chroot's own. Read from the file's text, as every phase.env key is: a
+ * phase that names any of these keeps every step, because the host cannot
+ * follow the redirection to the database that phase really reads. */
+static int phase_env_redirects_db(const KbuildPhase *p)
+{
+	static const char *KEYS[] = { "PKGDB_DIR", "KPKG_ROOT", "KPKG_CONF",
+				      "--root", NULL };
+	if (!p->env_file[0])
+		return 0;
+	size_t len = 0;
+	char *data = kb_read_all(p->env_file, &len);
+	int hit = 0;
+	for (int i = 0; data && KEYS[i] && !hit; i++)
+		hit = strstr(data, KEYS[i]) != NULL;
+	free(data);
+	return hit;
+}
+
+/*
+ * A PORT THE CHROOT WOULD ONLY SKIP IS NOT A STEP THAT RUNS.
+ *
+ * The order comes from an empty database, so it holds every port in the
+ * phase's closure, and on any tree past its first build most of them are
+ * installed and current: each would enter the chroot to print `Skipping`.
+ * The host asks kpkg's own question first — kp_installed_current(), over the
+ * database the chroot reads (script/chroot/exec.sh roots it at
+ * <repo>/build/fs) and the phase's repositories as the host sees them, with
+ * the strict recipe check common.env turns on — and marks the answer ST_DONE,
+ * noted "installed", never started. The rule stays in that one function; a
+ * step that does run is checked again by kpkg itself.
+ *
+ * The answer given here is provisional. A package phase runs for hours, and
+ * an edit to a later port's recipe, or to src/libs, which every source-less
+ * src/ port hashes, must still reach that port in the same run — as it did
+ * when kpkg asked at the moment the step started. So the configuration is
+ * kept on the Manager, and the run loop asks again when it reaches each
+ * marked row (recheck_installed); the phase finishes only once every one of
+ * them is confirmed.
+ *
+ * A port the plan forces always runs. So does one the host cannot resolve to
+ * a single directory: kp_installed_current() reads a port it cannot find as
+ * current, which is the chroot's answer to give, not the host's.
+ *
+ * Only for a chroot phase whose phase.env leaves the database alone; any
+ * other phase keeps every step. Returns the number marked.
+ */
+static int mark_installed(Manager *m, BStep *g, BStep **nodes, int n)
+{
+	if (g->step_type != SX_CHROOT || !g->meta ||
+	    phase_env_redirects_db(g->meta))
+		return 0;
+	char repos[4096];
+	if (kbuild_phase_repos(g->meta, m->repo_root, repos, sizeof(repos)) <= 0)
+		return 0;
+
+	/* On the heap: a KpConf carries every repository's shelf list. */
+	free(m->host_conf);
+	m->host_conf = NULL;
+	KpConf *c = kb_calloc(1, sizeof(*c));
+	kp_conf_set_repos(c, repos);
+	snprintf(c->pkgdb_dir, sizeof(c->pkgdb_dir),
+		 "%.480s/build/fs/var/lib/kpkg/db", m->repo_root);
+	c->strict_recipe = 1;
+
+	int marked = 0;
+	for (int i = 0; i < n; i++) {
+		BStep *node = nodes[i];
+		if (m->have_plan && kbuild_plan_forced(&m->plan, node->title))
+			continue;
+		char *dir = NULL, err[256];
+		if (kp_port_find(c, node->title, &dir, err, sizeof(err)) != 1)
+			continue;
+		free(dir);
+		if (!kp_installed_current(c, node->title))
+			continue;
+		node->status = ST_DONE;
+		node->installed = 1;
+		node->start_time = node->end_time = 0;
+		kb_strlcpy(node->note, "installed", sizeof(node->note));
+		marked++;
+	}
+	if (marked)
+		m->host_conf = c;
+	else
+		free(c);
+	return marked;
+}
+
+/* The run loop has reached a row mark_installed() took out: ask the same
+ * question again. Still current, and the row is confirmed; not, and it goes
+ * back to pending so the loop starts its step. */
+static void recheck_installed(Manager *m, BStep *s)
+{
+	if (!m->host_conf || kp_installed_current(m->host_conf, s->title)) {
+		s->confirmed = 1;
+		return;
+	}
+	s->installed = 0;
+	s->status = ST_PENDING;
+	s->note[0] = '\0';
+	mgr_notice(m, "%s changed while the phase ran; building it", s->title);
+}
+
+/* The step runs `bash -c <line>` (through the chroot wrapper for a chroot
+ * phase); the node takes ownership of the line, which its argv points into. */
+static void node_set_cmd(const Manager *m, const BStep *g, BStep *node,
+			 char *line)
+{
+	free(node->cmd_line);
+	node->cmd_line = line;
+	memset(&node->cmd, 0, sizeof(node->cmd));
+	cmd_prefix(m, g->step_type, &node->cmd);
+	kb_argv_add(&node->cmd, node->cmd_line);
+	kb_argv_end(&node->cmd);
+	node->have_cmd = 1;
+}
+
+/* Whether the kpkg the phase runs knows `install --build-only`. A restored
+ * 10_bootstrap or 20_selfhost snapshot can carry a kpkg older than this
+ * orchestrator, and that one would take the flag for a port name. */
+static int kpkg_splits(const Manager *m, const BStep *g)
+{
+	KbArgv a = {0};
+	cmd_prefix(m, g->step_type, &a);
+	kb_argv_add(&a, "kpkg help");
+	kb_argv_end(&a);
+	KbBuf out = {0}, err = {0};
+	run_capture2(&a, &out, &err);
+	int yes = out.p && strstr(out.p, "--build-only") != NULL;
+	kb_buf_free(&out);
+	kb_buf_free(&err);
+	return yes;
+}
+
+typedef struct {
+	const char *name;
+	int pos;
+} NameAt;
+
+static int name_at_cmp(const void *a, const void *b)
+{
+	return strcmp(((const NameAt *)a)->name, ((const NameAt *)b)->name);
+}
+
+/* A port's position in the phase's order, -1 when the phase has no such port. */
+static int name_pos(const NameAt *idx, int n, const char *name)
+{
+	NameAt key = { name, 0 };
+	const NameAt *hit = bsearch(&key, idx, (size_t)n, sizeof(*idx),
+				    name_at_cmp);
+	return hit ? hit->pos : -1;
+}
+
+/*
+ * THE LEVEL GRAPH of a package phase run with --port-jobs above 1.
+ *
+ * A port's edges are the names on its recipe's `depends` line that are ports
+ * of this phase, read on the host through the phase's repositories
+ * (kbuild_phase_repos) by kpkg's own kp_depends(). Only an edge to a port
+ * earlier in kpkgdepends's order counts: the order is already topological,
+ * and one pointing forward is a cycle it broke. Two rules add edges:
+ *
+ *   - a port the host cannot resolve to one directory depends on every port
+ *     before it, since nothing is known of what it needs;
+ *   - the order run (kbuild_packages_order_run) is a serial prefix: every
+ *     port up to the last of its names in the resolved order depends on the
+ *     one before it, and every later port depends on that last one. What a
+ *     comment pinned one at a time stays one at a time, and before the rest.
+ *
+ * A port's level is one more than the highest level among its edges. What
+ * this does NOT see is a dependency a recipe fails to declare — a configure
+ * that finds a library when it happens to be installed. One at a time, the
+ * list order hides that; by level, the port builds without it or fails.
+ *
+ * Every port of the order takes part, installed or not: a port found installed
+ * and current is asked again when its level opens, as the serial runner asks
+ * when it reaches it, and the levels are the same on every tree.
+ *
+ * Fills `out` with the level's ports, in serial order, then that level's
+ * commit step, level after level, and returns the count; 0 leaves the phase
+ * to run serially, with a notice saying why.
+ */
+static int expand_levels(Manager *m, BStep *g, BStep **nodes, int n,
+			 BStep **out)
+{
+	const char *dir_name = g->meta->dir_name;
+	if (!kpkg_splits(m, g)) {
+		mgr_notice(m, "%s: its kpkg has no --build-only; building one "
+			   "port at a time", dir_name);
+		return 0;
+	}
+	char repos[4096];
+	if (kbuild_phase_repos(g->meta, m->repo_root, repos, sizeof(repos)) <= 0) {
+		mgr_notice(m, "%s: its repositories do not fit; building one "
+			   "port at a time", dir_name);
+		return 0;
+	}
+	/* On the heap: a KpConf carries every repository's shelf list. */
+	KpConf *c = kb_calloc(1, sizeof(*c));
+	kp_conf_set_repos(c, repos);
+
+	NameAt *idx = kb_calloc((size_t)n, sizeof(*idx));
+	for (int i = 0; i < n; i++)
+		idx[i] = (NameAt){ nodes[i]->title, i };
+	qsort(idx, (size_t)n, sizeof(*idx), name_at_cmp);
+
+	char **run = NULL;
+	int nrun = kbuild_packages_order_run(g->meta, &run);
+	int run_end = -1;
+	for (int r = 0; r < nrun; r++) {
+		int at = name_pos(idx, n, run[r]);
+		if (at > run_end)
+			run_end = at;
+	}
+	kb_strv_free(run);
+
+	int *lvl = kb_calloc((size_t)n, sizeof(*lvl));
+	int top = 0;
+	for (int i = 0; i < n; i++) {
+		int base = 0;
+		if (i <= run_end)
+			base = i ? lvl[i - 1] : 0;
+		else if (run_end >= 0)
+			base = lvl[run_end];
+		char *dir = kp_port_dir(c, nodes[i]->title);
+		if (!dir) {
+			base = top;
+		} else {
+			char deps[KP_MAX_DEPS][128];
+			int nd = kp_depends(dir, deps, KP_MAX_DEPS);
+			for (int d = 0; d < nd; d++) {
+				int at = name_pos(idx, n, deps[d]);
+				if (at >= 0 && at < i && lvl[at] > base)
+					base = lvl[at];
+			}
+			free(dir);
+		}
+		lvl[i] = base + 1;
+		if (lvl[i] > top)
+			top = lvl[i];
+	}
+	free(idx);
+	free(c);
+
+	if (n + top > KB_MAX_PKGS) {
+		mgr_notice(m, "%s: %d ports in %d levels exceed %d rows; "
+			   "building one port at a time", dir_name, n, top,
+			   KB_MAX_PKGS);
+		free(lvl);
+		return 0;
+	}
+
+	/* The job count the ports of a level divide: KDOS_JOBS as the build
+	 * was given it, else every CPU this process may use. */
+	const char *jv = getenv("KDOS_JOBS");
+	int jobs = jv && *jv ? atoi(jv) : 0;
+	if (jobs < 1)
+		jobs = m->ncpu > 0 ? m->ncpu : 1;
+	m->port_k = jobs / m->port_jobs > 0 ? jobs / m->port_jobs : 1;
+
+	char env[600];
+	env_source(m, g, env, sizeof(env));
+	int k = 0;
+	for (int L = 1; L <= top; L++) {
+		int count = 0;
+		for (int i = 0; i < n; i++) {
+			if (lvl[i] != L)
+				continue;
+			BStep *node = nodes[i];
+			int forced = m->have_plan &&
+				     kbuild_plan_forced(&m->plan, node->title);
+			KbBuf cl = {0};
+			kb_buf_printf(&cl, "export KDOS_JOBS=%d && %sexport "
+				      "KPKG_OVERWRITE=1 && kpkg install "
+				      "--build-only%s %s", m->port_k, env,
+				      forced ? " -f" : "", node->title);
+			node_set_cmd(m, g, node, cl.p);
+			node->level = L;
+			out[k++] = node;
+			count++;
+		}
+		char path[600];
+		snprintf(path, sizeof(path), "%s/L%d.commit", g->meta->dir_path,
+			 L);
+		BStep *cs = step_new(path, 0);
+		snprintf(cs->title, sizeof(cs->title), "install L%d (%d)", L,
+			 count);
+		cs->parent = g;
+		cs->step_type = SX_CUSTOM;
+		cs->is_commit = 1;
+		cs->level = L;
+		cs->serial_pos = n;
+		out[k++] = cs;
+	}
+	free(lvl);
+	mgr_notice(m, "%s: %d ports in %d levels, up to %d at a time with "
+		   "KDOS_JOBS=%d each", dir_name, n, top, m->port_jobs,
+		   m->port_k);
+	return k;
 }
 
 static int expand_packages(Manager *m, BStep *g, int idx)
@@ -835,6 +1300,7 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 		kb_strlcpy(node->title, tok, sizeof(node->title));
 		node->parent = g;
 		node->step_type = SX_CUSTOM;
+		node->serial_pos = n;
 
 		/* -f only for ports the plan asked to rebuild: kpkg's -f really
 		 * does force, so passing it blanketly rebuilds the whole tree. */
@@ -863,11 +1329,7 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 		KbBuf cl = {0};
 		kb_buf_printf(&cl, "%sexport KPKG_OVERWRITE=1 && kpkg install%s %s",
 			      env, forced ? " -f" : "", tok);
-		node->cmd_line = cl.p;		/* the node owns it now */
-		cmd_prefix(m, g->step_type, &node->cmd);
-		kb_argv_add(&node->cmd, node->cmd_line);
-		kb_argv_end(&node->cmd);
-		node->have_cmd = 1;
+		node_set_cmd(m, g, node, cl.p);
 
 		nodes[n++] = node;
 	}
@@ -877,6 +1339,23 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 			 err.n ? "\nstderr:\n" : "", err.p ? err.p : "");
 		fail_expansion(m, g, "package resolution", detail);
 		goto fail;
+	}
+
+	int installed = mark_installed(m, g, nodes, n);
+	if (installed)
+		mgr_notice(m, "%s: %d of %d ports installed and current",
+			   g->meta->dir_name, installed, n);
+
+	if (m->port_jobs > 1 && n > 1) {
+		BStep **lv = kb_calloc(KB_MAX_PKGS, sizeof(*lv));
+		int nl = expand_levels(m, g, nodes, n, lv);
+		if (nl > 0) {
+			free(nodes);
+			nodes = lv;
+			n = nl;
+		} else {
+			free(lv);
+		}
 	}
 
 	for (int i = 0; i < n && g->nchild < (int)(sizeof(g->child) /
@@ -943,6 +1422,13 @@ static void set_snap_state(Manager *m, BStep *g, const char *state,
 	kb_strlcpy(g->note, detail && *detail ? detail : state, sizeof(g->note));
 }
 
+/* A row found installed counts only once the run loop has confirmed it: until
+ * then its step can still come back. */
+static int child_finished(const BStep *s)
+{
+	return s->status == ST_DONE && (!s->installed || s->confirmed);
+}
+
 static void do_snapshot(Manager *m, BStep *g, int forced)
 {
 	if (!(m->snapshot_enabled || forced))
@@ -982,35 +1468,54 @@ static void do_snapshot(Manager *m, BStep *g, int forced)
 		return;
 	}
 
-	KbuildSnapshot sn;
+	/* The snapshot's OWN size: a layer's archives hold only what changed
+	 * since its base, and the kind says which base that is. */
+	KbuildSnapshot *all = kb_calloc(KBUILD_MAX_SNAPS, sizeof(*all));
+	int nall = kbuild_snap_list_all(m->snap_root, all, KBUILD_MAX_SNAPS);
+	const KbuildSnapshot *sn = kbuild_snap_find(all, nall, meta->dir_name);
 	long long total = 0;
-	if (kbuild_snap_load(m->snap_root, meta->dir_name, &sn) == 0)
-		for (int i = 0; i < sn.nentries; i++)
-			total += sn.entry[i].bytes_compressed;
+	char kind[256] = "";
+	if (sn) {
+		for (int i = 0; i < sn->nentries; i++)
+			total += sn->entry[i].bytes_compressed;
+		snap_kind(all, nall, sn, kind, sizeof(kind));
+	}
+	free(all);
 
 	int done = 0;
 	for (int i = 0; i < g->nchild; i++)
-		if (g->child[i]->status == ST_DONE)
+		if (child_finished(g->child[i]))
 			done++;
 	int complete = !g->nchild || done == g->nchild;
 
 	if (complete) {
 		set_snap_state(m, g, "ok", human_bytes(total));
-		mgr_notice(m, "snapshot %s -> %s", meta->dir_name,
-			   human_bytes(total));
+		mgr_notice(m, "snapshot %s -> %s (%s)", meta->dir_name,
+			   human_bytes(total), kind);
 	} else {
 		char detail[64];
 		snprintf(detail, sizeof(detail), "%s @ %d/%d",
 			 human_bytes(total), done, g->nchild);
 		set_snap_state(m, g, "partial", detail);
-		mgr_notice(m, "PARTIAL snapshot %s at step %d/%d -> %s "
-			   "(restoring it re-runs the phase)", meta->dir_name,
-			   done, g->nchild, human_bytes(total));
+		mgr_notice(m, "PARTIAL snapshot %s at step %d/%d -> %s (%s; "
+			   "restoring it re-runs the phase)", meta->dir_name,
+			   done, g->nchild, human_bytes(total), kind);
 	}
+}
+
+/* Every child finished, whether it ran or was confirmed installed. */
+static int children_done(const BStep *g)
+{
+	for (int i = 0; i < g->nchild; i++)
+		if (!child_finished(g->child[i]))
+			return 0;
+	return 1;
 }
 
 static void finish_phase(Manager *m, BStep *g)
 {
+	free(m->host_conf);
+	m->host_conf = NULL;
 	if (m->timings && g->meta) {
 		tm_record_phase(m->timings, g->meta->dir_name, step_duration(g));
 		tm_save(m->timings);
@@ -1021,30 +1526,179 @@ static void finish_phase(Manager *m, BStep *g)
 /* Stop waiting on a child that will not die. Its group has had SIGKILL; if
  * the pipe is still open something outside the group inherited it, and the
  * build must not hang on that. */
-static void abandon_child(Manager *m, BStep *s)
+static void abandon_child(Manager *m, BWorker *wk)
 {
-	if (m->child_fd >= 0) {
-		close(m->child_fd);
-		m->child_fd = -1;
+	BStep *s = wk->step;
+	if (wk->fd >= 0) {
+		close(wk->fd);
+		wk->fd = -1;
 	}
 	int status = 0;
-	waitpid(m->child, &status, WNOHANG);
-	m->child = -1;
-	m->child_killed = 0;
-	m->child_len = 0;
-	if (m->log_fd >= 0) {
-		close(m->log_fd);
-		m->log_fd = -1;
+	waitpid(wk->pid, &status, WNOHANG);
+	s->end_time = kb_now_s();
+	s->return_code = 143;		/* terminated */
+	set_family_status(s, ST_FAIL);
+	step_log(s, "step terminated on request");
+	if (!m->error_step)
+		m->error_step = s;
+	release_worker(m, wk);
+	mgr_notice(m, "step killed; its process group did not exit");
+}
+
+/* A step's child has exited: record it. A failure in a level drains the
+ * level — its running siblings finish, nothing new starts, and the level is
+ * not committed, so what they built stays in the package cache as `.pending`
+ * records that a resumed build reuses. Any other failure stops the build. */
+static void step_exited(Manager *m, BStep *s)
+{
+	int in_level = s->level && !s->is_commit;
+	if (m->timings && s->return_code == 0) {
+		char key[192];
+		step_timing_key(s, key, sizeof(key));
+		tm_record_step(m->timings, key, step_duration(s));
 	}
-	if (s) {
-		s->end_time = kb_now_s();
-		s->return_code = 143;		/* terminated */
+	if (s->return_code != 0) {
 		set_family_status(s, ST_FAIL);
-		step_log(s, "step terminated on request");
 		if (!m->error_step)
 			m->error_step = s;
+		if (in_level) {
+			if (!m->draining && !m->stop_requested && m->nrunning)
+				mgr_notice(m, "%s failed; level %d is not "
+					   "committed, waiting for its %d "
+					   "running port(s)", s->title,
+					   s->level, m->nrunning);
+			m->draining = 1;
+		} else {
+			m->stop_requested = 1;
+		}
+		return;
 	}
-	mgr_notice(m, "step killed; its process group did not exit");
+	set_family_status(s, ST_DONE);
+	if (in_level)
+		return;
+	BStep *p = s->parent;
+	if (p && p->nchild && children_done(p))
+		m->pending_finish = p;
+	m->cursor++;
+}
+
+/* MemAvailable is at least a quarter of MemTotal. A level starts another port
+ * only then: two linkers of a large C++ port can take the rest. Unreadable
+ * reads as enough. */
+static int memory_ok(void)
+{
+	size_t len = 0;
+	char *data = kb_read_all("/proc/meminfo", &len);
+	if (!data)
+		return 1;
+	long long total = 0, avail = -1;
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		next = nl ? nl + 1 : NULL;
+		if (nl)
+			*nl = 0;
+		if (!strncmp(line, "MemTotal:", 9))
+			total = strtoll(line + 9, NULL, 10);
+		else if (!strncmp(line, "MemAvailable:", 13))
+			avail = strtoll(line + 13, NULL, 10);
+	}
+	free(data);
+	return total <= 0 || avail < 0 || avail * 4 >= total;
+}
+
+/* The cursor has reached the first port of a level: find its commit step and
+ * ask again about every port of it the host found installed. */
+static void open_level(Manager *m)
+{
+	const BStep *first = m->order[m->cursor];
+	int c = m->cursor;
+	while (c < m->norder && !(m->order[c]->is_commit &&
+				  m->order[c]->parent == first->parent &&
+				  m->order[c]->level == first->level))
+		c++;
+	m->lvl_from = m->cursor;
+	m->lvl_commit = c;
+	for (int i = m->lvl_from; i < c; i++) {
+		BStep *s = m->order[i];
+		if (s->installed && !s->confirmed)
+			recheck_installed(m, s);
+	}
+}
+
+/*
+ * Start what the level can: into every free slot up to --port-jobs, the
+ * pending port with the longest recorded time first — the one that decides
+ * when the level ends — and on a tie the earlier in the serial order. A slot
+ * is filled beside a running port only while memory_ok() holds; with nothing
+ * running one always starts, so a level cannot stall. Returns whether any
+ * started.
+ */
+static int fill_level(Manager *m)
+{
+	int started = 0;
+	while (m->nrunning < m->port_jobs && !m->draining) {
+		BStep *best = NULL;
+		double best_est = -1;
+		for (int i = m->lvl_from; i < m->lvl_commit; i++) {
+			BStep *s = m->order[i];
+			if (s->status != ST_PENDING)
+				continue;
+			double est = 0;
+			if (m->timings) {
+				char key[192];
+				step_timing_key(s, key, sizeof(key));
+				est = tm_step_est(m->timings, key, 0);
+			}
+			if (!best || est > best_est) {
+				best = s;
+				best_est = est;
+			}
+		}
+		if (!best || (m->nrunning && !memory_ok()))
+			break;
+		int w = 0;
+		while (w < m->port_jobs && m->worker[w].step)
+			w++;
+		start_step_on(m, w, best);
+		started = 1;
+	}
+	return started;
+}
+
+/* The commit step of a level about to run: the ports it installs are the
+ * level's that built something, in serial order. 0 when there are none — every
+ * port was confirmed installed, or --build-only found it current — and the
+ * step is then finished without running. */
+static int prepare_commit(Manager *m, BStep *cs)
+{
+	const BStep *g = cs->parent;
+	free(cs->commits);
+	cs->commits = kb_calloc((size_t)g->nchild + 1, sizeof(*cs->commits));
+	cs->ncommits = cs->ncommitted = 0;
+	KbBuf names = {0};
+	for (int i = 0; i < g->nchild; i++) {
+		BStep *c = g->child[i];
+		if (c->is_commit || c->level != cs->level || c->installed ||
+		    c->no_commit || c->status != ST_DONE)
+			continue;
+		cs->commits[cs->ncommits++] = c;
+		kb_buf_printf(&names, " %s", c->title);
+	}
+	if (!cs->ncommits) {
+		kb_buf_free(&names);
+		cs->status = ST_DONE;
+		kb_strlcpy(cs->note, "nothing to commit", sizeof(cs->note));
+		set_family_status(cs, ST_DONE);
+		return 0;
+	}
+	char env[600];
+	env_source(m, g, env, sizeof(env));
+	KbBuf cl = {0};
+	kb_buf_printf(&cl, "%sexport KPKG_OVERWRITE=1 && kpkg install --commit%s",
+		      env, names.p);
+	kb_buf_free(&names);
+	node_set_cmd(m, g, cs, cl.p);
+	return 1;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -1073,80 +1727,108 @@ int mgr_pump(Manager *m)
 		return 0;
 	}
 
-	/* A child is running: drain it, and only advance when it exits. */
-	if (m->child > 0) {
-		BStep *s = m->current_step;
+	/* Drain every running child, and record each one that exited. */
+	int finished = 0;
+	for (int w = 0; w < KB_MAX_WORKERS; w++) {
+		BWorker *wk = &m->worker[w];
+		if (!wk->step)
+			continue;
+		BStep *s = wk->step;
 		/* The whole GROUP, because the step is `bash -c` and the work
 		 * is its descendants. SIGTERM first, SIGKILL if the tree
 		 * ignores it, then stop waiting entirely: a process that
 		 * inherited the pipe and outlived its group would otherwise
 		 * hold the build open forever. */
-		if ((m->stop_requested || m->force_quit) && !m->child_killed) {
-			kill(-m->child, m->force_quit ? SIGKILL : SIGTERM);
-			m->child_killed = 1;
-			m->child_killed_at = kb_now_s();
-		} else if (m->child_killed) {
-			double waited = kb_now_s() - m->child_killed_at;
+		if ((m->stop_requested || m->force_quit) && !wk->killed) {
+			kill(-wk->pid, m->force_quit ? SIGKILL : SIGTERM);
+			wk->killed = 1;
+			wk->killed_at = kb_now_s();
+		} else if (wk->killed) {
+			double waited = kb_now_s() - wk->killed_at;
 			if (m->force_quit || waited > 5)
-				kill(-m->child, SIGKILL);
+				kill(-wk->pid, SIGKILL);
 			if (waited > 10) {
-				abandon_child(m, s);
-				m->is_running = 0;
-				return 30;
+				abandon_child(m, wk);
+				finished = 1;
+				continue;
 			}
 		}
-
-		if (pump_child(m, s)) {
-			/* Still going. pump_child drained everything readable,
-			 * so the caller waits rather than spinning — returning
-			 * 0 here pinned a core for the whole build. */
-			return 20;
-		}
-
-		if (m->timings && s->return_code == 0) {
-			char key[192];
-			step_timing_key(s, key, sizeof(key));
-			tm_record_step(m->timings, key, step_duration(s));
-		}
-
-		if (s->return_code == 0) {
-			set_family_status(s, ST_DONE);
-			BStep *p = s->parent;
-			if (p && p->nchild) {
-				int all = 1;
-				for (int i = 0; i < p->nchild; i++)
-					if (p->child[i]->status != ST_DONE)
-						all = 0;
-				if (all)
-					m->pending_finish = p;
-			}
-		} else {
-			set_family_status(s, ST_FAIL);
-			m->error_step = s;
-			m->stop_requested = 1;
-			m->is_running = 0;
-			return 30;
-		}
-
-		if (m->snapshot_request) {
-			BStep *t = m->snapshot_request;
-			m->snapshot_request = NULL;
-			do_snapshot(m, t, 1);
-		}
-		m->cursor++;
-		return 0;
+		if (pump_child(m, wk))
+			continue;
+		step_exited(m, s);
+		finished = 1;
 	}
 
-	if (m->stop_requested) {
+	if (m->stop_requested || m->draining) {
+		/* Still going. pump_child drained everything readable, so the
+		 * caller waits rather than spinning — returning 0 here pinned a
+		 * core for the whole build. */
+		if (m->nrunning)
+			return finished ? 0 : 20;
+		m->stop_requested = 1;
 		m->is_running = 0;
 		return 30;
 	}
+
+	/* A [S] snapshot waits for a moment when nothing is building. */
+	if (finished && !m->nrunning && m->snapshot_request) {
+		BStep *t = m->snapshot_request;
+		m->snapshot_request = NULL;
+		do_snapshot(m, t, 1);
+	}
+
+	if (m->lvl_commit >= 0) {
+		int started = fill_level(m);
+		if (m->nrunning || m->draining)
+			return finished || started ? 0 : 20;
+		/* Every port of the level built: its commit is next. */
+		m->cursor = m->lvl_commit;
+		m->lvl_from = m->lvl_commit = -1;
+		return 0;
+	}
+	if (m->nrunning)
+		return finished ? 0 : 20;
+	if (finished)
+		return 0;
 
 	while (m->cursor < m->norder) {
 		BStep *s = m->order[m->cursor];
 
 		if (s->status == ST_SKIPPED) {
 			m->cursor++;
+			continue;
+		}
+
+		if (!s->is_group && s->level && !s->is_commit) {
+			open_level(m);
+			return 0;
+		}
+		if (!s->is_group && s->installed && !s->confirmed) {
+			recheck_installed(m, s);
+			if (s->confirmed) {
+				m->cursor++;
+				BStep *p = s->parent;
+				if (p && p->nchild && children_done(p)) {
+					m->pending_finish = p;
+					return 0;
+				}
+				continue;
+			}
+		}
+		/* Only a group or a step that starts becomes current: a front
+		 * end announces current_step, and a row that never runs would
+		 * be announced as running and never closed. */
+		if (!s->is_group && s->status == ST_DONE) {
+			m->cursor++;
+			continue;
+		}
+		if (s->is_commit && !prepare_commit(m, s)) {
+			m->cursor++;
+			BStep *p = s->parent;
+			if (p && p->nchild && children_done(p)) {
+				m->pending_finish = p;
+				return 0;
+			}
 			continue;
 		}
 
@@ -1157,6 +1839,8 @@ int mgr_pump(Manager *m)
 		if (s->is_group && s->packages_dir[0] && !s->nchild) {
 			if (!expand_packages(m, s, m->cursor))
 				return 30;
+			/* A phase whose ports are all installed and current is
+			 * finished by the walk that confirms the last of them. */
 			if (!s->nchild)
 				finish_phase(m, s);
 			m->cursor++;
@@ -1170,12 +1854,12 @@ int mgr_pump(Manager *m)
 			m->cursor++;
 			return 0;
 		}
-		if (s->is_group || s->status == ST_DONE) {
+		if (s->is_group) {
 			m->cursor++;
 			continue;
 		}
 
-		start_step(m, s);
+		start_step_on(m, 0, s);
 		return 0;
 	}
 

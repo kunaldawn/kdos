@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
@@ -1285,6 +1286,63 @@ static void test_pkg(void)
 	   "a sole claimant has no other");
 	kp_owned_free(ow);
 
+	/* The partial table answers exactly as the full one for the keys it
+	 * was asked for, under either spelling, and knows nothing else. The
+	 * lock and the sidecar directory sit in the database and are never
+	 * read as packages. */
+	mdb = kb_path_join(mroot, "db");
+	mf = kb_path_join(mdb, "extra");
+	kb_write_file(mf, "1 1\n./usr/bin/extra\n");
+	free(mf);
+	mf = kb_path_join(mdb, ".recipe");
+	kb_mkdir_p(mf);
+	free(mf);
+	free(mdb);
+	int lk = kp_db_lock(&mconf);
+	ok(lk >= 0, "the database takes its writer lock");
+	char *lpath = kb_path_join(mroot, "db/.lock");
+	int lk2 = open(lpath, O_RDWR | O_CLOEXEC);
+	ok(lk2 >= 0 && flock(lk2, LOCK_EX | LOCK_NB) != 0,
+	   "a second writer finds it held");
+	ow = kp_owned_load(&mconf);
+	ok(ow->nowner == 3, "the lock and .recipe/ are not packages");
+	char *want[] = { (char *)"bin/free", (char *)"./lib/x",
+			 (char *)"usr/bin/none" };
+	KpOwned *some = kp_owned_load_some(&mconf, want, 3);
+	ok(some->n == 3, "only the claims on the asked keys are kept");
+	eq_str(kp_owned_owner(some, "usr/bin/free"),
+	       kp_owned_owner(ow, "usr/bin/free"),
+	       "a partial table names the owner the full one names");
+	eq_str(kp_owned_other(some, "usr/bin/free", "toybox"), "procps",
+	       "and finds the other claimant under the other spelling");
+	eq_str(kp_owned_other(some, "bin/free", "procps"), "toybox",
+	       "from either side");
+	eq_str(kp_owned_owner(some, "lib/x"), "toybox",
+	       "a key asked with its ./ is found without it");
+	ok(kp_owned_other(some, "lib/x", "toybox") == NULL,
+	   "a sole claimant has no other in either table");
+	ok(kp_owned_owner(some, "usr/bin/none") == NULL &&
+	   kp_owned_owner(ow, "usr/bin/none") == NULL,
+	   "an unclaimed key is unclaimed in both");
+	ok(kp_owned_owner(ow, "usr/bin/extra") != NULL &&
+	   kp_owned_owner(some, "usr/bin/extra") == NULL,
+	   "a key not asked for is not in the partial table");
+	kp_owned_free(some);
+	some = kp_owned_load_some(&mconf, NULL, 0);
+	ok(some->n == 0 && kp_owned_owner(some, "bin/free") == NULL,
+	   "asking about nothing reads nothing");
+	kp_owned_free(some);
+	kp_owned_free(ow);
+	if (lk2 >= 0)
+		close(lk2);
+	close(lk);
+	lk2 = open(lpath, O_RDWR | O_CLOEXEC);
+	ok(lk2 >= 0 && flock(lk2, LOCK_EX | LOCK_NB) == 0,
+	   "and the lock is free once its descriptor closes");
+	if (lk2 >= 0)
+		close(lk2);
+	free(lpath);
+
 	char *mdrop[] = { (char *)"bin/free" };
 	ok(kp_db_drop_paths(&mconf, "toybox", mdrop, 1) == 1,
 	   "an overwrite takes the path under the other spelling");
@@ -1782,6 +1840,300 @@ static void test_proc(void)
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
+/* libkbuild's snapshot layers: the diff that decides what a layer holds and
+ * the chains that decide what a restore reads. Both go wrong silently — a
+ * missed change restores a stale file, a wrong chain restores a tree that
+ * never existed — so each rule is pinned by a case that breaks it. */
+
+static void ix_put(KbuildSnapIndex *ix, unsigned mode, unsigned long long ino,
+		   long long ct, const char *path)
+{
+	kbuild_snap_idx_add(ix, mode, ino, ct, mode == S_IFREG ? 4096 : 0, path);
+}
+
+/* The NUL-separated list as "a|b|c". */
+static void nul_join(const KbBuf *b, char *out, size_t cap)
+{
+	size_t o = 0;
+	out[0] = 0;
+	for (size_t i = 0; b->p && i < b->n && o + 1 < cap; i++)
+		out[o++] = b->p[i] ? b->p[i] : '|';
+	if (o && out[o - 1] == '|')
+		o--;
+	out[o] = 0;
+}
+
+static void snap_manifest(const char *root, const char *dir, const char *text,
+			  const char *const *members)
+{
+	char *d = kb_path_join(root, dir);
+	kb_mkdir_p(d);
+	char *mf = kb_path_join(d, KBUILD_MANIFEST);
+	kb_write_file(mf, text);
+	free(mf);
+	for (int i = 0; members && members[i]; i++) {
+		char *p = kb_path_join(d, members[i]);
+		kb_write_file(p, "x");
+		free(p);
+	}
+	free(d);
+}
+
+#define SNAP4(id, kind, base, removed) \
+	"{\"schema\": 4, \"id\": \"" id "\", \"codec\": \"zstd\", " \
+	"\"paths\": [{\"path\": \"fs\", \"archive\": \"fs.tar.zst\", " \
+	"\"kind\": \"" kind "\", \"base\": " base ", \"removed\": " removed \
+	", \"bytes_compressed\": 10}]}"
+
+static void test_snap_layers(void)
+{
+	printf("libkbuild snapshot layers\n");
+
+	ok(kbuild_snap_path_cmp("fs/a", "fs/a/b") < 0, "a directory sorts before its contents");
+	ok(kbuild_snap_path_cmp("fs/a/z", "fs/a-b") < 0,
+	   "'/' sorts below every other byte: a/z before a-b");
+	ok(kbuild_snap_path_cmp("fs/a-b", "fs/a/z") > 0, "and the reverse");
+	ok(kbuild_snap_path_cmp("fs", "fs") == 0, "equal paths compare equal");
+
+	KbuildPhase ex;
+	memset(&ex, 0, sizeof(ex));
+	kb_strlcpy(ex.snap_exclude[0], "fs/tmp/*", sizeof(ex.snap_exclude[0]));
+	kb_strlcpy(ex.snap_exclude[1], "fs/root/.cache/*",
+		   sizeof(ex.snap_exclude[1]));
+	ex.nexclude = 2;
+	ok(kbuild_snap_exclude_match(&ex, "fs/tmp/x"), "exclude: a child matches");
+	ok(kbuild_snap_exclude_match(&ex, "fs/tmp/x/y"), "exclude: '*' crosses '/'");
+	ok(!kbuild_snap_exclude_match(&ex, "fs/tmp"), "exclude: the directory itself stays");
+	ok(!kbuild_snap_exclude_match(&ex, "fs/var/tmp/x"),
+	   "exclude: matched against the whole path, not a tail of it");
+	ok(kbuild_snap_exclude_match(&ex, "fs/root/.cache/pip"),
+	   "exclude: '*' matches a leading dot");
+
+	ok(kbuild_snap_removal_ok("fs", "fs/a/b"), "removal: under the path");
+	ok(kbuild_snap_removal_ok("fs", "fs"), "removal: the path itself");
+	ok(!kbuild_snap_removal_ok("fs", "fsx/a"), "removal: a sibling is refused");
+	ok(!kbuild_snap_removal_ok("fs", "cross/a"), "removal: another path is refused");
+	ok(!kbuild_snap_removal_ok("fs", "fs/../etc"), "removal: '..' is refused");
+	ok(!kbuild_snap_removal_ok("fs", "fs//a"), "removal: an empty component is refused");
+	ok(!kbuild_snap_removal_ok("fs", "fs/./a"), "removal: '.' is refused");
+	ok(!kbuild_snap_removal_ok("fs", "/fs/a"), "removal: absolute is refused");
+
+	/* ----- the diff ------------------------------------------------- */
+
+	KbuildSnapIndex base = {0}, cur = {0};
+	ix_put(&base, S_IFDIR, 1, 10, "fs");
+	ix_put(&base, S_IFREG, 2, 10, "fs/a");
+	ix_put(&base, S_IFDIR, 3, 10, "fs/d");
+	ix_put(&base, S_IFREG, 4, 10, "fs/d/x");
+	ix_put(&base, S_IFREG, 5, 10, "fs/d/y");
+	ix_put(&base, S_IFREG, 6, 10, "fs/e");
+	ix_put(&base, S_IFLNK, 7, 10, "fs/s");
+	ix_put(&base, S_IFDIR, 12, 10, "fs/t");
+	ix_put(&base, S_IFDIR, 13, 10, "fs/t/u");
+	ix_put(&base, S_IFREG, 14, 10, "fs/t/u/v");
+	ix_put(&base, S_IFREG, 15, 10, "fs/u");
+
+	ix_put(&cur, S_IFDIR, 1, 10, "fs");
+	ix_put(&cur, S_IFREG, 2, 20, "fs/a");	/* ctime moved      */
+	ix_put(&cur, S_IFREG, 8, 30, "fs/b");	/* new              */
+	ix_put(&cur, S_IFDIR, 3, 10, "fs/d");	/* lost fs/d/y      */
+	ix_put(&cur, S_IFREG, 4, 10, "fs/d/x");	/* untouched        */
+	ix_put(&cur, S_IFDIR, 9, 30, "fs/e");	/* file -> dir      */
+	ix_put(&cur, S_IFREG, 10, 30, "fs/e/z");
+	ix_put(&cur, S_IFLNK, 11, 10, "fs/s");	/* replaced, same ctime */
+	ix_put(&cur, S_IFREG, 15, 10, "fs/u");	/* untouched        */
+
+	KbBuf add = {0}, gone = {0};
+	KbuildSnapDiff st;
+	kbuild_snap_diff(&base, &cur, &add, &gone, &st);
+	char got[512];
+	nul_join(&add, got, sizeof(got));
+	eq_str(got, "fs|fs/a|fs/b|fs/d|fs/e|fs/e/z|fs/s",
+	       "diff: new, changed, type-changed, re-inoded, and parents");
+	nul_join(&gone, got, sizeof(got));
+	eq_str(got, "fs/d/y|fs/e|fs/t",
+	       "diff: removals at their top, and every type change");
+	ok(st.listed == 7 && st.removed == 3, "diff: the counts agree");
+	ok(st.listed_alloc == 3 * 4096, "diff: allocated bytes of the listed files");
+	kb_buf_free(&add);
+	kb_buf_free(&gone);
+
+	/* A dir -> symlink under a dir that also lost children: the children
+	 * are not listed again below the type change. */
+	KbuildSnapIndex b2 = {0}, c2 = {0};
+	ix_put(&b2, S_IFDIR, 1, 10, "fs");
+	ix_put(&b2, S_IFDIR, 2, 10, "fs/a");
+	ix_put(&b2, S_IFREG, 3, 10, "fs/a/k");
+	ix_put(&b2, S_IFREG, 4, 10, "fs/a-b");
+	ix_put(&c2, S_IFDIR, 1, 10, "fs");
+	ix_put(&c2, S_IFLNK, 5, 40, "fs/a");
+	ix_put(&c2, S_IFREG, 4, 10, "fs/a-b");
+	kbuild_snap_diff(&b2, &c2, &add, &gone, &st);
+	nul_join(&add, got, sizeof(got));
+	eq_str(got, "fs|fs/a", "diff: a dir that became a symlink is listed once");
+	nul_join(&gone, got, sizeof(got));
+	eq_str(got, "fs/a", "diff: and removed once, its old contents with it");
+	kb_buf_free(&add);
+	kb_buf_free(&gone);
+
+	/* No change at all still lists the root: a layer is never an empty
+	 * archive. */
+	kbuild_snap_diff(&cur, &cur, &add, &gone, &st);
+	nul_join(&add, got, sizeof(got));
+	eq_str(got, "fs", "diff: nothing changed lists the root alone");
+	ok(gone.n == 0, "diff: and removes nothing");
+	kb_buf_free(&add);
+	kb_buf_free(&gone);
+
+	/* ----- the index file ------------------------------------------- */
+
+	char dir[] = "/tmp/kdos-selftest-snp.XXXXXX";
+	ok(mkdtemp(dir) != NULL, "scratch directory");
+	char *idxf = kb_path_join(dir, "fs.idx");
+	kb_strlcpy(cur.head, "41_system-1-00000000", sizeof(cur.head));
+	cur.phase_index = 6;
+	kb_strlcpy(cur.phase_dir, "41_system", sizeof(cur.phase_dir));
+	cur.partial = 1;
+	cur.root_dev = 2049;
+	cur.root_ino = 77;
+	ix_put(&cur, S_IFREG, 16, 10, "fs/v\twith tab\nand newline");
+	ok(kbuild_snap_idx_write(idxf, &cur) == 0, "index: writes");
+	KbuildSnapIndex back;
+	ok(kbuild_snap_idx_read(idxf, &back) == 0, "index: reads back");
+	ok(back.n == cur.n && !strcmp(back.head, cur.head) &&
+	   back.phase_index == 6 && back.partial == 1 &&
+	   back.root_dev == 2049 && back.root_ino == 77,
+	   "index: the header round-trips");
+	ok(back.n == cur.n &&
+	   !strcmp(kbuild_idx_path(&back, back.n - 1),
+		   "fs/v\twith tab\nand newline") &&
+	   back.rec[1].ctime_ns == 20 && back.rec[1].alloc == 4096,
+	   "index: a name with a tab and a newline round-trips");
+	kbuild_snap_idx_free(&back);
+	KbuildSnapIndex bad = {0};
+	ix_put(&bad, S_IFDIR, 1, 10, "fs/b");
+	ix_put(&bad, S_IFDIR, 1, 10, "fs/a");
+	kb_strlcpy(bad.head, "x", sizeof(bad.head));
+	kbuild_snap_idx_write(idxf, &bad);
+	ok(kbuild_snap_idx_read(idxf, &back) < 0,
+	   "index: records out of walk order read as no index");
+	kb_write_file(idxf, "kdos-snap-index 1\nhead x\n");
+	ok(kbuild_snap_idx_read(idxf, &back) < 0,
+	   "index: a short header reads as no index");
+	kbuild_snap_idx_free(&bad);
+	kbuild_snap_idx_free(&base);
+	kbuild_snap_idx_free(&cur);
+	kbuild_snap_idx_free(&b2);
+	kbuild_snap_idx_free(&c2);
+	free(idxf);
+
+	/* ----- chains --------------------------------------------------- */
+
+	static const char *const ARCH[] = { "fs.tar.zst", NULL };
+	static const char *const ARCHG[] = { "fs.tar.zst", "fs.gone", NULL };
+	snap_manifest(dir, "00_a",
+		      "{\"schema\": 3, \"phase_dir\": \"00_a\", \"created\": 100.0,"
+		      " \"entries\": [{\"path\": \"fs\", \"archive\": "
+		      "\"fs.tar.zst\", \"bytes_compressed\": 100}]}", ARCH);
+	snap_manifest(dir, "01_b", SNAP4("01_b-1-aaaaaaaa", "layer",
+					 "\"legacy-00_a-1000\"", "\"fs.gone\""),
+		      ARCHG);
+	snap_manifest(dir, ".held/02_c@02_c-1-bbbbbbbb",
+		      SNAP4("02_c-1-bbbbbbbb", "layer", "\"01_b-1-aaaaaaaa\"",
+			    "null"), ARCH);
+	snap_manifest(dir, "03_d", SNAP4("03_d-1-cccccccc", "layer",
+					 "\"02_c-1-bbbbbbbb\"", "null"), ARCH);
+	snap_manifest(dir, "04_e", SNAP4("04_e-1-dddddddd", "layer",
+					 "\"no-such-id\"", "null"), ARCH);
+	snap_manifest(dir, ".held/05_x@x1", SNAP4("x1", "layer", "\"x2\"",
+						  "null"), ARCH);
+	snap_manifest(dir, ".held/05_y@x2", SNAP4("x2", "layer", "\"x1\"",
+						  "null"), ARCH);
+	snap_manifest(dir, "06_f", SNAP4("06_f-1-eeeeeeee", "layer", "\"x1\"",
+					 "null"), ARCH);
+	snap_manifest(dir, ".held/07_z@z1", SNAP4("z1", "full", "null", "null"),
+		      ARCH);
+	/* Named but absent: its .gone list is gone, so the whole snapshot is. */
+	snap_manifest(dir, "08_g", SNAP4("08_g-1-ffffffff", "layer",
+					 "\"03_d-1-cccccccc\"", "\"fs.gone\""),
+		      ARCH);
+	/* Schema 4 carrying only `entries` is not a manifest this reads. */
+	snap_manifest(dir, "09_h",
+		      "{\"schema\": 4, \"id\": \"h\", \"entries\": [{\"path\": "
+		      "\"fs\", \"archive\": \"fs.tar.zst\"}]}", ARCH);
+
+	KbuildSnapshot *all = kb_calloc(KBUILD_MAX_SNAPS, sizeof(*all));
+	int nall = kbuild_snap_list_all(dir, all, KBUILD_MAX_SNAPS);
+	eq_int(nall, 9, "chains: every loadable snapshot, held ones included");
+	const KbuildSnapshot *a0 = kbuild_snap_by_id(all, nall, "legacy-00_a-1000");
+	ok(a0 && !strcmp(a0->dir_name, "00_a") && !a0->entry[0].layer,
+	   "chains: a schema-3 snapshot is full, with its legacy id");
+	const KbuildSnapshot *held = kbuild_snap_by_id(all, nall,
+						       "02_c-1-bbbbbbbb");
+	ok(held && held->held, "chains: a held snapshot is found by its id");
+
+	const KbuildSnapshot *d = kbuild_snap_find(all, nall, "03_d");
+	const KbuildSnapshot *chain[KBUILD_MAX_CHAIN];
+	int len = d ? kbuild_snap_chain(all, nall, d, "fs", chain,
+					KBUILD_MAX_CHAIN) : -1;
+	ok(len == 4 && chain[0] == a0 && !strcmp(chain[1]->dir_name, "01_b") &&
+	   chain[2] == held && chain[3] == d,
+	   "chains: base first, through a held snapshot, to the top");
+	ok(len > 0 && kbuild_snap_chain(all, nall, d, "fs", chain, 3) < 0,
+	   "chains: longer than the room given is refused");
+	const KbuildSnapshot *e = kbuild_snap_find(all, nall, "04_e");
+	ok(e && !kbuild_snap_usable(all, nall, e),
+	   "chains: a missing base makes a snapshot unusable");
+	const KbuildSnapshot *f = kbuild_snap_find(all, nall, "06_f");
+	ok(f && !kbuild_snap_usable(all, nall, f),
+	   "chains: a loop of bases is refused");
+	ok(!kbuild_snap_find(all, nall, "08_g"),
+	   "chains: a layer whose .gone list is missing reads as absent");
+	ok(!kbuild_snap_find(all, nall, "09_h"),
+	   "chains: schema 4 without `paths` reads as absent");
+
+	KbuildSnapshot *use = kb_calloc(KBUILD_MAX_PHASES, sizeof(*use));
+	int nuse = kbuild_snap_list(dir, use, KBUILD_MAX_PHASES);
+	ok(nuse == 3 && !strcmp(use[0].dir_name, "00_a") &&
+	   !strcmp(use[1].dir_name, "01_b") && !strcmp(use[2].dir_name, "03_d"),
+	   "chains: the inventory is the phase snapshots whose chains resolve");
+	free(use);
+
+	int idx[KBUILD_MAX_SNAPS];
+	int nd = kbuild_snap_dependants(all, nall, "01_b-1-aaaaaaaa", idx,
+					KBUILD_MAX_SNAPS);
+	ok(nd == 2, "chains: the snapshots layered on one, directly or not");
+	int ng = kbuild_snap_gc_set(all, nall, idx, KBUILD_MAX_SNAPS);
+	ok(ng == 1 && !strcmp(all[idx[0]].id, "z1"),
+	   "chains: only a held snapshot no phase reaches is collectable");
+
+	KbuildPhase ph[4];
+	memset(ph, 0, sizeof(ph));
+	static const char *const PD[] = { "00_a", "01_b", "02_c", "03_d" };
+	for (int i = 0; i < 4; i++) {
+		kb_strlcpy(ph[i].dir_name, PD[i], sizeof(ph[i].dir_name));
+		ph[i].index = i;
+	}
+	KbuildRestoreItem *plan = kb_calloc(KBUILD_MAX_RESTORE, sizeof(*plan));
+	int np = kbuild_snap_plan_restore(dir, ph, 4, 3, plan,
+					  KBUILD_MAX_RESTORE);
+	ok(np == 4 && plan[0].seq == 0 && !plan[0].layer &&
+	   plan[3].seq == 3 && plan[3].nseq == 4 &&
+	   !strcmp(plan[3].id, "03_d-1-cccccccc"),
+	   "plan: a restore reads the whole chain, base first");
+	ok(np == 4 && plan[1].removed[0] && !plan[2].removed[0] &&
+	   strstr(plan[2].archive, "/.held/02_c@02_c-1-bbbbbbbb/"),
+	   "plan: removal lists and held archives are carried");
+	np = kbuild_snap_plan_restore(dir, ph, 4, 1, plan, KBUILD_MAX_RESTORE);
+	ok(np == 2 && !strcmp(plan[1].source, "01_b"),
+	   "plan: a middle phase stops at its own layer");
+	free(plan);
+	free(all);
+
+	kb_rmtree(dir);
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
 
 static void test_build(void)
 {
@@ -1859,6 +2211,24 @@ static void test_build(void)
 	/* ...but one with nothing to run is refused, or it reports success. */
 	ok(ph[1].error[0] != 0, "a phase with no list and no step is refused");
 	ok(!ph[0].error[0], "a phase with a step is not");
+
+	/* The repositories a phase's kpkg searches, mapped onto the host. */
+	char repos[512];
+	ok(kbuild_phase_repos(&ph[0], "/r", repos, sizeof(repos)) == 1,
+	   "no PORT_REPO is one repository");
+	eq_str(repos, "/r/ports/core", "no PORT_REPO is kpkg.conf's /ports/core");
+	char *env2 = kb_path_join(pd2, "phase.env");
+	kb_write_file(env2,
+		"export PORT_REPO=\"/ports/old\"\n"
+		"  export PORT_REPO=\"/ports/core /kdos/src/system\" # last wins\n");
+	free(env2);
+	n = kbuild_discover(dir, ph, KBUILD_MAX_PHASES);
+	ok(n == 2 && kbuild_phase_repos(&ph[1], "/r", repos, sizeof(repos)) == 2,
+	   "the last PORT_REPO line is the one read");
+	eq_str(repos, "/r/ports/core /r/src/system",
+	       "/ports maps to <repo>/ports and /kdos to <repo>");
+	ok(kbuild_phase_repos(&ph[1], "/r", repos, 8) == -1 && !repos[0],
+	   "repositories that do not fit are refused, not cut short");
 
 	/* ----- the build plan ------------------------------------------- */
 
@@ -1939,7 +2309,8 @@ static void test_build(void)
 	LPUT("phases/20_both/packages.txt", "a\n");
 	LPUT("phases/20_both/packages.d/x.txt", "b\n");
 	LPUT("phases/30_nolist/packages.d/README", "x\n");
-	LPUT("phases/40_flat/packages.txt", "solo\n");
+	LPUT("phases/40_flat/packages.txt",
+	     "solo\n# base \xe2\x80\x94 the base shelf\nlater\n");
 #undef LPUT
 
 	KbuildPhase lp[KBUILD_MAX_PHASES];
@@ -1975,9 +2346,21 @@ static void test_build(void)
 		ok(strstr(lp[2].error, "no *.txt") != NULL,
 		   "a packages.d/ with no list is refused");
 		pk = kbuild_packages(&lp[3], &np);
-		ok(np == 1 && !strcmp(pk[0], "solo") && !lp[3].error[0],
-		   "a single packages.txt reads");
+		ok(np == 2 && !strcmp(pk[0], "solo") && !strcmp(pk[1], "later") &&
+		   !lp[3].error[0], "a single packages.txt reads");
 		kb_strv_free(pk);
+
+		/* The order run: 00-order.txt of a packages.d/, the names
+		 * ahead of a packages.txt's first shelf banner. */
+		char **run = NULL;
+		int nrun = kbuild_packages_order_run(&lp[0], &run);
+		ok(nrun == 1 && !strcmp(run[0], "one"),
+		   "packages.d's order run is 00-order.txt");
+		kb_strv_free(run);
+		nrun = kbuild_packages_order_run(&lp[3], &run);
+		ok(nrun == 1 && !strcmp(run[0], "solo"),
+		   "a packages.txt's order run ends at its first shelf banner");
+		kb_strv_free(run);
 	}
 
 	/* The port index walks ports/core at both depths through libkpkg, and
@@ -8103,6 +8486,7 @@ int main(void)
 	test_pkg();
 	test_shelves();
 	test_build();
+	test_snap_layers();
 	test_proc();
 	test_chart();
 	test_grid();

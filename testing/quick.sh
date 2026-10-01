@@ -12,12 +12,12 @@
 #                                            --shot /kdos/build/shots/x.png
 #
 # WHAT IT SAVES, AND WHY THAT IS THE WHOLE POINT. The ordinary loop is
-# `make build` with 70_image, which repacks a 32 GB ISO: measured 5m30s of
-# a 7m30s build, to carry a 200 KB binary. This builds the named ports into
+# `make build` with 70_image, which repacks a 32 GB ISO — most of the build's
+# time — to carry a 200 KB binary. This builds the named ports into
 # `build/fs` with NO 70_image (measured 1m09s), tars exactly the files those
 # ports own, and hands them to a booted ISO on a raw disk — where
 # `quickpatch.sh` untars them over the live medium's RAM overlay and restarts
-# the session. Twelve minutes becomes three.
+# the session, in about three minutes.
 #
 # THE FILE LIST IS THE PACKAGE DATABASE'S, not a guess: `build/fs/var/lib/kpkg/
 # db/<port>` is what that port installed, so a program that grew a new name or

@@ -50,7 +50,7 @@ cd src
 # the base and upstream appends to it.
 export CFLAGS="$CFLAGS -Wno-error"
 
-make prefix=/usr LUA_PKGNAME=lua
+make prefix=/usr LUA_PKGNAME=lua CPPFLAGS=-g0
 make prefix=/usr LUA_PKGNAME=lua DESTDIR=$PKG install
 
 install -d "$PKG/usr/share/applications"

@@ -44,7 +44,7 @@ bash ./configure \
 	--with-extra-cflags="$_cflags" \
 	--with-extra-cxxflags="$_cxxflags" \
 	--with-extra-ldflags="$_ldflags" \
-	--with-jobs="$(nproc)" \
+	--with-jobs="$KDOS_JOBS" \
 	--with-jvm-variants=server \
 	--with-debug-level=release \
 	--with-native-debug-symbols=none \
