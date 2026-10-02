@@ -34,16 +34,14 @@
 # search that fails only warns and ships no bpftrace(8), where a named path that
 # is missing fails the man target.
 #
-# --copy-dt-needed-entries, AND THE DT_NEEDED CHAIN IS ALREADY CORRECT. This
-# LLVM is BUILD_SHARED_LIBS=ON, so `libLLVMBPFCodeGen.so` records a NEEDED on
-# `libLLVMBPFDesc.so` and the symbol IS reachable at run time. binutils has
-# defaulted to --no-copy-dt-needed-entries since 2.22, which refuses a symbol
-# an object references DIRECTLY unless the providing library is on the LINK
-# LINE — and cmake puts only the component bpftrace named. The failure is
-# `undefined reference to symbol 'LLVMInitializeBPFTargetMC'` beside a library
-# that defines it. Restoring the older policy is narrower than second-guessing
-# which of LLVM's 413 components each target transitively needs.
-export LDFLAGS="$LDFLAGS -Wl,--copy-dt-needed-entries"
+# EVERY LLVM COMPONENT IS NAMED AT THE END OF EVERY C++ LINK. This LLVM is
+# BUILD_SHARED_LIBS=ON, one library per component, and cmake puts on a link
+# line only the few components bpftrace asked for. bpftrace-aotrt calls none of
+# them, so --as-needed drops each, and the libraries they need, LLVMSupport,
+# LLVMObject and LLVMDebugInfoDWARF among them, are never searched: the link
+# fails on `llvm::raw_ostream` and `llvm::object::createBinary`. `llvm-config
+# --libs` names all of them, and --as-needed records only the ones a binary
+# uses.
 
 patch -p1 -i $PORT_SRC/llvm-definitions.patch
 
@@ -63,6 +61,7 @@ cmake .. -G Ninja \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_LibDw=ON \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_LibPcap=ON \
 	-DCMAKE_DISABLE_FIND_PACKAGE_LibBlazesym=ON \
-	-DSTATIC_LINKING=OFF
+	-DSTATIC_LINKING=OFF \
+	-DCMAKE_CXX_STANDARD_LIBRARIES="$(llvm-config --libs)"
 ninja
 DESTDIR=$PKG ninja install
