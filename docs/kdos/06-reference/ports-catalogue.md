@@ -655,7 +655,7 @@ data query and convert tools. 34 ports, under `ports/core/formats/`.
 | `pugixml` | 1.16 | Light XML parser — libkiwix reads its OPDS catalogues with it | `41_system` |
 | `rapidjson` | 1.1.0 | Header-only JSON parser and generator for C++ | `41_system` |
 | `raptor2` | 2.0.16 | Raptor RDF syntax library — RDF/XML, Turtle and N-Triples parsers and serialisers | `41_system` |
-| `thrift` | 0.24.0 | Apache Thrift — the IDL compiler, the C++ library and the Python module; GNU Radio's ControlPort transport | `41_system` |
+| `thrift` | 0.25.0 | Apache Thrift — the IDL compiler, the C++ library and the Python module; GNU Radio's ControlPort transport | `41_system` |
 | `tinyxml` | 2.6.2 | Small C++ XML parser (TinyXML 1) | `41_system` |
 | `tomlplusplus` | 3.4.0 | TOML parser and serializer for C++17 | `41_system` |
 | `visidata` | 3.4 | Terminal spreadsheet for tabular files | `42_graphics` |
