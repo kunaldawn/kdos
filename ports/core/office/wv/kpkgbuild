@@ -10,7 +10,7 @@
 
 name        = wv
 version     = 1.2.9
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://deb.debian.org/debian/pool/main/w/wv/wv_$version.orig.tar.gz
 sha256      = 4c730d3b325c0785450dd3a043eeb53e1518598c4f41f155558385dd2635c19d  wv-1.2.9.tar.gz
 description = Library and converters for Microsoft Word 2000, 97, 95 and 6 documents

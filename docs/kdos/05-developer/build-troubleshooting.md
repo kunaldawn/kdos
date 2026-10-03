@@ -139,6 +139,7 @@ lists everything preflight checks.
 | `Error relocating <library>: <symbol>: symbol not found` when a program opens a plugin | [A plugin that needs lazy binding](#a-plugin-that-needs-lazy-binding) |
 | `No rule to make target` printed from the middle of an unrelated step | [A backtick inside double quotes](#a-backtick-inside-double-quotes) |
 | `No rule to make target '\'` during an install | [A parallel install race](#a-parallel-install-race) |
+| `cp: Needs 2 arguments` and `mv: bad '…/#inst.NNNN#'` during `make install` | [An install-sh with no `-d`](#an-install-sh-with-no--d) |
 | `Killed signal terminated program cc1plus`, or a compiler or linker ending with no message | [A compiler that was OOM-killed](#a-compiler-that-was-oom-killed) |
 | A BSD header missing on a fresh build only | [A dependency the list happened to satisfy](#a-dependency-the-list-happened-to-satisfy) |
 | GStreamer's core compiling or failing in a Rust helper (`gst-ptp-helper`) | [The time-protocol helper](#the-time-protocol-helper) |
@@ -1259,6 +1260,17 @@ Use `make -j1 … install` for that project, as the `libburn`, `libisofs`, `xfsp
 other ports do. A `-j` on the command line overrides the one in `MAKEFLAGS`, and only that
 invocation is serialised; the compile keeps its parallelism. Being a race, it can pass on one
 run and fail on the next, so a recipe that has built before is not evidence against it.
+
+### An install-sh with no `-d`
+
+`cp: Needs 2 arguments` and `mv: bad '…/#inst.NNNN#'` while `make install` creates a directory,
+then `install: '…' not directory` for the files meant to go into it.
+
+configure's check for a thread-safe `mkdir -p` accepts only GNU coreutils' and BusyBox's `mkdir`,
+so beside toybox's it settles on `MKDIR_P` = the project's bundled `install-sh -c -d`. A current
+`install-sh` handles `-d`; the X11R5 one some old projects still ship does not, and treats the
+directory as a file to copy. configure keeps an `MKDIR_P` it is given, so the port runs it as
+`MKDIR_P="mkdir -p" ./configure …`. `wv` does.
 
 ### A compiler that was OOM-killed
 
