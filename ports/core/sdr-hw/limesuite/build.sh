@@ -21,11 +21,15 @@
 # not fetched at configure (DOWNLOAD_IMAGES unset); LimeUtil --update asks
 # the network for them when it is run. Device access is granted by
 # /etc/udev/rules.d/70-kdos-sdr.rules, so UDEV_RULES_PATH is left unset and
-# upstream's rules are not installed.
+# upstream's rules are not installed. LIB_SUFFIX places LimeSuite's own
+# library; the SoapySDR module's directory comes from SoapySDR's CMake package,
+# which includes GNUInstallDirs, and that picks lib64 on a 64-bit system it
+# does not recognise unless CMAKE_INSTALL_LIBDIR names lib.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
+	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DLIB_SUFFIX= \
 	-DLIME_SUITE_EXTVER=kdos \
 	-DENABLE_SIMD_FLAGS=none \
