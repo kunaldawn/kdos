@@ -170,9 +170,9 @@ as one list. A phase has one or the other, never both.
 | `30_foundation` | `packages.txt` | 125 | 115 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
 | `40_lang` | `packages.d/`, 14 files | 195 | 167 |
-| `41_system` | `packages.d/`, 94 files | 967 | 967 |
+| `41_system` | `packages.d/`, 93 files | 966 | 966 |
 | `42_graphics` | `packages.d/`, 54 files | 186 | 186 |
-| `43_toolkits` | `packages.d/`, 46 files | 242 | 242 |
+| `43_toolkits` | `packages.d/`, 46 files | 243 | 243 |
 | `44_apps` | `packages.d/`, 55 files | 280 | 280 |
 | `50_desktop` | `packages.txt` | 22 | 22 |
 | `60_kernel` | `packages.txt` | 2 | 2 |

@@ -10,9 +10,9 @@
 
 name        = plasma-wayland-protocols
 version     = 1.22.0
-release     = 1
+release     = 2
 source      = https://download.kde.org/stable/$name/$name-$version.tar.xz
 sha256      = f628585c4c2d5e3a9f447a6274e2f59d7811272da557e75341e36948aa3f9d43  plasma-wayland-protocols-1.22.0.tar.xz
 description = KDE Plasma Wayland protocol definitions
 homepage    = https://invent.kde.org/libraries/plasma-wayland-protocols
-depends     = cmake extra-cmake-modules
+depends     = cmake ninja extra-cmake-modules qt6-qtbase

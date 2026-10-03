@@ -68,8 +68,8 @@ candidate. KDOS builds for x86_64 only.
 The natively ported applications are the least proved part. The lists of the userland phases,
 `40_lang` to `44_apps`, name 1,870 recipes for the languages, the system, the graphical stacks,
 the toolkits and the applications, every source fetched and hashed; 859 of them have not been
-through a build: 55 of 195 in `40_lang`, 302 of 967 in `41_system`, 75 of 186 in `42_graphics`,
-183 of 242 in `43_toolkits` and 244 of 280 in `44_apps`. No application has been started on an
+through a build: 55 of 195 in `40_lang`, 302 of 966 in `41_system`, 75 of 186 in `42_graphics`,
+183 of 243 in `43_toolkits` and 244 of 280 in `44_apps`. No application has been started on an
 image. Of the recipes that do build, 73 carry changes that no build has carried out, among them
 `pinentry` drawing a Qt dialog and `libdvdread` linking `libdvdcss`. See
 [Applications and boxes](#applications-and-boxes) below.

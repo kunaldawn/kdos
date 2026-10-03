@@ -564,7 +564,7 @@ split puts a restore point after `30_foundation`, about the first hour of native
 of the compilers that take most of the hours before `40_lang`, and another after each layer of the
 userland.
 
-`41_system`, 967 ports, is one phase because the graph does not support a finer cut. Any split
+`41_system`, 966 ports, is one phase because the graph does not support a finer cut. Any split
 of it by subject pushes a hundred or more ports past their subject's phase, because a system
 library filed on a hardware shelf sits under `openssh`, `gnutls` and `cups`; a split by dependency
 depth is valid but puts `zsh` beside `libpng`. Its `packages.d/` gives it its grouping instead.
