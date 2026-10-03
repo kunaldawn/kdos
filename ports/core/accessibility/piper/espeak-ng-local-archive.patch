@@ -19,7 +19,15 @@
      PREFIX ${ESPEAKNG_BUILD_DIR}
      CMAKE_ARGS
          -DCMAKE_INSTALL_PREFIX=${ESPEAKNG_INSTALL_DIR}
-@@ -39,8 +40,8 @@
+@@ -33,14 +34,16 @@
+         -DUSE_ASYNC:BOOL=OFF
+         -DUSE_MBROLA:BOOL=OFF
+         -DUSE_LIBSONIC:BOOL=OFF
++        -DSONIC_LIB:STRING=unused
++        -DSONIC_INC:STRING=unused
+         -DUSE_LIBPCAUDIO:BOOL=OFF
+         -DUSE_KLATT:BOOL=OFF
+         -DUSE_SPEECHPLAYER:BOOL=OFF
          -DEXTRA_cmn:BOOL=ON
          -DEXTRA_ru:BOOL=ON
          # Need to explicitly add ucd include directory for CI
