@@ -13,6 +13,10 @@
 # with it.
 patch -p1 -i "$PORT_SRC/link-fts.patch"
 
+# cl_ASN1_GetTimeT() reads ASN1_TIME's fields, which OpenSSL 4 hides, and has
+# no caller; the patch is upstream's removal of it.
+patch -p1 -i "$PORT_SRC/openssl4.patch"
+
 # The Rust crates are vendored in upstream's tarball under .cargo/vendor, and
 # FindRust passes --offline whenever that directory exists; RUSTFLAGS reaches
 # cargo through the environment. Bytecode signatures run in the interpreter:
