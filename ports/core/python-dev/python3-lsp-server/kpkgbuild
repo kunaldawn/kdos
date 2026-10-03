@@ -10,7 +10,7 @@
 
 name        = python3-lsp-server
 version     = 1.15.0
-release     = 1
+release     = 2
 source      = https://files.pythonhosted.org/packages/source/p/python-lsp-server/python_lsp_server-$version.tar.gz
 sha256      = 85fa090262c3d1aef09b759d98811d6cb9ad5bbc58af15d588608ae8c1925801  python3-lsp-server-1.15.0.tar.gz
 sha256      = a6eee2990064199413e0e276d2e237e6dac35aacd780a67591e95adebfe1b1b7  python3-lsp-server-vendor-1.15.0.tar.xz

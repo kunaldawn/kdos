@@ -10,7 +10,7 @@
 
 name        = python3-pyarcus
 version     = 5.12.0
-release     = 1
+release     = 2
 _commit     = 72d052a24b9ecaba8821182cd6e84c04d9b3f3fe
 source      = $name-$version.tar.gz::https://github.com/Ultimaker/pyArcus/archive/$_commit.tar.gz
 sha256      = 7abf29418a5827863ec781e7239cf77a7d635a5c83d830d6cc5c7ec640c7ebd9  python3-pyarcus-5.12.0.tar.gz
