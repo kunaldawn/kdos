@@ -10,7 +10,7 @@
 
 name        = libosinfo
 version     = 1.12.0
-release     = 1
+release     = 2
 source      = https://releases.pagure.org/libosinfo/libosinfo-$version.tar.xz
 sha256      = ad8557ece26793da43d26de565e3d68ce2ee6bfb8d0113b7cc7dfe07f6bfc6b6  libosinfo-1.12.0.tar.xz
 description = Library of operating-system facts for virtualisation — installer media, devices, requirements

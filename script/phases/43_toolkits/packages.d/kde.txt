@@ -23,6 +23,10 @@
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside
 # them, or when a shelf file names a port an earlier phase installs.
 
+# The protocol XML kwayland, kwindowsystem and fcitx5 generate their clients
+# from. Nothing is compiled, but ECM asks Qt's qtpaths for its install paths.
+plasma-wayland-protocols
+
 kwayland
 
 # The platform theme that, with the breeze style, makes a Qt application read

@@ -10,7 +10,7 @@
 
 name        = limesuite
 version     = 23.11.0.git20260603
-release     = 1
+release     = 2
 _commit     = 699d05b7212aa612a9802c219dd6621be88c77db
 source      = $name-$version.tar.gz::https://github.com/myriadrf/LimeSuite/archive/$_commit.tar.gz
 sha256      = 105333034a3a95363ad9fb8eec5337cc55184d3e4f92d3551c6ed555b786f2f4  limesuite-23.11.0.git20260603.tar.gz

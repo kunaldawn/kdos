@@ -10,9 +10,9 @@
 
 name        = libixion
 version     = 0.20.0
-release     = 1
+release     = 2
 source      = https://gitlab.com/api/v4/projects/ixion%2Fixion/packages/generic/source/$version/libixion-$version.tar.xz
 sha256      = 8466a05f19f60b7568641a449704666308848f7bcaf8335f92ee9474a451e4cd  libixion-0.20.0.tar.xz
 description = ixion — threaded spreadsheet formula engine, the calculation half of orcus
 homepage    = https://gitlab.com/ixion/ixion
-depends     = boost mdds python3
+depends     = autoconf automake libtool boost mdds python3

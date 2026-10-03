@@ -17,7 +17,10 @@ ln -s "$SRC_ROOT/cpu_features-$_cpufeatures" cpu_features
 
 # fmt must be found as a package: without it the configure step clones fmt
 # with FetchContent, and FETCHCONTENT_FULLY_DISCONNECTED turns that into a
-# failure here rather than a network fetch.
+# failure here rather than a network fetch. qa_utils.cc, which volk_profile
+# builds, calls fmt::format but includes only <fmt/core.h>, which since fmt 12
+# includes format.h only under FMT_DEPRECATED_HEAVY_CORE.
+export CXXFLAGS="$CXXFLAGS -DFMT_DEPRECATED_HEAVY_CORE"
 mkdir -p build && cd build
 cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \

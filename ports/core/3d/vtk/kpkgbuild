@@ -11,9 +11,9 @@
 
 name        = vtk
 version     = 9.5.2
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://www.vtk.org/files/release/${version%.*}/VTK-$version.tar.gz
 sha256      = cee64b98d270ff7302daf1ef13458dff5d5ac1ecb45d47723835f7f7d562c989  vtk-9.5.2.tar.gz
 description = The Visualization Toolkit: meshes, filters and OpenGL rendering, with Python bindings
 homepage    = https://vtk.org/
-depends     = cmake ninja python3 mesa libglvnd libX11 libXcursor zlib expat libxml2 double-conversion eigen fmt freetype2 libjpeg-turbo libpng libtiff jsoncpp lz4 xz netcdf-c nlohmann-json libogg libtheora proj pugixml sqlite
+depends     = cmake ninja python3 mesa libglvnd libX11 libXcursor zlib expat libxml2 double-conversion eigen freetype2 libjpeg-turbo libpng libtiff jsoncpp lz4 xz netcdf-c nlohmann-json libogg libtheora proj pugixml sqlite

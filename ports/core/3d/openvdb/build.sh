@@ -17,6 +17,14 @@
 # jemalloc is not a port, and "Auto" would take one if a chroot ever held it.
 # The Python module needs nanobind, which is not a port. NanoVDB is installed
 # as headers only; its tools convert through OpenVDB grids nothing here needs.
+#
+# thread/Threading.h, which is installed, reaches TBB's version macros through
+# tbb/blocked_range.h, and oneTBB 2023 no longer includes version.h there:
+# TBB_INTERFACE_VERSION is undefined, the pre-2021 tbb::task::self() branch is
+# taken, and neither OpenVDB nor anything including the header compiles. The
+# patch is upstream's later form of the include, which names tbb/version.h.
+patch -p1 -i "$PORT_SRC/tbb-version.patch"
+
 mkdir build && cd build
 cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

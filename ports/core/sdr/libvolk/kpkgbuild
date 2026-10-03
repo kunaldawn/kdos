@@ -10,7 +10,7 @@
 
 name        = libvolk
 version     = 3.3.0
-release     = 1
+release     = 2
 _cpufeatures = 0.9.0
 source      = $name-$version.tar.gz::https://github.com/gnuradio/volk/archive/refs/tags/v$version.tar.gz
 source      = cpu_features-$_cpufeatures.tar.gz::https://github.com/google/cpu_features/archive/refs/tags/v$_cpufeatures.tar.gz

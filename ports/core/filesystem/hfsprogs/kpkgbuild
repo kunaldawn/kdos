@@ -10,7 +10,7 @@
 
 name        = hfsprogs
 version     = 540.1.3
-release     = 1
+release     = 2
 _upver      = ${version%.*}.linux${version##*.}
 _md5        = 0435afc389b919027b69616ad1b05709
 source      = $name-$version.tar.gz::https://src.fedoraproject.org/repo/pkgs/hfsplus-tools/diskdev_cmds-$_upver.tar.gz/$_md5/diskdev_cmds-$_upver.tar.gz

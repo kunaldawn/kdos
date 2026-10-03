@@ -124,6 +124,7 @@ lists everything preflight checks.
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
+| `Installing:` a library under `/var/cache/kpkg/work/…` instead of `/usr/lib` | [A library installed into the source tree](#a-library-installed-into-the-source-tree) |
 | `Skipped dir` on a path that looks like the binary | [Go building into its own directory](#go-building-into-its-own-directory) |
 | `C compiler cannot create executables` | [`C compiler cannot create executables`](#c-compiler-cannot-create-executables) |
 | The same, with a working compiler on the search path | [A configuration script preferring another compiler](#a-configuration-script-preferring-another-compiler) |
@@ -131,12 +132,14 @@ lists everything preflight checks.
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
 | `error: 'int64_t' was not declared in this scope` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
+| `error: invalid use of incomplete type 'const ASN1_GENERALIZEDTIME'`, or another `ASN1_*` type | [An OpenSSL structure read field by field](#an-openssl-structure-read-field-by-field) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
 | `undefined reference to` a symbol of a library that is on the link line, or a plugin or codec that registers itself missing at run time | [A library dropped by `--as-needed`](#a-library-dropped-by---as-needed) |
 | `Error relocating <library>: <symbol>: symbol not found` when a program opens a plugin | [A plugin that needs lazy binding](#a-plugin-that-needs-lazy-binding) |
 | `No rule to make target` printed from the middle of an unrelated step | [A backtick inside double quotes](#a-backtick-inside-double-quotes) |
 | `No rule to make target '\'` during an install | [A parallel install race](#a-parallel-install-race) |
+| `cp: Needs 2 arguments` and `mv: bad '…/#inst.NNNN#'` during `make install` | [An install-sh with no `-d`](#an-install-sh-with-no--d) |
 | `Killed signal terminated program cc1plus`, or a compiler or linker ending with no message | [A compiler that was OOM-killed](#a-compiler-that-was-oom-killed) |
 | A BSD header missing on a fresh build only | [A dependency the list happened to satisfy](#a-dependency-the-list-happened-to-satisfy) |
 | GStreamer's core compiling or failing in a Rust helper (`gst-ptp-helper`) | [The time-protocol helper](#the-time-protocol-helper) |
@@ -1070,6 +1073,18 @@ is to configure from a directory whose `project()` enables the `ASM` language. L
 `libunwind/` directory has no `project()` of its own, so the `libunwind` port configures LLVM's
 `runtimes/` directory (`project(Runtimes C CXX ASM)`) with `-D LLVM_ENABLE_RUNTIMES="libunwind"`.
 
+### A library installed into the source tree
+
+The install step reports `Installing: …/pkg/var/cache/kpkg/work/<port>/<source>/lib/lib….so`, and
+the check that the library is under `/usr/lib` fails.
+
+The project declares an install directory itself, with `set(CMAKE_INSTALL_LIBDIR lib CACHE PATH
+…)` rather than through `GNUInstallDirs`, and the recipe passes `-DCMAKE_INSTALL_LIBDIR=lib`. A
+relative value given on the command line without a type is made absolute when the project then
+declares the entry a `PATH`, and it is made absolute against the build's working directory. Leave
+the variable out when the project's default is already the one wanted, or give it a type,
+`-DCMAKE_INSTALL_LIBDIR:PATH=lib`. `shapelib` leaves it out.
+
 ### Go building into its own directory
 
 The install step reports `Skipped dir` (toybox's `cp`) on a path that looks exactly
@@ -1158,6 +1173,16 @@ adds the include: ship a `.patch` that adds the `#include` the note names, to th
 at. `onnxruntime`'s `gcc16-cstdint.patch` is the example. Build the rest of the port with
 `ninja -k 0` (or `make -k`) before writing the patch, so it names every file at once.
 
+### An OpenSSL structure read field by field
+
+`error: invalid use of incomplete type 'const ASN1_GENERALIZEDTIME'` (or `ASN1_STRING`,
+`ASN1_TIME`, `ASN1_INTEGER`), with a note pointing at `struct asn1_string_st` in OpenSSL's headers.
+The `openssl` port is OpenSSL 4, whose `ASN1_STRING` is opaque: code reads it through
+`ASN1_STRING_type()`, `ASN1_STRING_length()` and `ASN1_STRING_get0_data()`, which every OpenSSL
+since 1.1.0 has. Look for the upstream commit that adapts the project to OpenSSL 4 and ship it as a
+`.patch`; `dcmtk`'s `openssl4.patch` is the example. A program that must stay on OpenSSL 3 links the
+`openssl3` slot instead (see [A second version beside the first](writing-ports.md#a-second-version-beside-the-first)).
+
 ### An upstream `-Werror`
 
 The build fails on a warning you have never seen upstream report.
@@ -1235,6 +1260,17 @@ Use `make -j1 … install` for that project, as the `libburn`, `libisofs`, `xfsp
 other ports do. A `-j` on the command line overrides the one in `MAKEFLAGS`, and only that
 invocation is serialised; the compile keeps its parallelism. Being a race, it can pass on one
 run and fail on the next, so a recipe that has built before is not evidence against it.
+
+### An install-sh with no `-d`
+
+`cp: Needs 2 arguments` and `mv: bad '…/#inst.NNNN#'` while `make install` creates a directory,
+then `install: '…' not directory` for the files meant to go into it.
+
+configure's check for a thread-safe `mkdir -p` accepts only GNU coreutils' and BusyBox's `mkdir`,
+so beside toybox's it settles on `MKDIR_P` = the project's bundled `install-sh -c -d`. A current
+`install-sh` handles `-d`; the X11R5 one some old projects still ship does not, and treats the
+directory as a file to copy. configure keeps an `MKDIR_P` it is given, so the port runs it as
+`MKDIR_P="mkdir -p" ./configure …`. `wv` does.
 
 ### A compiler that was OOM-killed
 

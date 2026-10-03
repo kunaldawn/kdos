@@ -469,9 +469,9 @@ dependencies reach. Every port's dependencies are in its own phase or an earlier
 | Phase | Installs | Holds | Largest shelves |
 |---|---|---|---|
 | `40_lang` | 167 | Language modules and developer tools whose dependencies need nothing past the compilers: the `python3-*` and `perl-*` modules, build, documentation and debugging tools, version control | `python-libs`, `devtools`, `python`, `python-net` |
-| `41_system` | 967 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries | `image-libs`, `devlibs`, `formats`, `network`, `audio-codecs` |
+| `41_system` | 966 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries | `image-libs`, `devlibs`, `formats`, `network`, `audio-codecs` |
 | `42_graphics` | 186 | What reaches Wayland, the X11 libraries, Mesa, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit: the graphics and media stacks, Xwayland, `foot` | `x11`, `gpu`, `wl`, `game-libs`, `graphics-libs` |
-| `43_toolkits` | 242 | GTK, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and WebKitGTK, and the libraries and services built on them | `kf6`, `qt6`, `qt-extra`, `gtk`, `qt5` |
+| `43_toolkits` | 243 | GTK, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and WebKitGTK, and the libraries and services built on them | `kf6`, `qt6`, `qt-extra`, `gtk`, `qt5` |
 | `44_apps` | 280 | The natively ported graphical applications | `graphics`, `emulators`, `games-board`, `studio`, `hamradio` |
 
 Their environment adds `src/system` and `src/art` to the repositories `kpkg` searches, so KDOS's

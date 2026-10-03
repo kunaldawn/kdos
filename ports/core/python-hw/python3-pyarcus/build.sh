@@ -21,7 +21,10 @@ done
 # compiles through CMake; sip's own backend builds the same module from the
 # same .sip files, with the settings that toolchain writes: exceptions,
 # released GIL and a .pyi stub. No sip-module is named, so the module carries
-# its own copy of the sip runtime, as upstream's does.
+# its own copy of the sip runtime, as upstream's does. sip compiles as C++11
+# unless told otherwise, and PythonMessage.h (std::optional) and abseil, which
+# protobuf's headers pull in, need C++17; a -std given in extra-compile-args
+# comes after sip's own and wins.
 cat > pyproject.toml <<TOML
 [build-system]
 requires = ["sip >=6.8"]
@@ -42,6 +45,7 @@ headers = ["pyArcus/PythonMessage.h"]
 sources = ["src/PythonMessage.cpp"]
 include-dirs = ["$SRC/include"]
 libraries = ["Arcus", $_pblibs]
+extra-compile-args = ["-std=c++17"]
 TOML
 pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
 

@@ -102,9 +102,9 @@ leaving out any an earlier phase installed.
 | `30_foundation` | Build Foundation | `packages.txt` | 126 | 116 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
 | `40_lang` | Languages | `packages.d/`, 14 files | 195 | 167 |
-| `41_system` | System | `packages.d/`, 94 files | 967 | 967 |
+| `41_system` | System | `packages.d/`, 93 files | 966 | 966 |
 | `42_graphics` | Graphics Stack | `packages.d/`, 54 files | 186 | 186 |
-| `43_toolkits` | Toolkits | `packages.d/`, 46 files | 242 | 242 |
+| `43_toolkits` | Toolkits | `packages.d/`, 46 files | 243 | 243 |
 | `44_apps` | Applications | `packages.d/`, 55 files | 280 | 280 |
 | `50_desktop` | Desktop | `packages.txt` | 22 | 22 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
@@ -655,7 +655,7 @@ data query and convert tools. 34 ports, under `ports/core/formats/`.
 | `pugixml` | 1.16 | Light XML parser — libkiwix reads its OPDS catalogues with it | `41_system` |
 | `rapidjson` | 1.1.0 | Header-only JSON parser and generator for C++ | `41_system` |
 | `raptor2` | 2.0.16 | Raptor RDF syntax library — RDF/XML, Turtle and N-Triples parsers and serialisers | `41_system` |
-| `thrift` | 0.24.0 | Apache Thrift — the IDL compiler, the C++ library and the Python module; GNU Radio's ControlPort transport | `41_system` |
+| `thrift` | 0.25.0 | Apache Thrift — the IDL compiler, the C++ library and the Python module; GNU Radio's ControlPort transport | `41_system` |
 | `tinyxml` | 2.6.2 | Small C++ XML parser (TinyXML 1) | `41_system` |
 | `tomlplusplus` | 3.4.0 | TOML parser and serializer for C++17 | `41_system` |
 | `visidata` | 3.4 | Terminal spreadsheet for tabular files | `42_graphics` |
@@ -1933,7 +1933,7 @@ thumbnailers, Plasma integration, KDE Wayland glue. 8 ports, under `ports/core/k
 | `kwayland` | 6.7.5 | Qt-style client library for the Wayland and Plasma Wayland protocols | `43_toolkits` |
 | `libksysguard` | 6.7.5 | libksysguard — process list, sensors and system statistics libraries, for KDevelop's attach to process | `43_toolkits` |
 | `plasma-integration` | 6.7.5 | Qt platform theme that gives every Qt 6 and KF6 application the KDE palette, fonts, icons and file dialogs | `43_toolkits` |
-| `plasma-wayland-protocols` | 1.22.0 | KDE Plasma Wayland protocol definitions | `41_system` |
+| `plasma-wayland-protocols` | 1.22.0 | KDE Plasma Wayland protocol definitions | `43_toolkits` |
 
 ### toolkits
 

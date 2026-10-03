@@ -257,6 +257,13 @@ Then, how it is unpacked before `build.sh` runs:
 | A tarball, later | Into `$SRC_ROOT`, unstripped, beside `$SRC` |
 | Anything else: a data file, a `.zip`, a `.tar.zst` | Copied into `$SRC` as it is |
 
+"Beside `$SRC`" holds only while the later tarball's top directory has another name. `$SRC` is
+`$SRC_ROOT/<name>-<version>`, so a later tarball whose top directory is also `<name>-<version>`
+unpacks over the first source, file by file, with nothing reported. `libreoffice`'s help tarball
+does so by design, because upstream ships the help to be merged into the source tree.
+`docbook-xsl`'s second release must not, so its `build.sh` unpacks both tarballs again, each into
+a directory of its own, and installs from those.
+
 The first source is renamed on purpose. A forge that generates an archive named after a tag would
 otherwise leave every port holding a file called `2.55.tar.gz`, and the standardised name is what
 the port directory, the checksum line and the source archive all agree on. Use `filename::url` when
