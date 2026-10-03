@@ -124,6 +124,7 @@ lists everything preflight checks.
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
+| `Installing:` a library under `/var/cache/kpkg/work/…` instead of `/usr/lib` | [A library installed into the source tree](#a-library-installed-into-the-source-tree) |
 | `Skipped dir` on a path that looks like the binary | [Go building into its own directory](#go-building-into-its-own-directory) |
 | `C compiler cannot create executables` | [`C compiler cannot create executables`](#c-compiler-cannot-create-executables) |
 | The same, with a working compiler on the search path | [A configuration script preferring another compiler](#a-configuration-script-preferring-another-compiler) |
@@ -1070,6 +1071,18 @@ sources are silently dropped and the archive is missing the routines written in 
 is to configure from a directory whose `project()` enables the `ASM` language. LLVM's standalone
 `libunwind/` directory has no `project()` of its own, so the `libunwind` port configures LLVM's
 `runtimes/` directory (`project(Runtimes C CXX ASM)`) with `-D LLVM_ENABLE_RUNTIMES="libunwind"`.
+
+### A library installed into the source tree
+
+The install step reports `Installing: …/pkg/var/cache/kpkg/work/<port>/<source>/lib/lib….so`, and
+the check that the library is under `/usr/lib` fails.
+
+The project declares an install directory itself, with `set(CMAKE_INSTALL_LIBDIR lib CACHE PATH
+…)` rather than through `GNUInstallDirs`, and the recipe passes `-DCMAKE_INSTALL_LIBDIR=lib`. A
+relative value given on the command line without a type is made absolute when the project then
+declares the entry a `PATH`, and it is made absolute against the build's working directory. Leave
+the variable out when the project's default is already the one wanted, or give it a type,
+`-DCMAKE_INSTALL_LIBDIR:PATH=lib`. `shapelib` leaves it out.
 
 ### Go building into its own directory
 

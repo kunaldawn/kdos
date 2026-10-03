@@ -994,6 +994,7 @@
 66a8530d9c380c05b539e1773bc45195a0ff1ea19a3393c3bd9cad331ad7b7f8 sources-2 gis--OpeningHoursParser-0.29.0-sources.jar josm/OpeningHoursParser-0.29.0-sources.jar
 66b07ef7315a31bfe1089cd3d71a7de781c9dca986762d0b4fe7c0ef17465d10 sources-4 sci-libs--pandas-3.0.6.tar.gz pandas/pandas-3.0.6.tar.gz
 66d511b9e6e334c0e62279eb234fbfb2b3110b1479c09b95b44c7afca8cff9e7 sources-3 net-libs--libuv-1.52.1.tar.gz libuv/libuv-1.52.1.tar.gz
+66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214 sources-2 formats--thrift-0.25.0.tar.gz thrift/thrift-0.25.0.tar.gz
 66ec82a577395fe9d471504267e6dd04615c76517c61af7c6b9c19e5e34e73c8 sources-4 spelling--hunspell-1.7.4.tar.gz hunspell/hunspell-1.7.4.tar.gz
 66fa463e51d7e4eb50c5195ddeec55d471e318b3cde0bf7b4a5c01e252cb1fea sources-4 toolchain--bindgen-vendor-0.73.2.tar.xz bindgen/bindgen-vendor-0.73.2.tar.xz
 670a7557fe185c2703a14a07506156eceb7cea3b4bf75076a573f34ac52b401a sources-2 graphics-libs--goocanvas-3.0.0.tar.xz goocanvas/goocanvas-3.0.0.tar.xz
