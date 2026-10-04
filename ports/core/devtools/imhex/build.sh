@@ -28,13 +28,24 @@ mv "$SRC_ROOT/ImHex-Patterns-ImHex-v$version" "$SRC_ROOT/ImHex-Patterns"
 # .NET scripting is kept out of the search: this tree carries no .NET. X11 is
 # kept out too: the window comes from GLFW, and ImHex itself calls no Xlib.
 # Every compression library of the decompress plugin is required, so a
-# missing one fails here rather than dropping a format.
+# missing one fails here rather than dropping a format. The pattern language
+# calls fmt::format with only <fmt/core.h> included, which since fmt 12
+# includes format.h only under FMT_DEPRECATED_HEAVY_CORE.
+#
+# ui.hexpluglib needs fonts.hexpluglib, and the builtin, diffing and
+# disassembler plugins need ui.hexpluglib, each by bare name from
+# /usr/lib/imhex/plugins. ImHex loads the two libraries first, by full path,
+# and musl does not take a library loaded by path for a later bare-name
+# dependency, so each plugin carries an $ORIGIN rpath to find its sibling.
+# Without it builtin does not load, no subcommand exists, and every
+# command-line run aborts on an empty std::function.
+export CXXFLAGS="$CXXFLAGS -DFMT_DEPRECATED_HEAVY_CORE"
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
-	-DCMAKE_SKIP_INSTALL_RPATH=ON \
+	-DCMAKE_INSTALL_RPATH='$ORIGIN' \
 	-DIMHEX_OFFLINE_BUILD=ON \
 	-DIMHEX_IGNORE_BAD_CLONE=ON \
 	-DIMHEX_USE_GTK_FILE_PICKER=OFF \

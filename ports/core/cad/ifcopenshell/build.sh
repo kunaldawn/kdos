@@ -20,6 +20,17 @@ patch -p1 -i "$PORT_SRC/python-version.patch"
 # compile; the patch limits that constructor to number pointers.
 patch -p1 -i "$PORT_SRC/swig-4.5.patch"
 
+# Boost 1.92 resolves the {radius} in each profile mapping's
+# {{x, y}, {radius}} to boost::optional's explicit converting constructor,
+# which copy-list-initialization cannot use; the patch is upstream's
+# profile_point overload taking the double itself.
+patch -p1 -i "$PORT_SRC/boost-optional.patch"
+
+# cmake/FindHDF5.cmake links hdf5_cpp-static whenever it finds HDF5's CMake
+# package, and the hdf5 port exports only shared targets; the patch is
+# upstream's later choice of whichever of the two the package exports.
+patch -p1 -i "$PORT_SRC/hdf5-shared.patch"
+
 # VERSION_OVERRIDE versions the shared libraries from the VERSION file;
 # without it their soname says 0.8.0. Only the three schemas in use (IFC2X3, IFC4 and
 # IFC4X3_ADD2) are compiled: every other schema adds a generated source of
