@@ -11,7 +11,13 @@
 
 # The 4.x line: OpenCV 5 changed the API, and digiKam, MLT, SDRangel and
 # the rest are written against 4.x.
-#
+
+# FFmpeg 9 removed AVCodec's pix_fmts and supported_framerates, which the
+# videoio FFmpeg backend reads; the patch is upstream's change to
+# avcodec_get_supported_config() on the 4.x branch (700cd32f, 83ed22ca,
+# c0166c61), after 4.14, keeping the old path for older FFmpeg.
+patch -p1 -i "$PORT_SRC/ffmpeg9.patch"
+
 # Contrib modules: only the ones this system's consumers use, moved into a
 # directory of their own so the rest are never configured. aruco, tracking,
 # optflow, plot, shape, superres, videostab and ximgproc serve MLT's motion
