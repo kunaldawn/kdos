@@ -45,6 +45,12 @@ ITL_SRC="$SRC_ROOT/install-tl-$version"
 
 patch -p1 -i "$PORT_SRC/texmfmp-fix-format-specifier.patch"
 
+# dvisvgm passes no -std and so compiles as GCC's C++20, where its font data
+# cannot be brace-initialised, its u8 literals are char8_t and Clipper's
+# ZType comparison is ambiguous. The patch is upstream's three later fixes
+# (7e9e0aa5, 595146d0, 3fcd7d94), which make the same sources C++20-clean.
+patch -p1 -i "$PORT_SRC/dvisvgm-cxx20.patch"
+
 mkdir build
 cd build
 ../configure \
