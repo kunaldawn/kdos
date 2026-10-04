@@ -276,7 +276,7 @@ The minimal userland and system daemons that every KDOS image boots with. 27 por
 | `bash` | 5.3 | The Bourne-Again SHell | `30_foundation`, named again by `40_lang` |
 | `bc` | 1.08.2 | An arbitrary precision calculator language | `30_foundation`, named again by `40_lang` |
 | `ca-certificates` | 3.130 | Bundle of CA Root Certificates from Mozilla | `30_foundation` |
-| `coreutils` | 9.12 | The GNU core utilities, for the commands toybox implements too narrowly: expr and ln | `41_system` |
+| `coreutils` | 9.12 | The GNU core utilities, for the commands toybox implements too narrowly: expr, ln and printf | `41_system` |
 | `dbus` | 1.16.2 | Message bus system for communication between processes | `41_system` |
 | `diffutils` | 3.12 | Utility programs for comparing files | `20_selfhost`, named again by `30_foundation`, `40_lang` |
 | `eudev` | 3.2.14 | Programs for dynamic creation of device nodes | `30_foundation`, named again by `40_lang` |

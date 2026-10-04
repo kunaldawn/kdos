@@ -10,7 +10,7 @@
 
 name        = koreader
 version     = 2026.07.2
-release     = 1
+release     = 2
 source      = https://distfiles.alpinelinux.org/distfiles/edge/koreader-v$version.tar.gz
 sha256      = 67e3d2cd432ccfcfb29f4f3203376d595704b0cb562274086eb3bb25a1bc662d  koreader-2026.07.2.tar.gz
 sha256      = 6f67b8f0276d870967acc4a918f6035b34bea2a14b389b419cd5fe6771d4e9d0  koreader-thirdparty-2026.07.2.tar.xz
