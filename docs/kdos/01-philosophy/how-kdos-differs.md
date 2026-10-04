@@ -94,9 +94,10 @@ over when they install. On the finished system each command has one owner:
 - **GNU sed, gawk, findutils and diffutils** are ports because upstream build systems reach for
   GNU extensions, and toybox ignores some of those extensions without reporting an error, so a
   build can go wrong without failing.
-- **GNU coreutils** is built for three programs: `expr`, whose `length` operator toybox does not
-  implement; `ln`, whose `--relative` option toybox lacks and meson install scripts use; and
-  `printf`, whose `%q` quoting toybox lacks and KOReader's build calls as an external command.
+- **GNU coreutils** is built for four programs: `expr`, whose `length` operator toybox does not
+  implement; `ln`, whose `--relative` option toybox lacks and meson install scripts use;
+  `printf`, whose `%q` quoting toybox lacks and KOReader's build calls as an external command; and
+  `date`, whose `--date` and `--utc` toybox lacks and OpenJDK's configure needs.
 
 The result is closer to Alpine than to Debian, with more full tools than Alpine's default image
 carries. The cost is that a script written against GNU behaviour can meet a toybox applet that

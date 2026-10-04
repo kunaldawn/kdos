@@ -10,6 +10,13 @@
 # ---------------------------------
 
 
+# configure takes `date` for GNU's only when `date --version` matches
+# "GNU\|BusyBox\|uutils", an alternation toybox grep does not implement, and
+# otherwise calls BSD's `date -j`; the build's ISO source date then comes out
+# empty and `jar --date` stops. The patch writes the match as grep -E, and the
+# coreutils port supplies the GNU date it is looking for.
+patch -p1 -i "$PORT_SRC/posix-grep.patch"
+
 # The seed is Adoptium's musl build of the same feature release, used as the
 # boot JDK and then discarded: nothing it built is in $PKG. OpenJDK accepts a
 # boot JDK of this feature release or the one before it

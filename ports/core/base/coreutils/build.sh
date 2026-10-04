@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ONLY WHAT TOYBOX IMPLEMENTS TOO NARROWLY IS INSTALLED, and that is three
+# ONLY WHAT TOYBOX IMPLEMENTS TOO NARROWLY IS INSTALLED, and that is four
 # programs. toybox is the userland by rule; this exists for the same reason
 # `sed`, `gawk` and `findutils` do — an upstream build system reaches for a GNU
 # extension, toybox answers with nothing rather than an error, and the failure
@@ -23,14 +23,17 @@
 #
 # GROWING THIS IS ADDING A NAME TO THE LIST BELOW, not renaming the package.
 # Installing all of coreutils would take ~100 paths off toybox, which is the
-# opposite of what this distro is. These three are named because a toybox applet
+# opposite of what this distro is. These four are named because a toybox applet
 # is genuinely missing the feature a port asks for, the same reason GNU sed,
 # gawk and findutils sit over their applets: toybox `expr` has no `length`;
 # toybox `ln` has no `--relative`, which meson install scripts use to make a
-# symlink inside DESTDIR that is still correct once the tree is moved; and
+# symlink inside DESTDIR that is still correct once the tree is moved;
 # toybox `printf` has no `%q`, which KOReader's build runs as an external
-# command (`exec printf`) to quote every logged command line, and stops on.
-INSTALL_PROGRAMS="expr ln printf"
+# command (`exec printf`) to quote every logged command line, and stops on;
+# and toybox `date` has neither `--date` nor `--utc` and does not call itself
+# GNU, so OpenJDK's configure takes it for BSD's, its `-j` call fails, and the
+# build's source date in ISO form comes out empty and stops `jar --date`.
+INSTALL_PROGRAMS="expr ln printf date"
 
 # FORCE_UNSAFE_CONFIGURE because kpkg builds as root in a chroot. The check
 # exists because one mknod probe would pass as root and fail for a normal

@@ -116,7 +116,7 @@ lists everything preflight checks.
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
 | A missing type, from an empty generated header | [A stream-editor extension that is not there](#a-stream-editor-extension-that-is-not-there) |
-| `integer expected` from `expr`, a relative-link option rejected, or `printf: bad %q` | [Missing compact-userland features](#missing-compact-userland-features) |
+| `integer expected` from `expr`, a relative-link option rejected, `printf: bad %q`, or `option --date requires an argument` from `jar` | [Missing compact-userland features](#missing-compact-userland-features) |
 | A package index or a clone reached during the offline build | [A build that reaches the network](#a-build-that-reaches-the-network) |
 | `Unknown options: …` at meson setup | [An unknown meson option](#an-unknown-meson-option) |
 | A meson option value that `is not one of the choices` | [A meson feature given a boolean](#a-meson-feature-given-a-boolean) |
@@ -938,8 +938,9 @@ export LDFLAGS="$LDFLAGS -licuuc"
 KDOS's base userland is toybox, a single binary that provides most of the standard command-line
 tools as applets. Its applets implement less than the GNU tools, and upstream build systems
 routinely assume GNU behaviour. The GNU `gawk` (from `20_selfhost`), `sed` and `findutils` (from
-`30_foundation`) ports install over their applets, and `coreutils` installs exactly three programs,
-`expr`, `ln` and `printf`, because installing all of it would take about a hundred paths off toybox.
+`30_foundation`) ports install over their applets, and `coreutils` installs exactly four programs,
+`expr`, `ln`, `printf` and `date`, because installing all of it would take about a hundred paths off
+toybox.
 
 ### A stream-editor extension that is not there
 
@@ -960,7 +961,8 @@ built in `30_foundation` before it, or one that relies on the ordering, names `s
 ### Missing compact-userland features
 
 A build step reports a subcommand or option that does not exist: an expression length operation,
-a relative-symlink option in an install script, or `printf: bad %q`.
+a relative-symlink option in an install script, `printf: bad %q`, or `option --date requires an
+argument` from `jar`.
 
 `expr length STRING` is undefined in POSIX, and toybox's `expr` yields an empty string for it. A
 configure script that then compares the result numerically prints `integer expected` and falls
@@ -969,8 +971,14 @@ driver as unknown. toybox's `ln` has `-r` but not the long spelling `--relative`
 install scripts use to make a symlink inside `DESTDIR` that stays correct once the tree is moved.
 toybox's `printf` has no `%q`; a shell's own `printf` builtin has it, but a script that runs
 `exec printf` or `env printf` reaches the binary, and KOReader's build quotes every command it logs
-that way and stops on the error. The `coreutils` port installs GNU `expr`, `ln` and `printf` for
-these three reasons.
+that way and stops on the error. toybox's `date` takes `-u -d @EPOCH` but not `--utc` or `--date`,
+and its `--version` names toybox; OpenJDK's configure accepts only a `date` that calls itself GNU,
+BusyBox or uutils, otherwise uses the BSD `-j -f` form, and with neither working the build's source
+date comes out empty and `jar --date` stops. That check also matches `--version` with
+`grep "GNU\|BusyBox\|uutils"`, and toybox's `grep` has no `\|` alternation in a basic regular
+expression, so the `openjdk` port patches it to `grep -E`; a `grep` pattern with `\|` matches
+nothing under toybox and reports no error. The `coreutils` port installs GNU `expr`, `ln`,
+`printf` and `date` for these four reasons.
 
 Each name added there replaces a toybox applet with a GNU program on every installed system,
 while KDOS keeps toybox as its base userland. Prefer a build flag; add a name to
