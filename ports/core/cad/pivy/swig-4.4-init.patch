@@ -1,0 +1,14 @@
+--- a/interfaces/soqt.i
++++ b/interfaces/soqt.i
+@@ -52,7 +52,11 @@
+ %init %{
+ #if PY_MAJOR_VERSION >= 3
+ if (init_file_emulator() < 0) {
++  #if (SWIG_VERSION < 0x040400)
+     return NULL;
++  #else
++    return -1;
++  #endif
+ }
+ #endif
+ %}
