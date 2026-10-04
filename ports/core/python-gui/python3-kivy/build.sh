@@ -18,6 +18,15 @@
 # which on a read-only system directory ends the program.
 patch -p1 -i "$PORT_SRC/python314-ast-str.patch"
 
+# Cython 3.1 and later reject two Python 2 leftovers: the long builtin, which
+# weakproxy.pyx's __long__ and two isinstance checks in the graphics modules
+# still name, and RenderContext.apply's PY2 branch, which assigns a
+# dict_keys to a list. The patches are upstream's removals (5a1b27d7 and the
+# matching part of dcd8fb2a), rewritten for the release archive's CRLF line
+# endings.
+patch -p1 -i "$PORT_SRC/cython-long.patch"
+patch -p1 -i "$PORT_SRC/cython-dict-keys.patch"
+
 # Kivy draws everything itself with OpenGL in one SDL2 window. SDL2 here is
 # sdl2-compat over SDL3, built without an X11 video driver, so the window is a
 # Wayland surface; Kivy's own X11 and EGL window providers are not built, and neither is the GStreamer audio and video

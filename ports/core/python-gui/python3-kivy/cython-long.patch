@@ -1,0 +1,43 @@
+--- a/kivy/graphics/context_instructions.pyx
++++ b/kivy/graphics/context_instructions.pyx
+@@ -86,7 +86,7 @@
+ 
+ cdef tuple hsv_to_rgb(float h, float s, float v):
+     if s == 0.0: return v, v, v
+-    cdef long i = long(h * 6.0)
++    cdef long i = <long>(h * 6.0)
+     cdef float f = (h * <float>6.0) - i
+     cdef float p = v * (<float>1.0 - s)
+     cdef float q = v * (<float>1.0 - s * f)
+--- a/kivy/graphics/opengl.pyx
++++ b/kivy/graphics/opengl.pyx
+@@ -689,7 +689,7 @@
+     cdef void *ptr = NULL
+     if isinstance(indices, bytes):
+         ptr = <void *>(<char *>(<bytes>indices))
+-    elif isinstance(indices, (long, int)):
++    elif isinstance(indices, int):
+         ptr = <void *>(<unsigned int>indices)
+     else:
+         raise TypeError("Argument 'indices' has incorrect type (expected bytes or int).")
+@@ -1539,7 +1539,7 @@
+     cdef void *ptr = NULL
+     if isinstance(data, bytes):
+         ptr = <void *>(<char *>(<bytes>data))
+-    elif isinstance(data, (long, int)):
++    elif isinstance(data, int):
+         ptr = <void *>(<unsigned int>data)
+     else:
+         raise TypeError("Argument 'data' has incorrect type (expected bytes or int).")
+--- a/kivy/weakproxy.pyx
++++ b/kivy/weakproxy.pyx
+@@ -253,9 +253,6 @@
+     def __int__(self):
+         return int(self.__ref__())
+ 
+-    def __long__(self):
+-        return long(self.__ref__())
+-
+     def __float__(self):
+         return float(self.__ref__())
+ 
