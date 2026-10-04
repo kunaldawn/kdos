@@ -534,7 +534,9 @@ Check each of these against the recipe, whichever build system it uses:
   `ar` and `nm` load no such plugin here (`/usr/lib/bfd-plugins` holds none), so a build that
   links its programs against internal archives of LTO objects exports `AR=gcc-ar NM=gcc-nm
   RANLIB=gcc-ranlib`, or the archive index is empty and the link fails on every symbol in it;
-  flac does. Meson and CMake's own LTO switches choose the `gcc-` tools themselves. Keep the change
+  flac does, and so does Pillow, whose `_imaging` module links a static library of `Mode.c`.
+  A Python extension or any other shared object may leave symbols undefined, so there the link
+  succeeds and the failure comes at import, as `symbol not found`. Meson and CMake's own LTO switches choose the `gcc-` tools themselves. Keep the change
   only once the port builds byte-identically twice.
 - **The job count is `$KDOS_JOBS`**, never `nproc`: `scons -j"$KDOS_JOBS"`, not
   `scons -j"$(nproc)"`.

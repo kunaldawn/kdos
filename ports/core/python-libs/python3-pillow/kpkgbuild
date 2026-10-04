@@ -10,7 +10,7 @@
 
 name        = python3-pillow
 version     = 12.3.0
-release     = 1
+release     = 2
 source      = https://files.pythonhosted.org/packages/source/p/pillow/pillow-$version.tar.gz
 sha256      = 3b8182a766685eaa002637e28b4ec8d6b18819a0c71f579bf0dbaa5830297cce  python3-pillow-12.3.0.tar.gz
 description = The imaging library every python program that touches a picture uses

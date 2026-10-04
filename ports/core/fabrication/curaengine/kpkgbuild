@@ -10,7 +10,7 @@
 
 name        = curaengine
 version     = 5.13.0
-release     = 1
+release     = 2
 _index      = c4077fc3e719b436d1cdc2032bf3f851b6f089bb
 _scripta    = b96045cd9b531d97f42dec8c9a0ef52f773f6b90
 _stb        = 5736b15f7ea0ffb08dd38af21067c314d6a3aae9
