@@ -22,12 +22,20 @@ for p in 0001-Enable-building-on-musl 0002-temp-failure-retry \
 	patch -p1 -i "$PORT_SRC/$p.patch"
 done
 
+# gn is built by its own gen.py, which reads no CFLAGS or CXXFLAGS, and its
+# pool.h names int64_t without including <cstdint>, which GCC 16's headers do
+# not pull in on the way to their own.
+patch -p1 -i "$PORT_SRC/gn-cstdint.patch"
+
 # musl declares off64_t, stat64 and the other *64 names only under
 # _LARGEFILE64_SOURCE, and Chromium's third-party code still spells them.
 # The build pins __DATE__ and __TIME__ for reproducibility, which gcc warns
-# about on every file.
+# about on every file. GCC 16's C++ library headers do not include
+# <cstdint> on the way to their own, and Chromium names int64_t and the rest
+# in many headers that never include it; -include cstdint puts it in
+# front of every C++ file.
 export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE -Wno-builtin-macro-redefined -Wno-deprecated-declarations"
-export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE -Wno-builtin-macro-redefined -Wno-deprecated-declarations"
+export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE -Wno-builtin-macro-redefined -Wno-deprecated-declarations -include cstdint"
 
 # The Chromium build is a ninja run of its own inside Qt's; NINJAFLAGS is its
 # only job limit, and unbounded it takes every core at 2-3 GB each.
