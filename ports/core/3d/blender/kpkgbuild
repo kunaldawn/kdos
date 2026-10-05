@@ -10,7 +10,7 @@
 
 name        = blender
 version     = 5.2.2
-release     = 1
+release     = 2
 source      = https://download.blender.org/source/$name-$version.tar.xz
 sha256      = 56a3b1ec97479ff24dce65d2f09f8a1895005cece279b701fe4fcf74bce3f77e  blender-5.2.2.tar.xz
 description = Blender: 3D modelling, sculpting, animation, rendering (Cycles, EEVEE), compositing and video editing
