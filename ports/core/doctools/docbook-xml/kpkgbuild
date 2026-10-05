@@ -10,7 +10,7 @@
 
 name        = docbook-xml
 version     = 4.5
-release     = 1
+release     = 2
 source      = https://archive.docbook.org/xml/4.5/docbook-xml-4.5.zip
 source      = https://archive.docbook.org/xml/4.4/docbook-xml-4.4.zip
 source      = https://archive.docbook.org/xml/4.3/docbook-xml-4.3.zip

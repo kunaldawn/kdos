@@ -32,10 +32,16 @@ cd -
 install -v -d -m755 $PKG/etc/xml
 xmlcatalog --noout --create $PKG/etc/xml/docbook
 
+# Each DTD's public identifier maps straight to its file. libxml2 does not
+# pass the result of a public lookup through the rewriteSystem entries below,
+# so a public entry naming the http URL sends a document whose system
+# identifier is relative ("docbookx.dtd", as gnuradio's gr-trellis manual
+# writes it) to the network, and xmllint --nonet and xmlto then fail to
+# validate it.
 for vers in 4.1.2 4.2 4.3 4.4 4.5; do
 xmlcatalog --noout --add "public" \
     "-//OASIS//DTD DocBook XML V$vers//EN" \
-    "http://www.oasis-open.org/docbook/xml/$vers/docbookx.dtd" \
+    "file:///usr/share/xml/docbook/xml-dtd-$vers/docbookx.dtd" \
     $PKG/etc/xml/docbook
 xmlcatalog --noout --add "public" \
     "-//OASIS//DTD DocBook XML CALS Table Model V$vers//EN" \
