@@ -2151,7 +2151,7 @@ Multimedia frameworks, capture, and media inspection. 17 ports, under
 | `libmediainfo` | 26.05 | Media file inspection library — codec, profile, bit depth and every track | `41_system` |
 | `libzen` | 0.4.41 | ZenLib, the portability layer libmediainfo is written on | `41_system` |
 | `mediainfo` | 26.05 | The command line over libmediainfo | `41_system` |
-| `mlt` | 7.40.0 | MLT multimedia framework: the video editing engine under Kdenlive and Shotcut | `43_toolkits` |
+| `mlt` | 7.42.0 | MLT multimedia framework: the video editing engine under Kdenlive and Shotcut | `43_toolkits` |
 | `opentimelineio` | 0.18.1 | OpenTimelineIO: interchange format and C++ API for editorial timelines | `41_system` |
 | `orc` | 0.4.44 | Oil Runtime Compiler — JIT for the SIMD inner loops of GStreamer's plugins | `41_system` |
 | `totem-pl-parser` | 3.26.7 | Playlist parser library — m3u, pls, xspf and podcast feeds | `41_system` |
