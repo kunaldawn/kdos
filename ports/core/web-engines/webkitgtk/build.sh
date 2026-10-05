@@ -13,6 +13,12 @@
 # must be included after the WebKit headers in the X11 pointer-lock manager.
 patch -p1 -i "$PORT_SRC/x11-include-order.patch"
 
+# Release logging is off here (no journald, and LOG is off in a release
+# build), so WebDriver's log channels are not declared; its request handler
+# still tests LOG_CHANNEL(WebDriverClassic) outside any guard. The patch puts
+# that block under #if !RELEASE_LOG_DISABLED, as WebKit's main branch does.
+patch -p1 -i "$PORT_SRC/webdriver-release-log.patch"
+
 # Both windowing targets are built and GDK picks Wayland first at run time.
 # FreeType is built with brotli and decodes WOFF2 itself, so libwoff2 stays
 # unused. Gamepads need libmanette and speech synthesis needs Flite or Spiel;

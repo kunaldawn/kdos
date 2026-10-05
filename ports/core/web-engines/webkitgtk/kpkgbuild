@@ -10,7 +10,7 @@
 
 name        = webkitgtk
 version     = 2.54.0
-release     = 1
+release     = 2
 source      = https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
 sha256      = 846fd19ccedbae1dbfe904f26dbf2d68a800a33a50caf2ad5222c8dcb3f25682  webkitgtk-2.54.0.tar.xz
 description = WebKitGTK web engine for GTK 3: the webkit2gtk-4.1 and javascriptcoregtk-4.1 APIs over libsoup 3
