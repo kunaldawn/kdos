@@ -24,18 +24,17 @@ done
 
 # gn is built by its own gen.py, which reads no CFLAGS or CXXFLAGS, and its
 # pool.h names int64_t without including <cstdint>, which GCC 16's headers do
-# not pull in on the way to their own.
+# not pull in on the way to their own. The sandbox's proc_util.cc sizes a
+# buffer with PATH_MAX and includes no header that declares it on musl.
 patch -p1 -i "$PORT_SRC/gn-cstdint.patch"
+patch -p1 -i "$PORT_SRC/sandbox-path-max.patch"
 
 # musl declares off64_t, stat64 and the other *64 names only under
 # _LARGEFILE64_SOURCE, and Chromium's third-party code still spells them.
 # The build pins __DATE__ and __TIME__ for reproducibility, which gcc warns
-# about on every file. GCC 16's C++ library headers do not include
-# <cstdint> on the way to their own, and Chromium names int64_t and the rest
-# in many headers that never include it; -include cstdint puts it in
-# front of every C++ file.
+# about on every file.
 export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE -Wno-builtin-macro-redefined -Wno-deprecated-declarations"
-export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE -Wno-builtin-macro-redefined -Wno-deprecated-declarations -include cstdint"
+export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE -Wno-builtin-macro-redefined -Wno-deprecated-declarations"
 
 # The Chromium build is a ninja run of its own inside Qt's; NINJAFLAGS is its
 # only job limit, and unbounded it takes every core at 2-3 GB each.
