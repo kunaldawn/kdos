@@ -1286,6 +1286,7 @@
 87cf0da91af0531357cd61b8e1906b907edd2c9ef82f9ae74c277e1893d0f98c sources-2 embedded--minicom-2.11.1.tar.bz2 minicom/minicom-2.11.1.tar.bz2
 87d3317882fdae9cb4dcfe57a96a378d0132ffc02c731315bf128b19ddcf7aac sources-3 image-libs--exiftool-13.59.tar.gz exiftool/exiftool-13.59.tar.gz
 87f6029d2f6de8aa023654240a03ada90e876ce9a4676e258dd01ea4c26ffd67 sources-1 devlibs--re2-2025.11.05.tar.gz re2/re2-2025.11.05.tar.gz
+8800e343f43aaa885bd5d9d23553030fa220aa3e2f0c94d9fd6a936d41638cdd sources-3 media-frameworks--mlt-7.42.0.tar.gz mlt/mlt-7.42.0.tar.gz
 8809a4df6fe08279b39a8890669506ed3158e0617855ac9aff098fcbe772ae4c sources-3 python--python3-pyproject-metadata-0.12.1.tar.gz python3-pyproject-metadata/python3-pyproject-metadata-0.12.1.tar.gz
 881628c2465fe28063b8444350e78167e7a9ed047def66b9ef3cfdabd4bdc1d6 sources-2 emulators--amiberry-8.3.0.tar.gz amiberry/amiberry-8.3.0.tar.gz
 882b1c7636052fc9a318caa20292b35616b588824b70e7053018262b29b1409a sources-3 printing--libpaper-2.3.0.tar.gz libpaper/libpaper-2.3.0.tar.gz
