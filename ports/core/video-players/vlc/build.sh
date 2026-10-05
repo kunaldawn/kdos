@@ -31,6 +31,10 @@ export LUA_CFLAGS="$(pkg-config --cflags lua5.4)"
 export LUA_LIBS="$(pkg-config --libs lua5.4)"
 export LUAC=luac5.4
 
+# configure looks for the compiler of its build-time helpers by the POSIX names
+# c11 and c99, which nothing here installs, and otherwise asks for BUILDCC.
+export BUILDCC="gcc -std=gnu11"
+
 # EVERY MODULE WITH AN OUTSIDE LIBRARY IS NAMED, --enable or --disable, so a
 # missing port fails configure instead of shipping a VLC that quietly cannot
 # open a format. Off, and why:
