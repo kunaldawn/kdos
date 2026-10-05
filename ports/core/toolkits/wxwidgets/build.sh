@@ -30,9 +30,9 @@ patch -p1 -i "$PORT_SRC/no-langinfo-h.patch"
 # PipeWire; wx's other Unix sound backend is OSS, which has no device here),
 # wxSecretStore is libsecret, text-control spell checking is gspell, CHM help
 # is libmspack. The third-party image, XML, regex and zlib code wx bundles is
-# replaced by the system libraries.
-mkdir build && cd build
-cmake .. -G Ninja \
+# replaced by the system libraries. The tree already has a build/ directory,
+# holding wx's own build systems, so the CMake build directory is _build.
+cmake -S . -B _build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
@@ -68,9 +68,8 @@ cmake .. -G Ninja \
 	-DwxUSE_WEBREQUEST_CURL=ON \
 	-DwxUSE_DETECT_SM=OFF \
 	-DwxUSE_LIBGNOMEVFS=OFF
-ninja
-DESTDIR=$PKG ninja install
-cd ..
+ninja -C _build
+DESTDIR=$PKG ninja -C _build install
 
 install -Dm644 wxwin.m4 "$PKG/usr/share/aclocal/wxwin.m4"
 
