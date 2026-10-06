@@ -21,11 +21,14 @@
 # compiler-rt's /usr/lib/clang/23/lib/linux layout; it also drops three clang
 # flags clang 23 does not know and turns off crt-static, which rustc's musl
 # targets default to. unbundle-official-build lets the shim headers of the
-# system libraries compile in an official build.
+# system libraries compile in an official build. protobuf-pure-python pins
+# the bundled Python protobuf, which the build's generators import, to its
+# pure-Python implementation: left to probe, it loads the system protobuf's
+# compiled module, a different release that fails against this tree's.
 for p in 0001-hotfix-ignore-a-new-warning-in-rust-1.89 kdos-toolchain \
 	disable-dns_config_service musl-sandbox musl-tid-caching no-execinfo \
 	no-mallinfo no-res-ninit-nclose no-sandbox-settls temp-failure-retry \
-	rust-cbor unbundle-official-build gnrt-no-tls; do
+	rust-cbor unbundle-official-build gnrt-no-tls protobuf-pure-python; do
 	patch -p1 -i "$PORT_SRC/$p.patch"
 done
 

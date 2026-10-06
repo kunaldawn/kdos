@@ -10,7 +10,7 @@
 
 name        = chromium
 version     = 154.0.8037.57
-release     = 2
+release     = 3
 _copium     = 154.2
 _rollup     = 4.60.4
 source      = https://github.com/chromium-linux-tarballs/chromium-tarballs/releases/download/$version/$name-$version-linux.tar.xz
