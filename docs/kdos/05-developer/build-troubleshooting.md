@@ -722,6 +722,12 @@ preflight fails one that does not:
 export RUSTFLAGS="-C target-feature=-crt-static"
 ```
 
+`RUSTFLAGS` reaches build scripts only when cargo builds for the host. Given `--target`, as
+Firefox's mach always gives it, cargo passes `RUSTFLAGS` to the target's crates alone, and a build
+script that runs bindgen is linked statically again. Such a recipe also sets `RUSTC_WRAPPER` to a
+script that runs rustc with the same flag appended: cargo runs every rustc call, host and target,
+through it. `firefox-esr` is the recipe that does.
+
 A recipe whose crates run bindgen also points it at `libclang`, which saves it a search:
 
 ```sh
@@ -741,6 +747,11 @@ and `llvm21` ports pass gcc's own triple, `$(cc -dumpmachine)`, as `LLVM_HOST_TR
 `LLVM_DEFAULT_TARGET_TRIPLE`. Clang and libclang compile the default in from LLVM's
 `llvm-config.h`, so a changed LLVM triple needs `clang` rebuilt as well. A stale clang shows as
 the wrong answer from `clang -print-target-triple` after `llvm` is fixed.
+
+The same error comes from a clang given another triple explicitly. The `cc` crate passes Rust's
+`--target=x86_64-unknown-linux-musl` to clang, and clang looks for gcc under that triple instead.
+`--gcc-triple=$(gcc -dumpmachine)` in `CFLAGS`, `CXXFLAGS` and `LDFLAGS` names gcc's own; `firefox-esr`,
+whose Rust crates compile C++ with clang, sets it.
 
 ### A Rust release older than the system LLVM
 
@@ -892,6 +903,16 @@ reads (`struct termios2`, from `<asm/termbits.h>`). glibc's `<sys/ioctl.h>` incl
 the kernel. Add the kernel header rather than turning the feature off:
 `CPPFLAGS="$CPPFLAGS -include asm/ioctls.h"` on the `configure` line. The `libmodbus` port does
 this, and keeps the serial rates only `termios2` can set.
+
+### A private library loaded by full path, then not found
+
+The build succeeds, and the program fails at start with `Error loading shared library libfoo.so:
+No such file or directory (needed by …)`. The missing library sits beside the one that names it, in
+a private directory such as `/usr/lib/firefox-esr`. The program's launcher loads the libraries
+there by full path, and glibc then takes the copy already loaded for a bare-name `DT_NEEDED`. musl
+looks the name up again on its search path and does not find it. Link with a run path into the
+directory, `LDFLAGS="$LDFLAGS -Wl,-rpath,<directory>"`, and check `readelf -d` shows `RUNPATH` on
+the libraries. The `firefox-esr` port does this.
 
 ### The wide curses API
 

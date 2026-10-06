@@ -11,7 +11,7 @@
 
 name        = firefox-esr
 version     = 153.3.0
-release     = 1
+release     = 2
 series      = 153
 _ver        = ${version}esr
 source      = $name-$version.tar.xz::https://archive.mozilla.org/pub/firefox/releases/$_ver/source/firefox-$_ver.source.tar.xz
