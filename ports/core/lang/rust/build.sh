@@ -72,3 +72,18 @@ export LIBSSH2_SYS_USE_PKG_CONFIG=1
 
 python3 ./x.py build --jobs "$KDOS_JOBS"
 DESTDIR=$PKG python3 ./x.py install -v --jobs "$KDOS_JOBS"
+
+# rustc-dev is the compiler's own crates (rustc_driver, rustc_middle and the
+# rest) as .rmeta files in lib/rustlib/$_triplet/lib, what a rustc_private tool
+# links against; crubit's cc_bindings_from_rs, which Chromium needs, is one.
+# x.py install has no step for it, so it comes from its dist tarball. The
+# tarball carries its own copies of the compiler's shared libraries; they are
+# made links to the ones /usr/lib already holds, so the two cannot differ.
+python3 ./x.py dist rustc-dev --jobs "$KDOS_JOBS"
+mkdir "$SRC/rustc-dev"
+tar -xf build/dist/rustc-dev-$version-$_triplet.tar.xz -C "$SRC/rustc-dev" --strip-components=1
+"$SRC/rustc-dev/install.sh" --prefix=/usr --destdir="$PKG" --disable-ldconfig
+for f in "$PKG"/usr/lib/rustlib/$_triplet/lib/*.so; do
+	[ -e "$PKG/usr/lib/${f##*/}" ] || continue
+	ln -sf "../../../${f##*/}" "$f"
+done

@@ -10,7 +10,7 @@
 
 name        = rust
 version     = 1.98.1
-release     = 1
+release     = 2
 
 _date       = 2026-07-16
 _rust       = 1.97.1

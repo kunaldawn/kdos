@@ -67,7 +67,7 @@ There are five port repositories, all in the same format, searched in this order
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 2,000 | Upstream software, filed on 102 shelves |
+| `/ports/core` | `ports/core/` | 2,002 | Upstream software, filed on 102 shelves |
 | `/kdos/src/system` | `src/system/` | 5 | KDOS's own `kdos` command and tools, the packer, the box runtime and its init, and the installer |
 | `/kdos/src/art` | `src/art/` | 6 | KDOS's own theme generator, icon, cursor and GTK themes, boot splash and demo |
 | `/kdos/src/desktop` | `src/desktop/` | 8 | KDOS's own compositor, panel, terminal, lock screen, resource monitor, box socket, recorder and portal |
@@ -169,7 +169,7 @@ as one list. A phase has one or the other, never both.
 | `20_selfhost` | `packages.txt` | 8 | 14 |
 | `30_foundation` | `packages.txt` | 125 | 115 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
-| `40_lang` | `packages.d/`, 14 files | 195 | 167 |
+| `40_lang` | `packages.d/`, 14 files | 197 | 169 |
 | `41_system` | `packages.d/`, 93 files | 966 | 966 |
 | `42_graphics` | `packages.d/`, 54 files | 186 | 186 |
 | `43_toolkits` | `packages.d/`, 46 files | 243 | 243 |
@@ -179,7 +179,7 @@ as one list. A phase has one or the other, never both.
 
 "Names" counts the port names a list writes; "Installs" counts the packages the phase installs
 that no earlier phase did. Between them the lists name 2,013 distinct ports and install 2,017:
-1,995 of the 2,000 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
+1,997 of the 2,002 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
 the bootstrap builds by name. The 5 `ports/core` recipes nothing reaches (`helix`,
 `icon-naming-utils`, `musl-locales`, `perl-xml-simple` and `setconf`) are built only on request.
 

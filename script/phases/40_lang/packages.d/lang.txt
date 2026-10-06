@@ -29,5 +29,6 @@ luajit
 yarn
 
 esbuild
+typescript-go
 ocaml
 ocaml-facile

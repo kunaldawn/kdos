@@ -8,12 +8,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = gn
-version     = 0.2540
+name        = typescript-go
+version     = 7.0.2
 release     = 1
-_commit     = 150a9d6ba0aa7f407aa4feeabc5f03ce9aa7e04b
-source      = $name-$version.tar.zst
-sha256      = 71f6ae18d05cdbb05c236a0481c1fc40700b6478aed169206ba9528a9cb1cead  gn-0.2540.tar.zst
-description = Chromium's meta-build system, which writes ninja files from BUILD.gn
-homepage    = https://gn.googlesource.com/gn
-depends     = python3 ninja
+source      = $name-$version.tar.gz::https://github.com/microsoft/typescript-go/archive/refs/tags/typescript/v$version.tar.gz
+sha256      = 25cca8ec9d89e4ceec5181a677ded2c6d690fa18b81e1277846303973eb71fcf  typescript-go-7.0.2.tar.gz
+sha256      = 06703f9d3e8d8daa2cd9260e3beac5908423fcc546bb0423f7e7bf8a40eef359  typescript-go-vendor-7.0.2.tar.xz
+description = TypeScript 7, the TypeScript compiler written in Go
+homepage    = https://github.com/microsoft/typescript-go
+depends     = go
+vendoring   = go

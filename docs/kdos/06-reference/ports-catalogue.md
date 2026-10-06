@@ -101,7 +101,7 @@ leaving out any an earlier phase installed.
 | `20_selfhost` | Self-Hosting Bootstrap | `packages.txt` | 8 | 14 |
 | `30_foundation` | Build Foundation | `packages.txt` | 126 | 116 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
-| `40_lang` | Languages | `packages.d/`, 14 files | 195 | 167 |
+| `40_lang` | Languages | `packages.d/`, 14 files | 197 | 169 |
 | `41_system` | System | `packages.d/`, 93 files | 966 | 966 |
 | `42_graphics` | Graphics Stack | `packages.d/`, 54 files | 186 | 186 |
 | `43_toolkits` | Toolkits | `packages.d/`, 46 files | 243 | 243 |
@@ -109,10 +109,10 @@ leaving out any an earlier phase installed.
 | `50_desktop` | Desktop | `packages.txt` | 22 | 22 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,050 | 2,018 |
+| Total | | | 2,052 | 2,020 |
 
-The lists hold 2,050 lines naming 2,014 distinct ports; 34 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,018 ports. With `kdos-installer`, which
+The lists hold 2,052 lines naming 2,016 distinct ports; 34 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,020 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that leaves 5 recipes that no phase installs.
 
 ### Built by script
@@ -157,9 +157,9 @@ list or by script.
 | [`base-libs`](#base-libs) | 16 | 16 | 0 |
 | [`auth`](#auth) | 13 | 13 | 0 |
 | [`boot`](#boot) | 14 | 14 | 0 |
-| [`toolchain`](#toolchain) | 36 | 35 | 1 |
+| [`toolchain`](#toolchain) | 37 | 36 | 1 |
 | [`buildtools`](#buildtools) | 20 | 19 | 1 |
-| [`lang`](#lang) | 26 | 26 | 0 |
+| [`lang`](#lang) | 27 | 27 | 0 |
 | [`devtools`](#devtools) | 33 | 33 | 0 |
 | [`vcs`](#vcs) | 10 | 10 | 0 |
 | [`editors`](#editors) | 12 | 11 | 1 |
@@ -259,7 +259,7 @@ list or by script.
 | [`src/art`](#srcart) | 6 | 6 | 0 |
 | [`src/desktop`](#srcdesktop) | 8 | 8 | 0 |
 | [`src/daemons`](#srcdaemons) | 5 | 5 | 0 |
-| Total | 2,024 | 2,019 | 5 |
+| Total | 2,026 | 2,021 | 5 |
 
 ## The shelves
 
@@ -368,7 +368,7 @@ tooling. 14 ports, under `ports/core/boot/`.
 
 ### toolchain
 
-The native compilers, the linker, the C library, and the LLVM family. 36 ports, under
+The native compilers, the linker, the C library, and the LLVM family. 37 ports, under
 `ports/core/toolchain/`.
 
 | Port | Version | Description | Phase |
@@ -382,6 +382,7 @@ The native compilers, the linker, the C library, and the LLVM family. 36 ports, 
 | `clang` | 23.1.2 | The C/C++ compiler, plus clangd, clang-tidy and clang-format | `31_compilers` |
 | `clang21` | 21.1.8 | Clang 21 libraries and compiler, installed under /usr/lib/llvm21 for zig | `31_compilers` |
 | `compiler-rt` | 23.1.2 | clang's runtime libraries — builtins, the profile runtime and UndefinedBehaviorSanitizer | `31_compilers` |
+| `crubit` | 0.20260811 | Crubit's cc_bindings_from_rs, which writes C++ headers for calling Rust crates, and its C++ support library | `40_lang` |
 | `elfutils` | 0.196 | utilities and libraries for handling ELF files | `30_foundation`, named again by `40_lang` |
 | `flex` | 2.6.4 | Lexical analyser generator | `30_foundation`, named again by `40_lang` |
 | `gcc` | 16.2.0 | The GNU compiler collection | `20_selfhost`, named again by `30_foundation` |
@@ -425,7 +426,7 @@ Build systems and build helpers. 20 ports, under `ports/core/buildtools/`.
 | `ccache-manual` | 4.14 | The ccache manual page | `31_compilers` |
 | `cmake` | 4.4.3 | Cross-platform build-system generator | `30_foundation` |
 | `corrosion` | 0.6.1 | The CMake bridge that builds a cargo crate as a CMake target | `40_lang` |
-| `gn` | 0.2480 | Chromium's meta-build system, which writes ninja files from BUILD.gn | `40_lang` |
+| `gn` | 0.2540 | Chromium's meta-build system, which writes ninja files from BUILD.gn | `40_lang` |
 | `intltool` | 0.51.0 | An internationalization tool used for extracting translatable strings from source files | `30_foundation`, named again by `40_lang` |
 | `itstool` | 2.0.7 | Translates XML documents with PO files | `30_foundation` |
 | `libtool` | 2.6.2 | The GNU generic library support script | `30_foundation`, named again by `40_lang` |
@@ -439,7 +440,7 @@ Build systems and build helpers. 20 ports, under `ports/core/buildtools/`.
 
 ### lang
 
-Language implementations, plus the modules of any language that has no module shelf of its own. 26
+Language implementations, plus the modules of any language that has no module shelf of its own. 27
 ports, under `ports/core/lang/`.
 
 | Port | Version | Description | Phase |
@@ -467,6 +468,7 @@ ports, under `ports/core/lang/`.
 | `rust` | 1.98.1 | The Rust compiler, with cargo, clippy, rustdoc and rustfmt | `31_compilers` |
 | `tcl` | 9.0.4 | The Tcl scripting language — the interpreter yosys and weechat embed | `41_system` |
 | `tk` | 9.0.4 | Tk, the GUI toolkit for Tcl — wish and libtcl9tk, drawn through X11 under Xwayland | `42_graphics` |
+| `typescript-go` | 7.0.2 | TypeScript 7, the TypeScript compiler written in Go | `40_lang` |
 | `vala` | 0.56.19 | Vala compiler and vapigen — C#-like language compiled to GObject C | `41_system` |
 | `yarn` | 4.18.1 | Yarn — the JavaScript package manager, the Berry line | `40_lang` |
 | `zig` | 0.16.0 | Zig — general-purpose programming language and toolchain | `31_compilers` |

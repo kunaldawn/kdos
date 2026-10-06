@@ -227,7 +227,7 @@ description = Compression library implementing the deflate compression method
 
 The package manager, `kpkg`, is written for KDOS in C. It builds a port into a compressed tar
 archive, records every path the package owns, removes files an upgrade drops, and resolves
-dependencies from the `depends` lines. There are 2,000 recipes under `ports/core` for upstream
+dependencies from the `depends` lines. There are 2,002 recipes under `ports/core` for upstream
 software and 24 under `src/` for KDOS's own, 2,024 in all, and all of them use the same format.
 The upstream recipes are filed on 102 subject shelves, `ports/core/<shelf>/<name>/`, much as T2
 SDE files its packages by repository, while a port is still named by its bare name everywhere.

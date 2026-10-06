@@ -8,9 +8,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The snapshot is Alpine's, because gitiles serves no byte-stable archive. It
-# carries out/last_commit_position.h already generated; gen.py would otherwise
-# build that header from `git describe`, and there is no repository here.
+# gitiles serves no byte-stable archive, so the source is a snapshot made from
+# the commit Chromium's DEPS pins as gn_version: `git archive --prefix=gn/` of
+# that commit, plus out/last_commit_position.h holding the position `git
+# describe HEAD --abbrev=12 --match initial-commit` reports, which is the
+# version's minor number. gen.py would otherwise build that header from git,
+# and there is no repository here. A gn older than the pin rejects variables
+# Chromium's BUILD files use.
 tar -xf "$PORT_SRC/$name-$version.tar.zst" --strip-components=1
 
 # gen.py picks clang++ on Linux unless CXX says otherwise, and adds -Werror

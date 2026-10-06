@@ -432,7 +432,7 @@ See [Writing ports](../05-developer/writing-ports.md) for the format as built.
 
 ## Ports are shelved by subject; identity is the bare name
 
-The 2,000 upstream ports are filed on 102 **shelves**, one directory per subject:
+The 2,002 upstream ports are filed on 102 **shelves**, one directory per subject:
 `ports/core/<shelf>/<name>/`, such as `ports/core/wl/wlroots/` or `ports/core/games-board/kpat/`.
 The shelf list is closed. It is the file `ports/shelves`, one line per shelf giving its id, the
 source-archive volume that keeps its files, and what belongs on it, and a port may sit only on a
