@@ -11,7 +11,7 @@
 
 name        = openscad
 version     = 2026.09.27
-release     = 1
+release     = 2
 _commit     = cc19000e0f9c9ea761fdefd826e4811c8d55c738
 _sancommit  = bcb1fc68616e9645ca5acea2992412606373ab04
 _micommit   = 30b2d9d89099bee08e9f67a1ffb3e12e7ba45227
