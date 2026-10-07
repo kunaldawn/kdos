@@ -102,17 +102,17 @@ leaving out any an earlier phase installed.
 | `30_foundation` | Build Foundation | `packages.txt` | 126 | 116 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
 | `40_lang` | Languages | `packages.d/`, 14 files | 197 | 169 |
-| `41_system` | System | `packages.d/`, 93 files | 966 | 966 |
+| `41_system` | System | `packages.d/`, 93 files | 967 | 967 |
 | `42_graphics` | Graphics Stack | `packages.d/`, 54 files | 186 | 186 |
 | `43_toolkits` | Toolkits | `packages.d/`, 46 files | 243 | 243 |
 | `44_apps` | Applications | `packages.d/`, 55 files | 280 | 280 |
 | `50_desktop` | Desktop | `packages.txt` | 22 | 22 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,052 | 2,020 |
+| Total | | | 2,053 | 2,021 |
 
-The lists hold 2,052 lines naming 2,016 distinct ports; 34 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,020 ports. With `kdos-installer`, which
+The lists hold 2,053 lines naming 2,017 distinct ports; 34 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,021 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that leaves 5 recipes that no phase installs.
 
 ### Built by script
@@ -167,7 +167,7 @@ list or by script.
 | [`devlibs`](#devlibs) | 34 | 34 | 0 |
 | [`formats`](#formats) | 34 | 34 | 0 |
 | [`database`](#database) | 15 | 15 | 0 |
-| [`archiver`](#archiver) | 28 | 28 | 0 |
+| [`archiver`](#archiver) | 29 | 29 | 0 |
 | [`shells`](#shells) | 10 | 10 | 0 |
 | [`cli`](#cli) | 19 | 19 | 0 |
 | [`files`](#files) | 11 | 11 | 0 |
@@ -259,7 +259,7 @@ list or by script.
 | [`src/art`](#srcart) | 6 | 6 | 0 |
 | [`src/desktop`](#srcdesktop) | 8 | 8 | 0 |
 | [`src/daemons`](#srcdaemons) | 5 | 5 | 0 |
-| Total | 2,026 | 2,021 | 5 |
+| Total | 2,027 | 2,022 | 5 |
 
 ## The shelves
 
@@ -692,7 +692,7 @@ ports, under `ports/core/database/`.
 
 ### archiver
 
-Compression libraries and archive tools. 28 ports, under `ports/core/archiver/`.
+Compression libraries and archive tools. 29 ports, under `ports/core/archiver/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -717,6 +717,7 @@ Compression libraries and archive tools. 28 ports, under `ports/core/archiver/`.
 | `par2cmdline-turbo` | 1.5.0 | PAR2 recovery files with SIMD-accelerated Reed-Solomon coding | `41_system` |
 | `unshield` | 1.6.2 | Extract InstallShield cabinet (.cab) archives | `41_system` |
 | `unzip` | 6.0 | ZIP extraction utilities | `41_system` |
+| `wimlib` | 1.14.5 | Library and wimlib-imagex tool for Windows Imaging (WIM) archives | `41_system` |
 | `xz` | 5.8.4 | XZ compression utilities | `30_foundation`, named again by `40_lang` |
 | `zip` | 3.0 | Info-ZIP archive creation utilities | `41_system` |
 | `zlib` | 1.3.2 | Compression library implementing the deflate compression method | `20_selfhost`, named again by `30_foundation` |

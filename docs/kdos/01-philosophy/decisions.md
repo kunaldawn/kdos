@@ -432,7 +432,7 @@ See [Writing ports](../05-developer/writing-ports.md) for the format as built.
 
 ## Ports are shelved by subject; identity is the bare name
 
-The 2,002 upstream ports are filed on 102 **shelves**, one directory per subject:
+The 2,003 upstream ports are filed on 102 **shelves**, one directory per subject:
 `ports/core/<shelf>/<name>/`, such as `ports/core/wl/wlroots/` or `ports/core/games-board/kpat/`.
 The shelf list is closed. It is the file `ports/shelves`, one line per shelf giving its id, the
 source-archive volume that keeps its files, and what belongs on it, and a port may sit only on a
@@ -564,7 +564,7 @@ split puts a restore point after `30_foundation`, about the first hour of native
 of the compilers that take most of the hours before `40_lang`, and another after each layer of the
 userland.
 
-`41_system`, 966 ports, is one phase because the graph does not support a finer cut. Any split
+`41_system`, 967 ports, is one phase because the graph does not support a finer cut. Any split
 of it by subject pushes a hundred or more ports past their subject's phase, because a system
 library filed on a hardware shelf sits under `openssh`, `gnutls` and `cups`; a split by dependency
 depth is valid but puts `zsh` beside `libpng`. Its `packages.d/` gives it its grouping instead.

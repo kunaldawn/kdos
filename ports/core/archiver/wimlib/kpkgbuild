@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wimlib
+version     = 1.14.5
+release     = 1
+source      = https://wimlib.net/downloads/$name-$version.tar.gz
+sha256      = 84221a3abd5b91228f15f8e6065c335a336237b5738197b75bf419eea561a194  wimlib-1.14.5.tar.gz
+description = Library and wimlib-imagex tool for Windows Imaging (WIM) archives
+homepage    = https://wimlib.net/
+depends     = pkgconf fuse ntfs-3g

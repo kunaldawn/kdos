@@ -59,7 +59,7 @@ own tools.
 Six terms recur throughout:
 
 - A **port** is the recipe for one piece of software: a `kpkgbuild` file of metadata and a
-  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 2,002 of them;
+  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, 2,003 of them;
   KDOS's own programs have theirs under four areas of `src/`: `src/system/`, `src/art/`,
   `src/desktop/` and `src/daemons/`.
 - A **shelf** is the subject directory an upstream port is filed in, `ports/core/<shelf>/<port>/`:
@@ -469,7 +469,7 @@ dependencies reach. Every port's dependencies are in its own phase or an earlier
 | Phase | Installs | Holds | Largest shelves |
 |---|---|---|---|
 | `40_lang` | 169 | Language modules and developer tools whose dependencies need nothing past the compilers: the `python3-*` and `perl-*` modules, build, documentation and debugging tools, version control | `python-libs`, `devtools`, `python`, `python-net` |
-| `41_system` | 966 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries | `image-libs`, `devlibs`, `formats`, `network`, `audio-codecs` |
+| `41_system` | 967 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries | `image-libs`, `devlibs`, `formats`, `network`, `audio-codecs` |
 | `42_graphics` | 186 | What reaches Wayland, the X11 libraries, Mesa, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit: the graphics and media stacks, Xwayland, `foot` | `x11`, `gpu`, `wl`, `game-libs`, `graphics-libs` |
 | `43_toolkits` | 243 | GTK, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and WebKitGTK, and the libraries and services built on them | `kf6`, `qt6`, `qt-extra`, `gtk`, `qt5` |
 | `44_apps` | 280 | The natively ported graphical applications | `graphics`, `emulators`, `games-board`, `studio`, `hamradio` |
