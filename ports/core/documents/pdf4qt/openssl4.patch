@@ -1,0 +1,128 @@
+--- a/Pdf4QtLibCore/sources/pdfcertificatemanager.cpp
++++ b/Pdf4QtLibCore/sources/pdfcertificatemanager.cpp
+@@ -85,7 +85,8 @@
+             X509_gmtime_adj(X509_getm_notAfter(certificate.get()), info.validityInSeconds);
+ 
+             // Set name
+-            X509_NAME* name = X509_get_subject_name(certificate.get());
++            openssl_ptr<X509_NAME> subjectName(X509_NAME_new(), &X509_NAME_free);
++            X509_NAME* name = subjectName.get();
+ 
+             auto addString = [name](const char* identifier, QString string)
+             {
+@@ -111,6 +112,7 @@
+             X509_add_ext(certificate.get(), extension, -1);
+             X509_EXTENSION_free(extension);
+ 
++            X509_set_subject_name(certificate.get(), name);
+             X509_set_issuer_name(certificate.get(), name);
+ 
+             // Set public key
+--- a/Pdf4QtLibCore/sources/pdfcertificatestore.cpp
++++ b/Pdf4QtLibCore/sources/pdfcertificatestore.cpp
+@@ -188,7 +188,7 @@
+ {
+     PDFCertificateInfo info;
+ 
+-    auto getStringFromASN1_STRING = [](ASN1_STRING* string) -> QString
++    auto getStringFromASN1_STRING = [](const ASN1_STRING* string) -> QString
+     {
+         QString result;
+ 
+@@ -207,12 +207,12 @@
+         return result;
+     };
+ 
+-    auto getStringFromX509Name = [&getStringFromASN1_STRING](X509_NAME* name, int nid) -> QString
++    auto getStringFromX509Name = [&getStringFromASN1_STRING](const X509_NAME* name, int nid) -> QString
+     {
+         QString result;
+ 
+         const int stringLocation = X509_NAME_get_index_by_NID(name, nid, -1);
+-        X509_NAME_ENTRY* entry = X509_NAME_get_entry(name, stringLocation);
++        const X509_NAME_ENTRY* entry = X509_NAME_get_entry(name, stringLocation);
+         return getStringFromASN1_STRING(X509_NAME_ENTRY_get_data(entry));
+     };
+ 
+@@ -239,7 +239,7 @@
+         return result;
+     };
+ 
+-    if (X509_NAME* subjectName = X509_get_subject_name(certificate))
++    if (const X509_NAME* subjectName = X509_get_subject_name(certificate))
+     {
+         // List of these properties are in RFC 5280, section 4.1.2.4, these attributes
+         // are standard and all implementations must be prepared to process them.
+@@ -291,7 +291,7 @@
+         info.setNotValidBefore(getDateTimeFromASN(notBeforeTime));
+         info.setNotValidAfter(getDateTimeFromASN(notAfterTime));
+ 
+-        X509_PUBKEY* publicKey = X509_get_X509_PUBKEY(certificate);
++        const X509_PUBKEY* publicKey = X509_get_X509_PUBKEY(certificate);
+         EVP_PKEY* evpKey = X509_PUBKEY_get(publicKey);
+         const int keyType = EVP_PKEY_type(EVP_PKEY_base_id(evpKey));
+ 
+--- a/Pdf4QtLibCore/sources/pdfsignaturehandler.cpp
++++ b/Pdf4QtLibCore/sources/pdfsignaturehandler.cpp
+@@ -1303,7 +1303,7 @@
+ 
+     int size = RSA_size(rsa);
+     std::vector<unsigned char> decryptedBuffer(size, 0);
+-    const int signatureSize = RSA_public_decrypt(encryptedString->length, encryptedString->data, decryptedBuffer.data(), rsa, RSA_PKCS1_PADDING);
++    const int signatureSize = RSA_public_decrypt(ASN1_STRING_length(encryptedString), ASN1_STRING_get0_data(encryptedString), decryptedBuffer.data(), rsa, RSA_PKCS1_PADDING);
+ 
+     if (signatureSize <= 0)
+     {
+@@ -1502,7 +1502,7 @@
+             OBJ_obj2txt(buffer.data(), int(buffer.size() - 1), OBJ_nid2obj(algorithmNID), 0);
+             result.addHashAlgorithm(QString::fromLatin1(buffer.data()));
+ 
+-            const int verifyValue = RSA_verify(algorithmNID, digest, digestLength, encryptedString->data, encryptedString->length, rsa.get());
++            const int verifyValue = RSA_verify(algorithmNID, digest, digestLength, ASN1_STRING_get0_data(encryptedString.get()), ASN1_STRING_length(encryptedString.get()), rsa.get());
+ 
+             if (verifyValue == 0)
+             {
+@@ -1564,16 +1564,16 @@
+     return PDFCertificateInfo::getCertificateInfo(certificate);
+ }
+ 
+-QString PDFPublicKeySignatureHandler::getStringFromX509Name(X509_NAME* name, int nid)
++QString PDFPublicKeySignatureHandler::getStringFromX509Name(const X509_NAME* name, int nid)
+ {
+     QString result;
+ 
+     const int stringLocation = X509_NAME_get_index_by_NID(name, nid, -1);
+-    X509_NAME_ENTRY* entry = X509_NAME_get_entry(name, stringLocation);
++    const X509_NAME_ENTRY* entry = X509_NAME_get_entry(name, stringLocation);
+     return getStringFromASN1_STRING(X509_NAME_ENTRY_get_data(entry));
+ }
+ 
+-QString pdf::PDFPublicKeySignatureHandler::getStringFromASN1_STRING(ASN1_STRING* string)
++QString pdf::PDFPublicKeySignatureHandler::getStringFromASN1_STRING(const ASN1_STRING* string)
+ {
+     QString result;
+ 
+@@ -1652,7 +1652,7 @@
+ 
+     // Jakub Melka: We will get signed attribute from signer info.
+     PKCS7_SIGNER_INFO* signerInfo = sk_PKCS7_SIGNER_INFO_value(signerInfoStack, 0);
+-    ASN1_TYPE* attribute = PKCS7_get_signed_attribute(signerInfo, NID_pkcs9_signingTime);
++    const ASN1_TYPE* attribute = PKCS7_get_signed_attribute(signerInfo, NID_pkcs9_signingTime);
+ 
+     if (!attribute)
+     {
+--- a/Pdf4QtLibCore/sources/pdfsignaturehandler_impl.h
++++ b/Pdf4QtLibCore/sources/pdfsignaturehandler_impl.h
+@@ -59,10 +59,10 @@
+     static PDFCertificateInfo getCertificateInfo(X509* certificate);
+ 
+     /// Returns name converted to QString
+-    static QString getStringFromX509Name(X509_NAME* name, int nid);
++    static QString getStringFromX509Name(const X509_NAME* name, int nid);
+ 
+     /// Returns ASN1 string converted to QString
+-    static QString getStringFromASN1_STRING(ASN1_STRING* string);
++    static QString getStringFromASN1_STRING(const ASN1_STRING* string);
+ 
+     /// Converts ASN time to QDateTime. If conversion fails, then invalid
+     /// datetime is returned.
