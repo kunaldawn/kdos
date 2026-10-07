@@ -11,7 +11,7 @@
 
 name        = librecad
 version     = 2.2.1.5
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/LibreCAD/LibreCAD/archive/refs/tags/v$version.tar.gz
 sha256      = 703f6e6701b7ee47769b6def271fa025ef32e31ee193e2ba69a2c47fff8da459  librecad-2.2.1.5.tar.gz
 description = 2D CAD drafting with DXF and DWG import (Qt 5)
