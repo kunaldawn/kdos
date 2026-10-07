@@ -15,6 +15,10 @@ patch -p1 -i "$PORT_SRC/EVIO-int.patch"
 # The shipped mumble-server.ini keeps its database where the service account
 # owns a directory, instead of searching the working directory for one.
 patch -p1 -i "$PORT_SRC/server-ini.patch"
+# OpenSSL 4 returns a certificate's subject name read-only, and the
+# self-signed certificate generator added its common name to that one; the
+# patch builds a name of its own and sets it as both subject and issuer.
+patch -p1 -i "$PORT_SRC/openssl4-x509-name.patch"
 
 # update and crash-report are off: both reach mumble.info. translations and
 # bundle-qt-translations are off: bundled data is English only. jackaudio,
