@@ -726,7 +726,7 @@ export RUSTFLAGS="-C target-feature=-crt-static"
 Firefox's mach always gives it, cargo passes `RUSTFLAGS` to the target's crates alone, and a build
 script that runs bindgen is linked statically again. Such a recipe also sets `RUSTC_WRAPPER` to a
 script that runs rustc with the same flag appended: cargo runs every rustc call, host and target,
-through it. `firefox-esr` is the recipe that does.
+through it. `firefox-esr` and `librewolf` are the recipes that do.
 
 A recipe whose crates run bindgen also points it at `libclang`, which saves it a search:
 
@@ -750,8 +750,8 @@ the wrong answer from `clang -print-target-triple` after `llvm` is fixed.
 
 The same error comes from a clang given another triple explicitly. The `cc` crate passes Rust's
 `--target=x86_64-unknown-linux-musl` to clang, and clang looks for gcc under that triple instead.
-`--gcc-triple=$(gcc -dumpmachine)` in `CFLAGS`, `CXXFLAGS` and `LDFLAGS` names gcc's own; `firefox-esr`,
-whose Rust crates compile C++ with clang, sets it.
+`--gcc-triple=$(gcc -dumpmachine)` in `CFLAGS`, `CXXFLAGS` and `LDFLAGS` names gcc's own; `firefox-esr`
+and `librewolf`, whose Rust crates compile C++ with clang, set it.
 
 ### A Rust release older than the system LLVM
 
@@ -912,7 +912,7 @@ a private directory such as `/usr/lib/firefox-esr`. The program's launcher loads
 there by full path, and glibc then takes the copy already loaded for a bare-name `DT_NEEDED`. musl
 looks the name up again on its search path and does not find it. Link with a run path into the
 directory, `LDFLAGS="$LDFLAGS -Wl,-rpath,<directory>"`, and check `readelf -d` shows `RUNPATH` on
-the libraries. The `firefox-esr` port does this.
+the libraries. The `firefox-esr` and `librewolf` ports do this.
 
 ### The wide curses API
 

@@ -30,8 +30,12 @@
 # configure matches the C triple against rustc's target list, where a musl
 # x86_64 triple fits both x86_64-unknown-linux-musl and
 # x86_64-unikraft-linux-musl and the vendor `kdos` picks neither, so
-# configure stops.
+# configure stops. musl-pthread-t: audio_thread_priority serialises a
+# pthread_t through the integer to_ne_bytes, and musl's pthread_t is a pointer;
+# the patch goes through usize, the same width for either, and updates the
+# crate's .cargo-checksum.json, which cargo checks every vendored file against.
 patch -p1 -i "$PORT_SRC/fix-rust-target.patch"
+patch -p1 -i "$PORT_SRC/musl-pthread-t.patch"
 patch -p1 -i "$PORT_SRC/glean-stub.patch"
 patch -p1 -i "$PORT_SRC/lfs64.patch"
 patch -p1 -i "$PORT_SRC/musl-no-linux-prctl.patch"
@@ -41,16 +45,39 @@ patch -p1 -i "$PORT_SRC/sandbox-sched_setscheduler.patch"
 # Clang and lld, as for firefox-esr; bindgen needs libclang whichever compiler
 # builds the C++. The phase's -std=gnu11 is dropped: mozbuild sets the
 # language standard of every C file itself. The zero-initialised stack and
-# wrapping signed overflow are LibreWolf's own hardening flags.
+# wrapping signed overflow are LibreWolf's own hardening flags. The cc crate
+# compiles with --target=x86_64-unknown-linux-musl, Rust's triple, and clang
+# looks for gcc's headers and libraries under the triple it is given;
+# --gcc-triple names gcc's own, so libstdc++ is found under either.
+_gcc_triple="--gcc-triple=$(gcc -dumpmachine)"
 export CC=clang
 export CXX=clang++
-export CFLAGS="-ftrivial-auto-var-init=zero -fwrapv ${CFLAGS/-std=gnu11/}"
-export CXXFLAGS="-ftrivial-auto-var-init=zero -fwrapv $CXXFLAGS"
+export CFLAGS="-ftrivial-auto-var-init=zero -fwrapv ${CFLAGS/-std=gnu11/} $_gcc_triple"
+export CXXFLAGS="-ftrivial-auto-var-init=zero -fwrapv $CXXFLAGS $_gcc_triple"
+export LDFLAGS="$LDFLAGS $_gcc_triple"
+
+# libxul names libmozsandbox.so, libgkcodecs.so and the rest of its siblings
+# by bare name. The launcher loads them from /usr/lib/librewolf first, but
+# musl does not take an already-loaded library for a bare-name DT_NEEDED, so
+# without a run path into that directory libxul fails to load.
+export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/lib/librewolf"
 
 # rustc's musl targets default to crt-static; gkrust is linked into the
 # shared libxul, which takes the shared C library like every other port.
+# mach always passes cargo --target, and cargo then gives RUSTFLAGS to the
+# target's crates only: build scripts would still link statically, and
+# bindgen's, which dlopens libclang, would fail. cargo runs every rustc call,
+# host and target, through RUSTC_WRAPPER, which adds the flag to each.
 export RUSTFLAGS="-C target-feature=-crt-static"
 export RUST_TARGET=x86_64-unknown-linux-musl
+cat > "$SRC/rustc-dynamic" <<'EOF'
+#!/bin/sh
+rustc=$1
+shift
+exec "$rustc" "$@" -C target-feature=-crt-static
+EOF
+chmod 755 "$SRC/rustc-dynamic"
+export RUSTC_WRAPPER="$SRC/rustc-dynamic"
 
 # mach would pip-install zstandard and psutil into its virtualenv from the
 # network; `none` builds with the pure-Python copies in the tarball.
