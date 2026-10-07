@@ -10,6 +10,10 @@
 # ---------------------------------
 
 
+# The podofo port is 1.x, which renamed the graphics-state setters and dropped
+# Matrix::FromCoefficients; podofo-1 is upstream's commit for it (2b8269b5).
+patch -p1 -i "$PORT_SRC/podofo-1.patch"
+
 # The project has no option file: every dependency is found by pkg-config, and
 # OpenCASCADE through its CMake package, which is why cmake is a build
 # dependency. The 3D-mouse support compiles in only when spnav is found, so
