@@ -38,7 +38,15 @@ patch -p1 -i "$PORT_SRC/UnlimitedUnsigned.h-cstdint.patch"
 # socket; spacenavd is not a port, so no device reaches it. MED and VTK are
 # required, not optional: MeshPart and FEM build the bundled SMESH, which
 # needs both. APPDATA_RELEASE_DATE is the release's date; unset, the
-# metainfo file records the day of the build.
+# metainfo file records the day of the build. pybind11 installs its CMake
+# package inside its Python package, which CMake does not search;
+# pybind11_DIR names it.
+#
+# The configure compares Coin's version with the one pivy was built against,
+# reading each part of Coin's from basic.h one digit long, so Coin 4.0.10
+# reads as 4.0.1 and mismatches. Given COIN3D_VERSION, it reads nothing, and
+# the parts come from Coin's pkg-config file.
+_coin=$(pkg-config --modversion Coin)
 _prefix=/usr/lib/freecad
 mkdir -p build && cd build
 cmake .. -G Ninja -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -51,6 +59,11 @@ cmake .. -G Ninja -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_INSTALL_DATADIR=/usr/share/freecad \
 	-DCMAKE_INSTALL_DOCDIR=/usr/share/doc/freecad \
 	-DPython3_EXECUTABLE=/usr/bin/python3 \
+	-Dpybind11_DIR="$(python3 -m pybind11 --cmakedir)" \
+	-DCOIN3D_VERSION="$_coin" \
+	-DCOIN3D_MAJOR_VERSION="${_coin%%.*}" \
+	-DCOIN3D_MINOR_VERSION="$(echo "$_coin" | cut -d. -f2)" \
+	-DCOIN3D_MICRO_VERSION="${_coin##*.}" \
 	-DFREECAD_QT_VERSION=6 \
 	-DBUILD_GUI=ON \
 	-DBUILD_TEST=OFF \
