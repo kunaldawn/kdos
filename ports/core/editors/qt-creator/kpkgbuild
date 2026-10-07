@@ -10,7 +10,7 @@
 
 name        = qt-creator
 version     = 20.0.2
-release     = 1
+release     = 2
 _series     = ${version%.*}
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qtcreator/$_series/$version/qt-creator-opensource-src-$version.tar.xz
 sha256      = f0505278792454d8fa1af029d05878b112773dc9d67503c8f9671cb67b07bfea  qt-creator-20.0.2.tar.xz

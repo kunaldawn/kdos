@@ -24,9 +24,11 @@ patch -p1 -i "$PORT_SRC/no-malloc_trim.patch"
 # Off, each for a reason: the cmdbridge helper is Go built for every remote
 # platform; the ClangFormat plugin links clang statically in a build mode the
 # clang port does not provide; Copilot, Compiler Explorer, GitLab, Axivion,
-# Code Paster, the extension store, the Learning page and the update checker
-# are online services; QBS and the QML Designer are separate products, each
-# a large build of its own. Every translation except English is removed after
+# the extension store, the Learning page and the update checker are online
+# services; QBS and the QML Designer are separate products, each a large build
+# of its own. Code Paster, an online service too, is built: the VCS plugin
+# names it as a recommended plugin, and the build reads the recommended
+# plugin's target, so without it configure stops. Every translation except English is removed after
 # the install: bundled data is English only.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -47,7 +49,6 @@ cmake -S . -B build -G Ninja \
 	-DBUILD_PLUGIN_COMPILEREXPLORER=OFF \
 	-DBUILD_PLUGIN_GITLAB=OFF \
 	-DBUILD_PLUGIN_AXIVION=OFF \
-	-DBUILD_PLUGIN_CODEPASTER=OFF \
 	-DBUILD_PLUGIN_EXTENSIONMANAGER=OFF \
 	-DBUILD_PLUGIN_LEARNING=OFF \
 	-DBUILD_PLUGIN_UPDATEINFO=OFF \
