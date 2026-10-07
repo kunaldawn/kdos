@@ -1254,6 +1254,7 @@
 8356bac2cafd2f31f39bf1ad373cef8448cab08b817aeaee5c526d54e81c3c5a sources-1 disk--libbytesize-2.12.tar.gz libbytesize/libbytesize-2.12.tar.gz
 83a75e3d9c36b66ee86d3281c2fc997816101968a5126ba322b2acb9a74dd8c0 sources-3 net-libs--glib-networking-2.90.0.tar.xz glib-networking/glib-networking-2.90.0.tar.xz
 83ea786c964a384dd72534f9854b419716f412f9d43c0be88d41874763e7bb47 sources-2 fabrication--orcadeps-TBB-v2021.5.0.zip orcaslicer/orcadeps-TBB-v2021.5.0.zip
+84221a3abd5b91228f15f8e6065c335a336237b5738197b75bf419eea561a194 sources-1 archiver--wimlib-1.14.5.tar.gz wimlib/wimlib-1.14.5.tar.gz
 843e385c1dbf694996ca84ef02a7f30c28376035588f5fbeacd6bae005cf7c8d sources-4 python-libs--python3-cups-2.0.4.tar.gz python3-cups/python3-cups-2.0.4.tar.gz
 8443f21b7127cbd084b472c01ff494ec6a31814f0b1b382004b68103ece90e35 sources-3 office--libreoffice-help-26.8.0.3.tar.xz libreoffice/libreoffice-help-26.8.0.3.tar.xz
 84560ce38a734ac8299645883d8e0c0423b7da2430bde5f88276bba1be6d5330 sources-3 libretro--libretro-snes9x-1.63.tar.gz libretro-snes9x/libretro-snes9x-1.63.tar.gz
