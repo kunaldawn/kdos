@@ -11,7 +11,7 @@
 
 name        = qcad
 version     = 3.33.1.0
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/qcad/qcad/archive/refs/tags/v$version.tar.gz
 source      = qtjsapi-$version.tar.gz::https://github.com/qcad/qtjsapi/archive/refs/tags/v$version.tar.gz
 source      = qcadjsapi-$version.tar.gz::https://github.com/qcad/qcadjsapi/archive/refs/tags/v$version.tar.gz

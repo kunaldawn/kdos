@@ -1,0 +1,13 @@
+--- a/src/3rdparty/opennurbs/opennurbs_defines.cpp
++++ b/src/3rdparty/opennurbs/opennurbs_defines.cpp
+@@ -495,8 +495,8 @@
+   // returns number of files closed or EOF for error
+ #if defined(ON_COMPILER_MSC)
+   return _fcloseall(); // ANSI C name
+-#elif defined(ON_RUNTIME_APPLE) || defined(ON_RUNTIME_ANDROID) || defined(ON_RUNTIME_WASM)
+-  //fcloseall is not supported on mac/ios or android
++#elif defined(ON_RUNTIME_APPLE) || defined(ON_RUNTIME_ANDROID) || defined(ON_RUNTIME_WASM) || (defined(__linux__) && !defined(__GLIBC__))
++  //fcloseall is not supported on mac/ios or android, or by musl
+   return EOF;
+ #else
+   return fcloseall();
