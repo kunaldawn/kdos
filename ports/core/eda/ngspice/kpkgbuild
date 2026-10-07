@@ -10,7 +10,7 @@
 
 name        = ngspice
 version     = 47
-release     = 1
+release     = 2
 source      = https://downloads.sourceforge.net/project/$name/ng-spice-rework/$version/$name-$version.tar.gz
 sha256      = 894e649651f1838a14095e5a5439e7d3aa63e87ede14d283173fda4fcdef675f  ngspice-47.tar.gz
 description = SPICE circuit simulation from a prompt — transient, AC, DC, noise, Monte Carlo
