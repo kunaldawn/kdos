@@ -21,7 +21,14 @@
 # need programs this system does not carry; the plasmoid runner needs Plasma,
 # and the GitHub project provider is an online service. KF_SKIP_PO_PROCESSING
 # leaves the translation catalogues out: bundled data is English only.
+#
+# KDE's compiler settings make C code strict C99 unless a standard is given.
+# The CMake plugin's lexer is C that includes QtGlobal, whose qtypes.h uses
+# static_assert, a keyword only from C23, and calls fileno and strdup, which
+# a strict ISO mode hides; GNU C23 has all three.
 cmake -S . -B build -G Ninja \
+	-D CMAKE_C_STANDARD=23 \
+	-D CMAKE_C_EXTENSIONS=ON \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
