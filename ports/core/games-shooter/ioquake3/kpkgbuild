@@ -10,7 +10,7 @@
 
 name        = ioquake3
 version     = 1.36.20260917
-release     = 1
+release     = 2
 _commit     = 83a776283bdb958f82db25554b5ed0966aaf6e49
 source      = $name-$version.tar.gz::https://github.com/ioquake/ioq3/archive/$_commit.tar.gz
 sha256      = cff55a0128ddca72aa7ce1dda89c0c946a84324a4472a3a7805d3a4d3c3cf8e4  ioquake3-1.36.20260917.tar.gz
