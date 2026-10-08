@@ -19,6 +19,10 @@
 # The makefile assigns its own CXXFLAGS, which beats the environment, so the
 # build's flags are passed ahead of upstream's optimisation flags: without
 # them the file-prefix map is lost and the binary records the build path.
+# tools.h takes the placement new and delete from <new>; libstdc++'s <cmath>
+# brings <new> in ahead of it, and a second definition does not compile.
+patch -p1 -i "$PORT_SRC/placement-new.patch"
+
 cd src
 make \
 	CXXFLAGS="$CXXFLAGS -O3 -fomit-frame-pointer -ffast-math" \
