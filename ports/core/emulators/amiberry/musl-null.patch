@@ -1,0 +1,14 @@
+--- a/src/custom.cpp
++++ b/src/custom.cpp
+@@ -7689,9 +7689,9 @@
+ 		} else {
+ 			int reg = addr & 0x1fe;
+ 			if (aga_mode) {
+-				custom_wput_dma64(reg, static_cast<uaecptr>(NULL), v, c);
++				custom_wput_dma64(reg, static_cast<uaecptr>(0), v, c);
+ 			} else {
+-				write_drga(reg, static_cast<uaecptr>(NULL), v);
++				write_drga(reg, static_cast<uaecptr>(0), v);
+ 			}
+ 		}
+ 	}

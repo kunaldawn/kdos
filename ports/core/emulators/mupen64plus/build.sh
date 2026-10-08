@@ -18,13 +18,22 @@ patch -p1 -i "$PORT_SRC/fix-null-usage.patch"
 #
 # OpenGL is linked as libOpenGL, the vendor-neutral GL of libglvnd, not the
 # GLX libGL. The context is SDL's, made through EGL on Wayland, so nothing
-# here needs GLX.
+# here needs GLX. Glide64mk2 is the exception: it calls the ARB and EXT
+# extension entry points by name, which libglvnd's libGL exports and
+# libOpenGL does not, and musl binds every symbol when the plugin is loaded,
+# so against libOpenGL the plugin does not load at all.
 #
 # The core's on-screen display (FreeType, GLU) and its Vulkan video
 # extension are on. The SDL audio plugin's two resamplers, libsamplerate and
 # speexdsp, are each found by a probe that drops the resampler when the
 # library is missing, which depends prevents. Netplay needs SDL2_net and a
 # server, and is left at its default, off.
+#
+# The core includes <unzip.h> and takes minizip's flags from pkg-config, whose
+# file names the include directory above minizip/, as its other consumers
+# write <minizip/unzip.h>; MINIZIP_CFLAGS names the minizip/ directory itself.
+# Given either MINIZIP variable, the makefile asks pkg-config for neither, so
+# MINIZIP_LDLIBS is given too.
 _mk=(
 	PREFIX=/usr
 	LIBDIR=/usr/lib
@@ -33,7 +42,8 @@ _mk=(
 	SDL_CFLAGS="$(pkg-config --cflags sdl2)"
 	SDL_LDLIBS="$(pkg-config --libs sdl2)"
 	GL_CFLAGS=
-	GL_LDLIBS=-lOpenGL
+	MINIZIP_CFLAGS="-I$(pkg-config --variable=includedir minizip)/minizip"
+	MINIZIP_LDLIBS="$(pkg-config --libs minizip)"
 	OSD=1
 	VULKAN=1
 	NETPLAY=0
@@ -41,12 +51,14 @@ _mk=(
 	PIE=1
 	V=1
 )
+_gl() { [ "$1" = video-glide64mk2 ] && echo -lGL || echo -lOpenGL; }
 for _c in core ui-console audio-sdl input-sdl rsp-hle video-rice video-glide64mk2; do
-	make -C "source/mupen64plus-$_c/projects/unix" all "${_mk[@]}"
+	make -C "source/mupen64plus-$_c/projects/unix" all "${_mk[@]}" \
+		GL_LDLIBS="$(_gl $_c)"
 done
 for _c in core ui-console audio-sdl input-sdl rsp-hle video-rice video-glide64mk2; do
 	make -C "source/mupen64plus-$_c/projects/unix" install "${_mk[@]}" \
-		LDCONFIG=true DESTDIR="$PKG"
+		GL_LDLIBS="$(_gl $_c)" LDCONFIG=true DESTDIR="$PKG"
 done
 
 # UPSTREAM'S ENTRY IS REPLACED for StartupWMClass: the core's SDL window
