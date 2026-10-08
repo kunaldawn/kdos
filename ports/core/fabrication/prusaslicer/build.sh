@@ -16,8 +16,10 @@
 # STEP toolkits into TKDESTEP. The OCCT wrapper goes to the library directory
 # and is dlopen()ed by name. The imgui patch creates the frame the hint
 # notification measures, which is otherwise a crash on wx 3.2 at start-up.
+# The serial-port code includes <sys/unistd.h>, a name only glibc carries;
+# serial-unistd includes <unistd.h>.
 for p in eigen5 boost-1.87 boost-1.88 boost-1.89 cgal6 \
-	opencascade-tkdestep occtwrapper-libdir imgui-hint-segfault; do
+	opencascade-tkdestep occtwrapper-libdir imgui-hint-segfault serial-unistd; do
 	patch -p1 -i "$PORT_SRC/$p.patch"
 done
 
@@ -54,6 +56,12 @@ ninja -C "$SRC_ROOT/build-nanosvg" install
 # it runs under Xwayland. The configuration and version checks run at start-up
 # and find no network, which the program reports and carries on from; the
 # bundled profiles are complete without them.
+#
+# The sources include <nanosvg/nanosvg.h>, and NanoSVG's package exports the
+# nanosvg/ directory itself; targets that link libbgcode get the prefix's
+# include/ from it, and libslic3r_cgal, which links none of the private
+# dependencies, does not. The prefix's include/ is given to every target.
+export CXXFLAGS="$CXXFLAGS -isystem $_deps/include"
 cmake -S . -B build -G Ninja -Wno-dev \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

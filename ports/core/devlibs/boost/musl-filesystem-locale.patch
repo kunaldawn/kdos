@@ -1,0 +1,22 @@
+--- a/libs/filesystem/src/path.cpp
++++ b/libs/filesystem/src/path.cpp
+@@ -31,7 +31,8 @@
+ #elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__) || \
+     defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NETBSD__) || defined(__NetBSD__) || \
+     defined(sun) || defined(__sun) || \
+-    defined(__HAIKU__)
++    defined(__HAIKU__) || \
++    (defined(__linux__) && !defined(__GLIBC__))
+ // "All BSD system functions expect their string parameters to be in UTF-8 encoding
+ // and nothing else." See
+ // http://developer.apple.com/mac/library/documentation/MacOSX/Conceptual/BPInternational/Articles/FileEncodings.html
+@@ -59,6 +60,9 @@
+ //
+ // On Solaris 11.4, std::locale("") fails even if LANG is set correctly in the environment.
+ // Recent versions of Solaris seem to have transitioned to UTF-8 for filename encoding.
++//
++// musl's libstdc++ builds only the "C" and "POSIX" locales by name, so std::locale("")
++// fails under any other LANG, C.UTF-8 among them; filenames there are UTF-8.
+ #include <boost/filesystem/detail/utf8_codecvt_facet.hpp>
+ #define BOOST_FILESYSTEM_DETAIL_USE_UTF8_CODECVT_FACET
+ #endif

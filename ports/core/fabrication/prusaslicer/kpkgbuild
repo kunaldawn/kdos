@@ -10,7 +10,7 @@
 
 name        = prusaslicer
 version     = 2.9.6
-release     = 1
+release     = 2
 _bgcode     = 6f4ad7ce6b0e638b760199d6611039a610a5a479
 _nanosvg    = abcd277ea45e9098bed752cf9c6875b533c0892f
 _heatshrink = 0.4.1
