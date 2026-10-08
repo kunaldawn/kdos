@@ -1,0 +1,33 @@
+--- a/src/hal/user_comps/wj200_vfd/Submakefile
++++ b/src/hal/user_comps/wj200_vfd/Submakefile
+@@ -18,7 +18,7 @@
+ 
+ ../docs/man/man1/wj200_vfd.1: hal/user_comps/wj200_vfd/wj200_vfd.comp ../bin/halcompile
+ 	$(Q)../bin/halcompile -U -u --document $<
+-	$(Q)install --mode=0644 hal/user_comps/wj200_vfd/wj200_vfd.1 $@
++	$(Q)install -m 0644 hal/user_comps/wj200_vfd/wj200_vfd.1 $@
+ 
+ clean: wj200_clean
+ wj200_clean:
+--- a/src/hal/user_comps/pi500_vfd/Submakefile
++++ b/src/hal/user_comps/pi500_vfd/Submakefile
+@@ -18,7 +18,7 @@
+ 
+ ../docs/man/man1/pi500_vfd.1: hal/user_comps/pi500_vfd/pi500_vfd.comp ../bin/halcompile
+ 	$(Q)../bin/halcompile -U -u --document $<
+-	$(Q)install --mode=0644 hal/user_comps/pi500_vfd/pi500_vfd.1 $@
++	$(Q)install -m 0644 hal/user_comps/pi500_vfd/pi500_vfd.1 $@
+ 
+ clean: pi500_clean
+ pi500_clean:
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -733,7 +733,7 @@
+ 	$(EXE) ../bin/update_ini $(DESTDIR)$(bindir)
+ 	$(EXE) ../scripts/halreport $(DESTDIR)$(bindir)
+ 	$(FILE) $(filter ../lib/%.a ../lib/%.so.0,$(TARGETS)) $(DESTDIR)$(libdir)
+-	cp --no-dereference $(wildcard ../lib/*.so) $(DESTDIR)$(libdir)
++	cp -P $(wildcard ../lib/*.so) $(DESTDIR)$(libdir)
+ 	-ldconfig $(DESTDIR)$(libdir)
+ 	$(FILE) ../lib/linuxcnc/canterp.so $(DESTDIR)$(libdir)/linuxcnc
+ 	$(FILE) $(HEADERS) $(DESTDIR)$(includedir)/linuxcnc/

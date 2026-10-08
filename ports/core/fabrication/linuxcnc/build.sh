@@ -23,6 +23,10 @@ patch -p1 -i "$PORT_SRC/tcl9.patch"
 # takes UTF-8 as it is. groff's preconv pass, which escapes the non-ASCII
 # characters, is dropped, so the build does not need groff.
 patch -p1 -i "$PORT_SRC/no-preconv.patch"
+# Two component pages are installed with GNU install's --mode=, and the
+# libraries' links copied with GNU cp's --no-dereference; toybox's install and
+# cp take neither long option. toybox-options gives them -m and -P.
+patch -p1 -i "$PORT_SRC/toybox-options.patch"
 
 cd src
 ./autogen.sh
@@ -43,7 +47,13 @@ _py=$(python3 -c 'import sys; print(f"{sys.version_info[0]}{sys.version_info[1]}
 # exported level wins and a trailing -g0 takes the debug information back.
 export CFLAGS="$CFLAGS -g0" CXXFLAGS="$CXXFLAGS -g0"
 export LDFLAGS="$LDFLAGS -Wl,--push-state,--no-as-needed -lintl -Wl,--pop-state"
+#
+# The Python check tries a fixed list of python3.N names that ends at 3.13,
+# then plain python; PYTHON_BIN names the interpreter it looks for and the
+# library it links, PYTHON the one the development check runs.
 ./configure \
+	PYTHON_BIN="python$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')" \
+	PYTHON=/usr/bin/python3 \
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--mandir=/usr/share/man \
@@ -77,6 +87,9 @@ find "$PKG" -perm -4000 -exec chmod u-s {} +
 # read from beside the Tcl sources instead.
 mv "$PKG/etc/X11/app-defaults/TkLinuxCNC" "$PKG/usr/lib/tcltk/linuxcnc/TkLinuxCNC"
 rm -rf "$PKG/etc/X11"
+# The install also makes an empty /lib/linuxcnc, named outright rather than
+# under the prefix; /lib is a link to usr/lib here, and nothing is put in it.
+rmdir "$PKG/lib/linuxcnc" "$PKG/lib"
 
 # configure falls back to Debian's dist-packages when the interpreter has
 # no Debian scheme; this python imports from its own site-packages.
