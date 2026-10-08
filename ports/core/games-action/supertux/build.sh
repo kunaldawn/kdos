@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/musl-execinfo.patch"
+
 # NETWORKING off removes the add-on browser and its downloads, which have
 # nothing to show offline. With English the only language shipped, the system
 # SDL2_ttf replaces the bundled copy, which differs only in right-to-left
