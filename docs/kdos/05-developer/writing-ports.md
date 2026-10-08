@@ -821,7 +821,9 @@ A few habits recur in the tree's application recipes, and a new one should follo
   whatever happens to be installed when the port builds. A meson recipe sets each feature option
   explicitly; a CMake recipe names what it wants with `CMAKE_REQUIRE_FIND_PACKAGE_<Name>=ON` and
   what it must not pick up with `CMAKE_DISABLE_FIND_PACKAGE_<Name>=ON` (127 build scripts use one
-  or both).
+  or both). Requiring curl takes `-DCURL_NO_CURL_CMAKE=ON` as well: CMake's FindCURL first asks
+  for a `CURLConfig.cmake`, which curl does not install here, and the requirement applies to that
+  inner search too, so configure stops.
 - **KDE applications install into Qt's own paths.** `-D KDE_INSTALL_USE_QT_SYS_PATHS=ON` with
   `-D BUILD_TESTING=OFF` is the shape `kate`, `dolphin`, `okular` and 132 other build scripts use.
 - **Ship a desktop entry and an icon the launcher can draw.** A graphical program with no entry

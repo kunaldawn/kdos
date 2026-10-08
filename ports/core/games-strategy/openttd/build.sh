@@ -19,7 +19,9 @@ patch -p1 -i "$PORT_SRC/no-survey.patch"
 # The graphics, sound and music base sets are the openttd-open* ports; with
 # none installed the game refuses to start. musl gives a new thread 128 KiB of
 # stack unless the executable asks for more, and the pathfinder and script
-# threads overflow that, so the link asks for 1 MiB.
+# threads overflow that, so the link asks for 1 MiB. CURL_NO_CURL_CMAKE sends
+# FindCURL straight to pkg-config: curl installs no CMake package, and the
+# requirement would apply to FindCURL's search for one as well.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -44,6 +46,7 @@ cmake -S . -B build -G Ninja \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_ZLIB=ON \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_LibLZMA=ON \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_LZO=ON \
+	-DCURL_NO_CURL_CMAKE=ON \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_CURL=ON \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_OpenGL=ON \
 	-DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS -Wl,-z,stack-size=1048576"
