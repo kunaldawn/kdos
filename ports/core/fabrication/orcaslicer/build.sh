@@ -32,6 +32,21 @@ for f in "$PORT_SRC"/orcadeps-* "$SOURCE_DIR"/orcadeps-*; do
 done
 test "$(ls "$_dl"/*/* | wc -l)" -eq 14
 
+# Two of the pinned dependencies assume glibc. oneTBB 2021.5 ORs
+# RTLD_DEEPBIND, a dlopen flag musl does not have, into the flags it opens its
+# own plugins with; defined as 0 it adds nothing, which is the loading musl
+# does anyway. Its resumable tasks switch stacks with getcontext and
+# swapcontext, which musl does not provide; __TBB_RESUMABLE_TASKS_USE_THREADS
+# runs them on threads instead. Every dependency's configure reads CXXFLAGS
+# from the environment, and only TBB names either. OpenCASCADE 7.6 reads heap
+# usage with mallinfo, traps floating-point exceptions with feenableexcept and
+# prints stack traces through <execinfo.h>; 0002-OCCT-musl.patch takes the
+# branches it has for platforms without them, and occt-musl-patch-step has the
+# superbuild apply it after upstream's own OCCT patch.
+export CXXFLAGS="$CXXFLAGS -DRTLD_DEEPBIND=0 -D__TBB_RESUMABLE_TASKS_USE_THREADS=1"
+patch -p1 -i "$PORT_SRC/occt-musl-patch-step.patch"
+cp "$PORT_SRC/0002-OCCT-musl.patch" deps/OCCT/
+
 # FLATPAK=ON is upstream's switch for "the system provides zlib, libpng,
 # expat, libjpeg, FreeType and curl": with it the superbuild builds none of
 # those, and leaves wxWidgets to be built separately. Only the targets named

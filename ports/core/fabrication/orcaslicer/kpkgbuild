@@ -10,7 +10,7 @@
 
 name        = orcaslicer
 version     = 2.4.2
-release     = 1
+release     = 2
 _wx         = 88f3483ca546fbf4ad732e1acd94cc930935077a
 _openvdb    = a68fd58d0e2b85f01adeb8b13d7555183ab10aa5
 source      = $name-$version.tar.gz::https://github.com/OrcaSlicer/OrcaSlicer/archive/refs/tags/v$version.tar.gz
