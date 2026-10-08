@@ -10,7 +10,7 @@
 
 name        = warzone2100
 version     = 4.7.0
-release     = 1
+release     = 2
 source      = $name-$version.tar.xz::https://github.com/Warzone2100/warzone2100/releases/download/$version/warzone2100_src.tar.xz
 sha256      = 95ee4d5b88680ea1b1cf230b67ea84028e08a2458b84605ac9f7fb9eb97c4e37  warzone2100-4.7.0.tar.xz
 description = Warzone 2100 — post-apocalyptic real-time strategy with campaigns, skirmish and a research tree
