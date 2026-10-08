@@ -9,10 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The three patches are Alpine's: flatbuffers.patch takes the bundled
-# flatbuffers off strtod_l, which musl does not have; pathmax.patch gives the
-# bundled zstd a PATH_MAX; make.patch drops cp's --no-preserve=ownership
-# from the install rules.
+# flatbuffers.patch takes the bundled flatbuffers off strtod_l, which musl
+# does not have; pathmax.patch gives the bundled zstd a PATH_MAX; make.patch
+# writes the install rules in options toybox's cp and install accept, `-m`
+# for --mode and no --no-preserve=ownership.
 patch -p1 -i "$PORT_SRC/flatbuffers.patch"
 patch -p1 -i "$PORT_SRC/pathmax.patch"
 patch -p1 -i "$PORT_SRC/make.patch"
