@@ -10,7 +10,7 @@
 
 name        = openrct2
 version     = 0.5.5
-release     = 1
+release     = 2
 _objects    = 1.7.11
 _titles     = 0.4.26
 _sfx        = 1.0.6

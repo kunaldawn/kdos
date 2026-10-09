@@ -16,6 +16,11 @@
 # USE_QT6DBus is device detection: a Garmin or a phone mounted by udisks2
 # appears in the workspace. Translations are compiled into the program by
 # qt_add_translations and have no switch.
+#
+# The project enables C++ alone, and PROJ's exported target requires a C
+# standard of whatever links it; CMake cannot resolve that requirement with no
+# C compiler enabled and stops at generate. The project include enables C.
+printf 'enable_language(C)\n' > "$SRC_ROOT/qmapshack-c.cmake"
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -29,7 +34,8 @@ cmake -S . -B build -G Ninja \
 	-DDEVELOPMENT_VERSION=OFF \
 	-DFETCHCONTENT_FULLY_DISCONNECTED=ON \
 	-DFETCHCONTENT_SOURCE_DIR_ASMJIT="$SRC_ROOT/asmjit-$_asmjit" \
-	-DFETCHCONTENT_SOURCE_DIR_BLEND2D="$SRC_ROOT/blend2d-$_blend2d"
+	-DFETCHCONTENT_SOURCE_DIR_BLEND2D="$SRC_ROOT/blend2d-$_blend2d" \
+	-DCMAKE_PROJECT_QMapShack_INCLUDE="$SRC_ROOT/qmapshack-c.cmake"
 cmake --build build
 DESTDIR=$PKG cmake --install build
 for f in applications/qmapshack.desktop applications/qmaptool.desktop; do

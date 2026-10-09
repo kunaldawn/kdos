@@ -10,7 +10,7 @@
 
 name        = qmapshack
 version     = 1.21.1
-release     = 1
+release     = 2
 _asmjit     = 0bd5787b54b575ed94bf32ac452153b34385c514
 _blend2d    = def0d1238c3e5d0983bb848e5676049d829e435b
 source      = $name-$version.tar.gz::https://github.com/Maproom/qmapshack/archive/refs/tags/V_$version.tar.gz
