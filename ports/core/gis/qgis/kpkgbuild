@@ -10,7 +10,7 @@
 
 name        = qgis
 version     = 3.44.15
-release     = 1
+release     = 2
 source      = https://download.qgis.org/downloads/qgis-$version.tar.bz2
 sha256      = 1b508175a27272c68ca0f71f27d2b14711ab47b8ee2c003b56e36138420a75bc  qgis-3.44.15.tar.bz2
 description = QGIS — the desktop geographic information system, with PyQGIS and Processing

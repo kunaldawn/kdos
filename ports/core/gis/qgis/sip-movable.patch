@@ -1,0 +1,65 @@
+--- a/python/PyQt6/core/conversions.sip
++++ b/python/PyQt6/core/conversions.sip
+@@ -1242,6 +1242,44 @@
+     %End
+ };
+ 
++%If (MOVABLE_MAPPED_TYPE)
++template <TYPE>
++%MappedType std::unique_ptr<TYPE> /@SIP_MOVABLE_STR@NoRelease,AllowNone,TypeHint="Optional[TYPE]",TypeHintValue="TYPE"/
++{
++%TypeHeaderCode
++#include <memory>
++#include <utility>      // For std::move().
++%End
++
++%ConvertFromTypeCode
++  const sipTypeDef *sip_type = sipFindType("TYPE*");
++  return sipConvertFromNewType(sipCpp->release(), sip_type, NULL);
++%End
++
++%ConvertToTypeCode
++  const sipTypeDef *sip_type = sipFindType("TYPE");
++
++  if (sipIsErr == NULL)
++    return sipCanConvertToType(sipPy, sip_type, 0);
++
++  if (sipPy == Py_None)
++    return 1;
++
++  int state;
++  TYPE *type_ = reinterpret_cast<TYPE *>(sipConvertToType(sipPy, sip_type, sipTransferObj, 0, &state, sipIsErr));
++
++  sipReleaseType(type_, sip_type, state);
++
++  if (*sipIsErr)
++    return 0;
++
++  *sipCppPtr = new std::unique_ptr<TYPE>(type_);
++  return sipGetState(sipTransferObj);
++%End
++};
++%End
++
++%If (!MOVABLE_MAPPED_TYPE)
+ template <TYPE>
+ %MappedType std::unique_ptr< TYPE > /NoRelease,AllowNone,TypeHint="Optional[TYPE]",TypeHintValue="TYPE"/
+ {
+@@ -1259,6 +1297,7 @@
+     return 0;
+ %End
+ };
++%End
+ 
+ template <TYPE>
+ %MappedType QVector< QVector<TYPE> >
+--- a/python/PyQt6/core/core.sip.in
++++ b/python/PyQt6/core/core.sip.in
+@@ -98,6 +98,7 @@
+ %Feature VECTOR_MAPPED_TYPE
+ %Feature HAVE_WEBENGINE_SIP
+ %Feature PYQT6
++%Feature MOVABLE_MAPPED_TYPE
+ 
+ %Import QtXml/QtXmlmod.sip
+ %Import QtNetwork/QtNetworkmod.sip
