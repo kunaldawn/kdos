@@ -1,0 +1,10 @@
+--- a/contrib/nanosockets/nanosockets.h
++++ b/contrib/nanosockets/nanosockets.h
+@@ -142,6 +142,7 @@
+ 		#include <netdb.h>
+ 		#include <unistd.h>
+ 		#include <sys/socket.h>
++		#include <sys/select.h>
+ 	#endif
+ 
+ 	// Macros

@@ -16,7 +16,18 @@
 #
 # SSE4.2 is off: upstream turns it on for every x86 target, and a processor
 # without it faults on the first such instruction instead of running slower.
-# The developer key bindings are off.
+# The developer key bindings are off. musl-select gives the bundled
+# nanosockets the <sys/select.h> that musl's socket headers do not include;
+# cstdint gives DateTime.h the <cstdint> that <string> no longer brings in.
+#
+# GLEW's CMake package is ignored under both /usr/lib and /lib, which is the
+# same directory, so FindGLEW searches for the library
+# itself. Upstream declares an empty GLEW::GLEW before the search, which the
+# package refuses to replace; and FindGLEW reads a shared GLEW's path from the
+# package only as a Windows import library, leaving GLEW_LIBRARIES empty.
+patch -p1 -i "$PORT_SRC/musl-select.patch"
+patch -p1 -i "$PORT_SRC/cstdint.patch"
+
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -26,6 +37,7 @@ cmake .. -G Ninja \
 	-DPIONEER_INSTALL_DATADIR=share/pioneer \
 	-DPIONEER_INSTALL_BINDIR=bin \
 	-DUSE_SYSTEM_LIBGLEW=ON \
+	-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew' \
 	-DUSE_SYSTEM_LIBLUA=OFF \
 	-DUSE_SSE42=OFF \
 	-DUSE_AVX2=OFF \
