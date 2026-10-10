@@ -12,7 +12,12 @@
 # fftw's autotools install writes an FFTW3Config.cmake that names targets it
 # never defines; Krita's find module takes it first and fails. The patch makes
 # the module use pkg-config only.
+#
+# sip-abi has the Qt 6 Python bindings target sip ABI 13 at its newest minor
+# version, as PyQt6 itself does, in place of a fixed 13.0: PyQt6 declares a
+# minimum ABI above that, and sip refuses to generate the krita module.
 patch -p1 -i "$PORT_SRC/0001-fftw-use-pkgconfig.patch"
+patch -p1 -i "$PORT_SRC/sip-abi.patch"
 
 # BUILD_WITH_QT6 selects Qt 6 and KF6; without it the project looks for Qt 5.
 # Upstream still marks the Qt 6 build unstable, and the configure stops unless
@@ -30,7 +35,12 @@ patch -p1 -i "$PORT_SRC/0001-fftw-use-pkgconfig.patch"
 #
 # Every feature library below is an optional find upstream, and a missing one
 # builds a Krita without that file format, filter or engine. Each is required
-# here so that a missing port fails the configure:
+# here so that a missing port fails the configure. WebP and libjpeg-turbo are
+# the two exceptions, checked after the configure instead: a requirement also
+# applies to the config-package search their find modules make first, and
+# both fail it with the library present. libwebp installs no WebPConfig.cmake,
+# and libjpeg-turbo's config file rejects the turbojpeg component the module
+# was asked for, which it never marks found.
 #   Poppler (Qt 6 bindings)  the PDF import filter
 #   Mlt7 (with SDL2)         audio in animation
 #   PythonLibrary, SIP, PyQt6  the Python plugin host and its scripts
@@ -70,12 +80,10 @@ cmake -S . -B build -G Ninja \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_SIP=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_PyQt6=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_GSL=ON \
-	-D CMAKE_REQUIRE_FIND_PACKAGE_WebP=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_KSeExpr=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_OpenEXR=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_TIFF=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_JPEG=ON \
-	-D CMAKE_REQUIRE_FIND_PACKAGE_libjpeg-turbo=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_GIF=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_HEIF=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_OpenJPEG=ON \
@@ -87,6 +95,8 @@ cmake -S . -B build -G Ninja \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_Poppler=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_KDcrawQt6=ON \
 	-Wno-dev
+grep -q '^build cmake_object_order_depends_target_kritawebpimport:' build/build.ninja
+grep -qx '#define HAVE_JPEG_TURBO 1' build/config-jpeg.h
 cmake --build build
 DESTDIR=$PKG cmake --install build
 

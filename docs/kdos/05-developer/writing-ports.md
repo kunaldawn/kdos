@@ -821,9 +821,13 @@ A few habits recur in the tree's application recipes, and a new one should follo
   whatever happens to be installed when the port builds. A meson recipe sets each feature option
   explicitly; a CMake recipe names what it wants with `CMAKE_REQUIRE_FIND_PACKAGE_<Name>=ON` and
   what it must not pick up with `CMAKE_DISABLE_FIND_PACKAGE_<Name>=ON` (127 build scripts use one
-  or both). Requiring curl takes `-DCURL_NO_CURL_CMAKE=ON` as well: CMake's FindCURL first asks
-  for a `CURLConfig.cmake`, which curl does not install here, and the requirement applies to that
-  inner search too, so configure stops.
+  or both). The requirement also applies to any config-package search a find module makes under
+  the same name, so a module that first asks for a config file the library does not install stops
+  the configure. Requiring curl takes `-DCURL_NO_CURL_CMAKE=ON` as well: CMake's FindCURL first
+  asks for a `CURLConfig.cmake`, which curl does not install here. Where a module has no such
+  switch (Krita's FindWebP asks for a `WebPConfig.cmake`; its Findlibjpeg-turbo passes its own
+  required component to a config file that never marks it found), the recipe leaves that package
+  unrequired and, after the configure, checks the generated build for what the package enables.
 - **A CMake project that finds GLEW ignores GLEW's own package.**
   `-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew'`, naming both because `/lib` is the
   same directory: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path
