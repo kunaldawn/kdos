@@ -1,0 +1,46 @@
+--- a/configure
++++ b/configure
+@@ -12750,12 +12750,12 @@
+ printf "%s\n" "$ac_cv_enable_nettle" >&6; }
+ case $ac_cv_enable_nettle in
+   yes)
+-    ac_fn_c_check_header_compile "$LINENO" "nettle/md5-compat.h" "ac_cv_header_nettle_md5_compat_h" "$ac_includes_default"
+-if test "x$ac_cv_header_nettle_md5_compat_h" = xyes
++    ac_fn_c_check_header_compile "$LINENO" "nettle/md5.h" "ac_cv_header_nettle_md5_h" "$ac_includes_default"
++if test "x$ac_cv_header_nettle_md5_h" = xyes
+ then :
+ 
+ else case e in #(
+-  e) as_fn_error $? "nettle/md5-compat.h is needed but not found - you will need to install package 'nettle-dev' or similar. The feature can be disabled with --disable-nettle" "$LINENO" 5 ;;
++  e) as_fn_error $? "nettle/md5.h is needed but not found - you will need to install package 'nettle-dev' or similar. The feature can be disabled with --disable-nettle" "$LINENO" 5 ;;
+ esac
+ fi
+ 
+--- a/src/md5_hash.c
++++ b/src/md5_hash.c
+@@ -26,7 +26,7 @@
+ #include "config.h"
+ #endif
+ #ifdef HAVE_LIBNETTLE
+-#include <nettle/md5-compat.h>
++#include <nettle/md5.h>
+ #endif
+ 
+ /**
+@@ -36,11 +36,11 @@
+ {
+ 	char *answer = NULL;
+ #ifdef HAVE_LIBNETTLE
+-	unsigned char result[16];
+-	MD5_CTX ctx;
+-	MD5Init ( &ctx );
+-	MD5Update ( &ctx, (const unsigned char*)message, strlen(message) );
+-	MD5Final ( &result[0], &ctx );
++	unsigned char result[MD5_DIGEST_SIZE];
++	struct md5_ctx ctx;
++	md5_init ( &ctx );
++	md5_update ( &ctx, strlen(message), (const uint8_t*)message );
++	md5_digest ( &ctx, &result[0] );
+ 	/*
+ 	g_printf ( "%s: of string '%s' is: ", __FUNCTION__, message );
+ 	for(int i = 0; i < 16; i++)
