@@ -10,7 +10,7 @@
 
 name        = vlc
 version     = 3.0.24
-release     = 1
+release     = 2
 source      = https://download.videolan.org/pub/videolan/$name/$version/$name-$version.tar.xz
 sha256      = e7cab503d1d7d5849b89d2cf0e1ee60d0ef6d012407791b644b9cfc0cc225fdf  vlc-3.0.24.tar.xz
 description = VLC media player 3 with its Qt 5 interface — plays files, discs, devices and streams

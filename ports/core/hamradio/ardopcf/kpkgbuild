@@ -10,7 +10,7 @@
 
 name        = ardopcf
 version     = 1.0.4.1.3
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/pflarue/ardop/archive/refs/tags/$version.tar.gz
 sha256      = ede4f3cbd54b60c3380444d8f36dfc28ed3ce47089a1414b929e3b8f1718259e  ardopcf-1.0.4.1.3.tar.gz
 description = ardopcf — the ARDOP HF sound-card modem that Pat drives for Winlink email over radio

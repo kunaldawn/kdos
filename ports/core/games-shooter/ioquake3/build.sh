@@ -11,6 +11,8 @@
 
 # Every bundled library is replaced by the system's. PRODUCT_VERSION would
 # otherwise come from `git describe`, and this archive has no repository.
+# curl installs no CMake package, and FindCURL's search for one would itself
+# be required by CMAKE_REQUIRE_FIND_PACKAGE_CURL; CURL_NO_CURL_CMAKE skips it.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -39,6 +41,7 @@ cmake -S . -B build -G Ninja \
 	-DUSE_INTERNAL_OGG=OFF \
 	-DUSE_INTERNAL_VORBIS=OFF \
 	-DUSE_INTERNAL_OPUS=OFF \
+	-DCURL_NO_CURL_CMAKE=ON \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_CURL=ON \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_OpenAL=ON
 cmake --build build

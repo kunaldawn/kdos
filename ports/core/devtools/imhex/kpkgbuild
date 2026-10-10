@@ -10,7 +10,7 @@
 
 name        = imhex
 version     = 1.38.1
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/WerWolv/ImHex/releases/download/v$version/Full.Sources.tar.gz
 source      = $name-patterns-$version.tar.gz::https://github.com/WerWolv/ImHex-Patterns/archive/refs/tags/ImHex-v$version.tar.gz
 sha256      = cd3531066a41dde1f0751e5d3146a936897df35ad5ba1fa49a9f3ace88e6901d  imhex-1.38.1.tar.gz

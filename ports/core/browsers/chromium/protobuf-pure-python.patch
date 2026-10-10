@@ -1,0 +1,8 @@
+--- /dev/null
++++ b/third_party/protobuf/python/google/protobuf/internal/_api_implementation.py
+@@ -0,0 +1,5 @@
++# The pure-Python implementation, chosen before api_implementation probes for
++# a compiled one: the system's google._upb is another protobuf release, whose
++# module imports this tree's google.protobuf.message and fails on a name it
++# lacks.
++api_version = 0

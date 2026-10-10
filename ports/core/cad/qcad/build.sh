@@ -12,9 +12,19 @@
 # Every action in QCAD is ECMAScript run by QJSEngine. Under Qt 6 the script
 # bindings are not in this repository: qtjsapi (the Qt API) and qcadjsapi (the
 # QCAD API) are sibling projects of the same tag, later sources here. Without
-# them the program starts with no menus. Both find the main tree as ../qcad
-# and write their libraries into its release/ and plugins/ directories.
+# them the program starts with no menus. Both find the main tree as ../qcad,
+# qcadjsapi finds qtjsapi's headers as ../qtjsapi, and both write their
+# libraries into the main tree's release/ and plugins/ directories.
 ln -s "$SRC" "$SRC_ROOT/qcad"
+ln -s "$SRC_ROOT/qtjsapi-$version" "$SRC_ROOT/qtjsapi"
+
+# OpenNURBS calls fcloseall, which musl does not have; musl-fcloseall takes the
+# branch it already has for the platforms without it, which reports EOF.
+# RDebug::printBacktrace uses <execinfo.h>, which musl does not have either;
+# no-execinfo takes its Windows branch, which prints nothing, where the header
+# is missing.
+patch -p1 -i "$PORT_SRC/musl-fcloseall.patch"
+patch -p1 -i "$PORT_SRC/no-execinfo.patch"
 
 # The build writes release/ (the program and its libraries) and plugins/
 # inside the source tree and has no install rules. Run paths are skipped:

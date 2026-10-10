@@ -8,6 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# nettle4 hashes thumbnail names through nettle's own MD5 interface: nettle 4
+# no longer installs md5-compat.h, so configure stops at its check.
+patch -p1 -i "$PORT_SRC/nettle4.patch"
+
 # Offline use is maps from MBTiles and the tile cache: the tile and search
 # services that need an account or a network (Bing, Google, Terraserver,
 # Expedia, Blue Marble, GeoNames, geocaches, USGS DEM download, OSM upload)

@@ -10,7 +10,7 @@
 
 name        = python3-pynest2d
 version     = 5.11.0.alpha0
-release     = 1
+release     = 2
 _commit     = 73235af569bd36bb8c60e659f75057bd559426d8
 source      = $name-$version.tar.gz::https://github.com/Ultimaker/pynest2d/archive/$_commit.tar.gz
 sha256      = 5d25619521dcf799c3e6ada19e290f1b0256f85b4e639768f58fbf22db760e24  python3-pynest2d-5.11.0.alpha0.tar.gz

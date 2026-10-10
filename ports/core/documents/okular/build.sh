@@ -20,6 +20,10 @@
 # is downgraded, and those files do not open. The PDF generator needs poppler
 # built with its Qt 6 frontend; without it the build fails here rather than
 # shipping a viewer that cannot read a PDF.
+#
+# The bundled SyncTeX parser calls vasprintf, which musl declares only under
+# _GNU_SOURCE and the file does not define.
+export CFLAGS="$CFLAGS -D_GNU_SOURCE"
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \

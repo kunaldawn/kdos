@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/libxml2-no-http.patch"
+
 # SpatiaLite: spatial SQL for SQLite, as libspatialite and as mod_spatialite,
 # the extension QGIS, GDAL's SQLite driver and Python load at run time. PROJ,
 # GEOS (with its advanced and 3.11 functions), RTTOPO, libxml2 (XML

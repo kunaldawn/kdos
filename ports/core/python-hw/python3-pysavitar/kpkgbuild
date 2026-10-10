@@ -10,7 +10,7 @@
 
 name        = python3-pysavitar
 version     = 5.12.0
-release     = 1
+release     = 2
 _commit     = 74cbe2bd365c6f3397b385e879139b012059c487
 source      = $name-$version.tar.gz::https://github.com/Ultimaker/pySavitar/archive/$_commit.tar.gz
 sha256      = 784aabbd0b4388603eab7bbf8363be8ea83eaec967ee52ef26952a9c19bf47b8  python3-pysavitar-5.12.0.tar.gz

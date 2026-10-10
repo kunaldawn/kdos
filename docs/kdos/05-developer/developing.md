@@ -564,7 +564,7 @@ The environments differ: `20_selfhost` names no compiler, while every later phas
 `CXX=g++`. `PORT_REPO` differs too: `src/system` and `src/art` are on it from `40_lang` on, and
 `src/desktop` and `src/daemons` only in `50_desktop`.
 
-Nine of the 2,000 ports in `ports/core` are named in no list. Four are installed because
+Nine of the 2,003 ports in `ports/core` are named in no list. Four are installed because
 `20_selfhost`'s list depends on them (`gmp`, `mpfr`, `mpc` and `xxhash`), and the second command
 finds their phase. The other five (`helix`, `icon-naming-utils`, `musl-locales`,
 `perl-xml-simple` and `setconf`) are named by no list and needed by no port, so no build installs

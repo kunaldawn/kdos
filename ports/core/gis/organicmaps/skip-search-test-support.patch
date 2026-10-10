@@ -1,0 +1,11 @@
+--- a/libs/search/CMakeLists.txt
++++ b/libs/search/CMakeLists.txt
+@@ -179,7 +179,7 @@
+   openlocationcode
+ )
+ 
+-if(PLATFORM_DESKTOP)
++if(PLATFORM_DESKTOP AND NOT (SKIP_TOOLS AND SKIP_TESTS))
+   add_subdirectory(search_tests_support)
+   add_subdirectory(search_quality)
+ endif()

@@ -14,6 +14,10 @@
 # the patch from Ultimaker's own recipe includes it only where it exists.
 patch -d "$SRC_ROOT/wagyu-$_wagyu" -p1 -i "$PORT_SRC/wagyu-execinfo.patch"
 
+# OBJ.cpp calls std::setprecision without including <iomanip>, and none of the
+# headers it does include brings it in here; the patch includes it.
+patch -p1 -i "$PORT_SRC/include-iomanip.patch"
+
 # CuraEngine's CMake is written for Conan: it loads its compiler settings as
 # a package called standardprojectsettings, and links every dependency by the
 # target name Conan's recipes generate (boost::boost, onetbb::onetbb,

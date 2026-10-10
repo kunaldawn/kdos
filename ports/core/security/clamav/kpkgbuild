@@ -10,7 +10,7 @@
 
 name        = clamav
 version     = 1.5.4
-release     = 1
+release     = 2
 source      = https://www.clamav.net/downloads/production/$name-$version.tar.gz
 sha256      = 1af1117a228f1b5bc7fa91a0dabc37848a99e7d25188e9be8043332ce721dfd3  clamav-1.5.4.tar.gz
 description = Anti-virus toolkit — clamscan, the clamd daemon, sigtool and the libclamav scanning engine

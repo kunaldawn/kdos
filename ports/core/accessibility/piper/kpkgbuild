@@ -10,7 +10,7 @@
 
 name        = piper
 version     = 1.8.0
-release     = 1
+release     = 2
 _espeak     = 724808c5a83f9ef95fdd0db886ba7ba537ff224a
 source      = $name-$version.tar.gz::https://github.com/OHF-Voice/piper1-gpl/archive/refs/tags/v$version.tar.gz
 source      = espeak-ng-$_espeak.tar.gz::https://github.com/espeak-ng/espeak-ng/archive/$_espeak.tar.gz

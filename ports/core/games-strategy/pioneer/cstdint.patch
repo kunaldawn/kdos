@@ -1,0 +1,10 @@
+--- a/src/DateTime.h
++++ b/src/DateTime.h
+@@ -1,6 +1,7 @@
+ #ifndef DATETIME_H
+ #define DATETIME_H
+ 
++#include <cstdint>
+ #include <string>
+ 
+ namespace Time {

@@ -22,6 +22,13 @@ for p in 0001-Enable-building-on-musl 0002-temp-failure-retry \
 	patch -p1 -i "$PORT_SRC/$p.patch"
 done
 
+# gn is built by its own gen.py, which reads no CFLAGS or CXXFLAGS, and its
+# pool.h names int64_t without including <cstdint>, which GCC 16's headers do
+# not pull in on the way to their own. The sandbox's proc_util.cc sizes a
+# buffer with PATH_MAX and includes no header that declares it on musl.
+patch -p1 -i "$PORT_SRC/gn-cstdint.patch"
+patch -p1 -i "$PORT_SRC/sandbox-path-max.patch"
+
 # musl declares off64_t, stat64 and the other *64 names only under
 # _LARGEFILE64_SOURCE, and Chromium's third-party code still spells them.
 # The build pins __DATE__ and __TIME__ for reproducibility, which gcc warns

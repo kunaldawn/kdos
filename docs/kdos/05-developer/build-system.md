@@ -76,10 +76,10 @@ share, `chroot/` the chroot wrappers, `lib/port.sh` the port reader the first tw
 | `20_selfhost` | Self-Hosting Bootstrap | Chroot | `packages.txt`, 8 names, 14 ports installed: tar, musl, zlib, binutils, diffutils, m4, gawk and gcc rebuilt inside the chroot, with what they depend on | `fs` |
 | `30_foundation` | Build Foundation | Chroot | `packages.txt`, 126 names, 116 installed: build systems, perl and python3, base libraries, archive, TLS and documentation tooling, ccache | `fs` |
 | `31_compilers` | Compilers | Chroot | `packages.txt`, 22 names, 22 installed: LLVM, clang, lld and their pinned 21 series, compiler-rt, libunwind, openmp, rust, cargo-c, bindgen, cbindgen, go, ghc, cabal-install, pandoc, zig, nodejs, ruby, asciidoctor, the ccache manual page | `fs` |
-| `40_lang` | Languages | Chroot | `packages.d/`, 14 files, 195 names, 167 installed: language modules, language implementations, build, documentation and developer tools, version control | `fs` |
-| `41_system` | System | Chroot | `packages.d/`, 94 files, 967 names, 967 installed: everything with no graphics and no toolkit in its dependency closure, among it services, networking, storage, command-line tools, codecs, firmware, fonts, science and hardware libraries, and KDOS's theme, icons, cursors, splash and pack tools | `fs` |
+| `40_lang` | Languages | Chroot | `packages.d/`, 14 files, 197 names, 169 installed: language modules, language implementations, build, documentation and developer tools, version control | `fs` |
+| `41_system` | System | Chroot | `packages.d/`, 93 files, 967 names, 967 installed: everything with no graphics and no toolkit in its dependency closure, among it services, networking, storage, command-line tools, codecs, firmware, fonts, science and hardware libraries, and KDOS's theme, icons, cursors, splash and pack tools | `fs` |
 | `42_graphics` | Graphics Stack | Chroot | `packages.d/`, 54 files, 186 names, 186 installed: the Wayland and X11 libraries, Xwayland, Mesa, the media frameworks, and `kdos-tools` | `fs` |
-| `43_toolkits` | Toolkits | Chroot | `packages.d/`, 46 files, 242 names, 242 installed: GTK, Qt 5 and 6, KDE Frameworks and the libraries built on them | `fs` |
+| `43_toolkits` | Toolkits | Chroot | `packages.d/`, 46 files, 243 names, 243 installed: GTK, Qt 5 and 6, KDE Frameworks and the libraries built on them | `fs` |
 | `44_apps` | Applications | Chroot | `packages.d/`, 55 files, 280 names, 280 installed: the natively ported graphical applications, and `kdos-appbox` | `fs` |
 | `50_desktop` | Desktop | Chroot | `packages.txt`, 22 names, 22 installed: wlroots, `kdos-comp`, `kdos-shell`, `kdos-term`, `kdos-lock`, `kdos-res`, `kdos-boxsock`, `kdos-record`, the five root daemons, fcitx5 and its engines, the portals | `fs` |
 | `60_kernel` | Kernel | Chroot | `packages.txt`, 2 names: `dwarves` and `linux` | none |
@@ -198,7 +198,7 @@ for the first time. `coreutils` goes ahead of the text games that install with G
 `python3-pyxdg` and `python3-pysocks` straight after `khal` and `toot`, whose vendor bundles carry
 their own copies: whoever installs last owns the path, and it has to be the port.
 
-The lists install 2,018 of the 2,024 recipes in the tree. The six they do not are `kdos-installer`,
+The lists install 2,021 of the 2,027 recipes in the tree. The six they do not are `kdos-installer`,
 which `10_bootstrap` compiles directly, and five core ports no list reaches: `helix`,
 `icon-naming-utils` and the `perl-xml-simple` only it depends on, `musl-locales` and `setconf`. The
 four other ports no list names, `gmp`, `mpfr`, `mpc` and `xxhash`, are `20_selfhost`'s

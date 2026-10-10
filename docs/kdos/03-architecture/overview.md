@@ -50,7 +50,7 @@ first field is `app`):
 
 | Where | Count |
 |---|---|
-| `ports/core` | 2,000 recipes, on 102 shelves |
+| `ports/core` | 2,003 recipes, on 102 shelves |
 | `src/system` | 5 recipes |
 | `src/art` | 6 recipes |
 | `src/desktop` | 8 recipes |

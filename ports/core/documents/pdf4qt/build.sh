@@ -10,6 +10,13 @@
 # ---------------------------------
 
 
+# OpenSSL 4 returns names, name entries, strings and attributes read-only and
+# keeps ASN1_STRING's fields private. openssl4.patch makes the readers const,
+# reads strings through ASN1_STRING_length and ASN1_STRING_get0_data, and has
+# the certificate generator build a subject name of its own rather than add
+# entries to the certificate's.
+patch -p1 -i "$PORT_SRC/openssl4.patch"
+
 # The INSTALL_*DEPENDENCIES switches copy the Qt and library files a vcpkg
 # build links into the package; on a system build they would install second
 # copies of other ports' libraries. The scanner plugin compiles its SANE

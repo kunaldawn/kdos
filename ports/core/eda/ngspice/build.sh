@@ -25,8 +25,14 @@
 # and libsndfile and libsamplerate (the sndprint command and the voltage
 # source's wav input) are unconditional AC_CHECK_LIB probes with no switch, so
 # all three are held by `depends` alone.
-./configure --prefix=/usr --libdir=/usr/lib --disable-static \
-	--without-x --with-readline=yes --enable-xspice --enable-cider \
-	--enable-openmp --disable-debug --with-fftw3=yes
-make
-make DESTDIR=$PKG install
+#
+# ONE CONFIGURE BUILDS EITHER THE PROGRAM OR libngspice, never both: KiCad's
+# simulator links the shared library, a terminal runs the program. Each is its
+# own out-of-tree build with the same features; the library has no prompt,
+# so no readline.
+_conf="--prefix=/usr --libdir=/usr/lib --disable-static --without-x
+	--enable-xspice --enable-cider --enable-openmp --disable-debug
+	--with-fftw3=yes"
+mkdir build-shared build-program
+(cd build-shared && ../configure $_conf --with-ngshared && make && make DESTDIR=$PKG install)
+(cd build-program && ../configure $_conf --with-readline=yes && make && make DESTDIR=$PKG install)

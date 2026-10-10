@@ -21,20 +21,22 @@
 # compiler-rt's /usr/lib/clang/23/lib/linux layout; it also drops three clang
 # flags clang 23 does not know and turns off crt-static, which rustc's musl
 # targets default to. unbundle-official-build lets the shim headers of the
-# system libraries compile in an official build.
+# system libraries compile in an official build. protobuf-pure-python pins
+# the bundled Python protobuf, which the build's generators import, to its
+# pure-Python implementation: left to probe, it loads the system protobuf's
+# compiled module, a different release that fails against this tree's.
 for p in 0001-hotfix-ignore-a-new-warning-in-rust-1.89 kdos-toolchain \
 	disable-dns_config_service musl-sandbox musl-tid-caching no-execinfo \
 	no-mallinfo no-res-ninit-nclose no-sandbox-settls temp-failure-retry \
-	rust-cbor unbundle-official-build; do
+	rust-cbor unbundle-official-build gnrt-no-tls protobuf-pure-python; do
 	patch -p1 -i "$PORT_SRC/$p.patch"
 done
 
 # copium is the patch set Alpine applies for this milestone, a later source
 # unpacked beside the tree. Left out: the fixes for a rustc older than this
-# tree's, the crubit fixes (crubit is built only with Chromium's own Rust
-# toolchain), the FFmpeg and simdutf fixes (those libraries stay bundled), the
-# Rust standard library source fix (the prebuilt one is linked) and the armv7
-# one. The system zlib brings the system minizip with it, which lacks
+# tree's, among them the crubit ones (crubit is the crubit port's), the FFmpeg
+# and simdutf fixes (those libraries stay bundled), the standard library
+# source fix (this rust-src has the crates it restores) and the armv7 one. The system zlib brings the system minizip with it, which lacks
 # Chromium's Unicode path field, so its zip reader is taken back to the plain
 # name.
 for p in cr138-node-version-check cr140-musl-prctl \
@@ -69,10 +71,49 @@ PY
 install -d third_party/node/linux/node-linux-x64/bin third_party/gperf/cipd/bin
 ln -sf /usr/bin/node third_party/node/linux/node-linux-x64/bin/node
 ln -sf /usr/bin/gperf third_party/gperf/cipd/bin/gperf
+# TypeScript is the Go compiler, whose npm build reads lib.*.d.ts from beside
+# its own resolved path: the tree keeps Chromium's patched set in src/lib, so
+# a copy of the binary goes there, where a link would read the port's own set.
+install -m755 /usr/lib/typescript-go/tsc third_party/typescript/linux-amd64/src/lib/tsc
 for _arch in amd64 ""; do
 	install -d third_party/dawn/tools/golang/linux-$_arch/bin
 	ln -sf /usr/bin/go third_party/dawn/tools/golang/linux-$_arch/bin/go
 done
+
+# THE RUST TOOLCHAIN, LAID OUT AS CHROMIUM'S OWN. Chromium calls Rust from C++
+# through headers crubit's cc_bindings_from_rs writes, and Blink and the
+# browser both do; GN enables that only with its own toolchain, whose standard
+# library it compiles from source. third_party/rust-toolchain is therefore the
+# system rustc, cargo and rustfmt, the system rustlib (whose src/rust is the
+# library source and its vendored crates), and the crubit port's tool and
+# support tree. VERSION is what GN keys rebuilds of the Rust targets on.
+install -d third_party/rust-toolchain/bin third_party/rust-toolchain/lib/third_party
+for _t in cargo rustc rustfmt cc_bindings_from_rs; do
+	ln -sf /usr/bin/$_t third_party/rust-toolchain/bin/$_t
+done
+ln -sfn /usr/lib/rustlib third_party/rust-toolchain/lib/rustlib
+ln -sfn /usr/share/crubit third_party/rust-toolchain/lib/third_party/crubit
+# cc_bindings_from_rs formats the headers it writes with the clang-format
+# buildtools would hold; the clang port's is that tool.
+install -d buildtools/linux64-format
+ln -sf /usr/bin/clang-format buildtools/linux64-format/clang-format
+rustc -V > third_party/rust-toolchain/VERSION
+cp third_party/rust-toolchain/VERSION third_party/rust-toolchain/INSTALLED_VERSION
+
+# The GN rules for the standard library are generated for the toolchain's own
+# library source: the tarball's are for Chromium's rustc, whose library pins
+# other versions of its crates. gnrt writes them, built from the vendored
+# crates its lock file names. gnrt-no-tls drops reqwest's default TLS
+# backend, which only gnrt's crate downloads use: it reaches OpenSSL through
+# an openssl-sys that refuses OpenSSL 4. The lock file then names crates the
+# build no longer needs, so cargo runs --offline without --frozen and prunes
+# them.
+(
+	cd tools/crates/gnrt
+	tar xf "$PORT_SRC/$name-vendor-$version.tar.xz"
+	RUSTFLAGS="-C target-feature=-crt-static" cargo build --release --offline
+)
+tools/crates/gnrt/target/release/gnrt gen --for-std third_party/rust-toolchain/lib/rustlib/src/rust
 
 # DevTools bundles its front end with esbuild and rollup. esbuild's JavaScript
 # API in node_modules refuses a binary of any version but its own, so the
@@ -108,10 +149,14 @@ python3 build/linux/unbundle/replace_gn_files.py --system-libraries $_system
 # environment and appends them last, so the phase's -std=gnu11 would override
 # the C standard Chromium picks. The build runs nightly-only rustc features
 # that Chromium's own toolchain allows; RUSTC_BOOTSTRAP grants them to the
-# stable rustc.
+# stable rustc. musl declares malloc and the rest with no exception
+# specification; PartitionAlloc's shim declares them again with __THROW, which
+# it defines as noexcept when the C library has not defined it, and the two
+# declarations then disagree. -D__THROW= is the empty definition the shim
+# expects from a sys/cdefs.h; libbsd's, the one here, has none.
 export CC=clang CXX=clang++ AR=llvm-ar NM=llvm-nm
-export CFLAGS="${CFLAGS/-std=gnu11/} -Wno-unknown-warning-option -Wno-builtin-macro-redefined -Wno-deprecated-declarations"
-export CXXFLAGS="$CXXFLAGS -Wno-unknown-warning-option -Wno-builtin-macro-redefined -Wno-deprecated-declarations"
+export CFLAGS="${CFLAGS/-std=gnu11/} -Wno-unknown-warning-option -Wno-builtin-macro-redefined -Wno-deprecated-declarations -D__THROW="
+export CXXFLAGS="$CXXFLAGS -Wno-unknown-warning-option -Wno-builtin-macro-redefined -Wno-deprecated-declarations -D__THROW="
 export RUSTC_BOOTSTRAP=1
 
 # No Google API keys: without them sync, sign-in, Safe Browsing, translation
@@ -120,61 +165,60 @@ export RUSTC_BOOTSTRAP=1
 # field-trial config, the Hangouts extension, the VR runtime and unrar.
 # Profile-guided optimisation needs a profile gclient downloads, and ThinLTO
 # multiplies the link's memory; both are off. Qt integration is off: the
-# browser draws with GTK 3, loaded at run time.
+# browser draws with GTK 3, loaded at run time. GN rejects a tab anywhere in
+# --args, so the list is indented with spaces.
 gn gen out/Release --args='
-	is_official_build = true
-	is_debug = false
-	symbol_level = 0
-	blink_symbol_level = 0
-	is_clang = true
-	is_musl = true
-	clang_base_path = "/usr"
-	clang_version = "23"
-	clang_use_chrome_plugins = false
-	custom_toolchain = "//build/toolchain/linux/unbundle:default"
-	host_toolchain = "//build/toolchain/linux/unbundle:default"
-	use_sysroot = false
-	use_custom_libcxx = true
-	use_lld = true
-	use_mold = false
-	use_siso = false
-	use_thin_lto = false
-	is_cfi = false
-	chrome_pgo_phase = 0
-	treat_warnings_as_errors = false
-	fatal_linker_warnings = false
-	enable_nocompile_tests = false
-	blink_enable_generated_code_formatting = false
-	enable_rust = true
-	rust_sysroot_absolute = "/usr"
-	rust_bindgen_root = "/usr"
-	rustc_version = "1.98.1"
-	node_version_check = false
-	use_official_google_api_keys = false
-	google_api_key = ""
-	google_default_client_id = ""
-	google_default_client_secret = ""
-	disable_fieldtrial_testing_config = true
-	enable_hangout_services_extension = false
-	enable_widevine = false
-	enable_vr = false
-	safe_browsing_use_unrar = false
-	proprietary_codecs = true
-	ffmpeg_branding = "Chrome"
-	ozone_platform_wayland = true
-	ozone_platform_x11 = true
-	use_qt5 = false
-	use_qt6 = false
-	use_gio = true
-	use_cups = true
-	use_kerberos = true
-	use_vaapi = true
-	use_pulseaudio = true
-	link_pulseaudio = true
-	rtc_use_pipewire = true
-	rtc_link_pipewire = true
-	use_system_libffi = true
-	icu_use_data_file = true
+    is_official_build = true
+    is_debug = false
+    symbol_level = 0
+    blink_symbol_level = 0
+    is_clang = true
+    is_musl = true
+    clang_base_path = "/usr"
+    clang_version = "23"
+    clang_use_chrome_plugins = false
+    custom_toolchain = "//build/toolchain/linux/unbundle:default"
+    host_toolchain = "//build/toolchain/linux/unbundle:default"
+    use_sysroot = false
+    use_custom_libcxx = true
+    use_lld = true
+    use_mold = false
+    use_siso = false
+    use_thin_lto = false
+    is_cfi = false
+    chrome_pgo_phase = 0
+    treat_warnings_as_errors = false
+    fatal_linker_warnings = false
+    enable_nocompile_tests = false
+    blink_enable_generated_code_formatting = false
+    enable_rust = true
+    rust_bindgen_root = "/usr"
+    node_version_check = false
+    use_official_google_api_keys = false
+    google_api_key = ""
+    google_default_client_id = ""
+    google_default_client_secret = ""
+    disable_fieldtrial_testing_config = true
+    enable_hangout_services_extension = false
+    enable_widevine = false
+    enable_vr = false
+    safe_browsing_use_unrar = false
+    proprietary_codecs = true
+    ffmpeg_branding = "Chrome"
+    ozone_platform_wayland = true
+    ozone_platform_x11 = true
+    use_qt5 = false
+    use_qt6 = false
+    use_gio = true
+    use_cups = true
+    use_kerberos = true
+    use_vaapi = true
+    use_pulseaudio = true
+    link_pulseaudio = true
+    rtc_use_pipewire = true
+    rtc_link_pipewire = true
+    use_system_libffi = true
+    icu_use_data_file = true
 '
 
 # The final link holds thousands of objects open at once; the default soft

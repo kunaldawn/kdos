@@ -15,12 +15,16 @@
 # argument that no longer converts from an enum. offline-defaults.patch sets
 # the global defaults so that a machine with no network is not contacted at
 # every start: the version check, the welcome page's news feed and the
-# plugin repository check are off.
+# plugin repository check are off. sip-movable.patch gives the Qt 6 bindings
+# the Movable std::unique_ptr mapped type the Qt 5 bindings already carry: sip
+# 6.16 refuses to return a NoRelease mapped type by value unless it is Movable,
+# and every binding module stops at code generation.
 patch -p1 -i "$PORT_SRC/10-libspatialindex_2_1.patch"
 patch -p1 -i "$PORT_SRC/20-qgstyle-infinite-loop.patch"
 patch -p1 -i "$PORT_SRC/40-qt6.10.patch"
 patch -p1 -i "$PORT_SRC/50-qstring.patch"
 patch -p1 -i "$PORT_SRC/offline-defaults.patch"
+patch -p1 -i "$PORT_SRC/sip-movable.patch"
 
 # QGIS Desktop on Qt 6 with PyQGIS (the Python console, Processing, DB
 # Manager, MetaSearch and the plugin manager), qgis_process, 3D map views

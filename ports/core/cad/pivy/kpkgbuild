@@ -11,7 +11,7 @@
 
 name        = pivy
 version     = 0.6.11
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/coin3d/pivy/archive/refs/tags/$version.tar.gz
 sha256      = 78f79bd7d1ce7e8140ceba4b1220136ea1f14b4403b1e463c59fa892feed961e  pivy-0.6.11.tar.gz
 description = Python bindings for Coin and SoQt, the scene-graph API FreeCAD's workbenches script

@@ -10,7 +10,7 @@
 
 name        = kdevelop
 version     = 26.08.1
-release     = 1
+release     = 2
 source      = https://download.kde.org/stable/release-service/$version/src/kdevelop-$version.tar.xz
 sha256      = dd77921d7e403bfbb60bfa8a7998a2e2c1eb53ab7b4b1a2f8a52360493c586ab  kdevelop-26.08.1.tar.xz
 description = KDevelop — the KDE IDE for C, C++ and more, with libclang code analysis

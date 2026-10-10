@@ -1,0 +1,14 @@
+--- a/kivy/graphics/instructions.pyx
++++ b/kivy/graphics/instructions.pyx
+@@ -895,10 +895,7 @@
+ 
+     cdef int apply(self) except -1:
+         cdef list keys
+-        if PY2:
+-            keys = self.state_stacks.keys()
+-        else:
+-            keys = list(self.state_stacks.keys())
++        keys = list(self.state_stacks.keys())
+ 
+         cdef RenderContext active_context = getActiveContext()
+         if self._use_parent_projection:

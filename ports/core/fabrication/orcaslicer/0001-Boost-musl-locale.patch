@@ -1,0 +1,24 @@
+diff --git a/libs/filesystem/src/path.cpp b/libs/filesystem/src/path.cpp
+--- a/libs/filesystem/src/path.cpp
++++ b/libs/filesystem/src/path.cpp
+@@ -28,7 +28,7 @@
+ #include "windows_file_codecvt.hpp"
+ #include "windows_tools.hpp"
+ #include <windows.h>
+-#elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__HAIKU__)
++#elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__HAIKU__) || (defined(__linux__) && !defined(__GLIBC__))
+ #include <boost/filesystem/detail/utf8_codecvt_facet.hpp>
+ #endif
+ 
+@@ -1329,7 +1329,10 @@
+ #if defined(BOOST_WINDOWS_API)
+     std::locale global_loc = std::locale();
+     return std::locale(global_loc, new boost::filesystem::detail::windows_file_codecvt());
+-#elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__HAIKU__)
++#elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__HAIKU__) || (defined(__linux__) && !defined(__GLIBC__))
++    // musl's libstdc++ builds only the "C" locale by name, so std::locale("")
++    // throws under a UTF-8 LANG; file names there are UTF-8, as on the BSDs.
++    //
+     // "All BSD system functions expect their string parameters to be in UTF-8 encoding
+     // and nothing else." See
+     // http://developer.apple.com/mac/library/documentation/MacOSX/Conceptual/BPInternational/Articles/FileEncodings.html

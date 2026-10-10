@@ -9,6 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# no-graphite drops loop-nest-optimize, tree-loop-linear, loop-block and
+# loop-strip-mine from the sources' #pragma GCC optimize lists: they are
+# Graphite passes, this GCC is built without isl, and it refuses each one as
+# unimplemented. A pragma outranks the command line, so no flag answers it.
+patch -p1 -i "$PORT_SRC/no-graphite.patch"
+
 # BINARY_PACKAGE_BUILD compiles for the generic x86-64 target instead of the
 # builder's CPU, and so does the bundled rawspeed, which reads the same flag;
 # without it the package faults on an older processor.

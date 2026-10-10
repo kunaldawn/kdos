@@ -10,7 +10,7 @@
 
 name        = calibre
 version     = 9.15.0
-release     = 1
+release     = 2
 _html5parser = 0.4.12
 source      = https://download.calibre-ebook.com/$version/$name-$version.tar.xz
 source      = https://files.pythonhosted.org/packages/source/h/html5-parser/html5-parser-$_html5parser.tar.gz

@@ -11,7 +11,7 @@
 
 name        = python3-kivy
 version     = 2.3.1
-release     = 1
+release     = 2
 source      = https://files.pythonhosted.org/packages/source/k/kivy/Kivy-$version.tar.gz
 sha256      = 0833949e3502cdb4abcf9c1da4384674045ad7d85644313aa1ee7573f3b4f9d9  python3-kivy-2.3.1.tar.gz
 sha256      = ef78c2984a2c109b7a05749de74516bc50e359ab90b05e5a5411dffbefdcd797  python3-kivy-vendor-2.3.1.tar.xz

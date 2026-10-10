@@ -1,0 +1,30 @@
+--- a/src/openrct2/config/IniReader.hpp
++++ b/src/openrct2/config/IniReader.hpp
+@@ -9,6 +9,7 @@
+ 
+ #pragma once
+ 
++#include <cstdint>
+ #include <memory>
+ #include <string>
+ 
+--- a/src/openrct2/network/NetworkServerAdvertiser.cpp
++++ b/src/openrct2/network/NetworkServerAdvertiser.cpp
+@@ -25,6 +25,7 @@
+ 
+     #include <chrono>
+     #include <cstring>
++    #include <future>
+     #include <iterator>
+     #include <memory>
+     #include <random>
+--- a/src/openrct2-ui/UiContext.h
++++ b/src/openrct2-ui/UiContext.h
+@@ -9,6 +9,7 @@
+ 
+ #pragma once
+ 
++#include <cstdint>
+ #include <memory>
+ #include <string>
+ #include <vector>

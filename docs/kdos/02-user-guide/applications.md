@@ -259,7 +259,7 @@ are simpler burners, on GTK. From a prompt, `cdrdao` writes audio CDs disc-at-on
 | Filelight, QDirStat | What is using the disk |
 | GParted | Create, resize, move and check partitions; the filesystem tools it drives are ported with it |
 | GNOME Disks | Partition, format, encrypt, image and benchmark disks |
-| Impression | Write a disk image to a USB stick or memory card |
+| Impression | Write a disk image to a USB stick or memory card, or a Windows installer ISO to a bootable stick |
 | Déjà Dup | Scheduled, encrypted backups |
 | KeePassXC | A password manager for KeePass databases, with one-time codes |
 | VeraCrypt | Encrypted volumes and containers |

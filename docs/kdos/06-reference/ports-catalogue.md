@@ -101,18 +101,18 @@ leaving out any an earlier phase installed.
 | `20_selfhost` | Self-Hosting Bootstrap | `packages.txt` | 8 | 14 |
 | `30_foundation` | Build Foundation | `packages.txt` | 126 | 116 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
-| `40_lang` | Languages | `packages.d/`, 14 files | 195 | 167 |
-| `41_system` | System | `packages.d/`, 94 files | 967 | 967 |
+| `40_lang` | Languages | `packages.d/`, 14 files | 197 | 169 |
+| `41_system` | System | `packages.d/`, 93 files | 967 | 967 |
 | `42_graphics` | Graphics Stack | `packages.d/`, 54 files | 186 | 186 |
-| `43_toolkits` | Toolkits | `packages.d/`, 46 files | 242 | 242 |
+| `43_toolkits` | Toolkits | `packages.d/`, 46 files | 243 | 243 |
 | `44_apps` | Applications | `packages.d/`, 55 files | 280 | 280 |
 | `50_desktop` | Desktop | `packages.txt` | 22 | 22 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,050 | 2,018 |
+| Total | | | 2,053 | 2,021 |
 
-The lists hold 2,050 lines naming 2,014 distinct ports; 34 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,018 ports. With `kdos-installer`, which
+The lists hold 2,053 lines naming 2,017 distinct ports; 34 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,021 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that leaves 5 recipes that no phase installs.
 
 ### Built by script
@@ -157,9 +157,9 @@ list or by script.
 | [`base-libs`](#base-libs) | 16 | 16 | 0 |
 | [`auth`](#auth) | 13 | 13 | 0 |
 | [`boot`](#boot) | 14 | 14 | 0 |
-| [`toolchain`](#toolchain) | 36 | 35 | 1 |
+| [`toolchain`](#toolchain) | 37 | 36 | 1 |
 | [`buildtools`](#buildtools) | 20 | 19 | 1 |
-| [`lang`](#lang) | 26 | 26 | 0 |
+| [`lang`](#lang) | 27 | 27 | 0 |
 | [`devtools`](#devtools) | 33 | 33 | 0 |
 | [`vcs`](#vcs) | 10 | 10 | 0 |
 | [`editors`](#editors) | 12 | 11 | 1 |
@@ -167,7 +167,7 @@ list or by script.
 | [`devlibs`](#devlibs) | 34 | 34 | 0 |
 | [`formats`](#formats) | 34 | 34 | 0 |
 | [`database`](#database) | 15 | 15 | 0 |
-| [`archiver`](#archiver) | 28 | 28 | 0 |
+| [`archiver`](#archiver) | 29 | 29 | 0 |
 | [`shells`](#shells) | 10 | 10 | 0 |
 | [`cli`](#cli) | 19 | 19 | 0 |
 | [`files`](#files) | 11 | 11 | 0 |
@@ -259,7 +259,7 @@ list or by script.
 | [`src/art`](#srcart) | 6 | 6 | 0 |
 | [`src/desktop`](#srcdesktop) | 8 | 8 | 0 |
 | [`src/daemons`](#srcdaemons) | 5 | 5 | 0 |
-| Total | 2,024 | 2,019 | 5 |
+| Total | 2,027 | 2,022 | 5 |
 
 ## The shelves
 
@@ -276,7 +276,7 @@ The minimal userland and system daemons that every KDOS image boots with. 27 por
 | `bash` | 5.3 | The Bourne-Again SHell | `30_foundation`, named again by `40_lang` |
 | `bc` | 1.08.2 | An arbitrary precision calculator language | `30_foundation`, named again by `40_lang` |
 | `ca-certificates` | 3.130 | Bundle of CA Root Certificates from Mozilla | `30_foundation` |
-| `coreutils` | 9.12 | The GNU core utilities, for the commands toybox implements too narrowly: expr and ln | `41_system` |
+| `coreutils` | 9.12 | The GNU core utilities, for the commands toybox implements too narrowly: expr, ln, printf and date | `41_system` |
 | `dbus` | 1.16.2 | Message bus system for communication between processes | `41_system` |
 | `diffutils` | 3.12 | Utility programs for comparing files | `20_selfhost`, named again by `30_foundation`, `40_lang` |
 | `eudev` | 3.2.14 | Programs for dynamic creation of device nodes | `30_foundation`, named again by `40_lang` |
@@ -368,7 +368,7 @@ tooling. 14 ports, under `ports/core/boot/`.
 
 ### toolchain
 
-The native compilers, the linker, the C library, and the LLVM family. 36 ports, under
+The native compilers, the linker, the C library, and the LLVM family. 37 ports, under
 `ports/core/toolchain/`.
 
 | Port | Version | Description | Phase |
@@ -382,6 +382,7 @@ The native compilers, the linker, the C library, and the LLVM family. 36 ports, 
 | `clang` | 23.1.2 | The C/C++ compiler, plus clangd, clang-tidy and clang-format | `31_compilers` |
 | `clang21` | 21.1.8 | Clang 21 libraries and compiler, installed under /usr/lib/llvm21 for zig | `31_compilers` |
 | `compiler-rt` | 23.1.2 | clang's runtime libraries — builtins, the profile runtime and UndefinedBehaviorSanitizer | `31_compilers` |
+| `crubit` | 0.20260811 | Crubit's cc_bindings_from_rs, which writes C++ headers for calling Rust crates, and its C++ support library | `40_lang` |
 | `elfutils` | 0.196 | utilities and libraries for handling ELF files | `30_foundation`, named again by `40_lang` |
 | `flex` | 2.6.4 | Lexical analyser generator | `30_foundation`, named again by `40_lang` |
 | `gcc` | 16.2.0 | The GNU compiler collection | `20_selfhost`, named again by `30_foundation` |
@@ -425,7 +426,7 @@ Build systems and build helpers. 20 ports, under `ports/core/buildtools/`.
 | `ccache-manual` | 4.14 | The ccache manual page | `31_compilers` |
 | `cmake` | 4.4.3 | Cross-platform build-system generator | `30_foundation` |
 | `corrosion` | 0.6.1 | The CMake bridge that builds a cargo crate as a CMake target | `40_lang` |
-| `gn` | 0.2480 | Chromium's meta-build system, which writes ninja files from BUILD.gn | `40_lang` |
+| `gn` | 0.2540 | Chromium's meta-build system, which writes ninja files from BUILD.gn | `40_lang` |
 | `intltool` | 0.51.0 | An internationalization tool used for extracting translatable strings from source files | `30_foundation`, named again by `40_lang` |
 | `itstool` | 2.0.7 | Translates XML documents with PO files | `30_foundation` |
 | `libtool` | 2.6.2 | The GNU generic library support script | `30_foundation`, named again by `40_lang` |
@@ -439,7 +440,7 @@ Build systems and build helpers. 20 ports, under `ports/core/buildtools/`.
 
 ### lang
 
-Language implementations, plus the modules of any language that has no module shelf of its own. 26
+Language implementations, plus the modules of any language that has no module shelf of its own. 27
 ports, under `ports/core/lang/`.
 
 | Port | Version | Description | Phase |
@@ -467,6 +468,7 @@ ports, under `ports/core/lang/`.
 | `rust` | 1.98.1 | The Rust compiler, with cargo, clippy, rustdoc and rustfmt | `31_compilers` |
 | `tcl` | 9.0.4 | The Tcl scripting language — the interpreter yosys and weechat embed | `41_system` |
 | `tk` | 9.0.4 | Tk, the GUI toolkit for Tcl — wish and libtcl9tk, drawn through X11 under Xwayland | `42_graphics` |
+| `typescript-go` | 7.0.2 | TypeScript 7, the TypeScript compiler written in Go | `40_lang` |
 | `vala` | 0.56.19 | Vala compiler and vapigen — C#-like language compiled to GObject C | `41_system` |
 | `yarn` | 4.18.1 | Yarn — the JavaScript package manager, the Berry line | `40_lang` |
 | `zig` | 0.16.0 | Zig — general-purpose programming language and toolchain | `31_compilers` |
@@ -655,7 +657,7 @@ data query and convert tools. 34 ports, under `ports/core/formats/`.
 | `pugixml` | 1.16 | Light XML parser — libkiwix reads its OPDS catalogues with it | `41_system` |
 | `rapidjson` | 1.1.0 | Header-only JSON parser and generator for C++ | `41_system` |
 | `raptor2` | 2.0.16 | Raptor RDF syntax library — RDF/XML, Turtle and N-Triples parsers and serialisers | `41_system` |
-| `thrift` | 0.24.0 | Apache Thrift — the IDL compiler, the C++ library and the Python module; GNU Radio's ControlPort transport | `41_system` |
+| `thrift` | 0.25.0 | Apache Thrift — the IDL compiler, the C++ library and the Python module; GNU Radio's ControlPort transport | `41_system` |
 | `tinyxml` | 2.6.2 | Small C++ XML parser (TinyXML 1) | `41_system` |
 | `tomlplusplus` | 3.4.0 | TOML parser and serializer for C++17 | `41_system` |
 | `visidata` | 3.4 | Terminal spreadsheet for tabular files | `42_graphics` |
@@ -690,7 +692,7 @@ ports, under `ports/core/database/`.
 
 ### archiver
 
-Compression libraries and archive tools. 28 ports, under `ports/core/archiver/`.
+Compression libraries and archive tools. 29 ports, under `ports/core/archiver/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -715,6 +717,7 @@ Compression libraries and archive tools. 28 ports, under `ports/core/archiver/`.
 | `par2cmdline-turbo` | 1.5.0 | PAR2 recovery files with SIMD-accelerated Reed-Solomon coding | `41_system` |
 | `unshield` | 1.6.2 | Extract InstallShield cabinet (.cab) archives | `41_system` |
 | `unzip` | 6.0 | ZIP extraction utilities | `41_system` |
+| `wimlib` | 1.14.5 | Library and wimlib-imagex tool for Windows Imaging (WIM) archives | `41_system` |
 | `xz` | 5.8.4 | XZ compression utilities | `30_foundation`, named again by `40_lang` |
 | `zip` | 3.0 | Info-ZIP archive creation utilities | `41_system` |
 | `zlib` | 1.3.2 | Compression library implementing the deflate compression method | `20_selfhost`, named again by `30_foundation` |
@@ -1933,7 +1936,7 @@ thumbnailers, Plasma integration, KDE Wayland glue. 8 ports, under `ports/core/k
 | `kwayland` | 6.7.5 | Qt-style client library for the Wayland and Plasma Wayland protocols | `43_toolkits` |
 | `libksysguard` | 6.7.5 | libksysguard — process list, sensors and system statistics libraries, for KDevelop's attach to process | `43_toolkits` |
 | `plasma-integration` | 6.7.5 | Qt platform theme that gives every Qt 6 and KF6 application the KDE palette, fonts, icons and file dialogs | `43_toolkits` |
-| `plasma-wayland-protocols` | 1.22.0 | KDE Plasma Wayland protocol definitions | `41_system` |
+| `plasma-wayland-protocols` | 1.22.0 | KDE Plasma Wayland protocol definitions | `43_toolkits` |
 
 ### toolkits
 
@@ -2151,7 +2154,7 @@ Multimedia frameworks, capture, and media inspection. 17 ports, under
 | `libmediainfo` | 26.05 | Media file inspection library — codec, profile, bit depth and every track | `41_system` |
 | `libzen` | 0.4.41 | ZenLib, the portability layer libmediainfo is written on | `41_system` |
 | `mediainfo` | 26.05 | The command line over libmediainfo | `41_system` |
-| `mlt` | 7.40.0 | MLT multimedia framework: the video editing engine under Kdenlive and Shotcut | `43_toolkits` |
+| `mlt` | 7.42.0 | MLT multimedia framework: the video editing engine under Kdenlive and Shotcut | `43_toolkits` |
 | `opentimelineio` | 0.18.1 | OpenTimelineIO: interchange format and C++ API for editorial timelines | `41_system` |
 | `orc` | 0.4.44 | Oil Runtime Compiler — JIT for the SIMD inner loops of GStreamer's plugins | `41_system` |
 | `totem-pl-parser` | 3.26.7 | Playlist parser library — m3u, pls, xspf and podcast feeds | `41_system` |

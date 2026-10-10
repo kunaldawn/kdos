@@ -19,19 +19,6 @@ patch -p1 -i "$PORT_SRC/0001-calibre-no-update.patch"
 patch -p1 -i "$PORT_SRC/0002-calibre-use-make.patch"
 patch -p1 -i "$PORT_SRC/0003-calibre-disable-piper.patch"
 
-# The release tarball already carries every generated resource the install
-# needs: the compiled RapydScript viewer and editor, MathJax, the hyphenation
-# dictionaries, the iso-codes tables and the Liberation fonts. `install` runs
-# only `build` and `gui`, so nothing below reaches the network. Importing
-# calibre during the build writes a configuration directory, kept inside the
-# work tree.
-export CALIBRE_CONFIG_DIRECTORY="$SRC_ROOT/calibre-config"
-export QT_QPA_PLATFORM=offscreen
-python3 setup.py install \
-	--prefix=/usr \
-	--staging-root="$PKG/usr" \
-	--no-postinstall
-
 # THE PYTHON MODULES ONLY CALIBRE IMPORTS go into calibre's own library
 # directory, which its launchers put first on sys.path, so none of them is a
 # path in site-packages that another package could also own. The shared ones
@@ -41,18 +28,48 @@ python3 setup.py install \
 # depends: setuptools, wheel, hatchling, flit-core, poetry-core, Cython and
 # setuptools-scm. python-xxhash links the system libxxhash and pychm the
 # chmlib port. Bytecode is compiled once below, with the package paths.
+# apsw's source package carries a setup.apsw that downloads SQLite's source to
+# build in; without it apsw links the sqlite port, which has FTS5 and column
+# metadata, the two features calibre's library uses. netifaces fills a
+# struct msghdr by position, which on musl, whose msghdr carries padding
+# members glibc's has not, puts the values in the wrong fields and does not
+# compile; netifaces-msghdr names each field.
 mkdir -p vendor
 tar -xf "$PORT_SRC/$name-vendor-$version.tar.xz" --strip-components=1 -C vendor
+tar -xf vendor/apsw-*.tar.gz -C "$SRC_ROOT"
+_apsw=$(echo "$SRC_ROOT"/apsw-*/)
+rm "$_apsw/setup.apsw"
+tar -xf vendor/netifaces-*.tar.gz -C "$SRC_ROOT"
+_netifaces=$(echo "$SRC_ROOT"/netifaces-*/)
+patch -d "$_netifaces" -p1 -i "$PORT_SRC/netifaces-msghdr.patch"
 export XXHASH_LINK_SO=1
 pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
-	--no-compile --target="$PKG/usr/lib/calibre" \
+	--no-compile --target="$SRC_ROOT/calibre-modules" \
 	css-parser jeepney dnspython mechanize feedparser-sgmllib feedparser \
 	markdown html2text soupsieve beautifulsoup4 regex chardet msgpack \
-	pycryptodome apsw netifaces ifaddr zeroconf lxml-html-clean xxhash \
+	pycryptodome "$_apsw" "$_netifaces" ifaddr zeroconf lxml-html-clean xxhash \
 	tzlocal pystache pychm py7zr texttable pycryptodomex pyppmd \
 	pybcj multivolumefile inflate64 pykakasi jaconv deprecated wrapt \
 	"$SRC_ROOT/html5-parser-$_html5parser"
-rm -rf "$PKG/usr/lib/calibre/bin"
+rm -rf "$SRC_ROOT/calibre-modules/bin"
+
+# The release tarball already carries every generated resource the install
+# needs: the compiled RapydScript viewer and editor, MathJax, the hyphenation
+# dictionaries, the iso-codes tables and the Liberation fonts. `install` runs
+# only `build` and `gui`, so nothing below reaches the network. Importing
+# calibre during the build writes a configuration directory, kept inside the
+# work tree. The gui step imports calibre, which imports msgpack and the rest
+# of the modules installed above, so their directory is on PYTHONPATH; the
+# install empties calibre's library directory before filling it, so they are
+# copied into it afterwards.
+export CALIBRE_CONFIG_DIRECTORY="$SRC_ROOT/calibre-config"
+export QT_QPA_PLATFORM=offscreen
+PYTHONPATH="$SRC_ROOT/calibre-modules" python3 setup.py install \
+	--prefix=/usr \
+	--staging-root="$PKG/usr" \
+	--no-postinstall
+cp -a "$SRC_ROOT/calibre-modules/." "$PKG/usr/lib/calibre/"
+
 python3 -m compileall -q -j1 -s "$PKG" -p / "$PKG/usr/lib/calibre"
 
 install -Dm644 -t "$PKG/usr/share/man/man1" man-pages/man1/*.1

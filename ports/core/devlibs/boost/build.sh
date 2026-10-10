@@ -9,6 +9,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# Boost.Filesystem builds its path locale on Linux as std::locale(""), which
+# musl's libstdc++ refuses for every name but C and POSIX, so path::imbue (and
+# with it boost::nowide::nowide_filesystem) throws under the system's
+# LANG=C.UTF-8. musl-filesystem-locale gives musl the UTF-8 facet the BSDs
+# get.
+patch -p1 -i "$PORT_SRC/musl-filesystem-locale.patch"
+
 # Boost's own layout puts headers under include/boost and the CMake config under
 # lib/cmake — libime does find_package(Boost CONFIG), so that config file is the
 # whole point of installing rather than pointing at a source tree.

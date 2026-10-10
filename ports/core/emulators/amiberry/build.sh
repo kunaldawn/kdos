@@ -15,11 +15,24 @@
 # chooser portal over D-Bus, so no GTK is linked.
 rmdir external/nativefiledialog-extended
 mv "$SRC_ROOT/nativefiledialog-extended-$_nfd" external/nativefiledialog-extended
+# Their Wayland support generates its client code from the xdg-foreign
+# protocol in a submodule of their own, empty in the commit archive too; the
+# wayland-protocols port's copy takes its place.
+rmdir external/nativefiledialog-extended/3ps/wayland-protocols
+ln -s /usr/share/wayland-protocols external/nativefiledialog-extended/3ps/wayland-protocols
 
 # The start-up check for a new release is taken out: on Linux it contacts
 # GitHub on every launch unless a Flatpak sandbox is detected. The user's
 # own WHDLoad-database download stays, and fails cleanly with no network.
 patch -p1 -i "$PORT_SRC/no-update-check.patch"
+
+# musl defines NULL as nullptr in C++, which the custom-chip code casts to an
+# address type; musl-null casts 0. The *64 file functions (ftello64, fseeko64,
+# fopen64) amiberry and the bundled CAPS library call are macros musl
+# declares only under _LARGEFILE64_SOURCE.
+patch -p1 -i "$PORT_SRC/musl-null.patch"
+export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE"
+export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE"
 
 # SDL 3 directly, desktop OpenGL through libglvnd. Every optional library is
 # named, since a missing one is only a status line: libserialport for the

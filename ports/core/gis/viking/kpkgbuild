@@ -10,7 +10,7 @@
 
 name        = viking
 version     = 1.11
-release     = 1
+release     = 2
 source      = https://downloads.sourceforge.net/viking/viking-$version.tar.bz2
 sha256      = fe21d5c111ef20877d1cd95b1a4bc34faae9dd3a17bac923f418e1271a3cfc91  viking-1.11.tar.bz2
 description = Viking — GPS track, waypoint and route manager on maps, with MBTiles and gpsd (GTK 3)

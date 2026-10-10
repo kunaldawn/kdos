@@ -10,7 +10,7 @@
 
 name        = linuxcnc
 version     = 2.9.10
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/LinuxCNC/linuxcnc/archive/refs/tags/v$version.tar.gz
 sha256      = 9d1f7a9177ab133de340dcdc9036c9f225eb48aabfcbc87a3df3c78dcd226f24  linuxcnc-2.9.10.tar.gz
 description = LinuxCNC — CNC machine controller for mills, lathes, routers and plasma: HAL, G-code interpreter and the AXIS GUI

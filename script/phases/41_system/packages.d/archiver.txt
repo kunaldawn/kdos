@@ -60,3 +60,6 @@ zziplib
 c-blosc
 lhasa
 zlib-ng
+
+# Windows Imaging archives: what Impression splits a Windows installer with.
+wimlib

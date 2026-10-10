@@ -9,6 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# The crash handler prints a backtrace through <execinfo.h>, which musl does
+# not have; no-execinfo builds it without one where the header is missing,
+# and the crash report keeps the signal and the faulting address.
+patch -p1 -i "$PORT_SRC/no-execinfo.patch"
+
 # The CMake build compiles the program, ttf2lff and the plugins, with
 # muparser, libdxfrw and jwwlib linked in statically from libraries/; none of
 # them is a port. It installs no data and puts the plugins under

@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = gn
-version     = 0.2480
+version     = 0.2540
 release     = 1
-_commit     = 566d29033b5fd7c73e5e8bbcf7ab794194df68bd
-source      = $name-$version.tar.zst::https://ab-sn.lnl.gay/gn-$_commit.tar.zst
-sha256      = f6fca5af9e465a1b8f76ea52a21cb002fe635c2ad34a94958c257c8fa8f9d2f5  gn-0.2480.tar.zst
+_commit     = 150a9d6ba0aa7f407aa4feeabc5f03ce9aa7e04b
+source      = $name-$version.tar.zst
+sha256      = 71f6ae18d05cdbb05c236a0481c1fc40700b6478aed169206ba9528a9cb1cead  gn-0.2540.tar.zst
 description = Chromium's meta-build system, which writes ninja files from BUILD.gn
 homepage    = https://gn.googlesource.com/gn
 depends     = python3 ninja

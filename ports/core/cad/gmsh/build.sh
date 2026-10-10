@@ -11,6 +11,11 @@
 # The FLTK GUI with OpenCASCADE for STEP/IGES/BREP, and the shared library
 # with its Python API, which FreeCAD's FEM workbench drives. MED, CGNS, Mmg
 # and PETSc have no port, so each is off rather than probed and dropped.
+#
+# The fltk port is built with Cairo, and its FL/Fl_Cairo.H includes cairo.h.
+# gmsh takes only FLTK's include directory from fltk-config, so Cairo's
+# directory comes from its own pkg-config file.
+export CXXFLAGS="$CXXFLAGS $(pkg-config --cflags cairo)"
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

@@ -16,6 +16,12 @@ patch -p1 -i "$PORT_SRC/0001-musl-fixes.patch"
 patch -p1 -i "$PORT_SRC/0002-fix-includes.patch"
 patch -p1 -i "$PORT_SRC/0004-dont-poison-off_t.patch"
 
+# The bundled audaspace's FFmpeg writer reads AVCodec's sample_fmts and
+# supported_samplerates, which FFmpeg 8 removed; the patch asks
+# avcodec_get_supported_config for both, as Blender's own movie writer does.
+# A null list means the encoder takes any format or rate.
+patch -p1 -i "$PORT_SRC/ffmpeg9-audaspace.patch"
+
 _py=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
 
 # WITH_STRICT_BUILD_OPTIONS=ON: an enabled feature whose library is missing
@@ -39,6 +45,8 @@ _py=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
 #
 # WITH_INTERNATIONAL=OFF: English only, and no translation catalogues.
 # WITH_BUILDINFO=OFF keeps the build date and git hash out of the binary.
+# WITH_CPU_CHECK=OFF: the start-up CPU check is a library that only a portable
+# install ships, and the strict options stop the configure when it is left on.
 # JACK is not on this system; audio goes through PipeWire, PulseAudio and
 # OpenAL.
 mkdir build && cd build
@@ -49,6 +57,7 @@ cmake .. -G Ninja -Wno-dev \
 	-DWITH_LIBS_PRECOMPILED=OFF \
 	-DWITH_STATIC_LIBS=OFF \
 	-DWITH_INSTALL_PORTABLE=OFF \
+	-DWITH_CPU_CHECK=OFF \
 	-DWITH_PYTHON_INSTALL=OFF \
 	-DWITH_PYTHON_INSTALL_NUMPY=OFF \
 	-DWITH_PYTHON_INSTALL_REQUESTS=OFF \

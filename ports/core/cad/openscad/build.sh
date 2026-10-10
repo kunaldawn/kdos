@@ -35,6 +35,11 @@ mv "$SRC_ROOT/MCAD-$_mcadcommit" libraries/MCAD
 # device through the spacenavd daemon, which no port provides, so the driver
 # finds no mouse. OFFLINE_DOCS downloads the manual at build time, and the
 # Python interpreter is experimental; both are off.
+#
+# ENABLE_HIDAPI drives HID input devices through hidapi. Its find module
+# looks for the hidapi and hidapi-libusb names, with hidapi.h at the top of
+# the include path; the hidapi port is the hidraw backend, whose library and
+# header directory are named here from its pkg-config file.
 mkdir -p build && cd build
 cmake .. -G Ninja -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -61,6 +66,8 @@ cmake .. -G Ninja -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DUSE_MIMALLOC=ON \
 	-DENABLE_CAIRO=ON \
 	-DENABLE_HIDAPI=ON \
+	-DHIDAPI_INCLUDE_DIR="$(pkg-config --variable=includedir hidapi-hidraw)/hidapi" \
+	-DHIDAPI_LIBRARY="$(pkg-config --variable=libdir hidapi-hidraw)/libhidapi-hidraw.so" \
 	-DENABLE_SPNAV=ON \
 	-DENABLE_QTDBUS=ON \
 	-DENABLE_GAMEPAD=OFF \

@@ -12,7 +12,8 @@
 # The makefile asks `sdl2-config` and `libpng-config` for its flags, and the
 # first does not exist here, so both answers come from pkgconf through the
 # makefile's own variables. Its CFLAGS := -O2 would otherwise replace the
-# build's flags, so they are passed the same way.
+# build's flags, so they are passed the same way, with -fcommon: a header
+# defines a global without `extern`, which links only as a common symbol.
 #
 # OpenGL links libOpenGL, the vendor-neutral library that needs no GLX: the
 # context is SDL's, EGL on Wayland. Language files stay out (ENABLE_NLS=0).
@@ -20,7 +21,7 @@
 # translates entries this recipe writes itself.
 mk() {
 	make \
-		CFLAGS="$CFLAGS" \
+		CFLAGS="$CFLAGS -fcommon" \
 		SDL_CPPFLAGS="$(pkg-config --cflags sdl2)" \
 		SDL_LIBS="$(pkg-config --libs sdl2)" \
 		PNG_CPPFLAGS="$(pkg-config --cflags libpng)" \

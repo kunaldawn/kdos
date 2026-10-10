@@ -18,10 +18,12 @@ export CXXFLAGS="$CXXFLAGS -DLOGURU_STACKTRACES=0"
 
 # Render windows: X11 and EGL are both built and chosen at run time, so a
 # consumer gets an X11 window under Xwayland and an EGL context offscreen.
-# External libraries are this tree's ports wherever one exists, with three
+# External libraries are this tree's ports wherever one exists, with four
 # exceptions. hdf5 stays bundled and symbol-mangled (vtkhdf5_*): VTK 9.5 is
 # written against the 1.x API, the hdf5 port is 2.x, and the mangled copy
-# cannot clash with it.
+# cannot clash with it. fmt stays bundled for the same reason: the bundled
+# IOSS calls fmt::localtime, which fmt 12 removed, and VTK's copy is 11.1 in
+# a mangled namespace.
 # gl2ps and utf8 have ports but stay bundled the same way: VTK's gl2ps is
 # mangled to vtkgl2ps_* and draws through VTK's own glad, and its utfcpp sits
 # in a renamed namespace, so neither can clash with the port in one process.
@@ -53,7 +55,6 @@ cmake .. -G Ninja -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_doubleconversion=ON \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_eigen=ON \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_expat=ON \
-	-DVTK_MODULE_USE_EXTERNAL_VTK_fmt=ON \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_freetype=ON \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_jpeg=ON \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_jsoncpp=ON \
@@ -76,6 +77,7 @@ cmake .. -G Ninja -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_cli11=OFF \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_exprtk=OFF \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_fast_float=OFF \
+	-DVTK_MODULE_USE_EXTERNAL_VTK_fmt=OFF \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_gl2ps=OFF \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_ioss=OFF \
 	-DVTK_MODULE_USE_EXTERNAL_VTK_pegtl=OFF \

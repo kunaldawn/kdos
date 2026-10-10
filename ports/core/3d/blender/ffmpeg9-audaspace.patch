@@ -1,0 +1,77 @@
+--- a/extern/audaspace/plugins/ffmpeg/FFMPEGWriter.cpp
++++ b/extern/audaspace/plugins/ffmpeg/FFMPEGWriter.cpp
+@@ -330,14 +330,19 @@
+ 		if(m_formatCtx->oformat->flags & AVFMT_GLOBALHEADER)
+ 			m_codecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+ 
+-		bool format_supported = false;
++		const AVSampleFormat* sample_fmts = nullptr;
++		const int* supported_samplerates = nullptr;
++		avcodec_get_supported_config(m_codecCtx, codec, AV_CODEC_CONFIG_SAMPLE_FORMAT, 0, (const void**) &sample_fmts, nullptr);
++		avcodec_get_supported_config(m_codecCtx, codec, AV_CODEC_CONFIG_SAMPLE_RATE, 0, (const void**) &supported_samplerates, nullptr);
+ 
+-		for(int i = 0; codec->sample_fmts[i] != -1; i++)
++		bool format_supported = sample_fmts == nullptr;
++
++		for(int i = 0; sample_fmts && sample_fmts[i] != -1; i++)
+ 		{
+-			if(av_get_alt_sample_fmt(codec->sample_fmts[i], false) == m_codecCtx->sample_fmt)
++			if(av_get_alt_sample_fmt(sample_fmts[i], false) == m_codecCtx->sample_fmt)
+ 			{
+-				m_deinterleave = av_sample_fmt_is_planar(codec->sample_fmts[i]);
+-				m_codecCtx->sample_fmt = codec->sample_fmts[i];
++				m_deinterleave = av_sample_fmt_is_planar(sample_fmts[i]);
++				m_codecCtx->sample_fmt = sample_fmts[i];
+ 				format_supported = true;
+ 			}
+ 		}
+@@ -345,10 +350,10 @@
+ 		if(!format_supported)
+ 		{
+ 			int chosen_index = 0;
+-			auto chosen = av_get_alt_sample_fmt(codec->sample_fmts[chosen_index], false);
+-			for(int i = 1; codec->sample_fmts[i] != -1; i++)
++			auto chosen = av_get_alt_sample_fmt(sample_fmts[chosen_index], false);
++			for(int i = 1; sample_fmts[i] != -1; i++)
+ 			{
+-				auto fmt = av_get_alt_sample_fmt(codec->sample_fmts[i], false);
++				auto fmt = av_get_alt_sample_fmt(sample_fmts[i], false);
+ 				if((fmt > chosen && chosen < m_codecCtx->sample_fmt) || (fmt > m_codecCtx->sample_fmt && fmt < chosen))
+ 				{
+ 					chosen = fmt;
+@@ -356,7 +361,7 @@
+ 				}
+ 			}
+ 
+-			m_codecCtx->sample_fmt = codec->sample_fmts[chosen_index];
++			m_codecCtx->sample_fmt = sample_fmts[chosen_index];
+ 			m_deinterleave = av_sample_fmt_is_planar(m_codecCtx->sample_fmt);
+ 			switch(av_get_alt_sample_fmt(m_codecCtx->sample_fmt, false))
+ 			{
+@@ -387,19 +392,19 @@
+ 
+ 		m_codecCtx->sample_rate = 0;
+ 
+-		if(codec->supported_samplerates)
++		if(supported_samplerates)
+ 		{
+-			for(int i = 0; codec->supported_samplerates[i]; i++)
++			for(int i = 0; supported_samplerates[i]; i++)
+ 			{
+-				if(codec->supported_samplerates[i] == m_specs.rate)
++				if(supported_samplerates[i] == m_specs.rate)
+ 				{
+-					m_codecCtx->sample_rate = codec->supported_samplerates[i];
++					m_codecCtx->sample_rate = supported_samplerates[i];
+ 					break;
+ 				}
+-				else if((codec->supported_samplerates[i] > m_codecCtx->sample_rate && m_specs.rate > m_codecCtx->sample_rate) ||
+-						(codec->supported_samplerates[i] < m_codecCtx->sample_rate && m_specs.rate < codec->supported_samplerates[i]))
++				else if((supported_samplerates[i] > m_codecCtx->sample_rate && m_specs.rate > m_codecCtx->sample_rate) ||
++						(supported_samplerates[i] < m_codecCtx->sample_rate && m_specs.rate < supported_samplerates[i]))
+ 				{
+-					m_codecCtx->sample_rate = codec->supported_samplerates[i];
++					m_codecCtx->sample_rate = supported_samplerates[i];
+ 				}
+ 			}
+ 		}

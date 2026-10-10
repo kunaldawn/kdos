@@ -17,7 +17,10 @@
 # tree's CFLAGS and CXXFLAGS in front of the compiler flags upstream sets
 # there, which otherwise replace them and drop the reproducibility maps from
 # the static library. Every other setting (no audio output, no MBROLA, no
-# Klatt, static, position independent) is upstream's. Its compiled
+# Klatt, static, position independent) is upstream's. espeak-ng clones sonic
+# whenever it finds no installed copy, even with USE_LIBSONIC off; the patch
+# also names a placeholder SONIC_LIB and SONIC_INC, which skips the clone and
+# which nothing reads while USE_LIBSONIC is off. espeak-ng's compiled
 # espeak-ng-data is copied into the package beside the module, which is where
 # piper looks for it.
 patch -p1 -i "$PORT_SRC/espeak-ng-local-archive.patch"

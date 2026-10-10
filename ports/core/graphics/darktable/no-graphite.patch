@@ -1,0 +1,143 @@
+--- a/src/develop/blends/blendif_raw.c
++++ b/src/develop/blends/blendif_raw.c
+@@ -18,10 +18,10 @@
+ 
+ #if defined(__GNUC__)
+ #pragma GCC optimize("unroll-loops", "tree-loop-if-convert", "tree-loop-distribution", "no-strict-aliasing",      \
+-                     "loop-interchange", "loop-nest-optimize", "tree-loop-im", "unswitch-loops",                  \
++                     "loop-interchange", "tree-loop-im", "unswitch-loops",                  \
+                      "tree-loop-ivcanon", "ira-loop-pressure", "split-ivs-in-unroller", "tree-loop-vectorize",    \
+                      "variable-expansion-in-unroller", "split-loops", "ivopts", "predictive-commoning",           \
+-                     "tree-loop-linear", "loop-block", "loop-strip-mine", "finite-math-only", "fp-contract=fast", \
++                     "finite-math-only", "fp-contract=fast", \
+                      "fast-math", "no-math-errno")
+ #endif
+ 
+--- a/src/develop/blends/blendif_lab.c
++++ b/src/develop/blends/blendif_lab.c
+@@ -18,10 +18,10 @@
+ 
+ #if defined(__GNUC__)
+ #pragma GCC optimize("unroll-loops", "tree-loop-if-convert", "tree-loop-distribution", "no-strict-aliasing",      \
+-                     "loop-interchange", "loop-nest-optimize", "tree-loop-im", "unswitch-loops",                  \
++                     "loop-interchange", "tree-loop-im", "unswitch-loops",                  \
+                      "tree-loop-ivcanon", "ira-loop-pressure", "split-ivs-in-unroller", "tree-loop-vectorize",    \
+                      "variable-expansion-in-unroller", "split-loops", "ivopts", "predictive-commoning",           \
+-                     "tree-loop-linear", "loop-block", "loop-strip-mine", "finite-math-only", "fp-contract=fast", \
++                     "finite-math-only", "fp-contract=fast", \
+                      "fast-math", "no-math-errno")
+ #endif
+ 
+--- a/src/develop/blends/blendif_rgb_hsl.c
++++ b/src/develop/blends/blendif_rgb_hsl.c
+@@ -18,10 +18,10 @@
+ 
+ #if defined(__GNUC__)
+ #pragma GCC optimize("unroll-loops", "tree-loop-if-convert", "tree-loop-distribution", "no-strict-aliasing",      \
+-                     "loop-interchange", "loop-nest-optimize", "tree-loop-im", "unswitch-loops",                  \
++                     "loop-interchange", "tree-loop-im", "unswitch-loops",                  \
+                      "tree-loop-ivcanon", "ira-loop-pressure", "split-ivs-in-unroller", "tree-loop-vectorize",    \
+                      "variable-expansion-in-unroller", "split-loops", "ivopts", "predictive-commoning",           \
+-                     "tree-loop-linear", "loop-block", "loop-strip-mine", "finite-math-only", "fp-contract=fast", \
++                     "finite-math-only", "fp-contract=fast", \
+                      "fast-math", "no-math-errno")
+ #endif
+ 
+--- a/src/develop/blends/blendif_rgb_jzczhz.c
++++ b/src/develop/blends/blendif_rgb_jzczhz.c
+@@ -18,10 +18,10 @@
+ 
+ #if defined(__GNUC__)
+ #pragma GCC optimize("unroll-loops", "tree-loop-if-convert", "tree-loop-distribution", "no-strict-aliasing",      \
+-                     "loop-interchange", "loop-nest-optimize", "tree-loop-im", "unswitch-loops",                  \
++                     "loop-interchange", "tree-loop-im", "unswitch-loops",                  \
+                      "tree-loop-ivcanon", "ira-loop-pressure", "split-ivs-in-unroller", "tree-loop-vectorize",    \
+                      "variable-expansion-in-unroller", "split-loops", "ivopts", "predictive-commoning",           \
+-                     "tree-loop-linear", "loop-block", "loop-strip-mine", "finite-math-only", "fp-contract=fast", \
++                     "finite-math-only", "fp-contract=fast", \
+                      "fast-math", "no-math-errno")
+ #endif
+ 
+--- a/src/common/iop_order.c
++++ b/src/common/iop_order.c
+@@ -42,11 +42,10 @@
+ #if defined(__GNUC__)
+ #pragma GCC optimize ("unroll-loops", "tree-loop-if-convert", \
+                       "tree-loop-distribution", "no-strict-aliasing", \
+-                      "loop-interchange", "loop-nest-optimize", "tree-loop-im", \
++                      "loop-interchange", "tree-loop-im", \
+                       "unswitch-loops", "tree-loop-ivcanon", "ira-loop-pressure", \
+                       "split-ivs-in-unroller", "variable-expansion-in-unroller", \
+                       "split-loops", "ivopts", "predictive-commoning",\
+-                      "tree-loop-linear", "loop-block", "loop-strip-mine", \
+                       "fp-contract=fast", \
+                       "tree-vectorize")
+ #endif
+--- a/src/common/iop_profile.c
++++ b/src/common/iop_profile.c
+@@ -40,11 +40,10 @@
+ #if defined(__GNUC__)
+ #pragma GCC optimize ("unroll-loops", "tree-loop-if-convert", \
+                       "tree-loop-distribution", "no-strict-aliasing", \
+-                      "loop-interchange", "loop-nest-optimize", "tree-loop-im", \
++                      "loop-interchange", "tree-loop-im", \
+                       "unswitch-loops", "tree-loop-ivcanon", "ira-loop-pressure", \
+                       "split-ivs-in-unroller", "variable-expansion-in-unroller", \
+                       "split-loops", "ivopts", "predictive-commoning",\
+-                      "tree-loop-linear", "loop-block", "loop-strip-mine", \
+                       "fp-contract=fast", \
+                       "tree-vectorize")
+ #endif
+--- a/src/iop/channelmixerrgb.c
++++ b/src/iop/channelmixerrgb.c
+@@ -24,11 +24,10 @@
+ #if defined(__GNUC__)
+ #pragma GCC optimize ("unroll-loops", "tree-loop-if-convert", \
+                       "tree-loop-distribution", "no-strict-aliasing", \
+-                      "loop-interchange", "loop-nest-optimize", "tree-loop-im", \
++                      "loop-interchange", "tree-loop-im", \
+                       "unswitch-loops", "tree-loop-ivcanon", "ira-loop-pressure", \
+                       "split-ivs-in-unroller", "variable-expansion-in-unroller", \
+                       "split-loops", "ivopts", "predictive-commoning",\
+-                      "tree-loop-linear", "loop-block", "loop-strip-mine", \
+                       "finite-math-only", "fp-contract=fast", "fast-math", \
+                       "tree-vectorize", "no-math-errno")
+ #endif
+@@ -4619,26 +4618,21 @@
+   GtkWidget *first, *second, *third;
+ #define NOTEBOOK_PAGE(var, short, label, tooltip, section, swap, soft_range, sr_min, sr_max) \
+   self->widget = dt_ui_notebook_page(g->notebook, label, _(tooltip));            \
+-                                                                                 \
+   first = dt_bauhaus_slider_from_params(self, swap ? #var "[2]" : #var "[0]");   \
+   dt_bauhaus_slider_set_digits(first, 3);                                        \
+   dt_bauhaus_widget_set_label(first, section, N_("input R"));                    \
+   if(soft_range) dt_bauhaus_slider_set_soft_range(first, sr_min, sr_max);        \
+-                                                                                 \
+   second = dt_bauhaus_slider_from_params(self, #var "[1]");                      \
+   dt_bauhaus_slider_set_digits(second, 3);                                       \
+   dt_bauhaus_widget_set_label(second, section, N_("input G"));                   \
+   if(soft_range) dt_bauhaus_slider_set_soft_range(second, sr_min, sr_max);       \
+-                                                                                 \
+   third = dt_bauhaus_slider_from_params(self, swap ? #var "[0]" : #var "[2]");   \
+   dt_bauhaus_slider_set_digits(third, 3);                                        \
+   dt_bauhaus_widget_set_label(third, section, N_("input B"));                    \
+   if(soft_range) dt_bauhaus_slider_set_soft_range(third, sr_min, sr_max);        \
+-                                                                                 \
+   g->scale_##var##_R = swap ? third : first;                                     \
+   g->scale_##var##_G = second;                                                   \
+   g->scale_##var##_B = swap ? first : third;                                     \
+-                                                                                 \
+   g->normalize_##short = dt_bauhaus_toggle_from_params                           \
+                (DT_IOP_SECTION_FOR_PARAMS(self, section), "normalize_" #short);
+ 
+--- a/src/common/extra_optimizations.h
++++ b/src/common/extra_optimizations.h
+@@ -28,7 +28,7 @@
+ 
+ #if defined(__GNUC__)
+ #pragma GCC optimize ("unroll-loops", "split-loops", \
+-                      "loop-nest-optimize", "tree-loop-im", \
++                      "tree-loop-im", \
+                       "tree-loop-ivcanon", "ira-loop-pressure", \
+                       "variable-expansion-in-unroller", \
+                       "ivopts", "finite-math-only")

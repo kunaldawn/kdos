@@ -1,0 +1,25 @@
+--- a/model/src/certificates.cpp
++++ b/model/src/certificates.cpp
+@@ -116,8 +116,8 @@
+   /* Set the public key for our certificate. */
+   X509_set_pubkey(x509, pkey);
+ 
+-  /* We want to copy the subject name to the issuer name. */
+-  X509_NAME *name = X509_get_subject_name(x509);
++  /* The subject name is built here, then set as subject and issuer. */
++  X509_NAME *name = X509_NAME_new();
+ 
+   /* Set the country code and common name. */
+   X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC, (unsigned char *)"CA", -1,
+@@ -130,8 +130,10 @@
+   ext_name += ip_v4;
+   cs_cert_set_subject_alt_name(x509, ext_name);
+ 
+-  /* Now set the issuer name. */
++  /* Now set the subject and issuer names. */
++  X509_set_subject_name(x509, name);
+   X509_set_issuer_name(x509, name);
++  X509_NAME_free(name);
+ 
+   /* Actually sign the certificate with our key. */
+ #if OPENSSL_VERSION_MAJOR * 10 + OPENSSL_VERSION_MINOR >= 32

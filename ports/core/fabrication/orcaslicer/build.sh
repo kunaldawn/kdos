@@ -22,6 +22,18 @@
 # kpkg unpacks a later tarball and keeps no copy of the archive, so each is
 # linked from where kpkg found it: the port directory, or its source
 # directory when the port directory does not hold it.
+# ONE JOB PER 6 GiB OF MEMORY, not the build's default of one per 2 GiB: a
+# compiler on OpenVDB, CGAL or libslic3r holds 3 to 4 GB, so the default on a
+# 64 GB host reaches 50 GB and more, and 6 GiB leaves the rest of the host
+# room. KDOS_JOBS is what script/bin/ninja hands
+# every ninja call, MAKEFLAGS and CMAKE_BUILD_PARALLEL_LEVEL the rest; the
+# dependencies are built one project at a time, each with that many jobs.
+_mem=$(sed -n 's/^MemTotal: *\([0-9]*\) kB/\1/p' /proc/meminfo)
+_jobs=$((_mem / 6291456))
+[ "$_jobs" -le "$KDOS_JOBS" ] || _jobs=$KDOS_JOBS
+[ "$_jobs" -ge 1 ] || _jobs=1
+export KDOS_JOBS=$_jobs MAKEFLAGS=-j$_jobs CMAKE_BUILD_PARALLEL_LEVEL=$_jobs
+
 _deps="$SRC_ROOT/orcadeps"
 _dl="$SRC_ROOT/dl"
 for f in "$PORT_SRC"/orcadeps-* "$SOURCE_DIR"/orcadeps-*; do
@@ -31,6 +43,34 @@ for f in "$PORT_SRC"/orcadeps-* "$SOURCE_DIR"/orcadeps-*; do
 	[ -e "$_dl/${_b%%-*}/${_b#*-}" ] || ln -s "$f" "$_dl/${_b%%-*}/${_b#*-}"
 done
 test "$(ls "$_dl"/*/* | wc -l)" -eq 14
+
+# Two of the pinned dependencies assume glibc. oneTBB 2021.5 ORs
+# RTLD_DEEPBIND, a dlopen flag musl does not have, into the flags it opens its
+# own plugins with; defined as 0 it adds nothing, which is the loading musl
+# does anyway. Its resumable tasks switch stacks with getcontext and
+# swapcontext, which musl does not provide; __TBB_RESUMABLE_TASKS_USE_THREADS
+# runs them on threads instead. Every dependency's configure reads CXXFLAGS
+# from the environment, and only TBB names either. OpenCASCADE 7.6 reads heap
+# usage with mallinfo, traps floating-point exceptions with feenableexcept and
+# prints stack traces through <execinfo.h>; 0002-OCCT-musl.patch takes the
+# branches it has for platforms without them. Boost.Filesystem 1.84 builds its
+# path locale on Linux as std::locale(""), which musl's libstdc++ refuses for
+# any name but C and POSIX, so the program aborts before main under the
+# system's LANG=C.UTF-8; 0001-Boost-musl-locale.patch gives musl the UTF-8
+# locale the BSDs get. deps-musl-patch-step has the superbuild apply both,
+# the OCCT one after upstream's own.
+export CXXFLAGS="$CXXFLAGS -DRTLD_DEEPBIND=0 -D__TBB_RESUMABLE_TASKS_USE_THREADS=1"
+patch -p1 -i "$PORT_SRC/deps-musl-patch-step.patch"
+cp "$PORT_SRC/0002-OCCT-musl.patch" deps/OCCT/
+cp "$PORT_SRC/0001-Boost-musl-locale.patch" deps/Boost/
+
+# OrcaSlicer's bundled mDNS client uses select(), fd_set and struct timeval
+# and includes neither <sys/select.h> nor <sys/time.h>, which glibc's socket
+# headers pull in and musl's do not; mdns-select includes them. The serial
+# port code includes <sys/unistd.h>, a name only glibc carries;
+# serial-unistd includes <unistd.h>.
+patch -p1 -i "$PORT_SRC/mdns-select.patch"
+patch -p1 -i "$PORT_SRC/serial-unistd.patch"
 
 # FLATPAK=ON is upstream's switch for "the system provides zlib, libpng,
 # expat, libjpeg, FreeType and curl": with it the superbuild builds none of
@@ -43,7 +83,7 @@ cmake -S deps -B "$SRC_ROOT/build-deps" -G Ninja \
 	-DDESTDIR="$_deps" \
 	-DDEP_DOWNLOAD_DIR="$_dl" \
 	-DDEP_WX_GTK3=ON
-cmake --build "$SRC_ROOT/build-deps" --target \
+cmake --build "$SRC_ROOT/build-deps" --parallel 1 --target \
 	dep_Boost dep_TBB dep_CGAL dep_OpenVDB dep_OCCT dep_NLopt \
 	dep_libnoise dep_Draco dep_OpenCV
 

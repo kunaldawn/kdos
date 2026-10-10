@@ -10,7 +10,7 @@
 
 name        = horizon-eda
 version     = 2.7.2
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/horizon-eda/horizon/archive/refs/tags/v$version.tar.gz
 sha256      = 6b605f7e4c46d894a64997e0f60eba937e7d68d908b4d715cd2dde3364bd79a2  horizon-eda-2.7.2.tar.gz
 description = Horizon EDA — schematic capture and PCB layout around a pool of parts with unique identities

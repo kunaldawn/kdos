@@ -10,7 +10,7 @@
 
 name        = krita
 version     = 6.0.4
-release     = 1
+release     = 2
 source      = https://download.kde.org/stable/krita/$version/krita-$version.tar.xz
 sha256      = ef73e57fe20fa5bd896d53d4af6eb254e5ade83e6a39b47273dd320f9823ab4b  krita-6.0.4.tar.xz
 description = Krita: digital painting, illustration and frame-by-frame animation, for Qt 6

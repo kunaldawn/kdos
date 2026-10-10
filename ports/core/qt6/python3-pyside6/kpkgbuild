@@ -11,7 +11,7 @@
 
 name        = python3-pyside6
 version     = 6.11.2
-release     = 1
+release     = 2
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-$version-src/pyside-setup-everywhere-src-$version.tar.xz
 sha256      = cba47efbaad1bedd529725cbc14e21f156c7a19366f07b3edfbb076ffd7afdf8  python3-pyside6-6.11.2.tar.xz
 description = PySide6 and Shiboken6, the official Qt 6 bindings for Python (FreeCAD's scripting GUI)

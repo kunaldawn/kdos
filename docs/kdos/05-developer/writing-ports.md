@@ -257,6 +257,13 @@ Then, how it is unpacked before `build.sh` runs:
 | A tarball, later | Into `$SRC_ROOT`, unstripped, beside `$SRC` |
 | Anything else: a data file, a `.zip`, a `.tar.zst` | Copied into `$SRC` as it is |
 
+"Beside `$SRC`" holds only while the later tarball's top directory has another name. `$SRC` is
+`$SRC_ROOT/<name>-<version>`, so a later tarball whose top directory is also `<name>-<version>`
+unpacks over the first source, file by file, with nothing reported. `libreoffice`'s help tarball
+does so by design, because upstream ships the help to be merged into the source tree.
+`docbook-xsl`'s second release must not, so its `build.sh` unpacks both tarballs again, each into
+a directory of its own, and installs from those.
+
 The first source is renamed on purpose. A forge that generates an archive named after a tag would
 otherwise leave every port holding a file called `2.55.tar.gz`, and the standardised name is what
 the port directory, the checksum line and the source archive all agree on. Use `filename::url` when
@@ -527,7 +534,9 @@ Check each of these against the recipe, whichever build system it uses:
   `ar` and `nm` load no such plugin here (`/usr/lib/bfd-plugins` holds none), so a build that
   links its programs against internal archives of LTO objects exports `AR=gcc-ar NM=gcc-nm
   RANLIB=gcc-ranlib`, or the archive index is empty and the link fails on every symbol in it;
-  flac does. Meson and CMake's own LTO switches choose the `gcc-` tools themselves. Keep the change
+  flac does, and so does Pillow, whose `_imaging` module links a static library of `Mode.c`.
+  A Python extension or any other shared object may leave symbols undefined, so there the link
+  succeeds and the failure comes at import, as `symbol not found`. Meson and CMake's own LTO switches choose the `gcc-` tools themselves. Keep the change
   only once the port builds byte-identically twice.
 - **The job count is `$KDOS_JOBS`**, never `nproc`: `scons -j"$KDOS_JOBS"`, not
   `scons -j"$(nproc)"`.
@@ -812,7 +821,18 @@ A few habits recur in the tree's application recipes, and a new one should follo
   whatever happens to be installed when the port builds. A meson recipe sets each feature option
   explicitly; a CMake recipe names what it wants with `CMAKE_REQUIRE_FIND_PACKAGE_<Name>=ON` and
   what it must not pick up with `CMAKE_DISABLE_FIND_PACKAGE_<Name>=ON` (127 build scripts use one
-  or both).
+  or both). The requirement also applies to any config-package search a find module makes under
+  the same name, so a module that first asks for a config file the library does not install stops
+  the configure. Requiring curl takes `-DCURL_NO_CURL_CMAKE=ON` as well: CMake's FindCURL first
+  asks for a `CURLConfig.cmake`, which curl does not install here. Where a module has no such
+  switch (Krita's FindWebP asks for a `WebPConfig.cmake`; its Findlibjpeg-turbo passes its own
+  required component to a config file that never marks it found), the recipe leaves that package
+  unrequired and, after the configure, checks the generated build for what the package enables.
+- **A CMake project that finds GLEW ignores GLEW's own package.**
+  `-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew'`, naming both because `/lib` is the
+  same directory: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path
+  from it only as a Windows import library, so `GLEW_LIBRARY` is NOTFOUND and generation stops.
+  Ignored, FindGLEW finds `libGLEW.so` itself.
 - **KDE applications install into Qt's own paths.** `-D KDE_INSTALL_USE_QT_SYS_PATHS=ON` with
   `-D BUILD_TESTING=OFF` is the shape `kate`, `dolphin`, `okular` and 132 other build scripts use.
 - **Ship a desktop entry and an icon the launcher can draw.** A graphical program with no entry

@@ -10,7 +10,7 @@
 
 name        = mumble
 version     = 1.5.915
-release     = 1
+release     = 2
 source      = https://github.com/mumble-voip/mumble/releases/download/v$version/mumble-$version.tar.gz
 sha256      = 2cb3f0c7aa60e2f08fed1d568da7d1f5115e3658a079b6d1a5468c5d6e2081d5  mumble-1.5.915.tar.gz
 description = Low-latency voice chat — the Mumble client and mumble-server, for group voice on a LAN

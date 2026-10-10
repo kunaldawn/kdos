@@ -1,0 +1,10 @@
+--- a/sources/pyside6/cmake/Macros/PySideModules.cmake
++++ b/sources/pyside6/cmake/Macros/PySideModules.cmake
+@@ -350,6 +350,7 @@
+         set(SHIBOKEN_PYTHON_MODULE_DIR "${PYTHON_SITE_PACKAGES}/shiboken6")
+         set(generate_pyi_options ${module_NAME} --sys-path
+             "${pysidebindings_BINARY_DIR}"
++            "${CMAKE_BINARY_DIR}/sources"
+             "${SHIBOKEN_PYTHON_MODULE_DIR}/.."
+             "${SHIBOKEN_PYTHON_MODULE_DIR}/../../..")     # use the layer above shiboken6
+         if (QUIET_BUILD)

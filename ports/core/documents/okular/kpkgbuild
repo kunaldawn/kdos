@@ -10,7 +10,7 @@
 
 name        = okular
 version     = 26.08.1
-release     = 1
+release     = 2
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
 sha256      = 7eb26c37ee42b6657526aeddd1bce71c5556e3865772a677f49b68deb46885d6  okular-26.08.1.tar.xz
 description = Universal document viewer — PDF, PostScript, DjVu, EPUB, XPS, comics, Markdown

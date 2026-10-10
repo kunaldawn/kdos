@@ -1,0 +1,11 @@
+--- a/src/slic3r/Utils/Serial.cpp
++++ b/src/slic3r/Utils/Serial.cpp
+@@ -49,7 +49,7 @@
+ #ifndef _WIN32
+ 	#include <sys/ioctl.h>
+ 	#include <sys/time.h>
+-	#include <sys/unistd.h>
++	#include <unistd.h>
+ 	#include <sys/select.h>
+ #endif
+ 

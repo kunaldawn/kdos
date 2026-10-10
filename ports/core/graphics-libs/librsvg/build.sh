@@ -19,12 +19,13 @@ export RUSTFLAGS="-C target-feature=-crt-static"
 # DESTDIR the install only prints a note instead of writing loaders.cache;
 # kpkg's pixbuf trigger regenerates the cache when the package lands.
 # introspection installs Rsvg-2.0, which PyGObject programs load; its GIR
-# includes GdkPixbuf-2.0. The vapi stays off: nothing here is written in Vala.
+# includes GdkPixbuf-2.0. The vapi, librsvg-2.0, is what Vala programs such as
+# gnome-mines compile against; without it their build stops at valac.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
 	-Dintrospection=enabled \
-	-Dvala=disabled \
+	-Dvala=enabled \
 	-Ddocs=enabled \
 	-Dtests=false \
 	-Dpixbuf=enabled \

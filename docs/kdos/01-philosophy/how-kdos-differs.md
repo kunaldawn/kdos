@@ -94,8 +94,10 @@ over when they install. On the finished system each command has one owner:
 - **GNU sed, gawk, findutils and diffutils** are ports because upstream build systems reach for
   GNU extensions, and toybox ignores some of those extensions without reporting an error, so a
   build can go wrong without failing.
-- **GNU coreutils** is built for two programs: `expr`, whose `length` operator toybox does not
-  implement, and `ln`, whose `--relative` option toybox lacks and meson install scripts use.
+- **GNU coreutils** is built for four programs: `expr`, whose `length` operator toybox does not
+  implement; `ln`, whose `--relative` option toybox lacks and meson install scripts use;
+  `printf`, whose `%q` quoting toybox lacks and KOReader's build calls as an external command; and
+  `date`, whose `--date` and `--utc` toybox lacks and OpenJDK's configure needs.
 
 The result is closer to Alpine than to Debian, with more full tools than Alpine's default image
 carries. The cost is that a script written against GNU behaviour can meet a toybox applet that
@@ -225,7 +227,7 @@ description = Compression library implementing the deflate compression method
 
 The package manager, `kpkg`, is written for KDOS in C. It builds a port into a compressed tar
 archive, records every path the package owns, removes files an upgrade drops, and resolves
-dependencies from the `depends` lines. There are 2,000 recipes under `ports/core` for upstream
+dependencies from the `depends` lines. There are 2,003 recipes under `ports/core` for upstream
 software and 24 under `src/` for KDOS's own, 2,024 in all, and all of them use the same format.
 The upstream recipes are filed on 102 subject shelves, `ports/core/<shelf>/<name>/`, much as T2
 SDE files its packages by repository, while a port is still named by its bare name everywhere.

@@ -169,7 +169,7 @@ expressible in cells.
 ## Everything that runs on the host is built from source
 
 Every program, library and module that the host installs and runs on its own processor is compiled
-in this tree from pinned source: 2,024 recipes, 2,000 under `ports/core` for upstream software, each
+in this tree from pinned source: 2,027 recipes, 2,003 under `ports/core` for upstream software, each
 pinned by hash, and 24 under `src/` for the software kept in this repository, most of it written for
 KDOS. [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf,
 with the phase that builds it, and [How KDOS is built](../05-developer/how-kdos-is-built.md) follows

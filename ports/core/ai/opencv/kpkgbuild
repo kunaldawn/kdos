@@ -10,7 +10,7 @@
 
 name        = opencv
 version     = 4.14.0
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/opencv/opencv/archive/refs/tags/$version.tar.gz
 source      = opencv_contrib-$version.tar.gz::https://github.com/opencv/opencv_contrib/archive/refs/tags/$version.tar.gz
 sha256      = ee8fb9b30eb60850431b4656447080e3737b56e45719c92b67f245950609f86e  opencv-4.14.0.tar.gz

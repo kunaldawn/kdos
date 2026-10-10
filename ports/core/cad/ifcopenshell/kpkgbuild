@@ -10,7 +10,7 @@
 
 name        = ifcopenshell
 version     = 0.8.5
-release     = 1
+release     = 2
 _tag        = ifcopenshell-python-$version
 source      = $name-$version.tar.gz::https://github.com/IfcOpenShell/IfcOpenShell/archive/refs/tags/$_tag.tar.gz
 sha256      = 185b97d79c800603685c60abd1497df242050dbb117dcaccbaebdec0cdf25dd5  ifcopenshell-0.8.5.tar.gz

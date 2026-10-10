@@ -10,7 +10,7 @@
 
 name        = openjdk
 version     = 25.0.4.1
-release     = 1
+release     = 2
 
 _build      = 1
 _feature    = ${version%%.*}
@@ -23,4 +23,4 @@ sha256      = f18648ee5ce45261f50dc9493fdae7ddebaa2a7a857cafda3e2a448a79c03dee  
 sha256      = 1e5908f90d732e0ed3f737aac7603863c2cc157e464e036ac0accadb87af4391  openjdk-25.0.4.1.tar.gz
 description = OpenJDK, the Java Development Kit: the JVM, the compiler and the class library (LTS)
 homepage    = https://openjdk.org/
-depends     = bash autoconf zip unzip file pandoc alsa-lib cups fontconfig freetype2 harfbuzz giflib lcms2 libjpeg-turbo libpng zlib libX11 libXext libXrender libXi libXtst libXrandr libXt xorgproto
+depends     = bash coreutils autoconf zip unzip file pandoc alsa-lib cups fontconfig freetype2 harfbuzz giflib lcms2 libjpeg-turbo libpng zlib libX11 libXext libXrender libXi libXtst libXrandr libXt xorgproto

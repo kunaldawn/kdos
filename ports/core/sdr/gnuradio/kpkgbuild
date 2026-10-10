@@ -10,9 +10,9 @@
 
 name        = gnuradio
 version     = 3.10.12.0
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/gnuradio/gnuradio/archive/refs/tags/v$version.tar.gz
 sha256      = fe78ad9f74c8ebf93d5c8ad6fa2c13236af330f3c67149d91a0647b3dc6f3958  gnuradio-3.10.12.0.tar.gz
 description = GNU Radio — signal-processing blocks for software radio, and GNU Radio Companion to wire them into flow graphs
 homepage    = https://www.gnuradio.org/
-depends     = cmake ninja pkgconf python3 python3-packaging python3-pybind11 python3-mako python3-yaml python3-click python3-gobject python3-cairo numpy scipy boost gmp spdlog fmt libvolk fftw gsl libsndfile alsa-lib portaudio soapysdr uhd libiio libad9361 zeromq cppzmq thrift gsm codec2 libunwind-nongnu gtk3 pango gobject-introspection python3-jsonschema qt5-qtbase qt5-qtsvg qt5-qtwayland qwt-qt5 python3-pyqt5 foot
+depends     = cmake ninja pkgconf xmlto docbook-xml docbook-xsl python3 python3-packaging python3-pybind11 python3-mako python3-yaml python3-click python3-gobject python3-cairo numpy scipy boost gmp spdlog fmt libvolk fftw gsl libsndfile alsa-lib portaudio soapysdr uhd libiio libad9361 zeromq cppzmq thrift gsm codec2 libunwind-nongnu gtk3 pango gobject-introspection python3-jsonschema qt5-qtbase qt5-qtsvg qt5-qtwayland qwt-qt5 python3-pyqt5 foot

@@ -14,6 +14,10 @@
 # done with nothing found, as it does when the fetch fails.
 patch -p1 -i "$PORT_SRC/no-update-check.patch"
 
+# vulkan-colorspace names the sRGB colour space eSrgbNonlinear; the system
+# Vulkan-Hpp no longer carries the eVkColorspaceSrgbNonlinear alias.
+patch -p1 -i "$PORT_SRC/vulkan-colorspace.patch"
+
 # The texture packages, the high terrain pack included, are encoded here from
 # the PNGs in data/ with the bundled basisu, instead of downloaded prebuilt:
 # slow, and offline. The Vulkan headers come from the system, never a git

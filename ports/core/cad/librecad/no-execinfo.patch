@@ -1,0 +1,33 @@
+--- a/librecad/src/lib/debug/lc_crashhandler.cpp
++++ b/librecad/src/lib/debug/lc_crashhandler.cpp
+@@ -49,7 +49,10 @@
+ #  include <sys/stat.h>
+ #else
+ #  include <csignal>
+-#  include <execinfo.h>
++#  if __has_include(<execinfo.h>)
++#    include <execinfo.h>
++#    define LC_HAVE_BACKTRACE 1
++#  endif
+ #  include <fcntl.h>
+ #  include <sys/types.h>
+ #  include <unistd.h>
+@@ -214,12 +217,18 @@
+     }
+     safeWriteStr("\nBacktrace:\n");
+ 
++#ifdef LC_HAVE_BACKTRACE
+     void* frames[kMaxFrames];
+     int n = backtrace(frames, kMaxFrames);
++#else
++    int n = 0;
++#endif
+     if (n > 0) {
++#ifdef LC_HAVE_BACKTRACE
+         backtrace_symbols_fd(frames, n, 2);
+         if (g_logFd >= 0)
+             backtrace_symbols_fd(frames, n, g_logFd);
++#endif
+     } else {
+         safeWriteStr("  (no frames captured)\n");
+     }

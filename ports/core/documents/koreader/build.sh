@@ -36,6 +36,12 @@ patch -p1 -i "$PORT_SRC/koreader-sdl-app-id.patch"
 # TARGET_CFLAGS empty replaces the emulator build's -march=native.
 # The libraries base builds are private to KOReader and install under
 # /usr/lib/koreader; the window and audio come from the system's SDL3.
+# base points PKG_CONFIG_LIBDIR at its staging directory and leaves
+# PKG_CONFIG_PATH alone, which pkg-config searches first; the chroot's
+# PKG_CONFIG_PATH names /usr/lib/pkgconfig, so the system's Leptonica and
+# Tesseract would be found before base's patched copies, and k2pdfopt, which
+# calls their additions, stops compiling. Clearing it leaves the staging tree.
+unset PKG_CONFIG_PATH
 make TARGET= KODEBUG= VERBOSE= TARGET_CFLAGS=
 
 install -d "$PKG/usr/lib" "$PKG/usr/bin"
@@ -60,6 +66,7 @@ done
 # UPSTREAM'S ENTRY IS REPLACED: it claims PDF, PNG, ZIP, HTML and plain text
 # among forty types that belong to other programs, so the entry claims none;
 # mimeapps.list chooses the e-book reader.
+install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/rocks.koreader.KOReader.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

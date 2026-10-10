@@ -1,0 +1,35 @@
+--- a/autopep8.py
++++ b/autopep8.py
+@@ -179,8 +179,7 @@
+     """Return file encoding."""
+     try:
+         with open(filename, 'rb') as input_file:
+-            from lib2to3.pgen2 import tokenize as lib2to3_tokenize
+-            encoding = lib2to3_tokenize.detect_encoding(input_file.readline)[0]
++            encoding = tokenize.detect_encoding(input_file.readline)[0]
+ 
+         with open_with_encoding(filename, encoding=encoding) as test_file:
+             test_file.read(limit_byte_check)
+@@ -1729,7 +1728,10 @@
+     else:
+         input_source = source
+ 
+-    from lib2to3 import pgen2
++    try:
++        from lib2to3 import pgen2
++    except ImportError:
++        return source
+     try:
+         new_text = refactor_with_2to3(input_source,
+                                       fixer_names=fixer_names,
+--- a/setup.py
++++ b/setup.py
+@@ -19,7 +19,7 @@
+     with io.open('autopep8.py') as input_file:
+         for line in input_file:
+             if line.startswith('__version__'):
+-                return ast.parse(line).body[0].value.s
++                return ast.parse(line).body[0].value.value
+ 
+ 
+ with io.open('README.rst') as readme:
