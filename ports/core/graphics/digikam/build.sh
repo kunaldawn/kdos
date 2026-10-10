@@ -45,7 +45,13 @@ patch -p1 -i "$PORT_SRC/no-online-export.patch"
 #
 # DIGIKAMSC_COMPILE_PO=OFF and KF_SKIP_PO_PROCESSING leave every translation
 # out: bundled data is English only.
+#
+# KDE's compiler settings make C code strict C99 unless a standard is given.
+# The panorama tool's flex and bison parser calls fileno and strdup, which a
+# strict ISO mode hides; GNU C99 declares both.
 cmake -S . -B build -G Ninja \
+	-D CMAKE_C_STANDARD=99 \
+	-D CMAKE_C_EXTENSIONS=ON \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \

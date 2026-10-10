@@ -10,7 +10,7 @@
 
 name        = digikam
 version     = 9.1.0
-release     = 1
+release     = 2
 _models     = https://files.kde.org/digikam/facesengine
 source      = $name-$version.tar.xz::https://download.kde.org/stable/digikam/$version/digiKam-$version.tar.xz
 source      = $_models/yunet/face_detection_yunet_2023mar.onnx

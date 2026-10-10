@@ -436,6 +436,9 @@ From `20_selfhost` on, `script/env/chroot.env` exports these to every `build.sh`
 The compiler adds PIE and the stack protector by default (`--enable-default-pie`,
 `--enable-default-ssp`). What each option costs a port:
 
+- `-std=gnu11` replaces GCC's own default, GNU C23. A source that uses `bool` without
+  `<stdbool.h>` needs C23 named after it; see
+  [Build troubleshooting](build-troubleshooting.md#a-source-written-for-c23).
 - `--as-needed` records a library only when an object before it on the link line uses it. A
   makefile that names `-lfoo` ahead of its objects, or a library needed only for its constructor,
   needs `-Wl,--no-as-needed`; see

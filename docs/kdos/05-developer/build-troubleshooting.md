@@ -1196,6 +1196,35 @@ compilers. GCC 14 made this one an error; disable it for the port:
 export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
 ```
 
+### A POSIX function hidden by a strict C standard
+
+`error: implicit declaration of function 'strdup'` (or `fileno`, `popen`) in a C file of a KDE
+project, whose command line carries `-std=c99`. KDE's compiler settings in
+`extra-cmake-modules` set strict C99 unless `CMAKE_C_STANDARD` is already set, and musl's headers
+declare no POSIX function in a strict ISO mode. Flex scanners and bison parsers are where it
+shows. Give the standard on the configure line with GNU extensions on, which the settings then
+leave alone:
+
+```sh
+-D CMAKE_C_STANDARD=99 -D CMAKE_C_EXTENSIONS=ON
+```
+
+`digikam` takes GNU C99; `kdevelop` takes GNU C23, because its lexer also includes a Qt header
+that uses `static_assert`.
+
+### A source written for C23
+
+`error: unknown type name 'bool'`, with GCC's note that `bool` is defined in `<stdbool.h>`. The
+source is C23, where `bool`, `true` and `false` are keywords, and its build names no standard
+because GCC's own default is GNU C23. The tree's `-std=gnu11` in `CFLAGS` takes that default away.
+Name C23 after it; the last `-std=` on a command line is the one GCC takes:
+
+```sh
+export CFLAGS="$CFLAGS -std=gnu23"
+```
+
+`gthumb` is the example.
+
 ### A standard header the source never includes
 
 `error: 'int64_t' was not declared in this scope`, with GCC's note that it `is defined in header

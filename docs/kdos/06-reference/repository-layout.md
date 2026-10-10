@@ -174,7 +174,7 @@ kdos/
 
 | Concern | Files under `fs/etc/` |
 |---|---|
-| Identity and login text | `os-release` (the version string), `issue`, `motd` |
+| Identity and login text | `os-release` (the version string; the image adds the build's commit and date), `issue`, `motd` |
 | Accounts | `passwd`, `group`, `shadow`, `shells`, `subuid`, `subgid` |
 | Network | `hostname`, `hosts`, `resolv.conf`, `nsswitch.conf`, `nftables.conf`, `nftables.d/` |
 | Init and shells | `inittab`, `init.d/`, `fstab`, `profile`, `profile.d/`, `bash.bashrc`, `skel/` |

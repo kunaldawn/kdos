@@ -116,6 +116,10 @@ done
 # is `FC_SPACING == FC_MONO` out of FcFontList, kcell_font.c asks FcFontMatch
 # which strike a bitmap face is drawn from, and fcft carries fontconfig as a
 # Requires.private, so `pkg-config --libs fcft` alone does not link it.
+#
+# libksig is kdos-about's: the keyring rows print each key's id, and the id is
+# SHA-256 of the key, computed by the one implementation kdos-pack and kpkg
+# print it with.
 PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libnsgif libarchive"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
@@ -124,13 +128,14 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkwm" \
 	-I"$LIBS/libkxdg" -I"$LIBS/libkicon" -I"$LIBS/libkchrome" \
 	-I"$LIBS/libkimg" \
-	-I"$LIBS/libkproc" \
+	-I"$LIBS/libkproc" -I"$LIBS/libksig" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-shell \
 	"$PORT_SRC"/*.c \
 	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkwm/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c "$LIBS"/libkicon/*.c \
 	"$LIBS"/libkchrome/*.c "$LIBS"/libkproc/*.c "$LIBS"/libkimg/*.c \
+	"$LIBS"/libksig/*.c "$LIBS"/libksig/monocypher/*.c \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
 

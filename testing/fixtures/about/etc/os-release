@@ -1,0 +1,11 @@
+NAME="KDOS"
+PRETTY_NAME="KDOS — KD's Homebrew Linux Distro"
+ID=kdos
+VERSION="0.2"
+VERSION_ID="0.2"
+BUILD_ID="1a2b3c4d"
+KDOS_BUILD_DATE="2025-01-01"
+ANSI_COLOR="1;32"
+LOGO=kdos
+HOME_URL="https://github.com/kunaldawn/kdos"
+BUG_REPORT_URL="https://github.com/kunaldawn/kdos/issues"

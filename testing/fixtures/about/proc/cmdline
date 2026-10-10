@@ -1,0 +1,1 @@
+BOOT_IMAGE=/EFI/kdos/b/vmlinuz root=UUID=2222 kdos_slot=b bootstate=UUID=AAAA quiet

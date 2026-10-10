@@ -169,6 +169,7 @@ build: check-iso-free ## build everything in the container (BUILD_ARGS narrows i
 		-e KDOS_JOBS="$(KDOS_JOBS)" \
 		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
+		-e KDOS_GIT_DATE="$$(git log -1 --format=%cs 2>/dev/null)" \
 		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \
 		-e KDOS_PACK_KDOS="$(KDOS_PACK_KDOS)" \
 		-e KDOS_MAKE_BINHOST="$(KDOS_MAKE_BINHOST)" \
