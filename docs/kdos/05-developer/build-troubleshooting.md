@@ -112,6 +112,7 @@ lists everything preflight checks.
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
 | `'fenv_t' has not been declared`, then `Cannot compile std module`, in `10_bootstrap` | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
+| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
@@ -131,6 +132,8 @@ lists everything preflight checks.
 | `python: command not found`, or `make: python: No such file or directory` | [A build calling `python`](#a-build-calling-python) |
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
+| `implicit declaration of function 'strdup'` (or `fileno`) in a KDE project built with `-std=c99` | [A POSIX function hidden by a strict C standard](#a-posix-function-hidden-by-a-strict-c-standard) |
+| `unknown type name 'bool'` in a port's own source, with a note naming `<stdbool.h>` | [A source written for C23](#a-source-written-for-c23) |
 | `error: 'int64_t' was not declared in this scope` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
 | `error: invalid use of incomplete type 'const ASN1_GENERALIZEDTIME'`, or another `ASN1_*` type | [An OpenSSL structure read field by field](#an-openssl-structure-read-field-by-field) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
@@ -903,6 +906,22 @@ reads (`struct termios2`, from `<asm/termbits.h>`). glibc's `<sys/ioctl.h>` incl
 the kernel. Add the kernel header rather than turning the feature off:
 `CPPFLAGS="$CPPFLAGS -include asm/ioctls.h"` on the `configure` line. The `libmodbus` port does
 this, and keeps the serial rates only `termios2` can set.
+
+### A glibc-only call on musl
+
+Code written against glibc alone fails on musl in a few recurring ways. Each needs a `.patch`:
+
+- `sem_clockwait` and `pthread_cond_clockwait` are glibc's. Wait with `sem_timedwait` (or
+  `pthread_cond_timedwait`) and take the deadline from `CLOCK_REALTIME` instead of
+  `CLOCK_MONOTONIC`, everywhere the same deadline is computed.
+- glibc's `strerror_r` returns the message as a `char *`; the POSIX one musl has returns an `int`
+  and fills the buffer. C++ always defines `_GNU_SOURCE`, so a test on that macro picks the glibc
+  form on musl too. Add `!defined(__GLIBC__)` to the test that selects the POSIX form, or use
+  `strerror`.
+- A header that names `siginfo_t` (or another type) without including its header compiles on glibc,
+  whose headers include `<signal.h>` on the way to others. Add the include.
+
+`freedv-gui`'s `musl.patch` and `backend-musl.patch` carry all three.
 
 ### A private library loaded by full path, then not found
 
