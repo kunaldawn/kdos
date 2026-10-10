@@ -10,7 +10,7 @@
 
 name        = goocanvas
 version     = 3.0.0
-release     = 1
+release     = 2
 _series     = ${version%.*}
 source      = https://download.gnome.org/sources/$name/$_series/$name-$version.tar.xz
 sha256      = 670a7557fe185c2703a14a07506156eceb7cea3b4bf75076a573f34ac52b401a  goocanvas-3.0.0.tar.xz
