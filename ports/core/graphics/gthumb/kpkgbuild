@@ -10,7 +10,7 @@
 
 name        = gthumb
 version     = 4.0
-release     = 1
+release     = 2
 source      = https://download.gnome.org/sources/gthumb/$version/gthumb-$version.tar.xz
 sha256      = a24aaa72b5637f49097dedc9c141a33615da770d029315f3285ebf2156cf7b61  gthumb-4.0.tar.xz
 description = gThumb: browse, view, tag and edit photos and videos, for GTK 4 and libadwaita

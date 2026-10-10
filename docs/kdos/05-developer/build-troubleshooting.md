@@ -1212,6 +1212,19 @@ leave alone:
 `digikam` takes GNU C99; `kdevelop` takes GNU C23, because its lexer also includes a Qt header
 that uses `static_assert`.
 
+### A source written for C23
+
+`error: unknown type name 'bool'`, with GCC's note that `bool` is defined in `<stdbool.h>`. The
+source is C23, where `bool`, `true` and `false` are keywords, and its build names no standard
+because GCC's own default is GNU C23. The tree's `-std=gnu11` in `CFLAGS` takes that default away.
+Name C23 after it; the last `-std=` on a command line is the one GCC takes:
+
+```sh
+export CFLAGS="$CFLAGS -std=gnu23"
+```
+
+`gthumb` is the example.
+
 ### A standard header the source never includes
 
 `error: 'int64_t' was not declared in this scope`, with GCC's note that it `is defined in header
