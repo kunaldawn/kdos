@@ -824,6 +824,11 @@ A few habits recur in the tree's application recipes, and a new one should follo
   or both). Requiring curl takes `-DCURL_NO_CURL_CMAKE=ON` as well: CMake's FindCURL first asks
   for a `CURLConfig.cmake`, which curl does not install here, and the requirement applies to that
   inner search too, so configure stops.
+- **A CMake project that finds GLEW ignores GLEW's own package.**
+  `-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew'`, naming both because `/lib` is the
+  same directory: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path
+  from it only as a Windows import library, so `GLEW_LIBRARY` is NOTFOUND and generation stops.
+  Ignored, FindGLEW finds `libGLEW.so` itself.
 - **KDE applications install into Qt's own paths.** `-D KDE_INSTALL_USE_QT_SYS_PATHS=ON` with
   `-D BUILD_TESTING=OFF` is the shape `kate`, `dolphin`, `okular` and 132 other build scripts use.
 - **Ship a desktop entry and an icon the launcher can draw.** A graphical program with no entry
