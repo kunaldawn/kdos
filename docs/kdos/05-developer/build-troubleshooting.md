@@ -1270,7 +1270,10 @@ The build fails on a warning you have never seen upstream report.
 An upstream `-Werror` is a promise about upstream's compiler and C library, not about these. A
 compiler newer than the one upstream tested, or musl's headers in place of glibc's, produces
 warnings upstream has never seen. Turn `-Werror` off: `-Wno-error` in `CFLAGS`,
-`--disable-werror` for a configure script that offers it, `-Dwerror=false` for meson, or the
+`--disable-werror` for a configure script that offers it, `-Dwerror=false` for meson,
+`CMAKE_<LANG>_FLAGS_RELEASE` for a CMake project that appends `-Werror` to `CMAKE_<LANG>_FLAGS`
+after the environment's flags (the per-configuration variable comes last on the compiler line, as
+the `stlink` and `wsjtx` ports set it), or the
 variable a makefile appends after its own `-Werror` where it replaces `CFLAGS` wholesale:
 `EXTRA_OPTFLAGS=-Wno-error` for edk2's BaseTools, as the `qemu` port sets. Where no variable
 reaches the flags, a patch that appends `-Wno-error` after upstream's `-Werror` is the smallest

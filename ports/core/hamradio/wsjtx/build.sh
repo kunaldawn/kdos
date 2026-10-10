@@ -12,7 +12,13 @@
 # WSJT_BUILD_UTILS=OFF: the simulators and code demonstrators install a dozen
 # generic names (cablog, echosim, ft8sim) into /usr/bin. The user guide is the
 # asciidoctor HTML; the manual pages are a2x through DocBook. Both are built.
+#
+# The C++ flags end in upstream's -Werror, appended after the environment's
+# CXXFLAGS, and GCC 16 warns of uninitialised members in the HRD transceiver's
+# message struct. -Wno-error goes in CMAKE_CXX_FLAGS_RELEASE, which the
+# compiler line carries after them.
 cmake -B build -G Ninja \
+	-DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG -Wno-error" \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_POLICY_DEFAULT_CMP0167=NEW \
 	-DCMAKE_BUILD_TYPE=Release \
