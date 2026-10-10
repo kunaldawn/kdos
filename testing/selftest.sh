@@ -913,7 +913,7 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
                     -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
                     -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkwm -Isrc/libs/libkxdg \
                     -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
-                    -Isrc/libs/libkvt \
+                    -Isrc/libs/libkvt -Isrc/libs/libksig \
                     $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client \
                                  "$TRAY_SDBUS" alsa libpipewire-0.3) \
                     -o "$OUT/shell-$(basename "$f" .c).o" "$f"
@@ -6078,7 +6078,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
                 -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkwm -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
                 -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
-                -Isrc/libs/libkcell -Isrc/libs/libkvt \
+                -Isrc/libs/libkcell -Isrc/libs/libkvt -Isrc/libs/libksig \
                 $(pkg-config --cflags wayland-client pixman-1 fcft \
                              $DEXTRA_PC) \
                 "src/desktop/kdos-shell/$s.c" 2>"$OUT/dump-$s.err"; then
@@ -6107,14 +6107,14 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
             -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkwm -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
             -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
-            -Isrc/libs/libkcell -Isrc/libs/libkvt \
+            -Isrc/libs/libkcell -Isrc/libs/libkvt -Isrc/libs/libksig \
             $(pkg-config --cflags pixman-1 fcft 2>/dev/null) \
             -Wl,--wrap=ktui_offscreen_init \
             testing/fixtures/shell/dumpmain.c $DFRONTS "$@" \
             "$DPROTO"/*-protocol.c \
             src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkxdg/*.c \
             src/libs/libkbase/*.c src/libs/libkproc/*.c \
-            src/libs/libkvt/*.c \
+            src/libs/libkvt/*.c src/libs/libksig/*.c src/libs/libksig/monocypher/*.c \
             $(pkg-config --cflags --libs wayland-client pixman-1 $DEXTRA_PC)
     }
     # The libraries kdos-peek pulls in are added only when it was admitted:
@@ -6745,6 +6745,16 @@ TMBUS
     fi
 else
     echo "  kdos-traymenu goldens (skipped — no sd-bus or no dbus-daemon)"
+fi
+# kdos-about reads the machine it runs on — its kernel, CPU, memory, processes,
+# boot slot, keyrings and package database — so every path it opens is moved
+# under one recorded root. The fixture's slot is mid-trial and one keyring is
+# empty, the two states a fresh machine never shows.
+if "$DUMPCK" --have about; then
+    _ab="$PWD/testing/fixtures/about"
+    for _p in machine build credits; do
+        KDOS_ABOUT_ROOT="$_ab" golden "about-$_p" 78x19 about --page "$_p" --dump
+    done
 fi
 # kdos-update computes none of its three answers — `kdos update check --json`,
 # `kdos cve --json` and `kdos-bootctl status` do — so its picture depends on

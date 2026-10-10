@@ -1196,6 +1196,22 @@ compilers. GCC 14 made this one an error; disable it for the port:
 export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
 ```
 
+### A POSIX function hidden by a strict C standard
+
+`error: implicit declaration of function 'strdup'` (or `fileno`, `popen`) in a C file of a KDE
+project, whose command line carries `-std=c99`. KDE's compiler settings in
+`extra-cmake-modules` set strict C99 unless `CMAKE_C_STANDARD` is already set, and musl's headers
+declare no POSIX function in a strict ISO mode. Flex scanners and bison parsers are where it
+shows. Give the standard on the configure line with GNU extensions on, which the settings then
+leave alone:
+
+```sh
+-D CMAKE_C_STANDARD=99 -D CMAKE_C_EXTENSIONS=ON
+```
+
+`digikam` takes GNU C99; `kdevelop` takes GNU C23, because its lexer also includes a Qt header
+that uses `static_assert`.
+
 ### A standard header the source never includes
 
 `error: 'int64_t' was not declared in this scope`, with GCC's note that it `is defined in header
