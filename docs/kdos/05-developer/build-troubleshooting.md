@@ -1248,9 +1248,11 @@ export CFLAGS="$CFLAGS -std=gnu23"
 
 `error: 'int64_t' was not declared in this scope`, with GCC's note that it `is defined in header
 '<cstdint>'`. GCC 16's C++ library headers do not include `<cstdint>` and similar headers on the
-way to their own, so a source file that uses a type without including its header fails. No flag
-adds the include: ship a `.patch` that adds the `#include` the note names, to the header it points
-at. `onnxruntime`'s `gcc16-cstdint.patch` is the example. Build the rest of the port with
+way to their own, so a source file that uses a type without including its header fails. The same
+holds for `'pthread_t' does not name a type` in a file that never includes `<pthread.h>`. Ship a
+`.patch` that adds the `#include` the note names, to the header it points at.
+`onnxruntime`'s `gcc16-cstdint.patch` and `flmsg`'s `font-browser-pthread.patch` are the
+examples. Build the rest of the port with
 `ninja -k 0` (or `make -k`) before writing the patch, so it names every file at once.
 
 ### An OpenSSL structure read field by field
