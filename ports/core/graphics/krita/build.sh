@@ -15,6 +15,8 @@
 patch -p1 -i "$PORT_SRC/0001-fftw-use-pkgconfig.patch"
 
 # BUILD_WITH_QT6 selects Qt 6 and KF6; without it the project looks for Qt 5.
+# Upstream still marks the Qt 6 build unstable, and the configure stops unless
+# ALLOW_UNSTABLE names QT6.
 # ENABLE_UPDATERS=OFF removes the update check and its notification.
 #
 # The three KRITA_QT_HAS_* switches name patches Krita's own Qt carries and
@@ -47,6 +49,7 @@ cmake -S . -B build -G Ninja \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
 	-D BUILD_WITH_QT6=ON \
+	-D ALLOW_UNSTABLE=QT6 \
 	-D ENABLE_UPDATERS=OFF \
 	-D FOUNDATION_BUILD=OFF \
 	-D KRITA_ENABLE_PCH=OFF \
