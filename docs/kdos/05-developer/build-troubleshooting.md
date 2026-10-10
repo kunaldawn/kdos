@@ -133,6 +133,7 @@ lists everything preflight checks.
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
 | `implicit declaration of function 'strdup'` (or `fileno`) in a KDE project built with `-std=c99` | [A POSIX function hidden by a strict C standard](#a-posix-function-hidden-by-a-strict-c-standard) |
+| `Checking for availability of switch -std=c++11 in g++ ... no` after `g++ works` | [C flags handed to the C++ compiler](#c-flags-handed-to-the-c-compiler) |
 | `unknown type name 'bool'` in a port's own source, with a note naming `<stdbool.h>` | [A source written for C23](#a-source-written-for-c23) |
 | `error: 'int64_t' was not declared in this scope` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
 | `error: invalid use of incomplete type 'const ASN1_GENERALIZEDTIME'`, or another `ASN1_*` type | [An OpenSSL structure read field by field](#an-openssl-structure-read-field-by-field) |
@@ -1230,6 +1231,20 @@ leave alone:
 
 `digikam` takes GNU C99; `kdevelop` takes GNU C23, because its lexer also includes a Qt header
 that uses `static_assert`.
+
+### C flags handed to the C++ compiler
+
+A configure script reports that its C++ compiler works and then that it supports no C++ standard
+(`Checking for availability of switch -std=c++11 in g++ ... no`), and a feature that needs C++
+stops it. The script tests C++ switches with `CFLAGS` and `-Werror`; g++ warns that the tree's
+`-std=gnu11` is valid only for C, and `-Werror` makes the warning the failure. Remove the standard
+from `CFLAGS` where the project sets its own C standard:
+
+```sh
+export CFLAGS="${CFLAGS/-std=gnu11/}"
+```
+
+`retroarch` is the example; it compiles its C as `-std=gnu99` either way.
 
 ### A source written for C23
 

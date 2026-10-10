@@ -28,7 +28,14 @@ patch -p1 -i "$PORT_SRC/database-path.patch"
 # which needs no TLS. FFmpeg is off: its recording path and media core do not
 # build against the FFmpeg this tree carries. The Qt companion window is off.
 # Extra languages are off: bundled data is English only. FLAC is the bundled
-# copy, which the CHD reader is written against.
+# copy, which the CHD reader is written against. The libusb joypad driver,
+# which reads USB pads directly, is RetroArch's HID layer, and the configure
+# refuses libusb unless HID is enabled with it.
+#
+# The configure tests each C++ switch with CFLAGS and -Werror, and g++ refuses
+# the C-only -std=gnu11 there, so every C++ standard fails and the Vulkan
+# driver with it. The project sets -std=gnu99 for its C itself.
+export CFLAGS="${CFLAGS/-std=gnu11/}"
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -42,6 +49,7 @@ patch -p1 -i "$PORT_SRC/database-path.patch"
 	--disable-x11 \
 	--disable-qt \
 	--enable-udev \
+	--enable-hid \
 	--enable-libusb \
 	--enable-sdl2 \
 	--disable-sdl \
