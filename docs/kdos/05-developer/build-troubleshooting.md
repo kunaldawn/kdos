@@ -128,6 +128,7 @@ lists everything preflight checks.
 | `cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)` | [Two introspection runtimes in one process](#two-introspection-runtimes-in-one-process) |
 | `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
 | `unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2 | [A bundled header shadowed by the system's](#a-bundled-header-shadowed-by-the-systems) |
+| `expected unqualified-id before numeric constant` inside a library header | [A project macro that breaks a library header](#a-project-macro-that-breaks-a-library-header) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
@@ -1381,6 +1382,17 @@ other Qt header brings in. Ship a `.patch` that adds the `#include` the note nam
 it points at. `onnxruntime`'s `gcc16-cstdint.patch`, `flmsg`'s `font-browser-pthread.patch` and
 `labplot`'s `elapsed-timer-include.patch` are the examples. Build the rest of the port with
 `ninja -k 0` (or `make -k`) before writing the patch, so it names every file at once.
+
+### A project macro that breaks a library header
+
+`expected unqualified-id before numeric constant`, pointing at a `#define` in the project's own
+header but reported inside a system library's header (`volk_common.h` here).
+
+The project defines a short name as an object-like macro, and a library header included after it
+uses the same name for a variable. A newer release of the library added the name. Ship a `.patch`
+that turns the macro into a `constexpr` constant, which a local variable may shadow. `satdump`'s
+`satdump-calibration-constants.patch` does this for `c1`, `c2` and `e_num`, which libvolk's
+inline functions name too.
 
 ### An OpenSSL structure read field by field
 

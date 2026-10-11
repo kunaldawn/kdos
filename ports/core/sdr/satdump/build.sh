@@ -26,6 +26,12 @@ patch -p1 -i "$PORT_SRC/satdump-dvb-generic.patch"
 # and neither <map> nor <math.h> is required to declare it.
 patch -p1 -i "$PORT_SRC/satdump-ctime.patch"
 
+# calibration.h defines c1, c2 and e_num as macros, and libvolk's
+# volk_common.h, included after it, names its own locals c1 and c2; the
+# macros turn those declarations into numbers. The patch makes the three
+# constexpr constants, which a local may shadow.
+patch -p1 -i "$PORT_SRC/satdump-calibration-constants.patch"
+
 # The bundled sol2 has a template member that names a member its class does
 # not have; GCC 15 checks template bodies nobody instantiates and rejects it
 # unless -Wtemplate-body is off.
