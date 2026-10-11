@@ -25,12 +25,15 @@ autoreconf -fi
 # urldict and gdict, which only reach network services; grammar, aiksaurus,
 # mathview, ots, gda, psion and wmf, whose libraries have no port; and garble,
 # a tool for sending documents with the text scrambled. libical, Evolution
-# Data Server, Redland and libchamplain have no port either.
+# Data Server, Redland and libchamplain have no port either. SVG needs no
+# plugin: the GTK front end draws it through librsvg itself, and configure
+# leaves the rsvg plugin unconfigured with GTK, so naming it builds it with
+# no compiler flags.
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--disable-static \
 	--enable-spell \
 	--enable-print \
-	--enable-plugins="applix bmp clarisworks command docbook eml epub gimp goffice hancom hrtext iscii kword latex loadbindings mht mif mswrite opendocument openwriter openxml opml paint passepartout pdb pdf presentation rsvg s5 sdw t602 wml wordperfect wpg xslfo" \
+	--enable-plugins="applix bmp clarisworks command docbook eml epub gimp goffice hancom hrtext iscii kword latex loadbindings mht mif mswrite opendocument openwriter openxml opml paint passepartout pdb pdf presentation s5 sdw t602 wml wordperfect wpg xslfo" \
 	--with-goffice \
 	--with-gio \
 	--without-gnomevfs \

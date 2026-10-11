@@ -126,6 +126,7 @@ lists everything preflight checks.
 | `Missing Qt6::GuiPrivate`, or another `Qt6::<Module>Private` target that does not exist | [A Qt private module not loaded](#a-qt-private-module-not-loaded) |
 | `Eigen3 library NOT FOUND` with Eigen installed | [Eigen without its legacy variables](#eigen-without-its-legacy-variables) |
 | `cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)` | [Two introspection runtimes in one process](#two-introspection-runtimes-in-one-process) |
+| `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
@@ -1183,6 +1184,16 @@ three from `eigen3.pc`, as `labplot` does:
 -D EIGEN3_INCLUDE_DIR="$(pkg-config --variable=prefix eigen3)/include/eigen3" \
 -D EIGEN3_VERSION_STRING="$(pkg-config --modversion eigen3)" \
 ```
+
+### A plugin built with no compiler flags
+
+`fatal error: glib.h: No such file or directory` (or another dependency's header) in one plugin
+of a project whose plugin list the recipe names, where the rest of the build found that header.
+
+The plugin's configure fragment declined it for this configuration and set no flags, but the
+explicit list still puts it in the build. AbiWord's `rsvg` plugin is declined under the GTK front
+end, which draws SVG itself, and `abiword`'s list leaves it out. Read the plugin's `plugin.m4` (or
+equivalent) for the condition, and drop the plugin from the list.
 
 ### A misspelt CMake option
 
