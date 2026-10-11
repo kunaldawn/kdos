@@ -112,7 +112,7 @@ lists everything preflight checks.
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
 | `'fenv_t' has not been declared`, then `Cannot compile std module`, in `10_bootstrap` | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
-| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
+| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, or `execinfo.h: No such file or directory` | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
@@ -122,6 +122,9 @@ lists everything preflight checks.
 | `Unknown options: …` at meson setup | [An unknown meson option](#an-unknown-meson-option) |
 | A meson option value that `is not one of the choices` | [A meson feature given a boolean](#a-meson-feature-given-a-boolean) |
 | `Error loading shared library` at run time, or a stale package-config file shadowing a fixed one | [A missing meson prefix or library directory](#a-missing-meson-prefix-or-library-directory) |
+| `find_package called with invalid argument "1"`, or a config file `not compatible with requested version "1"` | [A requirement a find module misreads](#a-requirement-a-find-module-misreads) |
+| `Missing Qt6::GuiPrivate`, or another `Qt6::<Module>Private` target that does not exist | [A Qt private module not loaded](#a-qt-private-module-not-loaded) |
+| `Eigen3 library NOT FOUND` with Eigen installed | [Eigen without its legacy variables](#eigen-without-its-legacy-variables) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
@@ -132,7 +135,7 @@ lists everything preflight checks.
 | `python: command not found`, or `make: python: No such file or directory` | [A build calling `python`](#a-build-calling-python) |
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
-| `implicit declaration of function 'strdup'` (or `fileno`) in a KDE project built with `-std=c99` | [A POSIX function hidden by a strict C standard](#a-posix-function-hidden-by-a-strict-c-standard) |
+| `implicit declaration of function 'strdup'` (or `fileno`, `exp10`) in a KDE project built with `-std=c99` | [A POSIX function hidden by a strict C standard](#a-posix-function-hidden-by-a-strict-c-standard) |
 | `Checking for availability of switch -std=c++11 in g++ ... no` after `g++ works` | [C flags handed to the C++ compiler](#c-flags-handed-to-the-c-compiler) |
 | `unknown type name 'bool'` in a port's own source, with a note naming `<stdbool.h>` | [A source written for C23](#a-source-written-for-c23) |
 | `error: 'int64_t' was not declared in this scope` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
@@ -922,8 +925,11 @@ Code written against glibc alone fails on musl in a few recurring ways. Each nee
   `strerror`.
 - A header that names `siginfo_t` (or another type) without including its header compiles on glibc,
   whose headers include `<signal.h>` on the way to others. Add the include.
+- `<execinfo.h>` (`backtrace`, `backtrace_symbols`) is glibc's, and musl has no such header. Where
+  it serves only a debugging aid, put the include and its function under `#ifdef __GLIBC__`.
 
-`freedv-gui`'s `musl.patch` and `backend-musl.patch` carry all three.
+`freedv-gui`'s `musl.patch` and `backend-musl.patch` carry the first three; `labplot`'s
+`musl-execinfo.patch` the fourth.
 
 ### A private library loaded by full path, then not found
 
@@ -1108,6 +1114,47 @@ predates CMake 3.5. The `cmake` port (4.x) refuses such a floor unless told othe
 -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 ```
 
+### A requirement a find module misreads
+
+`find_package called with invalid argument "1"`, or `Could not find a configuration file for
+package "<Name>" that is compatible with requested version "1"`, from a find module the project
+ships, with `CMAKE_REQUIRE_FIND_PACKAGE_<Name>=ON` on the command line.
+
+The module passes `${<Name>_FIND_REQUIRED}` to its own config-package search as a bare argument,
+expecting it empty or `REQUIRED`. A requirement sets it to `1`, which the search reads as a version
+when none comes before it, and rejects as an unknown argument when one does. Leave that package
+unrequired and, after the configure, check the generated build for the definition it enables, as
+`labplot` does for Cantor and NetCDF:
+
+```sh
+grep -q -- -DHAVE_NETCDF build/build.ninja
+```
+
+### A Qt private module not loaded
+
+`Missing Qt6::GuiPrivate`, or a link to a `Qt6::<Module>Private` target CMake does not know, from a
+project that asks for Qt's private API through `find_package(Qt6<Module> ... Private)` or only
+tests `TARGET Qt6::<Module>Private`.
+
+Qt keeps each private module in its own package, `Qt6<Module>Private`, and finding the public one
+does not load it. `-DQT_FIND_PRIVATE_MODULES=ON` makes every Qt module found load its private
+counterpart too (`labplot`).
+
+### Eigen without its legacy variables
+
+`Eigen3 library NOT FOUND`, or Eigen's headers not found, with the `eigen` port installed.
+
+The Eigen 5 config file defines the `Eigen3::Eigen` target only. A project that tests
+`EIGEN3_FOUND` or reads `EIGEN3_INCLUDE_DIR` or `EIGEN3_VERSION_STRING` gets none of them. Keep
+`CMAKE_REQUIRE_FIND_PACKAGE_Eigen3=ON`, so a missing library still stops the configure, and give the
+three from `eigen3.pc`, as `labplot` does:
+
+```sh
+-D EIGEN3_FOUND=ON \
+-D EIGEN3_INCLUDE_DIR="$(pkg-config --variable=prefix eigen3)/include/eigen3" \
+-D EIGEN3_VERSION_STRING="$(pkg-config --modversion eigen3)" \
+```
+
 ### A misspelt CMake option
 
 The option had no effect, and the build did the thing you disabled.
@@ -1233,6 +1280,10 @@ leave alone:
 `digikam` takes GNU C99; `kdevelop` takes GNU C23, because its lexer also includes a Qt header
 that uses `static_assert`.
 
+A GNU extension (`exp10`, `pow10`) stays hidden in a GNU mode too: musl declares it only under
+`_GNU_SOURCE`, which no `-std` defines. `labplot` adds `-D_GNU_SOURCE` to `CFLAGS`, which also
+lifts the strict mode's hiding of POSIX.
+
 ### C flags handed to the C++ compiler
 
 A configure script reports that its C++ compiler works and then that it supports no C++ standard
@@ -1265,10 +1316,11 @@ export CFLAGS="$CFLAGS -std=gnu23"
 `error: 'int64_t' was not declared in this scope`, with GCC's note that it `is defined in header
 '<cstdint>'`. GCC 16's C++ library headers do not include `<cstdint>` and similar headers on the
 way to their own, so a source file that uses a type without including its header fails. The same
-holds for `'pthread_t' does not name a type` in a file that never includes `<pthread.h>`. Ship a
-`.patch` that adds the `#include` the note names, to the header it points at.
-`onnxruntime`'s `gcc16-cstdint.patch` and `flmsg`'s `font-browser-pthread.patch` are the
-examples. Build the rest of the port with
+holds for `'pthread_t' does not name a type` in a file that never includes `<pthread.h>`, and
+for `'QElapsedTimer' was not declared` in a file that never includes `<QElapsedTimer>`, which no
+other Qt header brings in. Ship a `.patch` that adds the `#include` the note names, to the header
+it points at. `onnxruntime`'s `gcc16-cstdint.patch`, `flmsg`'s `font-browser-pthread.patch` and
+`labplot`'s `elapsed-timer-include.patch` are the examples. Build the rest of the port with
 `ninja -k 0` (or `make -k`) before writing the patch, so it names every file at once.
 
 ### An OpenSSL structure read field by field

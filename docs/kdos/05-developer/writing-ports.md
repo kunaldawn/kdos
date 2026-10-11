@@ -829,8 +829,10 @@ A few habits recur in the tree's application recipes, and a new one should follo
   the configure. Requiring curl takes `-DCURL_NO_CURL_CMAKE=ON` as well: CMake's FindCURL first
   asks for a `CURLConfig.cmake`, which curl does not install here. Where a module has no such
   switch (Krita's FindWebP asks for a `WebPConfig.cmake`; its Findlibjpeg-turbo passes its own
-  required component to a config file that never marks it found), the recipe leaves that package
-  unrequired and, after the configure, checks the generated build for what the package enables.
+  required component to a config file that never marks it found; LabPlot's FindCantor and
+  FindnetCDF pass `<Name>_FIND_REQUIRED` to that search as a bare argument), the recipe leaves that
+  package unrequired and, after the configure, checks the generated build for what the package
+  enables. See [A requirement a find module misreads](build-troubleshooting.md#a-requirement-a-find-module-misreads).
 - **A CMake project that finds GLEW ignores GLEW's own package.**
   `-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew'`, naming both because `/lib` is the
   same directory: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path
