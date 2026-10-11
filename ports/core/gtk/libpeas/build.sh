@@ -11,7 +11,9 @@
 
 # The GObject plugin engine Rhythmbox loads its C and Python plugins through,
 # with the GTK 3 widgetry for its plugin preferences. The 1.x series is what
-# Rhythmbox 3.5 asks for (libpeas-1.0); libpeas 2 is a different API.
+# Rhythmbox 3.5 asks for (libpeas-1.0); libpeas 2 is a different API. 1.38
+# loads typelibs through girepository-2.0, as PyGObject does: Rhythmbox's
+# Python plugins refuse a libpeas on girepository 1.0.
 #
 # The Lua 5.1 loader needs lua-lgi and Glade's catalog needs gladeui, neither
 # a port; Python 2 does not exist here. The demos are example programs.

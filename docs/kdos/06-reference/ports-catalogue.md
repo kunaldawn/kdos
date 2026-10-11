@@ -1759,7 +1759,7 @@ GIO plug-ins. 28 ports, under `ports/core/gtk/`.
 | `libgee` | 0.20.8 | GObject collection library — lists, maps, sets and queues for Vala and C | `41_system` |
 | `libgudev` | 238 | GObject bindings for libudev (used by upower and NetworkManager) | `41_system` |
 | `libhandy` | 1.8.3 | Adaptive widgets for GTK 3 applications | `43_toolkits` |
-| `libpeas` | 1.36.0 | GObject plugin engine, 1.x API — Rhythmbox's plugin loader | `43_toolkits` |
+| `libpeas` | 1.38.1 | GObject plugin engine, 1.x API — Rhythmbox's plugin loader | `43_toolkits` |
 | `libsigc++2` | 2.12.1 | Typesafe callback framework for C++, the 2.x API (sigc++-2.0) that gtkmm 3 builds on | `41_system` |
 | `libsigc++3` | 3.6.0 | Typesafe callback framework for C++, the 3.x API (sigc++-3.0) that gtkmm 4 builds on | `41_system` |
 | `libxfce4ui` | 4.20.2 | Xfce widget library, with its X11 and Wayland paths | `43_toolkits` |

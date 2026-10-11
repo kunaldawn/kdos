@@ -125,6 +125,7 @@ lists everything preflight checks.
 | `find_package called with invalid argument "1"`, or a config file `not compatible with requested version "1"` | [A requirement a find module misreads](#a-requirement-a-find-module-misreads) |
 | `Missing Qt6::GuiPrivate`, or another `Qt6::<Module>Private` target that does not exist | [A Qt private module not loaded](#a-qt-private-module-not-loaded) |
 | `Eigen3 library NOT FOUND` with Eigen installed | [Eigen without its legacy variables](#eigen-without-its-legacy-variables) |
+| `cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)` | [Two introspection runtimes in one process](#two-introspection-runtimes-in-one-process) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
@@ -1104,6 +1105,16 @@ meson's default library directory is not on the runtime linker's search path. Pa
 
 A stale package-config file under the old prefix can also shadow the fixed one. After correcting a
 prefix, delete the old files and the old package-config file, then rebuild the consumers.
+
+### Two introspection runtimes in one process
+
+`cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)`, or a program whose Python
+plugins crash on load.
+
+PyGObject from 3.52 on loads typelibs through glib's `girepository-2.0`, and a library built on
+the older `gobject-introspection-1.0` runtime cannot share a process with it. Every library that
+loads Python into a program must be on the same runtime as PyGObject: `libpeas` 1.38 is, and
+`rhythmbox` needs it for its Python plugins.
 
 ### An old CMake policy floor
 
