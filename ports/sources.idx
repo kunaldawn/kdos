@@ -2226,6 +2226,7 @@ e78c785ec4a8a22a48a91835c97601f5704b5076b154415353b0d2697dc0b4f7 sources-4 qt-ex
 e7955c23df5aa733648ba6094501f294af0e46c9d3f845adb20a2459447d5070 sources-2 gis--gpxsee-16.16.tar.gz gpxsee/gpxsee-16.16.tar.gz
 e7c5936f5b3a057ce851be0876e4e259b5c4d02f9aae038cd24a5d6b586b029f sources-1 devtools--zls-0.16.0.tar.gz zls/zls-0.16.0.tar.gz
 e7cab503d1d7d5849b89d2cf0e1ee60d0ef6d012407791b644b9cfc0cc225fdf sources-4 video-players--vlc-3.0.24.tar.xz vlc/vlc-3.0.24.tar.xz
+e82fd328adcac1aba34b64136bdfcbbacf2b3258a8bc4e5f480a72502a611ae9 sources-2 gtk--libpeas-1.38.1.tar.xz libpeas/libpeas-1.38.1.tar.xz
 e8740deba96ba4d47079695a34f41850a080a631ba318fab88e9d744825d92ae sources-3 math--kalgebra-26.08.1.tar.xz kalgebra/kalgebra-26.08.1.tar.xz
 e87aae032bf07c26f85ac0ed3250998c37621d95f8bd748b31f15b33c45ee995 sources-4 toolchain--flex-2.6.4.tar.gz flex/flex-2.6.4.tar.gz
 e889ac9c7e8a6bdfc31972bf1f1254b84882cb52931608bada62e8febbf0270b sources-2 game-libs--sdl12-compat-1.2.76.tar.gz sdl12-compat/sdl12-compat-1.2.76.tar.gz
