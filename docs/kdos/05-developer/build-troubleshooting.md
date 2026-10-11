@@ -127,6 +127,7 @@ lists everything preflight checks.
 | `Eigen3 library NOT FOUND` with Eigen installed | [Eigen without its legacy variables](#eigen-without-its-legacy-variables) |
 | `cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)` | [Two introspection runtimes in one process](#two-introspection-runtimes-in-one-process) |
 | `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
+| `unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2 | [A bundled header shadowed by the system's](#a-bundled-header-shadowed-by-the-systems) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
@@ -1194,6 +1195,17 @@ The plugin's configure fragment declined it for this configuration and set no fl
 explicit list still puts it in the build. AbiWord's `rsvg` plugin is declined under the GTK front
 end, which draws SVG itself, and `abiword`'s list leaves it out. Read the plugin's `plugin.m4` (or
 equivalent) for the condition, and drop the plugin from the list.
+
+### A bundled header shadowed by the system's
+
+`unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2, with `LUA_ERRGCMM` and
+`lua_newstate` errors after it, in a project that bundles its own Lua.
+
+The `lua` port is Lua 5.5, whose headers sit in `/usr/include`. A project that compiles a bundled
+Lua puts that copy's directory first with `-I`, but a header the bundle lacks is still found in
+`/usr/include`, and it then includes the system's `lua.h` from beside itself. sol2 includes
+`<lua.hpp>` whenever one exists, and the bundled Lua usually ships none. `-DSOL_NO_LUA_HPP=1` has
+sol2 include `lua.h`, `lualib.h` and `lauxlib.h` directly, which the bundle has (`satdump`).
 
 ### A misspelt CMake option
 
