@@ -112,12 +112,12 @@ lists everything preflight checks.
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
 | `'fenv_t' has not been declared`, then `Cannot compile std module`, in `10_bootstrap` | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
-| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, or `execinfo.h: No such file or directory` | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
+| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, `execinfo.h: No such file or directory`, or `'stat64' ... has incomplete type` | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
 | A missing type, from an empty generated header | [A stream-editor extension that is not there](#a-stream-editor-extension-that-is-not-there) |
-| `integer expected` from `expr`, a relative-link option rejected, `printf: bad %q`, or `option --date requires an argument` from `jar` | [Missing compact-userland features](#missing-compact-userland-features) |
+| `integer expected` from `expr`, a relative-link option rejected, `printf: bad %q`, or `option --date requires an argument` from `jar`, `no, GNU cp needed`, or `cp: <file>: No such file or directory` for a destination that is a link | [Missing compact-userland features](#missing-compact-userland-features) |
 | A package index or a clone reached during the offline build | [A build that reaches the network](#a-build-that-reaches-the-network) |
 | `Unknown options: …` at meson setup | [An unknown meson option](#an-unknown-meson-option) |
 | A meson option value that `is not one of the choices` | [A meson feature given a boolean](#a-meson-feature-given-a-boolean) |
@@ -137,7 +137,7 @@ lists everything preflight checks.
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
 | `implicit declaration of function 'strdup'` (or `fileno`, `exp10`) in a KDE project built with `-std=c99` | [A POSIX function hidden by a strict C standard](#a-posix-function-hidden-by-a-strict-c-standard) |
-| `Checking for availability of switch -std=c++11 in g++ ... no` after `g++ works` | [C flags handed to the C++ compiler](#c-flags-handed-to-the-c-compiler) |
+| `Checking for availability of switch -std=c++11 in g++ ... no` after `g++ works`, or `checking whether g++ supports C++20... configure: error: no` | [C flags handed to the C++ compiler](#c-flags-handed-to-the-c-compiler) |
 | `unknown type name 'bool'` in a port's own source, with a note naming `<stdbool.h>` | [A source written for C23](#a-source-written-for-c23) |
 | `error: 'int64_t' was not declared in this scope` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
 | `error: invalid use of incomplete type 'const ASN1_GENERALIZEDTIME'`, or another `ASN1_*` type | [An OpenSSL structure read field by field](#an-openssl-structure-read-field-by-field) |
@@ -915,7 +915,8 @@ this, and keeps the serial rates only `termios2` can set.
 
 ### A glibc-only call on musl
 
-Code written against glibc alone fails on musl in a few recurring ways. Each needs a `.patch`:
+Code written against glibc alone fails on musl in a few recurring ways. All but the last need a
+`.patch`:
 
 - `sem_clockwait` and `pthread_cond_clockwait` are glibc's. Wait with `sem_timedwait` (or
   `pthread_cond_timedwait`) and take the deadline from `CLOCK_REALTIME` instead of
@@ -928,6 +929,12 @@ Code written against glibc alone fails on musl in a few recurring ways. Each nee
   whose headers include `<signal.h>` on the way to others. Add the include.
 - `<execinfo.h>` (`backtrace`, `backtrace_symbols`) is glibc's, and musl has no such header. Where
   it serves only a debugging aid, put the include and its function under `#ifdef __GLIBC__`.
+
+- `stat64`, `fstat64`, `lseek64` and `off64_t` exist on musl only as macros for the plain names, and
+  only under `_LARGEFILE64_SOURCE`, which `_GNU_SOURCE` does not imply. `aggregate '...::stat64 buf'
+  has incomplete type` is the sign. Define it rather than patch: `libreoffice` exports
+  `ENVCFLAGS=-D_LARGEFILE64_SOURCE` and `ENVCFLAGSCXX=-D_LARGEFILE64_SOURCE`, which gbuild adds to
+  every library it compiles, for the CLucene it bundles.
 
 `freedv-gui`'s `musl.patch` and `backend-musl.patch` carry the first three; `labplot`'s
 `musl-execinfo.patch` the fourth.
@@ -1033,6 +1040,17 @@ Each name added there replaces a toybox applet with a GNU program on every insta
 while KDOS keeps toybox as its base userland. Prefer a build flag; add a name to
 `INSTALL_PROGRAMS` in the `coreutils` port's `build.sh` only when a toybox applet is missing a feature a port
 cannot do without.
+
+A check that asks for a GNU program by its `--version` text, not for the feature it needs, is
+answered without one. LibreOffice's `configure` stops with `no, GNU cp needed`, although gbuild
+copies files with `cp -P -f` and `touch -hr` when no GNU cp is named. Its configure allows that on
+the BSDs only, and `libreoffice`'s `toybox-cp.patch` adds `linux-musl*` to that case, so the build
+uses toybox's `cp` and `touch`.
+
+toybox's `cp` follows a link at the destination, even with `--remove-destination`, and reports
+`No such file or directory` when that link dangles. An absolute link inside `$PKG` always dangles.
+To replace a link with the file it names, read it, `rm` it, then copy. The `libreoffice` recipe does
+this for its `.desktop` entries.
 
 ---
 
@@ -1308,6 +1326,13 @@ export CFLAGS="${CFLAGS/-std=gnu11/}"
 ```
 
 `retroarch` is the example; it compiles its C as `-std=gnu99` either way.
+
+A script that copies `CFLAGS` into `CXXFLAGS` by mistake fails the same way, and `config.log`
+shows `-std=gnu11` on a `g++` line. LibreOffice's `configure` saves `$CFLAGS` before its
+`-Wsfinae-incomplete` probe and restores it as `$CXXFLAGS`, so its C++20 probe fails with
+`checking whether g++ supports C++20... configure: error: no`. There the fix is a patch to the
+generated `configure` alone (`libreoffice`'s `sfinae-probe-cxxflags.patch`). The build reruns
+`autogen.sh` when `configure.ac` is newer than the configuration, so that file is left untouched.
 
 ### A source written for C23
 
