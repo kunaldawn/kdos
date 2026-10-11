@@ -27,6 +27,9 @@
 # libclang, and its C++ is only tested with clang; gcc is not a supported
 # compiler for this tree. CC and CXX are set here, over the phase's gcc, and
 # the phase's -std=gnu11 is dropped: mozbuild sets every C file's standard.
+# The cc crate compiles with --target=x86_64-unknown-linux-musl, Rust's
+# triple, and clang looks for gcc's headers and libraries under the triple it
+# is given; --gcc-triple names gcc's own, so libstdc++ is found under either.
 #
 # RUST_TARGET names the Rust target outright (fix-rust-target.patch). Mozilla
 # otherwise matches the C triple against `rustc --print target-list`, and
@@ -65,14 +68,39 @@ patch -p1 -i "$PORT_SRC/sandbox-sched_setscheduler.patch"
 patch -p1 -i "$PORT_SRC/fix-libresolv-path.patch"
 patch -p1 -i "$PORT_SRC/metainfo.patch"
 
+_gcc_triple="--gcc-triple=$(gcc -dumpmachine)"
 export CC=clang
 export CXX=clang++
-export CFLAGS="${CFLAGS/-std=gnu11/}"
+export CFLAGS="${CFLAGS/-std=gnu11/} $_gcc_triple"
+export CXXFLAGS="$CXXFLAGS $_gcc_triple"
+export LDFLAGS="$LDFLAGS $_gcc_triple"
+
+# libxul names libmozsandbox.so, libgkcodecs.so and the rest of its siblings
+# by bare name. The launcher loads them from /usr/lib/thunderbird first, but
+# musl does not take an already-loaded library for a bare-name DT_NEEDED, so
+# without a run path into that directory libxul fails to load.
+export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/lib/thunderbird"
 export AR=llvm-ar
 export NM=llvm-nm
 export RANLIB=llvm-ranlib
 export RUST_TARGET=x86_64-unknown-linux-musl
-unset RUSTFLAGS MOZILLA_OFFICIAL MOZ_TELEMETRY_REPORTING
+unset MOZILLA_OFFICIAL MOZ_TELEMETRY_REPORTING
+
+# rustc's musl targets default to crt-static; gkrust is linked into the
+# shared libxul, which takes the shared C library like every other port.
+# mach always passes cargo --target, and cargo then gives RUSTFLAGS to the
+# target's crates only: build scripts would still link statically, and
+# bindgen's, which dlopens libclang, would fail. cargo runs every rustc call,
+# host and target, through RUSTC_WRAPPER, which adds the flag to each.
+export RUSTFLAGS="-C target-feature=-crt-static"
+cat > "$SRC_ROOT/rustc-dynamic" <<'EOF'
+#!/bin/sh
+rustc=$1
+shift
+exec "$rustc" "$@" -C target-feature=-crt-static
+EOF
+chmod 755 "$SRC_ROOT/rustc-dynamic"
+export RUSTC_WRAPPER="$SRC_ROOT/rustc-dynamic"
 
 # mach builds its own virtualenv from the vendored packages under
 # third_party/python. `none` installs nothing into it, so no pip reaches the
