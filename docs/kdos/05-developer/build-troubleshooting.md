@@ -142,6 +142,7 @@ lists everything preflight checks.
 | The same, with a working compiler on the search path | [A configuration script preferring another compiler](#a-configuration-script-preferring-another-compiler) |
 | `python: command not found`, or `make: python: No such file or directory` | [A build calling `python`](#a-build-calling-python) |
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
+| `no matching function for call to 'std::basic_string<char>::basic_string(const char8_t [N])'`, or `invalid conversion from 'const char8_t*' to 'const char*'` | [`u8` literals under C++20](#u8-literals-under-c20) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
 | `implicit declaration of function 'strdup'` (or `fileno`, `exp10`) in a KDE project built with `-std=c99` | [A POSIX function hidden by a strict C standard](#a-posix-function-hidden-by-a-strict-c-standard) |
 | `Checking for availability of switch -std=c++11 in g++ ... no` after `g++ works`, or `checking whether g++ supports C++20... configure: error: no` | [C flags handed to the C++ compiler](#c-flags-handed-to-the-c-compiler) |
@@ -1311,6 +1312,16 @@ it on its own `configure` line, as `rdfind` does:
 ```bash
 ./configure --prefix=/usr ac_cv_prog_cxx_cxx11=
 ```
+
+### `u8` literals under C++20
+
+`error: no matching function for call to 'std::__cxx11::basic_string<char>::basic_string(const
+char8_t [4])'`, or `invalid conversion from 'const char8_t*' to 'const char*'`, at a `u8"..."`
+literal. GCC 16 compiles C++ as C++20 unless told otherwise, and C++20 gives a `u8` literal the type
+`const char8_t[]`, which converts to neither `std::string` nor `const char *`. Code written for
+C++17 assumed plain `char`. Build the port as C++17, through the project's own switch where it has
+one, so its configure checks see the same standard: `ardour` passes waf's `--cxx17`. A project
+with no switch takes `-std=gnu++17` in `CXXFLAGS`.
 
 ### Newer-compiler diagnostics as errors
 
