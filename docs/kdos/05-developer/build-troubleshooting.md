@@ -131,6 +131,7 @@ lists everything preflight checks.
 | `expected unqualified-id before numeric constant` inside a library header | [A project macro that breaks a library header](#a-project-macro-that-breaks-a-library-header) |
 | `call of overloaded 'pow10(...)' is ambiguous` (or another GNU math name) at a project's own function | [A project function named like a C library extension](#a-project-function-named-like-a-c-library-extension) |
 | `fatal error: <module>.h: No such file or directory` in a stub module built because the real one is off | [A stub that includes the real module's header](#a-stub-that-includes-the-real-modules-header) |
+| `Argument <module>_qml is not a target!` from `qt_add_qml_module`, after a module was switched off | [A stub whose QML target is off with its module](#a-stub-whose-qml-target-is-off-with-its-module) |
 | `has no member named '<old>'; did you mean '<new>'?` against a library port | [A library member renamed under a consumer](#a-library-member-renamed-under-a-consumer) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
@@ -1396,6 +1397,17 @@ uses the same name for a variable. A newer release of the library added the name
 that turns the macro into a `constexpr` constant, which a local variable may shadow. `satdump`'s
 `satdump-calibration-constants.patch` does this for `c1`, `c2` and `e_num`, which libvolk's
 inline functions name too.
+
+### A stub whose QML target is off with its module
+
+`CMake Error ... Argument musesounds_qml is not a target!`, from `qt_add_qml_module` in another
+module's `CMakeLists.txt`, after a module was switched off on the configure line.
+
+The project's QML option for a module defaults to the module's own option, so switching the module
+off switches off the stub's QML target too, while another QML module still names that target as a
+dependency. Switch the QML option back on: the stub then builds its placeholder page under the
+same target. `musescore` passes `-D MUE_BUILD_MUSESOUNDS_QML=ON` beside
+`-D MUE_BUILD_MUSESOUNDS_MODULE=OFF`.
 
 ### A project function named like a C library extension
 

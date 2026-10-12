@@ -24,7 +24,10 @@ patch -p1 -i "$PORT_SRC/fix-destdir-symlinks.patch"
 #
 # Offline: the MuseScore.com account and cloud scores, the Learn page, the
 # update checker and the Muse Sounds / Muse Sampler integration (proprietary
-# instruments delivered online) are replaced by upstream's stubs. The crash
+# instruments delivered online) are replaced by upstream's stubs. The app
+# shell's QML module requires the MuseSounds QML target, which defaults to
+# off with the module, so MUE_BUILD_MUSESOUNDS_QML=ON builds the stub's
+# placeholder page in its place. The crash
 # reporter is off, VST3 needs Steinberg's SDK, and JACK is not on this system;
 # audio is PipeWire with ALSA beside it. The MS Basic soundfont ships in the
 # release tree and is installed from it, so the download step stays off.
@@ -59,6 +62,7 @@ cmake -S . -B build -G Ninja \
 	-D MUSE_MODULE_LEARN=OFF \
 	-D MUSE_MODULE_MUSESAMPLER=OFF \
 	-D MUE_BUILD_MUSESOUNDS_MODULE=OFF \
+	-D MUE_BUILD_MUSESOUNDS_QML=ON \
 	-D MUSE_MODULE_DIAGNOSTICS_CRASHPAD_CLIENT=OFF \
 	-D MUSE_MODULE_VST=OFF \
 	-D MUSE_MODULE_AUDIO_JACK=OFF \
