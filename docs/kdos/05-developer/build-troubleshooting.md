@@ -129,6 +129,7 @@ lists everything preflight checks.
 | `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
 | `unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2 | [A bundled header shadowed by the system's](#a-bundled-header-shadowed-by-the-systems) |
 | `expected unqualified-id before numeric constant` inside a library header | [A project macro that breaks a library header](#a-project-macro-that-breaks-a-library-header) |
+| `has no member named '<old>'; did you mean '<new>'?` against a library port | [A library member renamed under a consumer](#a-library-member-renamed-under-a-consumer) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
@@ -1393,6 +1394,15 @@ uses the same name for a variable. A newer release of the library added the name
 that turns the macro into a `constexpr` constant, which a local variable may shadow. `satdump`'s
 `satdump-calibration-constants.patch` does this for `c1`, `c2` and `e_num`, which libvolk's
 inline functions name too.
+
+### A library member renamed under a consumer
+
+`'struct <type>' has no member named '<old_name>'; did you mean '<newName>'?`, from a program built
+against a library port newer than the release it was written for.
+
+The library renamed the member and kept its meaning. Ship a `.patch` that uses the new name.
+Moving the library back would break its other consumers. sgp4 3.0 renamed
+`CoordTopocentric::range_rate` to `rangeRate`, and `sdrangel`'s `sgp4-range-rate.patch` follows it.
 
 ### An OpenSSL structure read field by field
 
