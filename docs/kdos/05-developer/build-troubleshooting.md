@@ -127,6 +127,7 @@ lists everything preflight checks.
 | `Eigen3 library NOT FOUND` with Eigen installed | [Eigen without its legacy variables](#eigen-without-its-legacy-variables) |
 | `cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)` | [Two introspection runtimes in one process](#two-introspection-runtimes-in-one-process) |
 | `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
+| `cairo.h: No such file or directory` from `FL/Fl_Cairo.H` | [FLTK's headers needing Cairo's](#fltks-headers-needing-cairos) |
 | `unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2 | [A bundled header shadowed by the system's](#a-bundled-header-shadowed-by-the-systems) |
 | `expected unqualified-id before numeric constant` inside a library header | [A project macro that breaks a library header](#a-project-macro-that-breaks-a-library-header) |
 | `call of overloaded 'pow10(...)' is ambiguous` (or another GNU math name) at a project's own function | [A project function named like a C library extension](#a-project-function-named-like-a-c-library-extension) |
@@ -1201,6 +1202,17 @@ The plugin's configure fragment declined it for this configuration and set no fl
 explicit list still puts it in the build. AbiWord's `rsvg` plugin is declined under the GTK front
 end, which draws SVG itself, and `abiword`'s list leaves it out. Read the plugin's `plugin.m4` (or
 equivalent) for the condition, and drop the plugin from the list.
+
+### FLTK's headers needing Cairo's
+
+`/usr/include/FL/Fl_Cairo.H:40:11: fatal error: cairo.h: No such file or directory`, compiling an
+FLTK interface.
+
+The `fltk` port is built with Cairo, so `FLTK_HAVE_CAIRO` is set in `FL/fl_config.h` and its
+headers include `<cairo.h>`, which sits in `/usr/include/cairo`. `fltk-config --cxxflags` names that
+directory, but a project that finds FLTK through CMake's `FindFLTK` gets FLTK's include directory
+alone. Add Cairo's flags to the C++ flags and `cairo` to `depends`: `lmms` appends
+`$(pkg-config --cflags cairo)` to `CMAKE_CXX_FLAGS` for its ZynAddSubFX editor.
 
 ### A bundled header shadowed by the system's
 
