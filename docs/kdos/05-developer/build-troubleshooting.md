@@ -129,6 +129,8 @@ lists everything preflight checks.
 | `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
 | `unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2 | [A bundled header shadowed by the system's](#a-bundled-header-shadowed-by-the-systems) |
 | `expected unqualified-id before numeric constant` inside a library header | [A project macro that breaks a library header](#a-project-macro-that-breaks-a-library-header) |
+| `call of overloaded 'pow10(...)' is ambiguous` (or another GNU math name) at a project's own function | [A project function named like a C library extension](#a-project-function-named-like-a-c-library-extension) |
+| `fatal error: <module>.h: No such file or directory` in a stub module built because the real one is off | [A stub that includes the real module's header](#a-stub-that-includes-the-real-modules-header) |
 | `has no member named '<old>'; did you mean '<new>'?` against a library port | [A library member renamed under a consumer](#a-library-member-renamed-under-a-consumer) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
@@ -143,7 +145,7 @@ lists everything preflight checks.
 | `implicit declaration of function 'strdup'` (or `fileno`, `exp10`) in a KDE project built with `-std=c99` | [A POSIX function hidden by a strict C standard](#a-posix-function-hidden-by-a-strict-c-standard) |
 | `Checking for availability of switch -std=c++11 in g++ ... no` after `g++ works`, or `checking whether g++ supports C++20... configure: error: no` | [C flags handed to the C++ compiler](#c-flags-handed-to-the-c-compiler) |
 | `unknown type name 'bool'` in a port's own source, with a note naming `<stdbool.h>` | [A source written for C23](#a-source-written-for-c23) |
-| `error: 'int64_t' was not declared in this scope` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
+| `error: 'int64_t' was not declared in this scope` or `'int64_t' does not name a type` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
 | `error: invalid use of incomplete type 'const ASN1_GENERALIZEDTIME'`, or another `ASN1_*` type | [An OpenSSL structure read field by field](#an-openssl-structure-read-field-by-field) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
@@ -1374,14 +1376,14 @@ export CFLAGS="$CFLAGS -std=gnu23"
 
 ### A standard header the source never includes
 
-`error: 'int64_t' was not declared in this scope`, with GCC's note that it `is defined in header
-'<cstdint>'`. GCC 16's C++ library headers do not include `<cstdint>` and similar headers on the
+`error: 'int64_t' was not declared in this scope`, or `'int64_t' does not name a type` in a
+declaration, with GCC's note that it `is defined in header '<cstdint>'`. GCC 16's C++ library headers do not include `<cstdint>` and similar headers on the
 way to their own, so a source file that uses a type without including its header fails. The same
 holds for `'pthread_t' does not name a type` in a file that never includes `<pthread.h>`, and
 for `'QElapsedTimer' was not declared` in a file that never includes `<QElapsedTimer>`, which no
 other Qt header brings in. Ship a `.patch` that adds the `#include` the note names, to the header
-it points at. `onnxruntime`'s `gcc16-cstdint.patch`, `flmsg`'s `font-browser-pthread.patch` and
-`labplot`'s `elapsed-timer-include.patch` are the examples. Build the rest of the port with
+it points at. `onnxruntime`'s `gcc16-cstdint.patch`, `audacity`'s `sqlite-helpers-cstdint.patch`, `flmsg`'s
+`font-browser-pthread.patch` and `labplot`'s `elapsed-timer-include.patch` are the examples. Build the rest of the port with
 `ninja -k 0` (or `make -k`) before writing the patch, so it names every file at once.
 
 ### A project macro that breaks a library header
@@ -1394,6 +1396,27 @@ uses the same name for a variable. A newer release of the library added the name
 that turns the macro into a `constexpr` constant, which a local variable may shadow. `satdump`'s
 `satdump-calibration-constants.patch` does this for `c1`, `c2` and `e_num`, which libvolk's
 inline functions name too.
+
+### A project function named like a C library extension
+
+`error: call of overloaded 'pow10(long unsigned int)' is ambiguous`, at a call to a `static`
+function the file defines itself.
+
+musl's `<math.h>` declares the GNU extension `double pow10(double)` under `_GNU_SOURCE`, and g++
+always defines `_GNU_SOURCE`. A file-local function of the same name then overloads it, and an
+argument of neither parameter type matches both equally. Ship a `.patch` that renames the local
+function. `audacity`'s `beats-formatter-pow10.patch` renames its `pow10` to `powerOf10`.
+
+### A stub that includes the real module's header
+
+`fatal error: vsteffectsmodule.h: No such file or directory`, compiling a file under `stubs/` after
+a module was switched off on the configure line.
+
+A project that builds a stub in place of each module it can leave out compiles the stub only in
+configurations its own CI never tries. A stub source that includes the real module's header
+fails, because only the stub's directory is on its include path. Ship a `.patch` that includes the
+stub's own header, which declares the same class. `audacity`'s `vst-stub-include.patch` does this
+for the VST stub that `AU_MODULE_EFFECTS_VST=OFF` builds.
 
 ### A library member renamed under a consumer
 

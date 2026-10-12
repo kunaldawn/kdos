@@ -1,0 +1,10 @@
+--- a/au3/libraries/au3-sqlite-helpers/sqlite/Statement.h
++++ b/au3/libraries/au3-sqlite-helpers/sqlite/Statement.h
+@@ -6,6 +6,7 @@
+ 
+ #pragma once
+ 
++#include <cstdint>
+ #include <memory>
+ #include <optional>
+ #include <string>
