@@ -17,6 +17,29 @@ for _p in fix-musl-incompability gcc13 lfs64 gcc15-musl dyn-pagesize; do
 	patch -p1 -i "$PORT_SRC/$_p.patch"
 done
 
+# The fmt module sets the imported target's configuration list twice, the
+# second call replacing the first, so it names Debug alone and a Release
+# build links libfmtd.a, which the internal build never makes. The patch
+# appends each configuration instead.
+patch -p1 -i "$PORT_SRC/fmt-imported-configs.patch"
+
+# TexturePacker, the build tool that packs the skins' images, tests for
+# giflib 5 exactly and takes the giflib 4 calls for any other version; the
+# giflib port is 6, which keeps the 5 interface. The patch tests for 5 or
+# later.
+patch -p1 -i "$PORT_SRC/texturepacker-giflib6.patch"
+
+# PCRE's CMakeLists sets policy CMP0026 to OLD, which CMake 4 refuses
+# outright. Kodi patches its internal PCRE from a list in its find module;
+# this patch adds one more to that list, which drops the setting. The
+# property read the policy covers is only in the chartable rebuild and the
+# tests, both off.
+patch -p1 -i "$PORT_SRC/pcre-cmp0026.patch"
+
+# PlatformDefs.h defines MAX_PATH as PATH_MAX without including <limits.h>,
+# which declares it; no other header brings it in on musl with GCC 16.
+patch -p1 -i "$PORT_SRC/platformdefs-limits.patch"
+
 # A source is beside the recipe after `make fetch`, or in kpkg's source
 # directory on a machine that rebuilds from its own cache.
 _src() {
@@ -27,7 +50,9 @@ _src() {
 # OpenJDK at build time. Groovy and the two Apache Commons jars it needs are
 # upstream's release archives; they run only in the build and none of them
 # reaches $PKG. Given their directories, the build does not try to download
-# them.
+# them. Groovy must read the class files of the openjdk port (Java 25); a
+# 4.0 release before 4.0.33 stops with "Unsupported class file major
+# version".
 python3 -m zipfile -e "apache-groovy-binary-$_groovy.zip" "$SRC_ROOT/groovy"
 _groovydir="$SRC_ROOT/groovy/groovy-$_groovy"
 
@@ -62,9 +87,18 @@ _groovydir="$SRC_ROOT/groovy/groovy-$_groovy"
 # musl gives a thread 128 KiB of stack unless the executable asks for more,
 # and Kodi's threads overrun that; the linker note raises it to 2 MiB.
 export LDFLAGS="$LDFLAGS -Wl,-z,stack-size=2097152"
+#
+# Kodi hands its compiler flags and nothing else to each library it builds
+# from source. tinyxml2 and spdlog call fseeko64 and fstat64, which musl
+# declares only under _LARGEFILE64_SOURCE, so the macro goes in the flags.
+# PCRE asks for a CMake older than 3.5, which CMake 4 refuses unless
+# CMAKE_POLICY_VERSION_MINIMUM is set; in the environment it reaches every
+# nested CMake run, where a -D on Kodi's own configure line does not.
+export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE"
+export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE"
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
 mkdir build && cd build
 cmake .. -G Ninja \
-	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \

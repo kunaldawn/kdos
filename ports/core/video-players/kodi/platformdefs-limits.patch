@@ -1,0 +1,10 @@
+--- a/xbmc/platform/posix/PlatformDefs.h
++++ b/xbmc/platform/posix/PlatformDefs.h
+@@ -8,6 +8,7 @@
+ 
+ #pragma once
+ 
++#include <limits.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <fcntl.h>

@@ -133,9 +133,13 @@ lists everything preflight checks.
 | `expected unqualified-id before numeric constant` inside a library header | [A project macro that breaks a library header](#a-project-macro-that-breaks-a-library-header) |
 | `call of overloaded 'pow10(...)' is ambiguous` (or another GNU math name) at a project's own function | [A project function named like a C library extension](#a-project-function-named-like-a-c-library-extension) |
 | `fatal error: <module>.h: No such file or directory` in a stub module built because the real one is off | [A stub that includes the real module's header](#a-stub-that-includes-the-real-modules-header) |
+| `ninja: error: '<dir>/lib<name>d.a', needed by '<program>', missing and no known rule to make it` in a Release build | [An imported library that names only its Debug build](#an-imported-library-that-names-only-its-debug-build) |
 | `Argument <module>_qml is not a target!` from `qt_add_qml_module`, after a module was switched off | [A stub whose QML target is off with its module](#a-stub-whose-qml-target-is-off-with-its-module) |
 | `has no member named '<old>'; did you mean '<new>'?` against a library port | [A library member renamed under a consumer](#a-library-member-renamed-under-a-consumer) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
+| `Unsupported class file major version 69` (or another number) from Groovy or another JVM build tool | [A JVM tool older than the JDK](#a-jvm-tool-older-than-the-jdk) |
+| `Policy CMP0026 may not be set to OLD behavior` | [A policy set to its removed behaviour](#a-policy-set-to-its-removed-behaviour) |
+| `too few arguments to function 'GifFileType* DGifOpen(void*, InputFunc, int*)'`, or `'GifLastError' was not declared` | [A version test that excludes a newer major release](#a-version-test-that-excludes-a-newer-major-release) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
 | `Installing:` a library under `/var/cache/kpkg/work/…` instead of `/usr/lib` | [A library installed into the source tree](#a-library-installed-into-the-source-tree) |
@@ -1153,6 +1157,41 @@ predates CMake 3.5. The `cmake` port (4.x) refuses such a floor unless told othe
 -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 ```
 
+A `-D` reaches only the CMake run it is given to. When the floor is in a library the project
+builds from source through `ExternalProject`, export the variable instead, which every nested
+CMake run reads from the environment: `kodi` does this for its internal PCRE.
+
+### A policy set to its removed behaviour
+
+`Policy CMP0026 may not be set to OLD behavior`, from a `cmake_policy(SET <policy> OLD)` in the
+project. CMake 4 has only the new behaviour of the policies CMake 3.0 introduced, and no flag
+selects the old one. Ship a `.patch` that drops the `cmake_policy` line, or sets it to `NEW` and
+rewrites the code that depended on the old behaviour: `lmms`'s `fix-cmake-policy.patch` reads a
+target's path through `$<TARGET_FILE:...>` instead of its `LOCATION`. A library the project builds from
+source is patched through the project's own patch list for it: `kodi`'s `pcre-cmp0026.patch`
+adds a PCRE patch to the list in `FindPCRE.cmake`, which drops the line: the `LOCATION` reads it
+covered are in parts Kodi does not build.
+
+### A JVM tool older than the JDK
+
+`BUG! exception in phase 'semantic analysis' ... Unsupported class file major version 69`, from a
+Groovy script (or another tool built on the ASM bytecode library) that the build runs on the JDK.
+
+The tool reads the JDK's own class files, and its bundled ASM rejects a class file format newer
+than it knows. Major version 69 is Java 25, the `openjdk` port. Move the tool to a release whose
+ASM reads it, a new source that needs `ports/publish`: `kodi`'s binding generator needs Groovy
+4.0.33 or later.
+
+### A version test that excludes a newer major release
+
+`too few arguments to function 'GifFileType* DGifOpen(void*, InputFunc, int*)'`, with
+`'GifLastError' was not declared in this scope`, in code that supports two giflib interfaces.
+
+The code tests `GIFLIB_MAJOR == 5` for the current interface and takes the giflib 4 calls for any
+other version. The `giflib` port is 6, which keeps the 5 interface, so the test picks calls giflib 6
+does not have. Ship a `.patch` that tests `>= 5` (and `< 5` for the old branch). `kodi`'s
+`texturepacker-giflib6.patch` does this for its TexturePacker build tool.
+
 ### A requirement a find module misreads
 
 `find_package called with invalid argument "1"`, or `Could not find a configuration file for
@@ -1418,8 +1457,8 @@ declaration, with GCC's note that it `is defined in header '<cstdint>'`. GCC 16'
 way to their own, so a source file that uses a type without including its header fails. The same
 holds for `'pthread_t' does not name a type` in a file that never includes `<pthread.h>`, and
 for `'QElapsedTimer' was not declared` in a file that never includes `<QElapsedTimer>`, which no
-other Qt header brings in. Ship a `.patch` that adds the `#include` the note names, to the header
-it points at. `onnxruntime`'s `gcc16-cstdint.patch`, `audacity`'s `sqlite-helpers-cstdint.patch`, `flmsg`'s
+other Qt header brings in, and for `'PATH_MAX' was not declared` without `<limits.h>`. Ship a `.patch` that adds the `#include` the note names, to the header
+it points at. `onnxruntime`'s `gcc16-cstdint.patch`, `audacity`'s `sqlite-helpers-cstdint.patch`, `kodi`'s `platformdefs-limits.patch`, `flmsg`'s
 `font-browser-pthread.patch` and `labplot`'s `elapsed-timer-include.patch` are the examples. Build the rest of the port with
 `ninja -k 0` (or `make -k`) before writing the patch, so it names every file at once.
 
@@ -1433,6 +1472,20 @@ uses the same name for a variable. A newer release of the library added the name
 that turns the macro into a `constexpr` constant, which a local variable may shadow. `satdump`'s
 `satdump-calibration-constants.patch` does this for `c1`, `c2` and `e_num`, which libvolk's
 inline functions name too.
+
+### An imported library that names only its Debug build
+
+`ninja: error: 'build/lib/libfmtd.a', needed by 'kodi-wayland', missing and no known rule to make
+it`, in a build configured as Release, after the library's own external project has built
+`libfmt.a`.
+
+A find module that creates an imported target sets `IMPORTED_CONFIGURATIONS` once for Release and
+again for Debug with `set_target_properties`, which replaces the list instead of adding to it. The
+target then lists a Debug build alone, CMake can resolve it to the `d`-suffixed archive, and the
+external project, built as Release, never makes it. Kodi's other find modules share the code and
+still resolve to Release, so only the library the error names needs the patch. Ship a `.patch` that appends each configuration with
+`set_property(... APPEND PROPERTY IMPORTED_CONFIGURATIONS ...)`. `kodi`'s
+`fmt-imported-configs.patch` does this for its internal fmt.
 
 ### A stub whose QML target is off with its module
 

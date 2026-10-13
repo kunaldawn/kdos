@@ -1,0 +1,18 @@
+--- a/cmake/modules/FindFmt.cmake
++++ b/cmake/modules/FindFmt.cmake
+@@ -111,13 +111,13 @@
+         add_library(fmt::fmt UNKNOWN IMPORTED)
+       endif()
+       if(FMT_LIBRARY_RELEASE)
++        set_property(TARGET fmt::fmt APPEND PROPERTY IMPORTED_CONFIGURATIONS RELEASE)
+         set_target_properties(fmt::fmt PROPERTIES
+-                                       IMPORTED_CONFIGURATIONS RELEASE
+                                        IMPORTED_LOCATION_RELEASE "${FMT_LIBRARY_RELEASE}")
+       endif()
+       if(FMT_LIBRARY_DEBUG)
++        set_property(TARGET fmt::fmt APPEND PROPERTY IMPORTED_CONFIGURATIONS DEBUG)
+         set_target_properties(fmt::fmt PROPERTIES
+-                                       IMPORTED_CONFIGURATIONS DEBUG
+                                        IMPORTED_LOCATION_DEBUG "${FMT_LIBRARY_DEBUG}")
+       endif()
+       set_target_properties(fmt::fmt PROPERTIES
