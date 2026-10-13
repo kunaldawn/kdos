@@ -14,8 +14,12 @@
 # download of the release list from mkvtoolnix.download. --without-gettext
 # builds the programs in English with no message catalogues. Manual pages come
 # from DocBook through xsltproc with --nonet; translated pages need po4a,
-# which is not a port, and are not built.
+# which is not a port, and are not built. The Rakefile renders the Windows
+# icon set whenever configure finds both Inkscape and ImageMagick installed;
+# an empty ac_cv_path_INKSCAPE keeps that Windows-only step out, whatever
+# the tree holds.
 ./configure --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man \
+	ac_cv_path_INKSCAPE= \
 	--enable-gui \
 	--enable-dbus \
 	--disable-update-check \
