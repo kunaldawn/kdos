@@ -151,6 +151,7 @@ lists everything preflight checks.
 | `C compiler cannot create executables` | [`C compiler cannot create executables`](#c-compiler-cannot-create-executables) |
 | The same, with a working compiler on the search path | [A configuration script preferring another compiler](#a-configuration-script-preferring-another-compiler) |
 | `python: command not found`, or `make: python: No such file or directory` | [A build calling `python`](#a-build-calling-python) |
+| A crash or failure in a tool the port does not depend on, such as `inkscape`, run by the build | [An optional tool found in the tree](#an-optional-tool-found-in-the-tree) |
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `no matching function for call to 'std::basic_string<char>::basic_string(const char8_t [N])'`, or `invalid conversion from 'const char8_t*' to 'const char*'` | [`u8` literals under C++20](#u8-literals-under-c20) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
@@ -1378,6 +1379,21 @@ alternative compiler first. The moment that alternative becomes a port, every su
 changes toolchain. The environment of `30_foundation` and every later phase therefore sets `CC=gcc`
 by name: a distribution that builds itself cannot have its toolchain depend on which ports happen to
 be installed. A configuration script that ignores `CC` needs its own switch, passed in the recipe.
+
+### An optional tool found in the tree
+
+The build runs a program the recipe never named, such as `inkscape` or ImageMagick's `magick`, and
+fails inside it. `configure` looks the tool up with `AC_PATH_PROG`, and the build uses it when it is
+found; it is found because another port installed it into the tree before this one. Whether the
+step runs then depends on the build order, not on the recipe. Pass the cache variable empty on the
+`configure` line, so the lookup is recorded as having found nothing:
+
+```sh
+./configure --prefix=/usr ac_cv_path_INKSCAPE=
+```
+
+`mkvtoolnix` does this: its Rakefile renders the Windows icon set with Inkscape and ImageMagick
+whenever both are found, and Inkscape crashes in the chroot.
 
 ### A build calling `python`
 
