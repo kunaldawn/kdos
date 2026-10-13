@@ -112,7 +112,7 @@ lists everything preflight checks.
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
 | `'fenv_t' has not been declared`, then `Cannot compile std module`, in `10_bootstrap` | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
-| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, `execinfo.h: No such file or directory`, or `'stat64' ... has incomplete type` | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
+| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, `execinfo.h: No such file or directory`, `'canonicalize_file_name' was not declared`, or `'stat64' ... has incomplete type` | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
@@ -129,6 +129,8 @@ lists everything preflight checks.
 | `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
 | `cairo.h: No such file or directory` from `FL/Fl_Cairo.H` | [FLTK's headers needing Cairo's](#fltks-headers-needing-cairos) |
 | `'class QTextStream' has no member named 'setCodec'`, `'QRegExp' was not declared`, in a Qt program built with `qmake6` | [A Qt 5 program built against Qt 6](#a-qt-5-program-built-against-qt-6) |
+| `qt6_wrap_cpp: TARGET parameter is empty` | [A source file in a moc list](#a-source-file-in-a-moc-list) |
+| `#error "Qt requires a C++17 compiler"` with `-std=c++17 -std=c++11` on the compile line | [An older standard after CMake's](#an-older-standard-after-cmakes) |
 | `unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2 | [A bundled header shadowed by the system's](#a-bundled-header-shadowed-by-the-systems) |
 | `expected unqualified-id before numeric constant` inside a library header | [A project macro that breaks a library header](#a-project-macro-that-breaks-a-library-header) |
 | `call of overloaded 'pow10(...)' is ambiguous` (or another GNU math name) at a project's own function | [A project function named like a C library extension](#a-project-function-named-like-a-c-library-extension) |
@@ -136,6 +138,8 @@ lists everything preflight checks.
 | `ninja: error: '<dir>/lib<name>d.a', needed by '<program>', missing and no known rule to make it` in a Release build | [An imported library that names only its Debug build](#an-imported-library-that-names-only-its-debug-build) |
 | `Argument <module>_qml is not a target!` from `qt_add_qml_module`, after a module was switched off | [A stub whose QML target is off with its module](#a-stub-whose-qml-target-is-off-with-its-module) |
 | `has no member named '<old>'; did you mean '<new>'?` against a library port | [A library member renamed under a consumer](#a-library-member-renamed-under-a-consumer) |
+| `incompatible types in assignment of 'char*' to 'char [N]'` at a library's structure member | [A library member whose type changed](#a-library-member-whose-type-changed) |
+| `cannot convert 'std::nullptr_t' to '<integer type>'` at a `NULL` | [`NULL` used as an integer](#null-used-as-an-integer) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
 | `Unsupported class file major version 69` (or another number) from Groovy or another JVM build tool | [A JVM tool older than the JDK](#a-jvm-tool-older-than-the-jdk) |
 | `Policy CMP0026 may not be set to OLD behavior` | [A policy set to its removed behaviour](#a-policy-set-to-its-removed-behaviour) |
@@ -150,6 +154,7 @@ lists everything preflight checks.
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `no matching function for call to 'std::basic_string<char>::basic_string(const char8_t [N])'`, or `invalid conversion from 'const char8_t*' to 'const char*'` | [`u8` literals under C++20](#u8-literals-under-c20) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
+| `Error: operand type mismatch for 'shr'` from `lto-wrapper` | [A shift count out of range in inline assembly](#a-shift-count-out-of-range-in-inline-assembly) |
 | `implicit declaration of function 'strdup'` (or `fileno`, `exp10`) in a KDE project built with `-std=c99` | [A POSIX function hidden by a strict C standard](#a-posix-function-hidden-by-a-strict-c-standard) |
 | `Checking for availability of switch -std=c++11 in g++ ... no` after `g++ works`, or `checking whether g++ supports C++20... configure: error: no` | [C flags handed to the C++ compiler](#c-flags-handed-to-the-c-compiler) |
 | `unknown type name 'bool'` in a port's own source, with a note naming `<stdbool.h>` | [A source written for C23](#a-source-written-for-c23) |
@@ -942,8 +947,11 @@ Code written against glibc alone fails on musl in a few recurring ways. All but 
 - A header that names `siginfo_t` (or another type) without including its header compiles on glibc,
   whose headers include `<signal.h>` on the way to others. Add the include.
 - `<execinfo.h>` (`backtrace`, `backtrace_symbols`) is glibc's, and musl has no such header. Where
-  it serves only a debugging aid, put the include and its function under `#ifdef __GLIBC__`.
-
+  it serves only a debugging aid, put the include and its function under `#ifdef __GLIBC__`. A
+  crash handler that exits after the backtrace still has to exit without it, or it returns into
+  the fault.
+- `canonicalize_file_name(path)` is glibc's; `realpath(path, NULL)` returns the same allocated
+  string.
 - `stat64`, `fstat64`, `lseek64` and `off64_t` exist on musl only as macros for the plain names, and
   only under `_LARGEFILE64_SOURCE`, which `_GNU_SOURCE` does not imply. `aggregate '...::stat64 buf'
   has incomplete type` is the sign. Define it rather than patch: `libreoffice` exports
@@ -951,7 +959,15 @@ Code written against glibc alone fails on musl in a few recurring ways. All but 
   every library it compiles, for the CLucene it bundles.
 
 `freedv-gui`'s `musl.patch` and `backend-musl.patch` carry the first three; `labplot`'s
-`musl-execinfo.patch` the fourth.
+`musl-execinfo.patch` the fourth; `avidemux`'s `musl-glibc-calls.patch` the fourth and fifth.
+
+### `NULL` used as an integer
+
+`cannot convert 'std::nullptr_t' to 'uint32_t'` (or another integer type) at a `NULL`, often
+the last element of an array of structures whose first member is an integer. musl's headers
+define `NULL` as `nullptr` in C++, which converts only to pointers; on glibc, GCC's own `<stddef.h>`
+defines it as `__null`, which also converts to an integer. Ship a `.patch` that writes what was meant: `0`, or `{}` for
+an empty terminating element. `avidemux`'s `mp4-menu-sentinel.patch` ends a menu list with `{}`.
 
 ### A private library loaded by full path, then not found
 
@@ -1255,6 +1271,24 @@ packaging files upstream ships (`*.spec`, `debian/control`) for the Qt it builds
 is Qt 5, depend on the `qt5-*` ports and run `qmake-qt5` with Qt 5's `lrelease` from
 `/usr/lib/qt5/bin`. `smplayer` is built this way.
 
+### A source file in a moc list
+
+`qt6_wrap_cpp: TARGET parameter is empty. Since the file .../X.cpp is a source file, the TARGET
+option must be specified.` Qt 6 runs moc on a `.cpp` file only for a named target, so it can add
+the target's build directory to the include path for the `X.moc` the file includes. A `.cpp`
+with no `Q_OBJECT` class gives moc nothing to generate: ship a `.patch` that drops it from the
+list. One with a `Q_OBJECT` class keeps it and gains `TARGET <target>`, after that target is
+declared. `avidemux`'s `qt6-moc-headers-only.patch` drops two of the first kind.
+
+### An older standard after CMake's
+
+`#error "Qt requires a C++17 compiler"`, then `'is_integral_v' is not a member of 'std'` from Qt
+6's headers, with `-std=c++17 -std=c++11` on the compile line. The project asks CMake for C++17
+through `CMAKE_CXX_STANDARD`, but also passes `-std=c++11` through `add_definitions()` or
+`add_compile_options()`. CMake puts compile options after the standard flag it derives, so the
+older one wins, and no `CXXFLAGS` value can come later. Ship a `.patch` that drops the option:
+`avidemux`'s `qt6-no-cxx11.patch`.
+
 ### FLTK's headers needing Cairo's
 
 `/usr/include/FL/Fl_Cairo.H:40:11: fatal error: cairo.h: No such file or directory`, compiling an
@@ -1396,6 +1430,17 @@ compilers. GCC 14 made this one an error; disable it for the port:
 export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
 ```
 
+### A shift count out of range in inline assembly
+
+`Error: operand type mismatch for 'shr'` (or `sar`, `shrd`) at an `asm` line, reported through
+`lto-wrapper` while a library links. The source hands x86 inline assembly a shift count under
+the `"ci"` constraint, an immediate or `%cl`; once link-time optimisation propagates a count as a
+constant outside 0 to 31, the assembler gets an immediate it cannot encode. FFmpeg 4.4.2
+does this in `libavcodec/x86/mathops.h`; FFmpeg's own fix, in its later releases, masks the
+constant and takes `%cl` otherwise. A program that builds a private FFmpeg 4 from a tarball it carries takes that fix
+through its own patch list: `avidemux`'s `ffmpeg-mathops-shift.patch` adds it to
+`avidemux_core/ffmpeg_package/patches/upstream/`, which Avidemux applies to that tree.
+
 ### A POSIX function hidden by a strict C standard
 
 `error: implicit declaration of function 'strdup'` (or `fileno`, `popen`) in a C file of a KDE
@@ -1527,6 +1572,15 @@ against a library port newer than the release it was written for.
 The library renamed the member and kept its meaning. Ship a `.patch` that uses the new name.
 Moving the library back would break its other consumers. sgp4 3.0 renamed
 `CoordTopocentric::range_rate` to `rangeRate`, and `sdrangel`'s `sgp4-range-rate.patch` follows it.
+
+### A library member whose type changed
+
+`incompatible types in assignment of 'char*' to 'char [256]'`, from a program assigning to a
+structure member of a library port newer than the release it was written for. The library made
+the member a fixed array the caller writes into, where it was a pointer the caller allocated.
+Ship a `.patch` that copies into the array, bounded by its size. x265's `param.rc.statFileName`
+is such an array, and `avidemux`'s `x265-stat-filename.patch` writes the two-pass log name into it
+with `snprintf`.
 
 ### An OpenSSL structure read field by field
 

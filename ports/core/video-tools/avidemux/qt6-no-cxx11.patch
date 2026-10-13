@@ -1,0 +1,11 @@
+--- a/avidemux/qt4/CMakeLists.txt
++++ b/avidemux/qt4/CMakeLists.txt
+@@ -11,8 +11,6 @@
+ MESSAGE("Configure for Avidemux Qt Started")
+ MESSAGE("#########################################")
+ MESSAGE("")
+-#fedora 
+-ADD_DEFINITIONS("-std=c++11")
+ MESSAGE(STATUS "Checking for avidemux development files ..")
+ 
+ IF(NOT FAKEROOT)
