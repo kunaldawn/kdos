@@ -9,6 +9,15 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# musl-execinfo leaves out print_callstack, a debugging aid nothing calls,
+# and the <execinfo.h> it needs, which musl does not have, on any C library
+# but glibc.
+#
+# elapsed-timer-include gives the Fourier filter the <QElapsedTimer> it uses:
+# no Qt header it includes brings it in.
+patch -p1 -i "$PORT_SRC/musl-execinfo.patch"
+patch -p1 -i "$PORT_SRC/elapsed-timer-include.patch"
+
 # Every importer and feature with a library on this system is required
 # rather than dropped when absent: FFTW, HDF5, NetCDF, FITS, Poppler's Qt 6
 # frontend (LaTeX labels), Discount (Markdown notes), Eigen, the serial-port
@@ -21,6 +30,25 @@
 # so no usage statistics are collected. The SDK library and its headers are
 # not built. KF_SKIP_PO_PROCESSING leaves the translation catalogues out:
 # bundled data is English only.
+#
+# Cantor and NetCDF are checked after the configure instead of required: their
+# find modules pass <Name>_FIND_REQUIRED to a config-package search as a bare
+# argument, and a requirement sets it to 1, which that search reads as a
+# version (netCDF 4 is then incompatible) or rejects outright (Cantor).
+#
+# QT_FIND_PRIVATE_MODULES has finding Qt6Gui load Qt6GuiPrivate as well: the
+# docking framework and the XLSX reader are built against Qt's private API,
+# and without the target the configure stops.
+#
+# Eigen's config file defines the Eigen3::Eigen target and none of the
+# EIGEN3_FOUND, EIGEN3_INCLUDE_DIR and EIGEN3_VERSION_STRING variables LabPlot
+# reads, so the three are given here from eigen3.pc; the requirement on Eigen3
+# still stops the configure when the library is missing.
+# The numeric library calls exp10, a GNU extension musl declares only under
+# _GNU_SOURCE. LabPlot defines it for Clang alone, and the C99 KDE's settings
+# impose defines no feature macro.
+export CFLAGS="$CFLAGS -D_GNU_SOURCE"
+
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
@@ -53,10 +81,13 @@ cmake -S . -B build -G Ninja \
 	-D ENABLE_EIGEN3=ON \
 	-D LOCAL_QT_ADVANCED_DOCK_DOWNLOAD=OFF \
 	-D LOCAL_QT_ADVANCED_DOCK_COPY=ON \
+	-D QT_FIND_PRIVATE_MODULES=ON \
+	-D EIGEN3_FOUND=ON \
+	-D EIGEN3_INCLUDE_DIR="$(pkg-config --variable=prefix eigen3)/include/eigen3" \
+	-D EIGEN3_VERSION_STRING="$(pkg-config --modversion eigen3)" \
 	-D CMAKE_DISABLE_FIND_PACKAGE_KF6UserFeedback=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_FFTW3=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_HDF5=ON \
-	-D CMAKE_REQUIRE_FIND_PACKAGE_netCDF=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_CFitsio=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_Poppler=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_Discount=ON \
@@ -66,12 +97,13 @@ cmake -S . -B build -G Ninja \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_KF6SyntaxHighlighting=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_KF6Purpose=ON \
-	-D CMAKE_REQUIRE_FIND_PACKAGE_Cantor=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_LIBCERF=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_Matio=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_Orcus=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_Qt6Mqtt=ON \
 	-Wno-dev
+grep -q -- -DHAVE_CANTOR_LIBS build/build.ninja
+grep -q -- -DHAVE_NETCDF build/build.ninja
 cmake --build build
 DESTDIR=$PKG cmake --install build
 test -x "$PKG/usr/bin/labplot"

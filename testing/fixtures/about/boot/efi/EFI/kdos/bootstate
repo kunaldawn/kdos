@@ -1,0 +1,10 @@
+# KDOS boot state. Written by kdos-bootctl; the initramfs
+# reads it before it mounts a root filesystem.
+slot_a   = 1111
+slot_b   = 2222
+crypt_a  = 
+crypt_b  = 
+active   = a
+try      = b
+attempts = 1
+bootnext = yes

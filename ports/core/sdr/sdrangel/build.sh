@@ -9,6 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# sgp4 3.0 names the topocentric range rate rangeRate; the satellite tracker
+# reads range_rate, the member's name before that release.
+patch -p1 -i "$PORT_SRC/sgp4-range-rate.patch"
+
 # ARCH_OPT is passed straight to -march, and upstream's default, native, ties
 # the binary to the build machine's processor. It names the architecture's
 # baseline here.

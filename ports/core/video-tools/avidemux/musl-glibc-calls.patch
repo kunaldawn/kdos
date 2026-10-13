@@ -1,0 +1,37 @@
+--- a/avidemux_core/ADM_core/src/ADM_crashdump_unix.cpp
++++ b/avidemux_core/ADM_core/src/ADM_crashdump_unix.cpp
+@@ -30,7 +30,7 @@
+ #define	_ELF64
+ #endif
+ #include <sys/machelf.h>
+-#else
++#elif defined(__GLIBC__)
+ #include <execinfo.h>
+ #endif
+ 
+@@ -187,7 +187,13 @@
+ 	if(mysaveFunction)
+ 		mysaveFunction();
+ #define MAX_BACKTRACK 30
+-#if !defined(__HAIKU__) && !defined(__sun__)
++#if !defined(__HAIKU__) && !defined(__sun__) && !defined(__GLIBC__)
++    char wholeStuff[2048];
++    snprintf(wholeStuff,sizeof(wholeStuff),"%s\n at line %d, file %s\n",info,lineno,file);
++    if(myFatalFunction)
++        myFatalFunction("Crash", wholeStuff);
++    exit(-1);
++#elif !defined(__HAIKU__) && !defined(__sun__)
+     char wholeStuff[2048];
+     char buffer[4096];
+     char in[2048];
+--- a/avidemux_core/ADM_core/src/ADM_folder_linux.cpp
++++ b/avidemux_core/ADM_core/src/ADM_folder_linux.cpp
+@@ -39,7 +39,7 @@
+ static std::string canonize(const std::string &in)
+ {
+     std::string out;
+-    char *simple2=canonicalize_file_name(in.c_str());
++    char *simple2=realpath(in.c_str(),NULL);
+     if(simple2)
+     {
+         out=std::string(simple2);

@@ -15,12 +15,15 @@ patch -p1 -i "$PORT_SRC/fix-cmake-policy.patch"
 # backends. JACK, Carla, VST (Wine) and sndio have no port here. libgig gives
 # the GIG player, and STK the Mallets instrument, which loads its samples
 # from STK's /usr/share/stk/rawwaves/.
+# The FLTK port is built with Cairo, so its headers include <cairo.h>; the
+# ZynAddSubFX editor takes FLTK's include directory alone and not Cairo's,
+# which the C++ flags add.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
-	-DCMAKE_CXX_FLAGS="$CXXFLAGS -Wno-deprecated-declarations" \
+	-DCMAKE_CXX_FLAGS="$CXXFLAGS -Wno-deprecated-declarations $(pkg-config --cflags cairo)" \
 	-DFORCE_VERSION=$version \
 	-DWANT_QT5=ON \
 	-DWANT_ALSA=ON \

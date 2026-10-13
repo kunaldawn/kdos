@@ -562,6 +562,7 @@ Neither configuration nor storage: these files are how one program tells another
 | `~/.local/share/kdos/observed-app-ids` | The compositor, once for each new application ID a window presents | `kdos appid` |
 | `/var/lib/kdos/pack-manifest` | The pack daemon | Itself, so ungrafting removes exactly what was added |
 | `/var/lib/kdos/update.json` | The update-check timer | The panel's update badge, which falls back to `~/.local/state/kdos/update.json` |
+| `/etc/os-release` | `fs/etc/os-release`, with `BUILD_ID` and `KDOS_BUILD_DATE` appended by `70_image/045_identity.sh` | `kdos-about`, and anything else that identifies the system |
 | `/etc/kdos/accent` | `kdos-powerd`'s `accent` verb | The boot scripts, which tell the running splash to repaint in it |
 | `/boot/initramfs.modules` | The initramfs build step, one module per line | The `linux` package's post-install, which carries a new kernel's copies of that set into `/boot/initramfs-kdos.cpio.gz` |
 | `/boot/initramfs-kdos.cpio.gz` | The `linux` post-install: the image's initramfs with the new kernel's modules appended | `kdos-bootctl deploy` and `kinstall`, which use it in place of `/boot/initramfs.cpio.gz` |
@@ -629,6 +630,7 @@ honoured only where noted.
 | `KDOS_GOLDEN_UPDATE=1` | Regenerate reference frames instead of comparing against them |
 | `KDOS_RES_FIXTURE` | A recorded system state for the resource monitor's library tests; the program itself takes `kdos-res --fixture <dir>` |
 | `KDOS_PRIVACY_PROC` | A recorded process tree for the panel's privacy indicator and the devices surface |
+| `KDOS_ABOUT_ROOT` | A recorded root `kdos-about` reads every file under — `etc/os-release`, `proc/`, `sys/`, `boot/efi/EFI/kdos/bootstate`, `etc/kdos/keys/`, `var/lib/kpkg/db/` and `usr/share/kdos/logo.txt` — in place of `/` |
 | `KDOS_PANEL_NOW` | A fixed wall-clock second for every surface that draws the time, so a frame with a clock in it can be compared |
 | `KDOS_ETC`, `KDOS_ZONEINFO`, `KDOS_CHRONY`, `KDOS_UPDATE_JSON`, `KDOS_CVE_JSON`, `KDOS_SLOT_TEXT`, `KDOS_FIREWALL_LIST`, `KDOS_DISPLAY_LIST`, `KDOS_CAL_LIST`, `KDOS_CONTACT_LIST`, `KDOS_CHARIDX` | Files standing in for the system files, command output and indexes the panel's surfaces read, so an offscreen render has fixed input |
 | `KDOS_ENERGY_PROC`, `KDOS_ENERGY_POWERCAP`, `KDOS_ALIEN_APPS` | Recorded trees and a launcher table for the energy daemon |
@@ -668,14 +670,16 @@ Read by `make build` and the build scripts on the build machine; see
 | `KDOS_JOBS=N` | The job count every phase uses: `MAKEFLAGS=-jN`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, and a `--cpus` cap on the build container no higher than the host's thread count. Unset or empty, `script/env/common.env` computes it: the thread count, clamped to one job per 2 GiB of memory, at least 1 |
 | `KDOS_CPU_SHARES=N` | The build container's CPU weight, a `make build` variable only; default `256`. A weight, not a cap |
 | `KDOS_REPLAY=1` | A build step's "already done" guard stands down. Set for steps a build plan named explicitly |
-| `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY` | Recorded in each phase's snapshot manifest as `git_commit` and `git_dirty`, and shown by the snapshot picker, which marks a snapshot stale when either disagrees with the tree. Nothing on the image reads them; `/etc/os-release` carries a fixed version |
+| `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY` | Recorded in each phase's snapshot manifest as `git_commit` and `git_dirty`, and shown by the snapshot picker, which marks a snapshot stale when either disagrees with the tree. `70_image/045_identity.sh` also stamps them into the image's `/etc/os-release` as `BUILD_ID` |
+| `KDOS_GIT_DATE` | The commit's date, `YYYY-MM-DD`, set by `make build`; stamped into `/etc/os-release` as `KDOS_BUILD_DATE` |
 | `KDOS_SNAPSHOT_PATHS`, `KDOS_SNAPSHOT_EXCLUDE`, `KDOS_PHASE_TITLE`, `KDOS_PHASE_DESC` | A phase's metadata block in its `script/phases/<phase>/phase.env`. The orchestrator parses these keys from the file's own text without sourcing it, so it follows none of the file's `source` lines and each `phase.env` sets them itself; the phase's steps source the whole file as shell. Each `KDOS_SNAPSHOT_EXCLUDE` pattern is matched with `fnmatch(3)`, no flags, against an entry's whole path relative to `build/`, so `*` crosses `/`, and an excluded directory is left out whole |
 | `KDOS_RES=WxH` | The virtual screen size for `make run` and its variants; default `1920x1080` |
 
 The build runs its later steps inside a chroot entered with a cleared environment, so a variable a
-chroot step reads must also be named in `script/chroot/exec.sh`. Exactly ten are forwarded:
+chroot step reads must also be named in `script/chroot/exec.sh`. Exactly thirteen are forwarded:
 `KDOS_REPLAY`, `KDOS_JOBS`, `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_ISO_COMP`, `KDOS_CCACHE`,
-`KDOS_PKG_STORE`, `KDOS_PKG_STORE_MAX`, `KPKG_STORE_SALT` and `KDOS_MAKE_BINHOST`, which also
+`KDOS_PKG_STORE`, `KDOS_PKG_STORE_MAX`, `KPKG_STORE_SALT`, `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`,
+`KDOS_GIT_DATE` and `KDOS_MAKE_BINHOST`, which also
 arrives as `KPKG_KEEP_CACHE`; `KDOS_PKG_STORE` also arrives as `KPKG_STORE` and
 `KPKG_STORE_CHECK`. A new one added to the `Makefile` and not
 there reaches every host step and no chroot step; see

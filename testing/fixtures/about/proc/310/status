@@ -1,0 +1,5 @@
+Name:	kdos-shell
+Uid:	1000	1000	1000	1000
+VmRSS:	65536 kB
+VmSwap:	0 kB
+Threads:	1

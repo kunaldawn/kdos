@@ -1,0 +1,81 @@
+diff -ru a/src/pipeline/MinimalRealTimeHelper.cpp b/src/pipeline/MinimalRealTimeHelper.cpp
+--- a/src/pipeline/MinimalRealTimeHelper.cpp
++++ b/src/pipeline/MinimalRealTimeHelper.cpp
+@@ -56,15 +56,13 @@
+     else
+     {
+         int minNiceLevel = 0;
+-        constexpr int ERROR_BUFFER_SIZE = 1024;
+-        char tmpBuf[ERROR_BUFFER_SIZE];
+         if ((result = rtkit_get_min_nice_level(bus, &minNiceLevel)) < 0)
+         {
+-            log_warn("rtkit could not get minimum nice level: %s", strerror_r(-result, tmpBuf, ERROR_BUFFER_SIZE));
++            log_warn("rtkit could not get minimum nice level: %s", strerror(-result));
+         }
+         else if ((result = rtkit_make_high_priority(bus, 0, minNiceLevel)) < 0)
+         {
+-            log_warn("rtkit could not make high priority: %s", strerror_r(-result, tmpBuf, ERROR_BUFFER_SIZE));
++            log_warn("rtkit could not make high priority: %s", strerror(-result));
+         }
+     }
+ 
+diff -ru a/src/util/Semaphore.cpp b/src/util/Semaphore.cpp
+--- a/src/util/Semaphore.cpp
++++ b/src/util/Semaphore.cpp
+@@ -114,7 +114,7 @@
+     }
+ #else
+     struct timespec ts;
+-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
++    if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+     {
+         return;
+     }
+@@ -122,7 +122,7 @@
+     // Skip wait if we spent too much time last time
+     ts = timespec_add(ts, timespec_from_ms(timeMilliseconds));
+     int rv = 0;
+-    while ((rv = sem_clockwait(&sem_, CLOCK_MONOTONIC, &ts)) == -1 && errno == EINTR)
++    while ((rv = sem_timedwait(&sem_, &ts)) == -1 && errno == EINTR)
+     {
+         // empty
+     }
+diff -ru a/src/util/TcpConnectionHandler.cpp b/src/util/TcpConnectionHandler.cpp
+--- a/src/util/TcpConnectionHandler.cpp
++++ b/src/util/TcpConnectionHandler.cpp
+@@ -362,7 +362,7 @@
+             int err = errno;
+             constexpr int ERROR_BUFFER_LEN = 1024;
+             char tmpBuf[ERROR_BUFFER_LEN];
+-#if defined(__APPLE__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
++#if defined(__APPLE__) || !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+             auto rv = strerror_r(err, tmpBuf, ERROR_BUFFER_LEN);
+             if (rv != 0)
+             {
+@@ -380,7 +380,7 @@
+                 memmove(tmpBuf, ptr, strlen(ptr) + 1);
+             }
+             log_warn("cannot start connection to %s (err=%d: %s)", buf, err, tmpBuf);
+-#endif // defined(__APPLE__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
++#endif // defined(__APPLE__) || !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+             close(fd);
+             pendingSockets.pop_back();
+             goto next_fd;
+@@ -1031,7 +1031,7 @@
+                 log_warn("Got socket error %d (%s) while connecting", err, tmpBuf);
+                 closesocket(sock);
+ #else
+-#if defined(__APPLE__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
++#if defined(__APPLE__) || !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+                 auto rv = strerror_r(err, tmpBuf, ERROR_BUFFER_LEN);
+                 if (rv != 0)
+                 {
+@@ -1049,7 +1049,7 @@
+                     memmove(tmpBuf, ptr, strlen(ptr) + 1);
+                 }
+                 log_warn("Got socket error %d (%s) while connecting", err, tmpBuf);
+-#endif // defined(__APPLE__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
++#endif // defined(__APPLE__) || !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+                 close(sock);
+ #endif // defined(WIN32)
+                 socketsToDelete.push_back(sock);

@@ -112,16 +112,38 @@ lists everything preflight checks.
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
 | `'fenv_t' has not been declared`, then `Cannot compile std module`, in `10_bootstrap` | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
+| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, `execinfo.h: No such file or directory`, `'canonicalize_file_name' was not declared`, or `'stat64' ... has incomplete type` | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
 | A missing type, from an empty generated header | [A stream-editor extension that is not there](#a-stream-editor-extension-that-is-not-there) |
-| `integer expected` from `expr`, a relative-link option rejected, `printf: bad %q`, or `option --date requires an argument` from `jar` | [Missing compact-userland features](#missing-compact-userland-features) |
+| `integer expected` from `expr`, a relative-link option rejected, `printf: bad %q`, or `option --date requires an argument` from `jar`, `no, GNU cp needed`, or `cp: <file>: No such file or directory` for a destination that is a link | [Missing compact-userland features](#missing-compact-userland-features) |
 | A package index or a clone reached during the offline build | [A build that reaches the network](#a-build-that-reaches-the-network) |
 | `Unknown options: …` at meson setup | [An unknown meson option](#an-unknown-meson-option) |
 | A meson option value that `is not one of the choices` | [A meson feature given a boolean](#a-meson-feature-given-a-boolean) |
 | `Error loading shared library` at run time, or a stale package-config file shadowing a fixed one | [A missing meson prefix or library directory](#a-missing-meson-prefix-or-library-directory) |
+| `find_package called with invalid argument "1"`, or a config file `not compatible with requested version "1"` | [A requirement a find module misreads](#a-requirement-a-find-module-misreads) |
+| `Missing Qt6::GuiPrivate`, or another `Qt6::<Module>Private` target that does not exist | [A Qt private module not loaded](#a-qt-private-module-not-loaded) |
+| `Eigen3 library NOT FOUND` with Eigen installed | [Eigen without its legacy variables](#eigen-without-its-legacy-variables) |
+| `cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)` | [Two introspection runtimes in one process](#two-introspection-runtimes-in-one-process) |
+| `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
+| `cairo.h: No such file or directory` from `FL/Fl_Cairo.H` | [FLTK's headers needing Cairo's](#fltks-headers-needing-cairos) |
+| `'class QTextStream' has no member named 'setCodec'`, `'QRegExp' was not declared`, in a Qt program built with `qmake6` | [A Qt 5 program built against Qt 6](#a-qt-5-program-built-against-qt-6) |
+| `qt6_wrap_cpp: TARGET parameter is empty` | [A source file in a moc list](#a-source-file-in-a-moc-list) |
+| `#error "Qt requires a C++17 compiler"` with `-std=c++17 -std=c++11` on the compile line | [An older standard after CMake's](#an-older-standard-after-cmakes) |
+| `unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2 | [A bundled header shadowed by the system's](#a-bundled-header-shadowed-by-the-systems) |
+| `expected unqualified-id before numeric constant` inside a library header | [A project macro that breaks a library header](#a-project-macro-that-breaks-a-library-header) |
+| `call of overloaded 'pow10(...)' is ambiguous` (or another GNU math name) at a project's own function | [A project function named like a C library extension](#a-project-function-named-like-a-c-library-extension) |
+| `fatal error: <module>.h: No such file or directory` in a stub module built because the real one is off | [A stub that includes the real module's header](#a-stub-that-includes-the-real-modules-header) |
+| `ninja: error: '<dir>/lib<name>d.a', needed by '<program>', missing and no known rule to make it` in a Release build | [An imported library that names only its Debug build](#an-imported-library-that-names-only-its-debug-build) |
+| `Argument <module>_qml is not a target!` from `qt_add_qml_module`, after a module was switched off | [A stub whose QML target is off with its module](#a-stub-whose-qml-target-is-off-with-its-module) |
+| `has no member named '<old>'; did you mean '<new>'?` against a library port | [A library member renamed under a consumer](#a-library-member-renamed-under-a-consumer) |
+| `incompatible types in assignment of 'char*' to 'char [N]'` at a library's structure member | [A library member whose type changed](#a-library-member-whose-type-changed) |
+| `cannot convert 'std::nullptr_t' to '<integer type>'` at a `NULL` | [`NULL` used as an integer](#null-used-as-an-integer) |
 | `Compatibility with CMake < 3.5 has been removed` | [An old CMake policy floor](#an-old-cmake-policy-floor) |
+| `Unsupported class file major version 69` (or another number) from Groovy or another JVM build tool | [A JVM tool older than the JDK](#a-jvm-tool-older-than-the-jdk) |
+| `Policy CMP0026 may not be set to OLD behavior` | [A policy set to its removed behaviour](#a-policy-set-to-its-removed-behaviour) |
+| `too few arguments to function 'GifFileType* DGifOpen(void*, InputFunc, int*)'`, or `'GifLastError' was not declared` | [A version test that excludes a newer major release](#a-version-test-that-excludes-a-newer-major-release) |
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
 | `Installing:` a library under `/var/cache/kpkg/work/…` instead of `/usr/lib` | [A library installed into the source tree](#a-library-installed-into-the-source-tree) |
@@ -130,8 +152,13 @@ lists everything preflight checks.
 | The same, with a working compiler on the search path | [A configuration script preferring another compiler](#a-configuration-script-preferring-another-compiler) |
 | `python: command not found`, or `make: python: No such file or directory` | [A build calling `python`](#a-build-calling-python) |
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
+| `no matching function for call to 'std::basic_string<char>::basic_string(const char8_t [N])'`, or `invalid conversion from 'const char8_t*' to 'const char*'` | [`u8` literals under C++20](#u8-literals-under-c20) |
 | `error: incompatible pointer types` | [Newer-compiler diagnostics as errors](#newer-compiler-diagnostics-as-errors) |
-| `error: 'int64_t' was not declared in this scope` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
+| `Error: operand type mismatch for 'shr'` from `lto-wrapper` | [A shift count out of range in inline assembly](#a-shift-count-out-of-range-in-inline-assembly) |
+| `implicit declaration of function 'strdup'` (or `fileno`, `exp10`) in a KDE project built with `-std=c99` | [A POSIX function hidden by a strict C standard](#a-posix-function-hidden-by-a-strict-c-standard) |
+| `Checking for availability of switch -std=c++11 in g++ ... no` after `g++ works`, or `checking whether g++ supports C++20... configure: error: no` | [C flags handed to the C++ compiler](#c-flags-handed-to-the-c-compiler) |
+| `unknown type name 'bool'` in a port's own source, with a note naming `<stdbool.h>` | [A source written for C23](#a-source-written-for-c23) |
+| `error: 'int64_t' was not declared in this scope` or `'int64_t' does not name a type` (or another fixed-width type), with a note naming `<cstdint>` | [A standard header the source never includes](#a-standard-header-the-source-never-includes) |
 | `error: invalid use of incomplete type 'const ASN1_GENERALIZEDTIME'`, or another `ASN1_*` type | [An OpenSSL structure read field by field](#an-openssl-structure-read-field-by-field) |
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
@@ -726,7 +753,7 @@ export RUSTFLAGS="-C target-feature=-crt-static"
 Firefox's mach always gives it, cargo passes `RUSTFLAGS` to the target's crates alone, and a build
 script that runs bindgen is linked statically again. Such a recipe also sets `RUSTC_WRAPPER` to a
 script that runs rustc with the same flag appended: cargo runs every rustc call, host and target,
-through it. `firefox-esr` and `librewolf` are the recipes that do.
+through it. `firefox-esr`, `librewolf` and `thunderbird` are the recipes that do.
 
 A recipe whose crates run bindgen also points it at `libclang`, which saves it a search:
 
@@ -750,8 +777,9 @@ the wrong answer from `clang -print-target-triple` after `llvm` is fixed.
 
 The same error comes from a clang given another triple explicitly. The `cc` crate passes Rust's
 `--target=x86_64-unknown-linux-musl` to clang, and clang looks for gcc under that triple instead.
-`--gcc-triple=$(gcc -dumpmachine)` in `CFLAGS`, `CXXFLAGS` and `LDFLAGS` names gcc's own; `firefox-esr`
-and `librewolf`, whose Rust crates compile C++ with clang, set it.
+`--gcc-triple=$(gcc -dumpmachine)` in `CFLAGS`, `CXXFLAGS` and `LDFLAGS` names gcc's own;
+`firefox-esr`, `librewolf` and `thunderbird`, whose Rust crates compile C++ with clang, set it. A
+gecko build without it fails on `'new' file not found` under `dist/system_wrappers`.
 
 ### A Rust release older than the system LLVM
 
@@ -904,6 +932,43 @@ the kernel. Add the kernel header rather than turning the feature off:
 `CPPFLAGS="$CPPFLAGS -include asm/ioctls.h"` on the `configure` line. The `libmodbus` port does
 this, and keeps the serial rates only `termios2` can set.
 
+### A glibc-only call on musl
+
+Code written against glibc alone fails on musl in a few recurring ways. All but the last need a
+`.patch`:
+
+- `sem_clockwait` and `pthread_cond_clockwait` are glibc's. Wait with `sem_timedwait` (or
+  `pthread_cond_timedwait`) and take the deadline from `CLOCK_REALTIME` instead of
+  `CLOCK_MONOTONIC`, everywhere the same deadline is computed.
+- glibc's `strerror_r` returns the message as a `char *`; the POSIX one musl has returns an `int`
+  and fills the buffer. C++ always defines `_GNU_SOURCE`, so a test on that macro picks the glibc
+  form on musl too. Add `!defined(__GLIBC__)` to the test that selects the POSIX form, or use
+  `strerror`.
+- A header that names `siginfo_t` (or another type) without including its header compiles on glibc,
+  whose headers include `<signal.h>` on the way to others. Add the include.
+- `<execinfo.h>` (`backtrace`, `backtrace_symbols`) is glibc's, and musl has no such header. Where
+  it serves only a debugging aid, put the include and its function under `#ifdef __GLIBC__`. A
+  crash handler that exits after the backtrace still has to exit without it, or it returns into
+  the fault.
+- `canonicalize_file_name(path)` is glibc's; `realpath(path, NULL)` returns the same allocated
+  string.
+- `stat64`, `fstat64`, `lseek64` and `off64_t` exist on musl only as macros for the plain names, and
+  only under `_LARGEFILE64_SOURCE`, which `_GNU_SOURCE` does not imply. `aggregate '...::stat64 buf'
+  has incomplete type` is the sign. Define it rather than patch: `libreoffice` exports
+  `ENVCFLAGS=-D_LARGEFILE64_SOURCE` and `ENVCFLAGSCXX=-D_LARGEFILE64_SOURCE`, which gbuild adds to
+  every library it compiles, for the CLucene it bundles.
+
+`freedv-gui`'s `musl.patch` and `backend-musl.patch` carry the first three; `labplot`'s
+`musl-execinfo.patch` the fourth; `avidemux`'s `musl-glibc-calls.patch` the fourth and fifth.
+
+### `NULL` used as an integer
+
+`cannot convert 'std::nullptr_t' to 'uint32_t'` (or another integer type) at a `NULL`, often
+the last element of an array of structures whose first member is an integer. musl's headers
+define `NULL` as `nullptr` in C++, which converts only to pointers; on glibc, GCC's own `<stddef.h>`
+defines it as `__null`, which also converts to an integer. Ship a `.patch` that writes what was meant: `0`, or `{}` for
+an empty terminating element. `avidemux`'s `mp4-menu-sentinel.patch` ends a menu list with `{}`.
+
 ### A private library loaded by full path, then not found
 
 The build succeeds, and the program fails at start with `Error loading shared library libfoo.so:
@@ -912,7 +977,7 @@ a private directory such as `/usr/lib/firefox-esr`. The program's launcher loads
 there by full path, and glibc then takes the copy already loaded for a bare-name `DT_NEEDED`. musl
 looks the name up again on its search path and does not find it. Link with a run path into the
 directory, `LDFLAGS="$LDFLAGS -Wl,-rpath,<directory>"`, and check `readelf -d` shows `RUNPATH` on
-the libraries. The `firefox-esr` and `librewolf` ports do this.
+the libraries. The `firefox-esr`, `librewolf` and `thunderbird` ports do this.
 
 ### The wide curses API
 
@@ -1006,6 +1071,17 @@ while KDOS keeps toybox as its base userland. Prefer a build flag; add a name to
 `INSTALL_PROGRAMS` in the `coreutils` port's `build.sh` only when a toybox applet is missing a feature a port
 cannot do without.
 
+A check that asks for a GNU program by its `--version` text, not for the feature it needs, is
+answered without one. LibreOffice's `configure` stops with `no, GNU cp needed`, although gbuild
+copies files with `cp -P -f` and `touch -hr` when no GNU cp is named. Its configure allows that on
+the BSDs only, and `libreoffice`'s `toybox-cp.patch` adds `linux-musl*` to that case, so the build
+uses toybox's `cp` and `touch`.
+
+toybox's `cp` follows a link at the destination, even with `--remove-destination`, and reports
+`No such file or directory` when that link dangles. An absolute link inside `$PKG` always dangles.
+To replace a link with the file it names, read it, `rm` it, then copy. The `libreoffice` recipe does
+this for its `.desktop` entries.
+
 ---
 
 ## Upstream build systems
@@ -1078,6 +1154,16 @@ meson's default library directory is not on the runtime linker's search path. Pa
 A stale package-config file under the old prefix can also shadow the fixed one. After correcting a
 prefix, delete the old files and the old package-config file, then rebuild the consumers.
 
+### Two introspection runtimes in one process
+
+`cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)`, or a program whose Python
+plugins crash on load.
+
+PyGObject from 3.52 on loads typelibs through glib's `girepository-2.0`, and a library built on
+the older `gobject-introspection-1.0` runtime cannot share a process with it. Every library that
+loads Python into a program must be on the same runtime as PyGObject: `libpeas` 1.38 is, and
+`rhythmbox` needs it for its Python plugins.
+
 ### An old CMake policy floor
 
 `Compatibility with CMake < 3.5 has been removed`, from a project whose `cmake_minimum_required`
@@ -1086,6 +1172,144 @@ predates CMake 3.5. The `cmake` port (4.x) refuses such a floor unless told othe
 ```sh
 -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 ```
+
+A `-D` reaches only the CMake run it is given to. When the floor is in a library the project
+builds from source through `ExternalProject`, export the variable instead, which every nested
+CMake run reads from the environment: `kodi` does this for its internal PCRE.
+
+### A policy set to its removed behaviour
+
+`Policy CMP0026 may not be set to OLD behavior`, from a `cmake_policy(SET <policy> OLD)` in the
+project. CMake 4 has only the new behaviour of the policies CMake 3.0 introduced, and no flag
+selects the old one. Ship a `.patch` that drops the `cmake_policy` line, or sets it to `NEW` and
+rewrites the code that depended on the old behaviour: `lmms`'s `fix-cmake-policy.patch` reads a
+target's path through `$<TARGET_FILE:...>` instead of its `LOCATION`. A library the project builds from
+source is patched through the project's own patch list for it: `kodi`'s `pcre-cmp0026.patch`
+adds a PCRE patch to the list in `FindPCRE.cmake`, which drops the line: the `LOCATION` reads it
+covered are in parts Kodi does not build.
+
+### A JVM tool older than the JDK
+
+`BUG! exception in phase 'semantic analysis' ... Unsupported class file major version 69`, from a
+Groovy script (or another tool built on the ASM bytecode library) that the build runs on the JDK.
+
+The tool reads the JDK's own class files, and its bundled ASM rejects a class file format newer
+than it knows. Major version 69 is Java 25, the `openjdk` port. Move the tool to a release whose
+ASM reads it, a new source that needs `ports/publish`: `kodi`'s binding generator needs Groovy
+4.0.33 or later.
+
+### A version test that excludes a newer major release
+
+`too few arguments to function 'GifFileType* DGifOpen(void*, InputFunc, int*)'`, with
+`'GifLastError' was not declared in this scope`, in code that supports two giflib interfaces.
+
+The code tests `GIFLIB_MAJOR == 5` for the current interface and takes the giflib 4 calls for any
+other version. The `giflib` port is 6, which keeps the 5 interface, so the test picks calls giflib 6
+does not have. Ship a `.patch` that tests `>= 5` (and `< 5` for the old branch). `kodi`'s
+`texturepacker-giflib6.patch` does this for its TexturePacker build tool.
+
+### A requirement a find module misreads
+
+`find_package called with invalid argument "1"`, or `Could not find a configuration file for
+package "<Name>" that is compatible with requested version "1"`, from a find module the project
+ships, with `CMAKE_REQUIRE_FIND_PACKAGE_<Name>=ON` on the command line.
+
+The module passes `${<Name>_FIND_REQUIRED}` to its own config-package search as a bare argument,
+expecting it empty or `REQUIRED`. A requirement sets it to `1`, which the search reads as a version
+when none comes before it, and rejects as an unknown argument when one does. Leave that package
+unrequired and, after the configure, check the generated build for the definition it enables, as
+`labplot` does for Cantor and NetCDF:
+
+```sh
+grep -q -- -DHAVE_NETCDF build/build.ninja
+```
+
+### A Qt private module not loaded
+
+`Missing Qt6::GuiPrivate`, or a link to a `Qt6::<Module>Private` target CMake does not know, from a
+project that asks for Qt's private API through `find_package(Qt6<Module> ... Private)` or only
+tests `TARGET Qt6::<Module>Private`.
+
+Qt keeps each private module in its own package, `Qt6<Module>Private`, and finding the public one
+does not load it. `-DQT_FIND_PRIVATE_MODULES=ON` makes every Qt module found load its private
+counterpart too (`labplot`).
+
+### Eigen without its legacy variables
+
+`Eigen3 library NOT FOUND`, or Eigen's headers not found, with the `eigen` port installed.
+
+The Eigen 5 config file defines the `Eigen3::Eigen` target only. A project that tests
+`EIGEN3_FOUND` or reads `EIGEN3_INCLUDE_DIR` or `EIGEN3_VERSION_STRING` gets none of them. Keep
+`CMAKE_REQUIRE_FIND_PACKAGE_Eigen3=ON`, so a missing library still stops the configure, and give the
+three from `eigen3.pc`, as `labplot` does:
+
+```sh
+-D EIGEN3_FOUND=ON \
+-D EIGEN3_INCLUDE_DIR="$(pkg-config --variable=prefix eigen3)/include/eigen3" \
+-D EIGEN3_VERSION_STRING="$(pkg-config --modversion eigen3)" \
+```
+
+### A plugin built with no compiler flags
+
+`fatal error: glib.h: No such file or directory` (or another dependency's header) in one plugin
+of a project whose plugin list the recipe names, where the rest of the build found that header.
+
+The plugin's configure fragment declined it for this configuration and set no flags, but the
+explicit list still puts it in the build. AbiWord's `rsvg` plugin is declined under the GTK front
+end, which draws SVG itself, and `abiword`'s list leaves it out. Read the plugin's `plugin.m4` (or
+equivalent) for the condition, and drop the plugin from the list.
+
+### A Qt 5 program built against Qt 6
+
+`'class QTextStream' has no member named 'setCodec'`, `'QRegExp' was not declared in this scope`,
+`no matching function for call to 'QString::indexOf(QRegExp)'`, across many files of a program
+whose project file adds `core5compat` under Qt 6.
+
+The project file accepts Qt 6, but the code does not: Qt 6 removed these interfaces, and
+`core5compat` restores only some of them, and only where a file includes their header. Read the
+packaging files upstream ships (`*.spec`, `debian/control`) for the Qt it builds with. When that
+is Qt 5, depend on the `qt5-*` ports and run `qmake-qt5` with Qt 5's `lrelease` from
+`/usr/lib/qt5/bin`. `smplayer` is built this way.
+
+### A source file in a moc list
+
+`qt6_wrap_cpp: TARGET parameter is empty. Since the file .../X.cpp is a source file, the TARGET
+option must be specified.` Qt 6 runs moc on a `.cpp` file only for a named target, so it can add
+the target's build directory to the include path for the `X.moc` the file includes. A `.cpp`
+with no `Q_OBJECT` class gives moc nothing to generate: ship a `.patch` that drops it from the
+list. One with a `Q_OBJECT` class keeps it and gains `TARGET <target>`, after that target is
+declared. `avidemux`'s `qt6-moc-headers-only.patch` drops two of the first kind.
+
+### An older standard after CMake's
+
+`#error "Qt requires a C++17 compiler"`, then `'is_integral_v' is not a member of 'std'` from Qt
+6's headers, with `-std=c++17 -std=c++11` on the compile line. The project asks CMake for C++17
+through `CMAKE_CXX_STANDARD`, but also passes `-std=c++11` through `add_definitions()` or
+`add_compile_options()`. CMake puts compile options after the standard flag it derives, so the
+older one wins, and no `CXXFLAGS` value can come later. Ship a `.patch` that drops the option:
+`avidemux`'s `qt6-no-cxx11.patch`.
+
+### FLTK's headers needing Cairo's
+
+`/usr/include/FL/Fl_Cairo.H:40:11: fatal error: cairo.h: No such file or directory`, compiling an
+FLTK interface.
+
+The `fltk` port is built with Cairo, so `FLTK_HAVE_CAIRO` is set in `FL/fl_config.h` and its
+headers include `<cairo.h>`, which sits in `/usr/include/cairo`. `fltk-config --cxxflags` names that
+directory, but a project that finds FLTK through CMake's `FindFLTK` gets FLTK's include directory
+alone. Add Cairo's flags to the C++ flags and `cairo` to `depends`: `lmms` appends
+`$(pkg-config --cflags cairo)` to `CMAKE_CXX_FLAGS` for its ZynAddSubFX editor.
+
+### A bundled header shadowed by the system's
+
+`unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2, with `LUA_ERRGCMM` and
+`lua_newstate` errors after it, in a project that bundles its own Lua.
+
+The `lua` port is Lua 5.5, whose headers sit in `/usr/include`. A project that compiles a bundled
+Lua puts that copy's directory first with `-I`, but a header the bundle lacks is still found in
+`/usr/include`, and it then includes the system's `lua.h` from beside itself. sol2 includes
+`<lua.hpp>` whenever one exists, and the bundled Lua usually ships none. `-DSOL_NO_LUA_HPP=1` has
+sol2 include `lua.h`, `lualib.h` and `lauxlib.h` directly, which the bundle has (`satdump`).
 
 ### A misspelt CMake option
 
@@ -1187,6 +1411,16 @@ it on its own `configure` line, as `rdfind` does:
 ./configure --prefix=/usr ac_cv_prog_cxx_cxx11=
 ```
 
+### `u8` literals under C++20
+
+`error: no matching function for call to 'std::__cxx11::basic_string<char>::basic_string(const
+char8_t [4])'`, or `invalid conversion from 'const char8_t*' to 'const char*'`, at a `u8"..."`
+literal. GCC 16 compiles C++ as C++20 unless told otherwise, and C++20 gives a `u8` literal the type
+`const char8_t[]`, which converts to neither `std::string` nor `const char *`. Code written for
+C++17 assumed plain `char`. Build the port as C++17, through the project's own switch where it has
+one, so its configure checks see the same standard: `ardour` passes waf's `--cxx17`. A project
+with no switch takes `-std=gnu++17` in `CXXFLAGS`.
+
 ### Newer-compiler diagnostics as errors
 
 `error: incompatible pointer types`, or a similar diagnostic that is a warning with older
@@ -1196,14 +1430,157 @@ compilers. GCC 14 made this one an error; disable it for the port:
 export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
 ```
 
+### A shift count out of range in inline assembly
+
+`Error: operand type mismatch for 'shr'` (or `sar`, `shrd`) at an `asm` line, reported through
+`lto-wrapper` while a library links. The source hands x86 inline assembly a shift count under
+the `"ci"` constraint, an immediate or `%cl`; once link-time optimisation propagates a count as a
+constant outside 0 to 31, the assembler gets an immediate it cannot encode. FFmpeg 4.4.2
+does this in `libavcodec/x86/mathops.h`; FFmpeg's own fix, in its later releases, masks the
+constant and takes `%cl` otherwise. A program that builds a private FFmpeg 4 from a tarball it carries takes that fix
+through its own patch list: `avidemux`'s `ffmpeg-mathops-shift.patch` adds it to
+`avidemux_core/ffmpeg_package/patches/upstream/`, which Avidemux applies to that tree.
+
+### A POSIX function hidden by a strict C standard
+
+`error: implicit declaration of function 'strdup'` (or `fileno`, `popen`) in a C file of a KDE
+project, whose command line carries `-std=c99`. KDE's compiler settings in
+`extra-cmake-modules` set strict C99 unless `CMAKE_C_STANDARD` is already set, and musl's headers
+declare no POSIX function in a strict ISO mode. Flex scanners and bison parsers are where it
+shows. Give the standard on the configure line with GNU extensions on, which the settings then
+leave alone:
+
+```sh
+-D CMAKE_C_STANDARD=99 -D CMAKE_C_EXTENSIONS=ON
+```
+
+`digikam` takes GNU C99; `kdevelop` takes GNU C23, because its lexer also includes a Qt header
+that uses `static_assert`.
+
+A GNU extension (`exp10`, `pow10`) stays hidden in a GNU mode too: musl declares it only under
+`_GNU_SOURCE`, which no `-std` defines. `labplot` adds `-D_GNU_SOURCE` to `CFLAGS`, which also
+lifts the strict mode's hiding of POSIX.
+
+### C flags handed to the C++ compiler
+
+A configure script reports that its C++ compiler works and then that it supports no C++ standard
+(`Checking for availability of switch -std=c++11 in g++ ... no`), and a feature that needs C++
+stops it. The script tests C++ switches with `CFLAGS` and `-Werror`; g++ warns that the tree's
+`-std=gnu11` is valid only for C, and `-Werror` makes the warning the failure. Remove the standard
+from `CFLAGS` where the project sets its own C standard:
+
+```sh
+export CFLAGS="${CFLAGS/-std=gnu11/}"
+```
+
+`retroarch` is the example; it compiles its C as `-std=gnu99` either way.
+
+A script that copies `CFLAGS` into `CXXFLAGS` by mistake fails the same way, and `config.log`
+shows `-std=gnu11` on a `g++` line. LibreOffice's `configure` saves `$CFLAGS` before its
+`-Wsfinae-incomplete` probe and restores it as `$CXXFLAGS`, so its C++20 probe fails with
+`checking whether g++ supports C++20... configure: error: no`. There the fix is a patch to the
+generated `configure` alone (`libreoffice`'s `sfinae-probe-cxxflags.patch`). The build reruns
+`autogen.sh` when `configure.ac` is newer than the configuration, so that file is left untouched.
+
+### A source written for C23
+
+`error: unknown type name 'bool'`, with GCC's note that `bool` is defined in `<stdbool.h>`. The
+source is C23, where `bool`, `true` and `false` are keywords, and its build names no standard
+because GCC's own default is GNU C23. The tree's `-std=gnu11` in `CFLAGS` takes that default away.
+Name C23 after it; the last `-std=` on a command line is the one GCC takes:
+
+```sh
+export CFLAGS="$CFLAGS -std=gnu23"
+```
+
+`gthumb` is the example.
+
 ### A standard header the source never includes
 
-`error: 'int64_t' was not declared in this scope`, with GCC's note that it `is defined in header
-'<cstdint>'`. GCC 16's C++ library headers do not include `<cstdint>` and similar headers on the
-way to their own, so a source file that uses a type without including its header fails. No flag
-adds the include: ship a `.patch` that adds the `#include` the note names, to the header it points
-at. `onnxruntime`'s `gcc16-cstdint.patch` is the example. Build the rest of the port with
+`error: 'int64_t' was not declared in this scope`, or `'int64_t' does not name a type` in a
+declaration, with GCC's note that it `is defined in header '<cstdint>'`. GCC 16's C++ library headers do not include `<cstdint>` and similar headers on the
+way to their own, so a source file that uses a type without including its header fails. The same
+holds for `'pthread_t' does not name a type` in a file that never includes `<pthread.h>`, and
+for `'QElapsedTimer' was not declared` in a file that never includes `<QElapsedTimer>`, which no
+other Qt header brings in, and for `'PATH_MAX' was not declared` without `<limits.h>`. Ship a `.patch` that adds the `#include` the note names, to the header
+it points at. `onnxruntime`'s `gcc16-cstdint.patch`, `audacity`'s `sqlite-helpers-cstdint.patch`, `kodi`'s `platformdefs-limits.patch`, `flmsg`'s
+`font-browser-pthread.patch` and `labplot`'s `elapsed-timer-include.patch` are the examples. Build the rest of the port with
 `ninja -k 0` (or `make -k`) before writing the patch, so it names every file at once.
+
+### A project macro that breaks a library header
+
+`expected unqualified-id before numeric constant`, pointing at a `#define` in the project's own
+header but reported inside a system library's header (`volk_common.h` here).
+
+The project defines a short name as an object-like macro, and a library header included after it
+uses the same name for a variable. A newer release of the library added the name. Ship a `.patch`
+that turns the macro into a `constexpr` constant, which a local variable may shadow. `satdump`'s
+`satdump-calibration-constants.patch` does this for `c1`, `c2` and `e_num`, which libvolk's
+inline functions name too.
+
+### An imported library that names only its Debug build
+
+`ninja: error: 'build/lib/libfmtd.a', needed by 'kodi-wayland', missing and no known rule to make
+it`, in a build configured as Release, after the library's own external project has built
+`libfmt.a`.
+
+A find module that creates an imported target sets `IMPORTED_CONFIGURATIONS` once for Release and
+again for Debug with `set_target_properties`, which replaces the list instead of adding to it. The
+target then lists a Debug build alone, CMake can resolve it to the `d`-suffixed archive, and the
+external project, built as Release, never makes it. Kodi's other find modules share the code and
+still resolve to Release, so only the library the error names needs the patch. Ship a `.patch` that appends each configuration with
+`set_property(... APPEND PROPERTY IMPORTED_CONFIGURATIONS ...)`. `kodi`'s
+`fmt-imported-configs.patch` does this for its internal fmt.
+
+### A stub whose QML target is off with its module
+
+`CMake Error ... Argument musesounds_qml is not a target!`, from `qt_add_qml_module` in another
+module's `CMakeLists.txt`, after a module was switched off on the configure line.
+
+The project's QML option for a module defaults to the module's own option, so switching the module
+off switches off the stub's QML target too, while another QML module still names that target as a
+dependency. Switch the QML option back on: the stub then builds its placeholder page under the
+same target. `musescore` passes `-D MUE_BUILD_MUSESOUNDS_QML=ON` beside
+`-D MUE_BUILD_MUSESOUNDS_MODULE=OFF`.
+
+### A project function named like a C library extension
+
+`error: call of overloaded 'pow10(long unsigned int)' is ambiguous`, at a call to a `static`
+function the file defines itself.
+
+musl's `<math.h>` declares the GNU extension `double pow10(double)` under `_GNU_SOURCE`, and g++
+always defines `_GNU_SOURCE`. A file-local function of the same name then overloads it, and an
+argument of neither parameter type matches both equally. Ship a `.patch` that renames the local
+function. `audacity`'s `beats-formatter-pow10.patch` renames its `pow10` to `powerOf10`.
+
+### A stub that includes the real module's header
+
+`fatal error: vsteffectsmodule.h: No such file or directory`, compiling a file under `stubs/` after
+a module was switched off on the configure line.
+
+A project that builds a stub in place of each module it can leave out compiles the stub only in
+configurations its own CI never tries. A stub source that includes the real module's header
+fails, because only the stub's directory is on its include path. Ship a `.patch` that includes the
+stub's own header, which declares the same class. `audacity`'s `vst-stub-include.patch` does this
+for the VST stub that `AU_MODULE_EFFECTS_VST=OFF` builds.
+
+### A library member renamed under a consumer
+
+`'struct <type>' has no member named '<old_name>'; did you mean '<newName>'?`, from a program built
+against a library port newer than the release it was written for.
+
+The library renamed the member and kept its meaning. Ship a `.patch` that uses the new name.
+Moving the library back would break its other consumers. sgp4 3.0 renamed
+`CoordTopocentric::range_rate` to `rangeRate`, and `sdrangel`'s `sgp4-range-rate.patch` follows it.
+
+### A library member whose type changed
+
+`incompatible types in assignment of 'char*' to 'char [256]'`, from a program assigning to a
+structure member of a library port newer than the release it was written for. The library made
+the member a fixed array the caller writes into, where it was a pointer the caller allocated.
+Ship a `.patch` that copies into the array, bounded by its size. x265's `param.rc.statFileName`
+is such an array, and `avidemux`'s `x265-stat-filename.patch` writes the two-pass log name into it
+with `snprintf`.
 
 ### An OpenSSL structure read field by field
 
@@ -1222,7 +1599,10 @@ The build fails on a warning you have never seen upstream report.
 An upstream `-Werror` is a promise about upstream's compiler and C library, not about these. A
 compiler newer than the one upstream tested, or musl's headers in place of glibc's, produces
 warnings upstream has never seen. Turn `-Werror` off: `-Wno-error` in `CFLAGS`,
-`--disable-werror` for a configure script that offers it, `-Dwerror=false` for meson, or the
+`--disable-werror` for a configure script that offers it, `-Dwerror=false` for meson,
+`CMAKE_<LANG>_FLAGS_RELEASE` for a CMake project that appends `-Werror` to `CMAKE_<LANG>_FLAGS`
+after the environment's flags (the per-configuration variable comes last on the compiler line, as
+the `stlink` and `wsjtx` ports set it), or the
 variable a makefile appends after its own `-Werror` where it replaces `CFLAGS` wholesale:
 `EXTRA_OPTFLAGS=-Wno-error` for edk2's BaseTools, as the `qemu` port sets. Where no variable
 reaches the flags, a patch that appends `-Wno-error` after upstream's `-Werror` is the smallest

@@ -733,7 +733,7 @@ int thing_main(int argc, char **argv)
 `event()` answers `SH_EV_PASS`, `SH_EV_TAKEN` or `SH_EV_CLOSE`, and `sh_run_close()` ends the loop
 from anywhere else, such as a control drawn inside a frame. While `typing()` answers 1, a text
 field owns the keyboard: `ktui_keys()` is asked about `Esc` alone, so `F1` and `F10` do nothing
-there. A surface that sizes itself from what it found (`kdos-about`) fills `.cols` and `.rows` in
+there. A surface that sizes itself from what it found fills `.cols` and `.rows` in
 before it calls `sh_run()`, and cleanup that holds on every path goes after the call.
 
 `.frame = 1` puts every event and the draw after it inside a `ktui_frame_begin()` and

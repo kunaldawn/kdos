@@ -1,0 +1,29 @@
+diff -ru a/src/backend/lib/trace.h b/src/backend/lib/trace.h
+--- a/src/backend/lib/trace.h
++++ b/src/backend/lib/trace.h
+@@ -52,7 +52,9 @@
+ 
+ #include <cxxabi.h> //__cxa_demangle
+ #include <dlfcn.h> //dladdr
++#ifdef __GLIBC__
+ #include <execinfo.h> //backtrace
++#endif
+ 
+ #include <cstdio>
+ #include <cstdlib>
+@@ -64,6 +66,7 @@
+  * is called multiple times and from where without involving the debugger.
+  * To get the callstack, simple include \c print_callstack() in the function of interest.
+  */
++#ifdef __GLIBC__
+ static inline void print_callstack() {
+ 	// get the current call stack
+ 	const int max_frames_count = 10 + 1; // print the last 10 frames (+1 because of this function frame)
+@@ -114,6 +117,7 @@
+ 
+ 	std::cout << "stack trace:\n" << out.str();
+ }
++#endif // __GLIBC__
+ #endif // #ifndef HAVE_WINDOWS
+ 
+ #define DEBUG_DUMP_PAINTER_PATH 1

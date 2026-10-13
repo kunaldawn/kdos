@@ -1,0 +1,99 @@
+diff -ru a/src/audio/PulseAudioDevice.cpp b/src/audio/PulseAudioDevice.cpp
+--- a/src/audio/PulseAudioDevice.cpp
++++ b/src/audio/PulseAudioDevice.cpp
+@@ -272,7 +272,7 @@
+         char tmpBuf[ERROR_BUFFER_SIZE];
+         if ((result = rtkit_get_min_nice_level(bus, &minNiceLevel)) < 0)
+         {
+-#if (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
++#if !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+             auto rv = strerror_r(-result, tmpBuf, ERROR_BUFFER_SIZE);
+             if (rv != 0)
+             {
+@@ -290,11 +290,11 @@
+                 memmove(tmpBuf, ptr, strlen(ptr) + 1);
+             }
+             log_warn("rtkit could not get minimum nice level: %s", tmpBuf);
+-#endif // (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
++#endif // !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+         }
+         else if ((result = rtkit_make_high_priority(bus, 0, minNiceLevel)) < 0)
+         {
+-#if (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
++#if !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+             auto rv = strerror_r(-result, tmpBuf, ERROR_BUFFER_SIZE);
+             if (rv != 0)
+             {
+@@ -312,7 +312,7 @@
+                 memmove(tmpBuf, ptr, strlen(ptr) + 1);
+             }
+             log_warn("rtkit could not make high priority: %s", tmpBuf);
+-#endif // (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
++#endif // !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+         }
+     }
+     
+@@ -326,7 +326,7 @@
+ void PulseAudioDevice::startRealTimeWork()
+ {
+     sleepFallback_ = false;
+-    if (clock_gettime(CLOCK_MONOTONIC, &ts_) == -1)
++    if (clock_gettime(CLOCK_REALTIME, &ts_) == -1)
+     {
+         sleepFallback_ = true;
+     }
+@@ -362,7 +362,7 @@
+     ts_ = timespec_add(ts_, ts2);
+ 
+     int rv = 0;
+-    while ((rv = sem_clockwait(&sem_, CLOCK_MONOTONIC, &ts_)) == -1 && errno == EINTR)
++    while ((rv = sem_timedwait(&sem_, &ts_)) == -1 && errno == EINTR)
+     {
+         // empty
+     }
+diff -ru a/src/audio/PulseAudioDevice.h b/src/audio/PulseAudioDevice.h
+--- a/src/audio/PulseAudioDevice.h
++++ b/src/audio/PulseAudioDevice.h
+@@ -30,6 +30,7 @@
+ #include <wx/string.h>
+ #include <pulse/pulseaudio.h>
+ #include <semaphore.h>
++#include <signal.h>
+ 
+ #include "IAudioEngine.h"
+ #include "IAudioDevice.h"
+diff -ru a/src/audio/PulseAudioEngine.cpp b/src/audio/PulseAudioEngine.cpp
+--- a/src/audio/PulseAudioEngine.cpp
++++ b/src/audio/PulseAudioEngine.cpp
+@@ -97,7 +97,7 @@
+                 char tmpBuf[ERROR_BUFFER_SIZE];
+                 if ((result = rtkit_get_min_nice_level(bus, &minNiceLevel)) < 0)
+                 {
+-#if (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
++#if !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+                     auto rv = strerror_r(-result, tmpBuf, ERROR_BUFFER_SIZE);
+                     if (rv != 0)
+                     {
+@@ -115,11 +115,11 @@
+                         memmove(tmpBuf, ptr, strlen(ptr) + 1);
+                     }
+                     log_warn("rtkit could not get minimum nice level: %s", tmpBuf);
+-#endif // (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
++#endif // !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+                 }
+                 else if ((result = rtkit_make_high_priority(bus, 0, minNiceLevel)) < 0)
+                 {
+-#if (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
++#if !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+                     auto rv = strerror_r(-result, tmpBuf, ERROR_BUFFER_SIZE);
+                     if (rv != 0)
+                     {
+@@ -137,7 +137,7 @@
+                         memmove(tmpBuf, ptr, strlen(ptr) + 1);
+                     }
+                     log_warn("rtkit could not make high priority: %s", tmpBuf);
+-#endif // (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
++#endif // !defined(__GLIBC__) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+                 }
+             }
+     

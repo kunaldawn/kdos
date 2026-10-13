@@ -1,0 +1,28 @@
+--- a/cmake/modules/FindPCRE.cmake
++++ b/cmake/modules/FindPCRE.cmake
+@@ -15,6 +15,7 @@
+               "${CORE_SOURCE_DIR}/tools/depends/target/${MODULE_LC}/002-all-enable_docs_pc.patch"
+               "${CORE_SOURCE_DIR}/tools/depends/target/${MODULE_LC}/003-all-postfix.patch"
+               "${CORE_SOURCE_DIR}/tools/depends/target/${MODULE_LC}/004-win-pdb.patch"
++              "${CORE_SOURCE_DIR}/tools/depends/target/${MODULE_LC}/005-all-cmp0026.patch"
+               "${CORE_SOURCE_DIR}/tools/depends/target/${MODULE_LC}/jit_aarch64.patch")
+ 
+   if(CORE_SYSTEM_NAME STREQUAL darwin_embedded)
+--- /dev/null
++++ b/tools/depends/target/pcre/005-all-cmp0026.patch
+@@ -0,0 +1,15 @@
++--- a/CMakeLists.txt
+++++ b/CMakeLists.txt
++@@ -73,11 +73,9 @@
++ 
++ PROJECT(PCRE C CXX)
++ 
++-# Increased minimum to 2.8.5 to support GNUInstallDirs. Set policy
++-# CMP0026 to avoid warnings for the use of LOCATION in GET_TARGET_PROPERTY.
+++# Increased minimum to 2.8.5 to support GNUInstallDirs.
++ 
++ CMAKE_MINIMUM_REQUIRED(VERSION 2.8.5)
++-CMAKE_POLICY(SET CMP0026 OLD)
++ 
++ # For FindReadline.cmake. This was changed to allow setting CMAKE_MODULE_PATH
++ # on the command line.

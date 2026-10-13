@@ -775,7 +775,7 @@ The image must carry a font and GNU `tar`, and must have the Wayland development
 A **fixture** is recorded system state that a program can be pointed at instead of the live
 machine. It is what makes a monitor, an attribution engine or a kill-selection policy testable at
 all. The seam is the same everywhere: the process and system filesystems sit behind a movable root,
-or a variable moves one directory walk. There are 49 fixture directories under
+or a variable moves one directory walk. There are 50 fixture directories under
 `testing/fixtures/`.
 
 | Fixture | Records | Makes testable |
@@ -789,6 +789,7 @@ or a variable moves one directory walk. There are 49 fixture directories under
 | `privacy` | Three processes: one holding a camera twice, one an audio device that must be ignored | The camera indicator, on a machine with no camera |
 | `portup` | Recorded upstream responses (a registry index, git tag lists and branch heads, feeds, a releases API answer, directory listings) and, under `ports/`, the recipes seven ports were recorded at | Every discovery adapter and filter in `kdos-portup --selftest`, and all three outcomes end to end, offline and unaffected by bumps to the live recipes |
 | `cve` | Four ports and a five-row database | A version behind two fixes, one that only looks behind because of a packaging revision, a name mapping, and a package the database has never heard of |
+| `about` | A whole machine under one root: `os-release` with a build stamp, a kernel, eight threads, a process tree with a boxed browser, a boot state mid-trial, one empty keyring and one with a key, a fourteen-package database, and the logo | `kdos-about`'s three pages, through `KDOS_ABOUT_ROOT` |
 | `update` | Recorded answers from `kdos update check --json`, `kdos cve --json` and `kdos-bootctl status` | `kdos-update`'s frames, through `KDOS_UPDATE_JSON`, `KDOS_CVE_JSON` and `KDOS_SLOT_TEXT` |
 | `clone` | Three hand-built image headers | The two-record length rule |
 | `tray` | A second *process* that behaves like a real tray item | The whole protocol conversation |

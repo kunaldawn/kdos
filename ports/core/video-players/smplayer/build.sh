@@ -13,6 +13,10 @@
 # window by X11 window id, so SMPlayer sets QT_QPA_PLATFORM=xcb for itself and
 # runs under Xwayland, and the mpv it runs needs its X11 video output.
 #
+# Built against Qt 5, the toolkit upstream builds and packages it with. Its
+# Qt 6 path does not compile: QTextStream::setCodec, QRegExp without an
+# include, and other Qt 5 interfaces are used with no Qt 6 alternative.
+#
 # offline.patch turns off four features that exist only to reach the
 # internet: the update checker, the OpenSubtitles search, the YouTube URL
 # resolver (it downloads a yt-dlp binary into the home directory) and the
@@ -22,7 +26,7 @@
 # not a port; mpv is the one player it drives.
 patch -p1 -i "$PORT_SRC/offline.patch"
 
-# qmake 6 reads no compiler flags from the environment, so they are handed to
+# qmake reads no compiler flags from the environment, so they are handed to
 # it as QMAKE_* assignments; without them the reproducibility flags never
 # reach the binary. DOC_PATH and the other data paths stay upstream's: they
 # reach the compiler as quoted string defines through the environment, and a
@@ -30,9 +34,9 @@ patch -p1 -i "$PORT_SRC/offline.patch"
 # also builds the Chromecast web server, whose makefile adds -Werror;
 # CFLAGS_EXTRA is its own hook and -Wno-error comes after it.
 _qmake_opts="DEFINES+=NO_MPLAYER QMAKE_CFLAGS_RELEASE=\"$CFLAGS\" QMAKE_CXXFLAGS_RELEASE=\"$CXXFLAGS\" QMAKE_LFLAGS_RELEASE=\"$LDFLAGS\""
-make PREFIX=/usr QMAKE=qmake6 LRELEASE=/usr/lib/qt6/bin/lrelease \
+make PREFIX=/usr QMAKE=qmake-qt5 LRELEASE=/usr/lib/qt5/bin/lrelease \
 	QMAKE_OPTS="$_qmake_opts" CFLAGS_EXTRA=-Wno-error
-make PREFIX=/usr QMAKE=qmake6 LRELEASE=/usr/lib/qt6/bin/lrelease \
+make PREFIX=/usr QMAKE=qmake-qt5 LRELEASE=/usr/lib/qt5/bin/lrelease \
 	QMAKE_OPTS="$_qmake_opts" CFLAGS_EXTRA=-Wno-error \
 	DESTDIR=$PKG install
 

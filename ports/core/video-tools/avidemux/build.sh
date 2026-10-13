@@ -13,6 +13,33 @@
 # only the preference turns it off; the patch makes that preference default
 # to off.
 patch -p1 -i "$PORT_SRC/no-update-check.patch"
+# The carried FFmpeg 4.4 passes shift counts to x86 inline assembly as
+# "immediate or %cl"; under the link-time optimisation its build turns on, a
+# count propagated as a constant outside 0..31 reaches the assembler, which
+# rejects it. The patch adds FFmpeg's own fix (masked immediates, %cl
+# otherwise) to the upstream patches Avidemux applies to that tree.
+patch -p1 -i "$PORT_SRC/ffmpeg-mathops-shift.patch"
+# musl has no <execinfo.h> and no canonicalize_file_name(). The patch keeps
+# the crash backtrace to glibc, so on musl a crash reports its message and
+# source line and exits, and resolves the data directories with
+# realpath(path, NULL), its POSIX equivalent.
+patch -p1 -i "$PORT_SRC/musl-glibc-calls.patch"
+# Qt 6's qt6_wrap_cpp refuses a .cpp file in its list unless a TARGET is
+# named. The job control and update sources declare no Q_OBJECT class, so
+# moc has nothing to generate from them; the patch leaves only the headers
+# in those two lists.
+patch -p1 -i "$PORT_SRC/qt6-moc-headers-only.patch"
+# The GUI's CMakeLists adds -std=c++11 as a compile option, which lands
+# after the -std=c++17 its Qt 6 branch asks CMake for, and Qt 6's headers
+# stop at C++17's absence. The patch drops the option.
+patch -p1 -i "$PORT_SRC/qt6-no-cxx11.patch"
+# The MP4 muxer ends a menu list with a bare NULL, which musl's C++ headers
+# define as nullptr and which cannot initialise the entry's integer value.
+# The patch ends it with an empty entry; the menu is told its two items.
+patch -p1 -i "$PORT_SRC/mp4-menu-sentinel.patch"
+# x265's statFileName is a fixed char array, not a pointer the caller fills;
+# the patch copies the two-pass log name into it.
+patch -p1 -i "$PORT_SRC/x265-stat-filename.patch"
 
 # Avidemux is built in upstream's bootStrap.bash order, each part against the
 # ones installed before it: core (with the FFmpeg 4.4 it carries in

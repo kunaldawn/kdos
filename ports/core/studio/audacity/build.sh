@@ -29,6 +29,18 @@
 # effects are off. FFmpeg import and export is loaded at run time from the
 # ffmpeg port. AU_RUN_LRELEASE=OFF leaves the interface catalogues out:
 # bundled data is English only.
+#
+# The SQLite helpers' Statement.h names int64_t without including <cstdint>,
+# which no other header it includes brings in under GCC 16's libstdc++.
+patch -p1 -i "$PORT_SRC/sqlite-helpers-cstdint.patch"
+# The beat formatter's own pow10() collides with the pow10() musl's <math.h>
+# declares under _GNU_SOURCE, which g++ always defines; every call is then
+# ambiguous. The patch renames the local one.
+patch -p1 -i "$PORT_SRC/beats-formatter-pow10.patch"
+# With VST effects off the app builds the VST stub module, whose source
+# includes the real module's header, which is not on its include path; the
+# patch includes the stub's own header, which declares the same class.
+patch -p1 -i "$PORT_SRC/vst-stub-include.patch"
 export EXTDEPS_CACHE="$SRC/offline-deps"
 export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE"
 cmake -S . -B build -G Ninja \

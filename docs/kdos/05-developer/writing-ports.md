@@ -436,6 +436,9 @@ From `20_selfhost` on, `script/env/chroot.env` exports these to every `build.sh`
 The compiler adds PIE and the stack protector by default (`--enable-default-pie`,
 `--enable-default-ssp`). What each option costs a port:
 
+- `-std=gnu11` replaces GCC's own default, GNU C23. A source that uses `bool` without
+  `<stdbool.h>` needs C23 named after it; see
+  [Build troubleshooting](build-troubleshooting.md#a-source-written-for-c23).
 - `--as-needed` records a library only when an object before it on the link line uses it. A
   makefile that names `-lfoo` ahead of its objects, or a library needed only for its constructor,
   needs `-Wl,--no-as-needed`; see
@@ -826,8 +829,10 @@ A few habits recur in the tree's application recipes, and a new one should follo
   the configure. Requiring curl takes `-DCURL_NO_CURL_CMAKE=ON` as well: CMake's FindCURL first
   asks for a `CURLConfig.cmake`, which curl does not install here. Where a module has no such
   switch (Krita's FindWebP asks for a `WebPConfig.cmake`; its Findlibjpeg-turbo passes its own
-  required component to a config file that never marks it found), the recipe leaves that package
-  unrequired and, after the configure, checks the generated build for what the package enables.
+  required component to a config file that never marks it found; LabPlot's FindCantor and
+  FindnetCDF pass `<Name>_FIND_REQUIRED` to that search as a bare argument), the recipe leaves that
+  package unrequired and, after the configure, checks the generated build for what the package
+  enables. See [A requirement a find module misreads](build-troubleshooting.md#a-requirement-a-find-module-misreads).
 - **A CMake project that finds GLEW ignores GLEW's own package.**
   `-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew'`, naming both because `/lib` is the
   same directory: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path

@@ -541,7 +541,7 @@ merged-`/usr` link makes `/usr/lib/modules`.
 ## Packaging: `70_image`
 
 At this point `build/fs` holds the complete system. `70_image` turns it into a bootable medium.
-Its twelve scripts run inside the chroot in the order their numbers give:
+Its thirteen scripts run inside the chroot in the order their numbers give:
 
 | Step | Does |
 |---|---|
@@ -550,6 +550,7 @@ Its twelve scripts run inside the chroot in the order their numbers give:
 | `020_cleanup.sh` | Removes build-only files: the build user's caches, the kpkg work and package caches, podman's store, and Python bytecode, which it then recompiles as hash-checked bytecode so the image is reproducible |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries; with none, it removes every one |
 | `040_orphans.sh` | Removes every installed package that has no recipe in the tree |
+| `045_identity.sh` | Stamps `/etc/os-release` with the commit the image was built from (`BUILD_ID`) and that commit's date (`KDOS_BUILD_DATE`), which `kdos-about` shows |
 | `050_theme.sh` | Seeds the default theme into `/etc/skel`, after checking that the accent the phase names is the one compiled into `libkcolor` |
 | `060_udev_hwdb.sh` | Compiles the udev hardware database, `/etc/udev/hwdb.bin` |
 | `070_user.sh` | Creates each ordinary user's home directory from `/etc/skel` |

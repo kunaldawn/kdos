@@ -16,13 +16,22 @@
 # URL variables, set below to the pinned trees. Opus and RNNoise each download
 # their network weights from media.xiph.org in autogen.sh: the weight archives
 # are later sources, unpacked into $SRC_ROOT and copied into the two trees,
-# and both configure with autoreconf instead of autogen.sh (the second patch,
-# and the first for RNNoise), so nothing is fetched.
+# and both configure with autoreconf instead of autogen.sh
+# (rade-opus-no-model-download.patch for Opus, backend-local-sources.patch for
+# RNNoise), so nothing is fetched.
+#
+# musl and backend-musl keep FreeDV and its backend to what musl has: timed
+# semaphore waits on the realtime clock, as sem_clockwait is glibc's alone,
+# error text from the POSIX strerror_r, which returns an int, or from
+# strerror, wherever the code took glibc's strerror_r returning the string,
+# and the signal.h that glibc's headers include on the way to others.
 _be="$SRC_ROOT/freedv-backend-$_backend"
 _rade_src="$SRC_ROOT/rade_c-$_rade"
 _opus_src="$SRC_ROOT/opus-$_opus"
 _rnnoise_src="$SRC_ROOT/rnnoise-$_rnnoise"
+patch -p1 -i "$PORT_SRC/musl.patch"
 patch -d "$_be" -p1 -i "$PORT_SRC/backend-local-sources.patch"
+patch -d "$_be" -p1 -i "$PORT_SRC/backend-musl.patch"
 patch -d "$_rade_src" -p1 -i "$PORT_SRC/rade-opus-no-model-download.patch"
 cp -a "$SRC_ROOT/dnn/." "$_opus_src/dnn/"
 cp -a "$SRC_ROOT"/src/rnnoise_data* "$_rnnoise_src/src/"
@@ -56,6 +65,7 @@ DESTDIR=$PKG cmake --install build
 
 # RADE is a shared library the backend builds and upstream installs only in
 # its macOS bundle; freedv links it by soname.
+install -d "$PKG/usr/lib"
 cp -a build/_deps/freedv_backend-build/rade_build/src/librade.so* "$PKG/usr/lib/"
 
 # THE MENU: upstream installs the hicolor PNGs; its entry is replaced to carry

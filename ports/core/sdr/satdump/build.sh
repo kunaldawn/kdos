@@ -26,10 +26,22 @@ patch -p1 -i "$PORT_SRC/satdump-dvb-generic.patch"
 # and neither <map> nor <math.h> is required to declare it.
 patch -p1 -i "$PORT_SRC/satdump-ctime.patch"
 
+# calibration.h defines c1, c2 and e_num as macros, and libvolk's
+# volk_common.h, included after it, names its own locals c1 and c2; the
+# macros turn those declarations into numbers. The patch makes the three
+# constexpr constants, which a local may shadow.
+patch -p1 -i "$PORT_SRC/satdump-calibration-constants.patch"
+
 # The bundled sol2 has a template member that names a member its class does
 # not have; GCC 15 checks template bodies nobody instantiates and rejects it
 # unless -Wtemplate-body is off.
-export CXXFLAGS="$CXXFLAGS -Wno-template-body"
+#
+# SatDump compiles the Lua 5.4 it bundles and puts its headers first on the
+# include path, but sol2 includes <lua.hpp>, which the bundle lacks, so the
+# system Lua 5.5's copy is found and pulls in that release's lua.h, which sol2
+# rejects. SOL_NO_LUA_HPP has sol2 include lua.h, lualib.h and lauxlib.h
+# itself, all three from the bundle.
+export CXXFLAGS="$CXXFLAGS -Wno-template-body -DSOL_NO_LUA_HPP=1"
 
 # Every decoder plugin is built (PLUGINS_ALL). Radios: RTL-SDR, Airspy,
 # HackRF, bladeRF, MiriSDR and RFNM (their drivers are built in over libusb),

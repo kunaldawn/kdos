@@ -31,6 +31,19 @@ patch -p1 -i "$PORT_SRC/musl-libintl.patch"
 # musl gives a new thread 128 KiB of stack; the parser and layout threads
 # overflow it. The patch makes sal size every thread's stack itself.
 patch -p1 -i "$PORT_SRC/musl-stacksize.patch"
+# The -Wsfinae-incomplete probe in configure saves $CFLAGS and restores it
+# as $CXXFLAGS, so every later C++ probe passes -std=gnu11 to g++ and, with
+# -Werror, fails; the C++20 probe then stops the configure. The patch saves
+# $CXXFLAGS.
+#
+# Both configure patches change configure alone: a configure.ac newer than
+# the configuration makes the build rerun autogen.sh.
+patch -p1 -i "$PORT_SRC/sfinae-probe-cxxflags.patch"
+# configure demands GNU cp unless the system is a BSD, where it leaves GNUCP
+# empty and gbuild delivers files with cp -P -f and touch -hr. toybox-cp
+# takes linux-musl down that branch: cp and touch here are toybox's, which
+# take those options.
+patch -p1 -i "$PORT_SRC/toybox-cp.patch"
 
 # The top-level Makefile refuses to run as root unless $container is set.
 # The chroot build is root.
@@ -194,6 +207,12 @@ bash ./configure \
 	--without-system-zxcvbn \
 	--without-system-odbc
 
+# gbuild adds ENVCFLAGS and ENVCFLAGSCXX to every library it compiles itself.
+# _LARGEFILE64_SOURCE has musl's headers define stat64, fstat64 and lseek64 as
+# the plain calls, which CLucene's Linux configuration names; without it the
+# help indexer's search library does not compile.
+export ENVCFLAGS=-D_LARGEFILE64_SOURCE ENVCFLAGSCXX=-D_LARGEFILE64_SOURCE
+
 # `make` alone also runs the unit tests; `build` is the product.
 make build
 make DESTDIR="$PKG" distro-pack-install
@@ -206,10 +225,14 @@ find "$PKG" -mindepth 1 -maxdepth 1 -type f -delete
 # The entries in share/applications are absolute links into
 # /usr/lib/libreoffice/share/xdg. They resolve in the image and dangle
 # anywhere else, so preflight's name, icon and command checks would skip
-# every one of them. A copy is checked like any other entry.
+# every one of them. A copy is checked like any other entry. The link is
+# removed before the copy: toybox's cp follows a destination link, and this
+# one leads nowhere inside $PKG.
 for _e in "$PKG"/usr/share/applications/*.desktop; do
 	[ -L "$_e" ] || continue
-	cp --remove-destination "$PKG$(readlink "$_e")" "$_e"
+	_t=$(readlink "$_e")
+	rm "$_e"
+	cp "$PKG$_t" "$_e"
 	chmod 644 "$_e"
 done
 

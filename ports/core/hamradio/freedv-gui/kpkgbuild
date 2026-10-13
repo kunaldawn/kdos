@@ -10,7 +10,7 @@
 
 name        = freedv-gui
 version     = 2.4.0
-release     = 1
+release     = 2
 _backend    = 1.0.0
 _rade       = cc17222acc597339199bdfd7253c3e6cf147f953
 _opus       = 940d4e5af64351ca8ba8390df3f555484c567fbb

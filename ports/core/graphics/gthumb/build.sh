@@ -15,6 +15,10 @@
 # shows. colord is not a port: without it the monitor profile is not read and
 # images are shown untransformed for the display. GStreamer is a silent probe
 # too: without it videos show only as file icons.
+#
+# The sources are C23, using bool without stdbool.h, and the project names no
+# standard; -std=gnu23 after the tree's -std=gnu11 is the one GCC takes.
+export CFLAGS="$CFLAGS -std=gnu23"
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
 	-Ddeveloper-mode=false \

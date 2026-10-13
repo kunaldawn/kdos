@@ -131,6 +131,9 @@ esac
 #   KPKG_STORE_CHECK   and 1 for check mode
 #   KPKG_STORE_SALT    set by kdosbuild on the host: the hash of what the
 #                      bootstrap phases built the chroot from
+#   KDOS_GIT_COMMIT,   the commit the tree was built from, whether it had
+#   KDOS_GIT_DIRTY,    unrecorded changes, and the commit's date; read by
+#   KDOS_GIT_DATE      70_image/045_identity.sh into /etc/os-release
 #
 # /usr/local/bin is LAST, unlike fs/etc/profile which puts it first. Our own
 # tools install there — kdos, kdos-appbox — and 70_image calls kdos-appbox
@@ -160,5 +163,8 @@ exec chroot "$CHROOT_DIR" /usr/bin/env -i \
     KPKG_STORE="$_store" \
     KPKG_STORE_CHECK="$_store_check" \
     KPKG_STORE_SALT="${KPKG_STORE_SALT:-}" \
+    KDOS_GIT_COMMIT="${KDOS_GIT_COMMIT:-}" \
+    KDOS_GIT_DIRTY="${KDOS_GIT_DIRTY:-0}" \
+    KDOS_GIT_DATE="${KDOS_GIT_DATE:-}" \
     PATH=/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"

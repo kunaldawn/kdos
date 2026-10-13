@@ -10,7 +10,7 @@
 
 name        = thunderbird
 version     = 153.3.1
-release     = 1
+release     = 2
 _esr        = ${version}esr
 source      = $name-$version.tar.xz::https://archive.mozilla.org/pub/thunderbird/releases/$_esr/source/thunderbird-$_esr.source.tar.xz
 sha256      = f4684de0caebf54352f8247ea3106b3c577509a26556759f6417bdc42f7567aa  thunderbird-153.3.1.tar.xz

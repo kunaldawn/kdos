@@ -31,8 +31,9 @@ at `build/iso-build/kdos.iso`. Four layers take part, each started by the one be
 
 The container sees the repository at `/workspace`, with `src/`, `fs/`, `script/` and `ports/`
 mounted read-only and only `build/` writable, so a build cannot modify its own sources. The
-`Makefile` passes twelve variables in: `HOST_UID` and `HOST_GID` (see [kdosbuild](#kdosbuild)),
-`KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY` (recorded in each snapshot), the job count `KDOS_JOBS`
+`Makefile` passes thirteen variables in: `HOST_UID` and `HOST_GID` (see [kdosbuild](#kdosbuild)),
+`KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY` (recorded in each snapshot and stamped into
+`/etc/os-release`), `KDOS_GIT_DATE` (the commit's date, stamped beside them), the job count `KDOS_JOBS`
 (empty unless the developer set it), the `system.sfs` codec `KDOS_ISO_COMP`, the compiler-cache
 switch `KDOS_CCACHE`, the package-store switch `KDOS_PKG_STORE` and its cap `KDOS_PKG_STORE_MAX`,
 and the three opt-in
@@ -83,7 +84,7 @@ share, `chroot/` the chroot wrappers, `lib/port.sh` the port reader the first tw
 | `44_apps` | Applications | Chroot | `packages.d/`, 55 files, 280 names, 280 installed: the natively ported graphical applications, and `kdos-appbox` | `fs` |
 | `50_desktop` | Desktop | Chroot | `packages.txt`, 22 names, 22 installed: wlroots, `kdos-comp`, `kdos-shell`, `kdos-term`, `kdos-lock`, `kdos-res`, `kdos-boxsock`, `kdos-record`, the five root daemons, fcitx5 and its engines, the portals | `fs` |
 | `60_kernel` | Kernel | Chroot | `packages.txt`, 2 names: `dwarves` and `linux` | none |
-| `70_image` | Image | Chroot | 11 scripts: see [The packaging steps](#the-packaging-steps) | none |
+| `70_image` | Image | Chroot | 13 scripts: see [The packaging steps](#the-packaging-steps) | none |
 
 "Container" means the build container itself, running as root; "Chroot" means inside `build/fs`,
 described in [The chroot](#the-chroot). A phase runs in the chroot when its `phase.env` sets
@@ -531,6 +532,7 @@ inside it:
 | `KPKG_STORE_CHECK` | `1` for `check`, else `0` | `kpkg install`, which then builds every store hit and logs a difference to `build/logs/pkgstore-check.log` |
 | `KPKG_STORE_SALT` | Set by kdosbuild on the host when the store is on | `kpkg install`, as the store key's hash of the bootstrap phases |
 | `KDOS_PKG_STORE_MAX` | A size, default `60G` | `70_image/015_pkgstore.sh`, the cap the store is evicted down to |
+| `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE` | The short commit, `1` when the tree had unrecorded changes, and the commit's date as `YYYY-MM-DD` | `70_image/045_identity.sh`, which stamps them into `/etc/os-release` |
 
 A variable the `Makefile` passes into the build container but `script/chroot/exec.sh` does not
 name reaches the container phases and none of the chroot ones. `70_image` is a chroot phase, so an
@@ -641,7 +643,8 @@ build, so one damaged package cannot prevent the ISO from being produced.
 
 `70_image` runs these scripts in sorted order inside the chroot. The numbers are the sequencing:
 the binhost is written before the cleanup empties the package cache, the sweeps and the theme run
-before the homes are made from `/etc/skel`, and the indexes are built over the finished tree before
+before the homes are made from `/etc/skel`, `/etc/os-release` is stamped before the base pack is
+made, and the indexes are built over the finished tree before
 the initramfs and ISO carry it into the image.
 
 | Step | Does |
@@ -651,6 +654,7 @@ the initramfs and ISO carry it into the image.
 | `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory, and the built-package cache with its `.pending` records, and any podman container store left in `/home/kdos/.local/share/containers` (applications are built on the machine that wants them). Replaces Python bytecode (see below) |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries, through `kdos-appbox genlaunchers` |
 | `040_orphans.sh` | Removes installed packages that have no recipe in the tree |
+| `045_identity.sh` | Writes `BUILD_ID` (the commit, `-dirty` when the tree had unrecorded changes) and `KDOS_BUILD_DATE` (that commit's date) into `/etc/os-release`, replacing any earlier pair; with no `KDOS_GIT_COMMIT` it writes neither. The commit's date and not the clock's, so two builds of one commit stamp the same file. It runs before `100_packs.sh` so the base pack carries the stamp |
 | `050_theme.sh` | Checks that `KDOS_ACCENT` is libkcolor's compiled default, then seeds that theme into `/etc/skel` with `kdos theme` |
 | `060_udev_hwdb.sh` | Compiles `/etc/udev/hwdb.bin` |
 | `070_user.sh` | Creates the home directory of each ordinary user (UID 1000–65533) from `/etc/skel`, first clearing the generated trees skel owns outright (see [Syncing `fs/`](#syncing-fs)) |
@@ -1152,7 +1156,9 @@ snapshot paths, a declared path has no source, or `latest` with no snapshot at a
 
 `KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY`, which `make build` sets from your checkout because `.git`
 is not mounted into the container, are recorded in each snapshot so the picker can show which
-commit it came from. Run outside the container, `kdosbuild` asks `git` instead.
+commit it came from. Run outside the container, `kdosbuild` asks `git` instead. The same two, with
+`KDOS_GIT_DATE`, are what `70_image/045_identity.sh` stamps into the image's `/etc/os-release`;
+that step does not ask `git`, so an image built without `make build` is unstamped.
 
 ### How the program is organised
 
