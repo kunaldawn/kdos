@@ -128,6 +128,7 @@ lists everything preflight checks.
 | `cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)` | [Two introspection runtimes in one process](#two-introspection-runtimes-in-one-process) |
 | `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
 | `cairo.h: No such file or directory` from `FL/Fl_Cairo.H` | [FLTK's headers needing Cairo's](#fltks-headers-needing-cairos) |
+| `'class QTextStream' has no member named 'setCodec'`, `'QRegExp' was not declared`, in a Qt program built with `qmake6` | [A Qt 5 program built against Qt 6](#a-qt-5-program-built-against-qt-6) |
 | `unsupported Lua version (i.e. not Lua 5.1, 5.2, 5.3, or 5.4)` from sol2 | [A bundled header shadowed by the system's](#a-bundled-header-shadowed-by-the-systems) |
 | `expected unqualified-id before numeric constant` inside a library header | [A project macro that breaks a library header](#a-project-macro-that-breaks-a-library-header) |
 | `call of overloaded 'pow10(...)' is ambiguous` (or another GNU math name) at a project's own function | [A project function named like a C library extension](#a-project-function-named-like-a-c-library-extension) |
@@ -1202,6 +1203,18 @@ The plugin's configure fragment declined it for this configuration and set no fl
 explicit list still puts it in the build. AbiWord's `rsvg` plugin is declined under the GTK front
 end, which draws SVG itself, and `abiword`'s list leaves it out. Read the plugin's `plugin.m4` (or
 equivalent) for the condition, and drop the plugin from the list.
+
+### A Qt 5 program built against Qt 6
+
+`'class QTextStream' has no member named 'setCodec'`, `'QRegExp' was not declared in this scope`,
+`no matching function for call to 'QString::indexOf(QRegExp)'`, across many files of a program
+whose project file adds `core5compat` under Qt 6.
+
+The project file accepts Qt 6, but the code does not: Qt 6 removed these interfaces, and
+`core5compat` restores only some of them, and only where a file includes their header. Read the
+packaging files upstream ships (`*.spec`, `debian/control`) for the Qt it builds with. When that
+is Qt 5, depend on the `qt5-*` ports and run `qmake-qt5` with Qt 5's `lrelease` from
+`/usr/lib/qt5/bin`. `smplayer` is built this way.
 
 ### FLTK's headers needing Cairo's
 
