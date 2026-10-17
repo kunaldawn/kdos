@@ -2206,7 +2206,9 @@ installs into clang's resource directory, `/usr/lib/clang/<major>`, where the dr
 `llvm` installs its test utilities (`FileCheck`, `not`, `count`, `split-file`, `yaml-bench` and
 the rest of `LLVM_INSTALL_UTILS`) in `/usr/lib/llvm/utils`, not `/usr/bin`, where generic names
 such as `not` and `count` could collide with another port's. They stay installed because LLVM's
-CMake package exports them, and `find_package(LLVM)` fails when an exported file is missing.
+CMake package exports them, and `find_package(LLVM)` fails when an exported file is missing. A
+consumer that runs one names its path: `rust` passes `llvm-filecheck = "/usr/lib/llvm/utils/FileCheck"`,
+because its bootstrap refuses to start when an external LLVM has no `FileCheck`.
 
 The 21 slot uses the per-component tarballs that upstream published for 21.x. `lld21` carries
 `libunwind-<version>.src.tar.xz` as a third source and names its `include` directory in the C++
