@@ -11,6 +11,7 @@
 
 ./configure --prefix=/usr \
 	--enable-nls \
+	--disable-rpath \
 	--disable-docs
 make
 make DESTDIR=$PKG install

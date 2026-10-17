@@ -11,6 +11,7 @@
 
 ./configure \
 	--prefix=/usr \
-	--mandir=/usr/share/man
+	--mandir=/usr/share/man \
+	CFLAGS="$CFLAGS -g0"
 make
 make DESTDIR=$PKG install

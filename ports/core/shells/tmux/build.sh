@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --enable-sixel: tmux keeps a sixel image as part of the pane and redraws it
-# to an outer terminal that reports sixel, so a picture from timg or chafa
-# survives a pane switch. --enable-utf8proc: character widths come from
-# utf8proc's Unicode tables rather than from musl's wcwidth.
 ./configure --prefix=/usr \
 	--enable-sixel \
 	--enable-utf8proc

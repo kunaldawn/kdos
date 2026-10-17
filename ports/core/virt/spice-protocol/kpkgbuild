@@ -15,4 +15,5 @@ source      = https://www.spice-space.org/download/releases/spice-protocol-$vers
 sha256      = baf58449f6e89d19f475899ad5fb9196fdc46c03cc53233f4e39cf2978f9cff7  spice-protocol-0.14.5.tar.xz
 description = SPICE protocol headers — the message definitions spice-gtk and QEMU's SPICE display share
 homepage    = https://www.spice-space.org
+license     = BSD-3-Clause
 depends     = meson ninja

@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libsmi
+version     = 0.5.0
+release     = 1
+source      = https://www.ibr.cs.tu-bs.de/projects/libsmi/download/$name-$version.tar.gz
+sha256      = f21accdadb1bb328ea3f8a13fc34d715baac6e2db66065898346322c725754d3  libsmi-0.5.0.tar.gz
+sha256      = f356dbf0af0e6a4e3dedbf2a79a751a147ab12cd54d45f0e136e15b03543b81f  gcc14-declarations.patch
+description = SNMP MIB and SMI module library — smilint, smidump, smiquery and the IETF and IANA MIBs
+homepage    = https://www.ibr.cs.tu-bs.de/projects/libsmi/
+license     = TCL AND BSD-3-Clause
+depends     = pkgconf

@@ -1,0 +1,10 @@
+--- a/build.zig	2026-04-17 01:13:57.000000000 +0530
++++ b/build.zig	2026-10-16 13:36:45.217899970 +0530
+@@ -217,6 +217,7 @@
+             .use_llvm = use_llvm,
+             .use_lld = use_llvm,
+         });
++        exe.pie = pie;
+         b.installArtifact(exe);
+     }
+ 

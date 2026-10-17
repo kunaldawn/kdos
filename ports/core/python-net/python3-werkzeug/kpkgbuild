@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/w/werkzeug/werkzeug
 sha256      = 55ca7c70a75689be937aa27f8ff4b018f06ff4838fc73045560bf0f5a1291060  python3-werkzeug-3.1.9.tar.gz
 description = Werkzeug, the WSGI toolkit under Flask: request, response, routing and a development server
 homepage    = https://werkzeug.palletsprojects.com/
+license     = BSD-3-Clause
 depends     = python3 python3-pip python3-flit-core python3-markupsafe

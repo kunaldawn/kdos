@@ -15,4 +15,5 @@ source      = https://github.com/smplayer-dev/$name/releases/download/v$version/
 sha256      = 64a04328396069b4d8e1c1bca9aebf11f771707a4a1cb49125377d3ecca68450  smplayer-26.8.29.tar.bz2
 description = Qt front end for mpv that remembers where every file stopped
 homepage    = https://www.smplayer.info/
+license     = GPL-2.0-or-later
 depends     = qt5-qtbase qt5-qtsvg qt5-qttools libX11 zlib mpv

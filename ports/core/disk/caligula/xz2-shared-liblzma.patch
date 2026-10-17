@@ -1,0 +1,11 @@
+--- a/Cargo.toml	2026-05-20 04:41:08.000000000 +0530
++++ b/Cargo.toml	2026-10-16 16:36:58.653622312 +0530
+@@ -64,7 +64,7 @@
+ tracing-unwrap = "1.0.1"
+ uname = "0.1.1"
+ which = "6.0.3"
+-xz2 = { version = "0.1.7", features = ["static"] }
++xz2 = "0.1.7"
+ 
+ [dev-dependencies]
+ approx = "0.5.1"

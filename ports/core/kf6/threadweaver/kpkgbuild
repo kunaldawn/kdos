@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = e5400968a41820393e76190ab5dbb276c09513263d1b185d64b40f82dcd9b457  threadweaver-6.30.0.tar.xz
 description = KDE Frameworks: high-level job-based multithreading
 homepage    = https://api.kde.org/frameworks/threadweaver/html/
+license     = LGPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase

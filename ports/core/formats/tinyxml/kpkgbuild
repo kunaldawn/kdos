@@ -17,3 +17,4 @@ source      = $name-$version.tar.gz::https://downloads.sourceforge.net/tinyxml/t
 sha256      = 15bdfdcec58a7da30adc87ac2b078e4417dbe5392f3afb719f9ba6d062645593  tinyxml-2.6.2.tar.gz
 description = Small C++ XML parser (TinyXML 1)
 homepage    = https://sourceforge.net/projects/tinyxml/
+license     = Zlib

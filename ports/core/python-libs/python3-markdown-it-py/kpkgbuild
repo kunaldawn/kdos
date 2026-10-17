@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/m/markdown-it-py/ma
 sha256      = 04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49  python3-markdown-it-py-4.2.0.tar.gz
 description = CommonMark parser for python — what rich renders Markdown with
 homepage    = https://github.com/executablebooks/markdown-it-py
+license     = MIT
 depends     = python3 python3-pip python3-flit-core python3-mdurl

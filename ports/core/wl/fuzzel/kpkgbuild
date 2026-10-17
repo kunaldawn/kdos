@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://codeberg.org/dnkl/fuzzel/archive/$v
 sha256      = 95b6c022fc1f1c7ab586d47c1594417cc311bf41ea8f5f8b5641478da7b5cf3b  fuzzel-1.15.0.tar.gz
 description = Application launcher and dmenu replacement for wlroots compositors
 homepage    = https://codeberg.org/dnkl/fuzzel
+license     = MIT
 depends     = meson ninja pkgconf scdoc wayland wayland-protocols libxkbcommon fontconfig pixman fcft tllist cairo librsvg libpng

@@ -13,8 +13,9 @@
 # never the changelog — and it lives HERE, tracked, because a check that only
 # ever existed under build/ is a check `make clean` deletes and no clone has.
 #
-# With no argument it checks every page under docs/kdos plus README.md; give it
-# paths to check only those.
+# With no argument it checks every page under docs/kdos plus README.md, and runs
+# testing/bookcounts.py over the three pages that carry the tree's exact port
+# counts; give it paths to check only those paths' links, phrasing and contract.
 
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 2
@@ -63,6 +64,12 @@ if [ "$#" -eq 0 ]; then
         [ "$rel" = "README.md" ] && continue
         grep -q "$rel" docs/kdos/README.md || { echo "UNLISTED  $page"; rc=1; }
     done < <(find docs/kdos -name '*.md' | sort)
+fi
+
+# The port counts: exact figures live only on status.md, ports-catalogue.md and
+# packaging.md, and testing/bookcounts.py recomputes every one from the tree.
+if [ "$#" -eq 0 ]; then
+    python3 testing/bookcounts.py || rc=1
 fi
 
 [ $rc -eq 0 ] && echo "docscheck: ok"

@@ -43,7 +43,7 @@ command:
    display is set and `kdos-desktop` exists, it runs `kdos-desktop`.
 
 Logging in on any other terminal, over a serial line or over ssh gives a shell and no desktop.
-tty2 is kept as a recovery console for that reason: its inittab line runs a plain `getty` behind
+tty2 is kept as a recovery console for that reason: its inittab line runs a plain `agetty` behind
 `kdos-getty`, and the profile starts nothing there.
 
 ```
@@ -91,7 +91,8 @@ it exports:
 | `MOZ_ENABLE_WAYLAND` | `1`: Firefox ESR, LibreWolf and Thunderbird use their Wayland backend |
 | `SDL_VIDEODRIVER` | `wayland`: SDL applications open a Wayland window rather than an X11 one |
 | `CLUTTER_BACKEND` | `wayland`: Clutter-based applications use Wayland |
-| `XCURSOR_THEME`, `XCURSOR_SIZE` | `KDOS-cursors` at `24`: the pointer an application draws over its own window matches the compositor's |
+| `XCURSOR_THEME`, `XCURSOR_SIZE` | `KDOS-cursors` at `24`: the pointer an application draws over its own window matches the compositor's. A program that never sees the variable — one started through `sudo`'s `env_reset` or `pkexec`, or an X client — reads `/usr/share/icons/default/index.theme`, which `kdos-cursors` ships with `Inherits=KDOS-cursors`, and gets the same theme |
+| `XDG_MENU_PREFIX` | `kdos-`: a program that reads the freedesktop application menu opens `/etc/xdg/menus/kdos-applications.menu`, one submenu per main category with *Other* for the rest. KService builds its application tree from it, and that tree is what *Open With → Other Application* in a KDE program lists; with no menu file the list is empty. The Start menu reads desktop entries directly and not this file |
 
 A box receives none of these; `kdos-appbox` states a box's environment itself ([the environment a
 box receives](#the-environment-a-box-receives)).
@@ -387,6 +388,24 @@ hardware, so the panel's volume control keeps working when PipeWire is what went
 Every redefinition in that file carries its `!`. The hooks run after the rest of `alsa.conf` is
 parsed, so a plain `pcm.default { … }` aborts the whole configuration load and leaves every ALSA
 program with no configuration at all. Check any edit with `aplay -L`.
+
+### JACK programs on the host
+
+There is no JACK server. The `pipewire` port builds PipeWire's own `libjack.so.0`, with its
+headers and `jack.pc`, into `/usr/lib` (`-Dpipewire-jack=enabled -Djack-devel=true
+-Dlibjack-path=/usr/lib`), so a JACK client such as Ardour, Hydrogen or LMMS loads it from the
+default search path and appears as nodes in the same graph as every other stream. `pw-jack` is
+not needed to start one. The SPA plugin that would make PipeWire a client of a separate `jackd`
+(`-Djack`) is off.
+
+Once `jack.pc` is installed, a consumer that leaves JACK on auto-detection gains it or not by
+build order. Every port that can link JACK therefore names it, on or off. It is on, with
+`pipewire` in the port's `depends`, in `portaudio`, `sdl3`, `mpv`, `mpd`, `openal-soft`,
+`fluidsynth`, `obs-studio`, `ardour`, `hydrogen` and `lmms`; every other port names it off. A
+port built before `pipewire` cannot have it, and neither can one `pipewire` itself depends on:
+`pipewire` links `ffmpeg`, so ffmpeg's `--enable-libjack` (off unless named) stays off and its
+`jack` capture device is not built. `portaudio`, and `lirc`, which reads audio through it, sit in
+`42_graphics` rather than `41_system` so that they come after `pipewire`.
 
 ### The quantum, and why a virtual machine gets a bigger one
 

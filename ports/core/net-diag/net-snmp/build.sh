@@ -9,14 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# configure prompts for its defaults unless every prompted value is given
-# here. The library, the tools (snmpget, snmpwalk, snmptrap...), the agent
-# (snmpd, snmptrapd) and the MIB files are built; the Perl and Python
-# bindings, embedded Perl and the Perl scripts (mib2c, snmpconf, tkmib) are
-# off. USM crypto is OpenSSL; interface and route tables come from libnl.
-# PCRE is PCRE1, which is not a port, so the process-table regex match is
-# off; RPM, MySQL, libwrap, libelf and systemd are off.
-./configure \
+LDFLAGS= ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
 	--sysconfdir=/etc \
@@ -45,16 +38,11 @@
 	--disable-scripts
 grep -q '^#define HAVE_LIBCRYPTO 1' include/net-snmp/net-snmp-config.h
 grep -q '^#define HAVE_LIBNL3 1' include/net-snmp/net-snmp-config.h
-make
-# The install rules race each other under a parallel make.
-make -j1 DESTDIR=$PKG install
+make LDFLAGS="$LDFLAGS"
+make -j1 LDFLAGS="$LDFLAGS" DESTDIR=$PKG install
 
 install -d -m 700 "$PKG/var/lib/net-snmp"
 
-# snmpd IS SKIPPED UNTIL CONFIGURED. /etc/snmp/snmpd.conf does not exist until
-# the administrator writes one, and an agent with no access lines answers
-# nobody. It stays in the foreground under the supervisor and logs to syslog's
-# daemon facility. snmptrapd has no script.
 install -d "$PKG/etc/init.d"
 cat > "$PKG/etc/init.d/71_snmpd.sh" <<'KDOS_SH'
 #!/bin/bash

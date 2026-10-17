@@ -18,4 +18,5 @@ sha256      = c54b93dc7211a8e86828ea6b436628920df7a7dc87b130b3752f2251f5466e9c  
 sha256      = 46da29342d2968ff222ba00e07c646e038b76af2e6c86de037c653059a056251  furnace-adpcm-ef7a217.tar.gz
 description = Chiptune tracker for over fifty sound chips of consoles, computers and arcades
 homepage    = https://tildearrow.org/furnace/
+license     = GPL-2.0-or-later AND Unlicense
 depends     = cmake ninja pkgconf sdl2-compat freetype2 fmt fftw libsndfile portaudio rtmidi alsa-lib zlib mesa libglvnd

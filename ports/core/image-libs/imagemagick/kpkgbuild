@@ -9,13 +9,14 @@
 # ---------------------------------
 
 name        = imagemagick
-version     = 7.1.2.31
+version     = 7.1.2.33
 release     = 1
 
 _imver      = ${version%.*}-${version##*.}
 
 source      = https://download.imagemagick.org/archive/releases/ImageMagick-$_imver.tar.xz
-sha256      = 894e3dfc3312151bba15ed1838e8066302940972d100a1727dfac5d16dd769e1  imagemagick-7.1.2.31.tar.xz
-description = ImageMagick — convert, edit, and compose raster images (provides `convert`)
+sha256      = d5de335af6ab3d8498912d6befadaf482d43913dbf8424028146590cc5ff9394  imagemagick-7.1.2.33.tar.xz
+description = Converts, edits and composes raster images (provides `convert`)
 homepage    = https://imagemagick.org/
+license     = ImageMagick
 depends     = libpng libjpeg-turbo libtiff libwebp giflib freetype2 fontconfig libxml2 zlib bzip2 xz zstd libzip pango lcms2 libheif libjxl libraw librsvg libraqm fftw openjpeg openexr ttf-dejavu djvulibre jbigkit

@@ -15,4 +15,5 @@ source      = https://github.com/protocolbuffers/protobuf/archive/v$version.tar.
 sha256      = 7e7eaf580ec77f1a392ff1ab1013c13d3b04a6716f002f697f67f3c1113f0530  protobuf-36.2.tar.gz
 description = Protocol Buffers — Google's language-neutral data interchange format
 homepage    = https://protobuf.dev/
+license     = BSD-3-Clause
 depends     = cmake zlib abseil-cpp

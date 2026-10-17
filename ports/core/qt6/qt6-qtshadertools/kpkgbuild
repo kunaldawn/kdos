@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qtshadertools
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qtshadertools
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = 805046b8b7757665586890b375940047e874ae3ab00adb6d3f2b38fc6b200b1c  qt6-qtshadertools-6.11.2.tar.xz
+sha256      = c7d84f436e1aaef39fdcadebf2bd71bdf24dc69497e13f2e0198873cbbfea2ab  qt6-qtshadertools-6.12.0.tar.xz
 description = Qt 6 shader tools — qsb, the GLSL/HLSL/MSL/SPIR-V baker Qt Quick and Qt RHI shaders are compiled with
 homepage    = https://www.qt.io/
+license     = (LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only) AND GPL-3.0-only WITH Qt-GPL-exception-1.0 AND (Apache-2.0 OR MIT)
 depends     = cmake ninja pkgconf qt6-qtbase
 group       = qt6

@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# OPTIPNG_USE_SYSTEM_LIBS links the libpng and zlib ports instead of the
-# copies under third_party/.
 cmake -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
@@ -20,5 +18,4 @@ cmake -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# The binary is installed with install(FILES), which gives it mode 644.
 chmod 755 "$PKG/usr/bin/optipng"

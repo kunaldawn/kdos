@@ -16,3 +16,4 @@ source      = supertuxkart-$version.tar.gz::https://github.com/supertuxkart/stk-
 sha256      = 33cf8841e4ff4082d80b9248014295bbbea61d14683e86dff100e3ab8f7b27cb  supertuxkart-1.5.tar.gz
 description = SuperTuxKart game data — karts, tracks, arenas, music, sounds, models and textures
 homepage    = https://supertuxkart.net/
+license     = GPL-3.0-or-later AND CC-BY-SA-3.0 AND CC-BY-SA-4.0 AND CC-BY-4.0 AND CC0-1.0

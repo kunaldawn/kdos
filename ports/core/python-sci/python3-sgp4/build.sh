@@ -9,14 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# A RUNTIME DEPENDENCY OF skyfield, AND A PORT RATHER THAN A VENDORED WHEEL.
-# Every python recipe here installs --no-deps, so a vendored runtime set is
-# never used; carrying these as ports is what makes `import skyfield` work on
-# the target.
-#
-# PYTHON_SGP4_COMPILE=always makes the C++ propagator (sgp4.vallado_cpp)
-# mandatory: setup.py marks it optional, so a failed compile would otherwise
-# install the much slower pure-python path and succeed.
 export PYTHON_SGP4_COMPILE=always
 
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+pip3 install --ignore-installed --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .

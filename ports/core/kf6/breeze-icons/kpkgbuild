@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 93866c19791838fc9757b305e010e23bb38cb5f201e4ecc96cc8ef5f1173ebe6  breeze-icons-6.30.0.tar.xz
 description = Breeze icon theme, light and dark, and its Qt resource library
 homepage    = https://invent.kde.org/frameworks/breeze-icons
+license     = CC0-1.0 AND LGPL-2.0-or-later AND (LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later AND LicenseRef-KDE-Accepted-LGPL AND CC-BY-SA-4.0 AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase python3 python3-lxml

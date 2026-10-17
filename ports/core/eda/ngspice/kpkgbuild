@@ -15,4 +15,5 @@ source      = https://downloads.sourceforge.net/project/$name/ng-spice-rework/$v
 sha256      = 894e649651f1838a14095e5a5439e7d3aa63e87ede14d283173fda4fcdef675f  ngspice-47.tar.gz
 description = SPICE circuit simulation from a prompt — transient, AC, DC, noise, Monte Carlo
 homepage    = https://ngspice.sourceforge.io/
+license     = BSD-3-Clause AND GPL-2.0-or-later
 depends     = readline ncurses bison flex fftw libsndfile libsamplerate

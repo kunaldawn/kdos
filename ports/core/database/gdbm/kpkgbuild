@@ -14,4 +14,6 @@ release     = 1
 source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.gz
 sha256      = 6a24504a14de4a744103dcb936be976df6fbe88ccff26065e54c1c47946f4a5e  gdbm-1.26.tar.gz
 description = The GNU Database Manager
+homepage    = https://www.gnu.org/software/gdbm/
+license     = GPL-3.0-or-later
 depends     = readline ncurses

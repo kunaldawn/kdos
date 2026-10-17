@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/SRI-CSL/yices2/archive/r
 sha256      = 584db72abf6643927b2c3ba98ff793f602216b452b8ff2f34a8851d35904804a  yices2-2.7.0.tar.gz
 description = The SMT solver SymbiYosys proves properties with
 homepage    = https://yices.csl.sri.com/
-depends     = gmp autoconf automake libtool gperf
+license     = GPL-3.0-or-later
+depends     = gmp autoconf automake libtool gperf libpoly cudd

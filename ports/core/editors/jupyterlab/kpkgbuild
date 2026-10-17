@@ -16,6 +16,7 @@ sha256      = 404f49b081819378524886c9db66dba57a5565981eff885830df1baba3a17df5  
 sha256      = ac2f032e60001f93ddf36a71b1660ca07fed68b1d56c8d9339cb0f9ed5718a93  jupyterlab-vendor-4.6.4.tar.xz
 description = JupyterLab and Jupyter Notebook — computational notebooks served locally to the web browser
 homepage    = https://jupyter.org/
+license     = BSD-3-Clause
 depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-hatchling python3-hatch-vcs python3-hatch-jupyter-builder python3-hatch-nodejs-version python3-flit-core python3-poetry-core python3-scikit-build-core python3-calver python3-trove-classifiers python3-ipykernel python3-jupyter-core python3-jupyter-client python3-nbconvert python3-tornado python3-pyzmq python3-rpds-py python3-attrs python3-idna python3-certifi python3-cffi python3-jinja2 python3-markupsafe python3-packaging python3-psutil python3-yaml python3-requests python3-dateutil python3-six python3-typing-extensions python3-pygments python3-lark python3-send2trash ipython argon2 librsvg
 vendoring   = python
 pyrequirements = no

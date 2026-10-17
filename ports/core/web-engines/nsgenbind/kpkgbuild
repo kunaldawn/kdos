@@ -15,4 +15,5 @@ source      = https://download.netsurf-browser.org/libs/releases/$name-$version-
 sha256      = 232ce0f66cbc2c3eed6288ae26de2c567bbfbbc01d8b0f6fc6c1c1649d4b385d  nsgenbind-0.9.tar.gz
 description = NetSurf's JavaScript binding generator — turns WebIDL and binding files into Duktape glue C
 homepage    = https://www.netsurf-browser.org/
+license     = MIT
 depends     = buildsystem flex bison

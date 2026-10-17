@@ -60,6 +60,10 @@ zziplib
 c-blosc
 lhasa
 zlib-ng
+snappy
 
 # Windows Imaging archives: what Impression splits a Windows installer with.
 wimlib
+# The initramfs is a cpio archive: 70_image's 090_initramfs.sh and the linux
+# postinstall write it with this.
+cpio

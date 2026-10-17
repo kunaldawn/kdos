@@ -16,4 +16,5 @@ source      = https://github.com/tlwg/$name/releases/download/v$version/$name-$v
 sha256      = ddba8b53dfe584c3253766030218a88825488a51a7deef041d096e715af64bdd  libthai-0.1.30.tar.xz
 description = Thai word segmentation — where pango may wrap a line of Thai
 homepage    = https://linux.thai.net/projects/libthai
+license     = LGPL-2.1-or-later
 depends     = libdatrie pkgconf

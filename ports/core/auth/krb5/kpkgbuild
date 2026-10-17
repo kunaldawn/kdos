@@ -11,8 +11,9 @@
 name        = krb5
 version     = 1.22.2
 release     = 2
-source      = https://kerberos.org/dist/krb5/1.22/$name-$version.tar.gz
+source      = https://kerberos.org/dist/krb5/${version%.*}/$name-$version.tar.gz
 sha256      = 3243ffbc8ea4d4ac22ddc7dd2a1dc54c57874c40648b60ff97009763554eaf13  krb5-1.22.2.tar.gz
-description = Kerberos 5 — the ticket a corporate file server will accept instead of a password
+description = Kerberos 5 authentication libraries and tools
 homepage    = https://web.mit.edu/kerberos/
+license     = MIT
 depends     = openssl keyutils e2fsprogs bison

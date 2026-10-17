@@ -15,4 +15,5 @@ source      = https://downloads.sourceforge.net/project/lirc/LIRC/$version/$name
 sha256      = a44a26caf9ba55c2343e065f0a9451425c136572b279ea1e011ad012b36b607e  lirc-0.10.2.tar.gz
 description = Infrared remote control daemon, client library and tools — lircd, irexec, irw, liblirc_client and the Python bindings
 homepage    = https://www.lirc.org/
-depends     = pkgconf python3 python3-setuptools python3-yaml libxslt eudev libusb libftdi alsa-lib portaudio
+license     = GPL-2.0-or-later AND MIT
+depends     = pkgconf python3 python3-setuptools python3-yaml libxslt eudev libusb libusb-compat libftdi alsa-lib portaudio

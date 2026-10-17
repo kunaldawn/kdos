@@ -228,8 +228,8 @@ the layout of the source tree, what does not exist, how mature each part is, and
 the book.
 
 38. [The ports catalogue](06-reference/ports-catalogue.md): every port KDOS can build, by shelf
-    and by `src/` area, with the phase that builds it, the ports named in more than one list and
-    those not installed
+    and by `src/` area, with the phase that builds it, the libraries shipped as the
+    application-developer platform, and the ports named in more than one list
 39. [Command index](06-reference/command-index.md): every command the tree installs, where it lives
     and which chapter documents it
 40. [Configuration](06-reference/configuration.md): every configuration file and key, with its

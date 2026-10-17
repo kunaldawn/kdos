@@ -13,4 +13,6 @@ version     = 1.2.6
 release     = 1
 source      = https://musl.libc.org/releases/$name-$version.tar.gz
 sha256      = d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a  musl-1.2.6.tar.gz
-description = Musl C library
+description = musl C standard library and dynamic linker
+homepage    = https://musl.libc.org/
+license     = MIT

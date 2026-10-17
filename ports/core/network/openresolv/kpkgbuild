@@ -15,4 +15,5 @@ source      = https://github.com/NetworkConfiguration/openresolv/releases/downlo
 sha256      = 901d83a15520b80e117aeca8cb6f5b70ceb205ba050a638d45cebcf304df729b  openresolv-3.17.4.tar.xz
 description = resolvconf: one writer of /etc/resolv.conf for NetworkManager, dhcpcd and wg-quick
 homepage    = https://roy.marples.name/projects/openresolv/
+license     = BSD-2-Clause
 depends     = bash

@@ -8,22 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The tag archive has no .git, so the version is given in git-describe form
-# (the tag's commit, zero commits past it); without it the headers and the
-# Python metadata say 6.2.0. The version header is regenerated at build time
-# by a separate cmake run that asks git again, and fails with no git at all;
-# the patch hands that run the version configure already has.
 patch -p1 -i "$PORT_SRC/version-git.patch"
+patch -p1 -i "$PORT_SRC/config-no-source-dir.patch"
 
-# USE_SUPERBUILD=OFF: the superbuild downloads OpenCASCADE and zlib and
-# expects the pybind11 submodule, which the tag archive leaves empty, so
-# pybind11 comes from its port. USE_NATIVE_ARCH=OFF: its -march=native is
-# PUBLIC on ngcore and would reach every consumer's compile line. The Tcl/Tk
-# GUI is GLX-only through Togl and is not built; the netgen Python module and
-# nglib are the interfaces FreeCAD uses. Headers go under include/netgen,
-# not beside every other library's, since netgen installs top-level
-# directories named core, general and include. Stub files need
-# pybind11-stubgen, which is not a port.
 _pybind11_dir=$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')
 cmake -S . -B build -G Ninja -Wno-dev \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

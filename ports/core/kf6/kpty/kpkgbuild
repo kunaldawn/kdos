@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = ad66149c20470de29d483f0ccdcb057d42ccf778f3f8cc8e68aefca5380bace7  kpty-6.30.0.tar.xz
 description = KDE Frameworks: pseudo-terminal devices for terminal emulators
 homepage    = https://invent.kde.org/frameworks/kpty
+license     = LGPL-2.0-or-later AND GPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons ki18n gettext

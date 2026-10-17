@@ -11,6 +11,7 @@
 
 ./configure \
 	--prefix=/usr \
+	--sysconfdir=/etc \
 	--disable-nls \
 	--without-readline \
 	--enable-install-gpg-error-config

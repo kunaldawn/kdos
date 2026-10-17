@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.gnome.org/sources/dconf/${
 sha256      = e65c1b7867f836faad9f9ee04acf5c5a6cae2bbc784833fe093207e0cb590248  dconf-51.0.tar.xz
 description = Low-level configuration store — the GSettings backend, its D-Bus service and the dconf tool
 homepage    = https://gitlab.gnome.org/GNOME/dconf
+license     = LGPL-2.1-or-later
 depends     = meson glib dbus bash-completion vala libxslt docbook-xml docbook-xsl

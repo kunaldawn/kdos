@@ -41,3 +41,5 @@ perl-parse-yapp
 perl-yaml-tiny
 perl-file-which
 perl-file-homedir
+perl-mime-base32
+perl-xml-simple

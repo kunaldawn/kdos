@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/unbuilt — the recipes no phase builds, on purpose
+# ---------------------------------
+#
+#   <name>
+#
+# One port name per line. A port listed here keeps its recipe in the tree,
+# for `kpkg install` on a machine that wants it, and is named by no phase
+# list and by no phase script. testing/bookcounts.py fails on any other
+# recipe nothing builds, and on a name here that a phase does build or that
+# has no recipe; 70_image/040_orphans.sh removes a listed package that an
+# earlier build left installed, so the image never carries one. A line
+# starting with '#' and a blank line are skipped.
+
+texlive-doc

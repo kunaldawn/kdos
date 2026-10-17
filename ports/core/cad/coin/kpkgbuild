@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/coin3d/coin/releases/dow
 sha256      = 13fe68831292e7e725e7db1c6909d2b4fe5802080474c229fcac14ddf6445188  coin-4.0.10.tar.gz
 description = Open Inventor 3D scene graph library, the viewer under FreeCAD
 homepage    = https://coin3d.github.io/
+license     = BSD-3-Clause
 depends     = cmake ninja mesa libglvnd glu libX11 expat zlib bzip2 freetype2 fontconfig

@@ -17,6 +17,7 @@ source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version
 sha256      = f22879348b2e3409f2d1204ebea7f75adcbf0087b4d8e79f344830013c5b53e6  qt5-qtwebsockets-5.15.19.tar.xz
 description = Qt 5 WebSocket client and server, from C++ and QML
 homepage    = https://www.qt.io/
+license     = LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 depends     = qt5-qtbase qt5-qtdeclarative
 group       = qt5
 series      = 5.15

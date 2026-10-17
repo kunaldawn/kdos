@@ -9,16 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# CVODE, IDA, ARKODE, KINSOL and their sensitivity variants in double
-# precision with 64-bit indices. KLU (from suitesparse) is the sparse direct
-# solver IDA uses under Octave's ode15i and ode15s; Octave's configure drops
-# both functions without the sunlinsol_klu library. LAPACK is OpenBLAS's.
-# MPI and every GPU backend are off; examples are neither built nor installed.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
+	-DCMAKE_SKIP_INSTALL_RPATH=ON \
 	-DBUILD_SHARED_LIBS=ON \
 	-DBUILD_STATIC_LIBS=OFF \
 	-DSUNDIALS_PRECISION=double \

@@ -178,7 +178,8 @@ int kbuild_package_index(const KbuildPhase *ph, int nph, const char *repo_root,
 
 /* The repositories a phase's `kpkg` searches, as paths on the host: the last
  * `[export ]PORT_REPO=` line of its phase.env, read by the rule
- * testing/phaseclosure.py uses, else kpkg.conf's /ports/core. The chroot binds
+ * testing/phaseclosure.py uses, else /ports/core, the one entry of kpkg.conf's
+ * default that exists in the chroot. The chroot binds
  * the repository's ports/ at /ports and the repository at /kdos, so /ports/...
  * maps to <repo_root>/ports/... and /kdos/... to <repo_root>/...; any other
  * absolute path is taken under <repo_root>. `out` gets them space-separated,

@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gpsman
+version     = 6.4.4.2
+release     = 1
+_shpver     = 1.2.3
+source      = https://downloads.sourceforge.net/project/$name/distrib/$name-$version.tgz
+source      = https://downloads.sourceforge.net/project/gpsmanshp/distr/gpsmanshp_$_shpver.tgz
+sha256      = 7a82215bd9550eb7fe88cc7e81f518687adb60ac9a2193b790278d0c469d3b93  gpsman-6.4.4.2.tar.gz
+sha256      = 2803524aa8f87db6ff1eaec93cef9619c944c9aa00149e554be11f6e2f1cafd2  gpsmanshp_1.2.3.tgz
+description = GPS Manager — waypoints, routes and tracks to and from Garmin, Lowrance and Magellan receivers, with the gpsmanshp Shapefile layer
+homepage    = https://sourceforge.net/projects/gpsman/
+license     = GPL-3.0-or-later
+depends     = tcl tk shapelib imagemagick

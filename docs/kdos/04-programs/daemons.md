@@ -5,7 +5,8 @@ In their place are five small root daemons, each answering a few fixed questions
 in `/run`: suspend the machine, mount a USB stick, say which application is spending the battery,
 kill a runaway program before the desktop freezes, and mount application packs. This chapter
 describes each of them, together with three programs that sit close to privilege without being
-root daemons: the per-box Wayland socket `kdos-boxsock`, the portal backend and the lock screen.
+root daemons: the per-box Wayland socket `kdos-boxsock`, the portal backend and the lock screen,
+and the two login-record services, `utmpd` and `wtmpd`.
 
 It is written for two readers:
 
@@ -273,12 +274,15 @@ resets across suspend, are not restored. Each hook is skipped when `/usr/bin/dbu
 
 ### Power-off and reboot
 
-`poweroff` and `reboot` ask init first: SIGUSR2 to process 1 for a power-off, SIGTERM for a reboot.
-Init then runs its shutdown entries, and `/etc/init.d/rcK` stops every service in reverse order,
-`kdos-powerd` among them, before anything is unmounted. Only if the daemon is still alive sixty
-seconds later, which means init ignored the signal, does it call `reboot(2)` directly. The wait is
-that long because `rcK` stops every supervised service numbered above `55_powerd.sh` first, at a
-cost of about a second each, and a shorter wait would cut the power mid-shutdown.
+`poweroff` and `reboot` ask init first, by running `/sbin/telinit 0` or `/sbin/telinit 6` through
+the argument-vector builder. Init ends the consoles, and then `/etc/init.d/rcK`, its first runlevel
+0 and 6 entry, stops every service in reverse order, `kdos-powerd` among them, before anything is
+unmounted. Only if the daemon is still alive sixty seconds later, which means init never acted on
+the request, does it call `reboot(2)` directly. The wait is that long because init gives the
+consoles up to three seconds and `rcK` then stops every supervised service numbered above
+`55_powerd.sh` first, at a cost of about a second each; a shorter wait would cut the power
+mid-shutdown. No signal can stand in for `telinit`: sysvinit ignores `SIGTERM`, and `SIGUSR2`
+closes `/run/initctl`, its request channel, for the rest of the boot.
 
 ### accent
 
@@ -368,7 +372,7 @@ carrying its own copy.
 
 | Service | Opens | For |
 |---|---|---|
-| `ssh` | TCP 22 | Incoming SSH (`70_sshd.sh`) |
+| `ssh` | TCP 22 | Incoming SSH (`70_sshd.sh`). Turning it on also removes `/etc/service.disabled/sshd` and starts `sshd`; turning it off puts the marker back and stops `sshd` |
 | `http` | TCP 80 | A web server on this machine |
 | `https` | TCP 443 | A TLS web server on this machine |
 | `ipp` | TCP 631 | Sharing a printer with CUPS |
@@ -1291,6 +1295,17 @@ is readable only by root, and the lock screen must not run as root.
 Each wrong answer takes one second before `kdos-checkpass` exits, which limits how fast a password
 can be guessed by driving it directly; the lock screen adds its own pause after a failure. An
 account with no password, or a locked one, cannot unlock the lock screen at all.
+
+## utmpd and wtmpd
+
+Two services that are not KDOS's own and not root keep the login records musl cannot: `utmpd`
+holds who is logged in now and `wtmpd` appends the history to `/var/log/wtmp`. Both come from the
+`utmps` port, each run as `utmps-utmpd` or `utmps-wtmpd` behind `s6-ipcserver` (from `s6`) as the
+`utmp` account, and `06_utmps.sh` starts both under `ksvc` with the supervised names `utmpd` and
+`wtmpd`. The service name for `service` and `/etc/service.disabled` is `utmps`, and disabling it
+leaves `who`, `w`, `users` and `last` with nothing to report. What each socket and file holds, who
+may write to them and why every reader is built against utmps is in
+[Login records](../03-architecture/boot-and-init.md#login-records).
 
 ## Adding a root daemon
 

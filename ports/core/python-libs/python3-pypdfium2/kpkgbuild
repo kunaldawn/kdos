@@ -18,4 +18,5 @@ sha256      = 7ca2d8e31bd8d0d40c496416b7d8bea423388669ffd494929f50e8c3a82326b8  
 sha256      = 4743af8aaca4bc7f251f0674f001099bf5ff94f48c8dc0a09545124927c86019  ctypesgen-956523ebca0a5d6dcf93aa3eea2454e295470031.tar.gz
 description = Python bindings to PDFium — render, read and edit a PDF from Python
 homepage    = https://github.com/pypdfium2-team/pypdfium2
+license     = Apache-2.0 OR BSD-3-Clause
 depends     = python3 python3-pip python3-setuptools python3-setuptools-scm python3-packaging pkgconf pdfium

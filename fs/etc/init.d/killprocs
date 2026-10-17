@@ -1,0 +1,40 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# Every process still alive after rcK, ended before the filesystems go
+# read-only. The second runlevel 0 and 6 entry in /etc/inittab.
+#
+# init signals only the entries of its own inittab; a daemon a service script
+# started, or anything a user left running, is this script's to end. A process
+# still holding a file open for writing makes `umount -a -r` fail on its
+# filesystem, which then reaches the power-off unclean.
+#
+# TERM first, then up to 3 s for everything to leave, then KILL. killall5
+# answers 2 when it found no process to signal, so a CONT (harmless to a
+# running process) is the probe for "anything left". killall5 spares init,
+# kernel threads and its caller's session, and init starts this script as a
+# session leader, so the script outlives its own signals.
+#
+# The name has no NN_ prefix, so rcS and rcK never run it.
+
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin
+
+killall5 -15
+_i=0
+while [ "$_i" -lt 30 ]; do
+    killall5 -18
+    [ $? -eq 2 ] && break
+    sleep 0.1
+    _i=$((_i + 1))
+done
+killall5 -9
+sync
+exit 0

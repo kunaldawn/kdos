@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/vamp-plugins/vamp-plugin
 sha256      = b552bc91817294c7f90ea07d70938642ebf15d5e3bafc81cf7d55efab9995399  vamp-sdk-2.10.0.tar.gz
 description = Vamp audio analysis plugin SDK, host library and the vamp-simple-host tool
 homepage    = https://www.vamp-plugins.org/
+license     = X11 AND BSD-3-Clause
 depends     = libsndfile pkgconf

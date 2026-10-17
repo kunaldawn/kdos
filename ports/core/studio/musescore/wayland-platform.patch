@@ -1,0 +1,20 @@
+--- a/src/app/main.cpp
++++ b/src/app/main.cpp
+@@ -92,17 +92,6 @@
+         qputenv("QT_QUICK_FLICKABLE_WHEEL_DECELERATION", "5000");
+     }
+ 
+-#ifdef Q_OS_LINUX
+-    if (qEnvironmentVariable("MU_QT_QPA_PLATFORM") != "offscreen") {
+-        qputenv("QT_QPA_PLATFORMTHEME", "gtk3");
+-    }
+-
+-    //! NOTE Forced X11, with Wayland there are a number of problems now
+-    if (qEnvironmentVariable("MU_QT_QPA_PLATFORM") == "") {
+-        qputenv("QT_QPA_PLATFORM", "xcb");
+-    }
+-#endif
+-
+ #ifdef Q_OS_WIN
+     // NOTE: There are some problems with rendering the application window on some integrated graphics processors
+     //       see https://github.com/musescore/MuseScore/issues/8270

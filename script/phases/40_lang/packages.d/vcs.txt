@@ -35,5 +35,3 @@ git-lfs
 
 # tig READS a repository where lazygit acts on one.
 tig
-
-libgit2

@@ -29,3 +29,4 @@ shared-mime-info
 libnotify
 
 desktop-file-utils
+chemical-mime-data

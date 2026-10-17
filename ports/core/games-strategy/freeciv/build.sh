@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The SDL2 client, the server it starts for a local game, and the command-line
-# rules tools. The modpack installer only downloads from the network, so none
-# of its front ends is built; the rules editor is Qt and is left out. English
-# only. Lua is the copy freeciv bundles, which its tolua bindings are built
-# against.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
 	-Dclients=sdl2 \
@@ -32,8 +27,10 @@ meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Dsvgflags=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+for m in gtk3.22 gtk4 qt sdl3 modpack mp-cli mp-gtk3 mp-gtk4 mp-qt ruledit; do
+	rm -f "$PKG/usr/share/man/man6/freeciv-$m.6"
+done
 
-# The window's app_id is the program's name.
 cat > "$PKG/usr/share/applications/org.freeciv.sdl2.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -48,3 +45,4 @@ Categories=Game;StrategyGame;
 Keywords=strategy;simulation;civilization;tiles;history;multiplayer;
 DESKTOP
 chmod 644 "$PKG/usr/share/applications/org.freeciv.sdl2.desktop"
+desktop-file-edit --set-key=NoDisplay --set-value=true "$PKG/usr/share/applications/org.freeciv.server.desktop"

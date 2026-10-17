@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = 09ad50570b26aada0408bb9ccfaabf629c56ec89a9972c8b0e155ab780f577cf  knotifications-6.30.0.tar.xz
 description = KDE Frameworks: desktop notifications through the freedesktop D-Bus interface
 homepage    = https://invent.kde.org/frameworks/knotifications
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-only AND (LGPL-2.0-only OR LGPL-3.0-only)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig libcanberra

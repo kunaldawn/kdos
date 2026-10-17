@@ -9,63 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# CONTAINERS SHARE THE HOST KERNEL, SO NOTHING ON THIS MACHINE COULD RUN
-# ANOTHER OS. That is the gap: the appbox answers "run somebody else's
-# userland" and answers nothing about running somebody else's KERNEL — testing
-# a kernel change, opening a disk image whose contents you do not trust,
-# booting the installer of the distro you are migrating from. On a distro whose
-# own test rig is qemu, the shipped system could not run it.
-#
-# THREE TARGETS, NOT ALL OF THEM. `--target-list` is the single biggest lever
-# on the size of this port: the full set is forty-odd emulators at roughly
-# 350-400 MB, and the three here cover running this machine's own architecture
-# (x86_64), the boards this tree already cross-compiles for (aarch64), and the
-# ISA its FPGA and embedded ring targets (riscv64).
-#
-# THE GUEST'S SCREEN. --enable-gtk is the window qemu opens by default, a
-# Wayland client through GTK 3, and --enable-vte gives that window its text
-# tabs: without vte the monitor and the serial console have nowhere to appear
-# in it. --enable-sdl is `-display sdl` through sdl2-compat. meson links libX11
-# into both for the keymap an X11 session reports, and has no option to stop
-# it: it is required once GTK's X11 backend is found and taken whenever it is
-# installed, so it is in depends. --enable-opengl is libepoxy on Mesa's EGL: GL scanout in the
-# GTK and SDL windows and on the D-Bus display, and the egl-headless display.
-# A guest's own 3D (virtio-vga-gl) needs virglrenderer, which is not a port, so
-# it stays off with rutabaga, and a guest renders in software.
-#
-# --enable-curses is a text console on the cell grid, and --enable-vnc is a
-# guest watched from any VNC viewer, or by this project's own
-# testing/vnc-shot.py, which drives a VM exactly that way. --enable-spice with
-# spice-protocol is the SPICE display that remote-viewer and virt-manager
-# (spice-gtk) attach to, with a shared clipboard. --enable-usb-redir is the
-# usb-redir device, which takes a USB device redirected from spice-gtk or
-# usbredirect; --enable-smartcard is the emulated CCID reader (libcacard) a
-# host smart card is passed through. --enable-libiscsi is the iscsi:// block
-# driver, which opens a LUN with no kernel initiator.
-#
-# --disable-docs because docs/conf.py requires sphinx_rtd_theme even for the
-# man pages, and that theme is not a port.
-#
-# --disable-install-blobs because pc-bios/ holds upstream's prebuilt firmware
-# for every board of every architecture qemu emulates; what ships instead is
-# built below from the firmware sources under roms/. --disable-containers
-# because configure otherwise answers a missing cross compiler by planning to
-# build firmware in a podman image, which a build with no network cannot pull.
-#
-# --enable-tpm builds the emulator backend, which talks to a swtpm process: the
-# swtpm port is the guest's TPM. -device vhost-user-fs-pci talks to the
-# virtiofsd port's daemon. Both are separate programs a guest's command line
-# names, not libraries this build links. -netdev bridge runs
-# qemu-bridge-helper, which is installed without its setuid bit and with no
-# /etc/qemu/bridge.conf, so it serves only root, and only once root writes an
-# `allow <bridge>` line there; passt is the unprivileged network.
-#
-# --enable-capstone is what makes `-d in_asm,out_asm` and the monitor's `x/i`
-# print instructions rather than bytes for the x86_64 and aarch64 guests;
-# capstone is in `depends`, because a missing one would be a configure error.
-# --disable-libkeyutils costs nothing at run time: qemu links libkeyutils only
-# into its crypto unit test, and `-object secret_keyring` reads the kernel
-# keyring through the syscall that --enable-keyring builds in.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -194,69 +137,24 @@
 make
 make DESTDIR=$PKG install
 
-# THE GUEST FIRMWARE, BUILT FROM roms/ — the sources the tarball carries for
-# every image in pc-bios/. Only what the three targets boot by default or
-# through their firmware descriptors is built. The boot ROMs of the Nuvoton
-# and ASPEED BMC boards inside qemu-system-aarch64 are not, and those boards
-# stop at startup naming the file they could not find unless -bios names one.
-#
-# The firmware is freestanding code for the guest, laid out by its own linker
-# scripts, and takes no flags from the host build: qboot's meson would
-# otherwise compile the host's -fPIC into a real-mode BIOS and pass its
-# --build-id to the link. CC keeps -std=gnu11 because the PCCTS parser
-# generator in edk2's BaseTools and iPXE's drivers are pre-C23 C that
-# declares functions with empty parentheses and calls them with arguments,
-# which C23 makes an error. EXTRA_OPTFLAGS is the last word of the CFLAGS
-# that edk2's BaseTools build its host programs with, after upstream's
-# -Werror; -Wno-error there keeps a warning a newer gcc adds from stopping
-# EfiRom, which the iPXE images below need, and the firmware build after them.
 fw=$PKG/usr/share/qemu
 install -d "$fw/firmware"
 (
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
 export CC="gcc -std=gnu11" EXTRA_OPTFLAGS=-Wno-error
 
-# SeaBIOS and SeaVGABIOS: bios-256k.bin is what pc and q35 load, bios.bin
-# the 128 KiB image for old machine types, bios-microvm.bin microvm's; one
-# vgabios per emulated display adapter. qboot is microvm's fast-boot BIOS.
 make -C roms bios vgabios qboot PYTHON=python3 FIRMWARE_EXTRAVERSION=-kdos
 
-# iPXE: every emulated NIC loads its option ROM at startup and a missing one
-# stops qemu, so these are required, not optional. efi-*.rom is the BIOS
-# image and the x86_64 UEFI driver in one file (joined by edk2's EfiRom) and
-# is the default romfile; pxe-*.rom is the BIOS-only image old machine types
-# use. NO_WERROR because gcc's array-bounds analysis flags iPXE's copies of
-# 6-byte MAC addresses through 16-bit words. The patch lets GNU as 2.41 and
-# later assemble iPXE's shared x86 sources for x86_64.
 patch -p1 -i "$PORT_SRC/ipxe-arch-i386.patch"
-# edk2-gcc-no-werror.patch adds -Wno-error after the -Werror in edk2's gcc
-# flags, which neither edk2's build command nor the platform files can reach;
-# gcc 16 warns on code this edk2 release predates. It is applied here because
-# efirom runs edk2's setup, which copies those flags into Conf/tools_def.txt,
-# and every later edk2 build reads that copy.
 patch -p1 -i "$PORT_SRC/edk2-gcc-no-werror.patch"
 make -C roms pxerom efirom PYTHON=python3 NO_WERROR=1 \
 	EXTRA_CFLAGS=-std=gnu11 BUILD_TIMESTAMP="$SOURCE_DATE_EPOCH"
 
-# The option ROMs -kernel boots through. configure builds these only when a
-# probe links a -m32 object against a 32-bit libgcc, which a gcc built with
-# --disable-multilib does not have; the ROMs themselves link -nostdlib and
-# need none, so they are built here from qemu's own makefile.
 mkdir -p optionrom-build
 printf '%s\n' "TOPSRC_DIR=$SRC" 'CC=gcc' 'OBJCOPY=objcopy' 'PYTHON=python3' \
 	> optionrom-build/config.mak
 make -C optionrom-build -f "$SRC/pc-bios/optionrom/Makefile"
 
-# OVMF for x86_64, plain and Secure Boot with SMM, and ArmVirtQemu for
-# aarch64, through qemu's own edk2 driver script and with its build options.
-# The config names only the three builds: qemu's own lists every platform,
-# and its padding step calls truncate --size, which toybox does not accept.
-# aarch64 is compiled by clang, which is a cross compiler for every target
-# the llvm port builds; x86_64 by the native gcc. iasl (acpica) compiles the
-# ACPI tables and nasm the x86 assembly. MAKEFLAGS is dropped for this step:
-# edk2's build runs one make per module on its own threads, and a -j
-# inherited into those makefiles races a module's .efi against the firmware
-# volume that packs it ("No rule to make target ... .efi").
 while read -r key _ value; do
 	printf -v "$key" '%s' "$value"
 done < roms/edk2-version
@@ -323,20 +221,8 @@ env -u MAKEFLAGS CLANGDWARF_BIN=/usr/bin/ python3 edk2-build.py --config kdos-ed
 	--silent --no-logs
 cd ..
 
-# The aarch64 virt machine maps both flash banks at 64 MiB and refuses an
-# image of any other size on -drive if=pflash.
 truncate -s 64M pc-bios/edk2-aarch64-code.fd pc-bios/edk2-arm-vars.fd
 
-# OpenSBI, the M-mode firmware every riscv machine loads by default. LLVM=1
-# builds it with clang and ld.lld: the riscv64-unknown-elf binutils cannot
-# link the position-independent image OpenSBI requires. qemu-system-riscv64
-# also runs rv32 CPUs, and for one it loads the 32-bit image instead, so both
-# widths are built, each into its own output directory. O= is created first
-# and passed absolute: the makefile resolves it with readlink -f, and a
-# readlink that prints nothing for a missing path puts the build under /.
-# REPRODUCIBLE_FLAGS is empty unless REPRODUCIBLE=y and is appended to CFLAGS
-# after OpenSBI's -Werror, so -Wno-error there keeps a warning a newer clang
-# adds from stopping the build.
 for xlen in 64 32; do
 	mkdir -p "$SRC/opensbi-rv$xlen"
 	make -C roms/opensbi LLVM=1 PLATFORM=generic PLATFORM_RISCV_XLEN=$xlen \
@@ -346,8 +232,6 @@ for xlen in 64 32; do
 done
 )
 
-# The x86_64 variable store is named edk2-i386-vars.fd because the i386 and
-# x86_64 OVMF builds share one layout and the descriptors below say so.
 for f in bios.bin bios-256k.bin bios-microvm.bin qboot.rom \
 	vgabios.bin vgabios-stdvga.bin vgabios-cirrus.bin vgabios-vmware.bin \
 	vgabios-qxl.bin vgabios-virtio.bin vgabios-bochs-display.bin \
@@ -365,19 +249,11 @@ done
 install -m644 optionrom-build/kvmvapic.bin optionrom-build/linuxboot_dma.bin \
 	optionrom-build/multiboot_dma.bin optionrom-build/pvh.bin "$fw/"
 
-# The one image taken as upstream built it: EDK2 for the riscv64 virt
-# machine. Compiled by a riscv64 bare-metal gcc 15 it faults in DXE, before
-# any boot option, where upstream's image under the same OpenSBI reaches its
-# shell; this tree's riscv64-unknown-elf gcc has not been tried. See the
-# firmware exception in docs/kdos/01-philosophy/why-kdos.md.
 for f in edk2-riscv-code.fd edk2-riscv-vars.fd; do
 	bzip2 -dc "pc-bios/$f.bz2" > "$fw/$f"
 	chmod 644 "$fw/$f"
 done
 
-# The firmware descriptors are how libvirt and other front ends find a UEFI
-# image and its variable-store template for a machine; configure_file fills
-# @DATADIR@ only when it installs blobs.
 for f in 50-edk2-x86_64-secure 60-edk2-x86_64 60-edk2-aarch64 60-edk2-riscv64; do
 	d=$(<"pc-bios/descriptors/$f.json")
 	printf '%s\n' "${d//@DATADIR@//usr/share/qemu}" > "$fw/firmware/$f.json"

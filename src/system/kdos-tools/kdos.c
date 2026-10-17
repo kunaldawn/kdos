@@ -158,12 +158,12 @@ void kdt_mkparent(const char *path)
  */
 /*
  * SIGNALLED FROM HERE AND NOT THROUGH `pkill`, which is the one signal in this
- * program that cannot go that way: procps-ng's `pkill`, the one on this image,
- * takes `-USR1` as a signal before it reads any option, but toybox's takes
- * `-U` for a user id and refuses `-USR1` as `-U SR1`. A signal spelled so that
- * it depends on which options a `pkill` happens to have is a signal that stops
- * being sent the day one is swapped, silently, because pkill's own refusal
- * goes to a stderr nobody reads.
+ * program that cannot go that way: procps-ng's `pkill` takes `-USR1` as a
+ * signal before it reads any option, but a `pkill` that takes `-U` for a user
+ * id refuses `-USR1` as `-U SR1`. A signal spelled so that it depends on which
+ * options a `pkill` happens to have is a signal that stops being sent the day
+ * one is swapped, silently, because pkill's own refusal goes to a stderr
+ * nobody reads.
  *
  * EXACT AND BY `comm`, which is what `pkill -x` compares: `kdos-shell` is
  * basename-dispatched, so the panel, the desktop icons and the notification
@@ -1030,12 +1030,11 @@ static void write_micro(const KcolScheme *sc)
 	free(f);
 }
 
-/* helix: the editor is in no phase's package list, so it is never built and
- * never on the image. The theme is written anyway because a box takes
- * `home = shared` by default and so is bind-mounted this `$HOME`: a helix
- * installed in one reads this file, and nothing else would give it the
- * accent. Nothing in /etc/skel selects it — the `theme = "kdos"` line is the
- * person's to write, which is why the generated header says so.
+/* helix: the host's helix, and a helix installed in a box (a box takes
+ * `home = shared` by default and so is bind-mounted this `$HOME`), both read
+ * this file, and nothing else would give it the accent. Nothing in /etc/skel
+ * selects it — the `theme = "kdos"` line is the person's to write, which is
+ * why the generated header says so.
  *
  * No include exists — `inherits = "kdos"` from a theme of the person's own is
  * the composition it has. A palette entry must be hex or an index; a colour
@@ -1401,12 +1400,11 @@ static void write_tmux(const KcolScheme *sc)
  * for a glance — directory, link, executable, orphan.
  *
  * The consumers are eza (which `.bashrc` aliases `ls` to whenever it is
- * installed) and the appbox's Debian coreutils; toybox's own `ls` colours from
- * a hardcoded table and reads no LS_COLORS at all, so the host's fallback `ls`
- * gains nothing from this file. Each class gets its OWN colour rather than a
- * bold bit: two classes sharing one colour are told apart only by the
- * intensity attribute, which on a 512-glyph console font is the 9th glyph bit
- * rather than a weight.
+ * installed), the host's GNU `ls` where eza is not, and the appbox's Debian
+ * coreutils. Each class gets its OWN colour rather than a bold bit: two
+ * classes sharing one colour are told apart only by the intensity attribute,
+ * which on a 512-glyph console font is the 9th glyph bit rather than a
+ * weight.
  */
 static void write_lscolors(const KcolScheme *sc)
 {
@@ -2118,8 +2116,9 @@ static void write_yazi(const KcolScheme *sc)
  * into it — dolphin's view modes, kate's session state — and clobbering the file
  * on every `kdos theme` would throw those away every time an accent changed.
  * Only what this generator owns is replaced: the [Colors:*] and [WM] sections
- * outright, and six named keys elsewhere — the scheme's name, the widget
- * style, the icon theme and the two fonts. Everything else in the file
+ * outright, and eight named keys elsewhere — the scheme and its name, the
+ * widget style, the icon theme, the two fonts and the two that name the
+ * terminal. Everything else in the file
  * survives verbatim, in its original order.
  */
 
@@ -2241,6 +2240,11 @@ static int kde_palette(KdeKV *kv, const KcolScheme *sc)
 	/* QFont::fromString's two-field form, which Qt 5 and Qt 6 both read. */
 	kde_add_str(kv, &n, "General", "font", KDT_UI_FONT "," KDT_FONT_PT);
 	kde_add_str(kv, &n, "General", "fixed", KDT_MONO_FONT "," KDT_FONT_PT);
+	/* The terminal a KDE application opens — Dolphin's F4, Kate's
+	 * terminal action, KIO's ssh: and telnet: handler. Unset, KDE falls
+	 * back to Konsole, a second terminal beside the desktop's foot. */
+	kde_add_str(kv, &n, "General", "TerminalApplication", "foot");
+	kde_add_str(kv, &n, "General", "TerminalService", "foot.desktop");
 	kde_add_str(kv, &n, "KDE", "widgetStyle", "Breeze");
 	kde_add_str(kv, &n, "Icons", "Theme", "KDOS");
 	return n;
@@ -2263,7 +2267,9 @@ static int kde_owns_key(const char *sec, const char *key)
 {
 	if (!strcmp(sec, "General"))
 		return !strcmp(key, "ColorScheme") || !strcmp(key, "Name") ||
-		       !strcmp(key, "font") || !strcmp(key, "fixed");
+		       !strcmp(key, "font") || !strcmp(key, "fixed") ||
+		       !strcmp(key, "TerminalApplication") ||
+		       !strcmp(key, "TerminalService");
 	if (!strcmp(sec, "KDE"))
 		return !strcmp(key, "widgetStyle");
 	if (!strcmp(sec, "Icons"))
@@ -2486,7 +2492,8 @@ static void write_kde(const KcolScheme *sc)
 			if (!strcmp(kv[i].sec, "Icons") ||
 			    !strcmp(kv[i].sec, "KDE") ||
 			    !strcmp(kv[i].key, "font") ||
-			    !strcmp(kv[i].key, "fixed"))
+			    !strcmp(kv[i].key, "fixed") ||
+			    !strncmp(kv[i].key, "Terminal", 8))
 				continue;	/* not part of a colour scheme */
 			if (strcmp(last, kv[i].sec)) {
 				kb_buf_printf(&b, "\n[%s]\n", kv[i].sec);
@@ -2505,9 +2512,10 @@ static void write_kde(const KcolScheme *sc)
 	kb_buf_printf(&b,
 		"# KDOS: the [Colors:*] and [WM] sections, and ColorScheme, "
 		"Name, font, fixed,\n"
-		"# widgetStyle and the icon Theme, are GENERATED by `kdos theme`. "
-		"Everything\n"
-		"# else in this file is yours and is kept.\n");
+		"# TerminalApplication, TerminalService, widgetStyle and the "
+		"icon Theme, are\n"
+		"# GENERATED by `kdos theme`. Everything else in this file is "
+		"yours and is kept.\n");
 	kde_merge(&b, old ? old : "", kv, n);
 	free(old);
 	kdt_mkparent(globals);
@@ -3271,6 +3279,7 @@ static void help_body(FILE *o)
 		{ "kdos stutter", "why the desktop hiccuped — with the app's name" },
 		{ "kdos hey list", "every window, from a prompt; run <action> <id>" },
 		{ "kdos update check", "what the ports tree pins that is not installed; --json for a surface" },
+		{ "kdos update fetch", "the newest signed ports tree, in place of /ports" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
 		{ "kdos places", "the places column the desktop shows — also `add DIR`" },
@@ -4318,9 +4327,9 @@ static int cmd_doctor(int argc, char **argv)
 	doctor_gap();
 
 	doctor_head("Containers");
-	/* The failure this distro actually had: toybox switch_root never
-	 * MS_MOVEs the root, so anything that JOINS a mount namespace lands on
-	 * an empty tree. */
+	/* A switch_root that chroot()s instead of MS_MOVEing the root leaves
+	 * /proc/self/root short of /, so anything that JOINS a mount namespace
+	 * lands on an empty tree. */
 	char root[256] = {0};
 	ssize_t rn = readlink("/proc/self/root", root, sizeof(root) - 1);
 	if (rn > 0)
@@ -4674,7 +4683,7 @@ static int cmd_version(void)
 	printf("%sKDOS%s — KD's Homebrew Linux Distro\n", C_A, C_0);
 	printf("  kernel   %s\n", u.release);
 	printf("  libc     musl\n");
-	printf("  userland toybox\n");
+	printf("  userland GNU\n");
 	const char *sess = session_name();
 
 	if (sess)

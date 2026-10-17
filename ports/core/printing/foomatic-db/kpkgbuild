@@ -16,4 +16,5 @@ source      = $name-$version.tar.xz::https://www.openprinting.org/download/fooma
 sha256      = ca3d696ac64f0ba0a724232060b91d4f2552f2990cfeaf7ca42de72a9663e8cd  foomatic-db-20260926.tar.xz
 description = Foomatic printer database — printer and driver XML plus manufacturer PPDs for CUPS
 homepage    = https://github.com/OpenPrinting/foomatic-db
+license     = GPL-2.0-or-later AND MIT
 depends     = foomatic-db-engine cups cups-filters ghostscript gzip

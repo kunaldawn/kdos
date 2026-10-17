@@ -15,4 +15,5 @@ source      = https://github.com/fragglet/lhasa/releases/download/v$version/$nam
 sha256      = 9840154367f73e9d9c3196f944a121ab4d398d84e921c8fe8fca8a931274aed7  lhasa-0.6.0.tar.gz
 description = Free LHA/LZH archive library and lha extractor — MilkyTracker's .lha module archives
 homepage    = https://fragglet.github.io/lhasa/
+license     = ISC
 depends     = pkgconf

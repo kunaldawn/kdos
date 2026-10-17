@@ -8,16 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE ONLY THING ON THIS MACHINE THAT CREATES COMMS RATHER THAN READING AN
-# ARCHIVE. Everything else offline is a corpus somebody else wrote; a LAN XMPP
-# server is two people on a stick talking to each other with no network beyond
-# the room. dino-im already ships as a GUI client in the box.
-#
-# --lua-version 5.4 AND THE THREE PATHS THAT GO WITH IT. The lua port is
-# 5.5.0 and Prosody 13 supports 5.2 through 5.4, so this builds against the
-# parallel lua54 port: the interpreter is `lua5.4`, its headers are in
-# include/lua5.4 and its library is liblua5.4. Naming only the version would
-# find the 5.5 headers on the default include path and compile against them.
 ./configure --prefix=/usr --sysconfdir=/etc/prosody \
 	--datadir=/var/lib/prosody \
 	--lua-version=$_lv \
@@ -33,15 +23,6 @@
 make
 make DESTDIR=$PKG install
 
-# THE SERVER RUNS UNDER ksvc, AS ITS ACCOUNT. `prosody` refuses to start as
-# root and never drops privileges itself (only prosodyctl does), so setpriv
-# makes it the postinstall's account before the exec. -F keeps it in the
-# foreground, where the supervisor can watch it.
-#
-# IT SKIPS UNTIL AN ACCOUNT EXISTS. The shipped configuration serves
-# `localhost` with registration off, so a server with no account has nobody
-# it can let in — and every machine carrying the port would otherwise hold
-# 5222 and 5269 open behind the firewall for nothing.
 install -d "$PKG/etc/init.d"
 cat > "$PKG/etc/init.d/74_prosody.sh" <<'KDOS_SH'
 #!/bin/bash

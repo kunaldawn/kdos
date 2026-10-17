@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# PyQt6.Qsci, built from the QScintilla tarball's Python directory against the
-# installed libqscintilla2_qt6 (the qscintilla port): with no src/ beside it,
-# the project links the system library rather than compiling a second copy.
-# The .sip files are installed with the module, because QGIS's own bindings
-# %Import them. The API file goes where python3-pyqt6 puts PyQt6's, so an
-# editor's autocompletion sees both.
 cd Python
 cp pyproject-qt6.toml pyproject.toml
 sip-build \

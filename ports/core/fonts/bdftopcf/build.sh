@@ -12,7 +12,6 @@
 ./configure \
 	--prefix=/usr \
     --sysconfdir=/etc \
-    --localstatedir=/var \
-	--disable-devel-docs
+    --localstatedir=/var
 make
 make DESTDIR=$PKG install

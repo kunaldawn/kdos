@@ -9,23 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# QXlsx, the INDI client and md4c are fetched by CPM at configure time
-# upstream. Each is a source of this port instead, pointed at through CPM's
-# per-package override, so configure never reaches for the network. NLopt,
-# which the lens distortion estimator fits with, is the nlopt port: CPM looks
-# for an installed copy before it downloads one, so it is required by name
-# rather than taken from whatever the build root holds. kpkg copies a .zip
-# into $SRC whole, so QXlsx and INDI are unpacked here.
 cmake -E chdir "$SRC_ROOT" cmake -E tar xf "$SRC/stellarium-qxlsx-$_qxlsx.zip"
 cmake -E chdir "$SRC_ROOT" cmake -E tar xf "$SRC/stellarium-indi-$_indi.zip"
 
-# ENABLE_PODIR=0 leaves the interface catalogues out: bundled data is English
-# only. The ShowMySky atmosphere needs CalcMySky and a precomputed model, and
-# the web views need QtWebEngine for pages that are only online; both are off,
-# with the Online Queries plugin, which looks objects up on web services. GPS
-# through gpsd, exiv2 for the lens distortion estimator and speech output are
-# each dropped silently when missing, so the first two are required and
-# qt6-qtspeech is in depends.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
@@ -54,19 +40,12 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# Four of the five faces upstream bundles are the same files noto-fonts and
-# ttf-dejavu install, so the data directory links to those. Noto Sans SC has
-# no single-face file on the system (noto-cjk ships a collection) and stays.
 data="$PKG/usr/share/stellarium/data"
 ln -sf /usr/share/fonts/noto/NotoSans-Regular.ttf "$data/NotoSans-Regular.ttf"
 ln -sf /usr/share/fonts/noto/NotoSansMono-Regular.ttf "$data/NotoSansMono-Regular.ttf"
 ln -sf /usr/share/fonts/TTF/DejaVuSans.ttf "$data/DejaVuSans.ttf"
 ln -sf /usr/share/fonts/TTF/DejaVuSansMono.ttf "$data/DejaVuSansMono.ttf"
 
-# The entry is replaced for StartupWMClass. Stellarium sets no desktop file
-# name, so Qt makes the Wayland app_id from the reversed organisation domain
-# and the program name: org.stellarium.stellarium. The script MIME type is
-# defined by the stellarium.xml upstream installs.
 rm -f "$PKG/usr/share/applications/org.stellarium.Stellarium.desktop"
 cat > "$PKG/usr/share/applications/org.stellarium.stellarium.desktop" <<'DESKTOP'
 [Desktop Entry]

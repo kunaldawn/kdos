@@ -15,4 +15,5 @@ source      = https://download.netsurf-browser.org/libs/releases/libnsbmp-$versi
 sha256      = 5407a7682a122baaaa5a15b505290e2d37df54c13c5edef4b09d12c862d82293  libnsbmp-0.1.7.tar.gz
 description = NetSurf BMP and ICO decoding library (imv decodes BMP with it)
 homepage    = https://www.netsurf-browser.org/projects/libnsbmp/
+license     = MIT
 depends     = buildsystem

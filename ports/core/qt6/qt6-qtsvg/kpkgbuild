@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qtsvg
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qtsvg
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = d594337feca84c26fb67fe87b85e6a5c12fda404b611d905f9d138210c311876  qt6-qtsvg-6.11.2.tar.xz
+sha256      = e4ab39534ec97987b1b9b60ef7f4d3253d5912a69f8c713a01753174a4029331  qt6-qtsvg-6.12.0.tar.xz
 description = Qt 6 SVG rendering — QSvgRenderer, QSvgWidget and the SVG image and icon engine plugins
 homepage    = https://www.qt.io/
+license     = LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 depends     = cmake ninja pkgconf qt6-qtbase zlib
 group       = qt6

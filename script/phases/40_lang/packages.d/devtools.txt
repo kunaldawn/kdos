@@ -31,11 +31,6 @@ libtracefs
 just
 capstone
 valgrind
-gdb
-
-# A single .py file that makes a gdb crash readable; the ported gdb is already
-# --with-python, so it costs one file and nothing else.
-gef
 
 # nvim-treesitter and Helix download and compile a grammar on FIRST USE, which
 # offline is a permanently broken feature that looks like a config bug.
@@ -72,10 +67,6 @@ hyperfine
 
 tokei
 
-# rustls rather than native-tls: a TLS stack chosen at build time by a probe
-# silently changes between two builds of one recipe.
-xh
-
 # preflight runs `bash -n` over ~470 build.sh files, which catches a syntax
 # error and nothing else. shfmt PARSES them.
 shfmt
@@ -83,3 +74,5 @@ shfmt
 strace
 ltrace
 ruff
+castxml
+tinyxxd

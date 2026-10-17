@@ -35,15 +35,15 @@ follow from where that line is drawn.
 | | Typical mainstream binary distribution | KDOS |
 |---|---|---|
 | C library | glibc | musl 1.2.6 |
-| Core userland | GNU coreutils, util-linux | toybox 0.8.14, with util-linux, procps-ng and a few GNU tools where toybox falls short |
-| Init | systemd | toybox `init`, numbered shell scripts, and `ksvc` as the supervisor |
+| Core userland | GNU coreutils, util-linux | GNU coreutils, grep, sed, gawk, findutils, diffutils, patch and tar, with util-linux and procps-ng; no multi-call userland |
+| Init | systemd | sysvinit's `init` with runlevels, numbered shell scripts, and `ksvc` as the supervisor |
 | Display | Wayland and Xorg, a display manager | Wayland only, rootless Xwayland for X11 clients, no display manager |
 | Toolkits | GTK and Qt under the desktop and its applications | None under the desktop, whose every surface is a grid of character cells; any toolkit for applications |
 | Desktop | GNOME, KDE Plasma, Xfce and others | One desktop written for KDOS, on a frozen fork of the labwc compositor |
-| Packages | Prebuilt binaries from an archive | Compiled from 2,024 recipes: on a build host for the installation image, on the machine itself for updates |
+| Packages | Prebuilt binaries from an archive | Compiled from about 2,000 recipes: on a build host for the installation image, on the machine itself for updates |
 | Sources | Fetched from the archive's mirrors | Pinned by sha256, held in a release archive checked by hash, built offline |
 | Graphical applications | Distribution packages, Flatpak or Snap | Native ports carried on the medium, plus Debian packages in rootless podman containers, built on demand |
-| Updates | A package manager against a remote archive | A newer ports tree, compiled locally or matched against a binary host ([binhost](../06-reference/glossary.md)) you run yourself, optionally into a second root slot |
+| Updates | A package manager against a remote archive | A newer signed ports tree over the network, every package compiled on the machine from sources it downloads, optionally into a second root slot |
 | Architectures | Several | x86-64 only |
 | Support | Vendor or community, with a hardware matrix | None; whoever runs it is the integrator |
 
@@ -77,33 +77,29 @@ and the boxes do not have to share a C library, and that is part of why the boun
 
 A mainstream distribution ships GNU coreutils, GNU grep, sed and findutils, and util-linux. Alpine
 ships BusyBox, one multi-call binary providing compact versions of most of those commands. KDOS
-takes the Alpine approach with a different binary: [toybox](https://landley.net/toybox/), another
-multi-call userland, supplies `ls`, `cp`, `grep`, `init` and most everyday commands.
+takes the mainstream approach: every everyday command is the full GNU or util-linux program, each
+a separate binary with one owner.
 
-KDOS does not stop at toybox where toybox is not enough. It ships the full tool where the compact
-one would lose a feature the system relies on, and the toybox build switches off almost every applet
-whose name another port installs. The exceptions are `sed`, `find`, `xargs`, `awk`, `expr` and
-`ln`, which the earliest build stage needs before the GNU ports exist, and which those ports take
-over when they install. On the finished system each command has one owner:
-
-- **util-linux** owns `mount`, `umount`, `swapon`, `blkid`, `switch_root` and several dozen
-  others. toybox's `swapon` refuses `-a`, its `mount` runs no `mount.<type>` helper, and its
-  `switch_root` would leave every process chrooted, which makes the kernel refuse the user
-  namespaces rootless containers need.
+- **GNU coreutils** in full (`ls`, `cp`, `install`, `sort`, `stat` and the rest), with **GNU grep,
+  sed, gawk, findutils, diffutils, patch and tar**. They are cross-built in the first build stage
+  and rebuilt as ports, so every configure script KDOS runs meets the tools upstream tested
+  against.
+- **util-linux** owns `mount`, `umount`, `swapon`, `blkid`, `switch_root`, `agetty`, `sulogin` and
+  several dozen others.
 - **procps-ng** owns `ps`, `top`, `free` and the rest of the process tools.
-- **GNU sed, gawk, findutils and diffutils** are ports because upstream build systems reach for
-  GNU extensions, and toybox ignores some of those extensions without reporting an error, so a
-  build can go wrong without failing.
-- **GNU coreutils** is built for four programs: `expr`, whose `length` operator toybox does not
-  implement; `ln`, whose `--relative` option toybox lacks and meson install scripts use;
-  `printf`, whose `%q` quoting toybox lacks and KOReader's build calls as an external command; and
-  `date`, whose `--date` and `--utc` toybox lacks and OpenJDK's configure needs.
+- **sysvinit** owns `init`, `telinit`, `shutdown`, `halt`, `reboot`, `poweroff`, `runlevel` and
+  `killall5`, and nothing else.
+- **musl's own** `getconf`, `getent` and `iconv`, and GNU `which`, fill the names glibc's tools
+  hold elsewhere.
 
-The result is closer to Alpine than to Debian, with more full tools than Alpine's default image
-carries. The cost is that a script written against GNU behaviour can meet a toybox applet that
-behaves differently, and a new port occasionally has to find out which. The full list of what is
-switched off, and why, is in
-[Boot and init](../03-architecture/boot-and-init.md#tools-that-must-not-be-toyboxs).
+A compact userland differs from GNU in ways that fail silently: a mode an `install` did not apply,
+an `awk` that printed nothing, a `grep` that matched nothing and reported no error. Every one of
+those is a build that goes wrong without failing, and on a distribution that compiles every
+package that cost lands on every port. The price of the full tools is size, a few megabytes more
+than a multi-call binary, and a longer first build stage. Why each name has the owner it does is
+in [Packaging](../03-architecture/packaging.md#the-base-userland), and the initramfs's own checks
+are in
+[Boot and init](../03-architecture/boot-and-init.md#tools-that-must-be-util-linuxs).
 
 ## Init and service supervision
 
@@ -111,8 +107,10 @@ Most mainstream distributions, Arch and NixOS use systemd as init, service manag
 manager, login manager and more. Gentoo and Alpine default to OpenRC, Void uses runit, and Guix
 uses the Shepherd. Linux From Scratch offers a System V init edition and a systemd edition.
 
-KDOS uses no systemd component. Its PID 1 is toybox's `init`, configured by `/etc/inittab`, which
-runs `/etc/init.d/rcS` at boot and `rcK` at shutdown. `rcS` runs the numbered scripts in
+KDOS uses no systemd component. Its PID 1 is sysvinit's `init`, configured by `/etc/inittab`, which
+runs `/etc/init.d/rcS` at boot and `rcK` at shutdown. Runlevel 3 is the running system, and
+runlevel `S` is single-user mode: `sulogin` asks for root's password on the console, with no
+gettys and no desktop. `rcS` runs the numbered scripts in
 `/etc/init.d/` in order: 40 of them ship in the system files, from `01_udev.sh` to
 `88_llama-server.sh`, and a few more are installed by their ports and do nothing until configured. A
 script is a service table entry in shell. It starts its daemon under `ksvc`, a small supervisor
@@ -131,7 +129,7 @@ The price is paid where software expects systemd. There is no socket activation 
 service manager. Rootless podman's resource limits depend on a cgroup subtree that systemd would
 hand out, so KDOS has to provide that subtree itself and back it with a memory-pressure daemon.
 lvm2's hotplug activation runs through `systemd-run`, so a volume group plugged in after boot has to
-be activated by hand. There is also no single-user mode: toybox `init` ignores its arguments. See
+be activated by hand. See
 [Principles](principles.md#no-systemd) and
 [Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 
@@ -227,8 +225,9 @@ description = Compression library implementing the deflate compression method
 
 The package manager, `kpkg`, is written for KDOS in C. It builds a port into a compressed tar
 archive, records every path the package owns, removes files an upgrade drops, and resolves
-dependencies from the `depends` lines. There are 2,003 recipes under `ports/core` for upstream
-software and 24 under `src/` for KDOS's own, 2,024 in all, and all of them use the same format.
+dependencies from the `depends` lines. There are about 2,000 recipes under `ports/core` for
+upstream software and some two dozen under `src/` for KDOS's own, and all of them use the same
+format.
 The upstream recipes are filed on 102 subject shelves, `ports/core/<shelf>/<name>/`, much as T2
 SDE files its packages by repository, while a port is still named by its bare name everywhere.
 [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf.
@@ -284,8 +283,8 @@ C library and the tools they need inside a chroot, a directory tree the build en
 using what `10_bootstrap` made, so everything from `30_foundation` onwards is built by a compiler
 KDOS produced. The finished image keeps
 gcc, clang, Rust, Go, the build tools and `kpkg`, so any single port, the kernel included, can be
-rebuilt on the machine itself and offline; `kdos update apply` does that for every package that is
-behind. [`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild) runs the whole build on a
+rebuilt on the machine itself, offline once its sources are on disk; `kdos update apply` does that
+for every package that is behind, downloading the sources first. [`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild) runs the whole build on a
 booted machine; no run of it from the install medium has been taken through every phase (see
 [Known gaps](../06-reference/known-gaps.md#an-offline-kdos-rebuild-from-the-medium-has-not-been-run-to-the-end)).
 
@@ -382,12 +381,15 @@ and switch between them.
 
 In KDOS a new version arrives with a newer ports tree, because each recipe pins its version. KDOS
 is therefore neither rolling nor released in the Arch or Debian sense: a machine moves when you move
-its tree. `kdos update check` compares what is installed with what the tree pins, and a system timer
-runs it once a day. `kdos update apply` installs what is behind, compiling each package, or taking
-it from a binary host when one is configured and holds an exact match. A binary host is a directory
-of prebuilt packages with an index signed with Ed25519, which you run yourself on a disk, a stick or
-a network mount; there is no KDOS archive server. A binary host can also carry binary deltas, which
-are applied and then hashed against the signed index, so a delta never needs to be trusted.
+its tree. Every image carries its recipe tree at `/ports`, and every KDOS release publishes its
+tree, signed with the release key, beside the installer image. `kdos update fetch` downloads the
+latest one over the network, checks the signature against the key the image was built with, and
+replaces `/ports`; a system timer does that once a day and runs `kdos update check`, which compares
+what is installed with what the tree pins. `kdos update apply` then downloads the source of
+everything that is behind, each checked against its recipe's hash, and compiles it on the machine.
+There is no binary package archive: an update needs the network for the tree and the sources, and
+takes as long as compiling it does, which is hours for a large set. This is Gentoo's model with a
+signed tree in place of a sync, and without USE flags.
 
 On a machine set up with two root slots, `kdos update apply` installs into the inactive slot and
 marks it to be tried on the next boot. The initramfs, the small early-boot filesystem that finds
@@ -395,7 +397,9 @@ and mounts the root, counts attempts, the end of a successful boot confirms the 
 that never gets that far falls back to the slot known to work. This is the ChromeOS and Silverblue
 idea of an update that cannot break the running system, applied to a package-built root.
 
-Nothing installs updates automatically. A machine with no ports tree on it cannot update. The
+Nothing installs updates automatically: the timer fetches the tree and reports, and the panel's
+badge shows how many packages are behind or what failed. A machine with no ports tree on it cannot
+update until `kdos update fetch` installs one. The
 installer lays out only the first slot, so creating and filling the second is a manual job, and
 several of the slot paths have been exercised against fixtures rather than booted.
 See [Packaging](../03-architecture/packaging.md#updating-a-machine),
@@ -434,8 +438,9 @@ machines, and in some cases offer commercial support and certified hardware. Alp
 Arch have community support and broad hardware coverage from the same upstream kernel and firmware.
 
 KDOS builds for x86-64 alone. Its kernel is built from source with one configuration, and the
-complete `linux-firmware` tree ships unpruned, which covers a great deal of hardware, but nothing
-is tested against a wide range of devices and broad hardware enablement is not a goal. The boot
+`linux-firmware` tree ships everything an x86 driver can load, which covers a great deal of
+hardware, but nothing is tested against a wide range of devices and broad hardware enablement is
+not a goal. The boot
 loader is Limine, which is unsigned, so Secure Boot has to be turned off in the firmware. There is
 no vendor, no support commitment, no migration guarantee between release lines and no tested
 hardware matrix. See [Known gaps](../06-reference/known-gaps.md#hardware-and-platform) and

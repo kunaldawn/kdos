@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/ksnip/kImageAnnotator/ar
 sha256      = 7eb593d975b1590a184354ef68dbc3c26479d58eaea00de461d73695176f623c  kimageannotator-0.7.2.tar.gz
 description = Qt image annotation widgets — arrows, text, blur and stickers — used by Gwenview
 homepage    = https://github.com/ksnip/kImageAnnotator
+license     = LGPL-3.0-or-later
 depends     = cmake ninja qt6-qtbase qt6-qtsvg qt6-qttools kcolorpicker libX11

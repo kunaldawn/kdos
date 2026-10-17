@@ -106,7 +106,7 @@ their header.
 | `libkbase` | `kbase.h` | `kb_` | Allocation and its failure hook, fatal and warning output, strings, files, paths, locking, monotonic time, SHA-256 and MD5, base64, JSON string escaping, `file://` URIs, per-user toggles and state paths, group membership and the root-daemon authorisation gate, the argument-vector builder and process helpers, desktop notifications, Landlock self-sandboxing, the fuzzy matcher, and the freedesktop trash | — | Every KDOS C program except `kdos-splash`, `kdos-bb`, `kdos-boxsock`, `kdos-record` and `xdg-desktop-portal-kdos`; also `kpkg`, `kdosbuild` and `kdos-portup` |
 | `libkcolor` | `kcolor.h` | `kcol_` | The palette table, colour-space conversion, mixing, contrast, the readable muted colour, the hue-family classifier, remapping and retinting | `libkbase` | Everything that links `libktui`, plus `kdos-comp`, `kdos-theme`, `kdos-tools` and `kdos-powerd`; its header alone is used by `kdos-splash` and `xdg-desktop-portal-kdos` |
 | `libktui` | `ktui.h` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, the touch-gesture recogniser, character width, paste and drop, immediate-mode widgets, the draw-and-key views, menus, modals, the keys contract (the keys every surface answers; see [Writing desktop software](writing-desktop-software.md#the-keys-contract)), the selection rule every surface draws its rows with, the three glyph tiers, charts, the sprite table, offscreen rendering, and announcements | `libkcolor` (its palette macro), `libkbase` | `kinstall`, `kdosbuild`, `kdos-appbox`, `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
-| `libkxdg` | `kxdg.h` | `kxdg_` | Desktop entries, the MIME glob table, the one correct way to turn a command line into an argument vector, places, recent files and file verbs | `libkbase` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-appbox`, `kdos-tools` |
+| `libkxdg` | `kxdg.h` | `kxdg_` | Desktop entries, the MIME glob table, what handles a type, the one correct way to turn a command line into an argument vector, places, recent files and file verbs | `libkbase` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-appbox`, `kdos-tools` |
 | `libkpkg` | `kpkg.h` | `kp_` | Configuration, the package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` | `kpkg` (also compiled on the build host as the recipe reader), `kdosbuild`, `kdos-portup`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
 | `libksig` | `ksig.h` | `ksig_` | Ed25519 signing and verification, key files, keyrings; the one library with vendored third-party source | `libkbase` | `kpkg`, `kdos-pack`, `kdos-packd`, `kdos-tools`, `kdos-shell` (for `kdos-about`'s key ids) |
 | `libkbuild` | `kbuild.h` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory and its chains, the layer diff, a read-only JSON scanner | `libkbase`, `libkpkg` | `kdosbuild`, `kdos-portup` |
@@ -895,8 +895,8 @@ different questions and must not be conflated.
 
 ## libkxdg
 
-`libkxdg` reads desktop entries and the MIME glob table, splits command lines, and holds places,
-recent files and file verbs.
+`libkxdg` reads desktop entries and the MIME glob table, resolves what handles a type, splits
+command lines, and holds places, recent files and file verbs.
 
 The splitter, `kxdg_exec_split`, is the single implementation of turning a desktop entry's command
 into an argument vector. It unquotes, substitutes the file-argument codes, drops the codes that
@@ -937,6 +937,18 @@ be silently truncated on the way to the handler. The pointer is into the argumen
 `file:` URL naming no path at all, where it is a static `/`. Percent-escapes are not decoded, and
 this is visible: `file:///home/kdos/My%20Report.pdf`, which is what a conforming caller emits for a
 name with a space, resolves to a path that does not exist and opens nothing.
+
+### What opens a type
+
+`kxdg_handlers()` answers who handles a MIME type: the user's `[Default Applications]`, then the
+user's `[Added Associations]`, then the shipped defaults in `/etc/xdg`, then each
+`applications/mimeinfo.cache`, the desktop-named `kdos-mimeapps.list` ahead of the plain file at
+each level. Only installed entries count, each once. Every candidate carries the layer that named
+it, and `kxdg_layer_name()` turns a layer into the words a page shows ("your default", "KDOS
+default", "installed"). `kdos-appbox open` acts on the answer and the Settings window's Apps page
+shows it, so the handler a page names is the one a double-click starts; a page with its own reader
+would report "nothing set" on a fresh machine while the shipped defaults answer for every common
+type.
 
 ### Places, recents and verbs
 

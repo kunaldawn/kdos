@@ -1,0 +1,11 @@
+--- a/configure
++++ b/configure
+@@ -12118,7 +12118,7 @@
+     { $as_echo "$as_me:${as_lineno-$LINENO}: result: $lqt_try_cflags_ok" >&5
+ $as_echo "$lqt_try_cflags_ok" >&6; }
+     if test x"$lqt_try_cflags_ok" = x"yes"; then
+-        CFLAGS="$CFLAGS -mfpmath=387"
++        :
+     else
+         :
+     fi

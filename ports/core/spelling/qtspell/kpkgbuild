@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/manisandro/qtspell/archi
 sha256      = faa7add9d771350a63e66bb6c9b91b130097c2399f6f85c2a9a0ea8e0ceb79d8  qtspell-1.0.2.tar.gz
 description = Spell checking for Qt text widgets, through Enchant
 homepage    = https://github.com/manisandro/qtspell
+license     = GPL-3.0-or-later
 depends     = cmake ninja qt6-qtbase qt6-qttools enchant iso-codes

@@ -25,7 +25,11 @@ TAR_SRC=$(extract_port_source tar)
 
 cd "$TAR_SRC"
 
-FORCE_UNSAFE_CONFIGURE=1 ./configure --prefix=/usr --disable-nls
+FORCE_UNSAFE_CONFIGURE=1 ./configure \
+    --host=$KDOS_TARGET \
+    --build=$(build-aux/config.guess) \
+    --prefix=/usr \
+    --disable-nls
 make
 make DESTDIR=$SYSROOT install
 

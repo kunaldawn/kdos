@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/intel/media-driver/archi
 sha256      = 76f41c06cefc91d57e0b7d366b7a91b8420ec77939326491795f9fb26afca7e7  intel-media-driver-26.3.5.tar.gz
 description = Intel iHD VA-API driver for Broadwell and newer graphics
 homepage    = https://github.com/intel/media-driver
+license     = MIT AND BSD-3-Clause
 depends     = intel-gmmlib libva libdrm libpciaccess cmake ninja pkgconf

@@ -9,31 +9,15 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Werror.patch is Alpine's: the compile flags carry an unconditional -Werror,
-# which this compiler's newer warnings turn into a failed build.
-# gcc-includes adds the <cstdint> and <future> three files use without
-# including; libstdc++'s other headers no longer bring them in.
 patch -p1 -i "$PORT_SRC/Werror.patch"
 patch -p1 -i "$PORT_SRC/gcc-includes.patch"
 
-# The objects, title sequences, sound effects and music are fetched sources;
-# unpacked into data/, the install copies them with the rest and skips the
-# download steps, which are also switched off.
 mkdir -p data/object data/sequence
 unzip -q -o openrct2-objects-$_objects.zip -d data/object
 unzip -q -o openrct2-title-sequences-$_titles.zip -d data/sequence
 unzip -q -o openrct2-opensfx-$_sfx.zip -d data
 unzip -q -o openrct2-openmusic-$_music.zip -d data
 
-# No version check, no HTTP (the server list and the in-game downloads) and
-# no Discord. Multiplayer over a direct address stays; its packets are
-# signed with OpenSSL. Scripting is the bundled QuickJS. The game itself
-# needs the player's own RollerCoaster Tycoon 2 or RCT Classic data, which
-# cannot be shipped; the program asks for its location at first start.
-#
-# The build compiles C++20 with -fno-char8_t, and nlohmann-json's conversions
-# between JSON and std::filesystem::path need char8_t in C++20; the game
-# converts no path through JSON, so those conversions are compiled out.
 export CXXFLAGS="$CXXFLAGS -DJSON_HAS_FILESYSTEM=0 -DJSON_HAS_EXPERIMENTAL_FILESYSTEM=0"
 mkdir build && cd build
 cmake .. -G Ninja \
@@ -63,9 +47,6 @@ ninja
 DESTDIR=$PKG ninja install
 cd ..
 
-# The main entry is replaced for StartupWMClass: the Wayland app_id is SDL's
-# default, the executable's name. The three hidden handlers for saves,
-# scenarios and openrct2: links stay upstream's.
 rm -rf "$PKG/usr/share/icons/hicolor/scalable"
 cat > "$PKG/usr/share/applications/io.openrct2.openrct2.desktop" <<'DESKTOP'
 [Desktop Entry]

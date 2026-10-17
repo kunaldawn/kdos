@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/t-linux64-lib.patch"
+
 mkdir -v build
 cd       build
 
@@ -27,21 +29,21 @@ cd       build
 	--enable-__cxa_atexit \
 	--enable-default-pie \
 	--enable-default-ssp \
+	--enable-host-pie \
+	--enable-host-bind-now \
 	-with-pkgversion="KDOS" \
 	CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}" \
-	CXXFLAGS_FOR_TARGET="$CXXFLAGS"
-make
-make DESTDIR=$PKG install
+	CXXFLAGS_FOR_TARGET="$CXXFLAGS" \
+	LDFLAGS_FOR_TARGET="$LDFLAGS"
+make LIBGCC2_DEBUG_CFLAGS=-g0
+make DESTDIR=$PKG install LIBGCC2_DEBUG_CFLAGS=-g0
+
+install -m644 ../gcc/doc/{gcc,g++,gfortran}.1 -t "$PKG/usr/share/man/man1"
+install -d "$PKG/usr/share/info"
+install -m644 ../gcc/doc/{gcc,gccint,cpp,cppinternals}.info ../gcc/fortran/gfortran.info \
+	-t "$PKG/usr/share/info"
 
 ln -sv /usr/bin/gcc $PKG/usr/bin/cc
-ln -sv /usr/lib64/libstdc++.so.6 $PKG/usr/lib/libstdc++.so.6
-ln -sv /usr/lib64/libgcc_s.so.1  $PKG/usr/lib/libgcc_s.so.1
 
-# libstdc++'s pretty-printer hook goes where gdb looks, not beside the library.
-# gdb auto-loads an objfile's `-gdb.py` only from its safe path, which is
-# $debugdir:$datadir/auto-load, and it finds it there under the library's own
-# path; next to the library in /usr/lib64 it is declined, and every STL
-# container prints as its internals. The hook finds the printers from the
-# library's path, not its own, so the move does not break it.
-install -d "$PKG/usr/share/gdb/auto-load/usr/lib64"
-mv "$PKG"/usr/lib64/libstdc++.so.*-gdb.py "$PKG/usr/share/gdb/auto-load/usr/lib64/"
+install -d "$PKG/usr/share/gdb/auto-load/usr/lib"
+mv "$PKG"/usr/lib/libstdc++.so.*-gdb.py "$PKG/usr/share/gdb/auto-load/usr/lib/"

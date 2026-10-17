@@ -1,0 +1,14 @@
+--- a/cmake/GitVersion.cmake
++++ b/cmake/GitVersion.cmake
+@@ -23,7 +23,10 @@
+   set (${_prefix}_FOUND FALSE PARENT_SCOPE)
+   set (ret 1)
+ 
+-  if(GIT_FOUND)
++  if(MBPOLL_VERSION_OVERRIDE)
++    set(str "v${MBPOLL_VERSION_OVERRIDE}")
++    set(ret 0)
++  elseif(GIT_FOUND)
+     execute_process(COMMAND ${GIT_EXECUTABLE} describe --tags 
+       RESULT_VARIABLE ret OUTPUT_VARIABLE str OUTPUT_STRIP_TRAILING_WHITESPACE 
+       ERROR_QUIET)

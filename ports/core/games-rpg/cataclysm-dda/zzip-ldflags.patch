@@ -1,0 +1,11 @@
+--- a/Makefile
++++ b/Makefile
+@@ -1436,7 +1436,7 @@
+ 	$(AR) rcs $(AR_FLAGS) $(BUILD_PREFIX)zstd.a $^
+ 
+ $(ZZIP_BIN): $(ZZIP_SOURCES) $(BUILD_PREFIX)zstd.a
+-	$(CXX) $(CPPFLAGS) $(DEFINES) $(CXXFLAGS) -MMD -MP $(ZZIP_SOURCES) $(BUILD_PREFIX)zstd.a -isystem src/third-party -o $(ZZIP_BIN)
++	$(CXX) $(CPPFLAGS) $(DEFINES) $(CXXFLAGS) -MMD -MP $(ZZIP_SOURCES) $(BUILD_PREFIX)zstd.a -isystem src/third-party $(LDFLAGS) -o $(ZZIP_BIN)
+ 
+ python-check:
+ 	flake8

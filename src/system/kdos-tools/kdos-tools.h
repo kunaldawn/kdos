@@ -125,9 +125,10 @@ char *kdt_oracle_line(void);
 const char *kdt_current_accent(void);
 
 /*
- * `kdos update` (update.c). Orchestration of kpkg, kdos-bootctl and the theme
- * generators — no new package format and no new trust path. `theme` is handed
- * kdos.c's own `kdos theme` entry point rather than reimplementing it.
+ * `kdos update` (update.c). Fetches a signed recipe tree into /ports, verified
+ * against /etc/kdos/keys/tree, and orchestrates kpkg, kdos-bootctl and the
+ * theme generators to build what it pins. `theme` is handed kdos.c's own
+ * `kdos theme` entry point rather than reimplementing it.
  */
 int kdt_update(int argc, char **argv, int (*theme)(int, char **));
 

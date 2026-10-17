@@ -313,6 +313,26 @@ the compositor untagged through `wayland-0`. It limits what an application is of
 *desktop*, not what it can do to your data. A profile's `home = private` gives one box a home of its
 own. See [The security model](../03-architecture/security-model.md#what-is-not-protected).
 
+### Twelve applications run on Qt 5, which has no 2026 security fixes
+
+Qt 5.15.19 is the last Qt 5 the tree can build, and no public patch for a 2026 Qt 5 vulnerability
+exists. Candle, GNU Radio, KeePassXC, LibreCAD, LMMS, Mumble, QSSTV, Quassel, SMPlayer, DB Browser
+for SQLite, VLC and WSJT-X still link it, because no release of any of them builds with Qt 6: each
+moves when one does. The reason for each is in
+[the ports catalogue](ports-catalogue.md#qt5). Their TLS goes through QtNetwork, and Mumble's
+certificates and Quassel's channel encryption through their own OpenSSL calls, to the OpenSSL 3.5
+long-term release in the `openssl3` slot, which does still receive fixes.
+
+### A PyQt5 program that also uses Python's `ssl` or `hashlib` can crash
+
+`python3-pyqt5`'s QtNetwork, QtQml, QtQuick, QtQuickWidgets, QtMultimedia, QtMultimediaWidgets
+and QtWebSockets modules load `libQt5Network`, which links OpenSSL 3, while Python's own `_ssl` and
+`_hashlib` link OpenSSL 4. musl's loader has one symbol namespace, so a process that loads both
+resolves each library's calls into the other, and the first such call can fail or crash. A PyQt5
+program is affected only when it loads one of those seven modules and also imports `ssl` or
+`hashlib`, directly or through a library; `from PyQt5 import Qt`, which GNU Radio's gr-qtgui runs,
+loads all seven. A Python program that needs both uses PyQt6, whose Qt links OpenSSL 4.
+
 ### Copying from `iamb` or `atuin` has not been confirmed to reach the clipboard manager
 
 Text you copy in either should appear in `kdos-clip`'s history, and this has not been observed on a
@@ -444,6 +464,12 @@ no Google API keys, so sync, sign-in, Safe Browsing, translation and location se
 The previews need Qt 5's WebEngine, which is not a port, so `quassel` is configured with
 `WITH_WEBENGINE=OFF`.
 
+### A Quassel core cannot sign users in through LDAP
+
+`quasselcore` keeps its accounts in its own database only. Quassel is a Qt 5 program, so it links
+OpenSSL 3 through QtNetwork, and `libldap` links OpenSSL 4; one process cannot load both, so
+`quassel` is configured with `WITH_LDAP=OFF`. It returns when a Quassel release builds with Qt 6.
+
 ### An Android screen cannot be mirrored
 
 `scrcpy` is not a port: its device-side server is a jar that cannot be built here, and shipping
@@ -470,12 +496,31 @@ the disk.
 The Atari ST emulator needs a TOS or EmuTOS image, and building EmuTOS needs an m68k cross
 toolchain that is not a port, so the user supplies the image.
 
-### A 3D mouse reaches no program
+### SolveSpace takes no 3D mouse
 
-FreeCAD and OpenSCAD are configured with 3D-mouse support through `libspnav`, which reaches the device
-through the `spacenavd` daemon, and `spacenavd` is not a port, so no device ever answers.
+`spacenavd` serves a 3D mouse to every `libspnav` client, FreeCAD and OpenSCAD among them, but
 `solvespace-qt` has no 3D-mouse support at all; upstream has it only in its GTK and Windows
 interfaces.
+
+### Every program speaks English
+
+There is no non-English interface anywhere on the system. Every package is made without its
+translations: message catalogs, Qt translations, translated KDE handbooks and translated manual
+pages are removed as the package is built, so setting `LANG` or `LC_MESSAGES` to another language
+changes no program's text, because there is nothing for it to load. Text in any language can still
+be typed, shown and edited: fonts, keyboard layouts and the input methods for Chinese, Japanese and
+Korean ship. The rule is in
+[Writing ports](../05-developer/writing-ports.md#size-and-language-policy).
+
+### `texdoc` finds no manuals, and HTML and PDF manuals are not installed
+
+The manuals of the TeX packages are the `texlive-doc` port, which no phase builds, so `texdoc` has
+nothing local to open; read them on CTAN. `kpkg install texlive-doc` does not change that as the
+tree stands: the package-time prune removes its PDF manuals. Every other port's HTML and PDF manuals are removed as its package is made, and its
+manual pages and info pages ship instead. HTML a program opens itself stays: mednafen's manual,
+which upstream writes only in HTML, R's help index, the manuals behind the Help menus of geany,
+gimagereader, texstudio, WSJT-X, Wireshark and hatari, the pages FreeCAD's and SMPlayer's About
+dialogs show, and this book under `/usr/share/doc/kdos`.
 
 ## Hardware and platform
 
@@ -500,8 +545,19 @@ UEFI are the two that have been booted.
 
 ### Broad hardware support is not a goal
 
-The firmware tree ships whole and unpruned, which covers a great deal, but nothing here is tested
-against a wide range of devices.
+The firmware tree ships everything an x86 driver can load, which covers a great deal, but nothing
+here is tested against a wide range of devices.
+
+### `linux-firmware` leaves out what an x86 kernel cannot load
+
+About 370 MiB of upstream's tree is not installed, by an explicit list in the recipe: the
+Qualcomm SoC firmware under `qcom/` (Adreno GPU, Venus and Iris video, and the DSP images of
+the arm64 laptop and phone SoCs), every `mlxsw_spectrum*.mfa2` except the three revisions the
+`mlxsw` driver names, and Marvell Prestera v2.0 and v3.0. What stays under `qcom/` is what x86
+drivers request: `aic100` and `aic200` (`qaic`), and `qdu100`, the `sdx*` modems and the
+`prog_firehose_*` loaders (`mhi_pci_generic`). A kernel whose `mlxsw` asks for a newer
+Spectrum revision than the recipe keeps finds no file and leaves the switch on the firmware in its
+flash.
 
 ### `btop`'s GPU panel is empty on Intel graphics unless btop runs as root
 
@@ -569,7 +625,8 @@ SDRangel's SDRplay input and SDR++'s SDRplay source are all off. XTRX is not sup
 needs the out-of-tree `xtrx_linux_pcie_drv` kernel module, and its libraries are unmaintained.
 SDRangel's four remote plugins (remote input, output, sink and source) are not built on x86-64:
 they need SSE3 at compile time, which the x86-64 baseline the tree compiles for does not define,
-and `cm256cc`, the library they use, needs a processor with SSSE3 there.
+and `cm256cc`, the library they use, needs a processor with SSSE3 there. An aarch64 build, where
+NEON stands in, builds all four against the `cm256cc` port.
 
 ### Packet radio has no kernel network interface
 
@@ -594,8 +651,7 @@ Java, and `libbluray` is built without its jar (`-Dbdj_jar=disabled`), because t
 with Apache Ant, which is not a port, so a disc plays its titles without them. A CSS-encrypted DVD is opened through `libdvdcss`, which
 `libdvdread` is configured to link. An audio CD lists as numbered tracks, because the CDDB lookup
 `cmus` and `libcdio` can make needs `libcddb`, which is left out: its one job is a lookup over the
-network. None of the optical paths has read a disc here, because the rig has no drive, and
-`libdvdcss` has not been through a build.
+network. None of the optical paths has read a disc here, because the rig has no drive.
 
 ### Burning a disc and writing an image are unproved on hardware
 
@@ -677,6 +733,17 @@ reaches the end of initialisation confirms the slot. A second *encrypted* slot h
 booted. What is measured is on the build host: rolling back from slot B to A hands back A's
 container and not B's, which is the failure the mechanism exists to prevent.
 
+### The update path has not been run against a published tree
+
+`kdos update fetch` takes `kdos-ports.tar.xz` from the latest release, and only a release made by
+`ports/publish --release` with a release key carries one; until then it reports `fetch-failed`. Its
+signature check, the refusal of an older tree, the exchange with `/ports`, `kpkg fetch`'s archive
+and upstream order, and the recorded problems have been exercised against local directories in a
+container with no network, and `kpkg fetch` is asserted by the self-test, but none of it against a
+real release over the internet. No `kdos update apply` has built a
+large set on an installed machine, so how long one takes, and how much of `/var/cache/kpkg` it
+needs, is not measured.
+
 ### Per-slot kernels have not been booted
 
 `deploy`, the regenerated boot menu, the hand-picked entry and the rollback onto the confirmed
@@ -713,22 +780,16 @@ an `init`:
 Both stop once the confirmed slot is itself updated, which gives it an `init` that reads
 `kdos_slot=`. See [One kernel per slot](../03-architecture/boot-and-init.md#one-kernel-per-slot).
 
-### There is no single-user mode
-
-The installed boot menu has a `KDOS (single user)` entry, which passes `single` on the kernel
-command line, but toybox init ignores its arguments and no script reads the word, so that entry
-boots like `KDOS (verbose)`: every service and the desktop start. For a shell without the desktop,
-log in on `tty2`; for a machine that cannot finish booting, see
-[When a boot stops](../03-architecture/boot-and-init.md#when-a-boot-stops).
-
 ## Security
 
 The full statement is
 [What is not protected](../03-architecture/security-model.md#what-is-not-protected). In brief:
 
 - there is no mandatory access control, no verified boot and no measured boot;
-- the serial console is a root shell with no password, on the live image and on an installed
-  system;
+- kernel modules are signed but the signature is not enforced: root loads an unsigned module and
+  the kernel only marks itself tainted;
+- the live image's serial console is a root shell with no password (an installed system's asks
+  for a login);
 - on the live image, `root` and `kdos` both have the password `kdos`, and `sshd` starts at boot
   behind the firewall's drop policy;
 - the live image logs in as `kdos` automatically; an installed system does so only when its
@@ -742,7 +803,8 @@ The full statement is
 - an unsigned pack mounts unless `KDOS_REQUIRE_SIG` is set, while a pack whose signature fails
   does not;
 - nothing installs updates automatically: a daily timer (`/etc/kdos/timers.d/10-update-check.timer`)
-  runs `kdos update check`, and `kdos update apply` runs only when you run it;
+  fetches the signed ports tree and runs `kdos update check`, and `kdos update apply` runs only when
+  you run it;
 - `kdos-oomd`'s choice between several large processes is tested only against recorded process
   tables.
 
@@ -755,6 +817,8 @@ are in [The ports catalogue](ports-catalogue.md).
 
 Both are objects upstream compiles and ships inside the source tarball, and the `go` port does not
 install them, so `go build -race`, `go test -race` and `GOEXPERIMENT=boringcrypto` fail to link.
+The `testdata` directories of the standard library's source are not installed either (33 MB,
+including foreign ELF fixtures), so `go test std` fails; a module's own tests are unaffected.
 Every other Go build is unaffected.
 
 ### GHC has no profiling libraries
@@ -823,12 +887,175 @@ The recipe removes the setuid bit upstream sets on `rtapi_app` and `linuxcnc_mod
 LinuxCNC runs its threads without realtime priority and cannot drive a machine. The latency
 histogram draws with BLT, which has no Tcl 9 support and is not a port, so it has no menu entry.
 
+### GTK 4 converts half-float pixels without F16C
+
+GTK 4's F16C path is chosen at run time through a GNU indirect function (`ifunc`), and its
+configure probe needs the compiler to accept one. musl's dynamic loader resolves no `ifunc`, so
+the probe fails and `gtk4` is built without `HAVE_F16C`: every conversion between 16-bit float and
+32-bit float pixels, in GDK's memory-format conversions and in the GL renderer, takes the portable
+C loop. Rendering is the same; a high-bit-depth or HDR texture costs more CPU to convert. No port can
+change this short of a C library with `ifunc` support.
+
 ### A SPICE viewer redirects only the USB devices you can already open
 
 `spice-gtk` is configured without `spice-client-glib-usb-acl-helper`, the setuid helper that opens
 a device node for an unprivileged client, so USB redirection from virt-manager reaches only the
 devices whose nodes a udev rule already gives you. Folder sharing (phodav) and smart card
 passthrough (libcacard) are enabled.
+
+### Features whose library has no port
+
+The ports below are built with a feature switched off because the library or program behind it is
+not in the tree. A missing library becomes a port when it adds something a person on this desktop
+would see; OpenImageDenoise with ispc, Embree, meshoptimizer, libsrt and librist are ports for that
+reason. Each one below was weighed the same way and left out, for the reason in its row:
+
+- **one feature**: it serves one optional feature of one or two programs, and the program is whole
+  without it;
+- **hardware**: it drives devices or buses the image has no other support for;
+- **vendor**: it is a closed SDK or runtime, which is not built from source (see
+  [what is not built from source](../01-philosophy/why-kdos.md#what-is-not-built-from-source));
+- **superseded**: upstream has stopped maintaining it, or a port in the tree does the same work;
+- **service**: it talks only to a network service or an account this desktop does not run;
+- **large**: it is a stack of its own, with a build system and dependencies larger than the
+  feature it adds;
+- **X11**: it works only on an X11 session, and the session here is Wayland;
+- **rule**: it belongs to something KDOS excludes, such as systemd or SELinux (see
+  [Principles](../01-philosophy/principles.md)).
+
+`python3 testing/optdeps.py --claims` lists every recipe line that says a dependency is not a port,
+and `python3 testing/optdeps.py` lists every switch that turns off a feature a port does provide;
+see [Testing](../05-developer/testing.md).
+
+| Port | What is off | Missing | Why |
+|---|---|---|---|
+| `aalib` | The console mouse | gpm | one feature |
+| `abiword` | Grammar check, thesaurus, MathML, summaries, the database, Psion and WMF importers; calendar, address-book, RDF and map fields | link-grammar, aiksaurus, gtkmathview, ots, libgda, psiconv, libwmf, Evolution Data Server, Redland, libchamplain | one feature each |
+| `aircrack-ng` | The ESSID regular-expression filter | PCRE 1 | superseded |
+| `alsa-utils`, `pipewire` | FireWire audio interfaces | libffado | hardware |
+| `anthy-unicode` | The Emacs front end | emacs | one feature |
+| `ark` | RAR, ARJ and `unar` formats beyond what libarchive reads | unrar, arj, unar | vendor (unrar's licence), one feature |
+| `aubio`, `openimageio` | Manual pages | txt2man | one feature |
+| `avidemux` | AV1, FAAC, Aften, DCA, Xvid and AMR encoders, VapourSynth input | aom, faac, aften, dcaenc, libdca, xvidcore, opencore-amr, VapourSynth | one feature each; dav1d decodes AV1 in every player |
+| `avogadrolibs` | Space groups, symmetry and spectra plots | Spglib, libmsym, JKQTPlotter | one feature each |
+| `baresip` | AMR, G.722, G.722.1 and packet-loss concealment codecs; ZRTP | opencore-amr, libg722, spandsp, gzrtp | one feature each |
+| `blender` | VR, USD, MaterialX and Hydra; OSL shaders and OpenPGL path guiding in Cycles | OpenXR, USD, MaterialX, OSL, OpenPGL | large; no OpenXR runtime exists on this image |
+| `boost` | The `stacktrace_backtrace` variant | libbacktrace | one feature |
+| `brltty` | The Libbraille driver | libbraille | hardware |
+| `btrfs-progs` | Converting a ReiserFS volume | reiserfsprogs | superseded: the kernel has no ReiserFS |
+| `cantor` | The Julia back end | julia | large |
+| `ceres-solver` | METIS ordering for the sparse solvers | METIS | one feature |
+| `clamav` | The mail milter | libmilter | service: no mail transfer agent runs here |
+| `codec2` | The FreeDV 2020 mode | LPCNet | one feature |
+| `coin` | VRML JavaScript and image textures through simage | SpiderMonkey, simage | one feature; no consumer here uses them |
+| `crun` | Container checkpoint and restore | CRIU | one feature |
+| `cura` | The MakerBot writer | pyDulcificum | one feature |
+| `darktable` | The map view, display colour management, G'MIC and Unity launcher progress | osm-gps-map, colord, G'MIC, libunity | service (online tiles), one feature each |
+| `dasher`, `gparted` | The GNOME help | yelp-tools | one feature |
+| `deja-dup` | Restoring a Duplicity backup | duplicity | superseded: new backups use restic |
+| `dnsmasq`, `iptables` | Connection-tracking marks and labels | libnetfilter_conntrack, libnfnetlink | one feature; nftables is the firewall |
+| `elisa` | UPnP browsing | UPnPQt | superseded: marked broken upstream |
+| `enchant` | The nuspell, Hspell and Voikko providers | nuspell, hspell, libvoikko | one feature each; Hunspell and Aspell are the providers |
+| `falkon` | The GNOME keyring password plugin | libgnome-keyring | superseded: KWallet keeps the passwords |
+| `fastfetch` | The VDPAU, EET, RPM, ImageMagick 6 and QuickJS probes | libvdpau, efl, rpm, ImageMagick 6, quickjs | one feature each |
+| `fcitx5-chinese-addons` | The graphical configuration tool | fcitx5-configtool | one feature; the configuration is a text file |
+| `ffmpeg` | VDPAU, sndio, CUDA, NVENC and AMF | libvdpau, sndio, the NVIDIA and AMD SDKs | X11, vendor |
+| `fluidsynth` | The MidiShare driver | MidiShare | superseded |
+| `foot` | A login record for each window | libutempter | one feature |
+| `freecad` | Point clouds | PCL | large |
+| `freedoom` | The PDF manuals | asciidoctor-pdf | one feature |
+| `gcc-arm-none-eabi`, `gcc-avr`, `gcc-riscv64-unknown-elf` | Graphite loop optimisations | isl | one feature |
+| `gdb` | CTF traces, source highlighting through GNU source-highlight, Intel Processor Trace, AMD GPU debugging, debuginfod | babeltrace, source-highlight, libipt, amd-dbgapi; elfutils is built without debuginfod | one feature each, vendor; Pygments colours the source |
+| `gdk-pixbuf` | Sandboxed image loading through glycin | glycin | one feature; the built-in loaders read every format |
+| `gimp` | MNG, WMF and ILBM files; JavaScript and Lua plug-ins; full dashboard backtraces | libmng, libwmf, libilbm, gjs, lua-lgi, libbacktrace | one feature each |
+| `glabels` | GNU Barcode and IEC 16022 symbologies; the Evolution address book | GNU Barcode, libiec16022, Evolution Data Server | one feature each; QR comes from qrencode |
+| `glib-networking`, `openconnect` | PAC proxy configuration | libproxy | one feature; `http_proxy` and friends are honoured |
+| `gmsh` | CGNS, Mmg remeshing and PETSc solvers | CGNS, Mmg, PETSc | large |
+| `gnucash` | The SQL back ends and online banking | libdbi, AqBanking | one feature each; XML books are built |
+| `gnumeric` | Psion and Paradox import, the database plug-in | psiconv, pxlib, libgda | one feature each |
+| `goldendict-ng` | EPWING dictionaries | libeb | one feature |
+| `gthumb` | Display colour management | colord | one feature |
+| `gvfs` | Approving a WebDAV server's untrusted certificate; Windows network discovery | gcr, wsdd | one feature each; `network://` lists what Avahi finds |
+| `ifcopenshell` | COLLADA and USD output, the RocksDB cache | OpenCOLLADA, USD, RocksDB | large |
+| `imagemagick` | Liquid rescale, Ultra HDR, MagickCache | liblqr, libultrahdr, MagickCache | one feature each |
+| `iperf3` | SCTP tests | lksctp-tools | one feature |
+| `k3b`, `scummvm`, `vlc` | Musepack audio | libmpcdec | one feature |
+| `kate` | The telemetry settings page | KUserFeedback | one feature |
+| `kdeconnect` | Remote input from the phone on X11 | libfakekey | X11 |
+| `kfilemetadata` | AppImage metadata | libappimage | one feature |
+| `knewstuff` | The RSS provider type | Syndication | one feature |
+| `konsole` | The Kapsule container profiles | Kapsule | one feature |
+| `ktexteditor` | `.editorconfig` files | EditorConfig | one feature |
+| `ldns` | A default DNSSEC trust anchor: `drill -S` needs `-k` | `/etc/unbound/root.key` (unbound, dns-root-data) | one feature |
+| `libbluray` | AACS-encrypted discs; BD-J menus | libaacs, Apache Ant | vendor (keys), large (a JDK under ffmpeg) |
+| `libcap-ng` | `cap-audit` | libaudit | one feature; no audit daemon runs here |
+| `libgpod` | The SCSI path for older iPods | sg3_utils | hardware |
+| `libheif` | The rav1e, kvazaar, uvg266, VVC and OpenJPH codecs | rav1e, kvazaar, uvg266, vvdec, vvenc, OpenJPH | one feature each |
+| `libiscsi` | iSER transport | rdma-core | hardware |
+| `libisofs`, `libisoburn` | Jigdo templates | libjte | one feature |
+| `libmysofa` | `mysofa2json` and the tests | CUnit | one feature |
+| `libnice` | UPnP port mapping | gupnp-igd | one feature |
+| `libsigrok` | VISA, GPIB and IEEE 1284 instruments | librevisa, libgpib, libieee1284 | hardware |
+| `libtiff` | LERC compression | lerc | one feature |
+| `libvips` | GIF save through cgif, Ultra HDR, NIfTI, OpenSlide and quantizr | cgif, libuhdr, niftilib, OpenSlide, quantizr | one feature each |
+| `libvirt` | The `iscsiadm` storage back end | open-iscsi | one feature; `iscsi-direct` is built |
+| `libwacom` | `libwacom-show-stylus` | pyudev, python-libevdev | one feature |
+| `libxfce4ui` | Startup notification and the system information pane | startup-notification, libgtop | one feature each |
+| `linuxcnc` | The latency histogram | BLT | one feature |
+| `lmms` | Carla and sndio | Carla, sndio | one feature each |
+| `ltrace`, `lvm2`, `gettext`, `nbdkit` | SELinux and Smack labels | libselinux, Smack | rule |
+| `luanti` | The LevelDB and Redis map databases | LevelDB, Redis | one feature each; SQLite stores the worlds |
+| `mbpoll` | GPIO RTS control | libpiduino | hardware |
+| `mpv` | Colour ASCII output, VapourSynth, JavaScript scripts, CUDA | libcaca, VapourSynth, mujs, CUDA | one feature each, large, vendor; Lua scripts run |
+| `mumble` | Remote control over Ice | ZeroC Ice | one feature |
+| `nbdkit` | The libblkio, libguestfs and VDDK plug-ins; USDT probes | libblkio, libguestfs, VMware VDDK, systemtap | large, vendor |
+| `net-snmp` | The process-table regular-expression match | PCRE 1 | superseded |
+| `netgen` | Python type stubs | pybind11-stubgen | one feature |
+| `ntfs-3g` | Boot geometry from `libhd` | hwinfo | one feature |
+| `obs-studio` | The browser source and What's New panel, `obs-websocket`, WebRTC output, AJA, DeckLink, NVENC and Quick Sync, sndio | CEF, websocketpp, libdatachannel, the AJA, Blackmagic, NVIDIA and Intel SDKs, sndio | large, one feature each, vendor |
+| `opencascade` | Image export through FreeImage | FreeImage | one feature |
+| `openimageio` | Ptex, Ultra HDR, OpenJPH, RED R3D and Nuke | Ptex, libuhdr, OpenJPH, the R3D SDK, the Nuke SDK | one feature each, vendor |
+| `opensc` | The German eID's PACE channel and `npa-tool` | OpenPACE | one feature |
+| `opensubdiv` | The Ptex, CUDA and OpenCL back ends | Ptex, CUDA | one feature, vendor |
+| `orca` | Mouse review | libwnck | X11 |
+| `perf` | libpfm4 event names, CTF output from `perf data`, USDT probes | libpfm4, babeltrace2, systemtap | one feature each |
+| `picard` | Installing plug-ins from git | pygit2 | service |
+| `pipewire` | ROC streaming, LC3plus, LDAC decoding, spandsp | roc-toolkit, lc3plus, an LDAC decoder, spandsp | one feature each |
+| `powerman` | Genders node lists and TCP wrappers | genders, tcp_wrappers | one feature, superseded |
+| `printrun` | `pronterface` and `plater`, the wx front ends | pyglet, puremagic | one feature; `printcore` and `pronsole` run |
+| `profanity` | OTR encryption | libotr | superseded: OMEMO is built |
+| `purpose` | Account sign-in for the YouTube and Nextcloud targets | KAccounts | service |
+| `python3-meshtastic` | `mesh-analysis`, the web dashboard over a node's log | dash, dash-bootstrap-components, plotly, pyarrow | large; the `meshtastic` command is whole without it |
+| `python3-nbconvert` | The web-PDF exporter | Playwright | large; the LaTeX PDF exporter runs |
+| `python3-pyqt5` | The QtBluetooth, QtNfc, QtLocation, QtPositioning, QtSensors, QtWebChannel, QtRemoteObjects, QtTextToSpeech, QtXmlPatterns, QtQuick3D and QtWebKit bindings | those Qt 5 modules | one feature each |
+| `qemu` | Guest 3D (`virtio-vga-gl`), the manual pages | virglrenderer, sphinx_rtd_theme | one feature each; a guest renders in software |
+| `qgis` | GRASS, Oracle and SAP HANA | GRASS GIS, the Oracle and SAP client libraries | large, vendor |
+| `qt6-qtquick3d` | Timeline animations in `balsam` imports | Qt Quick Timeline | one feature |
+| `qt6-qtspeech`, `webkitgtk`, `webkitgtk6` | The Flite engine and Spiel; gamepads in WebKit | Flite, Spiel, libmanette | one feature each; speech-dispatcher is the engine |
+| `qutebrowser` | The Brave ad-block engine | python-adblock, tldextract | one feature; the host-list blocker works |
+| `recoll` | CHM files | libchm | one feature |
+| `rmpc` | The visualiser pane | cava | one feature |
+| `samba` | Snapper snapshots, GlusterFS, CephFS, FAM, DMAPI, LTTng, `winexe` | snapper, GlusterFS, Ceph, FAM, DMAPI, LTTng, a mingw cross-compiler | large, service |
+| `satdump`, `sdrangel`, `urh` | SDRplay, Aaronia and XTRX radios | the SDRplay API, the Aaronia RTSA SDK, libxtrx | vendor, hardware |
+| `skopeo` | Sequoia signatures | podman-sequoia | one feature; GnuPG signing is built |
+| `slang` | The PCRE module | PCRE 1 | superseded |
+| `smplayer` | The MPlayer back end | MPlayer | superseded: mpv is the player |
+| `texlive` | `xindy` | clisp | large |
+| `texstudio` | The embedded terminal | QTermWidget | one feature |
+| `thunderbird` | The RLBox WebAssembly sandbox | wasi-sdk | large |
+| `timg` | OpenSlide images | OpenSlide | one feature |
+| `viking` | Map rendering through Mapnik | Mapnik | large |
+| `vlc` | RTSP through live555, FireWire capture, SMB shares, Icecast output, teletext, ARIB subtitles, Kate and Tiger subtitles, the visualisations, UPnP and mDNS discovery, CDDB, AV1 encoding, the shine, DCA, Tremor, Daala, OpenAPV, BPG, x262, oneVPL and FluidLite codecs | live555, libdc1394, libraw1394, linsys, libdsm, libsmb2, libshout, zvbi, aribb24, aribb25, libkate, libtiger, goom, projectM, vsxu, libupnp, microdns, libcddb, aom, shine, libdca, tremor, daala, openapv, libbpg, x262, oneVPL, FluidLite | one feature each, hardware |
+| `vorbis-tools` | Kate streams | libkate | one feature |
+| `w3m` | X-Face headers | compface | one feature |
+| `wcslib` | PGPLOT plotting | PGPLOT | one feature |
+| `weechat` | PHP and JavaScript scripts | PHP's embed library, V8 | large |
+| `wireshark` | cpuinfo, and the AMR, G.729, iLBC and spandsp RTP decoders | cpuinfo, opencore-amr, bcg729, libilbc, spandsp | one feature each |
+| `wl-mirror` | `wl-present` | pipectl | one feature |
+| `wv` | Embedded Windows Metafile pictures | libwmf | one feature |
+| `xastir` | Speech | festival | one feature |
+| `yosys` | `show` without `-viewer` | xdot | one feature |
+| `zint` | The GS1 Syntax Engine | libgs1encoders | one feature; zint checks GS1 data with its own rules |
 
 ## Upgrades
 
@@ -838,16 +1065,6 @@ The `tzdata` port does not own `/etc/localtime`, so upgrading `tzdata` on a mach
 `tzdata` manifest lists the link removes it as an orphan. `rcS` then links UTC on the next boot, and
 `TZ=':/etc/localtime'` follows it. kpkg has no rule that keeps a file a package does not own, so run
 `kdos-power timezone <Area/City>` to set the zone again. Later upgrades leave it alone.
-
-### Upgrading toybox on its own can delete tools other ports own
-
-This affects a machine whose installed toybox manifest (`/var/lib/kpkg/db/toybox`) lists names
-another port owns: `mount`, `umount`, `losetup`, `kill`, `dmesg`, `readelf`, `strings`, `cmp`,
-`gunzip`, `insmod`, `lsattr` and the rest. A toybox manifest lists them when toybox is installed
-after util-linux, binutils, diffutils, gzip, bzip2, attr, kmod, ncurses, e2fsprogs or procps-ng: an
-install to the same path takes the file into the later manifest, so the owning port's manifest does
-not list it, and toybox's upgrade removes it as an orphan. On such a machine, upgrade toybox
-together with those ports, whose release bumps reinstall the names.
 
 ## Building
 
@@ -907,11 +1124,21 @@ cover:
 - **Side effects outside `$PKG`.** A `postinstall.sh` runs on a store hit as on a build, but
   anything a `build.sh` writes into the live tree rather than the package is not in the stored
   package and does not happen on a hit.
-- **Caches under `$HOME`.** A build that reads `/root/.cargo`, `/root/.cache` or a similar
-  directory depends on what an earlier build left there, which no key names.
+- **Caches under `$HOME`.** A build that reads `.cargo`, `.cache` or a similar directory under the
+  build's `HOME` (`/var/tmp/kdos-home`) depends on what an earlier build left there, which no key
+  names.
 
 A release build uses `KDOS_PKG_STORE=0` or `check`; `check` rebuilds every hit and reports a
 difference in `build/logs/pkgstore-check.log`.
+
+### The kernel package differs between two builds of the same tree
+
+Every other package is byte-identical when rebuilt (see
+[Reproducible packages](../03-architecture/packaging.md#reproducible-packages)). `linux` pins its
+version string, its build user and host and its module-signing key, but signs each module with
+ECDSA, which draws a fresh random number for every signature, so every module's appended signature
+differs between two builds and `kpkg verify --repro linux` reports them. Whether anything else in
+the package differs has not been measured.
 
 ## Sources and publishing
 
@@ -920,7 +1147,8 @@ difference in `build/logs/pkgstore-check.log`.
 The mechanism is complete: a signed index, three checks that a prebuilt package matches this
 machine (architecture, build configuration and recipe hash), and deltas; see
 [The binary host](../03-architecture/packaging.md#the-binary-host). `make build KDOS_MAKE_BINHOST=1`
-writes a signed one to `build/binhost/`, and nothing publishes it: it is one you run yourself.
+writes a signed one to `build/binhost/`, and nothing publishes it: it is one you run yourself, with
+`kpkg binhost` by hand. `kdos update` never reads one; every update is built from source.
 
 ### The source archive has one public location
 

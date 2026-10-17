@@ -18,4 +18,5 @@ sha256      = d48282ae4dab83b3dc94c16cf011bcb63835c1c02b515490e1883049c3d1f3da  
 sha256      = 4a47a431b86d5c42fa23b8474aaf752384dcaed65fe9e6aa1f518c103d38a7d1  waf-2.1.9.tar.bz2
 description = Audio labelling library — onset, pitch, beat and tempo detection
 homepage    = https://aubio.org/
+license     = GPL-3.0-or-later
 depends     = python3 fftw libsamplerate libsndfile

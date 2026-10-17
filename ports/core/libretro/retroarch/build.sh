@@ -9,32 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The skeleton /etc/retroarch.cfg a first run copies names the system
-# directories the data and core ports install into: cores in
-# /usr/lib/libretro, and assets, core info, databases and controller profiles
-# under /usr/share/libretro. The cheat path is left to its per-user default:
-# libretro-database ships no cheat collection, and the online updater
-# downloads cheats into that directory. Without it every one of them resolves
-# under the player's own configuration directory, which is empty.
 patch -p1 -i "$PORT_SRC/config.patch"
 patch -p1 -i "$PORT_SRC/database-path.patch"
 
-# Wayland with EGL, desktop GL, GL core and Vulkan; KMS for running on a bare
-# console. X11 is off: the Wayland driver draws the window, and Xwayland is not
-# needed for it. Audio goes to PipeWire, Pulse or ALSA, never JACK, OSS or the
-# network sound servers. Every online feature is off: the core, asset and info
-# updaters (cores and data come from ports), RetroAchievements, Discord and
-# the translation service. Networking stays for netplay on a local network,
-# which needs no TLS. FFmpeg is off: its recording path and media core do not
-# build against the FFmpeg this tree carries. The Qt companion window is off.
-# Extra languages are off: bundled data is English only. FLAC is the bundled
-# copy, which the CHD reader is written against. The libusb joypad driver,
-# which reads USB pads directly, is RetroArch's HID layer, and the configure
-# refuses libusb unless HID is enabled with it.
-#
-# The configure tests each C++ switch with CFLAGS and -Werror, and g++ refuses
-# the C-only -std=gnu11 there, so every C++ standard fails and the Vulkan
-# driver with it. The project sets -std=gnu99 for its C itself.
 export CFLAGS="${CFLAGS/-std=gnu11/}"
 ./configure \
 	--prefix=/usr \
@@ -86,19 +63,12 @@ export CFLAGS="${CFLAGS/-std=gnu11/}"
 make
 make DESTDIR=$PKG install
 
-# cg2glsl converts Nvidia Cg shaders, which this build cannot load, and is a
-# Python script nothing here runs.
 rm -f "$PKG/usr/bin/retroarch-cg2glsl" "$PKG/usr/share/man/man6/retroarch-cg2glsl.6"
 
-# The panel reads no SVG: the menu icon is a PNG rasterised from upstream's.
 install -d "$PKG/usr/share/icons/hicolor/256x256/apps"
 rsvg-convert -w 256 -h 256 media/com.libretro.RetroArch.svg \
 	-o "$PKG/usr/share/icons/hicolor/256x256/apps/com.libretro.RetroArch.png"
 
-# UPSTREAM'S ENTRY IS REPLACED: it carries forty translations and claims
-# every ROM type, including the Game Boy Advance types mgba's entry claims,
-# which would open those files in whichever entry sorted first. RetroArch
-# opens games from its own menu. The Wayland app_id is com.libretro.RetroArch.
 cat > "$PKG/usr/share/applications/com.libretro.RetroArch.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

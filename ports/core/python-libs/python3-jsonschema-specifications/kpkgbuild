@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/j/jsonschema_specif
 sha256      = b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d  python3-jsonschema-specifications-2025.9.1.tar.gz
 description = The JSON Schema meta-schemas and vocabularies, packaged for jsonschema
 homepage    = https://github.com/python-jsonschema/jsonschema-specifications
+license     = MIT
 depends     = python3 python3-pip python3-hatchling python3-hatch-vcs python3-setuptools-scm python3-referencing

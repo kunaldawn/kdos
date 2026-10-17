@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# robin-map is a header-only hash table OIIO compiles in and installs nothing
-# of. It is a second source rather than a port, and ROBINMAP_INCLUDE_DIR
-# points at it: missing, OIIO's CMake clones it from GitHub.
-# OpenImageIO_BUILD_MISSING_DEPS= (empty) makes any other missing dependency a
-# configure error instead of a download.
-#
-# USE_QT=OFF: no iv viewer, which would put Qt under a library everything
-# image-shaped links. Ptex, OpenCV, DCMTK, libuhdr, OpenJPH, R3D and Nuke are
-# not ports. INSTALL_FONTS=OFF: the bundled Droid faces duplicate fonts the
-# image already has. txt2man is not a port, so no manual pages are generated.
 mkdir build && cd build
 cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -39,7 +29,6 @@ cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DUSE_PYTHON=ON \
 	-Dpybind11_DIR="$(python3 -m pybind11 --cmakedir)" \
 	-DUSE_QT=OFF \
-	-DUSE_OPENGL=OFF \
 	-DUSE_FFMPEG=ON \
 	-DUSE_FREETYPE=ON \
 	-DUSE_GIF=ON \
@@ -51,6 +40,7 @@ cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DUSE_OPENVDB=ON \
 	-DUSE_TBB=ON \
 	-DUSE_WEBP=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_WebP=ON \
 	-DUSE_PTEX=OFF \
 	-DUSE_OPENCV=OFF \
 	-DUSE_DCMTK=OFF \

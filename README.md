@@ -10,11 +10,11 @@ with a desktop whose every surface is a grid of character cells.
 </p>
 
 <p align="center">
-<b>musl</b> · <b>toybox</b> · <b>wlroots</b> · no systemd · no Xorg · a desktop drawn in cells
+<b>musl</b> · <b>GNU userland</b> · <b>sysvinit</b> · <b>wlroots</b> · no systemd · no Xorg · a desktop drawn in cells
 </p>
 
 <p align="center">
-<sub>1,999 upstream ports · 24 of its own · Linux 7.2.7 · 73 containerised applications · builds with the network off</sub>
+<sub>about 2,000 upstream ports · two dozen of its own · Linux 7.2.11 · 73 containerised applications · builds with the network off</sub>
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@ documentation is a book under [`docs/kdos/`](docs/kdos/README.md).
 ## What KDOS is
 
 KDOS is a complete operating system built in this repository from upstream source archives: a
-cross toolchain, a musl userland, a self-hosting bootstrap, 1,999 upstream ports, a Wayland
+cross toolchain, a musl userland, a self-hosting bootstrap, about 2,000 upstream ports, a Wayland
 compositor, a panel, a terminal, an installer and a package manager. There is no base image and no
 binary archive to fall back on.
 
@@ -73,13 +73,13 @@ installs it, over the network. Each runs rootless in its own container, called a
 ## How it differs
 
 Most distributions ship glibc, GNU coreutils, systemd, an Xorg server with a display manager, a
-desktop built on GTK or Qt, and prebuilt binary packages from an archive. KDOS makes a different
-choice at each of these points: musl for the C library; toybox for the core userland, with
-util-linux, procps-ng and a few GNU tools where toybox falls short; toybox `init`, numbered shell
-scripts and the `ksvc` supervisor in place of systemd; Wayland only, with rootless Xwayland for X11
+desktop built on GTK or Qt, and prebuilt binary packages from an archive. KDOS keeps the GNU core
+userland and makes a different choice at each of the other points: musl for the C library;
+sysvinit's `init` with runlevels, numbered shell scripts and the `ksvc` supervisor in place of
+systemd; Wayland only, with rootless Xwayland for X11
 clients and no display manager; a desktop whose every surface draws character cells and links no
 GUI toolkit, while GTK, Qt, KDE Frameworks, wxWidgets, FLTK and Tk are built for the applications
-that use them; and packages compiled from 2,023 recipes, on a build host for the installation
+that use them; and packages compiled from about 2,000 recipes, on a build host for the installation
 image and on the machine itself for updates.
 [How KDOS differs](docs/kdos/01-philosophy/how-kdos-differs.md) compares each choice with the
 usual alternatives, says why KDOS chose differently, and lists what is given up.
@@ -90,9 +90,9 @@ usual alternatives, says why KDOS chose differently, and lists what is given up.
 |---|---|
 | The desktop | A Wayland compositor (`kdos-comp`, a fork of labwc 0.20.0 whose KDOS code lives in twenty-three source files of its own, with a CRT-style phosphor shader), a panel program, `kdos-shell`, whose one binary provides 54 surfaces (the panel itself, the Start menu, launcher, settings, file chooser, notifications, network, Bluetooth, audio, displays, the store and more), a terminal, a resource monitor and a lock screen |
 | Applications | Native ports compiled with the rest of the host, among them Firefox ESR, LibreWolf, Chromium, Thunderbird, LibreOffice, GIMP, Krita, Inkscape, Blender, FreeCAD, KiCad, Kdenlive, OBS Studio, QGIS, Kodi, TeX Live and Wine, built Wayland-first with their X11 backends compiled in; and 73 catalogue applications, among them Zathura, Scribus, ParaView, Maxima, Scilab, VSCodium, Meld, Claws Mail and Hugin, each built on demand into its own box and movable between machines as a pack file, signed when a signing key is configured |
-| The host | 1,999 upstream ports built on musl: PipeWire audio, NetworkManager, Xwayland for X11-only programs, GTK 3 and 4, libadwaita, WebKitGTK, Qt 5 and 6, QtWebEngine and KDE Frameworks 6 for the applications, podman and QEMU, GCC and Clang/LLVM, Rust, Go, Zig, Haskell, Node.js and Python, cross toolchains for ARM, RISC-V and AVR, SDR and FPGA tooling, and CUPS printing |
+| The host | About 2,000 upstream ports built on musl: PipeWire audio, NetworkManager, Xwayland for X11-only programs, GTK 3 and 4, libadwaita, WebKitGTK, Qt 5 and 6, QtWebEngine and KDE Frameworks 6 for the applications, podman and QEMU, GCC and Clang/LLVM, Rust, Go, Zig, Haskell, Node.js and Python, cross toolchains for ARM, RISC-V and AVR, SDR and FPGA tooling, and CUPS printing |
 | Boot and install | A boot splash, an optionally encrypted root, A/B root slots, and `kinstall`, a text-mode installer that also runs unattended from an answer file |
-| Its own software | 17 C libraries written for this system, the package manager and the installer (both compiled in the bootstrap phase directly from `src/system/`), and 24 recipes of its own: the desktop, five root daemons, the `kdos` command and its 31 subcommands, `help` included |
+| Its own software | 17 C libraries written for this system, the package manager and the installer (both compiled in the bootstrap phase directly from `src/system/`), and about two dozen recipes of its own: the desktop, five root daemons, the `kdos` command and its 31 subcommands, `help` included |
 
 <table>
 <tr>
@@ -140,8 +140,9 @@ make run-hw       # accelerated graphics with the phosphor pass on; needs Docker
 `make run` needs QEMU, `/dev/kvm` and the OVMF firmware at `/usr/share/ovmf/OVMF.fd`. On the live
 image the session starts on the first virtual terminal, logged in as `kdos` (password `kdos`).
 
-To try it on real hardware, write the image to a USB stick. This overwrites the whole of
-`/dev/sdX`:
+To try it on real hardware, write the image to a USB stick of 32 GB or more; every package is on
+the medium, so it does not fit a DVD, and an install needs a disk of about 56 GB. This overwrites
+the whole of `/dev/sdX`:
 
 ```sh
 sudo dd if=build/iso-build/kdos.iso of=/dev/sdX bs=4M status=progress conv=fsync
@@ -203,7 +204,7 @@ page carries the full table of contents and four reading paths.
 ## Repository layout
 
 ```
-ports/core/       1,999 upstream ports on 102 shelves, ports/core/<shelf>/<name>/: a kpkgbuild
+ports/core/       about 2,000 upstream ports on 102 shelves, ports/core/<shelf>/<name>/: a kpkgbuild
                   and a build.sh each, patches where needed
 ports/            the shelf list (shelves), fetch, update and publish tools, and sources.idx
 src/libs/         17 C libraries written for this system

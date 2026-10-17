@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libspiro
+version     = 20240903
+release     = 1
+source      = https://github.com/fontforge/libspiro/releases/download/$version/$name-dist-$version.tar.gz
+sha256      = 1412a21b943c6e1db834ee2d74145aad20b3f62b12152d475613b8241d9cde10  libspiro-20240903.tar.gz
+description = Spiro curve library — turns clothoid spline control points into Bézier outlines
+homepage    = https://github.com/fontforge/libspiro
+license     = GPL-3.0-or-later

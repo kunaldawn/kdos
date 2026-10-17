@@ -16,4 +16,5 @@ source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${v
 sha256      = c98bbef08a2b4c2613cd50e9aa9ae7b69b1fe6c16b2c40373bc0ab6116fdf78a  libunwind-23.1.2.tar.xz
 description = LLVM libunwind, installed under /usr/lib/llvm-libunwind beside the system libunwind
 homepage    = https://libcxx.llvm.org/
+license     = Apache-2.0 WITH LLVM-exception
 depends     = llvm python3

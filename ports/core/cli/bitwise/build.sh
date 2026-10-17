@@ -10,7 +10,9 @@
 # ---------------------------------
 
 autoreconf -fi
-./configure --prefix=/usr
+./configure --prefix=/usr \
+	ac_cv_have_decl_rl_change_environment=yes \
+	ac_cv_have_decl_rl_input_available_hook=yes
 make
 make DESTDIR=$PKG install
 

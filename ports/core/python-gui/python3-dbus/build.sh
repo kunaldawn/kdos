@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Built with meson directly rather than through pip: only that installs
-# dbus-python.pc and dbus/dbus-python.h, which PyQt6's dbus.mainloop.pyqt6
-# module compiles against. dbus-gmain is carried inside the tarball.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Ddoc=disabled \
 	-Dtests=disabled \

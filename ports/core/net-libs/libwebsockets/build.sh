@@ -8,13 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# OpenSSL is the TLS backend and libuv the optional event loop, linked into
-# the library rather than loaded as a runtime plugin, so a consumer that asks
-# for the uv loop cannot find it missing. zlib with extensions on gives
-# permessage-deflate. External poll stays on for the consumers that drive the
-# library from their own poll() loop. The test applications and minimal
-# examples are not built; they would install a demo server.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

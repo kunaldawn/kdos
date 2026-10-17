@@ -8,10 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Every provider is named, so a missing library stops the configure instead
-# of quietly dropping HTTPS or SSH transport. The HTTP parser is the bundled
-# llhttp: neither http-parser nor llhttp is a port. The git2 command-line
-# tool is a test driver, not a git replacement, and is not built.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

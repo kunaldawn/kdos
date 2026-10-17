@@ -9,32 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Alpine's patch: musl defines NULL as a pointer, which C++ will not cast to
-# the integer window handle Glide64mk2 passes.
 patch -p1 -i "$PORT_SRC/fix-null-usage.patch"
+export CFLAGS="${CFLAGS/-std=gnu11/}"
 
-# Every makefile asks sdl2-config for SDL unless both SDL variables are given,
-# and sdl2-config does not exist here, so pkgconf answers them.
-#
-# OpenGL is linked as libOpenGL, the vendor-neutral GL of libglvnd, not the
-# GLX libGL. The context is SDL's, made through EGL on Wayland, so nothing
-# here needs GLX. Glide64mk2 is the exception: it calls the ARB and EXT
-# extension entry points by name, which libglvnd's libGL exports and
-# libOpenGL does not, and musl binds every symbol when the plugin is loaded,
-# so against libOpenGL the plugin does not load at all.
-#
-# The core's on-screen display (FreeType, GLU) and its Vulkan video
-# extension are on. The SDL audio plugin's two resamplers, libsamplerate and
-# speexdsp, are each found by a probe that drops the resampler when the
-# library is missing, which depends prevents. Netplay needs SDL2_net and a
-# server, and is left at its default, off.
-#
-# The core includes <unzip.h> and takes minizip's flags from pkg-config, whose
-# file names the include directory above minizip/, as its other consumers
-# write <minizip/unzip.h>; MINIZIP_CFLAGS names the minizip/ directory itself.
-# Given either MINIZIP variable, the makefile asks pkg-config for neither, so
-# MINIZIP_LDLIBS is given too.
 _mk=(
+	CC="gcc -std=gnu11"
 	PREFIX=/usr
 	LIBDIR=/usr/lib
 	PLUGINDIR=/usr/lib/mupen64plus
@@ -61,9 +40,6 @@ for _c in core ui-console audio-sdl input-sdl rsp-hle video-rice video-glide64mk
 		GL_LDLIBS="$(_gl $_c)" LDCONFIG=true DESTDIR="$PKG"
 done
 
-# UPSTREAM'S ENTRY IS REPLACED for StartupWMClass: the core's SDL window
-# takes the executable's name as its Wayland app_id. It stays NoDisplay: the
-# console front end has no ROM browser and is opened with a ROM file.
 cat > "$PKG/usr/share/applications/mupen64plus.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

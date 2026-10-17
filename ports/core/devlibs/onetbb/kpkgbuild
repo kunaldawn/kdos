@@ -15,4 +15,5 @@ source      = https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v$versio
 sha256      = 191288b52e1e6b17198000b64d77d194bb65e791be46ebc606e9b091781e2070  onetbb-2023.1.0.tar.gz
 description = oneAPI Threading Building Blocks: task-parallel C++ runtime
 homepage    = https://github.com/uxlfoundation/oneTBB
+license     = Apache-2.0
 depends     = cmake ninja pkgconf hwloc

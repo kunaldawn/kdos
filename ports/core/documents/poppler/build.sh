@@ -9,42 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE QT6 BINDING IS ON: poppler-qt6 is the PDF backend of Okular, gImageReader,
-# TeXstudio, LabPlot and Cantor, and Krita's PDF import filter. Qt6Test is one
-# of the Qt modules poppler asks for even with its Qt6 tests off, and qt6-qtbase
-# provides it. The Qt5 binding stays off: nothing here is built against Qt 5.
-#
-# THE GLIB BINDING IS ON, and it needs glib and cairo and nothing else: GTK is
-# looked for only to build a demo, and gdk-pixbuf is never linked. poppler-glib
-# is how timg shows a PDF in a terminal, and its Poppler typelib is what a
-# PyGObject program such as PDF Arranger imports. Both the binding and the
-# introspection data are optional in poppler's CMake, which turns either off
-# without an error when its dependency is not found, so the checks after the
-# install are what make a missing one a failed build. The gtk-doc reference
-# stays off.
-#
-# -DENABLE_UNSTABLE_API_ABI_HEADERS=ON installs the private xpdf headers GDAL's
-# PDF driver compiles against. They carry no stability promise: a poppler
-# version bump has to be test-built with gdal too, because its PDF driver may no
-# longer compile against the new headers.
-#
-# WHAT IS ACTUALLY WANTED IS pdftotext. recoll's PDF filter shells out to it,
-# and without it recollindex walks a directory of PDFs, reports success and
-# produces an index with nothing in it — a silent failure, which is why the
-# utils are the point of this port rather than a side effect. -DENABLE_UTILS=ON
-# is therefore load-bearing.
-#
-# -DENABLE_BOOST=ON uses boost's headers for the Splash rasteriser's small
-# containers; nothing links boost at run time.
-#
-# pdfsig verifies and signs through the GPG backend (gpgmepp), and it is the
-# only signature backend built so that it is also the default: with NSS on as
-# well, poppler makes NSS, the first backend it adds, the default for pdfsig
-# and every reader that signs.
-#
-# BUILD_TESTING is not a poppler option; BUILD_CPP_TESTS, BUILD_MANUAL_TESTS
-# and one BUILD_<binding>_TESTS per binding (GTK, QT6) are what gate its test
-# programs, and every one defaults to ON.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

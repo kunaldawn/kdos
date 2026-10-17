@@ -10,9 +10,10 @@
 
 name        = gegl
 version     = 0.4.72
-release     = 1
+release     = 2
 source      = $name-$version.tar.xz::https://download.gimp.org/pub/gegl/${version%.*}/gegl-$version.tar.xz
 sha256      = ccbb8cdd1db56ecd4ece5dbabae0118ab2c46b5b3439c94f3cec467798ce956d  gegl-0.4.72.tar.xz
 description = Graph-based image processing framework, the engine under GIMP
 homepage    = https://gegl.org/
-depends     = meson ninja pkgconf babl glib json-glib libjpeg-turbo libpng libnsgif gdk-pixbuf gexiv2 lcms2 lensfun libraw librsvg libtiff openexr cairo pango poppler libwebp gobject-introspection glib-introspection vala
+license     = LGPL-3.0-or-later AND GPL-3.0-or-later
+depends     = meson ninja pkgconf babl glib json-glib libjpeg-turbo libpng libnsgif gdk-pixbuf gexiv2 lcms2 lensfun libraw librsvg libtiff openexr cairo pango poppler libwebp gobject-introspection glib-introspection vala suitesparse libspiro

@@ -7,9 +7,9 @@ uid=$(id -u)
 # A bare console (serial getty, rescue shell) can land here with HOME unset;
 # every $HOME-derived export below would then silently become "//..." and
 # follow the session around through su. Read the home field out of /etc/passwd
-# instead — there is no getent on musl, and an empty answer here lands the
-# desktop user on /root. $uid is numeric, so the match is on field 3, and only
-# the first line counts: two lines here would make every export below multi-line.
+# instead; an empty answer here lands the desktop user on /root. $uid is
+# numeric, so the match is on field 3, and only the first line counts: two
+# lines here would make every export below multi-line.
 if [ -z "$HOME" ]; then
 	HOME=$(grep "^[^:]*:[^:]*:$uid:" /etc/passwd 2>/dev/null | head -1 | cut -d: -f6)
 	[ -n "$HOME" ] || HOME=/root
@@ -46,6 +46,10 @@ export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+# Selects /etc/xdg/menus/kdos-applications.menu. Without a menu file KService
+# builds an empty application tree, and Open With → Other Application in a
+# KDE program lists nothing.
+export XDG_MENU_PREFIX=kdos-
 
 # kdos-fetch-app also drops a CLI wrapper per alien app here, so `gimp` works
 # from any shell, not just from the launcher.

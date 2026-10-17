@@ -11,7 +11,6 @@
 # /etc/profile
 
 export PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
-export LD_LIBRARY_PATH=/usr/lib:/lib:/usr/local/lib64:/usr/local/lib
 export PKG_CONFIG_PATH="/usr/share/pkgconfig:/usr/lib/pkgconfig:/usr/lib64/pkgconfig:/usr/local/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig"${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 # TERM describes the TERMINAL and belongs to whoever opened it — agetty says
 # `linux` on a VT, foot says `foot`, ssh forwards the client's. Exporting one

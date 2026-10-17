@@ -15,4 +15,5 @@ source      = https://download.netsurf-browser.org/libs/releases/libnsgif-$versi
 sha256      = 6014c842f61454d2f5a0f8243d7a8d7bde9b7da3ccfdca2d346c7c0b2c4c061b  libnsgif-1.0.0.tar.gz
 description = NetSurf GIF decoding library (libkimg and imv decode GIF with it)
 homepage    = https://www.netsurf-browser.org/projects/libnsgif/
+license     = MIT
 depends     = buildsystem

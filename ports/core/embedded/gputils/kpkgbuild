@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = gputils
+version     = 1.5.2
+release     = 1
+source      = https://downloads.sourceforge.net/gputils/gputils-$version.tar.bz2
+sha256      = 8fb8820b31d7c1f7c776141ccb3c4f06f40af915da6374128d752d1eee3addf2  gputils-1.5.2.tar.bz2
+description = Assembler, linker and librarian for Microchip PIC microcontrollers — the back end of sdcc's PIC14 and PIC16 ports
+homepage    = https://gputils.sourceforge.io/
+license     = GPL-2.0-or-later

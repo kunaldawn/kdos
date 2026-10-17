@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qtwayland
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qtwayland
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = 8eb7615e39332a10f506e8dd70f02d5954bb5949ff54f6dcbf8bd6168222f9df  qt6-qtwayland-6.11.2.tar.xz
+sha256      = ae14d9bcf1bb3c300a3ab2e6a53f50284e5c6c966a4ac4cc5aedcb1bc74e4d02  qt6-qtwayland-6.12.0.tar.xz
 description = Qt 6 Wayland compositor library and the client decoration and shell plugins
 homepage    = https://www.qt.io/
+license     = (LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only) AND GPL-3.0-only
 depends     = cmake ninja pkgconf wayland mesa libdrm qt6-qtbase qt6-qtdeclarative qt6-qtsvg
 group       = qt6

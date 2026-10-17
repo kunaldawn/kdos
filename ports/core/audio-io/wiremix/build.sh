@@ -11,10 +11,6 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
-# pipewire-sys GENERATES ITS BINDINGS, so this build runs bindgen, which
-# dlopens libclang — and a static-musl rust binary cannot dlopen anything at
-# all. Turning crt-static off is what gives the build script a dynamic loader;
-# LIBCLANG_PATH saves it a search. Both are build-time only.
 export RUSTFLAGS="-C target-feature=-crt-static"
 export LIBCLANG_PATH=/usr/lib
 

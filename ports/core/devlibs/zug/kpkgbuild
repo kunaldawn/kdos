@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/arximboldi/zug/archive/r
 sha256      = 75ff666a4ce1615b3ca26abbb17b10f5cb5cf5f86c9c293ec430c34750d3ea27  zug-0.1.2.tar.gz
 description = Transducers for C++ (headers)
 homepage    = https://sinusoid.es/zug/
+license     = BSL-1.0
 depends     = cmake ninja

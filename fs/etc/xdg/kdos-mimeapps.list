@@ -42,6 +42,8 @@ inode/directory=org.kde.dolphin.desktop
 application/pdf=okularApplication_pdf.desktop
 application/postscript=okularApplication_ghostview.desktop
 image/x-eps=okularApplication_ghostview.desktop
+image/x-bzeps=okularApplication_ghostview.desktop
+image/x-gzeps=okularApplication_ghostview.desktop
 image/vnd.djvu=okularApplication_djvu.desktop
 image/vnd.djvu+multipage=okularApplication_djvu.desktop
 
@@ -87,6 +89,7 @@ application/xml=org.kde.kate.desktop
 application/yaml=org.kde.kate.desktop
 application/toml=org.kde.kate.desktop
 application/sql=org.kde.kate.desktop
+text/x-pascal=org.kde.kate.desktop
 
 # Pictures: Gwenview.
 image/png=org.kde.gwenview.desktop
@@ -106,6 +109,50 @@ image/x-portable-graymap=org.kde.gwenview.desktop
 image/x-portable-pixmap=org.kde.gwenview.desktop
 image/x-portable-anymap=org.kde.gwenview.desktop
 image/vnd.adobe.photoshop=org.kde.gwenview.desktop
+image/svg+xml-compressed=org.kde.gwenview.desktop
+image/openraster=org.kde.gwenview.desktop
+image/x-icns=org.kde.gwenview.desktop
+image/x-xbitmap=org.kde.gwenview.desktop
+image/x-xpixmap=org.kde.gwenview.desktop
+
+# Camera RAW: Gwenview shows it, as it shows every other picture; darktable
+# and RawTherapee, which also claim these types, are the editors. Gwenview
+# claims no Canon CR3 or Nikon NRW, so those two open in darktable.
+image/x-adobe-dng=org.kde.gwenview.desktop
+image/x-canon-cr2=org.kde.gwenview.desktop
+image/x-canon-crw=org.kde.gwenview.desktop
+image/x-fuji-raf=org.kde.gwenview.desktop
+image/x-kodak-dcr=org.kde.gwenview.desktop
+image/x-kodak-k25=org.kde.gwenview.desktop
+image/x-kodak-kdc=org.kde.gwenview.desktop
+image/x-minolta-mrw=org.kde.gwenview.desktop
+image/x-nikon-nef=org.kde.gwenview.desktop
+image/x-olympus-orf=org.kde.gwenview.desktop
+image/x-panasonic-rw=org.kde.gwenview.desktop
+image/x-panasonic-rw2=org.kde.gwenview.desktop
+image/x-pentax-pef=org.kde.gwenview.desktop
+image/x-sigma-x3f=org.kde.gwenview.desktop
+image/x-sony-arw=org.kde.gwenview.desktop
+image/x-sony-sr2=org.kde.gwenview.desktop
+image/x-sony-srf=org.kde.gwenview.desktop
+image/x-canon-cr3=org.darktable.darktable.desktop
+image/x-nikon-nrw=org.darktable.darktable.desktop
+
+# Pictures Gwenview does not claim go to the viewer that does: Okular's
+# image entry for JPEG 2000, DDS, OpenEXR, Radiance HDR, PCX and SGI; imv for
+# farbfeld; KolourPaint for WBMP and Sun raster. Windows metafiles are vector
+# drawings, and open in Inkscape.
+image/jp2=okularApplication_kimgio.desktop
+image/vnd.ms-dds=okularApplication_kimgio.desktop
+image/x-exr=okularApplication_kimgio.desktop
+image/x-hdr=okularApplication_kimgio.desktop
+image/vnd.zbrush.pcx=okularApplication_kimgio.desktop
+image/x-rgb=okularApplication_kimgio.desktop
+image/x-farbfeld=imv.desktop
+image/vnd.wap.wbmp=org.kde.kolourpaint.desktop
+image/x-sun-raster=org.kde.kolourpaint.desktop
+image/emf=org.inkscape.Inkscape.desktop
+image/wmf=org.inkscape.Inkscape.desktop
 
 # GIMP's own format: GIMP. Gwenview and KolourPaint claim it too, and only
 # preview it.
@@ -125,6 +172,11 @@ video/x-theora+ogg=org.kde.haruna.desktop
 video/x-ogm+ogg=org.kde.haruna.desktop
 video/x-flv=org.kde.haruna.desktop
 video/3gpp=org.kde.haruna.desktop
+
+# Sound that comes in a video container or a film's audio track, WebM audio
+# and AC-3, goes to Haruna with the video; mpv claims both too.
+audio/webm=org.kde.haruna.desktop
+audio/ac3=org.kde.haruna.desktop
 
 # Music: Strawberry. *.ogg and *.opus are globbed by several Ogg subtypes of
 # equal weight, and which one a lookup lands on is the order of the compiled
@@ -148,6 +200,7 @@ audio/x-aiff=org.strawberrymusicplayer.strawberry.desktop
 audio/matroska=org.strawberrymusicplayer.strawberry.desktop
 audio/x-mpegurl=org.strawberrymusicplayer.strawberry.desktop
 audio/x-scpls=org.strawberrymusicplayer.strawberry.desktop
+audio/vnd.rn-realaudio=org.strawberrymusicplayer.strawberry.desktop
 
 # Archives Ark writes as well as reads: zip, the tar family and 7z.
 application/zip=org.kde.ark.desktop
@@ -171,3 +224,23 @@ text/html=firefox-esr.desktop
 application/xhtml+xml=firefox-esr.desktop
 x-scheme-handler/http=firefox-esr.desktop
 x-scheme-handler/https=firefox-esr.desktop
+
+# Office documents: LibreOffice. Writer is the one window for a Word
+# document; doxx claims .docx too and draws in a terminal. The flat
+# OpenDocument types go to the application that edits them, not to the XSLT
+# filter entry, and a Works document to Writer, which Calc shares it with.
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=libreoffice-writer.desktop
+application/vnd.oasis.opendocument.text-flat-xml=libreoffice-writer.desktop
+application/vnd.oasis.opendocument.spreadsheet-flat-xml=libreoffice-calc.desktop
+application/vnd.oasis.opendocument.presentation-flat-xml=libreoffice-impress.desktop
+application/vnd.oasis.opendocument.graphics-flat-xml=libreoffice-draw.desktop
+application/vnd.ms-works=libreoffice-writer.desktop
+
+# Remote desktops: Remmina, for every scheme it serves. An ssh: link opens a
+# shell in the desktop's terminal through KIO's telnet service, not a
+# Remmina window.
+x-scheme-handler/rdp=org.remmina.Remmina.desktop
+x-scheme-handler/vnc=org.remmina.Remmina.desktop
+x-scheme-handler/spice=org.remmina.Remmina.desktop
+x-scheme-handler/remmina=org.remmina.Remmina.desktop
+x-scheme-handler/ssh=ktelnetservice6.desktop

@@ -16,4 +16,6 @@ vrsn        = 2.1
 
 source      = $name-$version.tar.gz::https://github.com/openresty/luajit2/archive/v${vrsn}-$version.tar.gz
 sha256      = a658a5596230c1564295b34303d64dee708956744de622f762e6a503b1a89236  luajit-20260914.tar.gz
-description = Just-in-time compiler and drop-in replacement for Lua.
+description = Just-in-time compiler and drop-in replacement for Lua
+homepage    = https://github.com/openresty/luajit2
+license     = MIT

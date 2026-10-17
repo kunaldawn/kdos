@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 639a501b877446b19905399d27e2be2b6ebb0bb481abe3209dc4d535a12e12ca  kwindowsystem-6.30.0.tar.xz
 description = KDE Frameworks: access to the windowing system, Wayland and X11
 homepage    = https://api.kde.org/frameworks/kwindowsystem/html/
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later AND MIT AND LGPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtwayland wayland wayland-protocols plasma-wayland-protocols libX11 libxcb xcb-util-keysyms xcb-util-wm libXfixes

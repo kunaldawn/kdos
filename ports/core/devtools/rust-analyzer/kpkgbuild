@@ -17,5 +17,6 @@ sha256      = 7bdf8f0d86a99451bb2b04b5d58de08731caab41cd3993cf51256cfb45887618  
 sha256      = 4db091c82086679801b5aa8b375af4274095ce7683c11cb733b92b28e97c895d  rust-analyzer-vendor-2026.09.21.tar.xz
 description = The Rust language server
 homepage    = https://rust-analyzer.github.io/
+license     = MIT OR Apache-2.0
 depends     = rust
 vendoring   = rust

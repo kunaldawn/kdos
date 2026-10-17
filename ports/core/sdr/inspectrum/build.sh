@@ -12,14 +12,10 @@
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
-	-DCMAKE_INSTALL_PREFIX=/usr \
-	-DCMAKE_DISABLE_FIND_PACKAGE_Qt5=ON
+	-DCMAKE_INSTALL_PREFIX=/usr
 ninja -C build
 DESTDIR=$PKG ninja -C build install
 
-# Upstream ships neither an entry nor an icon. With no organisation domain
-# set, Qt's Wayland app_id is the executable's name. The icon is the atlas's
-# network-wireless, which the panel draws without a hicolor file.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/inspectrum.desktop" <<'DESKTOP'
 [Desktop Entry]

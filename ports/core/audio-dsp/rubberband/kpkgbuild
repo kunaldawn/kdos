@@ -11,8 +11,9 @@
 name        = rubberband
 version     = 4.0.0
 release     = 1
-source      = rubberband-4.0.0.tar.bz2::https://breakfastquay.com/files/releases/rubberband-4.0.0.tar.bz2
+source      = rubberband-$version.tar.bz2::https://breakfastquay.com/files/releases/rubberband-$version.tar.bz2
 sha256      = af050313ee63bc18b35b2e064e5dce05b276aaf6d1aa2b8a82ced1fe2f8028e9  rubberband-4.0.0.tar.bz2
-description = Time-stretch and pitch-shift that keeps a transient a transient
+description = Audio time-stretching and pitch-shifting library
 homepage    = https://breakfastquay.com/rubberband/
-depends     = meson fftw libsamplerate libsndfile
+license     = GPL-2.0-or-later
+depends     = meson fftw libsamplerate libsndfile lv2 ladspa

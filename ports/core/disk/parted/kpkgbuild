@@ -14,4 +14,6 @@ release     = 1
 source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.xz
 sha256      = a2b7811f47b0ddb1f7b1d0aa456f7c1270da70708ce231c2fe054c7199eafa63  parted-3.8.tar.xz
 description = Disk partitioning and partition resizing tool
+homepage    = https://www.gnu.org/software/parted/
+license     = GPL-3.0-or-later
 depends     = lvm2 util-linux readline ncurses

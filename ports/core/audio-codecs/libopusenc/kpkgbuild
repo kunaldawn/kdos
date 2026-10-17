@@ -15,4 +15,5 @@ source      = https://downloads.xiph.org/releases/opus/$name-$version.tar.gz
 sha256      = f616d3aff9b2034547894ccb8ab56c36cf1a4acb0d922c5d7119f97bbe58642c  libopusenc-0.3.tar.gz
 description = The high-level Opus encoder opusenc is built on
 homepage    = https://opus-codec.org/
+license     = BSD-3-Clause
 depends     = pkgconf opus

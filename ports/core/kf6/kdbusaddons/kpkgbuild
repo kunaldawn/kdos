@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 063ef80460f76d86dc4b033ef04b65b69ba82ee0de410440fe609465e7f5a997  kdbusaddons-6.30.0.tar.xz
 description = KDE Frameworks: convenience classes for Qt D-Bus
 homepage    = https://api.kde.org/frameworks/kdbusaddons/html/
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase libX11

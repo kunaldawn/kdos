@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 74c6402fa697a76254e1c68ebd86136be49e03fad86482e86a27e5478f662c41  qqc2-desktop-style-6.30.0.tar.xz
 description = KDE Frameworks: QtQuick Controls style that follows the desktop palette and icons
 homepage    = https://invent.kde.org/frameworks/qqc2-desktop-style
+license     = (LGPL-3.0-only OR GPL-2.0-or-later) AND LGPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KFQF-Accepted-GPL OR LicenseRef-Qt-Commercial) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcolorscheme kconfig kiconthemes kirigami sonnet libX11

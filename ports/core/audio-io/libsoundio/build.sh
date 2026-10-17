@@ -8,10 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# A backend whose library is not found is dropped with a status line, not an
-# error, so the two this port promises are checked in the generated header:
-# PulseAudio (which PipeWire answers) and ALSA. JACK is not on this system.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

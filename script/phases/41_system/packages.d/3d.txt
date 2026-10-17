@@ -31,3 +31,4 @@ admesh
 alembic
 draco
 lib3mf
+meshoptimizer

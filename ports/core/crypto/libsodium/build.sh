@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --enable-opt is off: it compiles for the build machine's CPU, and libsodium
-# already picks its AVX2 and AES-NI paths at run time.
 export CFLAGS="${CFLAGS/-O2/-O3}"
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static
 make

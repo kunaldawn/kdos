@@ -9,7 +9,7 @@ one these pages use. Each entry links the chapter that treats the term in depth.
 *italics* inside an entry has an entry of its own. No other chapter is needed first, though
 [Architecture overview](../03-architecture/overview.md) and [How KDOS is
 built](../05-developer/how-kdos-is-built.md) give most of these terms their context, and [How KDOS
-differs](../01-philosophy/how-kdos-differs.md) sets the host's components (*musl*, *toybox*,
+differs](../01-philosophy/how-kdos-differs.md) sets the host's components (*musl*, *sysvinit*,
 *seatd*, the *labwc* fork) beside the ones other distributions use.
 
 The section after the terms lists words the book avoids, and what it says instead.
@@ -317,7 +317,7 @@ overview](../03-architecture/overview.md#the-host-and-a-box).
 The small archive the kernel unpacks into memory and runs first. Its `init`, a bash script, finds,
 unlocks and mounts the real root (or, on the live *medium*, builds an *overlay* root), then hands
 over to it with `switch_root`. Packaging generates it as `build/initramfs.cpio.gz`, and it carries
-toybox, bash, a module set and the programs early boot needs. See [Boot and
+GNU coreutils, grep and sed, util-linux's mount tools, bash, a module set and the programs early boot needs. See [Boot and
 init](../03-architecture/boot-and-init.md#the-initramfs).
 
 ### kdos-packd
@@ -482,8 +482,8 @@ The list of ports a *phase* installs: one port name per line, with `#` comments.
 either in one file, `packages.txt`, or in a directory, `packages.d/`, whose `*.txt` files are read
 in byte order as one list; never both. Ten phases have one, from `20_selfhost` to `60_kernel`. The
 five userland phases, `40_lang` to `44_apps`, use `packages.d/`: one `<shelf>.txt` per *shelf* the
-phase draws on, one `src-<area>.txt` for the ports it builds from an *area*, and, in `40_lang` and
-`41_system`, an `00-order.txt` that sorts first and holds the runs whose order a comment pins. A
+phase draws on, one `src-<area>.txt` for the ports it builds from an *area*, and, in `41_system`,
+an `00-order.txt` that sorts first and holds the runs whose order a comment pins. A
 `packages.txt` gives its pinned run first and, where it holds more, groups the rest by shelf under
 comment banners; the lists of `20_selfhost` and `60_kernel` are a pinned run alone.
 From `30_foundation` on, a list names exactly the ports its phase installs and no others, which
@@ -515,10 +515,10 @@ confused with `phosphor`, one of the eight *accents*. See
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-five port repositories in one format, holding 2,024 recipes: 2,000 upstream ports in `ports/core/`,
-each on a *shelf*, and 24 of KDOS's own in four *areas*: 5 in `src/system/`, 6 in `src/art/`, 8 in
-`src/desktop/` and 5 in `src/daemons/`. (The sixth directory in `src/system/`, `kdos-kpkg`, has no
-recipe; `10_bootstrap` compiles it by script.) A port is known by its bare name, which is unique
+five port repositories in one format, holding about 2,000 recipes: the upstream ports in
+`ports/core/`, each on a *shelf*, and KDOS's own in four *areas*: `src/system/`, `src/art/`,
+`src/desktop/` and `src/daemons/` ([The ports catalogue](ports-catalogue.md#ports-per-shelf) counts
+them). (`src/system/kdos-kpkg` has no recipe; `10_bootstrap` compiles it by script.) A port is known by its bare name, which is unique
 across all five. See [Writing ports](../05-developer/writing-ports.md) and [The ports
 catalogue](ports-catalogue.md).
 
@@ -562,13 +562,13 @@ daemons](../04-programs/daemons.md#kdos-energyd).
 
 ### rcK
 
-`/etc/init.d/rcK`, the shutdown counterpart of *rcS*: the first `::shutdown` entry in
+`/etc/init.d/rcK`, the shutdown counterpart of *rcS*: the first runlevel 0 and 6 entry in
 `/etc/inittab`, which stops the service scripts in reverse numeric order. See [Boot and
 init](../03-architecture/boot-and-init.md#shutdown).
 
 ### rcS
 
-`/etc/init.d/rcS`, the script toybox's `init` runs once at boot as its `sysinit` entry. It mounts
+`/etc/init.d/rcS`, the script sysvinit's `init` runs once at boot as its `sysinit` entry. It mounts
 the filesystems, runs each enabled service script `/etc/init.d/NN_<name>.sh` in numeric order, runs
 `kdos-bootctl mark-good` and quits the *splash* before the login prompt. See [Boot and
 init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
@@ -633,6 +633,14 @@ A stable name for a place in the system, written `verb.noun` (`setup.network`), 
 `/etc/kdos/menu.conf` or `~/.config/kdos/menu.conf` and opened with `kdos menu summon <route>`. It
 keeps working when the chord is rebound or the menu row moves. See [The kdos
 command](../04-programs/kdos-command.md#kdos-menu).
+
+### runlevel
+
+The state *sysvinit*'s `init` holds the machine in. `/etc/inittab` lists each entry's runlevels:
+`3` is the running system with its consoles, `S` is single-user mode (`sulogin` on the console,
+asking for root's password), `0` powers off and `6` reboots. `telinit` changes it and `runlevel`
+prints the previous and current one. See [Boot and
+init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 
 ### runtime
 
@@ -808,6 +816,14 @@ toasts `kdos-notifyd` draws, and the filter `kdos-ascii`, which writes text to s
 [kdos-shell](../04-programs/kdos-shell.md) uses the word in a wider sense that covers all 54
 programs, helpers included. See [kdos-shell](../04-programs/kdos-shell.md).
 
+### sysvinit
+
+The System V init package that provides PID 1: `init`, `telinit`, `shutdown`, `halt`, `reboot`,
+`poweroff`, `runlevel` and `killall5`. It reads `/etc/inittab`, runs *rcS* at boot, keeps the
+consoles running in *runlevel* 3 and runs *rcK* and the rest of the shutdown entries in runlevels
+0 and 6. It supervises no service; *ksvc* does. See [Boot and
+init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
+
 ### target tree
 
 `build/fs`, the root filesystem the build assembles and every phase from `20_selfhost` onwards runs
@@ -827,14 +843,6 @@ language](../03-architecture/design-language.md#pictures-are-an-enhancement-laye
 A transient notification popup. `kdos-notifyd` owns `org.freedesktop.Notifications` and shows each
 notification as a toast; a toast that expires, is clicked or is closed by its sender joins the
 history that `kdos-notify` shows. See [kdos-shell](../04-programs/kdos-shell.md#notifications).
-
-### toybox
-
-The multi-call binary that provides `init` and most everyday commands on the host, and in the
-*initramfs*. Where a full tool is needed another port owns the command (util-linux owns `mount`,
-`blkid` and `switch_root`, for example) and the toybox build switches that applet off. See [How KDOS
-differs](../01-philosophy/how-kdos-differs.md#the-core-userland) and
-[Packaging](../03-architecture/packaging.md#toybox-and-the-tools-it-overlaps).
 
 ### trial boot
 

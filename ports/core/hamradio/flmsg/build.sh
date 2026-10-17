@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# FLTK picks Wayland or X11 at run time, and on Wayland fl_display is NULL:
-# the Xlib window-hint call after the main window opens is made only when the
-# X11 display is open.
-#
-# font-browser-pthread includes pthread.h in the font browser, which starts a
-# thread and reaches the header through none of the ones it includes.
 patch -p1 -i "$PORT_SRC/x11-hints-on-x11-only.patch"
 patch -p1 -i "$PORT_SRC/font-browser-pthread.patch"
 
@@ -26,8 +20,6 @@ patch -p1 -i "$PORT_SRC/font-browser-pthread.patch"
 make
 make DESTDIR=$PKG install
 
-# THE MENU: upstream's icon is XPM and its entry carries no window class; both
-# are replaced. FLTK takes the Wayland app_id from the main window's xclass.
 rm -f "$PKG/usr/share/applications/flmsg.desktop"
 s=$(magick identify -format %w "data/flmsg.xpm")
 install -d "$PKG/usr/share/icons/hicolor/${s}x${s}/apps"

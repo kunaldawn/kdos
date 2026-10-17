@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The Qt 6 build only: libquazip1-qt6 and the QuaZip-Qt6 CMake package, which
-# is what Krita and TeXstudio look for. QTEXTCODEC decodes legacy file-name
-# encodings through Qt6 Core5Compat. QUAZIP_FETCH_LIBS stays off, so a missing
-# zlib or bzip2 is an error rather than a download.
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

@@ -16,4 +16,5 @@ source      = https://gitlab.freedesktop.org/xorg/font/$_repo/-/archive/$name-$v
 sha256      = ee9421f62ecab3ad21bb04c28a01ad35c66c2de20565d959de83ea8f3ab41523  font-adobe-75dpi-1.0.4.tar.gz
 description = X.org core bitmap fonts, served by Xwayland to its X11 clients
 homepage    = https://gitlab.freedesktop.org/xorg/font
+license     = HPND-sell-variant
 depends     = util-macros bdftopcf font-util mkfontscale encodings

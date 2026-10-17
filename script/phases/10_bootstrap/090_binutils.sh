@@ -37,5 +37,10 @@ mkdir build && cd build
 make
 make DESTDIR=$SYSROOT install
 
+# No libtool archive outlives this step: these are installed outside any
+# package, so nothing later removes them, and libtool would copy their
+# dependency lists into every library linked against libbfd or libopcodes.
+rm -f $SYSROOT/usr/lib/lib{bfd,ctf,ctf-nobfd,opcodes,sframe}.la
+
 rm -rf "$BINUTILS_SRC"
 touch "$MARK/binutils"

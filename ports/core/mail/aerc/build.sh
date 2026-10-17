@@ -11,24 +11,9 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CGO_ENABLED=1
-# notmuch IS the reason this is here rather than mutt: aerc queries a notmuch
-# database directly, so mail that is already indexed on the machine is
-# searchable from the client with no second index. That binding is cgo, which
-# is why CGO_ENABLED is on for this port and off for every other Go one.
 make PREFIX=/usr GOFLAGS="$GOFLAGS -mod=vendor -tags=notmuch" GO_EXTRA_LDFLAGS="-s -w"
 make PREFIX=/usr DESTDIR=$PKG install
 
-# THE FILTER THAT SPOOLS, written HERE and not in a file beside the recipe
-# because the recipe hash covers kpkgbuild, build.sh, postinstall.sh and
-# *.patch and nothing else. A script of its own would be invisible to it: the
-# port would report itself current after every later edit and the image would
-# keep the renderer it already had. testing/preflight.sh extracts this heredoc
-# and parses it, which is what a file would have got for free.
-#
-# It lands in aerc's own filter directory because aerc prepends every search
-# directory's filters/ to the $PATH it runs a filter with, so /etc/skel's
-# aerc.conf names it by bare word and carries no path an upstream
-# --libexecdir change would break.
 install -d "$PKG/usr/libexec/aerc/filters"
 cat > "$PKG/usr/libexec/aerc/filters/kdos-part" <<'KDOS_SH'
 #!/bin/sh
@@ -65,8 +50,7 @@ image)
 	# --animate off OR A SENDER CHOOSES HOW LONG THE MESSAGE TAKES. chafa
 	# animates a GIF even into a pipe, sleeping each frame's delay, and a
 	# GIF's delay field is 16-bit centiseconds with no limit on the frame
-	# count: a 219-byte attachment held the body for a minute here. Nothing
-	# on aerc's side times a filter out.
+	# count, and nothing on aerc's side times a filter out.
 	#
 	# aerc puts the view's width in $COLUMNS; the fallback is for a hand
 	# run. Height is fixed because the pager scrolls. `less -Rc` is that
@@ -113,8 +97,8 @@ html)
 # A READING, NOT AN IMPORT. aerc's calendar filter writes nothing, which is the
 # property that matters: a filter runs every time a message scrolls past, and
 # one that imported an invitation would accept meetings by being looked at. It
-# is run through gawk BY NAME rather than by its own `#!/usr/bin/awk -f`,
-# because /usr/bin/awk on this image is toybox's. `command -v` finds the script
+# is run through gawk by name, the awk it is written for, so it does not
+# depend on its own `#!/usr/bin/awk -f`. `command -v` finds the script
 # because aerc puts its own filter directory on this filter's PATH.
 ics)
 	_cal=$(command -v calendar) || {
@@ -131,16 +115,6 @@ esac
 KDOS_SH
 chmod 755 "$PKG/usr/libexec/aerc/filters/kdos-part"
 
-# %u IS THE ARGUMENT. kdos-appbox's opener SUBSTITUTES field codes and appends
-# nothing when an entry has none (`exec_to_argv`, open.c), so a bare
-# `Exec=aerc` opens an empty client for a link that named a person.
-#
-# NO `MimeType=x-scheme-handler/mailto;` HERE. That key is what lets
-# /usr/bin/xdg-open find an entry by scheme, and that script runs the entry's
-# Exec directly — the word `Terminal` does not occur anywhere in it — so aerc
-# would be started without a terminal and die on `open /dev/tty: no such
-# device`. The mailto: default is Thunderbird's, in /etc/xdg/kdos-mimeapps.list,
-# and aerc is run by name.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/aerc.desktop" <<'EOF'
 [Desktop Entry]

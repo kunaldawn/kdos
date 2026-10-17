@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ENABLE_GTK=OFF: the Qt client is the one built; the GTK one needs gtkmm 4.
-# REBUILD_WEB=OFF: rebuilding the web client runs npm against the network;
-# the release carries it built.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -52,15 +49,12 @@ DESTDIR=$PKG cmake --install build
 
 find "$PKG/usr/share/transmission/translations" -name '*.qm' ! -name '*_en*.qm' -delete
 
-# The panel draws only PNG icons, and upstream installs the logo as SVG.
 for s in 48 64 128 256; do
 	install -d "$PKG/usr/share/icons/hicolor/${s}x$s/apps"
 	rsvg-convert -w $s -h $s icons/hicolor_apps_scalable_transmission.svg \
 		-o "$PKG/usr/share/icons/hicolor/${s}x$s/apps/transmission-qt.png"
 done
 
-# The window's app_id is the binary's name. qBittorrent is the torrent and
-# magnet handler, so this entry claims no MIME type.
 cat > "$PKG/usr/share/applications/transmission-qt.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

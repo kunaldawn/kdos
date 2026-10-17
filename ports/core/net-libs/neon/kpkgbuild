@@ -15,4 +15,5 @@ source      = https://notroj.github.io/neon/neon-$version.tar.gz
 sha256      = a99b7262525a454d1065cf76dd17240fd808dfc4ef15636990ff83a5d0d9e740  neon-0.37.1.tar.gz
 description = HTTP and WebDAV client library with TLS, used by NUT's netxml-ups driver and Audacious
 homepage    = https://notroj.github.io/neon/
+license     = LGPL-2.0-or-later
 depends     = pkgconf openssl expat zlib

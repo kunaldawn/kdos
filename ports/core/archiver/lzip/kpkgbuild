@@ -13,7 +13,8 @@ version     = 1.26
 release     = 1
 source      = https://download.savannah.gnu.org/releases/$name/$name-$version.tar.gz
 sha256      = 641cf30961525cbe3b340cc883436c8854e9f5032f459f444de4782b621e6572  lzip-1.26.tar.gz
-description = Lossless data compressor, and the only way to read a .tar.lz
+description = Lossless data compressor for the .lz format
 homepage    = https://www.nongnu.org/lzip/
+license     = GPL-2.0-or-later
 bench_setup = dd if=/dev/urandom of=bench.bin bs=1M count=16 status=none
 bench       = lzip -9 -c bench.bin > /dev/null

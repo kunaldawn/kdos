@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = 3dcaa45875bab5a2dcadc34cf57cf06689b8d86ff40e20fee01ca2b18987175f  kunitconversion-6.30.0.tar.xz
 description = KDE Frameworks: unit conversion
 homepage    = https://invent.kde.org/frameworks/kunitconversion
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase ki18n gettext

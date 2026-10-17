@@ -1,0 +1,22 @@
+--- a/configure
++++ b/configure
+@@ -1616,7 +1616,7 @@
+ VERSION=`echo $PACKAGE_VERSION | cut -d . -f 1`
+ SUBVERSION=`echo $PACKAGE_VERSION | cut -d . -f 2`
+ PATCHLEVEL=`echo $PACKAGE_VERSION | cut -d . -f 3`
+-TIMESTAMP=`date +%Y%m%d`
++TIMESTAMP=`date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m%d`
+ 
+ ## @abs_this_builddir@  - absolute path to top of build directory.
+ ## According to GNU autoconf we can rely on that there's a proper
+--- a/configure.in
++++ b/configure.in
+@@ -111,7 +111,7 @@
+ VERSION=`echo $PACKAGE_VERSION | cut -d . -f 1`
+ SUBVERSION=`echo $PACKAGE_VERSION | cut -d . -f 2`
+ PATCHLEVEL=`echo $PACKAGE_VERSION | cut -d . -f 3`
+-TIMESTAMP=`date +%Y%m%d`
++TIMESTAMP=`date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m%d`
+ 
+ ## @abs_this_builddir@  - absolute path to top of build directory.
+ ## According to GNU autoconf we can rely on that there's a proper

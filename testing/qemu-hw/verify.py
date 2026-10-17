@@ -2,7 +2,7 @@
 """Drive the containerized HW-accel QEMU over a serial socket to prove the
 noctalia (Qt) shell renders on the NVIDIA GPU via virgl+blob instead of blanking.
 
-Boots gtk,gl=es + virtio-vga-gl,blob=true; logs in on ttyS0 (askfirst -> Enter);
+Boots gtk,gl=es + virtio-vga-gl,blob=true; waits for the root shell on ttyS0;
 silences tty echo; swaps /usr/bin/noctalia for a HW variant (no software force,
 QSG_INFO=1); starts niri on a real VT via openvt (VT-bound seatd needs it);
 dumps niri + noctalia logs and a screenshot, transferred back over serial as hex.
@@ -72,6 +72,18 @@ class Serial:
         return buf
     def send(self, line):
         self.s.sendall((line + "\n").encode())
+    def wait_shell(self, timeout=240):
+        # The live image logs root in on ttyS0 with no password, so the shell
+        # is probed for rather than a prompt waited on. Nothing is typed until
+        # rcS has spoken: a byte on the serial line during Limine's countdown
+        # stops the boot at its menu.
+        self.read_until("[KDOS]", timeout=180)
+        end = time.time() + timeout
+        while time.time() < end:
+            self.send("echo KDOS''PROBE")
+            if "KDOSPROBE" in self.read_until("KDOSPROBE", timeout=4):
+                return True
+        return False
     def cap(self, cmd, timeout=40):
         # echo is off in the tty, so output between S and E is clean.
         self.send(f"printf '{S}\\n'; {cmd}; printf '{E}%d\\n' $?")
@@ -84,8 +96,8 @@ def main():
     start_container()
     ser = Serial()
     print("[*] waiting for boot")
-    ser.read_until("Please press Enter", timeout=120)
-    ser.send(""); time.sleep(1); ser.send(""); time.sleep(1)
+    if not ser.wait_shell():
+        print("[!] no shell on the serial console"); sys.exit(1)
     # Silence echo + bracketed paste so captures are clean.
     ser.send("stty -echo 2>/dev/null; bind 'set enable-bracketed-paste off' 2>/dev/null; PS1=; export PS1")
     time.sleep(1)

@@ -15,4 +15,5 @@ source      = https://github.com/rockowitz/ddcutil/archive/refs/tags/v$version.t
 sha256      = d6b2a42378233aaff6188a0a5ff9fa0e959cb95742367e2cdfa2c6a023c7fe26  ddcutil-3.0.2.tar.gz
 description = Brightness, contrast and input source of an external monitor over DDC/CI
 homepage    = https://www.ddcutil.com/
+license     = GPL-2.0-or-later
 depends     = glib jansson acl libdrm eudev zlib dbus

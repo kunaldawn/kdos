@@ -15,4 +15,5 @@ source      = https://download.netsurf-browser.org/libs/releases/libnslog-$versi
 sha256      = fc98dca9d7efa67096470a5d96c023146e25bfdec08c0db74661c7b4db0453d0  libnslog-0.1.3.tar.gz
 description = NetSurf logging library — categorised logging with a filter language
 homepage    = https://www.netsurf-browser.org/projects/libnslog/
+license     = MIT
 depends     = buildsystem flex bison

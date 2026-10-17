@@ -9,14 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# KSaneWidgets6 is the Acquire Image scanner import, optional upstream and
-# silently dropped when absent, so it is required here. KF_SKIP_PO_PROCESSING
-# leaves the interface catalogues out: bundled data is English only. The
-# handbook is built, so Help opens a local copy; kdoctools_install() builds
-# every translated handbook too, and those are removed after the install.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
@@ -27,11 +22,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-find "$PKG/usr/share/doc/HTML" -mindepth 1 -maxdepth 1 ! -name en -exec rm -rf {} +
-
-# UPSTREAM'S ENTRY IS REPLACED for StartupWMClass: KAboutData sets the desktop
-# file name, so the Wayland app_id is org.kde.kolourpaint, not upstream's
-# "kolourpaint". The hicolor PNGs it names are upstream's, installed above.
 cat > "$PKG/usr/share/applications/org.kde.kolourpaint.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

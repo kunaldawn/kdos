@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The GTK 4 series, installed under the gtksourceview-5 API name. Font
-# fallback for the space-drawing glyphs goes through fontconfig and pangoft2;
-# without them it is compiled out and nothing says so.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \

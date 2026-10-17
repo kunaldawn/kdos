@@ -591,7 +591,7 @@ static void compose(int tick)
 	draw_text((fbw - text_width(sub, body_scale, 0)) / 2, sub_y,
 		  sub, body_scale, 0, C_TEXT);
 
-	const char *tag = "musl . toybox . wlroots . no systemd";
+	const char *tag = "musl . GNU . wlroots . no systemd";
 	draw_text((fbw - text_width(tag, body_scale, 0)) / 2, tag_y,
 		  tag, body_scale, 0, C_DIM);
 

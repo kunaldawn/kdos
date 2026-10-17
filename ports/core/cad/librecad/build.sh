@@ -9,15 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The crash handler prints a backtrace through <execinfo.h>, which musl does
-# not have; no-execinfo builds it without one where the header is missing,
-# and the crash report keeps the signal and the faulting address.
 patch -p1 -i "$PORT_SRC/no-execinfo.patch"
 
-# The CMake build compiles the program, ttf2lff and the plugins, with
-# muparser, libdxfrw and jwwlib linked in statically from libraries/; none of
-# them is a port. It installs no data and puts the plugins under
-# bin/resources, so the layout is finished below.
 mkdir -p build && cd build
 cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -26,9 +19,6 @@ ninja
 DESTDIR=$PKG ninja install
 cd ..
 
-# The program searches <exe>/../lib/librecad/plugins and
-# <exe>/../share/librecad/{fonts,patterns,library}. The translations are
-# left out: the interface is English.
 install -d "$PKG/usr/lib/librecad"
 mv "$PKG/usr/bin/resources/plugins" "$PKG/usr/lib/librecad/plugins"
 rmdir "$PKG/usr/bin/resources"
@@ -43,8 +33,6 @@ install -Dm644 librecad/res/main/librecad.png \
 install -Dm644 desktop/org.librecad.librecad.appdata.xml \
 	"$PKG/usr/share/metainfo/org.librecad.librecad.appdata.xml"
 
-# main() sets the desktop file name librecad.desktop, so the Wayland app_id
-# is librecad. image/vnd.dxf is shared-mime-info's own type.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/librecad.desktop" <<'DESKTOP'
 [Desktop Entry]

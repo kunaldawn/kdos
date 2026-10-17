@@ -22,60 +22,121 @@ mkdir -p $INITRAMFS
 cd $INITRAMFS
 
 # Create Directory Structure
-mkdir -p bin dev proc sys run mnt/iso newroot etc lib boot
+mkdir -p bin dev proc sys run mnt/iso newroot etc lib
 
 # Install Basic Config
 cp /etc/passwd etc/passwd
 cp /etc/group etc/group
 
-# Install Toybox
-cp /usr/bin/toybox bin/toybox
-chmod +x bin/toybox
-for cmd in $(./bin/toybox); do
-    [ "$cmd" != "toybox" ] && ln -sf toybox bin/$cmd
-done
-
-# Install util-linux's switch_root, mount, umount, losetup and dmesg.
+# copy_closure DEST SRC: SRC to DEST, then every library its NEEDED entries
+# name, and theirs, from /usr/lib or /lib into lib/. `ldd` is not available,
+# so NEEDED is read with readelf. A library that is installed nowhere stops
+# the build here, naming the program that wanted it.
 #
-# THE TOYBOX RECIPE COMPILES THESE APPLETS OUT, so the loop above claims none
-# of the names and each one here is util-linux's own file. switch_root is the
-# one that must never be toybox's: that applet only wipes the initramfs and
-# chroot()s -- it never does mount(newroot, "/", MS_MOVE). A process that JOINS
-# a mount namespace via setns() -- podman exec, distrobox enter, nsenter -m --
-# then gets the empty initramfs rootfs as "/" and every path is ENOENT, and
-# every process on the machine is CHROOTED for ever: the kernel refuses
-# CLONE_NEWUSER to a chrooted caller, so no user namespace can be created by
-# anybody, root included, and no box can start at all. The machine boots
-# perfectly either way, which is why the check below exists.
+# THE READER IS PROVEN BEFORE IT IS TRUSTED. A readelf that is absent or
+# prints another format fails inside a command substitution, which `set -e`
+# does not see: every program would be copied with no libraries and the final
+# check below would report nothing. binutils' readelf is first; llvm-readelf
+# prints the same NEEDED lines. Either must find libblkid in blkid, which is
+# known to link it, or the build stops.
+READELF=""
+for _r in readelf llvm-readelf; do
+    command -v $_r >/dev/null 2>&1 || continue
+    if $_r -d /usr/sbin/blkid 2>/dev/null | grep -q '(NEEDED).*\[libblkid\.so'; then
+        READELF=$_r
+        break
+    fi
+done
+unset _r
+if [ -z "$READELF" ]; then
+    echo "FATAL: no readelf reads NEEDED from /usr/sbin/blkid; the initramfs" >&2
+    echo "       library closure cannot be measured. binutils provides one." >&2
+    exit 1
+fi
+needed_libs() {
+    $READELF -d "$1" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'
+}
+
+copy_closure() {
+    local _dest=$1 _src=$2 _lib _dir
+    cp "$_src" "$_dest"
+    for _lib in $(needed_libs "$_src"); do
+        [ -e "lib/$_lib" ] && continue
+        for _dir in /usr/lib /lib; do
+            if [ -f "$_dir/$_lib" ]; then
+                copy_closure "lib/$_lib" "$_dir/$_lib"
+                break
+            fi
+        done
+        if [ ! -e "lib/$_lib" ]; then
+            echo "FATAL: $_src needs $_lib, which is installed nowhere." >&2
+            exit 1
+        fi
+    done
+}
+
+# util_linux_only PATH: stop the build unless PATH answers --version as
+# util-linux. Each program held to it below is one whose stand-ins from other
+# userlands lack what this init relies on, and the boot fails without saying
+# why.
+util_linux_only() {
+    case "$("$1" --version 2>/dev/null)" in
+    *" from util-linux "*) return 0 ;;
+    esac
+    echo "FATAL: $1 is not util-linux's: its --version does not name util-linux." >&2
+    exit 1
+}
+
+# GNU coreutils, grep and sed. The first row is what `init` runs; the rest are
+# the rescue shell's, for the boot that does not reach a root. Each must
+# answer --version as GNU's (`dd` alone names its package `coreutils`, without
+# the GNU) and is copied with its libraries.
+for _n in cat chmod cut ls mkdir mknod seq sleep \
+          cp mv rm ln rmdir head tail wc stat df dd sync uname readlink touch \
+          sort tr grep sed; do
+    _p=""
+    for _d in /usr/bin /usr/sbin; do
+        if [ -x "$_d/$_n" ]; then
+            _p=$_d/$_n
+            break
+        fi
+    done
+    if [ -z "$_p" ]; then
+        echo "FATAL: the initramfs needs $_n, which is installed nowhere." >&2
+        exit 1
+    fi
+    case "$("$_p" --version 2>/dev/null)" in
+    *"(GNU "*|*" (coreutils) "*) ;;
+    *)
+        echo "FATAL: $_p is not GNU's: its --version names no GNU package." >&2
+        exit 1
+        ;;
+    esac
+    copy_closure bin/$_n "$_p"
+done
+unset _n _p _d
+
+# util-linux's switch_root, mount, umount, losetup, dmesg and setsid.
+#
+# switch_root MUST MOVE THE NEW ROOT ONTO / (mount(newroot, "/", MS_MOVE))
+# before it chroot()s. One that only wipes the initramfs and chroot()s leaves
+# every process on the machine chrooted for ever: a process that joins a mount
+# namespace via setns() -- podman exec, distrobox enter, nsenter -m -- gets the
+# empty initramfs rootfs as "/" and every path is ENOENT, and the kernel
+# refuses CLONE_NEWUSER to a chrooted caller, so no user namespace can be
+# created by anybody, root included, and no box can start at all. The machine
+# boots perfectly either way, which is why the check exists.
 #
 # mount, umount and losetup are what `init` itself runs: the ISO scan, the
 # loop device under system.sfs, the overlay and the --move of every mount into
-# the new root. dmesg is for the rescue shell. The removal before each copy is
-# a guard: `cp` writes THROUGH a symlink, and a name still linked to
-# bin/toybox would take the copy over the multicall binary.
+# the new root. setsid gives the rescue shell tty1 as its controlling
+# terminal. dmesg is for the rescue shell.
 for _p in /usr/sbin/switch_root /usr/bin/mount /usr/bin/umount \
-          /usr/sbin/losetup /usr/bin/dmesg; do
-    _n=${_p##*/}
-    rm -f bin/$_n
-    cp $_p bin/$_n
-    if grep -qa 'Toybox .* multicall' bin/$_n; then
-        echo "FATAL: the initramfs $_n is toybox's applet." >&2
-        if [ "$_n" = switch_root ]; then
-            echo "       It chroot()s instead of moving the new root, which leaves" >&2
-            echo "       every process chrooted and every user namespace refused." >&2
-        fi
-        exit 1
-    fi
+          /usr/sbin/losetup /usr/bin/dmesg /usr/bin/setsid; do
+    util_linux_only "$_p"
+    copy_closure bin/${_p##*/} "$_p"
 done
-unset _p _n
-# mount and umount link libmount, which links libblkid; losetup links
-# libsmartcols. libblkid and libuuid are copied with blkid below.
-cp /usr/lib/libmount.so.1 lib/libmount.so.1
-cp /usr/lib/libsmartcols.so.1 lib/libsmartcols.so.1
-# Carried for the programs below that are built with NLS: cryptsetup's
-# configure turns it on whenever gettext is installed, and the closure check
-# at the end refuses an initramfs whose programs name a library it lacks.
-cp /usr/lib/libintl.so.8 lib/libintl.so.8
+unset _p
 
 # Install the boot splash. Static, so it needs nothing else here, and it keeps
 # running across switch_root: its FIFO lives in /dev (devtmpfs is moved into the
@@ -104,31 +165,13 @@ ln -sf bash bin/sh
 #
 # EVERY LOOKUP IN THIS INIT IS `blkid -U <uuid>` — the root filesystem, the
 # ESP that holds the A/B state, and the LUKS container an encrypted root
-# lives inside. toybox's applet implements NEITHER HALF of that: `-U` is not
-# a lookup flag there, and its prober knows ext/vfat/ntfs/btrfs/f2fs/squashfs
-# and swap but NOT `crypto_LUKS`. With toybox's, every one of those lookups
-# answers nothing — an installed machine drops to a shell with "Root device
-# not found", A/B selection silently never engages, and an encrypted root
-# cannot be unlocked at all.
-#
-# THE APPLET IS COMPILED OUT, in the toybox port's recipe and in 10_bootstrap alike, so
-# `./bin/toybox` does not list it and the applet loop above never claims the
-# name; `blkid` on this system is one binary, util-linux's, in /usr/sbin.
-# The removal is the guard on that: `cp` onto a symlink writes THROUGH
-# it, so were `bin/blkid` ever a link to `bin/toybox`, this copy would
-# overwrite the multicall binary. The util-linux copies above keep the same
-# rule.
-rm -f bin/blkid
-cp /usr/sbin/blkid bin/blkid
-cp /usr/lib/libblkid.so.1 lib/libblkid.so.1
-cp /usr/lib/libuuid.so.1 lib/libuuid.so.1
-# A prober that cannot name a LUKS container is a machine that cannot unlock
-# its own disk, and the failure is a passphrase prompt that never appears.
-if grep -qa 'Toybox .* multicall' bin/blkid; then
-    echo "FATAL: the initramfs blkid is toybox's applet." >&2
-    echo "       It cannot resolve -U and cannot see crypto_LUKS." >&2
-    exit 1
-fi
+# lives inside. A prober that cannot resolve -U, or cannot name a
+# `crypto_LUKS` container, answers nothing to every one of them: an installed
+# machine drops to a shell with "Root device not found", A/B selection
+# silently never engages, and an encrypted root cannot be unlocked at all,
+# with a passphrase prompt that never appears.
+util_linux_only /usr/sbin/blkid
+copy_closure bin/blkid /usr/sbin/blkid
 
 # Install mdadm, for a root that lives on a software RAID array. Only
 # libudev beyond libc, and that is already carried below for udevd.
@@ -218,53 +261,6 @@ else
     HAVE_CRYPT=0
 fi
 
-# copy_closure DEST SRC: SRC to DEST, then every library its NEEDED entries
-# name, and theirs, from /usr/lib or /lib into lib/. `ldd` is not available,
-# so NEEDED is read with readelf. A library that is installed nowhere stops
-# the build here, naming the program that wanted it.
-#
-# THE READER IS PROVEN BEFORE IT IS TRUSTED. A readelf that is absent or
-# prints another format fails inside a command substitution, which `set -e`
-# does not see: every program would be copied with no libraries and the final
-# check below would report nothing. binutils' readelf is first; llvm-readelf
-# prints the same NEEDED lines. Either must find libblkid in blkid, which is
-# known to link it, or the build stops.
-READELF=""
-for _r in readelf llvm-readelf; do
-    command -v $_r >/dev/null 2>&1 || continue
-    if $_r -d /usr/sbin/blkid 2>/dev/null | grep -q '(NEEDED).*\[libblkid\.so'; then
-        READELF=$_r
-        break
-    fi
-done
-unset _r
-if [ -z "$READELF" ]; then
-    echo "FATAL: no readelf reads NEEDED from /usr/sbin/blkid; the initramfs" >&2
-    echo "       library closure cannot be measured. binutils provides one." >&2
-    exit 1
-fi
-needed_libs() {
-    $READELF -d "$1" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'
-}
-
-copy_closure() {
-    local _dest=$1 _src=$2 _lib _dir
-    cp "$_src" "$_dest"
-    for _lib in $(needed_libs "$_src"); do
-        [ -e "lib/$_lib" ] && continue
-        for _dir in /usr/lib /lib; do
-            if [ -f "$_dir/$_lib" ]; then
-                copy_closure "lib/$_lib" "$_dir/$_lib"
-                break
-            fi
-        done
-        if [ ! -e "lib/$_lib" ]; then
-            echo "FATAL: $_src needs $_lib, which is installed nowhere." >&2
-            exit 1
-        fi
-    done
-}
-
 # Install lvm and dmsetup, for a root on a logical volume.
 #
 # AT /usr/sbin, THE PATHS lvm2's UDEV RULES NAME, and not in bin/: the rules
@@ -348,6 +344,9 @@ mkdir -p lib/udev/rules.d etc/udev/rules.d
 cp -r /usr/lib/udev/rules.d/* lib/udev/rules.d/ 2>/dev/null || true
 cp -r /etc/udev/rules.d/* etc/udev/rules.d/ 2>/dev/null || true
 cp -r /usr/lib/udev/* lib/udev/ 2>/dev/null || true
+# udev reads only the compiled hwdb.bin, which this tree does not carry; the
+# sources would be carried for nothing.
+rm -rf lib/udev/hwdb.d
 
 # Install kmod and overlay module
 cp /usr/bin/kmod bin/kmod
@@ -429,10 +428,18 @@ copy_module() {
 
 # Core Modules for Booting (Storage, FS, Input, etc.)
 MODULES="overlay squashfs isofs cdrom sr_mod loop sd_mod ata_piix ahci libahci virtio virtio_blk virtio_pci virtio_scsi xhci-pci xhci-hcd ehci-pci ehci-hcd ohci-pci ohci-hcd usb-storage uas"
+# Every disk transport the installer classifies and installs to must be
+# reachable before the root mounts, or the installed root is not found on its
+# first boot. NVMe behind Intel VMD (RST), eMMC and SD (mmc), Hyper-V, Xen
+# and VMware guests' disks, and the MegaRAID and mpt3sas controllers are all
+# modules on this kernel; copy_module brings mmc_core, hv_vmbus and the rest
+# of each one's dependencies.
+MODULES="$MODULES vmd mmc_block sdhci-pci sdhci-acpi cqhci rtsx_pci_sdmmc hv_storvsc xen-blkfront vmw_pvscsi megaraid_sas mpt3sas"
 
 # dm-crypt and the ciphers a LUKS2 default header actually uses. Carried
 # unconditionally: they are small, and a kernel that has them built in makes
-# copy_module a no-op anyway.
+# copy_module a no-op anyway. The generic AES, SHA-256 and SHA-512 code is
+# built into this kernel and has no module to name.
 # vfat, so the initramfs can read the boot state off the ESP.
 MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
 # Root filesystems the installer can create. ext4 and btrfs are built in and
@@ -441,7 +448,7 @@ MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
 # again. EVERY ROW OF ki_filesystems[] MUST APPEAR HERE — the installer's table
 # is what offers the choice and this is what makes the choice bootable.
 MODULES="$MODULES xfs f2fs"
-MODULES="$MODULES dm-crypt dm-mod aes_generic aes_x86_64 aesni-intel xts sha256_generic sha512_generic crypto_null algif_skcipher"
+MODULES="$MODULES dm-crypt dm-mod aesni-intel xts crypto_null algif_skcipher"
 # Software RAID. A root ON an array needs these before anything can be
 # assembled, and a machine whose DATA disks are an array needs them before
 # udev settles — without md_mod the members are bare disks with a superblock
@@ -474,15 +481,11 @@ if [ -f /lib/modules/$KERNEL_VER/modules.builtin.modinfo ]; then
     cp /lib/modules/$KERNEL_VER/modules.builtin.modinfo $MOD_DIR/
 fi
 
-# Copy System.map for depmod
-if [ -f /boot/System.map-$KERNEL_VER ]; then
-    cp /boot/System.map-$KERNEL_VER $INITRAMFS/boot/System.map-$KERNEL_VER
-fi
-
-# Regenerate module dependencies for the initramfs
+# Regenerate module dependencies for the initramfs. The symbol map is read
+# where the kernel installed it; the initramfs does not carry it.
 echo "Generating dependency map..."
-if [ -f boot/System.map-$KERNEL_VER ]; then
-    depmod -b . -F boot/System.map-$KERNEL_VER $KERNEL_VER
+if [ -f /boot/System.map-$KERNEL_VER ]; then
+    depmod -b . -F /boot/System.map-$KERNEL_VER $KERNEL_VER
 else
     depmod -b . $KERNEL_VER
 fi
@@ -516,6 +519,42 @@ sp_step() { [ -x /bin/kdos-splash ] && /bin/kdos-splash step "\$1" 2>/dev/null; 
 sp_ok()   { [ -x /bin/kdos-splash ] && /bin/kdos-splash ok 2>/dev/null; return 0; }
 sp_fail() { [ -x /bin/kdos-splash ] && /bin/kdos-splash fail 2>/dev/null; return 0; }
 sp_total() { [ -x /bin/kdos-splash ] && /bin/kdos-splash total "\$1" 2>/dev/null; return 0; }
+
+# EVERY FAILURE ENDS HERE, AND SAYS WHY WHERE SOMEBODY IS LOOKING. /dev/console
+# is the last console= on the command line, which on the live entries is the
+# serial port: a shell there alone leaves a laptop showing the splash's fail
+# state and nothing else. The reason goes to the splash as a detail line,
+# which is the last thing it draws before it hands the screen back, and then
+# to tty1, where fbcon takes the framebuffer over at the first write and the
+# keyboard is. A shell is opened on tty1 in its own session with tty1 as its
+# controlling terminal, and this process becomes the shell on /dev/console,
+# so the serial line keeps its shell and the log it has been reading. When
+# /dev/console is itself a virtual terminal there is one screen and one
+# shell. PID 1 must never return from here: a shell that exits on
+# /dev/console panics the kernel with "Attempted to kill init".
+rescue() {
+    local con
+    echo "\$1"
+    if [ -x /bin/kdos-splash ]; then
+        /bin/kdos-splash detail "\$1" 2>/dev/null
+        /bin/kdos-splash quit 2>/dev/null
+    fi
+    con=\$(cat /sys/class/tty/console/active 2>/dev/null)
+    con=\${con##* }
+    case "\$con" in
+    tty[0-9]*)
+        printf '\n%s\nKDOS cannot boot. This is a rescue shell.\n' "\$1"
+        exec /bin/sh
+        ;;
+    esac
+    {
+        printf '\n%s\n' "\$1"
+        echo "KDOS cannot boot. This is a rescue shell; the boot log is on the serial console."
+    } > /dev/tty1 2>/dev/null
+    setsid -f -c /bin/sh -i < /dev/tty1 > /dev/tty1 2>&1
+    echo "A rescue shell is also open on tty1."
+    exec /bin/sh
+}
 
 # The two stages every boot path runs; each path adds its own share below.
 sp_total 2
@@ -569,7 +608,9 @@ fi
 
 echo "Welcome to KDOS"
 
-# Parse Boot Parameters
+# Parse Boot Parameters. INIT_ARG starts empty: the kernel hands init every
+# unrecognised name=value on its command line as an environment variable.
+INIT_ARG=""
 for i in \$(cat /proc/cmdline); do
     case "\$i" in
         root=UUID=*)
@@ -583,6 +624,11 @@ for i in \$(cat /proc/cmdline); do
             ;;
         kdos_slot=*)
             BOOT_SLOT="\${i#kdos_slot=}"
+            ;;
+        # Handed on to init: \`single\` runs rcS and then sulogin, with no
+        # consoles and no desktop; \`emergency\` runs sulogin before rcS.
+        single|emergency)
+            INIT_ARG="\$i"
             ;;
     esac
 done
@@ -809,8 +855,7 @@ if [ -n "\$CRYPTDEV" ]; then
         activate_lvm
     else
         sp_fail
-        echo "Failed to unlock \$CRYPTDEV — dropping to a shell"
-        exec /bin/sh
+        rescue "Failed to unlock \$CRYPTDEV"
     fi
 fi
 
@@ -870,7 +915,7 @@ if [ -n "\$ROOT_UUID" ]; then
             echo "Switching root..."
             sp_step "SWITCHING ROOT"
             sp_ok
-            exec switch_root /newroot /sbin/init
+            exec switch_root /newroot /sbin/init \$INIT_ARG
         else
             echo "Error: /sbin/init not found on root device!"
             sp_fail
@@ -880,9 +925,7 @@ if [ -n "\$ROOT_UUID" ]; then
         sp_fail
     fi
     
-    # Fallback to shell if disk boot fails
-    echo "Disk boot failed. Dropping to shell..."
-    exec /bin/sh
+    rescue "Disk boot failed: no root at UUID=\$ROOT_UUID with /sbin/init on it"
 fi
 
 # Live ISO Boot Mode (Fallback)
@@ -908,7 +951,7 @@ STUCK=0
 CHECKED=" "
 while :; do
     PASS=\$(( PASS + 1 ))
-    for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do
+    for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme* /dev/mmcblk*; do
         [ -e "\$dev" ] || continue
         # ONE INSPECTION PER DEVICE. A node that mounts as iso9660 and has no
         # system.sfs on it will not grow one, so repeating the mount/umount
@@ -1041,9 +1084,8 @@ if [ "\$FOUND" == "1" ]; then
 
              # Check if switch root dir is valid
              if [ ! -d "/newroot" ]; then
-                echo "Error: /newroot is not a directory"
                 sp_fail
-                exec /bin/sh
+                rescue "Error: /newroot is not a directory"
              fi
              sp_ok
 
@@ -1099,31 +1141,26 @@ if [ "\$FOUND" == "1" ]; then
                 # old rootfs but not the processes living in it, and its FIFO is
                 # on devtmpfs, which has just been moved into the new root.
                 sp_ok
-                exec switch_root /newroot /sbin/init
+                exec switch_root /newroot /sbin/init \$INIT_ARG
             else
-                echo "Error: /sbin/init not found in new root!"
                 ls -l /newroot/sbin/init
                 sp_fail
-                exec /bin/sh
+                rescue "Error: /sbin/init not found in new root!"
             fi
         else
-            echo "Failed to mount system.sfs"
             sp_fail
-            exec /bin/sh
+            rescue "Failed to mount system.sfs"
         fi
     else
-        echo "Failed to setup loop device for system.sfs"
         sp_fail
-        exec /bin/sh
+        rescue "Failed to set up a loop device for system.sfs"
     fi
 else
-    echo "Failed to find KDOS installation media."
     sp_fail
-    exec /bin/sh
+    rescue "Failed to find KDOS installation media."
 fi
 
-echo "Boot failed. dropping to shell"
-exec /bin/sh
+rescue "Boot failed."
 EOF
 chmod +x init
 
@@ -1136,11 +1173,16 @@ chmod +x init
 # and getting any one wrong means the microcode is silently never applied:
 #
 #   - this cpio must NOT be compressed, and the blobs inside it must not be
-#     either. linux-firmware ships amd-ucode as .zst because the *runtime*
-#     firmware loader can decompress; the early loader cannot.
+#     either, whatever form linux-firmware ships them in: the early loader
+#     cannot decompress. A `.bin` is copied as it is and a `.bin.zst` is
+#     expanded on the way in.
 #   - it must come FIRST in the file, ahead of the gzipped part.
 #   - CONFIG_MICROCODE_LATE_LOADING is off, so this is the only path there is.
 #     /usr/lib/firmware/intel-ucode.bin is never read at runtime.
+#
+# A vendor whose microcode is installed and yields an empty file stops the
+# build. An initramfs without microcode boots with no symptom, so nothing
+# later would notice.
 UCODE=/kdos/build/ucode
 rm -rf $UCODE
 mkdir -p $UCODE/kernel/x86/microcode
@@ -1148,28 +1190,44 @@ mkdir -p $UCODE/kernel/x86/microcode
 if [ -f /usr/lib/firmware/intel-ucode.bin ]; then
     cp /usr/lib/firmware/intel-ucode.bin \
        $UCODE/kernel/x86/microcode/GenuineIntel.bin
+    if [ ! -s $UCODE/kernel/x86/microcode/GenuineIntel.bin ]; then
+        echo "FATAL: /usr/lib/firmware/intel-ucode.bin is empty." >&2
+        exit 1
+    fi
     echo "Microcode: Intel bundle carried"
+elif [ -f /var/lib/kpkg/db/intel-ucode ]; then
+    echo "FATAL: intel-ucode is installed but /usr/lib/firmware/intel-ucode.bin is not." >&2
+    exit 1
 else
     echo "Microcode: no intel-ucode.bin — Intel CPUs will run BIOS microcode"
 fi
 
 # One AMD container per family, concatenated in the order the shell sorts them;
 # the loader walks the containers and matches on the equivalence table.
-for BLOB in /usr/lib/firmware/amd-ucode/microcode_amd*.bin.zst; do
-    [ -e "$BLOB" ] || continue
-    zstd -d -c "$BLOB" >> $UCODE/kernel/x86/microcode/AuthenticAMD.bin
-done
-if [ -s $UCODE/kernel/x86/microcode/AuthenticAMD.bin ]; then
+if [ -d /usr/lib/firmware/amd-ucode ]; then
+    for BLOB in /usr/lib/firmware/amd-ucode/microcode_amd*.bin \
+                /usr/lib/firmware/amd-ucode/microcode_amd*.bin.zst; do
+        [ -f "$BLOB" ] || continue
+        case "$BLOB" in
+        *.zst) zstd -d -c "$BLOB" >> $UCODE/kernel/x86/microcode/AuthenticAMD.bin ;;
+        *)     cat "$BLOB" >> $UCODE/kernel/x86/microcode/AuthenticAMD.bin ;;
+        esac
+    done
+    if [ ! -s $UCODE/kernel/x86/microcode/AuthenticAMD.bin ]; then
+        echo "FATAL: /usr/lib/firmware/amd-ucode/ holds no microcode_amd*.bin or .bin.zst" >&2
+        echo "       container, so AMD CPUs would run BIOS microcode." >&2
+        exit 1
+    fi
     echo "Microcode: AMD containers carried"
 else
-    rm -f $UCODE/kernel/x86/microcode/AuthenticAMD.bin
-    echo "Microcode: no amd-ucode blobs — AMD CPUs will run BIOS microcode"
+    echo "Microcode: no amd-ucode/ — AMD CPUs will run BIOS microcode"
 fi
 
 UCODE_CPIO=/kdos/build/ucode.cpio
 rm -f $UCODE_CPIO
 if [ -n "$(ls -A $UCODE/kernel/x86/microcode)" ]; then
-    ( cd $UCODE && find . | cpio -o -H newc ) > $UCODE_CPIO 2>/dev/null
+    ( cd $UCODE && find . | LC_ALL=C sort | cpio -o -H newc --reproducible ) \
+        > $UCODE_CPIO 2>/dev/null
 fi
 
 # EVERY PROGRAM'S LIBRARIES ARE HERE, or the initramfs is not built. `ldd` is
@@ -1193,7 +1251,7 @@ fi
 unset _missing _f _l _m
 
 # Pack Initramfs
-find . | cpio -o -H newc | gzip -9 > ../initramfs.gz.part
+find . | LC_ALL=C sort | cpio -o -H newc --reproducible | gzip -9 > ../initramfs.gz.part
 if [ -s "$UCODE_CPIO" ]; then
     cat $UCODE_CPIO ../initramfs.gz.part > ../initramfs.cpio.gz
 else
@@ -1201,5 +1259,3 @@ else
 fi
 rm -f ../initramfs.gz.part
 echo "Initramfs created at $INITRAMFS"
-
-ls /kdos/build

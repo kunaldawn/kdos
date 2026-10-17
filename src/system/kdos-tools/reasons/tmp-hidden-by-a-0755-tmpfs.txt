@@ -1,6 +1,6 @@
 title: a tmpfs already mounted ignores a mode change on remount
 cite: rcS
-port: toybox
+port: util-linux
 see: tmp-mode-1777
 
 `mount -o remount,mode=1777 /tmp` silently does nothing. Only chmod works,

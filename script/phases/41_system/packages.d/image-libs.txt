@@ -85,3 +85,7 @@ lensfun
 libmypaint
 mypaint-brushes
 graphicsmagick
+jasper
+libspng
+netpbm
+webp-pixbuf-loader

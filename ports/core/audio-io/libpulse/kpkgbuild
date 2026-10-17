@@ -16,4 +16,5 @@ source      = https://www.freedesktop.org/software/pulseaudio/releases/pulseaudi
 sha256      = 053794d6671a3e397d849e478a80b82a63cb9d8ca296bd35b73317bb5ceb87b5  libpulse-17.0.tar.xz
 description = PulseAudio client libraries and pactl/pacat — the server is pipewire-pulse
 homepage    = https://www.freedesktop.org/wiki/Software/PulseAudio/
+license     = LGPL-2.1-or-later
 depends     = meson ninja pkgconf m4 perl perl-xml-parser gettext libintl libsndfile dbus glib

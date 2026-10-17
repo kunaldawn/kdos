@@ -144,6 +144,16 @@ only when the pager is `less`, because another pager may not accept the flag. If
 installed or fails, the sheet is printed to standard output instead. The **KDOS Help** menu entry
 runs `kdos help --pager` in a terminal.
 
+### Manual pages and the book
+
+This book is on every image, as HTML under `/usr/share/doc/kdos`: open
+`/usr/share/doc/kdos/index.html` in a browser for the title page and the table of contents.
+`man 7 kdos` says where it is and lists its chapters. Every `kdos-*` command has a manual page,
+`man kdos-appbox` for example, whose description is the section of the book that documents the
+command, so the page and the book cannot disagree; `apropos kdos` lists them all with the one-line
+description from the [command index](../06-reference/command-index.md). The `kdos-doc` port writes
+all of it from `docs/` at build time; see [Developing](../05-developer/developing.md#rebuilding-one-thing).
+
 ### kdos status
 
 ```sh
@@ -178,9 +188,9 @@ kdos -V
 
 ```
 KDOS — KD's Homebrew Linux Distro
-  kernel   7.2.7
+  kernel   7.2.11
   libc     musl
-  userland toybox
+  userland GNU
   session  kdos-comp (bone)
 ```
 
@@ -281,7 +291,8 @@ Setting an accent regenerates those files for your user and then repaints the ru
 this order:
 
 1. The generators rewrite the GTK stylesheet, icons, cursors, the KDE colour file and the
-   palette, style, icon and font keys of `~/.config/kdeglobals`, the qt5ct and qt6ct palettes
+   palette, style, icon, font and terminal keys of `~/.config/kdeglobals` (the terminal keys name
+   foot, so a KDE application opens the desktop's terminal), the qt5ct and qt6ct palettes
    and settings, the window-frame theme (`~/.config/kdos-comp/themerc-override`), and the
    configuration of foot, `kdos-term`, bat, micro, helix, neovim, delta, newsboat, aerc, fzf,
    tmux, btop, mc, yazi, starship and `LS_COLORS`. The files applications also write into
@@ -497,8 +508,8 @@ kdos panel toggle
 Hides the bar, or brings it back. It sends `SIGUSR1` to every process whose name (`comm`) is
 exactly `kdos-shell`, which reaches the panel and not the desktop icons or the notification
 daemon, the other names of the same binary. It is bound to `Super+Shift+Space`. The command walks
-`/proc` itself rather than running `pkill -USR1`, because toybox's `pkill` would read `-U` as a
-user option and refuse the signal, so the command works whichever `pkill` is installed.
+`/proc` itself rather than running `pkill -USR1`: a `pkill` that reads `-U` as its user option
+refuses `-USR1` as `-U SR1`, so the signal would depend on which `pkill` is installed.
 
 A bar put away this way stays away while the pointer crosses the bottom row, even with autohide
 on. Nothing is reported when no panel is running. Any other argument exits 2.
@@ -983,6 +994,13 @@ A package is looked up under its own name, or under the name its recipe gives in
 the database does not carry is **unknown**, never clean, and the summary says how many are in
 that state. `--json` prints every finding with all its CVEs.
 
+A library a port compiles into its own binary is in no package database, so a second file,
+`/usr/share/kdos/bundled.txt` (override with `$KDOS_BUNDLED`), lists each one as `<port> <crate>
+<component> <version>`. Every row whose port is checked is looked up under the component's name: a
+version behind a recorded fix is a finding named `<port>/<component>`, and every row is listed under
+*bundled copies*, with the ones the database does not carry marked. `--json` gives them as the
+`bundled` array.
+
 | Exit | Means |
 |---|---|
 | 0 | Nothing known-vulnerable |
@@ -996,56 +1014,73 @@ that state. `--json` prints every finding with all its CVEs.
 ### kdos update
 
 ```sh
-kdos update [check [--json] [--out PATH]]
-kdos update apply [--dry-run] [--binhost-only] [--root DIR] [--in-place]
+kdos update [check [--json] [--out PATH] [--fetch]]
+kdos update fetch [--from URL|DIR]
+kdos update apply [--dry-run] [--root DIR] [--in-place]
 kdos update theme
 ```
 
-Upgrades the host system. It drives `kpkg` and the A/B root-slot tool rather than adding a trust path
-of its own; the Ed25519 signature checks stay in `kpkg`.
+Upgrades the host system by building it from source. A recipe pins its version, so what is newer
+arrives with the ports tree: every image carries the recipe-only tree at `/ports` (each recipe,
+patch and program of our own, and no source tarball), `fetch` replaces it with the newest signed
+tree over the network, and `apply` builds every package whose recipe is now ahead of what is
+installed. There is no binary package host. An update needs the network, for the tree and for
+every source, and compiles on the machine, which takes hours on a large set.
 
-An update means the ports tree on this machine pins a newer recipe than what is installed. A
-prebuilt package from a binary host is only a way to avoid compiling that recipe, so a machine
-with no ports tree cannot update: it cannot tell what is newer, and `kpkg` cannot match a binhost
-package without the recipe. `check` and `apply` exit 2 in that case. The developer medium built
-with `KDOS_ISO_SOURCES=1` carries a ports tree; elsewhere, `PORT_REPO` can point at a checkout.
-Each directory `PORT_REPO` names is searched for a port at `<name>/` and one shelf down at
-`<shelf>/<name>/`, and the first directory holding a name wins. A tree that files one name twice
-inside one directory, or nests a port below its shelf, stops `check`, `apply` and `kdos cve` with
-both paths named, because either recipe could be the one that counts.
+`/etc/kpkg.conf`'s default `PORT_REPO` names `/ports/core` and the four areas of `/ports/src`;
+`PORT_REPO` can point at a checkout instead. Each directory `PORT_REPO` names is searched for a port
+at `<name>/` and one shelf down at `<shelf>/<name>/`, and the first directory holding a name wins.
+A tree that files one name twice inside one directory, or nests a port below its shelf, stops
+`check`, `apply` and `kdos cve` with both paths named, because either recipe could be the one that
+counts.
 
 | Verb | Does |
 |---|---|
-| `check` (the default when no argument is given; name it to pass `--json` or `--out`) | Lists each package whose installed version differs from the ports tree, counts packages with no recipe here, and reports whether a binhost is configured and whether its index is signed. Exit 0 up to date, 1 something behind. `--json` prints the same as a document; `--out PATH` writes that document atomically to `PATH` and implies `--json` |
-| `apply` | Installs what `check` lists, from the binhost where it has the package and from source otherwise |
+| `check` (the default when no argument is given; name it to pass an option) | Lists each package whose installed version differs from the ports tree, counts packages with no recipe here, names the tree's commit, and reports the last problem. Exit 0 up to date, 1 something behind, 2 no tree or no package database. `--json` prints the same as a document; `--out PATH` writes that document atomically to `PATH` and implies `--json`; `--fetch` runs `fetch` first |
+| `fetch` | Downloads the newest published tree, checks its signature against `/etc/kdos/keys/tree`, and installs it as `/ports`. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
+| `apply` | Downloads the sources of every package `check` lists, then builds and installs each one with `kpkg install -f`. An A/B slot it installed into is then checked with [`kpkg check --all --root`](../03-architecture/packaging.md#checking-an-installed-root), and a slot with a missing file, or a changed one outside `/etc`, is not tried; edited configuration under `/etc` is reported and does not stop it |
 | `theme` | Re-runs the theme generators for `$HOME` with the accent in force, after an update changes the artwork |
 
-The binhost is a directory, never a URL: set `binhost = /path/to/repo` in
-`/etc/kdos/update.conf`, or `$KDOS_BINHOST`, which wins. A USB stick, an NFS mount or a local
-share all work. `kpkg index <dir> --sign <key>` makes a directory into one. See
-[Packaging](../03-architecture/packaging.md#the-binary-host).
+**Where a tree comes from.** `fetch` reads `kdos-ports.tar.xz` and `kdos-ports.tar.xz.sig` from
+`--from`, else `$KDOS_UPDATE_TREE`, else `tree =` in `/etc/kdos/update.conf`, else the latest KDOS
+release on GitHub (`https://github.com/kunaldawn/kdos/releases/latest/download`). A value with no
+scheme is a directory holding the two files, such as a USB stick. `ports/publish --release` makes
+both files and signs the tree with the release key; the image trusts that key because the build put
+its public half in `/etc/kdos/keys/tree`. Nothing is unpacked before the signature verifies. A tree
+whose `TREE` stamp is older than the installed tree's is refused, and the same commit is reported
+as current. The signature is downloaded first, and one byte for byte the installed tree's (kept as
+`/var/lib/kdos/update.state.sig`) is reported as current without downloading the tree. The old tree and the new one change places in one rename. On the live ISO `/ports` lies in the overlay's read-only lower layer, which cannot be renamed, so there the old entries are removed and the new ones moved in one at a time.
+
+**What went wrong is recorded.** `fetch` and `apply` write their outcome to
+`/var/lib/kdos/update.state`, and `check` reports the first problem of: `no-tree`, then the last
+fetch's `no-network` or `fetch-failed`, then the last apply's `no-network`, `fetch-failed` or
+`build-failed`. In JSON these are the `"problem"` and `"detail"` fields beside `"behind"`, `"tree"`
+and `"packages"`. The nightly timer runs `kdos update check --fetch --out /var/lib/kdos/update.json`,
+and `fetch` and `apply` rewrite that file when they finish, so the panel's update badge shows a
+problem in the warning colour, with `!` when nothing is behind.
 
 `apply` options:
 
 | Option | Does |
 |---|---|
-| `--dry-run` | Show what would be installed, and from where |
-| `--binhost-only` | Install only what the binhost has; exit 2 when no binhost is configured |
+| `--dry-run` | List what would be fetched and built; needs no root |
 | `--root DIR` | Install into `DIR` instead of choosing a root |
 | `--in-place` | Update the running root even on an A/B machine, giving up the rollback |
 
-For each package, `kpkg binhost` is tried first. When it refuses a package (no trusted signature,
-or a checksum that does not match), the run stops: a refused signature is not worked around by
-compiling instead. When the binhost does not have a matching package, the package is built from
-source, unless `--binhost-only` was given.
+`apply` fetches every source before it builds anything, with [`kpkg
+fetch`](../03-architecture/packaging.md#fetching-sources-on-a-machine): the `sources-<N>` archive
+first, then upstream, each file checked against its recipe's `sha256 =`. A machine that is offline,
+or a source neither place has, stops the run in minutes and builds nothing. The builds run with
+`KPKG_FETCH=1`, so a dependency the new tree adds has its sources fetched as `kpkg install` reaches
+it. `fetch` and `apply` need root and take one lock, so a tree is never replaced under a build.
 
 On a machine with A/B root slots, `apply` installs into the inactive slot, which must already be
-mounted. When every package installed, it runs `kdos-bootctl deploy` to put that slot's kernel
-in its directory on the EFI system partition (ESP), then `kdos-bootctl try` to mark it as the
-candidate for the next boot. A failed package or a failed deploy leaves the slot untried. When
-the inactive slot is not mounted, `apply` refuses and says so, unless given `--in-place`. On a
-machine without A/B slots it updates the running root. See
-[A/B slot selection](../03-architecture/boot-and-init.md#ab-slot-selection).
+mounted. When every package installed and `kpkg check` passed, it copies `/ports` into the slot, runs
+`kdos-bootctl deploy` to put that slot's kernel in its directory on the EFI system partition (ESP),
+then `kdos-bootctl try` to mark it as the candidate for the next boot. A failed package, a failed
+check, copy or deploy leaves the slot untried. When the inactive slot is not mounted, `apply` refuses
+and says so, unless given `--in-place`. On a machine without A/B slots it updates the running root.
+See [A/B slot selection](../03-architecture/boot-and-init.md#ab-slot-selection).
 
 ### kdos march
 

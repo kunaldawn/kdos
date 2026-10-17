@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# JS8Call asks GitHub for a newer release at every start; the patch makes
-# that an opt-in the settings page still offers. The source is a release
-# archive with no .git, and GIT_EXECUTABLE is cleared so the version string
-# is not taken from whatever repository the build directory sits in.
 patch -p1 -i "$PORT_SRC/no-update-check.patch"
 
 cmake -B build -G Ninja \
@@ -25,9 +21,6 @@ cmake -B build -G Ninja \
 	-Wno-dev
 ninja -C build
 
-# Upstream installs nothing on Linux. The program is installed under a
-# lower-case name, which is also Qt's Wayland app_id: no organisation domain
-# is set, so the app_id is the executable's name.
 install -Dm755 build/JS8Call "$PKG/usr/bin/js8call"
 install -Dm644 icons/Unix/js8call_icon.png \
 	"$PKG/usr/share/icons/hicolor/128x128/apps/js8call.png"

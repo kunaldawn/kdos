@@ -15,4 +15,5 @@ source      = https://github.com/flatpak/$name/releases/download/$version/$name-
 sha256      = abb9e452a1c372133bd3eb8f0bb30d07b2d0a8fb02001c4155cf287555db4040  libportal-0.11.0.tar.xz
 description = Client library for the XDG desktop portals, with GTK 3 and GTK 4 parent windows
 homepage    = https://github.com/flatpak/libportal
+license     = LGPL-3.0-only
 depends     = meson glib gtk3 gtk4 gobject-introspection glib-introspection vala

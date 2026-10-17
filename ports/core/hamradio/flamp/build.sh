@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# FLTK picks Wayland or X11 at run time, and on Wayland fl_display is NULL:
-# the Xlib window-hint call after the main window opens is made only when the
-# X11 display is open.
 patch -p1 -i "$PORT_SRC/x11-hints-on-x11-only.patch"
 
 ./configure \
@@ -22,8 +19,6 @@ patch -p1 -i "$PORT_SRC/x11-hints-on-x11-only.patch"
 make
 make DESTDIR=$PKG install
 
-# THE MENU: upstream's icon is XPM and its entry carries no window class; both
-# are replaced. FLTK takes the Wayland app_id from the main window's xclass.
 rm -f "$PKG/usr/share/applications/flamp.desktop"
 s=$(magick identify -format %w "data/flamp.xpm")
 install -d "$PKG/usr/share/icons/hicolor/${s}x${s}/apps"

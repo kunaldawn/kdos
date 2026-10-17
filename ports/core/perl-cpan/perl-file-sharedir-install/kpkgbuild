@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/E/ET/E
 sha256      = 8f9533b198f2d4a9a5288cbc7d224f7679ad05a7a8573745599789428bc5aea0  perl-file-sharedir-install-0.14.tar.gz
 description = Install shared files of a perl distribution — the configure-time half of File::ShareDir
 homepage    = https://metacpan.org/dist/File-ShareDir-Install
+license     = Artistic-1.0-Perl OR GPL-1.0-or-later
 depends     = perl

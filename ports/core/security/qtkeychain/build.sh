@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# libsecret is the Secret Service path. With no Secret Service provider on
-# the session bus a job fails, unless the application turned on qtkeychain's
-# insecure fallback, which keeps the secret in the application's own settings
-# file. Translations are off: bundled data is English only.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \

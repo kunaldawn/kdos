@@ -9,23 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# LLAMA_USE_SYSTEM_GGML links the libggml port, so llama.cpp and whisper.cpp
-# load one set of CPU, OpenBLAS and Vulkan backend modules from /usr/lib/ggml;
-# the copy of ggml inside this tarball is not built. How those modules are
-# chosen is in the libggml recipe.
-#
-# THE SERVER'S WEB PAGE IS NOT EMBEDDED. It is a Svelte application built by
-# npm (LLAMA_BUILD_UI) or downloaded from a Hugging Face bucket
-# (LLAMA_USE_PREBUILT_UI); the build has no network, so both are off and
-# llama-server serves the OpenAI-compatible API alone. A page placed in a
-# directory is served with --path.
-#
-# LLAMA_OPENSSL is HTTPS for -hf and --model-url, which download a model at
-# start-up; off, a model is a file on the disk and a program never reaches the
-# network. LLGUIDANCE is a Rust library fetched at build time. No tests and no
-# examples: the tools under /usr/bin are the programs, and a test would ship.
-# LLAMA_BUILD_IS_DEV defaults on and makes every tool report the release as
-# a -dev snapshot.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

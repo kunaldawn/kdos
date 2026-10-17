@@ -125,7 +125,7 @@ forwarded into the chroot by `script/chroot/exec.sh`:
 | `KDOS_ISO_SOURCES=1` | Copies the tree onto the ISO under `/sources`, beside `system.sfs` rather than inside it: `src/`, `script/`, `fs/`, and `ports/` with every recipe and fetched source but without its caches, with a `SOURCES` stamp giving the port count, the size and the build time. The `Makefile` and `Dockerfile` are not mounted into the build, so neither is on the medium. It roughly doubles the size of the image |
 | `KDOS_PACK_KDOS=1` | Also packs the root filesystem as the base pack `kdos`, in `build/kdos-base/kdos.kpack`, and puts it on the ISO under `/packs`. `kdos-box create ports base=pack:kdos` then gives a running KDOS a clean KDOS to build ports in. Without the flag, a pack left from an earlier build is deleted |
 | `KDOS_ISO_COMP=zstd:3` | Compresses `system.sfs` with zstd at level 3 instead of the default level 15: a faster `70_image` and an image about 10% larger, for the rig, never a release. `xz` and `zstd:1` to `zstd:22` are accepted; any other value stops `110_iso.sh` |
-| `KDOS_MAKE_BINHOST=1` | Keeps every package the build makes and writes them into a signed binhost in `build/binhost/`, which `kdos update apply` can install from. Each run adds what it built, so a complete binhost needs one `--fresh` build with the flag set |
+| `KDOS_MAKE_BINHOST=1` | Keeps every package the build makes and writes them into a signed binhost in `build/binhost/`, which `kpkg binhost` can install from. Each run adds what it built, so a complete binhost needs one `--fresh` build with the flag set |
 
 For example, `make build KDOS_ISO_SOURCES=1`.
 
@@ -152,7 +152,7 @@ phase can be named by its directory or by its short name, the word after the num
 
 `00_cross`, `10_bootstrap` and `70_image` are directories of numbered scripts; the other ten
 install the ports their package list names and the dependencies those need. From `30_foundation`
-on, each list names exactly the ports its phase installs; `20_selfhost`'s eight names pull in six
+on, each list names exactly the ports its phase installs; `20_selfhost`'s nine names pull in six
 more. The numbers leave gaps so that a phase can be added between two others without renaming
 any. What each phase contains, and how one runs, is in [The build system](build-system.md#phases).
 
@@ -177,21 +177,24 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `release` | Create or update `TAG`'s system release as a draft: the ISO, `SHA256SUMS`, its signature and `sources.sha256` | Network, the archive token, a finished build |
 | `release-publish` | Make `TAG`'s release public and Latest | Network, the archive token |
 | `snapshots` | List the phase snapshots, compiling `build/.kdosbuild` with your machine's compiler when your compiler did not build it | A C compiler |
-| `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created at 20 GB if missing) | QEMU, OVMF |
+| `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created if missing as a sparse qcow2 of `KDOS_DISK`, 96 GB by default, above the roughly 53 GB install `kinstall` checks the disk against) | QEMU, OVMF |
 | `rundisk` | Boot `build/kdos.qcow2` instead of the ISO | QEMU, OVMF, an existing disk image |
 | `run-hw` | Boot the ISO with hardware-accelerated graphics | Docker, the NVIDIA Container Toolkit |
 | `rundisk-hw` | The same, from the disk image | Docker, the NVIDIA Container Toolkit |
 | `debug-boot` | Boot the built kernel and initramfs directly, with the serial console on your terminal, for early-boot debugging | QEMU, a finished build |
 | `check-iso-free` | Refuse to rewrite an ISO a process has open | `fuser`; without it the check is skipped |
 | `check-hw` | Check the accelerated-graphics setup: an error without Docker, warnings without the `nvidia` runtime or `/dev/udmabuf` | |
-| `cleandisk` | Replace `build/kdos.qcow2` with a new, empty 20 GB disk image | QEMU |
+| `cleandisk` | Replace `build/kdos.qcow2` with a new, empty, sparse disk image of `KDOS_DISK` (96 GB by default) | QEMU |
 | `cleanbuild` | Delete everything in `build/` except `snapshots`, `ccache`, `pkgstore` and `keys`, and except what only root can remove (see below) | |
 | `clean` | Delete everything in `build/` except `keys`, and except what only root can remove | |
 | `help` | List every target with a one-line description | |
 | `check` | Run `preflight`, `selftest`, `docscheck` and `phaseclosure` in turn | |
 | `preflight`, `selftest`, `docscheck`, `phaseclosure` | Run that check alone; see [Working without a build at all](#working-without-a-build-at-all) | A C compiler; Python 3 for `phaseclosure` |
 | `selftest-asan` | `selftest` compiled with `SELFTEST_CC`, by default AddressSanitizer and UBSan | A compiler with the sanitizers |
-| `depdrift`, `debuginfo` | Read `build/fs` for undeclared same-phase link dependencies, or for installed files that still carry DWARF | Read access to `build/fs`: a container or root |
+| `depdrift` | Read `build/fs` for undeclared same-phase link dependencies; advisory | Read access to `build/fs`: a container or root; Python 3 |
+| `debuginfo` | Fail when `build/fs` ships more than 1 MiB of DWARF outside the allowlist (ghc's `-debug` runtimes); lists it by package | Read access to `build/fs`; Python 3 |
+| `unowned` | List the files in `build/fs` no package and no `fs/` path provides | Read access to `build/fs`; Python 3 |
+| `linkcheck`, `entrycheck` | Fail on an undeclared `DT_NEEDED` owner, an interpreter that does not resolve or OpenSSL 3 and 4 in one process; or on a dangling link, a dead desktop or D-Bus `Exec=`, a missing `Icon=` or udev program. `70_image` runs both and stops on a failure | Read access to `build/fs`; Python 3 |
 | `quick` | The fast loop: rebuild the ports named by `QUICK` and patch them into a booted ISO; `QUICK_ARGS` reaches the rig | The rig image, a finished ISO |
 | `rig-image`, `devdeps-image` | Build the rig container, or the development container and run the suite in it | Docker, network once |
 
@@ -314,11 +317,12 @@ no firmware.
 | `build/mark/` | The early phases' "already done" markers | See [Building from scratch](#building-from-scratch) |
 | `build/cross/` | The cross toolchain (binutils and GCC for `x86_64-kdos-linux-musl`) that the first two phases compile with | |
 | `build/tmp/` | Scratch space for the early phases | Emptied at the start of every step of those phases |
-| `build/keys/` | Signing keys: `kdos-release.key` and `kdos-release.pub`, which `ports/publish --release` signs a release's `SHA256SUMS` with | Kept by both cleans. Nothing in the build writes it; `kpkg keygen build/keys/kdos-release` does, once |
+| `build/keys/` | Signing keys: `kdos-release.key` and `kdos-release.pub`, which `ports/publish --release` signs a release's `SHA256SUMS` with, and `linux-module-signing.pem`, which signs every kernel module | Kept by both cleans. `kpkg keygen build/keys/kdos-release` writes the release key, once; the `linux` port writes the module-signing key the first time it builds without one |
 | `build/kdos.qcow2` | The virtual machine's disk | Created by `make run` |
 | `build/.kdosbuild` | The compiled orchestrator, with `build/.kdosbuild.sum` beside it | Recompiled at the start of a build when its sources, flags or compiler changed |
 | `build/.devplan.json` | The build plan in force | |
 | `build/kdos-base/` | The base pack, with `KDOS_PACK_KDOS=1` | |
+| `build/image-ports/` | The recipe-only ports tree `70_image/105_ports.sh` stages, which `110_iso.sh` appends to `system.sfs` as `/ports` | Rewritten by every image build |
 | `build/fetch-home` | The fetch container's home and toolchain caches | Written as your user |
 | `build/freeze/` | `sources-<tag>.sha256`, written by `ports/publish --freeze` | |
 | `build/release/<tag>/` | What `ports/publish --release` uploads besides the ISO: `SHA256SUMS`, `SHA256SUMS.sig`, `kdos-release.pub`, `sources.sha256` and the notes | The ISO's parts are cut here and deleted when the run ends |
@@ -527,6 +531,7 @@ A full build takes hours, and almost no change needs one. Find what you changed 
 | Something under `fs/` | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:000_file_system.sh"` |
 | One port's recipe | `make build BUILD_ARGS="--phases <its phase>,70_image --rebuild <port>"`, for example `--phases 41_system,70_image --rebuild pv` |
 | A desktop program | `make build BUILD_ARGS="--phases 50_desktop --rebuild <port>"` |
+| The book under `docs/` | `make build BUILD_ARGS="--phases 41_system,70_image"`; see below |
 | A library under `src/libs/` | `make build BUILD_ARGS="--phases 10_bootstrap,41_system,42_graphics,44_apps,50_desktop,70_image --steps 10_bootstrap:120_kpkg.sh,10_bootstrap:130_kinstall.sh"`; see below |
 | The installer (`src/system/kdos-installer`, or `kdos-appbox`'s `catalogue.c`) | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:130_kinstall.sh"`; see below |
 | Only packaging | `make build BUILD_ARGS="--phases 70_image"` |
@@ -537,9 +542,9 @@ A full build takes hours, and almost no change needs one. Find what you changed 
 Use the phase that installs the port. Add `70_image` whenever you want a new ISO from the change.
 A new port is built only once a phase list names it. In `40_lang` to `44_apps` the list is a
 directory, `packages.d/`, whose files are each named for a shelf (`<shelf>.txt`) or a `src/` area
-(`src-<area>.txt`) and name only ports filed there; `40_lang` and `41_system` also carry
-`00-order.txt` for the runs whose order a comment pins, the one file in a `packages.d/` that may name a
-port an earlier phase installs. Every other package phase has a single `packages.txt`. [Which phase lists a port](writing-ports.md#which-phase-lists-a-port)
+(`src-<area>.txt`) and name only ports filed there; `41_system` also carries `00-order.txt` for
+the runs whose order a comment pins, the one file in a `packages.d/` that may name a port an earlier
+phase installs. Every other package phase has a single `packages.txt`. [Which phase lists a port](writing-ports.md#which-phase-lists-a-port)
 says which phase a new port belongs to.
 [The ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf with its phase.
 To find the phase from the tree:
@@ -550,10 +555,9 @@ ls build/logs/*/*_<port>.install.log                                            
 ```
 
 From `30_foundation` on, every port a phase installs is named in that phase's list, so for almost
-every port the first command prints one file, and the phase is the directory in its path. 34 ports
-are named in more than one list: 28 are named in `30_foundation` and again in `40_lang`'s
-`00-order.txt` (`toybox` and the ports that own the commands a toybox upgrade takes back), and 8 of
-`20_selfhost`'s ports are named again in `30_foundation`, two of them among those 28. A later list
+every port the first command prints one file, and the phase is the directory in its path. 8 ports
+are named in more than one list: `20_selfhost`'s `musl`, `gcc`, `binutils`, `m4`, `tar`,
+`diffutils`, `gawk` and `zlib` are named again in `30_foundation`'s pinned run. A later list
 names a port again so that it is rebuilt there when its recipe has changed, before the ports after
 it use it. For these the first command prints several files. Pass
 only one of those phases: `--rebuild` forces the port in every selected phase whose resolved install
@@ -564,24 +568,33 @@ The environments differ: `20_selfhost` names no compiler, while every later phas
 `CXX=g++`. `PORT_REPO` differs too: `src/system` and `src/art` are on it from `40_lang` on, and
 `src/desktop` and `src/daemons` only in `50_desktop`.
 
-Nine of the 2,003 ports in `ports/core` are named in no list. Four are installed because
-`20_selfhost`'s list depends on them (`gmp`, `mpfr`, `mpc` and `xxhash`), and the second command
-finds their phase. The other five (`helix`, `icon-naming-utils`, `musl-locales`,
-`perl-xml-simple` and `setconf`) are named by no list and needed by no port, so no build installs
-them.
+Four ports in `ports/core` are named in no list: `20_selfhost`'s list depends on them (`gmp`,
+`mpfr`, `mpc` and `xxhash`), so that phase installs them, and the second command finds it. Every
+other recipe is named by a list, and `testing/bookcounts.py` fails on one that no phase installs.
 
 **Editing a library rebuilds every port of KDOS's own**, not only the ones that use it. KDOS's own
-programs are recipes under `src/system/`, `src/art/`, `src/desktop/` and `src/daemons/`, 24 in all.
+programs are recipes under `src/system/`, `src/art/`, `src/desktop/` and `src/daemons/`.
 Such a recipe has no upstream tarball, so its recipe hash covers its own directory and the whole of
 `src/libs`; working out which libraries a `build.sh` actually compiles would need a shell parser
 inside the package manager. Each of these ports takes seconds to compile. Upstream ports are
-unaffected. The phase lists install 23 of the 24, in `41_system`, `42_graphics`, `44_apps` and
-`50_desktop`, and their changed hash is enough to rebuild them, so they need no `--rebuild`. The
-24th, `kdos-installer`, is in no phase list, so `--rebuild kdos-installer` reaches no phase and
+unaffected. The phase lists install every one but `kdos-installer`, in `41_system`,
+`42_graphics`, `44_apps` and `50_desktop`, and their changed hash is enough to rebuild them, so they
+need no `--rebuild`. `kdos-installer` is in no phase list, so `--rebuild kdos-installer` reaches no phase and
 rebuilds nothing; the installer on the image comes from the `10_bootstrap` step `130_kinstall.sh`
 instead, which also compiles in `catalogue.c` from `src/system/kdos-appbox`. An edit to that file
 rebuilds the `kdos-appbox` port through its directory hash but leaves `kinstall` as it was until the
 step is named, as in the installer row above.
+
+**The book is a port too.** `src/system/kdos-doc` renders `docs/kdos` to HTML under
+`/usr/share/doc/kdos`, writes `kdos(7)`, which says where the book is and lists its chapters, and
+writes one manual page for every `kdos-*` command in [the command index](../06-reference/command-index.md),
+whose DESCRIPTION is the book section that command's row links to. Its directory holds `docs`, a
+symbolic link to the repository's `docs/`, and the recipe hash follows it, so an edit anywhere in
+the book changes `kdos-doc`'s hash and the next `41_system` run rebuilds it with no `--rebuild`.
+The build container mounts `docs/` read-only, and `script/chroot/exec.sh` binds it read-only at
+`/kdos/docs`. The generator, `mkbook.py`, fails the build when a row of the index links a section
+the book does not have, and leaves out a command whose own port ships its manual page
+(`kdos-bb.1`).
 
 Three programs link the libraries outside any recipe. The orchestrator is recompiled at the start of
 every build. The package manager `kpkg` and the installer `kinstall` are compiled by the
@@ -690,9 +703,14 @@ Work through these in order:
 ## Cutting a release
 
 A KDOS release is a git tag and the GitHub release of that tag on `kunaldawn/kdos`, which carries
-the ISO, a list of every source hash the tag's recipes name, and a signed checksum list over both.
-The source list says what the release needs to build; the hashes themselves are pinned by the tag,
-whose recipes git cannot change without changing the tag.
+the ISO, a list of every source hash the tag's recipes name, the tag's recipe tree signed for
+`kdos update fetch`, and a signed checksum list over all of them. The source list says what the
+release needs to build; the hashes themselves are pinned by the tag, whose recipes git cannot
+change without changing the tag.
+
+The release key is made before the build, because the build copies its public half into the image's
+`/etc/kdos/keys/tree`: that is how an installed machine knows which trees to accept. An image built
+with no key takes no tree.
 
 ```sh
 kpkg keygen build/keys/kdos-release          # once; build/keys survives both cleans
@@ -715,26 +733,33 @@ The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, an
    `kdos-<tag>.iso`. An ISO larger than `$KDOS_PART_SIZE` bytes (1,900 MiB) is cut into
    `kdos-<tag>.iso.part01`, `.part02`, … under `build/release/<tag>/`, since GitHub refuses an
    asset of 2 GiB. The parts are deleted when the run ends and cut again on the next.
-4. Writes `build/release/<tag>/SHA256SUMS` in `sha256sum` format. It names the whole ISO even when
-   only its parts are uploaded, each part, `sources.sha256` and `kdos-release.pub`.
-5. Signs it with `kpkg sign`, which writes `SHA256SUMS.sig`. The key is `--key <path>`, else
+4. Makes `build/release/<tag>/kdos-ports.tar.xz`, the tag's recipe tree as an image's `/ports`
+   holds it, from `git archive`: `ports/core`, `ports/shelves`, `ports/sources.idx`, `src/` and
+   `docs/`, and a `TREE` stamp naming the commit and its time, as a reproducible tar compressed with
+   `xz -9 -T1`. It signs the tree with the release key as `kdos-ports.tar.xz.sig` and checks that
+   signature against the public key.
+5. Writes `build/release/<tag>/SHA256SUMS` in `sha256sum` format. It names the whole ISO even when
+   only its parts are uploaded, each part, `sources.sha256`, the tree, its signature and
+   `kdos-release.pub`.
+6. Signs it with `kpkg sign`, which writes `SHA256SUMS.sig`. The key is `--key <path>`, else
    `$KDOS_RELEASE_KEY`, else `build/keys/kdos-release.key`, and its public half is the `.pub` beside
    it, uploaded as `kdos-release.pub`. The signature is checked against that public key before
-   anything is uploaded. A missing key stops the run; `--unsigned` releases without the signature
-   and the key.
-6. Finds the release among all of the repository's releases, drafts included, and creates it as a
+   anything is uploaded. A missing key stops the run; `--unsigned` releases without the signatures
+   and the key, and no machine then takes its tree.
+7. Finds the release among all of the repository's releases, drafts included, and creates it as a
    **draft** named `KDOS <tag>` when there is none. While it is a draft its notes are rewritten on
    every run: the download, the joining of the parts, the check and the signature check.
-7. Uploads the ISO or its parts, `sources.sha256`, `SHA256SUMS`, `SHA256SUMS.sig` and
-   `kdos-release.pub`, hashing each again immediately before its upload. An asset already there
+8. Uploads the ISO or its parts, `sources.sha256`, `kdos-ports.tar.xz` and its `.sig`,
+   `SHA256SUMS`, `SHA256SUMS.sig` and `kdos-release.pub`, hashing each again immediately before its upload. An asset already there
    with the same bytes is kept, so an interrupted run is resumed by running it again. One with
    other bytes stops the run with exit 2; delete it by hand, and only while the release is still a
    draft.
-8. With `--publish`, makes the release public and Latest, then asks GitHub anonymously which
+9. With `--publish`, makes the release public and Latest, then asks GitHub anonymously which
    release is the latest, and exits 1 with a warning unless the answer is `<tag>`.
 
 The draft is visible only to the repository's writers, so the assets go out together when you
-publish it. The archive's `sources-<N>` volumes are pre-releases created with `make_latest`
+publish it. Once it is Latest, every installed machine's nightly `kdos update check --fetch` takes
+its tree. The archive's `sources-<N>` volumes are pre-releases created with `make_latest`
 false, so none of them ever takes Latest from a system release.
 
 Someone who downloads the release checks it with:

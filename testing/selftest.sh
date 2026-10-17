@@ -1793,6 +1793,219 @@ if command -v xz >/dev/null 2>&1; then
     echo "  the package is xz -9 --block-size=32MiB of its tar, recompressed on two threads"
 fi
 
+echo "==> kpkg refuses a staged tree the lint fails, and rolls one it passes"
+# One synthetic port, its build.sh switched by LINT_CASE: each bad case must
+# be refused with its own rule's message, and the good case, which holds one
+# path from each allowlist, must be rolled. The ELF cases need $CC; the
+# Python case needs a python3 on PATH.
+LP="$OUT/lint"
+rm -rf "$LP"
+mkdir -p "$LP/ports/lint" "$LP/work" "$LP/pkgs"
+cat > "$LP/ports/lint/kpkgbuild" <<'EOF'
+name        = lint
+version     = 1.0
+release     = 1
+description = a synthetic port whose staged tree is whatever the test asks for
+homepage    = https://example.invalid/
+EOF
+cat > "$LP/ports/lint/build.sh" <<'EOF'
+mkdir -p "$PKG/usr/share/lint"
+printf 'ok\n' > "$PKG/usr/share/lint/ok"
+case $LINT_CASE in
+unreadable) mkdir -p "$PKG/etc"; printf 'x\n' > "$PKG/etc/lint.conf"; chmod 600 "$PKG/etc/lint.conf" ;;
+noexec)     mkdir -p "$PKG/usr/bin"; printf '#!/bin/sh\n' > "$PKG/usr/bin/lint"; chmod 644 "$PKG/usr/bin/lint" ;;
+world)      chmod 666 "$PKG/usr/share/lint/ok" ;;
+orig)       printf 'x\n' > "$PKG/usr/share/lint/ok.orig" ;;
+lib64)      mkdir -p "$PKG/usr/lib64"; printf 'x\n' > "$PKG/usr/lib64/x" ;;
+usretc)     mkdir -p "$PKG/usr/etc"; printf 'x\n' > "$PKG/usr/etc/x" ;;
+pc)         mkdir -p "$PKG/usr/lib/pkgconfig"
+            printf 'Name: lint\nDescription: x\nVersion:\nLibs: -llint\n' > "$PKG/usr/lib/pkgconfig/lint.pc" ;;
+rpath)      mkdir -p "$PKG/usr/bin"; printf 'int main(void){return 0;}\n' > m.c
+            $LINT_CC -o "$PKG/usr/bin/lint" m.c -Wl,-rpath,/var/cache/kpkg/work/lint ;;
+execstack)  mkdir -p "$PKG/usr/bin"; printf 'int main(void){return 0;}\n' > m.c
+            $LINT_CC -o "$PKG/usr/bin/lint" m.c -Wl,-z,execstack ;;
+python)     _sp=$PKG/usr/lib/python3/site-packages
+            mkdir -p "$_sp/lint-1.0.dist-info" "$PKG/usr/bin/__pycache__"
+            printf 'X = 1\n' > "$_sp/lint.py"
+            printf '{}\n' > "$_sp/lint-1.0.dist-info/direct_url.json"
+            printf 'x\n' > "$PKG/usr/bin/__pycache__/x.pyc" ;;
+good)       mkdir -p "$PKG/etc" "$PKG/var/games" "$PKG/usr/bin" "$PKG/usr/lib/rust/x"
+            printf 'x\n' > "$PKG/etc/shadow"; chmod 600 "$PKG/etc/shadow"
+            printf '0\n' > "$PKG/var/games/tetris-bsd.scores"
+            chmod 666 "$PKG/var/games/tetris-bsd.scores"
+            printf 'x\n' > "$PKG/usr/lib/rust/x/Cargo.toml.orig"
+            printf '#!/bin/sh\n' > "$PKG/usr/bin/lint"; chmod 755 "$PKG/usr/bin/lint"
+            if [ -n "$LINT_CC" ]; then
+                printf 'int main(void){return 0;}\n' > m.c
+                $LINT_CC -o "$PKG/usr/bin/lint-elf" m.c -Wl,-rpath,'$ORIGIN/../lib'
+            fi ;;
+esac
+EOF
+klint() {
+    ( cd "$LP/ports/lint" &&
+      env PORT_REPO="$LP/ports" WORK_DIR="$LP/work" PACKAGE_DIR="$LP/pkgs" \
+          PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent LINT_CASE="$1" \
+          LINT_CC="${2:-}" SOURCE_DATE_EPOCH=1735689600 \
+          "$OUT/kpkgbuild" >"$LP/out" 2>&1 )
+}
+_lcc=
+printf 'int main(void){return 0;}\n' > "$LP/probe.c"
+${CC:-cc} -o "$LP/probe" "$LP/probe.c" 2>/dev/null && _lcc=${CC:-cc}
+for _c in "unreadable:not readable by users" "noexec:a program with no x bit" \
+          "world:world-writable" "orig:a patch leftover" \
+          "lib64:the gcc runtime directory is usr/lib" \
+          "usretc:configuration lives in /etc" "pc:an empty Version" \
+          "rpath:points into a build tree" "execstack:an executable stack"; do
+    _n=${_c%%:*}
+    case $_n in rpath|execstack) [ -n "$_lcc" ] || continue ;; esac
+    rm -f "$LP/pkgs/"*
+    if klint "$_n" "$_lcc"; then
+        echo "  the lint passed the '$_n' case"; cat "$LP/out"; exit 1
+    fi
+    grep -qF "${_c#*:}" "$LP/out" \
+        || { echo "  the '$_n' case failed for another reason:"; cat "$LP/out"; exit 1; }
+    [ ! -e "$LP/pkgs/lint-1.0-1.tar.xz" ] \
+        || { echo "  the '$_n' case was refused but a package was written"; exit 1; }
+done
+rm -f "$LP/pkgs/"*
+klint good "$_lcc" \
+    || { echo "  the lint refused the allowlisted tree:"; cat "$LP/out"; exit 1; }
+echo "  refused: modes, layout, patch leftovers, an empty .pc Version${_lcc:+, a build-tree RPATH, an executable stack}; the allowlists pass"
+if command -v python3 >/dev/null 2>&1; then
+    rm -f "$LP/pkgs/"*
+    klint python || { echo "  the Python case did not build:"; cat "$LP/out"; exit 1; }
+    _lst=$(tar -tf "$LP/pkgs/lint-1.0-1.tar.xz")
+    printf '%s\n' "$_lst" | grep -q '^\./usr/lib/python3/site-packages/__pycache__/lint\..*\.pyc$' \
+        || { echo "  no bytecode was compiled into the package"; exit 1; }
+    ! printf '%s\n' "$_lst" | grep -qE 'direct_url\.json|usr/bin/__pycache__' \
+        || { echo "  direct_url.json or usr/bin/__pycache__ was packaged"; exit 1; }
+    echo "  bytecode compiled into the package; direct_url.json and usr/bin/__pycache__ removed"
+fi
+
+echo "==> kpkg copies licences and prunes manuals and translations"
+# The tree policy (prune.c) on a synthetic port with a real tarball, so the
+# licence copy has a source root to read. Each path below is one rule: what
+# must go, what must stay, and the two exempt manuals. A licence symlink out
+# of the source is not followed, and a staged symlink at a licence's target
+# is not written through. The symbol-table case
+# needs $CC, objcopy and readelf, and builds a 36 MB executable beside a 36 MB
+# static archive and relocatable object, which must keep theirs. The
+# config.guess case needs automake's copy under /usr/share, which a bare host
+# may lack.
+PP="$OUT/policy"
+rm -rf "$PP"
+mkdir -p "$PP/ports/pol" "$PP/work" "$PP/pkgs" "$PP/t/pol-1.0/LICENSES" "$PP/t/pol-1.0/aux"
+printf 'mit\n' > "$PP/t/pol-1.0/LICENSE"
+printf 'gpl\n' > "$PP/t/pol-1.0/COPYING.LIB"
+printf 'spdx\n' > "$PP/t/pol-1.0/LICENSES/MIT.txt"
+printf 'readme\n' > "$PP/t/pol-1.0/README"
+printf 'int x;\n' > "$PP/t/pol-1.0/license.c"
+printf 'notice\n' > "$PP/t/pol-1.0/COPYRIGHT"
+ln -s /etc/passwd "$PP/t/pol-1.0/NOTICE"
+ln -s LICENSE "$PP/t/pol-1.0/LICENCE.alias"
+printf "#!/bin/sh\ntimestamp='2001-01-01'\n" > "$PP/t/pol-1.0/aux/config.guess"
+chmod 755 "$PP/t/pol-1.0/aux/config.guess"
+( cd "$PP/t" && tar -czf "$PP/ports/pol/pol-1.0.tar.gz" pol-1.0 )
+_h=$(sha256sum "$PP/ports/pol/pol-1.0.tar.gz" | cut -d' ' -f1)
+cat > "$PP/ports/pol/kpkgbuild" <<POLEOF
+name        = pol
+version     = 1.0
+release     = 1
+source      = pol-1.0.tar.gz
+sha256      = $_h  pol-1.0.tar.gz
+description = a synthetic port the tree policy is applied to
+homepage    = https://example.invalid/
+license     = MIT
+POLEOF
+cat > "$PP/ports/pol/build.sh" <<'POLEOF'
+echo "pol-stamp: $(grep '^timestamp=' aux/config.guess)"
+echo "pol-license: [${license-unset}]"
+for f in usr/share/locale/de/LC_MESSAGES/pol.mo usr/share/locale/en_GB/LC_MESSAGES/pol.mo \
+         usr/lib/locale/fr/LC_MESSAGES/pol.mo usr/share/locale/locale.alias \
+         usr/share/pol/translations/pol_de.qm usr/share/pol/translations/pol_en.qm \
+         usr/share/pol/translations/pol_rgb2pct.qm usr/share/pol/translations/de.mo \
+         usr/share/doc/pol/README usr/share/doc/pol/a.html usr/share/doc/pol/b.PDF \
+         usr/share/doc/pol/html/x.png usr/share/doc/mednafen/index.html \
+         usr/share/doc/kdos/index.html usr/share/doc/HTML/en/pol/index.docbook \
+         usr/share/doc/HTML/de/pol/index.docbook usr/share/man/man1/pol.1 \
+         usr/share/man/de/man1/pol.1 usr/share/texmf-dist/doc/latex/pol/pol.pdf \
+         usr/share/licenses/pol/extra.html usr/share/X11/locale/de_DE.UTF-8/Compose \
+         usr/share/doc/onlyhtml/index.html \
+         usr/share/doc/R/html/index.html usr/share/doc/R/html/R.css usr/share/doc/R/a.pdf \
+         usr/share/doc/geany/html/index.html usr/share/doc/wireshark/wireshark.html \
+         usr/lib/R/library/pol/po/fr/LC_MESSAGES/R-pol.mo \
+         usr/lib/pol/locales/zh_TW.Big5/LC_MESSAGES/pol.mo usr/share/pol/org.kde.pol.mo; do
+    mkdir -p "$PKG/${f%/*}"; printf 'x\n' > "$PKG/$f"
+done
+ln -s "$POL_OUT/escaped" "$PKG/usr/share/licenses/pol/COPYRIGHT"
+mkdir -p "$PKG/usr/share/man/cat1"
+if [ -n "$POL_CC" ]; then
+    mkdir -p "$PKG/usr/bin" "$PKG/usr/lib"
+    printf 'int big[9437184] = {1};\nint main(void){return big[0]-1;}\n' > big.c
+    $POL_CC -o "$PKG/usr/bin/big" big.c
+    $POL_CC -c -o big.o big.c
+    ar rcs "$PKG/usr/lib/libbig.a" big.o
+    cp big.o "$PKG/usr/lib/big.o"
+fi
+POLEOF
+_pcc=
+[ -n "$_lcc" ] && command -v objcopy >/dev/null 2>&1 && command -v readelf >/dev/null 2>&1 \
+    && command -v ar >/dev/null 2>&1 && command -v nm >/dev/null 2>&1 && _pcc=$_lcc
+( cd "$PP/ports/pol" &&
+  env PORT_REPO="$PP/ports" WORK_DIR="$PP/work" PACKAGE_DIR="$PP/pkgs" \
+      SOURCE_DIR=/nonexistent PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent \
+      SOURCE_DATE_EPOCH=1735689600 POL_CC="$_pcc" POL_OUT="$PP" \
+      "$OUT/kpkgbuild" >"$PP/out" 2>&1 ) \
+    || { echo "  the policy port did not build:"; cat "$PP/out"; exit 1; }
+_lst=$(tar -tf "$PP/pkgs/pol-1.0-1.tar.xz")
+for _p in usr/share/licenses/pol/LICENSE usr/share/licenses/pol/COPYING.LIB \
+          usr/share/licenses/pol/LICENSES/MIT.txt usr/share/licenses/pol/extra.html \
+          usr/share/locale/en_GB/LC_MESSAGES/pol.mo usr/share/locale/locale.alias \
+          usr/share/pol/translations/pol_en.qm usr/share/pol/translations/pol_rgb2pct.qm \
+          usr/share/doc/pol/README usr/share/doc/mednafen/index.html \
+          usr/share/doc/kdos/index.html usr/share/doc/HTML/en/pol/index.docbook \
+          usr/share/man/man1/pol.1 usr/share/X11/locale/de_DE.UTF-8/Compose \
+          usr/share/licenses/pol/LICENCE.alias usr/share/pol/org.kde.pol.mo \
+          usr/share/doc/R/html/index.html usr/share/doc/R/html/R.css \
+          usr/share/doc/geany/html/index.html usr/share/doc/wireshark/wireshark.html; do
+    printf '%s\n' "$_lst" | grep -qxF "./$_p" \
+        || { echo "  $_p is missing from the package"; exit 1; }
+done
+for _p in usr/share/licenses/pol/README usr/share/locale/de/ usr/lib/locale/ \
+          usr/share/pol/translations/pol_de.qm usr/share/pol/translations/de.mo \
+          usr/share/doc/pol/a.html usr/share/doc/pol/b.PDF usr/share/doc/pol/html/ \
+          usr/share/doc/HTML/de/ usr/share/man/de/ usr/share/man/cat1/ \
+          usr/share/texmf-dist/ usr/share/doc/onlyhtml/ usr/lib/R/ \
+          usr/lib/pol/ usr/share/licenses/pol/license.c usr/share/licenses/pol/NOTICE \
+          usr/share/doc/R/a.pdf; do
+    ! printf '%s\n' "$_lst" | grep -qxF "./$_p" \
+        || { echo "  $_p was packaged"; exit 1; }
+done
+[ ! -e "$PP/escaped" ] \
+    || { echo "  a licence was written through a symlink out of \$PKG"; exit 1; }
+grep -qxF 'pol-license: [unset]' "$PP/out" \
+    || { echo "  the license key reached build.sh as \$license"; exit 1; }
+echo "  licences copied; HTML, PDF and non-English catalogs, handbooks and man pages pruned; English, the HTML programs open and the book kept"
+if [ -n "$_pcc" ]; then
+    rm -rf "$PP/x"; mkdir -p "$PP/x"
+    tar -xf "$PP/pkgs/pol-1.0-1.tar.xz" -C "$PP/x" ./usr/bin/big ./usr/lib/libbig.a ./usr/lib/big.o
+    ! readelf -SW "$PP/x/usr/bin/big" | grep -qE ' \.symtab | \.strtab ' \
+        || { echo "  the 36 MB executable kept its symbol table"; exit 1; }
+    readelf -SW "$PP/x/usr/bin/big" | grep -q ' \.note' \
+        || { echo "  the 36 MB executable lost its notes"; exit 1; }
+    readelf -SW "$PP/x/usr/lib/big.o" | grep -q ' \.symtab ' \
+        || { echo "  a relocatable object lost its symbol table"; exit 1; }
+    nm "$PP/x/usr/lib/libbig.a" 2>/dev/null | grep -q ' T main$' \
+        || { echo "  a static archive lost its symbol table"; exit 1; }
+    echo "  .symtab removed from a 36 MB executable; the static archive and the object keep theirs"
+fi
+_am=$(ls /usr/share/automake-*/config.guess 2>/dev/null | head -1)
+if [ -n "$_am" ]; then
+    ! grep -qF "pol-stamp: timestamp='2001-01-01'" "$PP/out" \
+        || { echo "  the 2001 config.guess reached build.sh"; exit 1; }
+    echo "  a stale config.guess is replaced by automake's before build.sh"
+fi
+
 echo "==> kpkg install compresses cheaply only what it deletes"
 KI="$OUT/kinst"
 rm -rf "$KI"; mkdir -p "$KI/work" "$KI/pkgs" "$KI/root"
@@ -1861,6 +2074,9 @@ install -Dm644 /dev/null "$PKG/usr/share/man/man1/feed.1"
 install -Dm644 /dev/null "$PKG/etc/fonts/conf.d/60-feed.conf"
 install -Dm644 /dev/null "$PKG/usr/share/texmf-dist/tex/latex/feed/feed.sty"
 install -Dm644 /dev/null "$PKG/usr/share/applications/feed.desktop"
+install -Dm644 /dev/null "$PKG/usr/share/icons/feedtheme/index.theme"
+install -Dm644 /dev/null "$PKG/usr/share/icons/feedtheme/16x16/apps/feed.png"
+install -Dm644 /dev/null "$PKG/usr/share/icons/bare/16x16/apps/feed.png"
 EOF
 mkdir -p "$TR/ports/page"
 cat > "$TR/ports/page/kpkgbuild" <<'EOF'
@@ -1872,17 +2088,28 @@ EOF
 cat > "$TR/ports/page/build.sh" <<'EOF'
 install -Dm644 /dev/null "$PKG/usr/share/man/man1/page.1"
 EOF
+mkdir -p "$TR/ports/icontool"
+cat > "$TR/ports/icontool/kpkgbuild" <<'EOF'
+name        = icontool
+version     = 1.0
+release     = 1
+description = a synthetic port that carries the icon cache tool
+EOF
+cat > "$TR/ports/icontool/build.sh" <<'EOF'
+install -Dm755 /dev/null "$PKG/usr/bin/gtk-update-icon-cache"
+EOF
 # The MIME and desktop-database stubs leave a generated file behind, as the
 # real tools do: that is what keeps each directory alive after the last XML or
 # desktop entry is removed. The makewhatis stub writes the database, which is
 # what the trigger measures.
 for t in update-mime-database install-info udevadm makewhatis fc-cache mktexlsr \
-         update-desktop-database; do
+         update-desktop-database gtk-update-icon-cache; do
     printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\n' "$t" "$TR" > "$TR/bin/$t"
     chmod +x "$TR/bin/$t"
 done
 printf ': > "$1/globs"\n' >> "$TR/bin/update-mime-database"
 printf ': > "$2/mimeinfo.cache"\n' >> "$TR/bin/update-desktop-database"
+printf ': > "$4/icon-theme.cache"\n' >> "$TR/bin/gtk-update-icon-cache"
 printf 'd=$1; [ "$1" = -d ] && d=$2; echo db > "$d/mandoc.db"\n' \
     >> "$TR/bin/makewhatis"
 ktrig() {
@@ -1895,6 +2122,8 @@ for t in kpkgbuild kpkgadd kpkgdel; do ln -sf kdos-kpkg "$OUT/$t"; done
     || { echo "  the synthetic port did not build"; exit 1; }
 ( cd "$TR/ports/page" && ktrig "$OUT/kpkgbuild" >/dev/null ) \
     || { echo "  the synthetic page port did not build"; exit 1; }
+( cd "$TR/ports/icontool" && ktrig "$OUT/kpkgbuild" >/dev/null ) \
+    || { echo "  the synthetic icon tool port did not build"; exit 1; }
 ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/feed-1.0-1.tar.xz" >/dev/null \
     || { echo "  the synthetic package did not install"; exit 1; }
 tar -tf "$TR/pkgs/feed-1.0-1.tar.xz" | grep -q 'usr/share/info/dir$' \
@@ -1913,11 +2142,22 @@ grep -qx "mktexlsr --quiet $TR/root/usr/share/texmf-dist" "$TR/calls" \
     || { echo "  installing a TeX file did not rebuild ls-R, or named a tree that does not exist"; exit 1; }
 grep -qx "update-desktop-database -q $TR/root/usr/share/applications" "$TR/calls" \
     || { echo "  installing a desktop entry did not rebuild mimeinfo.cache"; exit 1; }
+grep -qx "gtk-update-icon-cache -q -t -f $TR/root/usr/share/icons/feedtheme" "$TR/calls" \
+    || { echo "  installing into an icon theme did not rebuild its icon-theme.cache"; exit 1; }
+grep -q "gtk-update-icon-cache.*/bare" "$TR/calls" \
+    && { echo "  an icon directory with no index.theme was given a cache"; exit 1; }
+[ "$(stat -c %Y "$TR/root/usr/share/icons/feedtheme/16x16")" -le 1735689600 ] \
+    || { echo "  an icon theme's directory mtime was not clamped to SOURCE_DATE_EPOCH"; exit 1; }
 : > "$TR/calls"
 ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/page-1.0-1.tar.xz" >/dev/null \
     || { echo "  the synthetic page package did not install"; exit 1; }
 grep -qx "makewhatis -d $TR/root/usr/share/man man1/page.1" "$TR/calls" \
     || { echo "  an added manual page was not merged into the existing index"; exit 1; }
+: > "$TR/calls"
+ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/icontool-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the synthetic icon tool package did not install"; exit 1; }
+grep -qx "gtk-update-icon-cache -q -t -f $TR/root/usr/share/icons/feedtheme" "$TR/calls" \
+    || { echo "  installing the icon cache tool did not cache a theme placed before it"; exit 1; }
 : > "$TR/calls"
 ktrig "$OUT/kpkgdel" --root "$TR/root" feed >/dev/null
 grep -qx "update-mime-database $TR/root/usr/share/mime" "$TR/calls" \
@@ -1928,6 +2168,8 @@ grep -qx "makewhatis $TR/root/usr/share/man" "$TR/calls" \
     || { echo "  removing a manual page did not rebuild the whole manual index"; exit 1; }
 grep -qx "update-desktop-database -q $TR/root/usr/share/applications" "$TR/calls" \
     || { echo "  removing a desktop entry left mimeinfo.cache naming it"; exit 1; }
+[ -e "$TR/root/usr/share/icons/feedtheme" ] \
+    && { echo "  removing a theme's last file left its icon-theme.cache and directory"; exit 1; }
 mkdir -p "$TR/root2"; : > "$TR/calls"
 ktrig KPKG_SKIP_INDEX=man "$OUT/kpkgadd" --root "$TR/root2" "$TR/pkgs/page-1.0-1.tar.xz" \
     > "$TR/skip.log" || { echo "  the page package did not install with the index skipped"; exit 1; }
@@ -1935,7 +2177,7 @@ grep -q 'index skipped: man' "$TR/skip.log" \
     || { echo "  KPKG_SKIP_INDEX=man did not say it skipped the manual index"; exit 1; }
 [ -e "$TR/root2/usr/share/man/mandoc.db" ] || grep -q makewhatis "$TR/calls" \
     && { echo "  KPKG_SKIP_INDEX=man still ran makewhatis"; exit 1; }
-echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index, ls-R and desktop database"
+echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index, ls-R, desktop database and icon caches"
 
 echo
 
@@ -1979,9 +2221,11 @@ mkport long 1.0 'install -Dm755 /dev/null "$PKG/bin/shared"'
 kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/long-1.0-1.tar.xz" 2>&1 \
     | grep -q "File conflict" \
     || { echo "  a path claimed under its other spelling was not a conflict"; exit 1; }
-KPKG_OVERWRITE=1 kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/long-1.0-1.tar.xz" >/dev/null
+printf 'replaces    = other short\n' >> "$MU/ports/long/kpkgbuild"
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/long-1.0-1.tar.xz" | grep -q "Taking 1 path from short" \
+    || { echo "  a takeover declared in replaces = was refused or not reported"; exit 1; }
 grep -q 'shared' "$MU/root/db/short" \
-    && { echo "  an overwrite left the path in the old owner's manifest"; exit 1; }
+    && { echo "  a declared takeover left the path in the old owner's manifest"; exit 1; }
 printf './usr/bin/shared\n' >> "$MU/root/db/short"
 kmu "$OUT/kpkgdel" --root "$MU/root" short >/dev/null
 [ -e "$MU/root/usr/bin/shared" ] \
@@ -2016,7 +2260,7 @@ tar -tf "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -qx './.POSTINSTALL' \
     || { echo "  the fixture carries no hook to leave out"; exit 1; }
 kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -q hooked-ran \
     || { echo "  the hooked package did not install or run its hook"; exit 1; }
-tar -tf "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -vx './.POSTINSTALL' > "$MU/want"
+tar --quoting-style=literal -tf "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -vx './.POSTINSTALL' > "$MU/want"
 tail -n +2 "$MU/root/db/hooked" | cmp -s - "$MU/want" \
     || { echo "  the database entry is not tar -tf minus ./.POSTINSTALL"; exit 1; }
 install -Dm644 /dev/null "$MU/root/usr/share/stray/left"
@@ -2025,6 +2269,23 @@ kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/stray-1.0-1.tar.xz" >/dev/null \
     || { echo "  a file no package claims was refused instead of adopted"; exit 1; }
 grep -qx './usr/share/stray/left' "$MU/root/db/stray" \
     || { echo "  the adopted file is not in its new owner's entry"; exit 1; }
+mkport gone 1.0 'install -Dm644 /dev/null "$PKG/usr/share/gone/f"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/gone-1.0-1.tar.xz" >/dev/null
+rm "$MU/root/usr/share/gone/f"
+mkport taker 1.0 'install -Dm644 /dev/null "$PKG/usr/share/gone/f"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/taker-1.0-1.tar.xz" 2>&1 \
+    | grep -q "usr/share/gone/f (owned by gone)" \
+    || { echo "  a claimed path deleted from the root was taken without a conflict"; exit 1; }
+mkport taker2 1.0 'install -Dm644 /dev/null "$PKG/usr/share/taker2/f"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/taker2-1.0-1.tar.xz" >/dev/null
+rm -rf "$MU/ports/taker2"
+mkport taker2 2.0 'install -Dm644 /dev/null "$PKG/usr/share/taker2/f"
+install -Dm644 /dev/null "$PKG/usr/share/gone/f"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/taker2-2.0-1.tar.xz" 2>&1 \
+    | grep -q "File conflict" \
+    || { echo "  an upgrade over another package's path was not a conflict"; exit 1; }
+head -1 "$MU/root/db/taker2" | grep -qx '1.0 1' \
+    || { echo "  a refused upgrade replaced the installed version"; exit 1; }
 mkport lower 1.0 'install -Dm755 /dev/null "$PKG/bin/lower"'
 kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/lower-1.0-1.tar.xz" >/dev/null
 mkport upper 1.0 'install -Dm755 /dev/null "$PKG/usr/bin/lower"'
@@ -2045,7 +2306,7 @@ wait
 for i in 1 2 3 4; do
     grep -q "installed successfully" "$MU/par$i.log" \
         || { echo "  concurrent install par$i did not complete"; cat "$MU/par$i.log"; exit 1; }
-    tar -tf "$MU/pkgs/par$i-1.0-1.tar.xz" | cmp -s - <(tail -n +2 "$MU/root/db/par$i") \
+    tar --quoting-style=literal -tf "$MU/pkgs/par$i-1.0-1.tar.xz" | cmp -s - <(tail -n +2 "$MU/root/db/par$i") \
         || { echo "  concurrent install par$i wrote a short database entry"; exit 1; }
 done
 mkdir -p "$MU/root/db/.recipe" "$MU/root/db/.pkgsha"
@@ -2054,6 +2315,61 @@ kmu "$OUT/kpkgdel" --root "$MU/root" par1 >/dev/null
 [ -e "$MU/root/db/.recipe/par1" ] || [ -e "$MU/root/db/.pkgsha/par1" ] \
     && { echo "  kpkgdel left a sidecar of the package it removed"; exit 1; }
 echo "  the entry is the extraction's listing; unowned adopted, owned refused across /bin; four installers at once all recorded"
+
+# The record kpkg check compares against, and a name outside ASCII as its own
+# bytes in the manifest.
+echo "==> kpkg check finds missing, changed and unowned files, and passes edited /etc"
+mkport checked 1.0 'install -Dm755 /dev/null "$PKG/usr/bin/checked"
+install -Dm644 /dev/null "$PKG/etc/checked.conf"
+install -Dm644 /dev/null "$PKG/etc/checked.keep"
+mkdir -p "$PKG/usr/share/checked"
+printf x > "$PKG/usr/share/checked/$(printf "caf\\303\\251.txt")"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/checked-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the checked package did not install"; exit 1; }
+grep -qx "./usr/share/checked/caf$(printf '\303\251').txt" "$MU/root/db/checked" \
+    || { echo "  a non-ASCII name is not its own bytes in the manifest"; exit 1; }
+grep -q " 0755 ./usr/bin/checked$" "$MU/root/db/.files/checked" \
+    || { echo "  kpkgadd recorded no sha256 and mode for a placed file"; exit 1; }
+kmu "$OUT/kpkg" check --root "$MU/root" checked >/dev/null \
+    || { echo "  kpkg check failed a package that is as installed"; exit 1; }
+mkdir -p "$MU/ports/hookmode"
+printf 'chmod 0700 "$PKG_ROOT/usr/bin/hookmode"\n' > "$MU/ports/hookmode/postinstall.sh"
+mkport hookmode 1.0 'install -Dm755 /dev/null "$PKG/usr/bin/hookmode"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/hookmode-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the hookmode package did not install"; exit 1; }
+grep -q " 0700 ./usr/bin/hookmode$" "$MU/root/db/.files/hookmode" \
+    && kmu "$OUT/kpkg" check --root "$MU/root" hookmode >/dev/null \
+    || { echo "  the file record was taken before the install hook set a mode"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" hookmode >/dev/null
+printf y > "$MU/root/usr/share/checked/caf$(printf '\303\251').txt"
+chmod 0700 "$MU/root/usr/bin/checked"
+rc=0; kmu "$OUT/kpkg" check --root "$MU/root" checked > "$MU/check.log" || rc=$?
+[ "$rc" = 1 ] && grep -q "checked: changed ./usr/share/checked/caf" "$MU/check.log" \
+    && grep -q "checked: mode ./usr/bin/checked 0700, installed 0755" "$MU/check.log" \
+    || { echo "  kpkg check missed a changed file or mode"; cat "$MU/check.log"; exit 1; }
+printf x > "$MU/root/usr/share/checked/caf$(printf '\303\251').txt"
+chmod 0755 "$MU/root/usr/bin/checked"
+printf 'edited=1\n' > "$MU/root/etc/checked.conf"
+chmod 0600 "$MU/root/etc/checked.keep"
+rc=0; kmu "$OUT/kpkg" check --root "$MU/root" checked > "$MU/check.log" || rc=$?
+[ "$rc" = 0 ] && grep -q "checked: config ./etc/checked.conf$" "$MU/check.log" \
+    && grep -q "checked: config mode ./etc/checked.keep 0600, installed 0644" "$MU/check.log" \
+    && grep -q ", 0 changed, 0 mode, 2 config" "$MU/check.log" \
+    || { echo "  kpkg check failed, or did not report, edited configuration under /etc"; cat "$MU/check.log"; exit 1; }
+rm "$MU/root/etc/checked.keep"
+rc=0; kmu "$OUT/kpkg" check --root "$MU/root" checked > "$MU/check.log" || rc=$?
+[ "$rc" = 1 ] && grep -q "checked: missing ./etc/checked.keep" "$MU/check.log" \
+    || { echo "  kpkg check passed a file missing under /etc"; cat "$MU/check.log"; exit 1; }
+rm "$MU/root/usr/bin/checked"
+install -Dm644 /dev/null "$MU/root/usr/share/nobody/f"
+kmu "$OUT/kpkg" check --root "$MU/root" --all > "$MU/check.log" || true
+grep -q "checked: missing ./usr/bin/checked" "$MU/check.log" \
+    && grep -qx "unowned ./usr/share/nobody/f" "$MU/check.log" \
+    || { echo "  kpkg check --all missed a missing or an unowned file"; cat "$MU/check.log"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" checked >/dev/null
+[ -e "$MU/root/db/.files/checked" ] \
+    && { echo "  kpkgdel left the file record of the package it removed"; exit 1; }
+echo "  sha256 and mode recorded per file; missing, changed, mode and unowned reported; edited /etc reported and passed"
 
 echo
 
@@ -2565,6 +2881,58 @@ rc=0; CFLAGS="-O3 -march=native" kpkg_bh kpkg binhost "$BH/repo" tiny \
     --dry-run >/dev/null 2>&1 || rc=$?
 test "$rc" = 1 || { echo "  a different build config was treated as a match"; exit 1; }
 echo "  signed, verified, and every refusal refused"
+
+echo
+echo "==> kpkg fetch takes a source from the archive and tells offline from gone"
+# A shipped machine has recipes and no sources. The archive here is a
+# directory laid out as <tag>/<asset>, which KDOS_SOURCES_BASE reads as a
+# file:// URL; upstream is 127.0.0.1:9, where a connection is refused at once,
+# so no case touches the network. Exit 3 (offline) must only ever mean that
+# nothing answered: a wrong hash from a server that did answer is exit 1.
+if command -v curl >/dev/null 2>&1; then
+    KF="$OUT/kfetch"
+    rm -rf "$KF"
+    mkdir -p "$KF/tree/core/misc/fz" "$KF/arch/sources-1" "$KF/src"
+    printf 'fz source\n' > "$KF/arch/sources-1/misc--fz-1.0.tar.gz"
+    _kfh=$(sha256sum "$KF/arch/sources-1/misc--fz-1.0.tar.gz" | cut -d' ' -f1)
+    printf '# kdos-sources-index 2\n%s sources-1 misc--fz-1.0.tar.gz fz/fz-1.0.tar.gz\n' \
+        "$_kfh" > "$KF/tree/sources.idx"
+    printf 'name = fz\nversion = 1.0\nrelease = 1\nsource = http://127.0.0.1:9/fz-$version.tar.gz\nsha256 = %s  fz-1.0.tar.gz\n' \
+        "$_kfh" > "$KF/tree/core/misc/fz/kpkgbuild"
+    : > "$KF/tree/core/misc/fz/build.sh"
+    kpkg_kf() {
+        env PORT_REPO="$KF/tree/core" KPKG_CONF=/nonexistent SOURCE_DIR="$KF/src" \
+            "$OUT/kdos-kpkg" kpkg fetch fz >/dev/null 2>&1
+    }
+    KDOS_SOURCES_BASE="$KF/arch" kpkg_kf \
+        || { echo "  a source the archive holds was not fetched"; exit 1; }
+    test "$(sha256sum "$KF/src/fz-1.0.tar.gz" | cut -d' ' -f1)" = "$_kfh" \
+        || { echo "  the fetched source is not the recipe's bytes"; exit 1; }
+    # A vendor bundle is named by no `source =` entry: build.sh opens it as
+    # $PORT_SRC/<file>, so it must appear in the port directory.
+    printf 'fz vendor\n' > "$KF/arch/sources-1/misc--fz-vendor-1.0.tar.xz"
+    _kfv=$(sha256sum "$KF/arch/sources-1/misc--fz-vendor-1.0.tar.xz" | cut -d' ' -f1)
+    printf '%s sources-1 misc--fz-vendor-1.0.tar.xz fz/fz-vendor-1.0.tar.xz\n' \
+        "$_kfv" >> "$KF/tree/sources.idx"
+    printf 'sha256 = %s  fz-vendor-1.0.tar.xz\n' "$_kfv" >> "$KF/tree/core/misc/fz/kpkgbuild"
+    KDOS_SOURCES_BASE="$KF/arch" kpkg_kf \
+        || { echo "  a vendor bundle the archive holds was not fetched"; exit 1; }
+    test "$(sha256sum "$KF/tree/core/misc/fz/fz-vendor-1.0.tar.xz" 2>/dev/null | cut -d' ' -f1)" = "$_kfv" \
+        || { echo "  a fetched vendor bundle is not in the port directory"; exit 1; }
+    test ! -e "$KF/tree/core/misc/fz/fz-1.0.tar.gz" \
+        || { echo "  a source a \`source =\` entry names was linked into the port directory"; exit 1; }
+    rm -f "$KF/src/fz-1.0.tar.gz"
+    printf 'other bytes\n' > "$KF/arch/sources-1/misc--fz-1.0.tar.gz"
+    rc=0; KDOS_SOURCES_BASE="$KF/arch" kpkg_kf || rc=$?
+    test "$rc" = 1 || { echo "  a wrong hash from the archive gave exit $rc, not 1"; exit 1; }
+    test ! -e "$KF/src/fz-1.0.tar.gz" \
+        || { echo "  a source that did not verify was kept"; exit 1; }
+    rc=0; KDOS_SOURCES_BASE= kpkg_kf || rc=$?
+    test "$rc" = 3 || { echo "  an unreachable upstream gave exit $rc, not 3"; exit 1; }
+    echo "  archive first, every copy hashed, offline told apart"
+else
+    echo "  skipped — no curl"
+fi
 
 echo
 echo "==> a delta rebuilds the next package from the last one"
@@ -3540,8 +3908,7 @@ grep -q "cryptsetup open .*\"\$PASS\"" "$IR/init" \
 # THE STUB ANSWERS `-U <uuid>` AND NOTHING ELSE, which is the whole of what
 # unlock_root asks of it. A stub that echoed a device whatever it was handed
 # could not tell a blkid that implements the UUID LOOKUP from one that does
-# not — and toybox's applet does not, which is exactly the defect that hid
-# behind the permissive version.
+# not, and a prober without it drops an installed machine to a shell.
 cat > "$IR/bin/blkid" <<'EOF'
 #!/bin/sh
 [ "$1" = "-U" ] && [ -n "${2:-}" ] || exit 1
@@ -3639,19 +4006,41 @@ sed -n '/Wait for device to appear/,/^    done$/p' "$IR/init" | grep -q 'activat
     || { echo "  the root wait no longer activates a late physical volume's group"; exit 1; }
 echo "  volume groups: no lvm without a PV, once per newly seen set of PVs, thin and cache targets first"
 
-# AND THE blkid THE INITRAMFS SHIPS IS UTIL-LINUX'S, NOT THE NAME TOYBOX
-# CLAIMS. Every lookup in the generated init is `blkid -U` — the root
-# filesystem, the ESP holding the A/B state, and the LUKS container — and
-# toybox's applet implements no `-U` and cannot see `crypto_LUKS`. With the
-# applet, an installed machine drops to a shell with "Root device not found".
-# $PATH puts /usr/bin ahead of /usr/sbin, so the name alone decides it.
-grep -q 'cp /usr/sbin/blkid bin/blkid' script/phases/70_image/090_initramfs.sh \
+# AND THE blkid THE INITRAMFS SHIPS IS UTIL-LINUX'S. Every lookup in the
+# generated init is `blkid -U` — the root filesystem, the ESP holding the A/B
+# state, and the LUKS container — and a prober without `-U` or `crypto_LUKS`
+# drops an installed machine to a shell with "Root device not found". The
+# build holds blkid, switch_root and the other util-linux programs to their
+# own --version before it copies them.
+_ini=script/phases/70_image/090_initramfs.sh
+grep -q 'copy_closure bin/blkid /usr/sbin/blkid' "$_ini" \
     || { echo "  the initramfs no longer copies util-linux's blkid"; exit 1; }
-grep -q "rm -f bin/blkid" script/phases/70_image/090_initramfs.sh \
-    || { echo "  the toybox blkid symlink is not removed first — cp writes THROUGH it"; exit 1; }
-grep -q "CONFIG_BLKID is not set" "$(port_dir toybox)/build.sh" \
-    || { echo "  toybox's blkid applet is back, and it shadows util-linux's on PATH"; exit 1; }
-echo "  the initramfs blkid is util-linux's, and toybox claims no such name"
+grep -q '^util_linux_only /usr/sbin/blkid$' "$_ini" \
+    || { echo "  the initramfs blkid is copied without its util-linux check"; exit 1; }
+grep -q '\*" from util-linux "\*) return 0' "$_ini" \
+    || { echo "  util_linux_only no longer asks --version for util-linux"; exit 1; }
+for _u in switch_root mount umount losetup dmesg; do
+    sed -n '/^for _p in \/usr\/sbin\/switch_root/,/^done$/p' "$_ini" | grep -q "/$_u " \
+        || sed -n '/^for _p in \/usr\/sbin\/switch_root/,/^done$/p' "$_ini" | grep -q "/$_u\$" \
+        || { echo "  $_u is no longer held to util-linux in the initramfs"; exit 1; }
+done
+unset _ini _u
+echo "  the initramfs blkid, switch_root, mount, umount, losetup and dmesg are util-linux's"
+# AND NO PORT INSTALLS A blkid UNDER /usr/bin. $PATH puts /usr/bin ahead of
+# /usr/sbin, so one there would answer every `blkid` the running system and the
+# build host run instead of util-linux's. Asked of the built tree's package
+# database, the only record of what each port installs; a checkout with no
+# build has nothing to ask.
+_kdb=build/fs/var/lib/kpkg/db
+if [ -d "$_kdb" ]; then
+    _bk=$(grep -lxE '\./(usr/)?bin/blkid' "$_kdb"/* 2>/dev/null || true)
+    [ -z "$_bk" ] \
+        || { echo "  a port installs a blkid under /usr/bin: ${_bk##*/}"; exit 1; }
+    echo "  no installed port puts a blkid under /usr/bin"
+else
+    echo "  no port puts a blkid under /usr/bin (skipped — no built tree)"
+fi
+unset _kdb _bk
 
 # AND THE SLOT'S OWN CONTAINER, WHICH IS ORDERING AND NOT LOGIC. `select` and
 # `crypt` both read the state file on the ESP, and the ESP is unmounted a few
@@ -4654,6 +5043,20 @@ BOXCHECK_STORE="$OUT/boxfix/store" BOXCHECK_HOME="$OUT/boxfix/home" \
     "$OUT/boxcheck"
 
 echo
+echo "==> the application index keeps every entry past its first allocation"
+# A fixed-size index stops the Start menu at its size with nothing on screen to
+# say an application is missing. The driver writes SH_APPS_CHUNK + 1 entries
+# and finds each one by id; its own binary for boxcheck's reason.
+rm -rf "$OUT/appidx"
+$CC $STD $WARN -Isrc/desktop/kdos-shell $INC -Isrc/libs/libkchrome \
+    -Isrc/libs/libkicon -Isrc/libs/libkcell -Isrc/libs/libkwl \
+    -Isrc/libs/libkimg -o "$OUT/appindex" testing/appindex.c \
+    src/desktop/kdos-shell/apps.c src/libs/libkbase/*.c src/libs/libkxdg/*.c
+XDG_DATA_HOME="$OUT/appidx" XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
+    HOME="$OUT" "$OUT/appindex" \
+    || { echo "  the application index lost an entry"; exit 1; }
+
+echo
 echo "==> kdos-powerd only lets root, seat and wheel near the power"
 # The gate is SO_PEERCRED on the connection, which cannot be tested without two
 # uids. `--explain` reads exactly the same two files the gate does and is the
@@ -4708,6 +5111,16 @@ grep -q "^mosh	off	" "$W/l1" || fail "mosh is not listed off"
 "$B/kdos-power" firewall mosh on > "$W/t1" || fail "firewall mosh on failed"
 grep -q "^ok mosh on" "$W/t1" || fail "the toggle reply is not on stdout"
 "$B/kdos-power" firewall list | grep -q "^mosh	on	" || fail "mosh did not read back on"
+# `ssh` also enables sshd: on takes the service.disabled marker away, off
+# puts it back, and no other name touches it.
+mkdir -p "$W/etc/service.disabled"
+: > "$W/etc/service.disabled/sshd"
+"$B/kdos-power" firewall ssh on > /dev/null || fail "firewall ssh on failed"
+[ -e "$W/etc/service.disabled/sshd" ] && fail "ssh on left sshd disabled"
+"$B/kdos-power" firewall ssh off > /dev/null || fail "firewall ssh off failed"
+[ -e "$W/etc/service.disabled/sshd" ] || fail "ssh off did not disable sshd"
+"$B/kdos-power" firewall mosh off > /dev/null || fail "firewall mosh off failed"
+[ -e "$W/etc/service.disabled/sshd" ] || fail "another name enabled sshd"
 "$B/kdos-power" firewall no-such-name on > "$W/t2" && fail "an unknown name exited 0"
 grep -q "^err " "$W/t2" || fail "the refusal is not on stdout"
 "$B/kdos-power" firewall mosh 2>/dev/null
@@ -5669,9 +6082,12 @@ done
 xterm_print() {			# <entry stem>
     printf '[Default Applications]\nimage/png=%s.desktop\n' "$1" \
         > "$XTH/.config/mimeapps.list"
+    # A session is named: kb_terminal() answers no emulator without one, and
+    # the cases below are about the session's terminal, not the bare VT's.
     env HOME="$XTH" XDG_CONFIG_HOME="$XTH/.config" \
         XDG_DATA_HOME="$XTH/.local/share" \
         XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
+        WAYLAND_DISPLAY=wayland-kdos-selftest \
         "$OUT/kdos-appbox" open --print "$XTH/files/a.png"
 }
 if [ ! -f /usr/share/mime/globs ]; then

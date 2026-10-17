@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/marzer/tomlplusplus/arch
 sha256      = 8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155  tomlplusplus-3.4.0.tar.gz
 description = TOML parser and serializer for C++17
 homepage    = https://marzer.github.io/tomlplusplus/
+license     = MIT
 depends     = meson ninja pkgconf

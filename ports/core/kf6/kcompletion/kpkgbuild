@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = 96ad9c429ca53b830359c45614ca4c32ed6b759f3023f1b3db1650ba1c19bd58  kcompletion-6.30.0.tar.xz
 description = KDE Frameworks: text completion helpers and widgets
 homepage    = https://invent.kde.org/frameworks/kcompletion
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kcodecs kconfig kwidgetsaddons

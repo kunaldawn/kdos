@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/t/tomlkit/tomlkit-$
 sha256      = e25bbf38843005246210a12982776f27f99cb9be67160e14434d0c0d21ee1e97  python3-tomlkit-0.15.1.tar.gz
 description = Style-preserving TOML reading and writing — hatchling requires it
 homepage    = https://pypi.org/project/tomlkit/
+license     = MIT
 depends     = python3 python3-pip python3-poetry-core

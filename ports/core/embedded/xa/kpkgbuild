@@ -13,5 +13,6 @@ version     = 2.4.1
 release     = 1
 source      = $name-$version.tar.gz::https://www.floodgap.com/retrotech/xa/dists/xa-$version.tar.gz
 sha256      = 63c12a6a32a8e364f34f049d8b2477f4656021418f08b8d6b462be0ed3be3ac3  xa-2.4.1.tar.gz
-description = xa65 cross-assembler for the 6502, 65816 and R65C02, with the o65 relocation tools
+description = Cross-assembler for the 6502, 65816 and R65C02 (xa65), with the o65 relocation tools
 homepage    = https://www.floodgap.com/retrotech/xa/
+license     = GPL-2.0-or-later

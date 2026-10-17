@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = librist
+version     = 0.2.20
+release     = 1
+source      = $name-$version.tar.gz::https://code.videolan.org/rist/librist/-/archive/v$version/librist-v$version.tar.gz
+sha256      = 9e40eeb87f014790531ad41326cc271b930a65962e4b15231b301fc59b29fe31  librist-0.2.20.tar.gz
+description = Reliable Internet Stream Transport — the RIST protocol library, with ristsender and ristreceiver
+homepage    = https://code.videolan.org/rist/librist
+license     = BSD-2-Clause
+depends     = meson ninja pkgconf mbedtls cjson lz4 libmicrohttpd

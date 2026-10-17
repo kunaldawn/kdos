@@ -20,8 +20,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# BUILD_MAN_DOCS is a dependent option: with no sphinx-build found it is forced
-# off and configure succeeds anyway, so the pages are checked for here.
 [ -f "$PKG/usr/share/man/man7/ecm.7" ] || {
 	echo 'extra-cmake-modules: ecm(7) was not built' >&2
 	exit 1

@@ -9,15 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Pre-stage vendored dep tarballs into CMake's ExternalProject DOWNLOAD_DIR.
-# CMake URL_HASH-checks each file before fetching, so when a tarball is
-# already present with a matching SHA256 it skips the network entirely.
-#
-# libuv and utf8proc are not bundled: both are ports at the versions neovim
-# pins, and USE_BUNDLED_*=OFF links the system libraries, so a fix to either
-# port reaches the editor. luv is still bundled and builds against the system
-# libuv (WITH_SHARED_LIBUV). LuaJIT, lpeg, unibilium and tree-sitter stay
-# bundled at the revisions neovim tests against.
+export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
+
 dl=".deps/build/downloads"
 mkdir -p "$dl"/{luajit,unibilium,luv,lpeg,lua_compat53,treesitter} \
          "$dl"/{treesitter_c,treesitter_lua,treesitter_vim,treesitter_vimdoc,treesitter_query,treesitter_markdown}
@@ -37,6 +30,6 @@ cp "$PORT_SRC/tree-sitter-markdown-v0.5.3.tar.gz" "$dl/treesitter_markdown/v0.5.
 
 make CMAKE_BUILD_TYPE=Release \
 	CMAKE_INSTALL_PREFIX=/usr \
-	CMAKE_EXTRA_FLAGS="-DCMAKE_INSTALL_LIBDIR=lib" \
+	CMAKE_EXTRA_FLAGS="-DENABLE_LIBINTL=OFF" \
 	DEPS_CMAKE_FLAGS="-DUSE_BUNDLED_LIBUV=OFF -DUSE_BUNDLED_UTF8PROC=OFF"
 make DESTDIR=$PKG install

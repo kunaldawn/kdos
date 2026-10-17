@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/w/waitress/waitress
 sha256      = 682aaaf2af0c44ada4abfb70ded36393f0e307f4ab9456a215ce0020baefc31f  python3-waitress-3.0.2.tar.gz
 description = Waitress, a pure-Python production WSGI server
 homepage    = https://github.com/Pylons/waitress
+license     = ZPL-2.1
 depends     = python3 python3-pip python3-setuptools

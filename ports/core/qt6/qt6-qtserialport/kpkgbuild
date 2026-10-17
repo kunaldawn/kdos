@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qtserialport
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qtserialport
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = df3a733616444f31b2ecb689218ea1444be91d8628aa3ab8e464c5eb1b17ad8e  qt6-qtserialport-6.11.2.tar.xz
+sha256      = ba8886a54eee466e57c9fa1341255cc09c462c84baab3ee7b19d67cdbcbd71c3  qt6-qtserialport-6.12.0.tar.xz
 description = Qt 6 SerialPort — serial and USB-serial device access
 homepage    = https://www.qt.io
+license     = LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 depends     = cmake ninja qt6-qtbase pkgconf eudev
 group       = qt6

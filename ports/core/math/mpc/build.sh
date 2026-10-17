@@ -9,6 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --host=$TARGET --prefix=/usr
+./configure --prefix=/usr
 make
 make DESTDIR=$PKG install

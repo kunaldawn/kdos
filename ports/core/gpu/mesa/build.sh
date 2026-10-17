@@ -9,7 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Vendor rust crates
 ln -sf "$SRC_ROOT/syn-2.0.87" subprojects/syn-2.0.87
 cp -r subprojects/packagefiles/syn-2-rs/* subprojects/syn-2.0.87/
 
@@ -33,22 +32,6 @@ export LIBCLANG_STATIC_PATH=/usr/lib/
 export RUST_BACKTRACE=1
 export RUSTFLAGS="-C prefer-dynamic"
 
-# Every probed dependency that has a switch is pinned: an option left on auto
-# turns a feature on or off by whatever happens to be installed when mesa
-# builds. libudev and xcb-keysyms have no switch and are linked whenever found,
-# so eudev and xcb-util-keysyms are in depends.
-# The x11 platform and glx=dri are what an X11 client under Xwayland draws
-# with: libGLX_mesa.so behind libglvnd's libGL and libGLX, and the Vulkan X11
-# WSI. glx=dri needs libXxf86vm for direct rendering, and xlib-lease (Vulkan's
-# VK_EXT_acquire_xlib_display) needs libXrandr; it is pinned because on auto it
-# turns on with the x11 platform. A Wayland client never loads libGLX_mesa,
-# but libEGL_mesa and the Vulkan drivers link libxcb and libX11 for their X11
-# platform, so the X client libraries are on the host either way.
-# nouveau in vulkan-drivers is NVK, and it is what the six vendored crates
-# above are for. gallium-rusticl installs /etc/OpenCL/vendors/rusticl.icd,
-# which only ocl-icd's loader reads. libunwind is off: it serves only mesa's
-# debug stack dumps, and would be linked into every process that loads a
-# driver.
 meson setup build \
 	--prefix=/usr --libdir=lib --sysconfdir=/etc \
 	--buildtype=release \
@@ -79,7 +62,7 @@ meson setup build \
 	-D intel-rt=enabled \
 	-D libunwind=disabled \
 	-D valgrind=disabled \
-	-D glvnd=true
+	-D glvnd=enabled
 
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

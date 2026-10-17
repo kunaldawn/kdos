@@ -16,5 +16,6 @@ sha256      = 194ec2494f1801d7baa597d30ab6571f4a25f645cf0527aa7a4b66cd5b7a6fa8  
 sha256      = 40ece0dedbd2dacafd047e011b5d13fca6f0309978c6f2dcc0b36ce4771c023a  croc-vendor-11.5.3.tar.xz
 description = One-off file transfer by code phrase, kept on this network
 homepage    = https://github.com/schollz/croc
+license     = MIT
 depends     = go
 vendoring   = go

@@ -15,4 +15,5 @@ source      = https://github.com/Deutsches-Klimarechenzentrum/libaec/releases/do
 sha256      = cc7b93be9002e25a88b45d6b8d5f6120756cb5e1000613f91d803ce0beba24d9  libaec-1.1.7.tar.gz
 description = Adaptive Entropy Coding library and its libsz drop-in replacement for SZIP
 homepage    = https://gitlab.dkrz.de/dkrz-sw/libaec
+license     = BSD-2-Clause
 depends     = cmake

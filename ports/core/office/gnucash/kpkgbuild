@@ -15,4 +15,5 @@ source      = https://github.com/Gnucash/gnucash/releases/download/$version/$nam
 sha256      = 3d18a88f5b8230f01e04c2d2d73bf95e7dcd3bf8d8cee6ffa54bb24dee58b85f  gnucash-5.17.tar.bz2
 description = Double-entry accounting — personal and small-business books, invoices, reports
 homepage    = https://www.gnucash.org/
-depends     = cmake ninja pkgconf perl swig gettext glib gtk3 webkitgtk libxml2 libxslt zlib icu boost guile libsecret gtest
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only)
+depends     = cmake ninja pkgconf perl swig gettext glib gtk3 webkitgtk libxml2 libxslt zlib icu boost guile libsecret libofx gtest

@@ -16,4 +16,5 @@ source      = $name-$version.tar.xz::https://github.com/picolibc/picolibc/releas
 sha256      = 64e8c412e1c40fa6eb1a72d2b5cdbcbfe6ceca4cbea454edbad54557ffc747fa  picolibc-arm-none-eabi-1.8.12.tar.xz
 description = The C library for arm-none-eabi — newlib trimmed for a microcontroller
 homepage    = https://github.com/picolibc/picolibc
+license     = BSD-3-Clause AND BSD-2-Clause
 depends     = meson ninja gcc-arm-none-eabi binutils-arm-none-eabi

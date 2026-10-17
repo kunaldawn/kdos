@@ -11,7 +11,7 @@
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
@@ -22,8 +22,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# KAboutData names the window's app_id org.kde.konversation, which
-# StartupWMClass must repeat; upstream's entry carries the X11 class.
 cat > "$PKG/usr/share/applications/org.kde.konversation.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

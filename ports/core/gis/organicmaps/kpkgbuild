@@ -25,4 +25,5 @@ sha256      = 9903264b35493ec519c4d45ecc2043356450935e56939ef6ec0fe982320f4784  
 sha256      = 14ad8a0db71464e90144ae8ceac65c1b672a630cf0884e451c8cf346fd1022de  fast_obj-42629f744269e004907a6fb4f16c6c7f69acc586.tar.gz
 description = Organic Maps: offline maps with search and turn-by-turn routing for walking, cycling and driving, from OpenStreetMap data
 homepage    = https://organicmaps.app/
+license     = Apache-2.0
 depends     = cmake ninja python3 pkgconf boost expat fast-double-parser gflags jansson pugixml utfcpp glm icu freetype2 harfbuzz zlib vulkan-headers qt6-qtbase qt6-qtpositioning qt6-qtsvg hicolor-icon-theme

@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://github.com/HOST-Oman/libraqm/releas
 sha256      = 3d0add115f7d4a9410d3377462ed3c05e86342193ef984183e4380e3787b2d4c  libraqm-0.11.0.tar.xz
 description = Complex text layout — bidi, shaping and script itemisation over harfbuzz
 homepage    = https://github.com/HOST-Oman/libraqm
+license     = MIT
 depends     = meson freetype2 harfbuzz fribidi

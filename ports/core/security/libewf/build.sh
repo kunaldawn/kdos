@@ -9,29 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# The 20240506 release's configure finds fuse 3 and defines HAVE_LIBFUSE3, but
-# ewfmount's sources test only HAVE_LIBFUSE and HAVE_LIBOSXFUSE: without the
-# patch ewfmount links nothing from libfuse3 and answers every mount with "No
-# sub system to mount EWF format". The patch adds the fuse 3 calling convention
-# upstream's main branch uses — fuse_new before fuse_mount, the extra readdir
-# and getattr arguments, fuse_unmount before fuse_destroy.
 patch -p1 -i "$PORT_SRC/fuse3.patch"
 
-# Every libyal m4 check treats a bare --with-<lib> as auto-detect: a library
-# that is missing turns the feature off and configure still succeeds. So each
-# optional library is asked for and config.h is checked afterwards — without
-# HAVE_LIBFUSE3 there is no ewfmount, without zlib no compressed image opens,
-# and without uuid_generate_random ewfacquire writes every image with an
-# all-zero set identifier.
-#
-# --with-libuuid names a directory rather than auto-detecting: the pkg-config
-# branch of this release's libuuid.m4 reads the wrong pkg-config variables and
-# never checks <uuid/uuid.h> or its functions, so it reports libuuid found and
-# links nothing. The directory branch runs the header and function checks.
-#
-# The bundled libyal libraries (libcerror, libbfio, libhmac and the rest) are
-# none of them ports, so --with-<lib>=no pins each to the copy in the tarball.
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \

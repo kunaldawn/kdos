@@ -606,6 +606,66 @@ static void test_colour(void)
 	}
 
 	/*
+	 * kxdg_handlers is the opener's resolver AND the Settings Apps page's,
+	 * so the layer it reports is what that page prints. A private type no
+	 * host table can claim keeps /etc/xdg out of the answer; what is left
+	 * is the user's list, an uninstalled id falling through, the cache, and
+	 * the user's default ending the search.
+	 */
+	{
+		char dir[] = "/tmp/kdos-handlers.XXXXXX";
+		const char *mt = "application/x-kdos-selftest";
+		KxdgHandler h[8];
+		char p[700];
+		int n, dflt = -1;
+
+		ok(mkdtemp(dir) != NULL, "handlers: scratch directory");
+		snprintf(p, sizeof(p), "%s/data/applications", dir);
+		kb_mkdir_p(p);
+		snprintf(p, sizeof(p), "%s/cfg", dir);
+		kb_mkdir_p(p);
+		snprintf(p, sizeof(p), "%s/data/applications/a.desktop", dir);
+		kb_write_file(p, "[Desktop Entry]\nType=Application\nExec=a\n");
+		snprintf(p, sizeof(p), "%s/data/applications/b.desktop", dir);
+		kb_write_file(p, "[Desktop Entry]\nType=Application\nExec=b\n");
+		snprintf(p, sizeof(p), "%s/data/applications/mimeinfo.cache",
+			 dir);
+		kb_write_file(p, "[MIME Cache]\n"
+			      "application/x-kdos-selftest=a.desktop;b.desktop;\n");
+		snprintf(p, sizeof(p), "%s/data", dir);
+		setenv("XDG_DATA_HOME", p, 1);
+		setenv("XDG_DATA_DIRS", p, 1);
+		snprintf(p, sizeof(p), "%s/cfg", dir);
+		setenv("XDG_CONFIG_HOME", p, 1);
+		unsetenv("XDG_CURRENT_DESKTOP");
+
+		n = kxdg_handlers(mt, h, 8, &dflt);
+		eq_int(n, 2, "handlers: the cache names two");
+		ok(n == 2 && !strcmp(h[0].id, "a.desktop") &&
+		   h[0].layer == KXDG_LAYER_CACHE && dflt == 0,
+		   "handlers: an installed claim is not a default");
+
+		snprintf(p, sizeof(p), "%s/cfg/mimeapps.list", dir);
+		kb_write_file(p, "[Default Applications]\n"
+			      "application/x-kdos-selftest=gone.desktop;"
+			      "b.desktop\n");
+		n = kxdg_handlers(mt, h, 8, &dflt);
+		ok(n == 1 && !strcmp(h[0].id, "b.desktop") &&
+		   h[0].layer == KXDG_LAYER_USER && dflt == 1,
+		   "handlers: the user's default, past an uninstalled id, "
+		   "ends the search");
+		eq_str(kxdg_layer_name(h[0].layer), "your default",
+		       "handlers: the layer as the page prints it");
+		eq_int(kxdg_handlers("application/x-kdos-none", h, 8, NULL), 0,
+		       "handlers: an unclaimed type has none");
+
+		unsetenv("XDG_DATA_HOME");
+		unsetenv("XDG_DATA_DIRS");
+		unsetenv("XDG_CONFIG_HOME");
+		kb_rmtree(dir);
+	}
+
+	/*
 	 * MD5 AND THE URI, together, because the pair is the thumbnail cache's
 	 * FILE NAME and both halves have to match what every other program on
 	 * the machine computes. The vectors are RFC 1321's; the URI cases are
@@ -1214,7 +1274,8 @@ static void test_pkg(void)
 	   "directories are shared and never owned");
 	kp_owned_free(ow);
 
-	/* `--overwrite` moves the path out of the old owner's manifest. Left
+	/* A declared takeover (`replaces =`) moves the path out of the old
+	 * owner's manifest. Left
 	 * behind, it is claimed twice and `kpkgdel <old>` deletes a file the
 	 * new owner installed. */
 	char *drop[] = { (char *)"usr/bin/owned" };
@@ -1249,7 +1310,7 @@ static void test_pkg(void)
 	free(mlib);
 	char *mdb = kb_path_join(mroot, "db");
 	kb_mkdir_p(mdb);
-	char *mf = kb_path_join(mdb, "toybox");
+	char *mf = kb_path_join(mdb, "usrfree");
 	kb_write_file(mf, "1 1\n./usr/bin/free\n./lib/x\n");
 	free(mf);
 	mf = kb_path_join(mdb, "procps");
@@ -1278,11 +1339,11 @@ static void test_pkg(void)
 	   "either spelling finds the claim");
 	ok(kp_owned_owner(ow, "usr/lib/x") == NULL,
 	   "a path under a real directory keeps its own name");
-	eq_str(kp_owned_other(ow, "usr/bin/free", "toybox"), "procps",
+	eq_str(kp_owned_other(ow, "usr/bin/free", "usrfree"), "procps",
 	       "the other claimant is found under the other spelling");
-	eq_str(kp_owned_other(ow, "bin/free", "procps"), "toybox",
+	eq_str(kp_owned_other(ow, "bin/free", "procps"), "usrfree",
 	       "from either side");
-	ok(kp_owned_other(ow, "lib/x", "toybox") == NULL,
+	ok(kp_owned_other(ow, "lib/x", "usrfree") == NULL,
 	   "a sole claimant has no other");
 	kp_owned_free(ow);
 
@@ -1313,13 +1374,13 @@ static void test_pkg(void)
 	eq_str(kp_owned_owner(some, "usr/bin/free"),
 	       kp_owned_owner(ow, "usr/bin/free"),
 	       "a partial table names the owner the full one names");
-	eq_str(kp_owned_other(some, "usr/bin/free", "toybox"), "procps",
+	eq_str(kp_owned_other(some, "usr/bin/free", "usrfree"), "procps",
 	       "and finds the other claimant under the other spelling");
-	eq_str(kp_owned_other(some, "bin/free", "procps"), "toybox",
+	eq_str(kp_owned_other(some, "bin/free", "procps"), "usrfree",
 	       "from either side");
-	eq_str(kp_owned_owner(some, "lib/x"), "toybox",
+	eq_str(kp_owned_owner(some, "lib/x"), "usrfree",
 	       "a key asked with its ./ is found without it");
-	ok(kp_owned_other(some, "lib/x", "toybox") == NULL,
+	ok(kp_owned_other(some, "lib/x", "usrfree") == NULL,
 	   "a sole claimant has no other in either table");
 	ok(kp_owned_owner(some, "usr/bin/none") == NULL &&
 	   kp_owned_owner(ow, "usr/bin/none") == NULL,
@@ -1344,7 +1405,7 @@ static void test_pkg(void)
 	free(lpath);
 
 	char *mdrop[] = { (char *)"bin/free" };
-	ok(kp_db_drop_paths(&mconf, "toybox", mdrop, 1) == 1,
+	ok(kp_db_drop_paths(&mconf, "usrfree", mdrop, 1) == 1,
 	   "an overwrite takes the path under the other spelling");
 	ow = kp_owned_load(&mconf);
 	eq_str(kp_owned_owner(ow, "usr/bin/free"), "procps",
@@ -2216,7 +2277,7 @@ static void test_build(void)
 	char repos[512];
 	ok(kbuild_phase_repos(&ph[0], "/r", repos, sizeof(repos)) == 1,
 	   "no PORT_REPO is one repository");
-	eq_str(repos, "/r/ports/core", "no PORT_REPO is kpkg.conf's /ports/core");
+	eq_str(repos, "/r/ports/core", "no PORT_REPO is /ports/core");
 	char *env2 = kb_path_join(pd2, "phase.env");
 	kb_write_file(env2,
 		"export PORT_REPO=\"/ports/old\"\n"

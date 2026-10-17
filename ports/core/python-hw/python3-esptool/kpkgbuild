@@ -16,6 +16,7 @@ sha256      = fd756598db0a26c9975fa18511b08687c54bf2ce7322ede80cf1f5117dad1f50  
 sha256      = 82077d588e62a2644bc2db194eecb4bbf40fd0be98398a8308f479e2676b1c54  python3-esptool-vendor-5.4.0.tar.xz
 description = Talk to the ESP8266 and ESP32 ROM bootloader over serial
 homepage    = https://github.com/espressif/esptool
+license     = GPL-2.0-or-later AND MIT AND BSD-2-Clause AND BSD-3-Clause AND Apache-2.0 AND PSF-2.0 AND (Unlicense OR MIT-0)
 depends     = python3 python3-setuptools python3-pip python3-pyserial python3-cryptography python3-yaml python3-pygments python3-click python3-rich
 vendoring   = python
 pyrequirements = no

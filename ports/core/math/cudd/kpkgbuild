@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = cudd
+version     = 3.0.0
+release     = 1
+source      = https://github.com/ivmai/cudd/archive/refs/tags/cudd-$version.tar.gz
+sha256      = 5fe145041c594689e6e7cf4cd623d5f2b7c36261708be8c9a72aed72cf67acce  cudd-3.0.0.tar.gz
+description = CUDD, the Colorado decision-diagram package — BDDs, ADDs and ZDDs for yices2's bit-vector reasoning
+homepage    = https://github.com/ivmai/cudd
+license     = BSD-3-Clause

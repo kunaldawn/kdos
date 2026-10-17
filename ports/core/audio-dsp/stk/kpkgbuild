@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/thestk/stk/archive/refs/
 sha256      = 1dd1a5063efa43d4bc9792d1394b395672fb2222cdb0e56c7c8e3f6db22ece86  stk-5.0.1.tar.gz
 description = The Synthesis ToolKit — C++ physical-model and signal-processing instruments, with their rawwave samples
 homepage    = https://ccrma.stanford.edu/software/stk/
+license     = MIT
 depends     = autoconf automake alsa-lib libpulse

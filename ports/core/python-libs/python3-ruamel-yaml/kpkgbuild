@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = python3-ruamel-yaml
+version     = 0.19.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/r/ruamel.yaml/ruamel_yaml-$version.tar.gz
+sha256      = 53eb66cd27849eff968ebf8f0bf61f46cdac2da1d1f3576dd4ccee9b25c31993  python3-ruamel-yaml-0.19.1.tar.gz
+description = YAML 1.2 loader and dumper for python that keeps comments and key order through a round trip
+homepage    = https://pypi.org/project/ruamel.yaml/
+license     = MIT
+depends     = python3 python3-pip python3-setuptools

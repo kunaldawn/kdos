@@ -20,5 +20,6 @@ sha256      = 85735f20fd8c81ecb0a09abb0c267018475420e93b65050cc5b7634eab744de9  
 sha256      = 03e8adc6c3bdde657dcaedc94886ea70d1f7d551d622fcd8a36a8300e5c36cbc  libunwind-21.1.8.src.tar.xz
 description = LLD 21 libraries and linker, installed under /usr/lib/llvm21 for zig
 homepage    = https://lld.llvm.org/
+license     = Apache-2.0 WITH LLVM-exception
 depends     = llvm21 zlib zstd libxml2
 series      = 21

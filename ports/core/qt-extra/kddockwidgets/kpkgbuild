@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/KDAB/KDDockWidgets/relea
 sha256      = 5cd9495d9316cf6cc937bb328a7fd491c3248ef2469cfa42511f1039f6148aca  kddockwidgets-2.4.1.tar.gz
 description = KDAB dock widget framework for Qt 6, with the Widgets and Qt Quick front ends
 homepage    = https://github.com/KDAB/KDDockWidgets
+license     = GPL-2.0-only OR GPL-3.0-only
 depends     = cmake ninja qt6-qtbase qt6-qtdeclarative nlohmann-json

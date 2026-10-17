@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Upstream publishes no release archive: googlesource generates a different
-# tarball on every request, so no checksum could hold. The source is Debian's
-# orig tarball of the commit that set LIBYUV_VERSION.
-#
-# The static archive is always built and installed; nothing here links it.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_BUILD_TYPE=Release \

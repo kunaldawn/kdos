@@ -1,0 +1,16 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ldconfig — succeeds and changes nothing
+# ---------------------------------
+
+# musl's dynamic loader keeps no cache: it searches /etc/ld-musl-x86_64.path,
+# or its built-in paths, on every load, so there is nothing to rebuild. This
+# answers the makefiles and install scripts that run ldconfig after installing
+# a library. Whatever the arguments, it writes nothing and exits 0.
+exit 0

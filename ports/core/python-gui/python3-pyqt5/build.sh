@@ -9,18 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# PyQt5's QtCore names no minimum sip ABI, and sip 6.16.1 refuses to generate
-# a module targeting ABI 12 without one; the patch declares 12.15, the ABI
-# project.py already asks for, and every other module imports QtCore.
 patch -p1 -i "$PORT_SRC/sip-minimum-abi.patch"
 
-# sip-build configures one module per Qt library it finds with qmake, so the
-# set built follows what is installed. The Qt 5 libraries named in depends are
-# built; the modules for Qt 5 libraries that are not ported are disabled by
-# name, so none can appear or vanish with build order.
-#
-# --api-dir writes the PyQt5.api file a Qt 5 QScintilla's Python lexer
-# completes from.
 sip-build \
 	--confirm-license \
 	--qmake /usr/lib/qt5/bin/qmake \
@@ -42,7 +32,6 @@ sip-build \
 	--verbose
 make -C build
 
-# The generated install rules race when run in parallel.
 make -C build -j1 INSTALL_ROOT="$PKG" install
 
 site=$(find "$PKG"/usr/lib -maxdepth 2 -type d -name site-packages)

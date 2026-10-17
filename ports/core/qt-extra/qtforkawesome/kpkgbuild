@@ -18,4 +18,5 @@ sha256      = 001324d008b44a136ec296733d5ef9bd519ea93ec820d5144163b98dc888f23b  
 sha256      = 23fba5f191f204e0414c547bf4c9b10fd7ca42c151260e8f64698449a75fbdb3  forkawesome-1.2.0.tar.gz
 description = The Fork Awesome icon font as a Qt 6 library, icon engine plugin and Qt Quick image provider
 homepage    = https://github.com/Martchus/qtforkawesome
+license     = GPL-2.0-or-later AND OFL-1.1
 depends     = cmake ninja pkgconf perl perl-yaml-tiny cpp-utilities qtutilities qt6-qtbase qt6-qtdeclarative

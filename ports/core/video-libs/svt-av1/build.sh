@@ -11,9 +11,6 @@
 
 export LDFLAGS="$LDFLAGS -Wl,-z,stack-size=1048576"
 
-# dav1d is the AV1 DECODER; this is the encoder. They are not alternatives —
-# both are needed for AV1 to be a round trip rather than a format the host can
-# only play.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_BUILD_TYPE=Release \

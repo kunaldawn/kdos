@@ -8,38 +8,55 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-::sysinit:/etc/init.d/rcS
+# Runlevel 3 is the running system. S is single-user: sulogin on the
+# console, no consoles from this file. 0 powers off and 6 reboots.
+id:3:initdefault:
 
-# Serial Console (root, for debugging)
-ttyS0::askfirst:/bin/bash -l
+si::sysinit:/etc/init.d/rcS
+
+# sulogin asks for root's password on the console. Leaving its shell
+# continues to runlevel 3. The initramfs passes `single` from the kernel
+# command line, and `telinit S` reaches it from a running system.
+~~:S:wait:/sbin/sulogin
 
 # Local Console (QEMU Window / Physical) — the desktop's login.
 #
 # kdos-login reads /etc/kdos/login.conf and hands the tty to agetty, with
-# `--autologin` where that file names an account. agetty, not toybox getty,
-# because only agetty implements --autologin. The desktop itself is started by
-# the login shell's profile, not from here.
+# `--autologin` where that file names an account. The desktop itself is
+# started by the login shell's profile, not from here.
 #
-# kdos-getty stays in the chain and stays FIRST: it loads the console font and
-# palette after fbcon's deferred take-over, and doing that in rcS is futile
-# because the take-over resets every VT's font. It also falls back to the plain
-# autologin getty if the program named here is missing, so a broken login path
-# still gives a console.
-tty1::respawn:/usr/local/sbin/kdos-getty tty1 /usr/local/sbin/kdos-login tty1
+# kdos-getty stays in the chain and stays FIRST: it loads the console font
+# and palette after fbcon's deferred take-over, and doing that in rcS is
+# futile because the take-over resets every VT's font. It also falls back
+# to the plain autologin getty if the program named here is missing, so a
+# broken login path still gives a console.
+1:2345:respawn:/usr/local/sbin/kdos-getty tty1 /usr/local/sbin/kdos-login tty1
 
-# Second console, root login prompt. THE RECOVERY CONSOLE: it is a plain getty
-# and nothing above may be allowed to make it one too, because it is what is
-# left when the desktop on tty1 does not come up.
-tty2::respawn:/usr/local/sbin/kdos-getty tty2 /sbin/getty 38400 tty2
+# Second console, root login prompt. THE RECOVERY CONSOLE: it is a plain
+# agetty with no --autologin, and nothing above may be allowed to make it
+# one too, because it is what is left when the desktop on tty1 does not
+# come up.
+2:2345:respawn:/usr/local/sbin/kdos-getty tty2 /sbin/agetty --noclear tty2 38400 linux
 
-# Restart
-::restart:/sbin/init
-::ctrlaltdel:/sbin/reboot
-# Shutdown entries run in order, each to completion, before init signals every
-# process. rcK stops the services first, while the filesystems they save to
-# are still writable. killpower comes last because it may tell a UPS to cut
-# the power, which must find every filesystem already read-only.
-::shutdown:/etc/init.d/rcK
-::shutdown:/sbin/swapoff -a
-::shutdown:/bin/umount -a -r
-::shutdown:/etc/init.d/killpower
+# Serial console. The live image logs root in with no password; the
+# installer removes `--autologin root` from the installed copy, which then
+# asks for a login. --keep-baud stays at the rate the kernel console set.
+# serial-getty passes its arguments to agetty, and sleeps instead when no
+# UART answers at ttyS0, where agetty would fail at every respawn.
+S0:2345:respawn:/etc/init.d/serial-getty --autologin root --keep-baud --noclear -L ttyS0 115200,38400,9600 vt102
+
+ca::ctrlaltdel:/sbin/shutdown -r now
+
+# Runlevels 0 and 6. init first sends TERM, and KILL 3 s later, to every
+# entry above that the runlevel does not list (the consoles, and with tty1
+# the session), then runs these in order, each to completion. rcK stops
+# the services while the filesystems they save to are writable; killprocs
+# signals every process still alive; killpower may tell a UPS to cut the
+# power, so every filesystem is read-only before it runs.
+k0:06:wait:/etc/init.d/rcK
+k1:06:wait:/etc/init.d/killprocs
+k2:06:wait:/sbin/swapoff -a
+k3:06:wait:/bin/umount -a -r
+k4:06:wait:/etc/init.d/killpower
+h0:0:wait:/sbin/halt -d -f -p
+h6:6:wait:/sbin/reboot -d -f

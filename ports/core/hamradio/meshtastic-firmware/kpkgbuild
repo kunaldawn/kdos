@@ -34,4 +34,5 @@ sha256      = 9b42460eb1abd886bdded30834fd4306d7892ca1cef562f9edf64eab5805976c  
 sha256      = 629dc883d8741dd4e834d452c38302f58da4279a85d30278ad9bea2e4e72c9da  meshtastic-firmware-stm32-2.7.26.zip
 description = Meshtastic radio firmware images, to flash a LoRa node with no network
 homepage    = https://meshtastic.org/
+license     = GPL-3.0-only
 depends     = unzip python3-esptool

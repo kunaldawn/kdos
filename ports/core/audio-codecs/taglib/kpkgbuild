@@ -15,4 +15,5 @@ source      = https://github.com/taglib/taglib/releases/download/v$version/$name
 sha256      = 3ca2d8afaa7f1cf7f6ed10e511ebc368bfacd6dcaa3dbfa690b89e502e8963dc  taglib-2.3.2.tar.gz
 description = Library for reading and editing audio file metadata
 homepage    = https://taglib.org/
-depends     = cmake ninja zlib
+license     = LGPL-2.1-only OR MPL-1.1
+depends     = cmake ninja zlib utfcpp

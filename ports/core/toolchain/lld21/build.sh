@@ -10,11 +10,6 @@
 # ---------------------------------
 
 mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
-# The Mach-O linker includes mach-o/compact_unwind_encoding.h. Its own
-# include path is $LLVM_MAIN_SRC_DIR/../libunwind/include, which cannot
-# resolve without an LLVM source tree beside this one, so the header is named
-# directly. It comes from the same release, so it is the encoding this linker
-# was written against.
 _unwind_inc=$SRC_ROOT/libunwind-${version}.src/include
 
 cmake -B build -G Ninja \

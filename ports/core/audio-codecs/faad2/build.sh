@@ -17,5 +17,4 @@ cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# The install rule carries faad(1) only; the library's page is shipped beside it.
 install -Dm644 docs/libfaad.3 -t "$PKG/usr/share/man/man3"

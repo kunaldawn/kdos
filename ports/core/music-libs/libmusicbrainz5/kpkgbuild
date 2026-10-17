@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libmusicbrainz5
+version     = 5.1.0
+release     = 1
+source      = https://github.com/metabrainz/libmusicbrainz/releases/download/release-$version/libmusicbrainz-$version.tar.gz
+sha256      = 6749259e89bbb273f3f5ad7acdffb7c47a2cf8fcaeab4c4695484cef5f4c6b46  libmusicbrainz5-5.1.0.tar.gz
+description = MusicBrainz client library — disc IDs to artist, album and track metadata
+homepage    = https://musicbrainz.org/doc/libmusicbrainz
+license     = LGPL-2.1-or-later
+depends     = cmake ninja neon libxml2

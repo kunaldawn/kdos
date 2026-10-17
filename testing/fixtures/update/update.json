@@ -1,1 +1,1 @@
-{"behind":3,"orphans":2,"binhost":"/media/kdos/KDOSSTICK/packages","signed":true,"packages":[{"name":"aerc","have":"0.22.0","want":"0.23.0-1"},{"name":"curl","have":"8.11.0","want":"8.12.1-1"},{"name":"nftables","have":"1.1.1","want":"1.1.3-2"}]}
+{"behind":3,"orphans":2,"tree":"29d742c14cc8aef873af7f1f28e267d6318facc2","problem":null,"detail":"","packages":[{"name":"aerc","have":"0.22.0","want":"0.23.0-1"},{"name":"curl","have":"8.11.0","want":"8.12.1-1"},{"name":"nftables","have":"1.1.1","want":"1.1.3-2"}]}

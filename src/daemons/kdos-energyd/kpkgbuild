@@ -13,4 +13,5 @@ version     = 0.1.0
 release     = 1
 description = Relative per-app Energy Impact from RAPL, attributed by container
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
 depends     =

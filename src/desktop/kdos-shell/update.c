@@ -13,7 +13,7 @@
  *   │ aerc          0.22.0        → 0.23.0-1                           │
  *   │ curl          8.11.0        → 8.12.1-1                           │
  *   ├──────────────────────────────────────────────────────────────────┤
- *   │ one root, no rollback     binhost: signed index present          │
+ *   │ tree 29d742c14cc8 - an apply builds each package from source     │
  *   └──────────────────────────────────────────────────────────────────┘
  *
  * IT COMPUTES NOTHING. `kdos update check --json`, `kdos cve --json` and
@@ -65,7 +65,8 @@ static struct row behind[UP_MAX];
 static int nbehind;
 static struct row cve[UP_MAX];
 static int ncve;
-static char binhost[128];
+static char treeline[192];
+static int treewarn;
 static char slot[160];
 static char secage[80];
 static char why[128];
@@ -127,7 +128,8 @@ static void scan_behind(void)
 	const char *fix = getenv("KDOS_UPDATE_JSON");
 
 	nbehind = 0;
-	binhost[0] = why[0] = '\0';
+	treeline[0] = why[0] = '\0';
+	treewarn = 0;
 	if (fix && *fix) {
 		kb_read_file(fix, buf, sizeof(buf));
 	} else {
@@ -144,22 +146,34 @@ static void scan_behind(void)
 			 "ports tree on this machine?");
 		return;
 	}
-	if (jfind(buf, "error", v, sizeof(v))) {
-		snprintf(why, sizeof(why), "%s", v);
+	/*
+	 * WHAT WENT WRONG IS THE FOOTNOTE, and with no tree it is the whole
+	 * page: there is no list to show, and an empty one would read as
+	 * "everything is current". Every other problem — no network, a fetch
+	 * or a build that failed — leaves the list standing, because the
+	 * tree already here still says what is behind.
+	 */
+	char pr[32], dt[160];
+
+	jfind(buf, "problem", pr, sizeof(pr));
+	jfind(buf, "detail", dt, sizeof(dt));
+	if (!strcmp(pr, "null"))
+		pr[0] = '\0';
+	if (!strcmp(pr, "no-tree") || !strcmp(pr, "no-database")) {
+		snprintf(why, sizeof(why), "%s", dt[0] ? dt : pr);
 		return;
 	}
-
-	jfind(buf, "binhost", v, sizeof(v));
-	if (!v[0] || !strcmp(v, "null")) {
-		snprintf(binhost, sizeof(binhost),
-			 "no binhost — an apply would compile everything");
+	if (pr[0]) {
+		snprintf(treeline, sizeof(treeline), "%s: %s", pr, dt);
+		treewarn = 1;
 	} else {
-		char sg[16];
-
-		jfind(buf, "signed", sg, sizeof(sg));
-		snprintf(binhost, sizeof(binhost), "binhost %s — %s", v,
-			 !strcmp(sg, "true") ? "signed index"
-					     : "UNSIGNED, an apply will refuse it");
+		jfind(buf, "tree", v, sizeof(v));
+		if (!v[0] || !strcmp(v, "null"))
+			snprintf(treeline, sizeof(treeline), "%s",
+				 "the ports tree carries no TREE stamp");
+		else
+			snprintf(treeline, sizeof(treeline), "tree %.12s - an "
+				 "apply builds each package from source", v);
 	}
 
 	const char *p = strstr(buf, "\"packages\":");
@@ -351,8 +365,9 @@ static void draw(void)
 	}
 
 	ktui_draw_hline(1, h - 5, w - 2, KT_G_HL, KT_DIM, KT_BG);
-	ktui_draw_text(2, h - 4, w - 4, page == PG_CVE ? secage : binhost,
-		       KT_MID, KT_BG, KT_A_NONE);
+	ktui_draw_text(2, h - 4, w - 4, page == PG_CVE ? secage : treeline,
+		       page != PG_CVE && treewarn ? KT_WARN : KT_MID, KT_BG,
+		       KT_A_NONE);
 
 	struct kch_button b[UB_N];
 

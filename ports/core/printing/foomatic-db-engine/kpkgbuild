@@ -15,4 +15,5 @@ source      = https://www.openprinting.org/download/foomatic/$name-$version.tar.
 sha256      = b5c89027aa26967d2e6db62e2af7db0c4039d2480d4fbf2476a6ddcf609a5faf  foomatic-db-engine-4.0.13.tar.gz
 description = Foomatic PPD generator — builds CUPS PPDs from the foomatic-db printer database
 homepage    = https://github.com/OpenPrinting/foomatic-db-engine
+license     = GPL-2.0-or-later
 depends     = perl libxml2 cups cups-filters ghostscript file

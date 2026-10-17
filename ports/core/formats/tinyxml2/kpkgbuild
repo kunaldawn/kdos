@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = tinyxml2
+version     = 11.0.0
+release     = 1
+source      = https://github.com/leethomason/tinyxml2/archive/refs/tags/$version.tar.gz
+sha256      = 5556deb5081fb246ee92afae73efd943c889cef0cafea92b0b82422d6a18f289  tinyxml2-11.0.0.tar.gz
+description = Small C++ XML parser (TinyXML-2)
+homepage    = https://github.com/leethomason/tinyxml2
+license     = Zlib
+depends     = cmake ninja

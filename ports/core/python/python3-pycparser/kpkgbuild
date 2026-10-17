@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/p/pycparser/pycpars
 sha256      = 600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29  python3-pycparser-3.0.tar.gz
 description = A C parser in pure python — what cffi reads a header with
 homepage    = https://github.com/eliben/pycparser
+license     = BSD-3-Clause
 depends     = python3 python3-setuptools python3-pip

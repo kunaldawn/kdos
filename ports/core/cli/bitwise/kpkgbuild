@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/mellowcandle/bitwise/arc
 sha256      = e187fb50a9bfe408d6a389833c7db3ff253fe1ad4cbb155f0451f92b3facb932  bitwise-0.70.tar.gz
 description = Bit-level manipulation and base conversion, watched live in the terminal
 homepage    = https://github.com/mellowcandle/bitwise
+license     = GPL-3.0-only
 depends     = autoconf automake libtool pkgconf ncurses readline

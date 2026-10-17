@@ -9,6 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--disable-static \
 	--disable-locales \

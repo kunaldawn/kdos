@@ -14,6 +14,6 @@
 | ###########:::::::::...................................................... |
 | # kdos-apps 1.9G  # kdos-comp 412M  # foot 80M  : other 1.9G  . cache 3.5G |
 | . free 7.8G                                                                |
-| no systemd * no xorg * musl * toybox * signed                              |
+| no systemd * no xorg * musl * GNU * signed                                 |
 | Left/Right page | Esc Close                                                |
 +============================================================================+

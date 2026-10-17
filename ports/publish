@@ -118,11 +118,14 @@
 #               origin at the same commit and every source it names archived.
 #               It uploads the ISO (--iso, default build/iso-build/kdos.iso) as
 #               kdos-<tag>.iso, or in parts kdos-<tag>.iso.partNN when it is
-#               larger than $SRC_PART_SIZE bytes; sources.sha256; a SHA256SUMS over
-#               the whole ISO, each part and the rest; SHA256SUMS.sig, signed by
-#               `kpkg sign` with --key, $KDOS_RELEASE_KEY or
-#               build/keys/kdos-release.key; and that key's kdos-release.pub.
-#               --unsigned leaves the last two out. The files are written to
+#               larger than $SRC_PART_SIZE bytes; sources.sha256; the tag's
+#               recipe-only ports tree as kdos-ports.tar.xz, which
+#               `kdos update fetch` installs, and its kdos-ports.tar.xz.sig; a
+#               SHA256SUMS over the whole ISO, each part and the rest;
+#               SHA256SUMS.sig, signed by `kpkg sign` with --key,
+#               $KDOS_RELEASE_KEY or build/keys/kdos-release.key; and that
+#               key's kdos-release.pub. --unsigned leaves the three signature
+#               files out, and no machine then takes the tree. The files are written to
 #               build/release/<tag>/ (the parts are removed when the run ends).
 #               The release is a DRAFT until --publish makes it public and
 #               Latest, which is then confirmed by an anonymous query. Assets
@@ -1549,6 +1552,27 @@ if [ -n "$FREEZE" ]; then
     exit 0
 fi
 
+# release_tree <commit> <out> — the recipe-only ports tree at <commit>, laid
+# out as an image's /ports: ports/core, ports/shelves and ports/sources.idx at
+# the top, src/ and docs/ beside them, and a TREE stamp naming the commit and its time,
+# which `kdos update fetch` orders two trees by. git archive makes it, so it
+# is exactly what the commit records and never a file a checkout happens to
+# hold. The tar is reproducible: sorted names, the commit's time, uid 0.
+release_tree() {
+    local c=$1 out=$2 d=$TMP/tree t
+    rm -rf "$d"; mkdir -p "$d/raw" "$d/ports"
+    git -C "$REPO_ROOT" archive --format=tar "$c" ports/core ports/shelves ports/sources.idx src docs |
+        tar -x -C "$d/raw" || return 1
+    mv "$d/raw/ports/core" "$d/raw/ports/shelves" "$d/raw/ports/sources.idx" "$d/ports/" || return 1
+    mv "$d/raw/src" "$d/ports/src" || return 1
+    mv "$d/raw/docs" "$d/ports/docs" || return 1
+    t=$(git -C "$REPO_ROOT" log -1 --format=%ct "$c") || return 1
+    printf 'kdos-tree 1\ncommit %s\ntime %s\n' "$c" "$t" > "$d/ports/TREE"
+    tar --sort=name --mtime="@$t" --owner=0 --group=0 --numeric-owner \
+        --format=gnu -C "$d/ports" -cf - . | xz -9 -T1 > "$out" || return 1
+    rm -rf "$d"
+}
+
 # ── --release ─────────────────────────────────────────────────────────────
 #
 # A system release is the GitHub release of a KDOS tag: the ISO (in parts
@@ -1610,6 +1634,8 @@ if [ -n "$RELEASE" ]; then
             done
         fi
         printf '  asset    %-28s %s\n' sources.sha256 "$(human "$(stat -c %s "$FREEZE_FILE")")"
+        printf '  asset    %-28s the recipe tree at %s\n' kdos-ports.tar.xz "$tag"
+        [ "$UNSIGNED" = 1 ] || printf '  asset    %s\n' kdos-ports.tar.xz.sig
         printf '  asset    %s\n' SHA256SUMS
         if [ "$UNSIGNED" = 1 ]; then
             echo "  unsigned (--unsigned): no SHA256SUMS.sig, no kdos-release.pub"
@@ -1648,6 +1674,20 @@ if [ -n "$RELEASE" ]; then
     cp "$FREEZE_FILE" "$out/sources.sha256"
     ASSETS+=("sources.sha256|$out/sources.sha256|$(sha256sum "$out/sources.sha256" | cut -d' ' -f1)|text/plain")
     [ "$UNSIGNED" = 1 ] || cp "$pub" "$out/kdos-release.pub"
+
+    # The recipe tree goes up signed with the release key; an image built
+    # with build/keys/kdos-release.pub in its /etc/kdos/keys/tree takes it.
+    echo "==> the recipe tree at $tag"
+    release_tree "$commit" "$out/kdos-ports.tar.xz" || die "cannot make the recipe tree of $tag"
+    ASSETS+=("kdos-ports.tar.xz|$out/kdos-ports.tar.xz|$(sha256sum "$out/kdos-ports.tar.xz" | cut -d' ' -f1)|application/x-xz")
+    if [ "$UNSIGNED" = 0 ]; then
+        src_kpkg_ensure || die "cannot build kpkg"
+        signed=$("$KPKG" sign "$out/kdos-ports.tar.xz" "$key" 2>&1) || die "signing the recipe tree: $signed"
+        mkdir -p "$TMP/ring"; cp "$pub" "$TMP/ring/kdos-release.pub"
+        KPKG_KEYRING="$TMP/ring" "$KPKG" verify-pkg "$out/kdos-ports.tar.xz" >/dev/null 2>&1 ||
+            die "kdos-ports.tar.xz.sig does not verify against $pub"
+        ASSETS+=("kdos-ports.tar.xz.sig|$out/kdos-ports.tar.xz.sig|$(sha256sum "$out/kdos-ports.tar.xz.sig" | cut -d' ' -f1)|text/plain")
+    fi
 
     # SHA256SUMS names the whole ISO even when only its parts are assets: it
     # is what `sha256sum -c` checks after the parts are joined.
@@ -1691,6 +1731,10 @@ if [ -n "$RELEASE" ]; then
           echo '```'
       fi
       echo
+      echo "## What it needs"
+      echo
+      echo "Every package is on the medium, so it is large: write it to a USB stick of 32 GB or more, or to a BD-R for optical boot (it does not fit a DVD). Installing needs a disk of about 56 GB or more; the installer refuses a smaller one. See \`docs/kdos/02-user-guide/getting-started.md\`."
+      echo
       echo "## Check"
       echo
       echo "Download \`SHA256SUMS\` beside the image and run:"
@@ -1709,6 +1753,10 @@ if [ -n "$RELEASE" ]; then
           echo "A key downloaded beside the file it vouches for proves only that the two agree; compare the key id with one you obtained another way."
           echo
       fi
+      echo "## Updating an installed system"
+      echo
+      echo "\`kdos-ports.tar.xz\` is the recipe tree at $tag: every recipe, patch and program of our own, and no source. \`kdos update fetch\` downloads it from the latest release, checks \`kdos-ports.tar.xz.sig\` against the keys in \`/etc/kdos/keys/tree\` and installs it as \`/ports\`; \`kdos update apply\` then builds every package that is behind, from source, on the machine."
+      echo
       echo "## Sources"
       echo
       echo "\`sources.sha256\` lists every upstream source file the recipes at $tag name, as \`<sha256>  <port>/<file>\`. Each is kept in the numbered \`sources-N\` pre-releases of this repository, and \`ports/fetch\` finds it through \`ports/sources.idx\`."

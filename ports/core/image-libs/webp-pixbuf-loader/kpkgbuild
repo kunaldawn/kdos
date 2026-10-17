@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = webp-pixbuf-loader
+version     = 0.2.7
+release     = 1
+source      = https://github.com/aruiz/webp-pixbuf-loader/archive/$version/$name-$version.tar.gz
+sha256      = 61ce5e8e036043f9d0e78c1596a621788e879c52aedf72ab5e78a8c44849411a  webp-pixbuf-loader-0.2.7.tar.gz
+description = WebP loader for gdk-pixbuf, so GTK programs open and thumbnail WebP images
+homepage    = https://github.com/aruiz/webp-pixbuf-loader
+license     = LGPL-2.0-or-later
+depends     = meson ninja gdk-pixbuf libwebp

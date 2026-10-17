@@ -14,3 +14,5 @@ release     = 1
 source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.xz
 sha256      = 5b46e74377ed7409c5b75e7a96f95377b095623b689d8522620927964a41499c  libunistring-1.4.2.tar.xz
 description = Library for manipulating Unicode strings and C strings
+homepage    = https://www.gnu.org/software/libunistring/
+license     = LGPL-3.0-or-later OR GPL-2.0-or-later

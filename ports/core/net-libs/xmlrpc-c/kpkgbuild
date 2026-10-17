@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = xmlrpc-c
+version     = 1.64.04
+release     = 1
+source      = $name-$version.tgz::https://downloads.sourceforge.net/project/xmlrpc-c/Xmlrpc-c%20Super%20Stable/$version/xmlrpc-c-$version.tgz
+sha256      = 509c3a3bffb77c81e2c364175ac70b95b799e5b695cc37d4bf833ec28fdfe0b6  xmlrpc-c-1.64.04.tgz
+description = XML-RPC for C and C++ — client over libcurl, the Abyss server, and the xmlrpc command-line client
+homepage    = https://xmlrpc-c.sourceforge.io/
+license     = BSD-3-Clause AND MIT AND HPND
+depends     = curl openssl

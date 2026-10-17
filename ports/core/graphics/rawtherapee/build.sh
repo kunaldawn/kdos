@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# fmt and LibRaw are the ports. Left to their defaults, fmt is cloned from
-# GitHub at configure time, and LibRaw is built from the copy in the tarball.
-# PROC_TARGET_NUMBER=0 adds no -march or -mtune, so the package runs on every
-# x86-64 machine. libcanberra is the queue-finished sound; JPEG XL is named on
-# rather than probed. The bundled KLT feature tracker has no port and stays.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
@@ -37,18 +32,10 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# Bundled data is English only: "default" is the built-in English, and the
-# two English variants stay beside it.
 find "$PKG/usr/share/rawtherapee/languages" -type f ! -name default \
 	! -name 'English (UK)' ! -name 'English (US)' ! -name LICENSE ! -name README \
 	-exec rm -f {} +
 
-# UPSTREAM'S ENTRY IS REPLACED to leave inode/directory out of MimeType:
-# claimed here, a folder could open in RawTherapee instead of the file
-# manager. GTK 3 takes the Wayland app_id from the program name, which
-# gtk_init sets from argv[0], so StartupWMClass is "rawtherapee", not the
-# Gtk::Application id. The hicolor PNGs it names are upstream's, installed
-# above.
 cat > "$PKG/usr/share/applications/rawtherapee.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

@@ -14,3 +14,5 @@ release     = 1
 source      = https://files.libburnia-project.org/releases/$name-$version.tar.gz
 sha256      = 8e24dd99f5b7cafbecf0116d61b619ee89098e20263e6f47c793aaf4a98d6473  libburn-1.5.8.tar.gz
 description = Library for writing data to optical media
+homepage    = https://libburnia-project.org/
+license     = GPL-2.0-or-later

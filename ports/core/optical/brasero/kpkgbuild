@@ -15,4 +15,5 @@ source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$vers
 sha256      = 87749eae33a141207d1b00be233b6d8045982ed3249ed4b98dae1f3a975fea15  brasero-3.12.3.tar.xz
 description = GNOME disc burner and copier — data, audio and video CDs and DVDs
 homepage    = https://gitlab.gnome.org/GNOME/brasero
+license     = GPL-2.0-or-later
 depends     = pkgconf intltool itstool gettext perl-xml-parser glib gtk3 gstreamer gst-plugins-base gst-plugins-good libxml2 libX11 libSM libICE libnotify libcanberra libburn libisofs totem-pl-parser cdrdao dvd+rw-tools

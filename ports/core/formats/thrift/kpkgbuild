@@ -15,4 +15,5 @@ source      = https://archive.apache.org/dist/thrift/$version/thrift-$version.ta
 sha256      = 66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214  thrift-0.25.0.tar.gz
 description = Apache Thrift — the IDL compiler, the C++ library and the Python module; GNU Radio's ControlPort transport
 homepage    = https://thrift.apache.org/
+license     = Apache-2.0
 depends     = cmake ninja pkgconf boost openssl zlib libevent flex bison python3 python3-setuptools python3-wheel python3-pip

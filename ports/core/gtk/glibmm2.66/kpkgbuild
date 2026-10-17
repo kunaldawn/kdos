@@ -15,5 +15,6 @@ source      = $name-$version.tar.xz::https://download.gnome.org/sources/glibmm/$
 sha256      = 2b61780203aed98e701d3ea57c8f353e7c8ada9706a79be782f6c5153dd035c0  glibmm2.66-2.66.10.tar.xz
 description = C++ bindings for GLib and GIO, the 2.4 API (glibmm-2.4, giomm-2.4) that gtkmm 3 builds on
 homepage    = https://gtkmm.gnome.org/
+license     = LGPL-2.1-or-later AND GPL-2.0-or-later
 depends     = glib libsigc++2 meson python3 perl m4
 series      = 2.66

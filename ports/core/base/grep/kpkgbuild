@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = grep
+version     = 3.12
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.xz
+sha256      = 2649b27c0e90e632eadcd757be06c6e9a4f48d941de51e7c0f83ff76408a07b9  grep-3.12.tar.xz
+description = Searches text for patterns — grep, egrep and fgrep, with PCRE2 for -P
+homepage    = https://www.gnu.org/software/grep/
+license     = GPL-3.0-or-later
+depends     = pcre2

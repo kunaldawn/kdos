@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/xwmx/nb/archive/refs/tag
 sha256      = c1127e7e168558afed7a2eccd99b0bdb9779d81134e739d15ef1cc65e8bb3a67  nb-7.25.5.tar.gz
 description = Notes and bookmarks in a git repository, from one command
 homepage    = https://xwmx.github.io/nb/
+license     = AGPL-3.0-or-later
 depends     = bash git

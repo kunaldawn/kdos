@@ -64,6 +64,7 @@ yajl
 raptor2
 gumbo-parser
 tinyxml
+tinyxml2
 tomlplusplus
 libfyaml
 thrift

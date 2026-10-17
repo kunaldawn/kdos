@@ -13,7 +13,6 @@
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--libdir=/usr/lib \
-	--disable-static \
 	--disable-docs \
 	--without-xmlto \
 	--without-fop \

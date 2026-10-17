@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The patches install headers at their real paths and the CMake package under
-# lib/cmake/draco, with DRACO_LIBRARIES set, so find_package(draco) in PDAL,
-# Assimp and OpenCASCADE resolves to the shared library.
-#
-# The transcoder is off: it needs the tinygltf, Eigen and filesystem
-# submodules, which the release archive carries empty.
 patch -p1 -i "$PORT_SRC/0001-Fix-removal-of-build-dir-prefix-from-include-path.patch"
 patch -p1 -i "$PORT_SRC/0002-Install-proper-CMake-targets.patch"
 patch -p1 -i "$PORT_SRC/0004-Set-DRACO_LIBRARIES-for-backwards-compatibility.patch"

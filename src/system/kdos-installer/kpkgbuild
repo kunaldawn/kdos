@@ -13,3 +13,5 @@ version     = 4.0
 release     = 1
 description = KDOS installer — the disk wizard, C with no libraries
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = sysvinit

@@ -13,4 +13,5 @@ version     = 0.1.0
 release     = 1
 description = Removable media for a desktop that is not root
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
 depends     =

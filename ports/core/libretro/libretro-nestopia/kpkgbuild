@@ -17,3 +17,4 @@ source      = $name-$version.tar.gz::https://github.com/libretro/nestopia/archiv
 sha256      = 82aa1624189dad4302abe5af6cc6eee3821f34be346430566b3cab2904ce171b  libretro-nestopia-20260925.tar.gz
 description = Nestopia UE as a libretro core — Nintendo Entertainment System and Famicom Disk System emulator
 homepage    = https://github.com/libretro/nestopia
+license     = GPL-2.0-or-later

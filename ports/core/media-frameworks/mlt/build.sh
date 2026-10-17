@@ -9,19 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# melt's io.c uses select() and struct timeval without their headers; glibc
-# reaches them through other includes and musl does not.
 patch -p1 -i "$PORT_SRC/melt-include-missing-system-headers.patch"
+patch -p1 -i "$PORT_SRC/mlt-man-link-destdir.patch"
 
-# JACK is never looked for, so the jackrack module is its LADSPA and LV2 host
-# only and no JACK consumer exists. The glaxnimate module builds the copy of
-# glaxnimate's core carried in the release tarball.
-#
-# movit is the GPU effect chain; its module also carries the xgl consumer,
-# which draws through Xlib and GLX. OpenCV is the motion tracker and needs
-# the contrib tracking module. NDI and the DeckLink capture driver are off:
-# each is a vendor SDK the tree does not carry. The SWIG bindings are off: no
-# consumer here imports them.
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -68,3 +58,4 @@ cmake .. -G Ninja \
 	-DSWIG_PYTHON=OFF
 ninja
 DESTDIR=$PKG ninja install
+test -L "$PKG/usr/share/man/man1/melt.1"

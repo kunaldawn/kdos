@@ -15,4 +15,5 @@ source      = https://launchpad.net/libdbusmenu/${version%.*}/$version/+download
 sha256      = b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a  libdbusmenu-16.04.0.tar.gz
 description = Menus passed over D-Bus — libdbusmenu-glib and the GTK 3 renderer libdbusmenu-gtk3
 homepage    = https://launchpad.net/libdbusmenu
+license     = LGPL-2.1-only OR LGPL-3.0-only
 depends     = pkgconf glib gtk3 gobject-introspection glib-introspection vala intltool

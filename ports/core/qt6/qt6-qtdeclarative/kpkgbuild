@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qtdeclarative
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qtdeclarative
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = 215b7b70517e380123eabc6b92243f3c47b6f016a91d126057dbe53551c6b430  qt6-qtdeclarative-6.11.2.tar.xz
+sha256      = 311f3a2603e1973bb59baef9dfa740a376de713157d4782ee043681e889c9260  qt6-qtdeclarative-6.12.0.tar.xz
 description = Qt 6 QML and Qt Quick — the language, the engine, Qt Quick Controls and the qml tools
 homepage    = https://www.qt.io/
+license     = (LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only) AND GPL-3.0-only WITH Qt-GPL-exception-1.0
 depends     = cmake ninja pkgconf python3 qt6-qtbase qt6-qtshadertools qt6-qtsvg qt6-qtlanguageserver qt6-qtimageformats
 group       = qt6

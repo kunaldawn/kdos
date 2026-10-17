@@ -16,4 +16,5 @@ source      = https://downloads.sourceforge.net/modplug-xmms/$name-$version.tar.
 sha256      = 457ca5a6c179656d66c01505c0d95fafaead4329b9dbaa0f997d00a3508ad9de  libmodplug-0.8.9.0.tar.gz
 description = Play tracker modules: MOD, S3M, XM, IT and more, the ModPlug engine
 homepage    = https://modplug-xmms.sourceforge.net/
+license     = LicenseRef-Public-Domain
 depends     = pkgconf

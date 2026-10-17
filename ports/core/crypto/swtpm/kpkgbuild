@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/stefanberger/swtpm/archi
 sha256      = f61cf6f1e9bbcb4cefb30b70cafaf1c4df54c6961e65cfa63830e8ad0e220134  swtpm-0.10.2.tar.gz
 description = A software TPM for virtual machines — qemu's -tpmdev emulator backend
 homepage    = https://github.com/stefanberger/swtpm
+license     = BSD-3-Clause
 depends     = libtpms glib json-glib gnutls libtasn1 openssl libseccomp autoconf automake libtool perl pkgconf

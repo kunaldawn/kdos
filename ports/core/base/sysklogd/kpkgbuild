@@ -15,4 +15,5 @@ source      = https://github.com/troglobit/sysklogd/releases/download/v$version/
 sha256      = bc410ca64551a11fac6518b418fb6b8afbd888a70af2c5eb353334a706727bca  sysklogd-2.7.2.tar.gz
 description = System logging daemon with built-in rotation
 homepage    = https://github.com/troglobit/sysklogd
+license     = BSD-3-Clause
 depends     =

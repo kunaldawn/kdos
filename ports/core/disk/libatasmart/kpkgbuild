@@ -15,4 +15,5 @@ source      = https://0pointer.de/public/$name-$version.tar.xz
 sha256      = 61f0ea345f63d28ab2ff0dc352c22271661b66bf09642db3a4049ac9dbdb0f8d  libatasmart-0.19.tar.xz
 description = ATA S.M.A.R.T. reading and parsing library
 homepage    = https://0pointer.de/blog/projects/being-smart.html
+license     = LGPL-2.1-or-later
 depends     = eudev

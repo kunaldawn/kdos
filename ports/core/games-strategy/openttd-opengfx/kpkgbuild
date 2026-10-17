@@ -15,4 +15,5 @@ source      = https://cdn.openttd.org/opengfx-releases/$version/opengfx-$version
 sha256      = 43a0c1dabf39cb865394f3a6cc36d4da5c10ecfaaf55652043104806810903be  openttd-opengfx-8.0.zip
 description = OpenGFX: the free graphics base set for OpenTTD
 homepage    = https://github.com/OpenTTD/OpenGFX
+license     = GPL-2.0-only
 depends     = libarchive

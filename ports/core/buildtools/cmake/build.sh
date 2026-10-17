@@ -9,23 +9,21 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/gnuinstalldirs-lib.patch"
+
 export CXXFLAGS="$CXXFLAGS -include cstdint"
 
-# --sphinx-man and no other Sphinx format: the pages are generated from Help/
-# and installed under --mandir, which defaults to PREFIX/man and so is named.
-#
-# ccmake is BUILD_CursesDialog. Left undefined it follows a curses probe, and
-# named ON it still drops ccmake with only a warning when FindCurses fails, so
-# CMAKE_REQUIRE_FIND_PACKAGE_Curses makes a missing ncurses stop the build.
 ./bootstrap \
 	--prefix=/usr \
 	--datadir=/share/$name \
+	--docdir=/share/doc/$name \
 	--mandir=/share/man \
 	--sphinx-man \
 	--sphinx-build=/usr/bin/sphinx-build \
 	--no-system-jsoncpp  \
 	--no-system-cppdap   \
 	--no-system-librhash \
+	--no-system-curl \
 	--system-libs \
 	-- -D CMAKE_BUILD_TYPE=Release \
 	-D CMake_BUILD_LTO=ON \

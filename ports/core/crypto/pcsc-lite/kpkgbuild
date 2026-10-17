@@ -15,4 +15,5 @@ source      = https://pcsclite.apdu.fr/files/$name-$version.tar.xz
 sha256      = 60a08942d8c00a1d86a3bf4c64eddbf7a5569c7c54f6904e3f07801bb5316acd  pcsc-lite-2.5.2.tar.xz
 description = PC/SC smart card middleware — the pcscd daemon and libpcsclite
 homepage    = https://pcsclite.apdu.fr/
+license     = BSD-3-Clause AND GPL-3.0-or-later
 depends     = meson pkgconf flex perl eudev polkit glib python3

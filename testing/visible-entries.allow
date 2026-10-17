@@ -1,0 +1,13 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   testing/visible-entries.allow — visible desktop entries that read like
+#   servers, sessions, launch pads, tray helpers or diagnostics and are what a
+#   person starts. One file name per line; testing/preflight.sh reads it.
+# ---------------------------------
+cncjs.desktop
+syncthingtray.desktop

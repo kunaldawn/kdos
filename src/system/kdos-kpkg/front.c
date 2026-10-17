@@ -57,10 +57,7 @@ static void usage(void)
 	       "Options:\n"
 	       "  --root <path>      Operate on a different root directory\n"
 	       "  --keep-cache       Keep cached packages after installation\n"
-	       "  -f, --force        Rebuild the named packages, skip the\n"
-	       "                     file-conflict scan for them\n"
-	       "  --overwrite        Let a package take a path another package\n"
-	       "                     owns; ownership moves with the file\n"
+	       "  -f, --force        Rebuild the named packages\n"
 	       "  --build-only       (install) Build exactly the named ports into\n"
 	       "                     the package cache; install nothing. Every\n"
 	       "                     dependency must already be installed\n"
@@ -73,8 +70,16 @@ static void usage(void)
 	       "  update             Update all installed packages\n"
 	       "  list               List installed packages\n"
 	       "  info <pkg>         Show package information\n"
+	       "  check [<pkg>...|--all]  Compare installed files with what\n"
+	       "                     was installed: missing, changed,\n"
+	       "                     edited /etc (not a failure) and\n"
+	       "                     (--all) unowned files\n"
 	       "  meta <pkg>         Print the recipe's metadata as shell\n"
 	       "                     assignments, for ports/fetch to eval\n"
+	       "  fetch <pkg>...     Download the sources the port directory\n"
+	       "                     and SOURCE_DIR lack: the archive, then\n"
+	       "                     upstream, each checked against sha256\n"
+	       "                     (KPKG_FETCH=1 makes install do the same)\n"
 	       "  verify <pkg>       Build with kpkgbuild and kpkgbuild.new,\n"
 	       "                     then compare the two packages\n"
 	       "  verify --repro <pkg>  Build the SAME recipe twice; the two\n"
@@ -103,16 +108,14 @@ static void usage(void)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-static int install_pkgfile(const KpConf *c, const char *file, int force,
-			   int overwrite)
+/* Never `kpkgadd --force`: a rebuild is still an install, and the conflict
+ * scan is what refuses a path taken from a package the recipe does not name
+ * in `replaces =`. */
+static int install_pkgfile(const KpConf *c, const char *file)
 {
 	char *args[8];
 	int n = 0;
 	args[n++] = (char *)"kpkgadd";
-	if (force)
-		args[n++] = (char *)"--force";
-	if (overwrite)
-		args[n++] = (char *)"--overwrite";
 	if (c->root[0]) {
 		args[n++] = (char *)"--root";
 		args[n++] = (char *)c->root;
@@ -462,8 +465,7 @@ static int build_only(KpConf *c, char **want, int nwant, int force,
  * A record carrying a store key has its package stored under it once
  * installed.
  */
-static int commit(KpConf *c, char **want, int nwant, int force, int overwrite,
-		  int keep_cache)
+static int commit(KpConf *c, char **want, int nwant, int keep_cache)
 {
 	for (int i = 0; i < nwant; i++) {
 		const char *pkg = want[i];
@@ -480,7 +482,7 @@ static int commit(KpConf *c, char **want, int nwant, int force, int overwrite,
 			       pkg, pkg, file);
 			return 1;
 		}
-		if (install_pkgfile(c, file, force, overwrite) != 0) {
+		if (install_pkgfile(c, file) != 0) {
 			kp_err("Failed to install %s", pkg);
 			return 1;
 		}
@@ -511,22 +513,14 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 	char *want[KP_MAX_ORDER];
 	int nwant = 0;
 
-	/* Env over flag, the same way PORT_REPO and PKGDB_DIR work. The
-	 * orchestrator sets it rather than passing a flag, because a restored
-	 * snapshot can put an OLDER kpkg in the tree and an unknown env var is
-	 * ignored by every version while an unknown flag is not. */
-	const char *ov = getenv("KPKG_OVERWRITE");
-	int overwrite = ov && *ov && strcmp(ov, "0");
-	/* The same, for a build that keeps every package it makes to write a
-	 * binhost from. */
+	/* Env over flag, the same way PORT_REPO and PKGDB_DIR work, for a
+	 * build that keeps every package it makes to write a binhost from. */
 	const char *kc = getenv("KPKG_KEEP_CACHE");
 	keep_cache = kc && *kc && strcmp(kc, "0");
 
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--force"))
 			force = 1;
-		else if (!strcmp(argv[i], "--overwrite"))
-			overwrite = 1;
 		else if (!strcmp(argv[i], "--keep-cache"))
 			keep_cache = 1;
 		else if (!strcmp(argv[i], "--build-only"))
@@ -537,11 +531,9 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 			kb_strlcpy(c->root, argv[++i], sizeof(c->root));
 		else if (argv[i][0] == '-' && argv[i][1]) {
 			/* An unknown option is rejected rather than falling
-			 * through to the package list: `kpkg install
-			 * --overwrite zig` on a kpkg that predates the flag
-			 * would otherwise report `Port not found: --overwrite`
-			 * — a message that names the flag but blames the
-			 * ports tree. */
+			 * through to the package list, where it would be
+			 * reported as `Port not found: --<flag>` — a message
+			 * that names the flag but blames the ports tree. */
 			kp_err("unknown option: %s", argv[i]);
 			return 1;
 		} else if (nwant < KP_MAX_ORDER)
@@ -559,7 +551,7 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 	if (build_only_mode)
 		return build_only(c, want, nwant, force, keep_cache);
 	if (commit_mode)
-		return commit(c, want, nwant, force, overwrite, keep_cache);
+		return commit(c, want, nwant, keep_cache);
 
 	kp_msg("Resolving dependencies...");
 
@@ -629,7 +621,7 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 		if (!forced && store_hit(c, key, sfile, sizeof(sfile))) {
 			free(dir);
 			kp_msg("Reusing %s from the store (%.12s)", pkg, key);
-			if (install_pkgfile(c, sfile, 0, overwrite) != 0) {
+			if (install_pkgfile(c, sfile) != 0) {
 				kp_err("Failed to install %s", pkg);
 				return 1;
 			}
@@ -665,11 +657,7 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 		 * with a kept cache it picks whichever sorts last. */
 		char *found = kb_strdup(built);
 
-		/* Unlike -f, --overwrite applies to every package in the order:
-		 * it is a property of the RUN, not of what was named. A phase
-		 * that rebuilds the userland has toybox and GNU sed both
-		 * claiming /usr/bin/sed, and whichever comes last wins. */
-		if (install_pkgfile(c, found, forced, overwrite) != 0) {
+		if (install_pkgfile(c, found) != 0) {
 			kp_err("Failed to install %s", pkg);
 			if (!keep_cache)
 				unlink(found);
@@ -1105,10 +1093,23 @@ static int cmd_list(const KpConf *c, int json)
 	return 0;
 }
 
+/* The recipe's `license =`, the SPDX expression the port is shipped under.
+ * The texts themselves are in /usr/share/licenses/<name>/ (prune.c). */
+static void info_license(const char *dir, char *out, size_t cap)
+{
+	out[0] = 0;
+	if (dir)
+		kp_recipe_key(dir, "license", out, cap);
+}
+
 static int cmd_info(const KpConf *c, const char *name, int json)
 {
 	char ver[128], rel[128];
+	char lic[256];
 	if (kp_installed_version(c, name, ver, sizeof(ver), rel, sizeof(rel)) == 0) {
+		char *pd = kp_port_dir(c, name);
+		info_license(pd, lic, sizeof(lic));
+		free(pd);
 		char *db = kp_db_dir(c);
 		char *f = kb_path_join(db, name);
 		size_t n = 0;
@@ -1129,13 +1130,17 @@ static int cmd_info(const KpConf *c, const char *name, int json)
 			kb_json_str(&b, ver);
 			kb_buf_str(&b, ", \"release\": ");
 			kb_json_str(&b, rel);
+			kb_buf_str(&b, ", \"license\": ");
+			kb_json_str(&b, lic[0] ? lic : NULL);
 			kb_buf_printf(&b, ", \"files\": %d}\n", files);
 			fwrite(b.p, 1, b.n, stdout);
 			kb_buf_free(&b);
 			return 0;
 		}
-		printf("Package: %s\nVersion: %s-%s\nFiles: %d\n", name, ver, rel,
-		       files);
+		printf("Package: %s\nVersion: %s-%s\n", name, ver, rel);
+		if (lic[0])
+			printf("License: %s\n", lic);
+		printf("Files: %d\n", files);
 		return 0;
 	}
 
@@ -1154,6 +1159,7 @@ static int cmd_info(const KpConf *c, const char *name, int json)
 	 * all. */
 	char desc[256];
 	kp_description(dir, desc, sizeof(desc));
+	info_license(dir, lic, sizeof(lic));
 
 	char deps[KP_MAX_DEPS][128];
 	int nd = kp_depends(dir, deps, KP_MAX_DEPS);
@@ -1164,6 +1170,8 @@ static int cmd_info(const KpConf *c, const char *name, int json)
 		kb_json_str(&b, name);
 		kb_buf_str(&b, ", \"installed\": false, \"description\": ");
 		kb_json_str(&b, desc[0] ? desc : NULL);
+		kb_buf_str(&b, ", \"license\": ");
+		kb_json_str(&b, lic[0] ? lic : NULL);
 		kb_buf_str(&b, ", \"depends\": [");
 		for (int i = 0; i < nd; i++) {
 			if (i)
@@ -1180,6 +1188,8 @@ static int cmd_info(const KpConf *c, const char *name, int json)
 	printf("Package: %s\n", name);
 	if (desc[0])
 		printf("Description: %s\n", desc);
+	if (lic[0])
+		printf("License: %s\n", lic);
 	if (nd) {
 		printf("Depends:");
 		for (int i = 0; i < nd; i++)
@@ -1231,6 +1241,9 @@ int front_main(int argc, char **argv)
 		return cmd_list(&c, json);
 	}
 
+	if (!strcmp(cmd, "check"))
+		return kp_cmd_check(&c, rest, restv);
+
 	if (!strcmp(cmd, "meta")) {
 		if (!rest) {
 			printf("Usage: kpkg meta <package|portdir>\n");
@@ -1239,6 +1252,8 @@ int front_main(int argc, char **argv)
 		return cmd_meta(&c, restv[0]);
 	}
 
+	if (!strcmp(cmd, "fetch"))
+		return kp_cmd_fetch(&c, rest, restv);
 	if (!strcmp(cmd, "keygen"))
 		return kp_cmd_keygen(rest, restv);
 	if (!strcmp(cmd, "sign"))

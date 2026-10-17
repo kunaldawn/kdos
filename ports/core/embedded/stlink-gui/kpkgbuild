@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = stlink-gui
+version     = 1.8.0
+release     = 1
+source      = stlink-$version.tar.gz::https://github.com/stlink-org/stlink/archive/refs/tags/v$version.tar.gz
+sha256      = cff760b5c212c2cc480f705b9ca7f3828d6b9c267950c6a547002cd0a1f5f6ac  stlink-1.8.0.tar.gz
+description = GTK 3 window over the ST-Link tools: connect a probe, read and write STM32 flash
+homepage    = https://github.com/stlink-org/stlink
+license     = BSD-3-Clause
+group       = stlink
+depends     = stlink cmake ninja pkgconf libusb gtk3 librsvg

@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --enable-extended-parser-errors is otherwise switched on by a bison version
-# probe, and --disable-debug drops the -g -DDEBUG upstream adds by default.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \

@@ -9,24 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# EVERY DECODER AND ENCODER PLUGIN IS REQUIRED, not probed: upstream marks
-# each library OPTIONAL and drops the plugin when it is absent, so a missing
-# port would ship a K3b that silently cannot burn an MP3 or FLAC as audio CD.
-# Musepack is off (libmpcdec is not a port). The SoX and external-program
-# encoders call programs at run time and need no library.
-#
-# Qt6WebEngineWidgets only restyles the disk-info pane, and without it the pane
-# is a plain Qt view; it is disabled so a Chromium engine is not pulled in for
-# that. KF_SKIP_PO_PROCESSING: bundled data is English only.
-#
-# Writing runs external programs that K3b finds on $PATH: cdrskin (libburn)
-# for CD and DVD, growisofs (dvd+rw-tools) for DVD and BD, cdrdao for
-# disc-at-once and copies, and mkisofs for data images. Audio-CD ripping
-# dlopen()s libcdio-paranoia. The KAuth helper k3bhelper and its polkit action
-# org.kde.k3b.updatepermissions change the burner device's group.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
@@ -61,13 +46,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-find "$PKG/usr/share/doc/HTML" -mindepth 1 -maxdepth 1 ! -name en -exec rm -rf {} +
-
-# UPSTREAM'S ENTRY IS REPLACED for StartupWMClass: KAboutData sets the desktop
-# file name, so the Wayland app_id is org.kde.k3b, not upstream's "k3b". It
-# claims only K3b's own project type: disc images and blank media are types
-# other programs open too, and mimeapps.list is where a default is chosen. The
-# hicolor PNGs it names are upstream's, installed above.
 cat > "$PKG/usr/share/applications/org.kde.k3b.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

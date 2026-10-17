@@ -9,43 +9,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE RELEASE TARBALL IS USED, NOT THE TAG ARCHIVE: it carries the
-# OndselSolver, GSL and AddonManager submodules, which a tag archive leaves
-# empty. It is FLAT, with no wrapping directory, and kpkg strips one
-# component from the first source, which discards every top-level file; it
-# is unpacked again here, unstripped.
 mkdir -p unpacked
 tar xf "$PORT_SRC/$name-$version.tar.gz" -C unpacked
 cd unpacked
 
-# musl has no execinfo.h: the crash handler and SMESH's trace print no
-# backtrace. UnlimitedUnsigned.h uses the fixed-width types without
-# including <cstdint>, which libstdc++ no longer includes transitively.
 patch -p1 -i "$PORT_SRC/no-execinfo.patch"
 patch -p1 -i "$PORT_SRC/UnlimitedUnsigned.h-cstdint.patch"
 
-# FreeCAD finds its modules beside its executable (AppHomePath/Mod), so the
-# program tree lives under /usr/lib/freecad and only the launchers are
-# linked into /usr/bin. Data, documentation and the desktop files take
-# absolute paths, which FreeCAD resolves as given. The bin directory is
-# absolute too: the thumbnailer entry names the program by it, and a
-# relative one would be written into that entry as bin/freecad-thumbnailer.
-#
-# BUILD_ADDONMGR=OFF: the Addon Manager is a front end to an online catalogue
-# and does nothing offline. PCL is not a port. FEM meshes with Netgen and
-# solves with CalculiX, run as ccx from PATH; BIM imports and exports IFC
-# through ifcopenshell. 3D mice are read through libspnav from spacenavd's
-# socket; spacenavd is not a port, so no device reaches it. MED and VTK are
-# required, not optional: MeshPart and FEM build the bundled SMESH, which
-# needs both. APPDATA_RELEASE_DATE is the release's date; unset, the
-# metainfo file records the day of the build. pybind11 installs its CMake
-# package inside its Python package, which CMake does not search;
-# pybind11_DIR names it.
-#
-# The configure compares Coin's version with the one pivy was built against,
-# reading each part of Coin's from basic.h one digit long, so Coin 4.0.10
-# reads as 4.0.1 and mismatches. Given COIN3D_VERSION, it reads nothing, and
-# the parts come from Coin's pkg-config file.
 _coin=$(pkg-config --modversion Coin)
 _prefix=/usr/lib/freecad
 mkdir -p build && cd build
@@ -91,11 +61,6 @@ done
 ln -s FreeCAD "$PKG/usr/bin/freecad"
 ln -s FreeCADCmd "$PKG/usr/bin/freecadcmd"
 
-# UPSTREAM'S ENTRY IS REPLACED: its StartupWMClass is the X11 class, while
-# main() sets the desktop file name, so the Wayland app_id is
-# org.freecad.FreeCAD. It claims only FreeCAD's own document type; the mesh
-# and exchange formats it also opens belong to the viewers. The hicolor PNGs
-# (16 to 64 px) are upstream's.
 cat > "$PKG/usr/share/applications/org.freecad.FreeCAD.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

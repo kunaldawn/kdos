@@ -44,7 +44,7 @@ static char *text = "#cWell we've reached the end of this demo. But #bnot#n the 
 "\n"
 "KDOS is:\n"
 "\n"
-"o  #bmusl#n and #btoybox#n. No glibc. No coreutils. No 4 GB of /usr :)\n"
+"o  #bmusl#n and #bsysvinit#n. No glibc. GNU tools, one program per name.\n"
 "o  #bNO SYSTEMD.#n Not \"optional\". Not \"you can remove it\". None. Go on,\n"
 "   look for it - you just watched the credits say so.\n"
 "o  #bNO XORG SERVER.#n Wayland only. Xwayland runs rootless, for aliens.\n"

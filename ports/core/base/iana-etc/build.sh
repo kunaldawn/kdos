@@ -9,17 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE TABLES ARE BUILT HERE FROM IANA's OWN XML, not carried as generated text,
-# so the three files on the image are a function of three hashed registry
-# snapshots and nothing else. `version` is the newest <updated> date across the
-# three registries; refreshing is a new version, a fetch and new hashes.
-#
-# gawk BY NAME: the rpc transform uses `delete array` and length() of an
-# array, and whichever awk `awk` resolves to in the chroot is not guaranteed
-# to have both. The header carries the registry date rather than the build
-# time, so two builds of one version are byte-identical. $_reg is the
-# recipe's helper, the same base the sources were fetched from.
-
 gawk -F '[<>]' -v URL="$_reg/protocol-numbers/protocol-numbers.xml" -v V="$version" '
 	BEGIN {
 		print "# /etc/protocols, IANA registry as of " V
@@ -33,9 +22,6 @@ gawk -F '[<>]' -v URL="$_reg/protocol-numbers/protocol-numbers.xml" -v V="$versi
 	}
 ' < protocol-numbers-$version.xml > protocols
 
-# A record marked Unassigned, Reserved or historic is not a service a
-# resolver should answer for, and a name with a parenthesis is a description
-# rather than a service name.
 gawk -F '[<>]' -v URL="$_reg/service-names-port-numbers/service-names-port-numbers.xml" -v V="$version" '
 	BEGIN {
 		print "# /etc/services, IANA registry as of " V
@@ -51,10 +37,6 @@ gawk -F '[<>]' -v URL="$_reg/service-names-port-numbers/service-names-port-numbe
 	}
 ' < service-names-port-numbers-$version.xml > services
 
-# IANA names program 100000 "pmapprog"; rpcbind, glibc-era tools and
-# rpcinfo look up portmapper and sunrpc, and the NFS helpers look up mountd,
-# rstatd, rusersd and rwalld. Those aliases are added where the registry
-# lacks them, or the lookups fail on a name every other system resolves.
 gawk -F '[<>]' -v URL="$_reg/rpc-program-numbers/rpc-program-numbers.xml" -v V="$version" '
 	BEGIN {
 		print "# /etc/rpc, IANA registry as of " V
@@ -88,9 +70,6 @@ gawk -F '[<>]' -v URL="$_reg/rpc-program-numbers/rpc-program-numbers.xml" -v V="
 	}
 ' < rpc-program-numbers-$version.xml > rpc
 
-# An empty table is a build that succeeded and a machine on which
-# getservbyname() fails for everything; a registry whose layout changed
-# produces exactly that, so it stops the build instead.
 for _f in services protocols rpc; do
 	if ! grep -qv '^#' "$_f"; then
 		echo "ERROR: iana-etc: $_f came out empty" >&2

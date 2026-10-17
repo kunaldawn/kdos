@@ -9,13 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The same glib source as the glib port, built with introspection on against
-# the installed glib and gobject-introspection. Only the GIR and typelib files
-# are packaged: everything else is the glib port's, and a second copy would be
-# two packages owning one file. The options match the glib port's so the
-# introspection data describes the library actually installed; the version
-# must equal glib's for the same reason.
-
 meson setup build \
 	--prefix=/usr \
 	--libdir=lib \

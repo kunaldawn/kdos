@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The release zip holds one tarball of the finished set. OpenTTD looks in each
-# directory under baseset/ for a set's .obm index, so the set gets its own.
 bsdtar -xf "$name-$version.zip"
 tar -xf openmsx-$version.tar
 cd openmsx-$version

@@ -16,4 +16,5 @@ source      = https://libnice.freedesktop.org/releases/$name-$version.tar.gz
 sha256      = cfb5e8e778534f2f5b3c6f4958a1eb057c6b95c537c0f100817a537cf5d64fcc  libnice-0.1.24.tar.gz
 description = ICE — how two WebRTC peers find a path to each other through NAT
 homepage    = https://libnice.freedesktop.org/
+license     = LGPL-2.1-only OR MPL-1.1
 depends     = meson ninja pkgconf glib openssl gstreamer

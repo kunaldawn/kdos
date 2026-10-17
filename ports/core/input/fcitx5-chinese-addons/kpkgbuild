@@ -21,4 +21,5 @@ sha256      = 42146ac97de6c13d55f9e99ed873915f4c66739e9c11532a34556badf9792c04  
 sha256      = c1a7ca7225d3614ab83353fc827503006a980447762018f53760425d7b5303a6  py_stroke-20250329.tar.gz
 description = Pinyin, shuangpin and table input for fcitx5
 homepage    = https://github.com/fcitx/fcitx5-chinese-addons
+license     = LGPL-2.1-or-later AND GPL-2.0-or-later
 depends     = cmake extra-cmake-modules fcitx5 libime opencc nlohmann-json boost gettext

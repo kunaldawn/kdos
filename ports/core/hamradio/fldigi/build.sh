@@ -9,17 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The logbook table defines nullptr as a macro, which turns it into musl's
-# NULL and breaks overload resolution.
 patch -p1 -i "$PORT_SRC/nullptr-def.patch"
-# FLTK picks Wayland or X11 at run time, and on Wayland fl_display is NULL:
-# flarq's Xlib window-hint call is made only when the X11 display is open.
 patch -p1 -i "$PORT_SRC/x11-hints-on-x11-only.patch"
 
-# The bundled mbedtls copy is the 2.x API the network code is written
-# against; the mbedtls port is 3.x, which has no net.h or certs.h. OSS is not
-# on this system, and the manual is the asciidoc build, which is off with the
-# rest of the docs.
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
@@ -37,10 +29,6 @@ patch -p1 -i "$PORT_SRC/x11-hints-on-x11-only.patch"
 make
 make DESTDIR=$PKG install
 
-# THE MENU: upstream's icons are XPM and its entries carry no window class;
-# both are replaced. FLTK takes the Wayland app_id from the window's xclass,
-# and both programs set it to the package name, fldigi: a flarq entry naming
-# any other class would never match its own window.
 rm -f "$PKG"/usr/share/applications/fldigi.desktop "$PKG"/usr/share/applications/flarq.desktop
 for i in fldigi flarq; do
 	s=$(magick identify -format %w "data/$i.xpm")

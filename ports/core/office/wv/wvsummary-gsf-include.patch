@@ -1,0 +1,10 @@
+--- a/wvSummary.c	2026-10-16 13:49:48.823780927 +0530
++++ b/wvSummary.c	2026-10-16 13:49:48.846409704 +0530
+@@ -33,6 +33,7 @@
+ #include <gsf/gsf-msole-utils.h>
+ #include <gsf/gsf-docprop-vector.h>
+ #include <gsf/gsf-meta-names.h>
++#include <gsf/gsf-doc-meta-data.h>
+ 
+ #include <stdio.h>
+ #include <stdlib.h>

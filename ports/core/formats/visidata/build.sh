@@ -12,19 +12,9 @@
 mkdir -p vendor
 tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 
-# standard-mailcap IS THE ONE RUNTIME MODULE FROM THE BUNDLE. Python 3.13
-# removed mailcap from the standard library and it is not a port; without it
-# the file-open-by-type command fails. python-dateutil (the date column type),
-# lxml (HTML and XML), openpyxl (xlsx), PyYAML and requests (a URL as a source)
-# are ports and come in through depends — visidata imports every loader's
-# library only when that format is opened, so a missing one builds green.
-pip3 install --no-deps --no-index --find-links=vendor \
+pip3 install --ignore-installed --no-deps --no-index --find-links=vendor \
 	--root=$PKG --prefix=/usr standard-mailcap .
 
-# visidata.desktop, NOT vd.desktop: upstream installs an entry of its own under
-# that name and a second file is a second menu row for one program. This one
-# replaces it — same Exec, an icon the shipped atlas actually carries, and the
-# MIME type upstream leaves off.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/visidata.desktop" <<'EOF'
 [Desktop Entry]

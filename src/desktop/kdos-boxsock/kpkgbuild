@@ -13,4 +13,5 @@ version     = 0.1.0
 release     = 1
 description = Per-box tagged Wayland socket — the security-context-v1 engine
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
 depends     = wayland wayland-protocols

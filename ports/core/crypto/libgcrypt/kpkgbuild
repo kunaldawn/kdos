@@ -14,4 +14,6 @@ release     = 1
 source      = https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-$version.tar.bz2
 sha256      = d77f68f48879510e79a2f65977ccc68981781ea0923e5bdffac2a193ea3d660e  libgcrypt-1.12.4.tar.bz2
 description = A general purpose crypto library based on the code used in GnuPG
+homepage    = https://www.gnupg.org/software/libgcrypt/
+license     = LGPL-2.1-or-later AND GPL-2.0-or-later AND BSD-3-Clause
 depends     = libgpg-error

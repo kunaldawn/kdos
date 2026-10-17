@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Print backends and the GStreamer media backend are GIO modules found by
-# scanning their directories, so they need no cache. The X11 backend serves
-# applications that force GDK_BACKEND=x11 under Xwayland; with GDK_BACKEND
-# unset GDK tries Wayland first.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \

@@ -18,7 +18,7 @@
 |                                                      |
 |                                                      |
 |------------------------------------------------------|
-| binhost /media/kdos/KDOSSTICK/packages ? signed inde |
+| tree 29d742c14cc8 - an apply builds each package fro |
 | Left/Right page | r refresh | Esc Close              |
 | slot A is live, slot B was ma [ Refresh ] [ Close ]  |
 +======================================================+

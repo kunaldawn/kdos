@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# TIFF and WebP come from the system libraries, never the bundled copies. MNG
-# and JPEG 2000 are off: neither libmng nor jasper is a port, and each probe
-# would otherwise decide silently.
 mkdir -p build && cd build
 cmake .. -G Ninja -Wno-dev \
 	-DCMAKE_BUILD_TYPE=Release \

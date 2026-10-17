@@ -15,4 +15,5 @@ source      = https://github.com/storaged-project/udisks/releases/download/udisk
 sha256      = 18630a8aad806bea0bc626ce97e71e50ec82c742956ac1c834a4275f8f22207b  udisks2-2.11.2.tar.bz2
 description = Disk management daemon and D-Bus API for toolkit applications
 homepage    = https://github.com/storaged-project/udisks
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later
 depends     = glib gobject-introspection glib-introspection polkit libgudev eudev util-linux acl libblockdev libatasmart lvm2 btrfs-progs libstoragemgmt libconfig dbus gettext libxslt docbook-xsl docbook-xml

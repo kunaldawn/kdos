@@ -16,4 +16,5 @@ source      = https://gitlab.freedesktop.org/xorg/font/$_repo/-/archive/$name-$v
 sha256      = 1d6d4eff00896e88ce260f826c1c0eb19f2d0c588363bccdd1b1cfacdb5469b1  font-misc-misc-1.1.3.tar.gz
 description = X.org core bitmap fonts, served by Xwayland to its X11 clients
 homepage    = https://gitlab.freedesktop.org/xorg/font
+license     = LicenseRef-Public-Domain
 depends     = util-macros bdftopcf font-util mkfontscale encodings

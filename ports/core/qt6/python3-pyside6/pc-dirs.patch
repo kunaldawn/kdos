@@ -1,0 +1,12 @@
+--- a/sources/pyside6/libpyside/pyside6.pc.in
++++ b/sources/pyside6/libpyside/pyside6.pc.in
+@@ -1,7 +1,7 @@
+ prefix=@CMAKE_INSTALL_PREFIX@
+ exec_prefix=@CMAKE_INSTALL_PREFIX@
+-libdir=@LIB_INSTALL_DIR@
+-includedir=@CMAKE_INSTALL_PREFIX@/PySide6@pyside6_SUFFIX@/include
++libdir=@CMAKE_INSTALL_PREFIX@/@LIB_INSTALL_DIR@
++includedir=@CMAKE_INSTALL_PREFIX@/include/PySide6@pyside6_SUFFIX@
+ typesystemdir=@CMAKE_INSTALL_PREFIX@/share/PySide6@pyside6_SUFFIX@/typesystems
+ gluedir=@CMAKE_INSTALL_PREFIX@/share/PySide6@pyside6_SUFFIX@/glue
+ pythonpath=@PYTHON_SITE_PACKAGES@

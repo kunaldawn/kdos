@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = a42c79ff3237b73789d1c63cdfd848c0d59671ce5e93723a2efa128f00cb3450  kcodecs-6.30.0.tar.xz
 description = KDE Frameworks: string encodings and charset detection
 homepage    = https://api.kde.org/frameworks/kcodecs/html/
+license     = MIT AND LGPL-2.0-or-later AND LGPL-2.0-only AND (MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase gperf

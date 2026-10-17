@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/pothosware/SoapyRTLSDR/a
 sha256      = 757c3c3bd17c5a12c7168db2f2f0fd274457e65f35e23c5ec9aec34e3ef54ece  soapyrtlsdr-0.3.3.tar.gz
 description = The SoapySDR module for RTL2832U sticks, through librtlsdr
 homepage    = https://github.com/pothosware/SoapyRTLSDR
+license     = MIT
 depends     = cmake soapysdr rtl-sdr

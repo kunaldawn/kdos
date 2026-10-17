@@ -15,4 +15,5 @@ source      = https://github.com/limine-bootloader/limine/releases/download/v$ve
 sha256      = 86107e8754365124b1871479f766697461f16ce9d847b3c23bb269335588c565  limine-12.9.0.tar.xz
 description = BIOS and UEFI bootloader and boot manager
 homepage    = https://limine-bootloader.org/
+license     = BSD-2-Clause
 depends     = clang llvm lld nasm mtools

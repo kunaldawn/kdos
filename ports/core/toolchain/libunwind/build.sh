@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# A PRIVATE PREFIX, because /usr/include/libunwind.h and libunwind.so are the
-# nongnu libunwind's (libunwind-nongnu): the remote-unwinding library with
-# libunwind-ptrace and pkg-config files that htop, GStreamer, libcamera and
-# samba link.
-# The two own the same file names and only the nongnu one unwinds another
-# process, so this one installs where no compiler or linker searches by
-# default, and a consumer that wants it names the prefix.
-#
-# LIBUNWIND_ENABLE_ASSERTIONS defaults to ON whatever the build type, and adds
-# -UNDEBUG after the Release flags, so assert() stays in without it.
 cmake -S runtimes -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=$_prefix \
 	-D CMAKE_BUILD_TYPE=Release \

@@ -16,4 +16,5 @@ source      = https://github.com/hoene/libmysofa/archive/v$version.tar.gz
 sha256      = f29508c335c83d8703f943ffc9ca783ac39aca84e851357f13a55af0f8143137  libmysofa-1.3.5.tar.gz
 description = Reader for AES SOFA files — head-related transfer functions for spatial audio
 homepage    = https://github.com/hoene/libmysofa
+license     = BSD-3-Clause
 depends     = cmake ninja zlib

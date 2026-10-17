@@ -9,25 +9,15 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The release archive carries the source, the game data and prebuilt
-# engines under bin_unix/; the engines are built here instead and the
-# prebuilt ones are never installed.
-#
-# The makefile asks `sdl2-config`, which does not exist here, inside its
-# client include and library lines, so both are given whole from pkgconf.
-# The bundled ENet is configured and linked statically by the makefile.
-# The makefile assigns its own CXXFLAGS, which beats the environment, so the
-# build's flags are passed ahead of upstream's optimisation flags: without
-# them the file-prefix map is lost and the binary records the build path.
-# tools.h takes the placement new and delete from <new>; libstdc++'s <cmath>
-# brings <new> in ahead of it, and a second definition does not compile.
 patch -p1 -i "$PORT_SRC/placement-new.patch"
 
 cd src
 make \
+	CFLAGS="$CFLAGS -O3 -fomit-frame-pointer" \
 	CXXFLAGS="$CXXFLAGS -O3 -fomit-frame-pointer -ffast-math" \
 	CLIENT_INCLUDES="-Ishared -Iengine -Ifpsgame -Ienet/include $(pkg-config --cflags sdl2)" \
-	CLIENT_LIBS="-Lenet -lenet -lX11 $(pkg-config --libs sdl2) -lSDL2_image -lSDL2_mixer -lz -lGL -lrt" \
+	CLIENT_LIBS="$LDFLAGS -Lenet -lenet -lX11 $(pkg-config --libs sdl2) -lSDL2_image -lSDL2_mixer -lz -lGL -lrt" \
+	SERVER_LIBS="$LDFLAGS -Lenet -lenet -lz" \
 	client server
 install -Dm755 sauer_client "$PKG/usr/lib/sauerbraten/sauer_client"
 install -Dm755 sauer_server "$PKG/usr/lib/sauerbraten/sauer_server"
@@ -40,9 +30,6 @@ cp -R docs README.html "$PKG/usr/share/doc/sauerbraten/"
 install -Dm644 data/cube.png \
 	"$PKG/usr/share/icons/hicolor/256x256/apps/sauerbraten.png"
 
-# The engine reads its data from the working directory and writes the
-# player's configuration and maps to the -q home directory, which is what
-# upstream's sauerbraten_unix launcher does too.
 install -d "$PKG/usr/bin"
 cat > "$PKG/usr/bin/sauerbraten" <<'KDOS_SH'
 #!/bin/sh
@@ -56,7 +43,6 @@ exec /usr/lib/sauerbraten/sauer_server "-q$HOME/.sauerbraten" "$@"
 KDOS_SH
 chmod 755 "$PKG/usr/bin/sauerbraten" "$PKG/usr/bin/sauerbraten-server"
 
-# The Wayland app_id is SDL's default, the executable's name: sauer_client.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/sauerbraten.desktop" <<'DESKTOP'
 [Desktop Entry]

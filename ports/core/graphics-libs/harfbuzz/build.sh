@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# chafa stays off: it reaches librsvg, which depends on this port, so declaring
-# it would be a cycle. graphite2 stays off until it is a port. icu builds
-# libharfbuzz-icu, which WebKitGTK requires. introspection installs
-# HarfBuzz-0.0.gir, which pango's GIR includes.
 export CFLAGS="$CFLAGS -frandom-seed=harfbuzz" CXXFLAGS="$CXXFLAGS -frandom-seed=harfbuzz"
 meson setup build --buildtype=release -D b_lto=true \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
@@ -23,7 +19,7 @@ meson setup build --buildtype=release -D b_lto=true \
 	-D png=enabled \
 	-D zlib=enabled \
 	-D chafa=disabled \
-	-D graphite2=disabled \
+	-D graphite2=enabled \
 	-D icu=enabled \
 	-D gpu_demo=disabled \
 	-D docs=disabled \

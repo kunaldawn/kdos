@@ -11,10 +11,6 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
-# A machine that builds software clones repositories that store large files
-# through LFS. A clone of one without this SUCCEEDS and checks out pointer
-# files: a hundred-byte text file where a binary should be, which fails later
-# and somewhere else.
 export CGO_ENABLED=0
 go generate ./commands
 go build -mod=vendor \
@@ -28,25 +24,12 @@ install -Dm644 git-lfs.bash $PKG/usr/share/bash-completion/completions/git-lfs
 install -Dm644 git-lfs.zsh  $PKG/usr/share/zsh/site-functions/_git-lfs
 install -Dm644 git-lfs.fish $PKG/usr/share/fish/vendor_completions.d/git-lfs.fish
 
-# The manual pages only, from upstream's own list: `make man` also writes an
-# HTML copy of every page. MAN_ROFF_TARGETS names each page under the section
-# its .adoc declares (git-lfs-config is 5, git-lfs-faq is 7). The list is read
-# by a recipe because a recipe expands when it runs, after the Makefile is
-# read; an --eval'd prerequisite list expands before, and is empty.
-# VERSION and GIT_LFS_SHA are given because the Makefile otherwise asks
-# `git describe` of whatever repository encloses the build directory.
 _mk="VERSION=v$version GIT_LFS_SHA=v$version"
 make $_mk $(make -s $_mk --eval='kdos-man-list: ; @echo $(MAN_ROFF_TARGETS)' kdos-man-list)
 for page in man/man*/*.[1-8]; do
 	install -Dm644 "$page" -t "$PKG/usr/share/man/man${page##*.}"
 done
 
-# THE FILTER IS REGISTERED SYSTEM-WIDE, BY THE PACKAGE. The binary alone does
-# nothing: git runs git-lfs only through the `lfs` filter, and a clone with no
-# filter configured checks out the pointer files. This is the block
-# `git lfs install --system` writes, owned by the package rather than written
-# by a hook, so removing git-lfs removes a `required` filter that would
-# otherwise fail every checkout of an LFS repository on a missing program.
 install -Dm644 /dev/stdin "$PKG/etc/gitconfig" <<'GITCONFIG'
 [filter "lfs"]
 	clean = git-lfs clean -- %f

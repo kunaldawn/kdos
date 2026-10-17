@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The release archive carries third_party/ with every submodule empty; each
-# dependency is taken from the system, and the CMAKE_REQUIRE_FIND_PACKAGE_*
-# switches turn a codec cjxl/djxl would otherwise drop silently into a
-# configure failure. image/jxl is defined by shared-mime-info, so the MIME
-# plugin stays off.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

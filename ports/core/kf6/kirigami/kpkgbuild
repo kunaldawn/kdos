@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 6de811e559c20dc1086c0cf2c34bb98712dbe4d45f960c62c3c3f887332c95f8  kirigami-6.30.0.tar.xz
 description = KDE Frameworks: QtQuick components for convergent applications
 homepage    = https://api.kde.org/frameworks/kirigami/html/
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later AND GPL-2.0-or-later AND CC0-1.0 AND BSD-3-Clause AND FSFAP
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtshadertools

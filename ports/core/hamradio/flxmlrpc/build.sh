@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The XML-RPC library fldigi, flmsg and flamp link instead of each carrying
-# their own copy.
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \

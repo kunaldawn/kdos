@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The API reference needs Doxygen and Graphviz and the tests need GTest; both
-# are off, so neither is a dependency.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = ubdsrv
+version     = 1.8
+release     = 1
+source      = https://github.com/ublk-org/ublksrv/archive/refs/tags/v$version.tar.gz
+sha256      = 881eb23b154ac0946609c82d4220df0598907c0f1061b00985b6956d50129e6d  ubdsrv-1.8.tar.gz
+description = ublk userspace block devices — libublksrv, and the ublk tool with its loop, null, NBD and NFS targets
+homepage    = https://github.com/ublk-org/ublksrv
+license     = (MIT OR GPL-2.0-only) AND (MIT OR LGPL-2.1-only)
+depends     = autoconf automake libtool pkgconf liburing libnfs

@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/flareteam/flare-game/arc
 sha256      = b6b2e7037dae416c29d2d55f8275491ed9edec690194fc2165a5429582a2518c  flare-game-1.15.tar.gz
 description = Flare: Empyrean Campaign — the art, music, maps and story that make the FLARE engine a game
 homepage    = https://flarerpg.org
+license     = CC-BY-SA-3.0
 depends     = cmake ninja flare-engine

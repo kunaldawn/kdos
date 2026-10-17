@@ -9,24 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# StartupWMClass follows --desktop-file-name, whose default
-# org.qutebrowser.qutebrowser is the Wayland app_id. The MimeType line keeps
-# only qute://: Firefox ESR's entry is the web and image handler, and a second
-# claim would make the default whichever entry sorts first.
 patch -p1 -i "$PORT_SRC/app-id.patch"
 
-# The in-program help under qutebrowser/html/doc is prebuilt in the release
-# tarball and goes into the wheel with the package. The optional adblock
-# module (Brave's Rust engine) and tldextract are not ports: the host-list
-# blocker is the one that works, and its lists are fetched only when the user
-# runs :adblock-update.
-python3 -m pip install --no-build-isolation --no-deps --root "$PKG" --prefix /usr .
+python3 -m pip install --ignore-installed --no-build-isolation --no-deps --root "$PKG" --prefix /usr .
 
-# misc/Makefile's install target runs `setup.py install`; the files it adds
-# beside the package are installed here instead. The manual page is prebuilt
-# in the release tarball, so a2x and its DocBook toolchain are not needed.
-# scripts/ is installed as upstream does, less mkvenv.py, which builds a
-# development virtualenv from the package index.
 install -Dm644 doc/qutebrowser.1 "$PKG/usr/share/man/man1/qutebrowser.1"
 install -Dm644 misc/org.qutebrowser.qutebrowser.desktop \
 	"$PKG/usr/share/applications/org.qutebrowser.qutebrowser.desktop"

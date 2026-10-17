@@ -15,4 +15,5 @@ source      = $name-$version.tar.bz2::https://downloads.sourceforge.net/dejavu/d
 sha256      = 4b21c5203f792343d5e90ab1cb0cf07e99887218abe3d83cd9a98cea9085e799  ttf-dejavu-2.37.tar.bz2
 description = Font family based on the Bitstream Vera Fonts with a wider range of characters
 homepage    = https://dejavu-fonts.github.io/
+license     = Bitstream-Vera AND LicenseRef-Public-Domain
 depends     = fontconfig fontforge perl perl-font-ttf

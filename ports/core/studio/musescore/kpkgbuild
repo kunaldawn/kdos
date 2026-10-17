@@ -21,4 +21,5 @@ sha256      = 308b413cf8288e872715fcdede0ec8504693f7bbadcc50bd5969ed7ea1d35baa  
 sha256      = 36d7e99a73aa6076834736f0fb108fa8e232c4739aa4b3e2089fe96efb21fa8d  json-schema-validator-40af3ec39670e768fc3f01f935140af311d71024.tar.gz
 description = MuseScore Studio — music notation: write, play back, print and export scores, with the MS Basic soundfont
 homepage    = https://musescore.org/
+license     = GPL-3.0-only AND MIT
 depends     = cmake ninja pkgconf gzip qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtshadertools qt6-qt5compat qt6-qtnetworkauth qt6-qttools qt6-qtwayland alsa-lib pipewire flac opus libopusenc lame harfbuzz freetype2 pugixml utfcpp nlohmann-json

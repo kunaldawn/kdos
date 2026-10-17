@@ -14,5 +14,6 @@ release     = 1
 source      = $name-$version.tar.gz::https://deb.debian.org/debian/pool/main/c/$name/${name}_$version.orig.tar.gz
 sha256      = f85ae46948bac63f793066945f850c8663be1518b690a9af9e1d6ba507979064  chmlib-0.40a.tar.gz
 description = Library for reading Microsoft Compiled HTML Help (CHM) files, with extract_chmLib
-homepage    = http://www.jedrea.com/chmlib/
+homepage    = https://github.com/jedwing/CHMLib
+license     = LGPL-2.1-or-later
 depends     = pkgconf

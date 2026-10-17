@@ -32,3 +32,6 @@ python3-qtpy
 
 # PyQt5, for GNU Radio.
 python3-pyqt5
+
+# PyQtGraph, on PyQt5: GNU Radio's filter designer draws its plots with it.
+python3-pyqtgraph

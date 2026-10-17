@@ -9,7 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# cap-audit links libaudit, which is not a port.
 ./autogen.sh
 ./configure \
 	--prefix=/usr \

@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/xtensor-stack/xsimd/arch
 sha256      = b3d50e7a73fbf4642ceef30131c93414901d69eee41c2a5302db650b03e2c792  xsimd-14.3.0.tar.gz
 description = C++ wrappers for SIMD intrinsics (headers)
 homepage    = https://github.com/xtensor-stack/xsimd
+license     = BSD-3-Clause
 depends     = cmake ninja

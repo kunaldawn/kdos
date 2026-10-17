@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/p/pathvalidate/path
 sha256      = b18c07212bfead624345bb8e1d6141cdcf15a39736994ea0b94035ad2b1ba177  python3-pathvalidate-3.3.1.tar.gz
 description = Validates and sanitises file names and paths for every platform's rules
 homepage    = https://github.com/thombashi/pathvalidate
+license     = MIT
 depends     = python3 python3-pip python3-setuptools python3-setuptools-scm

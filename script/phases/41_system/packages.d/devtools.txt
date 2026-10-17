@@ -24,6 +24,15 @@
 
 delta
 
+xh
+
+# gdb is here, not in 40_lang, because it links guile.
+gdb
+
+# A single .py file that makes a gdb crash readable; the ported gdb is already
+# --with-python, so it costs one file and nothing else.
+gef
+
 # Disassembly, cross-references and patching in a terminal with no JVM. Its
 # decompiler is weak and Ghidra is the boxed row that answers that.
 rizin
@@ -37,6 +46,9 @@ bpftrace
 # shellcheck ANALYSES them: the unquoted expansion that splits, the `cd` whose
 # failure nothing checks, the variable read in a subshell and lost.
 shellcheck
+
+# cppcheck is the analyser KDevelop's Cppcheck plugin runs.
+cppcheck
 
 # ctags indexes the ~140 languages with no language server here.
 universal-ctags

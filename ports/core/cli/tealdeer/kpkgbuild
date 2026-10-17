@@ -18,5 +18,6 @@ source      = tldr-pages-2.3.tar.gz::https://github.com/tldr-pages/tldr/archive/
 sha256      = a49c520fa0545286c268c907d6534503ed818a6e5c73cb5cb0c018e237b1f1c4  tldr-pages-2.3.tar.gz
 description = Example-first help — the tldr pages, pre-seeded and never fetched
 homepage    = https://tealdeer-rs.github.io/tealdeer/
+license     = (MIT OR Apache-2.0) AND CC-BY-4.0
 depends     = rust
 vendoring   = rust

@@ -1,0 +1,11 @@
+--- a/adventure/init.c	2026-10-16 14:07:25.500490288 +0530
++++ b/adventure/init.c	2026-10-16 14:07:25.523210011 +0530
+@@ -154,7 +154,7 @@
+ 	int     i, j;
+ 
+ 	/* array linkages */
+-	for (i = 1; i <= LOCSIZ; i++)
++	for (i = 1; i < LOCSIZ; i++)
+ 		if (ltext[i].seekadr != 0 && travel[i] != 0)
+ 			if ((travel[i]->tverb) == 1)
+ 				cond[i] = 2;

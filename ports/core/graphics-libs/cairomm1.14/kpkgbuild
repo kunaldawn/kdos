@@ -15,5 +15,6 @@ source      = $name-$version.tar.xz::https://www.cairographics.org/releases/cair
 sha256      = 7e0d5c7f29175d573a03ab5c45aef63f48dd91a5caf335a404cd763e4b7cea4a  cairomm1.14-1.14.6.tar.xz
 description = C++ bindings for cairo, the 1.0 API (cairomm-1.0) that gtkmm 3 builds on
 homepage    = https://www.cairographics.org/cairomm/
+license     = LGPL-2.1-or-later
 depends     = cairo libsigc++2 meson python3
 series      = 1.14

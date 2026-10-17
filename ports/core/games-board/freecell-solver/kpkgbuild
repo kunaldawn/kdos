@@ -36,4 +36,5 @@ sha256      = 71b8882e68f1be62529069018d0c732b75078669077c96348279575849f34313  
 sha256      = a985492da81aa1588dfc056d9a7c6ca83f66254c0b90f25afc682a70713d4d4b  pysol_cards-0.24.0.tar.gz
 description = Solver for Freecell, Simple Simon and related patience games, as a library and a command
 homepage    = https://fc-solve.shlomifish.org/
+license     = MIT
 depends     = cmake ninja perl python3 python3-six gperf gmp rinutils

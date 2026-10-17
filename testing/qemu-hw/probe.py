@@ -52,8 +52,18 @@ def cap(cmd, timeout=30):
     out = read_until(E, timeout)
     return out.split(S,1)[1].rsplit(E,1)[0].strip() if S in out and E in out else out.strip()
 
-read_until("Please press Enter", timeout=120)
-send(""); time.sleep(1); send(""); time.sleep(1)
+# The live image logs root in on ttyS0 with no password, so the shell is
+# probed for rather than a prompt waited on. Nothing is typed until rcS has
+# spoken: a byte on the serial line during Limine's countdown stops the boot
+# at its menu.
+read_until("[KDOS]", timeout=180)
+_end = time.time() + 240
+while time.time() < _end:
+    send("echo KDOS''PROBE")
+    if "KDOSPROBE" in read_until("KDOSPROBE", timeout=4):
+        break
+else:
+    print("[!] no shell on the serial console"); sh("docker", "rm", "-f", CNAME); sys.exit(1)
 send("stty -echo 2>/dev/null; PS1="); time.sleep(1)
 
 print("\n== /proc/cmdline =="); print(cap("cat /proc/cmdline"))

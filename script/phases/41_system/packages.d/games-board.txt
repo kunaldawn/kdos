@@ -27,3 +27,8 @@ black-hole-solver
 qqwing
 stockfish
 chess-tui
+
+# Three of the BSD games — Colossal Cave, tetris and worm. Not hangman: it
+# calls err(1) when it cannot open /usr/share/dict/words, and no wordlist
+# exists anywhere on this image.
+bsd-games

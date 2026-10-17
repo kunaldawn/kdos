@@ -1309,6 +1309,16 @@ static void do_copy(void)
 	 */
 	argv[n++] = "--exclude=/var/lib/dbus/machine-id";
 	argv[n++] = "--exclude=/etc/ssh/ssh_host_*";
+	/*
+	 * NOR ARE THE LIVE ACCOUNTS' BACKUP FILES. shadow's tools write
+	 * passwd-, group-, shadow- and gshadow- beside each file they change,
+	 * and a password set in the live session lands in them; the installer
+	 * writes the accounts themselves, never these copies.
+	 */
+	argv[n++] = "--exclude=/etc/passwd-";
+	argv[n++] = "--exclude=/etc/group-";
+	argv[n++] = "--exclude=/etc/shadow-";
+	argv[n++] = "--exclude=/etc/gshadow-";
 	if (!cfg.with_appbox)
 		argv[n++] = "--exclude=/home/kdos/.local/share/containers/***";
 	argv[n++] = "/";
@@ -1333,6 +1343,39 @@ static void do_copy(void)
 		mkpath("%s/%s", TARGET, dirs[i]);
 	if (!cfg.dry_run)
 		chmod(TARGET "/tmp", 01777);
+
+	/*
+	 * THE "Install KDOS" ENTRY BELONGS TO THE MEDIUM. It reaches the live
+	 * account's home from /etc/skel, and on an installed system it would
+	 * offer to rerun the installer over the disk the machine boots from, in
+	 * every account made from skel. Both copies go, and the MIME cache
+	 * beside each is rebuilt so it names no entry that is gone.
+	 */
+	static const char *const entry_dirs[] = {
+		TARGET "/etc/skel/.local/share/applications",
+		TARGET "/home/kdos/.local/share/applications",
+		NULL
+	};
+	for (int i = 0; entry_dirs[i]; i++) {
+		char path[256];
+
+		snprintf(path, sizeof(path), "%s/kdos-install.desktop",
+			 entry_dirs[i]);
+		if (!kb_path_exists(path))
+			continue;
+		logf_("remove %s", path);
+		if (cfg.dry_run)
+			continue;
+		unlink(path);
+		if (kb_have_prog("update-desktop-database")) {
+			KbArgv a = { 0 };
+
+			kb_argv_add(&a, "update-desktop-database");
+			kb_argv_add(&a, entry_dirs[i]);
+			kb_argv_end(&a);
+			(void)kb_run(&a);
+		}
+	}
 	emit('P', "1");
 }
 
@@ -1668,6 +1711,63 @@ static void do_config(void)
 				snprintf(out + o, sizeof(out) - o,
 					 "autologin = %s\n", cfg.username);
 			wr("/etc/kdos/login.conf", "%s", out);
+		}
+	}
+
+	/*
+	 * THE SERIAL CONSOLE ASKS FOR A LOGIN. The image's `S0` line in
+	 * /etc/inittab logs root in on ttyS0 with no password, which is what a
+	 * live medium is for and what no installed machine may keep: anything
+	 * plugged into its serial port would be root. `--autologin root` is cut
+	 * from that one line and the rest of the file is kept as it ships, its
+	 * comments included; the agetty left behind prompts for a login. Only
+	 * the `S0` line is touched, so tty1's desktop login and tty2's recovery
+	 * prompt stay as they are. A file too large for the buffer fails the
+	 * install rather than leave the serial root login in place.
+	 */
+	{
+		static const char cut[] = " --autologin root";
+		char it[8192];
+		int n = slurp(TARGET "/etc/inittab", it, sizeof(it));
+
+		if (n > 0 && (size_t)n < sizeof(it) - 1) {
+			char out[8192];
+			size_t o = 0;
+			int changed = 0;
+			char *line = it;
+
+			while (*line) {
+				char *nl = strchr(line, '\n');
+				char *next = nl ? nl + 1 : line + strlen(line);
+				char *at;
+
+				if (nl)
+					*nl = '\0';
+				if (!strncmp(line, "S0:", 3) &&
+				    (at = strstr(line, cut)) != NULL) {
+					o += (size_t)snprintf(out + o,
+							      sizeof(out) - o,
+							      "%.*s%s\n",
+							      (int)(at - line),
+							      line,
+							      at + sizeof(cut) - 1);
+					changed = 1;
+				} else {
+					o += (size_t)snprintf(out + o,
+							      sizeof(out) - o,
+							      "%s\n", line);
+				}
+				if (o >= sizeof(out))
+					break;
+				line = next;
+			}
+			if (o >= sizeof(out))
+				fail("%s/etc/inittab is too large to edit",
+				     TARGET);
+			if (changed)
+				wr("/etc/inittab", "%s", out);
+		} else if (n > 0) {
+			fail("%s/etc/inittab is too large to edit", TARGET);
 		}
 	}
 

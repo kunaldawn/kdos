@@ -12,7 +12,6 @@
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
-	--libdir=/usr/lib \
-	--disable-static
+	--libdir=/usr/lib
 make
 make DESTDIR=$PKG install

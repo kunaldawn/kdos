@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# OpenEXR's exrcore uses this as its DEFLATE backend and finds it through
-# pkg-config; without it OpenEXR's cmake reaches for the network, which the
-# build does not have. The gzip program is left out because toybox already
-# provides one, and nothing here links the static archive.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

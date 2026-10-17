@@ -11,6 +11,7 @@
 name        = kdos-term
 version     = 0.1.0
 release     = 1
-description = KDOS Terminal — a window on the desktop, and a picture in somebody else's
+description = KDOS terminal emulator
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
 depends     = wayland wayland-protocols wlroots fcft fontconfig pixman libxkbcommon libpng libjpeg-turbo libwebp libsixel libnsgif ncurses

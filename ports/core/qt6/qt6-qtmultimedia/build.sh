@@ -11,19 +11,6 @@
 
 patch -p1 -i "$PORT_SRC/select.patch"
 
-# The install layout (bin, lib/qt6, include/qt6, mkspecs) is inherited from
-# qt6-qtbase through Qt6BuildInternals, so no INSTALL_* path is passed here: a
-# path set only in this module would scatter it away from every other one.
-#
-# FFMPEG IS THE MEDIA BACKEND AND GSTREAMER IS OFF. Qt picks FFmpeg by default,
-# so a GStreamer plugin would only be a second backend nobody selects.
-#
-# AUDIO GOES TO PIPEWIRE, WITH PULSE BEHIND IT. ALSA is refused: upstream makes
-# it mutually exclusive with PulseAudio.
-#
-# X11 screen and window capture is built because qt6-qtbase has xlib; it links
-# libX11, libXrandr and libXext. Wayland capture goes through the PipeWire
-# screencast portal.
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \

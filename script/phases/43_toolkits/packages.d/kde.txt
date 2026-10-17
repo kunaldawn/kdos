@@ -33,6 +33,10 @@ kwayland
 # kdeglobals.
 plasma-integration
 
+# The Mobipocket reader library Okular and kdegraphics-thumbnailers open
+# .mobi, .prc and .azw books with.
+kdegraphics-mobipocket
+
 # The thumbnailers Dolphin and Gwenview draw previews with.
 ffmpegthumbs
 kdegraphics-thumbnailers

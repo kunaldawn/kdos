@@ -14,4 +14,6 @@ release     = 1
 source      = https://github.com/rockdaboot/libpsl/releases/download/$version/libpsl-$version.tar.gz
 sha256      = 93941f85a1e7bd593fa94f299233cb5dfc91cd144fd9a78a6ceb75001c5b03be  libpsl-0.23.3.tar.gz
 description = Library for accessing and resolving information from the Public Suffix List
+homepage    = https://github.com/rockdaboot/libpsl
+license     = MIT
 depends     = libidn2 libunistring python3

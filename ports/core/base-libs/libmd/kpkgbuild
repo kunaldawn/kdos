@@ -15,3 +15,4 @@ source      = https://libbsd.freedesktop.org/releases/libmd-$version.tar.xz
 sha256      = ac15ffb8430502fbaccdec66c5a82ee0eab0b0f36220df56710feadfeb13d0a0  libmd-1.2.0.tar.xz
 description = Message Digest functions from BSD systems
 homepage    = https://www.hadrons.org/software/libmd
+license     = BSD-3-Clause AND BSD-2-Clause AND ISC AND Beerware

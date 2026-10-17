@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Each compression method and the OpenSSL backend is an unrequired
-# find_package that only warns when the library is missing. The
-# CMAKE_REQUIRE_FIND_PACKAGE_<name> switches make each one fatal instead.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

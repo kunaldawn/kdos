@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = which
+version     = 2.25
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.gz
+sha256      = 1cb83e4f702e60b8211ab5ec4c2afbab1b1dec80209456a7d2faf7584ed225ea  which-2.25.tar.gz
+description = Shows the full path of a command
+homepage    = https://www.gnu.org/software/which/
+license     = GPL-3.0-or-later
+depends     =

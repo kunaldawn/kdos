@@ -2393,7 +2393,32 @@ static int cpu_percent(void);
  *
  * Once a minute: the file changes at most as often as the timer fires, and a
  * read per frame would be a read per frame for a number that moves once a day.
+ *
+ * THE SAME DOCUMENT CARRIES WHAT WENT WRONG: `"problem"` is `no-tree`,
+ * `no-network`, `fetch-failed` or `build-failed` (null when nothing did) and
+ * `"detail"` says it in a sentence. A machine that cannot learn of updates is
+ * not a machine with nothing behind, so a problem draws the badge on its own,
+ * in the warning colour, even at zero.
  */
+static char update_problem[32], update_detail[160];
+
+static void update_field(const char *buf, const char *key, char *out,
+			 size_t cap)
+{
+	char pat[32];
+	const char *p;
+	size_t k = 0;
+
+	out[0] = '\0';
+	snprintf(pat, sizeof(pat), "\"%s\":\"", key);
+	p = strstr(buf, pat);
+	if (!p)
+		return;
+	for (p += strlen(pat); *p && *p != '"' && k + 1 < cap; p++)
+		out[k++] = *p;
+	out[k] = '\0';
+}
+
 static int update_behind(void)
 {
 	static time_t asked;
@@ -2408,6 +2433,7 @@ static int update_behind(void)
 		return cached;
 	asked = now;
 	cached = 0;
+	update_problem[0] = update_detail[0] = '\0';
 
 	if (kb_read_file("/var/lib/kdos/update.json", buf, sizeof(buf)) <= 0) {
 		if (st && *st)
@@ -2425,6 +2451,8 @@ static int update_behind(void)
 		cached = atoi(p + 9);
 	if (cached < 0)
 		cached = 0;
+	update_field(buf, "problem", update_problem, sizeof(update_problem));
+	update_field(buf, "detail", update_detail, sizeof(update_detail));
 	return cached;
 }
 
@@ -5464,7 +5492,11 @@ static void build_overflow(struct sh_state *sh)
 	if (in_overflow[W_UPDATE]) {
 		int n = update_behind();
 
-		if (n > 0) {
+		if (update_problem[0]) {
+			snprintf(buf, sizeof(buf), "%s", update_detail[0]
+				 ? update_detail : update_problem);
+			ov_push("update", "dialog-warning", "Updates", buf, 1);
+		} else if (n > 0) {
 			snprintf(buf, sizeof(buf),
 				 "%d package%s the ports tree pins newer", n,
 				 n == 1 ? "" : "s");
@@ -6184,14 +6216,19 @@ static void draw_taskbar(struct sh_state *sh)
 				break;
 			case W_UPDATE: {
 				int n = update_behind();
+				int warn = update_problem[0] != '\0';
 
-				if (n <= 0)
+				if (n <= 0 && !warn)
 					break;
-				snprintf(label, sizeof(label), "%d",
-					 n > 999 ? 999 : n);
+				if (n > 0)
+					snprintf(label, sizeof(label), "%d",
+						 n > 999 ? 999 : n);
+				else
+					snprintf(label, sizeof(label), "!");
 				applet_tile(sh, SH_AP_UPDATE, &right_x,
 					    floor_x, "system-software-update",
-					    label, KT_ACCENT, KT_ACCENT);
+					    label, warn ? KT_WARN : KT_ACCENT,
+					    warn ? KT_WARN : KT_ACCENT);
 				break;
 			}
 			case W_MORE:
@@ -6703,8 +6740,13 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 			return 1;
 		case SH_AP_UPDATE:
 			snprintf(t1, n1, "%d packages behind", update_behind());
-			snprintf(t2, n2, "%s",
-				 "click to see what, and what is vulnerable");
+			if (update_problem[0])
+				snprintf(t2, n2, "%s", update_detail[0]
+					 ? update_detail : update_problem);
+			else
+				snprintf(t2, n2, "%s",
+					 "click to see what, and what is "
+					 "vulnerable");
 			return 1;
 		case SH_AP_STUTTER:
 			snprintf(t1, n1, "%d dropped frames", panel_stutter);

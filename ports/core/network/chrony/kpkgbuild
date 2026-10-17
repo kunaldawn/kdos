@@ -15,4 +15,5 @@ source      = https://chrony-project.org/releases/chrony-$version.tar.gz
 sha256      = 4924c6f530105bcd5b9e9e33c48a2ae1bfd889222c8480bc41601110efc864d0  chrony-4.9.tar.gz
 description = NTP client and server (the clock TLS depends on)
 homepage    = https://chrony-project.org
+license     = GPL-2.0-only
 depends     = gnutls nettle libedit

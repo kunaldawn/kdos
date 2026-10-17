@@ -9,22 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# GLEW is the system's. Under Wayland glewInit() reports that no GLX display
-# is current, and the renderer accepts exactly that answer when SDL's driver
-# is wayland. Lua stays the bundled 5.2, the one version the scripts are
-# written for and a version this tree does not carry.
-#
-# SSE4.2 is off: upstream turns it on for every x86 target, and a processor
-# without it faults on the first such instruction instead of running slower.
-# The developer key bindings are off. musl-select gives the bundled
-# nanosockets the <sys/select.h> that musl's socket headers do not include;
-# cstdint gives DateTime.h the <cstdint> that <string> no longer brings in.
-#
-# GLEW's CMake package is ignored under both /usr/lib and /lib, which is the
-# same directory, so FindGLEW searches for the library
-# itself. Upstream declares an empty GLEW::GLEW before the search, which the
-# package refuses to replace; and FindGLEW reads a shared GLEW's path from the
-# package only as a Windows import library, leaving GLEW_LIBRARIES empty.
 patch -p1 -i "$PORT_SRC/musl-select.patch"
 patch -p1 -i "$PORT_SRC/cstdint.patch"
 
@@ -48,18 +32,15 @@ cmake .. -G Ninja \
 	-DBUILD_WITH_OPENAL=ON
 ninja
 
-# The ship and station models ship in the optimised .sgm form, which the
-# modelcompiler just built writes beside their sources. Install copies only
-# that form, so an install without this step carries no models at all.
 ninja build-data
 DESTDIR=$PKG ninja install
 cd ..
+for _t in editor modelcompiler savegamedump; do
+	mv "$PKG/usr/bin/$_t" "$PKG/usr/bin/pioneer-$_t"
+done
 
-# English only: every other language's strings go.
 find "$PKG/usr/share/pioneer/data/lang" -name '*.json' ! -name 'en.json' -delete
 
-# Upstream's entry is replaced for StartupWMClass: the Wayland app_id is
-# SDL's default, the executable's name. Its PNG icons are installed above.
 rm -f "$PKG/usr/share/applications/net.pioneerspacesim.Pioneer.desktop"
 cat > "$PKG/usr/share/applications/net.pioneerspacesim.Pioneer.desktop" <<'DESKTOP'
 [Desktop Entry]

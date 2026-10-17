@@ -23,6 +23,11 @@
 # them, or when a shelf file names a port an earlier phase installs.
 
 libewf
+libbfio
+libvhdi
+libvmdk
+libvslvm
+afflib
 
 # Let's Encrypt needs the internet and a self-signed cert per host means a
 # warning per host that people learn to click through. One root, trusted once,

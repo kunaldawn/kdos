@@ -12,7 +12,7 @@
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
 export CGO_ENABLED=0
-make build
+make build VERSION=$version HASH=
 install -Dm755 micro $PKG/usr/bin/micro
 install -Dm644 assets/packaging/micro.1 $PKG/usr/share/man/man1/micro.1
 

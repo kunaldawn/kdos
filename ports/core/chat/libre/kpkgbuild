@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/baresip/re/archive/refs/
 sha256      = 2a8cbf13719618d879464617512a80fe2c13fe63cd5461cf01a195fbe46b3ca4  libre-4.11.0.tar.gz
 description = The SIP, RTP and STUN protocol stack baresip is built on
 homepage    = https://github.com/baresip/re
+license     = BSD-3-Clause
 depends     = cmake ninja pkgconf openssl zlib

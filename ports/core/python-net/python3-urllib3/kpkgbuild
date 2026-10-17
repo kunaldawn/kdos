@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/u/urllib3/urllib3-$
 sha256      = 63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63  python3-urllib3-2.8.0.tar.gz
 description = HTTP client with connection pooling, retries and TLS verification
 homepage    = https://urllib3.readthedocs.io/
+license     = MIT
 depends     = python3 python3-pip python3-hatchling python3-hatch-vcs python3-setuptools-scm

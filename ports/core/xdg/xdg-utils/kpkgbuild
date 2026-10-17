@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://gitlab.freedesktop.org/xdg/$name/-/
 sha256      = f6b648c064464c2636884c05746e80428110a576f8daacf46ef2e554dcfdae75  xdg-utils-1.2.1.tar.gz
 description = Command line tools that assist applications with a variety of desktop integration tasks
 homepage    = https://gitlab.freedesktop.org/xdg/xdg-utils
+license     = MIT
 depends     = xmlto lynx docbook-xml docbook-xsl

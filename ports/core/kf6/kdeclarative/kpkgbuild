@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 7ec3583a2cf2cd7143e39936ffb39e22d20563f4c87a8462e0e9d12c59ea89a6  kdeclarative-6.30.0.tar.xz
 description = KDE Frameworks: QML integration and controls
 homepage    = https://invent.kde.org/frameworks/kdeclarative
+license     = LGPL-2.0-or-later AND MIT AND LGPL-2.1-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtshadertools kconfig kglobalaccel kguiaddons ki18n kwidgetsaddons

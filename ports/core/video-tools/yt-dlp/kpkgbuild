@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = yt-dlp
+version     = 2026.08.19
+release     = 1
+source      = https://github.com/yt-dlp/yt-dlp/releases/download/$version/yt-dlp.tar.gz
+sha256      = 072aad4f2a7604e92155f61a275a4752dc64046c8f6d90df3710525d94cd37c1  yt-dlp-2026.08.19.tar.gz
+description = Download video and audio from YouTube and thousands of other sites
+homepage    = https://github.com/yt-dlp/yt-dlp
+license     = Unlicense
+depends     = python3 python3-pip python3-hatchling python3-certifi python3-requests python3-urllib3 brotli

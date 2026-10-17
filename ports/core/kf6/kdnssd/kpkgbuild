@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 6d59a98f58c66842d29fd7a00e07e0f74e375061aabdfb4c52bbe3140c278225  kdnssd-6.30.0.tar.xz
 description = KDE Frameworks: DNS-SD service discovery through Avahi
 homepage    = https://api.kde.org/frameworks/kdnssd/html/
+license     = LGPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase avahi

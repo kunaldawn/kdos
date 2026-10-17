@@ -9,14 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# libnsgif is the libnsgif port; poly2tri-c has no port and is built from the
-# copy under subprojects/, which --wrap-mode=nodownload still allows.
-#
-# libav stays off, upstream's own default: the ff-load and ff-save operations
-# are not used by GIMP and tie this library to every ffmpeg bump. umfpack stays
-# off, so the matting-levin operation is absent and GIMP's foreground select
-# uses matting-global. lua, mrg and the sdl options only feed the `gegl`
-# viewer's interactive UI.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \
@@ -39,7 +31,7 @@ meson setup build \
 	-Dlibav=disabled \
 	-Dlibraw=enabled \
 	-Dlibrsvg=enabled \
-	-Dlibspiro=disabled \
+	-Dlibspiro=enabled \
 	-Dlibtiff=enabled \
 	-Dlibv4l=disabled \
 	-Dlibv4l2=disabled \
@@ -56,7 +48,9 @@ meson setup build \
 	-Dsdl1=disabled \
 	-Dsdl2=disabled \
 	-Dsdl3=disabled \
-	-Dumfpack=disabled \
+	-Dumfpack=enabled \
 	-Dwebp=enabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+test -e "$PKG/usr/lib/gegl-0.4/matting-levin.so"
+readelf -d "$PKG/usr/bin/gegl" | grep -q 'NEEDED.*\[libspiro\.'

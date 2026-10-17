@@ -9,40 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The client is sdl-freerdp, on SDL3, which draws through Wayland. There is no
-# X11 client (xfreerdp) and no Wayland one (wlfreerdp, deprecated in 3.x and
-# built on its own uwac toolkit); CMAKE_DISABLE_FIND_PACKAGE_X11 keeps the
-# SDL client's optional X11 window helpers from linking libX11 because it
-# happens to be installed. The SDL2 client is off, or sdl2-compat would build
-# a second copy of the same client.
-#
-# No server side: the shadow server captures an X11 display, which is not
-# here, and nothing needs the proxy. Remmina links the client libraries.
-#
-# FFmpeg does H.264 (the GFX channel's AVC420/444) and scaling; OpenH264 is
-# off, as are GSM, LAME, FAAD2 and FAAC, which only the experimental DSP
-# formats use. Each codec is named, on or off: an OPTIONAL feature switched
-# on fails configure when its library is missing, so the list here is the
-# whole codec set and a missing library stops the build rather than a codec.
-#
-# The smartcard channel loads libpcsclite at run time rather than linking it,
-# so pcsc-lite in `depends` is what makes redirecting a reader work. PKCS#11
-# is the same: modules are loaded by path when a smartcard logon names one.
-#
-# The clipboard converts images to and from PNG, JPEG and WebP, so a picture
-# copied on the remote side pastes into a Wayland application, which offers
-# and asks for image/png rather than the BMP a Windows clipboard holds.
-#
-# JSON-C is named for the Azure AD logon and the timezone data; left to
-# itself the build takes whichever of cJSON, json-c or jansson it finds first.
-#
-# uriparser parses the host names and URLs the client checks (redirection
-# targets, gateway and proxy hosts, certificate names) as RFC 3986; without
-# it the check is a short regex.
 cmake -B build -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
+	-DCMAKE_SKIP_INSTALL_RPATH=ON \
 	-DBUILD_TESTING=OFF \
 	-DWITH_SAMPLE=OFF \
 	-DWITH_SERVER=OFF \

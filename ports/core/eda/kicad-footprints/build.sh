@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# The fp-lib-table lands in the template folder, where KiCad copies it on
-# first run.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_INSTALL_PREFIX=/usr
 DESTDIR=$PKG ninja -C build install

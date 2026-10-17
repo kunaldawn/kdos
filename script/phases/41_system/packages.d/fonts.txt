@@ -80,3 +80,5 @@ font-cursor-misc
 # that wrote it.
 font-carlito
 font-caladea
+
+libspiro

@@ -16,4 +16,5 @@ source      = https://downloads.sourceforge.net/project/minidlna/minidlna/$versi
 sha256      = 39026c6d4a139b9180192d1c37225aa3376fdf4f1a74d7debbdbb693d996afa4  minidlna-1.3.3.tar.gz
 description = ReadyMedia — a DLNA media server for the televisions and players on a LAN
 homepage    = https://sourceforge.net/projects/minidlna/
+license     = GPL-2.0-only AND BSD-3-Clause
 depends     = ffmpeg libjpeg-turbo libexif libid3tag flac libogg libvorbis sqlite zlib gettext autoconf automake libtool

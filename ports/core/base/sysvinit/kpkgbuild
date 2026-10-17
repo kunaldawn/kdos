@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sysvinit
+version     = 3.18
+release     = 1
+source      = https://codeberg.org/thejessesmith/$name/releases/download/$version/$name-$version.tar.xz
+sha256      = 793d7427e219f1ccf122e7c55655cef5f3419adc620ec2ee0ed557e8c94b438f  sysvinit-3.18.tar.xz
+description = System V init — PID 1, runlevels, telinit, shutdown, halt, reboot and poweroff
+homepage    = https://codeberg.org/thejessesmith/sysvinit
+license     = GPL-2.0-or-later
+depends     = utmps

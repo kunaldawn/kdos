@@ -17,4 +17,5 @@ source      = $name-$version.tar.gz::https://github.com/libsdl-org/SDL_image/rel
 sha256      = 393f5efb50536ec13ca4f4affb69cc9966d3c3f969e6c5e701faddf9f9785381  sdl2-image-2.8.12.tar.gz
 description = Load PNG, JPEG, WebP, AVIF, JPEG XL, TIFF, SVG and older formats into SDL2 surfaces
 homepage    = https://github.com/libsdl-org/SDL_image
+license     = Zlib
 depends     = cmake ninja pkgconf sdl2-compat libjpeg-turbo libpng libtiff libwebp libavif libjxl zlib

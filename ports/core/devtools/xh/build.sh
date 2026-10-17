@@ -13,10 +13,10 @@ tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
 export RUSTFLAGS="-C target-feature=-crt-static"
 
-# network-interface is left out: on Linux --interface binds through
-# SO_BINDTODEVICE and the crate is only the fallback for other systems.
 cargo build --release --frozen --offline --no-default-features \
-	--features rustls,http-message-signatures
+	--features native-tls,http-message-signatures
+readelf -d target/release/xh | grep -q 'NEEDED.*\[libssl\.so'
+readelf -d target/release/xh | grep -q 'NEEDED.*\[libonig\.so\.5\]'
 install -Dm755 target/release/xh $PKG/usr/bin/xh
 
 ln -s xh $PKG/usr/bin/xhs

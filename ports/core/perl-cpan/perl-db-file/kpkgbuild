@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = perl-db-file
+version     = 1.861
+release     = 1
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/P/PM/PMQS/DB_File-$version.tar.gz
+sha256      = 608bc6ff234ae08ac5bf6b85887882965aaa89554cf09d09fb926fd4e389094f  perl-db-file-1.861.tar.gz
+description = Perl access to Berkeley DB hash, btree and recno files (DB_File)
+homepage    = https://metacpan.org/dist/DB_File
+license     = Artistic-1.0-Perl OR GPL-1.0-or-later
+depends     = perl db

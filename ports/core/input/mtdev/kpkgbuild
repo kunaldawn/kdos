@@ -11,6 +11,8 @@
 name        = mtdev
 version     = 1.1.7
 release     = 1
-source      = http://bitmath.org/code/$name/$name-$version.tar.bz2
+source      = https://bitmath.org/code/$name/$name-$version.tar.bz2
 sha256      = a107adad2101fecac54ac7f9f0e0a0dd155d954193da55c2340c97f2ff1d814e  mtdev-1.1.7.tar.bz2
-description = Multitouch Protocol Translation Library which is used to transform all variants of kernel MT (Multitouch) events to the slotted type B protocol
+description = Translates every kernel multitouch event variant to the slotted type B protocol
+homepage    = https://bitmath.org/code/mtdev/
+license     = MIT

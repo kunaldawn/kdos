@@ -15,4 +15,5 @@ source      = https://github.com/8bitbubsy/pt2-clone/archive/refs/tags/v$version
 sha256      = 21a27f87f44aef6421f7cfa6fc9925e783dba88c6c2270c1170360639ed8d620  pt2-clone-1.92.tar.gz
 description = ProTracker 2 clone — the Amiga MOD tracker, pixel for pixel, on SDL2
 homepage    = https://16-bits.org/pt2.php
+license     = BSD-3-Clause
 depends     = cmake ninja pkgconf sdl2-compat

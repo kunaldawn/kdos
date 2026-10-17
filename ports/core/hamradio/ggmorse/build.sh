@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The cmake4 branch is upstream's library with a CMake floor the tree's
-# CMake accepts. The examples and their SDL2 and ImGui front end need
-# submodules a forge archive carries empty; only the library is built.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

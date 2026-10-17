@@ -43,4 +43,5 @@ sha256      = a835fe55fbdcd8e80f38584ab22d0840662c67f2feb36bd679402da9641dc71e  
 sha256      = 3ffbd9a2fdff45da77da3e7269e9aa512ea43bed5c38ce8fd8f3d1068a032c3f  ort-safeint-3.0.28.zip
 description = ONNX Runtime: inference for ONNX models on the CPU, as a C/C++ library and a Python module
 homepage    = https://onnxruntime.ai/
+license     = MIT
 depends     = cmake ninja patch python3 numpy python3-setuptools python3-wheel python3-packaging python3-pip zlib

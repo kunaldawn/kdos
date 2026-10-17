@@ -1,0 +1,12 @@
+--- a/src/92_pcscd_ccid.rules
++++ b/src/92_pcscd_ccid.rules
+@@ -59,9 +59,6 @@
+ # DellSK-3106.txt
+ ATTRS{idVendor}=="413c", ATTRS{idProduct}=="2100", GROUP="pcscd"
+ 
+-# Kobil mIDentity
+-ATTRS{idVendor}=="0d46", ATTRS{idProduct}=="4081", RUN+="/usr/sbin/Kobil_mIDentity_switch"
+-
+ # disable USB-persist for CCID devices (including composite ones)
+ # https://docs.kernel.org/driver-api/usb/persist.html
+ ENV{ID_USB_INTERFACES}=="*:0b0000:*", TEST=="power/persist", ATTR{power/persist}="0"

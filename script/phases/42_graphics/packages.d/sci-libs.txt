@@ -28,3 +28,8 @@ matplotlib
 
 # Cheap once numpy exists: a join or a group-by wants pandas.
 pandas
+
+# Subset, regrid and do arithmetic on a grid larger than memory. Here, not in
+# 41_system, because ncap2 links antlr2's runtime and antlr2 builds with
+# openjdk.
+nco

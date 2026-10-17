@@ -15,4 +15,5 @@ source      = https://github.com/qpdf/qpdf/releases/download/v$version/$name-$ve
 sha256      = f045aa277be2356ff53a89a8622945958291177d2483afc20ede7c8a8cd3873c  qpdf-12.4.1.tar.gz
 description = Restructure a PDF — split, merge, decrypt, repair
 homepage    = https://qpdf.sourceforge.io/
+license     = Apache-2.0
 depends     = cmake ninja pkgconf zlib libjpeg-turbo gnutls

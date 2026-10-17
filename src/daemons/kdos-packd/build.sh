@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# libkbase, libksig, libkpack and libkpkg — every library a root daemon links
-# is code running as root, which is why libkpack was written to link nothing
-# more than these.
 LIBS="$PORT_SRC/../../libs"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \

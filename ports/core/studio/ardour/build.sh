@@ -8,17 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# YTK's hard-coded config claims glibc's nftw() flags on every Linux; musl's
-# nftw() has none of them, so the patch keys them on the flags themselves.
 patch -p1 -i "$PORT_SRC/musl.patch"
 
-# Ardour's toolkit, YTK, is an in-tree GTK 2 fork that draws through X11
-# only, so the program is an Xwayland window. PipeWire answers the ALSA and
-# PulseAudio backends; there is no JACK. The start-up news fetch from
-# ardour.org is compiled out, and the interface is English only.
-# --cxx17 is upstream's switch for -std=c++17: the sources assign u8""
-# literals to std::string and const char *, which C++20, GCC's default, types
-# as char8_t.
 python3 ./waf configure \
 	--prefix=/usr \
 	--configdir=/etc \
@@ -27,9 +18,10 @@ python3 ./waf configure \
 	--freedesktop \
 	--no-phone-home \
 	--no-nls \
-	--with-backends=alsa,pulseaudio,dummy \
-	--libjack=weak \
+	--with-backends=jack,alsa,pulseaudio,dummy \
+	--libjack=link \
 	--cxx17 \
+	--no-execstack \
 	--noconfirm
 python3 ./waf build $MAKEFLAGS
 python3 ./waf install --destdir="$PKG"

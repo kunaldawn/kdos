@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mpdecimal
+version     = 4.0.1
+release     = 1
+source      = https://www.bytereef.org/software/$name/releases/$name-$version.tar.gz
+sha256      = 96d33abb4bb0070c7be0fed4246cd38416188325f820468214471938545b1ac8  mpdecimal-4.0.1.tar.gz
+description = Correctly rounded arbitrary precision decimal floating point arithmetic — the library behind Python's decimal module
+homepage    = https://www.bytereef.org/mpdecimal/
+license     = BSD-2-Clause

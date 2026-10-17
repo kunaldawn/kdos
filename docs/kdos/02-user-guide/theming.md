@@ -170,7 +170,7 @@ different moment:
 | `~/.config/kdos/fzf-colors` | fzf, through `$FZF_DEFAULT_OPTS` (appended by `/etc/profile.d/30-kdos-colors.sh`) | At the next login shell |
 | `~/.config/bat/themes/kdos.tmTheme` | bat | Next start; `kdos theme` rebuilds bat's cache itself |
 | `~/.config/micro/colorschemes/kdos.micro` | micro | Next start |
-| `~/.config/helix/themes/kdos.toml` | helix, if you install it in a box (it is not on the host) | Next start |
+| `~/.config/helix/themes/kdos.toml` | helix, on the host or in a box | Next start |
 | `~/.config/nvim/colors/kdos.vim` | neovim | Next start |
 | `~/.config/git/kdos-delta` | delta, included from the shipped git configuration | At the next diff |
 | `~/.config/newsboat/kdos-colors` | newsboat, `include`d from its configuration | Next start |
@@ -230,9 +230,9 @@ block noted in the table:
 To keep the accent but change one colour, build on the generated theme: your own micro scheme may
 `include "kdos"`, and your own helix theme may say `inherits = "kdos"`.
 
-helix is not installed on the host. The theme is still written, because a box shares your home
-directory by default, and a helix you install in a box reads it. Nothing selects it for you: add
-`theme = "kdos"` to your own `~/.config/helix/config.toml`.
+The helix theme is read by the host's helix and by a helix you install in a box, because a box
+shares your home directory by default. Nothing selects it for you: add `theme = "kdos"` to your own
+`~/.config/helix/config.toml`.
 
 Two programs have no separate selector file:
 
@@ -624,9 +624,12 @@ applications fall back to Qt's defaults instead of the accent. The catalogue's o
 
 **`kdeglobals` is merged, not overwritten.** KDE applications save their own settings in that
 file, so only what the theme owns is replaced and everything else is kept. The theme owns the
-`[Colors:*]` and `[WM]` sections, and six keys elsewhere: `ColorScheme` and `Name`, the fonts
-`font` (`Noto Sans,10`) and `fixed` (`Noto Sans Mono,10`) under `[General]`, `widgetStyle=Breeze`
-under `[KDE]`, and `Theme=KDOS` under `[Icons]`.
+`[Colors:*]` and `[WM]` sections, and eight keys elsewhere: `ColorScheme` and `Name`, the fonts
+`font` (`Noto Sans,10`) and `fixed` (`Noto Sans Mono,10`), and `TerminalApplication=foot` and
+`TerminalService=foot.desktop` under `[General]`, `widgetStyle=Breeze` under `[KDE]`, and
+`Theme=KDOS` under `[Icons]`. The two terminal keys are what a KDE application opens for a
+terminal (Dolphin's F4, Kate's terminal, an `ssh:` link): without them it opens Konsole, beside the
+desktop's foot.
 
 **Qt without the KDE platform theme.** The KDE platform theme is built for Qt 6 only, so a Qt 5
 application cannot read `kdeglobals`. `kdos theme` also writes the files of qt5ct and qt6ct, the
@@ -655,6 +658,13 @@ and recoloured:
 | `kdos-icons` | Papirus icons | `/usr/share/kdos/icons/` (`art/`, `marks/`, and the desktop's pixel-icon atlas `atlas.kia`) | `/usr/share/icons/KDOS` |
 | `kdos-cursors` | Bibata cursors | `/usr/share/kdos/cursors/art` | `/usr/share/icons/KDOS-cursors` |
 | `kdos-gtk-theme` | adw-gtk3 | `/usr/share/kdos/gtk-theme/theme` | `/usr/share/themes/KDOS` |
+
+The source artwork ships (4.4 MB of it for the cursors) because `kdos theme` recolours from it on
+the running system; without it an accent switch would leave the icons and cursors in the build's
+colours. `kdos-cursors` also puts a copy of `KDOS-cursors` in `/etc/skel/.icons`, because a box
+shares your home directory but not `/usr/share/icons`, and ships
+`/usr/share/icons/default/index.theme` inheriting `KDOS-cursors`, which is the theme a program
+started without `XCURSOR_THEME` (through `sudo` or `pkexec`, or an X client) falls back to.
 
 `kdos-theme` is the generator that recolours them. The packages run it once at build time to make
 the system copies, always in `phosphor`. Those copies never follow the accent, and nothing in a

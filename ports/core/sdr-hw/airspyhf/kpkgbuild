@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/airspy/airspyhf/archive/
 sha256      = 9047a07b6f17c25837be2d35bacf3470db2ae026b47746fca3e427507cd283d1  airspyhf-1.8.1.git20260722.tar.gz
 description = libairspyhf and the airspyhf_* tools for the Airspy HF+ Discovery and Dual Port receivers
 homepage    = https://github.com/airspy/airspyhf
+license     = BSD-3-Clause AND GPL-2.0-or-later
 depends     = cmake pkgconf libusb

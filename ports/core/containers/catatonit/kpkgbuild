@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://github.com/openSUSE/catatonit/relea
 sha256      = 9950425501af862e12f618bdc930ea755c46db6a16072a1462b4fc93b2bd59bc  catatonit-0.2.1.tar.xz
 description = Static container init, for podman pods and --init
 homepage    = https://github.com/openSUSE/catatonit
+license     = GPL-2.0-or-later
 depends     = autoconf automake libtool

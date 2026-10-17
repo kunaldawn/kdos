@@ -15,4 +15,5 @@ source      = https://github.com/storaged-project/libbytesize/releases/download/
 sha256      = 8356bac2cafd2f31f39bf1ad373cef8448cab08b817aeaee5c526d54e81c3c5a  libbytesize-2.12.tar.gz
 description = Library for working with arbitrarily large sizes in bytes
 homepage    = https://github.com/storaged-project/libbytesize
+license     = LGPL-2.1-or-later
 depends     = gmp mpfr pcre2 gettext

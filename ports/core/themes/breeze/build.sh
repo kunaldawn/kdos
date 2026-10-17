@@ -9,16 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The style and the colour schemes only. The KWin window decoration, the
-# wallpapers and the cursor theme are off: kdos-comp draws its own frames,
-# and kdos-cursors is the cursor theme. The Qt 5 style links KDE Frameworks
-# 5, which is not built here.
-#
-# frameworkintegration is found explicitly: without it the style builds but
-# loses its KStyle helpers, and nothing in the log says so.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D BUILD_TESTING=OFF \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \

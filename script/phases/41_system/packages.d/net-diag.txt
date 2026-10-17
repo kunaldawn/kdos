@@ -50,3 +50,4 @@ mtr
 whois
 
 net-snmp
+iputils

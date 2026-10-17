@@ -40,7 +40,7 @@ FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 
 # What the boot screen says. THIS is the line to edit.
 TITLE    = "KD's Homebrew Linux Distro"
-SUBTITLE = "musl · toybox · kdos-comp · no systemd"
+SUBTITLE = "musl · GNU · kdos-comp · no systemd"
 
 # Measured off the shipped banner, not chosen: the fitted DejaVu Sans Mono
 # sizes reproduce the original ink widths to within 3px, the colours are the
@@ -52,12 +52,13 @@ BAND     = (255, 198, 926, 260)          # x0, y0, x1, y1 -- captions only
 TITLE_Y, TITLE_SZ, TITLE_FG    = 204, 22, (184, 255, 200)
 SUB_Y,   SUB_SZ,   SUB_FG      = 235, 18, (255, 176, 0)
 
-# The reference strings the Y positions were measured against. Ink top
-# depends on which letters a string HAS -- "kdos-comp" has a descender the
-# old text did not -- so both lines are placed by BASELINE, derived from
-# these, rather than by their own ink box.
+# The reference strings the Y positions are ink tops of. Ink top depends on
+# which letters a string HAS, so both lines are placed by BASELINE, derived
+# from these, rather than by their own ink box: a caption with no ascender
+# still sits on the same line. Each reference keeps an ascender ('l', 'd'),
+# or the baseline moves.
 TITLE_REF = "KD's Homebrew Linux Distro"
-SUB_REF   = "musl · toybox · cosmic · no systemd"
+SUB_REF   = "musl · no systemd"
 
 
 def origin_for(font, ref, ink_top):

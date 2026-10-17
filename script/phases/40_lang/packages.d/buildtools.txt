@@ -41,3 +41,4 @@ buildsystem
 gn
 
 unifdef
+setconf

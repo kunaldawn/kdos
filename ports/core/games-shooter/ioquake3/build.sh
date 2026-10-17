@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Every bundled library is replaced by the system's. PRODUCT_VERSION would
-# otherwise come from `git describe`, and this archive has no repository.
-# curl installs no CMake package, and FindCURL's search for one would itself
-# be required by CMAKE_REQUIRE_FIND_PACKAGE_CURL; CURL_NO_CURL_CMAKE skips it.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -47,10 +43,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# The engine takes its own directory from argv[0] and loads the renderers and
-# game modules from there, so it is started by its full path and /usr/bin holds
-# scripts, not links. The game data is not free and is not shipped: a player
-# puts pak0.pk3 and the point releases under ~/.q3a/baseq3.
 install -d "$PKG/usr/bin"
 for b in ioquake3 ioq3ded; do
 	cat > "$PKG/usr/bin/$b" <<SCRIPT
@@ -63,8 +55,6 @@ install -Dm644 README.md ChangeLog COPYING.txt -t "$PKG/usr/share/doc/ioquake3"
 install -Dm644 misc/linux/org.ioquake3.ioquake3.metainfo.xml \
 	-t "$PKG/usr/share/metainfo"
 
-# The panel reads no SVG: the menu icon is a PNG rasterised from upstream's.
-# The window's app_id is the executable's name.
 install -d "$PKG/usr/share/icons/hicolor/256x256/apps"
 rsvg-convert -w 256 -h 256 misc/quake3.svg \
 	-o "$PKG/usr/share/icons/hicolor/256x256/apps/ioquake3.png"

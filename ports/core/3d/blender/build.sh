@@ -9,46 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Alpine's musl patches: the bundled glog claims <execinfo.h>, which musl does
-# not have; one header uses uint64_t without <cstdint>; and readfile.hh
-# poisons off_t, which musl's own headers name after it.
 patch -p1 -i "$PORT_SRC/0001-musl-fixes.patch"
 patch -p1 -i "$PORT_SRC/0002-fix-includes.patch"
 patch -p1 -i "$PORT_SRC/0004-dont-poison-off_t.patch"
 
-# The bundled audaspace's FFmpeg writer reads AVCodec's sample_fmts and
-# supported_samplerates, which FFmpeg 8 removed; the patch asks
-# avcodec_get_supported_config for both, as Blender's own movie writer does.
-# A null list means the encoder takes any format or rate.
 patch -p1 -i "$PORT_SRC/ffmpeg9-audaspace.patch"
 
 _py=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
 
-# WITH_STRICT_BUILD_OPTIONS=ON: an enabled feature whose library is missing
-# stops the configure instead of being switched off, so every ON below is a
-# feature the package has. The ports that do not exist are named OFF:
-# OpenXR (VR), USD, MaterialX and Hydra, OpenImageDenoise, Embree, OSL and
-# OpenPGL (Cycles), Draco and meshoptimizer (glTF compression), libspnav
-# (3D mice). The Cycles GPU devices need vendor compilers and are off; Cycles
-# renders on the CPU, EEVEE and the viewport on OpenGL or Vulkan.
-#
-# GHOST is built for Wayland and X11 and tries Wayland first. The Wayland
-# and audio libraries are linked, not opened at run time, so the ELF names
-# what the package needs. glog and gflags are Blender's bundled copies: libmv
-# includes glog's headers with none of the definitions glog 0.7's CMake target
-# supplies, and the bundled pair matches what Blender tests with.
-#
-# Blender runs on the system Python and bundles none of its modules: NumPy
-# and zstandard are the ports'. zstandard is how Python scripts such as
-# blend_render_info read a zstd-compressed .blend file; Blender's own loader
-# does not need it.
-#
-# WITH_INTERNATIONAL=OFF: English only, and no translation catalogues.
-# WITH_BUILDINFO=OFF keeps the build date and git hash out of the binary.
-# WITH_CPU_CHECK=OFF: the start-up CPU check is a library that only a portable
-# install ships, and the strict options stop the configure when it is left on.
-# JACK is not on this system; audio goes through PipeWire, PulseAudio and
-# OpenAL.
 mkdir build && cd build
 cmake .. -G Ninja -Wno-dev \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -84,7 +52,7 @@ cmake .. -G Ninja -Wno-dev \
 	-DWITH_X11_XFIXES=ON \
 	-DWITH_GHOST_SDL=OFF \
 	-DWITH_INPUT_IME=ON \
-	-DWITH_INPUT_NDOF=OFF \
+	-DWITH_INPUT_NDOF=ON \
 	-DWITH_OPENGL_BACKEND=ON \
 	-DWITH_VULKAN_BACKEND=ON \
 	-DWITH_SYSTEM_FREETYPE=ON \
@@ -126,11 +94,11 @@ cmake .. -G Ninja -Wno-dev \
 	-DWITH_MATERIALX=OFF \
 	-DWITH_HYDRA=OFF \
 	-DWITH_XR_OPENXR=OFF \
-	-DWITH_OPENIMAGEDENOISE=OFF \
-	-DWITH_DRACO=OFF \
-	-DWITH_MESHOPTIMIZER=OFF \
+	-DWITH_OPENIMAGEDENOISE=ON \
+	-DWITH_DRACO=ON \
+	-DWITH_MESHOPTIMIZER=ON \
 	-DWITH_CYCLES=ON \
-	-DWITH_CYCLES_EMBREE=OFF \
+	-DWITH_CYCLES_EMBREE=ON \
 	-DWITH_CYCLES_OSL=OFF \
 	-DWITH_CYCLES_PATH_GUIDING=OFF \
 	-DWITH_CYCLES_DEVICE_CUDA=OFF \
@@ -147,11 +115,6 @@ cmake .. -G Ninja -Wno-dev \
 ninja
 DESTDIR=$PKG ninja install
 
-# The panel reads PNG only: the scalable icon is rasterised, and upstream's
-# entry is replaced to carry StartupWMClass=blender (GHOST's Wayland app_id)
-# and --offline-mode, which pins Blender's "Allow Online Access" preference
-# off so the extensions platform never offers what a machine without a
-# network cannot reach.
 rm -rf "$PKG/usr/share/icons/hicolor/scalable"
 install -d "$PKG/usr/share/icons/hicolor/256x256/apps"
 rsvg-convert -w 256 -h 256 ../release/freedesktop/icons/scalable/apps/blender.svg \

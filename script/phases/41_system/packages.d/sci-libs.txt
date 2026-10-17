@@ -62,9 +62,6 @@ eigen
 # A unit is metadata until something can convert it.
 udunits
 
-# Subset, regrid and do arithmetic on a grid larger than memory.
-nco
-
 # MATLAB's .mat files, which libvips opens as images.
 matio
 

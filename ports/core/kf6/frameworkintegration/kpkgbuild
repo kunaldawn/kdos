@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 817c49b2f6abbfe624e32f9a21ffcac7edf6e0486a0883050a1441e2fef3c932  frameworkintegration-6.30.0.tar.xz
 description = KDE Frameworks: platform integration plugins and KPackage install handlers
 homepage    = https://invent.kde.org/frameworks/frameworkintegration
+license     = (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kcolorscheme kconfig ki18n kiconthemes knewstuff knotifications kpackage kwidgetsaddons

@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/s/setuptools_scm/se
 sha256      = a69f28bfc245608781205e912faae437c2b2165773afa4e7b979d77447a69dd2  python3-setuptools-scm-10.3.4.tar.gz
 description = Version from VCS — matplotlib requires it at build time
 homepage    = https://pypi.org/project/setuptools_scm/
+license     = MIT
 depends     = python3 python3-setuptools python3-pip python3-packaging python3-vcs-versioning

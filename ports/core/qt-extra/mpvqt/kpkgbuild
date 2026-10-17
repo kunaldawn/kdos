@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/mpvqt/mpvqt
 sha256      = 8660ad79c0d60fed77f29b36e1742841466af5405de702c81a121e6eeb625ebb  mpvqt-1.2.0.tar.xz
 description = Qt Quick item that renders libmpv, used by Haruna
 homepage    = https://invent.kde.org/libraries/mpvqt
+license     = LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative mpv

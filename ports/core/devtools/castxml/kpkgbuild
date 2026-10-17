@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = castxml
+version     = 0.8.0
+release     = 1
+source      = https://github.com/CastXML/CastXML/archive/refs/tags/v$version.tar.gz
+sha256      = 68e91af54851ef341fae72299f7576892c3317f7b40d00590ed79d00dc30a16c  castxml-0.8.0.tar.gz
+description = C++ declarations as XML, read by Clang — the parser behind pygccxml
+homepage    = https://github.com/CastXML/CastXML
+license     = Apache-2.0
+depends     = cmake ninja llvm clang python3-sphinx

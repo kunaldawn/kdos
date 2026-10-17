@@ -17,16 +17,7 @@ for p in fix-memmove disable_upgrade more-imageprocessor-removes no-empty-glob \
 	patch -p1 -i "$PORT_SRC/$p.patch"
 done
 
-# What ships is the print and scan path: hpcups, the hp backend, the PPDs and
-# the hpaio SANE backend. The Qt toolbox, fax and the hp-* Python tools are not
-# built or are removed below: hp-plugin downloads HP's closed plugin, which
-# this image does not carry.
-# --disable-imageProcessor-build: libImageProcessor is a prebuilt closed
-# object in the tarball; with it on, hpcups links it.
-# --enable-network-build: the network half of hpmud (the hp:/net backend and
-# network hpaio scanning) links net-snmp for device status and avahi-client
-# for mDNS discovery; configure stops without either.
-./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
+GNUMAKEFLAGS="CFLAGS=-std=c++11" save_CFLAGS="$CFLAGS" ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--with-docdir=/usr/share/doc/hplip \
 	--disable-doc-build \
 	--disable-gui-build \
@@ -52,8 +43,8 @@ install -Dm644 /dev/stdin "$PKG/etc/sane.d/dll.d/hpaio" <<'CONF'
 hpaio
 CONF
 
-# No prebuilt object from the tarball may reach the package.
 if find "$PKG" -name 'libImageProcessor*' -o -name 'hbpl1-*.so' -o -name 'lj-*.so' | grep -q .; then
 	echo 'hplip: a prebuilt HP object reached the package' >&2
 	exit 1
 fi
+test -f "$PKG/usr/share/ipp-usb/quirks/HPLIP.conf"

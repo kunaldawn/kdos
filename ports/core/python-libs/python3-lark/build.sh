@@ -10,4 +10,4 @@
 # ---------------------------------
 
 export SETUPTOOLS_SCM_PRETEND_VERSION=$version
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+pip3 install --ignore-installed --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .

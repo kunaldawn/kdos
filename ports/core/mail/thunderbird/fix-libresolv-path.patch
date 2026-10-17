@@ -1,9 +1,7 @@
-diff --git a/comm/mail/modules/DNS.worker.mjs b/comm/mail/modules/DNS.worker.mjs
-index c63972b6a8..32769c1de6 100644
 --- a/comm/mail/modules/DNS.worker.mjs
 +++ b/comm/mail/modules/DNS.worker.mjs
-@@ -44,11 +44,7 @@ load_libresolv.prototype = {
-       } else if (os == "OpenBSD") {
+@@ -42,11 +42,7 @@
+       } else if (os == "openbsd") {
          candidates = [{ name: "c", suffix: "" }];
        } else {
 -        candidates = [
@@ -13,5 +11,5 @@ index c63972b6a8..32769c1de6 100644
 -        ];
 +        candidates = [{ name: "c", suffix: "" }];
        }
-       let tried = [];
-       for (let candidate of candidates) {
+       const tried = [];
+       for (const candidate of candidates) {

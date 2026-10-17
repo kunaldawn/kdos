@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qttranslations
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qttranslations
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = 021684c1a7937a9fabc3b056a6698ad5978794caf9ac190fd6cc11399e67c014  qt6-qttranslations-6.11.2.tar.xz
-description = Qt 6 translation catalogues for the Qt libraries and tools
+sha256      = 85929c0c30d6f273f23bd879bb69803ea17b010ab73cab2f8abf95357f6f6bbb  qt6-qttranslations-6.12.0.tar.xz
+description = Qt 6 English catalogues: the plural forms of the Qt libraries and tools
 homepage    = https://www.qt.io
+license     = LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 depends     = cmake ninja qt6-qtbase qt6-qttools
 group       = qt6

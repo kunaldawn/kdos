@@ -1,0 +1,11 @@
+--- a/src/3rdparty/gn/build/gen.py
++++ b/src/3rdparty/gn/build/gen.py
+@@ -454,7 +454,7 @@
+ 
+   cflags = []
+   cflags_cc = []
+-  ldflags = []
++  ldflags = os.environ.get('LDFLAGS', '').split()
+   libflags = []
+ 
+   cc = '"' + options.cc + '"'

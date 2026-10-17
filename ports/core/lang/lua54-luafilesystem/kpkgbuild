@@ -17,4 +17,5 @@ source      = $name-$version.tar.gz::https://github.com/lunarmodules/luafilesyst
 sha256      = 1142c1876e999b3e28d1c236bf21ffd9b023018e336ac25120fb5373aade1450  lua54-luafilesystem-1.9.0.tar.gz
 description = stat, mkdir and readdir for Lua 5.4
 homepage    = https://github.com/lunarmodules/luafilesystem
+license     = MIT
 depends     = lua54

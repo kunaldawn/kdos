@@ -1,0 +1,24 @@
+--- a/src/core/mesh/qgstriangularmesh.cpp
++++ b/src/core/mesh/qgstriangularmesh.cpp
+@@ -24,7 +24,8 @@
+ #include "qgsmeshspatialindex.h"
+ #include "qgsmeshlayerutils.h"
+ #include "qgsmeshutils.h"
+-#include "meshOptimizer/meshoptimizer.h"
++#include <meshoptimizer.h>
++#include <limits>
+ 
+ static void triangulateFaces( const QgsMeshFace &face,
+                               int nativeIndex,
+@@ -497,7 +498,10 @@
+                     vertices.data(),
+                     verticesCount,
+                     sizeof( float ) * 3,
+-                    maxNumberOfIndexes );
++                    nullptr,
++                    maxNumberOfIndexes,
++                    std::numeric_limits<float>::max(),
++                    nullptr );
+ 
+ 
+     returnIndexes.resize( size );

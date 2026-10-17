@@ -15,4 +15,5 @@ source      = https://github.com/eggert/tz/archive/refs/tags/$version.tar.gz
 sha256      = 788a3d041a92c8ec4df0b7109fb2ce028bc6d73292f293994430b6e3fdb802ec  tzdata-2026d.tar.gz
 description = IANA time zone database — musl reads /usr/share/zoneinfo natively
 homepage    = https://www.iana.org/time-zones
+license     = LicenseRef-Public-Domain
 depends     = gawk

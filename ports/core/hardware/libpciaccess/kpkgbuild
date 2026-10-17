@@ -11,7 +11,9 @@
 name        = libpciaccess
 version     = 0.19
 release     = 1
-source      = http://ftp.x.org/pub/individual/lib/libpciaccess-$version.tar.xz
+source      = https://www.x.org/pub/individual/lib/libpciaccess-$version.tar.xz
 sha256      = 3c55aa86c82e54a4e3109786f0463530d53b36b6d1cfd14616454f985dd2aa43  libpciaccess-0.19.tar.xz
-description = X11 PCI access library
+description = Generic PCI device access library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libpciaccess
+license     = MIT
 depends     = meson ninja zlib hwdata

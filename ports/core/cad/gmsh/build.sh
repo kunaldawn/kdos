@@ -8,13 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The FLTK GUI with OpenCASCADE for STEP/IGES/BREP, and the shared library
-# with its Python API, which FreeCAD's FEM workbench drives. MED, CGNS, Mmg
-# and PETSc have no port, so each is off rather than probed and dropped.
-#
-# The fltk port is built with Cairo, and its FL/Fl_Cairo.H includes cairo.h.
-# gmsh takes only FLTK's include directory from fltk-config, so Cairo's
-# directory comes from its own pkg-config file.
 export CXXFLAGS="$CXXFLAGS $(pkg-config --cflags cairo)"
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -27,10 +20,11 @@ cmake -S . -B build -G Ninja \
 	-DENABLE_CAIRO=ON \
 	-DENABLE_OCC=ON \
 	-DENABLE_OCC_CAF=ON \
+	-DENABLE_SYSTEM_CONTRIB=ON \
 	-DENABLE_EIGEN=ON \
 	-DENABLE_GMP=ON \
 	-DENABLE_OPENMP=ON \
-	-DENABLE_MED=OFF \
+	-DENABLE_MED=ON \
 	-DENABLE_CGNS=OFF \
 	-DENABLE_MMG=OFF \
 	-DENABLE_PETSC=OFF \
@@ -41,12 +35,14 @@ cmake -S . -B build -G Ninja \
 	-DENABLE_OSMESA=OFF \
 	-DENABLE_TESTS=OFF \
 	-DENABLE_RPATH=OFF \
-	-DENABLE_PACKAGE_STRIP=OFF
+	-DENABLE_PACKAGE_STRIP=OFF \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_HDF5=ON
+grep -q '^#define HAVE_MED' build/src/common/GmshConfig.h ||
+	{ echo "gmsh: MED was not found" >&2; exit 1; }
+grep -q '^TINYXML2_LIB:FILEPATH=/usr/lib/libtinyxml2' build/CMakeCache.txt
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# gmsh.py finds libgmsh by walking up from its own directory, so from
-# site-packages it reaches /usr/lib; left in /usr/lib no import finds it.
 _site=$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
 install -d "$PKG$_site"
 mv "$PKG/usr/lib/gmsh.py" "$PKG$_site/gmsh.py"
@@ -59,7 +55,6 @@ rsvg-convert -w 256 -h 256 utils/icons/gmsh.svg \
 install -Dm644 utils/freedesktop/info.gmsh.gmsh.metainfo.xml \
 	"$PKG/usr/share/metainfo/info.gmsh.gmsh.metainfo.xml"
 
-# FLTK takes the window's app_id from argv[0].
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/info.gmsh.gmsh.desktop" <<'DESKTOP'
 [Desktop Entry]

@@ -14,5 +14,5 @@
 	    --disable-static \
 	    --disable-openssl \
 	    --disable-documentation
-make
-make DESTDIR=$PKG install
+make CFLAGS="$CFLAGS"
+make CFLAGS="$CFLAGS" DESTDIR=$PKG install

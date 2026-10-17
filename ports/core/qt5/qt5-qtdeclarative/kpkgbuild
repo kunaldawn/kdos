@@ -17,6 +17,7 @@ source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version
 sha256      = 71ea562ac01b045f062df8d421120a3a52733b84f2ee3f526db106fabd70720d  qt5-qtdeclarative-5.15.19.tar.xz
 description = Qt 5 QML and Qt Quick — the declarative UI language, its JavaScript engine and the Quick scene graph
 homepage    = https://www.qt.io/
+license     = (LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only) AND GPL-3.0-only WITH Qt-GPL-exception-1.0
 depends     = qt5-qtbase python3 vulkan-headers
 group       = qt5
 series      = 5.15

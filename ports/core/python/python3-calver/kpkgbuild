@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/c/calver/calver-$ve
 sha256      = c98b376c2424642224d456b2f70c51402343e008c63d204634665e1a2a2835f5  python3-calver-2025.10.20.tar.gz
 description = Date-based versions for setuptools — trove-classifiers builds with it
 homepage    = https://pypi.org/project/calver/
+license     = Apache-2.0
 depends     = python3 python3-setuptools python3-pip

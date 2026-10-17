@@ -9,38 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# EVERY COMPONENT IS NAMED. ENABLE_DEFAULT=OFF turns the rest off, and a
-# component forced ON whose dependency is missing stops configure with "user
-# force-enabled … but configuration checked failed" instead of quietly
-# building a smaller GNU Radio.
-#
-# gr-qtgui is the Qt 5 + PyQt5 + Qwt widget set on the 3.10 line; GRC itself
-# stays the GTK 3 front end. gr-uhd (with the UHD 4 RFNoC blocks) reaches
-# Ettus radios, gr-iio the ADI/IIO ones with libad9361's AD936x controls, and
-# gr-zeromq the ZMQ message and stream blocks. ControlPort runs over Thrift,
-# whose Python module the ControlPort clients import. The JSON/YAML config
-# blocks validate against python jsonschema.
-#
-# Off, and why:
-#   gr-video-sdl   SDL 1.2 API
-#   doxygen        HTML reference; the manual pages stay on
-#
-# gr-audio: ALSA and PortAudio, both answered by PipeWire. JACK and OSS are
-# never looked up, so neither backend follows whatever the chroot has.
-# gr-vocoder builds codec2, FreeDV and GSM 06.10.
-#
-# GRC_XTERM_EXE is the terminal GRC opens a no-GUI flow graph in, written into
-# grc.conf. Left to configure, it is whichever emulator the chroot happens to
-# have on PATH, or x-terminal-emulator, which this image does not have; foot
-# takes the -e that GRC passes.
-#
-# FindPythonLibs is handed the library and headers, because its version table
-# is older than this python. CMP0167=NEW makes find_package(Boost) read
-# Boost's own config package: the legacy module looks for a libboost_system
-# file, and Boost.System is header-only.
 _pyinc=$(python3 -c 'import sysconfig; print(sysconfig.get_path("include"))')
 _pylib=$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR") + "/" + sysconfig.get_config_var("LDLIBRARY"))')
-
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_POLICY_DEFAULT_CMP0167=NEW \
@@ -64,7 +34,7 @@ cmake -B build -G Ninja \
 	-DENABLE_GR_CTRLPORT=ON \
 	-DENABLE_CTRLPORT_THRIFT=ON \
 	-DENABLE_GRC=ON \
-	-DGRC_XTERM_EXE=foot \
+	-DGRC_XTERM_EXE=/usr/bin/foot \
 	-DENABLE_JSONYAML_BLOCKS=ON \
 	-DENABLE_GR_BLOCKS=ON \
 	-DENABLE_GR_FEC=ON \
@@ -95,17 +65,9 @@ cmake -B build -G Ninja \
 	-Wno-dev
 ninja -C build
 DESTDIR=$PKG ninja -C build install
-
-# docs/man installs one fixed list of pages, whichever components were built:
-# a page whose command this package does not install is removed.
 for m in "$PKG"/usr/share/man/man1/*.1; do
 	[ -e "$PKG/usr/bin/$(basename "$m" .1)" ] || rm -f "$m"
 done
-
-# ENABLE_POSTINSTALL would run xdg-utils against the build host. The entry,
-# its icons and the .grc MIME type are installed as files instead, and kpkg
-# rebuilds the MIME database on the target. The window's app_id is the
-# script's name, gnuradio-companion, which the entry's StartupWMClass names.
 _fd=grc/scripts/freedesktop
 install -Dm644 $_fd/gnuradio-grc.desktop \
 	"$PKG/usr/share/applications/gnuradio-grc.desktop"
@@ -119,17 +81,11 @@ for s in 16 24 32 48 64 128 256; do
 	install -Dm644 $_fd/grc-icon-$s.png \
 		"$PKG/usr/share/icons/hicolor/${s}x${s}/mimetypes/application-gnuradio-grc.png"
 done
-
-# gr-qtgui's Python modules, ControlPort's plotter and the code GRC generates
-# for every gr-qtgui sink run `import sip`, a top-level module. PyQt5 5.15
-# carries it only as PyQt5.sip and no port installs a top-level sip, so this
-# module re-exports it; without it a flow graph with a Qt sink stops at its
-# imports.
 _site=$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
 install -d "$PKG$_site"
 printf 'from PyQt5.sip import *\n' > "$PKG$_site/sip.py"
 chmod 644 "$PKG$_site/sip.py"
-
 test -x "$PKG/usr/bin/gnuradio-companion"
+grep -qx 'xterm_executable = /usr/bin/foot' "$PKG/etc/gnuradio/conf.d/grc.conf"
 test -n "$(find "$PKG"/usr/lib/python3*/site-packages/gnuradio/gr -name '*.so' | head -1)"
 test -n "$(find "$PKG"/usr/lib/python3*/site-packages/gnuradio/qtgui -name '*.so' | head -1)"

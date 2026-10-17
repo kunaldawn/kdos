@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ispc
+version     = 1.32.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ispc/ispc/archive/refs/tags/v$version.tar.gz
+sha256      = 705b818062602a0c6b62965a8aa011508ef7f9decce716cf1645f2b04ba1e9f8  ispc-1.32.0.tar.gz
+description = Intel SPMD Program Compiler — C-like SIMD kernels compiled for SSE, AVX and AVX-512, with a runtime dispatcher
+homepage    = https://ispc.github.io/
+license     = BSD-3-Clause
+depends     = cmake ninja python3 bison flex m4 llvm clang zlib zstd libxml2

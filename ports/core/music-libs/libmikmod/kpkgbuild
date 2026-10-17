@@ -15,4 +15,5 @@ source      = https://downloads.sourceforge.net/project/mikmod/$name/$version/$n
 sha256      = dffd82b8f254c3489c32098da831f33eac7136843d1e7ccb802f1254ad5b4219  libmikmod-3.3.14.tar.gz
 description = Tracker module player library — S3M, XM, IT, MOD
 homepage    = https://mikmod.sourceforge.net/
+license     = LGPL-2.0-or-later
 depends     = alsa-lib

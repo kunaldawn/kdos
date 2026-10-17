@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# A VIDEO HERE IS A STREAM OF FRAMES AND EVERY PROGRAM IS A FILTER over it, so
-# blind is farbfeld's argument carried into time: the same bet that a format
-# worth having is one a pipe can carry. It needs no codec of its own — reading
-# and writing real containers is ffmpeg's job at either end.
-make PREFIX=/usr MANPREFIX=/usr/share/man
-make DESTDIR=$PKG PREFIX=/usr MANPREFIX=/usr/share/man install
+make PREFIX=/usr MANPREFIX=/usr/share/man CFLAGS="$CFLAGS -std=c99" LDFLAGS="$LDFLAGS -lm"
+make DESTDIR=$PKG PREFIX=/usr MANPREFIX=/usr/share/man CFLAGS="$CFLAGS -std=c99" LDFLAGS="$LDFLAGS -lm" install
+install -m755 blind-rotate-90 blind-rotate-180 blind-rotate-270 "$PKG/usr/bin/"

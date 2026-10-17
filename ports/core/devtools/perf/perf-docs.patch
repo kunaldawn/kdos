@@ -1,0 +1,20 @@
+--- a/tools/perf/Documentation/perf-check.txt
++++ b/tools/perf/Documentation/perf-check.txt
+@@ -1,5 +1,5 @@
+ perf-check(1)
+-===============
++=============
+ 
+ NAME
+ ----
+--- a/tools/perf/Documentation/perf-kwork.txt
++++ b/tools/perf/Documentation/perf-kwork.txt
+@@ -183,7 +183,7 @@
+ 	to end of file.
+ 
+ OPTIONS for 'perf kwork top'
+----------------------------------
++----------------------------
+ 
+ -b::
+ --use-bpf::

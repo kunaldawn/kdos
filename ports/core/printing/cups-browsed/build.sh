@@ -8,8 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --with-rcdir=no: the init script is ours, under fs/etc/init.d, and upstream's
-# would land in a directory this init never reads.
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--localstatedir=/var --disable-static \
 	--enable-avahi --with-rcdir=no --disable-nls \

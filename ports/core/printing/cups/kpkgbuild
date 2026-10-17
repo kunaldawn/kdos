@@ -9,9 +9,11 @@
 # ---------------------------------
 
 name        = cups
-version     = 2.4.19
+version     = 2.4.20
 release     = 1
 source      = https://github.com/OpenPrinting/cups/archive/v$version/$name-$version-source.tar.gz
-sha256      = 89fa632529d3e6a7cb9787ef29e39c4997be0323cc936e05cdb4c79387a35e8e  cups-2.4.19.tar.gz
+sha256      = 213084ea7bf4f9fb718a9743eed81ef2600b8c90448ead7fa77cedcf0eadc076  cups-2.4.20.tar.gz
 description = Print spooler and associated utilities
+homepage    = https://openprinting.github.io/cups/
+license     = Apache-2.0 WITH LLVM-exception
 depends     = gnutls libusb pam dbus xdg-utils avahi zlib acl libpaper

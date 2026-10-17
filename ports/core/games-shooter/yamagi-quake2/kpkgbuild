@@ -15,4 +15,5 @@ source      = https://deponie.yamagi.org/quake2/quake2-$version.tar.xz
 sha256      = 37e4143e4d362d7b93ba7a8d2c36a945fbcae82aef386512032200233b1750c8  yamagi-quake2-8.70.tar.xz
 description = Quake II engine kept faithful to the original — OpenGL 1.4, 3.2, GLES3 and software renderers
 homepage    = https://www.yamagi.org/quake2/
+license     = GPL-2.0-or-later
 depends     = sdl3 mesa libglvnd openal-soft curl

@@ -40,14 +40,16 @@ done
 # an audit counts it as live. git cannot carry an empty directory through fs/,
 # so one under skel's .config is never something fs/ asked for. Only .config:
 # the generated icon and theme trees legitimately contain empty leaves.
-#
-# Reverse sort puts a child before its parent, so a nest of empties collapses
-# in one pass. `find` here is toybox's, which has neither -empty nor -delete.
 if [ -d /etc/skel/.config ]; then
-    find /etc/skel/.config -mindepth 1 -type d | sort -r | while IFS= read -r _d; do
-        rmdir "$_d" 2>/dev/null || true
-    done
+    find /etc/skel/.config -mindepth 1 -type d -empty -delete
 fi
+
+# THE BACKUP COPIES OF THE ACCOUNT FILES DO NOT SHIP. shadow's tools write
+# /etc/passwd-, group-, shadow- and gshadow- beside each file they change, and
+# the build's changes carry the live accounts' password hashes. In system.sfs
+# they would reach every installed system through the installer's copy, which
+# replaces only the files themselves.
+rm -f /etc/passwd- /etc/group- /etc/shadow- /etc/gshadow-
 
 while IFS=: read -r name _pw uid gid _gecos home shell; do
     case "$uid" in

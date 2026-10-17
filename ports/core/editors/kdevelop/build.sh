@@ -9,28 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# C and C++ support is libclang's (the clang port's ClangConfig.cmake); the
-# plugins that drive clang-tidy, cppcheck, gdb, lldb, CMake, meson, make,
-# ninja, git and the Qt Help and man-page documentation are built, and the
-# documentation view is a QtWebEngine page. Patch review needs
-# libkomparediff2; the QMake builder and manager have their parsers generated
-# by KDevelop-PG-Qt; the debuggers' "attach to process" dialog lists processes
-# through libksysguard. Each of those is required here rather than silently
-# dropped when absent. The astyle formatter is upstream's bundled library.
-# Off, each for a reason: the Subversion, Okteta, heaptrack and clazy plugins
-# need programs this system does not carry; the plasmoid runner needs Plasma,
-# and the GitHub project provider is an online service. KF_SKIP_PO_PROCESSING
-# leaves the translation catalogues out: bundled data is English only.
-#
-# KDE's compiler settings make C code strict C99 unless a standard is given.
-# The CMake plugin's lexer is C that includes QtGlobal, whose qtypes.h uses
-# static_assert, a keyword only from C23, and calls fileno and strdup, which
-# a strict ISO mode hides; GNU C23 has all three.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_C_STANDARD=23 \
 	-D CMAKE_C_EXTENSIONS=ON \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
@@ -60,19 +43,6 @@ DESTDIR=$PKG cmake --install build
 test -x "$PKG/usr/bin/kdevelop"
 ls "$PKG"/usr/lib/qt6/plugins/kdevplatform/*/kdevclangsupport.so >/dev/null
 
-# kdoctools_install() builds every translated handbook and manual page; only
-# the English ones are kept.
-for d in "$PKG"/usr/share/doc/HTML/*/ "$PKG"/usr/share/man/*/; do
-	case ${d%/} in
-	*/HTML/en | */man/man[0-9]*) ;;
-	*) rm -rf "$d" ;;
-	esac
-done
-
-# THE TWO VISIBLE ENTRIES ARE REPLACED for StartupWMClass: KAboutData sets the
-# desktop file name, and so the Wayland app_id, to org.kde.kdevelop; upstream
-# writes the X11 class instead. org.kde.kdevelop_kdev4.desktop, the hidden
-# handler for .kdev4 project files, is left as upstream ships it.
 cat > "$PKG/usr/share/applications/org.kde.kdevelop.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -103,6 +73,7 @@ TryExec=kdevelop
 Exec=kdevelop --ps
 Icon=kdevelop
 Terminal=false
+NoDisplay=true
 StartupWMClass=org.kde.kdevelop
 Categories=Qt;KDE;Development;IDE;
 Keywords=ide;session;kdevelop;

@@ -11,23 +11,15 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
-# The default feature set pulls `unrar` and `bzip3`, each of which compiles a
-# vendored C library through cc. They vendor as source, so the build stays
-# offline, and dropping them would make ouch answer "unsupported format" for
-# two of the formats it advertises.
-#
-# bzip3 GENERATES ITS BINDINGS, so this build runs bindgen, which dlopens
-# libclang — and a static-musl rust binary cannot dlopen anything at all
-# ("Dynamic loading not supported", from inside bindgen rather than from the
-# linker, which is what makes it read like a missing library). Turning
-# crt-static off is what gives the build script a dynamic loader; LIBCLANG_PATH
-# saves it a search. Both are build-time only: the shipped binary links musl
-# dynamically like everything else here.
 export RUSTFLAGS="-C target-feature=-crt-static"
 export LIBCLANG_PATH=/usr/lib
 export OUCH_ARTIFACTS_FOLDER="$PWD/artifacts"
 
 cargo build --release --frozen --offline
+readelf -d target/release/ouch | grep -q 'NEEDED.*\[libzstd\.so\.1\]'
 
 install -Dm755 target/release/ouch $PKG/usr/bin/ouch
 install -Dm644 artifacts/*.1 -t $PKG/usr/share/man/man1
+install -Dm644 artifacts/ouch.bash "$PKG/usr/share/bash-completion/completions/ouch"
+install -Dm644 artifacts/_ouch "$PKG/usr/share/zsh/site-functions/_ouch"
+install -Dm644 artifacts/ouch.fish "$PKG/usr/share/fish/vendor_completions.d/ouch.fish"

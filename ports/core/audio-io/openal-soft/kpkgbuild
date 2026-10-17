@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/kcat/openal-soft/archive
 sha256      = fb27e5839aa11f0e5b9d33756965291fad5d6909ab928ea1f796f4a1a6877894  openal-soft-1.25.2.tar.gz
 description = OpenAL 3D positional audio for games, played through PipeWire, Pulse or ALSA
 homepage    = https://openal-soft.org/
+license     = LGPL-2.0-or-later
 depends     = cmake ninja pkgconf pipewire libpulse alsa-lib dbus libsndfile libmysofa

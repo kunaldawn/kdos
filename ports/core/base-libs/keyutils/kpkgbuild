@@ -15,3 +15,4 @@ source      = https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.
 sha256      = a61d5706136ae4c05bd48f86186bcfdbd88dd8bd5107e3e195c924cfc1b39bb4  keyutils-1.6.3.tar.gz
 description = Tools to control the Linux key management system
 homepage    = https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git
+license     = GPL-2.0-or-later AND LGPL-2.1-or-later

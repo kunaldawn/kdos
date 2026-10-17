@@ -9,24 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE SDL 2 FRONT END, one of the four configure accepts, drawn by sdl2-compat
-# on SDL 3's Wayland driver; its menus are drawn inside the emulated screen.
-# The GTK front end would put an X11 child window under its OpenGL view.
-#
-# configure refuses any --enable/--with it does not list, so the usual
-# --disable-static is not passed. It also requires dos2unix and xa at
-# configure time. dos2unix runs only in the dist targets, never in a build, so
-# the preset variable answers the check. xa is real: it assembles the PSID
-# player that VSID loads into the emulated machine.
-#
-# Every codec is named, because configure answers a missing one by leaving
-# the feature out: FLAC, Ogg Vorbis and mpg123 for the sampler and tape
-# formats, LAME for MP3 recording, PNG and GIF screenshots. Sound through
-# SDL, ALSA or PulseAudio (pipewire-pulse), MIDI through ALSA sequencer.
-# libcurl serves only WIC64, a cartridge that reaches the internet, and is
-# off; PortAudio is a second route to the capture device ALSA already reaches.
-# Real IEC hardware (OpenCBM) and the Ethernet cartridges need root or a
-# device this image does not carry, and are off.
 DOS2UNIX=true ./configure --prefix=/usr --libdir=/usr/lib \
 	--enable-sdl2ui \
 	--with-sdlsound \
@@ -46,14 +28,12 @@ DOS2UNIX=true ./configure --prefix=/usr --libdir=/usr/lib \
 	--enable-midi \
 	--disable-realdevice \
 	--disable-ethernet \
-	--enable-html-docs \
+	--disable-html-docs \
 	--disable-pdf-docs
-make
-make DESTDIR=$PKG install
+_mkflags=(CFLAGS="${CFLAGS/-O2/-O3} -g0" CXXFLAGS="${CXXFLAGS/-O2/-O3} -g0")
+make "${_mkflags[@]}"
+make "${_mkflags[@]}" DESTDIR=$PKG install
 
-# The SDL front end installs no icons or menu entries. The ROM sets and the
-# PNG icons go in with the emulators; x64sc and xcbm5x0 have no icon of their
-# own and share their family's.
 for _size in 16 24 32 48 64 256; do
 	_dir="$PKG/usr/share/icons/hicolor/${_size}x${_size}/apps"
 	install -d "$_dir"
@@ -62,8 +42,6 @@ for _size in 16 24 32 48 64 256; do
 	done
 done
 
-# One entry per machine. Each emulator is its own program, and SDL's Wayland
-# app_id is the executable's name.
 _entry() {
 	cat > "$PKG/usr/share/applications/vice-$1.desktop" <<DESKTOP
 [Desktop Entry]

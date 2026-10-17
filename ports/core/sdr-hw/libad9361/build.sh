@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The library, ad9361.h and libad9361.pc. The Doxygen reference and the
-# package-building target stay off; the tests need a radio attached.
 cmake -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \

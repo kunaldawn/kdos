@@ -15,5 +15,6 @@ source      = $name-$version.tar.xz::https://download.gnome.org/sources/pangomm/
 sha256      = 38ca0b050b065de4e3da0c182df657437757063bbf0c4b6c9567ddba019b1d68  pangomm2.46-2.46.5.tar.xz
 description = C++ bindings for Pango, the 1.4 API (pangomm-1.4) that gtkmm 3 builds on
 homepage    = https://gtkmm.gnome.org/
+license     = LGPL-2.1-or-later
 depends     = pango cairomm1.14 glibmm2.66 libsigc++2 meson python3
 series      = 2.46

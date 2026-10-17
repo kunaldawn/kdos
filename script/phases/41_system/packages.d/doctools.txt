@@ -24,3 +24,5 @@
 
 lowdown
 groff
+fig2dev
+opensp

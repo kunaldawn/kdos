@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# TLS is off: its transports need an engine chosen at build time, and nothing
-# here speaks tls+tcp or wss. The manual pages are generated with asciidoctor;
-# the same step renders every page to HTML as well, which is removed.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

@@ -27,6 +27,9 @@ python3-idna
 python3-urllib3
 python3-requests
 
+# SOCKS proxies for requests; toot depends on it.
+python3-pysocks
+
 # LoRa mesh text and position: no licence, no infrastructure, no subscription.
 python3-meshtastic
 

@@ -13,4 +13,5 @@ version     = 0.1.0
 release     = 1
 description = PSI-triggered memory-pressure killer that spares the desktop
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
 depends     =

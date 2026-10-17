@@ -9,16 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# EVERY CODEC IS A LINKED SYSTEM LIBRARY, not a bundled single-header decoder
-# (dr_mp3, drflac, stb_vorbis) and not a dlopen: DEPS_SHARED off puts each
-# library in the ELF, where a missing one is a load error rather than a format
-# that quietly stops playing. STRICT makes a codec whose library is absent fail
-# the configure instead of dropping the format. There is no JACK anywhere.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
-	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DBUILD_SHARED_LIBS=ON \
 	-DSDLMIXER_VENDORED=OFF \
 	-DSDLMIXER_STRICT=ON \

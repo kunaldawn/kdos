@@ -11,8 +11,9 @@
 name        = mbpoll
 version     = 1.5.4
 release     = 1
-source      = mbpoll-1.5.4.tar.gz::https://github.com/epsilonrt/mbpoll/archive/refs/tags/v1.5.4.tar.gz
+source      = mbpoll-$version.tar.gz::https://github.com/epsilonrt/mbpoll/archive/refs/tags/v$version.tar.gz
 sha256      = a9bcc3afa3b85b3794505d07827873ead280d96a94769d236892eb8a4fb9956f  mbpoll-1.5.4.tar.gz
 description = Read and write Modbus registers from a prompt, over RTU or TCP
 homepage    = https://github.com/epsilonrt/mbpoll
+license     = GPL-3.0-or-later
 depends     = cmake pkgconf libmodbus

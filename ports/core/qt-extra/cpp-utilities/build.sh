@@ -19,7 +19,6 @@ cmake -S . -B build -G Ninja \
 	-D USE_STANDARD_FILESYSTEM=ON \
 	-D USE_LIBARCHIVE=OFF \
 	-D NO_DOXYGEN=ON \
-	-D NO_SPHINX=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

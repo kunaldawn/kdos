@@ -20,4 +20,5 @@ sha256      = 23dec191a766b55d6057a8886285cee9defcccecb141ae777f4245a6dc63e3dc  
 sha256      = bba50f327163d40b1014f5affc8042137f37b200dae50a4f0fe56b5769b3940f  6502-v0.1.tar.xz
 description = Pixel-art paint program in the Deluxe Paint tradition, on SDL2 with no toolkit
 homepage    = http://grafx2.eu
+license     = GPL-2.0-only
 depends     = pkgconf sdl2-compat sdl2-image sdl2-ttf lua54 libpng libtiff zlib fontconfig freetype2 librsvg

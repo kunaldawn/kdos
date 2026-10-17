@@ -309,6 +309,12 @@ static int is_disk_name(const char *n)
 	return 1;
 }
 
+/*
+ * EVERY TRANSPORT CLASSIFIED HERE IS ONE THE INSTALLER WILL INSTALL TO, so
+ * its driver must be in 090_initramfs.sh's MODULES, the way every row of
+ * ki_filesystems[] must be. A disk the initramfs has no driver for installs
+ * fine and its root is never found on the first boot.
+ */
 static void disk_transport(Disk *d)
 {
 	char link[512];

@@ -1,0 +1,32 @@
+--- a/util/help.c
++++ b/util/help.c
+@@ -28,7 +28,6 @@
+ 	if (display && *display) {
+ 		struct strbuf man_page = STRBUF_INIT;
+ 		const char *filename = "kfmclient";
+-		char sbuf[STRERR_BUFSIZE];
+ 
+ 		/* It's simpler to launch konqueror using kfmclient. */
+ 		if (path) {
+@@ -54,19 +53,17 @@
+ 		strbuf_addf(&man_page, "man:%s(1)", page);
+ 		execlp(path, filename, "newTab", man_page.buf, NULL);
+ 		warning("failed to exec '%s': %s", path,
+-			strerror_r(errno, sbuf, sizeof(sbuf)));
++			strerror(errno));
+ 	}
+ }
+ 
+ static void exec_man_man(const char *path, const char *page)
+ {
+-	char sbuf[STRERR_BUFSIZE];
+-
+ 	if (!path)
+ 		path = "man";
+ 	execlp(path, "man", page, NULL);
+ 	warning("failed to exec '%s': %s", path,
+-		strerror_r(errno, sbuf, sizeof(sbuf)));
++		strerror(errno));
+ }
+ 
+ static char *cmd_to_page(const char *cmd, char **page, const char *util_name)

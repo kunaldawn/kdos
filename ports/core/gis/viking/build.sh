@@ -8,14 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# nettle4 hashes thumbnail names through nettle's own MD5 interface: nettle 4
-# no longer installs md5-compat.h, so configure stops at its check.
 patch -p1 -i "$PORT_SRC/nettle4.patch"
 
-# Offline use is maps from MBTiles and the tile cache: the tile and search
-# services that need an account or a network (Bing, Google, Terraserver,
-# Expedia, Blue Marble, GeoNames, geocaches, USGS DEM download, OSM upload)
-# are off. Mapnik has no port. libnova gives the sunrise and sunset times.
+export CFLAGS="$CFLAGS -g0"
+
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -47,13 +43,9 @@ patch -p1 -i "$PORT_SRC/nettle4.patch"
 make
 make DESTDIR=$PKG install
 
-# English only: the other interface catalogues go.
-find "$PKG/usr/share/locale" -mindepth 1 -maxdepth 1 ! -name 'en*' -exec rm -rf {} +
-
 install -Dm644 viking-128.png "$PKG/usr/share/icons/hicolor/128x128/apps/viking.png"
 install -Dm644 org.viking.Viking.appdata.xml "$PKG/usr/share/metainfo/org.viking.Viking.appdata.xml"
 
-# GTK 3 takes the Wayland app_id from the program name.
 cat > "$PKG/usr/share/applications/viking.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

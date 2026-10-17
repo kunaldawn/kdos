@@ -21,8 +21,9 @@ unpack_zig_dep translate_c translate_c-0.0.0-Q_BUWgpXBwDWbTJQO9Ul01ZN4NJ4CEqQ4ZX
 unpack_zig_dep aro         aro-0.0.0-JSD1QrExOgBF8ySFOvEaZfP1LBTjgwg58Y7UHoGJ3nOd
 
 zig build --system "$ZIG_GLOBAL_CACHE_DIR/p" -fsys=ncurses -fsys=zstd \
-	-Doptimize=ReleaseFast -Dcpu=baseline -Dpie=true -Dstrip=true \
+	-Doptimize=ReleaseFast -Dcpu=baseline -Dpie=true \
 	--prefix "$PKG/usr"
+strip --strip-debug "$PKG/usr/bin/ncdu"
 install -Dm644 ncdu.1 "$PKG/usr/share/man/man1/ncdu.1"
 
 install -d "$PKG/usr/share/applications"

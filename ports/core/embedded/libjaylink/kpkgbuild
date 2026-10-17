@@ -15,4 +15,5 @@ source      = https://gitlab.zapb.de/libjaylink/libjaylink/-/archive/$version/li
 sha256      = 235b12d161b29d813026704f335536a6a916646ea2058302e4ca45ca2cd81325  libjaylink-0.5.0.tar.gz
 description = Library to drive SEGGER J-Link debug probes over USB and TCP
 homepage    = https://gitlab.zapb.de/libjaylink/libjaylink
+license     = LGPL-2.1-or-later
 depends     = meson ninja pkgconf libusb

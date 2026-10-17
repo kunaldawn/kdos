@@ -24,9 +24,9 @@ source script/phases/70_image/phase.env
 FS=/kdos/build/fs
 
 # ── Phase gates ─────────────────────────────────────────────────────────
-CLEAN_BUILD_CACHE=1     # /root/.cache, ~/.cargo, ~/.npm, /tmp, kpkg work dir
+CLEAN_BUILD_CACHE=1     # /tmp, /var/tmp (the build's HOME), /root's caches, kpkg work dir
 CLEAN_KPKG_PACKAGES=1   # /var/cache/kpkg/packages (built .tar.xz cache, .pending records)
-CLEAN_PYCACHE=1         # __pycache__ / *.pyc / *.pyo, then recompiled
+CHECK_PYCACHE=1         # unowned __pycache__ / *.pyc / *.pyo removed; owned .py checked
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 section() { echo; echo "── $* ──"; }
@@ -75,49 +75,117 @@ if [ "$CLEAN_KPKG_PACKAGES" = 1 ]; then
     fi
 fi
 
-# ── Python bytecode caches ─────────────────────────────────────────────
+# ── Python bytecode ────────────────────────────────────────────────────
 #
-# DELETED, THEN COMPILED AGAIN — NEVER LEFT DELETED. What the build leaves is
-# mixed: bytecode stamped with a build-time mtime, bytecode for files that no
-# package owns, caches written by build tools running in the chroot. None of
-# it can be reproduced, so it goes. But /usr is squashfs on the live medium
-# and root's on a disk, so a Python program cannot write its cache back: with
-# no bytecode, every start of every Python tool compiles everything it
-# imports, every time.
+# BYTECODE SHIPS IN THE PACKAGES. kpkg compiles every Python tree a package
+# ships into the package itself, as checked-hash bytecode (lint.c,
+# kp_pkg_python), so the database owns each .pyc and an upgrade or removal
+# handles it. /usr is squashfs on the live medium and root's on a disk, so a
+# module without its .pyc is compiled on every import of every start, and the
+# cache is never written.
 #
-# checked-hash, because it is the mode that is both reproducible and safe
-# across updates. The .pyc records a hash of its source rather than an mtime,
-# so no timestamp enters it; and the interpreter checks that hash on import, so
-# a source file a later `kpkg` upgrade replaces is recompiled in memory rather
-# than served stale. unchecked-hash would skip that check and run the old
-# bytecode.
+# This step does two things to that:
 #
-# -j 0 compiles on every CPU. The output is byte-stable run to run, parallel
-# or not; what is not stable, in any mode, is the bytecode of a module the
-# compiling interpreter itself had imported, whose marshal reference flags can
-# differ from a fresh compile of the same source.
+#   - removes every .pyc, .pyo and __pycache__ that no package owns: bytecode
+#     written by build tools importing modules in the chroot, stamped with a
+#     build-time mtime, which nothing can reproduce or remove later;
+#   - fails the image when a .py a package owns, outside /usr/bin and
+#     /usr/sbin (scripts, run and never imported), has no .pyc for this
+#     interpreter. `*.tmpl.py` is a template, not a module. gcc's libstdc++
+#     pretty printers (usr/share/gcc-*/python) and gdb's auto-load scripts
+#     are exempt: gcc is built in 20_selfhost and 30_foundation, before
+#     python3 is installed, so kpkg has no interpreter to compile them, and
+#     gdb reads them only in a debugging session. A file the interpreter
+#     cannot compile (Python 2, a template under another name) is listed and
+#     passes, because there is no bytecode to have.
 #
-# compileall's status is not the assertion: one file of Python 2 syntax in a
-# site-packages tree fails its compile and sets it, while every other file is
-# written.
-if [ "$CLEAN_PYCACHE" = 1 ]; then
-    section "Python __pycache__ / *.pyc"
-    before=$(find "$FS" \( -name __pycache__ -o -name "*.pyc" -o -name "*.pyo" \) \
-              -printf "%s\n" 2>/dev/null | awk '{s+=$1} END {print s+0}')
-    find "$FS" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
-    find "$FS" \( -name "*.pyc" -o -name "*.pyo" \) -delete 2>/dev/null || true
-    report "pycache + .pyc/.pyo" "$before" 0
-
+# Ownership is read from the database with the merged-/usr aliases folded:
+# a package may list `./lib/x` for what is on disk at usr/lib/x.
+if [ "$CHECK_PYCACHE" = 1 ]; then
+    section "Python bytecode"
     if command -v python3 >/dev/null 2>&1; then
-        for _py in /usr/lib/python3*; do
-            [ -d "$_py" ] || continue
-            python3 -m compileall -q -j 0 --invalidation-mode checked-hash "$_py" \
-                >/dev/null || echo "  compileall: some files under $_py did not compile" >&2
-        done
-        after=$(find "$FS/usr/lib" -path "*/__pycache__/*.pyc" \
-                  -printf "%s\n" 2>/dev/null | awk '{s+=$1} END {print s+0}')
-        [ "$after" -gt 0 ] || { echo "FATAL: no bytecode was compiled under /usr/lib/python3*" >&2; exit 1; }
-        printf "  %-40s wrote %s\n" "checked-hash bytecode" "$(human $after)"
+        python3 -I - "$FS" <<'PY'
+import importlib.util, os, sys
+
+fs = sys.argv[1]
+dbdir = os.path.join(fs, "var/lib/kpkg/db")
+
+def canon(p):
+    p = p[2:] if p.startswith("./") else p.lstrip("/")
+    p = p.rstrip("/")
+    for a in ("bin", "sbin", "lib"):
+        if p == a or p.startswith(a + "/"):
+            return "usr/" + p
+    return p
+
+owned = set()
+for n in os.listdir(dbdir):
+    f = os.path.join(dbdir, n)
+    if n.startswith(".") or not os.path.isfile(f):
+        continue
+    with open(f, encoding="utf-8", errors="surrogateescape") as h:
+        for line in h:
+            if line.startswith("./"):
+                owned.add(canon(line.rstrip("\n")))
+
+removed = size = 0
+caches = []
+for top in ("usr", "opt", "etc", "var", "srv"):
+    for d, dirs, files in os.walk(os.path.join(fs, top)):
+        rd = os.path.relpath(d, fs)
+        if os.path.basename(d) == "__pycache__":
+            caches.append((d, rd))
+        for f in files:
+            if not f.endswith((".pyc", ".pyo")):
+                continue
+            rel = os.path.join(rd, f)
+            if rel in owned:
+                continue
+            p = os.path.join(d, f)
+            size += os.lstat(p).st_size
+            os.unlink(p)
+            removed += 1
+for d, rd in reversed(caches):
+    if rd not in owned and not os.listdir(d):
+        os.rmdir(d)
+print(f"  removed {removed} unowned bytecode file(s), {size // 1024} KiB")
+
+missing, foreign = [], []
+for rel in sorted(owned):
+    if not rel.endswith(".py") or rel.endswith(".tmpl.py"):
+        continue
+    if rel.startswith("usr/share/gdb/auto-load/") or (
+            rel.startswith("usr/share/gcc-") and "/python/" in rel):
+        continue
+    if not (rel.startswith("usr/") or rel.startswith("opt/")):
+        continue
+    if rel.startswith(("usr/bin/", "usr/sbin/")):
+        continue
+    p = os.path.join(fs, rel)
+    if os.path.islink(p) or not os.path.isfile(p):
+        continue
+    if os.path.exists(importlib.util.cache_from_source(p)):
+        continue
+    try:
+        with open(p, "rb") as h:
+            compile(h.read(), p, "exec", dont_inherit=True)
+    except (SyntaxError, ValueError):
+        foreign.append(rel)
+        continue
+    missing.append(rel)
+
+for rel in foreign:
+    print(f"  not Python 3 source, no bytecode: /{rel}")
+if missing:
+    for rel in missing:
+        print(f"  no bytecode: /{rel}", file=sys.stderr)
+    print(f"FATAL: {len(missing)} packaged .py file(s) have no .pyc; "
+          "the package that owns each was built by a kpkg that does not "
+          "compile bytecode, or compiled it under another interpreter",
+          file=sys.stderr)
+    sys.exit(1)
+print("  every packaged module has checked-hash bytecode")
+PY
     fi
 fi
 
@@ -136,6 +204,32 @@ if [ -d "$FS/home/kdos/.local/share/containers" ]; then
     rm -rf "$FS/home/kdos/.local/share/containers"
     report "home/kdos/.local/share/containers" "$before" 0
 fi
+
+# The rootful store goes for the same reason: an image or layer a build pulled
+# as root is not something the shipped system asked for.
+if [ -d "$FS/var/lib/containers/storage" ]; then
+    section "podman's rootful store"
+    before=$(size_of "$FS/var/lib/containers/storage")
+    rm -rf "$FS/var/lib/containers/storage"
+    report "var/lib/containers/storage" "$before" 0
+fi
+
+# ── root's home ─────────────────────────────────────────────────────────
+#
+# /root SHIPS EXACTLY WHAT fs/root HOLDS, MODE 0700. The build's HOME is a
+# scratch directory (script/chroot/exec.sh), but a tool that names /root itself
+# still writes there: a CMake package registry pointing into kpkg's work
+# directories, which root's find_package would consult, git's safe.directory,
+# dated telemetry and logs that differ build to build. Each would reach every
+# installed system through the installer's copy.
+section "root's home"
+before=$(size_of "$FS/root")
+rm -rf "$FS/root"
+mkdir -p "$FS/root"
+cp -R /kdos/fs/root/. "$FS/root/"
+chmod -R go-w "$FS/root"
+chmod 0700 "$FS/root"
+report "root (reset to fs/root)" "$before" "$(size_of "$FS/root")"
 
 # ── Done ────────────────────────────────────────────────────────────────
 FINAL=$(du -sh "$FS" 2>/dev/null | cut -f1)

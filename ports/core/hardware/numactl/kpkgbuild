@@ -16,3 +16,4 @@ source      = https://github.com/numactl/numactl/releases/download/v$version/$na
 sha256      = f2672a0381cb59196e9c246bf8bcc43d5568bc457700a697f1a1df762b9af884  numactl-2.0.19.tar.gz
 description = NUMA policy library (libnuma) and the numactl, numastat and migratepages tools
 homepage    = https://github.com/numactl/numactl
+license     = LGPL-2.1-only AND GPL-2.0-only

@@ -26,9 +26,6 @@ for triple in amdgcn-amd-amdhsa-llvm nvptx64-nvidia-cuda \
 	DESTDIR=$PKG cmake --install build-$triple
 done
 
-# Mesa's rusticl loads spirv-mesa3d-.spv and spirv64-mesa3d-.spv from the
-# libexecdir of libclc.pc; this libclc installs one directory per triple and
-# no pkg-config file, and without both Mesa stops at setup.
 ln -s spirv32-unknown-unknown/libclc.spv "$PKG/usr/share/clc/spirv-mesa3d-.spv"
 ln -s spirv64-unknown-unknown/libclc.spv "$PKG/usr/share/clc/spirv64-mesa3d-.spv"
 install -d "$PKG/usr/share/pkgconfig"

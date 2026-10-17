@@ -28,7 +28,7 @@ patch -p1 -i $PORT_SRC/heif-stride.patch
 	--with-raqm \
 	--with-liq \
 	--without-xpm \
-	--without-avif \
+	--with-avif \
 	ax_cv_c_openmp=unknown
 make
 make DESTDIR=$PKG install

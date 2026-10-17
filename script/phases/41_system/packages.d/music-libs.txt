@@ -44,3 +44,4 @@ libsidplayfp
 portsmf
 libgig
 libmt32emu
+libmusicbrainz5

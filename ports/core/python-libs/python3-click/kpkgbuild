@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/c/click/click-$vers
 sha256      = ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34  python3-click-8.5.0.tar.gz
 description = Composable command-line interfaces for python programs
 homepage    = https://click.palletsprojects.com/
+license     = BSD-3-Clause
 depends     = python3 python3-pip python3-flit-core

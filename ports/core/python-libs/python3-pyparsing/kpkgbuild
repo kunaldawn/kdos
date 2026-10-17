@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/p/pyparsing/pyparsi
 sha256      = 928ae7e20211f3b6f3915a72f06a0cfd29ab9d24279dd6346b6b1a7146397d36  python3-pyparsing-3.3.3.tar.gz
 description = Grammar-based text parsing — matplotlib's mathtext and fontconfig patterns
 homepage    = https://pypi.org/project/pyparsing/
+license     = MIT
 depends     = python3 python3-pip python3-flit-core

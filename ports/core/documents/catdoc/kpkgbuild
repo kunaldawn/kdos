@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = catdoc
+version     = 0.95
+release     = 1
+source      = http://ftp.wagner.pp.ru/pub/$name/$name-$version.tar.gz
+sha256      = 514a84180352b6bf367c1d2499819dfa82b60d8c45777432fa643a5ed7d80796  catdoc-0.95.tar.gz
+description = The text of Word, Excel and PowerPoint 97–2003 files on standard output — catdoc, xls2csv and catppt
+homepage    = https://www.wagner.pp.ru/~vitus/software/catdoc/
+license     = GPL-2.0-or-later
+depends     =

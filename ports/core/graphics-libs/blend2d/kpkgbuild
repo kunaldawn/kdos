@@ -16,4 +16,5 @@ source      = https://blend2d.com/download/$name-$version.tar.gz
 sha256      = 234ba57a64153c96885a6271f15fdcf6c594ac8cb03adaad19abb8d3b2b533fa  blend2d-0.21.2.tar.gz
 description = 2D vector graphics engine with a JIT-compiled pipeline
 homepage    = https://blend2d.com/
+license     = Zlib
 depends     = cmake

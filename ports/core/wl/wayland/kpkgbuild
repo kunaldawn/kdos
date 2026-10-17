@@ -15,4 +15,5 @@ source      = https://gitlab.freedesktop.org/wayland/wayland/-/releases/$version
 sha256      = 64176eaa46e4969903e286f8e5ef8331affc17fdf03ac9b58381d2b23162b7a3  wayland-1.26.0.tar.xz
 description = Core Wayland protocol library (libwayland-server / libwayland-client)
 homepage    = https://wayland.freedesktop.org/
+license     = MIT
 depends     = libffi libxml2 expat meson

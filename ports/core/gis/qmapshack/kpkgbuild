@@ -21,4 +21,5 @@ sha256      = 8d642612b05d0fd932beee8bdb8c9559c675cb4d2db2946b9636a1fef32b3fb9  
 sha256      = fac3fc318d5236b6cfeec9124995f3e5866166cad37febb520517ebdc97cd100  blend2d-def0d1238c3e5d0983bb848e5676049d829e435b.tar.gz
 description = QMapShack: offline topographic maps, elevation models, GPS tracks and route planning with Routino
 homepage    = https://github.com/Maproom/qmapshack
+license     = GPL-3.0-or-later
 depends     = cmake ninja git python3 qt6-qtbase qt6-qt5compat qt6-qttools qt6-qtdeclarative qt6-qtsvg qt6-qtwebengine gdal proj libjpeg-turbo routino udisks2 hicolor-icon-theme

@@ -11,12 +11,6 @@
 
 patch -p1 -i "$PORT_SRC/musl-execinfo.patch"
 
-# NETWORKING off removes the add-on browser and its downloads, which have
-# nothing to show offline. With English the only language shipped, the system
-# SDL2_ttf replaces the bundled copy, which differs only in right-to-left
-# shaping through raqm. The scripting library is linked in rather than
-# installed as a private shared object. GL comes through GLEW, and a missing
-# OpenGL stops the configure instead of leaving only the SDL renderer.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -40,12 +34,8 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# English only: the translations of the menus and of every level set go.
 find "$PKG/usr/share/games/supertux2" -name '*.po' -delete
 
-# The panel reads no SVG: the menu icon is a PNG rasterised from upstream's.
-# Upstream's entry names the icon supertux2 and the window's app_id is the
-# program's name, supertux2.
 install -d "$PKG/usr/share/icons/hicolor/256x256/apps"
 rsvg-convert -w 256 -h 256 supertux2.svg \
 	-o "$PKG/usr/share/icons/hicolor/256x256/apps/supertux2.png"

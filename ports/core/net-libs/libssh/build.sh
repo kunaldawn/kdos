@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Client and server library on OpenSSL, which also supplies curve25519, so
-# libnacl is not looked for. GSSAPI is Kerberos through the krb5 port, and
-# FIDO2 security keys go through libfido2. PKCS#11 URIs need an OpenSSL
-# provider the tree does not carry and stay off. The examples and every test
-# suite are off.
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

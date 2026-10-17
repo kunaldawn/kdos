@@ -9,22 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# TWO RELEASES, TWO TREES. The main tarball is the nons release, which both
-# the sourceforge release/xsl URIs and the cdn xsl-nons URIs name. The
-# namespaced release is a different set of stylesheets, written for DocBook 5
-# input, and is what the sourceforge release/xsl-ns URIs and the cdn
-# release/xsl URIs name: libnotify's notify-send.1 is built through it, and
-# meson stops when xsltproc --nonet cannot resolve it. Each tree gets the
-# rewrites for its own URIs, so no URI is fetched from the network.
-# extensions/ and tools/ are prebuilt Java jars for saxon, xalan and the
-# webhelp indexer, and webhelp's template/ and docs/ are minified jQuery and a
-# rendered sample — none of it is read by xsltproc, which only needs the
-# stylesheets. webhelp/xsl stays so the stylesheet set is complete.
-#
-# Each release is unpacked into a directory of its own. The namespaced
-# tarball's top directory is docbook-xsl-$version, which is $SRC itself, so
-# kpkg's own unpacking of the second source lays it over the nons tree, and
-# the working directory holds neither release whole.
 mkdir nons ns
 tar xf "$PORT_SRC/$name-$version.tar.bz2" --strip-components=1 -C nons
 tar xf "$PORT_SRC/$name-ns-$version.tar.bz2" --strip-components=1 -C ns
@@ -73,8 +57,6 @@ xmlcatalog --noout --add "delegateURI" \
     "file:///etc/xml/docbook" \
     $PKG/etc/xml/catalog
 
-# Projects name the stylesheets by either base and either scheme; a URI no
-# rewrite matches is fetched from the network, and xsltproc --nonet fails.
 for ver in $version current; do
 	for base in http://docbook.sourceforge.net/release/xsl \
 	            http://cdn.docbook.org/release/xsl-nons \

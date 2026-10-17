@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/w/wcwidth/wcwidth-$
 sha256      = 5823209b0d43af322ce698c689380d7c15ca31fa8e6e3be8459f27031bef0af5  python3-wcwidth-0.9.1.tar.gz
 description = The column width of a Unicode string in a terminal
 homepage    = https://github.com/jquast/wcwidth
+license     = MIT
 depends     = python3 python3-setuptools python3-pip

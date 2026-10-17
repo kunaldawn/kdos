@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/sahlberg/libnfs/archive/
 sha256      = bc91216e927a85142b5de611c7f711558e02119a7daad67620ea631634038350  libnfs-8.0.0.tar.gz
 description = Userspace NFS v3/v4 client library — Kodi's nfs:// sources, and the nfs-ls, nfs-cp and nfs-cat tools
 homepage    = https://github.com/sahlberg/libnfs
+license     = LGPL-2.1-or-later AND BSD-2-Clause AND GPL-3.0-or-later
 depends     = cmake ninja pkgconf gnutls

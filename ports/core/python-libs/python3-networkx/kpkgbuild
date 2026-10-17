@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = python3-networkx
+version     = 3.7
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/n/networkx/networkx-$version.tar.gz
+sha256      = fd77a511bd90f39f3d016351345b52cf5319b813bdca01de3f755d3cca62e96a  python3-networkx-3.7.tar.gz
+description = Graphs and networks for python: the structures and the algorithms over them
+homepage    = https://networkx.org/
+license     = BSD-3-Clause
+depends     = python3 python3-pip python3-setuptools

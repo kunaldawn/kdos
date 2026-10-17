@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libstdcxx-riscv64-unknown-elf
+version     = 16.2.0
+release     = 1
+_up         = gcc-$version
+source      = gcc-riscv64-unknown-elf-$version.tar.xz::https://mirrors.ocf.berkeley.edu/gnu/gcc/$_up/$_up.tar.xz
+sha256      = e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e  gcc-riscv64-unknown-elf-16.2.0.tar.xz
+description = The C++ standard library for riscv64-unknown-elf, built against picolibc
+homepage    = https://gcc.gnu.org/
+license     = GPL-3.0-or-later WITH GCC-exception-3.1
+depends     = gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf picolibc-riscv64-unknown-elf gmp mpfr mpc zlib zstd
+group       = gcc-riscv64-unknown-elf

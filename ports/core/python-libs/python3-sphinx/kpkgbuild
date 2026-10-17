@@ -16,6 +16,7 @@ sha256      = 7741722357dd75f8190766926071fed3bdc211c74dd2d7d4df5404da95930ddb  
 sha256      = 0baa1f3d9e27d17c58bc820df928af985d54314f39e1093176915361e73b2708  python3-sphinx-vendor-9.1.0.tar.xz
 description = Documentation generator — the manual pages of LLVM, CMake, mpd and flashrom
 homepage    = https://www.sphinx-doc.org/
+license     = BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND (0BSD OR CC0-1.0)
 depends     = python3 python3-setuptools python3-pip python3-flit-core python3-hatchling python3-hatch-vcs python3-docutils python3-jinja2 python3-markupsafe python3-pygments python3-packaging python3-certifi python3-yaml
 vendoring   = python
 pyrequirements = no

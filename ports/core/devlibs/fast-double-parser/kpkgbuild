@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/lemire/fast_double_parse
 sha256      = 685c1b7b9383f5fcd96264467bb2efa0c9995d7e8afb66ed9c84663466c3cefd  fast-double-parser-0.8.1.tar.gz
 description = Header-only C++ parser from decimal strings to doubles, several times faster than strtod
 homepage    = https://github.com/lemire/fast_double_parser
+license     = Apache-2.0 OR BSL-1.0
 depends     = cmake ninja

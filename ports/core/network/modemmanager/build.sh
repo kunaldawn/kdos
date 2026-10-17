@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# /etc/init.d/42_modemmanager starts ModemManager at boot, after polkitd and
-# before NetworkManager. The D-Bus activation file it installs is never the
-# path that starts it: a User=root activation hangs off the setuid launch helper.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --localstatedir=/var \
 	--buildtype=release \

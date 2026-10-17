@@ -1,0 +1,14 @@
+--- a/libc/misc/ccp_write_spm.S	2026-10-16 14:07:11.286546584 +0530
++++ b/libc/misc/ccp_write_spm.S	2026-10-16 14:07:11.308389249 +0530
+@@ -15,7 +15,11 @@
+     ;; r22    - __value
+     X_movw  r26, r24            ; load io addr into X
+     ldi     r24, CCP_SPM_gc     ; load SPM Instruction protection signature
++#ifdef __AVR_TINY__
++    out     _SFR_IO_ADDR(CCP), r24
++#else
+     sts     CCP, r24
++#endif
+     st      X, r22              ; write __value to __ioaddr
+     ret
+ ENDFUNC

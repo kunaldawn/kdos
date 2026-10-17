@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qtnetworkauth
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qtnetworkauth
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = 0c83c23077ab7824393fa15bb0015c3c5acaf5678544aa789e3fcbb4d41fa05b  qt6-qtnetworkauth-6.11.2.tar.xz
+sha256      = 17d47be1a724d21775daa873ac7a52c30fd5c4935ba377af48d9b37b39765ed8  qt6-qtnetworkauth-6.12.0.tar.xz
 description = Qt 6 Network Authorization — OAuth 1 and OAuth 2 clients
 homepage    = https://www.qt.io
+license     = GPL-3.0-only
 depends     = cmake ninja qt6-qtbase
 group       = qt6

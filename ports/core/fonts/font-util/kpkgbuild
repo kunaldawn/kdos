@@ -14,4 +14,6 @@ release     = 1
 source      = https://gitlab.freedesktop.org/xorg/font/util/-/archive/$name-$version/util-$name-$version.tar.gz
 sha256      = bf8505b74d0159cd11aeaad929d0e262ebb97eacc09eee7665300cf68f8705e5  font-util-1.4.2.tar.gz
 description = X.Org font utilities
+homepage    = https://gitlab.freedesktop.org/xorg/font/util
+license     = MIT AND BSD-2-Clause AND MIT-open-group AND Unicode-TOU
 depends     = util-macros

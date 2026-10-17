@@ -15,4 +15,5 @@ source      = https://cdn.openttd.org/openmsx-releases/$version/openmsx-$version
 sha256      = 5a4277a2e62d87f2952ea5020dc20fb2f6ffafdccf9913fbf35ad45ee30ec762  openttd-openmsx-0.4.2.zip
 description = OpenMSX: the free music base set for OpenTTD
 homepage    = https://github.com/OpenTTD/OpenMSX
+license     = GPL-2.0-only
 depends     = libarchive

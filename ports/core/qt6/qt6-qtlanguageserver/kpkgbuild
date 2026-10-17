@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qtlanguageserver
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qtlanguageserver
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = 38bc4272ecf4ca0eb1927227053e52be6b2e05733f46d03422306aace511fc5e  qt6-qtlanguageserver-6.11.2.tar.xz
+sha256      = 552119e37360c06c5fb0b54e91bbfdf8da5a80d2cb1441ef93e966eb3b7a426d  qt6-qtlanguageserver-6.12.0.tar.xz
 description = Qt 6 Language Server Protocol and JSON-RPC library, used by qmlls
 homepage    = https://www.qt.io/
+license     = LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 depends     = cmake ninja pkgconf qt6-qtbase
 group       = qt6

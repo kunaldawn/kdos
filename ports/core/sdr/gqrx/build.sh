@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Qt 6 is forced, so a Qt 5 in the chroot is never picked instead. Audio goes
-# out through libpulse, which pipewire-pulse answers. CUSTOM_AIRSPY_KERNELS
-# asks a patched gr-osmosdr for filter kernels the released one does not
-# have, and is off. CMP0167=NEW lets GNU Radio's exported config find Boost
-# through Boost's own package, which knows Boost.System is header-only.
-# CCACHE=OFF: upstream wraps the compiler in any ccache it finds on PATH.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_POLICY_DEFAULT_CMP0167=NEW \
@@ -31,9 +25,6 @@ DESTDIR=$PKG ninja -C build install
 
 install -Dm644 resources/gqrx.1 "$PKG/usr/share/man/man1/gqrx.1"
 
-# The Wayland app_id is Qt's reversed organisation domain plus the
-# application name, dk.gqrx.gqrx. The panel reads PNG only, so the SVG is
-# rasterised beside it.
 for s in 32 48 64 128 256; do
 	install -d "$PKG/usr/share/icons/hicolor/${s}x${s}/apps"
 	rsvg-convert -w $s -h $s resources/icons/gqrx.svg \

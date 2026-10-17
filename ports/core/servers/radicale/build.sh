@@ -9,21 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# THE CLOSURE LIVES UNDER ITS OWN PREFIX, /usr/lib/radicale. vobject is
-# also vendored into site-packages by khard, and two packages owning one path
-# is a conflict that stops the install; under the prefix nothing else can own
-# defusedxml, libpass or vobject. requests, packaging, dateutil, pytz and six
-# are ports, found in site-packages through depends.
-#
-# vobject IS PINNED BELOW ITS LATEST. 0.9.9 reads its version by importing
-# the package, which imports dateutil, and the isolated environment a
-# source-only download builds metadata in has no dateutil: the fetch fails.
-# 0.9.8 declares it statically, and Radicale asks for 0.9.6 or later.
-#
-# pika, which Radicale declares, is imported only by the RabbitMQ hook, a
-# plugin loaded by name from the configuration; there is no broker for it on
-# this system and it is not installed.
 _home=/usr/lib/radicale
 
 mkdir -p vendor
@@ -44,12 +29,6 @@ exec "$home/bin/radicale" "$@"
 KDOS_SH
 chmod 755 "$PKG/usr/bin/radicale"
 
-# THE SHIPPED CONFIGURATION SERVES THE LAN, WITH ACCOUNTS. Upstream's default
-# listens on localhost and denies everyone, which serves nobody; this listens
-# on every address and takes accounts from /etc/radicale/users, one
-# `name:hash` line each, a hash `openssl passwd -6` writes. owner_only rights
-# give each account its own calendars and address books. The port is still
-# closed to other machines until the firewall's rule for it is on.
 install -Dm644 config "$PKG/usr/share/doc/radicale/config.example"
 install -Dm644 rights "$PKG/usr/share/doc/radicale/rights.example"
 install -Dm644 /dev/stdin "$PKG/etc/radicale/config" <<'CFG'
@@ -69,11 +48,6 @@ filesystem_folder = /var/lib/radicale/collections
 CFG
 install -dm750 "$PKG/var/lib/radicale"
 
-# THE SERVER RUNS UNDER ksvc, AS ITS ACCOUNT, and it skips until an account
-# exists: with no line in the users file there is nobody it can let in, and
-# every machine carrying the port would otherwise hold 5232 open for nothing.
-# Radicale stays in the foreground and logs to stderr, which the supervisor
-# keeps.
 install -d "$PKG/etc/init.d"
 cat > "$PKG/etc/init.d/77_radicale.sh" <<'KDOS_SH'
 #!/bin/bash

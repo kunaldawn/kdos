@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://codeberg.org/gumbo-parser/gumbo-par
 sha256      = ba5d13b9b508ec693613b3b61518163aced38f8e885f7e28dc047348a4e61365  gumbo-parser-0.14.1.tar.gz
 description = HTML5 parsing library in C
 homepage    = https://codeberg.org/gumbo-parser/gumbo-parser
+license     = Apache-2.0
 depends     = meson ninja

@@ -9,6 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/regex-brace.patch"
 ./configure --prefix=/usr
 make
 make DESTDIR=$PKG install

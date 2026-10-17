@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# libkcolor for the CRT pass, libkwm for the window model, and the libkbase
-# substrate under both — static, linking nothing but musl, compiled here and fed
-# to meson through the environment. libkwm is what makes placement, tiling and
-# the edge search asserted against a fixture with no compositor running.
 LIBS="$PORT_SRC/../../libs"
 mkdir -p klibs
 (cd klibs && gcc $CFLAGS -D_GNU_SOURCE -I"$LIBS/libkbase" -I"$LIBS/libkcolor" \

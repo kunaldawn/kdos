@@ -11,7 +11,9 @@
 name        = perl-xml-simple
 version     = 2.25
 release     = 1
-source      = $name-$version.tar.gz::http://cpan.org/authors/id/G/GR/GRANTM/XML-Simple-$version.tar.gz
+source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/G/GR/GRANTM/XML-Simple-$version.tar.gz
 sha256      = 531fddaebea2416743eb5c4fdfab028f502123d9a220405a4100e68fc480dbf8  perl-xml-simple-2.25.tar.gz
-description = Perl extension that provides an easy API to read and write XML (especially config files)
+description = Perl module that reads and writes XML as nested data structures (config files especially)
+homepage    = https://metacpan.org/dist/XML-Simple
+license     = Artistic-1.0-Perl OR GPL-1.0-or-later
 depends     = perl perl-xml-parser

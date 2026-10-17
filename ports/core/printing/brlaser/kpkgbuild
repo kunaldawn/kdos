@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/Owl-Maintain/brlaser/arc
 sha256      = 16dae855aa7fff0eef0c05398fab37678243d7d610fa5f9af0d3a2cc9bf08cb0  brlaser-6.2.8.tar.gz
 description = CUPS driver for Brother monochrome laser printers
 homepage    = https://github.com/Owl-Maintain/brlaser
+license     = GPL-2.0-or-later
 depends     = cups cmake ninja

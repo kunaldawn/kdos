@@ -9,18 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Every optional part is built. The 3D molecule editor (compoundviewer) is
-# built only when Open Babel, AvogadroLibs and Eigen are all found, and then
-# pulls in KNewStuff and Qt's OpenGL module as required. The equation solver
-# is OCaml: FindLibfacile looks for facile.cmxa under `ocamlc -where`, and
-# ocamlopt -output-obj links the solver and the OCaml runtime into kalzium.
-# Each of those finds is optional upstream and would drop its feature
-# silently; CMAKE_REQUIRE_FIND_PACKAGE_* makes a missing one fail configure.
-# KF_SKIP_PO_PROCESSING leaves the translation catalogues out: bundled data
-# is English only.
+export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
+
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
@@ -34,20 +27,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# kdoctools_install() builds every translated handbook and manual page; only
-# the English ones are kept.
-for d in "$PKG"/usr/share/doc/HTML/*/ "$PKG"/usr/share/man/*/; do
-	case ${d%/} in
-	*/HTML/en | */man/man[0-9]*) ;;
-	*) rm -rf "$d" ;;
-	esac
-done
-
-# Both entries are replaced. The main one for StartupWMClass: KAboutData
-# makes the Wayland app_id org.kde.kalzium. The chemical/x-cml handler, which
-# opens a file in the molecule editor, because upstream's Exec writes
-# `-molecule %f`: QCommandLineParser reads that as -m with the value
-# "olecule", and the file is never opened.
 cat > "$PKG/usr/share/applications/org.kde.kalzium.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

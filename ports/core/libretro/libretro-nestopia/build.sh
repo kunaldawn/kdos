@@ -9,6 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-make -C libretro platform=unix
+make -C libretro platform=unix GIT_VERSION="\" $version\""
 install -Dm755 libretro/nestopia_libretro.so "$PKG/usr/lib/libretro/nestopia_libretro.so"
 install -Dm644 COPYING "$PKG/usr/share/licenses/$name/COPYING"

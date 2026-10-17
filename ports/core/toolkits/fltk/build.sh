@@ -9,27 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ONE HYBRID LIBRARY, WAYLAND FIRST. With both backends on, FLTK picks Wayland
-# at run time whenever a Wayland display is reachable and X11 otherwise;
-# FLTK_BACKEND=x11 in the environment forces Xwayland. A hybrid build draws
-# every X11 window through Cairo and lays out text with Pango, so the X11 half
-# needs cairo-xlib and pangoxft: with either missing, configure stops.
-#
-# THE X11 EXTENSIONS ARE MANDATORY IN A HYBRID BUILD. Xfixes, Xrender, Xft,
-# Xcursor and Xinerama each stop configure when absent, rather than switching
-# a feature off.
-#
-# libdecor is the system's: with FLTK_USE_SYSTEM_LIBDECOR the bundled copy is
-# not compiled, and window frames come from the plugins the libdecor port
-# installs. Its cursor-theme lookup reads the desktop's settings over D-Bus.
-#
-# OpenGL is EGL on Wayland and GLX on X11, and configure requires gl.pc, egl.pc,
-# glu.pc and wayland-egl.pc for the GL library to be built at all.
-#
-# Static archives are always built; FLTK_BUILD_SHARED_LIBS adds the shared
-# libraries a program links by default.
-cmake -B build -G Ninja \
+CFLAGS= CXXFLAGS= cmake -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_C_FLAGS_RELEASE="$CFLAGS -O3 -DNDEBUG" \
+	-DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -O3 -DNDEBUG" \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DFLTK_BUILD_SHARED_LIBS=ON \
@@ -59,10 +42,6 @@ cmake -B build -G Ninja \
 ninja -C build
 DESTDIR=$PKG ninja -C build install
 
-# UPSTREAM'S ENTRIES ARE REPLACED to add StartupWMClass and a distinct Name.
-# show(argc, argv) sets the window class, and so the Wayland app_id, from the
-# program's basename. The hicolor PNGs and the MIME XML the entries name are
-# upstream's, installed above.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/fluid.desktop" <<'EOF'
 [Desktop Entry]

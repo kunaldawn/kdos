@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Both libraries: libcerf (C, what LabPlot's fit models link) and libcerfcpp.
-# The man pages are written by pod2man, so perl is a build dependency.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \

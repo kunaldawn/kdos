@@ -9,22 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The 23.11.0 tag predates the C23 and missing-include fixes GCC 15 needs;
-# the recipe follows upstream's master at that version. LIME_SUITE_EXTVER
-# replaces the git hash the version string would otherwise ask git for.
-#
-# ENABLE_SIMD_FLAGS picks -march; its default is native, or SSE3 on x86
-# installed to /usr. Either lifts the library past the plain x86-64 baseline
-# every other port is built for, and the source carries no intrinsics that
-# need it, so none leaves the phase's own flags in charge.
-# LimeSuiteGUI needs wxWidgets and is off. Gateware and firmware images are
-# not fetched at configure (DOWNLOAD_IMAGES unset); LimeUtil --update asks
-# the network for them when it is run. Device access is granted by
-# /etc/udev/rules.d/70-kdos-sdr.rules, so UDEV_RULES_PATH is left unset and
-# upstream's rules are not installed. LIB_SUFFIX places LimeSuite's own
-# library; the SoapySDR module's directory comes from SoapySDR's CMake package,
-# which includes GNUInstallDirs, and that picks lib64 on a 64-bit system it
-# does not recognise unless CMAKE_INSTALL_LIBDIR names lib.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

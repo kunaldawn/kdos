@@ -16,4 +16,5 @@ source      = $name-$version.tar.xz::https://download.documentfoundation.org/lib
 sha256      = 4849ca14733cf4d5896a2f5bb6db87ffade9d1fbeab92e63153dc79630995a60  hunspell-en-26.8.0.3.tar.xz
 description = English spelling dictionaries, hyphenation patterns and thesaurus from the LibreOffice dictionaries release
 homepage    = https://git.libreoffice.org/dictionaries
+license     = LicenseRef-SCOWL AND LGPL-2.1-or-later AND BSD-3-Clause AND LicenseRef-WordNet
 depends     = mythes perl

@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/rhboot/$name/archive/ref
 sha256      = c9edd15f2eeeea63232f3e669a48e992c7be9aff57ee22672ac31f5eca1609a6  efivar-39.tar.gz
 description = Read and write EFI variables — the library efibootmgr needs
 homepage    = https://github.com/rhboot/efivar
+license     = LGPL-2.1-or-later
 depends     = pkgconf mandoc

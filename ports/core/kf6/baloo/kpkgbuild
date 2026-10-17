@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = a59d33a919bfa1d164c8f3a6f992c609edaf2131ac5f52ea4ecb77f6fbc53be1  baloo-6.30.0.tar.xz
 description = KDE Frameworks: file search and tagging library, without the indexer service
 homepage    = https://invent.kde.org/frameworks/baloo
+license     = LGPL-2.1-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-or-later AND BSD-3-Clause) AND bzip2-1.0.6 AND GPL-2.0-or-later AND (LGPL-2.1-or-later OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig kcoreaddons kcrash kdbusaddons kfilemetadata ki18n kidletime kio solid lmdb

@@ -36,8 +36,9 @@
 # repository with the name winning. Within one repository this takes the first
 # path where libkpkg refuses a name found at two; preflight's ports layout
 # check is what refuses that case. /ports/ maps to ports/ and /kdos/ to the repository root, as the
-# chroot binds them. A phase.env that sets no PORT_REPO gets kpkg.conf's
-# default, /ports/core. kbuild_phase_repos() in libkbuild reads and maps
+# chroot binds them. A phase.env that sets no PORT_REPO gets /ports/core, the
+# one entry of kpkg.conf's default that exists in the chroot (the /ports/src
+# entries are the shipped image's). kbuild_phase_repos() in libkbuild reads and maps
 # PORT_REPO by this same rule for kdosbuild; a change to one changes both.
 #
 # Exit status is 1 when anything is refused. Every refusal is printed before

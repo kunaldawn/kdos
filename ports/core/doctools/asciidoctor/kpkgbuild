@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/asciidoctor/asciidoctor/
 sha256      = 25c22b934bc0ae2448f2d73d4b2eba0c59e0521cf5e893fb0b0ad54a461bf066  asciidoctor-2.0.26.tar.gz
 description = AsciiDoc processor in Ruby — HTML, DocBook and manual pages from .adoc
 homepage    = https://asciidoctor.org/
+license     = MIT
 depends     = ruby

@@ -9,10 +9,11 @@
 # ---------------------------------
 
 name        = perf
-version     = 7.2.7
+version     = 7.2.11
 release     = 1
 source      = $name-$version.tar.xz::https://cdn.kernel.org/pub/linux/kernel/v${version:0:1}.x/linux-$version.tar.xz
-sha256      = 4ac34c47db2540ffb2713943f8d891ff1702e0ba6934525a493b7d1cad43145a  perf-7.2.7.tar.xz
+sha256      = fd0fc479f983a8c05313f13e9c36330fe6651cf725396748c40d5cd93fa1e6a4  perf-7.2.11.tar.xz
 description = The kernel's own profiler: sampling, counters, tracepoints and BPF
 homepage    = https://perf.wiki.kernel.org/
+license     = GPL-2.0-only
 depends     = elfutils zlib slang libtraceevent libbpf capstone numactl zstd xz openssl python3 clang llvm flex bison asciidoctor perl

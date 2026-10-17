@@ -9,29 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# musl has no strtol_l family and no locale data behind nl_langinfo(): two
-# patches map the first to the plain C calls and send wx through its own
-# locale tables for the second. The others keep matrix.h valid C++ under the
-# deprecation macro and define HAVE_LARGEFILE_SUPPORT, which the CMake probe
-# leaves unset.
 patch -p1 -i "$PORT_SRC/invalid-header-syntax.patch"
 patch -p1 -i "$PORT_SRC/largefile.patch"
 patch -p1 -i "$PORT_SRC/musl-locale-l.patch"
 patch -p1 -i "$PORT_SRC/no-langinfo-h.patch"
 
-# GTK 3 with both GDK backends: wx links libX11 because GDK has an X11 backend,
-# and picks Wayland or X11 at run time from the display GDK opened. The GL
-# canvas is EGL on both, which is the only wxGLCanvas that works on Wayland.
-#
-# Every optional backend wx probes for is named ON because a failed probe turns
-# the feature off with only a warning; the checks after the install turn that
-# warning into a failed build. The webview is WebKitGTK's 4.1 API (KiCad needs
-# it), the media control is GStreamer, wxSound is SDL (through sdl2-compat to
-# PipeWire; wx's other Unix sound backend is OSS, which has no device here),
-# wxSecretStore is libsecret, text-control spell checking is gspell, CHM help
-# is libmspack. The third-party image, XML, regex and zlib code wx bundles is
-# replaced by the system libraries. The tree already has a build/ directory,
-# holding wx's own build systems, so the CMake build directory is _build.
 cmake -S . -B _build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

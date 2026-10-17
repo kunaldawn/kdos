@@ -9,25 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The release line stopped at 1.0.4 and upstream publishes only rolling
-# builds, so the port is pinned to a master commit.
-#
-# Sources: Airspy, Airspy HF+, bladeRF, HackRF, LimeSDR, PlutoSDR (libiio
-# with libad9361), RFNM, Perseus, RTL-SDR, USRP (UHD) and SoapySDR by
-# library, plus the driverless network ones (rtl_tcp, SpyServer, SDR++
-# server, Hermes, RFspace, Spectran HTTP, a raw network stream), a file and a
-# sound card. SDRplay and the vendor-SDK radios need libraries that are not
-# ports. Audio goes in and out through RtAudio, which PipeWire answers. The
-# Open and Save buttons run zenity for their file chooser and do nothing
-# without it. The Discord presence module is off; the scheduler,
-# DAB, RyFi, VOR and weather-satellite modules are upstream's experiments and
-# stay off with it. libcorrect is the copy upstream carries; HAVE_SSE=OFF
-# skips its -march=native probe, which would build it for SSE 4.1.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
-	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DOPT_BACKEND_GLFW=ON \
 	-DOPT_BACKEND_ANDROID=OFF \
 	-DOPT_OVERRIDE_STD_FILESYSTEM=OFF \
@@ -89,8 +74,6 @@ cmake -B build -G Ninja \
 ninja -C build
 DESTDIR=$PKG ninja -C build install
 
-# Upstream's entry names its icon by absolute path, which the panel does not
-# resolve. The GLFW backend sets the Wayland app_id to sdrpp.
 install -Dm644 root/res/icons/sdrpp.png \
 	"$PKG/usr/share/icons/hicolor/512x512/apps/sdrpp.png"
 cat > "$PKG/usr/share/applications/sdrpp.desktop" <<'DESKTOP'

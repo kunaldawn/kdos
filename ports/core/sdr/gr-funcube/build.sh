@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# GNU Radio blocks for the FUNcube Dongle Pro and Pro+: the samples arrive
-# through gr-audio from the dongle's USB sound card, and the tuner is driven
-# over HID. The bundled find module only knows hidapi's libusb backend, and
-# the hidapi port builds the hidraw one alone, so the library is named
-# outright; the calls used are the backend-neutral hid_open, hid_read and
-# hid_write. The Doxygen reference is not built.
-#
-# CMP0167=NEW: find_package(Boost) reads Boost's own config package.
-# FindPythonLibs is handed the library and headers, because its version table
-# is older than this python.
 _pyinc=$(python3 -c 'import sysconfig; print(sysconfig.get_path("include"))')
 _pylib=$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR") + "/" + sysconfig.get_config_var("LDLIBRARY"))')
 

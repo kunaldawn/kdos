@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/t/truststore/trusts
 sha256      = 9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301  python3-truststore-0.10.4.tar.gz
 description = Verify TLS against the system certificate store through the ssl module
 homepage    = https://github.com/sethmlarson/truststore
+license     = MIT
 depends     = python3 python3-pip python3-flit-core

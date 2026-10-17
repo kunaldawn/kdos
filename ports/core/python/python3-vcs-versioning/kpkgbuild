@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/v/vcs-versioning/vc
 sha256      = 956a796e31f80fe714d219d6d1df15a6bf247d10f6d851bf4b98279d0a42da55  python3-vcs-versioning-2.5.0.tar.gz
 description = The VCS version machinery setuptools-scm is built on
 homepage    = https://pypi.org/project/vcs-versioning/
+license     = MIT
 depends     = python3 python3-setuptools python3-pip python3-packaging

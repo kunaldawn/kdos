@@ -1,0 +1,47 @@
+--- a/include/stdlib.h
++++ b/include/stdlib.h
+@@ -39,6 +39,7 @@
+ /* FIXME clang */
+ #if (defined(_XOPEN_SOURCE) || defined(_GNU_SOURCE) || defined(_BSD_SOURCE)) && !defined(__clang__)
+ #undef realpath
++char *realpath(const char *, char *);
+ __fortify_warning_if(__p == NULL, "'realpath' called with path set to `NULL`; did you invert the arguments?")
+ _FORTIFY_FN(realpath) char *realpath(const char *__p, char *__r)
+ {
+--- a/include/string.h
++++ b/include/string.h
+@@ -163,6 +163,7 @@
+ 
+ #ifdef _GNU_SOURCE
+ #undef mempcpy
++void *mempcpy(void *, const void *, size_t);
+ __fortify_access(write_only, 1, 3)
+ __fortify_access(read_only, 2, 3)
+ _FORTIFY_FN(mempcpy) void *mempcpy(void * _FORTIFY_POS0 __d,
+@@ -180,6 +181,8 @@
+ #if defined(_GNU_SOURCE) || defined(_BSD_SOURCE)
+ #undef strlcat
+ #undef strlcpy
++size_t strlcat(char *, const char *, size_t);
++size_t strlcpy(char *, const char *, size_t);
+ __fortify_access(read_write, 1)
+ __fortify_access(read_only, 2)
+ _FORTIFY_FN(strlcat) size_t strlcat(char * _FORTIFY_POS0 __d,
+--- a/include/unistd.h
++++ b/include/unistd.h
+@@ -64,6 +64,7 @@
+ 
+ #if defined(_GNU_SOURCE) || defined(_BSD_SOURCE)
+ #undef getdomainname
++int getdomainname(char *, size_t);
+ __fortify_access(write_only, 1, 2)
+ _FORTIFY_FN(getdomainname) int getdomainname(char * _FORTIFY_POS0 __s, size_t __l)
+ {
+@@ -170,6 +171,7 @@
+ 
+ #if defined(_XOPEN_SOURCE) || defined(_GNU_SOURCE) || defined(_BSD_SOURCE)
+ #undef swab
++void swab(const void *, void *, ssize_t);
+ 
+ _FORTIFY_FN(swab) void swab(const void * _FORTIFY_POS0 __os,
+                                  void * _FORTIFY_POS0 __od, ssize_t __n)

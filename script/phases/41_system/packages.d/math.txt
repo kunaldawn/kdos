@@ -60,3 +60,5 @@ units
 
 nlopt
 ceres-solver
+libpoly
+cudd

@@ -15,3 +15,4 @@ source      = $name-$version.tar.xz::https://github.com/mypaint/mypaint-brushes/
 sha256      = 7984a74edef94571d872d0629b224abaa956a36f632f5c5516b33d22e49eb566  mypaint-brushes-2.0.2.tar.xz
 description = MyPaint brush collection, version 2 data set
 homepage    = https://github.com/mypaint/mypaint-brushes
+license     = CC0-1.0

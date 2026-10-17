@@ -751,7 +751,8 @@ Resolution runs in four steps:
    counted once. A match in row 1 or 2 ends the search; the rows after it are consulted only
    without one. A match in rows 1, 2 or 4 is a *default*. The MIME cache in row 5 is the file
    `genlaunchers` writes, so a boxed application is found by exactly the same lookup as a native
-   one.
+   one. The search is libkxdg's `kxdg_handlers()`, the same call the Settings window's Apps page
+   shows, so the handler that page names is the one that opens.
 3. **Ask, or open.** With `--choose`, or with more than one candidate and no default, the Open With
    chooser (`kdos-openwith`, a `kdos-shell` surface) replaces this process, given the original
    arguments. Otherwise the first candidate opens. Where the chooser is not installed, the first
@@ -795,8 +796,9 @@ login have no session for an emulator to open in, and you are already at a termi
 A `Terminal=true` entry started through GLib's GIO, rather than through this program, is wrapped by
 GLib itself, with the first of `xdg-terminal-exec`, `gnome-terminal`, `mate-terminal`,
 `xfce4-terminal` and further names that it finds on the `PATH`. That is the path
-`xdg-desktop-portal` takes when a boxed application opens a link. None of the other names exists on
-KDOS, so `/usr/local/bin/xdg-terminal-exec`, a shell script shipped under `fs/`, answers it: it
+`xdg-desktop-portal` takes when a boxed application opens a link. `konsole`, further down that list,
+is installed too, so `/usr/local/bin/xdg-terminal-exec`, a shell script shipped under `fs/`, must
+stay the first name GLib finds; it answers with the desktop's terminal: it
 drops a leading `-e` or `--`, because some callers pass one and a terminal given `-e` twice tries to
 run it, and runs `foot -e` with the rest. It must name the same terminal as `kb_terminal()`, or a
 handler resolved correctly is wrapped in a terminal that cannot open and appears to be the wrong

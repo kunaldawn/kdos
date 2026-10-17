@@ -24,6 +24,12 @@
 
 libical
 
+# A CALENDAR AND AN ADDRESS BOOK OVER A vdir — one directory of .ics or .vcf
+# files, which is greppable, diffable and backed up by copying it, and which
+# `kdos-cal` reads without asking khal anything at draw time.
+khal
+khard
+
 # One bash script over a git repo of markdown: the notes outlive nb itself and
 # sync with anything that syncs a directory.
 nb

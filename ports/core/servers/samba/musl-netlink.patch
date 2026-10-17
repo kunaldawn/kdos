@@ -1,0 +1,19 @@
+--- a/source3/wscript
++++ b/source3/wscript
+@@ -1036,14 +1036,14 @@
+             conf.DEFINE('VALGRIND', '1')
+ 
+     if conf.CHECK_CODE('''
+-#include <bits/sockaddr.h>
++#include <sys/socket.h>
+ #include <linux/netlink.h>
+ ''',
+                 'HAVE_LINUX_NETLINK_H',
+                 msg="Checking whether Linux netlink is available"):
+ 
+         conf.CHECK_CODE('''
+-#include <bits/sockaddr.h>
++#include <sys/socket.h>
+ #include <linux/netlink.h>
+ #include <linux/rtnetlink.h>
+ ''',

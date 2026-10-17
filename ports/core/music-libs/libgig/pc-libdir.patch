@@ -1,0 +1,20 @@
+--- a/akai.pc.in
++++ b/akai.pc.in
+@@ -1,6 +1,6 @@
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+-libdir=@libdir@/libgig
++libdir=@libdir@
+ includedir=@includedir@/libgig
+ 
+ Name: akai
+--- a/gig.pc.in
++++ b/gig.pc.in
+@@ -1,6 +1,6 @@
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+-libdir=@libdir@/libgig
++libdir=@libdir@
+ includedir=@includedir@/libgig
+ 
+ Name: gig

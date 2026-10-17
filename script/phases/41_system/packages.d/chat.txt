@@ -51,3 +51,7 @@ weechat
 
 olm
 mtxclient
+
+# Nothing else here reaches the Fediverse: iamb is Matrix and profanity is
+# XMPP. `toot tui` is the screen and `toot post` is the command, in one port.
+toot

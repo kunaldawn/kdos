@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/chennes/med/archive/refs
 sha256      = 8701f142087b87e8b74958fd0432498eadf28011b20ad05cf56bf911be081888  libmed-5.0.0.tar.gz
 description = MED-file, the Salome mesh and field format library over HDF5 (FreeCAD FEM meshes)
 homepage    = https://github.com/chennes/med
+license     = LGPL-3.0-or-later
 depends     = cmake ninja hdf5 zlib

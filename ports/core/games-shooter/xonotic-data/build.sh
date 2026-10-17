@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The release archive also carries prebuilt engines for Linux, Windows and
-# macOS, and the source the xonotic port builds from. Only the data
-# packages, the release's player-ID key and the sample server configuration
-# are taken, into the base directory the engine is compiled with.
 unzip -q "$name-$version.zip" \
 	'Xonotic/data/*' Xonotic/key_0.d0pk Xonotic/server/server.cfg \
 	Xonotic/COPYING Xonotic/GPL-2 Xonotic/GPL-3

@@ -31,9 +31,7 @@ case "$1" in
             exit 0
         fi
         # polkitd drops to this account after it binds; without it the daemon
-        # exits at once and `supervise` would respawn it for ever. Read
-        # /etc/passwd directly: there is no getent on musl, and a missing one
-        # returns 127, which this test would read as a missing account.
+        # exits at once and `supervise` would respawn it for ever.
         if ! grep -q '^polkitd:' /etc/passwd 2>/dev/null; then
             echo "[SKIP] $NAME: no polkitd account (the port's postinstall makes it)"
             exit 0

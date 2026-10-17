@@ -15,4 +15,5 @@ source      = $name-$version.tar.bz2::https://gitlab.com/inkscape/lib2geom/-/arc
 sha256      = 717a87ce7f2192271a789c1273ae7b432856c522647b9fe33bb4dd662942b3ea  lib2geom-1.4.tar.bz2
 description = 2D geometry library for C++, the path and curve engine of Inkscape
 homepage    = https://gitlab.com/inkscape/lib2geom
+license     = LGPL-2.1-only OR MPL-1.1
 depends     = cmake ninja pkgconf boost double-conversion gsl glib cairo

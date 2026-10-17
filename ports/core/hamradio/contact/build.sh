@@ -9,12 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# The Meshtastic chat client that needs no browser and no toolkit. It talks
-# to the radio through python3-meshtastic's serial interface, so the dialout
-# group is what reaches the device; with no argument it takes the first
-# serial port that answers.
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+pip3 install --ignore-installed --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/contact.desktop" <<'DESKTOP'

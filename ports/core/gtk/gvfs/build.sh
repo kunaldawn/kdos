@@ -11,14 +11,6 @@
 
 export XML_CATALOG_FILES=/etc/xml/catalog
 
-# gvfsd and every backend are session D-Bus services, activated on first use
-# by a GIO client; nothing starts them at login. The goa, google and onedrive
-# backends need online-account services that do not exist here, nfs needs
-# libnfs, and gcr is not ported, so a WebDAV server's untrusted certificate is
-# refused rather than shown for approval. The wsdd backend spawns a `wsdd`
-# program that is not a port, so Windows-network discovery is off and
-# network:// lists the hosts Avahi finds. With logind off the udisks2 monitor
-# shows every drive to every session.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--libexecdir=lib/gvfs \

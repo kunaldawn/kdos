@@ -8,18 +8,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# A PARALLEL INSTALL, NOT A REPLACEMENT. The lua port is 5.5 and stays the
-# system lua; Prosody 13 supports 5.2 through 5.4 and will not load on 5.5, so
-# this exists for it and for anything else in the same position.
-#
-# EVERY INSTALLED PATH IS VERSIONED, which is the whole of what keeps the two
-# apart: the interpreter is `lua5.4`, the headers live in include/lua5.4, the
-# library is liblua5.4, and the pkg-config file is lua5.4.pc. Nothing here
-# writes a path that the lua port also writes, so kpkg reports no conflict
-# and neither package can shadow the other.
 patch -p1 -i $PORT_SRC/lua-root-usr.patch
-# linux-readline links readline into lua5.4 only; `linux` is the
-# no-readline build. liblua5.4.so is built from liblua.a and does not link it.
 make CC=cc MYCFLAGS="$CFLAGS -DLUA_COMPAT_5_3 -fPIC" MYLDFLAGS="$LDFLAGS" linux-readline
 
 cd src
@@ -43,9 +32,6 @@ install -Dm644 src/liblua.a $PKG/usr/lib/liblua${_majorver}.a
 
 install -d $PKG/usr/lib/lua/$_majorver $PKG/usr/share/lua/$_majorver
 
-# TWO HEREDOCS, AND THE SPLIT IS THE POINT — the same one the lua port makes.
-# Only V and R are ours to expand; every ${prefix}, ${libdir} and ${V} below is
-# a pkg-config VARIABLE and must reach the file literally.
 install -d $PKG/usr/lib/pkgconfig
 cat > $PKG/usr/lib/pkgconfig/lua$_majorver.pc << EOF
 V=$_majorver

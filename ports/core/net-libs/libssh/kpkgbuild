@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://www.libssh.org/files/${version%.*}/
 sha256      = 49560f677d96e3706a904ac2de1116e25f3680937d51e5c92198fcba4a1c1e9f  libssh-0.12.2.tar.xz
 description = SSH protocol library (client and server)
 homepage    = https://www.libssh.org/
+license     = LGPL-2.1-or-later
 depends     = cmake ninja pkgconf openssl zlib krb5 libfido2

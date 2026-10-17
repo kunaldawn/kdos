@@ -1,0 +1,11 @@
+--- a/avidemux_plugins/ADM_videoFilters6/fluxSmooth/ADM_vidFluxAsm.cpp
++++ b/avidemux_plugins/ADM_videoFilters6/fluxSmooth/ADM_vidFluxAsm.cpp
+@@ -27,7 +27,7 @@
+ #include "ADM_vidFlux.h"
+ 
+ static int16_t attribute_used  FUNNY_MANGLE_ARRAY(scaletab, 16);
+-static uint64_t attribute_used FUNNY_MANGLE_ARRAY(scaletab_MMX, 65535);
++static uint64_t attribute_used FUNNY_MANGLE_ARRAY(scaletab_MMX, 65536);
+ static bool tableInited=false;
+ /**
+     \fn initScaleTab

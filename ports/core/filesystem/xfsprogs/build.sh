@@ -10,16 +10,11 @@
 # ---------------------------------
 
 export DEBUG=-DNDEBUG OPTIMIZER=-O2
-# The unit, udev-rule and crontab directories stay off: every file they
-# install exists only to start the xfs_scrub and xfs_healer systemd services,
-# and the udev rule would otherwise land wherever eudev's udev.pc points.
-# /etc/init.d/53_xfs_healer.sh starts the healer, one per mounted XFS, from
-# /usr/libexec/xfsprogs where install-healer puts it.
-# ac_cv_search_dm_task_create=no keeps xfs_io's dm-log-writes replay, a test
-# aid, from linking libdevmapper whenever lvm2 happens to be installed.
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
+	--enable-lib64=no \
+	--localstatedir=/var \
 	--sbindir=/usr/sbin \
 	--enable-gettext=yes \
 	--enable-editline=yes \
@@ -37,6 +32,4 @@ make
 
 make -j1 DESTDIR=$PKG install install-dev
 
-# xfs_scrub_all drives the per-mount scrub through systemd over D-Bus and
-# imports python-dbus at start; xfs_scrub itself runs directly.
 rm -f $PKG/usr/sbin/xfs_scrub_all $PKG/usr/share/man/man8/xfs_scrub_all.8

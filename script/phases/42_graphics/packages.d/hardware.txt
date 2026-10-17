@@ -30,3 +30,11 @@ ddcutil
 
 # The CPU topology aircrack-ng's cracker spreads its threads over.
 hwloc
+
+# Here and not in 41_system because its audio input reads portaudio, which
+# links pipewire's libjack.
+lirc
+
+# Which GPU is discrete, for a launcher's "run on the dedicated GPU". Here and
+# not in 41_system because it probes amdgpu, nouveau and xe through libdrm.
+switcheroo-control

@@ -11,36 +11,12 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
-# The Makefile drives cargo itself and passes no offline flag, so the switch
-# has to reach it through the environment or the build reaches for the network
-# the chroot does not have.
 export CARGO_NET_OFFLINE=true
 
-# -lintl, WHICH THE MAKEFILE WILL NOT ADD HERE. It appends `-liconv -lintl`
-# only when `uname -s` is not Linux, taking Linux to mean glibc — where
-# gettext is in libc. This is musl, where it is not, so the one case that
-# needs the flag is the case the test excludes and the link fails on
-# libintl_gettext. It goes in LDFLAGS because that is the only variable of the
-# three that survives: NEWSBOAT_LIBS and PODBOAT_LIBS are plain assignments the
-# Makefile clobbers. LDFLAGS is last on the link line, after the objects, which
-# is where a library reference has to be.
-#
-# NOT -liconv: musl carries iconv in libc and there is no library of that name.
 export LDFLAGS="$LDFLAGS -lintl"
 
-# The Makefile compiles with -Werror, and json-c's linkhash.h defines its
-# helpers `static` with _LH_INLINE, which is `inline` only for a C compiler: in
-# C++ every helper a file leaves unused is a -Wunused-function error. The
-# Makefile appends CXXFLAGS after its own warnings, so this demotes that one.
 export CXXFLAGS="$CXXFLAGS -Wno-error=unused-function -g0"
 
-# THE GOALS ARE NAMED, NOT `make` AND `make install`. The default target's
-# `doc` builds the two manual pages and the HTML manual and FAQ, and
-# `install-docs` installs that HTML, the changelog and contrib/ beside the
-# pages. The pages are their own targets — asciidoctor with upstream's
-# doc/man.rb converter — and are installed by hand, so no HTML is built.
-# install-completions copies the finished zsh and fish files from
-# contrib/completions; it builds nothing.
 make prefix=/usr newsboat podboat mo-files doc/newsboat.1 doc/podboat.1
 make prefix=/usr DESTDIR=$PKG install-newsboat install-podboat install-mo \
 	install-completions

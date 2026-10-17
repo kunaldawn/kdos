@@ -373,8 +373,8 @@ done
 [ "$shared" = 0 ] && note "shared-tarball ports" "none declared"
 
 echo "==> every phase list resolves to a dependency order"
-# Each phase resolves with its own phase.env's PORT_REPO (kpkg.conf's
-# /ports/core when it sets none), and kpkgdepends passes an unknown name
+# Each phase resolves with its own phase.env's PORT_REPO (/ports/core, the
+# one entry of kpkg.conf's default the chroot has, when it sets none), and kpkgdepends passes an unknown name
 # through as if it were a port. A dependency outside the phase's repos
 # therefore resolves here and fails the build with no port found. A phase
 # with packages.d/ is one list, its files read in sorted order.
@@ -471,10 +471,38 @@ for f in fs/etc/init.d/*.sh; do
 done
 note "init.d services" "$daemons checked"
 
+echo
+echo "==> every init.d script is executable"
+# rcS skips a script that is not executable (`[ -x "$_script" ] || continue`)
+# and says nothing, and init gets EACCES on one an inittab entry names
+# directly (killpower, killprocs). 000_file_system.sh replays the execute bit
+# from the work tree, and git's one recorded bit is what a checkout gives the
+# work tree, so a file committed 100644 is a service that never runs.
+# service_helper is sourced, never executed.
+noexec=0
+for f in fs/etc/init.d/*; do
+    [ -f "$f" ] || continue
+    [ "$(basename "$f")" = service_helper ] && continue
+    if [ ! -x "$f" ]; then
+        bad "$(basename "$f")" "is not executable; rcS and init will not run it"
+        noexec=$((noexec + 1))
+    fi
+done
+# The work tree's bit is this clone's; the index's is what the next commit,
+# and so every other clone, gets. Outside a checkout there is no index to read.
+while read -r mode _ _ path; do
+    [ "$(basename "$path")" = service_helper ] && continue
+    if [ "$mode" != 100755 ]; then
+        bad "$(basename "$path")" "is recorded in git as $mode, not 100755; a clone will not run it"
+        noexec=$((noexec + 1))
+    fi
+done < <(git ls-files -s -- fs/etc/init.d 2>/dev/null)
+[ "$noexec" = 0 ] && note "init.d scripts" "all executable"
+
 # THE FIRST SOURCE IS THE RECIPE'S FIRST, NOT THE DIRECTORY'S ALPHABETICAL
 # FIRST — kpkg strips a component from that one and no other. libime ships a
 # dictionary tarball that sorts before its own, so a glob picks the wrong
-# archive and reports a shape the build never sees. Mirrors source_file() in
+# archive and reports a shape the build never sees. Mirrors kp_source_file() in
 # build.c, the same way the sha256 check above does.
 first_source_file() {
     unset name version source
@@ -718,6 +746,30 @@ for d in "${PORTS_ALL[@]}"; do
 done
 note "go strip flags" "$go_checked go build/install commands checked"
 
+echo
+echo "==> every pip install into \$PKG ignores what the build root has installed"
+# pip uninstalls from the build root any distribution it finds there before
+# writing the new copy into --root, so a rebuilt port deletes its own files,
+# and any file another package also claims, from the live tree. A command is
+# read whole, as the go check reads it.
+pip_checked=0
+for d in "${PORTS_ALL[@]}"; do
+    [ -f "$d/build.sh" ] || continue
+    grep -qE '(pip3?|-m pip)[[:space:]]+install' "$d/build.sh" || continue
+    while IFS= read -r line; do
+        pip_checked=$((pip_checked + 1))
+        case "$line" in *--ignore-installed*) continue ;; esac
+        bad "$(basename "$d")" "pip install --root without --ignore-installed: ${line:0:100}"
+    done < <(awk '
+        { if (acc != "") { line = acc " " $0 } else { line = $0 } }
+        /\\$/ { sub(/\\$/, "", line); acc = line; next }
+        { acc = "" }
+        line ~ /^[[:space:]]*#/ { next }
+        line ~ /(pip3?|-m pip)[[:space:]]+install/ && line ~ /--root/ { print line }
+    ' "$d/build.sh")
+done
+note "pip ignore-installed" "$pip_checked pip installs into a package root checked"
+
 #
 # WHAT AN ARCHIVE IS, READ OUT OF THE FILE RATHER THAN ASKED OF `file`.
 #
@@ -767,7 +819,7 @@ for d in "${PORTS_ALL[@]}"; do
     idx=0
     resolved=""
     for s in $source; do
-        # source_file() in build.c, and this must stay its mirror: an
+        # kp_source_file() in build.c, and this must stay its mirror: an
         # explicit `<name>::<url>` is taken LITERALLY and is not renamed, a
         # non-URL is its own name, a URL is its basename, and only the FIRST
         # source is renamed to <name>-<version> when it carries an archive
@@ -1188,7 +1240,7 @@ echo
 echo "==> the rootfs carries no script whose interpreter is gone"
 # The question is whether the interpreter EXISTS on the target, not whether it
 # is a shell: a shipped file whose `#!` names something the tree does not build
-# is a file that cannot run. bash and toybox's sh are always there; anything
+# is a file that cannot run. bash, and sh as its link, are always there; anything
 # else has to be a binary some port installs, and is listed here with the port
 # that provides it so the list cannot drift into an unchecked allowlist.
 #
@@ -1214,7 +1266,8 @@ note "rootfs interpreters" "every #! is provided by the tree"
 # package: a port deleted from `ports/` leaves its package installed, and the
 # ISO ships it — a whole desktop's worth of packages, hundreds of megabytes,
 # when a desktop's ports go at once. `70_image/040_orphans.sh` sweeps them at
-# image time; this says so BEFORE a two-hour build does.
+# image time, with every package whose port ports/unbuilt lists; this says so
+# BEFORE a two-hour build does.
 #
 # Skipped, not failed, when there is no build tree: preflight's whole point is
 # that it needs nothing but the repo.
@@ -1224,11 +1277,13 @@ if [ ! -d build/fs/var/lib/kpkg/db ]; then
     note "orphaned packages" "skipped — no build tree"
 else
     orphans=""
+    _unb=$(grep -v '^#' ports/unbuilt 2>/dev/null)
     for pkg in $(ls build/fs/var/lib/kpkg/db); do
         has_port "$pkg" || orphans="$orphans $pkg"
+        printf '%s\n' $_unb | grep -qxF "$pkg" && orphans="$orphans $pkg(unbuilt)"
     done
     if [ -n "$orphans" ]; then
-        bad "orphaned packages" "installed with no recipe:$orphans"
+        bad "orphaned packages" "installed with no recipe, or listed in ports/unbuilt:$orphans"
     else
         note "orphaned packages" "none"
     fi
@@ -1850,8 +1905,8 @@ echo "==> every program fs/etc/inittab names is on the image"
 # `kdos-getty tty1 /usr/local/sbin/kdos-login tty1` and kdos-getty execs that
 # second path, so a program missing THERE is the exact failure this exists to
 # catch. The field is everything after the third colon, which is why the id and
-# the runlevels are stripped by position rather than by pattern — `::shutdown:`
-# has an empty id and an empty runlevel list and still names a program.
+# the runlevels are stripped by position rather than by pattern —
+# `ca::ctrlaltdel:` has an empty runlevel list and still names a program.
 #
 # `-L` AS WELL AS `-e`: an installed program may be an absolute symlink into a
 # multi-call binary, which dangles in a staged rootfs and which `-e` alone
@@ -2818,6 +2873,151 @@ else
     _nj=1
 fi
 [ "$_nj" = 0 ] && note "ninja jobs" "-jN only when absent; -t, --version and a given -j pass through"
+
+echo
+echo "==> meson setup never downloads, and only setup is changed"
+# script/bin/meson sits beside the ninja wrapper on the chroot's PATH. It must
+# add --wrap-mode=nodownload to an explicit or implicit setup that chooses no
+# wrap mode, and hand every other call on exactly: an option added to
+# `compile` or `install` is refused by meson and fails every meson port.
+_ms=0
+if [ -x script/bin/meson ]; then
+    printf '#!/bin/bash\nprintf "%%s\\n" "$@"\n' > "$SP/meson-real"
+    chmod +x "$SP/meson-real"
+    _mscase() {  # expected-output, then the arguments
+        local want=$1; shift
+        local got
+        got=$(KDOS_MESON="$SP/meson-real" script/bin/meson "$@" | paste -sd'|')
+        if [ "$got" != "$want" ]; then
+            bad "meson wrapper" "meson $* gave '$got', want '$want'"
+            _ms=$((_ms + 1))
+        fi
+    }
+    _mscase "setup|--wrap-mode=nodownload|build|--prefix=/usr" setup build --prefix=/usr
+    _mscase "--wrap-mode=nodownload|build" build
+    _mscase "--wrap-mode=nodownload|--prefix=/usr|build" --prefix=/usr build
+    _mscase "setup|build|--wrap-mode=nofallback" setup build --wrap-mode=nofallback
+    _mscase "setup|-D|wrap_mode=default|build" setup -D wrap_mode=default build
+    _mscase "setup|-Dwrap_mode=forcefallback|b" setup -Dwrap_mode=forcefallback b
+    _mscase "compile|-C|build" compile -C build
+    _mscase "install|-C|build|--destdir|a b" install -C build --destdir "a b"
+    _mscase "configure|build|-Dx=y" configure build -Dx=y
+    _mscase "--version" --version
+    _mscase "subprojects|download" subprojects download
+    grep -qE '^real=\$\{KDOS_MESON:-/usr/bin/meson\}' script/bin/meson ||
+        { bad "meson wrapper" "script/bin/meson must run /usr/bin/meson by absolute path"; _ms=$((_ms + 1)); }
+else
+    bad "meson wrapper" "script/bin/meson is missing"
+    _ms=1
+fi
+[ "$_ms" = 0 ] && note "meson setup" "--wrap-mode=nodownload on every setup that names no wrap mode; other calls pass through"
+
+echo
+echo "==> every recipe carries its metadata, and the catalogue repeats its description"
+# testing/recipemeta.py reads every kpkgbuild the way kpkg info, the version
+# checker and kdos cve read it: the first line of a key, taken literally. A
+# missing description, homepage or license is a recipe those tools print
+# nothing for; a license that is not an SPDX expression is one no tool can
+# read; a first source that spells the version literally fetches the old
+# release after a bump; a description that differs from its row in
+# ports-catalogue.md is a book that says one thing while kpkg info says
+# another. One line per rule, with a count and the first names; run the script
+# alone for every finding.
+if python3 testing/recipemeta.py --brief > "$SP/rmeta" 2>&1 || [ -s "$SP/rmeta" ]; then
+    while IFS=$'\t' read -r _st _rule _msg; do
+        case "$_st" in
+            FAIL) bad "recipe $_rule" "$_msg" ;;
+            ok)   note "recipe $_rule" "clean" ;;
+            *)    bad "recipemeta" "$_st $_rule $_msg" ;;
+        esac
+    done < "$SP/rmeta"
+else
+    bad "recipemeta" "testing/recipemeta.py printed nothing"
+fi
+
+echo
+echo "==> a feature switched off although its library is a port"
+# A REPORT, NOT A GATE. testing/optdeps.py maps every --without-X, --disable-X,
+# -D…=OFF and -D…=disabled switch to a port through its alias table, and a
+# switch whose X is a port is either a choice or a feature lost to the belief
+# that X is not a port. The switch cannot say which, so the count is printed
+# and the script lists them; a gate would fail on every deliberate one.
+_od=$(python3 testing/optdeps.py --count 2>/dev/null)
+case "$_od" in
+    ''|*[!0-9]*) bad "optdeps" "testing/optdeps.py did not run" ;;
+    *) note "optional features off" "$_od switches name a port: python3 testing/optdeps.py" ;;
+esac
+
+echo
+echo "==> Start lists only what a person starts"
+# A visible entry for a server, a session picker, a launch pad, a tray helper
+# or a diagnostic is a Start row that opens nothing a person wanted; the rule
+# is writing-ports.md's "Desktop entries belong to the port". The words those
+# entries carry are matched in Name= and Exec=, and a match is refused unless
+# testing/visible-entries.allow names the file: the reviewed entries that read
+# that way and are still what a person opens. An allowlist line whose entry is
+# no longer visible, or no longer matches, is refused too, so the list cannot
+# keep a name nothing needs.
+if [ ! -d build/fs/usr/share/applications ]; then
+    note "start entries" "skipped — no build tree"
+else
+    _ve=0
+    grep -v '^[[:blank:]]*\(#\|$\)' testing/visible-entries.allow 2>/dev/null |
+        sort -u > "$SP/veallow"
+    : > "$SP/vematch"
+    for _f in build/fs/usr/share/applications/*.desktop; do
+        [ -e "$_f" ] || continue
+        grep -qi '^NoDisplay=true' "$_f" && continue
+        _n=$(sed -n 's/^Name=//p' "$_f" | head -1)
+        _x=$(sed -n 's/^Exec=//p' "$_f" | head -1)
+        printf '%s %s\n' "$_n" "$_x" |
+            grep -qiE '(^|[^[:alpha:]])(server|daemon|session|launch ?pad|tray|latency|diagnos)' ||
+            continue
+        _b=${_f##*/}
+        echo "$_b" >> "$SP/vematch"
+        if ! grep -qxF "$_b" "$SP/veallow"; then
+            bad "start entries" "$_b ($_n) reads as a server, session, launch pad, tray helper or diagnostic: NoDisplay=true, or name it in testing/visible-entries.allow"
+            _ve=$((_ve + 1))
+        fi
+    done
+    while IFS= read -r _b; do
+        grep -qxF "$_b" "$SP/vematch" && continue
+        bad "start entries" "testing/visible-entries.allow names $_b, which is not a visible matching entry"
+        _ve=$((_ve + 1))
+    done < "$SP/veallow"
+    [ "$_ve" = 0 ] && note "start entries" "$(wc -l < "$SP/vematch") match, every one allowed"
+fi
+
+echo
+echo "==> every kdos-* command has a manual page"
+# `man kdos-<command>` is how a command on this image explains itself, and
+# kdos-doc generates one page per command from the book. Read off the built
+# tree: the commands are what the ports installed, under every directory on
+# the session's PATH.
+if [ ! -d build/fs/usr/bin ]; then
+    note "kdos manual pages" "skipped — no build tree"
+else
+    _mp=0; _mpn=""
+    _mc=0
+    for _c in build/fs/usr/bin/kdos-* build/fs/usr/sbin/kdos-* \
+              build/fs/usr/local/bin/kdos-*; do
+        [ -e "$_c" ] || [ -L "$_c" ] || continue
+        _mc=$((_mc + 1))
+        _b=${_c##*/}
+        _hit=
+        for _m in build/fs/usr/share/man/man[1-8]/"$_b".[1-8]*; do
+            [ -e "$_m" ] && { _hit=1; break; }
+        done
+        [ -n "$_hit" ] && continue
+        _mp=$((_mp + 1))
+        [ "$_mp" -le 8 ] && _mpn="$_mpn $_b"
+    done
+    if [ "$_mp" = 0 ]; then
+        note "kdos manual pages" "$_mc commands, every one with a page"
+    else
+        bad "kdos manual pages" "$_mp of $_mc kdos-* commands have no manual page:$_mpn$([ "$_mp" -gt 8 ] && echo ' …')"
+    fi
+fi
 
 echo
 if [ "$fail" = 0 ]; then

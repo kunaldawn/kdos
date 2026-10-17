@@ -9,18 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# LLVM_HOST_TRIPLE and LLVM_DEFAULT_TARGET_TRIPLE are gcc's own triple. Left
-# to LLVM, the guess on this system is x86_64-unknown-linux-gnu: clang and
-# libclang (so every bindgen) then find no gcc installation and no C++ headers,
-# and would link against glibc's loader.
-# LLVM_ENABLE_LIBEDIT=OFF: libedit is built in a later phase than this one,
-# and the automatic probe would make clang-repl's line editing, and the
-# HAVE_LIBEDIT that LLVMConfig exports, depend on build order.
-# LLVM_BINUTILS_INCDIR is what builds LLVMgold.so; it needs binutils'
-# plugin-api.h and is skipped without a word when the header is missing.
-# LLVM_TOOL_LLVM_IR2VEC_BUILD=OFF: llvm-ir2vec links two helper libraries
-# declared BUILDTREE_ONLY, which BUILD_SHARED_LIBS turns into shared objects
-# that are never installed, so the installed binary cannot start.
 cmake -S llvm -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_BUILD_TYPE=Release \
@@ -47,6 +35,7 @@ cmake -S llvm -B build -G Ninja \
 	-D LLVM_USE_PERF=ON \
 	-D LLVM_ENABLE_OCAMLDOC=OFF \
 	-D LLVM_INSTALL_UTILS=ON \
+	-D LLVM_UTILS_INSTALL_DIR=lib/llvm/utils \
 	-D LLVM_TOOL_LLVM_IR2VEC_BUILD=OFF \
 	-D LLVM_ENABLE_LIBCXX=OFF \
 	-D LLVM_ENABLE_LLD=OFF \
@@ -62,13 +51,6 @@ cmake -S llvm -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# THE MANUAL PAGES ARE ONE TARGET, BUILT AND INSTALLED BY NAME. LLVM_BUILD_DOCS
-# would put docs-llvm-man in the default build beside docs-dsymutil-man and
-# docs-llvm-dwarfdump-man, which rebuild the same tree into the same output
-# directory concurrently. SPHINX_WARNINGS_AS_ERRORS is off because the
-# release's own documents draw warnings, and -W would fail the build on them.
 cmake --build build --target docs-llvm-man
 install -Dm644 build/docs/man/*.1 -t "$PKG/usr/share/man/man1"
-# The manual set is built from every CommandGuide page, including the one for
-# the tool the configure line above leaves out.
 rm -f "$PKG/usr/share/man/man1/llvm-ir2vec.1"

@@ -107,7 +107,18 @@ if [ -f "$MANIFEST" ]; then
     done < "$MANIFEST"
 fi
 
-cp -r $WORKSPACE/fs/* $SYSROOT/
+# fs/usr/lib64 is a link to lib, so gcc's runtime and every lib64 default
+# land in /usr/lib. cp cannot replace a real directory with a link, so a tree
+# whose usr/lib64 is still a directory keeps it, and only that path fails the
+# copy; the link reaches such a tree when it is rebuilt from empty.
+LIB64_DIR=0
+if [ -d "$SYSROOT/usr/lib64" ] && [ ! -L "$SYSROOT/usr/lib64" ]; then
+    echo "fs: usr/lib64 is a directory in this tree; the link to lib needs an empty tree" >&2
+    LIB64_DIR=1
+fi
+if ! cp -r $WORKSPACE/fs/* $SYSROOT/; then
+    [ "$LIB64_DIR" = 1 ] || exit 1
+fi
 
 # cp overwrites CONTENT and keeps the DESTINATION's mode, so a permission
 # change in fs/ never reached a tree that had already been synced once. That
@@ -184,8 +195,9 @@ etc/udev/rules.d/ 644 0:0
 FSMODES
 
 mkdir -p "$(dirname "$MANIFEST")"
-# -printf is a GNU extension and the build image's find is busybox's, which
-# silently wrote an EMPTY manifest — and an empty manifest protects nothing.
+# POSIX find only, no -printf: this runs on the build container's userland,
+# and a find without the GNU extension writes an EMPTY manifest, which
+# protects nothing.
 ( cd "$WORKSPACE/fs" && find . \( -type f -o -type l \) ) \
     | sed 's|^\./||' | sort > "$MANIFEST"
 echo "fs manifest: $(wc -l < "$MANIFEST") paths"

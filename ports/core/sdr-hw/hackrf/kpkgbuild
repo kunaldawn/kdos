@@ -15,4 +15,5 @@ source      = https://github.com/greatscottgadgets/hackrf/releases/download/v$ve
 sha256      = d2b76a1115d9b4df648c29efb2f3c8e80009b7cf9a8adf37abbfdba72101b086  hackrf-2026.01.3.tar.xz
 description = libhackrf and the hackrf_* tools for the HackRF One, Jawbreaker and rad1o transceivers
 homepage    = https://greatscottgadgets.com/hackrf/
+license     = BSD-3-Clause AND GPL-2.0-or-later
 depends     = cmake pkgconf libusb fftw

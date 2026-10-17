@@ -41,3 +41,4 @@ libgrapheme
 opencc
 snowball
 utfcpp
+oniguruma

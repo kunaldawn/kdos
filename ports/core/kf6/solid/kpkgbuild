@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = bdbfdc9f26b87e12b951097825af2956f2dee3f14c701d780277b69701f2c74e  solid-6.30.0.tar.xz
 description = KDE Frameworks: hardware discovery through udev, UDisks2 and UPower
 homepage    = https://api.kde.org/frameworks/solid/html/
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase flex bison util-linux eudev libimobiledevice libplist udisks2 upower

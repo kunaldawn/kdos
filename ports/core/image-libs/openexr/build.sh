@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# imath is OpenEXR's math library and exists in this tree for no other reason,
-# so the two are added and removed together.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

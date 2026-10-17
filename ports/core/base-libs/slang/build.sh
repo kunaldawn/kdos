@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# slsh's zlib and png modules link the zlib and libpng ports. --with-z and
-# --with-png still fall back silently when the library is not found, so the
-# module list configure wrote is checked: a missing one stops here instead of
-# shipping an slsh without it. pcre1 and oniguruma are not ports; --without-x
-# stops only an X probe the socket module would read link flags from.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -31,5 +26,5 @@ for mod in zlib-module.so png-module.so; do
 		exit 1
 	}
 done
-make -j1
-make DESTDIR=$PKG install
+make -j1 RPATH=
+make DESTDIR=$PKG RPATH= install

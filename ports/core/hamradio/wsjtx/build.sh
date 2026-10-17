@@ -9,14 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# WSJT_BUILD_UTILS=OFF: the simulators and code demonstrators install a dozen
-# generic names (cablog, echosim, ft8sim) into /usr/bin. The user guide is the
-# asciidoctor HTML; the manual pages are a2x through DocBook. Both are built.
-#
-# The C++ flags end in upstream's -Werror, appended after the environment's
-# CXXFLAGS, and GCC 16 warns of uninitialised members in the HRD transceiver's
-# message struct. -Wno-error goes in CMAKE_CXX_FLAGS_RELEASE, which the
-# compiler line carries after them.
+export FFLAGS="$FFLAGS -ftrampoline-impl=heap"
 cmake -B build -G Ninja \
 	-DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG -Wno-error" \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -31,17 +24,15 @@ cmake -B build -G Ninja \
 	-Wno-dev
 ninja -C build
 DESTDIR=$PKG ninja -C build install
+for m in fst4sim ft8code jt4code jt65code jt9code msk144code qra64code qra64sim; do
+	rm -f "$PKG/usr/share/man/man1/$m.1.gz"
+done
 
-# Upstream copies hamlib's rigctl, rigctld and rigctlcom in under -wsjtx
-# names; links keep the one binary the hamlib port owns.
 for t in rigctl rigctld rigctlcom; do
 	rm -f "$PKG/usr/bin/$t-wsjtx"
 	ln -s "$t" "$PKG/usr/bin/$t-wsjtx"
 done
 
-# THE MENU: upstream's entries carry no window class and name the icon under
-# pixmaps. No organisation domain is set, so Qt's Wayland app_id is the
-# executable's name.
 rm -f "$PKG/usr/share/applications/wsjtx.desktop" \
 	"$PKG/usr/share/applications/message_aggregator.desktop"
 install -Dm644 icons/Unix/wsjtx_icon.png \
@@ -77,3 +68,7 @@ chmod 644 "$PKG/usr/share/applications/wsjtx.desktop" \
 
 test -x "$PKG/usr/bin/wsjtx"
 test -x "$PKG/usr/bin/jt9"
+if readelf -lW "$PKG/usr/bin/jt9" | grep GNU_STACK | grep -q RWE; then
+	echo "wsjtx: jt9 asks for an executable stack" >&2
+	exit 1
+fi

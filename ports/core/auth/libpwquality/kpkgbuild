@@ -15,4 +15,5 @@ source      = https://github.com/libpwquality/libpwquality/releases/download/$na
 sha256      = 6fcf18b75d305d99d04d2e42982ed5b787a081af2842220ed63287a2d6a10988  libpwquality-1.4.5.tar.bz2
 description = Password quality checking and random password generation library, over cracklib
 homepage    = https://github.com/libpwquality/libpwquality
+license     = BSD-3-Clause OR GPL-2.0-or-later
 depends     = cracklib

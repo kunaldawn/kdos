@@ -16,4 +16,5 @@ source      = https://www.kernel.org/pub/linux/docs/man-pages/$name-$version.tar
 sha256      = 88a7c42ad2e03d8b96dc72d95e451f2d875ff0f43103a8eb8ac8242133bdcb05  man-pages-6.19.tar.xz
 description = Linux kernel and C library manual pages — system calls, library functions, devices, file formats, overviews
 homepage    = https://www.kernel.org/doc/man-pages/
+license     = Linux-man-pages-copyleft AND GPL-2.0-or-later AND GPL-3.0-or-later AND GPL-1.0-or-later AND GPL-2.0-only AND BSD-4-Clause-UC AND BSD-3-Clause AND BSD-2-Clause AND 0BSD AND MIT AND Linux-man-pages-1-para AND Linux-man-pages-copyleft-var AND Linux-man-pages-copyleft-2-para
 depends     = mandoc

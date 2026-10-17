@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Terminal
+Name=KDOS Terminal
 GenericName=Terminal Emulator
 Comment=A shell, in a window
 Exec=kdos-term

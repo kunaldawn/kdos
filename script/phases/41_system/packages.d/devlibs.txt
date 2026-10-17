@@ -35,6 +35,7 @@ fmt
 
 boost
 talloc
+tevent
 
 # w3m allocates through the Boehm collector and its configure refuses to run
 # without gc.h.
@@ -64,3 +65,4 @@ jemalloc
 glog
 range-v3
 rinutils
+sfsexp

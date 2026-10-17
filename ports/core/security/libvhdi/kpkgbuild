@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libvhdi
+version     = 20260901
+release     = 1
+source      = https://github.com/libyal/libvhdi/releases/download/$version/$name-alpha-$version.tar.gz
+sha256      = b5c6f10b94bdea5b902fc74a984f0ae4c29b9bb24f81b6318c5b38d60bba24f2  libvhdi-20260901.tar.gz
+description = Virtual Hard Disk (VHD, VHDX) image library, vhdiinfo and vhdimount
+homepage    = https://github.com/libyal/libvhdi
+license     = LGPL-3.0-or-later
+depends     = pkgconf libbfio fuse

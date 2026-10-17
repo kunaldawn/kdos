@@ -11,7 +11,9 @@
 name        = intltool
 version     = 0.51.0
 release     = 1
-source      = http://launchpad.net/intltool/trunk/$version/+download/$name-$version.tar.gz
+source      = https://launchpad.net/intltool/trunk/$version/+download/$name-$version.tar.gz
 sha256      = 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd  intltool-0.51.0.tar.gz
 description = An internationalization tool used for extracting translatable strings from source files
+homepage    = https://launchpad.net/intltool
+license     = GPL-2.0-or-later
 depends     = perl-xml-parser

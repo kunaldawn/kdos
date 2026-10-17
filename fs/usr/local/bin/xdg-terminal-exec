@@ -4,10 +4,10 @@
 # THE NAME GLib LOOKS FOR FIRST. A `Terminal=true` desktop entry launched
 # through GIO — which is how xdg-desktop-portal opens a link for a boxed
 # application — is wrapped by prepending the first name GLib finds from
-# `xdg-terminal-exec, gnome-terminal, mate-terminal, xfce4-terminal, …`. Not
-# one of the others is on this image, so without this file every terminal
-# handler fails with "Unable to find terminal required for application" and a
-# link from a box goes nowhere.
+# `xdg-terminal-exec, gnome-terminal, mate-terminal, xfce4-terminal, …`. This
+# file must stay first on that list: konsole, further down it, is on this
+# image too, and without this file every terminal handler GIO starts opens in
+# Konsole instead of the desktop's foot.
 #
 # THE SAME RULE AS kb_terminal(). The two must agree, or a handler resolved
 # correctly is wrapped in a terminal that cannot open and reads as the handler

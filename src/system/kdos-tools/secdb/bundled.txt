@@ -1,0 +1,13 @@
+# KDOS bundled-library inventory — read by `kdos cve`.
+# Each row is a library a port compiles into its own binary from a vendored
+# crate, where no package database can see it. A row names the port, the crate
+# that carries the copy, the component a security advisory names, and the
+# component's version as the vendored sources state it. A port bump that moves
+# the crate changes its row in the same change.
+# <port> <crate> <component> <version>
+iamb aws-lc-sys aws-lc 5.7.0
+termusic aws-lc-sys aws-lc 1.69.0
+chess-tui aws-lc-sys aws-lc 1.72.0
+mqttui aws-lc-sys aws-lc 5.5.0
+surfer aws-lc-sys aws-lc 1.71.0
+sniffnet aws-lc-sys aws-lc 5.2.0

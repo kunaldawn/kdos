@@ -9,10 +9,6 @@
 # ---------------------------------
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-# noembed is the npm package's build: tsc reads the lib.*.d.ts files from the
-# directory of its own resolved path rather than from a copy compiled in, so
-# they are installed beside it, and a caller that ships its own edited set
-# (Chromium patches lib.dom.d.ts) places a copy of the binary beside those.
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 export CGO_ENABLED=0
 go build -mod=vendor -trimpath -tags=noembed \

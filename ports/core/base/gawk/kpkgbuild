@@ -14,4 +14,6 @@ release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
 sha256      = 07f6f7342b7febe4313fc2c2542ad93d64fe20ad8717200109f105a826f5fd37  gawk-5.4.1.tar.xz
 description = GNU awk pattern scanning and processing language
+homepage    = https://www.gnu.org/software/gawk/
+license     = GPL-3.0-or-later
 depends     = mpfr gmp readline

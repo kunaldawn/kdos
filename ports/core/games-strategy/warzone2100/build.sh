@@ -9,20 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# no-update-check stops the startup threads that fetch update and driver
-# compatibility data from wz2100.net; the compatibility check reports itself
-# done with nothing found, as it does when the fetch fails.
 patch -p1 -i "$PORT_SRC/no-update-check.patch"
 
-# vulkan-colorspace names the sRGB colour space eSrgbNonlinear; the system
-# Vulkan-Hpp no longer carries the eVkColorspaceSrgbNonlinear alias.
 patch -p1 -i "$PORT_SRC/vulkan-colorspace.patch"
 
-# The texture packages, the high terrain pack included, are encoded here from
-# the PNGs in data/ with the bundled basisu, instead of downloaded prebuilt:
-# slow, and offline. The Vulkan headers come from the system, never a git
-# clone. English only: no translations are compiled. The Sentry crash uploader
-# and Discord integration are off.
+export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -42,6 +33,7 @@ cmake -S . -B build -G Ninja \
 	-DENABLE_GNS_NETWORK_BACKEND=ON \
 	-DENABLE_DISCORD=OFF \
 	-DWZ_BUILD_SENTRY=OFF \
+	-DWZ_SKIP_ELF_SEPARATE_DEBUG=ON \
 	-DENABLE_NLS=OFF \
 	-DENABLE_DOCS=ON \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_VulkanHeaders=ON \
@@ -49,9 +41,8 @@ cmake -S . -B build -G Ninja \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_Miniupnpc=ON
 cmake --build build
 DESTDIR=$PKG cmake --install build
+rm -rf "$PKG/usr/share/doc/warzone2100/hosting/linux_scripts"
 
-# Upstream puts its icon loose in /usr/share/icons, which no icon lookup reads.
-# The window's app_id is the program's name.
 rm -f "$PKG/usr/share/icons/net.wz2100.warzone2100.png"
 install -Dm644 icons/warzone2100.large.png \
 	"$PKG/usr/share/icons/hicolor/256x256/apps/net.wz2100.warzone2100.png"

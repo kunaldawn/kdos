@@ -550,17 +550,18 @@ char *kp_canon_path(const KpCanon *k, const char *rel)
  * (kp_owned_load_some).
  *
  * The database is one file per package: line 1 is `<version> <release>` and
- * the rest is the `tar -tf` listing, `./`-prefixed, with directories carrying
- * a trailing slash. A dot-name in the directory is not a package — `.recipe/`
- * holds sidecars and `.lock` is the writer lock — and is never read as one.
+ * the rest is the literal `tar -tf` listing, `./`-prefixed, with directories
+ * carrying a trailing slash. A dot-name in the directory is not a package —
+ * `.recipe/`, `.pkgsha/` and `.files/` hold sidecars and `.lock` is the writer
+ * lock — and is never read as one.
  * Loading once and asking N questions of the result is the difference between
  * an install being instant and being quadratic.
  *
  * The full table is a pair per claimed path, over a million on a desktop tree,
- * and building it costs seconds per install. An install asks about the staged
- * paths that already exist on disk, which on a fresh tree is none of them, so
- * kp_owned_load_some streams the same manifests and keeps only the pairs whose
- * canonical key it was asked for. Both canonicalise and compare the same way,
+ * and building it costs seconds per install. An install asks about its own
+ * staged paths, a few hundred against that million, so kp_owned_load_some
+ * streams the same manifests and keeps only the pairs whose canonical key it
+ * was asked for. Both canonicalise and compare the same way,
  * so for a requested key the two tables give the same answers; for any other
  * key the partial one answers NULL.
  */
@@ -789,10 +790,10 @@ void kp_owned_free(KpOwned *o)
 	free(o);
 }
 
-/* An overwrite moves a path from one package to another. The old owner's
- * manifest has to lose it, or `kpkgdel <old>` deletes a file the new owner
- * installed — the "owned by nothing / owned by two" failure this exists to
- * prevent. Rewritten whole: the file is a few hundred KB at most. */
+/* A declared takeover moves a path from one package to another. The old
+ * owner's manifest has to lose it, or `kpkgdel <old>` deletes a file the new
+ * owner installed — the "owned by nothing / owned by two" failure this exists
+ * to prevent. Rewritten whole: the file is a few hundred KB at most. */
 int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 		     int n)
 {

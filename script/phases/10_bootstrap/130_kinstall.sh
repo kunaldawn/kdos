@@ -50,6 +50,8 @@ OUT=$BUILD_DIR/tmp/kinstall
 # program, with only a link error or a silently absent page to say so.
 $KDOS_TARGET-gcc \
     -O2 -pipe -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
+    -fstack-protector-strong -fstack-clash-protection \
+    -Wl,-O1,--as-needed,-z,now,-z,pack-relative-relocs -Wl,--build-id=sha1 \
     -I"$LIBS"/libkbase -I"$LIBS"/libktui -I"$LIBS"/libkcolor -I"$SRC" \
     -I"$WORKSPACE"/src/system/kdos-appbox \
     -o "$OUT" \

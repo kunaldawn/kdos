@@ -15,4 +15,5 @@ source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
 sha256      = 60a25b78945ed6932635b3bb1899a517d31df7456e69867ffba27f89ff3976f5  libXft-2.3.9.tar.xz
 description = X11 FreeType font rendering library over RENDER
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libXft
+license     = HPND-sell-variant
 depends     = libX11 libXrender fontconfig freetype2 xorgproto

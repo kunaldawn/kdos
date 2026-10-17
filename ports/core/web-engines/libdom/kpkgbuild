@@ -15,4 +15,5 @@ source      = https://download.netsurf-browser.org/libs/releases/libdom-$version
 sha256      = d05e45af16547014c2b0a3aecf3670fa13d419f505b3f5fc7ac8a1491fc30f3c  libdom-0.4.2.tar.gz
 description = NetSurf W3C DOM implementation, with HTML (hubbub) and XML (expat) parser bindings
 homepage    = https://www.netsurf-browser.org/projects/libdom/
+license     = MIT
 depends     = buildsystem libwapcaplet libparserutils libhubbub expat

@@ -16,7 +16,7 @@
 |                                                                    |
 |                                                                    |
 |--------------------------------------------------------------------|
-| binhost /media/kdos/KDOSSTICK/packages ? signed index              |
+| tree 29d742c14cc8 - an apply builds each package from source       |
 | Left/Right page | r refresh | Esc Close                            |
 | slot A is live, slot B was marked good 3 bo [ Refresh ] [ Close ]  |
 +====================================================================+

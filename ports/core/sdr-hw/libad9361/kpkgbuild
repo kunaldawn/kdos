@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/analogdevicesinc/libad93
 sha256      = f4976a1317a0b7cf84727d068be5a52c070539ca7301f0160b0677a429538d87  libad9361-0.4.0.tar.gz
 description = AD936x transceiver helpers over libiio — filter design and multichip sync for ADALM-Pluto in gr-iio
 homepage    = https://github.com/analogdevicesinc/libad9361-iio
+license     = LGPL-2.1-or-later
 depends     = cmake ninja pkgconf libiio

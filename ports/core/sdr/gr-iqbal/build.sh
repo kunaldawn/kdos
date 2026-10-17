@@ -9,15 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# GNU Radio blocks that estimate and correct I/Q imbalance, which gr-osmosdr
-# applies to a radio's stream. The release archive carries the libosmo-dsp
-# submodule empty, so the libosmo-dsp port is linked instead; were it not
-# found, the build would fall back to compiling the missing sources. The
-# Doxygen reference is not built.
-#
-# CMP0167=NEW: find_package(Boost) reads Boost's own config package, which
-# knows Boost.System is header-only. FindPythonLibs is handed the library and
-# headers, because its version table is older than this python.
 _pyinc=$(python3 -c 'import sysconfig; print(sysconfig.get_path("include"))')
 _pylib=$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR") + "/" + sysconfig.get_config_var("LDLIBRARY"))')
 

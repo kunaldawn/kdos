@@ -22,8 +22,6 @@
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside
 # them, or when a shelf file names a port an earlier phase installs.
 
-libseccomp
-
 # User-mode networking for rootless containers: pasta is the only rootless
 # network podman drives.
 passt

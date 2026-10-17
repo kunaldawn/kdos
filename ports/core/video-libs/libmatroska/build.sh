@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The Matroska/WebM element tree over libebml: VLC's mkv demuxer needs it, and
-# without it VLC opens no .mkv or .webm file. Shared for the same reason as
-# libebml: a static copy would be linked into every consumer.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \

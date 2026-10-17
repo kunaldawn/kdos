@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/r/rich/rich-$versio
 sha256      = edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36  python3-rich-15.0.0.tar.gz
 description = Colour, tables and progress bars in a terminal, for python programs
 homepage    = https://github.com/Textualize/rich
+license     = MIT
 depends     = python3 python3-pip python3-poetry-core python3-pygments python3-markdown-it-py

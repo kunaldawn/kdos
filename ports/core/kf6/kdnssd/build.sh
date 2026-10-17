@@ -9,13 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# KF_SKIP_PO_PROCESSING leaves every translation out: bundled data is English
-# only, and without it each language's catalogue is compiled and installed.
-# Avahi is an optional find: without it a stub that discovers nothing is
-# built and configure still succeeds, so it is required here.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D BUILD_TESTING=OFF \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \

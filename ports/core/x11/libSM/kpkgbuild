@@ -15,4 +15,5 @@ source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
 sha256      = be7c0abdb15cbfd29ac62573c1c82e877f9d4047ad15321e7ea97d1e43d835be  libSM-1.2.6.tar.xz
 description = X11 Session Management library
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libSM
+license     = X11 AND MIT-open-group
 depends     = libICE xtrans xorgproto util-linux

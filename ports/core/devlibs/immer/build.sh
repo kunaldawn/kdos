@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Headers and the CMake package only: tests, examples, docs, extras and the
-# Python and Guile modules are off.
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

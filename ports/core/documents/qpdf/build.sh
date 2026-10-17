@@ -9,15 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# IT IS NOT A RENDERER AND THAT IS THE DIVISION OF LABOUR. poppler turns a PDF
-# into pixels or text; qpdf works on the FILE — splitting, merging, removing a
-# password you own, rewriting a damaged xref so something else can open it at
-# all. Between them they cover what people actually need to do to a PDF without
-# starting a GUI in a container.
-#
-# REQUIRE_CRYPTO_GNUTLS with USE_IMPLICIT_CRYPTO off: qpdf can use gnutls,
-# openssl or its own bundled implementation. gnutls is already here for
-# wireshark and samba, and a bundled crypto is a third copy nobody patches.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

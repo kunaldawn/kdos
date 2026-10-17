@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = e8bf60e398e2f8098a4db7db44c5475d70540ad8f8948a123c8bc109dc4db776  kcalendarcore-6.30.0.tar.xz
 description = KDE Frameworks: iCalendar data model and parser
 homepage    = https://api.kde.org/frameworks/kcalendarcore/html/
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND CC0-1.0
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative libical

@@ -15,4 +15,5 @@ source      = https://github.com/webmproject/libvpx/archive/refs/tags/v$version.
 sha256      = 1020f184046187baa2985dbde38e0691f49c44088bca7a1842b0236c6081dc0a  libvpx-1.17.0.tar.gz
 description = VP8 and VP9 codecs — BSD, so this one does not relicense ffmpeg
 homepage    = https://www.webmproject.org/
+license     = BSD-3-Clause
 depends     = nasm

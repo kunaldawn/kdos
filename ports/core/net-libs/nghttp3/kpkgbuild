@@ -15,3 +15,4 @@ source      = https://github.com/ngtcp2/nghttp3/releases/download/v$version/$nam
 sha256      = aad782c23d3f01bd4bb52c8bac7a553b631ef8115fd1612703df6183449fef19  nghttp3-1.18.0.tar.xz
 description = HTTP/3 and QPACK library
 homepage    = https://nghttp2.org/nghttp3/
+license     = MIT

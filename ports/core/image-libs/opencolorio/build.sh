@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# OCIO_INSTALL_EXT_PACKAGES=NONE makes a missing dependency an error instead
-# of a download: expat, yaml-cpp, pystring, Imath, zlib and minizip-ng are all
-# ports. The command-line tools are built; ocioconvert, ociolutimage and
-# ociodisplay read images through OpenEXR, and ociodisplay draws with GLUT and
-# GLEW. The SIMD kernels are chosen at run time from the processor's flags.
-# The Python bindings are off: Krita and Blender use the C++ library.
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

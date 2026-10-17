@@ -56,6 +56,8 @@ describes those targeted loops.
 | A C compiler (`$CC`, default `cc`) | `make fetch`, `make fetch-check` | Optional for `make fetch`, which compiles a small recipe reader on the host. Without a compiler, `make fetch` hands the whole fetch to a container of its own (Docker or Podman, whichever is on your `PATH`). `make fetch-check` has no container fallback |
 | `fuser` (from psmisc) | `make build` | Guards the finished ISO against being rewritten while a virtual machine has it open; without `fuser` the guard is skipped |
 | `qemu-system-x86_64`, OVMF firmware at `/usr/share/ovmf/OVMF.fd`, `/dev/kvm` | `make run`, `make rundisk` | Only to boot the result in a virtual machine |
+| A USB stick of 32 GB or more, or a BD-R | Booting the image on a machine | Every package is on the medium, so the ISO is about 24 GB (23,853,701,120 bytes on the last measured build). It does not fit a DVD, so optical boot means a BD-R. A published release splits the image into parts of under 2 GiB, about twelve, joined with `cat` before writing |
+| About 56 GB of disk on the target machine | [Installing](installation.md) | The installed system is about 53 GB, and the installer refuses a disk smaller than that plus 768 MiB |
 
 The full list, with the tools that only development work needs, is in
 [What a development machine needs](../05-developer/developing.md#what-a-development-machine-needs).
@@ -76,9 +78,9 @@ reads nothing but what the fetch left in the port directories and runs offline.
 ### Fetching the sources
 
 A clone carries the recipes, not the upstream source archives. Each recipe (also called a *port*: a
-directory holding a declarative `kpkgbuild` file and a `build.sh`; 2,003 live under
-`ports/core/`, each on one of 102 subject shelves as `ports/core/<shelf>/<name>/`, and 24 under
-`src/`; see the [glossary](../06-reference/glossary.md#port)) names its source files with a
+directory holding a declarative `kpkgbuild` file and a `build.sh`; about 2,000 live under
+`ports/core/`, each on one of 102 subject shelves as `ports/core/<shelf>/<name>/`, and about two
+dozen under `src/`; see the [glossary](../06-reference/glossary.md#port)) names its source files with a
 `sha256 =` line, and `make fetch` downloads every such file that git does not carry.
 Measured across the tree, that is 2,487 file names in 1,993 ports; a further 39 named files, such
 as bash's upstream patches, are committed beside their recipes. Several ports share one archive, so
@@ -142,7 +144,7 @@ failures by symptom.
 ## Try it in a virtual machine first
 
 ```sh
-make run        # boot the ISO; creates build/kdos.qcow2 as a blank 20 GB disk if missing
+make run        # boot the ISO; creates build/kdos.qcow2 as a blank sparse 96 GB disk if missing
 make rundisk    # boot that disk instead, once you have installed to it
 ```
 
@@ -174,7 +176,8 @@ your stick. Everything on that device is lost:
 sudo dd if=build/iso-build/kdos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
-The same image boots four ways: BIOS and UEFI, from an optical drive and from a stick. It carries
+The stick must hold 32 GB or more. The same image boots four ways: BIOS and UEFI, from an optical
+drive (a BD-R; the image does not fit a DVD) and from a stick. It carries
 two El Torito boot records for optical drives, one for each firmware, and for a stick a partition
 table with an EFI System Partition plus BIOS boot code in its first sector, so the `dd` above is the
 whole job and there is no separate step to make the stick bootable.
@@ -238,9 +241,11 @@ system run the rest. If a boot stops, the last stage named tells you where:
 
 ![The boot splash during the service scripts, with the progress bar and the current stage](../../screenshots/boot-splash.png)
 
-When the initramfs cannot continue, it leaves you at a shell rather than rebooting, so you can look
-around. The progress bar stops one segment short of full until the splash is dismissed, so a boot
-never shows 100% before it has finished. [Boot and init](../03-architecture/boot-and-init.md)
+When the initramfs cannot continue, it shows the reason on the splash, hands the screen back and
+leaves you at a shell on the first console (`tty1`), with the reason printed above it, rather than
+rebooting, so you can look around. The serial line gets a shell too, beside the full boot log.
+The progress bar stops one segment short of full until the splash is dismissed, so a boot never
+shows 100% before it has finished. [Boot and init](../03-architecture/boot-and-init.md)
 describes what happens at each stage.
 
 ## Log in
@@ -263,7 +268,7 @@ The consoles are laid out like this:
 |---|---|
 | `tty1` | The desktop. On the live medium it logs in as `kdos` without asking; an installed system asks for a password unless it was installed with automatic login (see [Installation](installation.md)) |
 | `tty2` | An ordinary login prompt: the recovery console |
-| `ttyS0` | A root shell on the serial line, started when a key is pressed there. No password is asked |
+| `ttyS0` | On the live medium, root logged in on the serial line, with no password. An installed system asks for a login there |
 
 At a text console, switch with `Alt+F1` and `Alt+F2`. From the desktop, `Ctrl+Alt+F2` reaches the
 recovery console, and `Alt+F1` returns to the desktop.

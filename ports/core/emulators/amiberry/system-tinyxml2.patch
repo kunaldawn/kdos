@@ -1,0 +1,21 @@
+--- a/cmake/SourceFiles.cmake
++++ b/cmake/SourceFiles.cmake
+@@ -96,7 +96,6 @@
+         src/statusline.cpp
+         src/tabletlibrary.cpp
+         src/test_card.cpp
+-        src/tinyxml2.cpp
+         src/traps.cpp
+         src/uaeexe.cpp
+         src/uaelib.cpp
+--- a/cmake/Dependencies.cmake
++++ b/cmake/Dependencies.cmake
+@@ -479,6 +479,8 @@
+     find_package(ZLIB REQUIRED)
+     find_package(CURL REQUIRED)
+     find_package(nlohmann_json CONFIG REQUIRED)
++    find_package(tinyxml2 CONFIG REQUIRED)
++    target_link_libraries(${PROJECT_NAME} PRIVATE tinyxml2::tinyxml2)
+ endif()
+ 
+ if (USE_ZSTD)

@@ -9,22 +9,23 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Compress::Raw::Zlib and Compress::Raw::Bzip2 compile their own bundled
-# copies of zlib and bzip2 unless told otherwise; these link the system ones,
-# which the security database tracks. Their Makefile.PLs read the environment.
+patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/liblist-default-dirs.patch"
+
 export BUILD_ZLIB=False BUILD_BZIP2=0
 
-# -Duseshrplib builds libperl.so. The default is a static, non-PIC libperl.a,
-# which a program embedding the interpreter (perf's `perf script` Perl engine)
-# cannot link into a PIE.
-#
-# GDBM_File, NDBM_File and ODBM_File are built when Configure finds gdbm and
-# its dbm/ndbm compatibility headers, with no switch to demand them: gdbm in
-# depends is what keeps them.
-#
-# Configure reads neither CFLAGS nor LDFLAGS: optimize carries the compile
-# flags and ldflags and lddlflags the link flags. Config records all three, so
-# every XS module built afterwards compiles and links with them as well.
+_kver=$(awk '$2 == "LINUX_VERSION_CODE" { c = $3; printf "%d.%d.%d", int(c / 65536), int(c / 256) % 256, c % 256 }' /usr/include/linux/version.h)
+_time=$(LC_ALL=C date -u -d "@$SOURCE_DATE_EPOCH")
+cat > config.over <<EOF
+myhostname='localhost'
+mydomain='.localdomain'
+cf_email='root@localhost'
+perladmin='root@localhost'
+cf_by='kdos'
+osvers='$_kver'
+myuname='linux localhost $_kver x86_64'
+cf_time='$_time'
+EOF
+
 ./Configure -des \
 	-Dprefix=/usr \
 	-Dvendorprefix=/usr \
@@ -36,10 +37,17 @@ export BUILD_ZLIB=False BUILD_BZIP2=0
 	-Dvendorarch=/usr/lib/perl5/vendor_perl \
 	-Dman1dir=/usr/share/man/man1 \
 	-Dman3dir=/usr/share/man/man3 \
+	-Dman3ext=3pm \
 	-Doptimize="$CFLAGS" \
 	-Dldflags="$LDFLAGS" \
 	-Dlddlflags="-shared $LDFLAGS" \
 	-Duseshrplib \
+	-Dusethreads \
+	-Dloclibpth=' ' \
+	-Dlocincpth=' ' \
+	-Dglibpth='/usr/lib' \
+	-Ui_db \
 	-Ud_eaccess -Ud_euidaccess
 make
 make DESTDIR=$PKG install
+ln -s perl5/core_perl/CORE/libperl.so $PKG/usr/lib/libperl.so

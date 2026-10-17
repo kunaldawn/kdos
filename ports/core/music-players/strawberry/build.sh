@@ -9,22 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The collection, playlists, tags and playback work with no network. Tidal,
-# Qobuz, Spotify and Subsonic are account-backed streaming services and are
-# compiled out, as is Discord presence. Song tracking fingerprints the
-# collection with Chromaprint, locally, so a moved or renamed file keeps its
-# play counts and ratings. The tag fetcher is off: it sends fingerprints to
-# AcoustID and MusicBrainz. iPod classic goes through libgpod, whose artwork
-# is read and written with gdk-pixbuf. X11 global shortcuts grab
-# keys on an X server a Wayland session never gives them; the media keys
-# arrive over MPRIS instead. Every component is named so the set is explicit,
-# but a component switched on whose library is missing is still dropped, with
-# only a line in the configure summary; that summary is where a missing
-# dependency shows.
-#
-# Translations are compiled into the binary when on; bundled data is English
-# only, so they are off. The test suite is built whenever GTest is found, so
-# the lookup is disabled.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -64,10 +48,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# UPSTREAM'S ENTRY IS REPLACED for StartupWMClass: main() sets the desktop
-# file name, so the Wayland app_id is org.strawberrymusicplayer.strawberry,
-# not upstream's "strawberry". The tidal: scheme handler goes with the Tidal
-# service. The hicolor PNGs it names are upstream's, installed above.
 cat > "$PKG/usr/share/applications/org.strawberrymusicplayer.strawberry.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

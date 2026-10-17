@@ -9,14 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# SHOTCUT_NOUPGRADE compiles out the upgrade check, which asks shotcut.org for
-# a newer version at start. libX11 is the window picker, reached only under
-# Xwayland. Speech-to-text runs whisper-cli from beside the binary,
-# /usr/bin, which the whisper.cpp port installs; the model is chosen in the
-# dialog, and its download button is the one part that needs a network.
-# The GitHub archive is the application alone: the release's shotcut-src
-# bundle carries FFmpeg, MLT and the rest of its dependency tree.
-# SHOTCUT_VERSION left unset is the build date, and two builds then differ.
 export CXXFLAGS="$CXXFLAGS -DSHOTCUT_NOUPGRADE"
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -33,13 +25,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# English only: Qt falls back to the source strings.
-find "$PKG/usr/share/shotcut/translations" -name '*.qm' ! -name 'shotcut_en*' -delete
-
-# UPSTREAM'S ENTRY IS REPLACED for StartupWMClass: the Wayland app_id is the
-# desktop file name Shotcut sets, org.shotcut.Shotcut, not "Shotcut". It
-# claims only the MLT XML type it defines: the media types belong to the
-# players. The hicolor PNGs are upstream's.
 cat > "$PKG/usr/share/applications/org.shotcut.Shotcut.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

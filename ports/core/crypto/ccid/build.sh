@@ -9,8 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The rule is installed by hand to /usr/lib/udev/rules.d: meson would take the
-# directory from eudev's udev.pc, which names /lib/udev.
+patch -p1 -i "$PORT_SRC/no-kobil-switch.patch"
+
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \

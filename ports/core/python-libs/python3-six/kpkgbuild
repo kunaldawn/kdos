@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/s/six/six-$version.
 sha256      = ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81  python3-six-1.17.0.tar.gz
 description = Python 2 and 3 compatibility shims — python-dateutil imports it
 homepage    = https://pypi.org/project/six/
+license     = MIT
 depends     = python3 python3-setuptools python3-pip

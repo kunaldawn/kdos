@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/R/RE/R
 sha256      = 593737c62df0f6dab5d4122e0b4476417945bb6262c33eedc009665ef1548852  perl-file-homedir-1.006.tar.gz
 description = Find the home and XDG user directories of the current or another user, in pure perl
 homepage    = https://metacpan.org/dist/File-HomeDir
+license     = Artistic-1.0-Perl OR GPL-1.0-or-later
 depends     = perl perl-file-which

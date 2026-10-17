@@ -35,6 +35,14 @@ KDOS_RES ?= 1920x1080
 KDOS_XRES = $(word 1,$(subst x, ,$(KDOS_RES)))
 KDOS_YRES = $(word 2,$(subst x, ,$(KDOS_RES)))
 
+# The virtual machine's disk. kinstall refuses a disk smaller than the install
+# size plus 768 MiB, and every package is on the medium, so the install is
+# about 53 GB; a qcow2 is sparse and takes on the host only what the guest
+# writes.
+#
+#   make cleandisk KDOS_DISK=128G
+KDOS_DISK ?= 96G
+
 # The only networked step: every port's sources from the archive, the cache or
 # upstream, verified against the recipe. `make build` never downloads, so run
 # this once after a clone and after any recipe change. fetch-check is offline
@@ -170,6 +178,7 @@ build: check-iso-free ## build everything in the container (BUILD_ARGS narrows i
 		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-e KDOS_GIT_DATE="$$(git log -1 --format=%cs 2>/dev/null)" \
+		-e KDOS_GIT_TIME="$$(git log -1 --format=%ct 2>/dev/null)" \
 		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \
 		-e KDOS_PACK_KDOS="$(KDOS_PACK_KDOS)" \
 		-e KDOS_MAKE_BINHOST="$(KDOS_MAKE_BINHOST)" \
@@ -182,16 +191,18 @@ build: check-iso-free ## build everything in the container (BUILD_ARGS narrows i
 		-v $$(pwd)/fs:/workspace/fs:ro \
 		-v $$(pwd)/script:/workspace/script:ro \
 		-v $$(pwd)/ports:/workspace/ports:ro \
+		-v $$(pwd)/docs:/workspace/docs:ro \
+		-v $$(pwd)/testing:/workspace/testing:ro \
 		$(DOCKER_TTY) os-dev script/kdosbuild.sh $(BUILD_ARGS)
 
 snapshots: ## list the phase snapshots
 	script/kdosbuild.sh --list
 
-run: ## boot the ISO in QEMU (software graphics)
+run: ## boot the ISO in QEMU (software graphics); creates a sparse 96G build/kdos.qcow2 if missing
 	test -f build/iso-build/kdos.iso || { echo "ERROR: ISO not found at build/iso-build/kdos.iso — run 'make build' first"; exit 1; }
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd — install ovmf (debian: ovmf, arch: edk2-ovmf)"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
-	test -f build/kdos.qcow2 || qemu-img create -f qcow2 build/kdos.qcow2 20G
+	test -f build/kdos.qcow2 || qemu-img create -f qcow2 build/kdos.qcow2 $(KDOS_DISK)
 	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga,xres=$(KDOS_XRES),yres=$(KDOS_YRES) -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 rundisk: ## boot the installed disk image build/kdos.qcow2
@@ -215,7 +226,7 @@ debug-boot: ## boot the kernel and initramfs directly, serial console
 # display flags (including gl=es — gl=on blanks the window) live in
 # testing/qemu-hw/run.sh. Needs Docker + NVIDIA Container Toolkit.
 run-hw: check-hw ## boot the ISO with GPU acceleration (containerised QEMU)
-	KDOS_RES=$(KDOS_RES) testing/qemu-hw/run.sh iso
+	KDOS_RES=$(KDOS_RES) KDOS_DISK=$(KDOS_DISK) testing/qemu-hw/run.sh iso
 
 rundisk-hw: check-hw ## boot the disk image with GPU acceleration
 	KDOS_RES=$(KDOS_RES) testing/qemu-hw/run.sh disk
@@ -225,8 +236,8 @@ check-hw:
 	docker info 2>/dev/null | grep -q ' nvidia' || { echo "WARNING: docker has no 'nvidia' runtime — virgl will fall back to software or fail"; }
 	test -c /dev/udmabuf || { echo "WARNING: /dev/udmabuf not found — blob resources unavailable, kdos-comp will blank"; }
 
-cleandisk: ## recreate an empty build/kdos.qcow2
-	qemu-img create -f qcow2 build/kdos.qcow2 20G
+cleandisk: ## recreate an empty build/kdos.qcow2, sparse, 96G unless KDOS_DISK says otherwise
+	qemu-img create -f qcow2 build/kdos.qcow2 $(KDOS_DISK)
 
 # Wipe the build tree but keep build/snapshots, so a phase can still be
 # restored, and build/ccache and build/pkgstore, whose contents stay valid for
@@ -237,7 +248,10 @@ cleandisk: ## recreate an empty build/kdos.qcow2
 # key lives there and a key is not a build artefact. Lose it and every later
 # bake is unsigned while every medium already written keeps trusting a key you
 # can no longer sign with — libksig has no revocation and no expiry. Set
-# KDOS_PACK_KEY to keep it outside the tree entirely.
+# KDOS_PACK_KEY to keep it outside the tree entirely. The kernel's
+# module-signing key, linux-module-signing.pem, lives there too: lose it and
+# the next kernel carries a new certificate, so modules from earlier builds
+# load only as tainted under it.
 cleanbuild: ## wipe build/ except snapshots, ccache, pkgstore and keys
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name snapshots ! -name keys ! -name ccache ! -name pkgstore \
@@ -250,8 +264,9 @@ clean: ## wipe build/ except keys
 		! -name keys -exec rm -rf {} + || true
 
 # The checks that stand in for a build. check runs the four that need no built
-# tree; depdrift and debuginfo read build/fs, which is root's, so they are run
-# from a container or as root. SELFTEST_CC is the compiler selftest-asan uses.
+# tree; depdrift, debuginfo, unowned, linkcheck and entrycheck read build/fs,
+# which is root's, so they are run from a container or as root. SELFTEST_CC is
+# the compiler selftest-asan uses.
 SELFTEST_CC ?= cc -fsanitize=address,undefined -g
 
 check: preflight selftest docscheck phaseclosure ## preflight + selftest + docscheck + phaseclosure
@@ -274,8 +289,17 @@ phaseclosure: ## every phase installs exactly the ports its list names
 depdrift: ## undeclared same-phase link dependencies in build/fs
 	python3 testing/depdrift.py
 
-debuginfo: ## installed files in build/fs that still carry DWARF
-	testing/debuginfo.sh
+debuginfo: ## fail when build/fs ships more than 1 MiB of DWARF
+	python3 testing/debuginfo.py
+
+unowned: ## files in build/fs no package and no fs/ path provides
+	python3 testing/unowned.py
+
+linkcheck: ## undeclared NEEDED owners, dead interpreters, mixed OpenSSL in build/fs
+	python3 testing/linkcheck.py
+
+entrycheck: ## dangling links, dead Exec=/Icon=, missing udev programs in build/fs
+	python3 testing/entrycheck.py
 
 # The fast loop and the images it and the rig run in. QUICK names the ports
 # (comma-separated); QUICK_ARGS goes to the rig after `--`, e.g.
@@ -293,4 +317,4 @@ rig-image: ## build the rig container kdos-qemu-py:latest (networked, once)
 devdeps-image: ## build kdos-devdeps:latest and run the suite in it
 	testing/devdeps-image.sh
 
-.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan docscheck phaseclosure depdrift debuginfo quick rig-image devdeps-image
+.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan docscheck phaseclosure depdrift debuginfo unowned linkcheck entrycheck quick rig-image devdeps-image

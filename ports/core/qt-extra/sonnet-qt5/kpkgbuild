@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sonnet-qt5
+version     = 5.116.0
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/sonnet-$version.tar.xz
+sha256      = 98417080e742829794584a794995c4a08900d22e11b879cb8cc240323b1f4a4a  sonnet-qt5-5.116.0.tar.xz
+description = KDE Frameworks 5 Sonnet — spell checking for Qt 5 widgets, through Hunspell and Aspell
+homepage    = https://api.kde.org/frameworks/sonnet/html/
+license     = LGPL-2.1-or-later AND LGPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt5-qtbase qt5-qttools hunspell hunspell-en aspell aspell-en

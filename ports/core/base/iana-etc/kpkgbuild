@@ -20,4 +20,5 @@ sha256      = 30a69353af6e017ffd9e141d079f90a7b7117f113f122d2d89ee20ffb587da19  
 sha256      = fb8db0a6811a83dc9017b6349372895fdb4d384f3e34bc92de40fa4d724d7506  rpc-program-numbers-20260911.xml
 description = /etc/services, /etc/protocols and /etc/rpc, generated from IANA's registries
 homepage    = https://www.iana.org/protocols
+license     = LicenseRef-IANA-Registries
 depends     = gawk
