@@ -12,7 +12,8 @@
  *
  *   kp_src_refresh_config  before build.sh: every config.guess and
  *                          config.sub in the unpacked source older than
- *                          automake's is replaced by automake's
+ *                          automake's is replaced by automake's, except
+ *                          inside a vendored Rust crate
  *   kp_pkg_licences        the source root's top-level licence files into
  *                          usr/share/licenses/<name>/
  *   kp_pkg_prune           HTML and PDF manuals, and every non-English
@@ -626,6 +627,28 @@ static struct {
 	char stamp[16];
 } fresh[2];		/* [0] config.guess, [1] config.sub */
 static int refreshed;
+static const char *refresh_root;
+
+/* A vendored Rust crate records every file's hash in .cargo-checksum.json at
+ * its root, and cargo refuses the whole build when one differs, so nothing
+ * under such a directory is replaced. Its config.guess, if it runs at all,
+ * runs from a build script that names the target itself. */
+static int in_checksummed_crate(const char *path)
+{
+	char d[4096];
+	size_t root = strlen(refresh_root);
+	kb_strlcpy(d, path, sizeof(d));
+	for (;;) {
+		char *slash = strrchr(d, '/');
+		if (!slash || (size_t)(slash - d) < root)
+			return 0;
+		*slash = 0;
+		char f[4200];
+		snprintf(f, sizeof(f), "%s/.cargo-checksum.json", d);
+		if (access(f, F_OK) == 0)
+			return 1;
+	}
+}
 
 static int refresh_visit(const char *path, const struct stat *st, int flag,
 			 struct FTW *ftw)
@@ -639,6 +662,8 @@ static int refresh_visit(const char *path, const struct stat *st, int flag,
 		return 0;
 	char have[16];
 	if (script_stamp(path, have) != 0 || strcmp(have, fresh[k].stamp) >= 0)
+		return 0;
+	if (in_checksummed_crate(path))
 		return 0;
 	if (kb_copy_file(fresh[k].path, path) == 0) {
 		chmod(path, (st->st_mode & 07777) | 0111);
@@ -668,6 +693,7 @@ void kp_src_refresh_config(const char *src_root)
 	if (!fresh[0].stamp[0] && !fresh[1].stamp[0])
 		return;
 	refreshed = 0;
+	refresh_root = src_root;
 	nftw(src_root, refresh_visit, 32, FTW_PHYS);
 	if (refreshed)
 		kp_msg("Refreshed %d config.guess/config.sub from automake (%s)",

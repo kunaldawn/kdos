@@ -389,8 +389,9 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
 4. Replace every `config.guess` and `config.sub` under `$SRC_ROOT` whose `timestamp=` line is older
    than automake's (`/usr/share/automake-*/`) with automake's copy. An old `config.guess` names this
    host `x86_64-pc-linux-gnu` instead of `x86_64-pc-linux-musl`, and a configure that believes it
-   builds for the wrong C library. A copy newer than automake's is left alone, and nothing is
-   replaced before automake is installed.
+   builds for the wrong C library. A copy newer than automake's is left alone, and so is any copy
+   inside a vendored Rust crate (a directory with `.cargo-checksum.json`), whose recorded hashes
+   cargo checks. Nothing is replaced before automake is installed.
 5. Run `build.sh`.
 6. Copy `postinstall.sh`, when there is one, into the package as `.POSTINSTALL`, preceded by the
    recipe's keys and helpers as shell assignments.

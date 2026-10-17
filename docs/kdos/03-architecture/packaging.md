@@ -763,8 +763,9 @@ Between extraction and `build.sh`, every `config.guess` and `config.sub` under `
 is overwritten with automake's, keeping its mode and adding the execute bits. An autotools release
 cut before musl was known to these scripts guesses the host as `x86_64-pc-linux-gnu`, and a
 configure that trusts the guess builds for a C library the tree does not have. A copy newer than
-automake's, or one with no `timestamp=` line, is left as it is; before automake is installed,
-nothing is replaced. The refresh happens before `build.sh`, so a recipe that regenerates its build
+automake's, or one with no `timestamp=` line, is left as it is, and so is every file inside a
+vendored Rust crate: a directory holding `.cargo-checksum.json` records each file's hash there, and
+cargo refuses the build when one differs. Before automake is installed, nothing is replaced. The refresh happens before `build.sh`, so a recipe that regenerates its build
 system with `autoreconf -fi` gets automake's copies either way.
 
 Before rolling the package, `kpkgbuild` deletes every libtool `.la` file, because each names
