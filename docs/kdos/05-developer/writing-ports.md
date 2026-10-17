@@ -507,7 +507,13 @@ The same file exports `LANG` and `LC_ALL` as `C.UTF-8`, `PIP_ROOT_USER_ACTION=ig
   its own `<string.h>` keeps its own header, because `-I` directories come first. The port's
   `late-feature-macro.patch` declares each wrapped function that a feature macro gates
   (`mempcpy`, `strlcpy`, `realpath` and the rest) before wrapping it, so a source that defines
-  `_GNU_SOURCE` after its first system header still compiles.
+  `_GNU_SOURCE` after its first system header still compiles. Its `lto-no-always-inline.patch` drops `always_inline` from
+  the wrappers GCC sees: a fortified function whose address a program takes (libstdc++'s
+  `std::to_string` passes `vsnprintf`) becomes a direct call only after link-time optimisation has
+  partitioned the program, where an `always_inline` body the linker may replace cannot be inlined,
+  and GCC stops the link. Without the attribute that one call goes to the C library's own function,
+  unchecked; GCC still inlines these small wrappers at every direct call in an optimised build, so
+  those stay checked.
 - `-D_GLIBCXX_ASSERTIONS` turns on libstdc++'s precondition checks: an out-of-range
   `operator[]`, `front()` on an empty container, `*` on an empty `optional`. A failed one aborts the
   program with the assertion's text, where it would otherwise read or write out of bounds.

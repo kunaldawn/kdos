@@ -555,9 +555,9 @@ ls build/logs/*/*_<port>.install.log                                            
 ```
 
 From `30_foundation` on, every port a phase installs is named in that phase's list, so for almost
-every port the first command prints one file, and the phase is the directory in its path. 8 ports
-are named in more than one list: `20_selfhost`'s `musl`, `gcc`, `binutils`, `m4`, `tar`,
-`diffutils`, `gawk` and `zlib` are named again in `30_foundation`'s pinned run. A later list
+every port the first command prints one file, and the phase is the directory in its path. 9 ports
+are named in more than one list: `20_selfhost`'s `fortify-headers`, `musl`, `gcc`, `binutils`, `m4`,
+`tar`, `diffutils`, `gawk` and `zlib` are named again in `30_foundation`'s pinned run. A later list
 names a port again so that it is rebuilt there when its recipe has changed, before the ports after
 it use it. For these the first command prints several files. Pass
 only one of those phases: `--rebuild` forces the port in every selected phase whose resolved install

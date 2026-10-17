@@ -169,7 +169,7 @@ as one list. A phase has one or the other, never both.
 | Phase | List | Names | Installs |
 |---|---|---|---|
 | `20_selfhost` | `packages.txt` | 9 | 15 |
-| `30_foundation` | `packages.txt` | 137 | 127 |
+| `30_foundation` | `packages.txt` | 138 | 127 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
 | `40_lang` | `packages.d/`, 13 files | 177 | 177 |
 | `41_system` | `packages.d/`, 96 files | 1,012 | 1,012 |

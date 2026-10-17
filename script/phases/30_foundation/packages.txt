@@ -28,11 +28,12 @@
 # of every shelf section, they are installed before anything else in the phase,
 # in the order kpkgdepends gives this run; bash and GNU coreutils, grep, which
 # and musl-utils (getconf, getent, iconv) are the shell and the userland every
-# build.sh runs in. musl, gcc, binutils and m4 are
+# build.sh runs in. fortify-headers, musl, gcc, binutils and m4 are
 # 20_selfhost's; naming them here rebuilds one whose recipe changed before
 # anything uses it. Under `kdosbuild --port-jobs` this run is the phase's
 # serial prefix: it builds one port at a time, and nothing after it starts
 # until its last port is installed.
+fortify-headers
 musl
 gcc
 binutils

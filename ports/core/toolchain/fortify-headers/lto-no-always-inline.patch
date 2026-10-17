@@ -1,0 +1,11 @@
+--- a/include/fortify-headers.h
++++ b/include/fortify-headers.h
+@@ -51,7 +51,7 @@
+ 
+ #define _FORTIFY_POSN(n)
+ #define _FORTIFY_INLINE extern __inline__ \
+-	__attribute__((__always_inline__,__gnu_inline__,__artificial__))
++	__attribute__((__gnu_inline__,__artificial__))
+ 
+ #endif /* __clang__ */
+ 
