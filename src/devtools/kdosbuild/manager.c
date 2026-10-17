@@ -181,12 +181,12 @@ double step_duration(const BStep *s)
 	return (s->end_time > 0 ? s->end_time : kb_now_s()) - s->start_time;
 }
 
-void step_timing_key(const BStep *s, char *out, size_t cap)
+/* Wall clock from the start of the run to now, or to when it stopped. */
+double mgr_elapsed(const Manager *m)
 {
-	const char *parent = "root";
-	if (s->parent && s->parent->meta)
-		parent = s->parent->meta->dir_name;
-	snprintf(out, cap, "%s/%s", parent, s->title);
+	if (m->start_time <= 0)
+		return 0;
+	return (m->end_time > 0 ? m->end_time : kb_now_s()) - m->start_time;
 }
 
 static void step_free(BStep *s)
@@ -206,12 +206,17 @@ static void step_free(BStep *s)
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Construction                                                             */
 
+/* A row's number is its position among its phase's own rows, which names its
+ * log. A retry's kpkg step is not one of them and keeps 10_bootstrap's
+ * number, so the phase's rows are numbered as they were on the first pass. */
 static void renumber(Manager *m)
 {
 	for (int i = 0; i < m->nroot; i++) {
 		m->root[i]->step_number = i + 1;
+		int n = 0;
 		for (int j = 0; j < m->root[i]->nchild; j++)
-			m->root[i]->child[j]->step_number = j;
+			if (!m->root[i]->child[j]->kpkg_retry)
+				m->root[i]->child[j]->step_number = n++;
 	}
 }
 
@@ -223,7 +228,6 @@ void mgr_init(Manager *m, const char *script_dir, const char *build_dir)
 		m->worker[w].fd = -1;
 		m->worker[w].log_fd = -1;
 	}
-	m->snapshot_enabled = 1;
 	m->port_jobs = 1;
 	m->lvl_from = m->lvl_commit = -1;
 
@@ -1234,6 +1238,7 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 	if (!npkg) {
 		kb_strv_free(pkgs);
 		g->status = ST_DONE;
+		g->resolved = 1;
 		return 1;
 	}
 
@@ -1355,6 +1360,7 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 	kb_buf_free(&out);
 	kb_buf_free(&err);
 	g->status = ST_DONE;
+	g->resolved = 1;
 	return 1;
 fail:
 	free(nodes);
@@ -1395,6 +1401,7 @@ static int expand_scripts(Manager *m, BStep *g, int idx)
 		renumber(m);
 	}
 	g->status = ST_DONE;
+	g->resolved = 1;
 	return 1;
 }
 
@@ -1503,10 +1510,6 @@ static void finish_phase(Manager *m, BStep *g)
 {
 	free(m->host_conf);
 	m->host_conf = NULL;
-	if (m->timings && g->meta) {
-		tm_record_phase(m->timings, g->meta->dir_name, step_duration(g));
-		tm_save(m->timings);
-	}
 	do_snapshot(m, g, 0);
 }
 
@@ -1539,11 +1542,6 @@ static void abandon_child(Manager *m, BWorker *wk)
 static void step_exited(Manager *m, BStep *s)
 {
 	int in_level = s->level && !s->is_commit;
-	if (m->timings && s->return_code == 0) {
-		char key[192];
-		step_timing_key(s, key, sizeof(key));
-		tm_record_step(m->timings, key, step_duration(s));
-	}
 	if (s->return_code != 0) {
 		set_family_status(s, ST_FAIL);
 		if (!m->error_step)
@@ -1564,7 +1562,7 @@ static void step_exited(Manager *m, BStep *s)
 	if (in_level)
 		return;
 	BStep *p = s->parent;
-	if (p && p->nchild && children_done(p))
+	if (p && p->resolved && children_done(p))
 		m->pending_finish = p;
 	m->cursor++;
 }
@@ -1614,33 +1612,18 @@ static void open_level(Manager *m)
 
 /*
  * Start what the level can: into every free slot up to --port-jobs, the
- * pending port with the longest recorded time first — the one that decides
- * when the level ends — and on a tie the earlier in the serial order. A slot
- * is filled beside a running port only while memory_ok() holds; with nothing
- * running one always starts, so a level cannot stall. Returns whether any
- * started.
+ * level's pending ports in the serial order. A slot is filled beside a running
+ * port only while memory_ok() holds; with nothing running one always starts,
+ * so a level cannot stall. Returns whether any started.
  */
 static int fill_level(Manager *m)
 {
 	int started = 0;
 	while (m->nrunning < m->port_jobs && !m->draining) {
 		BStep *best = NULL;
-		double best_est = -1;
-		for (int i = m->lvl_from; i < m->lvl_commit; i++) {
-			BStep *s = m->order[i];
-			if (s->status != ST_PENDING)
-				continue;
-			double est = 0;
-			if (m->timings) {
-				char key[192];
-				step_timing_key(s, key, sizeof(key));
-				est = tm_step_est(m->timings, key, 0);
-			}
-			if (!best || est > best_est) {
-				best = s;
-				best_est = est;
-			}
-		}
+		for (int i = m->lvl_from; i < m->lvl_commit && !best; i++)
+			if (m->order[i]->status == ST_PENDING)
+				best = m->order[i];
 		if (!best || (m->nrunning && !memory_ok()))
 			break;
 		int w = 0;
@@ -1701,7 +1684,7 @@ void mgr_start(Manager *m)
 	kb_mkdir_p(dir);
 }
 
-int mgr_pump(Manager *m)
+static int pump_once(Manager *m)
 {
 	if (!m->is_running)
 		return 30;
@@ -1794,7 +1777,7 @@ int mgr_pump(Manager *m)
 			if (s->confirmed) {
 				m->cursor++;
 				BStep *p = s->parent;
-				if (p && p->nchild && children_done(p)) {
+				if (p && p->resolved && children_done(p)) {
 					m->pending_finish = p;
 					return 0;
 				}
@@ -1811,7 +1794,7 @@ int mgr_pump(Manager *m)
 		if (s->is_commit && !prepare_commit(m, s)) {
 			m->cursor++;
 			BStep *p = s->parent;
-			if (p && p->nchild && children_done(p)) {
+			if (p && p->resolved && children_done(p)) {
 				m->pending_finish = p;
 				return 0;
 			}
@@ -1822,20 +1805,23 @@ int mgr_pump(Manager *m)
 		if (s->is_group)
 			m->current_phase = s;
 
-		if (s->is_group && s->packages_dir[0] && !s->nchild) {
+		/* A phase that expands to no rows is finished here. One whose
+		 * ports are all installed and current is finished by the walk
+		 * that confirms the last of them. */
+		if (s->is_group && s->packages_dir[0] && !s->resolved) {
+			int before = s->nchild;
 			if (!expand_packages(m, s, m->cursor))
 				return 30;
-			/* A phase whose ports are all installed and current is
-			 * finished by the walk that confirms the last of them. */
-			if (!s->nchild)
+			if (s->nchild == before)
 				finish_phase(m, s);
 			m->cursor++;
 			return 0;
 		}
-		if (s->is_group && s->script_dir[0] && !s->nchild) {
+		if (s->is_group && s->script_dir[0] && !s->resolved) {
+			int before = s->nchild;
 			if (!expand_scripts(m, s, m->cursor))
 				return 30;
-			if (!s->nchild)
+			if (s->nchild == before)
 				finish_phase(m, s);
 			m->cursor++;
 			return 0;
@@ -1870,4 +1856,354 @@ int mgr_pump(Manager *m)
 
 	m->is_running = 0;
 	return 30;
+}
+
+/* The run stops on any of pump_once's paths; end_time is stamped on the turn
+ * it does, so the elapsed time stops with it. */
+int mgr_pump(Manager *m)
+{
+	int wait_ms = pump_once(m);
+	if (!m->is_running && m->start_time > 0 && m->end_time <= 0)
+		m->end_time = kb_now_s();
+	return wait_ms;
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+/* Retry                                                                    */
+
+static int order_index(const Manager *m, const BStep *s)
+{
+	for (int i = 0; i < m->norder; i++)
+		if (m->order[i] == s)
+			return i;
+	return -1;
+}
+
+/* 10_bootstrap's 120_kpkg.sh as a step of `g`. Run with KDOS_REPLAY=0, its
+ * mark makes it a no-op unless a source kpkg is compiled from has changed,
+ * and then it compiles kpkg into the tree again. Its number is the script's
+ * own position in 10_bootstrap, so it writes the log that phase's run of it
+ * wrote.
+ *
+ * NULL for 10_bootstrap and anything before it: there the compiler kpkg is
+ * built with may not exist yet, and 10_bootstrap runs the script in its own
+ * place. `*missing` is set when the tree has no such script at all. */
+static BStep *kpkg_step(Manager *m, BStep *g, int *missing)
+{
+	*missing = 0;
+	const KbuildPhase *boot = kbuild_find(m->phase, m->nphase, "10_bootstrap");
+	char path[700];
+	if (boot)
+		snprintf(path, sizeof(path), "%s/120_kpkg.sh", boot->dir_path);
+	if (!boot || !kb_path_exists(path)) {
+		*missing = 1;
+		return NULL;
+	}
+	if (!g->meta || g->meta->index <= boot->index)
+		return NULL;
+
+	BStep *k = step_new(path, 0);
+	step_derive_title(k);
+	k->parent = g;
+	k->step_type = boot->chroot ? SX_CHROOT : SX_HOST;
+	k->kpkg_retry = 1;
+	kb_strlcpy(k->note, "kpkg, before the retry", sizeof(k->note));
+	int nsh = 0;
+	char **sh = kbuild_steps(boot, &nsh);
+	for (int i = 0; i < nsh; i++)
+		if (!strcmp(sh[i], "120_kpkg.sh"))
+			k->step_number = i;
+	kb_strv_free(sh);
+	return k;
+}
+
+/* A script step of the old rows that finished keeps its result in the new
+ * ones: the retry runs the phase from the step that failed, and a step
+ * added to the list since is run like any other pending one. */
+static void keep_done(BStep *to, BStep *const *old, int nold)
+{
+	if (to->kpkg_retry)
+		return;
+	for (int i = 0; i < nold; i++) {
+		BStep *o = old[i];
+		if (o->kpkg_retry || o->status != ST_DONE ||
+		    strcmp(kb_basename(o->path), kb_basename(to->path)))
+			continue;
+		char **log = to->log;
+		int nlog = to->nlog, logcap = to->logcap;
+		to->log = o->log;
+		to->nlog = o->nlog;
+		to->logcap = o->logcap;
+		o->log = log;
+		o->nlog = nlog;
+		o->logcap = logcap;
+		to->status = ST_DONE;
+		to->start_time = o->start_time;
+		to->end_time = o->end_time;
+		to->return_code = o->return_code;
+		return;
+	}
+}
+
+/*
+ * THE RETRY RESETS ONE PHASE AND NOTHING ELSE. The failed step's phase loses
+ * its rows, and every pointer into them goes with them: the order, the
+ * level, the current step, the error. What runs next, past 10_bootstrap, is
+ * kpkg's own step, so a fix to kpkg reaches the rows that follow, and then
+ * the phase as its list reads NOW — a package phase is resolved again by the
+ * pump, so an edited recipe, list or `depends =` is picked up, and its ports
+ * already installed and current are skipped as on any pass. A script phase
+ * is expanded again here, and a script of it that finished keeps its result.
+ * Phases before it keep what they did, phases after it are still pending,
+ * and the run goes on to the end of what was selected.
+ *
+ * Refused while anything runs: a slot still holding a step would be left
+ * pointing at a freed row.
+ */
+int mgr_retry(Manager *m, char *why, size_t cap)
+{
+	BStep *g = mgr_phase_of(m->error_step);
+	if (!g || !g->is_group) {
+		snprintf(why, cap, "no failed step to retry");
+		return -1;
+	}
+	int busy = m->is_running || m->nrunning || m->snap.active;
+	for (int w = 0; w < KB_MAX_WORKERS; w++)
+		busy |= m->worker[w].step != NULL;
+	if (busy) {
+		snprintf(why, cap, "a step is still running");
+		return -1;
+	}
+
+	int nold = g->nchild;
+	BStep **old = kb_calloc((size_t)nold + 1, sizeof(*old));
+	memcpy(old, g->child, (size_t)nold * sizeof(*old));
+	g->nchild = 0;
+	int k = 0;
+	for (int i = 0; i < m->norder; i++)
+		if (m->order[i]->parent != g)
+			m->order[k++] = m->order[i];
+	m->norder = k;
+
+	for (int i = 0; i < g->nlog; i++)
+		free(g->log[i]);
+	g->nlog = 0;
+	g->status = ST_PENDING;
+	g->resolved = 0;
+	g->expanded = 1;
+	g->start_time = g->end_time = 0;
+	g->return_code = 0;
+
+	int at = order_index(m, g), missing;
+	BStep *kp = kpkg_step(m, g, &missing);
+	if (kp) {
+		g->child[g->nchild++] = kp;
+		order_insert(m, at, &kp, 1);
+		at++;
+	} else if (missing) {
+		mgr_notice(m, "no 10_bootstrap/120_kpkg.sh here; kpkg is not "
+			   "compiled again");
+	}
+
+	if (g->script_dir[0]) {
+		expand_scripts(m, g, at);
+		for (int i = 0; i < g->nchild; i++)
+			keep_done(g->child[i], old, nold);
+		if (g->nchild)
+			set_family_status(g->child[0], g->child[0]->status);
+	}
+	for (int i = 0; i < nold; i++)
+		step_free(old[i]);
+	free(old);
+
+	free(m->host_conf);
+	m->host_conf = NULL;
+	if (m->pending_finish == g)
+		m->pending_finish = NULL;
+	if (m->snapshot_request == g)
+		m->snapshot_request = NULL;
+	m->error_step = NULL;
+	m->current_step = NULL;
+	m->current_phase = g;
+	m->stop_requested = 0;
+	m->force_quit = 0;
+	m->draining = 0;
+	m->lvl_from = m->lvl_commit = -1;
+	m->cursor = kp ? at - 1 : at;
+	m->end_time = 0;
+	m->is_running = 1;
+	renumber(m);
+	mgr_notice(m, "retrying %s%s", g->meta ? g->meta->dir_name : g->title,
+		   kp ? " after kpkg's own step" : "");
+	return 0;
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+/* --selftest: the retry over a real tree of three phases in a temporary
+ * directory — a host 10_bootstrap holding 120_kpkg.sh, a script phase whose
+ * second step fails until a file exists, and a package phase whose rows are
+ * made by hand, since resolving them needs kpkgdepends. */
+
+static int mfail;
+
+static void mok(int cond, const char *what)
+{
+	if (!cond) {
+		mfail++;
+		printf("  FAIL  %s\n", what);
+	}
+}
+
+static void put_file(const char *dir, const char *name, const char *text)
+{
+	char p[1024];
+	snprintf(p, sizeof(p), "%.900s/%.100s", dir, name);
+	kb_write_all(p, text, strlen(text));
+}
+
+static void run_out(Manager *m)
+{
+	for (double until = kb_now_s() + 30; m->is_running && kb_now_s() < until;) {
+		int ms = mgr_pump(m);
+		if (ms > 0)
+			usleep((useconds_t)ms * 1000);
+	}
+}
+
+/* Every row of every phase is in the order once, after its phase unless it
+ * is a retry's kpkg step, which comes just before it; nothing else is. */
+static int order_consistent(const Manager *m)
+{
+	int n = m->nroot;
+	for (int i = 0; i < m->nroot; i++) {
+		const BStep *g = m->root[i];
+		int gi = order_index(m, g);
+		if (gi < 0)
+			return 0;
+		for (int c = 0; c < g->nchild; c++) {
+			int ci = order_index(m, g->child[c]);
+			if (ci < 0 || g->child[c]->parent != g)
+				return 0;
+			if (g->child[c]->kpkg_retry ? ci != gi - 1 : ci < gi)
+				return 0;
+		}
+		n += g->nchild;
+	}
+	return n == m->norder;
+}
+
+int mgr_selftest(void)
+{
+	mfail = 0;
+	const char *tmp = getenv("TMPDIR");
+	char dir[512];
+	snprintf(dir, sizeof(dir), "%s/kdosbuild-retry.XXXXXX",
+		 tmp && *tmp ? tmp : "/tmp");
+	if (!mkdtemp(dir)) {
+		printf("  FAIL  no temporary directory for the retry test\n");
+		return 1;
+	}
+	char script[600], build[600], boot[700], scr[700], pk[700], fixed[700];
+	snprintf(script, sizeof(script), "%s/script", dir);
+	snprintf(build, sizeof(build), "%s/build", dir);
+	snprintf(boot, sizeof(boot), "%s/phases/10_bootstrap", script);
+	snprintf(scr, sizeof(scr), "%s/phases/20_x", script);
+	snprintf(pk, sizeof(pk), "%s/phases/30_pk", script);
+	snprintf(fixed, sizeof(fixed), "%s/fixed", dir);
+	kb_mkdir_p(boot);
+	kb_mkdir_p(scr);
+	kb_mkdir_p(pk);
+	kb_mkdir_p(build);
+	put_file(boot, "000_a.sh", "exit 0\n");
+	put_file(boot, "120_kpkg.sh", "# Title: kpkg\necho compiled\n");
+	put_file(scr, "00_one.sh", "exit 0\n");
+	char two[800];
+	snprintf(two, sizeof(two), "[ -e %s ] || exit 3\n", fixed);
+	put_file(scr, "01_two.sh", two);
+	put_file(scr, "02_three.sh", "exit 0\n");
+	put_file(pk, "packages.txt", "zlib\n");
+
+	Manager *m = kb_calloc(1, sizeof(*m));
+	mgr_init(m, script, build);
+	mok(m->nroot == 3, "the retry tree has three phases");
+	if (m->nroot != 3)
+		goto out;
+	mok(!m->snapshot_enabled, "snapshot writing is off by default");
+	BStep *g0 = m->root[0], *g1 = m->root[1], *g2 = m->root[2];
+	g0->status = ST_SKIPPED;
+	g2->status = ST_SKIPPED;
+
+	mgr_start(m);
+	run_out(m);
+	mok(m->error_step && !strcmp(m->error_step->title, "two"),
+	    "the script phase fails at its second step");
+	mok(m->end_time > 0, "a stopped run stops its clock");
+	double one_started = g1->nchild ? g1->child[0]->start_time : 0;
+	char why[128];
+	mok(mgr_retry(m, why, sizeof(why)) == 0, "the failed phase is retried");
+	mok(!m->error_step && m->is_running && !m->stop_requested &&
+	    m->end_time == 0, "the retry clears the failure and runs again");
+	mok(g1->nchild == 4 && g1->child[0]->kpkg_retry,
+	    "kpkg's step leads the phase's rows again");
+	mok(g1->nchild == 4 && g1->child[0]->step_number == 1,
+	    "kpkg's step keeps its number in 10_bootstrap");
+	mok(g1->nchild == 4 && g1->child[1]->status == ST_DONE &&
+	    g1->child[1]->start_time == one_started &&
+	    g1->child[2]->status == ST_PENDING &&
+	    g1->child[2]->step_number == 1,
+	    "a finished script keeps its result and the failed one is pending");
+	mok(m->cursor == order_index(m, g1) - 1, "the run resumes at kpkg's step");
+	mok(order_consistent(m), "the order holds every row once");
+
+	put_file(dir, "fixed", "");
+	run_out(m);
+	mok(!m->error_step && g1->status == ST_DONE,
+	    "the retried phase runs to its end");
+	mok(g1->nchild == 4 && g1->child[0]->status == ST_DONE &&
+	    g1->child[0]->nlog && !strcmp(g1->child[0]->log[0], "compiled"),
+	    "kpkg's step ran first");
+
+	/* A package phase failed mid-level: its rows go and the pump resolves
+	 * it again. */
+	g2->status = ST_PENDING;
+	g2->resolved = 1;
+	BStep *ok = step_new("30_pk/00_a.install", 0);
+	BStep *bad = step_new("30_pk/01_b.install", 0);
+	ok->parent = bad->parent = g2;
+	ok->status = ST_DONE;
+	bad->status = ST_FAIL;
+	ok->level = bad->level = 1;
+	g2->child[g2->nchild++] = ok;
+	g2->child[g2->nchild++] = bad;
+	BStep *rows[] = { ok, bad };
+	order_insert(m, order_index(m, g2) + 1, rows, 2);
+	m->error_step = bad;
+	m->is_running = 0;
+	m->stop_requested = 1;
+	m->draining = 1;
+	m->lvl_from = order_index(m, ok);
+	m->lvl_commit = m->lvl_from + 2;
+	m->current_step = bad;
+	m->snapshot_request = g2;
+	int g1_rows = g1->nchild;
+	mok(mgr_retry(m, why, sizeof(why)) == 0, "a package phase is retried");
+	mok(g2->nchild == 1 && g2->child[0]->kpkg_retry && !g2->resolved &&
+	    g2->status == ST_PENDING,
+	    "its rows are gone and it resolves again after kpkg's step");
+	mok(!m->draining && m->lvl_from == -1 && m->lvl_commit == -1 &&
+	    !m->current_step && !m->snapshot_request && m->current_phase == g2,
+	    "no level, step or snapshot request outlives the reset");
+	mok(g1->nchild == g1_rows && g1->status == ST_DONE,
+	    "the phase before it is untouched");
+	mok(order_consistent(m), "the order holds every row once after it");
+	m->error_step = g2->child[0];
+	mok(mgr_retry(m, why, sizeof(why)) < 0, "a running build is not retried");
+	m->error_step = NULL;
+
+out:
+	mgr_free(m);
+	free(m);
+	kb_rmtree(dir);
+	printf(mfail ? "retry: %d failed\n" : "retry: ok\n", mfail);
+	return mfail ? 1 : 0;
 }

@@ -49,7 +49,8 @@ that names it. Budget tens of gigabytes more for `build/`, and more again for ph
 first of the eleven phases from `00_cross` to `50_desktop` archives the target tree compressed, each
 later one a layer of what it added, changed or rewrote, and `60_kernel` and `70_image` take none.
 On a synthetic ten-phase tree the layers came to 23% of what full copies take; a complete set from
-a real build has not been measured. Snapshots are optional, per run and per phase; see
+a real build has not been measured. Snapshots are off unless a run asks for them (`--snapshot`, or
+`S` in the startup picker), and a phase can opt out of its own; see
 [Snapshots](build-system.md#snapshots).
 
 ## Getting the source
@@ -90,7 +91,7 @@ except `build/fs`; see [Where the build puts things](#where-the-build-puts-thing
 
 The orchestrator is `kdosbuild`, compiled from `src/devtools/kdosbuild/` by `script/kdosbuild.sh` at
 the start of a build when its sources, flags or compiler changed. On a terminal it first opens a picker that asks whether to start fresh or
-restore a snapshot, and whether to write snapshots as it goes; see
+restore a snapshot, and whether to write snapshots as it goes, which it does not unless asked; see
 [The startup picker](build-system.md#the-startup-picker). Without a terminal it prints plain lines
 instead, so a build can be logged to a file. A full build from scratch takes many hours. The
 finished ISO is `build/iso-build/kdos.iso`.
@@ -235,7 +236,7 @@ The orchestrator options used most often are these; the full list is in
 | `--phases LIST` | Run only these phases |
 | `--steps LIST` | Run only these scripts, each written `PHASE:script.sh` |
 | `--rebuild LIST` | Rebuild these ports even though they are installed |
-| `--no-snapshot` | Write no snapshots during this build |
+| `--snapshot` | Write a snapshot of each phase as it completes; off by default |
 | `--full-snapshots` | Write every snapshot as a whole tree, never as a layer on the one before |
 | `--port-jobs N` | Build up to `N` ports of a package phase at once, by dependency level; 1, the default, builds one at a time |
 | `--plain`, `--json` | No interface: plain lines, or one JSON object per event |
@@ -536,8 +537,9 @@ A full build takes hours, and almost no change needs one. Find what you changed 
 | The installer (`src/system/kdos-installer`, or `kdos-appbox`'s `catalogue.c`) | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:130_kinstall.sh"`; see below |
 | Only packaging | `make build BUILD_ARGS="--phases 70_image"` |
 | Only packaging, for the rig | `make build KDOS_ISO_COMP=zstd:3 BUILD_ARGS="--phases 70_image"` |
-| Nothing; resuming an interrupted run | `make build BUILD_ARGS="--continue-from <the phase it stopped in>"` |
-| Every phase, on the existing tree, skipping the startup picker | `make build BUILD_ARGS="--fresh --no-snapshot"` |
+| Nothing; a step failed and the fix is in the tree | `R` in the failure panel, without quitting; see [When a build fails](#when-a-build-fails) |
+| Nothing; resuming a run after quitting it | `make build BUILD_ARGS="--continue-from <the phase it stopped in>"` |
+| Every phase, on the existing tree, skipping the startup picker | `make build BUILD_ARGS=--fresh` |
 
 Use the phase that installs the port. Add `70_image` whenever you want a new ISO from the change.
 A new port is built only once a phase list names it. In `40_lang` to `44_apps` the list is a
@@ -623,9 +625,10 @@ docker run --rm -v "$PWD/build:/b" os-dev rm -rf /b/fs /b/mark /b/cross
 make build BUILD_ARGS=--fresh
 ```
 
-Budget most of a day for the build that follows. If it writes snapshots, budget the disk as well:
-`00_cross` archives `build/fs` compressed, and each later phase to `50_desktop` a layer of what it
-changed. A complete set has not been measured; see
+Budget most of a day for the build that follows. It writes no snapshots unless given `--snapshot`
+(`make build BUILD_ARGS="--fresh --snapshot"`) or `S` in the picker; with them, budget the disk as
+well: `00_cross` archives `build/fs` compressed, and each later phase to `50_desktop` a layer of what
+it changed. A complete set has not been measured; see
 [Snapshots](build-system.md#snapshots), which also says how a phase opts out of its snapshot.
 
 ## Things to avoid while a build runs
@@ -634,12 +637,12 @@ changed. A complete set has not been measured; see
   build starts, so an edit in the middle is rebuilt on the next run, but the package being
   installed now was compiled from a mix of the two trees.
 - **Do not re-run an early phase on a tree that is already past it while snapshots are being
-  written**, as they are by `--fresh`, by `--continue-from` and by a plan run with `--snapshot`. The
-  early phase's snapshot would be overwritten with the later tree, filed under its name. A
-  [build plan](build-system.md#build-plans) that narrows the run with `--phases` or `--steps`, as
-  the commands in [Rebuilding one thing](#rebuilding-one-thing) do, writes no snapshots and is safe;
-  `--rebuild` on its own does not narrow, so it keeps them. To resume an interrupted run, use
-  `--continue-from` with the phase it stopped in, not an earlier one.
+  written**, as they are by any run given `--snapshot` or the picker's `S`. The early phase's
+  snapshot would be overwritten with the later tree, filed under its name. A run that writes none,
+  the default, is safe, and so is a [build plan](build-system.md#build-plans) that narrows the run
+  with `--phases` or `--steps`, as the commands in [Rebuilding one thing](#rebuilding-one-thing) do,
+  unless `--snapshot` is given with it. To resume an interrupted run, use `--continue-from` with the
+  phase it stopped in, not an earlier one.
 - **Do not switch between running the `ports/` helpers in a container and on your machine without
   clearing them.** A helper compiled against the other C library fails without saying why; see
   [Where the build puts things](#where-the-build-puts-things) for which ones recover by themselves.
@@ -699,6 +702,17 @@ Work through these in order:
    rarely means what it says; the real error is in the log, next to the test program that failed.
 4. `testing/preflight.sh`, which catches wiring mistakes (a missing dependency, an unlisted port)
    before a build that runs for hours finds them.
+
+**Fix and retry without quitting.** Leave the failure panel up, fix the recipe, the phase list, a
+`depends =` line or `kpkg` itself in another terminal, and press `R`. For a phase after `10_bootstrap` the orchestrator runs
+`10_bootstrap/120_kpkg.sh` first, which does nothing unless a source `kpkg` is compiled from has
+changed and then compiles it into the tree again, and then runs the failed step's phase again from
+its list as it reads now: a package phase is resolved again with `kpkgdepends`, and its ports
+already installed and current are skipped as on any pass; a script phase runs again from the step
+that failed. The run then carries on through the rest of the phases it was started with. See
+[Retrying a failed phase](build-system.md#retrying-a-failed-phase). `--continue-from` is for the
+other cases: a run that was quit, a change that needs an earlier phase run again, or a build with no
+terminal.
 
 ## Cutting a release
 

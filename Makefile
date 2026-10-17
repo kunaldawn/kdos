@@ -18,7 +18,7 @@ help: ## list every target
 # Extra flags for the orchestrator, e.g.
 #   make build BUILD_ARGS="--restore 20_selfhost"
 #   make build BUILD_ARGS=--fresh
-#   make build BUILD_ARGS=--no-snapshot
+#   make build BUILD_ARGS=--snapshot
 BUILD_ARGS ?=
 
 # WHAT SIZE A VM COMES UP AT, for every run target and for testing/qemu-hw.

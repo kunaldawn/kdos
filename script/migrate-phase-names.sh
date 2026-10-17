@@ -12,7 +12,7 @@
 #
 # script/migrate-phase-names.sh — carry a build/ tree across the phase rename.
 #
-#   script/migrate-phase-names.sh [--dry-run] [--build-dir DIR] [--map FILE]
+#   script/migrate-phase-names.sh [--dry-run] [--build-dir DIR]
 #
 # Every piece of build state is keyed by a phase directory name, so a tree
 # built under the numbered phase names shows the orchestrator no snapshot at
@@ -23,9 +23,6 @@
 #   build/snapshots/<dir>/     renamed; manifest.json "phase_dir", "phase" and
 #                              "title" rewritten; the `mark` archive of the
 #                              two host phases has its directories renamed
-#   build/snapshots/timings.json
-#                              step and phase keys remapped, per port for a
-#                              split phase
 #   build/logs/<dir>/          renamed
 #   build/mark/<short>/        renamed
 #   build/.devplan.json        phase names and step file names remapped
@@ -33,10 +30,6 @@
 # A SPLIT PHASE'S SNAPSHOT AND LOGS GO TO ITS LAST SUCCESSOR: the old phase-3
 # tree is the state after 31_compilers, the old phase-4 tree the state after
 # 44_apps. The phases before it have no snapshot until a build passes them.
-# Its timings are split per port by the successors' own lists under
-# script/phases/, the lists the next build installs from, so ETAs survive; a
-# port no successor names goes to the last successor. --map (name<TAB>phase)
-# overrides the lists for the ports it names.
 #
 # SNAPSHOTS ARE RENAMED, NEVER COPIED: a full set does not fit twice.
 #
@@ -101,7 +94,6 @@ STEP_FILES = {
 ap = argparse.ArgumentParser(prog="script/migrate-phase-names.sh")
 ap.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
 ap.add_argument("--build-dir", default="build")
-ap.add_argument("--map", help="name<TAB>phase for ports of a split phase, over the lists")
 args = ap.parse_args()
 
 BUILD = os.path.abspath(args.build_dir)
@@ -193,22 +185,6 @@ for old, new in MARKS.items():
         conflicts.append(f"{MARK}/{old} and {MARK}/{new}")
 
 
-def timing_olds(steps, phases):
-    return ({k.split("/", 1)[0] for k in steps if k.split("/", 1)[0] in RENAME}
-            | {k for k in phases if k in RENAME})
-
-
-tpath = os.path.join(SNAP, "timings.json")
-if os.path.isfile(tpath):
-    with open(tpath) as f:
-        tm = json.load(f)
-    olds_present = timing_olds(tm.get("steps", {}), tm.get("phases", {}))
-    new_all = {n for o in olds_present for n in RENAME[o]}
-    for k in list(tm.get("phases", {})) + [k.split("/", 1)[0] for k in tm.get("steps", {})]:
-        if k in new_all:
-            conflicts.append(f"{tpath}: {k} beside {', '.join(sorted(olds_present))}")
-            break
-
 if conflicts:
     die("both an old and a new name exist — which one is current is not "
         "something to guess:\n  " + "\n  ".join(conflicts))
@@ -217,55 +193,6 @@ if not DRY:
     for root in (SNAP, LOGS, MARK):
         if os.path.isdir(root) and not os.access(root, os.W_OK):
             die(f"{root} is not writable; run as root from a container")
-
-# ── the per-port map for the split phases ────────────────────────────────
-
-def list_files(d):
-    base = f"script/phases/{d}"
-    if os.path.isfile(f"{base}/packages.txt"):
-        return [f"{base}/packages.txt"]
-    pd = f"{base}/packages.d"
-    if os.path.isdir(pd):
-        return [os.path.join(pd, x) for x in sorted(os.listdir(pd)) if x.endswith(".txt")]
-    return []
-
-
-def split_map():
-    m = {}
-    for old, succ in RENAME.items():
-        if len(succ) < 2:
-            continue
-        for d in succ:
-            for path in list_files(d):
-                with open(path) as f:
-                    for line in f:
-                        name = line.split("#", 1)[0].strip()
-                        if name:
-                            m.setdefault((old, name), d)
-    if args.map:
-        with open(args.map) as f:
-            for line in f:
-                parts = line.rstrip("\n").split("\t")
-                if len(parts) < 2:
-                    continue
-                for old, succ in RENAME.items():
-                    if len(succ) > 1 and parts[1] in succ:
-                        m[(old, parts[0])] = parts[1]
-    return m
-
-
-SPLIT = None
-
-
-def new_phase_for(old, port):
-    global SPLIT
-    succ = RENAME[old]
-    if len(succ) == 1:
-        return succ[0]
-    if SPLIT is None:
-        SPLIT = split_map()
-    return SPLIT.get((old, port), succ[-1])
-
 
 changed = 0
 
@@ -357,49 +284,6 @@ if os.path.isdir(SNAP):
             changed += 1
             if not DRY:
                 write_json(mpath, man, 2)
-
-# ── timings ──────────────────────────────────────────────────────────────
-
-if os.path.isfile(tpath):
-    with open(tpath) as f:
-        tm = json.load(f)
-    steps = tm.get("steps", {})
-    phases = tm.get("phases", {})
-    olds_present = timing_olds(steps, phases)
-    if olds_present:
-        nsteps = {}
-        per_new = {}
-        for k, v in steps.items():
-            ph, _, title = k.partition("/")
-            if ph in RENAME:
-                ph_new = new_phase_for(ph, title)
-                per_new.setdefault(ph, {}).setdefault(ph_new, 0.0)
-                per_new[ph][ph_new] += v
-                ph = ph_new
-            nsteps[f"{ph}/{title}"] = v
-
-        # A split phase's measured total is shared out in proportion to the
-        # step time each successor inherited.
-        nphases = {}
-        for k, v in phases.items():
-            if k not in RENAME:
-                nphases[k] = v
-                continue
-            share = per_new.get(k, {})
-            whole = sum(share.values())
-            if len(RENAME[k]) == 1 or whole <= 0:
-                nphases[RENAME[k][-1]] = v
-            else:
-                for n in RENAME[k]:
-                    if share.get(n):
-                        nphases[n] = round(v * share[n] / whole, 2)
-
-        say(f"remap {tpath}: {len(steps)} step keys, phases "
-            f"{', '.join(sorted(olds_present))}")
-        tm["steps"], tm["phases"] = nsteps, nphases
-        changed += 1
-        if not DRY:
-            write_json(tpath, tm, 1)
 
 # ── logs and marks ───────────────────────────────────────────────────────
 

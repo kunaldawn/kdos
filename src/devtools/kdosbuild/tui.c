@@ -338,15 +338,15 @@ static void draw_startup_frame(StartupView *v)
 		ktui_draw_text(2, y + 1, ktui_w - 4, v->status, KT_WARN,
 			       KT_BG, 0);
 
-	/* WRITING OFF IS THE COSTLY CHOICE AND SO IT IS THE LOUD ONE. Every
-	 * later phase restores from the snapshot the phase before it wrote,
-	 * so a run with writing off that fails in hour nineteen has nothing to
-	 * resume from and starts again at the cross toolchain. */
+	/* Writing is off unless asked for, and the picker says what that
+	 * leaves: a failure is retried in place ([R] on the build screen), but
+	 * a tree that has to be thrown away goes back to the last snapshot
+	 * there is, or to the cross toolchain. */
 	if (!v->snap_on && y + 2 < ktui_h - 2)
 		ktui_draw_text(2, y + 2, ktui_w - 4,
-			       "snapshot writing is OFF — a failed phase will "
-			       "have no restore point (S turns it on)",
-			       KT_WARN, KT_BG, KT_A_BOLD);
+			       "snapshot writing is off — this run leaves no "
+			       "restore points (S turns it on)",
+			       KT_MID, KT_BG, 0);
 
 	const char *keys[] = { arrow_ud(), "ENTER", "S", "P", "D", "Q" };
 	static const char *labels[] = { "select", "start", "snapshots",
@@ -1045,7 +1045,7 @@ static void draw_activity(Manager *m)
 	 *
 	 * Row 4 carries two fields rather than one, and they do NOT get to
 	 * share the full interior width the way a single line would: a
-	 * multi-terabyte total, a nine-digit file count and an hour-scale ETA
+	 * multi-terabyte total, a nine-digit file count and an hour-scale time
 	 * are all real at ordinary terminal widths, and if both fields draw
 	 * across the same w-4 span the later call silently overwrites the
 	 * earlier one instead of merely running long. So the interior is cut
@@ -1063,13 +1063,9 @@ static void draw_activity(Manager *m)
 		 human_count(a->files));
 	ktui_draw_text(r.x + 2, r.y + 4, lw, line, KT_MID, KT_SURFACE, 0);
 
-	double left = a->rate > 0 && a->est_bytes > a->bytes
-			      ? (double)(a->est_bytes - a->bytes) / a->rate
-			      : -1;
-	snprintf(line, sizeof(line), "%s/s   %s elapsed%s%s",
+	snprintf(line, sizeof(line), "%s/s   %s elapsed",
 		 human_bytes((long long)a->rate),
-		 human_time(kb_now_s() - a->started),
-		 left >= 0 ? "   eta " : "", left >= 0 ? human_time(left) : "");
+		 human_time(kb_now_s() - a->started));
 	ktui_draw_text_right(rx, r.y + 4, rw, line, KT_MID, KT_SURFACE, 0);
 
 	ktui_sparkline(krect(r.x + 2, r.y + 5, w - 4 > 24 ? 24 : w - 4, 1),
@@ -1127,7 +1123,6 @@ void screen_progress(Manager *m, const char *title)
 typedef struct {
 	Manager *m;
 	Sampler *sam;
-	Timings *tm;
 	Layout lay;	/* OUTPUT of draw_build_frame: the loop's mouse handler
 			 * reads it back to hit-test the tree and detail panes,
 			 * the same first_row/off contract as the other screens'
@@ -1156,8 +1151,18 @@ typedef struct {
 	/* The success panel's counterpart to err_dismissed. A bare flag is
 	 * right here where a step pointer was right there: a build finishes
 	 * exactly once per run, so there is no "a DIFFERENT one succeeded"
-	 * case to distinguish. */
+	 * case to distinguish. Cleared by a retry, which makes another finish
+	 * possible. */
 	int done_dismissed;
+
+	/* The bell and the desktop notification fire once per event: a failure
+	 * once until a retry, the end of the run once. */
+	int notified_fail;
+	int notified_end;
+
+	/* The terminal title as last set, and when. */
+	char title[256];
+	double title_at;
 } BuildView;
 
 /* Marks rather than filters: a build log is read for context around the hit,
@@ -1201,12 +1206,10 @@ static BStep *phase_progress(Manager *m, int *done, int *total)
 		return NULL;
 	*total = g->nchild;
 	for (int i = 0; i < g->nchild; i++)
-		/* SKIPPED counts as finished. It is a step that will not run
-		 * again this pass — restored from a snapshot, or a package
-		 * already installed — and leaving it out meant a phase full of
-		 * skips could never reach 100%. On a resumed build that is the
-		 * ordinary case, so the bar sat short of the end for the whole
-		 * run and the ETA was computed against work nobody was doing. */
+		/* SKIPPED counts as finished: a step that will not run again
+		 * this pass — restored from a snapshot, or a package already
+		 * installed — or a phase full of skips, the ordinary case on a
+		 * resumed build, could never reach 100%. */
 		if (g->child[i]->status == ST_DONE ||
 		    g->child[i]->status == ST_SKIPPED ||
 		    g->child[i]->status == ST_FAIL)
@@ -1252,19 +1255,30 @@ static void draw_header(BuildView *v)
 			       right, KT_WARN, KT_BG, KT_A_BOLD);
 
 	double pct = total ? (double)done / total : 0;
-	double eta = v->tm ? eta_seconds(m, v->tm) : -1;
-	/* Under --port-jobs the header says how many steps are running, and
-	 * the ETA carries a `~`: it assumes a level divides evenly among its
-	 * slots. */
-	char running[24] = "";
+	/* Elapsed times only: the step running (under --port-jobs, how many
+	 * are), the phase and the whole run. Each is given up, step first,
+	 * before the bar goes below ten columns. */
+	char step[32] = "", phase[32] = "", run[32];
+	BStep *cur = m->current_step;
 	if (m->nrunning > 1)
-		snprintf(running, sizeof(running), "   %d running", m->nrunning);
-	char suffix[96];
-	snprintf(suffix, sizeof(suffix), "%3d%%   %d/%d%s   eta %s%s",
-		 (int)(pct * 100), done, total, running,
-		 m->port_jobs > 1 ? "~" : "", human_time(eta));
-	int sw = ktui_utf8_width(suffix) + 2;
-	int bar_w = hr.w - sw;
+		snprintf(step, sizeof(step), "   %d running", m->nrunning);
+	else if (cur && !cur->is_group && cur->status == ST_RUNNING)
+		snprintf(step, sizeof(step), "   step %s",
+			 human_time(step_duration(cur)));
+	if (g)
+		snprintf(phase, sizeof(phase), "   phase %s",
+			 human_time(step_duration(g)));
+	snprintf(run, sizeof(run), "   total %s", human_time(mgr_elapsed(m)));
+	char suffix[160];
+	int bar_w = 0;
+	for (int drop = 0; drop < 4; drop++) {
+		snprintf(suffix, sizeof(suffix), "%3d%%   %d/%d%s%s%s",
+			 (int)(pct * 100), done, total, drop < 1 ? step : "",
+			 drop < 2 ? phase : "", drop < 3 ? run : "");
+		bar_w = hr.w - ktui_utf8_width(suffix) - 2;
+		if (bar_w >= 10)
+			break;
+	}
 	if (bar_w < 10)
 		bar_w = 10;
 	/* Pulsing only while the build is actually running: a finished or
@@ -1275,7 +1289,7 @@ static void draw_header(BuildView *v)
 	ktui_progress_ex(krect(hr.x, hr.y + 1, bar_w, 1), pct, NULL,
 			 KT_BAR_TIP | (m->is_running ? KT_BAR_PULSE : 0),
 			 KT_BG);
-	/* Right-aligned: the ETA's digits change width as it counts down and a
+	/* Right-aligned: the times' digits change width as they count and a
 	 * left-aligned suffix jitters the whole line every second. */
 	ktui_draw_text_right(hr.x + bar_w, hr.y + 1, hr.w - bar_w, suffix,
 			     KT_TEXT, KT_BG, KT_A_BOLD);
@@ -1456,7 +1470,46 @@ static void draw_tree(BuildView *v)
 		       v->nvisible, g.content.h, v->scroll);
 }
 
-static void draw_group_detail(BStep *n, int x, int w, int y, int h)
+/* Every phase's time: a finished one its duration, the one running its time
+ * so far, one that has not started "-". The selected phase's row is bold. */
+static void draw_phase_times(Manager *m, BStep *sel, int x, int w, int y,
+			     int h)
+{
+	if (h < 2)
+		return;
+	char buf[256];
+	snprintf(buf, sizeof(buf), "%-18s %9s", "PHASE", "TIME");
+	ktui_draw_text(x, y, w, buf, KT_ACCENT, KT_BG, KT_A_BOLD);
+	for (int i = 0; i < m->nroot && i + 1 < h; i++) {
+		BStep *g = m->root[i];
+		double d = step_duration(g);
+		int running = m->is_running && g == m->current_phase;
+		const char *what = "";
+		int fg = KT_MID;
+		char t[32];
+		if (g->status == ST_SKIPPED) {
+			kb_strlcpy(t, "skipped", sizeof(t));
+		} else if (d <= 0) {
+			kb_strlcpy(t, "-", sizeof(t));
+		} else {
+			kb_strlcpy(t, human_time(d), sizeof(t));
+			if (running) {
+				what = "  running";
+				fg = KT_WARN;
+			} else if (g->status == ST_FAIL) {
+				what = "  failed";
+				fg = KT_ERR;
+			}
+		}
+		snprintf(buf, sizeof(buf), "%-18s %9s%s",
+			 g->meta ? g->meta->dir_name : g->title, t, what);
+		ktui_draw_text(x, y + 1 + i, w, buf, g == sel ? KT_TEXT : fg,
+			       KT_BG, g == sel ? KT_A_BOLD : 0);
+	}
+}
+
+static void draw_group_detail(Manager *m, BStep *n, int x, int w, int y,
+			      int h)
 {
 	const KbuildPhase *meta = n->meta;
 	if (!meta)
@@ -1506,6 +1559,8 @@ static void draw_group_detail(BStep *n, int x, int w, int y, int h)
 		if (line < h)
 			ktui_draw_text(x, y + line++, w, buf, KT_WARN, KT_BG, 0);
 	}
+	line++;
+	draw_phase_times(m, n, x, w, y + line, h - line);
 }
 
 /* Drawn on the pane's own last row, which the caller has already excluded
@@ -1591,7 +1646,7 @@ static void draw_detail(BuildView *v)
 			draw_search_bar(v, x, w, bottom);
 			return;
 		}
-		draw_group_detail(n, x, w, log_y, log_h);
+		draw_group_detail(v->m, n, x, w, log_y, log_h);
 		draw_search_bar(v, x, w, bottom);
 		return;
 	}
@@ -1641,6 +1696,282 @@ static void draw_detail(BuildView *v)
 	draw_search_bar(v, x, w, bottom);
 }
 
+/* ──────────────────────────────────────────────────────────────────────── */
+/* The HUD's graphs
+ *
+ * FIXED SCALES, so a height means the same quantity on every frame: CPU and
+ * memory from 0 to all of it, output on a logarithmic scale from 1 to 100,000
+ * lines a second. A graph scaled to its own window draws an idle machine and
+ * a saturated one as the same shape. Time is fixed too: one sample a second,
+ * one braille dot column a sample, the newest at the right edge, so a cell is
+ * always two seconds and the graph slides rather than rescales.
+ *
+ * Drawn here rather than in libktui: a change to a library changes the recipe
+ * hash of every port of ours, and each would be rebuilt for it.
+ *
+ * No gridlines: a dotted rule across the graph reads as data at a glance.
+ * The box around each graph is the scale's frame — its top border is 100%
+ * (100,000 lines a second for output) and its bottom border zero.
+ *
+ * The glyph tiers are libktui's. A rich terminal gets braille, 2x4 dots a
+ * cell, so four rows hold sixteen levels; the Linux VT's console font has no
+ * braille, and gets a full block, a medium shade or a light shade per cell
+ * for a quarter row filled, half or more, or less; the ascii tier the same in
+ * ktui_glyph's ascii stand-ins. Both sample columns of a cell are folded to
+ * their larger there, so the time axis matches the braille one.
+ */
+
+#define HUD_LEVELS 16		/* dot rows in a four-row graph             */
+
+/* lines a second at which the log scale reaches each level: level L is
+ * filled from 10^((L - 0.5) * 5/16), so a decade is 3.2 levels. */
+static const double LOG_STEP[HUD_LEVELS] = {
+	1.43301, 2.94273, 6.04296, 12.4094, 25.483, 52.3299, 107.461,
+	220.673, 453.158, 930.572, 1910.95, 3924.19, 8058.42, 16548.2,
+	33982.1, 69783.1,
+};
+
+/* Exact at both ends, and any value above zero shows: a level rounded down to
+ * nothing reads as an idle machine. */
+static int hud_level_lin(double f)
+{
+	if (f <= 0)
+		return 0;
+	if (f >= 1)
+		return HUD_LEVELS;
+	int l = (int)(f * HUD_LEVELS);
+	if ((double)l < f * HUD_LEVELS)
+		l++;
+	return l;
+}
+
+static int hud_level_log(double v)
+{
+	if (v < 1)
+		return 0;
+	int l = 1;
+	for (int i = 0; i < HUD_LEVELS; i++)
+		if (v >= LOG_STEP[i])
+			l = i + 1;
+	return l;
+}
+
+typedef struct {
+	const double *hist;
+	int n;
+	int logscale;
+	double warn, err;	/* fractions; 0 is no such threshold        */
+} HudGraph;
+
+/* The largest sample the graph shows, -1 when it shows none. */
+static double hud_peak(const HudGraph *g, int cells)
+{
+	double peak = -1;
+	for (int i = g->n - 2 * cells; i < g->n; i++)
+		if (i >= 0 && g->hist[i] > peak)
+			peak = g->hist[i];
+	return peak;
+}
+
+static int hud_fill_slot(const HudGraph *g, double v)
+{
+	if (g->err > 0 && v > g->err)
+		return KT_ERR;
+	if (g->warn > 0 && v > g->warn)
+		return KT_WARN;
+	return KT_ACCENT;
+}
+
+static void hud_glyph(int x, int y, const char *s, int fg)
+{
+	ktui_draw_text(x, y, 1, s, fg, KT_BG, 0);
+}
+
+static void hud_graph(KRect r, const HudGraph *g)
+{
+	static const unsigned char DOT[2][4] = {
+		{ 0x01, 0x02, 0x04, 0x40 },
+		{ 0x08, 0x10, 0x20, 0x80 },
+	};
+	int braille = (ktui_caps & KT_CAP_UTF8) && !(ktui_caps & KT_CAP_LINUXVT);
+	int levels = 4 * r.h;
+
+	for (int c = 0; c < r.w; c++) {
+		int have[2], lvl[2];
+		double top = 0;
+		for (int dx = 0; dx < 2; dx++) {
+			int i = g->n - 2 * r.w + 2 * c + dx;
+			have[dx] = i >= 0 && i < g->n;
+			double v = have[dx] ? g->hist[i] : 0;
+			int l = !have[dx] ? 0
+				: g->logscale ? hud_level_log(v)
+				: hud_level_lin(v);
+			/* A shorter graph keeps the scale and loses
+			 * resolution: level 16 of 16 is its top dot too. */
+			lvl[dx] = (l * levels + HUD_LEVELS - 1) / HUD_LEVELS;
+			if (have[dx] && v > top)
+				top = v;
+		}
+		int fg = hud_fill_slot(g, top);
+		for (int row = 0; row < r.h; row++) {
+			int x = r.x + c, y = r.y + row;
+			int fill = 0;
+			for (int k = 0; k < 4; k++) {
+				int dy = row * 4 + k;	/* dot rows from the top */
+				for (int dx = 0; dx < 2; dx++)
+					if (have[dx] && lvl[dx] >= levels - dy)
+						fill |= DOT[dx][k];
+			}
+			if (braille) {
+				if (fill)
+					ktui_draw_cell(x, y, 0x2800u + (uint32_t)fill,
+						       fg, KT_BG, 0);
+				else
+					ktui_draw_cell(x, y, ' ', KT_DIM, KT_BG, 0);
+				continue;
+			}
+			int hi = lvl[0] > lvl[1] ? lvl[0] : lvl[1];
+			int part = hi - (r.h - 1 - row) * 4;
+			if (part >= 4)
+				hud_glyph(x, y, ktui_glyph[KT_G_FULL], fg);
+			else if (part >= 2)
+				hud_glyph(x, y, ktui_glyph[KT_G_SHADE_MED], fg);
+			else if (part == 1)
+				hud_glyph(x, y, ktui_glyph[KT_G_SHADE], fg);
+			else
+				ktui_draw_cell(x, y, ' ', KT_DIM, KT_BG, 0);
+		}
+	}
+}
+
+/* One caption line: the label in KT_MID at the left of the caption's column,
+ * the value right-aligned against its right edge. hud_caption_w is the
+ * widest label, space and value any line can have. */
+static void hud_cap(KRect c, int row, const char *label, const char *value,
+		    int fg)
+{
+	if (row >= c.h)
+		return;
+	ktui_draw_text(c.x, c.y + row, c.w, label, KT_MID, KT_BG, 0);
+	int lw = ktui_utf8_width(label) + 1;
+	if (lw < c.w)
+		ktui_draw_text_right(c.x + lw, c.y + row, c.w - lw, value, fg,
+				     KT_BG, 0);
+}
+
+/* At most seven characters: grouped to 999,999, then 1.0M up. */
+static const char *hud_count(double v)
+{
+	static char out[4][16];
+	static int slot;
+	char *b = out[slot++ & 3];
+	if (v < 999999.5)
+		kb_strlcpy(b, human_count((long long)(v + 0.5)), 16);
+	else if (v < 999.95e6)
+		snprintf(b, 16, "%.1fM", v / 1e6);
+	else
+		snprintf(b, 16, "%.1fG", v / 1e9);
+	return b;
+}
+
+/* ── the duration bands of the heat strip ─────────────────────────────── */
+
+#define HEAT_BANDS 5
+static const double HEAT_EDGE[HEAT_BANDS - 1] = { 10, 60, 600, 3600 };
+static const char *const HEAT_NAME[HEAT_BANDS] = { "<10s", "<1m", "<10m",
+						   "<1h", "1h+" };
+static const int HEAT_SLOT[HEAT_BANDS] = { KT_MID, KT_MID, KT_ACCENT, KT_WARN,
+					   KT_ERR };
+
+static int heat_band(double secs)
+{
+	int b = 0;
+	while (b < HEAT_BANDS - 1 && secs >= HEAT_EDGE[b])
+		b++;
+	return b;
+}
+
+/* The bands step up the vertical ramp — taller is slower — and the colour
+ * tells apart what the VT's three glyphs cannot. */
+static void heat_cell(int x, int y, int band)
+{
+	ktui_draw_text(x, y, 1, ktui_ramp_v((band + 1) / (double)HEAT_BANDS),
+		       HEAT_SLOT[band], KT_BG, 0);
+}
+
+/* "▂<10s ▄<1m ..." */
+static int heat_legend_w(void)
+{
+	int w = 0;
+	for (int b = 0; b < HEAT_BANDS; b++)
+		w += (b ? 1 : 0) + 1 + (int)strlen(HEAT_NAME[b]);
+	return w;
+}
+
+static void heat_legend(int x, int y)
+{
+	for (int b = 0; b < HEAT_BANDS; b++) {
+		if (b)
+			x++;
+		heat_cell(x++, y, b);
+		x += ktui_draw_text(x, y, 8, HEAT_NAME[b], KT_MID, KT_BG, 0);
+	}
+}
+
+/* One cell per finished step in run order, or, with more steps than cells,
+ * the slowest of each cell's share: a short slow port must not average away
+ * into its fast neighbours. */
+static void heat_strip(KRect r, const double *v, int n)
+{
+	int cells = n < r.w ? n : r.w;
+	for (int i = 0; i < cells; i++) {
+		int lo = (int)((long long)i * n / cells);
+		int hi = (int)((long long)(i + 1) * n / cells);
+		if (hi <= lo)
+			hi = lo + 1;
+		double slow = 0;
+		for (int k = lo; k < hi && k < n; k++)
+			if (v[k] > slow)
+				slow = v[k];
+		heat_cell(r.x + i, r.y, heat_band(slow));
+	}
+}
+
+/* `text` in at most two lines of `w`, broken at the last space that fits;
+ * the second line is cut at the edge. */
+static void wrap2(int x, int y, int w, int rows, const char *text, int fg)
+{
+	if (rows <= 0 || w <= 0)
+		return;
+	const char *p = text, *brk = NULL;
+	int used = 0;
+	while (*p) {
+		uint32_t cp;
+		const char *next = ktui_utf8_next(p, &cp);
+		if (used + 1 > w)
+			break;
+		if (cp == ' ')
+			brk = p;
+		used++;
+		p = next;
+	}
+	if (!*p || rows < 2) {
+		ktui_draw_text(x, y, w, text, fg, KT_BG, 0);
+		return;
+	}
+	const char *cut = brk ? brk : p;
+	char first[512];
+	size_t n = (size_t)(cut - text);
+	if (n >= sizeof(first))
+		n = sizeof(first) - 1;
+	memcpy(first, text, n);
+	first[n] = 0;
+	ktui_draw_text(x, y, w, first, fg, KT_BG, 0);
+	while (*cut == ' ')
+		cut++;
+	ktui_draw_text(x, y + 1, w, cut, fg, KT_BG, 0);
+}
+
 /* One sample per COMPLETED step, in run order. Rebuilt each frame rather than
  * cached: the array is at most KB_MAX_STEPS doubles and the alternative is a
  * second copy of the step list to keep in sync. m->order is itself capped at
@@ -1659,6 +1990,63 @@ static int heat_samples(Manager *m, double *out, int cap)
 	return n;
 }
 
+/* rootfs, the heat strip and the last notice. Each field is drawn only if it
+ * fits whole in the panel; a notice is prose, and wraps instead. */
+static void hud_info(KRect r, Manager *m, Sampler *s)
+{
+	int y = r.y;
+	char notice[300] = "";
+	if (m->nnotice)
+		snprintf(notice, sizeof(notice), "%s %s", ktui_glyph[KT_G_BULLET],
+			 m->notice[m->nnotice - 1].text);
+
+	/* One row has room for one thing, and the newest notice is the one
+	 * that says what just happened. */
+	if (r.h < 4 && notice[0]) {
+		ktui_draw_text(r.x, y, r.w, notice, KT_WARN, KT_BG, 0);
+		return;
+	}
+
+	int x = r.x, right = r.x + r.w;
+	x += ktui_draw_text(x, y, right - x, "rootfs", KT_MID, KT_BG, 0);
+	if (s->fs_sampled_at > 0) {
+		char part[3][64];
+		snprintf(part[0], sizeof(part[0]), " %s", human_bytes(s->fs_bytes));
+		snprintf(part[1], sizeof(part[1]), "  %s files",
+			 human_count(s->fs_files));
+		snprintf(part[2], sizeof(part[2]), "%s",
+			 s->fs_partial ? " (partial)" : "");
+		for (int i = 0; i < 3 && part[i][0]; i++) {
+			int pw = ktui_utf8_width(part[i]);
+			if (x + pw > right)
+				break;
+			x += ktui_draw_text(x, y, pw, part[i],
+					    i ? KT_MID : KT_TEXT, KT_BG, 0);
+		}
+	} else if (x + 4 <= right) {
+		ktui_draw_text(x, y, 4, " ...", KT_MID, KT_BG, 0);
+	}
+	if (r.h < 2)
+		return;
+
+	static double heat[KB_MAX_STEPS];
+	int nheat = heat_samples(m, heat, KB_MAX_STEPS);
+	y++;
+	x = r.x + ktui_draw_text(r.x, y, 5, "heat ", KT_MID, KT_BG, 0);
+	int lw = heat_legend_w();
+	int legend = right - x - lw - 1 >= HUD_GRAPH_MIN;
+	int hw = right - x - (legend ? lw + 1 : 0);
+	if (nheat)
+		heat_strip(krect(x, y, hw, 1), heat, nheat);
+	else
+		ktui_draw_text(x, y, hw, "no step finished yet", KT_MID, KT_BG, 0);
+	if (legend)
+		heat_legend(right - lw, y);
+
+	if (notice[0])
+		wrap2(r.x, y + 1, r.w, r.h - 2, notice, KT_WARN);
+}
+
 static void draw_hud(BuildView *v)
 {
 	Sampler *s = v->sam;
@@ -1666,129 +2054,75 @@ static void draw_hud(BuildView *v)
 	KRect r = v->lay.hud;
 	if (!s || r.h <= 0)
 		return;
+	HudLayout hl = hud_compute(r);
+	char val[32];
 
-	/* Each field is guarded by its own worst-case width budget before it
-	 * draws a single cell: a field that does not fit whole is dropped, not
-	 * clipped into a half gauge trailed by garbled digits. */
-	int x = r.x;
-	if (r.w - x >= 27) {
-		x += ktui_draw_text(x, r.y, r.w - x, "load ", KT_DIM, KT_BG, 0);
-		ktui_sparkline(krect(x, r.y, 12, 1), s->load_hist, s->nload, 0,
-			       KT_BG);
-		x += 12;
-		x += ktui_draw_textf(x, r.y, 10, KT_MID, KT_BG, 0, " %.2f",
-				     s->load1);
-		/* The chart autoscales to its own window, so the top of the
-		 * ramp means a different load every time the window turns
-		 * over. Printing that peak is what makes the shape readable as
-		 * a quantity; it is dropped first when the row is tight. */
-		if (r.w - x >= 9)
-			x += ktui_draw_textf(x, r.y, 9, KT_DIM, KT_BG, 0,
-					     " %s%.1f",
-					     ktui_glyph[KT_G_UP],
-					     ktui_sparkline_peak(s->load_hist,
-								 s->nload, 12));
-		x += ktui_draw_text(x, r.y, 2, "  ", KT_DIM, KT_BG, 0);
+	static const char *const TITLE[HUD_NGRAPH + 1] = {
+		"CPU", "Memory", "Output", "Build",
+	};
+	for (int i = 0; hl.boxed && i <= HUD_INFO; i++)
+		if (hl.box[i].w)
+			ktui_draw_box(hl.box[i], TITLE[i], KT_DIM, KT_BG, 0);
+
+	if (hl.graph[HUD_CPU].w) {
+		KRect gr = hl.graph[HUD_CPU], c = hl.caption[HUD_CPU];
+		HudGraph g = { s->cpu_hist, s->nhist, 0, 0.85, 0 };
+		hud_graph(gr, &g);
+		snprintf(val, sizeof(val), "%d%%", (int)(s->cpu_busy * 100 + 0.5));
+		hud_cap(c, 0, "cpu", val, hud_fill_slot(&g, s->cpu_busy));
+		double pk = hud_peak(&g, gr.w);
+		if (pk < 0)
+			kb_strlcpy(val, "-", sizeof(val));
+		else
+			snprintf(val, sizeof(val), "%d%%", (int)(pk * 100 + 0.5));
+		hud_cap(c, 1, "peak", val, KT_TEXT);
+		snprintf(val, sizeof(val), "%d", s->ncpu);
+		hud_cap(c, 2, "cpus", val, KT_TEXT);
+		snprintf(val, sizeof(val), s->load1 < 1000 ? "%.2f" : "%.0f",
+			 s->load1);
+		hud_cap(c, 3, "load", val, KT_TEXT);
 	}
 
-	if (r.w - x >= 41) {
-		x += ktui_draw_text(x, r.y, r.w - x, "mem ", KT_DIM, KT_BG, 0);
-		double memf = s->mem_total ? (double)s->mem_used / s->mem_total
-					   : 0;
-		ktui_gauge(x, r.y, 7, memf, memf > 0.9 ? KT_ERR : KT_ACCENT,
-			   KT_BG);
-		x += 7;
-		x += ktui_draw_textf(x, r.y, 18, KT_MID, KT_BG, 0, " %s/",
-				     human_bytes(s->mem_used));
-		x += ktui_draw_textf(x, r.y, 12, KT_MID, KT_BG, 0, "%s  ",
-				     human_bytes(s->mem_total));
+	if (hl.graph[HUD_MEM].w) {
+		KRect c = hl.caption[HUD_MEM];
+		HudGraph g = { s->mem_hist, s->nhist, 0, 0.85, 0.95 };
+		hud_graph(hl.graph[HUD_MEM], &g);
+		double f = s->mem_total ? (double)s->mem_used / s->mem_total : 0;
+		hud_cap(c, 0, "mem", human_bytes(s->mem_used),
+			hud_fill_slot(&g, f));
+		hud_cap(c, 1, "of", human_bytes(s->mem_total), KT_TEXT);
+		/* Swap in use is a warning only while it is still growing: a
+		 * build that swapped once an hour ago and stopped is not one
+		 * that is swapping. */
+		int rising = s->swap_used > 0 && s->swap_rose_at > 0 &&
+			     kb_now_s() - s->swap_rose_at < 10;
+		hud_cap(c, 2, "swap", human_bytes(s->swap_used),
+			rising ? KT_WARN : KT_TEXT);
+		hud_cap(c, 3, "free", human_bytes(s->disk_free), KT_TEXT);
 	}
 
-	if (r.w - x >= 20)
-		x += ktui_draw_textf(x, r.y, 20, KT_DIM, KT_BG, 0, "free %s  ",
-				     human_bytes(s->disk_free));
-
-	/* "out " (4) + the 10-cell sparkline + " %s/s" worst case (a five-digit,
-	 * comma-grouped rate, " 12,345/s" = 9) is 23 columns whole; a gate of
-	 * >20 lets the field start with only 21-22 free and loses the trailing
-	 * "/s" to ktui_draw_textf's own maxw clamp. */
-	if (r.w - x >= 23) {
-		x += ktui_draw_text(x, r.y, r.w - x, "out ", KT_DIM, KT_BG, 0);
-		ktui_sparkline(krect(x, r.y, 10, 1), s->history, s->nhistory, 0,
-			       KT_BG);
-		x += 10;
-		x += ktui_draw_textf(x, r.y, 10, KT_MID, KT_BG, 0, " %s/s",
-				     human_count((long long)s->lines_per_sec));
-		/* Same reasoning as load's peak, same drop-first budget: a
-		 * comma-grouped peak is at most " ^99,999" = 8. */
-		if (r.w - x >= 9)
-			ktui_draw_textf(x, r.y, 9, KT_DIM, KT_BG, 0, " %s%s",
-					ktui_glyph[KT_G_UP],
-					human_count((long long)ktui_sparkline_peak(
-						s->history, s->nhistory, 10)));
+	if (hl.graph[HUD_OUT].w) {
+		KRect gr = hl.graph[HUD_OUT], c = hl.caption[HUD_OUT];
+		HudGraph g = { s->rate_hist, s->nhist, 1, 0, 0 };
+		hud_graph(gr, &g);
+		snprintf(val, sizeof(val), "%s/s", hud_count(s->lines_per_sec));
+		hud_cap(c, 0, "out", val, KT_TEXT);
+		double pk = hud_peak(&g, gr.w);
+		hud_cap(c, 1, "peak", pk < 0 ? "-" : hud_count(pk), KT_TEXT);
+		hud_cap(c, 2, "scale", "log", KT_TEXT);
+		hud_cap(c, 3, "lines", hud_count((double)m->total_lines), KT_TEXT);
 	}
 
-	if (r.h < 2)
-		return;
+	if (hl.info.w)
+		hud_info(hl.info, m, s);
+}
 
-	int y = r.y + 1;
-	int hx = r.x;
-	if (s->fs_sampled_at > 0)
-		/* Worst case: "rootfs " (7) + a terabyte total (4) + " / " (3)
-		 * + a nine-digit, comma-grouped file count (11) + " files" (6)
-		 * + " (partial)" (10) + two trailing spaces = 43. 40 clipped
-		 * the close paren off "(partial" and ran it into "heat". */
-		hx += ktui_draw_textf(hx, y, 43, KT_DIM, KT_BG, 0,
-				      "rootfs %s / %s files%s  ",
-				      human_bytes(s->fs_bytes),
-				      human_count(s->fs_files),
-				      s->fs_partial ? " (partial)" : "");
-	else
-		hx += ktui_draw_text(hx, y, 20, "rootfs ...  ", KT_DIM, KT_BG, 0);
-
-	/* The right-aligned notice has first claim on row two, so its width is
-	 * reserved before the heat strip is sized. Checking the room only
-	 * AFTER drawing heat undercounts by exactly the strip's own width —
-	 * hx only ever advanced past the "heat " label, never past the cells
-	 * ktui_heat() went on to paint — and let a wide strip run straight
-	 * under the notice text. Cost a debug cycle. */
-	char notice_buf[280];
-	int notice_w = 0;
-	if (m->nnotice) {
-		const char *note = m->notice[m->nnotice - 1].text;
-		snprintf(notice_buf, sizeof(notice_buf), "%s %s",
-			 ktui_glyph[KT_G_BULLET], note);
-		notice_w = ktui_utf8_width(notice_buf);
-	}
-
-	/* The heat strip: one cell per finished step, darkest is slowest. A
-	 * phase full of slow ports is a visibly darker run of cells. One
-	 * budget pays for the label, the cells and the notice's reserve —
-	 * the label is drawn FIRST and `room` is measured from the hx it
-	 * left behind, so `hw` is sized from the columns that are actually
-	 * still free. Sizing `hw` from room measured BEFORE the label — the
-	 * same trap the notice-overlap fix above catches one budget over —
-	 * charges the label's 6 columns to nobody and runs hx + hw past
-	 * r.w. Invariant: hx after the heat cells never exceeds r.w. */
-	static double heat[KB_MAX_STEPS];
-	int nheat = heat_samples(m, heat, KB_MAX_STEPS);
-	int reserve = notice_w ? notice_w + 4 : 0;
-	if (nheat && r.w - hx - 2 - reserve > 6 + 8) {
-		hx += ktui_draw_text(hx, y, 6, "heat ", KT_DIM, KT_BG, 0);
-		int room = r.w - hx - 2 - reserve;
-		int hw = room > 28 ? 28 : room;
-		ktui_heat(krect(hx, y, hw, 1), heat, nheat, 0, KT_BG);
-		hx += hw;
-	}
-
-	/* Gated on where the LEFT-hand text actually ended (`hx`, which tracks
-	 * the heat strip too), not just on the notice's own width fitting the
-	 * row: a 70-90 column notice — a real snapshot summary — fits the row
-	 * easily on its own and otherwise draws straight over the rootfs stats
-	 * at 100 columns, however far right they ran. Dropped rather than
-	 * overlapped; it is shown elsewhere too. */
-	if (notice_w && hx + 2 + notice_w <= r.x + r.w)
-		ktui_draw_text_right(r.x, y, r.w, notice_buf, KT_WARN, KT_BG, 0);
+/* [R] is offered once the failure has stopped the run: nothing is running,
+ * no level is still draining, no snapshot is being written. */
+static int can_retry(const Manager *m)
+{
+	return m->error_step && !m->is_running && !m->nrunning &&
+	       !m->snap.active;
 }
 
 static void draw_footer(BuildView *v)
@@ -1803,10 +2137,20 @@ static void draw_footer(BuildView *v)
 	 * key while a log is on screen. Q leads the list rather than trailing
 	 * it: keyhint() drops whatever doesn't fit from the END, and 80
 	 * columns is the most common width, so the most important key placed
-	 * last is the one lost exactly there. */
-	const char *keys[] = { "Q", arrow_ud(), "SPC", "/", "E", "O", "F", "S", "T" };
-	const char *labels[] = { "uit", "sel", "fold", "find", "rror", "pen",
-				 "ollow", "nap", "heme" };
+	 * last is the one lost exactly there. R follows it while a failure can
+	 * be retried, for the same reason. */
+	const char *keys[10] = { "Q", arrow_ud(), "SPC", "/", "E", "O", "F", "S",
+				 "T" };
+	const char *labels[10] = { "uit", "sel", "fold", "find", "rror", "pen",
+				   "ollow", "nap", "heme" };
+	int nkeys = 9;
+	if (can_retry(m)) {
+		memmove(keys + 2, keys + 1, sizeof(keys[0]) * 8);
+		memmove(labels + 2, labels + 1, sizeof(labels[0]) * 8);
+		keys[1] = "R";
+		labels[1] = "etry";
+		nkeys = 10;
+	}
 	ktui_draw_fill(krect(fr.x, fr.y, fr.w, 1), KT_BG);
 
 	char right[128];
@@ -1818,7 +2162,7 @@ static void draw_footer(BuildView *v)
 	 * block below is 81 columns wide, so a flat 40-column reserve let the
 	 * indicator draw straight on top of the hints at any width <= 91. */
 	int reserve = rw + 2 <= fr.w ? rw + 2 : 0;
-	keyhint(krect(fr.x, fr.y, fr.w - reserve, 1), keys, labels, 9);
+	keyhint(krect(fr.x, fr.y, fr.w - reserve, 1), keys, labels, nkeys);
 
 	if (reserve)
 		ktui_draw_text(fr.x + fr.w - 1 - rw, fr.y, rw, right,
@@ -2032,10 +2376,22 @@ static void draw_failure_panel(Manager *m, BStep *n)
 
 	/* Pinned to the panel's own last interior row regardless of how many
 	 * error lines actually printed above, so the keys are always in the
-	 * same place rather than chasing a variable-height log excerpt. */
-	ktui_draw_text(x, r.y + h - 2, iw,
-		       "[O] open log   [C] copy path   [Esc/Enter] dismiss",
-		       KT_WARN, KT_SURFACE, KT_A_BOLD);
+	 * same place rather than chasing a variable-height log excerpt. A key
+	 * that does not fit whole is left off, from the end. */
+	static const char *const KEYS[] = { "[R] retry phase", "[O] open log",
+					    "[C] copy path",
+					    "[Esc/Enter] dismiss" };
+	int kx = x, first = 1;
+	for (int i = can_retry(m) ? 0 : 1; i < 4; i++) {
+		int kw = (first ? 0 : 3) + (int)strlen(KEYS[i]);
+		if (kx + kw > x + iw)
+			break;
+		if (!first)
+			kx += 3;
+		kx += ktui_draw_text(kx, r.y + h - 2, x + iw - kx, KEYS[i],
+				     KT_WARN, KT_SURFACE, KT_A_BOLD);
+		first = 0;
+	}
 }
 
 /* Every phase ran and none failed. Deliberately NOT just `!is_running`: a run
@@ -2103,7 +2459,7 @@ static void draw_success_panel(Manager *m)
 	 * the first rather than merely run long. */
 	int lw = iw / 2, rw = iw - lw - 1;
 	snprintf(buf, sizeof(buf), "elapsed     %s",
-		 human_time(kb_now_s() - m->start_time));
+		 human_time(mgr_elapsed(m)));
 	ktui_draw_text(x, y, lw, buf, KT_ACCENT, KT_SURFACE, KT_A_BOLD);
 	if (m->restored_from)
 		snprintf(buf, sizeof(buf), "restored <- %s",
@@ -2174,12 +2530,172 @@ static void draw_build_frame(BuildView *v)
 		draw_success_panel(v->m);
 }
 
-void screen_build(Manager *m, Sampler *sam, Timings *tm)
+/* ──────────────────────────────────────────────────────────────────────── */
+/* The terminal outside the frame: bell, notification and title
+ *
+ * Written through libktui's own output, as its OSC 52 copy is, so they go out
+ * between frames rather than inside one. The Linux VT has neither a title nor
+ * a notification, so it gets the bell alone.
+ */
+
+/* `s` with every byte a terminal could read as the end of the sequence or as
+ * a control dropped, and in a field of OSC 777 the `;` that separates them. */
+static void osc_clean(char *out, size_t cap, const char *s, int field)
+{
+	size_t o = 0;
+	for (; s && *s && o + 1 < cap; s++) {
+		unsigned char c = (unsigned char)*s;
+		if (c < 0x20 || c == 0x7f || (field && c == ';'))
+			continue;
+		out[o++] = (char)c;
+	}
+	out[o] = 0;
+}
+
+static void term_osc(const char *body)
+{
+	ktui_term_write("\033]", 2);
+	ktui_term_write(body, strlen(body));
+	ktui_term_write("\007", 1);
+}
+
+/* The bell, then a desktop notification in both the forms terminals take:
+ * OSC 777 (title and body) and OSC 9 (body alone). */
+static void notify(const char *title, const char *body)
+{
+	ktui_term_write("\007", 1);
+	if (!(ktui_caps & KT_CAP_LINUXVT)) {
+		char t[128], b[256], seq[420];
+		osc_clean(t, sizeof(t), title, 1);
+		osc_clean(b, sizeof(b), body, 1);
+		snprintf(seq, sizeof(seq), "777;notify;%s;%s", t, b);
+		term_osc(seq);
+		snprintf(seq, sizeof(seq), "9;%s", b);
+		term_osc(seq);
+	}
+	ktui_term_flush();
+}
+
+static void set_title(const char *text)
+{
+	if (ktui_caps & KT_CAP_LINUXVT)
+		return;
+	char t[256], seq[280];
+	osc_clean(t, sizeof(t), text, 0);
+	snprintf(seq, sizeof(seq), "2;%s", t);
+	term_osc(seq);
+	ktui_term_flush();
+}
+
+/* CSI 22;0t saves the title on xterm's stack and CSI 23;0t puts it back; a
+ * terminal without the stack ignores both, and keeps "kdosbuild". */
+void term_title_begin(void)
+{
+	if (ktui_caps & KT_CAP_LINUXVT)
+		return;
+	ktui_term_write("\033[22;0t", 7);
+	ktui_term_flush();
+}
+
+void term_title_end(void)
+{
+	if (ktui_caps & KT_CAP_LINUXVT)
+		return;
+	set_title("kdosbuild");
+	ktui_term_write("\033[23;0t", 7);
+	ktui_term_flush();
+}
+
+/* At most once a second, and only when the text changed. */
+static void title_update(BuildView *v)
+{
+	Manager *m = v->m;
+	double now = kb_now_s();
+	if (now - v->title_at < 1.0)
+		return;
+	char t[256];
+	if (m->error_step) {
+		BStep *ph = mgr_phase_of(m->error_step);
+		snprintf(t, sizeof(t), "kdosbuild FAILED %s %s",
+			 m->error_step->title,
+			 ph && ph->meta ? ph->meta->dir_name : "");
+	} else if (!m->is_running) {
+		snprintf(t, sizeof(t), "kdosbuild %s %s",
+			 build_completed_ok(m) ? "done" : "stopped",
+			 human_time(mgr_elapsed(m)));
+	} else {
+		int done, total;
+		BStep *g = phase_progress(m, &done, &total);
+		snprintf(t, sizeof(t), "kdosbuild %s %d/%d %s",
+			 g && g->meta ? g->meta->dir_name : "-", done, total,
+			 human_time(mgr_elapsed(m)));
+	}
+	v->title_at = now;
+	if (!strcmp(t, v->title))
+		return;
+	kb_strlcpy(v->title, t, sizeof(v->title));
+	set_title(t);
+}
+
+/* A failure is announced once, until a retry; the end of the run once. */
+static void notify_update(BuildView *v)
+{
+	Manager *m = v->m;
+	char body[256];
+	if (m->error_step && !v->notified_fail) {
+		v->notified_fail = 1;
+		BStep *ph = mgr_phase_of(m->error_step);
+		snprintf(body, sizeof(body), "%s failed in %s (exit %d)",
+			 m->error_step->title,
+			 ph && ph->meta ? ph->meta->dir_name : "?",
+			 m->error_step->return_code);
+		notify("kdosbuild: step failed", body);
+	}
+	if (!m->is_running && !m->error_step && m->start_time > 0 &&
+	    !v->notified_end) {
+		v->notified_end = 1;
+		int ok = build_completed_ok(m);
+		snprintf(body, sizeof(body), "%s after %s",
+			 ok ? "every phase finished" : "stopped",
+			 human_time(mgr_elapsed(m)));
+		notify(ok ? "kdosbuild: build complete" : "kdosbuild: build stopped",
+		       body);
+	}
+}
+
+/* [R]: retry the failed step's phase. Every pointer the view holds into that
+ * phase's rows is dropped before they are freed; the view then follows the
+ * run again from kpkg's step. */
+static void retry(BuildView *v)
+{
+	Manager *m = v->m;
+	char why[128];
+	if (!can_retry(m)) {
+		mgr_notice(m, "nothing to retry while a step is running");
+		return;
+	}
+	v->selected = NULL;
+	v->err_dismissed = NULL;
+	v->nvisible = 0;
+	v->nhit = v->hit_at = 0;
+	v->log_scroll = 0;
+	v->scroll = 0;
+	if (mgr_retry(m, why, sizeof(why)) < 0) {
+		mgr_notice(m, "retry: %s", why);
+		return;
+	}
+	v->auto_follow = 1;
+	v->done_dismissed = 0;
+	v->notified_fail = 0;
+	v->notified_end = 0;
+	v->selected = m->current_phase;
+}
+
+void screen_build(Manager *m, Sampler *sam)
 {
 	BuildView v = {0};
 	v.m = m;
 	v.sam = sam;
-	v.tm = tm;
 	v.auto_follow = 1;
 
 	mgr_start(m);
@@ -2189,6 +2705,8 @@ void screen_build(Manager *m, Sampler *sam, Timings *tm)
 		int wait_ms = mgr_pump(m);
 		sam_pump(sam, m);
 		view_update(&v);
+		notify_update(&v);
+		title_update(&v);
 
 		draw_build_frame(&v);
 		ktui_draw_flush();
@@ -2320,6 +2838,10 @@ void screen_build(Manager *m, Sampler *sam, Timings *tm)
 		if (m->error_step && m->error_step != v.err_dismissed &&
 		    ev.key != 'q' && ev.key != 'Q') {
 			switch (ev.key) {
+			case 'r':
+			case 'R':
+				retry(&v);
+				break;
 			case 'o':
 			case 'O':
 				open_step_log(m, m->error_step);
@@ -2515,13 +3037,17 @@ void screen_build(Manager *m, Sampler *sam, Timings *tm)
 		case 'O':
 			open_step_log(m, v.selected);
 			break;
+		case 'r':
+		case 'R':
+			if (m->error_step)
+				retry(&v);
+			break;
 		default:
 			break;
 		}
 	}
 
 	sam_stop(sam);
-	tm_save(tm);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -2533,13 +3059,12 @@ void screen_build(Manager *m, Sampler *sam, Timings *tm)
  * half, not a second implementation of it.
  */
 
-static void preview_build(Manager *m, Sampler *sam, Timings *tm, int activity,
+static void preview_build(Manager *m, Sampler *sam, int activity,
 			  int show_failure)
 {
 	BuildView v = {0};
 	v.m = m;
 	v.sam = sam;
-	v.tm = tm;
 	/* Following would park the selection on the RUNNING step; the failed
 	 * one is what a person is looking at when they need this screen to be
 	 * right, and it is the one carrying a log worth classifying. */
@@ -2553,6 +3078,13 @@ static void preview_build(Manager *m, Sampler *sam, Timings *tm, int activity,
 	 * from preview_screen) leaves it unset, which is what actually
 	 * exercises draw_failure_panel. One draw path, two renders of it. */
 	v.err_dismissed = show_failure ? NULL : m->error_step;
+	/* The panel as a failure leaves it: the run stopped, nothing running,
+	 * so [R] is offered. */
+	if (show_failure) {
+		m->is_running = 0;
+		m->nrunning = 0;
+		m->end_time = kb_now_s();
+	}
 	/* view_update's OWN scroll math reads v.lay, which only draw_build_frame
 	 * sets -- so a single pass here would run against the still-zeroed
 	 * layout BuildView starts with (see view_update's comment on that).
@@ -2572,12 +3104,11 @@ static void preview_build(Manager *m, Sampler *sam, Timings *tm, int activity,
  * view_update's own scroll-margin math push the phase's own row off screen,
  * exactly the way a real build reaching that step would. The scroll comes
  * out of the real code path, not a value poked in here. */
-static void preview_pinned(Manager *m, Sampler *sam, Timings *tm)
+static void preview_pinned(Manager *m, Sampler *sam)
 {
 	BuildView v = {0};
 	v.m = m;
 	v.sam = sam;
-	v.tm = tm;
 	v.auto_follow = 0;
 	BStep *last_phase = m->root[m->nroot - 1];
 	v.selected = last_phase->child[last_phase->nchild - 1];
@@ -2711,19 +3242,18 @@ static void preview_packages(void)
 }
 
 /* The fixture is built around a FAILED run, because that is the state most of
- * the screens want to show. A completed run is the opposite of it in exactly
- * four fields, so this flips those rather than carrying a second fixture that
+ * the screens want to show. A completed run differs from it in a handful of
+ * fields, so this flips those rather than carrying a second fixture that
  * would drift out of step with the first. */
-static void preview_complete(Manager *m, Sampler *sam, Timings *tm)
+static void preview_complete(Manager *m, Sampler *sam)
 {
 	m->error_step = NULL;
 	m->stop_requested = 0;
 	m->is_running = 0;
-	/* mgr_start() stamps this on a real run; the fixture never calls it,
-	 * and build_completed_ok() treats an unstamped run as "never started"
-	 * rather than "finished" — which is right, and is why it has to be set
-	 * here for the render to show anything. */
+	/* A two-hour run that has just stopped: mgr_pump() stamps end_time on
+	 * the turn a run stops, and the elapsed time reads up to it. */
 	m->start_time = kb_now_s() - 7384;
+	m->end_time = kb_now_s();
 	for (int i = 0; i < m->nroot; i++)
 		m->root[i]->status = ST_DONE;
 	for (int i = 0; i < m->norder; i++)
@@ -2733,7 +3263,6 @@ static void preview_complete(Manager *m, Sampler *sam, Timings *tm)
 	BuildView v = {0};
 	v.m = m;
 	v.sam = sam;
-	v.tm = tm;
 	v.auto_follow = 0;
 	v.selected = m->norder ? m->order[m->norder - 1] : NULL;
 	/* Twice, for the same reason preview_build renders twice: view_update's
@@ -2748,19 +3277,18 @@ int preview_screen(const char *screen)
 {
 	static Manager m;
 	static Sampler sam;
-	static Timings tm;
-	preview_fixture(&m, &sam, &tm);
+	preview_fixture(&m, &sam);
 
 	if (!strcmp(screen, "build"))
-		preview_build(&m, &sam, &tm, 0, 0);
+		preview_build(&m, &sam, 0, 0);
 	else if (!strcmp(screen, "activity"))
-		preview_build(&m, &sam, &tm, 1, 0);
+		preview_build(&m, &sam, 1, 0);
 	else if (!strcmp(screen, "failure"))
-		preview_build(&m, &sam, &tm, 0, 1);
+		preview_build(&m, &sam, 0, 1);
 	else if (!strcmp(screen, "pinned"))
-		preview_pinned(&m, &sam, &tm);
+		preview_pinned(&m, &sam);
 	else if (!strcmp(screen, "complete"))
-		preview_complete(&m, &sam, &tm);
+		preview_complete(&m, &sam);
 	else if (!strcmp(screen, "startup"))
 		preview_startup(&m);
 	else if (!strcmp(screen, "plan"))

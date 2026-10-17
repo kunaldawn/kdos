@@ -28,8 +28,9 @@ build/logs/<phase directory>/<NNNN>_<name>.log
 For a script step, `<name>` is the script's file name without its numeric prefix
 (`build/logs/10_bootstrap/0000_file_system.sh.log`); for a port built from a phase's package list it
 is the port name followed by `.install` (`build/logs/42_graphics/0123_mesa.install.log`). The
-orchestrator names the failing step, and in its failure panel `O` opens the log and `C` copies the
-path. The message at the very end of a build's output is usually not the error: read upward from the
+orchestrator names the failing step, and in its failure panel `O` opens the log, `C` copies the
+path, and `R`, once the fix is made, runs the phase again in the same run (see
+[Retrying a failed phase](build-system.md#retrying-a-failed-phase)). The message at the very end of a build's output is usually not the error: read upward from the
 end of the log. Three other files sit under `build/logs/`: `snapshots.log` (every notice the build
 showed), `chroot.log` (warnings from `script/chroot/exec.sh`) and `<phase>/expansion.log` (why
 a phase's package list could not be resolved). [Step logs](build-system.md#step-logs) has the
@@ -656,13 +657,12 @@ continue from:
 The startup picker offers only *start fresh*, `--restore` answers `no snapshot for <phase>`, and
 `10_bootstrap` re-runs every step, although `build/snapshots/` is full.
 
-Snapshots, logs and timing history are filed by phase directory name, and the orchestrator looks
+Snapshots and logs are filed by phase directory name, and the orchestrator looks
 only under the names of the directories in `script/phases/`. State filed under a name no phase
 directory has, such as a `build/` shared with a checkout whose phases are named differently, is
 invisible to it. For each phase, file its state under the name of the phase's directory: the
 snapshot directory under `build/snapshots/` and the `phase` and `phase_dir` fields of its
-`manifest.json`, the log directory under `build/logs/`, the phase and step keys of
-`build/snapshots/timings.json`, and the names in `build/.devplan.json`. The two host phases'
+`manifest.json`, the log directory under `build/logs/`, and the names in `build/.devplan.json`. The two host phases'
 markers are filed by the `MARK=` directory their `phase.env` names, `build/mark/cross` and
 `build/mark/bootstrap`, and a marker under any other name makes `10_bootstrap` re-run its steps.
 
@@ -679,8 +679,8 @@ files later phases have replaced. Its scripts skip on their markers (see
 [Guards in the early phases](build-system.md#guards-in-the-early-phases)), but one whose guard
 stands down installs its early build into `build/fs` over the newer versions, and a failure that
 follows looks like an ordinary build error. A full run would also overwrite that phase's snapshot
-with the later tree filed under its name. Use `--continue-from` or a
-narrowed plan instead; a plan that narrows the run suppresses snapshots unless `--snapshot` is
+with the later tree filed under its name, if that run writes snapshots. Use `--continue-from` or a
+narrowed plan instead; a plan that narrows the run writes no snapshots unless `--snapshot` is
 given. See [Snapshots](build-system.md#snapshots) and [Build plans](build-system.md#build-plans).
 
 ### A port that needs `--port-jobs 1`

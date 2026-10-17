@@ -73,13 +73,18 @@ typedef struct BStep {
 	int return_code;
 
 	struct BStep *parent;
-	struct BStep *child[KB_MAX_PKGS];
+	/* One slot past the largest phase: a retry puts kpkg's own step ahead
+	 * of the rows the phase expands to (mgr_retry). */
+	struct BStep *child[KB_MAX_PKGS + 1];
 	int nchild;
 
 	/* Groups only. */
 	const KbuildPhase *meta;
 	char packages_dir[512];	/* a package phase: the phase directory     */
 	char script_dir[512];	/* a script phase: the same, for its *.sh   */
+	/* The phase's rows have been made from its list. Not `nchild`: a
+	 * retried phase holds kpkg's step before it is expanded again. */
+	int resolved;
 
 	/* SX_CUSTOM only: the argv to run, already built. `cmd_line` owns the
 	 * string cmd.v points at — KbArgv stores POINTERS, it does not copy,
@@ -117,6 +122,11 @@ typedef struct BStep {
 	struct BStep **commits;
 	int ncommits, ncommitted;
 
+	/* 10_bootstrap's 120_kpkg.sh, run by a retry ahead of the phase it
+	 * retries (mgr_retry). It sits in that phase's rows but its log is
+	 * 10_bootstrap's: renumber() leaves its step_number alone. */
+	int kpkg_retry;
+
 	int opened;		/* headless mode has printed its start    */
 } BStep;
 
@@ -124,31 +134,6 @@ typedef struct {
 	double when;
 	char text[256];
 } BNotice;
-
-/* ──────────────────────────────────────────────────────────────────────── */
-/* Timing history — EWMA across builds, used for the ETA                    */
-
-typedef struct {
-	char key[192];
-	double secs;
-} TimeRec;
-
-typedef struct {
-	char path[512];
-	TimeRec *step;
-	int nstep, stepcap;
-	TimeRec *phase;
-	int nphase, phasecap;
-	int dirty;
-} Timings;
-
-void tm_load(Timings *t, const char *path);
-void tm_save(Timings *t);
-void tm_record_step(Timings *t, const char *key, double secs);
-void tm_record_phase(Timings *t, const char *key, double secs);
-double tm_step_est(const Timings *t, const char *key, double fallback);
-double tm_phase_est(const Timings *t, const char *dir_name);
-void tm_free(Timings *t);
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Live snapshot / restore progress, read by the TUI                        */
@@ -210,9 +195,13 @@ typedef struct {
 	int is_running;
 	int stop_requested;
 	int force_quit;		/* a second Q: kill the group and leave    */
+	/* Off unless --snapshot or the picker's S turns it on. */
 	int snapshot_enabled;
 	int full_snapshots;	/* --full-snapshots: never write a layer    */
-	double start_time;
+	/* The run's wall clock: end_time is stamped when the run stops and
+	 * cleared by a retry, so mgr_elapsed() stops counting while nothing
+	 * runs. */
+	double start_time, end_time;
 	long long total_lines;
 
 	/* The last phase a restore skipped and the last one --continue-from
@@ -236,8 +225,6 @@ typedef struct {
 
 	char forced_seen[KBUILD_MAX_REBUILD][64];
 	int nforced_seen;
-
-	Timings *timings;
 
 	/* The steps running, one per busy slot. A serial phase uses slot 0
 	 * alone; a level of a phase run with --port-jobs N fills up to N. */
@@ -264,7 +251,7 @@ void mgr_init(Manager *m, const char *script_dir, const char *build_dir);
 void mgr_apply_plan(Manager *m);	/* after m->plan is filled in       */
 void mgr_free(Manager *m);
 double step_duration(const BStep *s);
-void step_timing_key(const BStep *s, char *out, size_t cap);
+double mgr_elapsed(const Manager *m);
 /* build/logs/<phase>/<NNNN>_<name>.log — the file the step's output was TEE'd
  * to. The in-memory log is capped at KB_MAX_LOG lines, so on a long step the
  * file is the only place the head of it still exists, which is exactly when
@@ -278,6 +265,12 @@ void mgr_start(Manager *m);
 /* One turn of the build. Returns the ms the caller may wait for input. */
 int mgr_pump(Manager *m);
 BStep *mgr_phase_of(BStep *s);
+/* Retry the phase of the failed step: kpkg's own step first, then the phase
+ * expanded again from its list as it stands now (see manager.c). 0 when the
+ * run is going again; -1 with `why` filled when nothing failed or a step is
+ * still running. */
+int mgr_retry(Manager *m, char *why, size_t cap);
+int mgr_selftest(void);		/* --selftest: the retry's reset           */
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Snapshots — creating and extracting, on top of libkbuild's inventory     */
@@ -314,16 +307,28 @@ Usage dir_usage(const char *path, double deadline,
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Telemetry sampler — cheap counters plus an occasional forked tree walk   */
 
+/* Samples kept per graph, one a second. A braille cell holds two, so this is
+ * also the widest graph the HUD draws, in cells, times two (hud_compute caps
+ * a graph there). */
+#define KB_HIST 1024
+
 typedef struct {
 	double load1;
 	long long mem_used, mem_total;
+	long long swap_used;
+	double swap_rose_at;	/* when swap_used last grew; 0 never        */
 	long long disk_free;
 	double lines_per_sec;
-	double history[240];
-	int nhistory;
+	double cpu_busy;	/* 0..1 of every CPU, from /proc/stat       */
+	int ncpu;		/* the cpuN lines /proc/stat lists          */
+	unsigned long long cpu_busy_ticks, cpu_total_ticks;
 
-	double load_hist[240];
-	int nload;
+	/* One sample per tick, oldest first, the newest at [nhist - 1]: CPU
+	 * busy and memory in use as fractions, output in lines a second. */
+	double cpu_hist[KB_HIST];
+	double mem_hist[KB_HIST];
+	double rate_hist[KB_HIST];
+	int nhist;
 
 	long long fs_files, fs_bytes;
 	int fs_partial;
@@ -339,7 +344,8 @@ typedef struct {
 void sam_init(Sampler *s);
 void sam_pump(Sampler *s, Manager *m);
 void sam_stop(Sampler *s);
-double eta_seconds(const Manager *m, const Timings *t);
+/* Appends one sample to each history, dropping the oldest when full. */
+void sam_push(Sampler *s, double cpu, double mem, double rate);
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Formatting shared by the screens and the plain-text commands             */
@@ -364,6 +370,30 @@ typedef struct {
 } Layout;
 
 Layout layout_compute(int w, int h);
+
+/* The HUD's panels inside its rect: a graph and its caption for CPU, memory
+ * and output, then an info panel (rootfs, the heat strip, the last notice).
+ * A HUD of HUD_BOXED_ROWS or more draws each panel in its own titled box,
+ * `box[i]`, with the graph, caption or info rect inside the border; a
+ * one-row HUD has no boxes. A panel that does not fit at its minimum is
+ * absent, w == 0, and the order they are given up in is info, output,
+ * memory; CPU goes last. Every rect lies inside the HUD and no two boxes,
+ * nor any two contents, overlap — view_selftest asserts it over every width. */
+enum { HUD_CPU = 0, HUD_MEM, HUD_OUT, HUD_NGRAPH };
+#define HUD_INFO HUD_NGRAPH	/* box[] index of the info panel          */
+#define HUD_BOXED_ROWS 6	/* four graph rows inside a border          */
+typedef struct {
+	KRect graph[HUD_NGRAPH], caption[HUD_NGRAPH];
+	KRect info;
+	KRect box[HUD_NGRAPH + 1];
+	int boxed;
+} HudLayout;
+
+#define HUD_GRAPH_MIN 8		/* cells: 16 seconds                        */
+#define HUD_INFO_MIN 24
+HudLayout hud_compute(KRect r);
+/* The caption column each graph is given, wide enough for its widest line. */
+int hud_caption_w(int which);
 
 /* Log line classification for the detail pane. */
 enum { LOG_PLAIN = 0, LOG_WARN, LOG_ERR };
@@ -409,7 +439,12 @@ int screen_startup(Manager *m, int *index, const char *commit,
 		   int *snapshot_enabled);
 int screen_plan(Manager *m, KbuildPlan *out);
 void screen_progress(Manager *m, const char *title);	/* restore HUD      */
-void screen_build(Manager *m, Sampler *s, Timings *t);
+void screen_build(Manager *m, Sampler *s);
+/* The terminal's title while kdosbuild has it: pushed on the xterm title
+ * stack at the start, set to "kdosbuild" and popped at the end. Nothing on the
+ * Linux VT, which has no title. */
+void term_title_begin(void);
+void term_title_end(void);
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* --preview — render one screen offscreen and dump it as text
@@ -428,9 +463,9 @@ int preview_screen(const char *screen);
 /* Synthetic state chosen to exercise what breaks, not to look plausible: a
  * group mid-run, a skipped step, a failed one, a log carrying both a warning
  * and an error, a name too long for any pane, and values wide enough to stress
- * the column arithmetic — a multi-terabyte total, a nine-digit file count and
- * an hour-scale ETA. */
-void preview_fixture(Manager *m, Sampler *s, Timings *t);
+ * the column arithmetic — a multi-terabyte total, a nine-digit file count,
+ * hour-scale elapsed times and graphs that cross their warning levels. */
+void preview_fixture(Manager *m, Sampler *s);
 int preview_snapshots(Manager *m, KbuildSnapshot *out, int max);
 
 #endif /* KDOSBUILD_H */

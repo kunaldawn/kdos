@@ -170,7 +170,12 @@ blocks fall into these groups, in roughly this order:
    dependency without `.pkgsha`, a truncated stored file and `-f` all build; a job count does
    not; an undeclared link is recorded as `X:` and a change to it misses; check mode logs a
    port that differs on every build and exits 0; `store gc` evicts the oldest), the binary
-   host's signed index and delta packages; `kdosbuild` running a synthetic two-phase build end to end;
+   host's signed index and delta packages; `kdosbuild --selftest` laying out the build screen and
+   its HUD at every size, and retrying a failed phase over a three-phase tree in a temporary
+   directory (kpkg's step first, a finished script keeping its result, a package phase's rows
+   dropped and resolved again, nothing pointing at a freed row); `kdosbuild` running a synthetic
+   two-phase build end to end, writing no snapshot unless `--snapshot` asks and timing every phase
+   in its result;
    `kdosbuild` writing a three-phase build's snapshots as a full archive and then layers, each
    restored and compared entry by entry with the tree its phase left, a retaken phase written full
    with the old chain held until nothing needs it, a deleted base held for its dependants and
@@ -1072,7 +1077,7 @@ testing/quick.sh kdos-comp,kdos-shell -- --keys meta_l-ret --sleep 3 \
 ```
 
 It needs an ISO from one full build. It rebuilds the named ports into `build/fs` with no packaging
-and no snapshot (`--phases 50_desktop --rebuild <ports> --no-snapshot`, about 1m09s), tars exactly
+and no snapshot (`--phases 50_desktop --rebuild <ports>`, about 1m09s), tars exactly
 the files those ports own into `build/fix.tar`, and boots the ISO at 1280×800 with that tar on a
 raw disk. There `testing/quickpatch.sh` unpacks it over the live medium's in-memory overlay and
 restarts the session. Everything after `--` is passed to `vnc-shot.py`, after the patch and after
