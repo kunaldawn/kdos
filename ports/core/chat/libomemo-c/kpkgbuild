@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/dino/libomemo-c/archive/
 sha256      = d1b65dbf7bccc67523abfd5e429707f540b2532932d128b2982f0246be2b22a0  libomemo-c-0.5.1.tar.gz
 description = The Signal double ratchet with OMEMO's wire format — end-to-end encryption for XMPP clients
 homepage    = https://github.com/dino/libomemo-c
+license     = GPL-3.0-only
 depends     = protobuf-c protobuf meson pkgconf

@@ -9,10 +9,4 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# setup.py generates the binding from the libvirt-api.xml the installed
-# libvirt names through pkg-config, so the binding always matches the
-# library it is built against.
-# --no-build-isolation because every build dependency this needs is an
-# installed port; pip's isolated environment would try to fetch them from PyPI
-# and a build with no network fails there rather than at the compiler.
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+pip3 install --ignore-installed --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .

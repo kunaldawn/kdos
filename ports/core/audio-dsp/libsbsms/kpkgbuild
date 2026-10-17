@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/claytonotey/libsbsms/arc
 sha256      = 4f88d152bc06fedbda9d5d65517d40254a7310c9050601a93122309d45afd2c9  libsbsms-2.3.0.tar.gz
 description = Subband sinusoidal modeling time stretch and pitch shift library
 homepage    = https://github.com/claytonotey/libsbsms
+license     = GPL-2.0-or-later
 depends     = cmake

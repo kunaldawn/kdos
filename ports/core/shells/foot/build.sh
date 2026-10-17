@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# utmp-backend=none: on Linux upstream's default execs a libutempter helper at
-# /usr/lib/utempter/utempter for every window, which no port installs.
 export CFLAGS="${CFLAGS/-O2/-O3} -fno-strict-aliasing"
 meson setup build \
 	--prefix=/usr --libdir=lib \
@@ -24,3 +22,7 @@ meson setup build \
 	-Dtests=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+for f in foot-server footclient; do
+	desktop-file-edit --set-key=NoDisplay --set-value=true "$PKG/usr/share/applications/$f.desktop"
+done
+desktop-file-edit --set-name=Terminal "$PKG/usr/share/applications/foot.desktop"

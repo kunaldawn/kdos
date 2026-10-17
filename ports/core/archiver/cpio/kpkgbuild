@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cpio
+version     = 2.15
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.bz2
+sha256      = 937610b97c329a1ec9268553fb780037bcfff0dcffe9725ebc4fd9c1aa9075db  cpio-2.15.tar.bz2
+description = Copies files into and out of cpio and tar archives
+homepage    = https://www.gnu.org/software/cpio/
+license     = GPL-3.0-or-later
+depends     =

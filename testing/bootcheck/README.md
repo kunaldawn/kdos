@@ -43,11 +43,13 @@ Four things it exists to encode, each of which cost a debug cycle:
   `-display egl-headless` it answers "no surface" and the picture has to come
   from the VNC framebuffer instead. `soft` is the mode to assert on.
 
-Two facts about the guest itself: **the serial console is a root login** —
-`fs/etc/inittab` runs `/bin/bash -l` on `ttyS0` under init, so there is no
-prompt and no account to name, while tty2 is a plain getty that asks for
-one — and **tty1 autologins as `kdos`** and `~/.bash_profile`, seeded from
-`/etc/skel`, starts `kdos-desktop` there — so the desktop is already up before
+Two facts about the guest itself: **the serial console is a root shell on the
+live ISO** — `fs/etc/inittab` runs `agetty --autologin root` on `ttyS0`, so
+there is no password to type, while an installed disk asks for a login there
+because the installer removes `--autologin root` from its copy, and tty2 is a
+plain agetty that asks for one — and **tty1 autologins as `kdos`** and
+`~/.bash_profile`, seeded from `/etc/skel`, starts `kdos-desktop` there — so
+the desktop is already up before
 any step, `type.py` drives whatever surface has the focus in it, and
 `guest.py` inspects it from the serial root shell. Anything run as `kdos` from
 the serial side needs `su - kdos` (a LOGIN shell: a plain `su kdos` leaves

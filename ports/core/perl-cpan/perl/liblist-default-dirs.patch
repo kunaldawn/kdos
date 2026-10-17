@@ -1,0 +1,17 @@
+--- a/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm
++++ b/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm
+@@ -243,11 +243,13 @@
+             my $in_perl = ( $libs =~ /\B-l:?\Q${thislib}\E\b/s );
+ 
+             # include the path to the lib once in the dynamic linker path
+-            # but only if it is a dynamic lib and not in Perl itself
++            # but only if it is a dynamic lib, not in Perl itself, and not
++            # in a directory the dynamic linker searches anyway
+             my ( $fullnamedir ) = dirname( $fullname );
+             push @ld_run_path, $fullnamedir
+               if $is_dyna
+                   && !$in_perl
++                  && $fullnamedir !~ m{\A(?:/usr)?/lib/?\z}
+                   && !$ld_run_path_seen{$fullnamedir}++;
+ 
+             # Do not add it into the list if it is already linked in

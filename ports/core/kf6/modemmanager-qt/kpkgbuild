@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = d7c4106dc130729fdfd435abaeaf85039a874fc18563a41755e14f7ea174ae21  modemmanager-qt-6.30.0.tar.xz
 description = KDE Frameworks: Qt wrapper for the ModemManager D-Bus API
 homepage    = https://invent.kde.org/frameworks/modemmanager-qt
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase pkgconf modemmanager

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tevent
+version     = 0.17.2
+release     = 1
+source      = https://www.samba.org/ftp/$name/$name-$version.tar.gz
+sha256      = e53b1ac288d017d66dde0471cd429a806168ecf07179d7f019572d7a7e05f0d6  tevent-0.17.2.tar.gz
+description = Samba's event loop library on talloc — samba-util and the ndr libraries build on it
+homepage    = https://tevent.samba.org/
+license     = LGPL-3.0-or-later
+depends     = python3 pkgconf talloc libbsd

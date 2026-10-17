@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# includes.patch (Alpine's) makes upnpcommands.h include <stddef.h> for the
-# size_t it declares with, which musl's headers do not pull in on the way.
-# The sample tools are off: built against the shared library they install as
-# upnpc-shared and upnp-listdevices-shared. The Python module is not built.
 patch -p1 -i "$PORT_SRC/includes.patch"
 
 mkdir -p build && cd build
@@ -26,3 +22,4 @@ cmake .. -G Ninja \
 	-DUPNPC_BUILD_SAMPLE=OFF
 ninja
 DESTDIR=$PKG ninja install
+rm -f "$PKG/usr/bin/external-ip.sh"

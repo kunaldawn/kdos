@@ -15,4 +15,5 @@ source      = $name-$version.tar.bz2::https://dev-www.libreoffice.org/src/librev
 sha256      = 52a65e904d255dbdd97a8b7bb28d6574e14f999eb01416aff004502406d0904d  librevenge-0.0.6.tar.bz2
 description = Base library for document import filters: the drawing, text and spreadsheet interfaces
 homepage    = https://sourceforge.net/p/libwpd/wiki/librevenge/
+license     = MPL-2.0 OR LGPL-2.1-or-later
 depends     = pkgconf boost zlib

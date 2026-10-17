@@ -11,19 +11,6 @@
 
 patch -p1 -i "$PORT_SRC/vnc-link-gnutls.patch"
 
-# WITH_NEWS, WITH_STATS and WITH_TIP fetch news, send usage statistics and
-# download tips from remmina.org. WITH_WWW is a web browser plugin.
-# HAVE_LIBAPPINDICATOR=ON: the tray icon is an Ayatana AppIndicator, which
-# the panel's tray hosts as a StatusNotifierItem.
-# WITH_AVAHI=OFF: host discovery needs avahi-ui-gtk3, which the avahi port
-# does not build; the switch, not CMAKE_DISABLE_FIND_PACKAGE, is what turns it
-# off, because Remmina searches for every suggested package as REQUIRED.
-# The RDP plugin is searched without REQUIRED and dropped silently when
-# FreeRDP is missing, so its three packages are made required here.
-# WITH_ICON_CACHE and WITH_UPDATE_DESKTOP_DB would write shared indexes into
-# the package; kpkg regenerates them on install.
-# -lintl: Remmina calls gettext, which musl leaves to libintl, and its link
-# lines never name the library.
 LDFLAGS="$LDFLAGS -lintl" \
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -60,6 +47,12 @@ cmake -S . -B build -G Ninja \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_VTE=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_GCRYPT=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_Cups=ON \
+	-D VERSION=$version \
+	-D prefix=/usr \
+	-D exec_prefix=/usr \
+	-D libdir=/usr/lib \
+	-D includedir=/usr/include \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+grep -q "^includedir=/usr/include$" "$PKG/usr/lib/pkgconfig/remmina.pc"

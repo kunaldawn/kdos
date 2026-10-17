@@ -18,7 +18,7 @@
  *   ║  ████████▓▓▓▓▓▒▒▒░░░░░░░░···································         ║
  *   ║  █ firefox-esr 1.9G  █ kdos-comp 412M  █ foot 80M  ░ other  · cache  ║
  *   ║                                                                      ║
- *   ║  no systemd · no xorg · musl · toybox · signed                       ║
+ *   ║  no systemd · no xorg · musl · GNU · signed                          ║
  *   ╚══════════════════════════════════════════════════════════════════════╝
  *
  * THREE PAGES. Machine is the live one: uptime to the second and a memory
@@ -464,7 +464,7 @@ static void gather_build(void)
 
 	kernel_build(fs);
 	fact(fs, "libc", "musl");
-	fact(fs, "userland", "toybox");
+	fact(fs, "userland", "GNU");
 	fact(fs, "packages", "%d", ncredits);
 	keyring(fs, "host keys", "/etc/kdos/keys");
 	keyring(fs, "pack keys", "/etc/kdos/keys/packs");
@@ -771,7 +771,7 @@ static void draw_credits(int x, int y, int w, int rows)
  * is built on. Separated by the glyph tier's bullet, so a console font with no
  * middle dot draws its own stand-in rather than a replacement mark. */
 static const char *const MOTTO[] = {
-	"no systemd", "no xorg", "musl", "toybox", "signed"
+	"no systemd", "no xorg", "musl", "GNU", "signed"
 };
 #define MOTTO_N ((int)(sizeof(MOTTO) / sizeof(MOTTO[0])))
 

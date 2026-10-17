@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# USE_HDF5=OFF: the HDF5 backend reads only the legacy container every
-# current writer has replaced with Ogawa, and it is written to the 1.8 HDF5
-# API. Without it there is no abcconvert (HDF5 to Ogawa); the other tools
-# (abcls, abctree, abcecho, abcdiff, abcstitcher) are built.
 mkdir build && cd build
 cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

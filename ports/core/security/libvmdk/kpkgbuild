@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libvmdk
+version     = 20260714
+release     = 1
+source      = https://github.com/libyal/libvmdk/releases/download/$version/$name-alpha-$version.tar.gz
+sha256      = 8f429818aac09bd0457e6f550d39e705787856f7523d7b3c82caa8ee759678b1  libvmdk-20260714.tar.gz
+description = VMware Virtual Disk (VMDK) image library, vmdkinfo and vmdkmount
+homepage    = https://github.com/libyal/libvmdk
+license     = LGPL-3.0-or-later
+depends     = pkgconf zlib libbfio fuse

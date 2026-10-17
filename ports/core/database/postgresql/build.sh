@@ -9,24 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --with-icu IS THE ONE FLAG THAT CHANGES ANSWERS. musl's collation is
-# essentially byte order, so a database built against it sorts and compares
-# text differently from every other machine the data will touch — `ORDER BY`
-# on anything but ASCII, `LIKE` and unique indexes on case-folded text all
-# quietly disagree. ICU is already a port and is what makes those correct.
-#
-# sqlite is here and is right for one program's data; this is for the moment
-# there are two, or two PEOPLE, and the file-locking answer stops working.
-#
-# --with-systemd is deliberately absent rather than disabled: it is off by
-# default, and there is nothing here to integrate with.
-#
-# --with-system-tzdata makes time zones follow the tzdata port rather than a
-# copy frozen into this build.
-#
-# --without-llvm: the JIT provider's version guards in 18.6 stop at LLVM 22,
-# and the llvm port is 23. --with-ldap is the `ldap` method in pg_hba.conf,
-# which checks a password against a directory server.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -56,21 +38,6 @@ make -C doc/src/sgml man
 make DESTDIR=$PKG install-world-bin
 make -C doc/src/sgml DESTDIR=$PKG install-man
 
-# ONE SHARED INSTANCE, UNDER ksvc, AS ITS ACCOUNT. postgres refuses to run as
-# root and never drops privileges itself, so setpriv makes it the
-# postinstall's `postgres` account before the exec; it never forks away, so
-# the supervisor watches the server itself. The directory ships empty and the
-# postinstall gives it to the account.
-#
-# IT SKIPS UNTIL THE CLUSTER EXISTS. initdb is the decision — locale,
-# encoding, the superuser — and a server that made one on its own would have
-# made it for somebody who never asked for a database:
-#
-#     sudo -u postgres initdb -D /var/lib/postgres/data
-#
-# ksvc stops with SIGTERM, which is postgres's SMART shutdown: it waits for
-# connected clients. A client still connected at poweroff therefore ends in
-# the final kill, and the next start replays the WAL — slower, never lossy.
 install -d -m 700 "$PKG/var/lib/postgres"
 install -d "$PKG/etc/init.d"
 cat > "$PKG/etc/init.d/76_postgresql.sh" <<'KDOS_SH'

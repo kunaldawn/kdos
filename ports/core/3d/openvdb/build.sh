@@ -9,22 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The version is the one Blender 5.2 pins: Cycles compiles against the NanoVDB
-# headers, whose API moves between minor releases.
-#
-# OPENVDB_USE_DELAYED_LOADING=OFF drops Boost, which only the memory-mapped
-# lazy grid loader needs; Blender does not use it. CONCURRENT_MALLOC=Tbbmalloc:
-# jemalloc is not a port, and "Auto" would take one if a chroot ever held it.
-# The Python module needs nanobind, which is not a port. NanoVDB is installed
-# as headers only; its tools convert through OpenVDB grids nothing here needs.
-#
-# thread/Threading.h, which is installed, reaches TBB's version macros through
-# tbb/blocked_range.h, and oneTBB 2023 no longer includes version.h there:
-# TBB_INTERFACE_VERSION is undefined, the pre-2021 tbb::task::self() branch is
-# taken, and neither OpenVDB nor anything including the header compiles. The
-# patch is upstream's later form of the include, which names tbb/version.h.
 patch -p1 -i "$PORT_SRC/tbb-version.patch"
 
+_nanobind=$(python3 -m nanobind --cmake_dir)
 mkdir build && cd build
 cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -35,7 +22,9 @@ cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DOPENVDB_CORE_SHARED=ON \
 	-DOPENVDB_CORE_STATIC=OFF \
 	-DOPENVDB_BUILD_BINARIES=ON \
-	-DOPENVDB_BUILD_PYTHON_MODULE=OFF \
+	-DOPENVDB_BUILD_PYTHON_MODULE=ON \
+	-Dnanobind_DIR="$_nanobind" \
+	-DPython_EXECUTABLE=/usr/bin/python3 \
 	-DOPENVDB_BUILD_UNITTESTS=OFF \
 	-DOPENVDB_BUILD_DOCS=OFF \
 	-DOPENVDB_BUILD_AX=OFF \
@@ -57,3 +46,4 @@ cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DNANOVDB_ALLOW_FETCHCONTENT=OFF
 ninja
 DESTDIR=$PKG ninja install
+test -e "$PKG"/usr/lib/python3*/site-packages/openvdb*.so

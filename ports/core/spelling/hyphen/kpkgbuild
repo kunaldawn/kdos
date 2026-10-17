@@ -15,4 +15,5 @@ source      = https://github.com/hunspell/hyphen/releases/download/v$version/hyp
 sha256      = 783743daf477de8c4d16e3c74b4d2827377017718d8e17e2d9440210246f6abe  hyphen-2.8.9.tar.gz
 description = Hyphenation library for TeX-style pattern files
 homepage    = https://github.com/hunspell/hyphen
+license     = GPL-2.0-or-later OR LGPL-2.1-or-later OR MPL-1.1
 depends     = perl

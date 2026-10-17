@@ -24,4 +24,5 @@ sha256      = c3941d803ce94228cef0e74da1b72e2135ba2ea80c97f72f7e5056cdbb595536  
 sha256      = 55d0111d48fb11883aaee91465e642b8b640775a4d6993c2d0e7a8092758ef21  md4c-0.5.2.tar.gz
 description = Planetarium — a realistic sky in 3D, as seen with the eye, binoculars or a telescope
 homepage    = https://stellarium.org/
-depends     = cmake ninja pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtcharts qt6-qtmultimedia qt6-qtspeech qt6-qtpositioning qt6-qtserialport qt6-qttools qt6-qtimageformats qt6-qtwayland exiv2 gpsd nlopt zlib python3 noto-fonts ttf-dejavu
+license     = GPL-2.0-or-later
+depends     = cmake ninja pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtcharts qt6-qtmultimedia qt6-qtspeech qt6-qtpositioning qt6-qtserialport qt6-qttools qt6-qtimageformats qt6-qtwayland exiv2 gpsd nlopt zlib python3 noto-fonts ttf-dejavu onetbb

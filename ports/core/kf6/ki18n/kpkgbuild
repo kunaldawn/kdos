@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = dfbfc8af89b3bc68810b094bf87746db87c3eeb35b75caeb1882681ebed563bd  ki18n-6.30.0.tar.xz
 description = KDE Frameworks: gettext-based translation for Qt programs
 homepage    = https://api.kde.org/frameworks/ki18n/html/
+license     = LGPL-2.0-or-later AND ODbL-1.0 AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND CC0-1.0
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative gettext python3 iso-codes

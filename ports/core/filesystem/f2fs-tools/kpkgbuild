@@ -15,4 +15,5 @@ source      = https://git.kernel.org/pub/scm/linux/kernel/git/jaegeuk/f2fs-tools
 sha256      = 208c7a07e95383fbd7b466b5681590789dcb41f41bf197369c41a95383b57c5e  f2fs-tools-1.16.0.tar.gz
 description = Tools to create, check and resize an F2FS filesystem
 homepage    = https://git.kernel.org/pub/scm/linux/kernel/git/jaegeuk/f2fs-tools.git/
+license     = GPL-2.0-only AND (GPL-2.0-only OR LGPL-2.1-only)
 depends     = autoconf automake libtool pkgconf util-linux lz4 lzo libbsd

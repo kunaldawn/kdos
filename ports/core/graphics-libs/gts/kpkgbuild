@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gts
+version     = 0.7.6.121130
+release     = 1
+source      = $name-$version.tar.gz::https://gts.sourceforge.net/tarballs/gts-snapshot-${version##*.}.tar.gz
+sha256      = c23f72ab74bbf65599f8c0b599d6336fabe1ec2a09c19b70544eeefdc069b73b  gts-0.7.6.121130.tar.gz
+description = GNU Triangulated Surface library — 3D surface meshes, Delaunay triangulation, simplification and boolean operations
+homepage    = https://gts.sourceforge.net/
+license     = LGPL-2.0-or-later
+depends     = glib netpbm

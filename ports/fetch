@@ -158,7 +158,7 @@ vendor_tar() {
 }
 
 # source_file <entry> <first:0|1> <name> <version> — the filename a `source =`
-# entry is saved under. It must agree with kdos-kpkg's source_file() in
+# entry is saved under. It must agree with kdos-kpkg's kp_source_file() in
 # build.c, which looks for exactly this name at build time: `file::url` names
 # it outright, a bare URL is its basename, EXCEPT for the first entry, which is
 # saved as `<name>-<version>.<ext>`.

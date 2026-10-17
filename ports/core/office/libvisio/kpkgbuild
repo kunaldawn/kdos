@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://dev-www.libreoffice.org/src/libvisi
 sha256      = 2a6efd40b6d9dbcb70fba3be53112366882ba97b57151df3698dfa478c8d8dd3  libvisio-0.1.11.tar.xz
 description = Microsoft Visio diagram import library
 homepage    = https://wiki.documentfoundation.org/DLP/Libraries/libvisio
+license     = MPL-2.0
 depends     = pkgconf boost librevenge libxml2 icu gperf perl

@@ -17,4 +17,5 @@ source      = $name-$version.tar.gz::https://github.com/libretro/melonDS/archive
 sha256      = 8fa494f12a8fe7f20a4ab32ac89a1391f079d41a203d02822b8541e71637a22c  libretro-melonds-20260719.tar.gz
 description = melonDS as a libretro core — Nintendo DS emulator
 homepage    = https://github.com/libretro/melonDS
+license     = GPL-3.0-or-later
 depends     = mesa libglvnd

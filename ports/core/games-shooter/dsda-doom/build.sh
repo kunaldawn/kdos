@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# STRICT_FIND turns every optional music and image library into a required
-# one, so a missing library fails here instead of silently dropping a format.
 cmake -S prboom2 -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -27,8 +25,6 @@ cmake -S prboom2 -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# The panel reads no SVG: the menu icon is a PNG rasterised from upstream's.
-# The window's app_id is the program's name.
 install -d "$PKG/usr/share/icons/hicolor/256x256/apps"
 rsvg-convert -w 256 -h 256 prboom2/ICONS/dsda-doom.svg \
 	-o "$PKG/usr/share/icons/hicolor/256x256/apps/dsda-doom.png"

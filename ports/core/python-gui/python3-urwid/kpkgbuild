@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/u/urwid/urwid-$vers
 sha256      = e69c299f0e9cdedb839d5ec6d58d31b08fa6895cfc5dfd59c8cb016377aab26f  python3-urwid-4.1.7.tar.gz
 description = Console user interface library for python
 homepage    = https://urwid.org/
+license     = LGPL-2.1-or-later
 depends     = python3 python3-setuptools python3-pip python3-setuptools-scm python3-wcwidth python3-typing-extensions

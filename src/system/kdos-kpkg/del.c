@@ -19,9 +19,9 @@
  * There is deliberately no reverse-dependency check. `kpkgdel bash` will
  * remove bash. That is the distro this is.
  *
- * The entry goes with its sidecars (`.recipe/<name>`, `.pkgsha/<name>`): one
- * left behind describes a package that is not there, and the next install of
- * that name inherits it.
+ * The entry goes with its sidecars (`.recipe/<name>`, `.pkgsha/<name>`,
+ * `.files/<name>`): one left behind describes a package that is not there,
+ * and the next install of that name inherits it.
  *
  * The whole run holds the database's writer lock (kp_db_lock), from the first
  * ownership read to the last index trigger: an install that scans for
@@ -99,7 +99,8 @@ static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
 	free(data);
 	unlink(dbfile);
 	free(dbfile);
-	static const char *const sidecar[] = { ".recipe", ".pkgsha" };
+	static const char *const sidecar[] = { ".recipe", ".pkgsha",
+						 ".files" };
 	for (size_t i = 0; i < sizeof(sidecar) / sizeof(*sidecar); i++) {
 		char *dir = kb_path_join(db, sidecar[i]);
 		char *f = kb_path_join(dir, name);

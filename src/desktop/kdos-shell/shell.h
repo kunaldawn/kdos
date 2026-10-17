@@ -609,7 +609,8 @@ int sh_priv_box(const struct sh_state *sh, int kind, char *out, size_t n);
  * each walking /usr/share/applications with its own rule about NoDisplay.
  * ──────────────────────────────────────────────────────────────────────── */
 
-#define SH_MAX_APPS 512
+/* The index's first allocation; it doubles from there and has no ceiling. */
+#define SH_APPS_CHUNK 512
 #define SH_APP_ID 128
 #define SH_APP_EXEC 256
 /* How many rows of the usage file are kept. An unbounded history of every

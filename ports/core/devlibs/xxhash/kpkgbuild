@@ -13,4 +13,6 @@ version     = 0.8.4
 release     = 1
 source      = https://github.com/Cyan4973/xxhash/archive/refs/tags/v$version.tar.gz
 sha256      = 5738270935e7c3d38a79b3adf7c9692566ce7895a25f67de43ad52ab504acd32  xxhash-0.8.4.tar.gz
-description = Extremely fast non-cryptographic hash algorithm
+description = Non-cryptographic hash algorithm library
+homepage    = https://xxhash.com/
+license     = BSD-2-Clause AND GPL-2.0-or-later

@@ -9,17 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The release archive carries the cpu_features submodule as an empty
-# directory; the pinned release is the second source. volk builds it as a
-# static, uninstalled part of libvolk.
 rmdir cpu_features
 ln -s "$SRC_ROOT/cpu_features-$_cpufeatures" cpu_features
 
-# fmt must be found as a package: without it the configure step clones fmt
-# with FetchContent, and FETCHCONTENT_FULLY_DISCONNECTED turns that into a
-# failure here rather than a network fetch. qa_utils.cc, which volk_profile
-# builds, calls fmt::format but includes only <fmt/core.h>, which since fmt 12
-# includes format.h only under FMT_DEPRECATED_HEAVY_CORE.
 export CXXFLAGS="$CXXFLAGS -DFMT_DEPRECATED_HEAVY_CORE"
 mkdir -p build && cd build
 cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
@@ -30,3 +22,4 @@ cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DENABLE_PROFILING=OFF -DENABLE_MODTOOL=ON -DENABLE_STATIC_LIBS=OFF
 make
 make DESTDIR=$PKG install
+rm -f "$PKG"/usr/lib/python3*/site-packages/volk_modtool/*.py[co]

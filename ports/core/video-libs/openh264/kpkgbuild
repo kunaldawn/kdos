@@ -15,4 +15,5 @@ source      = https://github.com/cisco/openh264/archive/refs/tags/v$version.tar.
 sha256      = 558544ad358283a7ab2930d69a9ceddf913f4a51ee9bf1bfb9e377322af81a69  openh264-2.6.0.tar.gz
 description = Cisco's H.264 baseline encoder and decoder, compiled from source
 homepage    = https://www.openh264.org/
+license     = BSD-2-Clause
 depends     = meson ninja pkgconf nasm

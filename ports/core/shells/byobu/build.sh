@@ -13,3 +13,4 @@
 ./configure --prefix=/usr --sysconfdir=/etc --disable-trustmux
 make
 make DESTDIR=$PKG install
+rm -r "$PKG/usr/share/dbus-1"

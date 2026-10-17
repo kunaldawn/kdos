@@ -9,27 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# no-graphite drops loop-nest-optimize, tree-loop-linear, loop-block and
-# loop-strip-mine from the sources' #pragma GCC optimize lists: they are
-# Graphite passes, this GCC is built without isl, and it refuses each one as
-# unimplemented. A pragma outranks the command line, so no flag answers it.
 patch -p1 -i "$PORT_SRC/no-graphite.patch"
 
-# BINARY_PACKAGE_BUILD compiles for the generic x86-64 target instead of the
-# builder's CPU, and so does the bundled rawspeed, which reads the same flag;
-# without it the package faults on an older processor.
-#
-# Offline and no secrets service: the map view needs online tiles (and
-# osm-gps-map, not a port), the AI modules download their models, and the
-# KWallet and libsecret back-ends only keep web-export credentials, so all
-# four are off. colord, G'MIC, GraphicsMagick and libunity are not ports.
-# ImageMagick 7 is the fallback loader for FITS, GIF, JPEG 2000 codestreams
-# and the rest. Lua is the lua54 port: darktable takes Lua 5.4 only, and
-# DONT_USE_INTERNAL_LUA fails the configure rather than falling back to the
-# copy in the tarball. LibRaw is the port too, required so the bundled copy is
-# never built. The OpenCL loader is opened at run time and needs nothing
-# here; test-compiling the kernels would need clang and is off. cmstest is an
-# X11 colour-profile probe with nothing to report under Wayland.
+export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
+
 cmake -S . -B build -G Ninja \
 	-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -77,14 +60,8 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# The catalogues are built unconditionally; bundled data is English only.
-rm -rf "$PKG/usr/share/locale"
 find "$PKG/usr/share/man" -mindepth 1 -maxdepth 1 ! -name 'man[0-9]*' -exec rm -rf {} +
 
-# UPSTREAM'S ENTRY IS REPLACED. darktable sets its program name, and so the
-# Wayland app_id, to org.darktable.darktable, which StartupWMClass has to
-# name, and upstream's Exec is an absolute path. The hicolor PNGs it names
-# are upstream's, installed above.
 cat > "$PKG/usr/share/applications/org.darktable.darktable.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

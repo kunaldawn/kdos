@@ -9,17 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Dear ImGui (the SDL front end's interface) and miniaudio (sound in scripts)
-# are git submodules the archive carries empty; each is a later source,
-# placed where the build looks for it.
 cp -a "$SRC_ROOT/imgui-$_imgui/." thirdparty/imgui/
 cp -a "$SRC_ROOT/miniaudio-$_miniaudio/." thirdparty/miniaudio/
 
-# Two front ends: Qt 6, the full interface, and SDL, the light one for old
-# hardware and software rendering. FFmpeg gives movie capture and video
-# overlays, libavif AVIF textures. Lua is the tree's lua, not LuaJIT, whatever
-# the build root holds. ENABLE_NLS=OFF: bundled data is English only. SPICE
-# orbits and rotations, which spacecraft add-ons use, link the cspice port.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
@@ -40,22 +32,14 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# The per-language key references and tours are left out with the
-# translations. The bundled DejaVu faces are the files ttf-dejavu installs, so
-# the data directory links to those.
 rm -rf "$PKG/usr/share/celestia/locale"
 ln -sf /usr/share/fonts/TTF/DejaVuSans.ttf "$PKG/usr/share/celestia/fonts/DejaVuSans.ttf"
 ln -sf /usr/share/fonts/TTF/DejaVuSans-Bold.ttf "$PKG/usr/share/celestia/fonts/DejaVuSans-Bold.ttf"
 
-# The logo is a 150-pixel PNG under pixmaps; hicolor takes it at 128.
 install -d "$PKG/usr/share/icons/hicolor/128x128/apps"
 magick celestia-logo.png -resize 128x128 \
 	"$PKG/usr/share/icons/hicolor/128x128/apps/celestia.png"
 
-# Celestia scripts are not in the shared MIME database, so the port defines
-# the type; the Qt entry is the one that claims it. The entries are replaced
-# for StartupWMClass: the Qt front end sets its desktop file name, and so its
-# Wayland app_id, to celestia-qt6; SDL takes the program name, celestia-sdl.
 install -Dm644 /dev/stdin "$PKG/usr/share/mime/packages/kdos-celestia.xml" <<'MIMEXML'
 <?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">

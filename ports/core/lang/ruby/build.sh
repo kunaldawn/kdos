@@ -10,16 +10,8 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/musl-main-stack.patch"
+patch -p1 -i "$PORT_SRC/pc-libs-no-ldflags.patch"
 
-# YJIT IS ON AND ZJIT IS OFF. Both are Rust, and configure turns each on by
-# itself when it finds a new enough rustc, so each is named explicitly: rust is
-# in `depends`, so YJIT is always built, and `ruby --yjit` (or RUBY_YJIT_ENABLE)
-# turns it on per process. ZJIT is Ruby 4.0's experimental method JIT and stays
-# out of a shipped interpreter.
-#
-# --disable-install-doc skips the rdoc and ri indexes, which install generates
-# by running rdoc over the whole standard library; the manual pages under man/
-# still install.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -34,10 +26,8 @@ patch -p1 -i "$PORT_SRC/musl-main-stack.patch"
 	--with-mantype=man
 make
 make DESTDIR=$PKG install
+strip --strip-debug "$PKG/usr/lib/libruby.so.$version"
 
-# An extension whose library is missing is a warning in extmk's output, not a
-# failed build, and a LoadError on the target: without yaml.h there is no
-# psych, without ffi.h no fiddle. Each one the depends line pays for must exist.
 for ext in openssl psych zlib fiddle; do
 	if ! find "$PKG/usr/lib/ruby" -name "$ext.so" | grep -q .; then
 		echo "ruby: extension '$ext' was not built" >&2
@@ -45,10 +35,6 @@ for ext in openssl psych zlib fiddle; do
 	fi
 done
 
-# rbinstall gzips ruby.1 and erb.1 whenever gzip is on $PATH, which makes the
-# package's file names depend on the build host; every other page on the image
-# is plain. The pages bundler, irb and rdoc carry sit inside their library
-# trees, where `man` never looks, and are installed where it does.
 find "$PKG/usr/share/man" -name '*.gz' -exec gunzip {} +
 for page in "$PKG"/usr/lib/ruby/*/bundler/man/*.[1-8] \
 	"$PKG"/usr/lib/ruby/gems/*/gems/irb-*/man/*.[1-8] \
@@ -56,6 +42,4 @@ for page in "$PKG"/usr/lib/ruby/*/bundler/man/*.[1-8] \
 	install -Dm644 "$page" -t "$PKG/usr/share/man/man${page##*.}"
 done
 
-# The gem cache holds a second copy, as a .gem archive, of every bundled gem
-# already unpacked beside it; only `gem pristine` reads it.
 rm -rf "$PKG"/usr/lib/ruby/gems/*/cache

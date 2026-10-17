@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = b17f8242309e1502119c48b1ef5059a396a3068596a84fb79fdef6d9e2cd4f49  kcrash-6.30.0.tar.xz
 description = KDE Frameworks: crash handler that restarts or reports a crashed application
 homepage    = https://invent.kde.org/frameworks/kcrash
+license     = LGPL-2.0-or-later AND CC0-1.0
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons libX11

@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = switcheroo-control
+version     = 3.0
+release     = 1
+_up         = 14da8baf1bd4ab2b767a56f3921470f1
+source      = https://gitlab.freedesktop.org/-/project/4339/uploads/$_up/$name-$version.tar.xz
+sha256      = dddcb43c58acb334b529387da8f3abfee57346099dce8f438a167f5ebc34a9da  switcheroo-control-3.0.tar.xz
+description = D-Bus service that tells launchers which GPU is discrete, so an application can be started on it
+homepage    = https://gitlab.freedesktop.org/hadess/switcheroo-control
+license     = GPL-3.0-or-later
+depends     = meson ninja pkgconf glib libgudev libdrm eudev python3 python3-gobject

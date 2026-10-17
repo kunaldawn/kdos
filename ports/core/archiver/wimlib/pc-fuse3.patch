@@ -1,0 +1,11 @@
+--- a/configure
++++ b/configure
+@@ -17052,7 +17052,7 @@
+ printf "%s\n" "yes" >&6; }
+ 
+ fi
+-	PKGCONFIG_PRIVATE_REQUIRES="$PKGCONFIG_PRIVATE_REQUIRES fuse"
++	PKGCONFIG_PRIVATE_REQUIRES="$PKGCONFIG_PRIVATE_REQUIRES fuse3"
+ 
+ printf "%s\n" "#define WITH_FUSE 1" >>confdefs.h
+ 

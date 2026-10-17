@@ -15,4 +15,5 @@ source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$vers
 sha256      = 56e3f01a3a18b575beea4c34349f99cdaba316e1f7c271b1231f7bcf5d9af73b  libspelling-0.4.10.tar.xz
 description = Spell checking for GTK 4 text views and GtkSourceView 5, over enchant
 homepage    = https://gitlab.gnome.org/GNOME/libspelling
+license     = LGPL-2.1-or-later
 depends     = meson glib gtk4 gtksourceview5 enchant icu gobject-introspection glib-introspection vala

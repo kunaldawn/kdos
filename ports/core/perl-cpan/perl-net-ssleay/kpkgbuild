@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/C/CH/C
 sha256      = ab213691685fb2a576c669cbc8d9266f8165a31563ad15b7c4030b94adfc0753  perl-net-ssleay-1.96.tar.gz
 description = OpenSSL bindings for perl
 homepage    = https://metacpan.org/dist/Net-SSLeay
+license     = Artistic-2.0
 depends     = perl openssl zlib

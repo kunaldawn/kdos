@@ -15,5 +15,6 @@ source      = qwt-$version.tar.bz2::https://downloads.sourceforge.net/qwt/qwt-$v
 sha256      = dcb085896c28aaec5518cbc08c0ee2b4e60ada7ac929d82639f6189851a6129a  qwt-6.3.0.tar.bz2
 description = Qwt for Qt 5 — plot, dial and scale widgets for GNU Radio's gr-qtgui and Qt 5 SDR tools
 homepage    = https://qwt.sourceforge.io/
+license     = LGPL-2.1-only WITH Qwt-exception-1.0
 depends     = qt5-qtbase qt5-qtsvg qt5-qttools
 group       = qwt

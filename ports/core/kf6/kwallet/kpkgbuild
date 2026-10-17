@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 93cb9c1df2630807c04bf8c30312e75ae3bb466c77dd9b29bb2c752e71d34a26  kwallet-6.30.0.tar.xz
 description = KDE Frameworks: the KWallet client API and kwalletd6, which keeps wallets in the Secret Service
 homepage    = https://invent.kde.org/frameworks/kwallet
+license     = LGPL-2.0-or-later AND LGPL-2.0-only AND LGPL-2.1-or-later AND CC0-1.0 AND (LGPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL)
 depends     = cmake ninja pkgconf extra-cmake-modules qt6-qtbase kconfig kcoreaddons kcrash kdbusaddons ki18n knotifications kwidgetsaddons libgcrypt libsecret

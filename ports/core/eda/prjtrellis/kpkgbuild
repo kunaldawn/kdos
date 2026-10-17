@@ -19,4 +19,5 @@ sha256      = e55adac60f809838d7f20516260feb094313bc827b3646c78cc0deb73821fc68  
 sha256      = bbf219d49d89b9e22b5cd0f5c5b7fb33a8dbd77e5f4c54669709a6e4789dab87  prjtrellis-db-015e0330630d7c238c0e4f2cdd9c8157eb78c54a.tar.gz
 description = The ECP5 bitstream database and packer
 homepage    = https://github.com/YosysHQ/prjtrellis
+license     = ISC
 depends     = cmake ninja pkgconf boost python3

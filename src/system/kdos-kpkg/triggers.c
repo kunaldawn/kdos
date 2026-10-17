@@ -48,10 +48,13 @@
  * ---------------------------------
  */
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "kdos-kpkg.h"
 
@@ -67,6 +70,7 @@ enum {
 	T_XFONTS,
 	T_TEXMF,
 	T_DESKTOP,
+	T_ICONS,
 	T_COUNT
 };
 
@@ -88,6 +92,7 @@ static const char *const t_dir[T_COUNT][T_MAXDIRS] = {
 	[T_XFONTS] = { "usr/share/fonts/" },
 	[T_TEXMF] = { "usr/share/texmf-dist/", "usr/share/texmf-local/" },
 	[T_DESKTOP] = { "usr/share/applications/" },
+	[T_ICONS] = { "usr/share/icons/" },
 };
 
 /* What `KPKG_SKIP_INDEX` calls each index. */
@@ -103,6 +108,7 @@ static const char *const t_name[T_COUNT] = {
 	[T_XFONTS] = "xfonts",
 	[T_TEXMF] = "texmf",
 	[T_DESKTOP] = "desktop",
+	[T_ICONS] = "icons",
 };
 
 static const char *const t_tool[T_COUNT] = {
@@ -117,9 +123,34 @@ static const char *const t_tool[T_COUNT] = {
 	[T_XFONTS] = "mkfontdir",
 	[T_TEXMF] = "mktexlsr",
 	[T_DESKTOP] = "update-desktop-database",
+	[T_ICONS] = "gtk-update-icon-cache",
 };
 
 #define MAN_DIR "usr/share/man/"
+#define ICON_DIR "usr/share/icons/"
+/* Every theme installed before it has no cache, and its own files touch at
+ * most hicolor: the package that places the tool caches every theme. */
+#define ICON_TOOL "usr/bin/gtk-update-icon-cache"
+
+/* The theme a path under ICON_DIR belongs to, added to `t->icons` once. */
+static void note_theme(KpTriggers *t, const char *p, size_t n)
+{
+	size_t il = strlen(ICON_DIR);
+	const char *name = p + il;
+	size_t len = 0;
+	while (il + len < n && name[len] != '/')
+		len++;
+	if (!len)
+		return;
+	for (size_t at = 0; t->icons.p && at < t->icons.n;) {
+		size_t l = strlen(t->icons.p + at);
+		if (l == len && !strncmp(t->icons.p + at, name, len))
+			return;
+		at += l + 1;
+	}
+	kb_buf_add(&t->icons, name, len);
+	kb_buf_add(&t->icons, "", 1);
+}
 
 /* Each line of `manifest` that sits under a watched directory marks its
  * index. `gone` marks it as having lost a file too; otherwise a placed
@@ -132,6 +163,11 @@ static void note(KpTriggers *t, const char *manifest, int gone)
 		if (!strncmp(p, "./", 2))
 			p += 2;
 		size_t n = nl ? (size_t)(nl - p) : strlen(p);
+		if (!gone && n == sizeof(ICON_TOOL) - 1 &&
+		    !strncmp(p, ICON_TOOL, n)) {
+			t->hit |= 1u << T_ICONS;
+			t->icons_all = 1;
+		}
 		for (int i = 0; i < T_COUNT; i++) {
 			for (int d = 0; d < T_MAXDIRS && t_dir[i][d]; d++) {
 				size_t dl = strlen(t_dir[i][d]);
@@ -140,6 +176,8 @@ static void note(KpTriggers *t, const char *manifest, int gone)
 				if (n <= dl || strncmp(p, t_dir[i][d], dl))
 					continue;
 				t->hit |= 1u << i;
+				if (i == T_ICONS)
+					note_theme(t, p, n);
 				if (gone)
 					t->gone |= 1u << i;
 				else if (i == T_MAN && p[n - 1] != '/') {
@@ -348,6 +386,102 @@ static int run_texmf(const char *root)
 	return rc;
 }
 
+/* Every directory's mtime at or below `dir`, the directory included, set back
+ * to `epoch` where it is later. GTK uses an icon-theme.cache only while it is
+ * no older than its theme's directory, and the image is packed with every
+ * timestamp at SOURCE_DATE_EPOCH: a directory left at its install time and a
+ * cache stamped later both become the epoch, and a directory touched after
+ * the cache was written makes every GTK program walk the theme by hand.
+ * Clamped before the cache is written, the cache is never the older. */
+static void clamp_dirs(const char *dir, time_t epoch)
+{
+	struct stat st;
+	if (lstat(dir, &st) != 0 || !S_ISDIR(st.st_mode))
+		return;
+	char **names = kb_listdir(dir, NULL);
+	for (char **p = names; p && *p; p++) {
+		char *child = kb_path_join(dir, *p);
+		clamp_dirs(child, epoch);
+		free(child);
+	}
+	kb_strv_free(names);
+	if (st.st_mtime > epoch) {
+		struct timespec ts[2] = { { epoch, 0 }, { epoch, 0 } };
+		utimensat(AT_FDCWD, dir, ts, AT_SYMLINK_NOFOLLOW);
+	}
+}
+
+/* icon-theme.cache, per theme an install or removal touched: each real
+ * directory of usr/share/icons among them that holds an index.theme. Only
+ * those: hicolor is touched by most applications, and rewriting the large
+ * themes beside it on each of those installs costs seconds apiece. `-t`
+ * because a cursor theme's index.theme names no icon directories, `-f`
+ * because the tool's own staleness test reads the very mtimes clamped above.
+ * A directory whose index.theme left with its package loses its cache and,
+ * when that empties it, the directory too: a cache of nothing is a file no
+ * removal would ever clean up. The install that places the tool itself
+ * caches every theme, since each one placed before it has none. */
+static int run_icons(const KpTriggers *t, const char *root)
+{
+	const char *sde = getenv("SOURCE_DATE_EPOCH");
+	char *top = kb_path_join(root, "usr/share/icons");
+	int rc = 0;
+	KbBuf every = {0};
+	const KbBuf *themes = &t->icons;
+	if (t->icons_all) {
+		char **names = kb_listdir(top, NULL);
+		for (char **p = names; p && *p; p++)
+			kb_buf_add(&every, *p, strlen(*p) + 1);
+		kb_strv_free(names);
+		themes = &every;
+	}
+	for (size_t at = 0; themes->p && at < themes->n;) {
+		const char *theme = themes->p + at;
+		at += strlen(theme) + 1;
+		char *dir = kb_path_join(top, theme);
+		struct stat st;
+		if (lstat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+			free(dir);
+			continue;
+		}
+		char *index = kb_path_join(dir, "index.theme");
+		if (kb_path_exists(index)) {
+			if (sde && *sde)
+				clamp_dirs(dir, (time_t)strtoll(sde, NULL, 10));
+			KbArgv a = {0};
+			kb_argv_add(&a, t_tool[T_ICONS]);
+			kb_argv_add(&a, "-q");
+			kb_argv_add(&a, "-t");
+			kb_argv_add(&a, "-f");
+			kb_argv_add(&a, dir);
+			kb_argv_end(&a);
+			if (kb_run(&a) != 0)
+				rc = 1;
+			/* Placing the cache touches the theme directory itself,
+			 * a second boundary may fall between the two, and the
+			 * directory would then be the newer. */
+			char *cache = kb_path_join(dir, "icon-theme.cache");
+			struct stat cs;
+			if (lstat(cache, &cs) == 0 &&
+			    lstat(dir, &st) == 0 && st.st_mtime > cs.st_mtime) {
+				struct timespec ts[2] = { cs.st_mtim, cs.st_mtim };
+				utimensat(AT_FDCWD, dir, ts, AT_SYMLINK_NOFOLLOW);
+			}
+			free(cache);
+		} else {
+			char *cache = kb_path_join(dir, "icon-theme.cache");
+			if (unlink(cache) == 0)
+				rmdir(dir);
+			free(cache);
+		}
+		free(index);
+		free(dir);
+	}
+	kb_buf_free(&every);
+	free(top);
+	return rc;
+}
+
 /* Under `--root`, inside the root: the root's own tool, which writes the
  * cache path it was compiled with, relative to the root it runs in. */
 static int run_pixbuf_rooted(const char *root)
@@ -373,6 +507,8 @@ static int run_one(const KpTriggers *t, int i, const char *root, int rooted)
 		return run_xfonts(root);
 	if (i == T_TEXMF)
 		return run_texmf(root);
+	if (i == T_ICONS)
+		return run_icons(t, root);
 	if (i == T_PIXBUF && rooted)
 		return run_pixbuf_rooted(root);
 
@@ -485,6 +621,8 @@ void kp_triggers_run(KpTriggers *t, const char *root)
 			kp_msg("Warning: %s failed", t_tool[i]);
 	}
 	kb_buf_free(&t->man);
+	kb_buf_free(&t->icons);
+	t->icons_all = 0;
 	t->nman = 0;
 	t->hit = t->gone = 0;
 }

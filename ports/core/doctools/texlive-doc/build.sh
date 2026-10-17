@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# THE DOCUMENTATION OF THE TEXLIVE PORT'S CUT. The same texmf tarball and
-# texlive.tlpdb as texlive, and the same closure: TL_ROOTS must equal the
-# texlive recipe's, or texdoc lists packages whose manuals are missing and
-# this port ships manuals for packages that are not installed. A document
-# file is kept where the tlpdb marks no language or English. The manual pages
-# and info files under doc/ are texlive's, installed into /usr/share/man and
-# /usr/share/info, and are skipped here, as is the Java bytecode a few
-# packages' examples carry: nothing here compiled it.
-
 TL_ROOTS="collection-basic collection-latex collection-latexrecommended
 	collection-latexextra collection-fontsrecommended collection-fontutils
 	collection-luatex collection-xetex collection-metapost

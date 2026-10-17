@@ -1,0 +1,12 @@
+Trusted keys for the ports tree.
+
+`kdos update fetch` replaces /ports with a published recipe tree only when
+its signature (kdos-ports.tar.xz.sig) verifies against a `*.pub` here. The
+build puts the public half of its release key here as kdos-release.pub:
+the key `ports/publish --release` signs each system release with, kept in
+build/keys/ on the machine that builds and never in git. An image built
+without that key carries none, and fetches no tree.
+
+A ring of its own, for the reason packs/ is one: a key that vouches for
+recipes must not thereby vouch for packages or packs, and the reverse.
+Adding a key is copying a file in; removing trust is deleting one.

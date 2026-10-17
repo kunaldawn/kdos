@@ -9,21 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# -DNVIDIA_SUPPORT=OFF, AND THAT IS NOT A LIMITATION HERE. The NVIDIA backend
-# links NVML out of the proprietary driver, which this distro does not ship and
-# cannot build; the AMD, Intel and generic backends all read `drm-engine-*` out
-# of /proc/<pid>/fdinfo — the SAME source kdos-energyd's GPU column already
-# uses, so the two agree about what a GPU was doing by construction.
-#
-# A driver with no fdinfo stats gets no reading rather than a zero, which is
-# kdos-res's rule stated by somebody else's program.
-#
-# METAX, ENFLAME and V3D default on, and ROCKCHIP does on an ARM build; all
-# four are pinned off. The first two dlopen proprietary vendor libraries from
-# /opt that this distro cannot ship; the last two drive Raspberry Pi and
-# Rockchip boards.
-# USE_LIBUDEV_OVER_LIBSYSTEMD names eudev's libudev as the device-discovery
-# library rather than leaving it to whichever of the two is found.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

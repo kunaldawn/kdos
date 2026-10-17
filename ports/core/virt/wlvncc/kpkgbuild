@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/any1/wlvncc/archive/$_co
 sha256      = 0576997905b57399fb678b590bf14fdb21941b9f4d25d1f579769418ec602b36  wlvncc-0.1.0.20260429.tar.gz
 description = Wayland-native VNC client drawing through EGL/GLES2, with H.264 decoding by FFmpeg
 homepage    = https://github.com/any1/wlvncc
+license     = ISC AND GPL-2.0-or-later
 depends     = meson ninja pkgconf wayland wayland-protocols libxkbcommon pixman libdrm mesa ffmpeg aml libgcrypt gnutls cyrus-sasl libjpeg-turbo libpng lzo zlib

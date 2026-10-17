@@ -9,18 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Xlib's macros collide with bmalloc's names in a unified source, so Xlib.h
-# must be included after the WebKit headers in the X11 pointer-lock manager.
 patch -p1 -i "$PORT_SRC/x11-include-order.patch"
 
-# Both windowing targets are built and GDK picks Wayland first at run time.
-# FreeType is built with brotli and decodes WOFF2 itself, so libwoff2 stays
-# unused. Gamepads need libmanette and speech synthesis needs Flite or Spiel;
-# none is a port, so both features are off rather than found missing hours
-# in. journald logging is off: there is no systemd. The bundled
-# libsysprof-capture is used because sysprof is not a port. WebKitWebDriver
-# has one path for both APIs, so only the GTK 3 build installs it. The Swift
-# features need swiftc, which is not a port, and gcc cannot build them.
 export LDFLAGS="$LDFLAGS -fuse-ld=lld"
 cmake -S . -B build -G Ninja \
 	-DPORT=GTK \
@@ -62,6 +52,3 @@ cmake -S . -B build -G Ninja \
 	-DENABLE_BACK_FORWARD_LIST_SWIFT=OFF
 cmake --build build
 DESTDIR=$PKG cmake --install build
-
-# English only: the translations of the engine's own strings are not shipped.
-rm -rf "$PKG/usr/share/locale"

@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ICB builds the ISO_C_BINDING entry points (arpack.h, *upd_c) beside the
-# Fortran ones; without it only callers that mangle Fortran names by hand can
-# link. LP64 integers and the OpenBLAS vendor match the openblas port's ABI.
-# MPI is off: PARPACK needs an MPI stack this tree does not carry.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

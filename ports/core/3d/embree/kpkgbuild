@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = embree
+version     = 4.4.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/RenderKit/embree/archive/refs/tags/v$version.tar.gz
+sha256      = dcf338cc61b636c871ccf370e673bfd380c5ecb71ce49ad50f28e1d4ec9995dc  embree-4.4.1.tar.gz
+description = Intel's CPU ray-tracing kernels for renderers, from SSE2 to AVX-512, chosen at run time
+homepage    = https://www.embree.org/
+license     = Apache-2.0
+depends     = cmake ninja ispc onetbb

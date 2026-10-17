@@ -9,9 +9,11 @@
 # ---------------------------------
 
 name        = libarchive
-version     = 3.8.9
+version     = 3.8.10
 release     = 1
 source      = https://libarchive.org/downloads/$name-$version.tar.xz
-sha256      = 888c934f9d95648ecb9163dc8e23ab80a476ecb81a8f1154704a227b5b676dde  libarchive-3.8.9.tar.xz
-description = Reading/writing various compression formats
+sha256      = 56cad765459d5ee25a3b761f90c47d99379d28297fbfb72d908880d6b875fb96  libarchive-3.8.10.tar.xz
+description = Multi-format archive and compression library, with bsdtar, bsdcpio, bsdcat and bsdunzip
+homepage    = https://libarchive.org/
+license     = BSD-2-Clause
 depends     = acl attr xz zstd lz4 lzo bzip2 zlib openssl expat

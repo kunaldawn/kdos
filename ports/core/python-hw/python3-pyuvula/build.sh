@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# Ultimaker's CMake files are written for Conan: they load their compiler
-# settings as a package called standardprojectsettings, which only Conan's
-# index carries, and link polyclipping as clipper::clipper, a name only
-# Conan's recipe generates. The shim answers both from this system, and
-# nothing of it reaches the package.
 _shim="$SRC_ROOT/shim"
 mkdir -p "$_shim"
 printf 'include("%s")\n' \
@@ -29,11 +23,6 @@ if(NOT TARGET clipper::clipper)
 endif()
 CMAKE
 
-# The C++ library is static and private to the module; only pyUvula ships.
-# Conan's toolchain is what sets the C++ standard the project is written in;
-# without it the compiler's default applies.
-# The library has no install rules (Conan's recipe copies the module), so the
-# module is copied into site-packages here.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_CXX_STANDARD=20 \

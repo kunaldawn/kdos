@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# It ships as well as running on the host, because `kdos-box freeze` builds a
-# pack out of a box's writable layer on the machine somebody is working on —
-# and mkfs.erofs and zstd are both on the target.
 LIBS="$PORT_SRC/../../libs"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \

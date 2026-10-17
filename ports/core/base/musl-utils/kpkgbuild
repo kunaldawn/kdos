@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = musl-utils
+version     = 20261006
+release     = 1
+
+_aports_rev = d72a964d7f68bb113225a61d9425ba48005a99e0
+
+source      = getconf.c::https://gitlab.alpinelinux.org/alpine/aports/-/raw/$_aports_rev/main/musl/getconf.c
+source      = getent.c::https://gitlab.alpinelinux.org/alpine/aports/-/raw/$_aports_rev/main/musl/getent.c
+source      = iconv.c::https://gitlab.alpinelinux.org/alpine/aports/-/raw/$_aports_rev/main/musl/iconv.c
+sha256      = d87d0cbb3690ae2c5d8cc218349fd8278b93855dd625deaf7ae50e320aad247c  getconf.c
+sha256      = a6171c2db641cdd99c164169d3c5c6ca323617483cedec4cbbe3eb39c5834df0  getent.c
+sha256      = f79a2930a2e5bb0624321589edf8b889d1e9b603e01e6b7ae214616605b3fdd7  iconv.c
+description = getconf, getent and iconv for musl, from Alpine's musl package
+homepage    = https://gitlab.alpinelinux.org/alpine/aports/-/tree/master/main/musl
+license     = BSD-2-Clause AND GPL-2.0-or-later
+depends     =

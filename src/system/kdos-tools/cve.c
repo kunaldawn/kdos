@@ -31,6 +31,14 @@
  *     `ports/update --cve` is the separate online cross-check.
  *   - guess when it cannot tell. A package with no secdb entry is reported as
  *     UNKNOWN in the summary rather than counted as clean.
+ *
+ * A port that compiles its own copy of a library (the Rust ports that embed
+ * AWS-LC through aws-lc-sys) carries a version no package database names. The
+ * bundled inventory (secdb/bundled.txt, installed to
+ * /usr/share/kdos/bundled.txt) lists each such copy as port, crate, component
+ * and version; every row whose port is checked is looked up under the
+ * component's name and listed in the report, known or not, so the copy is
+ * never silent.
  * ---------------------------------
  */
 
@@ -43,6 +51,7 @@
 #include "kpkg.h"
 
 #define CVE_DEFAULT_DB "/usr/share/kdos/secdb.txt"
+#define CVE_DEFAULT_BUNDLED "/usr/share/kdos/bundled.txt"
 /* Vendored data ages, and an answer from a stale database is worth less than
  * the same answer from a fresh one. Six months is roughly two Alpine releases. */
 #define CVE_STALE_DAYS 180
@@ -61,6 +70,16 @@ struct cve_hit {
 	char have[64];
 	char fixed[64];
 	char cves[512];
+};
+
+/* One row of the bundled inventory: <port> <crate> <component> <version>. */
+struct cve_bundled {
+	char port[128];
+	char crate[64];
+	char component[64];
+	char version[64];
+	int known;	/* the component has rows in the database */
+	int behind;	/* and the version is older than a recorded fix */
 };
 
 /* ── the table ─────────────────────────────────────────────────────────── */
@@ -210,6 +229,46 @@ static int check_one(const char *db, const char *alpine, const char *have,
 	return found;
 }
 
+/* Does the database carry any row for this name? Matched whole at a line
+ * start, so `aws-lc` does not match `aws-lc-rs`. */
+static int db_knows(const char *db, const char *name)
+{
+	char probe[256];
+	snprintf(probe, sizeof(probe), "\n%.120s ", name);
+	if (strstr(db, probe))
+		return 1;
+	size_t n = strlen(name);
+	return !strncmp(db, name, n) && db[n] == ' ';
+}
+
+/*
+ * The bundled inventory: one `<port> <crate> <component> <version>` row per
+ * line, `#` comments. A missing file is an empty inventory; a malformed row is
+ * skipped.
+ */
+static int load_bundled(const char *path, struct cve_bundled *out, int max)
+{
+	size_t len = 0;
+	char *data = kb_read_all(path, &len);
+	int n = 0;
+
+	if (!data)
+		return 0;
+	for (char *line = data; line && *line && n < max;) {
+		char *nl = strchr(line, '\n');
+		if (nl)
+			*nl = 0;
+		struct cve_bundled b = {0};
+		if (*line != '#' &&
+		    sscanf(line, "%127s %63s %63s %63s", b.port, b.crate,
+			   b.component, b.version) == 4)
+			out[n++] = b;
+		line = nl ? nl + 1 : NULL;
+	}
+	free(data);
+	return n;
+}
+
 /* ── what to check ─────────────────────────────────────────────────────── */
 
 /*
@@ -279,7 +338,9 @@ static int collect(const KpConf *c, char names[][128], char vers[][64],
 
 /* ── the command ───────────────────────────────────────────────────────── */
 
-#define CVE_MAX 1024
+/* Above the tree's port count: collect() stops at this many, and a package
+ * past the limit is neither checked nor counted. */
+#define CVE_MAX 4096
 
 int kdt_cve(int argc, char **argv, const char *tty_accent,
 	    const char *tty_warn, const char *tty_reset)
@@ -325,9 +386,7 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
 		/* "Alpine has never heard of this package" and "Alpine has and
 		 * we are current" are different answers, and only the second is
 		 * good news. */
-		char probe[256];
-		snprintf(probe, sizeof(probe), "\n%.120s ", alpine[i]);
-		if (!strstr(db, probe) && strncmp(db, alpine[i], strlen(alpine[i]))) {
+		if (!db_knows(db, alpine[i])) {
 			unknown++;
 			continue;
 		}
@@ -338,6 +397,37 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
 			if (nhit < CVE_MAX)
 				hits[nhit++] = h;
 		}
+	}
+
+	/* A bundled copy is checked only when its port is: installed on a
+	 * running system, in the tree in a checkout, or the one port named. */
+	const char *bpath = getenv("KDOS_BUNDLED");
+	if (!bpath || !*bpath)
+		bpath = CVE_DEFAULT_BUNDLED;
+	static struct cve_bundled inv[CVE_MAX], bundled[CVE_MAX];
+	int ninv = load_bundled(bpath, inv, CVE_MAX), nbund = 0, bunknown = 0;
+	for (int r = 0; r < ninv; r++) {
+		if (only && strcmp(inv[r].port, only))
+			continue;
+		int present = 0;
+		for (int i = 0; i < n && !present; i++)
+			present = !strcmp(names[i], inv[r].port);
+		if (!present)
+			continue;
+		struct cve_bundled b = inv[r];
+		b.known = db_knows(db, b.component);
+		if (!b.known)
+			bunknown++;
+		struct cve_hit h = {0};
+		if (b.known && check_one(db, b.component, b.version, &h)) {
+			b.behind = 1;
+			snprintf(h.port, sizeof(h.port), "%.60s/%.60s", b.port,
+				 b.component);
+			kb_strlcpy(h.have, b.version, sizeof(h.have));
+			if (nhit < CVE_MAX)
+				hits[nhit++] = h;
+		}
+		bundled[nbund++] = b;
 	}
 
 	if (json) {
@@ -354,6 +444,16 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
 			       "\"fixed_in\": \"%s\", \"cves\": \"%s\"}%s\n",
 			       hits[i].port, hits[i].have, hits[i].fixed,
 			       hits[i].cves, i + 1 < nhit ? "," : "");
+		printf("  ],\n  \"bundled\": [\n");
+		for (int i = 0; i < nbund; i++)
+			printf("    {\"port\": \"%s\", \"crate\": \"%s\", "
+			       "\"component\": \"%s\", \"version\": \"%s\", "
+			       "\"in_database\": %s, \"behind\": %s}%s\n",
+			       bundled[i].port, bundled[i].crate,
+			       bundled[i].component, bundled[i].version,
+			       bundled[i].known ? "true" : "false",
+			       bundled[i].behind ? "true" : "false",
+			       i + 1 < nbund ? "," : "");
 		printf("  ]\n}\n");
 	} else {
 		printf("%sKDOS cve%s  —  Alpine secdb of %s (%d days old), %s\n\n",
@@ -388,8 +488,20 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
 		}
 		if (!nhit)
 			printf("  nothing known-vulnerable\n");
+		if (nbund) {
+			printf("\n  bundled copies\n");
+			for (int i = 0; i < nbund; i++)
+				printf("  %-22s %-12s %s %s%s\n",
+				       bundled[i].port, bundled[i].version,
+				       bundled[i].component, bundled[i].crate,
+				       bundled[i].known ? ""
+							: "  (not in the database)");
+		}
 		printf("\n  %d checked, %d not in the database, %d behind a "
 		       "recorded fix\n", checked, unknown, nhit);
+		if (nbund)
+			printf("  %d bundled copies, %d not in the database\n",
+			       nbund, bunknown);
 		if (age > CVE_STALE_DAYS)
 			printf("  %sthe database is %d days old — re-run "
 			       "src/system/kdos-tools/secdb/vendor.py%s\n",

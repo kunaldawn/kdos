@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = f5045b14a6c689bbfded9437582f943dd4f8f74537085ab6115bcacdea2110d8  bluez-qt-6.30.0.tar.xz
 description = KDE Frameworks: Qt wrapper for the BlueZ 5 D-Bus API
 homepage    = https://invent.kde.org/frameworks/bluez-qt
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative bluez

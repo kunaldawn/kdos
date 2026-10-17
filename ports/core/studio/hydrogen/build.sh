@@ -9,17 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# A tarball is not a git checkout, so upstream's tag probe calls every build
-# a development one and the main window opens with a warning saying so. The
-# patch is Alpine's, and marks the build as a release.
 patch -p1 -i "$PORT_SRC/nodevel.patch"
+rmdir data/doc
+mv "$SRC_ROOT/documentation-$version" data/doc
 
-# Audio and MIDI through ALSA and PulseAudio (pipewire-pulse on this system).
-# JACK is not on this system, and PortAudio and PortMidi would be second
-# routes to the same devices. LADSPA effects with LRDF metadata, and OSC
-# remote control through liblo. Rubber Band is off: upstream marks its use
-# experimental, with wrong timing. The test suite and the API reference are
-# not built.
 export CMAKE_CXX_FLAGS="$CXXFLAGS"
 cmake -S . -B build -G Ninja \
 	-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -36,7 +29,7 @@ cmake -S . -B build -G Ninja \
 	-D WANT_LADSPA=ON \
 	-D WANT_LRDF=ON \
 	-D WANT_OSC=ON \
-	-D WANT_JACK=OFF \
+	-D WANT_JACK=ON \
 	-D WANT_PORTAUDIO=OFF \
 	-D WANT_PORTMIDI=OFF \
 	-D WANT_OSS=OFF \
@@ -50,11 +43,11 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# Bundled data is English only; the interface falls back to its source
-# strings.
 rm -rf "$PKG/usr/share/hydrogen/data/i18n"
+rm -f "$PKG"/usr/share/hydrogen/data/doc/tutorial_fr.html \
+	"$PKG"/usr/share/hydrogen/data/doc/tutorial_it.html
+test -f "$PKG/usr/share/hydrogen/data/doc/manual_en.html"
 
-# The application icon is installed as SVG only, which the panel never reads.
 for _size in 32 48 64 128; do
 	install -d "$PKG/usr/share/icons/hicolor/${_size}x${_size}/apps"
 	rsvg-convert -w "$_size" -h "$_size" \
@@ -62,9 +55,6 @@ for _size in 32 48 64 128; do
 		"$PKG/usr/share/icons/hicolor/scalable/apps/org.hydrogenmusic.Hydrogen.svg"
 done
 
-# UPSTREAM'S ENTRY IS REPLACED for StartupWMClass: no desktop file name is
-# set, so the Wayland app_id is the executable's name, hydrogen. Upstream's
-# MimeType claims text/xml, every XML file on the system, and is left out.
 cat > "$PKG/usr/share/applications/org.hydrogenmusic.Hydrogen.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

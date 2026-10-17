@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/s/setuptools-rust/s
 sha256      = f2afcf4baeee689910ce49cfa8aad4e08cce72f417449bcc32891b8664fdc726  python3-setuptools-rust-1.13.0.tar.gz
 description = Builds a Rust extension from setup.py — how maturin bootstraps itself
 homepage    = https://github.com/PyO3/setuptools-rust
+license     = MIT
 depends     = python3 python3-setuptools python3-pip python3-semantic-version python3-setuptools-scm rust

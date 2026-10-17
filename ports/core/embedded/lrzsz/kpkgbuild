@@ -11,8 +11,9 @@
 name        = lrzsz
 version     = 0.12.20
 release     = 1
-source      = https://ohse.de/uwe/releases/lrzsz-0.12.20.tar.gz
+source      = https://ohse.de/uwe/releases/lrzsz-$version.tar.gz
 sha256      = c28b36b14bddb014d9e9c97c52459852f97bd405f89113f30bee45ed92728ff1  lrzsz-0.12.20.tar.gz
-description = X/Y/ZMODEM — the way a file reaches a board that has only a serial line
+description = X, Y and ZMODEM file transfer over a serial line
 homepage    = https://ohse.de/uwe/software/lrzsz.html
+license     = GPL-2.0-or-later
 depends     = 

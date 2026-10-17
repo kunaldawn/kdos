@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/P/PL/P
 sha256      = cc295d23a472687c24489d58226ead23b9fdc2588e522f0b5f0747741700694e  perl-class-inspector-1.36.tar.gz
 description = Get information about a perl class and its structure
 homepage    = https://metacpan.org/dist/Class-Inspector
+license     = Artistic-1.0-Perl OR GPL-1.0-or-later
 depends     = perl

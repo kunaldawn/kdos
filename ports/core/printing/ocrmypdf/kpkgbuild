@@ -16,6 +16,7 @@ sha256      = aca73a23a80cf2f46a4c15040b0035203dbf74054b7a0c3a7ee93b05abc555a6  
 sha256      = ae49147cb5d37898dcfd6436e475bf3c0e9e33e79fbf7bd2d16d1b3008288099  ocrmypdf-vendor-17.12.1.tar.xz
 description = Adds an invisible OCR text layer to a scanned PDF, in place
 homepage    = https://github.com/ocrmypdf/OCRmyPDF
+license     = MPL-2.0 AND MIT AND LGPL-3.0-only AND LGPL-3.0-or-later
 depends     = python3 python3-pip python3-rich python3-typing-extensions python3-charset-normalizer python3-pillow python3-pikepdf python3-pluggy python3-lxml python3-cryptography python3-packaging python3-pygments python3-pypdfium2 python3-pydantic-core python3-uharfbuzz python3-pillow-heif python3-defusedxml fonttools tesseract ghostscript qpdf
 vendoring   = python
 pyrequirements = no

@@ -15,4 +15,5 @@ source      = https://github.com/libimobiledevice/ifuse/releases/download/$versi
 sha256      = 9d490470ba6553f8052b385bb5330462e46fbe82131ebe65be47a1cc1c70e857  ifuse-1.2.1.tar.bz2
 description = FUSE filesystem that mounts an iPhone's or iPad's media and app documents
 homepage    = https://libimobiledevice.org
+license     = LGPL-2.1-or-later
 depends     = libimobiledevice libplist fuse usbmuxd pkgconf

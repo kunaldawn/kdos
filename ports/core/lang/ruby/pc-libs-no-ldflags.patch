@@ -1,0 +1,9 @@
+--- a/template/ruby.pc.in
++++ b/template/ruby.pc.in
+@@ -55,5 +55,5 @@
+ Version: ${RUBY_PROGRAM_VERSION}
+ URL: https://www.ruby-lang.org
+ Cflags: -I${rubyarchhdrdir} -I${rubyhdrdir}
+-Libs: ${DLDFLAGS} ${LIBRUBYARG_SHARED} ${LIBS}
++Libs: ${LIBRUBYARG_SHARED} ${LIBS}
+ Requires:

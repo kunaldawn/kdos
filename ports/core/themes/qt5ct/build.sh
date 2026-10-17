@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# kde-key.patch makes the plugin answer QT_QPA_PLATFORMTHEME=kde as well as
-# =qt5ct and =qt6ct. The session exports kde, and no other Qt 5 platform theme
-# answers it, so this is how every Qt 5 program reads the qt5ct files `kdos
-# theme` writes. Qt 5 searches only its own platformthemes directory, so the
-# key cannot shadow plasma-integration's Qt 6 plugin. qt5-qtwayland gives the
-# settings window its Wayland platform plugin. D-Bus
-# stays on: it carries the portal file dialogs and the StatusNotifierItem tray
-# icon. Translations are compiled into the program by lrelease, which is why
-# qt5-qttools is a build dependency.
 patch -p1 -i "$PORT_SRC/kde-key.patch"
 cmake -B build -G Ninja -Wno-dev \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -29,10 +19,6 @@ cmake -B build -G Ninja -Wno-dev \
 ninja -C build
 DESTDIR=$PKG ninja -C build install
 
-# UPSTREAM'S ENTRY IS REPLACED to add StartupWMClass and an icon the menu can
-# draw. setDesktopFileName("qt5ct.desktop") makes the Wayland app_id qt5ct.
-# The icon is Breeze's preferences-desktop-theme rasterised into hicolor:
-# upstream names that theme icon, and the panel reads only PNG.
 for _size in 32 48 64 128; do
 	install -d "$PKG/usr/share/icons/hicolor/${_size}x${_size}/apps"
 	rsvg-convert -w "$_size" -h "$_size" \

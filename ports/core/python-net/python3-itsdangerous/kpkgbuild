@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/i/itsdangerous/itsd
 sha256      = e0050c0b7da1eea53ffaf149c0cfbb5c6e2e2b69c4bef22c81fa6eb73e5f6173  python3-itsdangerous-2.2.0.tar.gz
 description = Cryptographically signed serialisation of data for passing through untrusted channels
 homepage    = https://itsdangerous.palletsprojects.com/
+license     = BSD-3-Clause
 depends     = python3 python3-pip python3-flit-core

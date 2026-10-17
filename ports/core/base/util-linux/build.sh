@@ -9,22 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE SHIPPED BUILD IS THE 30_foundation ONE. A later phase names this port
-# again, but kpkg skips a package whose recorded recipe hash matches the tree,
-# so every probe is pinned against what 30_foundation can reach.
-#
-# --without-udev: eudev depends on util-linux for libblkid, so libudev cannot be
-# declared and the bootstrap build never finds it. lsblk then reads a
-# filesystem's type, label and UUID only by probing the device, which it
-# attempts only as root, so for anybody else those columns are empty.
-#
-# --disable-asciidoc: the release tarball carries every manual page already
-# generated, and they install without asciidoctor. Regenerating them would pull
-# ruby into the bootstrap.
-#
-# libmagic (file), pam_lastlog2 (pam) and NLS (gettext) all come later than this
-# port in 30_foundation; declaring any of them would drag it into the bootstrap.
-# libmount's own udev reader is built on libsystemd.
+patch -p1 -i "$PORT_SRC/utmps-paths.patch"
 ./configure \
 	--prefix=/usr \
 	--disable-chfn-chsh \
@@ -53,6 +38,7 @@
 	--disable-poman \
 	--disable-nls \
 	--disable-makeinstall-chown \
-	--disable-makeinstall-setuid
-make
-make DESTDIR=$PKG install
+	--disable-makeinstall-setuid \
+	CPPFLAGS=-I/usr/include/utmps
+make LIBS="-lutmps -lskarnet"
+make LIBS="-lutmps -lskarnet" DESTDIR=$PKG install

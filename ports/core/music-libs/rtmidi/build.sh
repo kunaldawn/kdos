@@ -9,11 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# JACK is not on this system: the ALSA sequencer is the one MIDI API.
 mkdir -p build && cd build
 cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
-	-DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF \
+	-DBUILD_SHARED_LIBS=ON \
 	-DRTMIDI_API_ALSA=ON -DRTMIDI_API_JACK=OFF -DRTMIDI_BUILD_TESTING=OFF
 make
 make DESTDIR=$PKG install

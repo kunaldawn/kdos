@@ -11,7 +11,7 @@
 name        = kdos-record
 version     = 0.1.0
 release     = 1
-source      =
 description = Screen recorder: the ScreenCast portal into a GStreamer pipeline
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
 depends     = basu xdg-desktop-portal xdg-desktop-portal-wlr slurp pipewire gstreamer gst-plugins-base gst-plugins-good gst-plugins-ugly

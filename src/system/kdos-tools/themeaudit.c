@@ -180,9 +180,8 @@ static const struct {
 	{ A_CONFIG, "kdos/term-colors.conf",    "terminal colours"   },
 	{ A_CONFIG, "bat/themes/kdos.tmTheme",  "bat"                },
 	{ A_CONFIG, "micro/colorschemes/kdos.micro", "micro"         },
-	/* helix is in no phase's package list and never reaches the image; the
-	 * theme is written for a helix installed in a box, which sees this $HOME.
-	 * Dropping the row would leave a generated file nothing audits. */
+	/* Dropping the row would leave a generated file nothing audits: the
+	 * theme is written whether or not anything selects it. */
 	{ A_CONFIG, "helix/themes/kdos.toml",   "helix"              },
 	{ A_CONFIG, "nvim/colors/kdos.vim",     "neovim"             },
 	{ A_CONFIG, "git/kdos-delta",           "delta"              },

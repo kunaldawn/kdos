@@ -15,4 +15,5 @@ source      = https://github.com/libimobiledevice/libtatsu/releases/download/$ve
 sha256      = 536fa228b14f156258e801a7f4d25a3a9dd91bb936bf6344e23171403c57e440  libtatsu-1.0.5.tar.bz2
 description = Client for Apple's Tatsu Signing Server, as used to restore and personalise iOS devices
 homepage    = https://github.com/libimobiledevice/libtatsu
+license     = LGPL-2.1-or-later
 depends     = libplist curl pkgconf

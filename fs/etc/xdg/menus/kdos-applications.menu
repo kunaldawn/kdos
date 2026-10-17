@@ -1,0 +1,62 @@
+<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+ "http://www.freedesktop.org/standards/menu-spec/1.0/menu.dtd">
+<!-- The application tree a toolkit reads through XDG_MENU_PREFIX=kdos-:
+     KService's Open With dialog, and any menu editor. The Start menu does
+     not read it. One submenu per main category of the menu specification;
+     an entry with no main category lands in Other. -->
+<Menu>
+	<Name>Applications</Name>
+	<DefaultAppDirs/>
+	<DefaultDirectoryDirs/>
+	<DefaultMergeDirs/>
+
+	<Menu>
+		<Name>Accessories</Name>
+		<Include><And><Category>Utility</Category><Not><Category>System</Category></Not></And></Include>
+	</Menu>
+	<Menu>
+		<Name>Development</Name>
+		<Include><Category>Development</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Education</Name>
+		<Include><Category>Education</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Games</Name>
+		<Include><Category>Game</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Graphics</Name>
+		<Include><Category>Graphics</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Internet</Name>
+		<Include><Category>Network</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Multimedia</Name>
+		<Include><Category>AudioVideo</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Office</Name>
+		<Include><Category>Office</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Science</Name>
+		<Include><Category>Science</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>Settings</Name>
+		<Include><Category>Settings</Category></Include>
+	</Menu>
+	<Menu>
+		<Name>System</Name>
+		<Include><And><Category>System</Category><Not><Category>Settings</Category></Not></And></Include>
+	</Menu>
+	<Menu>
+		<Name>Other</Name>
+		<OnlyUnallocated/>
+		<Include><All/></Include>
+	</Menu>
+</Menu>

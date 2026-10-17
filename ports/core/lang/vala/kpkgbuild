@@ -15,4 +15,5 @@ source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$vers
 sha256      = 5ad7cbbfcc0de61b403d6797c9ef60455bfbebd8e162aec33b5b0b097adfb9d5  vala-0.56.19.tar.xz
 description = Vala compiler and vapigen — C#-like language compiled to GObject C
 homepage    = https://vala.dev/
+license     = LGPL-2.1-or-later
 depends     = glib gobject-introspection flex bison pkgconf

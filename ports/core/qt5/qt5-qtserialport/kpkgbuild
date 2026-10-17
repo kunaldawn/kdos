@@ -17,6 +17,7 @@ source      = $name-$version.tar.xz::https://download.qt.io/archive/qt/${version
 sha256      = f54d167250e1e68938791e6d7dcbd7c1589741c898e19d7174adfd09d816f0c5  qt5-qtserialport-5.15.19.tar.xz
 description = Qt 5 serial port access, with port enumeration through udev
 homepage    = https://www.qt.io/
+license     = LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 depends     = qt5-qtbase eudev
 group       = qt5
 series      = 5.15

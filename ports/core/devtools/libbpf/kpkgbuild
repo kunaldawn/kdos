@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/libbpf/libbpf/archive/re
 sha256      = 7ab5feffbf78557f626f2e3e3204788528394494715a30fc2070fcddc2051b7b  libbpf-1.7.0.tar.gz
 description = The userspace side of BPF — load a program, read a map
 homepage    = https://github.com/libbpf/libbpf
+license     = LGPL-2.1-only OR BSD-2-Clause
 depends     = pkgconf elfutils zlib

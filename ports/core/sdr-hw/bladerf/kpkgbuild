@@ -21,4 +21,5 @@ sha256      = b77a86780e82ff592dd3cbcbf916d6f421f5cb7b523b800255483b1992aea88d  
 sha256      = 7953608a3f3c6171a913057d8b187c706d8372f1b41720144a5770242e981914  bladeRF-fsk-fb903684036217b9db9dcd6be8007548e12a377e.tar.gz
 description = libbladeRF and bladeRF-cli for the Nuand bladeRF and bladeRF 2.0 micro transceivers
 homepage    = https://www.nuand.com/
-depends     = cmake pkgconf libusb libedit ncurses help2man
+license     = LGPL-2.1-or-later AND GPL-2.0-or-later
+depends     = cmake pkgconf libusb libedit ncurses help2man curl

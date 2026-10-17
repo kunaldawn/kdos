@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-colorama
+version     = 0.4.6
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/colorama/colorama-$version.tar.gz
+sha256      = 08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44  python3-colorama-0.4.6.tar.gz
+description = ANSI colour codes in Python that also work on a Windows console
+homepage    = https://github.com/tartley/colorama
+license     = BSD-3-Clause
+depends     = python3 python3-pip python3-hatchling

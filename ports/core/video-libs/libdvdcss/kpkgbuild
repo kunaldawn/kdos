@@ -16,4 +16,5 @@ source      = https://download.videolan.org/pub/videolan/$name/$version/$name-$v
 sha256      = 7ea556c846b7bfc32d47b41cae56d1863a6b6d5f706bb162778d6f298490977c  libdvdcss-1.6.0.tar.xz
 description = Reads a CSS-encrypted DVD-Video disc, for libdvdread and every DVD player above it
 homepage    = https://www.videolan.org/developers/libdvdcss.html
+license     = GPL-2.0-or-later
 depends     = meson ninja pkgconf

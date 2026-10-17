@@ -9,10 +9,12 @@
 # ---------------------------------
 
 name        = linux
-version     = 7.2.7
+version     = 7.2.11
 release     = 1
 source      = https://cdn.kernel.org/pub/linux/kernel/v${version:0:1}.x/$name-$version.tar.xz
-sha256      = 4ac34c47db2540ffb2713943f8d891ff1702e0ba6934525a493b7d1cad43145a  linux-7.2.7.tar.xz
+sha256      = fd0fc479f983a8c05313f13e9c36330fe6651cf725396748c40d5cd93fa1e6a4  linux-7.2.11.tar.xz
 description = Linux kernel
+homepage    = https://www.kernel.org/
+license     = GPL-2.0-only WITH Linux-syscall-note
 secdb       = linux-lts
-depends     = bc bison flex perl openssl elfutils zstd kmod dwarves rust bindgen clang
+depends     = bc bison flex perl openssl elfutils zstd kmod dwarves rust bindgen clang cpio

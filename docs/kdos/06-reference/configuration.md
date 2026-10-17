@@ -243,11 +243,15 @@ sample, since reading it walks `/sys/class/hwmon` and a temperature does not cha
 half a second. Where no sensor answers, the meter holds its last value rather than drawing zero.
 
 The `update` widget shows how many installed packages are older than the version this system's
-recipes describe. It reads the `behind` field of `/var/lib/kdos/update.json`, which the system's
+recipes describe. It reads the `behind`, `problem` and `detail` fields of
+`/var/lib/kdos/update.json`, which the system's
 [update-check timer](#etckdostimersd-and-configkdostimersd) writes nightly with
-`kdos update check --json`; `$XDG_STATE_HOME/kdos/update.json` is the fallback for a machine whose
-timer is off and whose owner ran the check themselves. The file is re-read at most once a minute.
-With no file the badge is not drawn.
+`kdos update check --fetch --out`, and `kdos update fetch` and `apply` rewrite when they finish;
+`$XDG_STATE_HOME/kdos/update.json` is the fallback for a machine whose timer is off and whose owner
+ran the check themselves. The file is re-read at most once a minute. A problem (no ports tree, no
+network, a fetch or a build that failed) draws the badge in the warning colour, as `!` when nothing
+is behind, and its tooltip says which. With no file, nothing behind and no problem, the badge is not
+drawn.
 
 Every default is restored before the file is parsed, on each reload, so deleting a line does
 return that key to its default.
@@ -435,7 +439,7 @@ at once:
 
 | File | Tier | When | Runs |
 |---|---|---|---|
-| `/etc/kdos/timers.d/10-update-check.timer` | System | 04:17, slack 8 h | `kdos update check --json --out /var/lib/kdos/update.json` |
+| `/etc/kdos/timers.d/10-update-check.timer` | System | 04:17, slack 8 h | `kdos update check --fetch --out /var/lib/kdos/update.json` |
 | `/etc/kdos/timers.d/20-fstrim.timer` | System | 12:47, slack 20 h | `fstrim -a` |
 | `/etc/kdos/timers.d/30-fwupd-refresh.timer` | System, from the `fwupd` package | 13:43, slack 20 h | `fwupdmgr refresh` |
 | `~/.config/kdos/timers.d/20-updatedb.timer` | User | 03:05, slack 8 h | `kdos-updatedb` |
@@ -882,17 +886,16 @@ disk, and it requires the disk's name (`sdb`, not `sdb1`) to be typed back.
 
 ### `/etc/kdos/update.conf`
 
-Not shipped. Tells `kdos update` where to take binary packages from.
+Not shipped. Tells `kdos update fetch` where to take a newer ports tree from.
 
 | Key | Default | Means |
 |---|---|---|
-| `binhost` | — | A directory holding a signed package index (made with `kpkg index <dir> --sign <key>`). A path, never a URL: a USB stick, an NFS mount or a local directory |
+| `tree` | `https://github.com/kunaldawn/kdos/releases/latest/download` | Where `kdos-ports.tar.xz` and `kdos-ports.tar.xz.sig` are: a URL, or a directory such as a USB stick or an NFS mount |
 
-`KDOS_BINHOST` overrides it. A binhost only saves compiling: `kdos update apply` takes a prebuilt
-package where the binhost has one that matches this machine's recipe and builds from the ports tree
-where it does not. Without a binhost every package is built, and `kdos update apply --binhost-only`
-refuses to start. `kdos update check --json` reports the binhost it found and whether its index is
-signed. The index's signature is checked against [`/etc/kdos/keys/`](#etckdoskeys). See
+`$KDOS_UPDATE_TREE` overrides it, and `kdos update fetch --from` overrides both. Wherever the tree
+comes from, its signature is checked against [`/etc/kdos/keys/tree/`](#etckdoskeys) before it is
+unpacked. Sources are not configured here: `kpkg` fetches them from the KDOS source archive and
+then upstream, and `KDOS_SOURCES_BASE` moves the archive as it does for `ports/fetch`. See
 [`kdos update`](../04-programs/kdos-command.md#kdos-update).
 
 ### `/etc/kdos/keys/`
@@ -905,9 +908,10 @@ is no revocation list and no online check.
 |---|---|
 | `/etc/kdos/keys/` | Host package indexes (a binhost's `PACKAGES.sig`) and package signatures |
 | `/etc/kdos/keys/packs/` | Application packs and pack indexes |
+| `/etc/kdos/keys/tree/` | The ports tree `kdos update fetch` installs as `/ports` |
 
-Keys are read from each directory without descending into subdirectories, which keeps the two
-policies separate: a pack key cannot become a trusted source of host packages.
+Keys are read from each directory without descending into subdirectories, which keeps the three
+policies separate: a pack key or a tree key cannot become a trusted source of host packages.
 
 The host directory ships with no keys, only a `README` stating the policy. Packages are built from
 source on the machine and checked against the `sha256` in their recipe, so nothing needs a
@@ -920,6 +924,11 @@ cp builder.pub /etc/kdos/keys/      # on every machine that should trust it
 
 The pack directory ships one key, `kdos-packs.pub`. A pack or pack index signed with its private
 half is accepted. Replace it with your own key to trust packs you sign yourself.
+
+The tree directory holds `kdos-release.pub`, the public half of the release key of the build that
+made the image (`build/keys/kdos-release.key`, which `ports/publish --release` signs each release's
+tree with); an image built without that key ships the directory with only its `README`, and fetches
+no tree. Put the key of whoever publishes the trees you follow here.
 
 ### `/etc/kdos/login.conf`
 
@@ -939,8 +948,12 @@ only from tty2.
 ### `/etc/nftables.conf`
 
 The firewall. `/etc/init.d/25_nftables.sh` applies it at boot, before the network starts, after a
-syntax check (`nft -c`) — a ruleset that does not load leaves the previous state standing rather
-than half-applying. The file replaces only its own `inet filter` table, so podman's `inet netavark`
+syntax check (`nft -c`) — a ruleset that does not load is never half-applied. When a firewall is
+already loaded, it stays standing. When none is, as at boot, the script loads this file without
+its `/etc/nftables.d` drop-ins, or, when that does not load either, a minimal drop policy written to
+`/run/nftables-fallback.nft` (this machine's own connections, loopback, the ICMP and ICMPv6 that
+IPv4 and IPv6 need, and the DHCPv6 client), and reports `[FAIL]` either way, so one broken drop-in
+never boots a machine with no input filter. The file replaces only its own `inet filter` table, so podman's `inet netavark`
 table and NetworkManager's `nm-shared-*` tables survive a reload, and changing the firewall does not
 cut off running containers or hotspot clients.
 
@@ -988,21 +1001,26 @@ replacing it, to keep the shipped entries.
 
 ### `/etc/inittab`
 
-Applies at boot. What each line starts:
+sysvinit's `init` reads it at boot, and again on `telinit q`. What each entry starts:
 
-| Line | Starts |
+| Entry | Starts |
 |---|---|
-| tty1 | `kdos-login`, which hands the terminal to `agetty` and logs in the account `login.conf` names, if any |
-| tty2 | An ordinary `getty` login: the recovery console |
-| Serial line `ttyS0` | A root login shell (`bash -l`) after you press Enter, with no password |
-| `sysinit` | `/etc/init.d/rcS`, which starts every enabled service script in order |
-| `restart` | `/sbin/init`, executed in place of the running init when init is told to restart |
-| `ctrlaltdel` | `/sbin/reboot` |
+| `id`, `initdefault` | Runlevel 3, the running system. `S` is single-user, `0` powers off, `6` reboots |
+| `si`, `sysinit` | `/etc/init.d/rcS`, which starts every enabled service script in order |
+| `~~`, runlevel `S` | `/sbin/sulogin`: root's password, then a root shell on the console; leaving it continues to runlevel 3 |
+| `1`, tty1 | `kdos-login`, which hands the terminal to `agetty` and logs in the account `login.conf` names, if any |
+| `2`, tty2 | An ordinary `agetty` login, never automatic: the recovery console |
+| `S0`, serial line `ttyS0` | `/etc/init.d/serial-getty`, which runs `agetty --autologin root`: root with no password on the live medium. The installer removes `--autologin root` from an installed system's copy, which then asks for a login. With no UART at `ttyS0` (its sysfs `type` is `0`) the script sleeps instead of running `agetty`, which would fail at every respawn |
+| `ca`, `ctrlaltdel` | `/sbin/shutdown -r now` |
+| `k0` to `k4`, runlevels 0 and 6 | In order, each to completion: `rcK`, `killprocs`, `swapoff -a`, `umount -a -r`, `killpower` |
+| `h0`, `h6` | `halt -d -f -p` in runlevel 0, `reboot -d -f` in runlevel 6 |
 
 tty1 and tty2 both start through `kdos-getty`, which loads the console font and colour palette
-first, and both respawn when their login ends. On shutdown, `/etc/init.d/rcK` runs every enabled
-service script's `stop` in reverse order — except the firewall, which stays loaded to the end —
-then `swapoff -a` turns swap off, `umount -a -r` remounts every filesystem read-only, and
+first, and both respawn when their login ends; all three consoles belong to runlevels 2 to 5. On
+shutdown, init ends the consoles, `/etc/init.d/rcK` runs every enabled service script's `stop` in
+reverse order — except the firewall, which stays loaded to the end — `/etc/init.d/killprocs` ends
+every process still running, then `swapoff -a` turns swap off, `umount -a -r` unmounts every
+filesystem or remounts a busy one read-only, and
 `/etc/init.d/killpower` tells a UPS to cut the power when NUT's `upsmon` began the shutdown on a low
 battery (its flag file `/etc/killpower` is present); otherwise it does nothing.
 
@@ -1015,7 +1033,9 @@ sudo touch /etc/service.disabled/cups
 ```
 
 The name is the init script's with the order prefix and `.sh` removed: `42_networkmanager.sh` is
-`networkmanager`. Delete the file to enable the service again.
+`networkmanager`. Delete the file to enable the service again. The image ships one marker, `sshd`:
+the SSH server stays off until `kdos-power firewall ssh on`, or the installer's SSH choice, removes
+it.
 
 `networkmanager` has a second effect. `30_network` starts `dhcpcd` only when NetworkManager is
 absent or disabled this way, so turning NetworkManager off hands DHCP back to `dhcpcd` rather than
@@ -1054,7 +1074,7 @@ bash at the start of every port's build, so a shell expression in it runs there.
 environment variable of the same name always wins over the file, which is what the build phases
 from `40_lang` to `60_kernel` rely on: each one's `phase.env` exports `PORT_REPO` to add KDOS's own
 `src/<area>` repositories after `/ports/core`. `KPKG_CONF` names a different file. The variables
-that change what `kpkg` does rather than where its trees are (`KPKG_ROOT`, `KPKG_OVERWRITE`,
+that change what `kpkg` does rather than where its trees are (`KPKG_ROOT`,
 `KPKG_REQUIRE_SIG`, `KPKG_STRICT_RECIPE`, `KPKG_KEEP_CACHE`, `KPKG_SKIP_INDEX`, the package
 store's `KPKG_STORE`, `KPKG_STORE_CHECK`, `KPKG_STORE_SALT` and `KPKG_STORE_BASE`, and the rest)
 are environment only and are listed in [Packaging](../03-architecture/packaging.md#kpkg). The build
@@ -1079,8 +1099,8 @@ format of the program that reads it.
 
 | Path | Read by | Does |
 |---|---|---|
-| `/etc/hostname` | `/etc/init.d/05_hostname.sh`, at boot | The machine's name, set with `hostname -F` |
-| `/etc/ld-musl-x86_64.path` | musl's dynamic loader, at every program start | The shared-library search path, one directory per line: `/usr/lib`, then `/usr/lib64`. It replaces musl's built-in default, so `/usr/local/lib` is not searched. There is no `ldconfig` and no cache to rebuild: a directory added here applies to the next program started |
+| `/etc/hostname` | `/etc/init.d/05_hostname.sh`, at boot | The machine's name: its first line is passed to `hostname` |
+| `/etc/ld-musl-x86_64.path` | musl's dynamic loader, at every program start | The shared-library search path, one directory per line: `/usr/lib`, then `/usr/lib64`. It replaces musl's built-in default, so `/usr/local/lib` is not searched. There is no cache to rebuild, and `ldconfig` (from the `musl` port) exits 0 without doing anything: a directory added here applies to the next program started |
 | `/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service` | `dbus-daemon`, the system bus | Lets the bus start `/usr/sbin/NetworkManager` as root on the first call to its name, whether or not `/etc/service.disabled/networkmanager` exists; see [above](#etcservicedisabledname) |
 | `/etc/sysctl.conf` | `/etc/init.d/10_sysctl.sh`, at boot | Unprivileged ICMP sockets for every group (`ping` needs no setuid bit), the `protected_*` link, FIFO and regular-file protections, fatal-signal logging and per-task delay accounting |
 | `/etc/modules-load.d/*.conf` | `/etc/init.d/02_modules.sh`, at boot | Modules loaded unconditionally: `tun` and `overlay` for containers, the virtual-machine display drivers, the `nct6775`, `it87` and `drivetemp` sensor drivers, and `i2c-dev` |
@@ -1111,7 +1131,7 @@ except the ones marked *Generated*, which `kdos theme` rewrites.
 | `~/.config/bat/themes/kdos.tmTheme` | bat's theme, selected by file name | Generated |
 | `~/.config/micro/settings.json` | The editor `micro` | Selects the generated colour scheme |
 | `~/.config/micro/colorschemes/kdos.micro` | micro's colour scheme | Generated |
-| `~/.config/helix/themes/kdos.toml` | helix's theme | Generated. helix is not on the image: the tree has a `helix` port, but no phase package list names it. The file is for a helix installed in a box, which shares this `$HOME`. Nothing selects it: write `theme = "kdos"` in helix's `config.toml` yourself |
+| `~/.config/helix/themes/kdos.toml` | helix's theme | Generated. Read by the host's helix and by a helix installed in a box, which shares this `$HOME`. Nothing selects it: write `theme = "kdos"` in helix's `config.toml` yourself |
 | `~/.config/nvim/init.vim` | The editor `neovim` | Turns on `termguicolors` and selects the generated colour scheme |
 | `~/.config/nvim/colors/kdos.vim` | neovim's colour scheme | Generated |
 | `~/.config/git/config` | git | Sets `delta` as the pager and includes the generated colours |
@@ -1181,7 +1201,7 @@ inherits them.
 
 | Path | Sets |
 |---|---|
-| `/etc/profile.d/10-wayland.sh` | The session basics: `HOME` from `/etc/passwd` when it is empty, `XDG_RUNTIME_DIR` (created at `/run/user/<uid>`, mode 0700, if missing), `XDG_SESSION_TYPE=wayland`, `XDG_CURRENT_DESKTOP=KDOS` unless already set, `DBUS_SESSION_BUS_ADDRESS` when the session bus exists, the `XDG_*_HOME` and `XDG_DATA_DIRS` defaults, `~/.local/bin` and `/usr/games` on `PATH`, `XCURSOR_THEME=KDOS-cursors`, `XCURSOR_SIZE=24`, the toolkit back ends (`QT_QPA_PLATFORM=wayland;xcb`, `MOZ_ENABLE_WAYLAND=1`, `SDL_VIDEODRIVER=wayland`, `CLUTTER_BACKEND=wayland`, and no `GDK_BACKEND`, so GDK tries Wayland first and an application that asks for X11 gets Xwayland), `_JAVA_AWT_WM_NONREPARENTING=1` for Swing and AWT under Xwayland, `GTK_USE_PORTAL=1` so GTK applications use the KDOS file chooser and the print portal, and `QT_QPA_PLATFORMTHEME=kde` so Qt 6 applications read the `kdeglobals` that `kdos theme` writes and Qt 5 applications read its qt5ct files |
+| `/etc/profile.d/10-wayland.sh` | The session basics: `HOME` from `/etc/passwd` when it is empty, `XDG_RUNTIME_DIR` (created at `/run/user/<uid>`, mode 0700, if missing), `XDG_SESSION_TYPE=wayland`, `XDG_CURRENT_DESKTOP=KDOS` unless already set, `DBUS_SESSION_BUS_ADDRESS` when the session bus exists, the `XDG_*_HOME` and `XDG_DATA_DIRS` defaults, `XDG_MENU_PREFIX=kdos-` (selects `/etc/xdg/menus/kdos-applications.menu`), `~/.local/bin` and `/usr/games` on `PATH`, `XCURSOR_THEME=KDOS-cursors` (a program started without it, through `sudo` or `pkexec`, reads `/usr/share/icons/default/index.theme`, which inherits `KDOS-cursors`), `XCURSOR_SIZE=24`, the toolkit back ends (`QT_QPA_PLATFORM=wayland;xcb`, `MOZ_ENABLE_WAYLAND=1`, `SDL_VIDEODRIVER=wayland`, `CLUTTER_BACKEND=wayland`, and no `GDK_BACKEND`, so GDK tries Wayland first and an application that asks for X11 gets Xwayland), `_JAVA_AWT_WM_NONREPARENTING=1` for Swing and AWT under Xwayland, `GTK_USE_PORTAL=1` so GTK applications use the KDOS file chooser and the print portal, and `QT_QPA_PLATFORMTHEME=kde` so Qt 6 applications read the `kdeglobals` that `kdos theme` writes and Qt 5 applications read its qt5ct files |
 | `/etc/profile.d/20-timezone.sh` | `TZ=:/etc/localtime`. Written by the installer and by `kdos-power timezone`; not shipped with the image |
 | `/etc/profile.d/20-lesspipe.sh` | `LESSOPEN` to `lesspipe.sh`, and `LESS=-R` |
 | `/etc/profile.d/30-kdos-colors.sh` | Sources the generated `~/.config/kdos/fzf-colors` and appends its colours to `FZF_DEFAULT_OPTS` |
@@ -1227,7 +1247,8 @@ System-wide files that packages install for the tools above:
 | `/etc/nanorc` | `nano` | Includes every syntax definition under `/usr/share/nano` |
 | `/usr/lib/NetworkManager/conf.d/10-kdos-dns.conf` | `networkmanager` | `dns=dnsmasq`: a local caching `dnsmasq` on `127.0.0.1`, with split DNS for VPNs. A file of the same name in `/etc/NetworkManager/conf.d` overrides it |
 | `/etc/resolvconf.conf` | `openresolv` | `resolvconf`'s own settings. It is the one writer of `/etc/resolv.conf`, for NetworkManager, `dhcpcd` and `wg-quick` alike |
-| `/etc/sudoers.d/00-sudo` | `sudo` | Members of `wheel` may run anything. `secure_path` is `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin`, which is what lets `sudo kdos` find `kdos` |
+| `/etc/resolv.conf` | musl's resolver, every name lookup | Before a network is up it names only `nameserver 127.0.0.1`, where nothing answers until NetworkManager starts its `dnsmasq`, so an early lookup fails at once and reaches no outside resolver. `resolvconf` replaces it with the servers of the link that comes up |
+| `/etc/sudoers.d/00-sudo` | `sudo` | Mode 0440. Members of `wheel` may run anything. `secure_path` is `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin`, which is what lets `sudo kdos` find `kdos`. `EDITOR`, `VISUAL` and `SUDO_EDITOR` survive `env_reset`, so `sudoedit` and `visudo` open your editor; with none of the three set they open `nvim`, or `nano` where neovim is not installed |
 | `/etc/zsh/zprofile`, `/etc/zsh/zshrc` | `zsh` | A login zsh reads `/etc/profile`; every interactive one runs `atuin init zsh` |
 
 ### Containers
@@ -1366,7 +1387,7 @@ stream or file named in `video_source`. `x11.so` is not built. `fakevideo.so` (a
 | `~/.icons/KDOS/`, `~/.icons/KDOS-cursors/` | Every toolkit, host and box |
 | `~/.config/gtk-3.0/settings.ini`, `~/.config/gtk-4.0/settings.ini` | The theme name, where a toolkit cannot reach the settings portal |
 | `~/.config/gtk-4.0/gtk.css` | libadwaita, which ignores GTK themes. There is no GTK 3 copy: GTK 3 reads that file once at startup, so colours pinned there would stop every GTK 3 application following an accent change |
-| `~/.config/kdeglobals` | Qt and KDE applications. Merged: the theme owns the `[Colors:*]` and `[WM]` sections, `ColorScheme`, `Name`, `font` and `fixed` under `[General]`, `widgetStyle` under `[KDE]` and `Theme` under `[Icons]`, and your own settings in it survive |
+| `~/.config/kdeglobals` | Qt and KDE applications. Merged: the theme owns the `[Colors:*]` and `[WM]` sections, `ColorScheme`, `Name`, `font`, `fixed`, `TerminalApplication` (`foot`) and `TerminalService` (`foot.desktop`) under `[General]`, `widgetStyle` under `[KDE]` and `Theme` under `[Icons]`, and your own settings in it survive |
 | `~/.local/share/color-schemes/KDOS.colors` | KDE applications' colour scheme |
 | `~/.config/qt5ct/colors/KDOS.conf`, `~/.config/qt6ct/colors/KDOS.conf` | The Qt palette, for an application under the `qt5ct` or `qt6ct` platform theme |
 | `~/.config/qt5ct/qt5ct.conf`, `~/.config/qt6ct/qt6ct.conf` | qt5ct and qt6ct. Merged: the theme owns `custom_palette`, `color_scheme_path`, `icon_theme`, `style` (`Fusion` for Qt 5, `Breeze` for Qt 6) and `standard_dialogs` under `[Appearance]`, and `general` and `fixed` under `[Fonts]` |

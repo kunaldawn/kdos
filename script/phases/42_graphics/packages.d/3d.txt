@@ -29,3 +29,5 @@ opensubdiv
 openvdb
 libspnav
 gl2ps
+oidn
+embree

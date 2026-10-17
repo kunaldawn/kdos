@@ -17,4 +17,5 @@ source      = https://github.com/libcdio/$name/releases/download/$_tag/$name-$ve
 sha256      = 186892539dedd661276014d71318c8c8f97ecb1250a86625256abd4defbf0d0c  libcdio-paranoia-10.2+2.0.2.tar.bz2
 description = Audio CD reading that verifies and repairs — cd-paranoia, and CD audio in mpv and mpd
 homepage    = https://github.com/libcdio/libcdio-paranoia
+license     = GPL-3.0-or-later AND LGPL-2.1-or-later
 depends     = libcdio pkgconf

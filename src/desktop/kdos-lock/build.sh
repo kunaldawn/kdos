@@ -9,26 +9,17 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Two binaries from one port, and they are built SEPARATELY on purpose: the
-# lock screen links libkwl and half of Wayland, while kdos-checkpass is setuid
-# root and links libc and libcrypt and nothing else. Giving the setuid binary
-# the graphics stack would be handing root a font parser.
 LIBS="$PORT_SRC/../../libs"
 
 SCANNER="$(pkg-config --variable=wayland_scanner wayland-scanner)"
 PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 
-# cursor-shape: libkwl sets the pointer shape on enter, or the cursor
-# vanishes over every chrome surface. The tablet protocol comes along because
-# cursor-shape-v1's generated code references zwp_tablet_tool_v2.
 "$SCANNER" client-header "$PROTO/staging/cursor-shape/cursor-shape-v1.xml" \
 	cursor-shape-v1-client-protocol.h
 "$SCANNER" private-code  "$PROTO/staging/cursor-shape/cursor-shape-v1.xml" \
 	cursor-shape-v1-protocol.c
 "$SCANNER" private-code  "$PROTO/unstable/tablet/tablet-unstable-v2.xml" \
 	tablet-unstable-v2-protocol.c
-# viewporter and fractional-scale: libkwl draws at a fractional output scale
-# through the pair, and kwl.c references both unconditionally.
 "$SCANNER" client-header "$PROTO/stable/viewporter/viewporter.xml" \
 	viewporter-client-protocol.h
 "$SCANNER" private-code  "$PROTO/stable/viewporter/viewporter.xml" \
@@ -39,9 +30,6 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	"$PROTO/staging/fractional-scale/fractional-scale-v1.xml" \
 	fractional-scale-v1-protocol.c
-# primary-selection: libkwl includes the header unconditionally for the paste
-# path, so the lock screen generates it too — and the private-code with it, or
-# the zwp_primary_selection_* interface symbols are missing at link.
 "$SCANNER" client-header \
 	"$PROTO/unstable/primary-selection/primary-selection-unstable-v1.xml" \
 	primary-selection-unstable-v1-client-protocol.h
@@ -58,10 +46,6 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
 	xdg-decoration-unstable-v1-protocol.c
-# xdg-foreign: libkwl includes its header unconditionally, for kdos-pick's
-# one use of it — a dialog saying whose child it is, across processes. Any
-# port that links libkwl must generate it or the build stops at the include,
-# which is the lesson ext-session-lock already taught this file.
 "$SCANNER" client-header \
 	"$PROTO/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml" \
 	xdg-foreign-unstable-v2-client-protocol.h
@@ -78,10 +62,6 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	/usr/share/wlroots/protocols/wlr-layer-shell-unstable-v1.xml \
 	wlr-layer-shell-unstable-v1-protocol.c
-# foreign-toplevel: libkwl answers libkdisp's window list from it, and the
-# header is included unconditionally, so every consumer generates it whether or
-# not it asks for a window list. The lock screen never binds the manager — that
-# happens on the first call, and the lock screen makes none.
 "$SCANNER" client-header \
 	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
 	wlr-foreign-toplevel-management-unstable-v1-client-protocol.h
@@ -89,10 +69,6 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
 	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
-# fontconfig is libkwl's and libkcell's: kwl_font.c enumerates the monospace
-# families with FcFontList, kcell_font.c asks FcFontMatch which strike a bitmap
-# face is drawn from, and fcft carries fontconfig as a Requires.private, so
-# `pkg-config --libs fcft` alone does not link it.
 PKGCFG="fcft fontconfig pixman-1 xkbcommon wayland-client"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
@@ -110,7 +86,4 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-o kdos-checkpass "$PORT_SRC"/checkpass.c -lcrypt $LDFLAGS
 
 install -Dm755 kdos-lock "$PKG/usr/bin/kdos-lock"
-# 4755, one of the two setuid bits KDOS ships (kdos-resctl is the other).
-# /etc/shadow is root-only and the lock screen must not be root; see
-# checkpass.c's header for what the 120 lines behind this bit are allowed to do.
 install -Dm4755 kdos-checkpass "$PKG/usr/bin/kdos-checkpass"

@@ -9,52 +9,18 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Upstream's tag archive, not IANA's tzdata/tzcode pair.
-#
-# kpkg passes --strip-components=1 to the first source unconditionally, so a
-# source must have a top-level directory. data.iana.org ships tzdata<ver> and
-# tzcode<ver> as two FLAT tarballs; extracting either that way discards every
-# top-level file and leaves only the contents of subdirectories, which
-# presents as a missing Makefile. The git tag archive carries code and data
-# together under one directory.
+make CC=cc AWK=gawk CFLAGS="$CFLAGS -DHAVE_GETTEXT=0" VERSION=$version zic leapseconds tzdata.zi
 
-# zic is built and RUN here; it is not installed. The target reads the compiled
-# binary database and musl parses those files itself — there is no libc
-# timezone helper that needs to ship beside them.
-#
-# CC is named because the Makefile declares `.POSIX:` and never assigns CC
-# itself: GNU make in POSIX mode then defaults it to c99, a compiler name this
-# toolchain does not provide under any prefix.
-#
-# `leapseconds` is GENERATED — leapseconds.awk reduces leap-seconds.list to the
-# file zic reads for the right/ tree — so it is a make target beside zic rather
-# than something the archive ships. AWK is gawk because /usr/bin/awk here is
-# toybox's, and the script is not the subset that guarantees.
-make CC=cc AWK=gawk CFLAGS="$CFLAGS -DHAVE_GETTEXT=0" zic leapseconds
-
-# `backward` carries the historical aliases (US/Eastern, Asia/Calcutta) that a
-# great deal of software and a great many user configs still name. Dropping it
-# saves ~100 KB and breaks a config the user did not write.
 ZONES="africa antarctica asia australasia europe northamerica southamerica \
        etcetera backward factory"
 
-# -b fat, not -b slim. Slim files are smaller and are read correctly only by a
-# recent libc; musl handles them, but the zoneinfo tree is also read by the
-# appbox's glibc programs through the shared filesystem, and a format the box
-# misreads is a host and box that disagree about local time — which is the
-# exact defect this port exists to close.
 install -dm755 "$PKG/usr/share/zoneinfo"
 ./zic -b fat -d "$PKG/usr/share/zoneinfo" $ZONES
 ./zic -b fat -d "$PKG/usr/share/zoneinfo/right" -L leapseconds $ZONES
 
 install -m644 zone.tab zone1970.tab iso3166.tab "$PKG/usr/share/zoneinfo/"
-install -m644 leapseconds "$PKG/usr/share/zoneinfo/"
+install -m644 leapseconds tzdata.zi "$PKG/usr/share/zoneinfo/"
 install -Dm644 tzfile.5 -t "$PKG/usr/share/man/man5"
-
-# /etc/localtime IS NOT PACKAGED. kpkg overwrites what a package owns on every
-# upgrade, and a zone set by kinstall or `kdos-powerd timezone` would go back
-# to UTC with every tzdata release while TZ in 20-timezone.sh stayed put. rcS
-# links UTC only where no /etc/localtime exists.
 
 install -dm755 "$PKG/usr/share/licenses/$name"
 install -m644 LICENSE "$PKG/usr/share/licenses/$name/"

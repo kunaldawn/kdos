@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://gitlab.com/DavidGriffith/frotz/-/ar
 sha256      = a8c4c4d79a2aa9b39e0efbbd3e0803f1dc5ef36f75f2c2945e295d190575eb09  frotz-2.55.tar.gz
 description = Z-machine interpreter — Infocom-era interactive fiction in a terminal
 homepage    = https://661.org/proj/if/frotz/
+license     = GPL-2.0-or-later
 depends     = ncurses pkgconf

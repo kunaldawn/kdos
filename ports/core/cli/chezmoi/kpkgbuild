@@ -16,5 +16,6 @@ sha256      = 977c779f616ebf3d49700ceca426d61f367e2850ff397d3ae95ca32d7f954309  
 sha256      = c3b6336a2c091c3d5a8f1db779fdabdb9e436f4b4b3d6178f15eef63e21a2fdd  chezmoi-vendor-2.72.2.tar.xz
 description = Manage dotfiles across machines from one source of truth
 homepage    = https://www.chezmoi.io/
+license     = MIT
 depends     = go
 vendoring   = go

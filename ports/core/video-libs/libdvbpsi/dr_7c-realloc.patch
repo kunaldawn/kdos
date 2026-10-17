@@ -1,0 +1,34 @@
+diff -ru a/src/descriptors/dr_7c.c b/src/descriptors/dr_7c.c
+--- a/src/descriptors/dr_7c.c	2026-10-16 13:51:02.709639605 +0530
++++ b/src/descriptors/dr_7c.c	2026-10-16 13:51:02.735939755 +0530
+@@ -233,6 +233,10 @@
+ 
+     if (p_descriptor->i_length == 0x01)
+         return NULL;
++    if (p_descriptor->i_length < 1)
++        return NULL;
++    if (p_descriptor->i_length < 3 && (p_descriptor->p_data[1] >> 7) == 0x01)
++        return NULL;
+ 
+     /* Allocate memory */
+     dvbpsi_aac_dr_t *p_decoded;
+@@ -259,6 +263,7 @@
+             free(p_decoded);
+             return NULL;
+         }
++        p_decoded = p_tmp;
+         p_decoded->p_additional_info = ((uint8_t*)p_tmp + sizeof(dvbpsi_aac_dr_t));
+         p_decoded->i_additional_info_length = i_info_length;
+ 
+diff -ru a/src/tables/tot.c b/src/tables/tot.c
+--- a/src/tables/tot.c	2026-10-16 13:51:02.712674517 +0530
++++ b/src/tables/tot.c	2026-10-16 13:51:02.736152549 +0530
+@@ -526,7 +526,7 @@
+         }
+ 
+         /* descriptors_loop_length */
+-        p_result->p_payload_start[5] = ((p_result->i_length - 7) << 8) | 0xf0;
++        p_result->p_payload_start[5] = ((p_result->i_length - 7) >> 8) | 0xf0;
+         p_result->p_payload_start[6] =  (p_result->i_length - 7)       & 0xff;
+     }
+ 

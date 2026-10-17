@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = convertlit
+version     = 1.8
+release     = 1
+_ver        = ${version//./}
+source      = http://www.convertlit.com/clit${_ver}src.zip
+sha256      = d70a85f5b945104340d56f48ec17bcf544e3bb3c35b1b3d58d230be699e557ba  convertlit-1.8.zip
+sha256      = d14601572e16ba3472c3373b5856eb30281b997b012763100d247bd15a6b3b7e  bounds.patch
+description = clit, which unpacks and converts Microsoft Reader (.lit) ebooks to OEB
+homepage    = http://www.convertlit.com/
+license     = GPL-2.0-or-later
+depends     = unzip libtommath

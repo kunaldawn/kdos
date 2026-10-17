@@ -23,4 +23,5 @@ sha256      = 11e34ecf050fc888dff416d6bbe4664183b85770bd86eb6ed0d3c632c1bb193b  
 sha256      = d4efc50ebcb0bfcfdbba148995aeb75044c0d80f5d91223aebfaa8fa9e563d2b  zlsdep-tracy.tar.gz
 description = The Zig language server
 homepage    = https://github.com/zigtools/zls
+license     = MIT
 depends     = zig

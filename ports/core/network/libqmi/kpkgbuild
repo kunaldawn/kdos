@@ -16,5 +16,6 @@ source      = $name-$version.tar.gz::https://gitlab.freedesktop.org/mobile-broad
 sha256      = 8ee3b3a9002f2b45c825deade85710db006e01674f5f9359d351c192cc926015  libqmi-1.38.0.tar.gz
 description = QMI mobile broadband modem protocol library, qmicli, qmi-proxy and qmi-firmware-update
 homepage    = https://gitlab.freedesktop.org/mobile-broadband/libqmi
+license     = GPL-2.0-or-later AND LGPL-2.1-or-later
 depends     = meson pkgconf glib python3 help2man bash-completion libgudev eudev libmbim libqrtr-glib gobject-introspection glib-introspection
 devseries   = odd-minor

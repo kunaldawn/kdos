@@ -11,8 +11,9 @@
  * whole distro is built with, and the build system parses its output:
  *
  *   - `/var/lib/kpkg/db/<name>` is one file per installed package. Line 1 is
- *     "<version> <release>"; lines 2..N are a verbatim `tar -tf` listing,
- *     every entry `./`-prefixed and every DIRECTORY carrying a trailing `/`.
+ *     "<version> <release>"; lines 2..N are a `tar -tf
+ *     --quoting-style=literal` listing, each name its own bytes, every entry
+ *     `./`-prefixed and every DIRECTORY carrying a trailing `/`.
  *     Removal keys its rmdir-vs-unlink decision off that slash, and four
  *     things on the running system count the files in that directory.
  *   - `PKGDB_DIR=/dev/null` means "resolve against an empty database". Three
@@ -235,16 +236,36 @@ int kp_record_recipe_hash(const KpConf *c, const char *name, const char *hash);
 int kp_installed_pkg_sha(const KpConf *c, const char *name, char out[65]);
 int kp_record_pkg_sha(const KpConf *c, const char *name, const char *hash);
 
+/*
+ * THE FILE RECORD OF WHAT IS INSTALLED: `<db>/.files/<name>`, one line per
+ * regular file the install placed, `<sha256> <mode> <path>` — 64 lowercase
+ * hex, the permission bits as four octal digits, and the path spelt as the
+ * manifest spells it (`./usr/bin/tar`), last on the line so a space in it
+ * stays part of it. kpkgadd writes it after the database entry, from the
+ * root once the install hook has run, and kpkgdel removes it with the
+ * entry. `kpkg check` compares the root
+ * against it; a line whose path has left the manifest (a path another
+ * package took) is not asked about. Absent means "installed before records
+ * were kept": only presence can be checked.
+ *
+ * kp_record_files replaces the record whole, 0 or -1; on -1 there is none.
+ * kp_installed_files returns it (kb_read_all; free it), or NULL.
+ */
+int kp_record_files(const KpConf *c, const char *name, const char *data,
+		    size_t len);
+char *kp_installed_files(const KpConf *c, const char *name, size_t *len);
+
 /* The merged-/usr aliases of the install root: each top-level name (`bin`,
  * `sbin`, `lib`, `lib64`, `lib32`) that is a symlink to `usr/<same>` there.
  *
  * ONE FILE HAS TWO SPELLINGS through such a link. A package built with
- * `--exec-prefix=` records `./bin/free`, toybox records `./usr/bin/free`, and
- * both name /usr/bin/free. Every ownership question — the conflict scan, the
- * overwrite that moves a path between manifests, the orphan sweep of an
- * upgrade, a removal — compares the CANONICAL spelling, or a shared file is
- * invisible to the scan, claimed twice, and deleted by whichever of the two
- * packages is upgraded or removed next.
+ * `--exec-prefix=` records `./bin/free`, one built with `--prefix=/usr`
+ * records `./usr/bin/free`, and both name /usr/bin/free. Every ownership
+ * question — the conflict scan, the takeover that moves a path between
+ * manifests, the orphan sweep of an upgrade, a removal — compares the
+ * CANONICAL spelling, or a shared file is invisible to the scan, claimed
+ * twice, and deleted by whichever of the two packages is upgraded or removed
+ * next.
  *
  * Read from the root rather than assumed, because a root whose `bin` is a
  * real directory holds two different files under those two names. */
@@ -261,9 +282,10 @@ void kp_canon_load(const KpConf *c, KpCanon *k);
 char *kp_canon_path(const KpCanon *k, const char *rel);
 
 /* Every path claimed by an installed package, sorted, for the conflict scan.
- * `owner[i]` is the package that claims `path[i]`, which is what an overwrite
- * needs: the path has to leave the old owner's manifest, or the file ends up
- * claimed twice and removing either package deletes the other's file.
+ * `owner[i]` is the package that claims `path[i]`, which is what a declared
+ * takeover (`replaces =`) needs: the path has to leave the old owner's
+ * manifest, or the file ends up claimed twice and removing either package
+ * deletes the other's file.
  * `path[i]` is the CANONICAL spelling (see KpCanon); two packages that claim
  * one file under its two spellings appear as two entries under one key.
  *
@@ -341,9 +363,9 @@ int kp_installed_version(const KpConf *c, const char *name, char *ver,
  * installed now. A directory without META is not an entry.
  * ──────────────────────────────────────────────────────────────────────── */
 
-/* Bump whenever build.c changes what a package contains or how it is packed
- * for the same inputs: every stored entry then misses. */
-#define KP_STORE_FORMAT 1
+/* Bump whenever build.c, prune.c or lint.c changes what a package contains
+ * or how it is packed for the same inputs: every stored entry then misses. */
+#define KP_STORE_FORMAT 4
 
 /* The environment names the key ignores: job counts, launchers, the store's
  * own knobs, kpkg's run options and the terminal. 1 when `name` is one. */

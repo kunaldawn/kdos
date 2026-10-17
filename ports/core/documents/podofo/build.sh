@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The library alone: the tests and examples are not installed and the tools
-# are marked unsupported upstream. JPEG, TIFF and PNG are looked up without
-# REQUIRED and each silently drops an image codec, so they are required here.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-D CMAKE_BUILD_TYPE=Release \

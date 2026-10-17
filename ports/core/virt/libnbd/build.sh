@@ -9,11 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# GnuTLS gives nbds:// and libxml2 parses NBD URIs.
-# nbdsh is the Python binding's shell, so the Python binding stays on and
-# installs into python3's site-packages. nbdublk needs liburing and ubdsrv,
-# neither of them ported, and the OCaml, Go and Rust bindings have no
-# consumer here.
+patch -p1 -i "$PORT_SRC/musl-unistd.patch"
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -22,11 +18,12 @@
 	--enable-python \
 	--with-gnutls \
 	--with-libxml2 \
-	--disable-ublk \
+	--enable-ublk \
 	--disable-ocaml \
 	--disable-golang \
 	--disable-rust \
-	--without-bash-completions \
+	--with-bash-completions \
 	--disable-static
 make
 make DESTDIR=$PKG install
+test -x "$PKG/usr/bin/nbdublk"

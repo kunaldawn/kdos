@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = opencl-clhpp
+version     = 2026.05.29
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/KhronosGroup/OpenCL-CLHPP/archive/refs/tags/v$version.tar.gz
+sha256      = fafb4fd202d113992c009d46e6358e70076167e62a5baeb377fe813033a2655e  opencl-clhpp-2026.05.29.tar.gz
+description = Khronos OpenCL C++ bindings, the opencl.hpp header
+homepage    = https://github.com/KhronosGroup/OpenCL-CLHPP
+license     = Apache-2.0
+depends     = cmake ninja opencl-headers

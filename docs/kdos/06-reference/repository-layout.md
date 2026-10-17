@@ -42,11 +42,12 @@ kdos/
 │   ├── core/<shelf>/<name>/   one directory per upstream port, on one of 102 shelves
 │   │   ├── kpkgbuild          declarative metadata — parsed, never sourced
 │   │   ├── build.sh           the build; bash, run in the unpacked source
-│   │   ├── postinstall.sh     optional install-time hook (26 ports have one)
+│   │   ├── postinstall.sh     optional install-time hook (27 ports have one)
 │   │   ├── *.patch            optional patches, tracked (436 files)
 │   │   ├── other support files  configuration, data files, single-file sources — tracked
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
 │   ├── shelves                the closed list of shelves, one `<id> <volume> <description>` per line
+│   ├── unbuilt                the recipes no phase builds on purpose, one name per line
 │   ├── Containerfile.fetch    the image that generates vendor bundles, pinning this tree's toolchains
 │   ├── hackage-vendor         the Hackage downloader behind `vendoring = haskell`
 │   ├── .srccache/             the local source cache, one file per hash — ignored
@@ -141,8 +142,10 @@ kdos/
 │   │                         recipes parse, scripts are valid) without building a port
 │   ├── selftest.sh           the libraries and their consumers
 │   ├── docscheck.sh          the book: dead links, history, the page contract
+│   ├── bookcounts.py         the book's port counts and catalogue rows, against the tree
 │   ├── phaseclosure.py       every package phase installs exactly the ports its list names
-│   ├── barcheck.c, boxcheck.c   checks selftest.sh compiles and runs
+│   ├── barcheck.c, boxcheck.c, appindex.c
+│   │                         checks selftest.sh compiles and runs
 │   ├── hostcheck.sh          in a booted guest: is the binary each name resolves to the right one
 │   ├── fixtures/             recorded system state, 49 directories
 │   ├── goldens/              committed reference frames: 217 files and a README
@@ -198,19 +201,21 @@ port repository; it is the catalogue file `src/system/kdos-appbox/catalogue`.
 
 | Directory | Holds | Recipes | Layout |
 |---|---|---|---|
-| `ports/core/` | Upstream software: somebody else's source | 2,000 | `<shelf>/<name>/`, on 102 shelves |
-| `src/system/` | The package manager, the `kdos` command and its services, packs and boxes, the installer | 5 | `<name>/` |
+| `ports/core/` | Upstream software: somebody else's source | about 2,000 | `<shelf>/<name>/`, on 102 shelves |
+| `src/system/` | The package manager, the `kdos` command and its services, packs and boxes, the installer, the book on the image (`kdos-doc`, whose `docs` is a link to the repository's `docs/`) | 6 | `<name>/` |
 | `src/art/` | Theme generators, the themes built from them, the boot splash, the demo | 6 | `<name>/` |
 | `src/desktop/` | Programs that draw the session or serve it over Wayland or D-Bus | 8 | `<name>/` |
 | `src/daemons/` | Root daemons whose client is the desktop account | 5 | `<name>/` |
 
-The counts are directories holding a `kpkgbuild`. A port is its bare name in every one of them:
+The counts are directories holding a `kpkgbuild`; [The ports catalogue](ports-catalogue.md#ports-per-shelf) has the exact figures, shelf by shelf. A port is its bare name in every one of them:
 one name is one port across all five, and nothing that names a port spells the shelf or the area.
 Because the format is shared, building the desktop is not a special case anywhere in the build
 system. The package manager finds a recipe through `PORT_REPO`, an ordered search path of at most
 eight repositories; it looks for `<repo>/<name>/` and then `<repo>/<shelf>/<name>/`, so shelves
-are never on the path themselves. Its default in `kpkg.conf` is `/ports/core`, and the phase
-environments widen it as the phases need more:
+are never on the path themselves. Its default in `kpkg.conf` names the recipe tree a shipped image
+carries, `/ports/core` and the four port-holding areas under `/ports/src`; inside the build's
+chroot only `/ports/core` of those exists, and the phase environments widen it as the phases need
+more:
 
 | Phases | `PORT_REPO` |
 |---|---|
@@ -366,15 +371,18 @@ mounting only the directories the build reads:
 | Checkout path | In the build container | Mode |
 |---|---|---|
 | `build/` | `/workspace/build` | read-write |
-| `src/`, `fs/`, `script/`, `ports/` | `/workspace/src`, `/workspace/fs`, `/workspace/script`, `/workspace/ports` | read-only |
+| `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/` | `/workspace/src`, `/workspace/fs`, `/workspace/script`, `/workspace/ports`, `/workspace/docs`, `/workspace/testing` | read-only |
 
-`docs/`, `testing/` and the root files are not mounted, so nothing in them can
-change what a build produces. The build writes only under `build/`; `build/fs/` is the target root
+The root files are not mounted, so nothing in them can change what a build produces. `testing/` is
+mounted for the tree gates `70_image` runs (`087_gates.sh`): they can stop a build, and nothing in
+`testing/` is installed.
+`docs/` is mounted for one port, `kdos-doc`, which renders the book onto the image; an edit to
+the book rebuilds that port and no other. The build writes only under `build/`; `build/fs/` is the target root
 filesystem it grows phase by phase.
 
 From `20_selfhost` on, each port is built inside a chroot of `build/fs/`. `script/chroot/exec.sh`
 bind-mounts the container's `/workspace` at `/kdos` inside it, with `build/`, `script/`, `src/` and
-`fs/` mounted again beneath it, and `ports/` at `/ports`. That is why the phase environments name
+`fs/` mounted again beneath it, `docs/` beneath it read-only, and `ports/` at `/ports`. That is why the phase environments name
 `/ports/core` and `/kdos/src/system`: they are the same directories as the checkout's
 `ports/core/` and `src/system/`, seen from inside the chroot. The mechanism is in
 [The build system](../05-developer/build-system.md).

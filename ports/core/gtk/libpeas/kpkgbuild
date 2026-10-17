@@ -15,4 +15,5 @@ source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$vers
 sha256      = e82fd328adcac1aba34b64136bdfcbbacf2b3258a8bc4e5f480a72502a611ae9  libpeas-1.38.1.tar.xz
 description = GObject plugin engine, 1.x API — Rhythmbox's plugin loader
 homepage    = https://gitlab.gnome.org/GNOME/libpeas
+license     = LGPL-2.1-or-later
 depends     = meson ninja pkgconf gettext glib gobject-introspection gtk3 python3 python3-gobject vala

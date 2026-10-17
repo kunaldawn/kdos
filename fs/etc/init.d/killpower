@@ -9,7 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The UPS's power-off, the last `::shutdown` entry in /etc/inittab.
+# The UPS's power-off, the last runlevel 0 and 6 entry in /etc/inittab before
+# halt or reboot.
 #
 # When NUT's upsmon shuts this machine down on a low battery it leaves its
 # POWERDOWNFLAG (/etc/killpower) behind, and `upsmon -K` answers 0 while the

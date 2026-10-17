@@ -9,29 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# TWO LOADERS ARE OFF AND EACH IS A DEPENDENCY THIS TREE DOES NOT HAVE.
-#
-# GraphicsMagick is not a port, so the general loader is STB plus QOI and the
-# format-specific ones carry the rest: turbojpeg for JPEG, librsvg for SVG,
-# poppler-glib for PDF and ffmpeg for video. OpenSlide is not a port either.
-#
-# WITH_POPPLER is REQUIRED rather than optional once on: it fails the configure
-# when poppler-glib is missing, which is why poppler is in `depends`. Each page
-# of a PDF is a frame, so --frame-offset and --frames choose the pages.
-#
-# WITH_TURBOJPEG also requires libexif, which is REQUIRED rather than optional
-# in the same branch: it reads the orientation tag, and without it a photo
-# taken sideways is displayed sideways.
-#
-# WITH_VIDEO_DEVICE is the camera: it wants libavdevice, which the ffmpeg port
-# builds, and it is what makes `timg /dev/video0` a live preview rather than an
-# error. It is the only way to look at a camera from a terminal.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
 	-DTIMG_VERSION_FROM_GIT=Off \
-	-DWITH_GRAPHICSMAGICK=Off \
+	-DWITH_GRAPHICSMAGICK=On \
 	-DWITH_STB_IMAGE=On \
 	-DWITH_QOI_IMAGE=On \
 	-DWITH_TURBOJPEG=On \

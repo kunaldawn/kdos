@@ -9,5 +9,4 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-python3 setup.py build
-python3 setup.py install --root=$PKG
+pip3 install --no-deps --no-index --no-build-isolation --ignore-installed --root=$PKG --prefix=/usr .

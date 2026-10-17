@@ -14,4 +14,6 @@ release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/mpc/mpc-$version.tar.xz
 sha256      = 91204cd32f164bd3b7c992d4a6a8ce6519511aadab30f78b6982d0bf8d73e931  mpc-1.4.1.tar.xz
 description = A library for the arithmetic of complex numbers with arbitrarily high precision
+homepage    = https://www.multiprecision.org/mpc/
+license     = LGPL-3.0-or-later
 depends     = mpfr

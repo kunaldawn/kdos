@@ -8,15 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE CLIENT HALF ONLY: libldap, liblber and the ldap* tools, which is what
-# curl's ldap:// URLs, dirmngr's keyserver and certificate lookups and
-# postgres's LDAP authentication link. --disable-slapd leaves out the server
-# and every backend; a directory here is somebody else's. The server's manual
-# pages install regardless and are removed below, since they document programs
-# this package does not carry.
-#
-# TLS is OpenSSL's, as for every other client on the image. SASL binds go
-# through cyrus-sasl and whatever mechanism plugins it carries.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \

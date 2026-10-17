@@ -10,9 +10,10 @@
 
 name        = gpsd
 version     = 3.27.5
-release     = 1
+release     = 2
 source      = https://download.savannah.gnu.org/releases/$name/$name-$version.tar.xz
 sha256      = dc4a62bad835282bae788772bc7cc8f8bec4c7a48e8dceeb37477a89091c4656  gpsd-3.27.5.tar.xz
-description = One daemon in front of every GPS, so a receiver is a socket rather than a serial protocol
+description = GPS daemon that presents receivers as a socket
 homepage    = https://gpsd.io/
+license     = BSD-2-Clause
 depends     = scons python3 pkgconf ncurses libusb dbus bluez libcap

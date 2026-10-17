@@ -15,4 +15,5 @@ source      = https://github.com/KhronosGroup/glslang/archive/$version/$name-$ve
 sha256      = 9c09b901149c729df745057dafa815278aaa101b84d2b6e14f16a42de52f97f2  glslang-16.6.0.tar.gz
 description = OpenGL and OpenGL ES shader front end and validator
 homepage    = https://github.com/KhronosGroup/glslang
+license     = BSD-3-Clause AND BSD-2-Clause AND MIT AND Apache-2.0
 depends     = cmake ninja python3 spirv-tools

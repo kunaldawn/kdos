@@ -47,17 +47,18 @@ built and who maintains it:
 
 | Ring | Where it is in the repository | What it holds | How it is built |
 |---|---|---|---|
-| Core | `ports/core/`, 2,003 recipes | musl, toybox, the toolchains, the libraries, the services, the kernel and its firmware, and the natively ported applications | Compiled here from upstream source archives, each pinned by its sha256 |
-| Desktop | `src/`, 24 recipes | The compositor, the panel, the terminal, the root daemons, the installer, the `kdos` command and the 17 C libraries they share | Compiled here from source written for KDOS; `kpkg` and the installer by two bootstrap scripts |
+| Core | `ports/core/`, about 2,000 recipes | musl, the GNU userland, sysvinit, the toolchains, the libraries, the services, the kernel and its firmware, and the natively ported applications | Compiled here from upstream source archives, each pinned by its sha256 |
+| Desktop | `src/`, about two dozen recipes | The compositor, the panel, the terminal, the root daemons, the installer, the `kdos` command and the 17 C libraries they share | Compiled here from source written for KDOS; `kpkg` and the installer by two bootstrap scripts |
 | Outer | `src/system/kdos-appbox/catalogue` | 73 graphical and command-line applications over 7 shared runtimes | Declared as Debian packages and built by podman on the machine that asks for them |
 
 The core ring starts from [musl](https://musl.libc.org/), the small C library KDOS uses in place
-of glibc, and toybox, a single binary that provides the core commands. The 17 libraries of the
+of glibc, and the GNU tools (coreutils, grep, sed, gawk, findutils), each a program of its own,
+as the core commands. The 17 libraries of the
 desktop ring have no recipes of their own; each program that uses one compiles it in.
 
 A running machine is a short chain of programs with no systemd in it. The Limine boot loader starts
 the kernel and an initramfs, a small early root filesystem whose one job is to find the real one;
-toybox `init` runs the numbered scripts in `/etc/init.d/`, and `ksvc` supervises the long-running
+sysvinit's `init` runs the numbered scripts in `/etc/init.d/`, and `ksvc` supervises the long-running
 services they start. `tty1` logs in the account that `/etc/kdos/login.conf` names, with no
 password prompt on the live image, and that account's login profile starts `kdos-desktop`, which
 starts the compositor, `kdos-comp`. The compositor in turn starts and supervises the panel,
@@ -71,8 +72,8 @@ process on a working desktop and says where each kind of state is kept.
 
 ## Built from source, with named exceptions
 
-The host is compiled in this repository from 2,027 recipes, 2,003 under `ports/core` for upstream
-software and 24 under `src/` for the desktop, the daemons and the tools written for KDOS, and
+The host is compiled in this repository from about 2,000 recipes under `ports/core` for upstream
+software and some two dozen under `src/` for the desktop, the daemons and the tools written for KDOS, and
 from two scripts: one builds `kpkg` itself, which has no recipe, and the other builds the
 installer, `kinstall`, whose recipe exists but is named in no phase list.
 
@@ -89,8 +90,8 @@ until `kpkg` exists. The finished system has no base image beneath it and no bin
 back on: the container the build runs in, an Alpine 3.23 image with a host compiler, supplies the
 tools that build the cross toolchain and the first userland, and nothing from it is installed. Every
 recipe that a phase list (`script/phases/*/packages.txt` or `packages.d/`) names is installed on the
-finished system, together with everything those recipes depend on. That reaches all but 5 of the
-2,003 upstream recipes; the other 5 stay in the tree unbuilt. A *phase* is defined in the
+finished system, together with everything those recipes depend on. That reaches every upstream
+recipe: none stays in the tree unbuilt. A *phase* is defined in the
 [Glossary](../06-reference/glossary.md). [How KDOS is built](../05-developer/how-kdos-is-built.md)
 follows the build from `git clone` to a bootable ISO, [The build
 system](../05-developer/build-system.md) describes the orchestrator that runs the phases, and [The
@@ -124,9 +125,10 @@ The toolchains survive onto the shipped image, because the build installs them r
 removing them. A running KDOS carries `gcc`, `binutils`, `clang`, `rust`, `go`, `cmake`, `meson`,
 `ninja`, `python3`, `make` and `kpkg`, so any single recipe, the compiler and the kernel included,
 can be rebuilt on the machine itself and offline once its source is present, with `kpkg`.
-`kdos update apply` brings every package that is behind its recipe up to date, compiling it on the
-machine when no [binhost](../06-reference/glossary.md) supplies it. [How KDOS
-differs](how-kdos-differs.md#self-hosting) compares this with other distributions.
+`kdos update fetch` brings a newer signed recipe tree over the network, and `kdos update apply`
+brings every package that is behind its recipe up to date, downloading its source and compiling it
+on the machine. [How KDOS differs](how-kdos-differs.md#self-hosting) compares this with other
+distributions.
 
 A full rebuild of the system needs a build machine. [`kdos
 rebuild`](../04-programs/kdos-command.md#kdos-rebuild) is the command that drives the whole build
@@ -247,28 +249,30 @@ Each of these is a decision with an argument behind it. The arguments are in
 
 | Absent | Instead |
 |---|---|
-| systemd | toybox `init`, numbered scripts in `/etc/init.d/`, and `ksvc` to supervise services; for the rest, `seatd` (device access for the session), `basu` (the sd-bus library on its own), `eudev` (device events), `dbus` (the message bus) and `dnsmasq` (the local DNS cache) |
+| systemd | sysvinit's `init`, numbered scripts in `/etc/init.d/`, and `ksvc` to supervise services; for the rest, `seatd` (device access for the session), `basu` (the sd-bus library on its own), `eudev` (device events), `dbus` (the message bus) and `dnsmasq` (the local DNS cache) |
 | An Xorg server | Wayland only, with Xwayland, the X server that runs as a Wayland client, as the single carve-out for X11 clients, boxed or native |
 | A toolkit under the desktop | Every KDOS surface drawn as a character-cell grid by libraries written for it; the compositor draws its own titlebars, root menu and window switcher with pango, the text layout library, at a size matched to the grid. Applications use their own toolkits |
 | A display manager | `tty1` logs in the account `/etc/kdos/login.conf` names, with no password prompt on the live image (`kdos`); an installed machine asks for a password unless automatic login was chosen (`autologin = <user>` in that file). That login shell's profile starts `kdos-desktop` |
 | A first-boot wizard | The installer asks its questions once, then the system is yours |
 | A vendor app store | `kdos-store` lists the catalogue held in this repository and builds from it; there is no account and nothing to sign up to |
 | Telemetry | No KDOS program sends usage data; boxed applications behave as their Debian packages do |
-| A binary package archive | Ports built here, with an optional signed [binhost](../06-reference/glossary.md) (a package server) you run yourself |
+| A binary package archive | Ports built here, and every update built on the machine from a signed recipe tree; `kpkg` can install from a signed [binhost](../06-reference/glossary.md) (a package server) you run yourself, by hand |
 
 ## The system in numbers
 
 Measured from the tree: recipes by counting `kpkgbuild` files, reachability by following the phase
-lists and every `depends =` line, and the catalogue by counting its rows by kind.
+lists and every `depends =` line, and the catalogue by counting its rows by kind. The exact recipe
+counts are kept in [Status](../06-reference/status.md#scale) and
+[The ports catalogue](../06-reference/ports-catalogue.md#ports-per-shelf).
 
 | | |
 |---|---|
-| Port recipes in `ports/core` | 2,003 |
-| Port recipes under `src/` for KDOS's own software | 24 (5 in `src/system`, 6 in `src/art`, 8 in `src/desktop`, 5 in `src/daemons`) |
+| Port recipes in `ports/core` | about 2,000 |
+| Port recipes under `src/` for KDOS's own software | about two dozen, in `src/system`, `src/art`, `src/desktop` and `src/daemons` |
 | Shelves the upstream recipes are filed on | 102 |
-| Upstream recipes that no phase list or dependency reaches, and so are not built | 5 |
+| Upstream recipes that no phase list or dependency reaches, and so are not built | none; `testing/bookcounts.py` refuses one |
 | C libraries written for this system, under `src/libs` | 17, one of them (`libkvt`) a fork of libtsm |
-| Kernel | Linux 7.2.7 |
+| Kernel | Linux 7.2.11 |
 | Applications in the catalogue | 73 |
 | Shared runtimes beneath them | 7 |
 | Catalogue bases | 2 (Debian trixie and Alpine 3.24.1) |
@@ -292,7 +296,7 @@ not carry. Seven ports are nothing else:
 
 | Port | Version | Download | What it is |
 |---|---|---|---|
-| `linux-firmware` | 20260916 | 632 MiB | Upstream's complete tree, unpruned, installed with upstream's own `copy-firmware.sh --zstd`, which creates the alias symlinks a plain copy omits |
+| `linux-firmware` | 20260916 | 632 MiB | Upstream's tree less the firmware no x86 kernel loads, installed with upstream's own `copy-firmware.sh --zstd`, which creates the alias symlinks a plain copy omits |
 | `intel-ucode` | 20260812 | 17 MiB | Upstream's whole Intel microcode set, concatenated into one bundle that sits in front of the initramfs for the kernel's early loader |
 | `sof-firmware` | 2026.09.1 | 17 MiB | Intel SOF audio DSP firmware and topologies. They are not part of `linux-firmware`, and Tiger Lake and newer machines have no sound without them |
 | `meshtastic-firmware` | 2.7.26 | 260 MiB | Meshtastic's release images for ESP32, nRF52840, RP2040, RP2350 and STM32 boards, installed for flashing a radio, not for running here |
@@ -300,9 +304,13 @@ not carry. Seven ports are nothing else:
 | `wine-mono` | 10.4.1 | 38 MiB | Wine's .NET Framework runtime, installed where Wine looks before it offers a download. Building it needs MinGW and a .NET SDK, neither of which is a port |
 | `wine-gecko` | 2.47.4 | 81 MiB | The HTML engine behind Wine's MSHTML, 32- and 64-bit, placed the same way. It is Windows code that runs only inside a Wine prefix |
 
-The firmware tree ships whole rather than curated. Pruning it is a bet on which hardware the
-machine turns out to have, and losing that bet is silent: the kernel's `request_firmware()` finds
-nothing and the device does not work, which looks like broken hardware rather than a missing file.
+The firmware tree is not curated by guessing at hardware. Pruning that way is a bet on which
+hardware the machine turns out to have, and losing that bet is silent: the kernel's
+`request_firmware()` finds nothing and the device does not work, which looks like broken hardware
+rather than a missing file. The recipe leaves out only an explicit list of firmware no x86 driver
+requests: the arm64 Qualcomm SoC images, superseded Mellanox Spectrum images and Marvell Prestera
+v2.0 and v3.0, about 370 MiB installed (see
+[Known gaps](../06-reference/known-gaps.md#linux-firmware-leaves-out-what-an-x86-kernel-cannot-load)).
 
 `wireless-regdb` (2026.09.03) is not in this class. Its `regulatory.db` is generated here from
 upstream's `db.txt`, and the only binary taken from the tarball is upstream's detached signature,
@@ -333,7 +341,7 @@ any of them needs a working copy first. That copy is the *seed*.
 | Port | Version | Bootstrap payload |
 |---|---|---|
 | `rust` | 1.98.1 | 150 MiB of upstream 1.97.1 stage-0 binaries (`rustc` 101 MiB, `rust-std` 37 MiB and `cargo` 11 MiB) beside the 233 MiB source |
-| `go` | 1.27.1 | 57 MiB of upstream 1.25.9 bootstrap toolchain beside the 33 MiB source |
+| `go` | 1.27.2 | 57 MiB of upstream 1.25.9 bootstrap toolchain beside the 33 MiB source |
 | `zig` | 0.16.0 | `stage1/zig1.wasm`, inside the source tarball: a WebAssembly build of the compiler that the build translates to C and compiles to start its own bootstrap |
 | `ghc` | 9.12.4 | 239 MiB of upstream GHC 9.10.3 for musl, the statically linked Alpine build, beside the 32 MiB source. It compiles Hadrian, GHC's build system, and GHC's first stage |
 | `openjdk` | 25.0.4.1 | 134 MiB of Adoptium's Temurin 25.0.4.1 JDK for Alpine (musl), the same feature release, beside the 114 MiB source. It is the boot JDK the build compiles the class library and tools with |
@@ -378,7 +386,6 @@ ship them:
 | `stellarium` | `NotoSansSC-Regular.otf`, which no port ships as a single face, and the DejaVu web fonts of the RemoteControl plugin's page; the other four faces it bundles are links to `noto-fonts` and `ttf-dejavu` |
 | `mupen64plus`, `ppsspp`, `dosbox-x`, `retroarch-assets` | The on-screen display and menu faces: `mupen64plus-core`'s `font.ttf`, PPSSPP's Roboto Condensed and Inconsolata, DOSBox-X's `contrib/fonts` (WenQuanYi bitmaps, Nouveau IBM, Sarasa Gothic and others), and RetroArch's menu fonts |
 | `uosc`, `qtforkawesome` | Icon faces: `uosc_icons.otf` and `uosc_textures.ttf`, and Fork Awesome 1.2.0's `forkawesome-webfont.ttf`, compiled into the qtforkawesome library |
-| `vice` | The Lato web fonts of its HTML manual |
 
 Four fonts, and the X.org bitmap fonts, are compiled here, each by its upstream's own pipeline:
 
@@ -439,7 +446,6 @@ There is nothing earlier to build it from:
 | `gcompris` | The word pictures, the English voices and the background music, four `.rcc` archives from KDE's CDN |
 | `openttd-opengfx`, `openttd-opensfx`, `openttd-openmsx` | OpenTTD's free base sets: graphics as NewGRF `.grf` files built by nml and grfcodec, sounds as a `.cat` bundle built by catcodec, and MIDI music. None of those tools is a port |
 | `xonotic-data`, `stk-assets`, `devilutionx`, `retroarch-assets` | Game content as released: Xonotic's `.pk3` archives of compiled maps, models, textures and sound; SuperTuxKart's karts, tracks, music and textures; `devilutionx.mpq`, the engine's own assets; RetroArch's menu artwork and sounds |
-| `texlive-doc` | The PDF manuals of the TeX packages `texlive` installs, as their authors built them |
 
 ### JavaScript built upstream
 

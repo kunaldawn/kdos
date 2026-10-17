@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Compiled straight from the sources — there is no configure here. bb's own
-# 2001 autoconf probed the compiler with a K&R main() that GCC 14 rejects, so
-# it needed six -Wno- flags to answer a question that has one answer on this
-# target; src/aconfig.h states those answers instead.
 cd "$PORT_SRC/src"
 
 SRC="autopilo.c backconv.c bb.c credits.c credits2.c ctrl87.c
@@ -22,10 +18,6 @@ SRC="autopilo.c backconv.c bb.c credits.c credits2.c ctrl87.c
      scene1.c scene2.c scene3.c scene4.c scene5.c scene7.c scene8.c scene9.c
      tex.c textform.c timers.c uncompfn.c zeb.c zoom.c"
 
-# The demo is 2001 C: implicit declarations and missing parameter types are
-# how it is written throughout, and they are errors in GCC 14. Warned on
-# rather than rewritten — this is a frozen fork of somebody else's demo, not
-# a codebase under maintenance.
 cc $CFLAGS -O2 -o "$SRC_ROOT/kdos-bb" $SRC \
    -DSOUNDDIR='"/usr/share/kdos-bb"' \
    -Wno-implicit-function-declaration -Wno-implicit-int \

@@ -15,4 +15,5 @@ source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
 sha256      = 69606f485c2c07c14ef64f75b7bb326d48587af33795d9ab3e607c0b5f94f11c  libX11-1.8.13.tar.xz
 description = Core X11 client-side library
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libX11
+license     = X11 AND MIT-open-group AND HPND AND BSD-3-Clause
 depends     = libxcb xtrans xorgproto

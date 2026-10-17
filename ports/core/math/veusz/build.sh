@@ -9,15 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Veusz's compiled helpers (the qtloops painting routines and the threed
-# scene renderer) are SIP extensions built against PyQt6's .sip files with
-# the system qmake. The examples install with the resources and open from the
-# Help menu. The optional features are imported at run time, so each is a
-# dependency and not a build switch: FITS import (astropy), HDF5 import
-# (h5py), EMF export (pyemf3), Minuit fitting (iminuit) and D-Bus control
-# (dbus-python).
 export QMAKE_EXE=/usr/lib/qt6/bin/qmake
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+pip3 install --ignore-installed --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
 
 site=$(find "$PKG"/usr/lib -maxdepth 2 -type d -name site-packages)
 test -n "$(find "$site/veusz/helpers" -maxdepth 1 -name 'qtloops*.so')"
@@ -30,8 +23,6 @@ for s in 16 32 48 64 128; do
 		"$PKG/usr/share/icons/hicolor/${s}x${s}/apps/veusz.png"
 done
 
-# Upstream's entry is written by its packagers, not by setup.py. The program
-# sets the desktop file name, and so the Wayland app_id, to veusz.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/veusz.desktop" <<'DESKTOP'
 [Desktop Entry]

@@ -1,0 +1,16 @@
+--- a/include/pathnames.h	2026-10-16 11:54:01.554472303 +0530
++++ b/include/pathnames.h	2026-10-16 11:54:13.988382766 +0530
+@@ -248,4 +248,13 @@
+ # define UL_VENDORDIR_PATH      NULL
+ #endif
+ 
++/* utmps: utmp is behind utmpd and wtmp is /var/log/wtmp; musl's <paths.h>
++ * points both into /dev/null. */
++#ifdef UTMPS_UTMPX_H
++# undef _PATH_UTMP
++# define _PATH_UTMP		UTMPX_FILE
++# undef _PATH_WTMP
++# define _PATH_WTMP		"/var/log/wtmp"
++#endif
++
+ #endif /* PATHNAMES_H */

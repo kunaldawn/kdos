@@ -9,44 +9,24 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The native file dialogs are a git submodule, absent from the release
-# archive, and without them the build quietly falls back to its own ImGui
-# dialog. They are the pinned commit, a second source, and speak to the file
-# chooser portal over D-Bus, so no GTK is linked.
 rmdir external/nativefiledialog-extended
 mv "$SRC_ROOT/nativefiledialog-extended-$_nfd" external/nativefiledialog-extended
-# Their Wayland support generates its client code from the xdg-foreign
-# protocol in a submodule of their own, empty in the commit archive too; the
-# wayland-protocols port's copy takes its place.
 rmdir external/nativefiledialog-extended/3ps/wayland-protocols
 ln -s /usr/share/wayland-protocols external/nativefiledialog-extended/3ps/wayland-protocols
 
-# The start-up check for a new release is taken out: on Linux it contacts
-# GitHub on every launch unless a Flatpak sandbox is detected. The user's
-# own WHDLoad-database download stays, and fails cleanly with no network.
 patch -p1 -i "$PORT_SRC/no-update-check.patch"
 
-# musl defines NULL as nullptr in C++, which the custom-chip code casts to an
-# address type; musl-null casts 0. The *64 file functions (ftello64, fseeko64,
-# fopen64) amiberry and the bundled CAPS library call are macros musl
-# declares only under _LARGEFILE64_SOURCE.
 patch -p1 -i "$PORT_SRC/musl-null.patch"
+patch -p1 -i "$PORT_SRC/system-tinyxml2.patch"
+rm src/tinyxml2.cpp src/include/tinyxml2.h
 export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE"
 export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE"
 
-# SDL 3 directly, desktop OpenGL through libglvnd. Every optional library is
-# named, since a missing one is only a status line: libserialport for the
-# serial port, ENet and libpcap/TAP for networking, PortMidi for MIDI,
-# libmpeg2 for CD32 full-motion video, mpg123 for MP3 CD tracks, zstd for
-# CHD images. PCem (the x86 bridgeboards) and the PowerPC boards are on; the
-# PowerPC CPU itself is a QEMU-UAE plugin this image does not carry. The GPIO
-# LEDs and the D-Bus remote control are off. JIT stays on.
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
-	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DUSE_OPENGL=ON \
 	-DUSE_GLES=OFF \
 	-DUSE_VULKAN=OFF \
@@ -72,9 +52,6 @@ ninja
 DESTDIR=$PKG ninja install
 cd ..
 
-# UPSTREAM'S ENTRY IS REPLACED without application/x-cue: a cue sheet is
-# any CD image, and the player that claims it should not be an Amiga. The
-# app_id is SDL's default, the executable's name.
 cat > "$PKG/usr/share/applications/Amiberry.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

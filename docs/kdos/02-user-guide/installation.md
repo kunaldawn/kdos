@@ -37,7 +37,9 @@ You need:
 - root privileges (run the installer with `sudo`);
 - a target disk that is not the medium you booted from;
 - a disk at least 768 MiB larger than the install, which the Welcome page reports as *install
-  size*.
+  size*. Every package is on the medium and every one is copied, so the install is about 53 GB:
+  plan for a disk of about 56 GB or more. The medium itself needs a USB stick of 32 GB or more, or
+  a BD-R (see [Write the medium](getting-started.md#write-the-medium)).
 
 The wizard checks each of these and names the one that failed.
 
@@ -287,10 +289,13 @@ Root locked together with a non-administrator account would leave nobody able to
 so `Next` refuses that combination.
 
 The installed machine asks for your password at `tty1`; only the live image logs in automatically.
+The serial console `ttyS0` asks for a login too: the live image logs root in there with no
+password, and the installer removes that from the installed copy of `/etc/inittab`.
 The wizard has no automatic-login option. Set `autologin = yes` in an answer file (see
 [Installing unattended](#installing-unattended)), or after installing set `autologin = <username>`
 in `/etc/kdos/login.conf`. The live image's root password is never carried over: the root entry in
-`/etc/shadow` is always rewritten, locked or with the password you set.
+`/etc/shadow` is always rewritten, locked or with the password you set, and the backup copies
+`/etc/passwd-`, `/etc/shadow-` and their kin are not copied.
 
 A user name other than `kdos` is a real rename. The installer rewrites `/etc/passwd` (name, full
 name and home directory), `/etc/group` (the membership lists and the primary group's name),
@@ -744,7 +749,7 @@ countdown and choose another entry:
 |---|---|
 | `KDOS` | The normal system, with a quiet console |
 | `KDOS (verbose)` | Every kernel message on the console |
-| `KDOS (single user)` | The same as `KDOS (verbose)`. The entry passes `single`, but nothing in KDOS acts on it, so services and the desktop start as usual; KDOS has no single-user mode. For a console without the desktop, log in on `tty2` |
+| `KDOS (single user)` | A verbose boot to single-user mode: the services start, then root's password is asked for on the console and a root shell opens, with no desktop and no other consoles. Leaving the shell continues to the normal system. See [Single-user and emergency mode](../03-architecture/boot-and-init.md#single-user-and-emergency-mode) |
 | `Memory Test (memtest86+)` | memtest86+. Shown on UEFI only |
 
 When a second slot exists, `kdos-bootctl` rewrites the menu and adds an entry for it. A machine that

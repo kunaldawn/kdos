@@ -15,4 +15,5 @@ source      = https://github.com/hunspell/mythes/releases/download/v$version/myt
 sha256      = 97bd2ba5738aebdba1bc31f30f1be42f1404386c94105ad5990d839a1311c8a5  mythes-1.2.6.tar.xz
 description = Thesaurus library and the index generator for its data files
 homepage    = https://github.com/hunspell/mythes
+license     = BSD-3-Clause
 depends     = hunspell perl pkgconf

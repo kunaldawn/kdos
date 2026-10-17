@@ -9,20 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# link-fts is Alpine's: musl has no fts(3), and clamonacc links musl-fts only
-# with it.
 patch -p1 -i "$PORT_SRC/link-fts.patch"
 
-# cl_ASN1_GetTimeT() reads ASN1_TIME's fields, which OpenSSL 4 hides, and has
-# no caller; the patch is upstream's removal of it.
 patch -p1 -i "$PORT_SRC/openssl4.patch"
 
-# The Rust crates are vendored in upstream's tarball under .cargo/vendor, and
-# FindRust passes --offline whenever that directory exists; RUSTFLAGS reaches
-# cargo through the environment. Bytecode signatures run in the interpreter:
-# the LLVM runtime accepts only LLVM 8 to 13. The milter needs sendmail's
-# libmilter, which is not a port. Signature databases are read from
-# /var/lib/clamav; the package ships none.
 export CARGO_HOME="$SRC_ROOT/.cargo"
 export RUSTFLAGS="-C target-feature=-crt-static"
 export CARGO_NET_OFFLINE=true
@@ -52,15 +42,10 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# clamsubmit does nothing but upload a sample to Cisco's servers.
 rm -f "$PKG/usr/bin/clamsubmit" "$PKG/usr/share/man/man1/clamsubmit.1"
 
 install -d "$PKG/var/lib/clamav"
 
-# freshclam refuses to start without a configuration, and upstream installs
-# only the .sample files, which are never read; with no database clamscan and
-# clamd refuse to scan. `freshclam` run once as root with a network fetches it,
-# dropping to the clamav account postinstall.sh creates.
 install -Dm644 /dev/stdin "$PKG/etc/clamav/freshclam.conf" <<'CONF'
 DatabaseDirectory /var/lib/clamav
 DatabaseOwner clamav

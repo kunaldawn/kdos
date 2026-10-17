@@ -9,29 +9,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The 4.x line: OpenCV 5 changed the API, and digiKam, MLT, SDRangel and
-# the rest are written against 4.x.
-
-# FFmpeg 9 removed AVCodec's pix_fmts and supported_framerates, which the
-# videoio FFmpeg backend reads; the patch is upstream's change to
-# avcodec_get_supported_config() on the 4.x branch (700cd32f, 83ed22ca,
-# c0166c61), after 4.14, keeping the old path for older FFmpeg.
 patch -p1 -i "$PORT_SRC/ffmpeg9.patch"
 
-# Contrib modules: only the ones this system's consumers use, moved into a
-# directory of their own so the rest are never configured. aruco, tracking,
-# optflow, plot, shape, superres, videostab and ximgproc serve MLT's motion
-# tracker (Kdenlive, Shotcut) and digiKam. face is left out: its configure
-# downloads a landmark model.
 mkdir contrib
 for m in aruco tracking optflow plot shape superres videostab ximgproc; do
 	mv "$SRC_ROOT/opencv_contrib-$version/modules/$m" contrib/
 done
 
-# The dispatch baseline is the architecture's: SSE2 on x86_64 with the
-# faster kernels chosen at run time, NEON on aarch64. KleidiCV and FastCV
-# are prebuilt Arm libraries fetched at configure and are off; IPP and ADE
-# (G-API) are likewise downloads and are off with G-API itself.
 case "$(uname -m)" in
 	x86_64) _cpu="-DCPU_BASELINE=SSE2 -DCPU_BASELINE_DISABLE=SSE3" ;;
 	*) _cpu= ;;
@@ -39,12 +23,6 @@ esac
 
 _pydir=$(python3 -c 'import sysconfig; print(sysconfig.get_path("platlib", "posix_prefix"))')
 
-# HighGUI draws through Qt 6; GTK and OpenCV's own Wayland backend are off.
-# Video I/O goes through FFmpeg, GStreamer and V4L2, with VA-API for decode.
-# Every image codec uses its port, never the bundled copy. Protobuf is the
-# bundled copy the DNN importers are generated against; OpenCL is loaded at
-# run time. The viz module (VTK), OpenGL windows, Vulkan and the camera SDKs
-# are off. Non-free algorithms stay off.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

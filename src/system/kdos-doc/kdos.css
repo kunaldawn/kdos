@@ -1,0 +1,17 @@
+/* The KDOS book, as installed under /usr/share/doc/kdos. Phosphor on black,
+ * the desktop's own palette, and readable at any width. */
+:root { --bg: #04120a; --fg: #b6f5a8; --dim: #1f8f0c; --accent: #39ff14; --rule: #12401f; }
+@media (prefers-color-scheme: light) {
+	:root { --bg: #f6fbf4; --fg: #0d2a12; --dim: #3d6b44; --accent: #146b0a; --rule: #c9dcc6; }
+}
+body { background: var(--bg); color: var(--fg); margin: 0 auto; max-width: 52rem;
+       padding: 1.5rem 1rem 4rem; font: 16px/1.55 "JetBrains Mono", "DejaVu Sans Mono", monospace; }
+a { color: var(--accent); }
+h1, h2, h3, h4 { color: var(--accent); line-height: 1.25; }
+h1 { border-bottom: 1px solid var(--rule); padding-bottom: .3em; }
+code, pre { background: rgba(127, 127, 127, .12); }
+pre { padding: .75em; overflow-x: auto; }
+table { border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--rule); padding: .3em .6em; vertical-align: top; text-align: left; }
+img { max-width: 100%; }
+blockquote { border-left: 3px solid var(--dim); margin-left: 0; padding-left: 1em; color: var(--dim); }

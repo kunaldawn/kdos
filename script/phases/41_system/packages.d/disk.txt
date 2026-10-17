@@ -80,3 +80,4 @@ libbytesize
 libatasmart
 libstoragemgmt
 ndctl
+ubdsrv

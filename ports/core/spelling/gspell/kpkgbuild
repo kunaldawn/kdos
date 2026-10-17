@@ -15,4 +15,5 @@ source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$vers
 sha256      = 788783b56fc3d03283b3aa29302d0b958aeca88835e10b1ec61f19e0efc7e8a4  gspell-1.14.5.tar.xz
 description = Spell checking for GTK 3 text views and entries, over enchant
 homepage    = https://gitlab.gnome.org/GNOME/gspell
+license     = LGPL-2.1-or-later
 depends     = meson glib gtk3 enchant icu gobject-introspection glib-introspection vala

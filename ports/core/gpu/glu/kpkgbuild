@@ -15,4 +15,5 @@ source      = https://archive.mesa3d.org/$name/$name-$version.tar.xz
 sha256      = bd43fe12f374b1192eb15fe20e45ff456b9bc26ab57f0eee919f96ca0f8a330f  glu-9.0.3.tar.xz
 description = The OpenGL Utility library — GL/glu.h and libGLU
 homepage    = https://gitlab.freedesktop.org/mesa/glu
+license     = SGI-B-1.1 AND SGI-B-2.0 AND MIT
 depends     = meson ninja pkgconf libglvnd

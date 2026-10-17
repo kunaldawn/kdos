@@ -15,3 +15,4 @@ source      = https://github.com/libsidplayfp/libresidfp/releases/download/v$ver
 sha256      = 2eb0204b76d52fe825c0e1f98826f62a179033a60543032d0e8b90060ecaa50e  libresidfp-1.2.2.tar.gz
 description = Cycle-exact MOS 6581/8580 SID chip emulation library, the reSIDfp engine libsidplayfp plays through
 homepage    = https://github.com/libsidplayfp/libresidfp
+license     = GPL-2.0-or-later

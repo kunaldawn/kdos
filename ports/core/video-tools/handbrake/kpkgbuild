@@ -33,4 +33,5 @@ sha256      = 1363cdfaf6e92c0b574579299b5480f5867fb32989451468a28f3f402ec48787  
 sha256      = 77937baf07eadda4b2b311cf3af4c50269d2ea3165041f5843d96476c4c92777  libbluray-1.4.0.tar.xz
 description = HandBrake video transcoder: the GTK 4 application and HandBrakeCLI
 homepage    = https://handbrake.fr/
-depends     = python3 meson ninja cmake nasm autoconf automake libtool m4 patch pkgconf gettext glib gtk4 libxml2 libass harfbuzz fribidi freetype2 fontconfig jansson libjpeg-turbo libogg libvorbis libtheora x264 lame opus speex libvpx numactl bzip2 xz zlib
+license     = GPL-2.0-only
+depends     = python3 meson ninja cmake nasm autoconf automake libtool m4 patch pkgconf gettext glib gtk4 libxml2 libass harfbuzz fribidi freetype2 fontconfig jansson libjpeg-turbo libogg libvorbis libtheora x264 lame opus speex libvpx numactl libdovi bzip2 xz zlib

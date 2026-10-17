@@ -18,4 +18,5 @@ sha256      = 810c399f3b9fbfd72e24e61417ede24243925f9c0d03040a8aba0d4866676d93  
 sha256      = 99edd39dca0367b1cfd388bf031c4915137580bd73f87c65f7720b8a4af14efa  Qt-Color-Widgets-5d52e907e50dc88cf969b41cea44665ff6c475b1.tar.gz
 description = Screenshot tool with an annotation editor, capturing through the Screenshot portal
 homepage    = https://flameshot.org/
+license     = GPL-3.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qttools qt6-qtwayland kguiaddons kdsingleapplication

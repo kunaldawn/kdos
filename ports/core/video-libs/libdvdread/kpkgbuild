@@ -16,4 +16,5 @@ source      = https://download.videolan.org/pub/videolan/$name/$version/$name-$v
 sha256      = a0d47876548bec806774bbf8dbf20bb19ba139464383156b32eb8e59915b90a9  libdvdread-7.1.1.tar.xz
 description = Reads the file system and title structure of a DVD-Video disc
 homepage    = https://www.videolan.org/developers/libdvdnav.html
+license     = GPL-2.0-or-later
 depends     = meson ninja pkgconf libdvdcss

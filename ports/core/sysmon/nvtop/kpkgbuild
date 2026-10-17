@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/Syllo/nvtop/archive/refs
 sha256      = 48a295f3b3a917cc851d1aa8b185c09fde3a1b1e741fc57d7fa96b3671271630  nvtop-3.3.2.tar.gz
 description = GPU utilisation from DRM fdinfo — top for every vendor's GPU
 homepage    = https://github.com/Syllo/nvtop
+license     = GPL-3.0-or-later
 depends     = cmake ninja pkgconf ncurses libdrm eudev

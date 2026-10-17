@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# darts-clone, marisa, rapidjson and tclap are vendored under deps/ in the
-# release archive, so USE_SYSTEM_* stays off and this port pulls in nothing.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \

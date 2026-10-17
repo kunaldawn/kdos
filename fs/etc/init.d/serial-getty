@@ -1,0 +1,31 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# The serial console's getty, the S0 entry in /etc/inittab. Its arguments
+# are agetty's.
+#
+# The kernel registers ttyS0 whether or not a UART answers there, so the
+# device node always exists. With no UART the 8250 driver reports the port
+# type as 0 (unknown), agetty fails on it at once, and init, after ten
+# respawns in two minutes, disables the entry for five minutes and logs
+# "respawning too fast", over and over. On such a port this sleeps instead,
+# so the entry stays quiet until the runlevel changes.
+#
+# The name has no NN_ prefix, so rcS and rcK never run it.
+
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin
+
+_type=
+read -r _type < /sys/class/tty/ttyS0/type 2>/dev/null
+if [ "$_type" = 0 ]; then
+    exec sleep infinity
+fi
+exec /sbin/agetty "$@"

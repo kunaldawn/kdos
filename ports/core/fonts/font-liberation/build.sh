@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Both families compile from their FontForge sources. fontconfig's own
-# 30-metric-aliases.conf maps Arial, Times New Roman, Courier New and Arial
-# Narrow onto these names, so the port ships no configuration of its own.
 make ttf-dir
 make -C $SRC_ROOT/liberation-narrow-fonts-$_narrow ttf-dir
 

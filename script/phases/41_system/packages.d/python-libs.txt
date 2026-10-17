@@ -27,3 +27,6 @@
 python3-psycopg2
 
 python3-cups
+
+# speech-dispatcher's spd-conf finds its files through it, and khal imports it.
+python3-pyxdg

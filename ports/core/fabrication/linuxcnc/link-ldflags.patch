@@ -1,0 +1,22 @@
+--- a/src/hal/components/Submakefile
++++ b/src/hal/components/Submakefile
+@@ -78,7 +78,7 @@
+ 
+ ../bin/panelui: $(call TOOBJS, $(PYSAMPLERSRCS)) ../lib/liblinuxcnchal.so.0
+ 	$(ECHO) Linking $(notdir $@)
+-	$(Q)$(CC) -Wl,-z,relro -o $@ $^ $(PYFLAGS)
++	$(Q)$(CC) $(LDFLAGS) -Wl,-z,relro -o $@ $^ $(PYFLAGS)
+ TARGETS += ../bin/panelui
+ 
+ hal/components/conv_float_s32.comp: hal/components/conv.comp.in hal/components/mkconv.sh hal/components/Submakefile
+--- a/src/module_helper/Submakefile
++++ b/src/module_helper/Submakefile
+@@ -11,7 +11,7 @@
+ 
+ ../bin/linuxcnc_module_helper: $(call TOOBJS, $(MODULE_HELPERSRCS))
+ 	$(ECHO) Linking $(notdir $@)
+-	$(CC) -Wl,-z,relro -o $@ $^
++	$(CC) $(LDFLAGS) -Wl,-z,relro -o $@ $^
+ 
+ TARGETS += ../bin/linuxcnc_module_helper
+ endif

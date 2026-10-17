@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/p/pathspec/pathspec
 sha256      = 17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a  python3-pathspec-1.1.1.tar.gz
 description = Gitignore-style path matching — how hatchling and scikit-build-core choose files
 homepage    = https://pypi.org/project/pathspec/
+license     = MPL-2.0
 depends     = python3 python3-pip python3-flit-core

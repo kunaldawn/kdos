@@ -15,4 +15,5 @@ source      = https://github.com/libsidplayfp/libsidplayfp/releases/download/v$v
 sha256      = 12b79190593bf480b2d11481b5c2de62bac07f344437a66cd8d887329875c626  libsidplayfp-3.1.1.tar.gz
 description = C64 SID music player library — libsidplayfp and libstilview, playing through reSIDfp
 homepage    = https://github.com/libsidplayfp/libsidplayfp
+license     = GPL-2.0-or-later
 depends     = pkgconf libresidfp xa libusb libftdi

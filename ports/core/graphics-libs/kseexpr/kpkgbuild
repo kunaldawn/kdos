@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://invent.kde.org/graphics/kseexpr/-/a
 sha256      = 60f84d26f922b65951a81cfb37323040927c5f01101a60f9563573016e0a52b8  kseexpr-6.0.0.0.tar.gz
 description = Krita fork of the SeExpr expression language, the Qt 6 build
 homepage    = https://invent.kde.org/graphics/kseexpr
+license     = GPL-3.0-or-later AND Apache-2.0
 depends     = cmake ninja extra-cmake-modules qt6-qtbase bison flex

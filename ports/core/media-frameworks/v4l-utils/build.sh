@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# gconv is glibc's converter plugin interface; musl has no gconv.h.
-# udevdir is where eudev reads its rules and ir-keytable its keymaps.
-# musl declares open64 and mmap64, which v4l2-tracer's retrace calls, only
-# under _LARGEFILE64_SOURCE; _GNU_SOURCE no longer implies it.
 export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE"
 export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE"
 meson setup build \

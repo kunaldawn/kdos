@@ -56,3 +56,8 @@ cppzmq
 neon
 asio
 libwebsockets
+xmlrpc-c
+libsrt
+librist
+libmaxminddb
+libsmi

@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The tests, and the mysofa2json tool built with them, need CUnit, which is
-# not a port. The default HRTF set installs under /usr/share/libmysofa.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

@@ -11,8 +11,9 @@
 name        = cjson
 version     = 1.7.19
 release     = 1
-source      = cjson-1.7.19.tar.gz::https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.19.tar.gz
+source      = cjson-$version.tar.gz::https://github.com/DaveGamble/cJSON/archive/refs/tags/v$version.tar.gz
 sha256      = 7fa616e3046edfa7a28a32d5f9eacfd23f92900fe1f8ccd988c1662f30454562  cjson-1.7.19.tar.gz
-description = cJSON, the small ANSI C JSON parser mosquitto and friends link
+description = cJSON, a small ANSI C JSON parser (mosquitto links it)
 homepage    = https://github.com/DaveGamble/cJSON
+license     = MIT
 depends     = cmake

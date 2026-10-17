@@ -38,7 +38,7 @@ and replaced on its own.
 
 | Function | KDOS uses | Not |
 |---|---|---|
-| Init and service supervision | `/etc/init.d/rcS` running the numbered scripts in `/etc/init.d`, with daemons kept alive by `ksvc` | units and targets |
+| Init and service supervision | sysvinit's `init` as PID 1, with runlevels in `/etc/inittab`; `/etc/init.d/rcS` running the numbered scripts in `/etc/init.d`, with daemons kept alive by `ksvc` | units and targets |
 | Seat management | `seatd` | `systemd-logind` |
 | sd-bus API for programs that want one | `basu` | `libsystemd` |
 | Device management | `eudev` | `systemd-udevd` |
@@ -169,9 +169,9 @@ expressible in cells.
 ## Everything that runs on the host is built from source
 
 Every program, library and module that the host installs and runs on its own processor is compiled
-in this tree from pinned source: 2,027 recipes, 2,003 under `ports/core` for upstream software, each
-pinned by hash, and 24 under `src/` for the software kept in this repository, most of it written for
-KDOS. [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf,
+in this tree from pinned source: about 2,000 recipes under `ports/core` for upstream software, each
+pinned by hash, and some two dozen under `src/` for the software kept in this repository, most of it
+written for KDOS. [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf,
 with the phase that builds it, and [How KDOS is built](../05-developer/how-kdos-is-built.md) follows
 the build from the first source fetch to a bootable ISO. The application catalogue is outside the
 rule. It is Debian's packaging, built by podman into a box on the machine that asks for it, and it
@@ -262,7 +262,7 @@ and [A bundle no tool writes](../05-developer/writing-ports.md#a-bundle-no-tool-
 ## Reproducible by construction
 
 A package built twice from the same tree is byte-identical. That is a property of one function
-rather than of 2,024 recipes: `roll_package()` in `kpkg`, the package manager
+rather than of some 2,000 recipes: `roll_package()` in `kpkg`, the package manager
 (`src/system/kdos-kpkg/build.c`), runs tar with `--sort=name`, `--format=gnu`, `--owner=0 --group=0
 --numeric-owner`, an `--mtime` taken from `SOURCE_DATE_EPOCH`, and `xz -9 -T0 --block-size=32MiB
 --no-adjust` as a pinned compressor with `XZ_OPT` and `XZ_DEFAULTS` removed: xz's bytes follow its
@@ -447,7 +447,7 @@ second survives the surrounding code being rewritten.
 `testing/docscheck.sh` checks the mechanical half of this rule across the book. It reports dead
 relative links, common phrases that narrate the past, pages under `docs/kdos/` that lack a title or
 a `See also` section, and, when run over the whole book, pages that the table of contents does not
-reach. It cannot recognise a paragraph that tells a story in its own words.
+reach and port counts the tree contradicts. It cannot recognise a paragraph that tells a story in its own words.
 
 ## Every change updates its documentation, in the same change
 

@@ -28,3 +28,4 @@ pass-otp
 
 keepassxc
 kleopatra
+zenmap

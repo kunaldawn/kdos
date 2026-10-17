@@ -1,0 +1,29 @@
+--- a/src/aalinuxkbd.c	2026-10-16 14:08:06.489668602 +0530
++++ b/src/aalinuxkbd.c	2026-10-16 14:08:06.512869661 +0530
+@@ -113,7 +113,7 @@
+ static struct termios new_termio, old_termio;
+ static int vtswitch_allowed;
+ 
+-static char key_down[128];
++static char key_down[NR_KEYS];
+ static int closed = 1;
+ static int mypid;
+ 
+@@ -132,7 +132,7 @@
+     for (f = 0; f < NR_KEYS; f++) {
+ 	keyb_ent.kb_index = f;
+ 
+-	if (ioctl(tty_fd, KDGKBENT, (unsigned int) &keyb_ent))
++	if (ioctl(tty_fd, KDGKBENT, &keyb_ent))
+ 	    return (0);
+ 
+ 	keymap[0][f] = keyb_ent.kb_value;
+@@ -141,7 +141,7 @@
+     for (f = 0; f < NR_KEYS; f++) {
+ 	keyb_ent.kb_index = f;
+ 
+-	if (ioctl(tty_fd, KDGKBENT, (unsigned int) &keyb_ent))
++	if (ioctl(tty_fd, KDGKBENT, &keyb_ent))
+ 	    return (0);
+ 
+ 	keymap[1][f] = keyb_ent.kb_value;

@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/release-service/$version/src/$name
 sha256      = f55ee70f440e2420c2306e43e1ba63d51557cf3f693c0ac07fb19e197ddb6c00  kgeography-26.08.1.tar.xz
 description = KDE geography trainer — maps, capitals and flags of countries and regions, as quizzes
 homepage    = https://apps.kde.org/kgeography/
+license     = GPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kxmlgui kwidgetsaddons kcoreaddons kconfigwidgets ki18n kitemviews kiconthemes kcrash kdoctools

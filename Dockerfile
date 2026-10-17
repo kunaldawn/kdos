@@ -18,6 +18,7 @@ RUN apk update && apk add --no-cache \
     wget \
     bash bash-doc \
     coreutils coreutils-doc \
+    grep sed gawk findutils diffutils patch \
     texinfo \
     make \
     gcc gcc-doc \

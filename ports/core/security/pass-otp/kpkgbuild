@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/pass-extension/pass-otp/
 sha256      = 5720a649267a240a4f7ba5a6445193481070049c1d08ba38b00d20fc551c3a67  pass-otp-1.2.0.tar.gz
 description = A one-time password in the password store — pass otp
 homepage    = https://github.com/pass-extension/pass-otp
+license     = GPL-3.0-or-later
 depends     = pass oath-toolkit

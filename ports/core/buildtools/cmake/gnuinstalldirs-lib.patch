@@ -1,0 +1,15 @@
+--- a/Modules/GNUInstallDirs.cmake
++++ b/Modules/GNUInstallDirs.cmake
+@@ -463,12 +463,6 @@
+           set(${out_var} "lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+         endif()
+       endif()
+-    elseif(NOT DEFINED system_type)
+-      # This host system uses a 'lib64' directory for 64-bit architectures.
+-      # See https://gitlab.com/x86-psABIs/x86-64-ABI
+-      if("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
+-        set(${out_var} "lib64")
+-      endif()
+     endif()
+   endif()
+   __GNUInstallDirs_default_in_usr(${out_var} "${${out_var}}" "${install_prefix}")

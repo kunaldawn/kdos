@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The chattr dialog (ext2fs attributes) has no switch: configure turns it on
-# whenever ext2fs.pc and e2p.pc are found, which is why e2fsprogs is in depends.
-#
-# Aspell is the editor's spell check. Configure needs aspell.h; the editor
-# then loads libaspell through GModule when a spell command first runs, and
-# aspell-en is the dictionary it finds.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -34,7 +28,7 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/mc.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Files
+Name=Files (mc)
 GenericName=File Manager
 Comment=Browse files with Midnight Commander
 Exec=mc %f

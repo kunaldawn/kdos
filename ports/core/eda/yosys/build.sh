@@ -9,38 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE RELEASE TARBALL IS USED, NOT THE TAG ARCHIVE, and it is the same reason
-# as bcc's: yosys carries abc — the Berkeley logic synthesis tool it shells out
-# to for technology mapping — as a submodule, which a tag archive omits. The
-# published `yosys.tar.gz` has it. Without abc, synthesis runs and every
-# `abc` pass fails, which is most of what makes the output small enough to fit.
-#
-# THAT TARBALL IS FLAT — no wrapping directory — and kpkg
-# passes --strip-components=1 to the first source unconditionally, so every
-# top-level file is DISCARDED and each subdirectory's contents are promoted
-# into its place. Same shape as tzdata's, and the same answer: unpack it here,
-# unstripped, and build from that.
 mkdir -p unpacked
 tar xf "$PORT_SRC/$name-$version.tar.gz" -C unpacked
 cd unpacked
 
-# CMAKE, NOT `make config-gcc`. The source carries no Makefile; every switch
-# is a YOSYS_* cache entry, and an ENABLE_* variable is ignored.
-#
-# YOSYS_USE_BUNDLED_LIBS stays OFF so the readline, zlib, libffi and tcl in
-# this tree are the ones linked — abc is the one vendored thing kept, because
-# it is the revision yosys was tested against and abc publishes no releases to
-# pin to independently. Python is off: pyosys is a binding nothing here uses.
-#
-# THE LIBRARIES CANNOT BE FORCED ON FROM THE COMMAND LINE. yosys has only
-# YOSYS_WITHOUT_* switches, and a library pkg-config does not find is silently
-# a feature compiled out. The generated yosys_config.h is checked instead, so a
-# missing readline, zlib, libffi or tcl stops the build here rather than
-# shipping a yosys without gzip input, DPI-C, line editing or SDC parsing.
-# The `show` pass renders through graphviz's `dot` (`-format svg`,
-# `-format png`), which is in depends; with no -format it opens xdot, a GTK
-# viewer that is not a port, so a bare `show` fails and `-viewer` names the
-# program that opens the rendered file instead.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

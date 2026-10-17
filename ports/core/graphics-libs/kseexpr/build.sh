@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The Qt 6 build, which is the one Krita 6 looks for (KSeExpr 6.0.0.0). The
-# parser is regenerated with bison and flex rather than taken from the
-# bundled pregenerated copy. Translations are off: the tree carries English,
-# and KF6I18n is only looked for to pick their fallback language.
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

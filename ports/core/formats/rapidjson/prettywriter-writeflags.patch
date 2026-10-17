@@ -1,0 +1,20 @@
+--- a/include/rapidjson/prettywriter.h
++++ b/include/rapidjson/prettywriter.h
+@@ -42,7 +42,7 @@
+ template<typename OutputStream, typename SourceEncoding = UTF8<>, typename TargetEncoding = UTF8<>, typename StackAllocator = CrtAllocator, unsigned writeFlags = kWriteDefaultFlags>
+ class PrettyWriter : public Writer<OutputStream, SourceEncoding, TargetEncoding, StackAllocator, writeFlags> {
+ public:
+-    typedef Writer<OutputStream, SourceEncoding, TargetEncoding, StackAllocator> Base;
++    typedef Writer<OutputStream, SourceEncoding, TargetEncoding, StackAllocator, writeFlags> Base;
+     typedef typename Base::Ch Ch;
+ 
+     //! Constructor
+@@ -55,7 +55,7 @@
+ 
+ 
+     explicit PrettyWriter(StackAllocator* allocator = 0, size_t levelDepth = Base::kDefaultLevelDepth) : 
+-        Base(allocator, levelDepth), indentChar_(' '), indentCharCount_(4) {}
++        Base(allocator, levelDepth), indentChar_(' '), indentCharCount_(4), formatOptions_(kFormatDefault) {}
+ 
+     //! Set custom indentation.
+     /*! \param indentChar       Character for indentation. Must be whitespace character (' ', '\\t', '\\n', '\\r').

@@ -8,8 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Pure Tcl: the package is its source files. /usr/lib is on Tcl's auto_path,
-# so package require finds the pkgIndex.tcl there. English messages only.
 _dir="$PKG/usr/lib/bwidget$version"
 install -d "$_dir/images" "$_dir/lang"
 install -m644 *.tcl "$_dir/"

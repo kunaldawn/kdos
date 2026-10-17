@@ -31,12 +31,14 @@ SRC=$WORKSPACE/src/system/kdos-kpkg
 LIBS=$WORKSPACE/src/libs
 OUT=$BUILD_DIR/tmp/kdos-kpkg
 
-# The mark holds a hash of every source the binary is compiled from, not just
-# its existence: kpkg is not a port, so nothing else rebuilds it, and a tree
-# whose kpkg predates a change to it keeps installing and upgrading with the
-# old logic for every later phase.
-SUM=$(find "$SRC" "$LIBS"/libkbase "$LIBS"/libkpkg "$LIBS"/libksig \
-        -type f \( -name '*.[ch]' -o -name kpkg.conf \) -print0 |
+# The mark holds a hash of every source the binary is compiled from, and of
+# this step, whose compile line sets its flags — not just its existence: kpkg
+# is not a port, so nothing else rebuilds it, and a tree whose kpkg predates a
+# change to it keeps installing and upgrading with the old logic for every
+# later phase.
+SUM=$( { find "$SRC" "$LIBS"/libkbase "$LIBS"/libkpkg "$LIBS"/libksig \
+        -type f \( -name '*.[ch]' -o -name kpkg.conf \) -print0
+    printf '%s\0' "$WORKSPACE/script/phases/10_bootstrap/120_kpkg.sh"; } |
     LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
 
 if [ "$(cat "$MARK/kpkg" 2>/dev/null)" = "$SUM" ] &&
@@ -46,6 +48,8 @@ fi
 
 $KDOS_TARGET-gcc \
     -O2 -pipe -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
+    -fstack-protector-strong -fstack-clash-protection \
+    -Wl,-O1,--as-needed,-z,now,-z,pack-relative-relocs -Wl,--build-id=sha1 \
     -I"$LIBS"/libkbase -I"$LIBS"/libkpkg -I"$LIBS"/libksig -I"$SRC" \
     -o "$OUT" \
     "$SRC"/*.c "$LIBS"/libkbase/*.c "$LIBS"/libkpkg/*.c \

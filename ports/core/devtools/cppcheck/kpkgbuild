@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cppcheck
+version     = 2.22.0
+release     = 1
+source      = https://github.com/danmar/cppcheck/archive/refs/tags/$version.tar.gz
+sha256      = d74945deb2d50393430e07596b766f8a779512c7f60dac2a30ea64e059ece57b  cppcheck-2.22.0.tar.gz
+description = Static analyser for C and C++ that looks for undefined behaviour and bugs the compiler does not report
+homepage    = https://cppcheck.sourceforge.io/
+license     = GPL-3.0-or-later
+depends     = cmake ninja python3 tinyxml2 boost libxslt docbook-xsl docbook-xml python3-pygments

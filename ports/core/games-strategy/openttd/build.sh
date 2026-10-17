@@ -9,19 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# fix-segfault is Alpine's: the ICU line breaker is handed a temporary string
-# that is gone before it is read. no-survey removes the opt-in usage survey,
-# its settings button and its question at the first network game, so the
-# program never offers to post anything.
 patch -p1 -i "$PORT_SRC/fix-segfault.patch"
 patch -p1 -i "$PORT_SRC/no-survey.patch"
+patch -p1 -i "$PORT_SRC/musl-getrandom.patch"
 
-# The graphics, sound and music base sets are the openttd-open* ports; with
-# none installed the game refuses to start. musl gives a new thread 128 KiB of
-# stack unless the executable asks for more, and the pathfinder and script
-# threads overflow that, so the link asks for 1 MiB. CURL_NO_CURL_CMAKE sends
-# FindCURL straight to pkg-config: curl installs no CMake package, and the
-# requirement would apply to FindCURL's search for one as well.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -53,12 +44,8 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# English only: every other language file is dropped. The in-game list then
-# offers English alone, and a config naming another language falls back to it.
 find "$PKG/usr/share/games/openttd/lang" -name '*.lng' ! -name 'english*.lng' -delete
 
-# Upstream's entry carries no window class. The window's app_id is the
-# program's name.
 cat > "$PKG/usr/share/applications/openttd.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

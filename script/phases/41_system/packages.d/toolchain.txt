@@ -29,3 +29,4 @@ bmake
 # free choice — it must equal the llvm and clang the tree already pins, or the
 # plugin ABI does not match.
 lldb
+ispc

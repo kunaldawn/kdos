@@ -62,6 +62,7 @@
 
 #include "kbase.h"
 #include "kicon.h"
+#include "kxdg.h"
 #include "kwl.h"
 #include "pages.h"
 #include "shell.h"
@@ -671,14 +672,38 @@ static struct row rows[] = {
 
 #define NROWS ((int)(sizeof(rows) / sizeof(rows[0])))
 
-/* The Apps category: what ~/.config/mimeapps.list currently says, one row per
- * declared default. Re-read on the idle tick, because the chooser that changes
- * one of them is a SEPARATE process and cannot tell us it wrote. */
+/*
+ * The Apps category: what opens each everyday kind of thing, and which list
+ * said so. The answer is kxdg_handlers', the resolver `kdos-appbox open` acts
+ * on, so a row names the program a double-click starts — on a fresh machine
+ * that is the shipped /etc/xdg default, not "nothing set". Every type the
+ * user has declared a default for follows the fixed roles. Re-read on the
+ * idle tick, because the chooser that changes one of them is a SEPARATE
+ * process and cannot tell us it wrote.
+ */
 #define MAX_APPS 64
 
 struct app_row {
+	char label[48];		/* the role, or the type itself      */
 	char mime[128];
-	char id[160];
+	char id[192];		/* "" when nothing opens it          */
+	int layer;		/* KXDG_LAYER_*                      */
+};
+
+static const struct {
+	const char *label, *mime;
+} app_roles[] = {
+	{ "Web browser", "x-scheme-handler/https" },
+	{ "Web page", "text/html" },
+	{ "Mail", "x-scheme-handler/mailto" },
+	{ "Folder", "inode/directory" },
+	{ "Text", "text/plain" },
+	{ "PDF", "application/pdf" },
+	{ "Document", "application/vnd.oasis.opendocument.text" },
+	{ "Image", "image/png" },
+	{ "Video", "video/mp4" },
+	{ "Music", "audio/mpeg" },
+	{ "Archive", "application/zip" },
 };
 
 static struct app_row apps[MAX_APPS];
@@ -977,6 +1002,28 @@ static void load_kv(const char *path, int store)
 	free(data);
 }
 
+static void app_resolve(const char *label, const char *mime)
+{
+	KxdgHandler h[4];
+	struct app_row *r;
+
+	if (napps >= MAX_APPS)
+		return;
+	for (int i = 0; i < napps; i++)
+		if (!strcmp(apps[i].mime, mime))
+			return;
+	r = &apps[napps++];
+	kb_strlcpy(r->label, label, sizeof(r->label));
+	kb_strlcpy(r->mime, mime, sizeof(r->mime));
+	if (kxdg_handlers(mime, h, 4, NULL) > 0) {
+		kb_strlcpy(r->id, h[0].id, sizeof(r->id));
+		r->layer = h[0].layer;
+	} else {
+		r->id[0] = '\0';
+		r->layer = KXDG_LAYER_NONE;
+	}
+}
+
 static void load_apps(void)
 {
 	char path[700];
@@ -985,6 +1032,12 @@ static void load_apps(void)
 	int in_sec = 0;
 
 	napps = 0;
+	for (size_t i = 0; i < sizeof(app_roles) / sizeof(app_roles[0]); i++)
+		app_resolve(app_roles[i].label, app_roles[i].mime);
+
+	/* The user's own declared defaults, each shown through the same
+	 * resolver: a line naming an application that was since removed shows
+	 * what answers instead. */
 	if (cfg && *cfg)
 		snprintf(path, sizeof(path), "%.500s/mimeapps.list", cfg);
 	else
@@ -1006,12 +1059,10 @@ static void load_apps(void)
 		if (!in_sec || !line[0] || line[0] == '#')
 			continue;
 		char *eq = strchr(line, '=');
-		if (!eq || napps >= MAX_APPS)
+		if (!eq)
 			continue;
 		*eq = '\0';
-		kb_strlcpy(apps[napps].mime, line, sizeof(apps[0].mime));
-		kb_strlcpy(apps[napps].id, eq + 1, sizeof(apps[0].id));
-		napps++;
+		app_resolve(line, line);
 	}
 	free(data);
 }
@@ -1988,17 +2039,18 @@ static void draw_page(void)
 			     KT_SURFACE, &fg, &bg);
 
 		if (cat == CAT_APPS) {
-			if (!napps) {
-				ktui_draw_text(fx, y, fw,
-					       "no default handlers are "
-					       "recorded yet",
-					       KT_MID, KT_SURFACE, KT_A_NONE);
-				break;
-			}
-			ktui_draw_text(fx, y, fw / 2, apps[idx].mime, fg, bg,
+			const struct app_row *ar = &apps[idx];
+			char who[240];
+			int c2 = fw / 3;
+
+			if (ar->id[0])
+				snprintf(who, sizeof(who), "%s  (%s)", ar->id,
+					 kxdg_layer_name(ar->layer));
+			else
+				snprintf(who, sizeof(who), "nothing opens this");
+			ktui_draw_text(fx, y, c2 - 1, ar->label, fg, bg,
 				       KT_A_NONE);
-			ktui_draw_text(fx + fw / 2, y, fw - fw / 2 - 1,
-				       apps[idx].id,
+			ktui_draw_text(fx + c2, y, fw - c2 - 1, who,
 				       ktui_sel_dim(on, pane == 1), bg,
 				       KT_A_NONE);
 			continue;
@@ -2166,9 +2218,8 @@ static void draw_page(void)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE — see kch_scrollbar. The
-	 * Apps page is every recorded default handler on the machine, which is
-	 * the longest list this window has and the one that gave no sign of
-	 * having a below-the-fold at all.
+	 * Apps page is the fixed roles plus every default the user declared,
+	 * the longest list this window has.
 	 */
 	kch_scrollbar(0, w - 1, 1, pane_rows, n, top, KT_SURFACE);
 

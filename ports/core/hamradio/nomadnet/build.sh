@@ -9,11 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# The Reticulum client that needs no toolkit: pages, messages and file
-# transfer in urwid. It reads ~/.nomadnetwork and starts its own Reticulum
-# instance, or attaches to an rnsd already running for the user.
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+pip3 install --ignore-installed --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
 
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/nomadnet.desktop" <<'DESKTOP'

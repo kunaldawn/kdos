@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# musl has no arc4random_buf, so configure links libbsd-overlay whenever libbsd
-# is installed; the declared dependency makes that the only outcome.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \

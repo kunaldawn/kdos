@@ -66,12 +66,12 @@ between these and the stable core: their arithmetic is asserted against recorded
 candidate. KDOS builds for x86_64 only.
 
 The natively ported applications are the least proved part. The lists of the userland phases,
-`40_lang` to `44_apps`, name 1,870 recipes for the languages, the system, the graphical stacks,
-the toolkits and the applications, every source fetched and hashed; 859 of them have not been
-through a build: 55 of 197 in `40_lang`, 302 of 967 in `41_system`, 75 of 186 in `42_graphics`,
-183 of 243 in `43_toolkits` and 244 of 280 in `44_apps`. No application has been started on an
-image. Of the recipes that do build, 73 carry changes that no build has carried out, among them
-`pinentry` drawing a Qt dialog and `libdvdread` linking `libdvdcss`. See
+`40_lang` to `44_apps`, name 1,916 recipes for the languages, the system, the graphical stacks,
+the toolkits and the applications, every source fetched and hashed; 76 of them are not in the
+build tree: 11 of 177 in `40_lang`, 49 of 1,012 in `41_system`, 5 of 193 in `42_graphics`, 5 of
+248 in `43_toolkits` and 6 of 286 in `44_apps`. No application has been started on an image. No
+package in the build tree was built from its current recipe: every recipe hash differs from the
+one recorded under `/var/lib/kpkg/db/.recipe/`, so the next build rebuilds every port. See
 [Applications and boxes](#applications-and-boxes) below.
 
 Screen reading of KDOS's own windows has no row, because there is nothing to rate: a KDOS surface
@@ -88,7 +88,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,027 recipes, 2,003 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
+| The ports tree | Stable | 2,106 recipes, 2,081 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata`, `XZ_OPT='-e --check=sha256 -T1'` and a 300 MiB `XZ_DEFAULTS` memory limit, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times, and equal to their tar recompressed on two threads with `xz -9 --block-size=32MiB`. It also installs the port through `kpkg install`, once with the deleted `xz -0` package and once with a kept cache that must match the `-9` bytes. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry and the log classifier |
@@ -96,15 +96,21 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 | Upstream sources | In progress | The format-2 index names no file yet, so every source comes from upstream until `ports/publish` fills it. Preflight checks the scripts and the index; no harness publishes to or fetches from the archive |
 | The pack format | Stable | Malformed footers, both footer formats, signature states and a flipped payload byte are each asserted by the library self-test |
 | The binary host | In progress | Signing, the index and deltas are asserted against a synthetic port. `make build KDOS_MAKE_BINHOST=1` writes a signed one to `build/binhost/`; no public binary host exists |
+| Updates over the network | In progress | `kpkg fetch`'s archive-then-upstream order, its refusal of a copy with the wrong hash and its offline exit are asserted by the self-test. `kdos update fetch` (the signature check, the refusal of an older tree, the exchange with `/ports`) and the recorded problems have been run against local directories in a container with no network; no release carries a signed tree yet. See [Known gaps](known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree) |
 | The application catalogue | Stable | 73 applications and 2 datasets over 7 runtimes and 2 base packs, offered in 7 groups (17 `group` lines). Preflight checks the catalogue's rows against the tree. Applications are built on demand on the machine; the image carries the catalogue and no applications |
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,024 recipes, 889 are absent from the build tree's package
-  database. 859 of them are in the lists of `40_lang` to `44_apps` and have not been through a
-  build. Of the other 30, 22 are `50_desktop` ports and 2 are `60_kernel` ports, absent because
-  this build tree stops before those phases, and 6 are recipes no phase list names. The figure is
-  the recipe names absent from the package database: the names of the directories holding a
+- **The ports tree.** Of the 2,106 recipes, 86 are absent from the build tree's package
+  database. 85 are named by a phase list and no build of the tree has installed them: 76 in
+  `40_lang` to `44_apps` (above), 8 in `30_foundation` (`grep`, `mpdecimal`, `muon`, `musl-utils`,
+  `skalibs`, `sysvinit`, `utmps`, `which`) and `fortify-headers` in `20_selfhost`. The 86th is
+  `kdos-installer`, which `10_bootstrap` compiles by script and never records as a package. The
+  database also holds `toybox`, which no recipe names, and `texlive-doc`, whose recipe
+  `ports/unbuilt` lists as built by no phase; the orphan sweep removes both from the image. Every
+  other recipe is named by a phase list or built by a phase script, and `testing/bookcounts.py`
+  fails on one that is not. The figure is the
+  recipe names absent from the package database: the names of the directories holding a
   `kpkgbuild` (`ports/core/*/*/kpkgbuild` and `src/*/*/kpkgbuild`), sorted under `LC_ALL=C`, and
   `comm -23` of them against `ls build/fs/var/lib/kpkg/db`.
   `testing/preflight.sh` checks that every recipe parses as metadata, declares
@@ -211,7 +217,7 @@ See [Packs and boxes](../03-architecture/packs-and-boxes.md) and
 | kdos-packd | Beta | The self-test runs `kdos-packd --fixture`, which solves and composes without mounting: it asserts the lowerdir order (application, runtime, base), signature verification, and the refusal to compose a data pack into a box root. On a booted machine that already holds packs, `testing/packlane.sh` installs a pack, mounts it read-only, composes a box and reports each skip with its reason. The image carries no packs, so they must be imported before that harness can pass. Rollback is not exercised by any harness |
 | Boxes | Stable | One box per application, in daily use. The self-test asserts that a box profile prints the podman flag behind every key, reports an unknown key by name, and says which keys it cannot enforce rather than reporting success |
 | kdos-appbox | Stable | Every application launcher on the system goes through it. The self-test asserts launcher generation from an image's desktop entries, that a second box's launcher cannot collide with the default's, and that `kdos-appbox open` resolves a path to the program that opens it |
-| Native applications | Experimental | 522 recipes in `43_toolkits` and `44_apps`, with their dependencies in `40_lang` to `42_graphics`, from the X11 client libraries, GTK, Qt 6 and 5, QtWebEngine, KDE Frameworks 6, WebKitGTK and wxWidgets up to the browsers, office suites, creative, science, radio and CAD applications, games and emulators, each named in the list of the userland phase that builds it, `40_lang` to `44_apps`, in the file of its shelf. Every source is fetched and its hash recorded; the published source archive holds almost none of them. Of those 522, 427 have not been through a build, and no application has been started on an image. See [Known gaps](known-gaps.md#the-native-applications-have-not-been-built) |
+| Native applications | Experimental | 534 recipes in `43_toolkits` and `44_apps`, with their dependencies in `40_lang` to `42_graphics`, from the X11 client libraries, GTK, Qt 6 and 5, QtWebEngine, KDE Frameworks 6, WebKitGTK and wxWidgets up to the browsers, office suites, creative, science, radio and CAD applications, games and emulators, each named in the list of the userland phase that builds it, `40_lang` to `44_apps`, in the file of its shelf. Every source is fetched and its hash recorded; the published source archive holds almost none of them. Of those 522, 427 have not been through a build, and no application has been started on an image. See [Known gaps](known-gaps.md#the-native-applications-have-not-been-built) |
 | kdos-boxsock | Stable | Every boxed client is tagged through it with the `security-context-v1` protocol (which marks a Wayland connection as coming from a sandbox), and the compositor grants a box an interface only when its profile names it. The self-test compiles it against the protocol |
 
 ## Daemons
@@ -248,9 +254,9 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,024 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 2,003 | `find ports/core -name kpkgbuild \| wc -l` |
-| — in `src/system` | 5 | `find src/system -name kpkgbuild \| wc -l` |
+| Port recipes | 2,106 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 2,081 | `find ports/core -name kpkgbuild \| wc -l` |
+| — in `src/system` | 6 | `find src/system -name kpkgbuild \| wc -l` |
 | — in `src/art` | 6 | `find src/art -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 8 | `find src/desktop -name kpkgbuild \| wc -l` |
 | — in `src/daemons` | 5 | `find src/daemons -name kpkgbuild \| wc -l` |
@@ -262,7 +268,7 @@ a clean checkout and you should get the same number.
 | Catalogue base packs | 2 | `grep -c '^base ' src/system/kdos-appbox/catalogue` |
 | Catalogue `group` lines | 17 | `grep -c '^group ' src/system/kdos-appbox/catalogue` |
 | Catalogue groups | 7 | `awk '$1=="group"{print $2}' src/system/kdos-appbox/catalogue \| sort -u \| wc -l` |
-| Kernel | 7.2.7 | `grep '^version' ports/core/*/linux/kpkgbuild` |
+| Kernel | 7.2.11 | `grep '^version' ports/core/*/linux/kpkgbuild` |
 | C libraries written here | 17 | `ls -d src/libs/*/ \| wc -l` |
 | Names `kdos-shell` answers to | 55 | the `TOOLS[]` table in `src/desktop/kdos-shell/main.c` |
 | Distinct `kdos-shell` surfaces | 54 | the distinct entry points in that table |

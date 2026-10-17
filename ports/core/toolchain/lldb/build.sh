@@ -9,32 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# A STANDALONE LLDB IS THE ONLY SHAPE THIS TREE CAN BUILD: llvm and clang are
-# already installed packages, and LLDBStandalone.cmake resolves them through
-# their installed cmake packages. Pointing LLVM_DIR and Clang_DIR at those
-# directories makes the search exact — the HINTS-driven find_package would
-# otherwise be free to pick up any other LLVM on the builder.
-#
-# LLVM_TARGETS_TO_BUILD is deliberately NOT set: it arrives from LLVMConfig
-# with the full target list llvm was built with, and lldb uses it to decide
-# which ABI and disassembler plugins to compile. Narrowing it here would drop
-# architectures whose backends are already on the image.
-#
-# LLDB_INCLUDE_TESTS MUST BE SET: a standalone configure pins LLVM_INCLUDE_TESTS
-# ON as an internal cache entry and LLDB_INCLUDE_TESTS defaults to it, so the
-# default build pulls in the test suite and the lit tooling it needs.
-#
-# LIBEDIT CARRIES THE INTERACTIVE PROMPT: IOHandlerEditline constructs an
-# Editline only when LLDB_ENABLE_LIBEDIT is on, and without it `(lldb)` is a
-# plain line read with no history, no arrow-key editing and no tab completion.
-# lldb accepts no other line editor — readline is not a choice it offers.
-# An explicit ON is a hard requirement rather than a hint, so a missing
-# libedit stops configure instead of quietly producing the narrow prompt.
-#
-# TREE-SITTER HIGHLIGHTS RUST AND SWIFT SOURCE LISTINGS. The grammars ship in
-# the lldb tree as grammar.js, and the tree-sitter CLI turns each into a
-# parser at build time. Its default JavaScript runtime is node, which is not
-# a dependency here; `native` is the QuickJS runtime compiled into the CLI.
 export TREE_SITTER_JS_RUNTIME=native
 cmake -S lldb -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -65,10 +39,5 @@ cmake -S lldb -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# The manual pages are built by target and installed by hand, as in llvm.
-# LLVM_MAIN_SRC_DIR must name this tree: the docs target puts
-# $LLVM_MAIN_SRC_DIR/../utils/docs on PYTHONPATH for the llvm_sphinx module
-# conf.py imports, and the value LLVMConfig carries is the llvm port's own
-# unpacked source, which no longer exists.
 cmake --build build --target docs-lldb-man
 install -Dm644 build/docs/man/*.1 -t "$PKG/usr/share/man/man1"

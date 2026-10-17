@@ -14,4 +14,6 @@ release     = 1
 source      = https://github.com/$name/$name/releases/download/$version/$name-$version.tar.gz
 sha256      = 6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e  libjpeg-turbo-3.2.0.tar.gz
 description = A fork of the original IJG libjpeg which uses SIMD to accelerate baseline JPEG compression and decompression
-depends     = cmake ninja yasm
+homepage    = https://libjpeg-turbo.org/
+license     = IJG AND BSD-3-Clause AND Zlib
+depends     = cmake ninja nasm zlib libspng

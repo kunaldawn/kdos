@@ -28,3 +28,4 @@
 hicolor-icon-theme
 
 sound-theme-freedesktop
+icon-naming-utils

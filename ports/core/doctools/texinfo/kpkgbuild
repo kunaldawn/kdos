@@ -14,4 +14,6 @@ release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
 sha256      = 51f74eb0f51cfa9873b85264dfdd5d46e8957ec95b88f0fb762f63d9e164c72e  texinfo-7.3.tar.xz
 description = Programs for reading, writing, and converting info pages
+homepage    = https://www.gnu.org/software/texinfo/
+license     = GPL-3.0-or-later
 depends     = ncurses perl gettext libintl

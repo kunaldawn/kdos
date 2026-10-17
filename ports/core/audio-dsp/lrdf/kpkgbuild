@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/swh/LRDF/archive/refs/ta
 sha256      = d579417c477ac3635844cd1b94f273ee2529a8c3b6b21f9b09d15f462b89b1ef  lrdf-0.6.1.tar.gz
 description = RDF metadata library for LADSPA plugins
 homepage    = https://github.com/swh/LRDF
+license     = GPL-2.0-or-later
 depends     = autoconf automake libtool pkgconf raptor2

@@ -35,6 +35,10 @@ mkdir -p build && cd build
 make
 make DESTDIR=$SYSROOT install
 
+# No libtool archive outlives this step: it is installed outside any
+# package, so nothing later removes it.
+rm -f $SYSROOT/usr/lib/liblzma.la
+
 rm -rf "$XZ_SRC"
 touch "$MARK/xz"
 

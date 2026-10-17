@@ -2645,7 +2645,7 @@ static void preview_startup(Manager *m)
 static void preview_plan(Manager *m)
 {
 	static char *steps0[] = { "000_file_system.sh", "020_musl_libc.sh",
-				  "062_toybox.sh" };
+				  "062_coreutils.sh" };
 	static char *steps2[] = { "030_launchers.sh", "050_theme.sh",
 				  "090_initramfs.sh", "110_iso.sh" };
 	char **steps[KBUILD_MAX_PHASES] = { steps0, NULL, steps2 };

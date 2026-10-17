@@ -9,7 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The install paths come from qt6-qtbase's installed build internals.
 mkdir -p build && cd build
 cmake .. -G Ninja -Wno-dev \
 	-DCMAKE_BUILD_TYPE=Release \

@@ -27,3 +27,6 @@ libevdev
 mtdev
 libwacom
 libinput
+
+# The 3D mouse daemon every libspnav client connects to over /run/spnav.sock.
+spacenavd

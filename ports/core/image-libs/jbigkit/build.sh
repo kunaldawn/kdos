@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Upstream's makefiles build static archives only. The objects are compiled
-# here once with -fPIC and linked into two shared libraries, so the printer
-# drivers that link libjbig85 (splix) and anything linking libjbig take the
-# library from this package instead of carrying a private copy.
 cd libjbig
 for f in jbig jbig85 jbig_ar; do
 	gcc $CFLAGS -fPIC -c $f.c -o $f.o

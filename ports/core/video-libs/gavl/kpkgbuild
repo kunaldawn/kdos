@@ -15,4 +15,5 @@ source      = https://downloads.sourceforge.net/sourceforge/gmerlin/gavl-$versio
 sha256      = 51aaac41391a915bd9bad07710957424b046410a276e7deaff24a870929d33ce  gavl-1.4.0.tar.gz
 description = Gmerlin audio and video library — colourspace, scaling and sample-format conversion for frei0r's plugins
 homepage    = https://gmerlin.sourceforge.net/
+license     = GPL-2.0-or-later
 depends     = pkgconf

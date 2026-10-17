@@ -14,6 +14,6 @@
 	--disable-static \
 	--mandir=/usr/share/man \
 	--disable-docs \
-	--with-oniguruma=builtin
+	--with-oniguruma=yes
 make
 make DESTDIR=$PKG install

@@ -15,3 +15,4 @@ source      = https://poppler.freedesktop.org/poppler-data-$version.tar.gz
 sha256      = c835b640a40ce357e1b83666aabd95edffa24ddddd49b8daff63adb851cdab74  poppler-data-0.4.12.tar.gz
 description = CMaps and encoding tables poppler needs to render CJK and Cyrillic PDFs
 homepage    = https://poppler.freedesktop.org/
+license     = BSD-3-Clause AND (GPL-2.0-only OR GPL-3.0-only) AND MIT

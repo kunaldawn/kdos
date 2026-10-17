@@ -34,8 +34,10 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     echo "[*] building $IMAGE image (first run)..."
     docker build -t "$IMAGE" "$(dirname "${BASH_SOURCE[0]}")"
 fi
-[ -f "$QCOW" ] || qemu-img create -f qcow2 "$QCOW" 20G 2>/dev/null || \
-    docker run --rm -v "$REPO_ROOT/build:/build" "$IMAGE" -c "qemu-img create -f qcow2 /build/kdos.qcow2 20G"
+# Sparse, and above the install size kinstall checks against (about 53 GB).
+DISK_SIZE=${KDOS_DISK:-96G}
+[ -f "$QCOW" ] || qemu-img create -f qcow2 "$QCOW" "$DISK_SIZE" 2>/dev/null || \
+    docker run --rm -v "$REPO_ROOT/build:/build" "$IMAGE" -c "qemu-img create -f qcow2 /build/kdos.qcow2 $DISK_SIZE"
 
 # Display backend. On a Wayland host, QEMU's gtk,gl=on through XWayland from a
 # container renders a BLACK window on NVIDIA — so present as a native Wayland

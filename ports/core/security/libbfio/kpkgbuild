@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libbfio
+version     = 20260623
+release     = 1
+source      = https://github.com/libyal/libbfio/releases/download/$version/$name-alpha-$version.tar.gz
+sha256      = 95ba2ee1a6365000b454f810e92709fd02bfcac0bba8a9b36512a0e71cc1bf32  libbfio-20260623.tar.gz
+description = libyal basic file input/output abstraction library — the I/O layer of the libyal image and volume readers
+homepage    = https://github.com/libyal/libbfio
+license     = LGPL-3.0-or-later
+depends     = pkgconf

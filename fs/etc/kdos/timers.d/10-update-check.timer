@@ -1,6 +1,10 @@
-# What the ports tree pins that is not installed, for the panel's badge and
-# kdos-update. Nightly and NOT at midnight: every machine that runs a job at
-# 00:00 runs it at the same second, and this one reads the whole ports tree.
+# The newest signed ports tree, then what it pins that is not installed, for
+# the panel's badge and kdos-update. --fetch replaces /ports with the latest
+# release's tree when that is newer and records a failure — no network, a
+# download or a signature that failed — which the badge then shows; the check
+# answers against whatever tree is in place either way. Nightly and NOT at
+# midnight: every machine that runs a job at 00:00 runs it at the same second,
+# and this one asks the same server and reads the whole ports tree.
 #
 # -s 8h is the missed-run rule and it is snooze's, not ours: a machine that was
 # ASLEEP at 04:17 runs the job ONCE when it wakes, if it wakes within eight
@@ -11,4 +15,4 @@
 # snooze started at boot begins looking one second from now, so the slot it
 # slept through is simply tomorrow's. Reaching back needs `-t FILE`, and a
 # timefile only the job itself may touch.
-update-check  -H 4 -M 17 -s 8h  --  kdos update check --json --out /var/lib/kdos/update.json
+update-check  -H 4 -M 17 -s 8h  --  kdos update check --fetch --out /var/lib/kdos/update.json

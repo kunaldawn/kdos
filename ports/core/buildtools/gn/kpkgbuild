@@ -16,4 +16,5 @@ source      = $name-$version.tar.zst
 sha256      = 71f6ae18d05cdbb05c236a0481c1fc40700b6478aed169206ba9528a9cb1cead  gn-0.2540.tar.zst
 description = Chromium's meta-build system, which writes ninja files from BUILD.gn
 homepage    = https://gn.googlesource.com/gn
+license     = BSD-3-Clause
 depends     = python3 ninja

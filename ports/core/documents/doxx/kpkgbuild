@@ -16,5 +16,6 @@ sha256      = 72af676ca30b27adc7a13b17a48aac88589c940accba28453f3d94a861bed961  
 sha256      = bea81f0c6705e49e7dade437514dceb234e45cdd3eff01b2cad17cb621f67978  doxx-vendor-0.1.4.tar.xz
 description = A .docx reader in the terminal
 homepage    = https://github.com/bgreenwell/doxx
-depends     = rust
+license     = MIT
+depends     = rust zstd
 vendoring   = rust

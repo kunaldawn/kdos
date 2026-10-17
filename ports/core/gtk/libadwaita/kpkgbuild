@@ -15,4 +15,5 @@ source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$vers
 sha256      = b1bf56239269d101a6391ad4553c910eff9cc6170b803916405477ef60a66c84  libadwaita-1.10.0.tar.xz
 description = GNOME's building blocks for GTK 4 applications — adaptive widgets and styles
 homepage    = https://gnome.pages.gitlab.gnome.org/libadwaita/
+license     = LGPL-2.1-or-later
 depends     = meson glib gtk4 fribidi gobject-introspection glib-introspection vala

@@ -10,25 +10,11 @@
 # ---------------------------------
 
 
-# Eigen 5 fails the exact 3.3.x version check and drops DynamicSparseMatrix;
-# Boost 1.87-1.89 removed io_service and the header-only boost_system library;
-# CGAL 6 returns optionals from its property maps; OpenCASCADE 7.8 merged the
-# STEP toolkits into TKDESTEP. The OCCT wrapper goes to the library directory
-# and is dlopen()ed by name. The imgui patch creates the frame the hint
-# notification measures, which is otherwise a crash on wx 3.2 at start-up.
-# The serial-port code includes <sys/unistd.h>, a name only glibc carries;
-# serial-unistd includes <unistd.h>.
 for p in eigen5 boost-1.87 boost-1.88 boost-1.89 cgal6 \
 	opencascade-tkdestep occtwrapper-libdir imgui-hint-segfault serial-unistd; do
 	patch -p1 -i "$PORT_SRC/$p.patch"
 done
 
-# Three small libraries PrusaSlicer pins and no other port uses are built
-# static into a private prefix that never reaches the package: libbgcode (the
-# binary G-code format, at the commit upstream's dependency build names), the
-# heatshrink compressor under it, using the build files upstream ships for
-# it, and fltk's nanosvg fork, whose nsvgRasterizeXY() the texture loader
-# calls. Upstream's own dependency build downloads each of them instead.
 _deps="$SRC_ROOT/deps"
 _depopts="-G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release
 	-DCMAKE_INSTALL_PREFIX=$_deps -DCMAKE_INSTALL_LIBDIR=lib
@@ -49,24 +35,11 @@ ninja -C "$SRC_ROOT/build-bgcode" install
 cmake -S "$SRC_ROOT/nanosvg-$_nanosvg" -B "$SRC_ROOT/build-nanosvg" $_depopts
 ninja -C "$SRC_ROOT/build-nanosvg" install
 
-# Every other dependency is the system's. OpenVDB is located through the find
-# module its own port installs, which knows its Imath and Blosc. FHS puts the
-# resources, vendor profiles, desktop entries and hicolor PNGs under /usr/share.
-# PrusaSlicer sets GDK_BACKEND=x11 for itself, because its GL canvas is GLX:
-# it runs under Xwayland. The configuration and version checks run at start-up
-# and find no network, which the program reports and carries on from; the
-# bundled profiles are complete without them.
-#
-# The sources include <nanosvg/nanosvg.h>, and NanoSVG's package exports the
-# nanosvg/ directory itself; targets that link libbgcode get the prefix's
-# include/ from it, and libslic3r_cgal, which links none of the private
-# dependencies, does not. The prefix's include/ is given to every target.
 export CXXFLAGS="$CXXFLAGS -isystem $_deps/include"
 cmake -S . -B build -G Ninja -Wno-dev \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
-	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DCMAKE_PREFIX_PATH="$_deps" \
 	-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON \
 	-DOPENVDB_FIND_MODULE_PATH=/usr/lib/cmake/OpenVDB \
@@ -81,15 +54,8 @@ cmake -S . -B build -G Ninja -Wno-dev \
 ninja -C build
 DESTDIR=$PKG ninja -C build install
 
-# Bundled data is English only; the interface falls back to its source
-# strings.
 rm -rf "$PKG/usr/share/PrusaSlicer/localization"
 
-# Open With matches an entry's MimeType against the canonical type the glob
-# table names, and resolves no alias: upstream's entry claims .3mf and .obj
-# by their aliases (application/vnd.ms-3mfdocument,
-# application/prs.wavefront-obj), which would leave PrusaSlicer off the list
-# for its own project format. The entry claims model/3mf and model/obj.
 cat > "$PKG/usr/share/applications/PrusaSlicer.desktop" <<'EOF'
 [Desktop Entry]
 Name=PrusaSlicer

@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# IT LINKS NOTHING, WHICH IS WHY IT IS FIRST IN THE GIS CHAIN. geos is pure
-# C++ computational geometry — intersections, buffers, validity — and both
-# proj and gdal above it are built against it, so it has to exist before
-# either.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

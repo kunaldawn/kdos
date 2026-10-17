@@ -15,4 +15,5 @@ source      = https://github.com/ccache/ccache/releases/download/v$version/ccach
 sha256      = b093ac5d38204cb4d9f29b0bbd570675aa5a592a78e6675b2c506dbe045234e7  ccache-manual-4.14.tar.xz
 description = The ccache manual page
 homepage    = https://ccache.dev/
+license     = GPL-3.0-or-later
 depends     = asciidoctor perl ccache

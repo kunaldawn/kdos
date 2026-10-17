@@ -16,3 +16,4 @@ source      = $name-$version.tar.gz::https://github.com/snes9xgit/snes9x/archive
 sha256      = 84560ce38a734ac8299645883d8e0c0423b7da2430bde5f88276bba1be6d5330  libretro-snes9x-1.63.tar.gz
 description = Snes9x as a libretro core — Super Nintendo emulator (non-commercial licence)
 homepage    = https://www.snes9x.com
+license     = LicenseRef-Snes9x

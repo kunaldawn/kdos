@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/YosysHQ/icestorm/archive
 sha256      = 928dd541d15540a796a3d320122794d8d76acff90783de8c5747f613e474652f  icestorm-1.1.tar.gz
 description = The iCE40 bitstream database, packer and programmer
 homepage    = https://github.com/YosysHQ/icestorm
+license     = ISC
 depends     = pkgconf libftdi python3

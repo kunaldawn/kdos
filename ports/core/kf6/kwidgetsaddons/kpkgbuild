@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = ab1333c258678caa7562120a1c03bb71779f7232f1a0e75b9525d921dee3e0a3  kwidgetsaddons-6.30.0.tar.xz
 description = KDE Frameworks: add-on widgets and classes for Qt Widgets
 homepage    = https://api.kde.org/frameworks/kwidgetsaddons/html/
+license     = LGPL-2.0-or-later AND LGPL-2.0-only AND LGPL-2.1-or-later AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase

@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Every platform an ICD advertises must be compiled in here too: the loader
-# drops VK_KHR_xcb_surface and VK_KHR_xlib_surface from the instance extension
-# list when it was built without them, and an X11 client under Xwayland
-# (winex11, SDL and GLFW on their X11 path) then cannot create a surface.
 cmake -GNinja -B build \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \

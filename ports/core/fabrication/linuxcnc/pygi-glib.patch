@@ -1,0 +1,22 @@
+--- a/lib/python/gremlin_view.py
++++ b/lib/python/gremlin_view.py
+@@ -84,7 +84,7 @@
+ import subprocess
+ import gettext
+ import datetime
+-import glib # for glib.GError
++from gi.repository import GLib as glib # for glib.GError
+ 
+ g_ui_dir          = linuxcnc.SHARE + "/linuxcnc"
+ g_periodic_secs   = 1 # integer
+--- a/lib/python/pyngcgui.py
++++ b/lib/python/pyngcgui.py
+@@ -2985,7 +2985,7 @@
+         ct_of_pages = 0
+         try:
+             import popupkeyboard
+-            import glib # for glib.GError
++            from gi.repository import GLib as glib # for glib.GError
+             if keyboardfile is not None:
+                 global g_popkbd
+                 if (keyboardfile in ('default','yes') ):

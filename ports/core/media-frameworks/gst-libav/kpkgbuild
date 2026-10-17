@@ -9,10 +9,11 @@
 # ---------------------------------
 
 name        = gst-libav
-version     = 1.28.7
+version     = 1.28.8
 release     = 1
 source      = https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz
-sha256      = 58da51dd39ecf1cf6faade34cc6412001be2e2e145bca8ae0f45336f60a36ab2  gst-libav-1.28.7.tar.xz
+sha256      = 98ad3d7f8932c495e268708903f1c3388d5f26a0db34727a9f861ee23b724177  gst-libav-1.28.8.tar.xz
 description = GStreamer FFmpeg-based codec plugins
 homepage    = https://gstreamer.freedesktop.org/
+license     = LGPL-2.1-or-later
 depends     = gst-plugins-base ffmpeg

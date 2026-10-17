@@ -15,4 +15,5 @@ source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$vers
 sha256      = 05b497229073ff557f10b326e074c5066f8743a302d4820ab97bcb5cd2dab087  libhandy-1.8.3.tar.xz
 description = Adaptive widgets for GTK 3 applications
 homepage    = https://gitlab.gnome.org/GNOME/libhandy
+license     = LGPL-2.1-or-later
 depends     = meson glib gtk3 fribidi gobject-introspection glib-introspection vala

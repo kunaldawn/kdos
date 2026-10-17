@@ -15,4 +15,5 @@ source      = https://github.com/cracklib/cracklib/releases/download/v$version/$
 sha256      = 1d1b83676b5673051b9373e1ca0db81c1fa88faf9a195a3c1af984fd9c250d66  cracklib-2.10.3.tar.xz
 description = Password-strength checking library, with its small English word dictionary packed
 homepage    = https://github.com/cracklib/cracklib
+license     = LGPL-2.1-or-later
 depends     = zlib

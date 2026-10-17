@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = afflib
+version     = 3.7.22
+release     = 1
+source      = https://github.com/sshock/AFFLIBv3/archive/refs/tags/v$version.tar.gz
+sha256      = 67481fc520ff927bf61aea0bf2d660feb73e24cc329335bebb064f8f12115dcb  afflib-3.7.22.tar.gz
+description = Advanced Forensic Format (AFF) image library, the aff tools and affuse
+homepage    = https://github.com/sshock/AFFLIBv3
+license     = BSD-4-Clause AND LicenseRef-Public-Domain
+depends     = autoconf automake libtool pkgconf zlib openssl libmd expat readline fuse

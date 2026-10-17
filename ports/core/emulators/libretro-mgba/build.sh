@@ -9,15 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The libretro core alone, from the mgba tarball: no library, no front end
-# and no external dependency, so the core links nothing RetroArch does not
-# already have. The install rules for headers and licences are unconditional
-# and would collide with the mgba package, so only the core is copied.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
-	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DBUILD_LIBRETRO=ON \
 	-DSKIP_LIBRARY=ON \
 	-DBUILD_SHARED=OFF \

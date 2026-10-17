@@ -22,4 +22,5 @@ sha256      = 4667363a946eb903c509bbc407de56e731c9d8bcc24935a32de2cd3a53b6bc17  
 sha256      = ad908f696d9bcedf95717d016944f0629c17ebaecaf9bb054a63acef627e51dd  surfer-vendor-0.7.0.tar.xz
 description = Waveform viewer for VCD, FST and GHW simulation traces, drawn with egui
 homepage    = https://surfer-project.org
-depends     = rust cmake pkgconf libxkbcommon wayland mesa libglvnd
+license     = EUPL-1.2
+depends     = rust cmake pkgconf libxkbcommon wayland mesa libglvnd zstd

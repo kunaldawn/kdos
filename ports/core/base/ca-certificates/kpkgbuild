@@ -21,4 +21,5 @@ sha256      = beb7e6dfe6499926e52c075c27bcfbe4c957f8609c575b3860273ae2806f63eb  
 sha256      = 8e278f4982210b37e4f9a048bd6ed23df41e4a054085bd73f8242628f03d09ca  mk-ca-bundle-8.22.0.pl
 description = Bundle of CA Root Certificates from Mozilla
 homepage    = https://firefox-source-docs.mozilla.org/security/nss/
+license     = MPL-2.0
 depends     = perl

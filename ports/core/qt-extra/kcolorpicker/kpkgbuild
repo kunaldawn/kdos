@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/ksnip/kColorPicker/archi
 sha256      = e78c785ec4a8a22a48a91835c97601f5704b5076b154415353b0d2697dc0b4f7  kcolorpicker-0.3.1.tar.gz
 description = Qt colour picker button with a palette popup, used by kImageAnnotator
 homepage    = https://github.com/ksnip/kColorPicker
+license     = LGPL-3.0-or-later
 depends     = cmake ninja qt6-qtbase

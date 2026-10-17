@@ -13,4 +13,5 @@ version     = 6.5
 release     = 1
 description = KDOS phosphor GTK theme — a recoloured adw-gtk3
 homepage    = https://github.com/lassekongo83/adw-gtk3
+license     = LGPL-2.1-or-later
 depends     = kdos-theme

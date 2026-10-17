@@ -9,7 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# SETUP_TOOLS=OFF: the setup tools download and install program updates.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
@@ -21,9 +20,6 @@ cmake -S . -B build -G Ninja \
 	-D DBUS_NOTIFICATIONS=ON \
 	-D CAPSLOCK_DETECTION=ON \
 	-D NO_DOXYGEN=ON \
-	-D NO_SPHINX=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
-
-find "$PKG/usr/share" -name '*.qm' ! -name '*_en*.qm' -delete

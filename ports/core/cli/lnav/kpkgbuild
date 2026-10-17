@@ -16,6 +16,7 @@ sha256      = 9eddf42dbbbd59af423cd25f49e744969c95a3901f9aba07e48481d4c41c4c4e  
 sha256      = 5690aa4ef2b9515d8039091751c640c5b57b31bc88d5d5017718473278596494  lnav-vendor-0.14.1.tar.xz
 description = Log navigator with SQL over log lines
 homepage    = https://lnav.org/
+license     = BSD-2-Clause
 vendoring   = rust
 vendordir   = src/third-party/lnav-rs-ext
 depends     = autoconf automake libtool pkgconf ncurses pcre2 sqlite zlib bzip2 libarchive curl libunistring rust

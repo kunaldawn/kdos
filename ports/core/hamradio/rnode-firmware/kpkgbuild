@@ -67,4 +67,5 @@ sha256      = 31824f9202fde735f408a3efdbeaeca31703c61f2f1e4a8dc3517131df89c111  
 sha256      = 6c25700fcf891c93c1851f9dbd674290ee52b02e8e7621674df1edd1bf921793  rnode-firmware-xiao_esp32s3-1.86.zip
 description = RNode LoRa radio firmware images, for rnodeconf to flash with no network
 homepage    = https://unsigned.io/rnode_firmware/
+license     = GPL-3.0-only
 depends     = python3-rns python3-adafruit-nrfutil

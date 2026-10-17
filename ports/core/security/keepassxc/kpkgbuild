@@ -15,4 +15,5 @@ source      = https://github.com/keepassxreboot/keepassxc/releases/download/$ver
 sha256      = be34eeb297881adea4f894c7c6e4a1835bd7927f8043ddea495040df4792a7de  keepassxc-2.7.12.tar.xz
 description = Password manager — KeePass databases, TOTP, SSH agent, browser integration and the Secret Service
 homepage    = https://keepassxc.org/
+license     = GPL-2.0-only OR GPL-3.0-only
 depends     = cmake ninja qt5-qtbase qt5-qtsvg qt5-qttools qt5-qtx11extras qt5-qtwayland libX11 libXi libXtst botan argon2 zlib minizip qrencode readline pcsc-lite libusb asciidoctor

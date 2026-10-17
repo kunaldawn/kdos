@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/R/RE/R
 sha256      = 3bb2a20ba35df958dc0a4f2306fc05d903d8b8c4de3c8beefce17739d281c958  perl-file-sharedir-1.118.tar.gz
 description = Locate per-distribution and per-module shared files of perl modules
 homepage    = https://metacpan.org/dist/File-ShareDir
+license     = Artistic-1.0-Perl OR GPL-1.0-or-later
 depends     = perl perl-class-inspector perl-file-sharedir-install

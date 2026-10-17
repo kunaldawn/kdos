@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# rttr installs every public header with mode 0400, which no user but root can
-# read, so nothing built as anybody else could include them; the patch drops
-# that mode from the header install. The licence and README keep their 0400
-# from a separate install rule and are made readable after the install. Only
-# the shared library is built: no static copy, tests, examples or
-# documentation.
 patch -p1 -i "$PORT_SRC/permission.patch"
 mkdir build && cd build
 cmake .. -G Ninja \

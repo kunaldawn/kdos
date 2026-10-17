@@ -16,4 +16,5 @@ source      = https://github.com/ndevilla/iniparser/archive/v$version.tar.gz
 sha256      = 97375d6a3c481ebb27c47884aa57934599eed027a3015225e2f13173efd39643  iniparser-4.3.0.tar.gz
 description = Small C library for parsing INI files
 homepage    = https://github.com/ndevilla/iniparser
+license     = MIT
 depends     = cmake ninja

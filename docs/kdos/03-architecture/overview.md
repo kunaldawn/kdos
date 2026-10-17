@@ -20,15 +20,15 @@ it.
 
 | Ring | Lives in | Contains | Built by |
 |---|---|---|---|
-| Core | `ports/core/` | musl, toybox, the toolchain, the Linux kernel, Limine, wlroots, podman and distrobox, the libraries and tools of the base system, the GUI toolkits (GTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk) and the applications ported natively on them | Compiled on the build machine from upstream source archives, which `make fetch` downloads and verifies against each recipe's `sha256` |
+| Core | `ports/core/` | musl, the GNU userland, sysvinit, the toolchain, the Linux kernel, Limine, wlroots, podman and distrobox, the libraries and tools of the base system, the GUI toolkits (GTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk) and the applications ported natively on them | Compiled on the build machine from upstream source archives, which `make fetch` downloads and verifies against each recipe's `sha256` |
 | Desktop | `src/desktop/`, `src/daemons/`, `src/system/`, `src/art/`, `src/libs/` | The compositor, the panel, the terminal, the root daemons, the installer, the `kdos` command, the themes, and the `libk*` C libraries they share | Compiled on the build machine from this repository's own source |
 | Outer | `src/system/kdos-appbox/catalogue` | Applications KDOS does not port natively, and alternatives to those it does: browsers, office suites, CAD, media tools, IDEs, games | Declared as Debian packages; built by podman on the machine that asks for them |
 
 A **port** is one unit of the first two rings: a directory holding a recipe (`kpkgbuild`,
 declarative metadata that is parsed and never sourced) and a `build.sh` beside it. `kpkg`, the
 package manager, builds a port into a package and installs it. In the core ring, musl is the C
-library, toybox is the single multi-call binary that provides the base system's command-line
-tools, and wlroots is the library a Wayland compositor is built on.
+library, the GNU tools (coreutils, grep, sed, gawk, findutils), each a separate program, are the
+base system's command line, sysvinit's `init` is PID 1, and wlroots is the library a Wayland compositor is built on.
 
 The boundary between the rings follows build cost and ownership. Anything the desktop needs in
 order to exist is compiled on the build machine. The compositor is one of these: `kdos-comp` is a
@@ -50,12 +50,9 @@ first field is `app`):
 
 | Where | Count |
 |---|---|
-| `ports/core` | 2,003 recipes, on 102 shelves |
-| `src/system` | 5 recipes |
-| `src/art` | 6 recipes |
-| `src/desktop` | 8 recipes |
-| `src/daemons` | 5 recipes |
-| All port repositories | 2,024 recipes |
+| `ports/core` | about 2,000 recipes, on 102 shelves |
+| `src/system`, `src/art`, `src/desktop`, `src/daemons` | about two dozen recipes |
+| All port repositories | about 2,000 recipes; the exact counts are in [Status](../06-reference/status.md#scale) |
 | Catalogue `app` rows (outer ring) | 73 |
 
 `ports/core` files each port one level down, on a **shelf** named for its subject:
@@ -90,7 +87,7 @@ are split into one file per shelf under `packages.d/`, is the subject of
 ## From power-on to a drawn window
 
 A KDOS machine reaches a usable desktop through a chain of handoffs, each program starting or
-executing the next. There is no service manager in the chain: PID 1 is toybox's `init`, which
+executing the next. There is no service manager in the chain: PID 1 is sysvinit's `init`, which
 runs one start-up script and keeps the login consoles alive, and everything after the login is
 started by the login shell.
 
@@ -107,7 +104,7 @@ kernel ─────────── applies CPU microcode from the early in
 initramfs init ─── splash, A/B slot selection, LUKS unlock, LVM, find and check the root
    │  switch_root (util-linux's)
    ▼
-init (toybox, PID 1), reading /etc/inittab
+init (sysvinit, PID 1), reading /etc/inittab
    ├─ /etc/init.d/rcS ──── fsck and mount, then the numbered service scripts in order
    ├─ kdos-getty tty1 → kdos-login → agetty → login shell
    │       │  ~/.bash_profile, on tty1 only
@@ -120,8 +117,8 @@ init (toybox, PID 1), reading /etc/inittab
    │       ▼
    │   kdos-comp ─────────── supervises the panel and the desktop's own daemons,
    │                         draws the window frames, runs the phosphor pass
-   ├─ kdos-getty tty2 → getty ── the recovery console
-   └─ ttyS0 ──────────────────── a root shell on the serial line, when a key is pressed
+   ├─ kdos-getty tty2 → agetty ─ the recovery console
+   └─ agetty ttyS0 ───────────── the serial line: root on the live medium, a login when installed
 ```
 
 The terms in that chart, in order:
@@ -134,7 +131,7 @@ The terms in that chart, in order:
 | initramfs | A small in-memory filesystem the kernel starts first; its `init` finds, unlocks, checks and mounts the real root — see [The initramfs](boot-and-init.md#the-initramfs) |
 | A/B slots | Two root partitions on a machine set up for them: an update is installed into the other slot and tried, and the slot known to work stays the fallback — see [A/B slot selection](boot-and-init.md#ab-slot-selection) |
 | LUKS | Linux disk encryption; an encrypted root is unlocked in the initramfs, before it can be mounted |
-| `switch_root` | The call that makes the real root filesystem `/` and runs its `init`. KDOS uses util-linux's, because toybox's changes root in a way no container can later start under — see [`switch_root`](boot-and-init.md#switch_root) |
+| `switch_root` | The call that makes the real root filesystem `/` and runs its `init`. KDOS uses util-linux's, which moves the new root onto `/`; one that only `chroot()`s leaves a root no container can later start under — see [`switch_root`](boot-and-init.md#switch_root) |
 | Phosphor pass | The compositor's CRT-style shader over the finished frame; it runs only on the GLES2 renderer — see [The phosphor pass](../04-programs/kdos-comp.md#the-phosphor-pass) |
 
 ### The console and the splash
@@ -160,9 +157,9 @@ a password at `tty1`. Without an active line `agetty` asks for a name and passwo
 
 The login shell's `~/.bash_profile` starts `kdos-desktop` when it is running on `tty1` and no
 Wayland display is set. Any other login — `tty2`, SSH, the serial line — is an ordinary shell.
-`tty2` is deliberately a plain getty: it is the recovery console to switch to when the desktop on
-`tty1` does not come up. The serial port `ttyS0` offers a root shell for debugging once a key is
-pressed on it.
+`tty2` is deliberately a plain `agetty`: it is the recovery console to switch to when the desktop on
+`tty1` does not come up. The serial port `ttyS0` logs root in with no password on the live medium,
+for debugging, and asks for a login on an installed system.
 
 ### The session
 
@@ -254,7 +251,7 @@ those marked "skipped when there is nothing to manage" stand down on a machine w
 hardware or filesystem they look after.
 
 ```
-init (PID 1, toybox)
+init (PID 1, sysvinit)
  │
  ├─ /etc/init.d/rcS ──────────── the numbered service scripts, in order
  │   ├─ 01 udev   02 modules   03 lvm   05 hostname   10 sysctl   12 zram
@@ -263,10 +260,11 @@ init (PID 1, toybox)
  │   ├─ 30 network   35 chrony   40 dbus   41 polkitd
  │   ├─ 42 modemmanager   42 networkmanager   45 avahi   45 seatd
  │   ├─ 47 pcscd   50 alsa   52 smartd   55 tlp   60 bluetooth
- │   ├─ 51 lsmd   62 virtlogd   63 libvirtd
+ │   ├─ 51 lsmd   61 spacenavd   62 virtlogd   63 libvirtd
  │   ├─ 70 sshd   80 cups   81 cups-browsed   82 ipp-usb
- │   ├─ skipped when there is nothing to manage: 43 boltd   51 mdmonitor
- │   │    53 xfs_healer   54 thermald   64 lircd
+ │   ├─ skipped when there is nothing to manage: 43 boltd
+ │   │    44 switcheroo-control   51 mdmonitor   53 xfs_healer   54 thermald
+ │   │    64 lircd
  │   ├─ skipped until configured: 31 babeld   46 hostapd   56 nut
  │   │    63 gssd   65 brltty   71 snmpd   72 nfsd   73 mosquitto   74 prosody
  │   │    75 mumble-server   76 postgresql   77 radicale   78 maddy
@@ -302,9 +300,9 @@ init (PID 1, toybox)
  │               ├─ Xwayland        started when the first X11 client connects
  │               └─ application clients, host and boxed
  │
- ├─ kdos-getty tty2 → getty ── an ordinary login: the recovery console
+ ├─ kdos-getty tty2 → agetty ── an ordinary login: the recovery console
  │
- └─ bash -l on ttyS0          once a key is pressed on the serial line
+ └─ agetty ttyS0              root on the live medium, a login prompt when installed
 ```
 
 `rcS` runs every executable `/etc/init.d/NN_name.sh` in the order the shell sorts them, skipping
@@ -414,8 +412,8 @@ can run, and how to get a piece of it without installing anything into the syste
 | Built by | `kpkg`, from a recipe | podman, from the catalogue, on this machine |
 | Format | A reproducible `<name>-<version>-<release>.tar.xz` archive | Container image layers; EROFS with a signed footer when exported as packs |
 | Installed by | `kpkg`, as root, into `/` | `kdos-appbox`, as a box; `kdos-packd` for an imported pack |
-| Verified by | The recipe's `sha256` for the source, plus a signature when installing from a binary host (a server of prebuilt, signed packages) | Nothing KDOS controls, when built here; the payload hash and then the signature at mount time, when imported |
-| Updated with | `kdos update`: a rebuild, or a signed binary host, installed into the other A/B slot where the machine has one | A rebuild against the catalogue's Debian snapshot |
+| Verified by | The recipe's `sha256` for the source, and the release key's signature for a fetched recipe tree; a signature when `kpkg binhost` installs from a binary host (a server of prebuilt, signed packages) | Nothing KDOS controls, when built here; the payload hash and then the signature at mount time, when imported |
+| Updated with | `kdos update`: a newer signed ports tree, rebuilt from source on the machine, installed into the other A/B slot where the machine has one | A rebuild against the catalogue's Debian snapshot |
 | Trusted keyring | `/etc/kdos/keys` (empty as shipped) | `/etc/kdos/keys/packs` |
 
 Building an application fetches from Debian's archive at a pinned snapshot, which apt verifies,

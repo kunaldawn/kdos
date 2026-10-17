@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/nemtrif/utfcpp/archive/r
 sha256      = 6d6a5493a111884cc085ee31babfe6d9960c8fb08fc80a64852eaeea8323dbc1  utfcpp-4.2.1.tar.gz
 description = Header-only C++ library for checking and converting UTF-8, UTF-16 and UTF-32 text
 homepage    = https://github.com/nemtrif/utfcpp
+license     = BSL-1.0
 depends     = cmake ninja

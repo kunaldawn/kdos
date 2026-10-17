@@ -61,6 +61,7 @@ libstdcxx-arm-none-eabi
 binutils-riscv64-unknown-elf
 gcc-riscv64-unknown-elf
 picolibc-riscv64-unknown-elf
+libstdcxx-riscv64-unknown-elf
 
 # The spare-parts drawer. avr-libc rather than picolibc: AVR is a Harvard
 # machine with its own address spaces and picolibc does not target it.
@@ -93,6 +94,9 @@ espflash
 # terminal program looks for, so lrzsz installs them too.
 minicom
 lrzsz
+
+# The assembler and linker for Microchip PIC parts.
+gputils
 
 # The 8-bit families gcc has no back end for at all: 8051, STM8, Z80 and PDK.
 sdcc

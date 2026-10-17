@@ -171,6 +171,40 @@ const char *kxdg_mime_for_arg(const char *arg, char *out, size_t n);
  * many were written. */
 int kxdg_mime_icon_names(const char *mime, char out[][64], int n);
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Handlers (kxdg_handlers.c)
+ *
+ * WHAT OPENS A TYPE, from one resolver. `kdos-appbox open` acts on the answer
+ * and the Settings window's Apps page shows it; a second resolver would let
+ * the page name one program while a double-click starts another.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Which list answered: the user's [Default Applications], the user's
+ * [Added Associations], the shipped /etc/xdg defaults, or an installed
+ * entry's MimeType through a mimeinfo.cache. */
+enum { KXDG_LAYER_NONE = 0, KXDG_LAYER_USER, KXDG_LAYER_ADDED,
+       KXDG_LAYER_SYSTEM, KXDG_LAYER_CACHE };
+
+typedef struct {
+	char id[192];		/* the desktop id a list named              */
+	char path[600];		/* the installed entry it resolved to       */
+	int layer;		/* KXDG_LAYER_* that named it first         */
+} KxdgHandler;
+
+/*
+ * Every installed handler for `mime`, best first. Returns how many were
+ * written, up to `max`.
+ *
+ * `*defaulted` (may be NULL) is 1 when a [Default Applications] line answered,
+ * the user's or the shipped one, rather than merely the first thing that
+ * claimed the type: a default or a single candidate opens without asking, two
+ * or more with no default put the chooser up. The user's default stops the
+ * search, so it is then the only row.
+ */
+int kxdg_handlers(const char *mime, KxdgHandler *out, int max, int *defaulted);
+/* A layer as a person reads it: "your default", "KDOS default", … */
+const char *kxdg_layer_name(int layer);
+
 /*
  * The files `app` most recently opened, newest first, from freedesktop's
  * recently-used.xbel. Returns how many were written.

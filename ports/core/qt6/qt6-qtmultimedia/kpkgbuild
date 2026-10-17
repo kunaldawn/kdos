@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qtmultimedia
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qtmultimedia
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = 967b5e02ec6b793cdb360622cd6e703132836af983208d678dae4b50f109cd9f  qt6-qtmultimedia-6.11.2.tar.xz
+sha256      = 3143f53b64257ba2a0685c940f5dce476c75871ff86b516de45cfd54ea93a62d  qt6-qtmultimedia-6.12.0.tar.xz
 description = Qt 6 Multimedia — audio, video playback and capture through FFmpeg and PipeWire
 homepage    = https://www.qt.io
+license     = LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 depends     = cmake ninja qt6-qtbase pkgconf qt6-qtdeclarative qt6-qtshadertools qt6-qtsvg qt6-qtquick3d ffmpeg pipewire libpulse libva mesa libglvnd libX11 libXrandr libXext
 group       = qt6

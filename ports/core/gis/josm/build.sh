@@ -8,12 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Upstream builds with Ant and Ivy and bundles its dependencies' class files.
-# Here every dependency is its published source, compiled with JOSM in one
-# javac run; nothing is fetched and no prebuilt class file is used.
-
-# JavaCC generates the MapCSS parser. Its source archive carries its own
-# generated parsers, so it compiles with javac alone, and only runs here.
 mkdir -p build/javacc-src build/javacc
 unzip -q "javacc-$_javacc-sources.jar" -d build/javacc-src
 find build/javacc-src -name '*.java' | LC_ALL=C sort > build/javacc.list
@@ -38,23 +32,12 @@ for _j in jmapviewer-$_jmapviewer jakarta.json-api-$_jsonapi parsson-$_parsson \
 	unzip -q -o "$_j-sources.jar" -d "$_dep"
 done
 cp -r "$SRC_ROOT/adobe-xmp-core-$_xmp/com" "$_dep/"
-# jsvg's published sources lack its annotations module; the release tree
-# has both.
 cp -r "$SRC_ROOT/jsvg-$_jsvg/jsvg/src/main/java/." "$SRC_ROOT/jsvg-$_jsvg/annotations/src/main/java/." "$_dep/"
-# The opening-hours parser ships as its grammar.
 ( cd "$_dep/ch/poole/openinghoursparser" && java -cp "$SRC/build/javacc" javacc \
 	-GRAMMAR_ENCODING=UTF-8 OpeningHoursParser.jj )
 rm -rf "$_dep/META-INF/maven" "$_dep/META-INF/MANIFEST.MF" "$_dep/META-INF/versions"
-# Everything is compiled into one unnamed module: a module descriptor on
-# the source path would turn the whole compilation into that module.
 find "$_dep" -name module-info.java -delete
 
-# The JSON provider is found through ServiceLoader and JCS builds its
-# auxiliary caches and logger by class name, so parsson and JCS are
-# compiled whole. JCS's JDBC, HTTP and servlet caches and its Log4j logger
-# need libraries this system does not carry and JOSM configures none of
-# them, so they are removed first. Everything else javac reaches from
-# JOSM's own classes through the source path.
 _jcs=$_dep/org/apache/commons/jcs3
 rm -rf "$_jcs/auxiliary/disk/jdbc" "$_jcs/auxiliary/remote/http" "$_jcs/utils/servlet" \
 	"$_jcs/auxiliary/remote/server/RemoteCacheStartupServlet.java" \
@@ -66,9 +49,6 @@ rm -rf "$_jcs/auxiliary/disk/jdbc" "$_jcs/auxiliary/remote/http" "$_jcs/utils/se
 javac -encoding UTF-8 -nowarn -proc:none -implicit:class --release 21 \
 	-d build/classes -sourcepath "$_dep:src" @build/sources.list
 
-# The EPSG definitions are generated from the projection sources by a
-# script run against the compiled classes. It writes to the file it finds on
-# the class path, so an empty one has to be there first.
 mkdir -p build/epsg resources/data/projection
 : > resources/data/projection/custom-epsg
 javac -encoding UTF-8 -nowarn -d build/epsg -cp build/classes scripts/BuildProjectionDefinitions.java
@@ -78,7 +58,6 @@ _date=$(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%d %H:%M:%S')
 printf 'Revision: %s\nBuild-Date: %s\n' "$version" "$_date" > resources/REVISION
 cp CONTRIBUTION README LICENSE resources/
 
-# English only: the other interface translations go.
 find resources/data -maxdepth 1 -name '*.lang' ! -name 'en*.lang' -delete
 
 cp -r resources/. build/classes/
@@ -96,17 +75,11 @@ Application-Name: JOSM - Java OpenStreetMap Editor
 Add-Exports: java.base/sun.security.action java.desktop/com.sun.imageio.spi java.desktop/com.sun.imageio.plugins.jpeg
 Add-Opens: java.base/java.lang java.base/java.nio java.base/jdk.internal.loader java.base/jdk.internal.ref java.desktop/javax.imageio.spi java.desktop/javax.swing.text.html java.prefs/java.util.prefs
 MANIFEST
-# One quoted name per line: some resource names contain spaces.
 ( cd build/classes && find . -type f | LC_ALL=C sort | sed 's/.*/"&"/' > ../classes.list )
 ( cd build/classes && jar --create --file ../josm.jar --manifest ../manifest.txt \
 	--date="$(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ')" @../classes.list )
 
 install -Dm644 build/josm.jar "$PKG/usr/share/josm/josm.jar"
-# In the editor, --offline=JOSM_WEBSITE keeps JOSM from fetching its start
-# page, version check, plugin list and help from josm.openstreetmap.de; the
-# OSM API, for downloading and uploading map data, stays available. The
-# render, validate and project commands take the first argument and accept
-# no editor option, so they are passed through as they are.
 install -d "$PKG/usr/bin"
 cat > "$PKG/usr/bin/josm" <<'LAUNCHER'
 #!/bin/sh
@@ -134,8 +107,6 @@ for _i in "$_n"/icons/hicolor/*/apps/org.openstreetmap.josm.png; do
 	install -Dm644 "$_i" "$PKG/usr/share/icons/hicolor/$_s"
 done
 
-# Swing is an X11 client under Xwayland; its WM_CLASS is the main class
-# with the dots turned into dashes.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/org.openstreetmap.josm.desktop" <<'DESKTOP'
 [Desktop Entry]

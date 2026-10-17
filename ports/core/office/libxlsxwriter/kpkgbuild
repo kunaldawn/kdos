@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/jmcnamara/libxlsxwriter/
 sha256      = e0db59fc248a5ffa465a05ea83a9d466d4bca0e53ab42771515d4ebb467a41c1  libxlsxwriter-1.2.4.tar.gz
 description = C library for writing Excel XLSX files
 homepage    = https://libxlsxwriter.github.io/
-depends     = cmake zlib pkgconf
+license     = BSD-2-Clause-Views AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MPL-2.0
+depends     = cmake zlib pkgconf minizip

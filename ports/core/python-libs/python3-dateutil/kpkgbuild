@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/p/python-dateutil/p
 sha256      = 37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3  python3-dateutil-2.9.0.post0.tar.gz
 description = Date parsing, relative deltas and time zones — pandas and matplotlib import it
 homepage    = https://pypi.org/project/python-dateutil/
+license     = Apache-2.0 AND BSD-3-Clause
 depends     = python3 python3-setuptools python3-pip python3-setuptools-scm python3-six

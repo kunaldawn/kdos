@@ -9,8 +9,11 @@
 # ---------------------------------
 
 name        = pkgconf
-version     = 3.0.7
+version     = 3.0.9
 release     = 1
 source      = https://distfiles.ariadne.space/pkgconf/$name-$version.tar.xz
-sha256      = c926ff491cbd9a331a589160811bd97ab1749b4d5198a519338f2cdfabe6940a  pkgconf-3.0.7.tar.xz
+sha256      = 6ab2d3b8087dcf500e34003a6a8934dca55d0a3d6066aeafb03c352db3e68bfd  pkgconf-3.0.9.tar.xz
 description = Package compiler and linker metadata toolkit
+homepage    = https://github.com/pkgconf/pkgconf
+license     = ISC
+depends     = muon

@@ -13,4 +13,5 @@ version     = 0.2.0
 release     = 1
 description = KDOS Resources — per-device pages, a process table and an application rollup
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
 depends     = wayland wayland-protocols wlroots fcft fontconfig pixman libxkbcommon libpng

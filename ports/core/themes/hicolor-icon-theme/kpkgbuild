@@ -14,4 +14,6 @@ release     = 1
 source      = https://icon-theme.freedesktop.org/releases/$name-$version.tar.xz
 sha256      = db0e50a80aa3bf64bb45cbca5cf9f75efd9348cf2ac690b907435238c3cf81d7  hicolor-icon-theme-0.18.tar.xz
 description = Freedesktop.org Hicolor icon theme
+homepage    = https://www.freedesktop.org/wiki/Software/icon-theme/
+license     = GPL-2.0-only
 depends     = meson ninja

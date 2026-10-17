@@ -15,3 +15,4 @@ source      = https://github.com/adplug/libbinio/releases/download/$name-$versio
 sha256      = 398b2468e7838d2274d1f62dbc112e7e043433812f7ae63ef29f5cb31dc6defd  libbinio-1.5.tar.bz2
 description = Binary I/O stream class library, the file layer AdPlug reads through
 homepage    = https://github.com/adplug/libbinio
+license     = LGPL-2.1-or-later

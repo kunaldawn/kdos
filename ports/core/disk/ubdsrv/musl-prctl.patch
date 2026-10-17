@@ -1,0 +1,10 @@
+--- a/lib/ublksrv.c
++++ b/lib/ublksrv.c
+@@ -5,7 +5,6 @@
+ #include <sys/time.h>
+ #include <sys/resource.h>
+ #include <sys/prctl.h>
+-#include <linux/prctl.h>
+ 
+ #include "ublksrv_priv.h"
+ #include "ublksrv_aio.h"

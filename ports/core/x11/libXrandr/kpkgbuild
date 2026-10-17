@@ -15,4 +15,5 @@ source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
 sha256      = 72b922c2e765434e9e9f0960148070bd4504b288263e2868a4ccce1b7cf2767a  libXrandr-1.5.5.tar.xz
 description = X11 RandR extension client library
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libXrandr
+license     = HPND-sell-variant
 depends     = libX11 libXext libXrender xorgproto

@@ -52,8 +52,30 @@
 
 #include "launch.h"
 
-static struct sh_app apps[SH_MAX_APPS];
-static int napps;
+/*
+ * THE INDEX GROWS, it has no ceiling. A fixed table stops the Start menu at its
+ * size with nothing on screen to say an application is missing, and a machine
+ * with every pack installed carries several hundred entries. It grows only
+ * inside sh_apps_load(), so a pointer handed out afterwards stays valid until
+ * the next load, which is the lifetime every caller already assumes.
+ */
+static struct sh_app *apps;
+static int napps, capps;
+
+/* Room for one more row, or 0 when the allocator refuses — the entry is then
+ * left out, which is the one way the index can still lose a row. */
+static int apps_reserve(void)
+{
+	if (napps < capps)
+		return 1;
+	int ncap = capps ? capps * 2 : SH_APPS_CHUNK;
+	struct sh_app *n = realloc(apps, (size_t)ncap * sizeof(*apps));
+	if (!n)
+		return 0;
+	apps = n;
+	capps = ncap;
+	return 1;
+}
 
 /*
  * GNOME 2's Applications submenus, in its order. The Start menu and the menu
@@ -392,7 +414,7 @@ static void add_desktop_file(const char *path)
 	if (find_id(id))
 		return;
 
-	if (napps >= SH_MAX_APPS || kxdg_load(&e, path, "Desktop Entry") != 0)
+	if (!apps_reserve() || kxdg_load(&e, path, "Desktop Entry") != 0)
 		return;
 
 	KxdgLaunch kl;
@@ -489,7 +511,7 @@ static void scan_dir(const char *dir)
 
 	if (!d)
 		return;
-	while ((e = readdir(d)) && napps < SH_MAX_APPS) {
+	while ((e = readdir(d))) {
 		size_t n = strlen(e->d_name);
 		if (n < 9 || strcmp(e->d_name + n - 8, ".desktop"))
 			continue;
@@ -540,7 +562,8 @@ int sh_apps_load(void)
 		dirs = c + 1;
 	}
 
-	qsort(apps, (size_t)napps, sizeof(apps[0]), cmp_name);
+	if (napps)
+		qsort(apps, (size_t)napps, sizeof(apps[0]), cmp_name);
 	usage_load();
 	return napps;
 }
@@ -583,9 +606,14 @@ static int cmp_rank(const void *pa, const void *pb)
 
 int sh_apps_frequent(const struct sh_app **out, int max)
 {
-	const struct sh_app *tmp[SH_MAX_APPS];
+	const struct sh_app **tmp;
 	int n = 0;
 
+	if (!napps)
+		return 0;
+	tmp = malloc((size_t)napps * sizeof(*tmp));
+	if (!tmp)
+		return 0;
 	for (int i = 0; i < napps; i++)
 		if (apps[i].uses > 0)
 			tmp[n++] = &apps[i];
@@ -594,6 +622,7 @@ int sh_apps_frequent(const struct sh_app **out, int max)
 		n = max;
 	for (int i = 0; i < n; i++)
 		out[i] = tmp[i];
+	free(tmp);
 	return n;
 }
 
@@ -645,7 +674,7 @@ static int cmp_hit(const void *pa, const void *pb)
 
 int sh_apps_match(const char *needle, const struct sh_app **out, int max)
 {
-	struct hit hits[SH_MAX_APPS];
+	struct hit *hits;
 	int n = 0;
 
 	if (!needle || !*needle) {
@@ -656,6 +685,9 @@ int sh_apps_match(const char *needle, const struct sh_app **out, int max)
 			out[i] = &apps[i];
 		return napps < max ? napps : max;
 	}
+
+	if (!napps || !(hits = malloc((size_t)napps * sizeof(*hits))))
+		return 0;
 
 	for (int i = 0; i < napps; i++) {
 		const struct sh_app *a = &apps[i];
@@ -709,6 +741,7 @@ int sh_apps_match(const char *needle, const struct sh_app **out, int max)
 		n = max;
 	for (int i = 0; i < n; i++)
 		out[i] = hits[i].app;
+	free(hits);
 	return n;
 }
 

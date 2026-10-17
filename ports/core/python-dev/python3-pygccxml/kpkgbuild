@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pygccxml
+version     = 3.0.2
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pygccxml/pygccxml-$version.tar.gz
+sha256      = e1a8c738765f4eb2819cc7439975631f838e59a1cf3fa49896e0a1967c5e2bee  python3-pygccxml-3.0.2.tar.gz
+description = C++ declarations from CastXML as a Python object tree
+homepage    = https://github.com/CastXML/pygccxml
+license     = BSL-1.0
+depends     = python3 python3-setuptools python3-pip castxml

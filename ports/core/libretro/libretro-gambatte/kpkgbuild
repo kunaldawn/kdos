@@ -17,3 +17,4 @@ source      = $name-$version.tar.gz::https://github.com/libretro/gambatte-libret
 sha256      = bd39cd38662135d17e221a7fd34baf2908a40065ade16edf2e8d1168b21b921e  libretro-gambatte-20260821.tar.gz
 description = Gambatte as a libretro core — an accuracy-first Game Boy and Game Boy Color emulator
 homepage    = https://github.com/libretro/gambatte-libretro
+license     = GPL-2.0-only

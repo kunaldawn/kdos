@@ -15,4 +15,5 @@ source      = https://github.com/manisandro/gImageReader/releases/download/v$ver
 sha256      = 4604b53e8d952c68ce4198d7b8d864327ef6afaf597e7909f6b31f0eb9b4c425  gimagereader-3.4.3.tar.xz
 description = OCR front end for Tesseract — scan or open images and PDFs, recognise and edit text
 homepage    = https://github.com/manisandro/gImageReader
+license     = GPL-3.0-or-later
 depends     = cmake ninja gettext intltool pkgconf qt6-qtbase qt6-qttools qt6-qtwayland qtspell enchant poppler quazip djvulibre podofo tesseract leptonica sane-backends

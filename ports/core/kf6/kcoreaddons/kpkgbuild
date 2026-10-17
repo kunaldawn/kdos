@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = cc68fe15beb0fca2036cff8742f468c1345406bf99793fffacbf8f2a3f89bc4b  kcoreaddons-6.30.0.tar.xz
 description = KDE Frameworks: core non-GUI utilities, plugins and jobs
 homepage    = https://api.kde.org/frameworks/kcoreaddons/html/
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-only AND LGPL-2.1-or-later AND (LGPL-2.1-only WITH Qt-LGPL-exception-1.1 OR LicenseRef-Qt-Commercial) AND LGPL-2.1-only AND CC0-1.0 AND (MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative util-linux eudev

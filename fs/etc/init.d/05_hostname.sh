@@ -7,7 +7,7 @@ case "$1" in
     start)
         echo "[KDOS] Setting hostname..."
         if [ -f /etc/hostname ]; then
-            hostname -F /etc/hostname
+            { read -r _h || [ -n "$_h" ]; } < /etc/hostname && hostname "$_h"
             echo "[KDOS] Hostname set to: $(hostname)"
         else
             echo "[SKIP] $NAME: /etc/hostname not found"

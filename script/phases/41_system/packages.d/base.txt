@@ -22,7 +22,6 @@
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside
 # them, or when a shelf file names a port an earlier phase installs.
 
-file
 iana-etc
 dbus
 
@@ -45,3 +44,8 @@ lsof
 
 # Seats with no logind — kdos-comp talks to it through libseat.
 seatd
+
+# s6-ipcserver and s6-setuidgid run utmps' utmpd and wtmpd (06_utmps.sh);
+# execline is s6's library and gives the service its execline-cd.
+execline
+s6

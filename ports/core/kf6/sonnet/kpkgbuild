@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 1574ef5c17f38e315de104b94580ccc1b7ec1db2650cb4bace2e14159bf61e10  sonnet-6.30.0.tar.xz
 description = KDE Frameworks: spell checking through Hunspell and Aspell
 homepage    = https://api.kde.org/frameworks/sonnet/html/
+license     = LGPL-2.1-or-later AND LGPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative hunspell hunspell-en aspell aspell-en

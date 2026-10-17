@@ -25,7 +25,10 @@ GZIP_SRC=$(extract_port_source gzip)
 
 cd "$GZIP_SRC"
 
-./configure --prefix=/usr
+./configure \
+    --host=$KDOS_TARGET \
+    --build=$(build-aux/config.guess) \
+    --prefix=/usr
 make
 make DESTDIR=$SYSROOT install
 

@@ -41,7 +41,10 @@ log; see [The install runs in a child process](#the-install-runs-in-a-child-proc
 On the live desktop the launcher entry **Install KDOS**
 (`/etc/skel/.local/share/applications/kdos-install.desktop`) runs
 `foot --title="Install KDOS" --app-id=kdos-install -- sudo kinstall`: the installer needs root,
-and `sudo` needs a real terminal to prompt in. From a console, run it directly:
+and `sudo` needs a real terminal to prompt in. The entry exists only on the medium: after copying
+the image the installer deletes it from the installed `/etc/skel` and from the live account's
+home, and rebuilds the `mimeinfo.cache` beside each, so an installed machine never offers to
+reinstall itself. From a console, run it directly:
 
 ```sh
 sudo kinstall
@@ -187,7 +190,8 @@ hardware clock is left as it is. An image with no zone table offers `UTC` alone.
 devices, with its size, transport (`sata`, `nvme`, `usb`, `virtio` or `mmc`) and model, and draws
 its current partition table. It preselects the first disk that is neither the boot medium nor
 read-only. It refuses the medium KDOS is running from, a read-only disk, and a disk smaller than
-the install size plus 768 MiB.
+the install size plus 768 MiB. The install size is what the live root holds, about 53 GB, since
+every package is on the medium; a target needs about 56 GB.
 
 **Layout.** Offers the three plans:
 
@@ -301,7 +305,10 @@ rsync -aHAX -x --numeric-ids --info=progress2 --no-inc-recursive <excludes> / /m
 The excludes are the contents of `/dev`, `/proc`, `/sys`, `/tmp`, `/run`, `/mnt` and `/media`;
 `/lost+found`; the run's own log; and what must be unique to each machine,
 `/var/lib/dbus/machine-id` and `/etc/ssh/ssh_host_*`, which the installed system generates on
-its first boot. Without the boxed-application library (`alien_apps = 0`), the live user's
+its first boot; and the account files' backup copies, `/etc/passwd-`, `/etc/group-`,
+`/etc/shadow-` and `/etc/gshadow-`, which shadow's tools write beside each file they change and in
+which a password set in the live session would be carried over. The image itself ships none of
+them: `70_image` removes them. Without the boxed-application library (`alien_apps = 0`), the live user's
 container storage under `/home/kdos/.local/share/containers` is left out as well. `rsync` exit
 status 24 ("some files vanished") is accepted, since files come and go on a running live system.
 The excluded directories are then created empty, `/tmp` with mode `01777`.
@@ -321,7 +328,7 @@ UUID=<swap>  none       swap   defaults             0 0     # a swap partition
 account when the user name changed, and rewrites `/etc/passwd`, `/etc/group`, `/etc/shadow`,
 `/etc/subuid` and `/etc/subgid`. The root entry in `/etc/shadow` is always rewritten: locked
 (`!`) or with the root password. The live image's root password never reaches the installed
-system.
+system: neither the image nor the copy carries the `-` backups of these files.
 
 **Theme** runs the live system's `kdos theme <accent>` twice, with `HOME` pointed at
 `/mnt/etc/skel` and at `/mnt/home/<user>`, rather than changing root into the target: the two trees
@@ -387,7 +394,9 @@ The services an answer file can turn on or off, and whether each is on by defaul
 
 Each name matches an init script `/etc/init.d/NN_<name>.sh`. A disabled service gets an empty file
 `/etc/service.disabled/<name>` on the installed system, which `rcS` skips; removing the file
-turns the service back on. Other services (udev, D-Bus, seatd and the rest) are not choices and
+turns the service back on. The live image ships `sshd`'s marker, and choosing the SSH server here
+is what removes it on the installed system; port 22 stays closed in the firewall until `ssh` is
+opened there. Other services (udev, D-Bus, seatd and the rest) are not choices and
 cannot be turned off here.
 
 Whether the user is an administrator has no key. An answer-file install always keeps the user
@@ -423,6 +432,14 @@ name follows the key, so an empty value would read as a setting and behave as no
 such line gains one only when autologin is on. The key is also the only place the desktop account
 is named for tty1 (`/etc/inittab` runs `kdos-getty tty1 kdos-login tty1` and names no account),
 so this line is what carries a renamed user to the login.
+
+The same step makes the serial console ask for a login. The image's `/etc/inittab` runs
+`serial-getty --autologin root … ttyS0` on the `S0` line, which hands its arguments to `agetty`
+and logs root in on the serial port with no
+password: right for a live medium, and on an installed machine a root shell for anyone who plugs
+into the port. The installer cuts `--autologin root` from that one line of the target's copy and
+keeps the rest of the file as it ships, so `ttyS0` on the installed system is a plain `agetty`
+login prompt. tty1 and tty2 are not touched.
 
 ### Fallbacks, and how an unattended run ends
 
@@ -516,7 +533,7 @@ Three columns each prevent a failure that would only show up later:
   why. Where `fallocate` or `btrfs` is missing, the step falls back to `dd`.
 - **f2fs is a kernel module**, so it is in the initramfs module list in
   `script/phases/70_image/090_initramfs.sh`. ext4, btrfs and xfs are built in: `kdos.config` in the
-  `linux` port sets `CONFIG_XFS_FS=m`, and its `build.sh` then enables it as built-in. The list
+  `linux` port sets all three to `=y`. The list
   names xfs as well, and copying a built-in driver is a no-op. A root on a filesystem the
   initramfs cannot load installs without error and does not boot.
 
@@ -743,9 +760,10 @@ The common part is `kdos_slot=a bootstate=UUID=<ESP> [cryptdevice=UUID=<containe
 root=UUID=<root>`. When the memtest86+ payload is present a fourth entry, **Memory Test
 (memtest86+)**, boots it on UEFI only. The ten-second countdown matches the medium's: the menu is
 the only way to reach the verbose entry and the memory test, which a machine that will not boot
-needs. Any key cancels the countdown. The `KDOS (single user)` entry passes `single`, which nothing
-acts on, so it boots like `KDOS (verbose)`; see
-[There is no single-user mode](../06-reference/known-gaps.md#there-is-no-single-user-mode).
+needs. Any key cancels the countdown. The `KDOS (single user)` entry passes `single`, which the
+initramfs hands on to init: the services start and `sulogin` asks for root's password on the
+console, with no desktop; see
+[Single-user and emergency mode](../03-architecture/boot-and-init.md#single-user-and-emergency-mode).
 
 The boot state file records the machine as slot A with nothing to roll back to:
 

@@ -11,15 +11,22 @@
  *
  * The filename is the only metadata a package carries, so it is parsed back by
  * stripping suffixes: hyphens are legal in the NAME and not in the version or
- * the release.
+ * the release. The one other thing an install reads is the `replaces =` line
+ * of the recipe of that name in the ports tree.
  *
- * Five rules this file keeps, each one a SILENT failure when it is broken:
+ * The rules this file keeps, each one a SILENT failure when it is broken:
  *
  *  - A file that cannot be placed aborts the install and no database entry is
  *    written. An entry written past a failure claims a complete install of a
  *    package that is half on disk.
  *  - The conflict scan and the install walk come off ONE list. Two walks
  *    gathered separately disagree about any path containing a space.
+ *  - The scan asks the database about EVERY staged non-directory path, on an
+ *    install and on an upgrade, whether or not the path is on disk. A path
+ *    deleted from the root, or an upgrade over another package's file, is
+ *    otherwise taken without a word and left claimed by two packages. A path
+ *    another package claims is taken only from a package the recipe names in
+ *    `replaces =`; any other claim refuses the install.
  *  - An upgrade removes orphans: a file present in the old version and absent
  *    from the new otherwise stays on disk forever, owned by nothing. "Absent"
  *    is judged on the canonical spelling, and a path another package claims
@@ -80,9 +87,13 @@ static int split_pkgname(const char *base, char *name, char *ver, char *rel,
  * exactly what `tar -tf` prints for the same archive, so the package is
  * decompressed once and the listing is taken from that one pass. It stays
  * verbatim — ./-prefixed, directories with a trailing slash — because removal
- * keys off that slash and a decade of database files are in that shape.
- * `./.POSTINSTALL` is dropped: it is hoisted out before installation and was
- * never a file the package owns. `raw` is consumed. */
+ * keys off that slash. The extraction runs with `--quoting-style=literal`, so
+ * each line is the name's own bytes: GNU tar's default escapes every byte
+ * outside printable ASCII, and an escaped line names no file, so removal and
+ * every ownership question miss it. A name holding a newline cannot be one
+ * line, and no package ships one. `./.POSTINSTALL` is dropped: it is hoisted
+ * out before installation and was never a file the package owns. `raw` is
+ * consumed. */
 static char *manifest(char *raw, size_t *len)
 {
 	KbBuf out = {0};
@@ -152,9 +163,13 @@ typedef struct {
 	int conflicts;
 	KbBuf *report;
 	const KpOwned *owned;
-	/* When the caller allows an overwrite, a conflict is recorded rather
-	 * than refused: the path and the package that has to give it up. */
-	int take;
+	/* The package being installed, whose own claims (an upgrade's old
+	 * version) are never a conflict. */
+	const char *self;
+	/* The recipe's `replaces =`, space-separated. A path one of these
+	 * claims is recorded rather than refused: the path and the package
+	 * that has to give it up. */
+	const char *replaces;
 	char **taken;
 	char **taken_from;
 	int ntaken, taken_cap;
@@ -183,84 +198,121 @@ static void take_note(Ctx *x, const char *rel, const char *from)
 	x->ntaken++;
 }
 
+/* `name` as a whole word of the space-separated `replaces =` list. */
+static int declared(const char *list, const char *name)
+{
+	size_t nl = strlen(name);
+	for (const char *p = list; p && *p;) {
+		while (*p == ' ' || *p == '\t')
+			p++;
+		size_t n = strcspn(p, " \t");
+		if (n == nl && !strncmp(p, name, nl))
+			return 1;
+		p += n;
+	}
+	return 0;
+}
+
 static int check_conflict(const char *rel, void *u)
 {
 	Ctx *x = u;
+
+	/* A conflict is between PACKAGES. A file that exists but that no
+	 * installed package claims is adopted, not refused: `00_cross` and
+	 * `10_bootstrap` install tar, musl, binutils and gcc by hand, leaving
+	 * files no database entry owns, and the self-hosting phase rebuilds
+	 * exactly those packages with kpkg. Refusing them makes the bootstrap
+	 * impossible. The question goes to the database whether or not the
+	 * path is on disk: a file deleted from the root is still claimed. */
+	const char *owner =
+		x->owned ? kp_owned_other(x->owned, rel, x->self) : NULL;
+	if (!owner)
+		return 0;
+
+	/* Symlink splice: a link-to-directory landing on a link-to-directory
+	 * is the usual /lib -> /usr/lib shape, not a conflict. It is skipped
+	 * at install time too. */
 	char *src = kb_path_join(x->stage, rel);
 	char *dst = kb_path_join(x->root, rel);
-
 	struct stat ss, ds;
-	int have_dst = lstat(dst, &ds) == 0;
-	if (have_dst && lstat(src, &ss) == 0) {
-		/* Symlink splice: a link-to-directory landing on a
-		 * link-to-directory is the usual /lib -> /usr/lib shape, not a
-		 * conflict. It is skipped at install time too. */
-		int src_linkdir = S_ISLNK(ss.st_mode) && kb_is_dir(src);
-		int dst_linkdir = S_ISLNK(ds.st_mode) && kb_is_dir(dst);
-
-		/* A conflict is between PACKAGES. A file that exists but that
-		 * no installed package claims is adopted, not refused.
-		 *
-		 * That is not a loosening for its own sake — it is what
-		 * 20_selfhost is: `00_cross` and `10_bootstrap` install tar,
-		 * musl, binutils and gcc by hand with `make DESTDIR=$SYSROOT
-		 * install`, leaving files no database entry owns, and the
-		 * self-hosting bootstrap then rebuilds exactly those packages
-		 * with kpkg. Refusing them makes the bootstrap impossible.
-		 * A blanket `-f` from the phase is not the alternative: `-f`
-		 * forces a rebuild as well as skipping this scan, so it
-		 * cannot be handed out merely to get an overwrite. */
-		const char *owner =
-			x->owned ? kp_owned_owner(x->owned, rel) : NULL;
-		if (owner && !(src_linkdir && dst_linkdir)) {
-			if (x->take) {
-				take_note(x, rel, owner);
-			} else {
-				x->conflicts++;
-				kb_buf_printf(x->report, "\n  %s", rel);
-			}
-		}
-	}
+	int splice = lstat(dst, &ds) == 0 && lstat(src, &ss) == 0 &&
+		     S_ISLNK(ss.st_mode) && kb_is_dir(src) &&
+		     S_ISLNK(ds.st_mode) && kb_is_dir(dst);
 	free(src);
 	free(dst);
+	if (splice)
+		return 0;
+
+	if (declared(x->replaces, owner)) {
+		take_note(x, rel, owner);
+	} else {
+		x->conflicts++;
+		kb_buf_printf(x->report, "\n  %s (owned by %s)", rel, owner);
+	}
 	return 0;
 }
 
-/* The paths check_conflict can say anything about: those already on disk. A
- * staged path with nothing under it in the root cannot conflict, and on a
- * fresh tree that is every path, so the ownership table is read only for the
- * rest. */
+/* The staged non-directory paths as a vector, for the ownership load. */
 typedef struct {
-	const char *root;
 	char **v;
 	int n, cap;
-} Present;
+} Paths;
 
-static int collect_present(const char *rel, void *u)
+static int collect(const char *rel, void *u)
 {
-	Present *p = u;
-	char *dst = kb_path_join(p->root, rel);
-	struct stat st;
-	if (lstat(dst, &st) == 0) {
-		if (p->n == p->cap) {
-			p->cap = p->cap ? p->cap * 2 : 64;
-			char **nv = kb_calloc((size_t)p->cap, sizeof(*nv));
-			if (p->n)
-				memcpy(nv, p->v, (size_t)p->n * sizeof(*nv));
-			free(p->v);
-			p->v = nv;
-		}
-		p->v[p->n++] = kb_strdup(rel);
+	Paths *p = u;
+	if (p->n == p->cap) {
+		p->cap = p->cap ? p->cap * 2 : 64;
+		char **nv = kb_calloc((size_t)p->cap, sizeof(*nv));
+		if (p->n)
+			memcpy(nv, p->v, (size_t)p->n * sizeof(*nv));
+		free(p->v);
+		p->v = nv;
 	}
-	free(dst);
+	p->v[p->n++] = kb_strdup(rel);
 	return 0;
 }
 
-static void present_free(Present *p)
+static void paths_free(Paths *p)
 {
 	for (int i = 0; i < p->n; i++)
 		free(p->v[i]);
 	free(p->v);
+}
+
+/* `<sha256> <mode> ./<path>` for every placed regular file, the record
+ * `kpkg check` compares the root against. Taken from the root once the
+ * install hook has run, so it is what this install left there. */
+typedef struct {
+	const char *root;
+	KbBuf *out;
+} Record;
+
+static int record_file(const char *rel, void *u)
+{
+	Record *r = u;
+	char *dst = kb_path_join(r->root, rel);
+	struct stat st;
+	char hex[65];
+	if (lstat(dst, &st) == 0 && S_ISREG(st.st_mode) &&
+	    kb_sha256_file(dst, hex) == 0)
+		kb_buf_printf(r->out, "%s %04o ./%s\n", hex,
+			      (unsigned)(st.st_mode & 07777), rel);
+	free(dst);
+	return 0;
+}
+
+/* The `replaces =` line of the recipe named `name`, or "" when the ports tree
+ * holds no such recipe. */
+static void read_replaces(const KpConf *c, const char *name, char *out,
+			  size_t cap)
+{
+	char *dir = NULL;
+	char err[1024];
+	out[0] = 0;
+	if (kp_port_find(c, name, &dir, err, sizeof(err)) == 1)
+		kp_recipe_key(dir, "replaces", out, cap);
+	free(dir);
 }
 
 static int mkdirs(const char *rel, void *u)
@@ -357,14 +409,9 @@ int add_main(int argc, char **argv)
 	int force = 0;
 	const char *pkgfile = NULL;
 
-	const char *ov = getenv("KPKG_OVERWRITE");
-	int overwrite = ov && *ov && strcmp(ov, "0");
-
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--force"))
 			force = 1;
-		else if (!strcmp(argv[i], "--overwrite"))
-			overwrite = 1;
 		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c.root, argv[++i], sizeof(c.root));
 		else if (argv[i][0] == '-' && argv[i][1]) {
@@ -379,7 +426,7 @@ int add_main(int argc, char **argv)
 	}
 
 	if (!pkgfile) {
-		printf("Usage: kpkgadd [--force] [--overwrite] "
+		printf("Usage: kpkgadd [--force] [--root <path>] "
 		       "<package.tar.xz>\n");
 		return 1;
 	}
@@ -460,6 +507,7 @@ int add_main(int argc, char **argv)
 	 * something needed the privilege, in a program that had no way to say
 	 * why it could not have it.
 	 */
+	kb_argv_add(&x, "--quoting-style=literal");
 	kb_argv_add(&x, "-xpvf");
 	kb_argv_add(&x, pkgfile);
 	kb_argv_add(&x, "-C");
@@ -490,7 +538,10 @@ int add_main(int argc, char **argv)
 	KbBuf dirs = {0}, files = {0};
 	walk(tmpl, "", &dirs, &files);
 
-	Ctx ctx = { tmpl, root, 0, NULL, NULL, overwrite, NULL, NULL, 0, 0 };
+	char replaces[1024];
+	read_replaces(&c, name, replaces, sizeof(replaces));
+	Ctx ctx = { tmpl, root, 0, NULL, NULL, name, replaces,
+		    NULL, NULL, 0, 0 };
 
 	int lock = kp_db_lock(&c);
 	if (lock < 0) {
@@ -500,27 +551,36 @@ int add_main(int argc, char **argv)
 		return 1;
 	}
 
-	/* `--force` skips the scan outright, which is what it has always done.
-	 * `--overwrite` still runs it, because the paths it finds are exactly
-	 * the ones that have to change hands afterwards. */
-	if (!upgrade && !force) {
-		Present pr = { root, NULL, 0, 0 };
-		for_each(files.p, collect_present, &pr);
+	/* `--force` skips the scan outright: the files are placed over
+	 * whatever claims them and both packages keep the claim. */
+	if (!force) {
+		Paths pv = { NULL, 0, 0 };
+		for_each(files.p, collect, &pv);
 		KbBuf report = {0};
-		if (pr.n) {
+		if (pv.n) {
 			/* Loaded once, for exactly the paths it is asked
 			 * about. */
-			KpOwned *owned = kp_owned_load_some(&c, pr.v, pr.n);
+			KpOwned *owned = kp_owned_load_some(&c, pv.v, pv.n);
 			ctx.owned = owned;
 			ctx.report = &report;
-			for (int i = 0; i < pr.n; i++)
-				check_conflict(pr.v[i], &ctx);
+			for (int i = 0; i < pv.n; i++)
+				check_conflict(pv.v[i], &ctx);
 			kp_owned_free(owned);
 			ctx.owned = NULL;
 		}
-		present_free(&pr);
+		paths_free(&pv);
 		if (ctx.conflicts) {
-			kp_err("File conflict detected:%s", report.p);
+			kp_err("File conflict detected:%s\n"
+			       "  %s may take a path from a package only "
+			       "when its recipe names that package in "
+			       "`replaces =`", report.p, name);
+			kb_buf_free(&report);
+			for (int i = 0; i < ctx.ntaken; i++) {
+				free(ctx.taken[i]);
+				free(ctx.taken_from[i]);
+			}
+			free(ctx.taken);
+			free(ctx.taken_from);
 			kb_rmtree(tmpl);
 			close(lock);
 			return 1;
@@ -697,6 +757,23 @@ int add_main(int argc, char **argv)
 			kp_msg("Warning: Postinstall hook failed");
 		unlink(hook_kept);
 		free(hook_kept);
+	}
+
+	/* The file record, beside the entry and replaced with it, taken after
+	 * the hook: a hook that sets a mode (dbus's setuid helper) or
+	 * regenerates a file its package ships (ca-certificates' bundle) would
+	 * otherwise fail `kpkg check` on every root it was installed into. An
+	 * upgrade whose record cannot be written leaves none, never the old
+	 * version's: a stale record reports every file this install changed. */
+	if (wrote == 0) {
+		KbBuf rec = {0};
+		Record r = { root, &rec };
+		for_each(files.p, record_file, &r);
+		if (kp_record_files(&c, name, rec.p ? rec.p : "", rec.n) != 0)
+			kp_msg("Warning: no file record written for %s; "
+			       "`kpkg check` can test only that its files "
+			       "exist", name);
+		kb_buf_free(&rec);
 	}
 
 	kp_triggers_run(&trig, root);

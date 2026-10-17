@@ -1,0 +1,152 @@
+--- a/gpsmanshp.c
++++ b/gpsmanshp.c
+@@ -271,7 +271,7 @@
+ }
+ 
+ int GSHPCreateFiles(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPCreateFiles BASEPATH TYPE DIM */
+ { SHPFSETLIST p = FileSets, q;
+   int id, shptype, dim;
+@@ -322,7 +322,7 @@
+ }
+ 
+ int GSHPOpenInputFiles(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPOpenInputFiles BASEPATH */
+ { SHPFSETLIST p = FileSets, q;
+   int id, shptype, dim, nents, i, f[NFIELDS], usefs;
+@@ -407,7 +407,7 @@
+ }
+ 
+ int GSHPInfoFrom(ClientData clientData,Tcl_Interp *interp,
+-		int objc,Tcl_Obj *CONST objv[])
++		int objc,Tcl_Obj *const objv[])
+      /* GSHPInfoFrom ID */
+ { SHPFSETLIST p;
+   int id, n, i, k, j;
+@@ -452,7 +452,7 @@
+ }
+ 
+ int GSHPGetObj(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPGetObj ID INDEX */
+ { SHPFSETLIST p;
+   int id, oix, n, nsegs, *segstart, i, k;
+@@ -538,7 +538,7 @@
+ }
+ 
+ int GSHPReadNextPoint(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPReadNextPoint ID */
+ { SHPFSETLIST p;
+   int id, eix, n = 2;
+@@ -571,7 +571,7 @@
+ }
+ 
+ int GSHPCloseFiles(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPCloseFiles ID */
+ { SHPFSETLIST p = FileSets, q = NULL;
+   int id;
+@@ -598,7 +598,7 @@
+ }
+ 
+ int GSHPWriteWP(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPWriteWP ID X Y ?Z? NAME COMMENT DATE */
+ { SHPFSETLIST p;
+   int id, entno, dim;
+@@ -653,7 +653,7 @@
+ }
+ 
+ int GSHPCreateRT(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPCreateRT DIM RTID COMMENT */ 
+ { char *name, *commt;
+   int dim;
+@@ -694,7 +694,7 @@
+ }
+ 
+ int GSHPForgetRT(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPForgetRT */
+ {
+ #ifdef DEBUG
+@@ -710,7 +710,7 @@
+ }
+ 
+ int GSHPAddWPToRT(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPAddWPToRT X Y ?Z? */
+ { double x, y, z;
+   WPLIST wpp;
+@@ -745,7 +745,7 @@
+ }
+ 
+ int GSHPWriteRT(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPWriteRT ID FORGET */
+ { SHPFSETLIST p;
+   int id, forget, entno, i, dim;
+@@ -820,10 +820,11 @@
+ }
+ 
+ int GSHPCreateTR(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPCreateTR DIM NAME COMMENT */
+ { char *name, *commt;
+   int dim, nsegs, *segstarts, *segnxt, i, k, kp; 
++  Tcl_Size nelems;
+   Tcl_Obj **objvPtr;
+ 
+ #ifdef DEBUG
+@@ -843,8 +844,9 @@
+   if (objc-1 == 3) {
+     nsegs = 0;  segstarts = NULL;
+   } else {
+-    if (Tcl_ListObjGetElements(interp,objv[4],&nsegs,&objvPtr) != TCL_OK)
++    if (Tcl_ListObjGetElements(interp,objv[4],&nelems,&objvPtr) != TCL_OK)
+       return TCL_ERROR;
++    nsegs = (int) nelems;
+ #ifdef DEBUG
+     printf(">GSHPCreateTR, %d segs\n",nsegs);
+ #endif
+@@ -898,7 +900,7 @@
+ }
+ 
+ int GSHPForgetTR(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPForgetTR */
+ {
+ #ifdef DEBUG
+@@ -914,7 +916,7 @@
+ }
+ 
+ int GSHPAddTPToTR(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPAddTPToTR X Y ?Z? */
+ { double x, y, z;
+   TPLIST tpp;
+@@ -949,7 +951,7 @@
+ }
+ 
+ int GSHPWriteTR(ClientData clientData,Tcl_Interp *interp,
+-		  int objc,Tcl_Obj *CONST objv[])
++		  int objc,Tcl_Obj *const objv[])
+      /* GSHPWriteTR ID FORGET */
+ { SHPFSETLIST p;
+  int id, forget, entno, i, dim;

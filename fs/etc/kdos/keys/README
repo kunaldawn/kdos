@@ -25,3 +25,7 @@ signed index beside the packs on the medium, and what it asserts is only that
 those packs came from the same bake. It is a subdirectory because a keyring is
 a flat read of `*.pub`: a key that vouches for a medium must not thereby vouch
 for a package repository.
+
+`tree/` holds the key that signs a published ports tree, which
+`kdos update fetch` installs as /ports. The build puts its release key's public
+half there; tree/README says how. It is a subdirectory for the same reason.

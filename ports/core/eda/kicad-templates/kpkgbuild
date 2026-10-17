@@ -15,4 +15,5 @@ source      = https://gitlab.com/kicad/libraries/kicad-templates/-/archive/$vers
 sha256      = 18b4e3f2ed781383179c1b15a82c94e5176dc825e1c646f84e89ed50e835063b  kicad-templates-10.0.6.tar.gz
 description = KiCad's official project templates — board outlines and starting points for common form factors
 homepage    = https://www.kicad.org/libraries/
+license     = CC-BY-SA-4.0
 depends     = cmake ninja

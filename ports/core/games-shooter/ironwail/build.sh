@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The engine's own pak (menus, default.cfg) is rebuilt from its lumps rather
-# than taken from the tree. sdl2-compat carries no sdl2-config, so SDL's flags
-# come from pkg-config. USE_CURL=0 removes the add-on browser, which downloads
-# from a remote server and has nothing to show offline.
 make -C Misc/pak
 cp Misc/pak/ironwail.pak Quake/ironwail.pak
 
@@ -34,10 +30,6 @@ make -C Quake \
 	USE_CODEC_UMX=1 \
 	STRIP=true
 
-# The engine finds ironwail.pak beside the path it was started by, so it is
-# started by its full path and /usr/bin holds a script, not a link. The game
-# data is not free and is not shipped: a player puts id1/pak0.pak under
-# ~/.ironwail, which the engine searches after the working directory.
 install -Dm755 Quake/ironwail "$PKG/usr/lib/ironwail/ironwail"
 install -Dm644 Quake/ironwail.pak "$PKG/usr/lib/ironwail/ironwail.pak"
 install -d "$PKG/usr/bin"
@@ -49,7 +41,6 @@ chmod 755 "$PKG/usr/bin/ironwail"
 install -Dm644 README.md Quakespasm.txt Quakespasm-Music.txt \
 	-t "$PKG/usr/share/doc/ironwail"
 
-# The window's app_id is the executable's name.
 install -Dm644 Misc/QuakeSpasm_512.png \
 	"$PKG/usr/share/icons/hicolor/512x512/apps/ironwail.png"
 install -d "$PKG/usr/share/applications"

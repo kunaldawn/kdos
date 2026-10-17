@@ -8,25 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The source is GNU Health's own repository at the release tag: every health
-# module in one tree, under tryton/. The Tryton server, the Tryton modules
-# GNU Health builds on and the rest of the closure that no other port carries
-# are in the bundle; everything shared (lxml, pillow, matplotlib, dateutil,
-# pytz, qrcode, psutil, psycopg2) is a port found in site-packages.
-#
-# THE SERVER IS 7.0, the long-term series GNU Health 5.0 is written for; the
-# `tryton` client port is the same series.
-#
-# THE CLOSURE LIVES UNDER ITS OWN PREFIX, /usr/lib/gnuhealth. vobject,
-# defusedxml and polib are also vendored into site-packages or a private
-# prefix by other ports, and under this one nothing else can own them.
-# vobject is 0.9.8: 0.9.9's metadata imports dateutil, which the fetch's
-# isolated build does not have, and the caldav module runs on either.
-#
-# Three modules are not installed, because each exists to reach a service
-# this system does not have: health_federation (a Thalamus server),
-# health_genetics_uniprot (UniProt on the internet) and health_orthanc (an
-# Orthanc PACS, through pyorthanc, which is not in the bundle).
 _home=/usr/lib/gnuhealth
 
 mkdir -p vendor
@@ -40,14 +21,6 @@ for d in tryton/health*; do
 	esac
 done
 
-# hatch-tryton is the build plugin of python-sql and relatorio. It goes into
-# the build root, not into $PKG; --break-system-packages because python3
-# marks its site-packages as kpkg's (PEP 668).
-pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
-	--break-system-packages hatch-tryton
-
-# --ignore-installed: a module that is also in site-packages still goes under
-# the prefix, where the launchers look first.
 pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
 	--ignore-installed --root=$PKG --prefix=$_home \
 	defusedxml genshi passlib polib proteus puremagic pycountry \
@@ -58,14 +31,8 @@ pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
 	trytond-product trytond-stock trytond-stock-lot \
 	gnuhealth-control $_mods
 
-# English only. A module's locale/<lang>.po is loaded into the database only
-# for a language an administrator makes translatable; English is the source
-# text and has no file.
 find "$PKG$_home" -path '*/trytond/modules/*/locale/*.po' -delete
 
-# EVERY COMMAND RUNS THROUGH ONE LAUNCHER, which puts the prefix's
-# site-packages in front of the system's and names the configuration file,
-# then runs the program of its own name from the prefix.
 install -d "$PKG$_home/libexec" "$PKG/usr/bin"
 cat > "$PKG$_home/libexec/launch" <<'KDOS_SH'
 #!/bin/sh
@@ -84,9 +51,6 @@ for p in trytond trytond-admin trytond-cron trytond-worker trytond-console \
 	ln -s "../lib/gnuhealth/libexec/launch" "$PKG/usr/bin/$p"
 done
 
-# THE SHIPPED CONFIGURATION SERVES THE LAN once a database exists. The uri is
-# commented out, and the service skips until it is set, so a machine that
-# carries the port holds no port open for nothing.
 install -dm750 "$PKG/var/lib/gnuhealth" "$PKG/var/lib/gnuhealth/attach"
 install -Dm644 /dev/stdin "$PKG/etc/gnuhealth/trytond.conf" <<'CFG'
 # GNU Health server (trytond 7.0).
@@ -111,8 +75,6 @@ path = /var/lib/gnuhealth/attach
 listen = 0.0.0.0:8000
 CFG
 
-# THE SERVER RUNS UNDER ksvc, AS ITS ACCOUNT, and it skips until the uri is
-# set: without a database it has nothing to serve.
 install -d "$PKG/etc/init.d"
 cat > "$PKG/etc/init.d/85_gnuhealth.sh" <<'KDOS_SH'
 #!/bin/bash
@@ -125,7 +87,7 @@ CONF="/etc/gnuhealth/trytond.conf"
 case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
-        # Read /etc/passwd directly: there is no getent on musl.
+        # The postinstall creates the account in /etc/passwd itself.
         if ! grep -q '^gnuhealth:' /etc/passwd 2>/dev/null; then
             echo "[SKIP] $NAME: no gnuhealth account (the port's postinstall makes it)"
             exit 0

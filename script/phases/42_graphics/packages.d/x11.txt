@@ -50,6 +50,9 @@ libXres
 libxkbfile
 xkbcomp
 
+# The cookie tool sshd runs for X11 forwarding.
+xauth
+
 # A program with no Wayland path — Xastir, VLC 3, a Motif, Tk or Swing program,
 # native or boxed — runs on Xwayland, the one X server. kdos-comp runs it
 # rootlessly itself (wlroots does the work). The client libraries those

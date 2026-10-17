@@ -22,10 +22,10 @@
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside
 # them, or when a shelf file names a port an earlier phase installs.
 
-# THE TOKEN A PROVIDER WANTS INSTEAD OF A PASSWORD. aerc and msmtp can both
-# present one; mbsync cannot, and no minter changes that — see
-# ports/core/mail/isync/build.sh. Rust, and its HTTP client is rustls, so
-# nothing links openssl for it.
+# THE TOKEN A PROVIDER WANTS INSTEAD OF A PASSWORD. aerc and msmtp present it
+# over OAUTHBEARER or XOAUTH2, and mbsync over XOAUTH2 only, through
+# cyrus-sasl-xoauth2. Rust, and its HTTP client is rustls, so nothing links
+# openssl for it.
 pizauth
 
 # THE WRITER notmuch indexes after. mbsync makes an IMAP mailbox and ~/Mail

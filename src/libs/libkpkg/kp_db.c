@@ -178,6 +178,47 @@ int kp_record_pkg_sha(const KpConf *c, const char *name, const char *hash)
 	return sidecar_write(c, ".pkgsha", name, hash);
 }
 
+static char *files_path(const KpConf *c, const char *name, int make)
+{
+	char *db = kp_db_dir(c);
+	char *dir = kb_path_join(db, ".files");
+	if (make)
+		kb_mkdir_p(dir);
+	char *p = kb_path_join(dir, name);
+	free(dir);
+	free(db);
+	return p;
+}
+
+/* Written to a temporary name and renamed, so a reader never sees half a
+ * record. A failed write removes the old record: one left from the previous
+ * version would report every file the new version changed. */
+int kp_record_files(const KpConf *c, const char *name, const char *data,
+		    size_t len)
+{
+	char *p = files_path(c, name, 1);
+	KbBuf tmp = {0};
+	kb_buf_printf(&tmp, "%s.tmp", p);
+	int rc = kb_write_all(tmp.p, data, len);
+	if (rc == 0 && rename(tmp.p, p) != 0)
+		rc = -1;
+	if (rc != 0) {
+		unlink(tmp.p);
+		unlink(p);
+	}
+	kb_buf_free(&tmp);
+	free(p);
+	return rc;
+}
+
+char *kp_installed_files(const KpConf *c, const char *name, size_t *len)
+{
+	char *p = files_path(c, name, 0);
+	char *data = kb_read_all(p, len);
+	free(p);
+	return data;
+}
+
 /*
  * One writer at a time. The lock is a file IN the database directory so that
  * it covers exactly one database: two roots are two locks, and a chroot and

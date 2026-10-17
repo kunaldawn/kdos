@@ -15,4 +15,5 @@ source      = https://github.com/OpenPrinting/$name/releases/download/$version/$
 sha256      = 3fa341cc03964046d2bf6b161d80c1b4b2e20609f38d860bcaa11cb70c1285e4  libppd-2.1.1.tar.xz
 description = The PPD handling CUPS 3 drops, as a library for its filters and daemons
 homepage    = https://github.com/OpenPrinting/libppd
+license     = Apache-2.0 WITH LLVM-exception
 depends     = cups libcupsfilters poppler ghostscript zlib pkgconf

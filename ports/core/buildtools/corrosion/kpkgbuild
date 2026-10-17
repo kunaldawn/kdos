@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/corrosion-rs/corrosion/a
 sha256      = e9e95b1ee2bad52681f347993fb1a5af5cce458c5ce8a2636c9e476e4babf8e3  corrosion-0.6.1.tar.gz
 description = The CMake bridge that builds a cargo crate as a CMake target
 homepage    = https://github.com/corrosion-rs/corrosion
+license     = MIT
 depends     = cmake rust

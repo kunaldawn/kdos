@@ -11,21 +11,6 @@
 
 cd hostapd
 
-# THE ISLAND NETWORK IS COMPLETE WITH THIS. dnsmasq is already ported, so a
-# machine with a wireless card can hand out addresses, resolve names, serve the
-# corpus over kiwix and PXE-boot another machine off the same stick — with no
-# router and no uplink anywhere in it.
-#
-# It is the same codebase as the ported wpa_supplicant, so the build shape is
-# the same: no configure, a .config of feature lines, and CONFIG_LIBNL32 for
-# the netlink library this tree carries.
-#
-# The .config is written whole, so a feature defconfig turns on is off here
-# unless it is listed. CONFIG_RADIUS_SERVER with CONFIG_SQLITE is a
-# WPA-Enterprise network with no external RADIUS server; the EAP-SIM/AKA
-# methods are the server side and need no smartcard. CONFIG_VLAN_NETLINK pulls
-# libnl-route in through drivers.mak. CONFIG_DEBUG_SYSLOG is what `-s` needs,
-# because a daemon under the rc scripts has no terminal to log to.
 cat > .config <<'CFG'
 CONFIG_DRIVER_NL80211=y
 CONFIG_DRIVER_WIRED=y

@@ -16,4 +16,5 @@ source      = https://github.com/acoustid/chromaprint/releases/download/v$versio
 sha256      = 3368805af0ee47b9df74df10b5001a44569e01df2844dab520031720dde9ad23  chromaprint-1.6.1.tar.gz
 description = AcoustID audio fingerprinting library and the fpcalc tool
 homepage    = https://acoustid.org/chromaprint
+license     = MIT AND LGPL-2.1-or-later
 depends     = cmake ninja fftw ffmpeg

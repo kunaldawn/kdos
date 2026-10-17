@@ -1,9 +1,9 @@
 Take the rustc target from RUST_TARGET instead of matching the C
 triple against rustc's target list.
 
---- a/build/moz.configure/rust.configure	2026-09-28 03:08:00.285308199 +0530
-+++ b/build/moz.configure/rust.configure	2026-09-28 03:08:00.298116979 +0530
-@@ -278,6 +278,7 @@
+--- a/build/moz.configure/rust.configure
++++ b/build/moz.configure/rust.configure
+@@ -331,6 +331,7 @@
      return data
  
  
@@ -11,7 +11,7 @@ triple against rustc's target list.
  def detect_rustc_target(host_or_target, arm_target, rust_supported_targets):
      # Rust's --target options are similar to, but not exactly the same
      # as, the autoconf-derived targets we use.  An example would be that
-@@ -441,7 +442,7 @@
+@@ -494,7 +495,7 @@
  
          return None
  

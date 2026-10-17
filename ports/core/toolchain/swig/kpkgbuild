@@ -14,4 +14,6 @@ release     = 1
 source      = https://downloads.sourceforge.net/swig/$name-$version.tar.gz
 sha256      = 7fec50b27deddab5455a9633780b6341eddfb96215a7619e93a76eb27178f653  swig-4.5.1.tar.gz
 description = Generate scripting interfaces to C/C++ code
+homepage    = https://www.swig.org/
+license     = GPL-3.0-or-later AND BSD-3-Clause
 depends     = pcre2

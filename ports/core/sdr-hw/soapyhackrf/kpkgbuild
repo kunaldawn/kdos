@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/pothosware/SoapyHackRF/a
 sha256      = c7a1b8aee7af9d9e11e42aa436eae8508f19775cdc8bc52e565a5d7f2e2e43ed  soapyhackrf-0.3.4.tar.gz
 description = The SoapySDR module for the HackRF family, through libhackrf
 homepage    = https://github.com/pothosware/SoapyHackRF
+license     = MIT
 depends     = cmake soapysdr hackrf

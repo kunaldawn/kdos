@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Only the interfaces xdg-desktop-portal-kdos does not answer are built.
-# Settings, AppChooser and Lockdown are the KDOS backend's or nobody's, and
-# Wallpaper needs gnome-desktop. Which backend serves an interface is decided
-# by kdos-portals.conf, not by this file's UseIn= line.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	--buildtype=release \

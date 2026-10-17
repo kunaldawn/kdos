@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/gflags/gflags/archive/re
 sha256      = 1b5e0648d7b94021895086e65479b4eaca7935eecfffd7dd9512eb576181c53d  gflags-2.3.1.tar.gz
 description = Google's C++ command-line flags library
 homepage    = https://gflags.github.io/gflags/
+license     = BSD-3-Clause
 depends     = cmake ninja

@@ -16,6 +16,7 @@ sha256      = 0c26707e2efad8aa1bfc5b7ce170f3fccc2e4918ff85989ba9ffa9facb2be326  
 sha256      = bd88ba018d63c6e478015780919ede6219d0ce81f2c447cd897ee55eb741bec3  python3-jsonschema-vendor-4.26.0.tar.xz
 description = JSON Schema validation for Python
 homepage    = https://github.com/python-jsonschema/jsonschema
+license     = MIT
 depends     = python3 python3-pip python3-hatchling python3-hatch-vcs python3-setuptools-scm python3-attrs python3-jsonschema-specifications python3-referencing python3-rpds-py
 vendoring   = python
 pyrequirements = no

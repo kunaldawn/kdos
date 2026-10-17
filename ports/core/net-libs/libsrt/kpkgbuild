@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libsrt
+version     = 1.5.7
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Haivision/srt/archive/refs/tags/v$version.tar.gz
+sha256      = 017cd1e437ef2073a4dd10ddf7b55e86bc3d6ebac0393d13bd22f6a57055d32b  libsrt-1.5.7.tar.gz
+description = Secure Reliable Transport — low-latency encrypted live video over lossy networks, with srt-live-transmit
+homepage    = https://github.com/Haivision/srt
+license     = MPL-2.0
+depends     = cmake ninja pkgconf openssl

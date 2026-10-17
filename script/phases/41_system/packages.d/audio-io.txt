@@ -31,9 +31,8 @@ libpulse
 # One output API over ALSA, so the players that link it need no backend each.
 libao
 
-portaudio
-
-# Sound reaches PipeWire through ALSA and pipewire-pulse; there is no JACK.
+# Built ahead of pipewire's libjack, so its JACK API is off: sound reaches
+# PipeWire through ALSA and pipewire-pulse.
 rtaudio
 
 shairplay

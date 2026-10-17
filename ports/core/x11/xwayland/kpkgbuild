@@ -9,10 +9,11 @@
 # ---------------------------------
 
 name        = xwayland
-version     = 24.1.13
+version     = 24.1.14
 release     = 1
 source      = https://www.x.org/releases/individual/xserver/$name-$version.tar.xz
-sha256      = 173aea3d6f79609164c04528e1c8e4c9b60fcd59391c3c9dad4667297d727fb6  xwayland-24.1.13.tar.xz
+sha256      = 4eb6b98d678299a4b96138d886345b294130695760345ef84596225a8224078a  xwayland-24.1.14.tar.xz
 description = Rootless X server that runs X11 clients on a Wayland compositor
 homepage    = https://gitlab.freedesktop.org/xorg/xserver
+license     = X11 AND MIT-open-group AND HPND AND BSD-3-Clause
 depends     = meson wayland wayland-protocols libdrm mesa libglvnd pixman libxcvt libxkbcommon xorgproto xtrans libXau libXfont2 libxshmfence libepoxy xkbcomp xkeyboard-config libX11 libxkbfile libXdmcp openssl libbsd

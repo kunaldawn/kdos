@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/intel/libva-utils/archiv
 sha256      = bf959a1ced3cde8176a7ff50ad358ee98e93301ac068581a8b2617c5b83afcb3  libva-utils-2.24.0.tar.gz
 description = VA-API utilities — vainfo and the conformance test programs
 homepage    = https://github.com/intel/libva-utils
+license     = MIT
 depends     = meson ninja libva libdrm wayland

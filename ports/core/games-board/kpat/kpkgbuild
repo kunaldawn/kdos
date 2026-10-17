@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/release-service/$version/src/$name
 sha256      = 832240e17910682795ab26c789390f4cfaa39c6c768523cc3da7c205a0a3a96f  kpat-26.08.1.tar.xz
 description = KPatience — fourteen solitaire card games, with a solver for each deal
 homepage    = https://apps.kde.org/kpat/
+license     = GPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland qt6-qtsvg kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kguiaddons ki18n kio knewstuff kwidgetsaddons kxmlgui kdoctools libkdegames freecell-solver black-hole-solver

@@ -18,4 +18,5 @@ sha256      = fb22c2109dcbb25202aeb6202c0a58fd2e536dbf7c72879c4bbfa2b8a9a75d60  
 sha256      = 5244818c804dd590d7852d49ab08b18edaaecc54a70e3f79a0779235c5a751c8  liberation-narrow-fonts-1.07.6.tar.gz
 description = Liberation Sans, Serif, Mono and Sans Narrow — metric-compatible with Arial, Times New Roman, Courier New and Arial Narrow
 homepage    = https://github.com/liberationfonts/liberation-fonts
+license     = OFL-1.1 AND LicenseRef-Liberation
 depends     = fontconfig fontforge fonttools python3

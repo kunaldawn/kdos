@@ -17,5 +17,6 @@ sha256      = c5670ff64930a4d69053557cdf252527b54c32bff882c33d120bd208f34a6e19  
 sha256      = a65f56720cb97808b3fac7453249aa591fc41599543bb71c691d3d4708e2895a  maddy-vendor-0.9.5.tar.xz
 description = A mail server in one program — SMTP, submission and IMAP for a LAN
 homepage    = https://maddy.email/
+license     = GPL-3.0-or-later
 depends     = go sqlite scdoc util-linux
 vendoring   = go

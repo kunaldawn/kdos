@@ -22,6 +22,7 @@
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside
 # them, or when a shelf file names a port an earlier phase installs.
 
+catdoc
 docx2txt
 doxx
 epy
@@ -44,3 +45,4 @@ libspectre
 podofo
 chmlib
 libharu
+convertlit

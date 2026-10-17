@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ACLs ARE OFF because tar is built in 20_selfhost, where acl and attr do not
-# exist; declaring acl would pull both into the bootstrap. Left to detection,
-# the result would depend on whether a later tree already had libacl.
 FORCE_UNSAFE_CONFIGURE=1 ./configure \
 	--prefix=/usr \
 	--disable-nls \

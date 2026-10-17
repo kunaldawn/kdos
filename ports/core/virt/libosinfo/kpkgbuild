@@ -15,4 +15,5 @@ source      = https://releases.pagure.org/libosinfo/libosinfo-$version.tar.xz
 sha256      = ad8557ece26793da43d26de565e3d68ce2ee6bfb8d0113b7cc7dfe07f6bfc6b6  libosinfo-1.12.0.tar.xz
 description = Library of operating-system facts for virtualisation — installer media, devices, requirements
 homepage    = https://libosinfo.org
+license     = LGPL-2.1-or-later AND GPL-2.0-or-later
 depends     = meson ninja pkgconf perl gettext glib libsoup3 libxml2 libxslt hwdata osinfo-db gobject-introspection vala

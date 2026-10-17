@@ -14,3 +14,5 @@ release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
 sha256      = 2ef1067c16c97db930fd740cc9bc3d3ba9a583804ae5ac42cc3e8719e49e191e  libtool-2.6.2.tar.xz
 description = The GNU generic library support script
+homepage    = https://www.gnu.org/software/libtool/
+license     = GPL-2.0-or-later AND LGPL-2.1-or-later

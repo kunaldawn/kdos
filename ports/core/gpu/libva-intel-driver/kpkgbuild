@@ -15,4 +15,5 @@ source      = https://github.com/intel/intel-vaapi-driver/releases/download/$ver
 sha256      = 0081fce08eb3a83f7d99c3b853c8fdfa0af437b8f5b0fb7c66faeb83bcbe0c19  libva-intel-driver-2.4.1.tar.bz2
 description = Intel i965 VA-API driver for GMA 4500 through Coffee Lake — the one Sandy Bridge, Ivy Bridge and Haswell decode with
 homepage    = https://github.com/intel/intel-vaapi-driver
+license     = MIT
 depends     = meson ninja pkgconf libva libdrm wayland

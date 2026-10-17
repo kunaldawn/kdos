@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# v7.3 MAT files are HDF5 containers, so without --enable-mat73 every file a
-# current MATLAB writes by default is unreadable. MCOS lets class objects be
-# read instead of skipped.
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static \
 	--with-zlib=/usr \
 	--with-hdf5=/usr \
@@ -20,4 +17,6 @@
 	--enable-mcos=yes \
 	--with-default-file-ver=5
 make
+makeinfo -I documentation -o documentation/matio.info documentation/matio_user_guide.texi
 make DESTDIR=$PKG install
+test -s "$PKG"/usr/share/info/matio.info

@@ -46,3 +46,5 @@ plutovg
 plutosvg
 blend2d
 babl
+graphite2
+gts

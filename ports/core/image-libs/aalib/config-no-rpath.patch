@@ -1,0 +1,17 @@
+--- a/aalib-config.in
++++ b/aalib-config.in
+@@ -48,12 +48,12 @@
+       echo -I@includedir@ @AALIB_CFLAGS@
+       ;;
+ @ENABLE_SHARED_TRUE@    --libs)
+-@ENABLE_SHARED_TRUE@      libdirs="-L@libdir@ @AALIB_RLD_FLAGS@"
++@ENABLE_SHARED_TRUE@      libdirs="-L@libdir@"
+ @ENABLE_SHARED_TRUE@      echo $libdirs @AALIB_LIBS@
+ @ENABLE_SHARED_TRUE@      ;;
+ @ENABLE_STATIC_TRUE@@ENABLE_SHARED_TRUE@    --static-libs)
+ @ENABLE_STATIC_TRUE@@ENABLE_SHARED_FALSE@    --libs|--static-libs)
+-@ENABLE_STATIC_TRUE@      libdirs="-L@libdir@ @AALIB_RLD_FLAGS@"
++@ENABLE_STATIC_TRUE@      libdirs="-L@libdir@"
+ @ENABLE_STATIC_TRUE@      echo $libdirs @AALIB_LIBS@ 
+ @ENABLE_STATIC_TRUE@      ;;
+     *)

@@ -16,5 +16,6 @@ sha256      = 18df6f3c09157021366b8c702b5badba405d37dbb42f132353eb50c1b0d3f464  
 sha256      = 1aa9ddde127b51a7dbaf5e3d4c328df37fe0849974dd360f15e536f61fb7e3d0  glow-vendor-3.0.0.tar.xz
 description = Render markdown on the command line
 homepage    = https://github.com/charmbracelet/glow
+license     = MIT
 depends     = go
 vendoring   = go

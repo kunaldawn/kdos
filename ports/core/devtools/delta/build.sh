@@ -11,18 +11,6 @@
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
-# THE HIGHLIGHTING SETS ARE bat's. delta embeds them through the vendored bat
-# crate (vendor/bat/src/assets.rs, include_bytes!), whose published copy
-# carries the serialized sets and none of their sources. The bat port compiles
-# them from those sources and installs them under /usr/share/bat/assets, so
-# they replace the crate's before cargo runs. The vendored crate must be the
-# version the bat port builds: the sets are untagged bincode dumps of the
-# syntect types that version links, and a set from another one deserializes
-# into garbage or aborts delta at the first highlighted line.
-#
-# Cargo checks every vendored file against the crate's .cargo-checksum.json,
-# so the three entries are rewritten with the new files' hashes; the rest of
-# the crate is still verified.
 _batver=$(sed -n 's/^version = "\(.*\)"$/\1/p' vendor/bat/Cargo.toml | head -n 1)
 _have=$(bat --version)
 if [ "$_have" != "bat $_batver" ]; then
@@ -43,7 +31,7 @@ printf '%s' "$_sum" > vendor/bat/.cargo-checksum.json
 
 export RUSTFLAGS="-C target-feature=-crt-static"
 
-# git2/vendored-libgit2: libgit2-sys otherwise links a system libgit2 whenever
-# pkg-config finds one in its version range, so the bundled copy is named.
-cargo build --release --frozen --offline --features git2/vendored-libgit2
+cargo build --release --frozen --offline
+readelf -d target/release/delta | grep -q 'NEEDED.*\[libgit2\.so\.1\.9\]'
+readelf -d target/release/delta | grep -q 'NEEDED.*\[libonig\.so\.5\]'
 install -Dm755 target/release/delta $PKG/usr/bin/delta

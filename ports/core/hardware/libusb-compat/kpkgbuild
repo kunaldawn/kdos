@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libusb-compat
+version     = 0.1.9
+release     = 1
+source      = https://github.com/libusb/libusb-compat-0.1/releases/download/v$version/$name-$version.tar.bz2
+sha256      = 179d934676ad3bd172a5a37cf5c6351b8e9d7816feb3029252e79b30a518a3be  libusb-compat-0.1.9.tar.bz2
+description = The libusb-0.1 API over libusb-1.0, for programs still written against usb.h
+homepage    = https://github.com/libusb/libusb-compat-0.1
+license     = LGPL-2.1-or-later
+depends     = pkgconf libusb

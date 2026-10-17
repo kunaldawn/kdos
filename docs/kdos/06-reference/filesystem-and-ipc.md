@@ -45,8 +45,9 @@ subcommands always use the home directory.
 | `timers.d/` | The system's periodic jobs, plus a `README` | yes: `10-update-check.timer` and `20-fstrim.timer`; the `fwupd` package adds `30-fwupd-refresh.timer` |
 | `keys/` | Trusted keys for host packages and the binhost index | yes, with no keys: only a `README` stating the policy |
 | `keys/packs/` | Trusted keys for application packs | yes, one key: `kdos-packs.pub` |
+| `keys/tree/` | Trusted keys for the ports tree `kdos update fetch` installs | yes: a `README`, and `kdos-release.pub` when the build had a release key |
 | `mountd.conf` | Removable-media options, including `format = yes` and `write = yes`, without which the media daemon refuses to format a device or write an image over one | no: create it |
-| `update.conf` | The binhost `kdos update` installs from | no: create it |
+| `update.conf` | Where `kdos update fetch` takes a newer ports tree from (`tree =`) | no: create it |
 | `accent` | The accent name, so the boot splash can repaint in it before anyone logs in | no: written by `kdos-powerd` when `kdos theme` runs |
 
 The host package manager's own configuration is `/etc/kpkg.conf`; see
@@ -63,7 +64,10 @@ The host package manager's own configuration is `/etc/kpkg.conf`; see
 | `fs-manifest` | Every path the build's static tree (`fs/`) provided | The build |
 | `march.ledger` | Measured per-machine optimisation results | `kdos march` |
 | `apps-pending` | Applications chosen in the installer that could not be installed | `kinstall` |
-| `update.json` | What `kdos update check --json` found; the panel's update badge reads it | The update-check timer, nightly at 04:17 |
+| `update.json` | What `kdos update check --json` found, and the last problem; the panel's update badge reads it | The update-check timer, nightly at 04:17, and `kdos update fetch` and `apply` when they finish |
+| `update.state` | The outcome of the last `kdos update fetch` and the last `apply`: `ok`, `no-network`, `fetch-failed` or `build-failed`, with a time and a sentence | `kdos update fetch` and `apply` |
+| `update.state.lock` | The lock `fetch` and `apply` hold, so a tree is never replaced under a build | `kdos update fetch` and `apply` |
+| `update.state.sig` | The signature of the tree last installed; a published signature equal to it is the same tree, and the tree is not downloaded again | `kdos update fetch` |
 
 ### `/usr/share/kdos/` — shipped data
 
@@ -77,6 +81,8 @@ The host package manager's own configuration is `/etc/kpkg.conf`; see
 | `gtk-theme/theme/` | The vendored GTK stylesheet source |
 | `charnames.idx` | The Unicode character-name index the character picker searches |
 | `secdb.txt` | The vendored security-advisory database, read by `kdos cve` |
+| `bundled.txt` | The bundled-library inventory, read by `kdos cve`: `<port> <crate> <component> <version>`, one row per library a port compiles into its own binary |
+| `SOURCES` | The written source offer: the repository, the commit the image was built from, and each `sources-<N>` release that archives a source of an installed package. Written by `70_image/105_ports.sh` |
 | `reasons/` | The explanations `kdos why` and `kdos explain` print |
 | `doc/` | The help pages the desktop's surfaces open on F1 |
 | `logo.txt` | The login banner's picture, with its terminal colour codes; also drawn by the About surface and the lock screen |
@@ -113,17 +119,23 @@ The state and caches of `kpkg`, the host package manager. Every directory is a d
 | `/var/lib/kpkg/db/<name>` | One entry per installed package, with its file list |
 | `/var/lib/kpkg/db/.recipe/<name>` | The recipe hash a package was installed from |
 | `/var/lib/kpkg/db/.pkgsha/<name>` | The SHA-256 of the package file it was installed from, which the build's [package store](../03-architecture/packaging.md#the-package-store) keys dependent ports on |
+| `/var/lib/kpkg/db/.files/<name>` | The SHA-256 and mode of every regular file the install placed, which [`kpkg check`](../03-architecture/packaging.md#checking-an-installed-root) compares the root against |
 | `/var/lib/kpkg/db/.lock` | The database's writer lock: `kpkgadd` and `kpkgdel` hold an exclusive `flock` on it while they change the tree, so one runs at a time |
 | `/var/cache/kpkg/sources/` | Downloaded source files (`SOURCE_DIR`) |
 | `/var/cache/kpkg/packages/` | Built package archives (`PACKAGE_DIR`), and the `<name>.pending` record of each package `kpkg install --build-only` built and `--commit` has not yet installed |
 | `/var/cache/kpkg/work/` | Build working directories (`WORK_DIR`) |
 
-The ports tree `kpkg` builds from is named by `PORT_REPO`, `/ports/core` by default: a
-space-separated list of recipe directories, each searched for a port at `<name>/` and one shelf
-down at `<shelf>/<name>/`. Every port is listed in [The ports catalogue](ports-catalogue.md).
-Neither `/ports` nor `/var/cache` is carried into the installed system, so on a fresh machine both
-are empty until something is put there; a medium made with `KDOS_ISO_SOURCES=1` carries the whole
-tree, every port with its fetched sources, under `/mnt/iso/sources`, and
+The ports tree `kpkg` builds from is named by `PORT_REPO`: a space-separated list of recipe
+directories, each searched for a port at `<name>/` and one shelf down at `<shelf>/<name>/`. Its
+default is the tree every image carries at `/ports`, recipes only: `/ports/core`, and
+`/ports/src/system`, `art`, `desktop` and `daemons` for KDOS's own programs, beside
+`/ports/shelves`, `/ports/sources.idx` and `/ports/TREE`, which names the commit the tree is and
+that commit's time. `kdos update fetch` replaces the whole of `/ports` with a newer signed tree. Every port is listed in
+[The ports catalogue](ports-catalogue.md). No source archive is on the image and `/var/cache` is
+not carried into the installed system, so a build on the machine needs each source it names
+fetched over the network; a medium made
+with `KDOS_ISO_SOURCES=1` also carries the whole tree, every port with its fetched sources, under
+`/mnt/iso/sources`, and
 [Keeping it current](../02-user-guide/administration.md#keeping-it-current) gives the `PORT_REPO`
 that names it.
 
@@ -153,6 +165,7 @@ Emptied at every boot.
 | `kdos-getty.<tty>.log` | `kdos-getty`'s messages for that terminal |
 | `kdos-fsck.log` | What the boot-time filesystem check reported, written only when it said something |
 | `kdos-medium` | Where the installer binds the boot medium while installing |
+| `utmps/` | Owned by `utmp`: the live login records (`utmp`) and the sockets of `utmpd` and `wtmpd` (`.utmpd-socket`, `.wtmpd-socket`), which libutmps talks to; see [Login records](../03-architecture/boot-and-init.md#login-records) |
 
 ### Boot files
 
@@ -561,7 +574,7 @@ Neither configuration nor storage: these files are how one program tells another
 | `~/.local/share/kdos/alien-apps` | `kdos-appbox genlaunchers --user` | The same, winning over the system table |
 | `~/.local/share/kdos/observed-app-ids` | The compositor, once for each new application ID a window presents | `kdos appid` |
 | `/var/lib/kdos/pack-manifest` | The pack daemon | Itself, so ungrafting removes exactly what was added |
-| `/var/lib/kdos/update.json` | The update-check timer | The panel's update badge, which falls back to `~/.local/state/kdos/update.json` |
+| `/var/lib/kdos/update.json` | The update-check timer, and `kdos update fetch` and `apply` when they finish | The panel's update badge, which falls back to `~/.local/state/kdos/update.json` |
 | `/etc/os-release` | `fs/etc/os-release`, with `BUILD_ID` and `KDOS_BUILD_DATE` appended by `70_image/045_identity.sh` | `kdos-about`, and anything else that identifies the system |
 | `/etc/kdos/accent` | `kdos-powerd`'s `accent` verb | The boot scripts, which tell the running splash to repaint in it |
 | `/boot/initramfs.modules` | The initramfs build step, one module per line | The `linux` package's post-install, which carries a new kernel's copies of that set into `/boot/initramfs-kdos.cpio.gz` |
@@ -605,7 +618,10 @@ set only between KDOS's own programs are left out.
 | `KDOS_BOX` | Set inside every box to its name. It is what identifies which box an X11 window came from |
 | `KDOS_REQUIRE_SIG=1` | `kdos-packd` refuses to `install` a pack with no signature, and `kdos-pack verify` fails on one. An unsigned pack already on the boot medium still mounts |
 | `KDOS_PACK_KEY=<file>` | The private key the application store signs exported pack indexes with; without it the index is unsigned and says so |
-| `KDOS_BINHOST=<dir>` | The binhost `kdos update` installs from, overriding `/etc/kdos/update.conf` |
+| `KDOS_UPDATE_TREE=<url or dir>` | Where `kdos update fetch` takes the ports tree from, overriding `tree =` in `/etc/kdos/update.conf` |
+| `KDOS_TREE_KEYS=<dir>` | The keyring `kdos update fetch` verifies a tree against, instead of `/etc/kdos/keys/tree` |
+| `KDOS_UPDATE_STATE=<file>` | Where `kdos update` records and reads its outcome, instead of `/var/lib/kdos/update.state`; set, `fetch` and `apply` leave the badge document alone |
+| `KPKG_FETCH=1` | Every `kpkg` build downloads the sources it lacks before verifying them; `kdos update apply` sets it |
 | `KDOS_SOURCES=<dir>` | The KDOS tree `kdos rebuild` builds from; otherwise the first of `/mnt/iso/sources`, `/kdos` and the current directory that is one |
 | `KDOS_WHISPER_MODEL=<file>` | One speech model, named exactly. When set, no directory is searched after it |
 | `KDOS_NO_ANIM=1` | Skip the login banner's animation |
@@ -672,14 +688,15 @@ Read by `make build` and the build scripts on the build machine; see
 | `KDOS_REPLAY=1` | A build step's "already done" guard stands down. Set for steps a build plan named explicitly |
 | `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY` | Recorded in each phase's snapshot manifest as `git_commit` and `git_dirty`, and shown by the snapshot picker, which marks a snapshot stale when either disagrees with the tree. `70_image/045_identity.sh` also stamps them into the image's `/etc/os-release` as `BUILD_ID` |
 | `KDOS_GIT_DATE` | The commit's date, `YYYY-MM-DD`, set by `make build`; stamped into `/etc/os-release` as `KDOS_BUILD_DATE` |
+| `KDOS_GIT_TIME` | The commit's time in Unix seconds, set by `make build`; stamped into `/ports/TREE`, which `kdos update fetch` orders two trees by |
 | `KDOS_SNAPSHOT_PATHS`, `KDOS_SNAPSHOT_EXCLUDE`, `KDOS_PHASE_TITLE`, `KDOS_PHASE_DESC` | A phase's metadata block in its `script/phases/<phase>/phase.env`. The orchestrator parses these keys from the file's own text without sourcing it, so it follows none of the file's `source` lines and each `phase.env` sets them itself; the phase's steps source the whole file as shell. Each `KDOS_SNAPSHOT_EXCLUDE` pattern is matched with `fnmatch(3)`, no flags, against an entry's whole path relative to `build/`, so `*` crosses `/`, and an excluded directory is left out whole |
 | `KDOS_RES=WxH` | The virtual screen size for `make run` and its variants; default `1920x1080` |
 
 The build runs its later steps inside a chroot entered with a cleared environment, so a variable a
-chroot step reads must also be named in `script/chroot/exec.sh`. Exactly thirteen are forwarded:
+chroot step reads must also be named in `script/chroot/exec.sh`. Exactly fourteen are forwarded:
 `KDOS_REPLAY`, `KDOS_JOBS`, `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_ISO_COMP`, `KDOS_CCACHE`,
 `KDOS_PKG_STORE`, `KDOS_PKG_STORE_MAX`, `KPKG_STORE_SALT`, `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`,
-`KDOS_GIT_DATE` and `KDOS_MAKE_BINHOST`, which also
+`KDOS_GIT_DATE`, `KDOS_GIT_TIME` and `KDOS_MAKE_BINHOST`, which also
 arrives as `KPKG_KEEP_CACHE`; `KDOS_PKG_STORE` also arrives as `KPKG_STORE` and
 `KPKG_STORE_CHECK`. A new one added to the `Makefile` and not
 there reaches every host step and no chroot step; see

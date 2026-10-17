@@ -9,10 +9,11 @@
 # ---------------------------------
 
 name        = libheif
-version     = 1.23.5
+version     = 1.23.6
 release     = 1
 source      = https://github.com/strukturag/libheif/releases/download/v$version/$name-$version.tar.gz
-sha256      = fd9036064c4432f0550d15072ddf34956a248279ee9aeaff0fba3fa0f77d8f1a  libheif-1.23.5.tar.gz
-description = HEIF/AVIF reader and writer — every modern phone photo
+sha256      = 4484346dc5995319dbc11e3a1c35d0a2ec46511ce370900869337fd2c7033125  libheif-1.23.6.tar.gz
+description = HEIF and AVIF image reader and writer
 homepage    = https://github.com/strukturag/libheif
-depends     = cmake libde265 x265 dav1d svt-av1 libjpeg-turbo libpng libtiff libwebp gdk-pixbuf openjpeg zlib brotli
+license     = LGPL-3.0-or-later AND MIT
+depends     = cmake libde265 x265 dav1d svt-av1 libjpeg-turbo libpng libtiff libwebp gdk-pixbuf openjpeg zlib brotli openh264

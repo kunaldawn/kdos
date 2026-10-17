@@ -14,4 +14,3 @@
             --docdir=/usr/share/doc/$name
 make
 make DESTDIR=$PKG install
-

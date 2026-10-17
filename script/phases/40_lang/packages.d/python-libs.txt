@@ -87,3 +87,7 @@ python3-pyemf3
 python3-send2trash
 python3-ecdsa
 python3-yapps
+python3-ruamel-yaml
+python3-hatch-tryton
+python3-networkx
+python3-colorama

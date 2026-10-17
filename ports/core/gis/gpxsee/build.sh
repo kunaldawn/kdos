@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# A qmake project. Qt 6's qmake reads no compiler flags from the environment,
-# so the tree's flags, and with them the reproducibility maps, are passed in.
-# lrelease is not run: bundled data is English only, and the project installs
-# whatever .qm files exist, which is none. The map definitions under
-# /usr/share/gpxsee/maps name online tile servers and draw nothing offline;
-# local maps (mbtiles, mapsforge, KAP, IMG and the rest) open from the disk.
 mkdir -p build && cd build
 qmake6 .. \
 	PREFIX=/usr \
@@ -27,11 +21,6 @@ make INSTALL_ROOT="$PKG" install
 [ -f "$PKG/usr/share/icons/hicolor/48x48/apps/gpxsee.png" ] ||
 	{ echo "gpxsee: the hicolor PNG icon was not installed" >&2; exit 1; }
 
-# setDesktopFileName makes the Wayland app_id gpxsee. Upstream's entry also
-# claims JPEG, TIFF, CSV, tar and MP4, which belong to the image viewer, the
-# archive handler and the video player, and geo: links, which Marble claims;
-# this one claims only GPS and map formats, which the XML installed above
-# defines.
 cat > "$PKG/usr/share/applications/gpxsee.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

@@ -33,8 +33,9 @@ because it is mature and `kdos-term` has not been used as a day-to-day terminal;
 
 `kdos-term` is reached in these places:
 
-- The application menu lists it as **Terminal**, from its desktop entry,
-  `/usr/share/applications/kdos-term.desktop`.
+- The application menu lists it as **KDOS Terminal**, from its desktop entry,
+  `/usr/share/applications/kdos-term.desktop`; **Terminal** is `foot`'s entry, the terminal the
+  desktop launches.
 - The shipped `mc` user menu (`/etc/skel/.config/mc/menu`) has **Terminal here**, which runs
   `kdos-term -D` on the current directory.
 - A desktop entry can ask for it by name with `X-KDOS-Term=kdos-term`, which is what an application

@@ -9,19 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# KF_SKIP_PO_PROCESSING leaves every translation out: bundled data is English
-# only. KF6 Parts makes this the KDE application (marble), not the plain Qt
-# one; Behaim and Marble Maps are built beside it and need Kirigami at run
-# time. The optional finds are made explicit: OSM PBF files read through
-# protobuf and abseil, positions come from gpsd and Qt Positioning, the APRS
-# layer reads a serial port, and shapefiles open through shapelib. Phonon
-# (spoken routing), the Plasma applet and KRunner plugin, libwlocate and the
-# Qt Designer plugin are off. MOBILE stays off: it replaces the desktop data
-# set with pre-cut tiles for handhelds.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
-	-DCMAKE_INSTALL_LIBDIR=lib \
+	-DKDE_INSTALL_LIBDIR=lib \
 	-DCMAKE_INSTALL_SYSCONFDIR=/etc \
 	-DKDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-DBUILD_TESTING=OFF \
@@ -50,16 +41,6 @@ DESTDIR=$PKG cmake --install build
 [ -f "$PKG/usr/share/icons/hicolor/48x48/apps/marble.png" ] ||
 	{ echo "marble: the hicolor PNG icon was not installed" >&2; exit 1; }
 
-# Bundled data is English only. KF_SKIP_PO_PROCESSING does not reach Marble's
-# own Qt catalogues (poqm/, built whenever lconvert is found) or the handbooks
-# kdoctools_install() builds from po/, so both are removed here.
-rm -rf "$PKG/usr/share/locale"
-if [ -d "$PKG/usr/share/doc/HTML" ]; then
-	find "$PKG/usr/share/doc/HTML" -mindepth 1 -maxdepth 1 ! -name en -exec rm -rf {} +
-fi
-
-# Behaim and Marble Maps install their icons as SVG only, which nothing in
-# the session rasterises; each is rendered to hicolor PNGs under its name.
 for icon in org.kde.marble.behaim org.kde.marble.maps; do
 	svg="$PKG/usr/share/icons/hicolor/scalable/apps/$icon.svg"
 	[ -f "$svg" ] || { echo "marble: $icon.svg was not installed" >&2; exit 1; }
@@ -70,10 +51,6 @@ for icon in org.kde.marble.behaim org.kde.marble.maps; do
 	done
 done
 
-# UPSTREAM'S ENTRIES ARE REPLACED for StartupWMClass. KAboutData derives each
-# desktop file name, and so each Wayland app_id: org.kde.marble for the
-# globe, and the names Behaim and Marble Maps set explicitly. The globe keeps
-# the geo: and worldwind: links, which nothing else claims.
 cat > "$PKG/usr/share/applications/org.kde.marble.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

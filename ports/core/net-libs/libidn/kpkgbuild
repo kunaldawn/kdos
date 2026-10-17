@@ -14,3 +14,5 @@ release     = 1
 source      = https://ftp.gnu.org/gnu/libidn/$name-$version.tar.gz
 sha256      = 499608bab3a65650a0ea52888c13a8deebe3f71408e319acd9ec52e02eb13959  libidn-1.44.tar.gz
 description = Implementation of the Stringprep, Punycode and IDNA specifications
+homepage    = https://www.gnu.org/software/libidn/
+license     = (LGPL-3.0-or-later OR GPL-2.0-or-later) AND GPL-3.0-or-later

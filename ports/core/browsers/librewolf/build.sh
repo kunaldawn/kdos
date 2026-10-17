@@ -9,31 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# LIBREWOLF ON GTK 3, WITH BOTH GDK BACKENDS, built with the toolchain and the
-# musl patches firefox-esr uses. The source is Firefox with LibreWolf's patches
-# already applied; its lw/ directory installs librewolf.cfg, the
-# local-settings.js that loads it, and distribution/policies.json, and this
-# script replaces only the last. cairo-gtk3-x11-wayland makes both halves
-# required, so a missing X client library stops configure instead of leaving a
-# browser that cannot start under Xwayland; GDK tries Wayland first.
-#
-# The binary, /usr/lib/librewolf, the desktop entry and the Wayland app_id
-# (MOZ_APP_REMOTINGNAME) all carry the one name librewolf, and StartupWMClass
-# has to equal it or the panel groups the window under no entry.
-#
-# Five of Alpine's firefox patches: lfs64, musl-no-linux-prctl,
-# sandbox-sched_setscheduler, glean-stub and rust-lto-thin, each for the reason
-# firefox-esr's build.sh gives; rust-lto-thin is rebased onto this tree's
-# rust.mk, the rest are verbatim.
-# fix-rust-target takes the rustc target from RUST_TARGET:
-# configure matches the C triple against rustc's target list, where a musl
-# x86_64 triple fits both x86_64-unknown-linux-musl and
-# x86_64-unikraft-linux-musl and the vendor `kdos` picks neither, so
-# configure stops. musl-pthread-t: audio_thread_priority serialises a
-# pthread_t through the integer to_ne_bytes, and musl's pthread_t is a pointer;
-# the patch goes through usize, the same width for either, and updates the
-# crate's .cargo-checksum.json, which cargo checks every vendored file against.
 patch -p1 -i "$PORT_SRC/fix-rust-target.patch"
 patch -p1 -i "$PORT_SRC/musl-pthread-t.patch"
 patch -p1 -i "$PORT_SRC/glean-stub.patch"
@@ -42,13 +17,6 @@ patch -p1 -i "$PORT_SRC/musl-no-linux-prctl.patch"
 patch -p1 -i "$PORT_SRC/rust-lto-thin.patch"
 patch -p1 -i "$PORT_SRC/sandbox-sched_setscheduler.patch"
 
-# Clang and lld, as for firefox-esr; bindgen needs libclang whichever compiler
-# builds the C++. The phase's -std=gnu11 is dropped: mozbuild sets the
-# language standard of every C file itself. The zero-initialised stack and
-# wrapping signed overflow are LibreWolf's own hardening flags. The cc crate
-# compiles with --target=x86_64-unknown-linux-musl, Rust's triple, and clang
-# looks for gcc's headers and libraries under the triple it is given;
-# --gcc-triple names gcc's own, so libstdc++ is found under either.
 _gcc_triple="--gcc-triple=$(gcc -dumpmachine)"
 export CC=clang
 export CXX=clang++
@@ -56,18 +24,8 @@ export CFLAGS="-ftrivial-auto-var-init=zero -fwrapv ${CFLAGS/-std=gnu11/} $_gcc_
 export CXXFLAGS="-ftrivial-auto-var-init=zero -fwrapv $CXXFLAGS $_gcc_triple"
 export LDFLAGS="$LDFLAGS $_gcc_triple"
 
-# libxul names libmozsandbox.so, libgkcodecs.so and the rest of its siblings
-# by bare name. The launcher loads them from /usr/lib/librewolf first, but
-# musl does not take an already-loaded library for a bare-name DT_NEEDED, so
-# without a run path into that directory libxul fails to load.
 export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/lib/librewolf"
 
-# rustc's musl targets default to crt-static; gkrust is linked into the
-# shared libxul, which takes the shared C library like every other port.
-# mach always passes cargo --target, and cargo then gives RUSTFLAGS to the
-# target's crates only: build scripts would still link statically, and
-# bindgen's, which dlopens libclang, would fail. cargo runs every rustc call,
-# host and target, through RUSTC_WRAPPER, which adds the flag to each.
 export RUSTFLAGS="-C target-feature=-crt-static"
 export RUST_TARGET=x86_64-unknown-linux-musl
 cat > "$SRC/rustc-dynamic" <<'EOF'
@@ -79,26 +37,11 @@ EOF
 chmod 755 "$SRC/rustc-dynamic"
 export RUSTC_WRAPPER="$SRC/rustc-dynamic"
 
-# mach would pip-install zstandard and psutil into its virtualenv from the
-# network; `none` builds with the pure-Python copies in the tarball.
 export MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=none
 export MOZBUILD_STATE_PATH="$SRC/.mozbuild"
 export MOZ_NOSPAM=1
 export MOZ_BUILD_DATE="$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y%m%d%H%M%S)"
 
-# The tarball's own mozconfig is not used: it turns jemalloc and
-# MOZILLA_OFFICIAL on. The options below are firefox-esr's, with LibreWolf's
-# branding in place of the official one. MOZ_TELEMETRY_REPORTING is off at
-# build time and DisableTelemetry holds it off at run time. An empty
-# MOZ_REQUIRE_SIGNING leaves add-on signature checks to the
-# xpinstall.signatures.required pref, as LibreWolf ships them.
-#
-# --without-wasm-sandboxed-libraries: RLBox needs a wasm32-wasi sysroot and a
-# rustc with the WebAssembly target, and this tree's rustc is built for X86
-# alone. --disable-eme: the only module is Widevine, a glibc binary fetched at
-# run time. --disable-jemalloc: mozjemalloc is unproven on musl.
-# --disable-necko-wifi: the Wi-Fi scanner feeds only network geolocation.
-# English only: lw/l10n is never named, so no locale is repacked.
 cat > "$SRC/kdos.mozconfig" <<EOF
 ac_add_options --prefix=/usr
 ac_add_options --with-app-name=librewolf
@@ -168,14 +111,6 @@ if [ -f "$PKG$_app/librewolf-bin" ] && [ ! -L "$PKG$_app/librewolf-bin" ]; then
 	ln -sf librewolf "$PKG$_app/librewolf-bin"
 fi
 
-# LibreWolf's policies, less what needs the network at run time, plus the
-# lockdown firefox-esr ships. Its own file installs uBlock Origin from
-# addons.mozilla.org on first start, which offline retries at every start and
-# never succeeds, so no extension is force-installed; language packs stay
-# refused. Remote Settings, DNS over HTTPS, captive-portal probes, Mozilla
-# accounts, online suggestions and the AI features are off. Disabling Remote
-# Settings also stops blocklist and CRLite revocation updates; the copies
-# packaged with this release are what is enforced.
 install -d "$PKG$_app/distribution"
 cat > "$PKG$_app/distribution/policies.json" <<'EOF'
 {
@@ -201,6 +136,17 @@ cat > "$PKG$_app/distribution/policies.json" <<'EOF'
     "NoDefaultBookmarks": true,
     "HttpsOnlyMode": "enabled",
     "EncryptedMediaExtensions": { "Enabled": false },
+    "ContentAnalysis": {
+      "Enabled": false,
+      "InterceptionPoints": {
+        "Clipboard": { "Enabled": false },
+        "ClipboardCopy": { "Enabled": false },
+        "Download": { "Enabled": false },
+        "DragAndDrop": { "Enabled": false },
+        "FileUpload": { "Enabled": false },
+        "Print": { "Enabled": false }
+      }
+    },
     "LocalNetworkAccess": {
       "Enabled": true,
       "BlockTrackers": true,
@@ -246,17 +192,12 @@ cat > "$PKG$_app/distribution/policies.json" <<'EOF'
 }
 EOF
 
-# Defaults librewolf.cfg leaves alone. Spelling reads the hunspell-en
-# dictionaries in /usr/share/hunspell; the file picker goes through the
-# FileChooser portal, which on this desktop is kdos-pick.
 install -d "$PKG$_app/browser/defaults/preferences"
 cat > "$PKG$_app/browser/defaults/preferences/kdos.js" <<'EOF'
 pref("spellchecker.dictionary_path", "/usr/share/hunspell");
 pref("widget.use-xdg-desktop-portal.file-picker", 1);
 EOF
 
-# The panel reads PNG from hicolor apps/ and never an SVG; the branding
-# carries the PNGs at every size it draws.
 for _png in browser/branding/librewolf/default*.png; do
 	_s=${_png##*/default}
 	_s=${_s%.png}

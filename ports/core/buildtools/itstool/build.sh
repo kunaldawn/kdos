@@ -9,6 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/raw-strings.patch"
 ./configure --prefix=/usr
 make
 make DESTDIR=$PKG install

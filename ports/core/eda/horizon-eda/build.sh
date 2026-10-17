@@ -9,25 +9,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# The podofo port is 1.x, which renamed the graphics-state setters and dropped
-# Matrix::FromCoefficients; podofo-1 is upstream's commit for it (2b8269b5).
 patch -p1 -i "$PORT_SRC/podofo-1.patch"
 
-# The project has no option file: every dependency is found by pkg-config, and
-# OpenCASCADE through its CMake package, which is why cmake is a build
-# dependency. The 3D-mouse support compiles in only when spnav is found, so
-# its absence would pass silently; the check at the end catches that.
-# The Python module, the PR-review tool and the tests are not built by default.
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
 
-# GTK takes the Wayland app_id from the GApplication id, and the project
-# manager's is org.horizon_eda.HorizonEDA.pool_prj_mgr. The parts pool is
-# downloaded by the program itself on first use, so offline it opens with
-# no pool until one is copied in.
 cat > "$PKG/usr/share/applications/org.horizon_eda.HorizonEDA.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

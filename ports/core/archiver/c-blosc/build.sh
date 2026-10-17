@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# PREFER_EXTERNAL_*: without them blosc compiles its own bundled lz4, zlib and
-# zstd into the library, and no update to those ports reaches it. Snappy is
-# not a port.
 mkdir build && cd build
 cmake .. -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

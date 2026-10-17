@@ -14,4 +14,6 @@ release     = 1
 source      = https://github.com/xkbcommon/libxkbcommon/archive/refs/tags/xkbcommon-$version.tar.gz
 sha256      = acc4d5f7c3cbba5f9f8d08d8bdbeede84ecede46792f47929aa9321873385528  libxkbcommon-1.13.2.tar.gz
 description = Keymap compiler and support library, with its Wayland tools and xkbcommon-x11
+homepage    = https://xkbcommon.org/
+license     = MIT AND MIT-open-group AND HPND AND HPND-sell-variant AND LicenseRef-digital-equipment-corporation
 depends     = xkeyboard-config meson libxml2 wayland wayland-protocols libxcb

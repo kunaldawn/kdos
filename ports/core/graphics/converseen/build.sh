@@ -12,9 +12,6 @@
 patch -p1 -i "$PORT_SRC/no-update-check.patch"
 patch -p1 -i "$PORT_SRC/imagemagick-flags.patch"
 
-# Magick++'s headers size every Quantum from MAGICKCORE_HDRI_ENABLE and
-# MAGICKCORE_QUANTUM_DEPTH. Taken from the installed Magick++.pc they match the
-# library; a mismatch compiles and then reads every pixel as the wrong type.
 export CXXFLAGS="$CXXFLAGS $(pkg-config --cflags-only-other Magick++)"
 
 cmake -S . -B build -G Ninja \
@@ -26,11 +23,8 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# Bundled data is English only, and English is the untranslated source text.
 rm -rf "$PKG/usr/share/converseen/loc"
 
-# setDesktopFileName makes the Wayland app_id net.fasterland.converseen, and
-# the entry has to name it or the panel cannot tie the window to its launcher.
 cat > "$PKG/usr/share/applications/net.fasterland.converseen.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application

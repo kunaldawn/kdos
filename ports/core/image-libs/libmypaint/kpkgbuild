@@ -14,5 +14,6 @@ release     = 1
 source      = $name-$version.tar.xz::https://github.com/mypaint/libmypaint/releases/download/v$version/libmypaint-$version.tar.xz
 sha256      = 741754f293f6b7668f941506da07cd7725629a793108bb31633fb6c3eae5315f  libmypaint-1.6.1.tar.xz
 description = MyPaint brush engine library, used by GIMP and Krita
-homepage    = http://mypaint.org/
+homepage    = https://www.mypaint.app/
+license     = ISC
 depends     = pkgconf glib json-c

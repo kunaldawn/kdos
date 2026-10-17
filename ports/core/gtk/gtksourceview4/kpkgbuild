@@ -15,4 +15,5 @@ source      = gtksourceview4-$version.tar.xz::https://download.gnome.org/sources
 sha256      = 7ec9d18fb283d1f84a3a3eff3b7a72b09a10c9c006597b3fbabbb5958420a87d  gtksourceview4-4.8.4.tar.xz
 description = Source code editing widget for GTK 3 — highlighting, completion, search
 homepage    = https://gitlab.gnome.org/GNOME/gtksourceview
+license     = LGPL-2.1-or-later
 depends     = meson glib gtk3 libxml2 fribidi pango gobject-introspection glib-introspection vala

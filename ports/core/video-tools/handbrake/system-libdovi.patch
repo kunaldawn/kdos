@@ -1,0 +1,26 @@
+--- a/make/include/main.defs
++++ b/make/include/main.defs
+@@ -70,10 +70,6 @@
+     MODULES += contrib/nvenc
+ endif
+ 
+-ifeq (1,$(FEATURE.libdovi))
+-    MODULES += contrib/libdovi
+-endif
+-
+ ifneq (,$(filter $(HOST.system),darwin))
+     MODULES += contrib/xz
+     MODULES += contrib/bin2c
+--- a/test/module.defs
++++ b/test/module.defs
+@@ -22,6 +22,10 @@
+ 
+ TEST.pkgconfig_libs += $(foreach m,$(MODULES.NAMES),$($m.OSL.libs))
+ 
++ifeq (1,$(FEATURE.libdovi))
++    TEST.pkgconfig_libs += dovi
++endif
++
+ ifeq (1,$(FEATURE.flatpak))
+     TEST.pkgconfig_libs += glib-2.0
+ endif

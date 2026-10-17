@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE 2.x LINE, because mupdf is written against it. mupdf 1.28 includes the
-# headers by bare name ("ReadBarcode.h"), which 2.x's zxing.pc puts on the
-# include path and 3.x's does not, and its own copy under thirdparty/ is 2.3.
-#
-# ZXING_WRITERS=OLD is the encoder mupdf's barcode creation calls when the
-# library has no experimental API. The NEW writer is libzint; mupdf calls
-# only the OLD one, so zxing-cpp is built without it and neither the bundled
-# copy nor the zint port is linked. ZXING_DEPENDENCIES=LOCAL stops CMake from
-# fetching anything from GitHub, and the examples, which would fetch stb, are
-# off.
 cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
 	-DBUILD_SHARED_LIBS=ON \

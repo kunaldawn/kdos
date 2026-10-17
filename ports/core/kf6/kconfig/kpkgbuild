@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = 0e98bac324cd716849202d4b246a948e363d6792a8eb09c78417cdde9559f56e  kconfig-6.30.0.tar.xz
 description = KDE Frameworks: persistent application configuration
 homepage    = https://api.kde.org/frameworks/kconfig/html/
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-only AND BSD-2-Clause AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND GPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative

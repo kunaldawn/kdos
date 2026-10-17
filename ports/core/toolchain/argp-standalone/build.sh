@@ -14,7 +14,7 @@ autoreconf -fi
 	--prefix=/usr \
 	--sysconfdir=/etc
 
-make
+make CFLAGS="$CFLAGS -g0"
 
 mkdir -p $PKG/usr/{include,lib}
 install -Dm644 argp.h $PKG/usr/include/argp.h

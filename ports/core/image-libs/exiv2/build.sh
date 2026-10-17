@@ -9,18 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE THING THAT MAKES A PHOTO ARCHIVE SEARCHABLE OFFLINE. Every camera writes
-# the date, the lens and often the position into the file; without something
-# that reads it, 40 000 photos on a stick are 40 000 files named DSC_*.
-# recoll's image filter and any thumbnailer call this.
-#
-# EXIV2_ENABLE_INIH=ON uses the `inih` port rather than exiv2's vendored copy.
-# Two inih implementations on one machine is two parsers of the same config
-# format, and the one nobody is looking at is the one that drifts.
-#
-# NLS stays off: the tree ships no message catalogues, so it would only add a
-# libintl link for strings nobody reads. WEBREADY and CURL stay off so the
-# library never opens a network URL handed to it as a path.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

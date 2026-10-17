@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/m/meson_python/meso
 sha256      = 78b3345dcbc0fed7b939e7e37a9faab35bddaae07bf62e7542c8ad479c395af5  python3-meson-python-0.21.1.tar.gz
 description = The PEP 517 backend numpy, scipy and matplotlib build through
 homepage    = https://pypi.org/project/meson-python/
+license     = MIT
 depends     = python3 python3-setuptools python3-pip meson ninja python3-pyproject-metadata python3-packaging

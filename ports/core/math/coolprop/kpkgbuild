@@ -32,5 +32,6 @@ sha256      = cacfc88dd8959d0a70988d770a05f1320ecea19cc3159be1be2bea94785221d3  
 sha256      = 4c63ccbe17d7348134825558cc04e8fd4eecee1c6cd56a4138c45f3c6034f9fc  coolprop-multicomplex-39bf9ca52c7882ff0788bb9087c7548ebd8fba4c.tar.gz
 sha256      = bf0839de19510ff7792d8a8aca94ea11a288775726b36c4c9a2662651870f8da  coolprop-valijson-1.0.6.tar.gz
 description = Thermophysical properties for 122 fluids, IAPWS-95 water/steam and humid air
-homepage    = http://www.coolprop.org/
+homepage    = https://coolprop.org/
+license     = MIT
 depends     = python3 python3-pip python3-scikit-build-core python3-nanobind python3-cython numpy cmake ninja eigen fmt nlohmann-json

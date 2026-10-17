@@ -15,4 +15,5 @@ source      = https://github.com/shlomif/rinutils/releases/download/$version/$na
 sha256      = f9e527d37a6cc8c7b8870ada63caa24f32ab0d29fd1116df3ebb686583030955  rinutils-0.10.3.tar.xz
 description = Header-only C utility macros shared by Shlomi Fish's solvers
 homepage    = https://github.com/shlomif/rinutils
+license     = MIT
 depends     = cmake ninja

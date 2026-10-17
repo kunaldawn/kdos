@@ -9,12 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The diff parser and model KDevelop's patch review uses; KDevelop drops that
-# plugin without it. KF_SKIP_PO_PROCESSING leaves the translation catalogues
-# out: bundled data is English only.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D BUILD_TESTING=OFF \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \

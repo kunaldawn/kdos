@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tinyxxd
+version     = 1.3.17
+release     = 1
+source      = https://github.com/xyproto/$name/archive/refs/tags/v$version.tar.gz
+sha256      = d91cc4240c90cce4ada2b3f3d410cd916b6489495451a70a572908458180f955  tinyxxd-1.3.17.tar.gz
+description = xxd — hex dump and its reverse, as a small standalone program
+homepage    = https://github.com/xyproto/tinyxxd
+license     = GPL-2.0-only OR MIT
+depends     =

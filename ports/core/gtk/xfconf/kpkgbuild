@@ -15,4 +15,5 @@ source      = https://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$versi
 sha256      = 8bc43c60f1716b13cf35fc899e2a36ea9c6cdc3478a8f051220eef0f53567efd  xfconf-4.20.0.tar.bz2
 description = Xfce configuration store — libxfconf and the xfconfd daemon
 homepage    = https://docs.xfce.org/xfce/xfconf/start
+license     = LGPL-2.0-only AND GPL-2.0-only
 depends     = pkgconf gettext perl-xml-parser glib dbus libxfce4util

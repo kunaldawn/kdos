@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/sqlitebrowser/sqlitebrow
 sha256      = 1044ba67d649cabc459eb887c016f70d6a404ad651390ab33bf7859dc7f1b67b  sqlitebrowser-3.13.1.tar.gz
 description = DB Browser for SQLite — create, browse, edit and query SQLite databases
 homepage    = https://sqlitebrowser.org/
+license     = (MPL-2.0 OR GPL-3.0-or-later) AND GPL-3.0-only AND LGPL-2.1-only AND MIT
 depends     = cmake ninja sqlite qt5-qtbase qt5-qttools qt5-qtwayland

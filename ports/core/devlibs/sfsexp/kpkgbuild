@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = sfsexp
+version     = 1.4.1
+release     = 1
+source      = https://github.com/mjsottile/sfsexp/releases/download/v$version/sfsexp-$version.tar.gz
+sha256      = 15e9a18bb0d5c3c5093444a9003471c2d25ab611b4219ef1064f598668723681  sfsexp-1.4.1.tar.gz
+description = Small, fast S-expression parsing and printing library in C
+homepage    = https://github.com/mjsottile/sfsexp
+license     = LGPL-2.1-or-later
+depends     =

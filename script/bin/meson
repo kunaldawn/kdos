@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   script/bin/meson — the build's meson, never downloading a subproject
+# ---------------------------------
+
+# script/env/chroot.env puts this directory first on PATH for every chroot
+# phase once /usr/bin/ninja exists, so a recipe's `meson setup`, a bare
+# `meson <builddir>` and meson-python's call from a pip build all come through
+# here. Each setup gets --wrap-mode=nodownload: a subproject whose source the
+# recipe or the release archive does not carry fails the configure with the
+# subproject's name, instead of meson cloning it from the network, which the
+# build does not have, and then falling back or failing later with a git
+# error.
+#
+# NOTHING IS ADDED when the arguments already choose a wrap mode
+# (--wrap-mode, -Dwrap_mode or -D wrap_mode), so a recipe's own nofallback
+# wins, or when the call is not a setup: compile, install, configure, test,
+# introspect, subprojects and every other subcommand, the backend's --internal
+# calls, --version and help pass through exactly as given. An argument list that starts with an option or a
+# directory is meson's implicit setup and is treated as one.
+#
+# THE REAL MESON IS NAMED BY ITS ABSOLUTE PATH. Searching PATH would find this
+# file again and never return. KDOS_MESON names another only for a test. Until
+# the meson port is installed the wrapper answers as a missing command would,
+# with status 127.
+#
+# This file never ships: script/ is bound into the chroot at /kdos/script and
+# is not in the image.
+
+real=${KDOS_MESON:-/usr/bin/meson}
+
+if [ ! -x "$real" ]; then
+    echo "meson: $real: not installed" >&2
+    exit 127
+fi
+
+setup=0
+case ${1-} in
+    setup) setup=1 ;;
+    ''|-v|--version|-h|--help|--internal) ;;
+    configure|dist|install|introspect|init|test|wrap|subprojects|rewrite|\
+    compile|devenv|env2mfile|reprotest|format|fmt|help|runpython|unstable-*) ;;
+    *) setup=1 ;;
+esac
+
+[ "$setup" = 1 ] || exec "$real" "$@"
+
+prev=
+for a in "$@"; do
+    case $a in
+        --wrap-mode|--wrap-mode=*|-Dwrap_mode=*) exec "$real" "$@" ;;
+        wrap_mode=*) [ "$prev" = -D ] && exec "$real" "$@" ;;
+    esac
+    prev=$a
+done
+
+if [ "${1-}" = setup ]; then
+    shift
+    exec "$real" setup --wrap-mode=nodownload "$@"
+fi
+exec "$real" --wrap-mode=nodownload "$@"

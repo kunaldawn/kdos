@@ -29,6 +29,10 @@ MPC_SRC=$(extract_port_source mpc)
 
 cd "$GCC_SRC"
 
+# The native gcc's t-linux64 patch: the runtime goes to /usr/lib, and
+# /usr/lib64 is only a link to it.
+patch -p1 --no-backup-if-mismatch -i "$(port_dir gcc)/t-linux64-lib.patch"
+
 # Link dependencies into GCC source tree
 ln -s "$GMP_SRC" gmp
 ln -s "$MPFR_SRC" mpfr
@@ -57,12 +61,19 @@ mkdir -p build && cd build
     CXXFLAGS_FOR_TARGET="$CXXFLAGS -nostdinc++" \
     LDFLAGS_FOR_TARGET=-L$PWD/$KDOS_TARGET/libgcc
 
-make BUILD_INFO=no-info
-make DESTDIR=$SYSROOT install BUILD_INFO=no-info
+make BUILD_INFO=no-info LIBGCC2_DEBUG_CFLAGS=-g0
+make DESTDIR=$SYSROOT install BUILD_INFO=no-info LIBGCC2_DEBUG_CFLAGS=-g0
 
 ln -sv gcc $SYSROOT/usr/bin/cc
 
-
+# No libtool archive outlives this step. Each names this build directory in
+# a -L and the runtime directory as an RPATH, and libtool copies both into
+# every C++ library linked through it. kpkg drops the .la files of a package,
+# but these are installed outside any package, so nothing later removes them.
+# The gdb script goes with them: no package owns it either.
+rm -f $SYSROOT/usr/lib{,64}/lib{stdc++{,exp,fs},supc++,itm}.la \
+    $SYSROOT/usr/lib{,64}/libstdc++.so.*-gdb.py \
+    $SYSROOT/usr/lib/gcc/$KDOS_TARGET/$GCC_VER/liblto_plugin.la
 
 rm -rf "$GCC_SRC" "$GMP_SRC" "$MPFR_SRC" "$MPC_SRC"
 touch "$MARK/gcc"

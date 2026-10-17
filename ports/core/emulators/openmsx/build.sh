@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The probe asks sdl2-config for SDL's flags and has no other route, and
-# sdl2-config does not exist here. A build-local shim, first on PATH, answers
-# it from pkgconf, which reads sdl2-compat's `Provides: sdl2`.
 install -d "$SRC_ROOT/sdl-shim"
 cat > "$SRC_ROOT/sdl-shim/sdl2-config" <<'SHIM'
 #!/bin/sh
@@ -25,21 +22,6 @@ SHIM
 chmod 755 "$SRC_ROOT/sdl-shim/sdl2-config"
 export PATH="$SRC_ROOT/sdl-shim:$PATH"
 
-# The install directories are compiled into the binary, which reads its
-# machines, extensions and scripts from the share directory, so the same
-# values go to the build and to the install. The probe builds every
-# component it finds the libraries for: the core, the OpenGL renderer
-# (GLEW's GLX build; openMSX ignores the missing GLX display under
-# Wayland), LaserDisc video (Ogg Theora and Vorbis) and ALSA MIDI. Each of
-# those libraries is in depends so no component is quietly left out.
-# C-BIOS, the free MSX system ROMs from Contrib, is installed, so the
-# emulator starts with no copyrighted ROM.
-#
-# The makefile starts CXXFLAGS and LDFLAGS empty and never reads the
-# environment, so both go on the command line, where they also replace the
-# opt flavour's own "-O3 -DNDEBUG"; CXXFLAGS carries those back. LDFLAGS is
-# a list of linker arguments that the makefile prefixes with -Wl, word by
-# word, so it takes the exported flags without their own -Wl, prefix.
 _dirs=(
 	INSTALL_BINARY_DIR=/usr/bin
 	INSTALL_SHARE_DIR=/usr/share/openmsx
@@ -60,8 +42,6 @@ for _size in 16 32 48 64 128 256; do
 		"$PKG/usr/share/icons/hicolor/${_size}x${_size}/apps/openmsx.png"
 done
 
-# Upstream ships no desktop entry. SDL's Wayland app_id is the executable's
-# name.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/openmsx.desktop" <<'DESKTOP'
 [Desktop Entry]

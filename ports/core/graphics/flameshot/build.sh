@@ -9,19 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Qt-Color-Widgets is the colour picker, pinned by commit in CMakeLists.txt.
-# Found under external/ it is added EXCLUDE_FROM_ALL and linked statically;
-# anywhere else CMake clones it, and its install rules would put a static
-# library and headers into the package.
 mkdir -p external
 mv "$SRC_ROOT/Qt-Color-Widgets-$_qcw" external/Qt-Color-Widgets
 
-# Offline and nothing reaching out: the Imgur uploader and the update checker
-# are compiled out. The clipboard goes through KGuiAddons' Wayland data-control
-# path, or a copied capture dies with the process that owned it. The launcher
-# entry names "flameshot", not /usr/bin/flameshot, so it resolves like every
-# other entry. Git is not searched for: the tarball is no checkout, and the
-# version string then reads the same on every builder.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -39,5 +29,4 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# Bundled data is English only, and Qt falls back to the source strings.
 rm -rf "$PKG/usr/share/flameshot/translations"

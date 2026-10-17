@@ -9,9 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-python3 setup.py build
-python3 setup.py install --prefix=/usr --root="$PKG" --skip-build
+python3 -c 'from setuptools import build_meta; build_meta.build_wheel("dist")'
+_site=$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+python3 -m zipfile -e dist/setuptools-$version-*.whl "$PKG$_site"
+python3 -m compileall -q -o 0 -o 1 -o 2 -d "$_site" "$PKG$_site"
 
-# The cli/gui *.exe files are prebuilt Windows launchers for console and GUI
-# entry points; nothing on this system can execute them.
 find "$PKG" -path '*/setuptools/*.exe' -delete

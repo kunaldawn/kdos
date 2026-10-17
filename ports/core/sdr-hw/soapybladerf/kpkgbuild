@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/pothosware/SoapyBladeRF/
 sha256      = ca348b30d3a5b84fc5632c97b55db21008af867cad4290641a177576402311b0  soapybladerf-0.4.2.tar.gz
 description = The SoapySDR module for the bladeRF family, through libbladeRF
 homepage    = https://github.com/pothosware/SoapyBladeRF
+license     = LGPL-2.1-or-later
 depends     = cmake soapysdr bladerf

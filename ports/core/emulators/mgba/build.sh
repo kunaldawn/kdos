@@ -9,17 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The SDL front end and libmgba, no Qt front end. FFmpeg is off: its only use
-# is the recording path of the Qt front end. Lua scripting is off with it, as
-# the SDL front end has no way to load a script. Discord presence is off.
-# libzip reads zipped ROMs, sqlite the game database, libelf homebrew ELFs,
-# and libedit is the command-line debugger. The libretro core is the
-# libretro-mgba port, built from the same tarball.
 cmake -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
-	-DCMAKE_INSTALL_LIBDIR=lib \
 	-DBUILD_SHARED=ON \
 	-DBUILD_STATIC=OFF \
 	-DBUILD_SDL=ON \
@@ -48,10 +41,6 @@ cmake -B build -G Ninja \
 ninja -C build
 DESTDIR=$PKG ninja -C build install
 
-# The SDL front end needs a ROM on its command line, so the entry is an
-# open-with handler rather than a menu row; RetroArch is the menu's emulator.
-# SDL names the Wayland window after the executable, mgba. The icon is
-# upstream's, installed above as io.mgba.mGBA.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/mgba.desktop" <<'DESKTOP'
 [Desktop Entry]

@@ -9,9 +9,11 @@
 # ---------------------------------
 
 name        = pcre2
-version     = 10.48
+version     = 10.49
 release     = 1
 source      = https://github.com/PCRE2Project/$name/releases/download/$name-$version/$name-$version.tar.gz
-sha256      = ebcc25aadf2a51fa1fefa9b8bc9e7a79b3dae86870a0f1152a22e42befd46888  pcre2-10.48.tar.gz
-description = New generation of the Perl Compatible Regular Expression libraries
+sha256      = 929f0b20e62879252a15886b06c89f1edef61a363cbd5826fb041080a5e557ae  pcre2-10.49.tar.gz
+description = Perl Compatible Regular Expressions library, version 2
+homepage    = https://www.pcre.org/
+license     = BSD-3-Clause WITH PCRE2-exception
 depends     = readline zlib bzip2

@@ -15,12 +15,6 @@
             --sharedstatedir=/var/lib
 make
 
-# NOT `make install`. The stock target also runs install-data-hook, which
-# chgrp's the binary to `games` and sets it setgid so every player shares one
-# high-score file. This image has one setgid binary's worth of appetite for
-# that and it is spent elsewhere: the named targets install the program, its
-# manual and its info page and nothing else, and the score file becomes the
-# player's own under $HOME.
 make DESTDIR=$PKG install-exec install-data-local install-man install-info-am
 
 install -d "$PKG/usr/share/applications"

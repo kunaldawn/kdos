@@ -78,8 +78,18 @@ echo "Squashing Root Filesystem ($ISO_COMP)..."
 # exclude, which leaves the compressor at the gzip default, drops every
 # pseudo-directory, and appends to an existing system.sfs instead of replacing
 # it.
+#
+# 1 MiB BLOCKS, the largest squashfs has. A block is the unit compressed and
+# the unit read: the image is 3-8 % smaller than at the 128 KiB default, and a
+# cold random read of a small file pulls up to a whole MiB off the medium and
+# decompresses it, which a USB stick serves more slowly.
+#
+# /ports is the repository's bind mount and is excluded here; the recipe tree
+# 105_ports.sh staged is appended below in its place. var/tmp/kdos-home is the
+# build's HOME (script/chroot/exec.sh), recreated by every chroot entry after
+# 020_cleanup.sh emptied var/tmp.
 mksquashfs / $ISO_ROOT/system.sfs \
-    -noappend "${SFS_COMP[@]}" \
+    -noappend "${SFS_COMP[@]}" -b 1M \
     -p "proc d 555 0 0" \
     -p "sys d 555 0 0" \
     -p "dev d 755 0 0" \
@@ -89,9 +99,27 @@ mksquashfs / $ISO_ROOT/system.sfs \
     -p "media d 755 0 0" \
     -p "var/cache d 755 0 0" \
     -p "var/log d 755 0 0" \
-    -e proc sys dev tmp run mnt media var/cache var/log build kdos ports
+    -e proc sys dev tmp run mnt media var/cache var/log var/tmp/kdos-home build kdos ports
 
-# 2a. The KDOS base pack, when KDOS_PACK_KDOS built one.
+# 2a. The recipe tree, appended as /ports.
+#
+# An append adds the staged directory's entries to the root of the image and
+# takes the codec and block size the image already has. A name the first pass
+# did not exclude would be appended beside it as `ports_1`, so the result is
+# checked by path.
+PORTS_STAGE=/kdos/build/image-ports
+if [ ! -f $PORTS_STAGE/ports/sources.idx ]; then
+    echo "FATAL: $PORTS_STAGE holds no recipe tree; 105_ports.sh did not run" >&2
+    exit 1
+fi
+echo "Appending the recipe tree as /ports..."
+mksquashfs $PORTS_STAGE $ISO_ROOT/system.sfs -no-progress -quiet
+if ! unsquashfs -l $ISO_ROOT/system.sfs ports/sources.idx | grep -qx 'squashfs-root/ports/sources.idx'; then
+    echo "FATAL: system.sfs has no /ports/sources.idx after the append" >&2
+    exit 1
+fi
+
+# 2b. The KDOS base pack, when KDOS_PACK_KDOS built one.
 #
 # It goes on ISO9660 rather than into /var/lib/kdos/packs for the reason
 # 100_packs.sh records: that directory is inside the rootfs, and squashing a
@@ -112,14 +140,16 @@ if [ "${KDOS_PACK_KDOS:-0}" = "1" ] && [ -f /kdos/build/kdos-base/kdos.kpack ]; 
     echo "KDOS base pack: $(du -h $ISO_ROOT/packs/kdos.kpack | cut -f1) on the medium"
 fi
 
-# 2b. The sources, when asked for.
+# 2c. The sources, when asked for.
 #
 # A booted stick that can rebuild its own ISO. The tree goes on the ISO9660
 # filesystem BESIDE system.sfs rather than inside it, so it costs the installed
 # system nothing and is readable from /mnt/iso the moment the live image is up.
 #
-# Opt-in because of its size: ports/ is about 39 G of upstream tarballs that
-# are already compressed, and squashing them again buys nothing.
+# Every image carries the recipes at /ports (2a); this adds the fetched
+# sources, script/ and fs/. Opt-in because of its size: ports/ is about 39 G
+# of upstream tarballs that are already compressed, and squashing them again
+# buys nothing.
 # `make build KDOS_ISO_SOURCES=1` is a developer stick, not the default one.
 #
 # The copy reads the tree where the chroot mounts it: ports/ at /ports, and

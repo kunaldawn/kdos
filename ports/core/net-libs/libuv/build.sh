@@ -10,6 +10,7 @@
 # ---------------------------------
 
 sh autogen.sh
+export CFLAGS="$CFLAGS -g0"
 ./configure --prefix=/usr
 make
 make DESTDIR=$PKG install

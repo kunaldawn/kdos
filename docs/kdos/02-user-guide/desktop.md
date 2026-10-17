@@ -298,9 +298,9 @@ The desktop supplies the terminal, which is `foot`. The entry belongs to the pac
 a program adds its row and removing the program removes the row.
 
 KDOS also ships its own terminal, `kdos-term`, built from the same cell libraries as the panel. It
-is listed among the applications, in All Programs and in search results, as **Terminal**, or run
-`kdos-term` to open one. The **Terminal** row in the System column starts `foot`, as `Super+Return`
-and the `TE` code do. See [kdos-term](../04-programs/kdos-term.md).
+is listed among the applications, in All Programs and in search results, as **KDOS Terminal**, or
+run `kdos-term` to open one. **Terminal**, in the menus and in the System column, is `foot`, which
+`Super+Return` and the `TE` code also start. See [kdos-term](../04-programs/kdos-term.md).
 
 ### Installing applications
 
@@ -686,9 +686,14 @@ always go through the portal; native GTK applications are sent there by `GTK_USE
 login profile, and Firefox ESR by its shipped preferences. Open and Save in Firefox or GIMP are
 therefore drawn on this grid rather than by their own toolkit.
 
-Two things are called Files. The Start menu's **Files** row opens `kdos-pick --browse`, while
-`Super+E` and the System menu's Files entry open `mc`, the file manager, in a terminal. A
-double-clicked folder opens in Dolphin.
+A plain role name in the menus belongs to what the desktop itself launches for that role.
+**Terminal** is `foot`, the terminal `Super+Return` opens; `kdos-term` is listed as **KDOS
+Terminal**. **Files** is the Start menu's row, which opens `kdos-pick --browse`; `mc`, the file
+manager `Super+E` and the System menu open in a terminal, is listed as **Files (mc)**, beside
+**Files (lf)** and **Files (yazi)**. **Mail** is `aerc`, the terminal mail client. A `mailto:` link
+opens Thunderbird instead, because the link handler must draw its own window and `aerc` needs a
+terminal around it; choose another with **Open With** on a link. A double-clicked folder opens in
+Dolphin.
 
 ### Opening a file
 
@@ -700,27 +705,36 @@ Some of the shipped defaults:
 | You open | It goes to |
 |---|---|
 | A folder | Dolphin |
-| A `.pdf`, `.ps`, `.eps` or `.djvu` | Okular |
+| A `.pdf`, `.ps`, `.eps` (compressed too) or `.djvu` | Okular |
 | An `.epub`, `.mobi` or `.fb2` book | Calibre's e-book viewer |
 | A `.zim` archive | Kiwix |
 | A text file, Markdown, JSON, a shell script, source code, a patch, a log, or an XML, YAML or TOML file | Kate |
-| A picture (PNG, JPEG, GIF, WebP, BMP, TIFF, SVG, AVIF, HEIF, JPEG XL, TGA, ICO, PBM/PGM/PPM/PNM, PSD) | Gwenview |
+| A picture (PNG, JPEG, GIF, WebP, BMP, TIFF, SVG and compressed SVG, AVIF, HEIF, JPEG XL, TGA, ICO, PBM/PGM/PPM/PNM, PSD, OpenRaster, ICNS, XBM, XPM) | Gwenview |
+| A camera RAW file (DNG, CR2, CRW, RAF, DCR, K25, KDC, MRW, NEF, ORF, RW, RW2, PEF, X3F, ARW, SR2, SRF) | Gwenview; a Canon `.cr3` or Nikon `.nrw` opens in darktable |
+| A JPEG 2000, DDS, OpenEXR, Radiance HDR, PCX or SGI picture | Okular |
+| A farbfeld picture | `imv` |
+| A WBMP or Sun raster picture | KolourPaint |
+| A Windows metafile (`.emf`, `.wmf`) | Inkscape |
 | A GIMP `.xcf` image | GIMP |
-| A video | Haruna |
-| A music file, or an `.m3u` or `.pls` playlist | Strawberry |
+| A video, or WebM or AC-3 audio | Haruna |
+| A music file, a RealAudio file, or an `.m3u` or `.pls` playlist | Strawberry |
 | A `.zip`, `.tar.*` or `.7z` archive | Ark |
 | A disc image (`.iso`) | Burn (`kdos-burn`) |
 | A `.rar` archive, or a comic book packed as 7z or rar | `kdos-openarchive` |
 | A `.csv` file | No default: `visidata` and LibreOffice Calc both claim `text/csv`, so **Open With** asks |
-| A Word, OpenDocument or RTF document | LibreOffice Writer |
+| A Word, OpenDocument, Works or RTF document | LibreOffice Writer |
+| A flat OpenDocument spreadsheet, presentation or drawing (`.fods`, `.fodp`, `.fodg`) | LibreOffice Calc, Impress or Draw |
 | A `mailto:` link, an `.eml` message or an `.ics` calendar | Thunderbird |
 | A web page, `http:` or `https:` link | Firefox ESR |
+| An `rdp:`, `vnc:`, `spice:` or `remmina:` link | Remmina |
+| An `ssh:` link | A shell in the desktop's terminal, through KIO's telnet service |
 
 The system-wide defaults are in two files, and a type is named in only one of them.
 `/etc/xdg/kdos-mimeapps.list` is searched first and holds every choice that needs a window, which is
-every row in the table above except the `kdos-openarchive` row, the `.csv` row and the office
-document row: LibreOffice Writer is the only application that claims those types, so they need no
-row.
+every row in the table above except the `kdos-openarchive` row and the `.csv` row. A Word document
+has a row because `doxx`, a terminal viewer, claims `.docx` beside Writer, and without one the
+choice would be asked on every open; the other office types have one for the same reason, wherever
+a second entry claims them.
 `/etc/xdg/mimeapps.list` is the layer under it and holds the types whose handler draws in a
 terminal: rar and comic-book archives, and the XPS and zipped comic-book pages `kdos-peek` shows.
 Both tables are read on `tty1` too, where there is no compositor for Firefox or Okular to open in;

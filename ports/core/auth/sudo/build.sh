@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i $PORT_SRC/openssl4-asn1-string-length.patch
+patch -p1 -i $PORT_SRC/eventlog-mailer-gid.patch
 
 ./configure \
     --prefix=/usr \
@@ -17,6 +18,7 @@ patch -p1 -i $PORT_SRC/openssl4-asn1-string-length.patch
         --with-secure-path \
         --with-all-insults \
         --with-env-editor \
+        --with-editor=/usr/bin/nvim:/usr/bin/nano \
         --with-rundir=/run/sudo \
         --with-vardir=/var/lib/sudo \
         --with-passprompt="[sudo] password for %p: " \
@@ -51,10 +53,9 @@ session   include     system-session
 # End /etc/pam.d/sudo
 EOF
 chmod 644 $PKG/etc/pam.d/sudo
-# secure_path carries /usr/local: `kdos` and the rest of kdos-tools install
-# to /usr/local/bin, and `sudo kdos clone` finds nothing on a path without it.
 cat > $PKG/etc/sudoers.d/00-sudo << "EOF"
 Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Defaults env_keep += "EDITOR VISUAL SUDO_EDITOR"
 %wheel ALL=(ALL) ALL
 EOF
-chmod 644 $PKG/etc/sudoers.d/00-sudo
+chmod 440 $PKG/etc/sudoers.d/00-sudo

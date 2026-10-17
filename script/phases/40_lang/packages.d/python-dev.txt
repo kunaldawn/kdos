@@ -27,3 +27,4 @@ python3-nest-asyncio
 python3-cloudpickle
 python3-jupyterlab-pygments
 python3-debugpy
+python3-pygccxml

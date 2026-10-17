@@ -10,9 +10,10 @@
 
 name        = quassel
 version     = 0.14.0
-release     = 1
+release     = 2
 source      = https://www.quassel-irc.org/pub/quassel-$version.tar.bz2
 sha256      = bbd46ca429c1518480904c9e2b0ab3a0412fe197f3ce4879974e06ed3a0093a3  quassel-0.14.0.tar.bz2
-description = Quassel IRC (Qt 5) — the monolithic client, the core that stays connected, and the client for it
+description = IRC client (Qt 5) — the monolithic client, the core that stays connected, and the client for it
 homepage    = https://quassel-irc.org/
-depends     = cmake ninja pkgconf qt5-qtbase qt5-qttools qt5-qtmultimedia qt5-qtsvg qt5-qtwayland boost zlib openldap qca-qt5 hicolor-icon-theme
+license     = GPL-2.0-only OR GPL-3.0-only
+depends     = cmake ninja pkgconf qt5-qtbase qt5-qttools qt5-qtmultimedia qt5-qtsvg qt5-qtwayland boost zlib qca-qt5 sonnet-qt5 libdbusmenu-qt5 hicolor-icon-theme

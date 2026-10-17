@@ -15,4 +15,5 @@ source      = https://releases.pagure.org/libosinfo/osinfo-db-tools-$version.tar
 sha256      = f3315f675d18770f25dea8ed04b20b8fc80efb00f60c37ee5e815f9c3776e7f3  osinfo-db-tools-1.12.0.tar.xz
 description = Tools that import, export, validate and locate the osinfo operating-system database
 homepage    = https://libosinfo.org
+license     = GPL-2.0-or-later
 depends     = meson ninja pkgconf perl gettext glib json-glib libarchive libsoup3 libxml2

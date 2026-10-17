@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The libraries only: libvncserver and libvncclient, which Remmina's VNC
-# plugin links. OpenSSL is both the TLS layer and the crypto backend (VeNCrypt,
-# ARD and MSLogon authentication); gcrypt and GnuTLS are not looked for, so
-# the backend cannot change with what happens to be installed. SASL covers the
-# servers that ask for it. The examples, and the SDL, GTK, Qt, XCB and FFmpeg
-# code that only they use, are off, as is systemd socket activation.
 mkdir build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

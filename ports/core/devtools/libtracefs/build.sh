@@ -11,7 +11,6 @@
 
 export XML_CATALOG_FILES=/etc/xml/catalog
 
-# samples and utest are example programs and a CUnit suite; neither ships.
 meson setup build --prefix=/usr --libdir=lib --buildtype=release \
       -Ddoc=true -Dsamples=false -Dutest=false
 meson compile -C build

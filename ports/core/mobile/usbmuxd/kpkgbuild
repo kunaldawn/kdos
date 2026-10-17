@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/libimobiledevice/usbmuxd
 sha256      = fe4d04223b85add8bef6a2dd6452ef6f9bb1c0eb52ba036564c9aa8d1dd9dee2  usbmuxd-1.1.1.20251206.tar.gz
 description = USB multiplexing daemon that carries every connection to an iPhone or iPad over its cable
 homepage    = https://libimobiledevice.org
+license     = GPL-2.0-only OR GPL-3.0-only
 depends     = libusb libplist libimobiledevice libimobiledevice-glue eudev autoconf automake libtool pkgconf

@@ -15,3 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/troydhanson/uthash/archi
 sha256      = 387ba027946d7c64e9aa19cc53b2edcd714f8f9dca9fa8e3aaef17e0e8e3d736  uthash-2.4.0.tar.gz
 description = A hash table for C structures (header-only)
 homepage    = https://troydhanson.github.io/uthash/
+license     = BSD-1-Clause

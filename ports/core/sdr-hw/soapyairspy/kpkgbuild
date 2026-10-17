@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/pothosware/SoapyAirspy/a
 sha256      = 4279ab4278fab699ef8325f3f921b2307496130a56028d33022be10916b6ccff  soapyairspy-0.2.0.tar.gz
 description = The SoapySDR module for Airspy R2 and Mini receivers, through libairspy
 homepage    = https://github.com/pothosware/SoapyAirspy
+license     = MIT
 depends     = cmake soapysdr airspy

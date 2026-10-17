@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = chemical-mime-data
+version     = 0.1.94
+release     = 1
+_tag        = release_${version//./_}
+source      = $name-$version.tar.gz::https://github.com/dleidert/chemical-mime/archive/$_tag.tar.gz
+sha256      = 9a795a03b59a861dc1e17f513d95ddb1165cca71658ac62c58bebf00feac6dbc  chemical-mime-data-0.1.94.tar.gz
+description = MIME types for chemistry file formats — CML, PDB, MDL Molfile, XYZ, Gaussian and about 70 more
+homepage    = https://github.com/dleidert/chemical-mime
+license     = LGPL-2.1-or-later
+depends     = autoconf automake intltool pkgconf libxslt libxml2 shared-mime-info

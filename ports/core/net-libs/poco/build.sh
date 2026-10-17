@@ -9,13 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# POCO_UNBUNDLED links zlib, pcre2, utf8proc and expat from their ports; left
-# off, each is compiled in from dependencies/ and no update to the port reaches
-# it. FastLogger is off because it compiles a vendored copy of Quill.
-# The libraries are the general-purpose set: Foundation, XML, JSON, Util, Net,
-# Crypto, NetSSL, JWT, Zip and Encodings. Data and its SQL back ends, MongoDB,
-# Redis, Prometheus, ActiveRecord, PageCompiler, PDF, SevenZip and DNS-SD are
-# off; each is a closed feature nothing in the tree links.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

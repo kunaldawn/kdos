@@ -37,7 +37,7 @@ Start with [What each tool proves](#what-each-tool-proves) and
 | `testing/vnc-shot.py` | That a real session does a thing, photographed | Anything the renderer in use cannot show | Minutes per boot |
 | `testing/quick.sh` | That a changed program behaves on a booted desktop, without repacking the ISO | Anything about the shipped image | About three minutes |
 | `testing/usability.sh` | That the desktop can be driven by hand (hover, click, chord), photographed step by step | Nothing on its own: it asserts nothing and a person reads the result | About six minutes |
-| `testing/docscheck.sh` | That this book's links resolve, that it avoids the common historical phrasings, and that each page keeps its contract | Anything a reader has to judge | Under a second |
+| `testing/docscheck.sh` | That this book's links resolve, that it avoids the common historical phrasings, that each page keeps its contract, and that the port counts and catalogue rows match the tree | Anything a reader has to judge | Under a second |
 | `make fetch-check` | That every source a recipe names is on disk and matches its hash | That the sources build | About a minute, offline |
 | `testing/packlane.sh` | The pack lane (installing boxed applications from packs; see [Packs and boxes](../03-architecture/packs-and-boxes.md#two-lanes-one-box)) end to end on a booted machine | Anything without application packs to install | Minutes |
 | `testing/install-to-disk.sh` | That the installer installs | That the installed system boots, which is the second half of the run | Minutes |
@@ -58,10 +58,11 @@ tested by building the distribution with them.
 | Something only a running desktop shows | `testing/quick.sh`, then the rig on a real ISO |
 | A page of this book | `bash testing/docscheck.sh` |
 | Nothing, but a build finished and a phase is about to be built with `--port-jobs` | `python3 testing/depdrift.py` in the development image |
+| A recipe's flags, `depends` or installed files, once its port is built | `make debuginfo`, `make linkcheck` and `make entrycheck`, from a container or as root; `70_image` runs the last two and stops on them |
 
 ## preflight.sh
 
-Preflight checks the tree's wiring without building anything. It runs 56 checks:
+Preflight checks the tree's wiring without building anything. It runs about 65 checks:
 
 ```sh
 testing/preflight.sh
@@ -73,9 +74,9 @@ headed by a `==>` line. It exits 0 when every check passes and 1 when any fails,
 failure with the file to look at, and ends with either `preflight clean` or the number of problems
 found.
 
-Ten checks read the built tree under `build/fs`. Six of them skip entirely without one: orphaned
-packages, the built `kinstall`, icon names, chrome glyphs, desktop entries, and the libraries the
-desktop's own programs link (which also skips on a host with no `readelf`). Four run a reduced
+Twelve checks read the built tree under `build/fs`. Eight of them skip entirely without one: orphaned
+packages, the built `kinstall`, icon names, chrome glyphs, desktop entries, the entries Start may
+list, the `kdos-*` manual pages, and the libraries the desktop's own programs link (which also skips on a host with no `readelf`). Four run a reduced
 check and say what they left out: the programs a recipe's embedded scripts name, the programs
 `fs/etc/inittab` names, the `mimeapps` rows (only the `kdos-*` handlers are checked, against `fs/`
 and `src/`), and the check on the build tree's root (its udev grants, daemon accounts and group
@@ -87,17 +88,17 @@ check that finds its directory there reports what is missing from it.
 | Group | Checks |
 |---|---|
 | Layout | Every recipe under `ports/core` sits exactly at `ports/core/<shelf>/<name>/kpkgbuild`, and `ports/core` holds nothing but shelves; `ports/shelves` lists every shelf once, each with a volume that is a positive integer and a description, an id of lowercase letters, digits and `-`, not `libs` or `core` and not a port's name, and each a non-empty directory; `src/` holds only its six areas and every port of KDOS's own sits at `src/<area>/<name>/`; the orphan sweep searches every `src/` area that holds a recipe; every bare name is one port across the shelves and the `src/` areas; every `name =` is its directory's name; every `group =` family sits on one shelf; every file of a `packages.d/` is `00-order.txt`, a listed shelf's `<shelf>.txt` or a `src-<area>.txt`, and names only ports filed there, and no phase has both `packages.txt` and `packages.d/` |
-| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball (`linux` and `perf`) agree on its version and hash; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone |
-| Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every recipe and build script carries the KDOS banner; every source a port declares is named by a checksum and is non-empty where it is on disk (one not yet fetched is reported as a `make fetch` note, not a failure) |
+| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball (`linux` and `perf`) agree on its version and hash; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone or listed in `ports/unbuilt` |
+| Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every recipe and build script carries the KDOS banner; every source a port declares is named by a checksum and is non-empty where it is on disk (one not yet fetched is reported as a `make fetch` note, not a failure); every recipe carries a `description`, a `homepage` and a `license` that is an SPDX expression, its first source spells the version as `$version` (`docbook-xml` excepted), and its `description` is exactly the one its row in the [ports catalogue](../06-reference/ports-catalogue.md) gives, every port having one row there (all read by `testing/recipemeta.py`); the switches that turn off a feature whose library is a port are counted by `testing/optdeps.py`, a report that never fails |
 | Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value option types validated; every recipe that runs `meson setup` names its buildtype; every `go build` and `go install` passes `-s` and `-w` in its `-ldflags`, read with its backslash continuations joined; every recipe that runs cargo builds against a shared C library; every consumer of a shared library generates the Wayland protocols it includes |
 | Sources | Every source file in a port of KDOS's own is compiled by its recipe, unless that recipe globs its own `$PORT_SRC` directory (a glob of the shared `libk*` trees does not exempt it); a first source whose members are `./`-prefixed is accounted for; a flat first source is unpacked by its own recipe |
 | The sources archive | No archive a recipe hashes is tracked by git; `.gitignore` ignores every archive suffix under `ports/core` and the source cache, and none of the archive fixtures under `testing/fixtures`; `ports/srclib.sh`, `ports/fetch`, `ports/publish` and `script/hooks/pre-push` exist, are executable where they must be, and pass `bash -n`; `ports/sources.idx` holds every format-2 rule: `# kdos-sources-index 2` on line 1, each line `<sha256> <tag> <asset> <port>/<file>` with an optional `parts=<N>:…` of 2 to 99 hashes, each tag `sources-<N>` with `N` a positive integer, or a `src-<name>` of the older layout, which passes and is counted in a `WARNING` note saying `make publish-rehome` moves those lines, one line per hash, no part hash equal to a line's hash, no two asset names in one tag equal ignoring case (a split file's parts and its bare name counted), and hash order. An unset `core.hooksPath` is printed as a note, not a failure |
 | Shipped configuration | The shipped compositor configuration keeps labwc's default bindings; every command it, the menus and `menu.conf`'s routes name exists; every program `fs/etc/inittab` names is on the image; every filesystem the installer offers, the initramfs can mount; the ISO step builds every boot path (BIOS and UEFI, disc and written stick); the built `kinstall` is the installer in this tree |
 | Permissions and accounts | `/etc/shadow` on the built tree is mode 600 or 640 and the file-system step narrows it; the polkit and udev rule directories and files are owned by root; no udev rule sets `GROUP=`, `MODE=` or `OWNER=` on a device class that has no node, and every group a rule grants is one the desktop user is in; every account a shipped daemon drops to exists in `fs/etc/passwd`; the desktop user is in the groups its surfaces need |
 | Shell | All shipped and build shell is syntactically valid; every file a build script, a `phase.env` or a shared environment file sources exists, and a step sources its own phase's `phase.env`; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
-| Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the compiler cache sets no `base_dir`, checks the compiler by a string rather than a modification time, has its `KDOS_CCACHE` switch both passed by the `Makefile` and named by `script/chroot/exec.sh`, and puts no masquerade directory on a `PATH`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; only `kdos_crt_scanout()` in the compositor writes the scene's direct-scanout switch; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
-| Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load |
-| Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; every icon name a surface asks for resolves on the image; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=` |
+| Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; every script under `fs/etc/init.d` but `service_helper` is executable in the work tree and recorded as `100755` in git; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the compiler cache sets no `base_dir`, checks the compiler by a string rather than a modification time, has its `KDOS_CCACHE` switch both passed by the `Makefile` and named by `script/chroot/exec.sh`, and puts no masquerade directory on a `PATH`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; only `kdos_crt_scanout()` in the compositor writes the scene's direct-scanout switch; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
+| Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load; every `kdos-*` command on the built tree has a manual page |
+| Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; every icon name a surface asks for resolves on the image; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=`; no visible entry reads as a server, session picker, launch pad, tray helper or diagnostic unless `testing/visible-entries.allow` names it, and that file names only entries that are visible and read that way |
 
 Preflight cannot prove the build works. It proves the build will not fail for a mechanical reason
 such as a missing port, a misspelt option or a script that does not parse. Run it after touching a
@@ -159,6 +160,11 @@ blocks fall into these groups, in roughly this order:
    tree resolving through `kpkgdepends`, and `libkpkg`'s lookup over a fixture tree of shelves (a
    port found one shelf down or loose beside the shelves, a name filed twice or nested below its
    shelf refused, a shelf with no port ignored); a package built twice being byte-identical; the
+   package lint refusing a synthetic port for each rule (an unreadable file, a program with no `x`
+   bit, a world-writable file, a `.orig`, a `usr/lib64` or `usr/etc` path, an empty `.pc`
+   `Version`, a build-directory `RPATH`, an executable stack) and rolling one that holds a path
+   from each allowlist, with the Python bytecode compiled into the package and `direct_url.json`
+   left out; the
    shared indexes, file ownership, skip-if-installed, the package store (a hit installs the same
    files without running `build.sh`; a dependency's changed bytes, a changed `CFLAGS`, a
    dependency without `.pkgsha`, a truncated stored file and `-f` all build; a job count does
@@ -1005,8 +1011,8 @@ the binaries that ship rather than the host's. It has three limits:
   terminal needs the rig.
 
 Everything the program writes stays in `build/fs`, and the ISO is built from `build/fs`. A bind
-mount creates its own mountpoint, and a program run under the chroot writes to `/root`, `/tmp` and
-wherever else it likes. None of that is owned by a package or by `fs/`, so neither the
+mount creates its own mountpoint, and a program run under the chroot writes to its `HOME`, `/tmp`
+and wherever else it likes. None of that is owned by a package or by `fs/`, so neither the
 [orphan sweep](build-system.md#sweeping-orphaned-packages) nor the
 [`fs/` manifest](build-system.md#syncing-fs) removes it, and it ships. Bind inputs read-only under
 `/tmp`, clean up afterwards, and run `testing/preflight.sh`: it refuses a `build/fs` whose top
@@ -1321,6 +1327,22 @@ It reports:
 | `NOSEEALSO` | A page under `docs/kdos/` with no `## See also` section |
 | `UNLISTED` | A page the book's index, `docs/kdos/README.md`, does not name (full runs only) |
 | `MISSING` | A path given on the command line that does not exist |
+| `BOOKCOUNT` | A port count on one of the three pages that state exact counts, or a row of the ports catalogue, that the tree contradicts (full runs only; see below) |
+
+A full run also runs `testing/bookcounts.py`. Exact counts of the ports tree are written on three
+pages only: [Status](../06-reference/status.md), [The ports
+catalogue](../06-reference/ports-catalogue.md) and [Packaging](../03-architecture/packaging.md).
+Every other page says "about 2,000" or links to one of them. The script recomputes each figure those
+pages state: the recipes in `ports/core` and in each `src/` area, the shelves, the list lines and
+distinct names, each phase's names, installs and `packages.d/` files (resolved over `depends =` as
+`phaseclosure.py` resolves them), and each shelf's count. It checks that the catalogue has every
+recipe exactly once, under its shelf or area, with the recipe's version and the phase that installs
+it; that its list of ports named by more than one phase is complete; and that no port in its
+application-developer platform table has gained a consumer. It also fails on a recipe no phase
+installs that `ports/unbuilt` does not name, on a name there that a phase does install or that has
+no recipe, and on a catalogue row for such a recipe whose phase is not `not built`. A figure is
+found by the sentence or table row that states it, so rewording one of those sentences makes the
+check report it as not found until the pattern in the script is changed with it.
 
 It prints `docscheck: ok` and exits 0 when nothing is reported, and exits 1 otherwise. It cannot
 catch a paragraph that narrates history in its own words, or a link to a heading that was renamed.
@@ -1483,7 +1505,7 @@ Run them against a medium or a store you have put those packs into.
 | `qemu-audio.sh` | Sourced by the run targets and the rig | Picks a working audio backend rather than hard-coding one, because QEMU aborts at start-up on a backend its build lacks, and sets the mixer's rate, because QEMU's default is 44100 and the guest drives the codec at 48000 |
 | `qemu-hw/` | On the host, needs Docker and the NVIDIA container toolkit | The containerised QEMU with accelerated (virgl) graphics behind `make run-hw` and `make rundisk-hw` (`run.sh iso` and `run.sh disk`); `probe.py` and `verify.py` check the GPU path |
 | `rig-image.sh`, `devdeps-image.sh` | On the host | Build the rig image (`kdos-qemu-py`, from `Dockerfile.qemu`) and the development image (`kdos-devdeps`, from `Dockerfile.devdeps`) |
-| `barcheck.c`, `boxcheck.c` | Compiled by the self-test | The scrollbar's drawing against its hit test at every position, and the shell's two box questions against a fixture store |
+| `barcheck.c`, `boxcheck.c`, `appindex.c` | Compiled by the self-test | The scrollbar's drawing against its hit test at every position, the shell's two box questions against a fixture store, and the application index keeping every entry past its first allocation |
 
 `testing/notes/` holds the measurements the pack format rests on (`packs-w0.txt`: trailing bytes
 after an EROFS image, forced ownership, and the other assumptions). It is read, not run.
@@ -1531,24 +1553,133 @@ It is advisory and preflight does not run it, because it needs a built tree. Exi
 unless `--strict` is given and a `DRIFT` line was printed. A dependency loaded with `dlopen`, run
 as a program or included only as a header is invisible to it.
 
-### Debug information in the built tree
+### Recipe metadata and switched-off features
 
-`testing/debuginfo.sh` lists the installed files that carry DWARF. `kpkg` strips nothing, so a file
-has a `.debug_info` section exactly when its port's flags produced one, and no port is meant to.
-Run it on a built root after changing a recipe's compile or link flags, or after adding a port
-whose build system defaults to `-g`:
+Two scripts read the recipes with no build tree, and preflight runs both:
 
 ```sh
-testing/debuginfo.sh              # build/fs
-testing/debuginfo.sh <root>
+python3 testing/recipemeta.py            # every finding; --brief prints a count per rule
+python3 testing/optdeps.py               # every switch that turns off a feature a port provides
+python3 testing/optdeps.py --claims      # every recipe line saying something is not a port
 ```
 
-It reads every ELF file under `usr/` with `readelf -S`, leaving out kernel modules, firmware, the
-cross-target sysroots (`arm-none-eabi`, `avr`, `riscv*-elf`) and BPF objects, and groups what it
-finds by the package whose manifest in `<root>/var/lib/kpkg/db` names the file, largest package
-first, with each file's size and its `.debug_info` size. A file no manifest names is listed under
-`(unowned)`. It changes nothing. Exit status is 1 when it reports a file and 0 when it reports none;
-preflight does not run it, because it needs a built tree.
+`recipemeta.py` reads each `kpkgbuild` the way `kpkg info` and the version checker do, the first
+line of a key taken literally, and reports a recipe with no `description`, `homepage` or
+`license`, a `license` that is not an SPDX expression, a first source that spells the version
+instead of `$version`, and a `description` that is not exactly its port's row in the
+[ports catalogue](../06-reference/ports-catalogue.md), with ports that have no row and rows that
+name no port. It exits 1 on any finding, and preflight fails with it.
+
+`optdeps.py` reads every `build.sh` for `--without-X`, `--disable-X`, `-D…=OFF`,
+`-DCMAKE_DISABLE_FIND_PACKAGE_X=ON` and `-D…=disabled`, and maps X to a port by its name, by
+`lib<X>`, by `python3-<X>` and through an alias table of upstream spellings (`numa` is `numactl`,
+`PyGObject` is `python3-gobject`, `libstemmer` is `snowball`). A switch whose X is a port is either
+a choice or a feature lost to the belief that the library is missing, and the switch cannot say
+which, so the script is a report: preflight prints its count and never fails on it. An upstream
+spelling that maps to no port is silent, so a new port whose upstream name differs from its own
+needs its row in the alias table. `--claims` marks each name in a "not a port" line that is one;
+the features whose library really has no port are listed in
+[known gaps](../06-reference/known-gaps.md#features-whose-library-has-no-port).
+
+### Debug information in the built tree
+
+`testing/debuginfo.py` is the gate on shipped DWARF. `kpkg` strips no debug information, so a file carries debug
+sections exactly when its port's flags produced them, and no port is meant to. Run it on a built
+root after changing a recipe's compile or link flags, or after adding a port whose build system
+defaults to `-g`:
+
+```sh
+make debuginfo                                    # build/fs, from a container or as root
+python3 testing/debuginfo.py --root <root>        # --threshold BYTES, --files lists every file
+```
+
+One walk over `usr/` reads each regular file's first four bytes, and each ELF file's section table
+is parsed in place; nothing is spawned per file, and `build/fs` takes about three minutes. Every
+`.debug_*` and `.zdebug*` section that occupies bytes is summed. Kernel modules, firmware, the
+cross-target sysroots (`arm-none-eabi`, `avr`, `riscv*-elf`) and BPF objects are left out. The
+totals are grouped by the package whose manifest in `<root>/var/lib/kpkg/db` names the file, largest
+first; a manifest path is keyed as `kpkg` keys it, with a top-level `/bin`, `/sbin` or `/lib` alias
+folded into `/usr`, so a file a package installed through the alias is not misread as unowned. A
+file no manifest names is listed under `(unowned)`.
+
+One pattern is allowed: ghc's `libHSrts*_debug-ghc*.so`, the runtimes `ghc -debug` links. Carrying
+DWARF is what they are for, so they are counted on a line of their own and never in the total.
+
+Exit status is 1 when the DWARF outside the allowlist exceeds the threshold, 1 MiB unless
+`--threshold` says otherwise, and 0 when it does not. It changes nothing, and preflight does not run
+it, because it needs a built tree.
+
+### Files nothing owns
+
+`testing/unowned.py` lists the files of a built root that no package manifest and no `fs/` path
+provides. Such a file is one no removal takes away and no update replaces: a build that wrote
+outside its package root, a tool run against the live root, or a manifest that lost the line.
+
+```sh
+python3 testing/unowned.py --root build/fs        # --fs <repo>/fs; --all lists every path
+```
+
+Paths are keyed as `kpkg` keys them, and a manifest line is read with `tar`'s quoting undone, so a
+name outside ASCII matches the file on disk. What something other than a package writes on purpose
+is subtracted: the mount points and build scratch (`proc`, `sys`, `dev`, `run`, `tmp`, `var/tmp`,
+the chroot's `/kdos` and `/ports`, `kpkg`'s caches), the homes and `/etc/skel`, `kpkg`'s database,
+the merged-`/usr` links and the `var/run` and `var/lock` links the bootstrap makes, `kpkg` with
+its four names and `/etc/kpkg.conf` and `kinstall`, which `10_bootstrap` compiles into the root and
+no port packages, the `passwd-`, `group-`, `shadow-` and `gshadow-` copies shadow's tools keep
+beside the account files they edit, the files
+generated over every package (the shared indexes `kpkg`'s triggers and `70_image` rebuild, depmod's
+module indexes, `/etc/ssl/cert.pem`, the launcher table, the `SOURCES` offer and the initramfs
+with its module list in `/boot`), and every `__pycache__`: bytecode a package ships is owned, and
+what the build's own tools wrote is unowned until `020_cleanup.sh` deletes it, which a run on an
+unfinished tree would otherwise list.
+
+The report groups paths by directory, largest group first. Exit status is 1 when it reports a path
+and 0 otherwise. `70_image` runs it in `087_gates.sh` as a report and does not stop on it.
+
+### Run-time references
+
+`testing/linkcheck.py` fails a built tree whose programs reach for something the package does not
+declare or the root does not hold. Run it from the repository root, which it reads for the recipes
+and phase lists:
+
+```sh
+python3 testing/linkcheck.py --root build/fs      # --all also lists the unresolved warnings
+```
+
+Every file a package's manifest names is read once:
+
+| Line | Means |
+|---|---|
+| `FAIL undeclared` | An ELF file's `DT_NEEDED` resolves, as musl's loader resolves it (the object's `RPATH`/`RUNPATH` with `$ORIGIN`, then `etc/ld-musl-x86_64.path`), to a file owned by a package outside the consumer's transitive `depends`. musl, gcc and linux-headers are exempt. Add the owner to `depends` |
+| `FAIL interpreter` | A script's `#!` interpreter or an ELF file's `PT_INTERP` under `/usr` (or `/bin`, `/sbin`, `/lib`) does not resolve to an executable, or `#!/usr/bin/env NAME` names a command on no `PATH` directory of the root |
+| `FAIL openssl` | One process would map both `libcrypto.so.3` and `libcrypto.so.4`, which musl binds to whichever came first. The sets read are each object's own `NEEDED` closure, each Qt 5 plugin together with `libQt5Network.so.5`, and each Python extension module together with `_hashlib` and `_ssl`, except those of `python3-pyqt5`, whose pairing prints `WARN openssl` instead because it is [a known gap](../06-reference/known-gaps.md#a-pyqt5-program-that-also-uses-pythons-ssl-or-hashlib-can-crash) |
+| `WARN python` | A `#!` names bare `python`. It runs whatever `python` the `PATH` finds; the script should name `python3` |
+| `WARN unowned` | A `DT_NEEDED` resolves to a file no package owns |
+| `WARN unresolved` | A `DT_NEEDED` the object's own search path does not find. A plugin can still load when its host has mapped the library, so it is counted, and listed with `--all` |
+
+The declared closure is resolved per package over its phase's `PORT_REPO`, as `depdrift.py`
+resolves it. Unlike `depdrift.py`, every undeclared owner fails, wherever it is installed: a
+dependency that only the build order supplied is one a removal or an update can take away. A
+library loaded only with `dlopen` is invisible to it. Exit status is 1 when a `FAIL` line was
+printed. `70_image` runs it in `087_gates.sh`, and a failure stops the image.
+
+### Links, launchers and rules
+
+`testing/entrycheck.py` fails a built tree that carries a reference to nothing:
+
+```sh
+python3 testing/entrycheck.py --root build/fs
+```
+
+| Line | Means |
+|---|---|
+| `link` | A symlink that resolves to nothing inside the root. A target under `/proc`, `/sys`, `/dev`, `/run` or `/tmp` is a run-time path and is not checked |
+| `exec` | A desktop entry's `Exec=` (applications, autostart and the skel launchers) or a D-Bus service's `Exec=` whose program is not an executable in the root, by path or on the `PATH`. An entry whose `TryExec=` does not resolve is hidden by specification and is skipped |
+| `icon` | A visible desktop entry (no `NoDisplay=true`, no `Hidden=true`) whose `Icon=` names no file, and no icon in any theme under `usr/share/icons` or in `usr/share/pixmaps` |
+| `udev` | A `RUN`, `PROGRAM` or `IMPORT{program}` key in a udev rule whose program does not exist, by path or in `usr/lib/udev`. udev reports that at debug level only |
+
+Every path is resolved against the root, never the host. Exit status is 1 when anything is
+reported. `70_image` runs it in `087_gates.sh`, and a finding stops the image.
 
 ## What is not tested
 

@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/MediaArea/MediaInfo/arch
 sha256      = 90dd67f5a70bb87158d7024456339f5062f59776188427d7158d07a43e6a46d1  mediainfo-26.05.tar.gz
 description = The command line over libmediainfo
 homepage    = https://mediaarea.net/en/MediaInfo
+license     = BSD-2-Clause
 depends     = cmake libmediainfo libzen

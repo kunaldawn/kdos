@@ -15,4 +15,5 @@ source      = https://github.com/libimobiledevice/libimobiledevice/releases/down
 sha256      = 23cc0077e221c7d991bd0eb02150a0d49199bcca1ddf059edccee9ffd914939d  libimobiledevice-1.4.0.tar.bz2
 description = Library and idevice* tools that speak the iPhone and iPad protocols: pairing, backup, files, syslog
 homepage    = https://libimobiledevice.org
+license     = LGPL-2.1-or-later AND GPL-2.0-or-later
 depends     = libplist libimobiledevice-glue libusbmuxd libtatsu openssl readline pkgconf

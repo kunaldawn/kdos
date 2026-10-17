@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The libraries, the unzzip programs and the manual pages, which the docs
-# directory generates with Python. The SDL example, the zzipwrap example
-# library and the self-extracting test are examples upstream never installs.
 cmake -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \

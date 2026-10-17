@@ -8,15 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# python3 is built before Tk exists and ships without tkinter. This builds
-# the one extension module from the same source, against the installed Tcl
-# and Tk, and packages it with the pure-Python package beside it. The version
-# is python3's: the module is compiled for that interpreter's ABI.
 ./configure \
 	--prefix=/usr \
 	--enable-shared \
 	--with-system-expat \
-	--without-system-libmpdec \
+	--with-system-libmpdec \
 	--with-ensurepip=no \
 	--disable-test-modules \
 	OPT="-O3 -Wall"

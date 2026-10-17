@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = 6efd9fc7786a7e979b32904aeadf1d2d8e69a5da110f8ebd45f95ec02de41f77  kconfigwidgets-6.30.0.tar.xz
 description = KDE Frameworks: widgets for configuration dialogs
 homepage    = https://invent.kde.org/frameworks/kconfigwidgets
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-only AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kcodecs kcolorscheme kconfig kcoreaddons kguiaddons ki18n kwidgetsaddons gettext

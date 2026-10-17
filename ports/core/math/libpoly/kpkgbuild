@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libpoly
+version     = 0.2.1
+release     = 1
+source      = https://github.com/SRI-CSL/libpoly/archive/refs/tags/v$version.tar.gz
+sha256      = f9920afc876f998633348b9cbfcf180757ada48cc872040256c60ad0707b5a0f  libpoly-0.2.1.tar.gz
+description = Polynomial arithmetic and real algebraic numbers — the library yices2's MCSAT solver reasons with
+homepage    = https://github.com/SRI-CSL/libpoly
+license     = LGPL-3.0-or-later
+depends     = cmake ninja gmp

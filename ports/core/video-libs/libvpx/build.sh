@@ -9,14 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --enable-pic and --disable-static: this is linked by ffmpeg, and a non-PIC
-# static archive inside a shared library is a link failure on x86_64.
-#
-# --disable-unit-tests keeps a test corpus that is fetched over the network out
-# of an offline build.
-#
-# --as=nasm: the default picks yasm over nasm whenever yasm is installed, so the
-# assembler would follow build order; nasm is the one declared.
 export CFLAGS="$CFLAGS -flto=auto -frandom-seed=libvpx" CXXFLAGS="$CXXFLAGS -flto=auto -frandom-seed=libvpx"
 export LDFLAGS="$LDFLAGS -flto=auto"
 ./configure \

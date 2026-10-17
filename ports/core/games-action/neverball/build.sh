@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The makefile asks `sdl2-config` and `libpng-config` for its flags, and the
-# first does not exist here, so both answers come from pkgconf through the
-# makefile's own variables. Its CFLAGS := -O2 would otherwise replace the
-# build's flags, so they are passed the same way, with -fcommon: a header
-# defines a global without `extern`, which links only as a common symbol.
-#
-# OpenGL links libOpenGL, the vendor-neutral library that needs no GLX: the
-# context is SDL's, EGL on Wayland. Language files stay out (ENABLE_NLS=0).
-# Only the programs and the compiled levels are built; the `desktops` target
-# translates entries this recipe writes itself.
 mk() {
 	make \
 		CFLAGS="$CFLAGS -fcommon" \
@@ -41,10 +31,10 @@ install -Dm644 dist/neverball.6 "$PKG/usr/share/man/man6/neverball.6"
 install -Dm644 dist/neverputt.6 "$PKG/usr/share/man/man6/neverputt.6"
 install -Dm644 dist/mapc.1 "$PKG/usr/share/man/man1/neverball-mapc.1"
 
-# The levels ship compiled; their .map sources are the input mapc just read.
 install -d "$PKG/usr/share/neverball"
 cp -R data/. "$PKG/usr/share/neverball/"
 find "$PKG/usr/share/neverball" -name '*.map' -delete
+chmod -R a+rX "$PKG/usr/share/neverball"
 
 for s in 16 24 32 48 64 128 256 512; do
 	install -Dm644 dist/neverball_$s.png \
@@ -53,7 +43,6 @@ for s in 16 24 32 48 64 128 256 512; do
 		"$PKG/usr/share/icons/hicolor/${s}x$s/apps/neverputt.png"
 done
 
-# The Wayland app_id of each is SDL's default, the executable's name.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/neverball.desktop" <<'DESKTOP'
 [Desktop Entry]

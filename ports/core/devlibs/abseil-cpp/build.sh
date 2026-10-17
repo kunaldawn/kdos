@@ -9,13 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The standard is pinned, not left to the compiler's default. Abseil rewrites
-# the installed absl/base/options.h from the standard it was built with, and a
-# C++17 build pins its own ordering and source_location types rather than the
-# C++20 std ones. That header then compiles and links the same under every
-# standard from 17 up, so a consumer that forces c++17 (webrtc-audio-processing,
-# gst-plugins-bad's webrtcdsp) and one on the compiler's newer default both
-# match the ABI the libraries carry.
 mkdir build
 cd build
 cmake .. \

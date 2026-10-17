@@ -9,39 +9,24 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE COMPLETE UPSTREAM TREE, NOT A SUBSET.
-#
-# These are vendor binary blobs. They are the one class of thing on this host
-# that is not built from source here, because no source is published for them —
-# see the exceptions section in README.md, which names this port first.
-#
-# Nothing is pruned. A curated subset is a bet on which hardware the machine
-# will turn out to have, and losing that bet is silent: request_firmware()
-# fails and the device simply does not work, with no diagnostic anywhere. The
-# cost of being right every time is measured below and is paid once.
-#
-# Upstream's own copy-firmware.sh does the install, rather than a copy of the
-# tree, because the tree on disk is NOT the installed layout: WHENCE carries
-# `Link:` directives that name the aliases drivers actually request, and only
-# that script creates them. A plain copy produces a tree with no symlinks at
-# all, where every driver asking for an aliased name gets nothing.
-#
-# --zstd because the kernel is built CONFIG_FW_LOADER_COMPRESS_ZSTD=y and loads
-# blobs compressed. Measured on this tree: 1.9 GB extracted -> 921 MB
-# installed, 2307 symlinks, none dangling.
-#
-# Serial, and without dedup. GNU parallel and rdfind are both ports, so
-# upstream's `-j` and `make dedup` are reachable; neither is taken because
-# neither has been measured here and both change a 921 MB install: `-j` its
-# build, dedup its on-disk layout (duplicates become hardlinks, and the
-# dangling-symlink check below has to keep passing over the result). Serial
-# takes about a minute and the duplicate blobs are inside the 921 MB.
-
 ./copy-firmware.sh --zstd "$PKG/lib/firmware"
 
-# A dangling firmware symlink is invisible at runtime — request_firmware()
-# fails and the device just does not work — so the build stops rather than
-# shipping one.
+fw="$PKG/lib/firmware"
+find "$fw/qcom" -mindepth 1 -maxdepth 1 \
+	! -name aic100 ! -name aic200 ! -name qdu100 ! -name 'sdx*' ! -name 'prog_firehose_*' \
+	-exec rm -rf {} +
+find "$fw/mellanox" -name 'mlxsw_spectrum*.mfa2*' \
+	! -name 'mlxsw_spectrum-13.2010.1006.mfa2*' \
+	! -name 'mlxsw_spectrum2-29.2010.1006.mfa2*' \
+	! -name 'mlxsw_spectrum3-30.2010.1006.mfa2*' \
+	-exec rm -f {} +
+rm -f "$fw"/mrvl/prestera/mvsw_prestera_fw-v2.0.img* "$fw"/mrvl/prestera/mvsw_prestera_fw-v3.0.img*
+while IFS= read -r l; do
+	case "$(readlink "$l")" in
+	qcom/*) [ -e "$l" ] || rm -f "$l" ;;
+	esac
+done < <(find "$fw" -maxdepth 1 -type l)
+
 dangling=0
 while IFS= read -r l; do
 	[ -e "$l" ] || { echo "dangling firmware symlink: $l" >&2; dangling=$((dangling + 1)); }
@@ -51,9 +36,12 @@ if [ "$dangling" -ne 0 ]; then
 	exit 1
 fi
 
-# WHENCE is upstream's provenance and licence map: it says who owns each blob
-# and under what terms. It is the document a redistributor needs, so it ships
-# with the blobs rather than being left in the tarball.
 install -d "$PKG/usr/share/licenses/$name"
 install -m644 WHENCE "$PKG/usr/share/licenses/$name/"
-install -m644 LICENSE* "$PKG/usr/share/licenses/$name/" 2>/dev/null || true
+find . -maxdepth 1 -type f -name 'LICEN[CS]E*' -exec install -m644 -t "$PKG/usr/share/licenses/$name/" {} +
+cp -r LICENSES "$PKG/usr/share/licenses/$name/"
+missing=0
+for lic in $(grep -oE 'See LICEN[CS]E[._][A-Za-z0-9._+-]*' WHENCE | sed 's/^See //; s/\.$//' | sort -u); do
+	[ -e "$PKG/usr/share/licenses/$name/LICENSES/$lic" ] || { echo "WHENCE names a missing licence: $lic" >&2; missing=1; }
+done
+[ "$missing" -eq 0 ]

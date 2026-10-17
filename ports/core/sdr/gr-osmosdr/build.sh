@@ -9,16 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# GNU Radio's GrComponent is used here, so ENABLE_DEFAULT=OFF plus every
-# wanted device forced ON makes a missing radio library a configure error
-# rather than a missing entry in the device string parser. UHD goes through
-# GNU Radio's gr-uhd, the FUNcube Dongle through gr-funcube, and IQ balance
-# correction through gr-iqbal. Off: FreeSRP and XTRX, neither of which is a
-# port; SDRplay is nonfree and never looked up.
-#
-# CMP0167=NEW: find_package(Boost) reads Boost's own config package, which
-# knows Boost.System is header-only. FindPythonLibs is handed the library and
-# headers, because its version table is older than this python.
 _pyinc=$(python3 -c 'import sysconfig; print(sysconfig.get_path("include"))')
 _pylib=$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR") + "/" + sysconfig.get_config_var("LDLIBRARY"))')
 

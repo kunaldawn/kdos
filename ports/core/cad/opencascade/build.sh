@@ -9,20 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# musl has no mallinfo(), feenableexcept() or backtrace(); each patch drops
-# the call, so memory statistics, FPE trapping and stack traces report
-# nothing instead of failing to link.
 patch -p1 -i "$PORT_SRC/no_mallinfo.patch"
 patch -p1 -i "$PORT_SRC/no_feenableexcept.patch"
 patch -p1 -i "$PORT_SRC/no_backtrace.patch"
 
-# USE_XLIB=OFF builds TKOpenGl against EGL, so the OCCT viewer works in any
-# EGL context, Wayland's included; with it on, the viewer is GLX and X11
-# only. Draw (DRAWEXE, the Tcl/Tk test shell) is not a consumer's API, and
-# its env scripts would land in /usr/bin as env.sh and custom.sh, so the
-# script directory is moved out of PATH. Draco decodes and encodes
-# compressed glTF meshes. FFmpeg video export needs the pre-5 API,
-# FreeImage is not a port, and the VTK bridge serves no consumer here.
 mkdir -p build && cd build
 cmake .. -G Ninja -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

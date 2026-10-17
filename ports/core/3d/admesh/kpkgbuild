@@ -11,8 +11,9 @@
 name        = admesh
 version     = 0.98.5
 release     = 1
-source      = admesh-0.98.5.tar.gz::https://github.com/admesh/admesh/archive/refs/tags/v0.98.5.tar.gz
+source      = admesh-$version.tar.gz::https://github.com/admesh/admesh/archive/refs/tags/v$version.tar.gz
 sha256      = b832bf055beeaee63edf55ab43a42610287502af13136b9cf0e972d16893bd96  admesh-0.98.5.tar.gz
-description = Check and repair an STL before a slicer refuses it
+description = STL mesh checking and repair tool
 homepage    = https://github.com/admesh/admesh
+license     = GPL-2.0-or-later
 depends     = autoconf automake libtool

@@ -56,4 +56,6 @@ sha256      = ae715d76c50341d7d7095e9a8d2eeed1ca9546152c2ac7289206f90cf30ac697  
 sha256      = a25c581e4d0057dea3833918438a930e2e86ee4c6dc17fe15267b7f04cbc4e3d  bash53-019
 sha256      = df217ed3a9122aa2286d9b67bbe348661b6a9db262b580c29150dae55d532896  bash53-020
 description = The Bourne-Again SHell
+homepage    = https://www.gnu.org/software/bash/
+license     = GPL-3.0-or-later
 depends     = ncurses readline

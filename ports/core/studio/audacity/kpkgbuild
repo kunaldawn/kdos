@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://github.com/audacity/audacity/releas
 sha256      = b29076f99fa5d2f522d001db472a896db81f9effefd15948c940571753858058  audacity-4.0.0.tar.xz
 description = Multitrack audio editor and recorder — the Qt 6 Audacity 4, with LV2, LADSPA and Nyquist effects
 homepage    = https://www.audacityteam.org/
+license     = GPL-3.0-only
 depends     = cmake ninja pkgconf git qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtshadertools qt6-qt5compat qt6-qtnetworkauth qt6-qttools qt6-qtwayland wxwidgets zlib expat libpng freetype2 harfbuzz pugixml libogg libvorbis flac opus opusfile lame mpg123 wavpack libsndfile portaudio alsa-lib ffmpeg

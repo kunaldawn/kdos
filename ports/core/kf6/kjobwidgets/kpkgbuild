@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = bf36e3619df1c6ad3d900bd36433d97ab295be41c1cc401ff0e766380788bbae  kjobwidgets-6.30.0.tar.xz
 description = KDE Frameworks: widgets that track the progress of KJob tasks
 homepage    = https://invent.kde.org/frameworks/kjobwidgets
+license     = LGPL-2.0-only AND LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons kwidgetsaddons knotifications

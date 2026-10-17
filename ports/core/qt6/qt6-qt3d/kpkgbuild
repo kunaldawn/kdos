@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qt3d
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qt3d
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = 411185a4795a711472c8f72ff7d6b13a0a9082a5f2c3c3d1ca9556727efbac29  qt6-qt3d-6.11.2.tar.xz
+sha256      = d16f7489945c6c9e971cedd4362202a2681f3c10393461e1f5e74425f7fef59a  qt6-qt3d-6.12.0.tar.xz
 description = Qt 6 3D — scene graph, render, input, logic, animation and extras aspects, C++ and QML
 homepage    = https://www.qt.io
+license     = (LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only) AND GPL-3.0-only WITH Qt-GPL-exception-1.0
 depends     = cmake ninja qt6-qtbase qt6-qtdeclarative qt6-qtshadertools vulkan-headers zlib
 group       = qt6

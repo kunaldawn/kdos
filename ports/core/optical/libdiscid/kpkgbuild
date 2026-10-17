@@ -15,4 +15,5 @@ source      = https://data.musicbrainz.org/pub/musicbrainz/$name/$name-$version.
 sha256      = c230ed462c5ed7d7403ceb6984c57c8d05de42386d796bcd893636c0b0ba222f  libdiscid-0.7.0.tar.gz
 description = MusicBrainz disc ID library — reads an audio CD's table of contents
 homepage    = https://musicbrainz.org/doc/libdiscid
+license     = LGPL-2.1-or-later
 depends     = pkgconf

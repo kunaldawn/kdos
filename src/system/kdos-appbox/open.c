@@ -63,14 +63,6 @@
  */
 #define XDG_OPEN_PROG "/usr/bin/xdg-open"
 
-/* A handler for a type: the desktop id somebody wrote in a list, and the
- * entry it resolved to. Both, because the chooser is addressed by id and the
- * Exec line is read out of the file. */
-typedef struct {
-	char id[192];
-	char path[600];
-} OpenCand;
-
 /* The "open with" chooser, a kdos-shell front end. Absent on a tree built
  * before it landed, which is why every use of it is guarded. */
 #define OPENWITH_PROG "kdos-openwith"
@@ -87,202 +79,16 @@ typedef struct {
  * which is what the handler must be given.
  */
 
-/* ── the search path ───────────────────────────────────────────────────── */
+/* ── MIME -> entry ─────────────────────────────────────────────────────── */
 
 /*
- * XDG_DATA_HOME first, then XDG_DATA_DIRS in order — the same order the
- * launcher and the menu scan, which is what makes a user's own .desktop
- * override the shipped one rather than duplicating it.
+ * kxdg_handlers ANSWERS THIS, and the Settings window's Apps page asks the
+ * same function, so the handler it shows is the one this starts. `defaulted`
+ * is the whole of G7: a default, or a single candidate, means the answer is
+ * known and nothing may interrupt; two or more candidates and no default means
+ * nobody has decided yet, and picking the first silently is how a machine ends
+ * up opening PDFs in an image viewer for a year.
  */
-static int data_dirs(char out[][512], int max)
-{
-	const char *home = getenv("XDG_DATA_HOME");
-	const char *dirs = getenv("XDG_DATA_DIRS");
-	int n = 0;
-
-	if (home && *home)
-		snprintf(out[n++], 512, "%s", home);
-	else
-		snprintf(out[n++], 512, "%.480s/.local/share", kb_home_dir());
-
-	if (!dirs || !*dirs)
-		dirs = "/usr/local/share:/usr/share";
-	for (const char *p = dirs; *p && n < max;) {
-		const char *sep = strchr(p, ':');
-		size_t len = sep ? (size_t)(sep - p) : strlen(p);
-		/* A trailing slash is legal in XDG_DATA_DIRS and common in the
-		 * wild; leaving it makes every path this builds carry a `//`,
-		 * which works and reads like a bug in `--print`. */
-		while (len > 1 && p[len - 1] == '/')
-			len--;
-		if (len && len < 512) {
-			memcpy(out[n], p, len);
-			out[n][len] = '\0';
-			n++;
-		}
-		if (!sep)
-			break;
-		p = sep + 1;
-	}
-	return n;
-}
-
-/* `<datadir>/applications/<id>`, first one that exists. */
-static int desktop_find(const char *id, char *out, size_t n)
-{
-	char dirs[16][512];
-	int nd = data_dirs(dirs, 16);
-
-	for (int i = 0; i < nd; i++) {
-		snprintf(out, n, "%.400s/applications/%.150s", dirs[i], id);
-		if (kb_path_exists(out))
-			return 1;
-	}
-	return 0;
-}
-
-/*
- * A mimeapps/mimeinfo value is a `;`-separated preference list. Every entry
- * that is actually installed is kept, in the order it was written: a
- * mimeapps.list naming an app that was removed must fall through to the next
- * one rather than fail, which is the state every machine ends up in
- * eventually, and the ones behind it are the "open with" menu.
- */
-static int collect_installed(const char *list, OpenCand *c, int *n, int max)
-{
-	char buf[1024], *save = NULL;
-	int seen = 0;
-	kb_strlcpy(buf, list, sizeof(buf));
-	for (char *p = strtok_r(buf, ";", &save); p && *n < max;
-	     p = strtok_r(NULL, ";", &save)) {
-		char path[600];
-		int dup = 0;
-		while (*p == ' ')
-			p++;
-		if (!*p || !desktop_find(p, path, sizeof(path)))
-			continue;
-		/* Counted before the de-duplication, because the caller is
-		 * asking whether this SECTION named a handler, not how many
-		 * new ones it contributed. */
-		seen++;
-		for (int i = 0; i < *n; i++)
-			if (!strcmp(c[i].id, p))
-				dup = 1;
-		/* The same id is named by mimeapps AND by every cache that
-		 * carries it; counting it twice would put a one-handler type in
-		 * front of the chooser. */
-		if (dup)
-			continue;
-		kb_strlcpy(c[*n].id, p, sizeof(c[*n].id));
-		kb_strlcpy(c[*n].path, path, sizeof(c[*n].path));
-		(*n)++;
-	}
-	return seen;
-}
-
-/* How many INSTALLED handlers this section named for this type — which is not
- * how far `n` moved, since the same id can already be in the list. */
-static int collect_in(const char *path, const char *section, const char *mime,
-		      OpenCand *c, int *n, int max)
-{
-	KxdgEntry e;
-	if (kxdg_load(&e, path, section) != 0)
-		return 0;
-	const char *v = kxdg_get(&e, mime, NULL);
-	int seen = v ? collect_installed(v, c, n, max) : 0;
-	kxdg_free(&e);
-	return seen;
-}
-
-/*
- * Every handler for a type, best first, plus whether the best one is a
- * CONFIGURED DEFAULT — a `[Default Applications]` line somebody wrote — rather
- * than merely the first thing that claimed the type.
- *
- * That distinction is the whole of G7. A default, or a single candidate, means
- * the answer is known and nothing may interrupt: a chooser that appears when
- * the answer is known is a worse desktop, not a better one. Two or more
- * candidates and no default means nobody has decided yet, and picking the
- * first silently is how a machine ends up opening PDFs in an image viewer for
- * a year.
- */
-static int handlers_for_mime(const char *mime, OpenCand *c, int max,
-			     int *defaulted)
-{
-	char dirs[16][512], path[600], dpre[80];
-	int nd = data_dirs(dirs, 16);
-	int n = 0;
-	const char *cfg = getenv("XDG_CONFIG_HOME");
-	char cfgdir[512];
-
-	*defaulted = 0;
-
-	if (cfg && *cfg)
-		snprintf(cfgdir, sizeof(cfgdir), "%.500s", cfg);
-	else
-		snprintf(cfgdir, sizeof(cfgdir), "%.500s/.config",
-			 kb_home_dir());
-
-	/*
-	 * THE DESKTOP'S OWN LIST FIRST, at each level, which is what the spec
-	 * says: a row naming this desktop outranks the plain table under it
-	 * without either file editing the other.
-	 */
-	int have_pre = kb_desktop_prefix(dpre, sizeof(dpre));
-
-	if (have_pre) {
-		snprintf(path, sizeof(path), "%.500s/%s-mimeapps.list", cfgdir,
-			 dpre);
-		collect_in(path, "Default Applications", mime, c, &n, max);
-		if (n) {
-			*defaulted = 1;
-			return n;
-		}
-	}
-
-	/* The user's declared default beats everything, including a launcher
-	 * the box shipped a moment ago. */
-	snprintf(path, sizeof(path), "%.500s/mimeapps.list", cfgdir);
-	collect_in(path, "Default Applications", mime, c, &n, max);
-	if (n) {
-		*defaulted = 1;
-		return n;
-	}
-	if (have_pre) {
-		snprintf(path, sizeof(path), "%.500s/%s-mimeapps.list", cfgdir,
-			 dpre);
-		collect_in(path, "Added Associations", mime, c, &n, max);
-	}
-	snprintf(path, sizeof(path), "%.500s/mimeapps.list", cfgdir);
-	collect_in(path, "Added Associations", mime, c, &n, max);
-
-	/* The distro's default counts as a decision too, whatever the user's
-	 * additions found: XDG puts Default Applications ahead of Added
-	 * Associations at every level, so an association that masked one would
-	 * turn a type somebody had decided into a chooser prompt. */
-	if (have_pre) {
-		snprintf(path, sizeof(path), "/etc/xdg/%s-mimeapps.list", dpre);
-		if (collect_in(path, "Default Applications", mime, c, &n, max))
-			*defaulted = 1;
-	}
-	if (collect_in("/etc/xdg/mimeapps.list", "Default Applications",
-		       mime, c, &n, max))
-		*defaulted = 1;
-
-	/*
-	 * Then the caches. `mimeinfo.cache` is the file genlaunchers writes
-	 * beside the box's launchers precisely so this lookup can find them —
-	 * without it the MimeType lines it carried through from Debian would
-	 * never be consulted by anything.
-	 */
-	for (int i = 0; i < nd; i++) {
-		snprintf(path, sizeof(path), "%.500s/applications/mimeinfo.cache",
-			 dirs[i]);
-		collect_in(path, "MIME Cache", mime, c, &n, max);
-	}
-
-	return n;
-}
 
 /* ── entry -> argv ─────────────────────────────────────────────────────── */
 
@@ -413,7 +219,7 @@ static int run_openwith(int argc, char **argv)
 
 int cmd_open(int argc, char **argv)
 {
-	OpenCand cand[CAND_MAX];
+	KxdgHandler cand[CAND_MAX];
 	char mime[MIME_MAX];
 	const char *entry;
 	int print = 0, choose = 0, defaulted = 0, ncand;
@@ -455,7 +261,7 @@ int cmd_open(int argc, char **argv)
 	if (print)
 		printf("mime\t%s\n", mime);
 
-	ncand = handlers_for_mime(mime, cand, CAND_MAX, &defaulted);
+	ncand = kxdg_handlers(mime, cand, CAND_MAX, &defaulted);
 
 	if (print && ncand) {
 		printf("candidates");

@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/c/click-log/click-l
 sha256      = 3970f8570ac54491237bcdb3d8ab5e3eef6c057df29f8c3d1151a51a9c23b975  python3-click-log-0.4.0.tar.gz
 description = Logging integration for click command-line programs
 homepage    = https://github.com/click-contrib/click-log
+license     = MIT
 depends     = python3 python3-setuptools python3-pip python3-click

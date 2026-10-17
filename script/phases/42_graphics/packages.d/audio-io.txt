@@ -24,6 +24,9 @@
 
 pipewire
 
+# Here and not in 41_system because its JACK host API links pipewire's libjack.
+portaudio
+
 # PipeWire is the audio stack and alsamixer cannot see it: this is the mixer
 # that shows the graph — every stream, its device and where it is routed.
 wiremix

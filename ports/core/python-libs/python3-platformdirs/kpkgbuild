@@ -16,6 +16,7 @@ sha256      = e8dc1cb58f1153fd7f61db1374317770baababec2480b37b8f01c6cc25b45267  
 sha256      = 408cb0f45fb5ed5a4744a15bf9ad74d311860e267fce26b8e0b07f84ea34e736  python3-platformdirs-vendor-4.11.12.tar.xz
 description = Where a python program's config, cache and data directories are
 homepage    = https://github.com/tox-dev/platformdirs
+license     = MIT
 depends     = python3 python3-setuptools python3-pip
 vendoring   = python
 pyrequirements = no

@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/jstedfast/gmime/archive/
 sha256      = 06662db189ce56782c23c7c4adfebfa512350c2fa9514f0d551df42c7f940076  gmime-3.2.15.tar.gz
 description = MIME parsing and generation — notmuch reads every message through it
 homepage    = https://github.com/jstedfast/gmime
+license     = LGPL-2.1-or-later
 depends     = autoconf automake libtool pkgconf glib zlib libidn2 gpgme gtk-doc

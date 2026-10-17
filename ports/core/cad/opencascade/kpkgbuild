@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/Open-Cascade-SAS/OCCT/ar
 sha256      = 5ecf094ec6b12d5413dfb851d8c3590c354058aee556e32e408bdfbf8c357d57  opencascade-7.9.3.tar.gz
 description = Open CASCADE Technology, the B-rep CAD kernel with STEP, IGES and glTF exchange
 homepage    = https://dev.opencascade.org/
+license     = LGPL-2.1-only WITH OCCT-exception-1.0
 depends     = cmake ninja freetype2 fontconfig rapidjson draco mesa libglvnd

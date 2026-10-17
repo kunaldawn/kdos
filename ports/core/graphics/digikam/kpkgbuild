@@ -22,4 +22,5 @@ sha256      = 0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79  
 sha256      = 158c039c7ae795340eea959bedde4a5d263a8add9e5bebca10b4a45bb7073a2b  dnntestimage.jpeg
 description = digiKam and showFoto: photo library, tagging, face recognition, RAW import and editing, for Qt 6
 homepage    = https://www.digikam.org/
-depends     = cmake ninja pkgconf gettext extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtnetworkauth qt6-qtscxml qt6-qtmultimedia qt6-qtwebengine kxmlgui kcoreaddons kconfig kservice kwindowsystem solid ki18n kio kiconthemes threadweaver knotifyconfig knotifications sonnet kcalendarcore libksane opencv exiv2 expat libjpeg-turbo lcms2 libpng libtiff zlib boost eigen libheif libjxl x265 flex bison libxml2 libxslt imagemagick ffmpeg lensfun libgphoto2 glib libX11 libXv mesa libglvnd hicolor-icon-theme
+license     = GPL-2.0-or-later
+depends     = cmake ninja pkgconf gettext extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtnetworkauth qt6-qtscxml qt6-qtmultimedia qt6-qtwebengine kxmlgui kcoreaddons kconfig kservice kwindowsystem solid ki18n kio kiconthemes threadweaver knotifyconfig knotifications sonnet kcalendarcore libksane opencv exiv2 expat libjpeg-turbo lcms2 libpng libtiff zlib boost eigen libheif libjxl jasper x265 flex bison libxml2 libxslt imagemagick ffmpeg lensfun libgphoto2 glib libX11 libXv mesa libglvnd hicolor-icon-theme

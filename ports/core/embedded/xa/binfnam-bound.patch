@@ -1,0 +1,54 @@
+--- a/src/xat.c
++++ b/src/xat.c
+@@ -493,13 +493,13 @@
+ 	    i=1;
+             if(t[i]=='\"') {
+ 	       int k,j=0;
+-	       char binfname[255];
++	       char binfname[256];
+                i++;
+                k=t[i]+i+1;
+                i++;
+                while(i<k && !er) {
+                  binfname[j++] = t[i++];
+-                 if (j > 255)
++                 if (j >= 255)
+                     er = E_NOMEM; /* buffer overflow */
+                }
+                binfname[j] = '\0';
+@@ -723,7 +723,7 @@
+ 
+ 		/* this first pass just calculates a prospective length
+ 			for pass 2. */
+-		char binfnam[255];
++		char binfnam[256];
+ 		int offset;
+ 		int length;
+ 
+@@ -768,7 +768,7 @@
+ 			i++;
+ 			while(i<k && !er) {
+ 				binfnam[j++] = t[i++];
+-				if (j > 255)
++				if (j >= 255)
+ 					er = E_NOMEM; /* buffer overflow */
+ 			}
+ 			binfnam[j] = '\0';
+@@ -1368,7 +1368,7 @@
+ 		/* figure out our parameters again. repeat most of
+ 			the error checking since we might not be over
+ 			the total number of bogosities */
+-		char binfnam[255];
++		char binfnam[256];
+ 		int offset;
+ 		int length;
+ 		int fstart;
+@@ -1416,7 +1416,7 @@
+ 			i++;
+ 			while(i<k && !er) {
+ 				binfnam[j++] = t[i++];
+-				if (j > 255)
++				if (j >= 255)
+ 					er = E_NOMEM; /* buffer overflow */
+ 			}
+ 			binfnam[j] = '\0';

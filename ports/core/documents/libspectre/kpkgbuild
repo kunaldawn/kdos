@@ -16,4 +16,5 @@ source      = https://libspectre.freedesktop.org/releases/$name-$version.tar.gz
 sha256      = 55a7517cd3572bd2565df0cf450944a04d5273b279ebb369a895391957f0f960  libspectre-0.2.12.tar.gz
 description = PostScript rendering library over the Ghostscript API
 homepage    = https://www.freedesktop.org/wiki/Software/libspectre/
+license     = GPL-2.0-or-later
 depends     = ghostscript

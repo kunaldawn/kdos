@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = e63062504ede4ebfda4c93e3484a63817731e1157cdcac6e33fb47fe6abc1657  kservice-6.30.0.tar.xz
 description = KDE Frameworks: desktop entry and plugin lookup (kbuildsycoca6)
 homepage    = https://invent.kde.org/frameworks/kservice
+license     = LGPL-2.0-only AND LGPL-2.0-or-later AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons ki18n kdoctools gettext

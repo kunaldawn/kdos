@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# musl has no <error.h>; the two cmedia files include it and call nothing
-# from it.
 patch -p1 -i "$PORT_SRC/no-error-h.patch"
 
 ./configure \
@@ -20,8 +18,6 @@ patch -p1 -i "$PORT_SRC/no-error-h.patch"
 make
 make DESTDIR=$PKG install
 
-# THE MENU: upstream's icon is XPM and its entry carries no window class; both
-# are replaced. FLTK takes the Wayland app_id from the main window's xclass.
 rm -f "$PKG/usr/share/applications/flrig.desktop"
 s=$(magick identify -format %w "data/flrig.xpm")
 install -d "$PKG/usr/share/icons/hicolor/${s}x${s}/apps"

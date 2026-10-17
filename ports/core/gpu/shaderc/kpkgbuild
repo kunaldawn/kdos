@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/google/shaderc/archive/r
 sha256      = f06ce5bcca94e5df7f34e115743597d0ad2e13c5fe9213c67dc8c76031241947  shaderc-2026.4.tar.gz
 description = glslc and libshaderc — GLSL and HLSL to SPIR-V, on the system glslang and SPIRV-Tools
 homepage    = https://github.com/google/shaderc
+license     = Apache-2.0
 depends     = cmake ninja python3 pkgconf glslang spirv-tools spirv-headers

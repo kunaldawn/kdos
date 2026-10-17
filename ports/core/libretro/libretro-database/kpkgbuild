@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/libretro/libretro-databa
 sha256      = c23d5929e4a71562c6330d82c08836a9e75e59d3302a17b24549568780e980b2  libretro-database-1.22.1.tar.gz
 description = libretro game databases — the checksums RetroArch's scanner names a game by, and the cursors that query them
 homepage    = https://github.com/libretro/libretro-database
+license     = CC-BY-SA-4.0
 depends     = coreutils

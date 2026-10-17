@@ -16,5 +16,6 @@ sha256      = c01c12bcd14b851176cadf50cf7cc07c28a11652f94febd229602a94615a7f7a  
 sha256      = f7b71cdc83113889507ff025150dc9044a44e98c3b6194db4dcb2192ce179c39  atuin-vendor-18.23.0.tar.xz
 description = Shell history in a searchable SQLite database, local only
 homepage    = https://atuin.sh/
-depends     = rust
+license     = MIT
+depends     = rust openssl sqlite zstd
 vendoring   = rust

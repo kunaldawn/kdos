@@ -16,4 +16,5 @@ source      = https://code.videolan.org/videolan/x264/-/archive/$_commit/x264-$_
 sha256      = 6eeb82934e69fd51e043bd8c5b0d152839638d1ce7aa4eea65a3fedcf83ff224  x264-20250608.1624.tar.bz2
 description = H.264 encoder — GPL-2+, and it relicenses the ffmpeg that links it
 homepage    = https://www.videolan.org/developers/x264.html
+license     = GPL-2.0-or-later
 depends     = nasm

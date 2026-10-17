@@ -15,3 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/Gottox/$name/archive/ref
 sha256      = f3bb18f958962679a7fb48d7f8dcab8b59154d66f23c9aba02e78103106093a4  smu-1.5.tar.gz
 description = Markdown to HTML in one C file
 homepage    = https://github.com/Gottox/smu
+license     = MIT

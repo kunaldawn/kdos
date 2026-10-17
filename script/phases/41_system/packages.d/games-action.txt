@@ -22,3 +22,6 @@
 # them, or when a shelf file names a port an earlier phase installs.
 
 stk-assets
+
+# The arcade end of the text games. It builds as it is, with no patch.
+moon-buggy

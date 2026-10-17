@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Upstream installs no manual page: graec, the one program with a page, is an
-# internal test tool the install rules leave out.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

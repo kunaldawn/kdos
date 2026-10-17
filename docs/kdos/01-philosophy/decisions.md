@@ -1,9 +1,9 @@
 # Decisions
 
 This chapter records the choices in KDOS where a reasonable engineer could have gone the other way:
-the compositor, the application catalogue, the C library, where upstream sources are kept, how the
-ports tree, KDOS's own code and the build phases are laid out, how CPU optimisation is chosen, and
-about twenty smaller ones. It is written for readers who want to know why the system has the shape
+the compositor, the application catalogue, the C library, the base userland and PID 1, where
+upstream sources are kept, how the ports tree, KDOS's own code and the build phases are laid out,
+how CPU optimisation is chosen, and about twenty smaller ones. It is written for readers who want to know why the system has the shape
 it has, and for contributors about to propose a different approach, whose objection may already have
 an answer here. Read [Why KDOS](why-kdos.md), [How KDOS differs](how-kdos-differs.md) and
 [Principles](principles.md) first; the entries assume the goals and rules set out there.
@@ -23,6 +23,8 @@ decisions that look like missing features.
 | [Application packaging](#one-pack-per-application-not-one-image) | One artefact per application over shared runtimes, never one image |
 | [The base distribution in boxes](#debian-inside-boxes-not-alpine) | Debian trixie, with Alpine carried as a scratch base |
 | [The host C library](#musl-as-the-host-c-library) | musl, which forecloses runtime CPU dispatch |
+| [The base userland](#gnu-at-every-name-no-multi-call-userland) | GNU coreutils in full, grep, sed, gawk, findutils, diffutils, patch and tar; no toybox, BusyBox or uutils |
+| [PID 1](#sysvinit-as-pid-1) | sysvinit 3.18 with runlevels; util-linux `agetty` and `sulogin` |
 | [The host desktop](#no-kde-gnome-or-any-existing-desktop-on-the-host) | A desktop written for this system; KDE's and GNOME's applications, never their shells |
 | [Where upstream sources live](#upstream-archives-are-hash-checked-release-assets) | Numbered volumes of shelves, each file under `<shelf>--<file>` and checked by its sha256, fetched by `make fetch` |
 | [CPU optimisation](#-march-measured-per-machine-not-chosen-for-a-population) | Measured per machine by `kdos march`, never a shipped feature level |
@@ -33,6 +35,7 @@ decisions that look like missing features.
 | [KDOS's own code](#kdoss-own-code-is-divided-by-what-each-program-is) | Six areas under `src/`, every port exactly two levels deep |
 | [Build phases](#build-phases-are-named-banded-and-closed) | Thirteen named phases in bands of ten, split by the dependency graph; each list names exactly what its phase installs |
 | [Binhost signing](#signing-the-index-not-every-package) | One signature over the index; a signature file holds several |
+| [Updates](#updates-build-a-signed-tree-from-source) | Every image carries its recipe tree; a newer one arrives signed over the network and is built on the machine; no binhost |
 | [The ASCII demo](#freezing-a-demo-rather-than-writing-one) | A frozen hard fork of the AA-project's `bb` 1.3rc1 |
 | [The terminal state machine](#forking-libtsm-rather-than-writing-a-terminal) | `libkvt`, a hard fork of libtsm 4.7.1 |
 | [The file chooser](#one-file-chooser-at-one-width) | One program at 64×22 for portal and native callers alike |
@@ -191,6 +194,45 @@ glibc does not emit can turn an upstream `-Werror` build fatal.
 The application catalogue is glibc, inside boxes built on the Debian base. That is the purpose of
 the [ring](../06-reference/glossary.md) boundary: the host and the boxes need not share a C library.
 
+## GNU at every name, no multi-call userland
+
+The base userland is GNU's: coreutils in full, as separate programs, with grep, sed, gawk,
+findutils, diffutils, patch and tar, cross-built in `10_bootstrap` and rebuilt as ports in
+`30_foundation`. util-linux, procps-ng and iproute2 supply the system tools.
+
+The question was whether a compact multi-call userland could serve as the base, as BusyBox does
+for Alpine. The alternatives were toybox, BusyBox, uutils, chimerautils and sbase. The deciding
+property is how a tool fails. A compact tool that differs from GNU tends to differ silently: an
+`install -m644` that writes 0600, an `awk` that prints nothing, a `grep` that matches nothing and
+reports no error. On a system that compiles every package, each such difference is a build that
+goes wrong without failing, and the wrong output reaches the image. BusyBox on musl gives different
+answers from GNU on about a third of a probe set, several of them wrong with no error, and its
+current releases are labelled unstable; uutils needs Rust, which the build has only after its
+compilers phase. GNU coreutils passes its own test suite on musl.
+
+What this costs is a longer first build stage and a few megabytes on the image. What it buys is
+that every configure script meets the tools upstream tested against, and that a build which
+passes produced what it says it did. See
+[Packaging](../03-architecture/packaging.md#the-base-userland).
+
+## sysvinit as PID 1
+
+PID 1 is sysvinit 3.18: `init`, `telinit`, `halt`, `poweroff`, `reboot`, `shutdown`, `runlevel`
+and `killall5`, and nothing else from that package. Every console is util-linux's `agetty`, and
+single-user mode is util-linux's `sulogin`.
+
+The question was which init runs the numbered shell scripts, with systemd ruled out by
+[principle](principles.md#no-systemd). sysvinit gives runlevels, so single-user mode, power-off and
+reboot are states of `/etc/inittab` rather than code paths of their own; it builds on musl and
+against utmps with no patch, so it writes the boot and runlevel records `who -b` and `who -r` read;
+and its shutdown order is a list of `wait` entries anyone can read. It does not supervise services:
+that stays `ksvc`'s job, so the choice of PID 1 changes nothing about how a daemon is run.
+
+The constraint it brings is that `telinit` is the only way to ask it for a runlevel. It ignores
+`SIGTERM`, and `SIGUSR2` closes its control FIFO for the rest of the boot, so a program that wants
+the machine off runs `telinit 0` and never signals PID 1. See
+[Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
+
 ## No KDE, GNOME or any existing desktop on the host
 
 The host runs a desktop written for it, in which every surface KDOS paints is a character-cell
@@ -340,8 +382,10 @@ machine", which is a question with a measurable answer.
 ## One release flag set, raised per port
 
 Every port from `20_selfhost` on builds with one set of flags, from `script/env/chroot.env`:
-`-O2 -pipe -fPIC -fno-semantic-interposition -fstack-clash-protection`, linked with
-`-Wl,-O1,--sort-common,--as-needed,-z,now,-z,pack-relative-relocs`. The whole set, with the
+`-O2 -pipe -fPIC -fno-semantic-interposition -fstack-clash-protection -D_FORTIFY_SOURCE=2`, with
+`-D_GLIBCXX_ASSERTIONS` for C++, linked with
+`-Wl,-O1,--sort-common,--as-needed,-z,now,-z,pack-relative-relocs`. Go builds with
+`-buildmode=pie`. The whole set, with the
 defaults for CMake, cargo and Go, is in
 [Writing ports](../05-developer/writing-ports.md#the-release-flags).
 
@@ -380,9 +424,27 @@ What is ruled out, and why:
 - **No global `-Werror`** of any kind: it gains nothing at run time and fails ports hours into a
   build.
 - **Hardening is not traded for speed**: default PIE and SSP from the compiler, stack-clash
-  probes, and a read-only GOT stay on every port.
+  probes, a read-only GOT, fortified C library calls through the `fortify-headers` port (musl has
+  no `_FORTIFY_SOURCE` of its own) and libstdc++'s assertions stay on every C and C++ port, and Go
+  executables are PIE. Where the tree's flags do not reach is measured, not assumed: Go has no
+  stack protector or fortification, GHC links its compiler and programs with `-z,now` but without PIE (its static
+  libraries are not position-independent, so a `-pie` link fails, and only a `-dynamic` program
+  links as PIE),
+  Rust has no stack protector by design, yices2, wine, valgrind, LuaJIT (texlive's `luajittex`)
+  and mednafen turn the stack protector off in their own builds, and what `00_cross` and
+  `10_bootstrap` build, `kpkg` among it, is not fortified. The table is in
+  [Writing ports](../05-developer/writing-ports.md#the-release-flags).
+- **No control-flow protection** (`-fcf-protection`, Intel CET): the instructions cost nothing on
+  an old processor, but the shadow stack needs the C library to enable it per process and to
+  handle it across `setjmp`, signals and threads, and musl does neither. Indirect-branch tracking
+  alone protects nothing without a kernel that enforces it for user space. Revisit when musl
+  enables user shadow stacks.
 - **`00_cross` and `10_bootstrap` keep their own plain flags**, from `script/env/host.env`: a flag
-  the cross toolchain mishandled would break the compiler every later phase is built with.
+  the cross toolchain mishandled would break the compiler every later phase is built with. The
+  exception is `kpkg` and `kinstall`. No package phase rebuilds them, so the binaries
+  `10_bootstrap` compiles are the ones that ship, and their compile lines carry the tree's
+  hardening themselves: `-fstack-protector-strong -fstack-clash-protection` and
+  `-Wl,-O1,--as-needed,-z,now,-z,pack-relative-relocs -Wl,--build-id=sha1`.
 
 ## Alpine's security database, not NVD or OSV
 
@@ -432,7 +494,7 @@ See [Writing ports](../05-developer/writing-ports.md) for the format as built.
 
 ## Ports are shelved by subject; identity is the bare name
 
-The 2,003 upstream ports are filed on 102 **shelves**, one directory per subject:
+The upstream ports, about 2,000, are filed on 102 **shelves**, one directory per subject:
 `ports/core/<shelf>/<name>/`, such as `ports/core/wl/wlroots/` or `ports/core/games-board/kpat/`.
 The shelf list is closed. It is the file `ports/shelves`, one line per shelf giving its id, the
 source-archive volume that keeps its files, and what belongs on it, and a port may sit only on a
@@ -547,7 +609,7 @@ numbered in bands of ten: `00_cross`, `10_bootstrap`, `20_selfhost`, `30_foundat
 `31_compilers`, `40_lang`, `41_system`, `42_graphics`, `43_toolkits`, `44_apps`, `50_desktop`,
 `60_kernel` and `70_image`. Each directory holds its steps or its package list and its own
 environment, `phase.env`. Steps inside a phase are numbered with gaps too, such as
-`10_bootstrap/060_gzip.sh`, `061_tar.sh` and `062_toybox.sh`, so their order is the number and
+`10_bootstrap/060_gzip.sh`, `061_tar.sh` and `062_coreutils.sh`, so their order is the number and
 never an accident of the alphabet.
 
 The numbering with gaps means a phase can be added between two others without renaming either,
@@ -578,9 +640,9 @@ it with both phases.
 
 **A large list is a directory of shelf files.** The five userland phases, `40_lang` to
 `44_apps`, each read `packages.d/*.txt` in byte order as one list: one `<shelf>.txt` per shelf the
-phase draws on, one `src-<area>.txt` for the ports it builds from an area under `src/`, and, in
-`40_lang` and `41_system`, an `00-order.txt` that sorts first and holds the runs whose order a
-comment pins. A phase with one short list keeps a single `packages.txt`: its pinned run first and,
+phase draws on, one `src-<area>.txt` for the ports it builds from an area under `src/`, and, where
+a phase has a run whose order a comment pins (`41_system`), an `00-order.txt` that sorts first and
+holds it. A phase with one short list keeps a single `packages.txt`: its pinned run first and,
 where the list holds more, the rest grouped by shelf under comment banners. The lists of
 `20_selfhost` and `60_kernel` are a pinned run alone.
 
@@ -625,6 +687,26 @@ trusting either keeps working. Adding that to a format that holds only one signa
 format change every client has to understand. The key id inside a signature is a label, not a
 selector: every line is tried against every key in the local keyring and against nothing outside
 it, so the id can never supply a key. See [Packaging](../03-architecture/packaging.md).
+
+## Updates build a signed tree from source
+
+Every image carries its recipe-only ports tree at `/ports`. `kdos update fetch` replaces it with the
+tree of the latest release, `kdos-ports.tar.xz`, once its Ed25519 signature verifies against
+`/etc/kdos/keys/tree`, which holds the public half of the release key the image was built with.
+`kdos update apply` builds every package that tree pins newer, on the machine, fetching each source
+from the `sources-<N>` archive and then upstream and checking it against the recipe's `sha256 =`.
+No binhost takes part, and `kdos update` has no option or setting that names one.
+
+A binhost was rejected for updates because it answers a question a recipe tree already answers.
+A prebuilt package is usable only when its recipe hash and build-config hash equal this machine's,
+so it saves compiling and says nothing about what is newer; it also adds a second thing to publish,
+sign and keep in step with every tree. One signed tree is the whole trust root: every source an
+update builds is checked against a hash the tree names.
+
+The cost is in time and in the network. An update needs the network for the tree and for every
+source, and compiles on the machine, which is hours for a large set: a new compiler, a browser or
+Qt. A machine offline cannot update, and says so in the panel's badge rather than looking current.
+See [Packaging](../03-architecture/packaging.md#updating-a-machine).
 
 ## Freezing a demo rather than writing one
 
@@ -830,7 +912,7 @@ glob under `$LIBS`. Working out which ports an edit reaches would need a shell p
 package manager, so `kp_hash.c` puts the whole of `src/libs` into the recipe hash of every such port
 instead. The test is the recipe and where it sits: the hash walks `src/libs` for every port with no
 source (no `source =` line, or an empty one) whose directory has a `../../libs` beside it, which is
-all 24 ports under `src/`, since each sits at `src/<area>/<name>/`. The two source-less ports under
+every port under `src/`, since each sits at `src/<area>/<name>/`. The two source-less ports under
 `ports/core`, `musl-ldd` and `containers-common`, sit on a shelf, where `../../libs` is
 `ports/core/libs`, a name no shelf may take, and hash their own directory alone, and every other
 port under `ports/core` is unaffected. Each rebuild takes seconds, while a parser would be a second
@@ -838,12 +920,12 @@ build system whose mistakes show only as missed rebuilds.
 
 ### util-linux switch_root in the initramfs
 
-The initramfs carries util-linux's `switch_root` and not toybox's. Toybox's applet `chroot()`s
-into the new root rather than moving it onto the root of the mount namespace, which leaves every
-process on the booted system chrooted. The kernel refuses a chrooted caller a new user namespace,
-so every rootless container would be refused, and the machine boots normally either way. The
-toybox recipe compiles the applet out, and the initramfs step refuses to build an initramfs whose
-`switch_root`, `mount`, `umount`, `losetup`, `dmesg` or `blkid` is toybox's. See
+The initramfs carries util-linux's `switch_root`, which moves the new root onto the root of the
+mount namespace before it `chroot()`s. A `switch_root` that only `chroot()`s leaves every process
+on the booted system chrooted. The kernel refuses a chrooted caller a new user namespace, so every
+rootless container would be refused, and the machine boots normally either way. The initramfs step
+refuses to build an initramfs whose `switch_root`, `mount`, `umount`, `losetup`, `dmesg` or `blkid`
+does not name util-linux in its `--version`. See
 [Boot and init](../03-architecture/boot-and-init.md#switch_root).
 
 ## See also

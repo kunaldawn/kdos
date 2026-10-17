@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# NO VENDOR BUNDLE AND NO BUILD ISOLATION. sympy is pure python with one
-# runtime dependency, mpmath, which is a port; the only thing an isolated
-# build environment would fetch is setuptools, which is also a port. With
-# isolation on and nothing vendored, pip fails on
-# `Could not find a version that satisfies the requirement setuptools`.
-pip3 install --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+pip3 install --ignore-installed --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
 install -Dm644 doc/man/isympy.1 -t "$PKG/usr/share/man/man1"
+find "$PKG"/usr/lib/python3*/site-packages/sympy -type d -name tests -prune -exec rm -rf {} +

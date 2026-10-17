@@ -50,6 +50,14 @@ log_mount() {
 
 mkdir -p "$CHROOT_DIR"/{dev,proc,sys,tmp,run,ports,kdos}
 
+# The build's HOME, a scratch directory and not /root: every tool's dotfiles,
+# caches and registries land here, under var/tmp, which the snapshots leave out
+# and 70_image neither squashes nor ships. On disk rather than in the per-entry
+# /tmp, because a Go or Rust build caches gigabytes under it.
+mkdir -p "$CHROOT_DIR/var"
+[ -d "$CHROOT_DIR/var/tmp" ] || mkdir -m 1777 "$CHROOT_DIR/var/tmp"
+[ -d "$CHROOT_DIR/var/tmp/kdos-home" ] || mkdir -m 0700 "$CHROOT_DIR/var/tmp/kdos-home"
+
 # Virtual filesystems. The namespace is fresh, so every mount is made
 # unconditionally: none of them can already be there.
 mount --bind /dev "$CHROOT_DIR/dev"
@@ -72,7 +80,7 @@ mount -t tmpfs tmpfs "$CHROOT_DIR/run"
 
 # Mount repository and ports
 mount --bind "$REPO_ROOT" "$CHROOT_DIR/kdos"
-mkdir -p "$CHROOT_DIR"/kdos/{build,script,src,fs}
+mkdir -p "$CHROOT_DIR"/kdos/{build,script,src,fs,docs}
 mount --bind "$REPO_ROOT/build" "$CHROOT_DIR/kdos/build"
 mount --bind "$REPO_ROOT/ports" "$CHROOT_DIR/ports"
 
@@ -82,6 +90,25 @@ mount --bind "$REPO_ROOT/src" "$CHROOT_DIR/kdos/src"
 # fs/ too: a medium that carries the sources copies the overlay from here, and
 # without the bind /kdos/fs is the container's empty mount point.
 mount --bind "$REPO_ROOT/fs" "$CHROOT_DIR/kdos/fs"
+# docs/ read-only: the kdos-doc port renders the book from it through its
+# `docs` link, and a build has no business writing the book. Without the bind
+# /kdos/docs is the container's empty mount point and the port fails.
+if [ -d "$REPO_ROOT/docs" ]; then
+    mount --bind "$REPO_ROOT/docs" "$CHROOT_DIR/kdos/docs"
+    mount -o remount,bind,ro "$CHROOT_DIR/kdos/docs" \
+        || log_mount "warning: docs bound read-write: no read-only remount"
+fi
+# testing/ read-only and ports/ again under /kdos: 70_image's 087_gates.sh runs
+# testing/linkcheck.py and its siblings from /kdos, and they read the recipes
+# at /kdos/ports. Without the binds both are the container's empty mount
+# points and the gate fails every image.
+if [ -d "$REPO_ROOT/testing" ]; then
+    mkdir -p "$CHROOT_DIR/kdos/testing" "$CHROOT_DIR/kdos/ports"
+    mount --bind "$REPO_ROOT/testing" "$CHROOT_DIR/kdos/testing"
+    mount -o remount,bind,ro "$CHROOT_DIR/kdos/testing" \
+        || log_mount "warning: testing bound read-write: no read-only remount"
+    mount --bind "$REPO_ROOT/ports" "$CHROOT_DIR/kdos/ports"
+fi
 
 # AT LEAST 4096 OPEN FILES, soft and hard. QtWebEngine's configure writes a
 # linker wrapper that runs `ulimit -n 4096` before its bfd link, and that call
@@ -134,6 +161,8 @@ esac
 #   KDOS_GIT_COMMIT,   the commit the tree was built from, whether it had
 #   KDOS_GIT_DIRTY,    unrecorded changes, and the commit's date; read by
 #   KDOS_GIT_DATE      70_image/045_identity.sh into /etc/os-release
+#   KDOS_GIT_TIME      the commit's time in Unix seconds, which
+#                      70_image/105_ports.sh stamps into /ports/TREE
 #
 # /usr/local/bin is LAST, unlike fs/etc/profile which puts it first. Our own
 # tools install there — kdos, kdos-appbox — and 70_image calls kdos-appbox
@@ -148,7 +177,7 @@ esac
 # config under /lib/cmake, and a config that computes its prefix from its own
 # location (harfbuzz, Qt) then answers / and points at //include and //share.
 exec chroot "$CHROOT_DIR" /usr/bin/env -i \
-    HOME=/root \
+    HOME=/var/tmp/kdos-home \
     TERM="$TERM" \
     KDOS_REPLAY="${KDOS_REPLAY:-0}" \
     KDOS_JOBS="${KDOS_JOBS:-}" \
@@ -166,5 +195,6 @@ exec chroot "$CHROOT_DIR" /usr/bin/env -i \
     KDOS_GIT_COMMIT="${KDOS_GIT_COMMIT:-}" \
     KDOS_GIT_DIRTY="${KDOS_GIT_DIRTY:-0}" \
     KDOS_GIT_DATE="${KDOS_GIT_DATE:-}" \
+    KDOS_GIT_TIME="${KDOS_GIT_TIME:-}" \
     PATH=/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"

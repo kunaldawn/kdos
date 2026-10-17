@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyqtgraph
+version     = 0.14.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/pyqtgraph/pyqtgraph/archive/refs/tags/pyqtgraph-$version.tar.gz
+sha256      = 30f41a2f27ec41fb7d4442dbb150b004520ba83e777cdf5bb9cce0d18017424f  python3-pyqtgraph-0.14.0.tar.gz
+description = Fast plotting and image display for Python on Qt and NumPy
+homepage    = https://www.pyqtgraph.org/
+license     = MIT
+depends     = python3 python3-setuptools python3-pip numpy python3-colorama python3-pyqt5

@@ -11,9 +11,6 @@
 
 export XML_CATALOG_FILES=/etc/xml/catalog
 
-# libffado is not a port and has no switch, so its probe is answered no.
-# samplerate.h is probed with no switch either: libsamplerate in depends is
-# what gives alsaloop its resampler.
 ./configure --prefix=/usr    \
             --disable-nls \
             --disable-alsaconf \

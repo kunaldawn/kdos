@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   script/env/config.site — the tree's autoconf site defaults
+# ---------------------------------
+
+# script/env/chroot.env names this file in CONFIG_SITE, so every autoconf
+# configure in a chroot phase sources it after parsing its arguments. For a
+# --prefix=/usr build it moves the three state directories autoconf would put
+# under the prefix to where the system keeps them: /etc, /var and /var/lib,
+# not /usr/etc, /usr/var and /usr/com. A directory the recipe names on the
+# command line is left as given, and a build with any other prefix (a
+# bootstrap seed, /opt) is not touched. The paths are compiled into the
+# program as well as installed, so a port that reads its configuration from
+# /usr/etc without this would ignore the file the image ships in /etc.
+#
+# This file never ships: script/ is bound into the chroot at /kdos/script and
+# is not in the image. configure prints "loading site script" with its path.
+
+if test "$prefix" = /usr; then
+	if test "$sysconfdir" = '${prefix}/etc'; then sysconfdir=/etc; fi
+	if test "$localstatedir" = '${prefix}/var'; then localstatedir=/var; fi
+	if test "$sharedstatedir" = '${prefix}/com'; then sharedstatedir=/var/lib; fi
+fi

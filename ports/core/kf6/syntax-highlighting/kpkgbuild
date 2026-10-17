@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = fc429b093058bec4878306cbbfb3aa0560ff4a3f166c69504036c507fe72afcc  syntax-highlighting-6.30.0.tar.xz
 description = KDE Frameworks: syntax highlighting engine for structured text
 homepage    = https://api.kde.org/frameworks/syntax-highlighting/html/
+license     = MIT AND LGPL-2.0-or-later AND GPL-3.0-or-later AND BSD-3-Clause AND LGPL-2.1-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative perl python3

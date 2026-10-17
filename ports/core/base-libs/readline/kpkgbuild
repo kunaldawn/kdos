@@ -28,4 +28,6 @@ sha256      = 1f189c4566aa35950964647b9ec3be1a821e42b86048129c63eb7f9d4d2f5a74  
 sha256      = 5481adbe161c9f6ba972c74db9e18c7aa351d3df3035cc4a673a1aa06247d1c6  readline83-005
 sha256      = 4ebd261a608287796e171af0ea9af5a1e3122e46672accda2484b6698c47c1a4  readline83-006
 description = GNU readline library
+homepage    = https://tiswww.case.edu/php/chet/readline/rltop.html
+license     = GPL-3.0-or-later
 depends     = ncurses

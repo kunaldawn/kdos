@@ -15,4 +15,5 @@ source      = https://github.com/pbek/QOwnNotes/releases/download/v$version/$nam
 sha256      = 0a017596de225309757728d38255ef9427eade4be0596d1eab642dc70773478d  qownnotes-26.9.13.tar.xz
 description = Plain-text Markdown notes with a live preview, to-do lists and optional Nextcloud sync
 homepage    = https://www.qownnotes.org/
+license     = GPL-2.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LGPL-2.1-or-later AND LGPL-3.0-only AND Apache-2.0 AND GPL-3.0-only WITH Qt-GPL-exception-1.0
 depends     = cmake ninja qt6-qtbase qt6-qtsvg qt6-qtdeclarative qt6-qttools qt6-qtwebsockets qt6-qtwayland libsecret

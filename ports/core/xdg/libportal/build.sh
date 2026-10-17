@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The GTK 3 and GTK 4 parent-window helpers are built; the Qt ones are not,
-# since Qt applications reach the portals through Qt's own platform code and
-# a Qt backend here would put Qt into the build of every GTK consumer.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \

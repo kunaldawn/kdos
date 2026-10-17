@@ -13,4 +13,6 @@ version     = 2.3.2
 release     = 1
 source      = https://gitlab.com/OldManProgrammer/unix-tree/-/archive/$version/unix-tree-$version.tar.bz2
 sha256      = 7e6bd141e89b6d951da8ce1757d16b832fb52ef69a7259a23669981f22a49cbb  tree-2.3.2.tar.bz2
-description = display directory contents, including directories, files, links, in a terminal
+description = Display directory contents as a tree in a terminal
+homepage    = https://oldmanprogrammer.net/source.php?dir=projects/tree
+license     = GPL-2.0-or-later

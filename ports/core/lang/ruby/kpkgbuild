@@ -10,9 +10,10 @@
 
 name        = ruby
 version     = 4.0.7
-release     = 1
+release     = 2
 source      = https://cache.ruby-lang.org/pub/ruby/${version%.*}/$name-$version.tar.xz
 sha256      = 47ef59413f7a4587ba6a6b78b14036eb5e36eec2ec0b90964801e88d56a3d375  ruby-4.0.7.tar.xz
 description = The Ruby programming language
 homepage    = https://www.ruby-lang.org/
+license     = Ruby OR BSD-2-Clause
 depends     = openssl zlib libffi yaml gmp rust

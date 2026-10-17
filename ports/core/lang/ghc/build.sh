@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The seed is an upstream GHC for musl, used to compile Hadrian and GHC's
-# first stage and then discarded; nothing it built is in $PKG.
 _seedghc="$SRC_ROOT/seed/bin/ghc"
 (
 	cd "$SRC_ROOT/ghc-$_seed-x86_64-unknown-linux"
@@ -18,11 +16,6 @@ _seedghc="$SRC_ROOT/seed/bin/ghc"
 	make install
 )
 
-# Hadrian's own Hackage dependencies are the vendor bundle, laid out the way
-# hadrian/bootstrap/bootstrap.py reads a prefetched set: <pkg>-<ver>.tar.gz
-# and the revised <pkg>.cabal. The script checks both against the plan's
-# hashes before building anything, and with every file present it never
-# reaches for the network.
 tar xf "$PORT_SRC/$name-vendor-$version.tar.xz" -C "$SRC_ROOT"
 mkdir -p hadrian/bootstrap/_build/tarballs
 for f in "$SRC_ROOT"/vendor/*.tar.gz; do
@@ -38,8 +31,6 @@ done
 )
 _hadrian="$SRC/hadrian/bootstrap/_build/bin/hadrian"
 
-# --disable-ld-override keeps binutils' ld, the linker the rest of the tree
-# links with, rather than whichever of gold or lld configure finds first.
 ./configure \
 	--prefix=/usr \
 	--build=x86_64-unknown-linux \
@@ -47,18 +38,11 @@ _hadrian="$SRC/hadrian/bootstrap/_build/bin/hadrian"
 	--target=x86_64-unknown-linux \
 	--with-system-libffi \
 	--disable-ld-override \
+	CONF_GCC_LINKER_OPTS_STAGE1="-Wl,-z,now" \
+	CONF_GCC_LINKER_OPTS_STAGE2="-Wl,-z,now" \
 	GHC="$_seedghc"
 
-# release: the optimised compiler with static and shared libraries, split
-# sections so a static link drops unused code. no_profiled_libs: no profiling
-# variant of any library, so `cabal --enable-profiling` has nothing to link.
-# Only the manual page is built. The libraries' Haddock HTML, with its
-# hyperlinked source, is 750 MB; without it no Haddock page links into the
-# shipped libraries' documentation, and the User's Guide is not installed.
-# C.UTF-8 because Hadrian reads Sphinx's log in the locale's encoding, and the
-# manual page's source has characters outside ASCII: under the phase env's
-# LC_ALL=C the read fails and the build with it.
-LC_ALL=C.UTF-8 "$_hadrian" -j"$KDOS_JOBS" \
+"$_hadrian" -j"$KDOS_JOBS" \
 	--flavour=release+no_profiled_libs \
 	--docs=no-haddocks \
 	--docs=no-sphinx-pdfs \
@@ -66,6 +50,7 @@ LC_ALL=C.UTF-8 "$_hadrian" -j"$KDOS_JOBS" \
 	binary-dist-dir
 
 cd _build/bindist/ghc-$version-x86_64-unknown-linux
-./configure --prefix=/usr --with-system-libffi --disable-ld-override
+./configure --prefix=/usr --with-system-libffi --disable-ld-override \
+	CONF_GCC_LINKER_OPTS_STAGE2="-Wl,-z,now"
 make install DESTDIR="$PKG"
 rmdir "$PKG/usr/share/doc/ghc-$version"

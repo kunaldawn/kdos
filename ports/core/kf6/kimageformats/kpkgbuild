@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = f74ea9ede7877afb66f4d7dea567f074bf63d806a824c87a9d9067d05848a316  kimageformats-6.30.0.tar.xz
 description = KDE Frameworks: QImage plugins for AVIF, HEIF, JPEG XL, JPEG 2000, EXR, RAW, PSD, XCF, Krita and more
 homepage    = https://invent.kde.org/frameworks/kimageformats
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-2-Clause AND (LGPL-2.1-only OR LGPL-3.0-only) AND BSD-3-Clause
 depends     = cmake ninja pkgconf extra-cmake-modules qt6-qtbase karchive libavif libheif libjxl openjpeg openexr libraw

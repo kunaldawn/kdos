@@ -9,36 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Alpine's patches: accept libspatialindex 2.1 (its fix is in the release this
-# tree carries), an infinite loop in the style database upgrade, the private
-# Qt Sql headers the SpatiaLite driver needs from Qt 6.10 on, and a QString
-# argument that no longer converts from an enum. offline-defaults.patch sets
-# the global defaults so that a machine with no network is not contacted at
-# every start: the version check, the welcome page's news feed and the
-# plugin repository check are off. sip-movable.patch gives the Qt 6 bindings
-# the Movable std::unique_ptr mapped type the Qt 5 bindings already carry: sip
-# 6.16 refuses to return a NoRelease mapped type by value unless it is Movable,
-# and every binding module stops at code generation.
 patch -p1 -i "$PORT_SRC/10-libspatialindex_2_1.patch"
 patch -p1 -i "$PORT_SRC/20-qgstyle-infinite-loop.patch"
 patch -p1 -i "$PORT_SRC/40-qt6.10.patch"
 patch -p1 -i "$PORT_SRC/50-qstring.patch"
 patch -p1 -i "$PORT_SRC/offline-defaults.patch"
 patch -p1 -i "$PORT_SRC/sip-movable.patch"
+patch -p1 -i "$PORT_SRC/system-meshoptimizer.patch"
 
-# QGIS Desktop on Qt 6 with PyQGIS (the Python console, Processing, DB
-# Manager, MetaSearch and the plugin manager), qgis_process, 3D map views
-# through Qt 3D, the SpatiaLite and PostgreSQL providers, EPT and COPC point
-# clouds (the bundled laz-perf), the PDAL provider for LAS, LAZ and E57 point
-# clouds, Draco-compressed 3D tiles, meshes (the bundled MDAL, with HDF5,
-# NetCDF and XML formats), OpenCL acceleration through the ICD loader, GPS
-# over serial ports, and QtWebEngine for HTML in layouts and map tips. Off, each for a reason: GRASS, Oracle and
-# SAP HANA have no port; the map server is a FastCGI service; the crash
-# handler offers to send a report upstream. nlohmann-json is the system copy;
-# poly2tri and meshoptimizer have no port and are the bundled copies. DB
-# Manager reaches PostGIS through psycopg2; MetaSearch, the catalogue client,
-# runs on OWSLib. Every translation except English is removed after the
-# install: bundled data is English only.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -79,7 +57,7 @@ cmake -S . -B build -G Ninja \
 	-DWITH_INTERNAL_LAZPERF=TRUE \
 	-DWITH_INTERNAL_MDAL=TRUE \
 	-DWITH_INTERNAL_POLY2TRI=TRUE \
-	-DWITH_INTERNAL_MESHOPTIMIZER=TRUE \
+	-DWITH_INTERNAL_MESHOPTIMIZER=FALSE \
 	-DWITH_INTERNAL_NLOHMANN_JSON=FALSE \
 	-DWITH_INTERNAL_SPATIALINDEX=FALSE \
 	-DWITH_QTWEBKIT=FALSE \
@@ -95,22 +73,15 @@ cmake -S . -B build -G Ninja \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_NetCDF=ON \
 	-DCMAKE_REQUIRE_FIND_PACKAGE_LibXml2=ON \
 	-Wno-dev
+grep -q '^OPENCL_HPP_INCLUDE_DIR:PATH=/usr/include$' build/CMakeCache.txt
 cmake --build build
 DESTDIR=$PKG cmake --install build
 test -x "$PKG/usr/bin/qgis"
 test -x "$PKG/usr/bin/qgis_process"
 ls "$PKG"/usr/lib/python3*/site-packages/qgis/_core*.so >/dev/null
-find "$PKG/usr/share/qgis/i18n" -name '*.qm' ! -name 'qgis_en_US.qm' -delete
 
-# The project and layer file types QGIS defines are shipped only in upstream's
-# distribution packaging, not by its CMake.
 install -Dm644 rpm/sources/qgis-mime.xml "$PKG/usr/share/mime/packages/qgis.xml"
 
-# UPSTREAM'S ENTRY IS REPLACED: the Wayland app_id is org.qgis.qgis (the
-# organisation domain reversed, then the program's name) where upstream writes
-# the X11 class QGIS3; it carries every translation; and it claims TIFF, JPEG
-# and the GIS formats every image viewer and GDAL tool also opens. It keeps
-# the five QGIS file types the XML above defines.
 cat > "$PKG/usr/share/applications/org.qgis.qgis.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

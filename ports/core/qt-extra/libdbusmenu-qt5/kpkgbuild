@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libdbusmenu-qt5
+version     = 0.9.3.20160218
+release     = 1
+_ubuntu     = ${version%.*}+16.04.${version##*.}
+source      = $name-$version.tar.gz::https://launchpad.net/ubuntu/+archive/primary/+files/libdbusmenu-qt_$_ubuntu.orig.tar.gz
+sha256      = a8e6358a31c44ccdf1bfc46c95a77a6bfc7fc1f536aadb913ed4f4405c570cf6  libdbusmenu-qt5-0.9.3.20160218.tar.gz
+description = DBusMenu for Qt 5 — exports and imports the menus of tray icons over D-Bus
+homepage    = https://launchpad.net/libdbusmenu-qt
+license     = LGPL-2.0-or-later
+depends     = cmake ninja qt5-qtbase

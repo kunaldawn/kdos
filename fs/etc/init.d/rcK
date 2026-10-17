@@ -10,10 +10,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# rcS's mirror, run by init as the first `::shutdown` entry. toybox init runs
-# the shutdown entries and then signals every process; it never runs a script's
-# `stop` on its own, so without this no service saves its state — the mixer
-# levels `50_alsa` stores are the plainest case.
+# rcS's mirror, the first runlevel 0 and 6 entry in /etc/inittab. init has
+# already ended the consoles (and with tty1 the session) by then; it never runs
+# a script's `stop` on its own, so without this no service saves its state —
+# the mixer levels `50_alsa` stores are the plainest case. Whatever is still
+# alive once rcK returns is signalled by `killprocs`, the next entry.
 #
 # THE SAME SET rcS STARTED, in reverse. The enable rule is rcS's exactly: an
 # executable `NN_name.sh` with no `/etc/service.disabled/<name>` marker. A
@@ -31,6 +32,8 @@
 # A failing stop does not end the walk. A service that was never started —
 # skipped for want of hardware, or standing down for another — answers its stop
 # with "not running", and every service after it still needs its turn.
+#
+# init's PATH does not reach /usr/local, where the KDOS commands live.
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 

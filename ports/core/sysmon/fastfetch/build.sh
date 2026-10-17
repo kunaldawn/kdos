@@ -9,23 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ENABLE_XRANDR=OFF and ENABLE_XCB_RANDR=OFF keep the report about the Wayland
-# desktop, not a size choice: they are the only switches that define FF_HAVE_XRANDR and
-# FF_HAVE_XCB_RANDR, the two macros guarding the X display-server probes in
-# src/detection/displayserver/linux/xlib.c and xcb.c. Turn either on and
-# libX11 or libxcb joins the host. The Wayland backend reports the session.
-# ENABLE_VAX11 and ENABLE_GLX are the same rule for libva-x11 and glx.pc.
-#
-# Every other library is named ON or OFF, because an ON switch whose library is
-# missing only prints "missing" and builds without it: each ON below has its
-# port in depends. Nearly all of them are dlopen()ed at run time, so the build
-# needs only headers and a .pc file. OFF are the ones with no port (vdpau,
-# dconf, eet, rpm, ImageMagick 6, quickjs) and OpenCL, which has a loader port
-# but no driver on the host to report.
-#
-# LUA IS PINNED TO lua54. fastfetch dlopen()s liblua5.<minor>.so, a name only
-# lua54 installs; the lua port names its library liblua.so, so a build that
-# found lua 5.5's headers would carry scripting that can never load.
 mkdir -p build
 cd build
 cmake .. \

@@ -9,22 +9,16 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/homebank-theme-files.patch"
 
-# libofx has no port, so OFX and QFX statements do not import; QIF and CSV
-# do. libsoup is REQUIRED by configure and is used only by the currency-rate
-# update, which fails offline and leaves the rates as entered. --disable-nls
-# leaves out every translation: bundled data is English only.
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
-	--disable-static \
 	--disable-nls \
-	--without-ofx
+	--with-ofx
 make
 make DESTDIR=$PKG install
+test -f "$PKG/usr/share/homebank/icons/Default/index.theme"
+test -f "$PKG/usr/share/homebank/icons/hicolor/scalable/status/prf-transaction-transfer-symbolic.svg"
 
-# The window's Wayland app_id is its GApplication id, which is neither the
-# entry's file name nor its last component, so the entry names it in
-# StartupWMClass; without it the taskbar cannot match the window to the
-# Start menu row.
 cat > "$PKG/usr/share/applications/homebank.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

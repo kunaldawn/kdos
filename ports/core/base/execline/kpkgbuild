@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = execline
+version     = 2.9.9.2
+release     = 1
+source      = https://skarnet.org/software/$name/$name-$version.tar.gz
+sha256      = 908ed4db3a6b3a23a205d8fd4cf2a71089156f2aeae0f54656045aafad2dee32  execline-2.9.9.2.tar.gz
+description = A non-interactive scripting language of chained programs, and the library s6 links
+homepage    = https://skarnet.org/software/execline/
+license     = ISC
+depends     = skalibs

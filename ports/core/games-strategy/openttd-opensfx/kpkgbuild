@@ -15,4 +15,5 @@ source      = https://cdn.openttd.org/opensfx-releases/$version/opensfx-$version
 sha256      = e0a218b7dd9438e701503b0f84c25a97c1c11b7c2f025323fb19d6db16ef3759  openttd-opensfx-1.0.3.zip
 description = OpenSFX: the free sound base set for OpenTTD
 homepage    = https://github.com/OpenTTD/OpenSFX
+license     = CC-BY-SA-3.0 AND (GPL-2.0-or-later OR CDDL-1.1)
 depends     = libarchive

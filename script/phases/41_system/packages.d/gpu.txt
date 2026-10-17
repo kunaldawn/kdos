@@ -35,3 +35,5 @@ shaderc
 # The memory-management library intel-media-driver cannot build without. The
 # version coupling is hard: media-driver 26.2.4 needs igdgmm 12.10.x.
 intel-gmmlib
+
+opencl-clhpp

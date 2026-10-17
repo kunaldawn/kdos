@@ -73,11 +73,19 @@ struct KpDecl {
 	 * there — and it is a KEY rather than a helper so it is not expanded and
 	 * not carried into the build environment. */
 	char secdb[128];
+	/* The packages whose paths this one may take; add.c reads it from the
+	 * recipe. A key rather than a helper so it never reaches the build
+	 * environment. */
+	char replaces[512];
 	/* How `kdos march` measures this port: a setup line that is run once and
 	 * not timed, and the line that IS timed. Keys rather than helpers so
 	 * they are not expanded and never reach the build environment. */
 	char bench[512];
 	char bench_setup[512];
+	/* The SPDX expression of the port's licence. `kpkg info` reads it
+	 * with kp_recipe_key; it is a key here so it never reaches the build
+	 * environment as $license. */
+	char license[256];
 	/* "KEY=VALUE", in declaration order: a later helper may refer to an
 	 * earlier one, which `_cargo = $_rust` does. */
 	char var[MAX_VARS][512];
@@ -376,8 +384,10 @@ static void set_key(KpDecl *d, const char *key, const char *val)
 		{ "vendoring", d->vendoring, sizeof(d->vendoring), 0 },
 		{ "pypackages", d->pypackages, sizeof(d->pypackages), 1 },
 		{ "secdb", d->secdb, sizeof(d->secdb), 0 },
+		{ "replaces", d->replaces, sizeof(d->replaces), 0 },
 		{ "bench", d->bench, sizeof(d->bench), 0 },
 		{ "bench_setup", d->bench_setup, sizeof(d->bench_setup), 0 },
+		{ "license", d->license, sizeof(d->license), 0 },
 		{ NULL, NULL, 0, 0 }
 	};
 	for (int i = 0; F[i].key; i++) {

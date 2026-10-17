@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name       = python3-hatch-tryton
+version     = 0.1.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/h/hatch-tryton/hatch_tryton-$version.tar.gz
+sha256      = d0d71c40a5f20bcd752bef743e7d713c1500490ff3cc0ae2a709eff639e90345  python3-hatch-tryton-0.1.1.tar.gz
+description = Hatchling plugin that builds Tryton modules and their metadata
+homepage    = https://pypi.org/project/hatch-tryton/
+license     = MIT
+depends     = python3 python3-pip python3-hatchling

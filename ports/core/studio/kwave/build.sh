@@ -9,17 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Playback and recording through PulseAudio (pipewire-pulse on this system),
-# ALSA and Qt Multimedia; OSS is a kernel interface this system does not
-# carry. MP3 decodes through libmad with tags through id3lib, and encodes by
-# running the lame program. Each codec is REQUIRED once its switch is on, so
-# a missing library fails the build rather than dropping the format.
-# KF_SKIP_PO_PROCESSING leaves the interface catalogues out, and
-# kdoctools_install() still builds every translated handbook, removed after
-# the install: bundled data is English only.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
@@ -38,10 +30,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-rm -rf "$PKG/usr/share/locale"
-find "$PKG/usr/share/doc/HTML" -mindepth 1 -maxdepth 1 ! -name en -exec rm -rf {} +
-
-# The application icon is installed as SVG only, which the panel never reads.
 for _size in 32 48 64 128; do
 	install -d "$PKG/usr/share/icons/hicolor/${_size}x${_size}/apps"
 	rsvg-convert -w "$_size" -h "$_size" \
@@ -49,9 +37,6 @@ for _size in 32 48 64 128; do
 		"$PKG/usr/share/icons/hicolor/scalable/apps/org.kde.kwave.svg"
 done
 
-# UPSTREAM'S ENTRY IS REPLACED for StartupWMClass: KAboutData sets the desktop
-# file name, so the Wayland app_id is org.kde.kwave. MimeType is left out: an
-# editor claiming audio files would open them in place of the music player.
 cat > "$PKG/usr/share/applications/org.kde.kwave.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

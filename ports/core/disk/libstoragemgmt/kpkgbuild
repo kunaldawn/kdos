@@ -16,4 +16,5 @@ source      = https://github.com/libstorage/libstoragemgmt/releases/download/$ve
 sha256      = 07fd9c8e498a052b7ed201c56936120910ec4992fa1f3ade88a0c66e088bdc93  libstoragemgmt-1.11.0.tar.gz
 description = Storage array and local disk management library, the lsmd plugin daemon and lsmcli
 homepage    = https://libstorage.github.io/libstoragemgmt-doc/
+license     = LGPL-2.1-or-later
 depends     = glib sqlite eudev python3 libconfig perl pkgconf bash-completion

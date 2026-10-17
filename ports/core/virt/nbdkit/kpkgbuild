@@ -16,4 +16,5 @@ source      = https://download.libguestfs.org/$name/$_series-stable/$name-$versi
 sha256      = 21ddcdd0bb3cd49ec47aa2d7ca3e69941426e991932b44dc34a856d063f41ead  nbdkit-1.48.1.tar.gz
 description = NBD server toolkit with pluggable plugins and filters; serves disks to libvirt and QEMU
 homepage    = https://gitlab.com/nbdkit/nbdkit
-depends     = pkgconf perl gnutls libnbd libnfs curl libssh zlib xz zstd bzip2 e2fsprogs
+license     = BSD-3-Clause
+depends     = pkgconf perl gnutls libnbd libnfs curl libssh zlib xz zstd bzip2 e2fsprogs libisoburn bash-completion libbsd

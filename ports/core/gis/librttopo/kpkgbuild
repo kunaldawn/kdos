@@ -15,4 +15,5 @@ source      = https://download.osgeo.org/librttopo/src/librttopo-$version.tar.gz
 sha256      = a77d8b787ba13f685de819348d5146f9f6ec56fd3bcf71e880dfc5e0086d4cb0  librttopo-1.1.0.tar.gz
 description = RT Topology Library — PostGIS-style topology and validity functions, for SpatiaLite
 homepage    = https://git.osgeo.org/gitea/rttopo/librttopo
+license     = GPL-2.0-or-later
 depends     = geos

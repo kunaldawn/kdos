@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = oidn
+version     = 2.5.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/RenderKit/oidn/releases/download/v$version/oidn-$version.src.tar.gz
+sha256      = e71fd043a70f1cc80e301d1b90df6c1f536098c4dd94baa612742f6db3369c36  oidn-2.5.1.tar.gz
+description = Intel's AI denoising of path-traced images on the CPU, with oidnDenoise
+homepage    = https://www.openimagedenoise.org/
+license     = Apache-2.0
+depends     = cmake ninja python3 ispc onetbb

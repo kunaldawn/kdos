@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/fujiwarat/$name/archive/
 sha256      = 136469e2288658a80684b3f05a868b596a835c4adcf3de97ab657423c0132a55  anthy-unicode-1.0.0.20260213.tar.gz
 description = Japanese kana-kanji conversion engine, the maintained Anthy fork
 homepage    = https://github.com/fujiwarat/anthy-unicode
+license     = LGPL-2.0-or-later AND GPL-2.0-or-later
 depends     = autoconf automake libtool

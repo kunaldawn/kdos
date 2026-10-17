@@ -9,10 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The release tarball carries no configure script. autoreconf needs autopoint
-# for the gettext macros. The linear-algebra backend (OpenBLAS) is dlopened at
-# run time when the user picks it, and is installed beside it so that choice
-# works.
+export CFLAGS="$CFLAGS -g0"
+
 autoreconf -fi
 ./configure \
 	--prefix=/usr \
@@ -22,10 +20,6 @@ autoreconf -fi
 make
 make DESTDIR=$PKG install
 
-# THE MENU: the SVG is rasterised for the sizes the panel reads, and the entry
-# gains the window class. The window is a plain GtkWindow, so the Wayland
-# app_id is the program name. files/x-nec2.xml, installed above, defines the
-# type the entry claims.
 for s in 48 64 128; do
 	install -d "$PKG/usr/share/icons/hicolor/${s}x${s}/apps"
 	rsvg-convert -w $s -h $s resources/xnec2c.svg \

@@ -16,5 +16,6 @@ sha256      = d35c96e68736bd9569d2757c3cc71052485f33082c3825f1aed9d0e86013a159  
 sha256      = 679d34ad857e312e0454eedbe1effecd7606b1c8b75f80b003462e709a3e8ad5  tree-sitter-vendor-0.27.0.tar.xz
 description = The parser library and CLI — grammars compiled here, never fetched
 homepage    = https://tree-sitter.github.io/
+license     = MIT
 depends     = rust clang
 vendoring   = rust

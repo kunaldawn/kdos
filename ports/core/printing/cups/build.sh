@@ -34,14 +34,13 @@
 	--enable-raw-printing \
 	--enable-relro \
 	--with-tls=gnutls \
-	--with-optim="$CFLAGS" \
+	--with-optim="${CFLAGS/-std=gnu11/}" \
 	--without-rcdir \
 	--without-systemd \
 	--with-ondemand=no
 make
 make BUILDROOT=$PKG install
 
-# Linux PAM Configuration
 install -d -m 755 $PKG/etc/pam.d
 cat > $PKG/etc/pam.d/cups << "EOF"
 auth    required pam_unix.so
@@ -49,7 +48,6 @@ account required pam_unix.so
 EOF
 chmod 644 $PKG/etc/pam.d/cups
 
-# cleanup
 rm -fr $PKG/tmp $PKG/run $PKG/var/run
 
 chmod 0755 $PKG/var/cache

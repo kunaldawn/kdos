@@ -9,19 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# flatbuffers.patch takes the bundled flatbuffers off strtod_l, which musl
-# does not have; pathmax.patch gives the bundled zstd a PATH_MAX; make.patch
-# writes the install rules in options toybox's cp and install accept, `-m`
-# for --mode and no --no-preserve=ownership.
 patch -p1 -i "$PORT_SRC/flatbuffers.patch"
 patch -p1 -i "$PORT_SRC/pathmax.patch"
 patch -p1 -i "$PORT_SRC/make.patch"
+patch -p1 -i "$PORT_SRC/zzip-ldflags.patch"
 
-# The tiles build with sound, dynamically linked against the system's SDL2
-# libraries. No translations (LOCALIZE=0), no backtrace support (musl has
-# no execinfo), no tests, no style checks. Saves and settings follow the
-# XDG base directories. WARNINGS replaces upstream's list, which carries
-# -Werror: a warning a newer compiler adds would otherwise stop the build.
 mk() {
 	make \
 		PREFIX=/usr \
@@ -37,9 +29,6 @@ mk() {
 mk
 mk DESTDIR=$PKG install
 
-# The panel reads PNG only: upstream's scalable icon is rasterised, and its
-# entry replaced for StartupWMClass, the Wayland app_id being SDL's default,
-# the executable's name.
 rm -rf "$PKG/usr/share/icons/hicolor/scalable"
 install -d "$PKG/usr/share/icons/hicolor/256x256/apps"
 rsvg-convert -w 256 -h 256 data/xdg/org.cataclysmdda.CataclysmDDA.svg \

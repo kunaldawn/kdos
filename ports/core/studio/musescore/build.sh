@@ -9,35 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The install writes the musescore alias links under the real prefix rather
-# than under DESTDIR, which puts them in the build root and leaves them out of
-# the package. The patch is upstream's (pull request 33819), carried by
-# Alpine.
 patch -p1 -i "$PORT_SRC/fix-destdir-symlinks.patch"
+patch -p1 -i "$PORT_SRC/wayland-platform.patch"
 
-# The MNX importer's DOM library and its JSON Schema validator are fetched
-# by FetchContent at pinned commits; they are sources of this recipe, and
-# FETCHCONTENT_SOURCE_DIR_* points each declaration at its unpacked tree, so
-# nothing is cloned. JSON comes from the nlohmann-json port. The two build as
-# static libraries inside the program, and their install rules are removed
-# from the package below.
-#
-# Offline: the MuseScore.com account and cloud scores, the Learn page, the
-# update checker and the Muse Sounds / Muse Sampler integration (proprietary
-# instruments delivered online) are replaced by upstream's stubs. The app
-# shell's QML module requires the MuseSounds QML target, which defaults to
-# off with the module, so MUE_BUILD_MUSESOUNDS_QML=ON builds the stub's
-# placeholder page in its place. The crash
-# reporter is off, VST3 needs Steinberg's SDK, and JACK is not on this system;
-# audio is PipeWire with ALSA beside it. The MS Basic soundfont ships in the
-# release tree and is installed from it, so the download step stays off.
-#
-# Bundled FLAC, Opus, libopusenc, LAME, HarfBuzz, FreeType, pugixml and
-# utf8cpp are replaced by the ports. A missing
-# system HarfBuzz would make CMake download upstream's build recipe for one,
-# so its port is required. MUE_RUN_LRELEASE=OFF leaves the interface
-# catalogues out: bundled data is English only. -D_LARGEFILE64_SOURCE keeps
-# the 64-bit file offset names musl provides only under that macro.
 export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE"
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -83,24 +57,11 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# The fetched libraries' own install rules add a static archive, headers and
-# a pkg-config file nothing on the system links against.
 rm -rf "$PKG/usr/include" "$PKG/usr/lib/pkgconfig"
 find "$PKG/usr/lib" -name '*.a' -delete
 
-# Qt's own catalogues are copied in from qt6-qttranslations when it is
-# installed; bundled data is English only. languages.json stays: the
-# preferences page reads it.
 find "$PKG/usr/share" -path '*/locale/*.qm' -delete
 
-# UPSTREAM'S ENTRY IS REPLACED for StartupWMClass. main() sets
-# QT_QPA_PLATFORM=xcb unless MU_QT_QPA_PLATFORM is set, so the window is an
-# Xwayland one, and the compositor takes its app_id from the WM_CLASS
-# instance, the executable's name: mscore. Run with MU_QT_QPA_PLATFORM=wayland
-# the app_id is the desktop file name, which the entry's own name matches.
-# audio/midi and the soundfont types are left to the players and
-# synthesisers; the score formats stay. The hicolor PNGs it names are
-# upstream's, installed above.
 cat > "$PKG/usr/share/applications/org.musescore.MuseScore.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -112,7 +73,7 @@ Exec=mscore %U
 Icon=mscore
 Terminal=false
 StartupNotify=true
-StartupWMClass=mscore
+StartupWMClass=org.musescore.MuseScore
 MimeType=application/x-musescore;application/x-musescore+xml;application/vnd.recordare.musicxml;application/vnd.recordare.musicxml+xml;application/x-mei+xml;application/x-bww;application/x-biab;application/x-capella;audio/x-gtp;application/x-musedata;application/x-overture;audio/x-ptb;application/x-tef;
 Categories=AudioVideo;Audio;Midi;Sequencer;Music;Publishing;Qt;
 Keywords=music;notation;composition;composing;arranging;sheet music;score;scorewriter;midi;musicxml;musescore;

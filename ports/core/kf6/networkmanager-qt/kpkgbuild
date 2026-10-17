@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/
 sha256      = f6ba5f54d413ea0b2642207a6ebd0803e7cb8392b91fcf8a1679fd0c21062865  networkmanager-qt-6.30.0.tar.xz
 description = KDE Frameworks: Qt wrapper for the NetworkManager D-Bus API
 homepage    = https://invent.kde.org/frameworks/networkmanager-qt
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative pkgconf glib networkmanager

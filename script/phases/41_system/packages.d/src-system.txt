@@ -29,3 +29,7 @@ kdos-pack
 # it is bind-mounted into a box whose /usr is Debian's and a musl-linked binary
 # would look for its loader there.
 kdos-boxinit
+
+# The book under /usr/share/doc/kdos, kdos(7), and a manual page per kdos-*
+# command, rendered from docs/ by lowdown.
+kdos-doc

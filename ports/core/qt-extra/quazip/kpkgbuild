@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/stachenov/quazip/archive
 sha256      = 5240f4a3475648773ba10af8b0ebe549cbfc5d6de00470a517330a80068a4f78  quazip-1.7.2.tar.gz
 description = Qt 6 C++ wrapper for zip archives
 homepage    = https://github.com/stachenov/quazip
+license     = LGPL-2.1-or-later AND Zlib
 depends     = cmake ninja qt6-qtbase qt6-qt5compat zlib bzip2

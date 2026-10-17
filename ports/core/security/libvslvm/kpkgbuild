@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libvslvm
+version     = 20260901
+release     = 1
+source      = https://github.com/libyal/libvslvm/releases/download/$version/$name-experimental-$version.tar.gz
+sha256      = 9fd078e32a9f8d93409c846c732144e163f4540b68ff3e456080c2aa056670bb  libvslvm-20260901.tar.gz
+description = Linux LVM2 volume-system library, vslvminfo and vslvmmount — reads logical volumes inside an image
+homepage    = https://github.com/libyal/libvslvm
+license     = LGPL-3.0-or-later
+depends     = pkgconf libbfio fuse

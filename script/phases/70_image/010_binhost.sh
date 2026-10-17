@@ -16,8 +16,8 @@
 # KPKG_KEEP_CACHE=1, so every `kpkg install` of the build leaves the package it
 # built in /var/cache/kpkg/packages. This step copies them to build/binhost/
 # and runs `kpkg index --sign` over that directory, which is then a binhost
-# `kpkg binhost` and `kdos update apply` read (packaging.md, "The binary
-# host"). Off, it does nothing.
+# `kpkg binhost` reads (packaging.md, "The binary host"). `kdos update` never
+# reads one. Off, it does nothing.
 #
 # THE DIRECTORY ACCUMULATES. 020_cleanup.sh empties the package cache on every
 # 70_image run, and an incremental build makes only the packages it rebuilt,

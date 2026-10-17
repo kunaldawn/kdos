@@ -9,10 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# version-tag stops the build asking git for a version; the source is not a
-# checkout. systemd=disabled drops the monitor units and the dax udev rule,
-# which only asks systemd to start a unit. asciidoctor renders the manual
-# pages.
+patch -p1 -i "$PORT_SRC/strerror.patch"
+
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \

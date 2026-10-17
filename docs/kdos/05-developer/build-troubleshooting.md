@@ -14,7 +14,7 @@ chroot and the orchestrator that the entries below refer to, and
 Start with [Reading a failure](#reading-a-failure), then find your message in the
 [symptom index](#symptom-index) and follow its link. The entries are grouped by where the failure
 arises: fetching and publishing sources, the orchestrator and the build tree, toolchains and
-language runtimes, the compact userland, and upstream build systems. If nothing matches, work
+language runtimes, the base userland, and upstream build systems. If nothing matches, work
 through [When the failure is not here](#when-the-failure-is-not-here) at the end.
 
 ## Reading a failure
@@ -37,8 +37,8 @@ details.
 
 A few terms recur throughout. `kpkg` is KDOS's package manager: it builds each port from its
 recipe and installs it, and `kpkgdepends` is its dependency solver. KDOS uses musl as its C library
-in place of glibc, and toybox, a single binary that provides most of the standard command-line tools
-as *applets*, as its base userland. *Preflight* is `testing/preflight.sh`, a static check of the
+in place of glibc, and the GNU tools (coreutils, grep, sed, gawk, findutils, diffutils, patch, tar)
+as its base userland. *Preflight* is `testing/preflight.sh`, a static check of the
 repository's wiring. The *target tree* is `build/fs`, the root filesystem the build assembles and
 every phase from `10_bootstrap` onward installs into. A *shelf* is the subject directory an upstream
 port is filed in, `ports/core/<shelf>/<port>/`; a port is always named by its bare name, and
@@ -97,7 +97,6 @@ lists everything preflight checks.
 | A CMake port fails or misbehaves and the compiler cache is suspected | [A compiler cache under suspicion](#a-compiler-cache-under-suspicion) |
 | `Reusing <port> from the store (<key12>)`, or a port that behaves like an older build of itself with `KDOS_PKG_STORE=1` | [A port that came from the package store](#a-port-that-came-from-the-package-store) |
 | `Removing orphan` for a file another package still lists, then `not found` on that tool | [A package manager older than its source](#a-package-manager-older-than-its-source) |
-| `cmp`, `readelf` or another tool missing after toybox reinstalls | [A tool missing after toybox reinstalls](#a-tool-missing-after-toybox-reinstalls) |
 | A port that fails, or builds without a feature, only under `--port-jobs` | [A port that needs `--port-jobs 1`](#a-port-that-needs---port-jobs-1) |
 | `<port> took paths from <port>; the serial order had <port> last` | [A port that needs `--port-jobs 1`](#a-port-that-needs---port-jobs-1) |
 | `its kpkg has no --build-only; building one port at a time` | [A port that needs `--port-jobs 1`](#a-port-that-needs---port-jobs-1) |
@@ -116,15 +115,16 @@ lists everything preflight checks.
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
-| A missing type, from an empty generated header | [A stream-editor extension that is not there](#a-stream-editor-extension-that-is-not-there) |
-| `integer expected` from `expr`, a relative-link option rejected, `printf: bad %q`, or `option --date requires an argument` from `jar`, `no, GNU cp needed`, or `cp: <file>: No such file or directory` for a destination that is a link | [Missing compact-userland features](#missing-compact-userland-features) |
+| `cp: not writing through dangling symlink` in an install step | [A link at a copy's destination](#a-link-at-a-copys-destination) |
+| `ERROR: lint: <path>: mode 0600: not readable by users`, or `a program with no x bit` | [A file installed unreadable](#a-file-installed-unreadable) |
+| `ERROR: lint: <path>: …` with any other reason, then `the staged tree failed <N> lint check(s)` | [A package the lint refuses](#a-package-the-lint-refuses) |
 | A package index or a clone reached during the offline build | [A build that reaches the network](#a-build-that-reaches-the-network) |
 | `Unknown options: …` at meson setup | [An unknown meson option](#an-unknown-meson-option) |
 | A meson option value that `is not one of the choices` | [A meson feature given a boolean](#a-meson-feature-given-a-boolean) |
 | `Error loading shared library` at run time, or a stale package-config file shadowing a fixed one | [A missing meson prefix or library directory](#a-missing-meson-prefix-or-library-directory) |
 | `find_package called with invalid argument "1"`, or a config file `not compatible with requested version "1"` | [A requirement a find module misreads](#a-requirement-a-find-module-misreads) |
 | `Missing Qt6::GuiPrivate`, or another `Qt6::<Module>Private` target that does not exist | [A Qt private module not loaded](#a-qt-private-module-not-loaded) |
-| `Eigen3 library NOT FOUND` with Eigen installed | [Eigen without its legacy variables](#eigen-without-its-legacy-variables) |
+| `Eigen3 library NOT FOUND` with Eigen installed, or `#error Eigen requires at least c++14 support` | [Eigen without its legacy variables](#eigen-without-its-legacy-variables) |
 | `cannot mix girepository 1.0 (via libpeas) and 2.0 (via pygobject)` | [Two introspection runtimes in one process](#two-introspection-runtimes-in-one-process) |
 | `glib.h: No such file or directory` in one plugin of an explicit plugin list | [A plugin built with no compiler flags](#a-plugin-built-with-no-compiler-flags) |
 | `cairo.h: No such file or directory` from `FL/Fl_Cairo.H` | [FLTK's headers needing Cairo's](#fltks-headers-needing-cairos) |
@@ -147,10 +147,10 @@ lists everything preflight checks.
 | An option you passed had no effect, with a warning about unused variables | [A misspelt CMake option](#a-misspelt-cmake-option) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
 | `Installing:` a library under `/var/cache/kpkg/work/…` instead of `/usr/lib` | [A library installed into the source tree](#a-library-installed-into-the-source-tree) |
-| `Skipped dir` on a path that looks like the binary | [Go building into its own directory](#go-building-into-its-own-directory) |
+| `cp: -r not specified; omitting directory` on a path that looks like the binary | [Go building into its own directory](#go-building-into-its-own-directory) |
 | `C compiler cannot create executables` | [`C compiler cannot create executables`](#c-compiler-cannot-create-executables) |
 | The same, with a working compiler on the search path | [A configuration script preferring another compiler](#a-configuration-script-preferring-another-compiler) |
-| `python: command not found`, or `make: python: No such file or directory` | [A build calling `python`](#a-build-calling-python) |
+| `SyntaxError: Missing parentheses in call to 'print'`, `python2: command not found`, or `make: python2: No such file or directory` | [A build calling `python`](#a-build-calling-python) |
 | A crash or failure in a tool the port does not depend on, such as `inkscape`, run by the build | [An optional tool found in the tree](#an-optional-tool-found-in-the-tree) |
 | `g++ -std=gnu++11` on every compile line, then `requires a C++17 capable compiler` or a missing `std::` member | [Autoconf lowering the C++ standard](#autoconf-lowering-the-c-standard) |
 | `no matching function for call to 'std::basic_string<char>::basic_string(const char8_t [N])'`, or `invalid conversion from 'const char8_t*' to 'const char*'` | [`u8` literals under C++20](#u8-literals-under-c20) |
@@ -164,14 +164,14 @@ lists everything preflight checks.
 | Warnings you have never seen upstream, made fatal | [An upstream `-Werror`](#an-upstream--werror) |
 | An undeclared constant that reads like a missing header | [Compiler flags passed as make arguments](#compiler-flags-passed-as-make-arguments) |
 | `undefined reference to` a symbol of a library that is on the link line, or a plugin or codec that registers itself missing at run time | [A library dropped by `--as-needed`](#a-library-dropped-by---as-needed) |
+| `<library>.so: undefined reference to 'vtable for <Class>'` from a library the port itself built | [A guessed virtual call into a class the library never compiles](#a-guessed-virtual-call-into-a-class-the-library-never-compiles) |
 | `Error relocating <library>: <symbol>: symbol not found` when a program opens a plugin | [A plugin that needs lazy binding](#a-plugin-that-needs-lazy-binding) |
 | `No rule to make target` printed from the middle of an unrelated step | [A backtick inside double quotes](#a-backtick-inside-double-quotes) |
 | `No rule to make target '\'` during an install | [A parallel install race](#a-parallel-install-race) |
-| `cp: Needs 2 arguments` and `mv: bad '…/#inst.NNNN#'` during `make install` | [An install-sh with no `-d`](#an-install-sh-with-no--d) |
 | `Killed signal terminated program cc1plus`, or a compiler or linker ending with no message | [A compiler that was OOM-killed](#a-compiler-that-was-oom-killed) |
 | A BSD header missing on a fresh build only | [A dependency the list happened to satisfy](#a-dependency-the-list-happened-to-satisfy) |
 | GStreamer's core compiling or failing in a Rust helper (`gst-ptp-helper`) | [The time-protocol helper](#the-time-protocol-helper) |
-| `hGetContents: invalid argument (cannot decode byte sequence …)`, or `invalid or incomplete multibyte or wide character` from a tool reading a file | [A tool decoding files as ASCII](#a-tool-decoding-files-as-ascii) |
+| `binary file matches` where `grep` should print a line, or a version a configure script extracted with `grep` comes back empty; or, in `00_cross` or `10_bootstrap`, `invalid or incomplete multibyte or wide character` from a tool reading a file | [A file that is not UTF-8](#a-file-that-is-not-utf-8) |
 | A submodule directory present but empty | [An empty submodule in a release archive](#an-empty-submodule-in-a-release-archive) |
 | A downloaded archive that does not exist, or unpacks oddly | [Source URLs and archive layouts](#source-urls-and-archive-layouts) |
 
@@ -605,7 +605,7 @@ tree and records a hash of its sources in `build/mark/bootstrap/kpkg`. A run tha
 so every later install and upgrade uses the older binary in the target tree. The current `kpkg`
 keeps a file another installed package still lists (`Keeping <path>: <package> claims it`); an
 older one can remove it as an orphan instead. The tool is then missing for every port built after
-it: an upgrade of toybox that takes `cmp`, for example, makes bzip2's test fail with
+it: a removed `cmp`, for example, makes bzip2's test fail with
 `make: cmp: No such file or directory`.
 
 Recompile `kpkg` in the target tree in place before continuing. A plan that names a step suppresses
@@ -618,23 +618,6 @@ make build BUILD_ARGS="--phases 10_bootstrap --steps 10_bootstrap:120_kpkg.sh"
 
 Files an older `kpkg` has already removed come back only when their owning port reinstalls. That
 needs a recipe change to the port, or a `--rebuild` of it.
-
-### A tool missing after toybox reinstalls
-
-A tool that some other port installs (`cmp`, `readelf`, `strings`, `gunzip`, `mount`, `insmod`) is
-missing or broken after a phase that reinstalled toybox.
-
-toybox's recipe compiles out almost every applet whose name another port on the image owns, so
-that the real tool is the only one. It keeps `sed`, `find`, `xargs`, `awk`, `expr` and `ln`, which
-every configure script before the GNU ports needs and which those ports install over later. A
-toybox installed after a port that owns one of those names holds that name in its manifest, and a
-toybox upgrade removes every name its previous manifest held, taking the other port's file with it.
-`kpkg` skips a port whose recipe hash is current, wherever it is listed, so the owning port is not
-reinstalled on its own. The comment under the `toybox` line in
-`script/phases/40_lang/packages.d/00-order.txt` states the rule: a name toybox compiles out needs a
-`release =` bump to the port that owns it in the same change, and those owners are listed straight
-after toybox at the head of `40_lang`, the first phase after the compilers, so that they reinstall
-before anything later needs them. bzip2's build runs `cmp`, which is why the order matters.
 
 ### Helpers compiled against the other C library
 
@@ -716,11 +699,12 @@ A failed level is not committed: the ports that built are held in the package ca
 hash has not changed. The failing port's own log is the step log named in the failure, as in a
 serial run.
 
-The notice `<taker> took paths from <port>; the serial order had <port> last — pin the pair in
-00-order.txt` means two ports of the phase install the same path, and a level's commit installed
-them in the other order from the serial run, so the path has a different owner. Pin both in the
-phase's order run, `00-order.txt` or the names ahead of a `packages.txt`'s first shelf heading, in
-the order the serial run gives them; the order run builds one port at a time.
+The notice `<taker> took paths from <port>; the serial order had <port> last — pin <port> before
+<taker> in 00-order.txt` means a recipe's `replaces =` took paths from a port of the same phase that
+a level had committed first, while the serial run would install that port after the taker and
+refuse it as a conflict. Pin both in the phase's order run, `00-order.txt` or the names ahead of a
+`packages.txt`'s first shelf heading, the replaced port first; the order run builds one port at a
+time.
 
 `its kpkg has no --build-only; building one port at a time` means the `kpkg` in the tree predates the
 two-part install, as one restored from an early snapshot can. The phase runs serially and is
@@ -876,7 +860,7 @@ CFLAGS_FOR_TARGET="${CFLAGS/-std=gnu[0-9][0-9]/}"
 ```
 
 The bare-metal compilers take nothing from the host's flags. `gcc-arm-none-eabi`, `gcc-avr`,
-`gcc-riscv64-unknown-elf` and `libstdcxx-arm-none-eabi` pass
+`gcc-riscv64-unknown-elf`, `libstdcxx-arm-none-eabi` and `libstdcxx-riscv64-unknown-elf` pass
 `-Os -pipe -ffunction-sections -fdata-sections` as `CFLAGS_FOR_TARGET` (and, for libstdc++,
 `CXXFLAGS_FOR_TARGET`), as Alpine's `gcc-cross-embedded` does. `-Os` because every byte of
 `libgcc` and `libstdc++` a firmware links lands in the part's flash, which is kilobytes on an AVR
@@ -913,9 +897,12 @@ call to `libintl_gettext`, which only GNU's libintl defines; glibc provides thos
 does not. Upstream build systems routinely test `uname -s` and take Linux to mean glibc, so the one
 platform that needs `-lintl` is the one their test excludes.
 
-Depend on `libintl` and put `-lintl` where that project's link line will keep it. Check which
-variable survives before choosing one: a `LIBS`-style variable set with `=` is clobbered by the
-Makefile, while `LDFLAGS` is usually appended to with `+=` and sits last on the link line, which is
+No message catalogue ships, so first look for the build's own switch: autotools' `--disable-nls`,
+or a named option such as neovim's `-DENABLE_LIBINTL=OFF`. With it the program needs no `libintl`
+at all; shadow and cryptsetup are built that way. Where the build has no switch (gdk-pixbuf's meson
+links `intl` whenever it finds it, fcitx5 requires it), depend on `libintl` and put `-lintl` where
+that project's link line will keep it. Check which variable survives before choosing one: a
+`LIBS`-style variable set with `=` is clobbered by the Makefile, while `LDFLAGS` is usually appended to with `+=` and sits last on the link line, which is
 where a library reference belongs. Do not add `-liconv` alongside it out of habit: musl carries
 iconv in libc and there is no library of that name.
 
@@ -1020,68 +1007,51 @@ export LDFLAGS="$LDFLAGS -licuuc"
 
 ---
 
-## The compact userland
+## The base userland
 
-KDOS's base userland is toybox, a single binary that provides most of the standard command-line
-tools as applets. Its applets implement less than the GNU tools, and upstream build systems
-routinely assume GNU behaviour. The GNU `gawk` (from `20_selfhost`), `sed` and `findutils` (from
-`30_foundation`) ports install over their applets, and `coreutils` installs exactly four programs,
-`expr`, `ln`, `printf` and `date`, because installing all of it would take about a hundred paths off
-toybox.
+KDOS's base userland is GNU at every name: coreutils as separate programs, grep, sed, gawk,
+findutils, diffutils, patch and tar, cross-built in `10_bootstrap` and rebuilt as ports in
+`30_foundation`. A build system that assumes GNU behaviour (`sed -i`, `expr length`,
+`ln --relative`, `date --date`, `\|` in a basic `grep` pattern, a `mkdir` that configure accepts
+as thread-safe) gets it from the first configure script on. `which` is GNU's; `getconf`, `getent`
+and `iconv` are musl's own (the `musl-utils` port), so they answer for musl's limits, databases
+and converters, not glibc's.
 
-### A stream-editor extension that is not there
+### A link at a copy's destination
 
-The build reaches the compiler and reports a missing type or an undefined constant. The real
-problem is a generated header, script or configuration file that is zero bytes long.
+`cp` writes through a link at the destination, and GNU `cp` refuses one that dangles with
+`not writing through dangling symlink`. An absolute link inside `$PKG` names a path on the build
+root, not in `$PKG`: it dangles there, or, when the package is already installed, it leads to the
+installed file and the copy overwrites that instead. To replace a link with the file it names,
+read it, `rm` it, then copy. The `libreoffice` recipe does this for
+its `.desktop` entries, which upstream installs as absolute links into
+`/usr/lib/libreoffice/share/xdg`; a copy is what preflight's name, icon and command checks can
+read.
 
-toybox's `sed` implements several extensions (in-place editing with a backup suffix,
-NUL-separated input), but not all of GNU's: the `0,/regex/` address form and the `\U` and `\L`
-case-conversion escapes are among those it lacks, and a script using one can produce no output
-rather than an error. A configure script that generates a header through a `0,/regex/d` script
-gets an empty file from toybox's `sed`, and the build fails several steps later on an error naming
-a type. GNU `sed` is built in `30_foundation` for that reason.
+### A file installed unreadable
 
-GNU `sed` is the `sed` port, listed in `30_foundation` and in `40_lang`'s `00-order.txt`. A port
-built in `30_foundation` before it, or one that relies on the ordering, names `sed` in its
-`depends` line.
+A package with a regular file that users cannot read, or a file in `usr/bin` with no `x` bit, is
+refused by the [package lint](../03-architecture/packaging.md#the-package-lint). An unreadable
+file in `/etc` or `/usr` breaks every non-root user of it, and silently: `git` stops on an
+unreadable `/etc/gitconfig`, `/etc/profile` skips an unreadable `profile.d` script, and
+`pkgconf` fails every module that `Requires` an unreadable `.pc`. Root reads the file, so nothing
+in the build notices.
 
-### Missing compact-userland features
+GNU `install` writes the mode `-m` names, whatever the source, `/dev/stdin` included, so
+`install -Dm644` in a recipe is enough. A file a build writes with a generator, a heredoc or
+`cp` takes the generator's mode or the umask's: neverball's `mapc` writes its compiled levels
+0600, and its recipe follows the copy with `chmod -R a+rX`. A file that must stay private, such
+as a credential, belongs on the lint's allowlist, with the reason, in `src/system/kdos-kpkg/lint.c`
+and in the table on that page.
 
-A build step reports a subcommand or option that does not exist: an expression length operation,
-a relative-symlink option in an install script, `printf: bad %q`, or `option --date requires an
-argument` from `jar`.
+### A package the lint refuses
 
-`expr length STRING` is undefined in POSIX, and toybox's `expr` yields an empty string for it. A
-configure script that then compares the result numerically prints `integer expected` and falls
-through to a misleading error; the `coreutils` port's `build.sh` records brltty reporting a present speech
-driver as unknown. toybox's `ln` has `-r` but not the long spelling `--relative`, which meson
-install scripts use to make a symlink inside `DESTDIR` that stays correct once the tree is moved.
-toybox's `printf` has no `%q`; a shell's own `printf` builtin has it, but a script that runs
-`exec printf` or `env printf` reaches the binary, and KOReader's build quotes every command it logs
-that way and stops on the error. toybox's `date` takes `-u -d @EPOCH` but not `--utc` or `--date`,
-and its `--version` names toybox; OpenJDK's configure accepts only a `date` that calls itself GNU,
-BusyBox or uutils, otherwise uses the BSD `-j -f` form, and with neither working the build's source
-date comes out empty and `jar --date` stops. That check also matches `--version` with
-`grep "GNU\|BusyBox\|uutils"`, and toybox's `grep` has no `\|` alternation in a basic regular
-expression, so the `openjdk` port patches it to `grep -E`; a `grep` pattern with `\|` matches
-nothing under toybox and reports no error. The `coreutils` port installs GNU `expr`, `ln`,
-`printf` and `date` for these four reasons.
-
-Each name added there replaces a toybox applet with a GNU program on every installed system,
-while KDOS keeps toybox as its base userland. Prefer a build flag; add a name to
-`INSTALL_PROGRAMS` in the `coreutils` port's `build.sh` only when a toybox applet is missing a feature a port
-cannot do without.
-
-A check that asks for a GNU program by its `--version` text, not for the feature it needs, is
-answered without one. LibreOffice's `configure` stops with `no, GNU cp needed`, although gbuild
-copies files with `cp -P -f` and `touch -hr` when no GNU cp is named. Its configure allows that on
-the BSDs only, and `libreoffice`'s `toybox-cp.patch` adds `linux-musl*` to that case, so the build
-uses toybox's `cp` and `touch`.
-
-toybox's `cp` follows a link at the destination, even with `--remove-destination`, and reports
-`No such file or directory` when that link dangles. An absolute link inside `$PKG` always dangles.
-To replace a link with the file it names, read it, `rm` it, then copy. The `libreoffice` recipe does
-this for its `.desktop` entries.
+The build ran and the staged tree broke a packaging rule: a path outside the layout, a
+world-writable file, a patch leftover, a pkg-config module that does not resolve, or an ELF object
+with an executable stack, a text relocation or a build-directory `RPATH`. Each `ERROR: lint:` line
+names the path and the rule, and no package file is written. [What the package lint
+refuses](writing-ports.md#what-the-package-lint-refuses) gives the fix for each rule; fix the
+recipe and build again.
 
 ---
 
@@ -1099,7 +1069,7 @@ The build container runs with `--network none`. Four shapes cause this:
 
 | Shape | Looks like |
 |---|---|
-| A meson subproject fallback | A wrap being fetched |
+| A meson subproject fallback | `script/bin/meson` gives every setup `--wrap-mode=nodownload`, so the setup stops with the subproject's name instead of fetching its wrap |
 | A CMake download call | A hash computed on a failed download |
 | A dependency fetched from version control at configure time | A clone attempt |
 | A Python build backend resolving a package | A package index request |
@@ -1107,7 +1077,8 @@ The build container runs with `--network none`. Four shapes cause this:
 Which fix is right depends on what the thing being fetched actually is:
 
 - A real library becomes a port. Look for the project's own escape hatch first; many have a "use
-  the system copy" switch, and meson's `--wrap-mode=nodownload` stops a subproject being fetched.
+  the system copy" switch. A meson subproject is never fetched: the setup fails on it, and the
+  library's port goes in `depends`, or `--wrap-mode=nofallback` makes the system copy required.
 - A header-only submodule nobody else uses becomes a second `source`, extracted where the probe
   already looks.
 - A build-time generator becomes a host dependency.
@@ -1250,6 +1221,13 @@ three from `eigen3.pc`, as `labplot` does:
 -D EIGEN3_VERSION_STRING="$(pkg-config --modversion eigen3)" \
 ```
 
+A project that falls back to its bundled Eigen when the variables are missing builds with no
+error and ships its own copy; `solvespace` names `EIGEN3_INCLUDE_DIRS` for that reason. Eigen 5
+also needs C++14, so a project that sets `CMAKE_CXX_STANDARD` to 11 stops with
+`#error Eigen requires at least c++14 support`. A normal `set()` in the project overrides a `-D`
+cache value, so the standard is raised by a patch to that line (`solvespace`'s
+`eigen5-cxx14.patch`).
+
 ### A plugin built with no compiler flags
 
 `fatal error: glib.h: No such file or directory` (or another dependency's header) in one plugin
@@ -1344,7 +1322,7 @@ the variable out when the project's default is already the one wanted, or give i
 
 ### Go building into its own directory
 
-The install step reports `Skipped dir` (toybox's `cp`) on a path that looks exactly
+The install step reports `cp: -r not specified; omitting directory` on a path that looks exactly
 like the binary it wanted.
 
 Building with an output name equal to an existing directory of the same name writes the binary
@@ -1397,10 +1375,16 @@ whenever both are found, and Inkscape crashes in the chroot.
 
 ### A build calling `python`
 
-A makefile runs `python` and the shell cannot find it. The `python3` port installs `python3` and
-`python3.<minor>` and no `python`, so a build that names the unversioned program fails. Most
-makefiles that do so read it from a variable; pass the variable on the `make` line, which also
-reaches the makefiles it calls:
+The `python3` port installs `python` as a link to `python3`, so a makefile or a script that runs the
+unversioned program gets Python 3, and there is no Python 2 on the system. A script written for
+Python 2 fails at the first construct Python 3 dropped: `SyntaxError: Missing parentheses in call
+to 'print'`, `invalid syntax` on `except E, e:`, or `ModuleNotFoundError` for a renamed module such
+as `urllib2` or `ConfigParser`. One the build runs needs a `.patch` porting it; one the package
+would install with a `python2` shebang is deleted from `$PKG` instead of shipped unable to start, as
+`john` and `tuxpaint` do.
+
+A makefile that names `python2`, or an interpreter by absolute path, usually reads it from a
+variable; pass the variable on the `make` line, which also reaches the makefiles it calls:
 
 ```bash
 make -C roms bios PYTHON=python3
@@ -1489,7 +1473,38 @@ from `CFLAGS` where the project sets its own C standard:
 export CFLAGS="${CFLAGS/-std=gnu11/}"
 ```
 
-`retroarch` is the example; it compiles its C as `-std=gnu99` either way.
+`retroarch` is the example; it compiles its C as `-std=gnu99` either way. `handbrake` takes the
+same line for a different reason: its make system adds `CFLAGS` to every C and C++ compile, its
+own and each bundled library's, and each of those names its own C standard.
+
+A build that adds `CFLAGS` to its C++ compile line by design (`CXXFLAGS += $(CFLAGS)`, or
+`AM_CXXFLAGS` built from `@CFLAGS@`) compiles, but `cc1plus` prints `command-line option
+'-std=gnu11' is valid for C/ObjC but not for C++` for every C++ file. Move the standard into `CC`,
+which only the C compiler is run as, so the C files keep GNU C11:
+
+```sh
+CC="gcc -std=gnu11" CFLAGS="${CFLAGS/-std=gnu11/}" ./configure ...
+```
+
+`ghostscript` is the example. A makefile that assigns `CC` itself takes it on the `make` line
+instead, with `CFLAGS` exported rather than given there, since a `CFLAGS` on the `make` line
+replaces every `CFLAGS +=` in the makefile; `mupen64plus` and `mupdf` are the examples. Where the
+compiler is run from a list rather than a shell (calibre's `setup.py`), `CC` cannot carry a flag,
+and the standard is removed from `CFLAGS` for that one command. A project that takes one
+optimisation string for both languages (`cups`' `--with-optim`) gets `CFLAGS` without the
+standard there. A bundled library that a makefile builds with `CFLAGS` alone (nmap's
+`liblinear`) is built first by the recipe, with its own `make` line, so the project's make finds
+it up to date. A helper that a `configure` script builds through `make` (hplip's `Dat2drv`) takes
+a `CFLAGS=` in `GNUMAKEFLAGS` on the `configure` line; `MAKEFLAGS` does not reach it, because
+every Autoconf `configure` empties `MAKEFLAGS` first.
+
+The same warning in every consumer of a library comes from the library's config script. FLTK's
+CMake writes its own `CMAKE_C_FLAGS` into `fltk-config` as both `--cflags` and `--cxxflags`, so
+every FLTK program (flrig, fldigi) would compile its C++ with the tree's C flags, and with the
+prefix map and fortify include directory of FLTK's build. The `fltk` recipe therefore runs cmake
+with `CFLAGS` and `CXXFLAGS` empty and gives the tree's flags, followed by Release's
+`-O3 -DNDEBUG`, as `CMAKE_C_FLAGS_RELEASE` and `CMAKE_CXX_FLAGS_RELEASE`, which `fltk-config`
+does not read.
 
 A script that copies `CFLAGS` into `CXXFLAGS` by mistake fails the same way, and `config.log`
 shows `-std=gnu11` on a `g++` line. LibreOffice's `configure` saves `$CFLAGS` before its
@@ -1652,6 +1667,23 @@ the objects; otherwise turn the option off for the port:
 export LDFLAGS="$LDFLAGS -Wl,--no-as-needed"
 ```
 
+### A guessed virtual call into a class the library never compiles
+
+`<library>.so: undefined reference to 'vtable for <Class>'`, with a method of the same class
+beside it, when a program links against a shared library the port has just built, and `<Class>`
+is declared in a header the library includes but defined in a source file it does not compile.
+
+At `-O2` GCC devirtualises speculatively: a virtual call through a base pointer gets an inline
+guess at the one implementation the translation unit can see, and the guess references that
+class's vtable and methods. A header that declares a class for code the library leaves out still
+makes it the only candidate, so the library is linked with a reference nobody defines.
+`afflib`'s LZMA glue includes 7-Zip's `FileStreams.h` for its in-memory streams and compiles none
+of the file streams it declares. Turn the guess off for the port:
+
+```sh
+export CXXFLAGS="$CXXFLAGS -fno-devirtualize-speculatively"
+```
+
 ### A plugin that needs lazy binding
 
 `Error relocating <library>: <symbol>: symbol not found`, from a program opening a plugin with
@@ -1688,17 +1720,6 @@ Use `make -j1 … install` for that project, as the `libburn`, `libisofs`, `xfsp
 other ports do. A `-j` on the command line overrides the one in `MAKEFLAGS`, and only that
 invocation is serialised; the compile keeps its parallelism. Being a race, it can pass on one
 run and fail on the next, so a recipe that has built before is not evidence against it.
-
-### An install-sh with no `-d`
-
-`cp: Needs 2 arguments` and `mv: bad '…/#inst.NNNN#'` while `make install` creates a directory,
-then `install: '…' not directory` for the files meant to go into it.
-
-configure's check for a thread-safe `mkdir -p` accepts only GNU coreutils' and BusyBox's `mkdir`,
-so beside toybox's it settles on `MKDIR_P` = the project's bundled `install-sh -c -d`. A current
-`install-sh` handles `-d`; the X11R5 one some old projects still ship does not, and treats the
-directory as a file to copy. configure keeps an `MKDIR_P` it is given, so the port runs it as
-`MKDIR_P="mkdir -p" ./configure …`. `wv` does.
 
 ### A compiler that was OOM-killed
 
@@ -1742,16 +1763,21 @@ its Rust build can fail the port, would depend on what else the target tree happ
 disables it with `-Dptp-helper=disabled` on its `meson setup` line; a recipe building GStreamer's
 core elsewhere needs the same option.
 
-### A tool decoding files as ASCII
+### A file that is not UTF-8
 
-A tool fails reading a file that is valid UTF-8: GHC's Hadrian with `hGetContents: invalid
-argument (cannot decode byte sequence starting from 226)` on Sphinx's log, or Tcl with `invalid or
-incomplete multibyte or wide character`. Every phase environment exports `LC_ALL=C` for
-reproducible output, and under musl that locale's character set is ASCII, so a tool that decodes
-text in the locale's encoding rejects any byte over 127. Run that one command under
-`LC_ALL=C.UTF-8`, which musl provides with no locale files installed; the `ghc` port does this for
-its Hadrian call. Do not change the phase environment: the formatted dates and sort orders it
-holds steady are what make the rest of the tree reproducible.
+The chroot phases export `LANG` and `LC_ALL` as `C.UTF-8` (`script/env/chroot.env`), which musl
+provides with no locale files installed, so Qt's tools, Sphinx and GHC's Hadrian read non-ASCII
+text in the locale's encoding without failing. Under it GNU `grep` treats a file holding bytes that
+are not valid UTF-8, a Latin-1 header or a binary, as binary data: a match prints
+`binary file matches` instead of the line, and a configure script that extracts a version with
+`grep` gets nothing and fails later on an empty value. Run that one command under `LC_ALL=C`, which
+reads every byte as a character. Reproducibility does not depend on the choice: musl collates every
+locale byte by byte and formats dates in `C.UTF-8` exactly as in `C`.
+
+The host phases, `00_cross` and `10_bootstrap`, keep `common.env`'s `LC_ALL=C`, whose character set
+under musl is ASCII. A tool there that decodes text in the locale's encoding rejects any byte over
+127, with `invalid or incomplete multibyte or wide character` or `hGetContents: invalid argument`;
+run that one command under `LC_ALL=C.UTF-8`.
 
 ### An empty submodule in a release archive
 

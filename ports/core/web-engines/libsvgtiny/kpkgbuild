@@ -15,4 +15,5 @@ source      = https://download.netsurf-browser.org/libs/releases/libsvgtiny-$ver
 sha256      = c357227f02e83fb2a76b12b901191a082229db1f007362e8f31c754510c2a01c  libsvgtiny-0.1.8.tar.gz
 description = NetSurf SVG Tiny renderer — parses SVG into a list of path and text shapes
 homepage    = https://www.netsurf-browser.org/projects/libsvgtiny/
+license     = MIT
 depends     = buildsystem libdom libwapcaplet gperf

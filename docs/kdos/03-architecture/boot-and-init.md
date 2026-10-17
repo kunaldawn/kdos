@@ -15,7 +15,7 @@ To diagnose a boot, read [The sequence](#the-sequence) and
 sections are reference for contributors and change nothing about how a running machine behaves:
 [Why the plate is opaque](#why-the-plate-is-opaque), [The margin ceiling](#the-margin-ceiling),
 [The artwork](#the-artwork), the build checks listed in [The initramfs](#the-initramfs), and
-[Tools that must not be toybox's](#tools-that-must-not-be-toyboxs). After this chapter you can say
+[Tools that must be util-linux's](#tools-that-must-be-util-linuxs). After this chapter you can say
 which stage a boot reached, where that stage writes its log, what each kernel command-line word
 does, and how the A/B root slots decide which root to boot and when to roll back.
 
@@ -28,7 +28,7 @@ Terms used throughout:
 | Root slot | One of two root partitions, `a` and `b`, on a machine set up for A/B updates. One is the *active* slot, known to work; the other can hold an update on *trial*. Not the same thing as a colour [slot](../06-reference/glossary.md). |
 | Live medium | The KDOS ISO, booted from a USB stick or optical disc, running from a compressed image with an in-memory (or persistent) overlay on top. |
 | Splash | `kdos-splash`, the program that draws the boot animation and the stage list on the framebuffer from the initramfs until the login prompt. |
-| Toybox | A single multi-call binary providing many small commands (*applets*). KDOS uses it as the base userland and for `init` itself, and replaces a number of its applets with full implementations. |
+| Runlevel | The state sysvinit's `init` keeps the machine in, named in `/etc/inittab`: `3` is the running system, `S` single-user, `0` power-off and `6` reboot. Each `inittab` entry lists the runlevels it runs in, and `telinit` moves between them. |
 
 ## The sequence
 
@@ -45,17 +45,17 @@ Terms used throughout:
 | 9 | A/B slot selection, when the command line names `bootstate=` | `kdos-bootctl select` |
 | 10 | Volume-group activation, then the encrypted-root unlock, then activation again | `lvm`, `cryptsetup` |
 | 11 | Find, check and mount the root (installed), or find the medium and build the overlay (live) | The initramfs `init` |
-| 12 | `switch_root` | util-linux's `switch_root`, never toybox's |
-| 13 | `/etc/init.d/rcS` | init (toybox), as its `sysinit` entry |
+| 12 | `switch_root` | util-linux's `switch_root` |
+| 13 | `/etc/init.d/rcS` | init (sysvinit), as its `sysinit` entry |
 | 14 | The numbered service scripts ([boot order](../02-user-guide/administration.md#services)) | `rcS` |
 | 15 | `kdos-bootctl mark-good` | `rcS`, last |
 | 16 | The splash quits | `rcS` |
-| 17 | `kdos-getty` on tty1 and tty2; a root shell on `ttyS0` when a key is pressed there | init, as `respawn` and `askfirst` |
+| 17 | `kdos-getty` on tty1 and tty2; `serial-getty` (`agetty`) on `ttyS0` | init, as `respawn` entries of runlevel 3 |
 | 18 | `kdos-login`, which hands tty1 to `agetty` | `kdos-getty` on tty1 |
 | 19 | The desktop | `~/.bash_profile` (or `~/.zprofile` for a zsh login), on tty1 only |
 
 Step 19 is [the session](session.md). A login on tty1 reaches it without anyone typing a
-command. `tty2` is a plain getty and is the recovery console: a machine whose GPU driver fails to
+command. `tty2` is a plain `agetty` and is the recovery console: a machine whose GPU driver fails to
 come up still has a login prompt there. Press `Ctrl+Alt+F2` to reach it from the desktop, or
 `Alt+F2` at a text console, and `Alt+F1` to come back.
 
@@ -72,7 +72,7 @@ and `STARTING SESSION`.
 | Where it stopped | What happened | Where to look |
 |---|---|---|
 | Before the menu | The firmware found no boot loader | [Limine and the kernel command line](#limine-and-the-kernel-command-line) |
-| An initramfs stage, then a shell | The root, the medium or the container could not be found or opened | On the live medium, the serial line or a virtual machine's serial output. On an installed machine, the screen itself (`tty0`), where the messages and the shell share the framebuffer with the splash. Then [Finding the root](#finding-the-root), [Unlocking an encrypted root](#unlocking-an-encrypted-root), [`blkid`](#blkid) |
+| An initramfs stage, then a shell | The root, the medium or the container could not be found or opened | The reason on the splash and on `tty1`, which then holds a rescue shell; the full log on the serial line when it is the console (every live entry). See [The rescue shell](#the-rescue-shell), then [Finding the root](#finding-the-root), [Unlocking an encrypted root](#unlocking-an-encrypted-root), [`blkid`](#blkid) |
 | `ROOT FILESYSTEM HAS ERRORS - RUN e2fsck` | `e2fsck -p` left errors on an ext root | [Checking the root](#checking-the-root) |
 | `fsck: errors left uncorrected` | A non-root filesystem has errors | `/run/kdos-fsck.log` |
 | A service stage marked failed | That service script exited non-zero; up to six lines of its output are on the splash | `/run/kdos-init.<name>.log`, and `/run/kdos-svc.<name>.log` for a supervised daemon |
@@ -85,8 +85,8 @@ Everything the initramfs prints goes to `/dev/console`, and where that is depend
 - On the live medium it is the serial port, so a machine that dies behind the splash can still be
   read from a serial line or from a virtual machine's serial output.
 - On an installed machine it is the first virtual terminal, the same screen the splash draws on.
-  The splash keeps running when the init drops to a shell, so the messages and the shell prompt
-  are written onto the screen it is still drawing.
+  A failure quits the splash before the rescue shell opens there, so the reason and the prompt
+  are on the text console; see [The rescue shell](#the-rescue-shell).
 
 ## Limine and the kernel command line
 
@@ -175,9 +175,10 @@ at all, and those entries go with it.
 | `Memory Test (memtest86+)`: UEFI only | `KDOS (slot <x>)`: the other root slot, when it has a root and a kernel |
 | | `Memory Test (memtest86+)`: UEFI only |
 
-The `KDOS (single user)` entry's comment reads `A root shell, no session`, but nothing in KDOS acts
-on the `single` word: toybox `init` ignores its arguments, so the services and the desktop start
-as they do from `KDOS (verbose)`. For a shell without the desktop, log in on tty2.
+The `KDOS (single user)` entry boots to runlevel `S`: `rcS` runs as on every boot, so every
+enabled service starts, and then `sulogin` asks for root's password on the console, with no
+gettys and no desktop. Leaving that shell continues to runlevel 3, the running system. See
+[Single-user and emergency mode](#single-user-and-emergency-mode).
 
 The memtest86+ payload is an EFI binary, so its entry carries `if_fw_type: UEFI` and is hidden on
 a BIOS boot, where it could not start. The entry is left out when the payload
@@ -216,7 +217,8 @@ are unchanged.
 | `kdos_slot=a` or `b` | `kdos-bootctl select` and `mark-good` | The slot whose ESP directory this kernel came from. Every installed-machine entry carries one. |
 | `nopersist` | The initramfs, live medium only | Ignore the persistence store; this session is not saved. |
 | `panic=10` | The kernel | Added to the candidate's entry during a UEFI update trial, unless the command line already sets `panic=`. The kernel is built with `CONFIG_PANIC_TIMEOUT=0`, so without it a panicking kernel waits for the reset button. |
-| `single` | Nothing | Carried by the installed menu's `(single user)` entry. The kernel passes it to init, and toybox init ignores its arguments, so that entry boots like `KDOS (verbose)`. KDOS has no single-user mode. |
+| `single` | The initramfs, handed on to init | Carried by the installed menu's `(single user)` entry. Init runs `rcS` and then `sulogin`, with no consoles and no desktop. |
+| `emergency` | The initramfs, handed on to init | `sulogin` before `rcS`: only the initramfs's mounts exist. No menu entry carries it; add it in Limine's entry editor (`E` on an entry). |
 | `quiet loglevel=3`, `loglevel=7` | The kernel | Normal and verbose entries. |
 | `console=` | The kernel | Where kernel messages and `/dev/console` go. The last one named wins. |
 
@@ -225,7 +227,8 @@ serial port. Kernel and initramfs messages go to the serial line and the display
 which is what leaves the framebuffer free for the graphical splash. An installed machine's entries
 carry `console=tty0` alone, so there `/dev/console` is the first virtual terminal. Either way the
 encrypted-root prompt is drawn through the splash and read from `/dev/tty1` explicitly, rather
-than through `/dev/console`.
+than through `/dev/console`, and a boot the initramfs cannot finish puts its reason and a rescue
+shell on `tty1` as well as on `/dev/console` ([The rescue shell](#the-rescue-shell)).
 
 ### Restamping an installed machine
 
@@ -340,9 +343,9 @@ cpio containing those two files, followed by the gzipped initramfs. Three proper
 and breaking any of them means microcode is silently never applied.
 
 **Nothing in the microcode archive may be compressed**, neither the archive nor the files inside
-it. `linux-firmware` ships AMD's microcode as `.zst` files under `amd-ucode/` because the
-*runtime* firmware loader can decompress; the early loader cannot, so the build expands them on
-the way in and concatenates one container per family.
+it, whatever form the firmware package ships them in: the early loader cannot decompress. The
+build takes every `microcode_amd*.bin` under `/usr/lib/firmware/amd-ucode/` as it is and expands
+every `microcode_amd*.bin.zst`, concatenating one container per family into `AuthenticAMD.bin`.
 
 **The Intel bundle is not curated.** The `intel-ucode` port builds
 `/usr/lib/firmware/intel-ucode.bin` from upstream's whole set, minus the images upstream ships
@@ -355,18 +358,20 @@ nothing at all if any trailing data remains, so one stray file in the bundle mea
 is loaded, not "everything before the bad record". The port walks the records the same way when
 it builds and fails rather than shipping such a bundle.
 
-When a microcode source is missing, the build says so (for example
-`Microcode: no amd-ucode blobs — AMD CPUs will run BIOS microcode`) and carries on. An initramfs
-without microcode has no symptom, because the processor keeps whatever the firmware loaded, so
-`kdos doctor` (the [health check](../04-programs/kdos-command.md#kdos-doctor)) runs the kernel's
-own search against `/boot/initramfs.cpio.gz` and reports the running revision.
+An initramfs without microcode has no symptom, because the processor keeps whatever the firmware
+loaded, so the build stops when a vendor's microcode is installed and yields nothing: an empty
+`intel-ucode.bin`, the `intel-ucode` package without its bundle, or an `amd-ucode/` directory with
+no container in it. When a vendor's source is absent altogether, the build says so (for example
+`Microcode: no amd-ucode/ — AMD CPUs will run BIOS microcode`) and carries on. `kdos doctor` (the
+[health check](../04-programs/kdos-command.md#kdos-doctor)) runs the kernel's own search against
+`/boot/initramfs.cpio.gz` and reports the running revision.
 
 ## The initramfs
 
 `script/phases/70_image/090_initramfs.sh` generates it in the image phase as
 `build/initramfs.cpio.gz`, and `110_iso.sh` copies that file to the ISO's `boot/` and to `/boot/initramfs.cpio.gz` in the image,
-so an installed system carries it. It carries toybox and bash, a module set, and the programs early
-boot needs. The `init` it generates is a bash script; the sections that follow this one describe
+so an installed system carries it. It carries bash, GNU coreutils, grep and sed, a module set,
+and the programs early boot needs. The `init` it generates is a bash script; the sections that follow this one describe
 what it does, in the order it does it.
 
 The module list decides which machines can boot at all, because a root filesystem whose driver is
@@ -378,25 +383,32 @@ storage and buses  overlay squashfs isofs cdrom sr_mod loop sd_mod
                    virtio virtio_blk virtio_pci virtio_scsi
                    xhci-pci xhci-hcd ehci-pci ehci-hcd ohci-pci ohci-hcd
                    usb-storage uas
+disk transports    vmd mmc_block sdhci-pci sdhci-acpi cqhci rtsx_pci_sdmmc
+                   hv_storvsc xen-blkfront vmw_pvscsi megaraid_sas mpt3sas
 the ESP            vfat nls_cp437 nls_iso8859-1
 root filesystems   xfs f2fs
-LUKS               dm-crypt dm-mod aes_generic aes_x86_64 aesni-intel xts
-                   sha256_generic sha512_generic crypto_null algif_skcipher
+LUKS               dm-crypt dm-mod aesni-intel xts crypto_null algif_skcipher
 software RAID      md_mod raid0 raid1 raid10 raid456 dm-raid
 LVM targets        dm-snapshot dm-thin-pool dm-cache dm-cache-smq dm-writecache
 ```
 
 Each module's dependencies are copied with it, a compressed module is decompressed on the way in,
 and a module built into the kernel is skipped. ext4, btrfs and xfs are built into the kernel the
-`linux` port produces (its `build.sh` enables `CONFIG_XFS_FS` over the `=m` in `kdos.config`);
-f2fs is a module, and is the entry here that an f2fs root depends on. xfs stays in the list, where
+`linux` port produces (`kdos.config` sets `CONFIG_EXT4_FS`, `CONFIG_BTRFS_FS` and `CONFIG_XFS_FS`
+to `=y`); f2fs is a module, and is the entry here that an f2fs root depends on. xfs stays in the list, where
 its copy is a no-op on this kernel, so that a kernel with xfs as a module still boots an xfs root.
 **Every filesystem the installer offers has to be in this list**: `ki_filesystems[]` in the
-installer is what offers the choice, and this list is what makes the choice bootable.
+installer is what offers the choice, and this list is what makes the choice bootable. **Every disk
+transport the installer installs to has to be reachable here too**, for the same reason: a disk
+the installer can see but this initramfs has no driver for takes an install and then never finds
+its root. NVMe behind Intel VMD (RST), eMMC and SD cards (which the installer classifies as `mmc`),
+Hyper-V, Xen and VMware guests' disks, and MegaRAID and mpt3sas controllers are modules on this
+kernel, and each brings its dependencies (`mmc_core`, `hv_vmbus` and the rest).
 
 - **LUKS ciphers.** These are the ones a LUKS2 default header uses. They are carried
   unconditionally because they are small, and on a kernel that has them built in the copy is a
-  no-op.
+  no-op. The generic AES, SHA-256 and SHA-512 code is built into this kernel and has no module
+  to name.
 - **RAID personalities.** They are listed individually because `md_mod` loads none of them. A
   machine whose data disks are an array needs them before udev settles; without `md_mod` the
   members are bare disks with a superblock nobody reads, which looks like an empty drive rather
@@ -412,8 +424,10 @@ The programs carried, and the rule each follows:
 
 | Program | Rule |
 |---|---|
-| `switch_root`, `mount`, `umount`, `losetup`, `dmesg` | Always util-linux's, never toybox's applets. The build stops if any copy reports itself as a Toybox multicall binary. See [`switch_root`](#switch_root). |
-| `blkid` | Always util-linux's; see [`blkid`](#blkid). |
+| `cat`, `chmod`, `cut`, `ls`, `mkdir`, `mknod`, `seq`, `sleep` | GNU coreutils: what `init` runs. The build stops if one is missing or its `--version` names no GNU package. |
+| `cp`, `mv`, `rm`, `ln`, `rmdir`, `head`, `tail`, `wc`, `stat`, `df`, `dd`, `sync`, `uname`, `readlink`, `touch`, `sort`, `tr`, `grep`, `sed` | GNU coreutils, grep and sed, for the [rescue shell](#the-rescue-shell), under the same check. |
+| `switch_root`, `mount`, `umount`, `losetup`, `dmesg`, `setsid` | Always util-linux's: the build stops unless each one's `--version` names util-linux. See [`switch_root`](#switch_root). |
+| `blkid` | Always util-linux's, under the same check; see [`blkid`](#blkid). |
 | `kdos-splash` | Carried with `/usr/share/kdos/splash.psf` when installed; otherwise the build warns and the machine boots without a splash. |
 | `udevd`, `udevadm`, `kmod` (as `modprobe`, `insmod`, `depmod`) | Always, with the udev rules from `/usr/lib/udev` and `/etc/udev`. |
 | `mdadm` | When installed. |
@@ -446,6 +460,7 @@ The build stops, naming the problem, when:
 - lvm2 is installed and `lvm`, `dmsetup`, `thin_check` or `cache_check` is missing;
 - a udev rule names `dmsetup` or `lvm` anywhere but `/usr/sbin`;
 - a library in a program's closure is installed nowhere;
+- a GNU or util-linux program above is missing, or its `--version` does not name its package;
 - no working `readelf` is found. `readelf`, or `llvm-readelf` in its place, must find libblkid
   among `blkid`'s `NEEDED` entries. A missing reader would fail inside a command substitution,
   which `set -e` does not catch, and every program would be copied without its libraries;
@@ -455,16 +470,34 @@ The build stops, naming the problem, when:
 
 `kdos-bootctl` is carried with its libraries or not at all, and it needs `libpng16`.
 `/usr/bin/kdos-bootctl` is a symlink to `/usr/sbin/ksvc` (the multi-call binary that also supervises
-the [daemons](../04-programs/daemons.md)), which links libpng for `kdos theme`'s wallpaper retint,
-so the copy brings that dependency into an initramfs whose other unconditional libraries are libc,
-libintl, libmount, libsmartcols, libblkid, libuuid, libudev, libkmod, liblzma, libz, libzstd and
-bash's readline, history and ncursesw. libpng16 is carried beside it (libz is already there and
-musl's libm is inside libc, so the set is closed), and the copy is skipped entirely when libpng is
-absent. A `kdos-bootctl` that cannot run would mean A/B slot selection never happens, and the
+the [daemons](../04-programs/daemons.md)), which links libpng for `kdos theme`'s wallpaper retint.
+libpng16 is carried beside it (libz is already there and musl's libm is inside libc, so the set is
+closed), and the copy is skipped entirely when libpng is absent. A `kdos-bootctl` that cannot run would mean A/B slot selection never happens, and the
 machine would look like one whose slot was never marked good rather than one missing a library.
 
 The packed file is the microcode cpio, when there is any microcode, followed by the whole tree as a
 `gzip -9` archive in newc, the portable cpio format the kernel unpacks; see [Microcode](#microcode).
+Both archives are written by GNU cpio from a byte-sorted file list with `--reproducible`, so the
+same tree packs to the same bytes. The tree carries no `System.map` (`depmod` reads the build's
+copy in `/boot`) and no `hwdb.d` sources: udev reads only a compiled `hwdb.bin`, and the tree
+carries none.
+
+### The rescue shell
+
+Every way the initramfs can fail to finish (no medium, no root, no `/sbin/init` on it, a container
+that will not unlock, a `system.sfs` that will not mount) ends in one helper, `rescue`. It:
+
+1. prints the reason on `/dev/console`;
+2. sends it to the splash as a detail line and quits the splash, which hands the framebuffer back;
+3. writes it to `tty1`, where fbcon takes the screen over at the first write and the keyboard is,
+   and opens a shell there in its own session, with `tty1` as its controlling terminal;
+4. becomes the shell on `/dev/console`, so the serial line keeps a shell beside the log it has been
+   reading.
+
+When `/dev/console` is itself a virtual terminal (an installed machine's entries carry
+`console=tty0` alone), there is one screen and one shell. The shell on `/dev/console` is process 1:
+leaving it panics the kernel with `Attempted to kill init`. The initramfs carries no `reboot`;
+`sync; echo b > /proc/sysrq-trigger` restarts the machine from either shell.
 
 ## The splash
 
@@ -734,7 +767,7 @@ kernel.
 
 ### A new kernel
 
-The `linux` package (kernel 7.2.7) installs its kernel as `/boot/vmlinuz-kdos`. Nothing boots
+The `linux` package (kernel 7.2.11) installs its kernel as `/boot/vmlinuz-kdos`. Nothing boots
 that file until `kdos-bootctl deploy` copies it into its slot's directory on the ESP. Each root
 slot boots its own kernel from `EFI/kdos/<slot>/`, because a kernel's modules exist only in the
 root it was installed into.
@@ -973,49 +1006,18 @@ Every other filesystem with a pass number is checked before it is mounted:
 
 Both passes write to `/run/kdos-fsck.log`.
 
-## Tools that must not be toybox's
+## Tools that must be util-linux's
 
-[Toybox](https://landley.net/toybox/) (the `toybox` port, 0.8.14) provides many small commands as
-applets of one binary. Several of its applet names also belong to full implementations that KDOS
-ships, and `$PATH` puts `/usr/bin` ahead of `/usr/sbin`. The toybox recipe therefore switches off
-every applet whose name belongs to a full implementation that must win everywhere, including inside
-the initramfs and during the build's bootstrap phase, so the name resolves to the real tool. The
-exceptions are the few applets the bootstrap phase itself needs (below), which the GNU ports
-install over later. What stays in
-toybox includes `init` and `getty`, which the recipe switches on.
+The initramfs runs seven programs whose stand-ins from other userlands lack what its `init` relies
+on: `switch_root`, `mount`, `umount`, `losetup`, `dmesg`, `setsid` and `blkid`. `090_initramfs.sh` copies
+each only after its `--version` names util-linux, and stops the build otherwise. The coreutils,
+`grep` and `sed` it carries are held to the same kind of check: each must answer `--version` as a
+GNU package. A stand-in passes every build step and fails only at boot, so the check is what
+makes the failure loud.
 
-The bootstrap phase, `10_bootstrap` (see [the build system](../05-developer/build-system.md)),
-also installs toybox (`062_toybox.sh`), outside the package database, so a name it plants is owned by no package: the later port
-install replaces `/usr/bin/toybox` without removing the symlink, and the
-[orphan sweep](../05-developer/build-system.md#sweeping-orphaned-packages), the image-phase step that
-removes installed packages with no recipe, works from the package database and never sees a file no
-package owns. Its toybox step therefore also switches off every applet whose real tool lives
-in a different directory (`blkid`, `blkdiscard`, `rtcwake`, `nologin`, `lspci`, `iotop`), `gunzip`
-and `zcat` (gzip's, installed just before toybox), `tar` and `file`, and `netcat` and `ulimit`,
-which no port installs at any path. A name in the same directory as the real tool needs no change in
-that step, because the real port's install replaces the symlink.
-
-| Switched off | Because the image has |
-|---|---|
-| `mount`, `umount`, `losetup`, `swapon`, `swapoff`, `mkswap`, `switch_root`, `blkid`, `blkdiscard`, `blockdev`, `dmesg`, `kill`, `linux32`, `nsenter`, `unshare`, `rtcwake`, `fsfreeze`, `hwclock`, `pivot_root`, `mountpoint`, `eject`, `fallocate`, `flock`, `logger`, `renice`, `ionice`, `chrt`, `taskset`, `uclampset`, `setsid`, `rfkill`, `rev`, `cal`, `mcookie`, `uuidgen`, `getopt`, `prlimit` | util-linux |
-| `ps`, `top`, `free`, `pgrep`, `pkill`, `pidof`, `pmap`, `pwdx`, `sysctl`, `uptime`, `vmstat`, `w`, `watch` | procps-ng |
-| `chvt`, `deallocvt`, `openvt` | kbd |
-| `lspci`, `lsusb`, `killall`, `iotop`, `i2c*`, `gpiodetect`, `gpioget`, `gpioinfo`, `gpioset`, `partprobe`, `nc` | pciutils, usbutils, psmisc, iotop, i2c-tools, libgpiod, parted, netcat |
-| `readelf`, `strings`, `cmp`, `clear`, `reset`, `setfattr`, `bunzip2`, `bzcat`, `gunzip`, `zcat`, `lsattr`, `chattr`, `insmod`, `lsmod`, `rmmod`, `modinfo` | binutils, diffutils, ncurses, attr, bzip2, gzip, e2fsprogs, kmod |
-| `nologin`, `login`, `su`, `tar`, `patch`, `file` | shadow, tar, patch, file |
-| `netcat`, `ulimit` | No such command: `nc` is the netcat port's, and `ulimit` is bash's builtin only (toybox's `prlimit` is part of its `ulimit` applet and goes with it) |
-
-The applets are not drop-in replacements, and each difference is a feature the machine would lose:
-toybox's `swapon` and `swapoff` refuse `-a`, so the swap the installer writes into `fstab` would
-never be turned on; its `umount` has no `-R`; its `mount` never runs a `mount.<type>` helper and
-does not know `nofail`; its `lspci` and `lsusb` have no `-d`, which `airmon-ng`'s driver detection
-relies on.
-
-`sed`, `find`, `xargs`, `awk`, `expr` and `ln` stay in toybox. Every configure script run between
-toybox and the GNU ports uses them, and the bootstrap phase has no other copy. The GNU ports come
-later in
-dependency order and take the names over; an upgrade of toybox alone puts its applets back until
-those ports are reinstalled.
+The installed root has one implementation behind each of these names. `/usr/sbin` holds
+util-linux's `blkid`, `switch_root` and `losetup`, and a second copy under `/usr/bin`, which
+`$PATH` searches first, would shadow it everywhere but the initramfs, which copies by full path.
 
 ### `blkid`
 
@@ -1025,50 +1027,21 @@ fallback. The init also asks `blkid` for the persistence store by label (`-L KDO
 LVM physical volumes (`-t TYPE=LVM2_member -o device`) and for filesystem types (`-o value -s
 TYPE`).
 
-Toybox's applet can do neither half of that. `-U` is not a lookup flag there (the applet only
-reports on devices it is handed), and its prober knows ext, vfat, ntfs, btrfs, f2fs, squashfs and
-swap but **not `crypto_LUKS`**. With it in place, an installed machine prints
-*"Root device with UUID=… not found!"* and drops to a shell, A/B selection silently never engages,
-and an encrypted root never reaches a passphrase prompt. A live boot without a persistence store is
-unaffected, because it finds `system.sfs` by mounting each device in turn, resolves no UUID and
-makes no LVM call.
-
-Two rules follow, the same two that `switch_root` keeps:
-
-- Toybox's `blkid` is switched off in the recipe **and in the bootstrap step**, beside `tar` and `file`, so
-  neither build plants `/usr/bin/blkid` and the name resolves to util-linux's `/usr/sbin/blkid`.
-  Every applet the recipe switches off and the bootstrap step leaves on lands on the same path as
-  its real tool, which replaces the bootstrap link when it is installed. `blkid` is an `sbin` program and
-  nothing would ever replace a `/usr/bin/blkid` link, which is why it has to be off in the bootstrap step too.
-- The initramfs removes `bin/blkid` before copying. With the applet compiled out, `./bin/toybox`
-  does not list it and the applet loop never claims the name; the removal guards that, because
-  `cp` writes *through* a symlink and a `bin/blkid` pointing at `bin/toybox` would take the copy
-  and overwrite the multi-call binary. `090_initramfs.sh` then refuses an initramfs whose `blkid`
-  reports itself as a Toybox multicall binary.
-
-### `file`
-
-Toybox's `file` applet is switched off in the recipe and in the bootstrap step, so `/usr/bin/file` is the
-`file` port's (5.48): the reference implementation, with `/usr/share/misc/magic.mgc` behind it.
-
-The applet reads a handful of headers and refuses `--mime` outright. `lesspipe` asks
-`file -L -s -b --mime` and nothing else; with no answer it passes every file through unchanged, so
-`less` on a `.tar.gz` would show the compressed bytes and the filter would look as though it was
-never installed. Two `file` implementations on one image would also mean two answers to "what is
-this file", which is the question the handler tables, the thumbnailer and the pager all ask.
-
-The cost is the size of the compiled magic database, `magic.mgc`, which runs to several
-megabytes.
+A prober that cannot resolve `-U`, or does not know `crypto_LUKS`, answers nothing to every one of
+those lookups. An installed machine then prints *"Root device with UUID=… not found!"* and drops
+to a shell, A/B selection silently never engages, and an encrypted root never reaches a passphrase
+prompt. A live boot without a persistence store is unaffected, because it finds `system.sfs` by
+mounting each device in turn, resolves no UUID and makes no LVM call.
 
 ### `switch_root`
 
-The initramfs carries util-linux's `/usr/sbin/switch_root`, with its `mount`, `umount`, `losetup`
-and `dmesg`. The applets are compiled out, and `090_initramfs.sh` refuses an initramfs whose copy of
-any of the five reports itself as a Toybox multicall binary, or whose programs name a library it
-does not carry.
+The initramfs carries util-linux's `/usr/sbin/switch_root`, with its `mount`, `umount`, `losetup`,
+`dmesg` and `setsid`. `090_initramfs.sh` copies each only after its `--version` names util-linux,
+and refuses an initramfs whose programs name a library it does not carry.
 
-Toybox's `switch_root` empties the initramfs and calls `chroot()`. It never performs the
-move-mount that makes the new root the *mount namespace's* root. The namespace root then stays the
+util-linux's `switch_root` moves the new root onto `/` before it calls `chroot()`. A `switch_root`
+that only empties the initramfs and calls `chroot()` never performs that move-mount, which is what
+makes the new root the *mount namespace's* root. The namespace root then stays the
 emptied initramfs, with the real root parked at `/newroot`, and anything that **joins** a mount
 namespace (entering a container, `nsenter -m`) gets that empty root as `/`, so every path fails to
 exist. Every process on the machine is also left chrooted, and the kernel refuses to create a user
@@ -1081,14 +1054,18 @@ The tell-tale is that `readlink /proc/<pid>/root` prints `/newroot`. `kdos docto
 
 ## rcS and the service scripts
 
-`/etc/inittab` gives each entry an action: `sysinit` runs once at boot before anything else,
-`respawn` restarts the program whenever it exits, `askfirst` waits for a keypress on its terminal
-before starting it, and `shutdown` runs at reboot or power-off. `init` runs `/etc/init.d/rcS` as its
-`sysinit` entry. In order, `rcS`:
+`init` is sysvinit's. `/etc/inittab` names the default runlevel, 3, and gives each entry the
+runlevels it belongs to and an action: `sysinit` runs once at boot before anything else, `respawn`
+restarts the program whenever it exits while its runlevel is in force, `wait` runs it once to
+completion on entering its runlevel, and `ctrlaltdel` runs when the kernel reports `Ctrl+Alt+Del`.
+Runlevel 3 is the running system, `S` is single-user, `0` powers off and `6` reboots. Every process
+field is free of shell metacharacters, so init executes each one directly rather than through
+`/bin/sh -c`. `init` runs `/etc/init.d/rcS` as its `sysinit` entry. In order, `rcS`:
 
-1. Sets `PATH` to `/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin`. Toybox's `init`
-   hands its children `/sbin:/usr/sbin:/bin:/usr/bin`, and `kdos` lives under `/usr/local/bin`;
-   without the addition, a service or system timer that runs `kdos` would be skipped as missing.
+1. Sets `PATH` to `/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin`. sysvinit's
+   `init` hands its children `/sbin:/usr/sbin:/bin:/usr/bin` and the kernel's `TERM=linux`, and
+   `kdos` lives under `/usr/local/bin`; without the addition, a service or system timer that runs
+   `kdos` would be skipped as missing.
 2. Counts the enabled service scripts and tells the splash its stage total: one per script, plus
    `MOUNTING FILESYSTEMS` and `STARTING SESSION`.
 3. Reads `/etc/kdos/accent`, when it exists, and tells the splash to repaint in that accent.
@@ -1121,7 +1098,7 @@ and losing that race gives a black screen with a running session behind it.
 The base filesystem ships these service scripts in `/etc/init.d/`:
 
 ```
-01_udev  02_modules  03_lvm  05_hostname  10_sysctl  12_zram  15_userdirs
+01_udev  02_modules  03_lvm  05_hostname  06_utmps  10_sysctl  12_zram  15_userdirs
 18_timers  20_dmesg  22_syslog  25_nftables  30_network  35_chrony  40_dbus
 41_polkitd  42_modemmanager  42_networkmanager  45_avahi  45_seatd
 46_hostapd  47_pcscd  50_alsa  51_mdmonitor  52_smartd  53_xfs_healer
@@ -1136,8 +1113,10 @@ Ports install more beside them, each from its `build.sh`:
 |---|---|
 | `31_babeld` | `babeld` |
 | `43_boltd` | `bolt` |
+| `44_switcheroo-control` | `switcheroo-control` |
 | `51_lsmd` | `libstoragemgmt` |
 | `56_nut` | `nut` |
+| `61_spacenavd` | `spacenavd` |
 | `62_virtlogd` | `libvirt` |
 | `63_gssd` | `nfs-utils` |
 | `63_libvirtd` | `libvirt` |
@@ -1189,16 +1168,103 @@ the shipped Caddyfile proxies, so serving the library to the network is Caddy's 
 change to this script. Each is disabled like any other service, with a marker named `kiwix-serve`,
 `kolibri` or `llama-server`.
 
+### Login records
+
+musl's `utmp` and `utmpx` functions are stubs: they store nothing and find no one. The login
+records that `who`, `w`, `uptime`, `users`, `pinky` and `last` read are kept instead by [utmps](https://skarnet.org/software/utmps/), whose library every reader and writer on
+the image links: `sysvinit`, `util-linux` (`agetty`, `last`, `utmpdump`), `shadow` (`login`),
+`coreutils` and `procps-ng`. The library sends each call over a socket to one of two daemons, which
+`06_utmps` starts and `ksvc` supervises:
+
+| Service | Socket | File | Records |
+|---|---|---|---|
+| `utmpd` | `/run/utmps/.utmpd-socket` | `/run/utmps/utmp`, on the `/run` tmpfs | Who is logged in now, the boot time and the current runlevel |
+| `wtmpd` | `/run/utmps/.wtmpd-socket` | `/var/log/wtmp` | Every login, logout, boot and shutdown, appended |
+
+Each is `utmps-utmpd` or `utmps-wtmpd` behind s6's `s6-ipcserver`, run as the `utmp` account
+through `s6-setuidgid`; `utmps-utmpd` opens `utmp` in its working directory, which execline's
+`execline-cd` sets. Each daemon reads the client's uid and gid from the socket: `utmpd` changes a
+record only for root or the `utmp` group, and `wtmpd` appends one only for root or for the user the
+record names, so only root's writers (`init`, `agetty`, `login`) can log someone in. `06_utmps` creates `/run/utmps` and `/var/log/wtmp` for `utmp` and waits up
+to two seconds for both sockets, because `init` writes its boot record the moment `rcS` returns
+and a record sent with no socket listening is lost. With either daemon down, `who`, `users` and
+`pinky` print nothing and that boot's records are gone; `runlevel` still answers, from
+`/run/runlevel`.
+
+`init` writes an `INIT_PROCESS` record when it starts an inittab entry, such as a console's
+`agetty`, and a `DEAD_PROCESS` record when that entry exits, the `BOOT_TIME` record when it leaves the `sysinit` entries, which is
+after `rcS` has started both daemons, and a `RUN_LVL` record on every runlevel change; `who -b` and
+`who -r` read the last two. Its `wtmp` copies, and `halt`'s shutdown record, do not go through
+`wtmpd`: sysvinit appends them to `/var/log/wtmp` itself, in utmps' record layout, because the
+`updwtmp` call it would otherwise use exists only in glibc. A boot record `init` cannot write
+because `/var/log/wtmp` is missing is written before its next `wtmp` record.
+
+A program built against musl's own headers and not utmps' reads a different record layout: its
+`utmpx` structure is not utmps' size, so it misreads `/var/log/wtmp` rather than failing. Every
+port that reads or writes a login record is therefore built with
+`CPPFLAGS=-I/usr/include/utmps` and `-lutmps -lskarnet`
+(see [The base userland](packaging.md#the-base-userland)). musl's `<paths.h>` still points
+`_PATH_UTMP` and `_PATH_WTMP` into `/dev/null`, so a reader that opens the wtmp file by that name
+needs utmps' path instead: `util-linux` carries `utmps-paths.patch`, without which `last` and
+`lslogins` read `/dev/null/wtmp` and report nothing. util-linux's configure also empties `LIBS`,
+so its `build.sh` passes `-lutmps -lskarnet` to `make`; given to configure alone, `agetty` would
+link musl's stubs and write no record.
+
+libutmps exports the `utmpx` functions under musl's own names, so which one a call reaches is
+decided by the order libraries are searched at run time, and musl's C library comes before any
+library reached only through another one. `uptime`, `top` and `pgrep` call `getutxent` from
+`libproc2`, never themselves, so with the tree's `-Wl,--as-needed` the linker drops libutmps from
+each of them, the call lands in musl's stub and `uptime` counts no users while `w` beside it counts
+them. `procps-ng` therefore links with `-Wl,--no-as-needed`, which keeps libutmps a direct
+dependency of every program it builds. libtool moves any `-Wl` option ahead of the libraries, so
+the switch cannot be scoped to `-lutmps` alone.
+
+### Single-user and emergency mode
+
+Runlevel `S` is single-user: init runs `/sbin/sulogin` (util-linux's) on the console, which asks for
+root's password and opens a root shell, and starts no gettys and no desktop. Leaving that shell
+continues to runlevel 3, the running system. There are three ways in:
+
+- `single` on the kernel command line, which the installed menu's `KDOS (single user)` entry
+  carries. The initramfs hands it on to init. `rcS` runs as on every boot, so every enabled service
+  starts, and then `sulogin` runs.
+- `emergency` on the kernel command line, handed on the same way. `sulogin` runs before `rcS`, so
+  only the initramfs's mounts (`/dev`, `/proc`, `/sys` and the root) exist.
+- `telinit S` from a running system, which ends the consoles and the session first.
+
+`sulogin` gives no shell when root's password is locked, which is what the installer does to root
+unless it was asked to set a root password: it prints *"Cannot open access to console, the root
+account is locked"*, waits for Enter and exits, and init carries on to runlevel 3. Single-user
+mode on such a machine needs a root password set first (`sudo passwd root`); the `kdos` account's
+password does not open it.
+
+`telinit u` makes init re-execute itself, which is what an upgraded `init` binary needs.
+
 ### Shutdown
 
-When `reboot`, `poweroff` or `kdos-powerd` signals it, toybox's `init` runs the `::shutdown` entries
-of `/etc/inittab` in order, each to completion, and only then signals every process. It never
-runs a service script's `stop` itself, so the first entry is `/etc/init.d/rcK`, which takes the
-scripts `rcS` would run (executable, no marker under `/etc/service.disabled`) and runs each with
-`stop` in reverse order, then runs `sync`. `swapoff -a` and `umount -a -r` follow, so every stop
-action still has a writable filesystem to save to; `50_alsa` storing the mixer levels is the
-plainest case. A stop that fails, such as a service that was skipped at boot answering "not
-running", does not end the walk.
+`poweroff`, `reboot`, `shutdown`, `telinit 0` or `telinit 6` asks init for runlevel 0 or 6, and
+`Ctrl+Alt+Del` runs `shutdown -r now`. Each of them reaches init as a request written to
+`/run/initctl`, the FIFO init creates itself, again on the tmpfs `rcS` mounts over `/run`. Init then
+sends `TERM`, and `KILL` three seconds later, to every `/etc/inittab` entry the new runlevel does not
+list, which is every console and, with tty1, the session. Then it runs the runlevel's `wait`
+entries in file order, each to completion:
+
+| Entry | Does |
+|---|---|
+| `/etc/init.d/rcK` | Takes the scripts `rcS` would run (executable, no marker under `/etc/service.disabled`) and runs each with `stop` in reverse order, then `sync` |
+| `/etc/init.d/killprocs` | `TERM` to every process left, up to three seconds for them to exit, then `KILL` and `sync` |
+| `swapoff -a` | |
+| `umount -a -r` | Unmounts every filesystem, or remounts it read-only when it is busy |
+| `/etc/init.d/killpower` | Tells a UPS to cut the power, when NUT asked for that (below) |
+| `halt -d -f -p` or `reboot -d -f` | Powers off or reboots through `reboot(2)` directly, writing no `wtmp` record because `/var/log` is read-only by then |
+
+Init never runs a service script's `stop` itself, and signals only its own entries, so `rcK` comes
+first while every filesystem is still writable: `50_alsa` storing the mixer levels is the plainest
+case. A stop that fails, such as a service that was skipped at boot answering "not running", does
+not end the walk. `killprocs` then ends everything else (a daemon a script started, a program a
+user left running), because a process holding a file open for writing keeps `umount -a -r` from
+making its filesystem read-only. It uses `killall5`, which spares init, kernel threads and its own
+session.
 
 The last entry is `/etc/init.d/killpower`. When NUT's `upsmon` shut the machine down on a low
 battery it leaves its flag file, `/etc/killpower`; `upsmon -K` reports it, and the script then runs
@@ -1206,7 +1272,7 @@ battery it leaves its flag file, `/etc/killpower`; `upsmon -K` reports it, and t
 a UPS keeps the halted machine powered on the last of the battery, and if mains returns first the
 machine never sees the power drop and stays off. It runs after `umount -a -r` because the UPS cuts
 the power seconds later whatever state the disks are in. With no NUT installed, or no flag, it does
-nothing.
+nothing. NUT's own `SHUTDOWNCMD`, `/sbin/shutdown -h +0`, is what starts that power-off.
 
 `25_nftables` is the one script `rcK` leaves out. Its stop deletes the firewall's `inet filter`
 table, and it would run after the network scripts while the interfaces are still configured,
@@ -1215,9 +1281,12 @@ the kernel does.
 
 Stopping a supervised service costs `ksvc` a second (`SIGTERM` to the process group, a one-second
 wait, then `SIGKILL` if it is still alive), so a shutdown takes about as many seconds as there are
-daemons running. `kdos-powerd` signals init (`SIGUSR2` for power-off, `SIGTERM` for reboot) and
-then waits sixty seconds before calling `reboot(2)` itself. That is longer than `rcK` takes to reach
-`55_powerd` and end it, so the fallback fires only under an init that ignored the signal.
+daemons running. `kdos-powerd` runs `telinit 0` or `telinit 6` and then waits sixty seconds before
+calling `reboot(2)` itself. That is longer than init's three seconds for the consoles plus `rcK`'s
+walk down to `55_powerd`, which ends it, so the fallback fires only when init never acted on the
+request. No signal can stand in for `telinit`: sysvinit ignores `SIGTERM`, and `SIGUSR2` closes
+`/run/initctl` for the rest of the boot, after which no `telinit`, `shutdown` or `reboot` reaches
+init.
 
 ### One DHCP client on the link
 
@@ -1305,8 +1374,20 @@ force the takeover, load the font and palette, check them, then run the real get
 | Console | `inittab` entry | What you get |
 |---|---|---|
 | `tty1` | `respawn`: `kdos-getty tty1 /usr/local/sbin/kdos-login tty1` | The desktop's login, automatic when `login.conf` names an account |
-| `tty2` | `respawn`: `kdos-getty tty2 /sbin/getty 38400 tty2` | A plain login prompt from toybox's `getty`: the recovery console |
-| `ttyS0` | `askfirst`: `/bin/bash -l` | A root shell on the serial line, started only when a key is pressed there |
+| `tty2` | `respawn`: `kdos-getty tty2 /sbin/agetty --noclear tty2 38400 linux` | A plain login prompt from util-linux's `agetty`, never with `--autologin`: the recovery console |
+| `ttyS0` | `respawn`: `/etc/init.d/serial-getty --autologin root --keep-baud --noclear -L ttyS0 115200,38400,9600 vt102`, which execs `/sbin/agetty` with those arguments | On the live medium, root logged in on the serial line with no password. On an installed machine, a login prompt: the installer removes `--autologin root` from that line |
+
+The three consoles belong to runlevels 2 to 5, so single-user mode and the power-off and reboot
+runlevels have none. `--keep-baud` keeps the serial line at the rate the kernel console set, and
+`-L` treats it as a local line with no modem control. A program that `respawn` restarts ten times
+within two minutes is disabled for five minutes, and init logs `respawning too fast`.
+
+The kernel registers `ttyS0` whether or not a UART answers there, so the device always exists, and
+on a machine with no serial port `agetty` would fail at once on every respawn and hit that limit
+over and over. `/etc/init.d/serial-getty` reads `/sys/class/tty/ttyS0/type` first: `0` is the
+8250 driver's unknown port, and there the script runs `sleep infinity` instead, so the entry stays
+quiet until the runlevel changes. Any other type, or no such file, runs `agetty`. The name has no
+`NN_` prefix, so `rcS` and `rcK` never run it.
 
 `kdos-getty` is another name of the `ksvc` binary, installed as `/usr/local/sbin/kdos-getty`. What
 it does, in order:
@@ -1347,28 +1428,28 @@ wins) and hands the terminal to `agetty` either way:
 
 - **With the key** (`autologin = kdos` as shipped, which is what the live medium uses), it runs
   `agetty --autologin <account> --noclear tty1 38400 linux`: a machine with one account and no
-  password has nothing to ask. `/bin/login` must be shadow's for this to work. agetty's autologin
-  calls `login -f -- USER`, and toybox's `login` reads the name as `-f`'s own argument, takes `--`
-  for the account and refuses it. Toybox is therefore built with `login` and `su` off; otherwise
-  tty1 would be left at a login prompt nobody can answer.
+  password has nothing to ask. agetty's autologin calls `/bin/login -f -- USER`, and shadow's
+  `login` takes `--` as the end of its options; a `login` that read the account as `-f`'s own
+  argument would refuse `--` as the account and leave tty1 at a prompt nobody can answer.
 - **Without it** (commented out, which is what the installer writes unless an answer file asked
   otherwise, or a missing or unreadable file), it runs plain `agetty` and the ordinary password
   prompt appears. There is no greeter: no account chooser, no session chooser and no graphical
   surface of any kind before the shell.
 
-Going through agetty either way keeps utmp, lastlog and the shell profile on the same path they
-take everywhere else, and the profile is what starts the desktop: `~/.bash_profile` (and
+Going through agetty either way keeps the login record, lastlog and the shell profile on the same
+path they take everywhere else: agetty writes the tty's `utmp` record through `utmpd` (see
+[Login records](#login-records)), and `login` its `wtmp` entry through `wtmpd`. The profile is what starts the desktop: `~/.bash_profile` (and
 `~/.zprofile`) runs `kdos-desktop` when the login is on `/dev/tty1`, `WAYLAND_DISPLAY` is unset and
 `kdos-desktop` exists. It is not `exec`ed, so a session that fails to start falls back to a shell
 prompt.
 
 `kdos-getty` falls back to a plain `agetty` when the program named in `/etc/inittab` cannot be run.
-Without that fallback, init would respawn a failing program forever and there would be no way to
-log in at all. The fallback reads the same `login.conf` key rather than a built-in account name, so
+Without that fallback, init would respawn a failing program until it disabled the entry, and there
+would be no way to log in at all. The fallback reads the same `login.conf` key rather than a built-in account name, so
 it logs in the account the missing `kdos-login` would have, and otherwise asks for a password. A
 second copy of the name would log in a user a renamed installation does not have.
 
-`tty2` is the recovery console and stays a plain getty whatever tty1 does. Reaching it from the
+`tty2` is the recovery console and stays a plain `agetty` whatever tty1 does. Reaching it from the
 desktop is the compositor's job, not the kernel's: once `libseat` puts tty1 into graphics mode the
 kernel stops answering Ctrl+Alt+F<n>, so the compositor switches terminals itself:
 `Ctrl+Alt+F2` from the desktop reaches tty2, and `Alt+F1` at tty2 comes back.
@@ -1427,7 +1508,7 @@ the prompt below it, or the banner prints plainly instead of animating.
   from source to the ISO this chapter boots
 - [Configuration](../06-reference/configuration.md): `fstab`, `inittab`, `login.conf` and the rest
 - [The ports catalogue](../06-reference/ports-catalogue.md): every port by shelf, with its phase,
-  including `limine` and `toybox`
+  including `limine`, `sysvinit` and `util-linux`
 - [Known gaps](../06-reference/known-gaps.md): what the boot path does not do
 
 <!-- book-nav -->

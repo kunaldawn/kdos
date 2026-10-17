@@ -13,4 +13,5 @@ version     = 0.2.0
 release     = 4
 description = The KDOS shell — a character-cell panel on layer-shell
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT AND (BSD-2-Clause OR CC0-1.0)
 depends     = icu wayland wayland-protocols wlroots fcft fontconfig pixman libxkbcommon basu alsa-lib pipewire libpng libjpeg-turbo libwebp libnsgif libarchive

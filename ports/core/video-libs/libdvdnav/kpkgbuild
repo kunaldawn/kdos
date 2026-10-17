@@ -16,4 +16,5 @@ source      = https://download.videolan.org/pub/videolan/$name/$version/$name-$v
 sha256      = a2a18f5ad36d133c74bf9106b6445806fa253b09141a46392550394b647b221e  libdvdnav-7.0.0.tar.xz
 description = DVD-Video navigation — mpv's dvd:// and GStreamer's rsndvdbin, whose menus it drives
 homepage    = https://www.videolan.org/developers/libdvdnav.html
+license     = GPL-2.0-or-later
 depends     = meson ninja pkgconf libdvdread

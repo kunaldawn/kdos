@@ -15,4 +15,5 @@ source      = https://gitlab.freedesktop.org/libinput/libei/-/archive/$version/l
 sha256      = 5ed6078fa63afd554cc04b1001675615da0ed8fe23b80492ab63403140b5a830  libei-1.6.0.tar.bz2
 description = Emulated input: libei for clients, libeis for compositors, liboeffis for the RemoteDesktop portal
 homepage    = https://gitlab.freedesktop.org/libinput/libei
+license     = MIT
 depends     = meson ninja pkgconf python3 python3-jinja2 basu libevdev libxkbcommon

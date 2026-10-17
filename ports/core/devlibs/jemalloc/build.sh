@@ -9,17 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The page size is named rather than probed, so the library does not depend
-# on the machine it was built on: 4 KiB on x86_64, and 64 KiB on arm64, whose
-# kernels come in 4, 16 and 64 KiB pages and which a smaller setting would
-# refuse to run under. The manual page is shipped prebuilt in the tarball;
-# --disable-doc keeps the build from regenerating it and the HTML through
-# xsltproc.
 case "$(uname -m)" in
 	aarch64) _lgpage=16 ;;
 	*) _lgpage=12 ;;
 esac
-export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"
+export CFLAGS="${CFLAGS/-O2/-O3} -g0" CXXFLAGS="${CXXFLAGS/-O2/-O3} -g0"
 ./configure --prefix=/usr --libdir=/usr/lib --sysconfdir=/etc \
 	--localstatedir=/var \
 	--disable-static \

@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/sierrafoxtrot/srecord/ar
 sha256      = 8d4ae753d10db0e40882e1cfbc78fe08b9d148be917ea7accc58843ac13566d6  srecord-1.65.tar.gz
 description = HEX, S-record and TI-TXT conversion, fill, CRC and offset
 homepage    = https://srecord.sourceforge.net/
+license     = GPL-3.0-or-later
 depends     = cmake boost libgcrypt doxygen

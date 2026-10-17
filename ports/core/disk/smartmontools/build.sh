@@ -9,17 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# THE DRIVE DATABASE IS IN THE SOURCE AND MUST STAY THERE. smartctl reads
-# vendor attributes through a table of known models; `update-smart-drivedb`
-# fetches a newer one over the network, which on this distro is a promise that
-# cannot be kept, so the compiled-in copy is the whole database this machine
-# will ever have. --without-update-smart-drivedb removes the script rather than
-# shipping one that fails.
-#
-# No init script is installed: /etc/init.d/52_smartd.sh supervises smartd.
-# libcap-ng is what drops the capabilities smartd does not need after
-# start-up; =yes makes a missing library a configure error rather than a
-# smartd that keeps them all.
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \

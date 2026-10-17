@@ -9,15 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Two consumers: imagemagick's --with-openjp2, and poppler, which without it
-# draws nothing where a JPEG 2000 image inside a PDF should be.
-#
-# THE CODEC TOOLS' IMAGE FORMATS ARE REQUIRED, NOT PROBED. opj_compress and
-# opj_decompress read and write PNG and TIFF and apply ICC profiles through
-# lcms2, and each library is looked up with a find_package that quietly
-# drops the format when it is missing. CMAKE_REQUIRE_FIND_PACKAGE_* turns a
-# missing one into a configure error; BUILD_THIRDPARTY=OFF keeps the bundled
-# copies of those libraries out.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

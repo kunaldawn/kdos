@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The font and its icon list come from the Fork Awesome release beside this
-# tarball; left unset, the build downloads both from GitHub.
 _fa="$SRC_ROOT/Fork-Awesome-$_forkawesome"
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -24,7 +22,6 @@ cmake -S . -B build -G Ninja \
 	-D FORK_AWESOME_ICON_DEFINITIONS="$_fa/src/icons/icons.yml" \
 	-D ENABLE_QT_QUICK_LIBRARY=ON \
 	-D NO_DOXYGEN=ON \
-	-D NO_SPHINX=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

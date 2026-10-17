@@ -1,0 +1,11 @@
+--- a/src/devices/proflame2.c	2026-10-16 13:47:35.307215244 +0530
++++ b/src/devices/proflame2.c	2026-10-16 13:47:35.330256626 +0530
+@@ -48,6 +48,8 @@
+     uint8_t *b   = bitbuffer->bb[row];
+     unsigned pos = start;
+     for (int f = 0;; ++f) {
++        if (f >= 7)
++            return f;
+         if (bitbuffer->bits_per_row[row] - pos < 26)
+             return f;
+         // expect sync and start bit of "1110"

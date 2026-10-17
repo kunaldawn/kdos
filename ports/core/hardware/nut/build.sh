@@ -9,17 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# Every driver family is named, because configure's `auto` answers a missing
-# library by leaving the drivers out. Built: serial, USB (libusb), Modbus
-# (libmodbus, for solar charge controllers and inverters), GPIO (libgpiod),
-# I2C (i2c-tools' libi2c), SNMP (net-snmp), the XML/HTTP driver (neon), IPMI
-# power supplies (FreeIPMI) and PDUs through a powerman daemon (libpowerman).
-# Not built: the UPower driver. nut-scanner loads its backends through
-# libltdl, and finds NUT servers on the LAN through Avahi. TLS is OpenSSL;
-# NSS is off. The CGI pages, the python GUI, PyNUT and every systemd,
-# Solaris and hotplug file are off. The manual pages are the ones the
-# release tarball carries.
 ./configure --prefix=/usr --sysconfdir=/etc/nut --libexecdir=/usr/lib/nut \
 	--datadir=/usr/share/nut \
 	--disable-static \
@@ -47,19 +36,6 @@
 make
 make DESTDIR=$PKG install
 
-# THE SAMPLES STAY SAMPLES. /etc/nut/*.sample are upstream's templates;
-# nut.conf's MODE line is what starts anything below, and with no nut.conf
-# nothing runs. upsmon.conf.sample's SHUTDOWNCMD names /sbin/shutdown, which
-# this system does not have: `poweroff` is the command to write there.
-#
-# THE SERVICES RUN UNDER ksvc, IN THE FOREGROUND (-F). MODE=standalone or
-# netserver starts the drivers (through upsdrvctl), upsd and upsmon;
-# netclient starts upsmon alone, watching another machine's upsd. Each
-# program started as root drops to the nut account itself, except upsmon's
-# parent, which stays root to run the shutdown. /run/nut is made here
-# because the drivers and upsd, running as nut, cannot create it under
-# /run. upsd listens on 3493, closed to other machines until the firewall's
-# rule for it is on.
 install -d "$PKG/etc/init.d"
 cat > "$PKG/etc/init.d/56_nut.sh" <<'KDOS_SH'
 #!/bin/bash

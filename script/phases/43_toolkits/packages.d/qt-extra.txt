@@ -26,6 +26,7 @@ kirigami-addons
 polkit-qt6
 phonon
 kdsingleapplication
+libdbusmenu-lxqt
 kddockwidgets
 phonon-backend-vlc
 quazip
@@ -36,6 +37,8 @@ kcolorpicker
 kimageannotator
 kqtquickcharts
 qwt-qt5
+libdbusmenu-qt5
+sonnet-qt5
 qscintilla
 python3-qscintilla
 qwt

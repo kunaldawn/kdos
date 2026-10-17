@@ -15,4 +15,5 @@ source      = https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-$version.tar.
 sha256      = 71132a3fb71e68245b8f2ac4e9e97137d3e5c02f415636eb508ae607bc01add7  libintl-1.0.tar.xz
 description = GNU libintl — the gettext runtime musl does not carry in libc
 homepage    = https://www.gnu.org/software/gettext/
+license     = LGPL-2.1-or-later
 depends     = gettext

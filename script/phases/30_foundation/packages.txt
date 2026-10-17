@@ -21,10 +21,14 @@
 
 # FIRST, AND IN THIS ORDER. These are the build tools recipes reach for without
 # naming them in `depends`: a configure script calls pkg-config through
-# PKG_CHECK_MODULES, a build.sh runs autoreconf, meson or cmake. Listed ahead
+# PKG_CHECK_MODULES, a build.sh runs autoreconf, meson or cmake, and libtool's
+# configure runs `file` to tell a shared library from a static one. muon is the
+# meson that builds pkgconf: it bootstraps with a C compiler alone, so it is
+# installed before any pkg-config exists. Listed ahead
 # of every shelf section, they are installed before anything else in the phase,
-# in the order kpkgdepends gives this run; bash and toybox are the shell and
-# the userland every build.sh runs in. musl, gcc, binutils and m4 are
+# in the order kpkgdepends gives this run; bash and GNU coreutils, grep, which
+# and musl-utils (getconf, getent, iconv) are the shell and the userland every
+# build.sh runs in. musl, gcc, binutils and m4 are
 # 20_selfhost's; naming them here rebuilds one whose recipe changed before
 # anything uses it. Under `kdosbuild --port-jobs` this run is the phase's
 # serial prefix: it builds one port at a time, and nothing after it starts
@@ -33,6 +37,8 @@ musl
 gcc
 binutils
 make
+file
+muon
 pkgconf
 libtool
 autoconf
@@ -46,15 +52,14 @@ ninja
 python3
 perl
 bash
-toybox
+coreutils
+grep
+which
+musl-utils
 
-# 20_selfhost's other ports, after toybox. A toybox upgrade removes the names
-# its previous manifest held, so a port whose name toybox compiles out carries a
-# release bump and reinstalls here to take the name back; listed ahead of
-# toybox, it would rebuild first, lose the name to the upgrade, and be current
-# again when 40_lang's toybox run reaches it. zlib, ncurses and readline are
-# gcc's and python3's dependencies and rebuild ahead of them whatever this list
-# says.
+# 20_selfhost's other ports, so one whose recipe changed rebuilds before the
+# shelf sections use it. zlib, ncurses and readline are gcc's and python3's
+# dependencies and rebuild ahead of them whatever this list says.
 tar
 diffutils
 gawk
@@ -67,17 +72,17 @@ zlib
 # with
 # ---------------------------------
 ca-certificates
+
+# utmps is the utmp and wtmp service, over skalibs. coreutils, sysvinit and
+# util-linux build against it; coreutils' `depends` already installs it in the
+# first run above, ahead of all three.
+skalibs
+utmps
+sysvinit
 util-linux
 less
 patch
 findutils
-
-# GNU sed, over toybox's applet, for the same reason as gawk and findutils:
-# upstream build systems assume GNU extensions. xapian's configure generates
-# its public version.h through a sed script using `0,/regex/d`; toybox does not
-# implement that address form, produces nothing, and leaves a ZERO-BYTE header
-# that fails three steps later with an error naming a type. Nothing in it says
-# "sed".
 sed
 
 gzip
@@ -161,6 +166,10 @@ lua54-luafilesystem
 # ---------------------------------
 git
 
+# libgit2 is linked by cargo and cargo-c in 31_compilers and by every Rust
+# port's git2 crate, which would otherwise compile a bundled copy.
+libgit2
+
 # ---------------------------------
 # doctools — Documentation toolchains, man pages, markup converters and TeX
 # typesetting
@@ -215,6 +224,12 @@ libarchive
 brotli
 
 # ---------------------------------
+# containers — Container runtimes, image tools, container networking and
+# sandbox primitives
+# ---------------------------------
+libseccomp
+
+# ---------------------------------
 # crypto — Cryptographic libraries, PKCS#11, smartcards and TPM
 # ---------------------------------
 openssl
@@ -240,6 +255,14 @@ c-ares
 libunistring
 gettext
 icu
+
+# ---------------------------------
+# math — Mathematics applications and libraries: computer algebra, arbitrary
+# precision, solvers, calculators, statistics and plotting apps
+# ---------------------------------
+
+# python3's _decimal module links it.
+mpdecimal
 
 # ---------------------------------
 # python — The python3 interpreter, tkinter, and Python build, packaging and

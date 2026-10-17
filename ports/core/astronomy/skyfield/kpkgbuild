@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/s/$name/$name-$vers
 sha256      = 05dce8aafbff3f007f01cabcd2eb1858c43d7465f58c13d22c5a828a6d2fc14b  skyfield-1.55.tar.gz
 description = Planet, moon and satellite positions from JPL kernels
 homepage    = https://pypi.org/project/skyfield/
+license     = MIT
 depends     = python3 python3-setuptools python3-pip numpy python3-jplephem python3-sgp4 python3-certifi

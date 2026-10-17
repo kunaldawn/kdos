@@ -42,7 +42,7 @@ produce nineteen setuid-root binaries, two of them KDOS's own:
 | `kdos-checkpass` | KDOS | Checking the caller's own password against `/etc/shadow` for the lock screen |
 | `kdos-resctl` | KDOS | Signalling and renicing another user's process for the resource monitor |
 | `sudo` | sudo | Running a command as another user |
-| `su` | shadow | Switching to another account. util-linux's `su` is not built (`--disable-su`), and toybox's is configured out |
+| `su` | shadow | Switching to another account. util-linux's `su` is not built (`--disable-su`), so shadow's is the only one |
 | `passwd`, `chage`, `gpasswd`, `chfn`, `chsh`, `newgrp` | shadow | Account management |
 | `newuidmap`, `newgidmap` | shadow | Writing a rootless container's user-namespace map |
 | `pkexec`, `polkit-agent-helper-1` | polkit | polkit's privileged actions |
@@ -85,8 +85,9 @@ These are deliberately not setuid:
   redirection from a SPICE viewer reaches only the devices whose nodes you can already open.
 - LinuxCNC's `rtapi_app` and `linuxcnc_module_helper`, whose bit the recipe removes, so LinuxCNC
   runs its threads without realtime priority, which is its simulator.
-- `ping`. `/etc/sysctl.conf` sets `net.ipv4.ping_group_range` to `0 2147483647`, so every user may
-  open an ICMP datagram socket and no privilege is needed.
+- `ping`, iputils', built with neither a setuid bit nor a file capability. `/etc/sysctl.conf` sets
+  `net.ipv4.ping_group_range` to `0 2147483647`, so every user may open an ICMP datagram socket and
+  no privilege is needed. `arping` sends raw packets and needs root.
 
 The list above is derived from the recipes; the built image is the authority. To check a machine:
 
@@ -256,6 +257,7 @@ in: each has `/sbin/nologin` as its shell and `!` as its password. The image shi
 | `sshd` | 996:996 | `sshd`'s privilege separation |
 | `tss` | 993:993 | The TPM: tpm2-tss's udev rules give `/dev/tpm*` to the user and `/dev/tpmrm*` to the group |
 | `lp` | 10:10 | CUPS |
+| `utmp` | 14:14 | `utmpd` and `wtmpd`, which own `/run/utmps` and `/var/log/wtmp` ([Login records](boot-and-init.md#login-records)) |
 | `nobody` | 99:99 | `kiwix-serve` and `llama-server`, which only read, and anything that asks for an unprivileged account by that name |
 
 More are created when their port is installed, by the port's `postinstall.sh` with `groupadd -r` and
@@ -403,9 +405,12 @@ lifetime.
 ## The firewall
 
 The firewall is nftables, loaded at boot by `/etc/init.d/25_nftables.sh` from `/etc/nftables.conf`.
-The script checks the whole file with `nft -c` first and keeps the running ruleset if the check
-fails, because a ruleset applied halfway would leave the input chain's drop policy in place with
-its accept rules missing.
+The script checks the whole file with `nft -c` first and never applies one that fails the check,
+because a ruleset applied halfway would leave the input chain's drop policy in place with its
+accept rules missing. A failed check keeps a running ruleset. With none running, as at boot, it
+loads the file without its drop-ins, or else a minimal drop policy (established and related
+traffic, loopback, the necessary ICMP and ICMPv6, the DHCPv6 client), and reports `[FAIL]`: an
+empty ruleset would accept everything while sshd and every other listener start.
 
 The shipped `inet filter` table:
 
@@ -715,6 +720,39 @@ bind. `SIGHUP` to the compositor (its Reconfigure) drops the cache with the rest
 configuration, so an edited profile takes effect for the next client; a running one keeps what it
 already bound.
 
+## The kernel
+
+The kernel's configuration is `kdos.config` in the `linux` port, and six of its settings are there
+to remove a way in rather than to support hardware. Each is set explicitly, even where it matches
+the kernel's own default, so the build fails if a later kernel stops honouring it (see
+[How KDOS is built](../05-developer/how-kdos-is-built.md#the-kernel-60_kernel)):
+
+| Setting | Value | What it removes |
+|---|---|---|
+| `CONFIG_X86_X32_ABI` | off | The x32 system-call ABI: a second entry path into every system call, which no program on KDOS uses |
+| `CONFIG_UEVENT_HELPER` | off | A program the kernel forks as root for every device event, named by a writable `/sys/kernel/uevent_helper`; `udevd` reads events from netlink and needs none |
+| `CONFIG_PM_AUTOSLEEP` | off | Suspend started by the kernel itself whenever no wakeup source is held; on KDOS suspend is always asked for from user space, by `kdos-powerd` writing `/sys/power/state` |
+| `CONFIG_LDISC_AUTOLOAD` | off | Any user loading a line-discipline module by setting it on a terminal they opened. A process with `CAP_SYS_MODULE` still loads one, so `pppd` and `hciattach`, which run as root, are unaffected |
+| `CONFIG_PROC_MEM_FORCE_PTRACE` | on | Writing to another process's read-only memory through `/proc/<pid>/mem` merely by having the right to trace it; only a debugger actually attached with `ptrace` may |
+| `CONFIG_BUG_ON_DATA_CORRUPTION` | on | Running on after a kernel list or reference-count check has found corrupted memory: the kernel stops the offending task with a `BUG` instead of logging a warning and continuing |
+
+### Module signing
+
+Every module is signed when the kernel is built (`CONFIG_MODULE_SIG_ALL`, SHA-512, an ECDSA P-384
+key), and the certificate of that key is built into the kernel. `CONFIG_MODULE_SIG_FORCE` is off:
+the kernel still loads a module that is unsigned or signed by another key, and marks itself
+tainted (`module verification failed` in the kernel log). Signing tells you which modules came from
+the build that made the running kernel; it does not stop root from loading another.
+
+The key is `build/keys/linux-module-signing.pem` on the machine that builds KDOS. The first kernel
+build that finds no key there writes one, with the subject in the port's `x509.genkey`, and every
+later build signs with it, so two builds of the same tree carry the same certificate and the
+modules of either load untainted under the other's kernel. `make clean` and `make cleanbuild` both
+keep `build/keys`, and git ignores all of `build/`, so the private key never enters the repository.
+Losing it costs nothing worse than a new certificate in the next kernel. A kernel built where there
+is no `/kdos/build`, as `kdos update apply` builds one on an installed machine, takes the kernel's
+own default instead: a fresh key generated for that one build.
+
 ## Mount options
 
 | Mounted | Options |
@@ -737,17 +775,27 @@ and package hooks. `/etc/sysctl.conf` sets `fs.protected_symlinks`, `fs.protecte
 user who plants a link, a FIFO or a file at a name a root job is about to write in a sticky
 world-writable directory can turn that write onto any file on the machine.
 
+The same file hardens the network stack and the kernel's addresses:
+
+| Setting | Value | Why |
+|---|---|---|
+| `net.ipv4.conf.{all,default}.accept_redirects`, `secure_redirects`; `net.ipv6.conf.{all,default}.accept_redirects` | 0 | An ICMP redirect rewrites a route on the word of whoever sends it, so on a shared network any host on the link could put itself in the path |
+| `net.ipv4.conf.{all,default}.send_redirects` | 0 | The machine routes only for its hotspot and its containers, whose clients have no other route to correct |
+| `net.ipv4.conf.{all,default}.rp_filter` | 2 | The loose reverse-path check drops a packet whose source no interface routes back to. The strict check, 1, would break the asymmetric routes a VPN, the hotspot, podman's bridge and a Babel mesh make |
+| `kernel.kptr_restrict` | 1 | `/proc/kallsyms`, `/proc/modules` and the kernel log's pointers read as zeroes to an account without `CAP_SYSLOG`, so they do not undo address randomisation; root still sees them |
+
 ## Signing and trust
 
-KDOS uses two keyrings, and keeping them apart is structural rather than a convention:
+KDOS uses three keyrings, and keeping them apart is structural rather than a convention:
 
 | Directory | Attests | Used for | Shipped with |
 |---|---|---|---|
 | `/etc/kdos/keys` | Who built a host package | The binary-package host (binhost) index and package signature files | No key |
 | `/etc/kdos/keys/packs` | That packs came from the same bake as the medium (the build run that produced them) | Pack indexes and packs' own signatures, read by `kdos-packd` and `kdos-pack verify` | `kdos-packs.pub` |
+| `/etc/kdos/keys/tree` | That a published ports tree came from whoever holds the release key the image was built with | `kdos-ports.tar.xz.sig`, read by `kdos update fetch` before the tree is unpacked | `kdos-release.pub`, when the build had `build/keys/kdos-release.key`; otherwise no key |
 
 The keyring loader reads `*.pub` in one directory and does not descend into subdirectories, so the
-two are separate policies. A pack-signing key placed in `/etc/kdos/keys` would silently become a
+three are separate policies. A pack-signing key placed in `/etc/kdos/keys` would silently become a
 trusted publisher of host packages too.
 
 The directory is the policy:
@@ -777,6 +825,14 @@ came from the same bake, the build run that produced the medium (see
 [Packs and boxes](packs-and-boxes.md)). To make it say something about you, replace it and
 re-sign. The rest of the signing design is in [Packaging](packaging.md).
 
+The key in `/etc/kdos/keys/tree` is the one choice of trust an image makes for you: the recipe tree
+is the trust root for everything built on the machine, since every source is checked against a
+hash the tree names, so the image trusts the next tree from the same key as the tree it carries.
+`ports/publish --release` signs each release's `kdos-ports.tar.xz` with `build/keys/kdos-release.key`,
+and the build copies that key's public half into the ring. `kdos update fetch` refuses a tree whose
+signature does not verify, and a tree whose `TREE` stamp is older than the installed one, so a
+replayed old tree cannot pin old versions. Replace the key to follow a tree you publish yourself.
+
 ### TLS trust anchors
 
 The certificate authorities used for TLS are a third trust root, kept apart from both keyrings.
@@ -800,11 +856,12 @@ runs, so a rebuild after a root expires ships one fewer.
 |---|---|
 | OpenSSL, and everything linked against it | Built `--openssldir=/etc/ssl`, so it reads `/etc/ssl/cert.pem` |
 | GnuTLS, and everything linked against it | Through p11-kit's trust module, built `-D trust_paths=/usr/share/ca-certificates/mozilla.pem:/etc/ca-certificates/trust-source`. GnuTLS is built `--with-default-trust-store-pkcs11="pkcs11:"`, so p11-kit is its only source |
+| NSS, for a program that loads its builtin-roots module | `/usr/lib/libnssckbi.so`, the module NSS loads as "Builtin Roots", is a symlink to p11-kit's trust module `/usr/lib/pkcs11/p11-kit-trust.so`, so such a program reads the same anchors as GnuTLS. NSS's own `certdata` roots module is not installed |
 | Python code that calls `certifi.where()`, `requests` included | `python3-certifi`'s `certifi/cacert.pem` is a symlink to `/etc/ssl/cert.pem` |
 
 The two sides see a new local root at different times:
 
-- GnuTLS sees it immediately. p11-kit trusts every certificate in a trust path that is a file,
+- GnuTLS, and NSS through `libnssckbi.so`, see it immediately. p11-kit trusts every certificate in a trust path that is a file,
   and, for a trust path that is a directory, what is in its `anchors/` subdirectory.
 - OpenSSL sees it after `update-ca-certificates`. That command rewrites `/etc/ssl/cert.pem`
   (the Mozilla bundle, then the certificate blocks of every PEM file in the anchors directory) and
@@ -819,10 +876,11 @@ sudo update-ca-certificates
 ```
 
 A DER file in the anchors directory has no PEM block: `update-ca-certificates` skips it with a
-warning, and then GnuTLS alone trusts it. `caddy trust` does the whole job by itself: it writes
-Caddy's local root into the anchors directory and runs `trust extract-compat`, which the `p11-kit`
-port replaces with a call to `update-ca-certificates`. Firefox and other NSS programs keep their
-own store and are not covered by any of this.
+warning, and then only the p11-kit side trusts it. `caddy trust` does the whole job by itself: it
+writes Caddy's local root into the anchors directory and runs `trust extract-compat`, which the
+`p11-kit` port replaces with a call to `update-ca-certificates`. Firefox, LibreWolf and Thunderbird
+compile their builtin roots into the browser itself and keep their own store, so a local root
+reaches them only through their own certificate settings.
 
 GnuTLS reads a system-wide priority policy from `/etc/gnutls/config` (the path is compiled in from
 `--sysconfdir=/etc`; a policy anywhere else is ignored without a warning). The image ships none,
@@ -980,15 +1038,30 @@ not there is worse off than one who knows it is missing.
 - **There is no verified boot and no signed kernel.** The boot chain is not measured or attested.
   Anyone with physical access can boot a modified kernel or initramfs and take control of the
   machine.
-- **The serial console is a root shell.** `/etc/inittab` runs `/bin/bash -l` on `ttyS0` with
-  `askfirst`, on the live image and on an installed system alike: anyone with a serial connection
-  presses Enter and is root, with no password.
+- **Module signatures are not enforced.** Modules are signed, but `CONFIG_MODULE_SIG_FORCE` is off
+  and lockdown is not enabled, so root loads any module, signed or not, and the kernel only marks
+  itself tainted (see [Module signing](#module-signing)).
+- **The live image's serial console is a root shell.** `/etc/inittab` runs
+  `agetty --autologin root` on `ttyS0`, so anyone with a serial connection to a machine running
+  the live medium is root, with no password. The installer removes `--autologin root` from the
+  installed copy, where `ttyS0` asks for a login.
+- **Single-user mode asks for root's password.** The installed menu's `KDOS (single user)` entry
+  and `telinit S` reach `sulogin`, which opens a root shell only for root's password. With root
+  locked, as the installer leaves it by default, it opens no shell at all and the
+  boot continues to the desktop. Anyone who can edit the kernel command line at the boot menu still
+  gets a root shell with `rdinit=/bin/sh`, which runs the initramfs's bash: the physical-access gap
+  above.
 - **The live image has known passwords.** Both `root` and `kdos` have the password `kdos` (see
-  [Getting started](../02-user-guide/getting-started.md)), and `sshd` starts at boot
-  (`/etc/init.d/70_sshd.sh`). Only the firewall's `input` drop policy keeps it off the network, and
-  `kdos-power firewall ssh on` removes that for port 22. The installer asks for a new password for
-  the account and, by default, locks root (it can set a root password instead), so an installed
-  system does not carry them.
+  [Getting started](../02-user-guide/getting-started.md)), so `sshd` does not start until it is
+  enabled: the image ships the marker `/etc/service.disabled/sshd`, which `rcS` obeys. Opening
+  port 22 is what enables it: `kdos-power firewall ssh on`, and the `ssh` row of `kdos-firewall`,
+  remove the marker and start `sshd`, and turning `ssh` off puts the marker back and stops it, so a
+  closed port never hides a listening daemon. Nothing advertises SSH while port 22 is closed:
+  the `avahi` package ships no `ssh` or `sftp-ssh` service file, so mDNS never names a
+  server the firewall drops. The installer offers the SSH server, off by default,
+  and removes the marker on the installed system when it is chosen. It also asks for a new password
+  for the account and, by default, locks root (it can set a root password instead), so an
+  installed system does not carry the known passwords.
 - **The live image logs in automatically.** Its `/etc/kdos/login.conf` names `kdos` for
   autologin, so whoever boots it reaches the desktop as that account. An installed system asks for
   a password at `tty1` unless its answer file set `autologin = yes` or an administrator later ran
@@ -1033,10 +1106,11 @@ not there is worse off than one who knows it is missing.
   in its recipe. That makes the recipe, and so this repository, the trust root for everything on
   the host.
 - **Updates are never installed automatically, and there is no security-advisory service.** A
-  system timer (`/etc/kdos/timers.d/10-update-check.timer`) runs `kdos update check` once a day and
-  records the result in `/var/lib/kdos/update.json`; newer versions arrive only with a newer ports
-  tree, and installing them is `kdos update apply`, which you run. `kdos cve` tells you what is
-  behind a known fix.
+  system timer (`/etc/kdos/timers.d/10-update-check.timer`) runs `kdos update check --fetch` once a
+  day, which installs the latest release's signed ports tree and records what is behind in
+  `/var/lib/kdos/update.json`; building it is `kdos update apply`, which you run, and which needs
+  the network for every source and compiles on the machine. A fix reaches a machine only once a
+  release carries it. `kdos cve` tells you what is behind a known fix.
 - **`kdos-oomd`'s choice between several large processes is tested only against recorded
   process tables.** `kdos-oomd --fixture` exercises victim selection offline, and
   `testing/oomd-fire.sh` makes the daemon fire in a virtual machine against a single memory hog;

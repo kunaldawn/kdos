@@ -22,4 +22,5 @@ sha256      = ab7e9fc2192604e6af73830ab3cec54e90e9a954f37d69bcef825e6cc7d8c6f2  
 sha256      = 6249a6eebbf0e4bd585b2d7a7b6c5804c323b0e1ac5bcbe890b500ad8b0e7aea  mkbold-mkitalic-0.11.tar.gz
 description = Scalable TTF build of Terminus, for the consumers that cannot draw a bitmap font
 homepage    = https://files.ax86.net/terminus-ttf/
+license     = OFL-1.1
 depends     = fontconfig fontforge potrace imagemagick python3

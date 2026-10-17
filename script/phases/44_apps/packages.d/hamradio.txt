@@ -31,4 +31,5 @@ flamp
 qsstv
 chirp
 klog
+gpsman
 xastir

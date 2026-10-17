@@ -24,4 +24,5 @@ sha256      = c686cab6df8964c48d596f57d205bac31fc72870b06a83017e44503df8c09697  
 sha256      = 3e9d87b04a393f131723472c8eaa860dd23c378a3d4f6a9005513b2a95b3614b  table-20240108.tar.zst
 description = Pinyin and table input method engine library for fcitx5
 homepage    = https://github.com/fcitx/libime
+license     = LGPL-2.1-or-later
 depends     = cmake extra-cmake-modules fcitx5 boost zstd gettext

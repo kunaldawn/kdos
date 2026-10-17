@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = muon
+version     = 0.7.0
+release     = 1
+source      = $name-$version.tar.gz::https://muon.build/releases/v$version/$name-v$version.tar.gz
+sha256      = 573a3137e2a478e84e71dbbaf874623f7bc9848cf3367c948016ed284e8d637c  muon-0.7.0.tar.gz
+description = An implementation of the meson build system in C99, with a built-in ninja — the build system pkgconf is built with
+homepage    = https://muon.build/
+license     = GPL-3.0-only AND MIT AND Apache-2.0 AND Unlicense
+depends     = scdoc

@@ -15,4 +15,5 @@ source      = https://github.com/open-acpica/acpica/releases/download/$version/$
 sha256      = e66ceb26d6d514ce164fe22f5a4f7ca165cc38349d7a97f41a21f19b364647a2  acpica-20260408.tar.gz
 description = ACPI Component Architecture tools — the iasl ASL compiler, acpidump and acpixtract
 homepage    = https://www.intel.com/content/www/us/en/developer/topic-technology/open/acpica/overview.html
+license     = Intel-ACPI OR BSD-3-Clause OR GPL-2.0-only
 depends     = bison flex m4

@@ -9,9 +9,11 @@ it is a lookup table, not an explanation, and assumes you have met the vocabular
 
 Software built from `ports/core/` (bash, foot, podman, mpv and the rest) is upstream's, and
 upstream's manual pages describe it; [the ports catalogue](ports-catalogue.md) lists every port by
-shelf, with its phase. This index lists only what this repository writes: the programs under `src/`,
+shelf, with its phase. This index lists what this repository writes: the programs under `src/`,
 the scripts under `fs/`, and the handful of wrapper scripts that a port recipe writes into its
-package. Each entry below matches the source that installs it.
+package. Each entry below matches the source that installs it. The one exception is
+[the upstream commands the boot path and the book name](#upstream-commands-the-boot-path-and-the-book-name),
+which init and the service scripts run by name.
 
 ## Where the commands live
 
@@ -98,7 +100,7 @@ which prints them grouped by the question each answers. It is installed as
 | [`kdos stutter`](../04-programs/kdos-command.md#kdos-stutter) | Why a frame was late, and which process was busy |
 | [`kdos march`](../04-programs/kdos-command.md#kdos-march) | Measure per-machine optimisation (`probe`, `run PORT…`) and read the recorded verdicts (`report`) |
 | [`kdos cve`](../04-programs/kdos-command.md#kdos-cve) | Which pinned versions carry known vulnerabilities, from an offline database |
-| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (`--json` writes the panel's badge), `apply`, and `theme` for the per-user artwork |
+| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (`--json` writes the panel's badge, `--fetch` fetches first), `fetch` (the newest signed ports tree into `/ports`), `apply` (fetch the sources and build what is behind), and `theme` for the per-user artwork |
 | [`kdos rebuild WORKDIR`](../04-programs/kdos-command.md#kdos-rebuild) | Rebuild the image from the sources on the medium; `--dry-run`, `--iso-only` |
 | [`kdos clone [DEV]`](../04-programs/kdos-command.md#kdos-clone) | Copy this medium to another device, verified by read-back |
 | [`kdos persist`](../04-programs/kdos-command.md#kdos-persist) | Report the live session's persistence store; `create [DEV]` makes one |
@@ -228,9 +230,9 @@ and its client are always the same version.
 | Command | What it does | Documented in |
 |---|---|---|
 | `kdos-powerd` | Suspend, power-off, reboot, and the system settings a desktop user may change | [The daemons](../04-programs/daemons.md#kdos-powerd) |
-| `kdos-power` | Its client | [The daemons](../04-programs/daemons.md#the-client) |
+| `kdos-power` | Suspend, power off or reboot, as `kdos-powerd`'s client | [The daemons](../04-programs/daemons.md#the-client) |
 | `kdos-mountd` | The removable-media daemon: disks, LUKS, SMB shares, SMART | [The daemons](../04-programs/daemons.md#kdos-mountd) |
-| `kdos-mount` | Its client | [The daemons](../04-programs/daemons.md#the-command-line-client) |
+| `kdos-mount` | Mount and unmount removable media, as `kdos-mountd`'s client | [The daemons](../04-programs/daemons.md#the-command-line-client) |
 | `kdos-energyd` | Per-application energy attribution: which application is using the processor's power | [The daemons](../04-programs/daemons.md#kdos-energyd) |
 | `kdos-energy` | The per-application energy report; `--json`, `ping` | [The daemons](../04-programs/daemons.md#kdos-energyd) |
 | `kdos-oomd` | The memory-pressure daemon, which spares the desktop | [The daemons](../04-programs/daemons.md#kdos-oomd) |
@@ -300,10 +302,10 @@ All five names are one binary in `/usr/bin`.
 | `kpkgdepends` | Print the resolved install order | [Packaging](../03-architecture/packaging.md#kpkg) |
 
 `kpkg` takes `install` (also `i`), `remove` (also `r`), `list` (also `l`, with `--json`), `info`
-(with `--json`), `meta`, `verify` (and `verify --repro`), `keygen`, `sign FILE KEY`, `index` (with `--sign KEY`),
+(with `--json`), `check` (packages by name, or `--all`), `meta`, `fetch` (the sources a port lacks, from the archive and then upstream), `verify` (and `verify --repro`), `keygen`, `sign FILE KEY`, `index` (with `--sign KEY`),
 `verify-index`, `verify-pkg`, `delta`, `apply-delta`, `binhost`, `store gc DIR MAX-SIZE` and
 `help`, and the options
-`--root PATH`, `--keep-cache`, `-f`/`--force` and `--overwrite`. `install` also takes
+`--root PATH`, `--keep-cache` and `-f`/`--force`. `install` also takes
 `--build-only`, which builds exactly the named ports into the package cache and installs nothing,
 and `--commit`, which installs what `--build-only` built; see
 [Building apart from installing](../03-architecture/packaging.md#building-apart-from-installing).
@@ -329,7 +331,7 @@ text and exits 1. `kdos update` is the command that updates the system; see
 | `kinstall` | `/usr/bin` | The installer | [kinstall](../04-programs/kinstall.md) |
 
 `/etc/inittab` runs `kdos-getty tty1 kdos-login tty1` on the first console and
-`kdos-getty tty2 /sbin/getty 38400 tty2` on the second.
+`kdos-getty tty2 /sbin/agetty --noclear tty2 38400 linux` on the second.
 
 `ksvc` (and `service`) takes `list`, `status NAME`, `start NAME`, `stop NAME`, `restart NAME`,
 `enable NAME`, `disable NAME` and `help`, the commands a person types. The init scripts also call
@@ -350,6 +352,32 @@ kdos-bootctl palette [ACCENT]
 kdos-bootctl theme [--print] ACCENT
 ```
 
+### Upstream commands the boot path and the book name
+
+These come from ports, not from this repository, and upstream's manual pages describe them. They
+are listed because `/etc/inittab`, the service scripts, the initramfs build and this book's
+procedures call them by name. `/sbin` is a link to `/usr/sbin`.
+
+| Command | Installed in | Port | What it does | Documented in |
+|---|---|---|---|---|
+| `init` | `/sbin` | `sysvinit` | PID 1: reads `/etc/inittab`, runs `rcS`, keeps the consoles and changes runlevel | [Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts) |
+| `telinit` | `/sbin` | `sysvinit` | Ask init for another runlevel: `0` powers off, `6` reboots, `S` is single-user | [Boot and init](../03-architecture/boot-and-init.md#shutdown) |
+| `runlevel` | `/sbin` | `sysvinit` | Print the previous and the current runlevel | [Boot and init](../03-architecture/boot-and-init.md#login-records) |
+| `shutdown` | `/sbin` | `sysvinit` | Power off or reboot, now or at a time, through init | [Boot and init](../03-architecture/boot-and-init.md#shutdown) |
+| `halt`, `poweroff`, `reboot` | `/sbin` | `sysvinit` | Change to runlevel 0 or 6, or with `-f` stop the machine at once | [Boot and init](../03-architecture/boot-and-init.md#shutdown) |
+| `killall5` | `/sbin` | `sysvinit` | Signal every process outside the caller's session | [Boot and init](../03-architecture/boot-and-init.md#shutdown) |
+| `sulogin` | `/sbin` | `util-linux` | Ask for root's password on the console and give a shell, for single-user mode | [Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts) |
+| `getent` | `/usr/bin` | `musl-utils` | Look an entry up in `passwd`, `group`, `hosts` and the other name databases | [Packaging](../03-architecture/packaging.md#the-base-userland) |
+| `getconf` | `/usr/bin` | `musl-utils` | Print a system configuration value, such as `_NPROCESSORS_ONLN` | [Packaging](../03-architecture/packaging.md#the-base-userland) |
+| `iconv` | `/usr/bin` | `musl-utils` | Convert text between character encodings | [Packaging](../03-architecture/packaging.md#the-base-userland) |
+| `cpio` | `/usr/bin` | `cpio` | Write and read cpio archives; the initramfs is one | [Boot and init](../03-architecture/boot-and-init.md#the-initramfs) |
+| `which` | `/usr/bin` | `which` | Print the full path of a command | [Packaging](../03-architecture/packaging.md#the-base-userland) |
+| `xxd` | `/usr/bin` | `tinyxxd` | Hex dump a file, or turn a dump back into bytes with `-r` | [Packaging](../03-architecture/packaging.md#the-base-userland) |
+| `ping` | `/usr/bin` | `iputils` | Send ICMP echo requests, as any user and with no setuid bit, through the ICMP sockets `net.ipv4.ping_group_range` opens | [The security model](../03-architecture/security-model.md) |
+| `arping` | `/usr/bin` | `iputils` | Send ARP requests on a link; needs root | [Packaging](../03-architecture/packaging.md#the-base-userland) |
+| `mkpasswd` | `/usr/bin` | `whois` | Hash a password for `/etc/shadow` or `useradd -p`; name the method, `-m sha512crypt`, because with musl's `crypt` the default is DES | [Packaging](../03-architecture/packaging.md#the-base-userland) |
+| `tracepath` | `/usr/bin` | `iputils` | Trace the path to a host and the MTU along it, with no privilege | [Packaging](../03-architecture/packaging.md#the-base-userland) |
+
 ## Tools and helpers
 
 | Command | Installed in | What it does | Documented in |
@@ -366,10 +394,11 @@ kdos-bootctl theme [--print] ACCENT
 | `kdos-syncthing` | `/usr/bin` | Syncthing, given a LAN-only configuration the first time it runs | [Administration](../02-user-guide/administration.md#syncing-and-serving-on-the-network) |
 | `update-ca-certificates` | `/usr/bin` | Rewrite `/etc/ssl/cert.pem` from the Mozilla bundle and the local roots in `/etc/ca-certificates/trust-source/anchors/`; `--root DIR` | [Security model](../03-architecture/security-model.md#tls-trust-anchors) |
 | `sfeed-read` | `/usr/bin` | Open `sfeed_curses` on every feed under `~/.sfeed/feeds`, or say how to fetch some when there are none | The `sfeed` port's `build.sh` |
+| `ldconfig` | `/usr/sbin` | Exits 0 and changes nothing: musl's loader keeps no cache, so there is nothing to rebuild; it answers makefiles and install scripts that run it | [Configuration](configuration.md) |
 
-`kdos-syncthing`, `update-ca-certificates`, `sfeed-read` and `kdos-podman-api` are shell scripts
-that a port recipe writes into its package (the `syncthing`, `ca-certificates`, `sfeed` and
-`podman` ports), not programs under `src/`.
+`kdos-syncthing`, `update-ca-certificates`, `sfeed-read`, `ldconfig` and `kdos-podman-api` are
+shell scripts that a port recipe writes into its package (the `syncthing`, `ca-certificates`,
+`sfeed`, `musl` and `podman` ports), not programs under `src/`.
 
 `kdos-term` takes `-e` (also `--exec`), `--title`, `--app-id`, `--font`, `--size WxH`, `--float`,
 `-D DIR` (also `--working-directory`), `--tty` and `--dump WxH`. Everything after `--` is the
@@ -413,7 +442,7 @@ uses them, from `make fetch` to a bootable ISO.
 | `make publish`, `publish-dry`, `publish-check`, `publish-plan`, `publish-describe`, `publish-rehome`, `publish-retire`, `publish-orphans` | `ports/publish` and its modes over the source archive's `sources-<N>` volumes; `PORTS` and `PUBLISH_ARGS` narrow them | [Developing](../05-developer/developing.md#make-targets) |
 | `make freeze`, `make release`, `make release-publish` | The system release for `TAG`: `sources.sha256`, a draft with the ISO and signed `SHA256SUMS`, then public and Latest | [Developing](../05-developer/developing.md#make-targets) |
 | `make check`, `preflight`, `selftest`, `selftest-asan`, `docscheck`, `phaseclosure` | The checks that stand in for a build; `check` runs the four that need no built tree | [Developing](../05-developer/developing.md#make-targets) |
-| `make depdrift`, `make debuginfo` | Audit `build/fs` for undeclared link dependencies, or for shipped DWARF | [Developing](../05-developer/developing.md#make-targets) |
+| `make depdrift`, `make debuginfo`, `make unowned`, `make linkcheck`, `make entrycheck` | Audit `build/fs` for undeclared same-phase link dependencies, shipped DWARF, unowned files, run-time references that do not resolve, or dangling links and dead entries | [Developing](../05-developer/developing.md#make-targets) |
 | `make quick`, `make rig-image`, `make devdeps-image` | The fast loop, and the containers it and the rig run in | [Testing](../05-developer/testing.md#the-fast-loop) |
 
 `KDOS_RES` (default `1920x1080`) sets the virtual screen for `make run`, `rundisk`,
@@ -425,7 +454,7 @@ uses them, from `make fetch` to a bootable ISO.
 |---|---|---|
 | `ports/fetch [--check] [--tree DIR] [PORT…]` | What `make fetch` runs: each source from the port directory, the cache, the sources archive or upstream, generating a vendor bundle where one must be made. A port is named by its bare name on any shelf, and a name that is no port fails the run | [Developing](../05-developer/developing.md#where-sources-come-from) |
 | `ports/publish [--dry-run \| --check] [--history] [PORT…]` | Upload sources the archive lacks into the volume `sources-<N>` that `ports/shelves` gives the shelf that owns them, as `<shelf>--<file>` (in parts past 1,900 MiB), spilling into another volume when that one is full, and write their lines into `ports/sources.idx`. `--plan` gives every shelf without a volume one; `--describe` rewrites the releases' titles and notes; `--rehome [PORT…]` moves files into the volume and name of the shelf their port now sits on and, once the index is pushed, deletes the old copies; `--retire` deletes the emptied `src-<shelf>` releases of the older layout and their tags; `--orphans` lists index lines no recipe names, and `--orphans --prune=yes-delete` deletes the unprotected ones; `--freeze TAG` attaches a release's hash list. Ports are named as for `ports/fetch` | [Writing ports](../05-developer/writing-ports.md#portspublish) |
-| `ports/publish --release TAG [--iso PATH] [--key PATH \| --unsigned] [--publish] [--dry-run]` | Put the system release `TAG` on `kunaldawn/kdos`: the ISO (in parts from 1,900 MiB), `sources.sha256`, a signed `SHA256SUMS` and the public key, as a draft until `--publish` makes it public and Latest | [Developing](../05-developer/developing.md#cutting-a-release) |
+| `ports/publish --release TAG [--iso PATH] [--key PATH \| --unsigned] [--publish] [--dry-run]` | Put the system release `TAG` on `kunaldawn/kdos`: the ISO (in parts from 1,900 MiB), `sources.sha256`, the recipe tree `kdos-ports.tar.xz` with its signature, a signed `SHA256SUMS` and the public key, as a draft until `--publish` makes it public and Latest | [Developing](../05-developer/developing.md#cutting-a-release) |
 | `script/hooks/pre-push` | Refuse a push that breaks the ports layout, or names a source the archive lacks; enabled with `git config core.hooksPath script/hooks` | [Writing ports](../05-developer/writing-ports.md#the-pre-push-hook) |
 | `kdosbuild [--fresh] [--restore PHASE] [--continue-from PHASE] [--phases LIST] [--steps LIST] [--rebuild LIST] [--plan] [--snapshot] [--no-snapshot] [--full-snapshots] [--port-jobs N] [--plain] [--json] [--list] [--delete PHASE]` | The build orchestrator, compiled from `src/devtools/kdosbuild/` by `script/kdosbuild.sh`, which `make build` runs with `BUILD_ARGS`. `--port-jobs N` builds up to `N` ports of a package phase at once, by dependency level | [The build system](../05-developer/build-system.md#flags) |
 | `script/chroot/enter.sh` | A root shell, or one command, inside a built tree, for inspection by hand | [The build system](../05-developer/build-system.md#the-chroot) |
@@ -433,10 +462,14 @@ uses them, from `make fetch` to a bootable ISO.
 | `kdos-portup` | The version checker `ports/update` runs, from `src/devtools/kdos-portup/`, compiled to `ports/.portup` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/hackage-vendor` | The Hackage downloader `ports/fetch` runs to make a Haskell port's vendor bundle | [Writing ports](../05-developer/writing-ports.md#the-haskell-bundle) |
 | `testing/preflight.sh` | 55 checks over the wiring of the tree | [Testing](../05-developer/testing.md#preflightsh) |
-| `testing/debuginfo.sh [ROOT]` | List the ELF files under a built root's `usr/` that carry DWARF, grouped by owning package | [Testing](../05-developer/testing.md#debug-information-in-the-built-tree) |
+| `testing/debuginfo.py [--root ROOT] [--threshold BYTES] [--files]` | Sum the `.debug_*` and `.zdebug*` sections of every ELF file under a built root's `usr/` by owning package, and fail above the threshold (1 MiB) outside the ghc `-debug` runtimes | [Testing](../05-developer/testing.md#debug-information-in-the-built-tree) |
+| `testing/unowned.py [--root ROOT] [--fs DIR] [--all]` | List the files of a built root no package and no `fs/` path provides | [Testing](../05-developer/testing.md#files-nothing-owns) |
+| `testing/linkcheck.py [--root ROOT] [--all]` | Fail on a `DT_NEEDED` owned outside the consumer's `depends`, an interpreter that does not resolve, or OpenSSL 3 and 4 in one process; warn on a bare `python` shebang | [Testing](../05-developer/testing.md#run-time-references) |
+| `testing/entrycheck.py [--root ROOT]` | Fail on a dangling symlink, a desktop or D-Bus `Exec=` that does not resolve, a visible `Icon=` with no icon, or a udev program that does not exist | [Testing](../05-developer/testing.md#links-launchers-and-rules) |
+| `testing/bookcounts.py` | Recompute the port counts on the three pages that state them and check every ports-catalogue row against its recipe; `docscheck.sh` runs it | [Testing](../05-developer/testing.md#docschecksh) |
 | `testing/phaseclosure.py` | Check that every package phase installs exactly the ports its list names; preflight runs it | [Writing ports](../05-developer/writing-ports.md#which-phase-lists-a-port) |
 | `testing/selftest.sh` | The library and consumer suite, with the goldens | [Testing](../05-developer/testing.md#selftestsh) |
-| `testing/docscheck.sh` | This book: dead links, historical phrasing, the page contract | [Testing](../05-developer/testing.md#docschecksh) |
+| `testing/docscheck.sh` | This book: dead links, historical phrasing, the page contract, and through `testing/bookcounts.py` the port counts | [Testing](../05-developer/testing.md#docschecksh) |
 | `testing/devdeps-image.sh` | Build the `kdos-devdeps` image and run the self-test in it, with nothing skipped | [Testing](../05-developer/testing.md#the-machine-where-nothing-is-skipped) |
 | `testing/rig-image.sh` | Build the `kdos-qemu-py` rig image | [Testing](../05-developer/testing.md#the-host-may-not-have-an-emulator) |
 | `testing/vnc-shot.py` | Boot, drive and photograph a real session | [Testing](../05-developer/testing.md#the-qemu-rig) |

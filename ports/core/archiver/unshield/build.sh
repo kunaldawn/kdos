@@ -9,9 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# MD5 comes from OpenSSL. OpenSSL is an unrequired find_package that falls
-# back to the bundled RSA reference md5, K&R C that the current compiler
-# refuses; the REQUIRE switch makes a missing OpenSSL fatal instead.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

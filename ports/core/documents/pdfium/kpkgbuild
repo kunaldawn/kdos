@@ -19,4 +19,5 @@ sha256      = 0340b2fca57cecdf6e2e0366129a3340f6764c132cb090f57db96d9f0f349855  
 sha256      = 4268f9778821e4aa45e21ba2ca21641aacc4657bfa01692232b89ed64ad07546  pdfium-vendor-7988.tar.xz
 description = Chromium's PDF renderer, as a shared library with its C headers
 homepage    = https://pdfium.googlesource.com/pdfium/
+license     = BSD-3-Clause AND Apache-2.0
 depends     = gn ninja python3 pkgconf freetype2 harfbuzz icu lcms2 libjpeg-turbo libpng openjpeg zlib

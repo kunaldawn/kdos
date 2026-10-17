@@ -11,8 +11,9 @@
 name        = linux-firmware
 version     = 20260916
 release     = 1
-description = Device firmware blobs — upstream's complete tree, unpruned
+description = Device firmware blobs — upstream's tree, less the firmware no x86 kernel loads
 homepage    = https://gitlab.com/kernel-firmware/linux-firmware
+license     = LicenseRef-linux-firmware
 depends     = zstd
 source      = https://cdn.kernel.org/pub/linux/kernel/firmware/$name-$version.tar.xz
 sha256      = f80dcb757a623deda62200c08e0e1a88c76fb6b54964f31b35fa74da1c90ccc5  linux-firmware-20260916.tar.xz

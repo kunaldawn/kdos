@@ -8,9 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Upstream builds with Gradle and bundles its dependencies' class files.
-# Here every dependency is its published source, compiled with Logisim in
-# one javac run; nothing is fetched and no prebuilt class file is used.
 _dep=build/depsrc
 mkdir -p "$_dep" build/classes build/proc build/gen build/docgen
 for _j in rsyntaxtextarea-$_rsta colorpicker-$_colorpick \
@@ -26,33 +23,22 @@ for _j in rsyntaxtextarea-$_rsta colorpicker-$_colorpick \
 	annotations-$_jbannot commons-text-$_text commons-lang3-$_lang3; do
 	unzip -q -o "$_j-sources.jar" -d "$_dep"
 done
-# JavaHelp imports the AWT drag-and-drop peers, which the JDK no longer
-# exports and it never uses.
 patch -p1 -d "$SRC_ROOT/javahelp-$_javahelp" -i "$PORT_SRC/javahelp-no-awt-peer.patch"
 _jh="$SRC_ROOT/javahelp-$_javahelp/jhMaster"
 cp -r "$_jh/JavaHelp/src/new/." "$_jh/JavaHelp/src/impl/." "$_jh/JSearch/client/." "$_dep/"
 rm -rf "$_dep/META-INF/maven" "$_dep/META-INF/MANIFEST.MF" "$_dep/META-INF/versions"
-# Everything is compiled into one unnamed module: a module descriptor on
-# the source path would turn the whole compilation into that module.
 find "$_dep" -name module-info.java -delete
-# JavaHelp's JSP tags and servlet broker need a servlet container, and its
-# native browser view needs JDIC; Logisim uses neither.
 rm -rf "$_dep/javax/help/tagext" "$_dep/javax/help/ServletHelpBroker.java" \
 	"$_dep/javax/help/plaf/basic/BasicNativeContentViewerUI.java"
 
-# The colour picker is written with Lombok, which generates its
-# constructors and logger at compile time; the patch writes them out.
 patch -p1 -d "$_dep" -i "$PORT_SRC/colorpicker-no-lombok.patch"
 
-# SwingX registers its look-and-feel add-ons through an annotation
-# processor, which is compiled first and runs over SwingX's sources.
 unzip -q "metainf-services-$_mis-sources.jar" -d build/proc-src
 javac -encoding UTF-8 -nowarn -d build/proc \
 	build/proc-src/org/kohsuke/MetaInfServices.java \
 	build/proc-src/org/kohsuke/metainf_services/AnnotationProcessorImpl.java
 install -Dm644 build/proc-src/org/kohsuke/MetaInfServices.java "$_dep/org/kohsuke/MetaInfServices.java"
 
-# Gradle writes the build description as a class; this is that class.
 _gen=build/gen/com/cburch/logisim/generated
 mkdir -p "$_gen"
 _millis=$((SOURCE_DATE_EPOCH * 1000))
@@ -83,10 +69,6 @@ public final class BuildInfo {
 }
 JAVA
 
-# Libraries that find their parts by name at run time are compiled whole:
-# FlatLaf's UI delegates, RSyntaxTextArea's token makers, JavaHelp's views
-# and search engine, SwingX's look-and-feel add-ons and slf4j's provider.
-# Everything else javac reaches from Logisim's own classes.
 {
 	find src/main/java build/gen -name '*.java'
 	find "$_dep/com/formdev/flatlaf" "$_dep/org/fife" "$_dep/javax/help" \
@@ -102,19 +84,16 @@ cp -r src/main/resources/. build/classes/
 	! -path './META-INF/LICENSE*' ! -path './META-INF/NOTICE*' \
 	-exec cp --parents {} "$SRC/build/classes/" \; )
 
-# The JavaHelp descriptors are generated from the documentation metadata.
 javac -encoding UTF-8 -nowarn -d build/docgen $(find src/docgen/java -name '*.java')
 java -cp build/docgen com.cburch.logisim.docs.DocumentationGenerator --help-sets \
 	src/main/doc/help-sets.xml build/classes/doc build/classes/doc
 
-# English only: the manuals in other languages and their help sets go.
 ( cd build/classes/doc && for _l in */; do
 	_l=${_l%/}
 	case $_l in en|icons|img-*) ;; *) [ -f "map_$_l.jhm" ] && rm -rf "$_l" "map_$_l.jhm" "search_lookup_$_l" "doc_$_l.hs" ;; esac
 done )
 
 printf 'Main-Class: com.cburch.logisim.Main\nEnable-Native-Access: ALL-UNNAMED\n' > build/manifest.txt
-# One quoted name per line: some resource names contain spaces.
 ( cd build/classes && find . -type f | LC_ALL=C sort | sed 's/.*/"&"/' > ../classes.list )
 ( cd build/classes && jar --create --file ../logisim-evolution.jar --manifest ../manifest.txt \
 	--date="$(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ')" @../classes.list )
@@ -130,8 +109,6 @@ chmod 755 "$PKG/usr/bin/logisim-evolution"
 install -Dm644 src/main/resources/resources/logisim/img/logisim-icon-128.png \
 	"$PKG/usr/share/icons/hicolor/128x128/apps/logisim-evolution.png"
 
-# Swing is an X11 client under Xwayland; its WM_CLASS is the main class
-# with the dots turned into dashes.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/logisim-evolution.desktop" <<'DESKTOP'
 [Desktop Entry]

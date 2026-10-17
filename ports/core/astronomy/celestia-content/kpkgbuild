@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/CelestiaProject/Celestia
 sha256      = a70518c43875d7c7fd6734aec677330f31fccd7d98c27a962ce806272e69ca68  celestia-content-1.7.0.git20260923.tar.gz
 description = Celestia's universe — star and deep-sky catalogues, planet textures, models and orbits
 homepage    = https://github.com/CelestiaProject/CelestiaContent
+license     = GPL-2.0-or-later AND CC-BY-3.0 AND CC-BY-4.0 AND CC-BY-SA-3.0 AND CC-BY-SA-4.0 AND CC-BY-NC-SA-3.0 AND CC0-1.0 AND JPL-image AND CC-BY-NC-3.0-IGO
 depends     = cmake ninja imagemagick

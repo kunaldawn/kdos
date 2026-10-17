@@ -9,19 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Each optional library upstream drops silently when absent is required here:
-# libkdcraw is RAW decoding, CFitsio the FITS loader, TIFF the libtiff log
-# filter, and Baloo the semantic backend that keeps ratings and tags. kImage-
-# Annotator is the annotate tool and is already required by its own option.
-# Purpose is the Share menu, whose plugins are online services, and Plasma
-# Activities belongs to the Plasma shell; both are kept out. The X11 half is
-# what Gwenview uses under Xwayland. KF_SKIP_PO_PROCESSING leaves the
-# interface catalogues out: bundled data is English only. kdoctools_install()
-# builds every translated handbook too, and those are removed after the
-# install.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
@@ -40,13 +30,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-find "$PKG/usr/share/doc/HTML" -mindepth 1 -maxdepth 1 ! -name en -exec rm -rf {} +
-
-# UPSTREAM'S ENTRY IS REPLACED. KAboutData derives the desktop file name, and
-# so the Wayland app_id, as org.kde.gwenview, which StartupWMClass has to
-# name. inode/directory is left out of MimeType: claimed here, a folder could
-# open in Gwenview instead of the file manager. The hicolor PNGs it names are
-# upstream's, installed above.
 cat > "$PKG/usr/share/applications/org.kde.gwenview.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

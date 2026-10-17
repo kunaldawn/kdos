@@ -29,4 +29,5 @@ sha256      = c8f2a40a676e82f29a92e18e63a6e630572d0c8ca08d1353ac703f87f2d24b62  
 sha256      = 66187620c25dffefec8b243b66714af85235b77efaf98b6a7a4ce15c7b3bc852  backgroundMusic-ogg-2024-03-19-11-10-30.rcc
 description = Educational activities for children aged 2 to 10 — reading, counting, science, games and art
 homepage    = https://gcompris.net/
+license     = GPL-3.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtmultimedia qt6-qtsvg qt6-qtimageformats qt6-qttools qt6-qtsensors qt6-qtgraphs qt6-qtquick3d qt6-qtwayland openssl

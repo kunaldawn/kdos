@@ -1,0 +1,19 @@
+--- a/chirp/__init__.py
++++ b/chirp/__init__.py
+@@ -13,4 +13,4 @@
+ # You should have received a copy of the GNU General Public License
+ # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ 
+-CHIRP_VERSION = "py3dev"
++CHIRP_VERSION = "next-20260927"
+--- a/setup.py
++++ b/setup.py
+@@ -5,7 +5,7 @@
+       description='A cross-platform cross-radio programming tool',
+       packages=find_packages(include=["chirp*"]),
+       include_package_data=True,
+-      version=0,
++      version='20260927',
+       url='https://chirp.danplanet.com',
+       python_requires=">=3.10,<4",
+       install_requires=[

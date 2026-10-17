@@ -16,6 +16,7 @@ sha256      = 1ba41875b918db73c6a409ad8f552b85f72dfeea43ffb541b798322ff6b4152b  
 sha256      = a31b71f90a2d519a30501eeaaa4873da87d7c8210dcd1981ce0fee9d9e48a9b1  gopls-vendor-0.23.0.tar.xz
 description = The Go language server
 homepage    = https://pkg.go.dev/golang.org/x/tools/gopls
+license     = BSD-3-Clause
 depends     = go
 vendoring   = go
 vendordir   = gopls

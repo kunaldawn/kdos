@@ -9,6 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./configure --host=$TARGET --prefix=/usr --enable-thread-safe
+./configure --prefix=/usr --enable-thread-safe
 make
 make DESTDIR=$PKG install

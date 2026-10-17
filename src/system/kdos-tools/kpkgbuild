@@ -13,4 +13,5 @@ version     = 1.2.0
 release     = 1
 description = KDOS system tools — kdos, services, getty, screenshots, fetch
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT AND (BSD-2-Clause OR CC0-1.0)
 depends     = kbd procps-ng libpng alsa-utils kdos-pack croc qrencode

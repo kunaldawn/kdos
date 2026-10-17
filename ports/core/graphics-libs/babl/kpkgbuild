@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.gimp.org/pub/babl/${versio
 sha256      = e676507b421d414d49db8627415dc1eadbd787536baa7d6fe94a1f1971cbe73e  babl-0.1.128.tar.xz
 description = Dynamic any-to-any pixel format conversion library, used by GEGL and GIMP
 homepage    = https://gegl.org/babl/
+license     = LGPL-3.0-or-later
 depends     = meson ninja pkgconf lcms2 glib gobject-introspection glib-introspection vala

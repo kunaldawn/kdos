@@ -8,16 +8,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Installed into clang's resource directory, where the driver looks for
-# libclang_rt.*: -fprofile-instr-generate links the profile runtime,
-# -fsanitize=undefined the UBSan one (-fsanitize-minimal-runtime the minimal
-# one), and --rtlib=compiler-rt the builtins and crtbegin/crtend. It is
-# compiled by clang, the compiler that links it.
-#
-# Of the sanitizers only UBSan is built: ASan, TSan, MSan and the rest
-# intercept glibc internals and do not support musl. XRay, libFuzzer, memprof,
-# ORC and the contextual profiler are off with them. DEFAULT_TARGET_ONLY
-# builds for this machine's triple alone rather than every target clang has.
 _triple=$(cc -dumpmachine)
 cmake -S runtimes -B build -G Ninja \
 	-D CMAKE_C_COMPILER=clang \

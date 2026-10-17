@@ -5,8 +5,8 @@ the stick. The first half is the machine as a whole: services and periodic jobs,
 `tty1`, users and groups, storage, networking and the firewall, hardware and device access,
 printing, media and time, updates, diagnosis and logs, copying and rebuilding the medium, and
 tuning builds for this CPU. The second half is what each user sets up in their own home: backups,
-mail, passwords and one-time codes, calendars and contacts, finding files by name, and input
-methods. Each task is given as the command or the file that does it, with the reason the system is
+mail, passwords and one-time codes, calendars and contacts, finding files by name, the language,
+and input methods. Each task is given as the command or the file that does it, with the reason the system is
 arranged that way where the reason affects what you do.
 
 If you are new to KDOS, read [Getting started](getting-started.md) first; this chapter assumes you
@@ -58,9 +58,10 @@ name from `service list`: `service disable ssh` writes a marker that `rcS` never
 
 Enabling and disabling is a marker file, not an edit: `service disable bluetooth` creates the empty
 file `/etc/service.disabled/bluetooth`, and `service enable bluetooth` deletes it. Nothing in
-`/etc/init.d` is rewritten. The live image ships no markers, so every installed service starts; the
-installer writes markers for the services you turn off, and turns off CUPS and sshd by default (see
-[Installation](installation.md)).
+`/etc/init.d` is rewritten. The live image ships one marker, `sshd`, so the SSH server is the one
+installed service that does not start until you enable it; opening `ssh` in the firewall (below)
+enables it. The installer writes markers for the services you turn off, and turns off CUPS and sshd
+by default (see [Installation](installation.md)).
 
 During boot, each script's output goes to `/run/kdos-init.<name>.log` and is then copied to the
 console, so the first thing to read about a service that failed at boot is that file. It lives in
@@ -75,7 +76,7 @@ are absent if that package is removed.
 | `02_modules` | Modules listed in `/etc/modules-load.d` |
 | `03_lvm` | LVM volume groups, activated once at boot, then any `fstab` entry on a logical volume checked and mounted. On a disk boot the initramfs has already activated the groups it saw; this pass catches the rest — every group on a live boot, and any on a disk that appeared after the initramfs ran. A group plugged in later is not activated automatically; run `sudo vgchange -aay` |
 | `05_hostname` | The hostname |
-| `10_sysctl` | Kernel parameters from `/etc/sysctl.conf`: unprivileged `ping`; the name of the fatal signal in the kernel log when a program crashes; the `fs.protected_*` link protections, which stop a user redirecting a root job's write in `/tmp` onto another file; and per-task delay accounting, which `iotop`'s IO% and `htop`'s delay columns read, at a small cost on every wait the kernel accounts |
+| `10_sysctl` | Kernel parameters from `/etc/sysctl.conf`: unprivileged `ping`; the name of the fatal signal in the kernel log when a program crashes; the `fs.protected_*` link protections, which stop a user redirecting a root job's write in `/tmp` onto another file; per-task delay accounting, which `iotop`'s IO% and `htop`'s delay columns read, at a small cost on every wait the kernel accounts; no ICMP redirect accepted or sent; the loose reverse-path filter; and kernel addresses hidden from every account but root |
 | `12_zram` | Compressed swap in RAM — see [Storage](#storage) |
 | `15_userdirs` | `/run/user/<uid>` for every account with a UID from 1000 to 65533, and a delegated cgroup subtree for each with the `cpu`, `memory` and `pids` controllers, which is what lets rootless podman apply a *box*'s memory and CPU limits (a box is the rootless container one application runs in; see [the glossary](../06-reference/glossary.md)) |
 | `18_timers` | Periodic jobs: one supervised `snooze` per line of `/etc/kdos/timers.d` — see [Periodic jobs](#periodic-jobs) |
@@ -89,6 +90,7 @@ are absent if that package is removed.
 | `42_modemmanager` | ModemManager: mobile broadband modems, for NetworkManager and `mmcli`. Started at boot rather than on demand for the same reason as polkit |
 | `42_networkmanager` | NetworkManager |
 | `43_boltd` *(bolt)* | Thunderbolt. Only when `/sys/bus/thunderbolt/devices` is non-empty, it calls `org.freedesktop.bolt` so the bus starts `boltd`. A device plugged in later is handled by the `bolt` package's udev rule |
+| `44_switcheroo-control` *(switcheroo-control)* | `net.hadess.SwitcherooControl` on the system bus, which tells a launcher which GPU is discrete and what environment starts a program on it; KIO's "run on the discrete GPU" and `switcherooctl launch` read it. Skipped when the machine has fewer than two GPUs |
 | `45_avahi` | mDNS: finding printers and other machines on the local network by name |
 | `45_seatd` | Seat management, which the desktop needs |
 | `46_hostapd` | A wireless access point, only when `/etc/hostapd/hostapd.conf` exists — see [An access point with hostapd](#an-access-point-with-hostapd) |
@@ -107,12 +109,13 @@ are absent if that package is removed.
 | `58_mountd` | Removable media for the desktop |
 | `59_packd` | `kdos-packd`, which mounts application *packs*: signed EROFS images holding an application, runtime, base or dataset, which boxes are built over. See [Packs and boxes](../03-architecture/packs-and-boxes.md) |
 | `60_bluetooth` | Bluetooth |
+| `61_spacenavd` *(spacenavd)* | The 3D mouse daemon. It finds 3Dconnexion devices as they are plugged in and serves them on `/run/spnav.sock`, the socket every libspnav client (FreeCAD, OpenSCAD, KiCad, Blender) connects to. `/etc/spnavrc`, absent by default, sets sensitivity, axis mapping and dead zones; `/usr/share/doc/spacenavd/example-spnavrc` is the template. It serves no X11 client, so a program that speaks only the proprietary 3Dconnexion X protocol sees no device |
 | `62_virtlogd` *(libvirt)* | libvirt's log daemon, which keeps each guest's console log |
 | `63_gssd` *(nfs-utils)* | `rpc.gssd`, the Kerberos half of an NFS client, which a `sec=krb5` mount needs. It mounts `rpc_pipefs` at `/var/lib/nfs/rpc_pipefs` first. Skipped until `/etc/krb5.keytab` exists |
 | `63_libvirtd` *(libvirt)* | libvirt's management daemon for `qemu:///system`. Its polkit rule lets members of the `libvirt` group manage guests |
 | `64_lircd` *(lirc)* | The infrared remote daemon, skipped until a receiver is present (a `/dev/lirc*` node or an rc-core device). Its socket `/run/lirc/lircd` is what Kodi, VLC and other LIRC clients read |
 | `65_brltty` *(brltty)* | The console screen reader, skipped until `/etc/brltty.conf` exists. Its speech goes straight to the sound card, so it cannot speak while a desktop session's PipeWire holds the card. See [Accessibility](accessibility.md) |
-| `70_sshd` | The SSH server. Before the first start it generates every missing host key type with `ssh-keygen -A`. The shipped firewall blocks port 22 until you open `ssh` |
+| `70_sshd` | The SSH server, disabled until you enable it (the image ships `/etc/service.disabled/sshd`). Opening `ssh` in the firewall enables and starts it, and closing `ssh` disables and stops it. Before the first start it generates every missing host key type with `ssh-keygen -A` |
 | `71_snmpd` *(net-snmp)* | The SNMP agent, as root, skipped until a non-empty `/etc/snmp/snmpd.conf` exists; it logs to syslog. Open the `snmp` firewall name for other machines |
 | `72_nfsd` *(nfs-utils)* | The NFSv4 server, skipped until `/etc/exports` names a share. It loads `nfsd`, supervises `nfsdcld` (the client records a restarted server needs) and `nfsv4.exportd`, runs `exportfs -r`, then starts the kernel threads with `rpc.nfsd -N 3 -V 4`. NFSv3 is off, so no portmapper, `rpc.mountd` or lock daemon runs. After editing `/etc/exports`, run `sudo exportfs -r`. Open the `nfs` firewall name for other machines |
 | `73_mosquitto` *(mosquitto)* | The MQTT broker, as the `mosquitto` account, skipped until `/etc/mosquitto/mosquitto.conf` exists. With no configuration the broker listens on loopback only; a `listener 1883` line there, plus the `mqtt` firewall name, lets devices on the LAN reach it |
@@ -135,9 +138,10 @@ are absent if that package is removed.
 
 ### Shutdown
 
-Shutdown runs the same set backwards. `/etc/init.d/rcK` is the first `::shutdown` entry in
-`/etc/inittab`; it runs each enabled script with `stop`, in reverse order, before swap is turned
-off and filesystems are unmounted, so a service can still save its state. A service that fails to
+Shutdown runs the same set backwards. `poweroff`, `reboot` and `shutdown` ask init for runlevel 0
+or 6, and `/etc/init.d/rcK` is the first entry of those runlevels in `/etc/inittab`; it runs each
+enabled script with `stop`, in reverse order, before the remaining processes are ended, swap is
+turned off and filesystems are unmounted, so a service can still save its state. A service that fails to
 stop does not hold up the rest. The firewall is not stopped: it stays loaded until power-off, so
 the machine is never on the network unfiltered. See
 [Boot and init](../03-architecture/boot-and-init.md#shutdown).
@@ -149,6 +153,7 @@ why, instead of being started and left to fail:
 
 | Script | Skipped when |
 |---|---|
+| `44_switcheroo-control` | Fewer than two GPUs under `/sys/class/drm` |
 | `54_thermald` | The processor is not Intel |
 | `56_energyd` | No readable CPU energy counter (`/sys/class/powercap/*/energy_uj`) |
 | `57_oomd` | `/proc/pressure/memory` is not writable (pressure stall information is off) |
@@ -190,7 +195,7 @@ NAME  TIMESPEC...  --  COMMAND...
 Blank lines and lines starting with `#` are ignored. For example, the shipped update check:
 
 ```text
-update-check  -H 4 -M 17 -s 8h  --  kdos update check --json --out /var/lib/kdos/update.json
+update-check  -H 4 -M 17 -s 8h  --  kdos update check --fetch --out /var/lib/kdos/update.json
 ```
 
 `snooze` is a small program that sleeps until the clock matches its options, runs a command once
@@ -227,7 +232,7 @@ The jobs that ship in the system table:
 
 | File | Runs | When | Why then |
 |---|---|---|---|
-| `10-update-check.timer` | `kdos update check --json --out /var/lib/kdos/update.json` | 04:17, slack 8 h | Not midnight, when every other machine runs its jobs |
+| `10-update-check.timer` | `kdos update check --fetch --out /var/lib/kdos/update.json` | 04:17, slack 8 h | Not midnight, when every other machine runs its jobs and asks the same server |
 | `20-fstrim.timer` | `fstrim -a` | 12:47, slack 20 h | See below |
 | `30-fwupd-refresh.timer` (added by the `fwupd` package) | `fwupdmgr refresh` | 13:43, slack 20 h | The firmware metadata, so `fwupdmgr get-updates` has something to compare against |
 
@@ -292,6 +297,8 @@ below. The installer asks for its password; on the live image it is `kdos`.
 - **`wheel`** is what `sudo` and polkit grant on, and what the root daemons check (through the
   socket's peer credentials) before accepting a configuration change. The `sudo` grant is the one
   line `%wheel ALL=(ALL) ALL` in `/etc/sudoers.d/00-sudo`, which asks for your own password.
+  The same file keeps `EDITOR`, `VISUAL` and `SUDO_EDITOR` through `sudo`, so `sudoedit` and
+  `visudo` open the editor your shell names; without one they open `nvim`, else `nano`.
 - **`seat`** alone reaches suspend, power-off, reboot and removable-media mounting. An account in
   `seat` but not `wheel` can run a desktop and power it down, but cannot administer the machine.
 
@@ -448,6 +455,16 @@ PKCS#11 hardware tokens are not supported by the OpenVPN build. WireGuard works 
   `DNS=` servers go to the local `dnsmasq` for the tunnel's domains.
 - `wg-quick up wg0` hands a `DNS=` line to `resolvconf`, which makes the tunnel's servers the only
   ones in `/etc/resolv.conf` until `wg-quick down wg0`.
+
+**Web servers that ask for a Windows sign-in.** libsoup, the HTTP library under WebKitGTK,
+GStreamer's network sources, GeoClue and gvfs, answers both challenges an Active Directory web
+service sends. *Negotiate* is answered with the Kerberos ticket `kinit` left in your credential
+cache. *NTLM* first tries single sign-on through Samba's `/usr/bin/ntlm_auth`, which is why every
+libsoup consumer installs `samba`; that helper signs on only from `winbindd`'s cached credentials,
+and Samba here is built without winbind, so the attempt fails and libsoup answers NTLM itself with
+the password the application asks for. libsoup's TLS is glib-networking's GIO
+module, loaded at run time, so a system without `glib-networking` fails every `https` request at
+the handshake with "TLS/SSL support not available".
 
 **Mobile broadband** is a NetworkManager connection like any other. ModemManager finds a built-in
 WWAN card or a USB modem (MBIM, QMI, QRTR or AT). Connect it with
@@ -635,9 +652,10 @@ table, which leaves the machine unfiltered until the next start.
 
 ### Firmware
 
-`linux-firmware` ships whole, installed with upstream's own script so that the alias links drivers
-ask for exist. A trimmed subset would be a guess about your hardware, and a wrong guess fails
-silently.
+`linux-firmware` is installed with upstream's own script so that the alias links drivers ask for
+exist. It ships every blob an x86 kernel can request: only firmware for hardware this kernel cannot
+drive is left out (see the [ports catalogue](../06-reference/ports-catalogue.md#boot)). Trimming by
+guessing at your hardware would fail silently, so nothing an x86 driver names is removed.
 
 `sof-firmware` is separate and is needed for audio on Intel Tiger Lake and newer. It carries both
 the DSP firmware and the topology files; firmware without its topology loads and produces no sound.
@@ -911,7 +929,9 @@ an ICC profile.
 
 **Time zones.** The zone data is a compiled zoneinfo tree that musl reads directly, built in the
 "fat" format rather than "slim". Applications in containers read the same tree, and a format they
-misread would make the host and its containers disagree about local time.
+misread would make the host and its containers disagree about local time. The tree also carries
+`tzdata.zi`, the text form of the same release, which C++ `std::chrono` time zones read; without it
+libstdc++ falls back to the older copy compiled into it.
 
 The zone is set with `kdos-time` (Date and time in Settings, under System) or
 `kdos-power timezone <Area/City>`, both of which need membership of `wheel`. `kdos-powerd` then
@@ -927,33 +947,40 @@ shows whether it is synchronised.
 ```sh
 kdos cve                  # which installed versions have known vulnerabilities, offline
 kdos cve --json           # the same, as JSON
-kdos update check         # what the ports tree pins that is not installed
-kdos update apply         # install it: prebuilt package first, else compile (see A/B root slots)
+kdos update fetch         # the newest signed ports tree, over the network, as /ports
+kdos update check         # what the ports tree pins that is not installed, and what went wrong
+kdos update apply         # fetch the sources and build it all here (see A/B root slots)
 kdos app install <id>     # install a boxed application (to update one, see Applications below)
 ```
 
 **Vulnerabilities.** `kdos cve` compares your installed versions against a copy of Alpine's security
 database shipped in `/usr/share/kdos/secdb.txt`, with no network. It exits 1 when any package is
 behind a recorded fix and 0 otherwise. A package that database does not carry is counted as
-*unknown*, not clean, and the summary says how many there are. Every run prints the database's
-date, and warns when it is more than 180 days old.
+*unknown*, not clean, and the summary says how many there are. A library a program compiles into
+itself, such as the AWS-LC inside six Rust programs, is listed under *bundled copies* with its
+version, and checked like a package. Every run prints the database's date, and warns when it is
+more than 180 days old.
 
 **Host packages** are built from *ports* — the recipes in the KDOS source tree (see the
 [glossary](../06-reference/glossary.md)). What counts as "an update" is a newer ports tree, so
-`kdos update` needs one on the machine. `PORT_REPO` in `/etc/kpkg.conf` names it: a
-space-separated list of recipe directories, `/ports/core` by default. The KDOS source tree keeps its
-recipes in five directories — `ports/core` for upstream software, each port one shelf down in
-`ports/core/<shelf>/<name>/`, and `src/system`, `src/art`, `src/desktop` and `src/daemons` for
-KDOS's own programs — so name all five. A repository is searched for a port at `<name>/` and one
-shelf down, never deeper; the shelves are not listed separately. For a complete checkout of the
-KDOS repository at `DIR`:
+`kdos update` needs one on the machine, and every image carries one at `/ports`: each port's
+`kpkgbuild`, `build.sh` and patches, `ports/shelves`, `ports/sources.idx`, KDOS's own programs
+under `/ports/src` and the book they render under `/ports/docs`, with no source archive. `PORT_REPO` in `/etc/kpkg.conf` names where `kpkg`
+looks: a space-separated list of recipe directories, by default the five of that tree,
+`/ports/core /ports/src/system /ports/src/art /ports/src/desktop /ports/src/daemons`. The KDOS
+source tree keeps its recipes in the same five directories — `ports/core` for upstream software,
+each port one shelf down in `ports/core/<shelf>/<name>/`, and `src/system`, `src/art`,
+`src/desktop` and `src/daemons` for KDOS's own programs. A repository is searched for a port at
+`<name>/` and one shelf down, never deeper; the shelves are not listed separately. For a complete
+checkout of the KDOS repository at `DIR`:
 
 ```sh
 PORT_REPO="DIR/ports/core DIR/src/system DIR/src/art DIR/src/desktop DIR/src/daemons"
 ```
 
-A stick built with `KDOS_ISO_SOURCES=1` carries such a tree under `/mnt/iso/sources` (see
-[kdos rebuild](#kdos-rebuild)), whose five directories can be named the same way. Without a ports tree `kdos update` says
+A stick built with `KDOS_ISO_SOURCES=1` also carries the whole tree, fetched sources included,
+under `/mnt/iso/sources` (see [kdos rebuild](#kdos-rebuild)), whose five directories can be named
+the same way. Without a ports tree `kdos update check` says
 so and exits 2. The
 [ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf, with the phase that builds it, and
 [How KDOS is built](../05-developer/how-kdos-is-built.md) follows a port from recipe to installed
@@ -961,23 +988,28 @@ package.
 
 | Command | Does |
 |---|---|
-| `kdos update check` | Lists installed packages that differ from the ports tree. `--json` prints JSON; `--out PATH` writes that JSON to a file (the nightly timer uses this for the panel's update badge) |
-| `kdos update apply` | Installs each out-of-date package, from the binary host where it has a matching package, otherwise by compiling it. `--dry-run` shows what would happen; `--binhost-only` never compiles; `--root DIR` installs into another root |
+| `kdos update fetch` | Downloads the latest release's ports tree, checks its signature against `/etc/kdos/keys/tree`, and installs it as `/ports`. A tree older than the installed one is refused. `--from URL` or `--from DIR` (a stick holding `kdos-ports.tar.xz` and its `.sig`) reads it from elsewhere |
+| `kdos update check` | Lists installed packages that differ from the ports tree, and the last problem: no tree, no network, a fetch or a build that failed. `--json` prints JSON; `--out PATH` writes that JSON to a file; `--fetch` runs `fetch` first (the nightly timer uses both, for the panel's update badge) |
+| `kdos update apply` | Downloads the sources of every out-of-date package, then builds and installs each one. `--dry-run` lists what would be built; `--root DIR` installs into another root |
 | `kdos update theme` | Re-runs the theme generators for your home directory after an artwork upgrade |
 
-A *binary host* (binhost) is a signed directory of prebuilt packages — on a USB stick, an NFS mount
-or any local path; `kdos update` never downloads. Name it with `binhost = /path/to/repo` in
-`/etc/kdos/update.conf`, or with the `KDOS_BINHOST` environment variable. There is no public binary
-host; see [Packaging](../03-architecture/packaging.md#the-binary-host) for making one.
-
-Compiling needs the source archives the new recipes name, and `kpkg` never downloads them: they
-must already be in the port directory or in `/var/cache/kpkg/sources`. In a checkout, `make fetch`
-places them — it is the only step that uses the network. See
-[Developing](../05-developer/developing.md#where-sources-come-from).
+**Updates are built here, from source, and need the network.** There is no binary package server.
+`kdos update fetch` downloads the newer recipe tree, and `kdos update apply` downloads every source
+it names, from the KDOS source archive first and from upstream second, each checked against the
+recipe's `sha256 =` before use. It fetches them all before it compiles anything, so a machine that
+is offline finds out in minutes. Then it compiles every package that is behind on this machine:
+a few packages take minutes, a large set (a new compiler, a browser, Qt) takes hours. `fetch` and
+`apply` run as root. `tree = URL` or `tree = DIR` in `/etc/kdos/update.conf` sets where trees come
+from instead of the latest release. The panel's update badge counts the packages behind, and turns
+to the warning colour, or to `!` when nothing is behind, when the last fetch or apply failed or the
+machine has no tree; hovering it says which.
 
 **A/B root slots.** On a machine installed with two root slots, `kdos update apply` installs into
-the inactive slot, which must be mounted, then installs that slot's kernel with
-`kdos-bootctl deploy` and marks the slot to be tried on the next boot. The running system is not
+the inactive slot, which must be mounted, checks it with `kpkg check` (a missing file, or a
+changed one outside `/etc`, stops it; configuration edited under `/etc` is listed and does not),
+copies `/ports` into it,
+then installs that slot's kernel with `kdos-bootctl deploy` and marks the slot to be tried on the
+next boot. The running system is not
 touched, so a bad update can be rolled back by booting the other slot. If the inactive slot is not
 mounted it refuses; `--in-place` updates the running root instead and gives up that rollback. See
 [Boot and init](../03-architecture/boot-and-init.md) for how a tried slot is confirmed, and
@@ -1327,6 +1359,19 @@ because they read and write a different index format.
 Upstream plocate is a setgid program reading one shared index for the whole machine; KDOS ships
 neither the setgid bit nor the shared index. The reasoning is in
 [the security model](../03-architecture/security-model.md#no-setgid-binaries-and-a-per-user-locate-index).
+
+## Language
+
+KDOS is in English, and only English. Every package is made without its translations: the
+message catalogs, the Qt translations, the translated KDE handbooks and the translated manual pages
+are removed as it is built (see
+[the size and language policy](../05-developer/writing-ports.md#size-and-language-policy)), so
+there is no other language for a program to switch to. `/etc/profile` sets `LANG=C.UTF-8`; setting
+`LANG` or `LC_MESSAGES` to another language changes no program's menus or messages.
+
+Writing in another language is unaffected. The fonts cover every script, the keyboard layout is
+yours to choose, and the input methods below type Chinese, Japanese and Korean. What is missing is
+listed in [Known gaps](../06-reference/known-gaps.md#every-program-speaks-english).
 
 ## Input methods
 

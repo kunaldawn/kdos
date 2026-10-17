@@ -9,67 +9,21 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The help tarball unpacks as libreoffice-$version/helpcontent2, which is
-# $SRC/helpcontent2: --with-help finds it there and needs nothing else.
-#
-# THE VENDOR BUNDLE IS EVERY FILE download.lst NAMES, each at the name and
-# sha256 download.lst gives it. --with-external-tar points the build at them
-# and --disable-fetch-external makes a missing one a build error rather than a
-# download. Which of them are unpacked is decided by the --with-system-* and
-# --without-system-* flags below, so a flag moved from one list to the other
-# needs no new source. Rebuild the bundle on a version bump: every
-# *_SHA256SUM / *_TARBALL (or _JAR, _TTF) pair from the new download.lst,
-# fetched from https://dev-www.libreoffice.org/src or /extern and checked
-# against its sum, under externals/, packed with ports/fetch's vendor_tar
-# flags plus --mode=go-w.
 tar -xf "$PORT_SRC/$name-vendor-$version.tar.xz" -C "$SRC_ROOT"
 
-# The gettext port's libintl.h renames bindtextdomain to
-# libintl_bindtextdomain, which musl does not define: unotools, which calls
-# it, links -lintl or it does not link.
 patch -p1 -i "$PORT_SRC/musl-libintl.patch"
-# musl gives a new thread 128 KiB of stack; the parser and layout threads
-# overflow it. The patch makes sal size every thread's stack itself.
 patch -p1 -i "$PORT_SRC/musl-stacksize.patch"
-# The -Wsfinae-incomplete probe in configure saves $CFLAGS and restores it
-# as $CXXFLAGS, so every later C++ probe passes -std=gnu11 to g++ and, with
-# -Werror, fails; the C++20 probe then stops the configure. The patch saves
-# $CXXFLAGS.
-#
-# Both configure patches change configure alone: a configure.ac newer than
-# the configuration makes the build rerun autogen.sh.
 patch -p1 -i "$PORT_SRC/sfinae-probe-cxxflags.patch"
-# configure demands GNU cp unless the system is a BSD, where it leaves GNUCP
-# empty and gbuild delivers files with cp -P -f and touch -hr. toybox-cp
-# takes linux-musl down that branch: cp and touch here are toybox's, which
-# take those options.
-patch -p1 -i "$PORT_SRC/toybox-cp.patch"
+patch -p1 -i "$PORT_SRC/externals-ldflags.patch"
 
-# The top-level Makefile refuses to run as root unless $container is set.
-# The chroot build is root.
 export container=kdos-chroot
 
 export QT6DIR=/usr/lib/qt6
 
-# Unless both are set, configure asks distutils for pyuno's embedding flags,
-# and distutils left the standard library in Python 3.12.
 PYTHON_CFLAGS=$(pkg-config --cflags python3-embed)
 PYTHON_LIBS=$(pkg-config --libs python3-embed)
 export PYTHON_CFLAGS PYTHON_LIBS
 
-# System libraries where a port exists and LibreOffice accepts any release of
-# it. Built from the bundle: every library with no port; harfbuzz and
-# graphite, because a system harfbuzz must carry graphite2 and icu support,
-# which the harfbuzz port leaves out; and boost, abseil, poppler, mdds and
-# orcus, whose C++ APIs LibreOffice pins to the release download.lst names.
-#
-# Off by rule: Java (and with it HSQLDB, the report builder, BeanShell and
-# Rhino), the CMIS cloud connectors, the Impress remote, online update and
-# extension-update checks, and breakpad. Firebird is off because it is
-# unproven on musl, so Base has no embedded database: it connects to
-# PostgreSQL, LDAP and file sources (dBase, CSV, spreadsheets). Skia is off:
-# gtk3 and qt6 draw through cairo and Qt, and only the plain X11 backend
-# would use it.
 bash ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -167,8 +121,8 @@ bash ./configure \
 	--with-system-libwpg \
 	--with-system-libcdr \
 	--with-system-libvisio \
-	--without-system-harfbuzz \
-	--without-system-graphite \
+	--with-system-harfbuzz \
+	--with-system-graphite \
 	--without-system-boost \
 	--without-system-abseil \
 	--without-system-poppler \
@@ -207,27 +161,13 @@ bash ./configure \
 	--without-system-zxcvbn \
 	--without-system-odbc
 
-# gbuild adds ENVCFLAGS and ENVCFLAGSCXX to every library it compiles itself.
-# _LARGEFILE64_SOURCE has musl's headers define stat64, fstat64 and lseek64 as
-# the plain calls, which CLucene's Linux configuration names; without it the
-# help indexer's search library does not compile.
 export ENVCFLAGS=-D_LARGEFILE64_SOURCE ENVCFLAGSCXX=-D_LARGEFILE64_SOURCE
 
-# `make` alone also runs the unit tests; `build` is the product.
 make build
 make DESTDIR="$PKG" distro-pack-install
 
-# distro-pack-install leaves its per-module file lists (gid_Module_*) as plain
-# files at the top of DESTDIR, where a distribution splitting the suite reads
-# them. One package owns every path, and a file at / would be installed there.
 find "$PKG" -mindepth 1 -maxdepth 1 -type f -delete
 
-# The entries in share/applications are absolute links into
-# /usr/lib/libreoffice/share/xdg. They resolve in the image and dangle
-# anywhere else, so preflight's name, icon and command checks would skip
-# every one of them. A copy is checked like any other entry. The link is
-# removed before the copy: toybox's cp follows a destination link, and this
-# one leads nowhere inside $PKG.
 for _e in "$PKG"/usr/share/applications/*.desktop; do
 	[ -L "$_e" ] || continue
 	_t=$(readlink "$_e")
@@ -236,10 +176,6 @@ for _e in "$PKG"/usr/share/applications/*.desktop; do
 	chmod 644 "$_e"
 done
 
-# Settings layered over the defaults, read like any other .xcd in the
-# registry directory: no donation or get-involved bars, no what's-new bar or
-# dialog after an upgrade (each opens a web page), and no crash-report
-# consent, since no reporter is built.
 cat > "$PKG/usr/lib/libreoffice/share/registry/kdos.xcd" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <oor:data xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:oor="http://openoffice.org/2001/registry">

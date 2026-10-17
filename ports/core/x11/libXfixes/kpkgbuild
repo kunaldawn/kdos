@@ -15,4 +15,5 @@ source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
 sha256      = 39f115d72d9c5f8111e4684164d3d68cc1fd21f9b27ff2401b08fddfc0f409ba  libXfixes-6.0.2.tar.xz
 description = X11 XFIXES extension client library
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libXfixes
+license     = MIT AND HPND-sell-variant
 depends     = libX11 xorgproto

@@ -15,4 +15,5 @@ source      = https://github.com/void-linux/musl-obstack/archive/v$version.tar.g
 sha256      = 9ffb3479b15df0170eba4480e51723c3961dbe0b461ec289744622db03a69395  musl-obstack-1.2.3.tar.gz
 description = Obstack standalone library
 homepage    = https://github.com/void-linux/musl-obstack
+license     = LGPL-2.1-or-later
 depends     = pkgconf autoconf automake libtool

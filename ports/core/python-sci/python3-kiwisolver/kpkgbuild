@@ -15,4 +15,5 @@ source      = https://files.pythonhosted.org/packages/source/k/kiwisolver/kiwiso
 sha256      = f1303ef2eec81262a4b708c3e858afe58d7c75ad91c1c05266eda7673369859a  python3-kiwisolver-1.5.1.tar.gz
 description = Cassowary constraint solver — matplotlib's layout engine
 homepage    = https://pypi.org/project/kiwisolver/
+license     = BSD-3-Clause
 depends     = python3 python3-setuptools python3-pip python3-setuptools-scm python3-cppy

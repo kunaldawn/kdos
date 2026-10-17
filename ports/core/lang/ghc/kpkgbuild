@@ -24,5 +24,6 @@ sha256      = 9928e01d2f49b7b75b2a4f1c37cf5de31cdcf68cd063cc3b3a010aa4d99f3962  
 sha256      = 1108bc8401e74b49f71d7dd237c8b1fbfdd5d55cbcdd11ec9a9e6a6eb87d9d1f  ghc-vendor-9.12.4.tar.xz
 description = The Glasgow Haskell Compiler, its libraries and GHCi
 homepage    = https://www.haskell.org/ghc/
+license     = BSD-3-Clause
 vendoring   = haskell
 depends     = gcc gmp libffi ncurses python3 python3-sphinx autoconf automake

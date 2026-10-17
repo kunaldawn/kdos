@@ -9,15 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The zstd port installs no CMake package, so the zstd patch finds it through
-# pkg-config; without it the lookup fails quietly and zstd-compressed
-# point clouds are unreadable.
-#
-# Google Cloud Storage is a network reader and is off. The plugins built are
-# those whose libraries are ports: Draco, HDF and ICESat (HDF5), E57
-# (xerces-c), pgpointcloud (PostgreSQL) and trajectory (Ceres). Arrow, CPD,
-# FBX, MBIO, NITF, OpenSceneGraph, RiVLib, rdblib, SPZ, TEASER++, TileDB and
-# MATLAB each need a library the tree does not carry.
 patch -p1 -i "$PORT_SRC/10-zstd.patch"
 cmake -S . -B build -G Ninja \
 	-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -59,7 +50,5 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-# Installed here rather than by WITH_COMPLETION, whose destination depends on
-# which completion directory the build machine happens to have.
 install -Dm644 scripts/bash-completion/pdal \
 	"$PKG/usr/share/bash-completion/completions/pdal"

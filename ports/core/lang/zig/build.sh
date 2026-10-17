@@ -21,7 +21,7 @@ cmake -B build -G Ninja \
 	-D ZIG_STATIC_LLVM=OFF \
 	-D ZIG_STATIC_ZLIB=ON \
 	-D ZIG_STATIC_ZSTD=ON \
-	-D ZIG_PIE=OFF \
+	-D ZIG_PIE=ON \
 	-Wno-dev
 CCACHE_DISABLE=1 cmake --build build
 DESTDIR=$PKG cmake --install build

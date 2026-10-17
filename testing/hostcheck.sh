@@ -17,11 +17,12 @@
 #       --root-script testing/hostcheck.sh --script-timeout 240
 #
 # THE blkid BLOCK IS THE REASON THIS FILE EXISTS. Every UUID lookup in the
-# initramfs is `blkid -U`, toybox's applet implements no such lookup and
-# cannot see `crypto_LUKS`, and $PATH puts /usr/bin ahead of /usr/sbin — so
-# the question "which blkid answers" decides whether an installed machine
-# boots at all. It is asked here against a real LUKS container because a
-# stub cannot answer it.
+# initramfs is `blkid -U`, a prober without that lookup or without
+# `crypto_LUKS` drops an installed machine to a shell, and $PATH puts /usr/bin
+# ahead of /usr/sbin, so a blkid under /usr/bin would shadow util-linux's. The
+# question "which blkid answers" decides whether an installed machine boots at
+# all. It is asked here against a real LUKS container because a stub cannot
+# answer it.
 # ---------------------------------
 set -u
 rc=0
@@ -34,8 +35,8 @@ W=$(command -v blkid)
 echo "  PATH resolves blkid -> $W"
 if blkid --version 2>&1 | grep -qi "util-linux"; then ok "PATH blkid is util-linux's"
 else bad "PATH blkid is not util-linux's: $(blkid --version 2>&1 | head -1)"; fi
-[ -e /usr/bin/blkid ] && bad "/usr/bin/blkid still exists (toybox's name)" \
-                      || ok "toybox claims no blkid"
+[ -e /usr/bin/blkid ] && bad "/usr/bin/blkid exists and shadows /usr/sbin/blkid" \
+                      || ok "nothing shadows /usr/sbin/blkid"
 
 echo
 echo "== and it can do what the initramfs asks of it =="

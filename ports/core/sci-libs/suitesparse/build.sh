@@ -9,14 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Every project but GraphBLAS and LAGraph: Octave's sparse algebra links
-# AMD, CAMD, COLAMD, CCOLAMD, CHOLMOD, CXSparse, KLU, SPQR and UMFPACK, and
-# GraphBLAS is a run-time JIT compiler that nothing here links.
-# BLA_VENDOR pins OpenBLAS with 32-bit integers, the ABI the openblas port
-# builds and Octave's default indexing expects; a mismatched integer width
-# corrupts every BLAS call rather than failing the link. SUITESPARSE_USE_STRICT
-# turns a missing OpenMP or Fortran into a configure error instead of a
-# slower library.
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

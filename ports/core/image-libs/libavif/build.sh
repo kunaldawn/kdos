@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# dav1d decodes, svt-av1 encodes. libaom would be a second encoder and
-# decoder for the same format, so it stays off.
-#
-# avifgainmaputil builds libargparse through FetchContent. Pointing its source
-# directory at the second source keeps the build off the network; without it
-# the configure step clones from GitHub.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -44,10 +38,6 @@ cmake .. \
 make
 make DESTDIR=$PKG install
 
-# The pages are pandoc markdown and upstream renders them with pandoc.
-# lowdown renders them without putting GHC in this port's build. Their title
-# block reads 'AVIFENC(1) | General Commands Manual', so title and section
-# are passed rather than parsed.
 install -d "$PKG/usr/share/man/man1"
 for page in avifenc avifdec; do
 	lowdown -s -Tman \

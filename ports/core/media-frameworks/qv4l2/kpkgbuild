@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qv4l2
+version     = 1.32.0
+release     = 1
+source      = v4l-utils-$version.tar.xz::https://linuxtv.org/downloads/v4l-utils/v4l-utils-$version.tar.xz
+sha256      = 6828828a17775526eb93fb258a9294d1d1073d633c344dd71ecd4e7a1ffb7dfc  v4l-utils-1.32.0.tar.xz
+description = qv4l2 and qvidcap — Qt 6 test benches for Video4Linux devices: every control, format and stream, and a capture viewer
+homepage    = https://linuxtv.org/wiki/index.php/V4l-utils
+license     = GPL-2.0-or-later
+group       = v4l-utils
+depends     = v4l-utils meson ninja pkgconf perl gettext libintl libjpeg-turbo eudev argp-standalone qt6-qtbase qt6-qt5compat mesa libglvnd alsa-lib

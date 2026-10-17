@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/release-service/$version/src/$name
 sha256      = dbb3aebe51871bf0d9a6d06cefabe1a081a3305d3d0d21b28e0368ccb49b8149  filelight-26.08.1.tar.xz
 description = Disk usage — folders drawn as concentric rings, sized by what they hold
 homepage    = https://apps.kde.org/filelight/
+license     = GPL-2.0-only OR GPL-3.0-only
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg kio ki18n kcolorscheme kconfig kcoreaddons kcrash kdoctools kirigami qqc2-desktop-style

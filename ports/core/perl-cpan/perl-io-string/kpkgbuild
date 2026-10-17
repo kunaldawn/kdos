@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/G/GA/G
 sha256      = 2a3f4ad8442d9070780e58ef43722d19d1ee21a803bf7c8206877a10482de5a0  perl-io-string-1.08.tar.gz
 description = Emulate a file handle over an in-memory string in perl
 homepage    = https://metacpan.org/dist/IO-String
+license     = Artistic-1.0-Perl OR GPL-1.0-or-later
 depends     = perl

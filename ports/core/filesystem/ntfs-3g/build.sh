@@ -9,15 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# --with-fuse=internal: ntfs-3g's external path wants libfuse 2 and this tree
-# ships fuse 3 only, so the bundled fuse-lite is the one that links.
-# --enable-extras is what builds ntfsprogs — ntfsfix, ntfsresize, ntfsclone,
-# ntfsundelete and the rest. Without it the package is the mount helper alone
-# and the name is only half true.
-# --enable-crypto builds ntfsdecrypt and EFS support against libgcrypt and
-# gnutls. It defaults off, and once asked for it stops if either is missing.
-# --with-uuid gives mkntfs DCE UUIDs from util-linux's libuuid. --without-hd:
-# the Windows boot geometry comes from hwinfo's libhd, which is not a port.
 ./configure \
 	--prefix=/usr \
 	--exec-prefix=/usr \

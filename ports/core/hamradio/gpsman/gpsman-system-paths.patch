@@ -1,0 +1,20 @@
+--- a/gpsman.tcl
++++ b/gpsman.tcl
+@@ -226,7 +226,7 @@
+ 	set USERTMPDIR $USERDIR/.tmp
+ 	# default HTTP address of the HTML version of the user manual
+ 	#  set to "" if unavailable
+-	set DEFTMANHTTPADDR "file:///usr/share/doc/gpsman/html"
++	set DEFTMANHTTPADDR ""
+     }
+     default {
+ 	set UNIX 0 ; set CMDLINE 0
+@@ -247,7 +247,7 @@
+ }
+ 
+  # path to directory containing program files
+-set SRCDIR gmsrc
++set SRCDIR /usr/share/gpsman/gmsrc
+ 
+ # all other default configuration is now done in file $SRCDIR/config.tcl
+ 

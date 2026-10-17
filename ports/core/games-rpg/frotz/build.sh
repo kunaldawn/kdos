@@ -8,27 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The curses interface and no other. The SDL one wants a window server and the
-# dumb one has no screen model; this desktop is a character grid either way.
-#
-# SOUND_TYPE=none because the alternative is libao or OSS: an interpreter that
-# pulled in an audio stack for the handful of stories that use sound would put
-# it on every image for a feature almost nothing exercises.
-#
-# -Wno-error keeps an upstream -Werror from turning this compiler's newer
-# warnings into failures; 2.55's Makefile adds none, so on this release it has
-# no effect. The Makefile appends -g after CFLAGS, so the debug information is
-# dropped at the link instead.
 export CFLAGS="$CFLAGS -Wno-error"
 export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
 make curses PREFIX=/usr SOUND_TYPE=none
 make install PREFIX=/usr SOUND_TYPE=none DESTDIR=$PKG
 
-# THE TYPE HAS TO EXIST BEFORE AN ENTRY CAN CLAIM IT. shared-mime-info 2.5.1 —
-# the version this image builds — defines no z-machine type at all, so a
-# `MimeType=application/x-zmachine;` line with nothing behind it resolves to
-# nothing and says so nowhere. The opener chain keys off /usr/share/mime/globs,
-# which kpkg regenerates from this directory when the package is installed.
 install -Dm644 /dev/stdin \
 	"$PKG/usr/share/mime/packages/kdos-zmachine.xml" <<'MIMEXML'
 <?xml version="1.0" encoding="UTF-8"?>

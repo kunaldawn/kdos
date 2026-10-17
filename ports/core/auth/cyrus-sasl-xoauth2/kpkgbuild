@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/moriyoshi/$name/archive/
 sha256      = a62c26566098100d30aa254e4c1aa4309876b470f139e1019bb9032b6e2ee943  cyrus-sasl-xoauth2-0.2.tar.gz
 description = The XOAUTH2 SASL mechanism — what mbsync authenticates with where a provider has withdrawn app passwords
 homepage    = https://github.com/moriyoshi/cyrus-sasl-xoauth2
+license     = MIT
 depends     = cyrus-sasl autoconf automake libtool

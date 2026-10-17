@@ -9,12 +9,13 @@
 # ---------------------------------
 
 name        = qt6-qtwebsockets
-version     = 6.11.2
+version     = 6.12.0
 release     = 1
 _module     = qtwebsockets
 source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
-sha256      = 2bfe25c383c37f7690e3c59b02c9907d2744cf8527b1f3f1fc2c785b2ff3c9a3  qt6-qtwebsockets-6.11.2.tar.xz
+sha256      = 21690a365cd5fbfa8dea051473e98968df9f4eca0121fed7481d1215b7455a31  qt6-qtwebsockets-6.12.0.tar.xz
 description = Qt 6 WebSockets — RFC 6455 client and server
 homepage    = https://www.qt.io
+license     = LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 depends     = cmake ninja qt6-qtbase qt6-qtdeclarative
 group       = qt6

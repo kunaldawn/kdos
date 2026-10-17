@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = 373fb23fe6a5c0c5c755c473e7cf272796ea59891c05157c3a7e9607a4c4af4f  kstatusnotifieritem-6.30.0.tar.xz
 description = KDE Frameworks: StatusNotifierItem tray icons over D-Bus
 homepage    = https://invent.kde.org/frameworks/kstatusnotifieritem
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kwindowsystem libX11

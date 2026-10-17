@@ -14,7 +14,12 @@
 # compilers and the tools their builds run, rebuilt natively over what
 # 10_bootstrap installed, so every later phase compiles with a toolchain that
 # built itself.
+#
+# fortify-headers is first: chroot.env compiles every port with
+# -D_FORTIFY_SOURCE=2 against /usr/include/fortify, and a port built before
+# those headers exist is built unchecked.
 
+fortify-headers
 tar
 musl
 zlib

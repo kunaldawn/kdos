@@ -1,7 +1,7 @@
 title: /tmp must be mounted mode=1777
 path: /etc/fstab
 path: /tmp
-port: toybox
+port: util-linux
 see: switch-root-ms-move
 
 `defaults` gives a 0755 root tmpfs that HIDES the 1777 /tmp baked into the

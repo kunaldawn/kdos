@@ -15,4 +15,5 @@ source      = https://github.com/$name/$name/releases/download/rel_${version//./
 sha256      = 0cf29e1183ffd8e4d167c403d7a6ea2109a2dd4cd97e61f80417cf1373220ff4  cdrdao-1.2.6.tar.bz2
 description = Disc-at-once CD writer — audio CDs, CD-TEXT and exact copies
 homepage    = https://cdrdao.sourceforge.net/
+license     = GPL-2.0-or-later
 depends     = pkgconf libao libvorbis libogg libmad lame

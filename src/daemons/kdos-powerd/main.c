@@ -156,6 +156,7 @@ static int explain(const char *user)
  */
 #define KP_DBUS_SEND "/usr/bin/dbus-send"
 #define KP_TLP       "/usr/sbin/tlp"
+#define KP_TELINIT   "/sbin/telinit"
 
 static void nm_sleep(bool asleep)
 {
@@ -216,19 +217,28 @@ static int do_reboot(int cmd)
 {
 	sync();
 	/*
-	 * Ask init first: its first shutdown entry, /etc/init.d/rcK, runs
-	 * every service's stop action, and pulling the power out from under
-	 * NetworkManager and the appbox's containers is how a filesystem ends
-	 * up dirty. SIGUSR2 and SIGTERM to pid 1 are what toybox init answers
-	 * with a poweroff and a reboot.
+	 * Ask init for runlevel 0 or 6: it ends the consoles and then runs
+	 * /etc/init.d/rcK, which runs every service's stop action. Pulling the
+	 * power out from under NetworkManager and the appbox's containers is
+	 * how a filesystem ends up dirty.
 	 *
-	 * reboot(2) is the fallback for an init that ignored the signal, and
-	 * the wait before it must outlast rcK's walk down to 55_powerd, whose
+	 * telinit writes the request to /run/initctl and gives up after 3 s.
+	 * No signal can stand in for it: sysvinit ignores TERM, and USR2
+	 * closes /run/initctl for the rest of the boot, after which no telinit,
+	 * shutdown or reboot reaches init at all.
+	 *
+	 * reboot(2) is the fallback for an init that never acted on the
+	 * request, and the wait before it must outlast init's TERM and KILL of
+	 * the consoles (at most 3 s) plus rcK's walk down to 55_powerd, whose
 	 * stop ends this process: every supervised service ahead of it costs
-	 * ksvc a second. A wait shorter than that walk powers the machine off
+	 * ksvc a second. A wait shorter than that powers the machine off
 	 * mid-shutdown, before the mixer is saved or a filesystem unmounted.
 	 */
-	kill(1, cmd == RB_POWER_OFF ? SIGUSR2 : SIGTERM);
+	KbArgv a = {0};
+	kb_argv_add(&a, KP_TELINIT);
+	kb_argv_add(&a, cmd == RB_POWER_OFF ? "0" : "6");
+	kb_argv_end(&a);
+	(void)kb_run(&a);
 	sleep(60);
 	reboot(cmd);
 	return -1;		/* only reached if reboot(2) itself failed */
@@ -415,6 +425,40 @@ static int fw_write(const int *on, char *out, size_t nout)
 	return 0;
 }
 
+/*
+ * `ssh` IS A DAEMON AS WELL AS A PORT. sshd ships disabled — the marker
+ * /etc/service.disabled/sshd is in the image — because the live accounts have
+ * known passwords, and opening port 22 is how the desktop turns it on. On
+ * takes the marker away and starts sshd; off puts the marker back and stops
+ * it, so a closed port never hides a listening daemon that one more toggle,
+ * or a hand-written rule beside this file, would expose. The marker is what
+ * the next boot obeys; the start and stop are this boot.
+ */
+#define FW_SSHD_INIT "/etc/init.d/70_sshd.sh"
+
+static void fw_sshd(int on)
+{
+	char dir[320], marker[352];
+
+	snprintf(dir, sizeof(dir), "%s/service.disabled", fw_etc());
+	snprintf(marker, sizeof(marker), "%s/sshd", dir);
+	if (on) {
+		unlink(marker);
+	} else {
+		(void)mkdir(dir, 0755);
+		(void)kb_write_file(marker, "");
+	}
+	if (getenv("KDOS_POWERD_ETC"))
+		return;
+
+	KbArgv a = { 0 };
+
+	kb_argv_add(&a, FW_SSHD_INIT);
+	kb_argv_add(&a, on ? "start" : "stop");
+	kb_argv_end(&a);
+	(void)kb_run(&a);
+}
+
 static int fw_verb(const char *arg, char *out, size_t nout)
 {
 	int on[FW_N];
@@ -456,6 +500,8 @@ static int fw_verb(const char *arg, char *out, size_t nout)
 		on[i] = want;
 		if (fw_write(on, out, nout) != 0)
 			return -1;
+		if (!strcmp(name, "ssh"))
+			fw_sshd(want);
 		snprintf(out, nout, "ok %s %s\n", name, want ? "on" : "off");
 		return 0;
 	}

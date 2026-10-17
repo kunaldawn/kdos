@@ -14,5 +14,4 @@
 make
 make DESTDIR=$PKG install
 
-# move_pages(2) is the system call's page, and man-pages owns that file.
 rm -r "$PKG/usr/share/man/man2"

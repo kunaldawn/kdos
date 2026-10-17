@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libdbusmenu-lxqt
+version     = 0.4.0
+release     = 1
+source      = https://github.com/lxqt/libdbusmenu-lxqt/releases/download/$version/$name-$version.tar.xz
+sha256      = b7f94d653559f021932aada76291e933535431a337c39c1a146d0461dd27a103  libdbusmenu-lxqt-0.4.0.tar.xz
+description = DBusMenu for Qt 6 — exports and imports the menus of tray icons over D-Bus
+homepage    = https://github.com/lxqt/libdbusmenu-lxqt
+license     = LGPL-2.0-or-later
+depends     = cmake ninja qt6-qtbase

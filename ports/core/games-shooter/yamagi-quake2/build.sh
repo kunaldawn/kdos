@@ -9,10 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# musl has no execinfo, and exposes fopen64 and the rest of the LFS64 names
-# only under _LARGEFILE64_SOURCE, which the bundled minizip calls on Linux.
-# The game data is not free and is not shipped: SYSTEMDIR is where a player
-# puts baseq2/pak0.pak, beside ~/.yq2.
 export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE"
 make \
 	WITH_SDL3=yes \
@@ -24,9 +20,6 @@ make \
 	WITH_SYSTEMWIDE=yes \
 	WITH_SYSTEMDIR=/usr/share/games/quake2
 
-# The engine loads its renderers from the directory the executable is in and
-# nowhere else, so the whole release/ tree stays together and /usr/bin holds
-# links. The window's app_id is the executable's name, quake2.
 install -d "$PKG/usr/lib/yamagi-quake2/baseq2" "$PKG/usr/bin" \
 	"$PKG/usr/share/games/quake2/baseq2"
 install -m755 release/quake2 release/q2ded "$PKG/usr/lib/yamagi-quake2/"

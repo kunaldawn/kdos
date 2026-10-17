@@ -9,16 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Mail export of keys (the WKS publishing path) needs identity management,
-# mail transport and Akonadi together; all three are kept out of the search so
-# the build never depends on which of them happen to be installed, and the
-# menu entries for it are not built. D-Bus stays on: a second launch hands its
-# files to the running instance over it. KF_SKIP_PO_PROCESSING leaves the
-# interface catalogues out: bundled data is English only. kdoctools_install()
-# builds the translated handbooks too, and those are removed after the install.
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
-	-D CMAKE_INSTALL_LIBDIR=lib \
+	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
@@ -34,15 +27,6 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-if [ -d "$PKG/usr/share/doc/HTML" ]; then
-	find "$PKG/usr/share/doc/HTML" -mindepth 1 -maxdepth 1 ! -name en -exec rm -rf {} +
-fi
-
-# UPSTREAM'S ENTRIES ARE REPLACED for StartupWMClass: KAboutData sets the
-# desktop file name from the kde.org domain, so the Wayland app_id is
-# org.kde.kleopatra and org.kde.kwatchgnupg, not the program name. The
-# import handler, kleopatra_import.desktop, keeps the key and certificate
-# MIME types; the main entry claims none.
 cat > "$PKG/usr/share/applications/org.kde.kleopatra.desktop" <<'EOF2'
 [Desktop Entry]
 Type=Application

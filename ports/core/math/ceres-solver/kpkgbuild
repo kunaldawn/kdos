@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/ceres-solver/ceres-solve
 sha256      = bf0bcc78fae884e59dd893693e52510da7cc6866a7444fdae9ba8f19eae266cd  ceres-solver-2.2.0.git20251109.tar.gz
 description = Ceres Solver: non-linear least squares — Blender's camera and motion tracker
 homepage    = http://ceres-solver.org/
-depends     = cmake ninja eigen abseil-cpp
+license     = BSD-3-Clause
+depends     = cmake ninja eigen abseil-cpp suitesparse openblas

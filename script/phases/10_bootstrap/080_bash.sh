@@ -32,7 +32,6 @@ mkdir -p build && cd build
     --with-curses \
     --enable-readline \
     --without-bash-malloc \
-    --disable-static \
     --with-installed-readline
 
 make

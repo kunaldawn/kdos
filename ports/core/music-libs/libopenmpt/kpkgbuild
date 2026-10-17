@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://lib.openmpt.org/files/libopenmpt/sr
 sha256      = d7ce84fd05d686c4bcf66af40eae857afa371442db60eeda3f874bd6cf6fc318  libopenmpt-0.8.9.tar.gz
 description = Tracker module playback library (MOD, S3M, XM, IT, MPTM and more) and openmpt123
 homepage    = https://lib.openmpt.org/libopenmpt/
+license     = BSD-3-Clause
 depends     = pkgconf zlib mpg123 libogg libvorbis libpulse libsndfile flac

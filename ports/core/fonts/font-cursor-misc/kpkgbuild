@@ -16,4 +16,5 @@ source      = https://gitlab.freedesktop.org/xorg/font/$_repo/-/archive/$name-$v
 sha256      = 2d64d4572377e69428c933d5e639efd47d4cd10601684c2a907c7ad6754741cc  font-cursor-misc-1.0.4.tar.gz
 description = X.org core bitmap fonts, served by Xwayland to its X11 clients
 homepage    = https://gitlab.freedesktop.org/xorg/font
+license     = LicenseRef-Public-Domain
 depends     = util-macros bdftopcf font-util mkfontscale encodings

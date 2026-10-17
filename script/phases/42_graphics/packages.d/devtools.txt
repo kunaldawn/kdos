@@ -23,3 +23,4 @@
 # them, or when a shelf file names a port an earlier phase installs.
 
 imhex
+antlr2

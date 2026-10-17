@@ -10,23 +10,10 @@
 # ---------------------------------
 
 
-# musl has no execinfo.h; wagyu includes it only for a debug backtrace, and
-# the patch from Ultimaker's own recipe includes it only where it exists.
 patch -d "$SRC_ROOT/wagyu-$_wagyu" -p1 -i "$PORT_SRC/wagyu-execinfo.patch"
 
-# OBJ.cpp calls std::setprecision without including <iomanip>, and none of the
-# headers it does include brings it in here; the patch includes it.
 patch -p1 -i "$PORT_SRC/include-iomanip.patch"
 
-# CuraEngine's CMake is written for Conan: it loads its compiler settings as
-# a package called standardprojectsettings, and links every dependency by the
-# target name Conan's recipes generate (boost::boost, onetbb::onetbb,
-# clipper::clipper, rapidjson, ...). The shim answers each name from this
-# system's own packages, and nothing of it reaches the package. Five
-# header-only libraries no other port uses are pinned beside the source at
-# the versions Ultimaker's recipes name: Scripta (the slicing-debug hooks,
-# compiled out), stb_image (density images), and mapbox's wagyu polygon
-# repair with the geometry and variant headers it is written against.
 _shim="$SRC_ROOT/shim"
 mkdir -p "$_shim"
 printf 'include("%s")\n' \
@@ -34,7 +21,6 @@ printf 'include("%s")\n' \
 	> "$_shim/standardprojectsettings-config.cmake"
 
 _iface() {
-	# _iface <package> <target> <include dir>... : a header-only target
 	_pkg=$1 _tgt=$2; shift 2
 	{
 		printf 'if(NOT TARGET %s)\n' "$_tgt"
@@ -58,9 +44,6 @@ if(NOT TARGET clipper::clipper)
 endif()
 CMAKE
 
-# Boost, oneTBB and RapidJSON are real packages here, under other target
-# names; the project include runs right after project() and adds Conan's
-# names as aliases.
 cat > "$_shim/aliases.cmake" <<'CMAKE'
 find_package(Boost CONFIG REQUIRED)
 add_library(boost::boost INTERFACE IMPORTED)
@@ -73,9 +56,6 @@ add_library(rapidjson INTERFACE IMPORTED)
 set_target_properties(rapidjson PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${RAPIDJSON_SHIM_INCLUDE}")
 CMAKE
 
-# Arcus is the socket Cura drives the engine through. The gRPC plugin system
-# (ENABLE_PLUGINS) needs Ultimaker's plugin definitions and asio-grpc and is
-# off; Sentry crash reporting is off. Conan's toolchain is what sets C++20.
 cmake -S . -B build -G Ninja -Wno-dev \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_CXX_STANDARD=20 \
@@ -99,8 +79,4 @@ cmake -S . -B build -G Ninja -Wno-dev \
 	-DCMAKE_PROJECT_INCLUDE="$_shim/aliases.cmake"
 ninja -C build CuraEngine
 
-# The project has no install rules: Conan's recipe copies the one binary.
-# Cura finds it at /usr/bin/CuraEngine. On its own, the engine reads machine
-# definitions from the directories CURA_ENGINE_SEARCH_PATH names; the cura
-# port installs them under /usr/share/cura/resources.
 install -Dm755 build/CuraEngine "$PKG/usr/bin/CuraEngine"

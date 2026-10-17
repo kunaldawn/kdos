@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/PixarAnimationStudios/Op
 sha256      = f843eb49daf20264007d807cbc64516a1fed9cdb1149aaf84ff47691d97491f9  opensubdiv-3.7.0.tar.gz
 description = Pixar's OpenSubdiv: subdivision surface evaluation on the CPU and in GLSL — Blender's Subdivision modifier
 homepage    = https://graphics.pixar.com/opensubdiv/
+license     = Pixar
 depends     = cmake ninja onetbb libglvnd mesa

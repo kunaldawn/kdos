@@ -11,8 +11,6 @@
 
 export XML_CATALOG_FILES=/etc/xml/catalog
 
-# dconf-service is started by D-Bus activation. The user unit meson installs
-# names a systemd that is not here, so it is removed.
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	--buildtype=release \

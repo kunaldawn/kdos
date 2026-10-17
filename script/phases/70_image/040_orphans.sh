@@ -10,7 +10,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# Remove packages whose PORT no longer exists.
+# Remove packages whose PORT no longer exists, and packages whose port
+# ports/unbuilt lists: no phase builds those, so one installed here is left
+# from a build before the port was listed and would ride into the image.
 #
 # The build tree is incremental and `cp` never deletes, so a port removed from
 # `ports/` keeps its package installed forever unless something sweeps it.
@@ -52,12 +54,22 @@ if [ "$nports" -eq 0 ]; then
 	exit 1
 fi
 
+UNBUILT=$(grep -v '^#' /ports/unbuilt 2>/dev/null || true)
+
+unbuilt() {
+	local u
+	for u in $UNBUILT; do
+		[ "$u" = "$1" ] && return 0
+	done
+	return 1
+}
+
 orphans=""
 norphans=0
 ninstalled=0
 for pkg in $(ls "$DB"); do
 	ninstalled=$((ninstalled + 1))
-	has_port "$pkg" && continue
+	has_port "$pkg" && ! unbuilt "$pkg" && continue
 	orphans="$orphans $pkg"
 	norphans=$((norphans + 1))
 done
@@ -75,7 +87,7 @@ if [ -z "$orphans" ]; then
 	exit 0
 fi
 
-echo "[KDOS] removing packages with no port:"
+echo "[KDOS] removing packages with no port, or a port no phase builds:"
 for pkg in $orphans; do
 	echo "  $pkg"
 done

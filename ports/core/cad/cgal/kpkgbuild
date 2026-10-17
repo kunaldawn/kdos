@@ -16,4 +16,5 @@ source      = $name-$version.tar.xz::https://github.com/CGAL/cgal/releases/downl
 sha256      = b6be77c60765a8456335de991eeaf6ffec55256984e4a9ecc6a97c37bbfe85bf  cgal-6.2.1.tar.xz
 description = Computational Geometry Algorithms Library (header-only C++)
 homepage    = https://www.cgal.org/
+license     = GPL-3.0-or-later AND LGPL-3.0-or-later AND BSL-1.0
 depends     = cmake ninja boost gmp mpfr eigen

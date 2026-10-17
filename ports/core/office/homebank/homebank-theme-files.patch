@@ -1,0 +1,139 @@
+diff -ruN a/themes/Default/index.theme b/themes/Default/index.theme
+--- a/themes/Default/index.theme	1970-01-01 05:30:00.000000000 +0530
++++ b/themes/Default/index.theme	2026-10-16 13:37:06.459103858 +0530
+@@ -0,0 +1,19 @@
++[Icon Theme]
++Name=Default
++Comment=HomeBank Default SVG icons
++Hidden=true
++Directories=scalable/actions,scalable/status
++
++[scalable/actions]
++MinSize=8
++Size=16
++MaxSize=512
++Context=Actions
++Type=Scalable
++
++[scalable/status]
++MinSize=8
++Size=16
++MaxSize=512
++Context=Status
++Type=Scalable
+diff -ruN a/themes/hicolor-symbolic/hicolor_status_scalable_prf-transaction-transfer-symbolic.svg b/themes/hicolor-symbolic/hicolor_status_scalable_prf-transaction-transfer-symbolic.svg
+--- a/themes/hicolor-symbolic/hicolor_status_scalable_prf-transaction-transfer-symbolic.svg	1970-01-01 05:30:00.000000000 +0530
++++ b/themes/hicolor-symbolic/hicolor_status_scalable_prf-transaction-transfer-symbolic.svg	2026-10-16 13:37:06.461143066 +0530
+@@ -0,0 +1,102 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<!-- Created with Inkscape (http://www.inkscape.org/) -->
++
++<svg
++   width="16"
++   height="16"
++   id="svg2"
++   sodipodi:version="0.32"
++   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
++   version="1.0"
++   sodipodi:docname="hicolor_status_scalable_prf-transaction-transfer-symbolic.svg"
++   inkscape:output_extension="org.inkscape.output.svg.inkscape"
++   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
++   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg"
++   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
++   xmlns:cc="http://creativecommons.org/ns#"
++   xmlns:dc="http://purl.org/dc/elements/1.1/">
++  <title
++     id="title690">Pref Transfer</title>
++  <defs
++     id="defs4" />
++  <sodipodi:namedview
++     id="base"
++     pagecolor="#ffffff"
++     bordercolor="#666666"
++     borderopacity="1.0"
++     gridtolerance="10000"
++     guidetolerance="10"
++     objecttolerance="10"
++     inkscape:pageopacity="0.0"
++     inkscape:pageshadow="2"
++     inkscape:zoom="41.166668"
++     inkscape:cx="6.9352224"
++     inkscape:cy="8.1862346"
++     inkscape:document-units="px"
++     inkscape:current-layer="layer1"
++     showgrid="true"
++     inkscape:window-width="1920"
++     inkscape:window-height="1003"
++     inkscape:window-x="1440"
++     inkscape:window-y="0"
++     inkscape:pagecheckerboard="0"
++     inkscape:window-maximized="1"
++     inkscape:showpageshadow="0"
++     inkscape:deskcolor="#d1d1d1">
++    <inkscape:grid
++       type="xygrid"
++       id="grid240" />
++  </sodipodi:namedview>
++  <metadata
++     id="metadata7">
++    <rdf:RDF>
++      <cc:Work
++         rdf:about="">
++        <dc:format>image/svg+xml</dc:format>
++        <dc:type
++           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
++        <dc:creator>
++          <cc:Agent>
++            <dc:title>Maxime DOYEN</dc:title>
++          </cc:Agent>
++        </dc:creator>
++        <dc:source>https://www.gethomebank.org</dc:source>
++        <dc:title>Pref Transfer</dc:title>
++      </cc:Work>
++    </rdf:RDF>
++  </metadata>
++  <g
++     inkscape:label="Layer 1"
++     inkscape:groupmode="layer"
++     id="layer1">
++    <g
++       id="g244"
++       transform="translate(0,-0.0576174)"
++       style="stroke-width:1">
++      <path
++         style="color:#000000;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:medium;line-height:normal;font-family:sans-serif;font-variant-ligatures:normal;font-variant-position:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-alternates:normal;font-feature-settings:normal;text-indent:0;text-align:start;text-decoration:none;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#000000;letter-spacing:normal;word-spacing:normal;text-transform:none;writing-mode:lr-tb;direction:ltr;text-orientation:mixed;dominant-baseline:auto;baseline-shift:baseline;text-anchor:start;white-space:normal;shape-padding:0;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;vector-effect:none;fill:#bebebe;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate"
++         d="m 9,11.944617 v 1.199914 h 3.5 c 1.376351,0 2.5,-1.123648 2.5,-2.5 V 5.359375 c 0,-1.3763514 -1.123649,-2.5 -2.5,-2.5 H 9 v 1.2002424 h 3.5 c 0.839649,0 1.3,0.460109 1.3,1.2997576 v 5.285156 c 0,0.839649 -0.460351,1.300086 -1.3,1.300086 z"
++         id="path4513"
++         sodipodi:nodetypes="ccssssccssssc" />
++      <path
++         style="color:#000000;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:medium;line-height:normal;font-family:sans-serif;font-variant-ligatures:normal;font-variant-position:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-alternates:normal;font-feature-settings:normal;text-indent:0;text-align:start;text-decoration:none;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#000000;letter-spacing:normal;word-spacing:normal;text-transform:none;writing-mode:lr-tb;direction:ltr;text-orientation:mixed;dominant-baseline:auto;baseline-shift:baseline;text-anchor:start;white-space:normal;shape-padding:0;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;vector-effect:none;fill:#bebebe;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate"
++         d="M 7,2.7596174 H 3.5 c -1.3763514,0 -2.5,1.2234062 -2.5,2.5997576 v 5.285156 c 0,1.376352 1.1236486,2.5 2.5,2.5 H 7 V 11.944617 H 3.5 c -0.8396486,0 -1.3,-0.460437 -1.3,-1.300086 V 5.359375 C 2.2,4.5197264 2.6603514,3.9596174 3.5,3.9596174 H 7 Z"
++         id="path4509"
++         sodipodi:nodetypes="cssssccsssscc" />
++      <path
++         style="color:#000000;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:medium;line-height:normal;font-family:sans-serif;font-variant-ligatures:normal;font-variant-position:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-alternates:normal;font-feature-settings:normal;text-indent:0;text-align:start;text-decoration:none;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#000000;letter-spacing:normal;word-spacing:normal;text-transform:none;writing-mode:lr-tb;direction:ltr;text-orientation:mixed;dominant-baseline:auto;baseline-shift:baseline;text-anchor:start;white-space:normal;shape-padding:0;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;vector-effect:none;fill:#bebebe;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate"
++         d="M 10.140625,1.1992188 7.671875,3.5625 10.232422,5.9667969 11.117485,5.2382812 9.3245155,3.5546875 11.031547,1.9199219 Z"
++         id="path4809"
++         inkscape:connector-curvature="0"
++         sodipodi:nodetypes="ccccccc" />
++      <path
++         style="color:#000000;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:medium;line-height:normal;font-family:sans-serif;font-variant-ligatures:normal;font-variant-position:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-alternates:normal;font-feature-settings:normal;text-indent:0;text-align:start;text-decoration:none;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#000000;letter-spacing:normal;word-spacing:normal;text-transform:none;writing-mode:lr-tb;direction:ltr;text-orientation:mixed;dominant-baseline:auto;baseline-shift:baseline;text-anchor:start;white-space:normal;shape-padding:0;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;vector-effect:none;fill:#bebebe;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate"
++         d="m 5.8457031,10.030008 -0.8149453,0.699219 1.6464844,1.884054 -1.6367188,1.583985 0.793461,0.71875 2.3613281,-2.283204 z"
++         id="path4811"
++         inkscape:connector-curvature="0"
++         sodipodi:nodetypes="ccccccc" />
++    </g>
++  </g>
++</svg>
+--- a/themes/Default/Makefile.in
++++ b/themes/Default/Makefile.in
+@@ -574,6 +574,7 @@
+ 
+ install-icons:
+ 	for theme in $(public_icons_themes); do \
++		mkdir -p $(DESTDIR)$(pkgdatadir)/icons/$$theme; \
+ 		cp index.theme $(DESTDIR)$(pkgdatadir)/icons/$$theme/index.theme; \
+ 	done; \
+ 	for icon in $(public_icons); do \

@@ -9,36 +9,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# fix-lfs64, no-update and no-werror are Alpine's: musl has no fopen64 or
-# lseek64, the updater is a separate program that downloads release builds,
-# and the pattern language builds with -Werror. no-network drops the startup
-# task that checks for updates and posts telemetry, and the crash-log upload
-# after a crash, so the program never contacts its server on its own.
 patch -p1 -i "$PORT_SRC/fix-lfs64.patch"
 patch -p1 -i "$PORT_SRC/no-update.patch"
 patch -p1 -i "$PORT_SRC/no-werror.patch"
 patch -p1 -i "$PORT_SRC/no-network.patch"
 
-# The offline build installs the pattern library from a sibling directory
-# named ImHex-Patterns; without it the package carries no patterns, magic or
-# encodings and the build does not say so.
 mv "$SRC_ROOT/ImHex-Patterns-ImHex-v$version" "$SRC_ROOT/ImHex-Patterns"
 
-# The file dialogs go through the FileChooser portal (NFD_PORTAL), not GTK.
-# .NET scripting is kept out of the search: this tree carries no .NET. X11 is
-# kept out too: the window comes from GLFW, and ImHex itself calls no Xlib.
-# Every compression library of the decompress plugin is required, so a
-# missing one fails here rather than dropping a format. The pattern language
-# calls fmt::format with only <fmt/core.h> included, which since fmt 12
-# includes format.h only under FMT_DEPRECATED_HEAVY_CORE.
-#
-# ui.hexpluglib needs fonts.hexpluglib, and the builtin, diffing and
-# disassembler plugins need ui.hexpluglib, each by bare name from
-# /usr/lib/imhex/plugins. ImHex loads the two libraries first, by full path,
-# and musl does not take a library loaded by path for a later bare-name
-# dependency, so each plugin carries an $ORIGIN rpath to find its sibling.
-# Without it builtin does not load, no subcommand exists, and every
-# command-line run aborts on an empty std::function.
 export CXXFLAGS="$CXXFLAGS -DFMT_DEPRECATED_HEAVY_CORE"
 cmake -S . -B build -G Ninja \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -74,7 +51,6 @@ DESTDIR=$PKG cmake --install build
 
 rm -rf "$PKG/usr/share/imhex/sdk"
 
-# The panel reads no SVG: the menu icon is a PNG rasterised from upstream's.
 install -d "$PKG/usr/share/icons/hicolor/256x256/apps"
 rsvg-convert -w 256 -h 256 resources/icon.svg \
 	-o "$PKG/usr/share/icons/hicolor/256x256/apps/imhex.png"

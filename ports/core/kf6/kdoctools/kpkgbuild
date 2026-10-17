@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = b90b42ab222a3034729e517d0c06258abf6bdc28591ec78ad56f24aebbaaed94  kdoctools-6.30.0.tar.xz
 description = KDE Frameworks: DocBook to HTML and manual page tools (meinproc6)
 homepage    = https://invent.kde.org/frameworks/kdoctools
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND GPL-2.0-or-later AND LGPL-2.1-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive ki18n libxml2 libxslt perl perl-uri docbook-xml docbook-xsl gettext

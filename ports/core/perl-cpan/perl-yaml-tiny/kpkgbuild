@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://cpan.metacpan.org/authors/id/E/ET/E
 sha256      = a8d584394cf069bf8f17cba3dd5099003b097fce316c31fb094f1b1c171c08a3  perl-yaml-tiny-1.76.tar.gz
 description = Read and write a subset of YAML in pure perl
 homepage    = https://metacpan.org/dist/YAML-Tiny
+license     = Artistic-1.0-Perl OR GPL-1.0-or-later
 depends     = perl

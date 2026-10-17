@@ -15,6 +15,6 @@ cmake -S . -B build -G Ninja \
     -DCMAKE_INSTALL_LIBEXECDIR=lib \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_FLAGS_RELEASE="$CFLAGS -DNDEBUG" \
-    -Wno-dev 
+    -Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

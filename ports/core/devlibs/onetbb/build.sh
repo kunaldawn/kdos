@@ -9,12 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-
-# TBB_STRICT=OFF: upstream's -Werror would turn a new compiler warning into a
-# failed build. tbbmalloc_proxy replaces malloc in every process that loads
-# it, and hooks glibc-internal allocator entry points musl does not have, so it
-# is not built; tbbmalloc itself is. tbbbind, which pins task arenas to NUMA
-# nodes and core types, is built against hwloc, found through pkg-config.
 mkdir build && cd build
 cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \

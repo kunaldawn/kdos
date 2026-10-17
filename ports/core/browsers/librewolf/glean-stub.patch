@@ -12,11 +12,9 @@ play stupid games, win `rustc-LLVM ERROR: out of memory`
  .../build_scripts/glean_parser_ext/rust.py    |  19 +++
  5 files changed, 34 insertions(+), 145 deletions(-)
 
-diff --git a/toolkit/components/glean/api/src/ffi/boolean.rs b/toolkit/components/glean/api/src/ffi/boolean.rs
-index 9184b23c0098e..fa13206627272 100644
 --- a/toolkit/components/glean/api/src/ffi/boolean.rs
 +++ b/toolkit/components/glean/api/src/ffi/boolean.rs
-@@ -8,21 +8,18 @@ use nsstring::nsACString;
+@@ -8,21 +8,18 @@
  
  #[no_mangle]
  pub extern "C" fn fog_boolean_test_has_value(id: u32, ping_name: &nsACString) -> bool {
@@ -42,11 +40,9 @@ index 9184b23c0098e..fa13206627272 100644
 -    with_metric!(BOOLEAN_MAP, id, metric, metric.set(value));
 -}
 +pub extern "C" fn fog_boolean_set(id: u32, value: bool) {}
-diff --git a/toolkit/components/glean/api/src/ffi/counter.rs b/toolkit/components/glean/api/src/ffi/counter.rs
-index cf24d79d7dd8e..06a7017a7718c 100644
 --- a/toolkit/components/glean/api/src/ffi/counter.rs
 +++ b/toolkit/components/glean/api/src/ffi/counter.rs
-@@ -8,23 +8,21 @@ use nsstring::nsACString;
+@@ -8,23 +8,21 @@
  
  #[no_mangle]
  pub unsafe extern "C" fn fog_counter_add(id: u32, amount: i32) {
@@ -73,11 +69,9 @@ index cf24d79d7dd8e..06a7017a7718c 100644
  }
  
  #[no_mangle]
-diff --git a/toolkit/components/glean/api/src/ffi/event.rs b/toolkit/components/glean/api/src/ffi/event.rs
-index f75eebdddf32e..a29f92eaba55d 100644
 --- a/toolkit/components/glean/api/src/ffi/event.rs
 +++ b/toolkit/components/glean/api/src/ffi/event.rs
-@@ -15,91 +15,16 @@ pub extern "C" fn fog_event_record(
+@@ -15,91 +15,16 @@
      id: u32,
      extra_keys: &ThinVec<nsCString>,
      extra_values: &ThinVec<nsCString>,
@@ -172,7 +166,7 @@ index f75eebdddf32e..a29f92eaba55d 100644
  }
  
  /// FFI-compatible representation of recorded event data.
-@@ -118,48 +43,4 @@ pub extern "C" fn fog_event_test_get_value(
+@@ -118,48 +43,4 @@
      id: u32,
      ping_name: &nsACString,
      out_events: &mut ThinVec<FfiRecordedEvent>,
@@ -222,11 +216,9 @@ index f75eebdddf32e..a29f92eaba55d 100644
 -    }
 -}
 +) {}
-diff --git a/toolkit/components/glean/api/src/ffi/string.rs b/toolkit/components/glean/api/src/ffi/string.rs
-index fc28e03a3860f..a1a4c140b988a 100644
 --- a/toolkit/components/glean/api/src/ffi/string.rs
 +++ b/toolkit/components/glean/api/src/ffi/string.rs
-@@ -8,7 +8,7 @@ use nsstring::nsACString;
+@@ -8,7 +8,7 @@
  
  #[no_mangle]
  pub extern "C" fn fog_string_test_has_value(id: u32, ping_name: &nsACString) -> bool {
@@ -235,7 +227,7 @@ index fc28e03a3860f..a1a4c140b988a 100644
  }
  
  #[no_mangle]
-@@ -16,18 +16,12 @@ pub extern "C" fn fog_string_test_get_value(
+@@ -16,18 +16,12 @@
      id: u32,
      ping_name: &nsACString,
      value: &mut nsACString,
@@ -257,11 +249,9 @@ index fc28e03a3860f..a1a4c140b988a 100644
 -    err.map(|err_str| error_str.assign(&err_str)).is_some()
 +    false
  }
-diff --git a/toolkit/components/glean/build_scripts/glean_parser_ext/rust.py b/toolkit/components/glean/build_scripts/glean_parser_ext/rust.py
-index e37f704e502ba..ebaf0e84e4bd1 100644
 --- a/toolkit/components/glean/build_scripts/glean_parser_ext/rust.py
 +++ b/toolkit/components/glean/build_scripts/glean_parser_ext/rust.py
-@@ -299,6 +299,25 @@ def output_rust(objs, output_fd, ping_names_by_app_id, options={}):
+@@ -315,6 +315,25 @@
      else:
          template_filename = "rust.jinja2"
          objs = get_metrics(objs)
@@ -287,6 +277,3 @@ index e37f704e502ba..ebaf0e84e4bd1 100644
          for category_name, category_value in objs.items():
              for metric in category_value.values():
                  # The constant is all uppercase and suffixed by `_MAP`
--- 
-2.54.0
-

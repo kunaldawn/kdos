@@ -15,4 +15,5 @@ source      = https://github.com/uriparser/uriparser/releases/download/uriparser
 sha256      = dd2e4843f43de6f5aedf430e530f1e2d159eba8ca4d64c2787af1c20f707a9e4  uriparser-1.0.2.tar.bz2
 description = Strict RFC 3986 URI parsing and normalising library, with the uriparse tool
 homepage    = https://uriparser.github.io/
+license     = BSD-3-Clause
 depends     = cmake ninja

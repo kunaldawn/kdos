@@ -33,3 +33,4 @@ libclc
 # Rust-to-C++ binding generator (cc_bindings_from_rs) and its support
 # library: Chromium calls its Rust crates through the headers it writes.
 crubit
+musl-locales

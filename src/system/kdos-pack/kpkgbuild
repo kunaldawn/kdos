@@ -13,4 +13,5 @@ version     = 0.1.0
 release     = 1
 description = Build, sign, index and delta packs
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT AND (BSD-2-Clause OR CC0-1.0)
 depends     = erofs-utils zstd

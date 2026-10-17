@@ -15,5 +15,6 @@ source      = $name-$version.tar.xz::https://download.gnome.org/sources/graphene
 sha256      = a37bb0e78a419dcbeaa9c7027bcff52f5ec2367c25ec859da31dfde2928f279a  graphene-1.10.8.tar.xz
 description = Thin layer of vector and matrix types for 2D and 3D graphics, used by GTK 4
 homepage    = https://ebassi.github.io/graphene/
+license     = MIT
 depends     = meson glib gobject-introspection glib-introspection
 devseries   = odd-minor

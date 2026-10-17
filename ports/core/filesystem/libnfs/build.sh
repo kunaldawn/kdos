@@ -9,11 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# RPC-with-TLS is asked for by name: the AUTO default builds it only when
-# gnutls and the kernel's kTLS headers are both found, so its presence would
-# follow build order. The tools and their pre-generated manual pages install
-# together; ENABLE_DOCUMENTATION would regenerate the pages from a docbook
-# stylesheet fetched over the network.
 cmake -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \

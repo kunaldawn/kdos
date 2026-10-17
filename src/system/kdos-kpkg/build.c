@@ -81,8 +81,8 @@ static int is_tarball(const char *s)
  * a bare URL is its basename, EXCEPT for the first source, which `ports/fetch`
  * saves under the standardised `<name>-<version>.<ext>`.
  */
-static void source_file(const Recipe *r, const char *src, int first, char *out,
-			size_t cap)
+void kp_source_file(const char *name, const char *version, const char *src,
+		    int first, char *out, size_t cap)
 {
 	const char *sep = strstr(src, "::");
 	if (sep) {
@@ -117,7 +117,7 @@ static void source_file(const Recipe *r, const char *src, int first, char *out,
 	};
 	for (int i = 0; EXT[i].suffix; i++)
 		if (ends_with(src, EXT[i].suffix)) {
-			snprintf(out, cap, "%s-%s.%s", r->name, r->version,
+			snprintf(out, cap, "%s-%s.%s", name, version,
 				 EXT[i].ext);
 			return;
 		}
@@ -253,7 +253,8 @@ static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir
 	for (char *t = strtok_r(list, " \t\n", &save); t;
 	     t = strtok_r(NULL, " \t\n", &save), idx++) {
 		char file[512];
-		source_file(r, t, idx == 0, file, sizeof(file));
+		kp_source_file(r->name, r->version, t, idx == 0, file,
+			       sizeof(file));
 
 		char *path = kb_path_join(portdir, file);
 		if (!kb_path_exists(path)) {
@@ -280,7 +281,17 @@ static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir
 			kp_msg(idx == 0 ? "Extracting %s with stripping..."
 					: "Extracting %s without stripping...",
 			       file);
+			/* --no-same-permissions: kpkg runs as root, and root's
+			 * tar otherwise restores every mode in the archive,
+			 * 0666 and 0777 included, which `make install` then
+			 * copies into the package. With it, the umask (022,
+			 * set in build_here before this runs) masks them. */
 			kb_argv_add(&a, "tar");
+			kb_argv_add(&a, "--no-same-permissions");
+			/* Archives made with git-archive or bsdtar carry pax
+			 * keywords GNU tar does not know; each one is a log
+			 * line about nothing that affects the files. */
+			kb_argv_add(&a, "--warning=no-unknown-keyword");
 			kb_argv_add(&a, "-xf");
 			kb_argv_add(&a, path);
 			kb_argv_add(&a, "-C");
@@ -653,9 +664,17 @@ static int build_here(char *pkgout, size_t cap)
 	 * The umask is part of the package. A file `make install` creates
 	 * without an explicit mode takes it, so a builder running with 002 or
 	 * 077 produces a package whose modes differ from everyone else's — the
-	 * one source of nondeterminism that is not in the tar invocation.
+	 * one source of nondeterminism that is not in the tar invocation. It is
+	 * set before extract_sources(), whose tar applies it to every mode an
+	 * archive carries (--no-same-permissions).
 	 */
 	umask(022);
+
+	/* KPKG_FETCH=1 downloads what the port directory and $SOURCE_DIR do not
+	 * hold (fetch.c). Unset, a missing source fails below: the tree's own
+	 * build runs with no network and must never reach for one. */
+	if (kp_fetch_wanted() && kp_fetch_port(&c, portdir) != 0)
+		return 1;
 
 	/* Before the work directory is touched: a bad hash must not cost the
 	 * tree that is already unpacked under it. */
@@ -679,6 +698,11 @@ static int build_here(char *pkgout, size_t cap)
 	    extract_sources(&c, &r, portdir, src_dir, src_root) != 0)
 		return 1;
 
+	/* Before build.sh: a config.guess older than musl support names this
+	 * host x86_64-pc-linux-gnu, and a configure that trusts it builds for
+	 * a C library the tree does not have. */
+	kp_src_refresh_config(src_root);
+
 	kp_msg("Building %s-%s-%s...", r.name, r.version, r.release);
 	KpPaths paths = { portdir, src_root, src_dir, pkg };
 	(void)paths;
@@ -699,6 +723,16 @@ static int build_here(char *pkgout, size_t cap)
 	strip_info_dir(pkg);
 	strip_desktop_cache(pkg);
 	strip_font_dirs(pkg);
+	/* The licences first: the prune never touches usr/share/licenses, and
+	 * a licence the source names NOTICE.html must not meet it either. */
+	kp_pkg_licences(pkg, r.name, src_dir);
+	kp_pkg_prune(pkg);
+	kp_pkg_symtab(pkg);
+	kp_pkg_python(pkg);
+	/* Last before the roll: every step above changes the tree, and the
+	 * lint must read the tree that is archived. */
+	if (kp_pkg_lint(pkg, r.name) != 0)
+		return 1;
 
 	kb_mkdir_p(c.package_dir);
 	char pkgname[512];

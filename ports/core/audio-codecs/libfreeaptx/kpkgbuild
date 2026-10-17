@@ -15,3 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/regularhunter/libfreeapt
 sha256      = 5ab5ebddf3f2eb7ce47a505b87460b00fc1ede99c70010796d3575ab31ea80bf  libfreeaptx-0.2.2.tar.gz
 description = Free aptX and aptX HD codec, for Bluetooth headsets that speak them
 homepage    = https://github.com/regularhunter/libfreeaptx
+license     = LGPL-2.1-or-later

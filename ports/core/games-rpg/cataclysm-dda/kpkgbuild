@@ -16,4 +16,5 @@ source      = $name-$version.tar.gz::https://github.com/CleverRaven/Cataclysm-DD
 sha256      = 27e35a0a5181f88f0929bef180ca0465d00e606e569911cb02d97b59b8b5768a  cataclysm-dda-0.I.1.tar.gz
 description = Cataclysm: Dark Days Ahead — turn-based survival in a procedurally generated post-apocalyptic world, in its tiles build
 homepage    = https://cataclysmdda.org
+license     = CC-BY-SA-3.0 AND OFL-1.1 AND Apache-2.0
 depends     = pkgconf sdl2-compat sdl2-image sdl2-mixer sdl2-ttf freetype2 zlib librsvg

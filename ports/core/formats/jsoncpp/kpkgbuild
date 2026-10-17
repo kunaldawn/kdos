@@ -15,4 +15,5 @@ source      = $name-$version.tar.gz::https://github.com/open-source-parsers/json
 sha256      = 51828cf3574281d2b79ec2a1c56a9e4c20cc1103711321ea96384cffb8d2d904  jsoncpp-1.9.8.tar.gz
 description = JSON for C++ — recoll stores its index metadata through it
 homepage    = https://github.com/open-source-parsers/jsoncpp
+license     = LicenseRef-Public-Domain OR MIT
 depends     = meson ninja pkgconf

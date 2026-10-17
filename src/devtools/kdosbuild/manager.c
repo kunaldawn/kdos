@@ -689,9 +689,10 @@ static void release_worker(Manager *m, BWorker *wk)
  * records nothing, so the commit must not name it. A commit prints `kpkg:
  * committed <port>` after each install, and kpkgadd prints `Taking <n>
  * path(s) from <owner>` inside the install of the port that takes them: a
- * path that changes hands from a port the serial order installs AFTER the
- * taker ends up with the other owner here than it would one at a time, and
- * that pair has to be pinned for the result not to depend on --port-jobs.
+ * path taken from a port the serial order installs AFTER the taker is taken
+ * here only because that port was committed at a lower level, and one at a
+ * time the later port's install would be refused as a conflict. The pair has
+ * to be pinned, owner first, for the result not to depend on --port-jobs.
  */
 static void watch_line(Manager *m, BStep *s, const char *line)
 {
@@ -722,8 +723,9 @@ static void watch_line(Manager *m, BStep *s, const char *line)
 			continue;
 		if (c->serial_pos > taker->serial_pos)
 			mgr_notice(m, "%s took paths from %s; the serial order had "
-				   "%s last — pin the pair in 00-order.txt",
-				   taker->title, c->title, c->title);
+				   "%s last — pin %s before %s in 00-order.txt",
+				   taker->title, c->title, c->title, c->title,
+				   taker->title);
 		break;
 	}
 }
@@ -1195,10 +1197,9 @@ static int expand_levels(Manager *m, BStep *g, BStep **nodes, int n,
 			int forced = m->have_plan &&
 				     kbuild_plan_forced(&m->plan, node->title);
 			KbBuf cl = {0};
-			kb_buf_printf(&cl, "export KDOS_JOBS=%d && %sexport "
-				      "KPKG_OVERWRITE=1 && kpkg install "
-				      "--build-only%s %s", m->port_k, env,
-				      forced ? " -f" : "", node->title);
+			kb_buf_printf(&cl, "export KDOS_JOBS=%d && %skpkg "
+				      "install --build-only%s %s", m->port_k,
+				      env, forced ? " -f" : "", node->title);
 			node_set_cmd(m, g, node, cl.p);
 			node->level = L;
 			out[k++] = node;
@@ -1312,23 +1313,9 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 			kb_strlcpy(node->note, "rebuild", sizeof(node->note));
 		}
 
-		/* Overwrite for every package a phase installs. The userland
-		 * genuinely overlaps — toybox ships sed, find, xargs, awk, expr
-		 * and ln, and GNU sed, findutils, gawk and coreutils ship the
-		 * same paths over them — and the rule is that whoever comes
-		 * last in the dependency order wins. It is NOT -f: nothing is rebuilt by it, and the path
-		 * changes hands in the database instead of being claimed twice.
-		 *
-		 * It goes in the ENVIRONMENT rather than on the command line
-		 * because the kpkg in the tree is not necessarily the kpkg this
-		 * orchestrator was built beside: a restored 10_bootstrap or
-		 * 20_selfhost snapshot carries an older kpkg, which takes
-		 * `--overwrite` for a package name and dies with `Port not
-		 * found: --overwrite` on the first package of the phase. An
-		 * unknown env var is ignored by every version. */
 		KbBuf cl = {0};
-		kb_buf_printf(&cl, "%sexport KPKG_OVERWRITE=1 && kpkg install%s %s",
-			      env, forced ? " -f" : "", tok);
+		kb_buf_printf(&cl, "%skpkg install%s %s", env,
+			      forced ? " -f" : "", tok);
 		node_set_cmd(m, g, node, cl.p);
 
 		nodes[n++] = node;
@@ -1694,8 +1681,7 @@ static int prepare_commit(Manager *m, BStep *cs)
 	char env[600];
 	env_source(m, g, env, sizeof(env));
 	KbBuf cl = {0};
-	kb_buf_printf(&cl, "%sexport KPKG_OVERWRITE=1 && kpkg install --commit%s",
-		      env, names.p);
+	kb_buf_printf(&cl, "%skpkg install --commit%s", env, names.p);
 	kb_buf_free(&names);
 	node_set_cmd(m, g, cs, cl.p);
 	return 1;

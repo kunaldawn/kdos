@@ -70,4 +70,5 @@ sha256      = 025b637e2d391f422ae12f4eb365876ce3b195283025ababb74ecf6baae35442  
 sha256      = 25b2c787e0b34b82ccedce026e6519cc535394a6bd8520d5a1df45c233807d8a  noto-fonts-extra-sinhala-3.000.zip
 description = Noto Sans coverage for Arabic, Hebrew, Indic, Sinhala, Thai, Lao, Khmer, Myanmar, Ethiopic, Georgian and Armenian
 homepage    = https://notofonts.github.io/
+license     = OFL-1.1
 depends     = unzip fontconfig

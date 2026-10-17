@@ -63,6 +63,8 @@ typedef struct {
 	unsigned gone;
 	KbBuf man;	/* placed manual pages, NUL-separated, man-dir-relative */
 	int nman;
+	KbBuf icons;	/* icon themes touched, NUL-separated, each once      */
+	int icons_all;	/* the cache tool arrived: every theme, not those     */
 } KpTriggers;
 
 void kp_triggers_note(KpTriggers *t, const char *manifest);
@@ -112,6 +114,51 @@ int build_main(int argc, char **argv);
  */
 int kp_build_port(const char *portdir, char *pkgout, size_t cap);
 int front_main(int argc, char **argv);
+
+/* The staged tree before it is rolled (lint.c). kp_pkg_python() removes
+ * pip's build-state records and compiles the package's Python bytecode into
+ * it; kp_pkg_lint() checks layout, modes, pkg-config modules and ELF objects
+ * and returns -1, having printed every failure, when the package must not be
+ * rolled. `name` is the package's: kdos-* programs may use prefixes no port
+ * may. */
+void kp_pkg_python(const char *pkg);
+int kp_pkg_lint(const char *pkg, const char *name);
+
+/* The tree policy (prune.c), on every port. kp_src_refresh_config() runs on
+ * $SRC_ROOT before build.sh: an unpacked config.guess or config.sub older
+ * than automake's is replaced by it. The other three run on $PKG before
+ * kp_pkg_python(): kp_pkg_licences() copies the source root's top-level
+ * LICENSE*, LICENCE*, COPYING*, COPYRIGHT* and NOTICE* into
+ * usr/share/licenses/<name>/; kp_pkg_prune() removes HTML and PDF manuals and
+ * every non-English catalog, handbook and man page; kp_pkg_symtab() removes
+ * .symtab/.strtab from ELF executables and shared objects over 32 MiB. */
+void kp_src_refresh_config(const char *src_root);
+void kp_pkg_licences(const char *pkg, const char *name, const char *src);
+void kp_pkg_prune(const char *pkg);
+void kp_pkg_symtab(const char *pkg);
+/* `kpkg check` (check.c): the root against each package's manifest and file
+ * record. 0 clean, 1 something missing or changed, 2 usage or no package; a
+ * changed file under etc/ is reported as configuration and does not fail. */
+int kp_cmd_check(KpConf *c, int argc, char **argv);
+
+/* The filename a `source =` entry is cached under (build.c): `file::url`
+ * names it, a bare URL is its basename, and the first entry is
+ * `<name>-<version>.<ext>`. ports/fetch keeps the same rule in shell. */
+void kp_source_file(const char *name, const char *version, const char *src,
+		    int first, char *out, size_t cap);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Sources over the network (fetch.c)
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Every `sha256 =` file of the port in `portdir` that neither it nor
+ * $SOURCE_DIR holds: from the archive `sources.idx` names, then upstream,
+ * verified, into $SOURCE_DIR. 0 all present, 1 one could not be had, 3 the
+ * network could not be reached. */
+int kp_fetch_port(const KpConf *c, const char *portdir);
+/* KPKG_FETCH=1: the build fetches before it verifies. */
+int kp_fetch_wanted(void);
+int kp_cmd_fetch(const KpConf *c, int argc, char **argv);
 
 /* ────────────────────────────────────────────────────────────────────────
  * The binary repository (binhost.c)

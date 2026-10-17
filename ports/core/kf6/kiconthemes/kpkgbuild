@@ -15,4 +15,5 @@ source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$ve
 sha256      = c0c684823d0e087f35168cd79f1053fd358bb8fb47b27996a11c7d7ee3da6f4d  kiconthemes-6.30.0.tar.xz
 description = KDE Frameworks: icon theme lookup and icon dialogs
 homepage    = https://invent.kde.org/frameworks/kiconthemes
+license     = LGPL-2.0-only AND GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-or-later
 depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtdeclarative karchive breeze-icons kcolorscheme ki18n kwidgetsaddons gettext

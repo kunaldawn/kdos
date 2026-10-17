@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# GME_ZLIB is on so gzip-compressed VGZ and friends play. UBSan is upstream's
-# default for a debug build and is off here.
 mkdir -p build && cd build
 cmake .. -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \

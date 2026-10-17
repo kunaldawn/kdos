@@ -9,12 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The 0.20 series: its library names end in -0.20, the newest LabPlot's
-# finder looks for. The spreadsheet model links ixion, and the tools and
-# python module are built. Parquet needs Apache Arrow, which the tree does not
-# carry, so that filter is off.
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static \
 	--with-boost=/usr \
+	boost_cv_rpath_link_ldflag=-L \
 	--enable-spreadsheet-model \
 	--enable-python \
 	--with-tools \

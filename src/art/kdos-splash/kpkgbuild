@@ -13,4 +13,5 @@ version     = 1.1
 release     = 2
 description = Boot splash — CRT power-on animation drawn on the framebuffer
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT AND OFL-1.1
 depends     = terminus-font

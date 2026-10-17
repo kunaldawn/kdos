@@ -15,4 +15,5 @@ source      = $name-$version.tar.xz::https://download.kde.org/stable/phonon/$ver
 sha256      = 3287ffe0fbcc2d4aa1363f9e15747302d0b080090fe76e5f211d809ecb43f39a  phonon-4.12.0.tar.xz
 description = KDE multimedia API for Qt 6; playback goes through a backend port
 homepage    = https://invent.kde.org/libraries/phonon
+license     = LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL
 depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qt5compat glib libpulse

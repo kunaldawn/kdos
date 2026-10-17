@@ -9,20 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The Qt 6 half only, matching the audacious port; every GTK-only plugin
-# (ladspa, aosd, the GTK UI and skins) goes with -Dgtk=false. Output is
-# PipeWire, with ALSA as the fallback; pulse, SDL, Qt Multimedia, OSS and
-# sndio would be further routes to the same sound server, and JACK is not on
-# this system. Every plugin is named so the set is explicit, but a plugin
-# switched on whose library is missing is still dropped, with only a line in
-# meson's summary; that summary is where a missing dependency shows.
-#
-# The SID plugin needs libsidplayfp built against libresidfp; without it
-# meson drops the plugin with a warning. Off because they only work online:
-# scrobbler2 (Last.fm), lyrics (lyrics sites), streamtuner (radio
-# directories), ampache, CDDB lookups, and the neon and mms stream
-# transports. The X11 global hotkey plugin grabs keys on an X server, which a
-# Wayland session never gives it.
 meson setup build \
 	--prefix=/usr \
 	--libdir=lib \
@@ -117,6 +103,3 @@ meson setup build \
 	-Dmac-now-playing=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
-
-# Bundled data is English only; Qt falls back to the source strings.
-rm -rf "$PKG/usr/share/locale"
