@@ -10,6 +10,7 @@
 # ---------------------------------
 
 rm -rf brotli freetype jbig2dec jpeg libpng tiff zlib openjpeg
+patch -p1 -i "$PORT_SRC/sprintf-guard.patch"
 
 CC="gcc -std=gnu11" CFLAGS="${CFLAGS/-std=gnu11/}" ./configure --prefix=/usr --libdir=/usr/lib \
 	--with-system-libtiff --disable-gtk \

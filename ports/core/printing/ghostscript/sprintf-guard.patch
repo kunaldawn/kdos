@@ -1,0 +1,20 @@
+--- a/base/mkromfs.c
++++ b/base/mkromfs.c
+@@ -85,6 +85,7 @@
+ #include <memory.h>
+ 
+ #include <zlib.h>
++#undef sprintf
+ 
+ int gs_log_error(int err, const char *file, int line);
+ /* Prototype to placate compiler */
+--- a/cups/gdevcups.c
++++ b/cups/gdevcups.c
+@@ -94,6 +94,7 @@
+ #include <cups/raster.h>
+ #include <cups/ppd.h>
+ #include <math.h>
++#undef sprintf
+ 
+ /* the extremely noisy DEBUG2 messages are now dependent on CUPS_DEBUG2 */
+ /* this can be enabled during the 'make' or by uncommenting the following */

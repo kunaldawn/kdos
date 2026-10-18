@@ -514,7 +514,11 @@ The same file exports `LANG` and `LC_ALL` as `C.UTF-8`, `PIP_ROOT_USER_ACTION=ig
   partitioned the program, where an `always_inline` body the linker may replace cannot be inlined,
   and GCC stops the link. Without the attribute that one call goes to the C library's own function,
   unchecked; GCC still inlines these small wrappers at every direct call in an optimised build, so
-  those stay checked.
+  those stay checked. The wrappers `#undef` each function they wrap before defining it, so a
+  source that defines a name as itself to dodge its own ban on it loses that macro when it includes
+  a system header: Ghostscript's `stdio_.h` turns `sprintf` into `DO_NOT_USE_SPRINTF` unless it is
+  already a macro, and `ghostscript` ships `sprintf-guard.patch` to drop the ban after the includes
+  in the two files that call it.
 - `-D_GLIBCXX_ASSERTIONS` turns on libstdc++'s precondition checks: an out-of-range
   `operator[]`, `front()` on an empty container, `*` on an empty `optional`. A failed one aborts the
   program with the assertion's text, where it would otherwise read or write out of bounds.
