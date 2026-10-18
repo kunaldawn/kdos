@@ -518,7 +518,11 @@ The same file exports `LANG` and `LC_ALL` as `C.UTF-8`, `PIP_ROOT_USER_ACTION=ig
   source that defines a name as itself to dodge its own ban on it loses that macro when it includes
   a system header: Ghostscript's `stdio_.h` turns `sprintf` into `DO_NOT_USE_SPRINTF` unless it is
   already a macro, and `ghostscript` ships `sprintf-guard.patch` to drop the ban after the includes
-  in the two files that call it.
+  in the two files that call it. The wrappers are function definitions, so a header that has them
+  (`<string.h>`, `<stdio.h>`, `<sys/socket.h>` and the rest) cannot be included inside a function
+  body: a configure test that does so fails as a nested function and turns the feature off without
+  an error. waf's `CHECK_CODE` wraps its code in `main()` unless given `addmain=False`, and
+  `samba`'s `musl-netlink.patch` gives its netlink checks their own `main`.
 - `-D_GLIBCXX_ASSERTIONS` turns on libstdc++'s precondition checks: an out-of-range
   `operator[]`, `front()` on an empty container, `*` on an empty `optional`. A failed one aborts the
   program with the assertion's text, where it would otherwise read or write out of bounds.
