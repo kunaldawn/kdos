@@ -252,7 +252,7 @@ resolving a system tool from PyPI. Each has a standard fix in
 The cost lands on whoever adds a port. A language ecosystem that downloads its dependencies at
 build time needs a *vendor bundle*: a reproducible tarball of those dependencies, produced by
 `make fetch` and then held in the archive like any other source. A recipe asks for one with
-`vendoring =`, and 159 recipes in `ports/core` do: 71 Rust, 38 Go, 45 Python, 4 Haskell and 1
+`vendoring =`, and 161 recipes in `ports/core` do: 75 Rust, 39 Go, 42 Python, 4 Haskell and 1
 Node. `python3-lsp-ruff` gets a Python bundle from its `pypackages` line alone, and four more
 (`pdfium`, `libreoffice`, `librepcb` and `surfer`) carry bundles no tool writes, assembled by hand,
 so 164 ports carry a vendor bundle in all. A build with network access would

@@ -11,9 +11,11 @@
 name        = helix
 version     = 25.07.1
 release     = 1
-source      = https://github.com/helix-editor/helix/archive/$version.tar.gz
-sha256      = 27c8bc3eba46bc7bab1e3629c6b28ff94882eeff17366b3ea69cd8ceffba7541  helix-25.07.1.tar.gz
+source      = $name-$version.tar.xz::https://github.com/helix-editor/helix/releases/download/$version/$name-$version-source.tar.xz
+sha256      = 2d0cf264ac77f8c25386a636e2b3a09a23dec555568cc9a5b2927f84322f544e  helix-25.07.1.tar.xz
+sha256      = 5f5364eb9f7788127864f553c4e4ddf55bba5f1295a78378918b2043f31d0307  helix-vendor-25.07.1.tar.xz
 description = Modal terminal text editor with tree-sitter syntax and language-server support (Rust)
 homepage    = https://helix-editor.com/
 license     = MPL-2.0
 depends     = rust git
+vendoring   = rust

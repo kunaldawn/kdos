@@ -859,7 +859,7 @@ Hackage packages), named `<name>-vendor-<version>.tar.xz`, so that the build nee
 fetch` takes it from the port directory, the *source cache* or the *source archive* like any other
 source, and generates it, by default in the `kdos-fetch` container, only when none of them has it.
 It is generated reproducibly, so it has a stable *source hash*. A recipe asks for one with the
-`vendoring =` key; 159 ports in `ports/core` set it (71 Rust, 38 Go, 45 Python, 4 Haskell, 1 Node). See
+`vendoring =` key; 161 ports in `ports/core` set it (75 Rust, 39 Go, 42 Python, 4 Haskell, 1 Node). See
 [Writing ports](../05-developer/writing-ports.md#vendoring).
 
 ### warmup

@@ -142,8 +142,8 @@ git, and 2,448 are fetched. A complete cache holds those 2,448 files; its size i
 **Vendor bundles.** Rust, Go, Python, Haskell and Node software usually downloads its own dependencies
 while it builds, which a build with no network cannot allow. For those ports the dependencies are
 collected in advance into a *vendor bundle*, `<name>-vendor-<version>.tar.xz`, made by the
-language's own package manager and held to its own `sha256 =` line like any other source. 159
-recipes in `ports/core` declare one with a `vendoring =` key: 71 Rust, 38 Go, 45 Python, 4 Haskell
+language's own package manager and held to its own `sha256 =` line like any other source. 161
+recipes in `ports/core` declare one with a `vendoring =` key: 75 Rust, 39 Go, 42 Python, 4 Haskell
 and 1 Node. Five more name a vendor bundle with no `vendoring =` key (`python3-lsp-ruff` through its
 `pypackages` line, and the hand-made bundles of `pdfium`, `libreoffice`, `librepcb` and `surfer`),
 so 164 ports carry one in all. A bundle is normally fetched from the archive like everything else.

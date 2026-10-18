@@ -1894,8 +1894,8 @@ The build has no network, so a program whose language fetches its dependencies a
 (Rust crates, Go modules, Python packages, Hackage packages) needs them downloaded in advance. That
 is vendoring: `ports/fetch` runs the language's own tool against the port's source and packs what
 it downloads into `<name>-vendor-<version>.tar.xz` beside the tarball. `build.sh` unpacks that
-bundle and builds offline. Set `vendoring =` in the recipe to ask for it; 159 ports do (71 Rust,
-38 Go, 45 Python, 4 Haskell, 1 Node).
+bundle and builds offline. Set `vendoring =` in the recipe to ask for it; 161 ports do (75 Rust,
+39 Go, 42 Python, 4 Haskell, 1 Node).
 
 A bundle with a `sha256 =` line is an archived source like any other: `ports/fetch` takes it from
 the port directory, the cache or the source archive first, and generates it only when none of them
