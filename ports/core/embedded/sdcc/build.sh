@@ -13,7 +13,7 @@
 	--disable-doc
 make
 make DESTDIR=$PKG install
-rm -f "$PKG"/usr/share/info/ctf-spec.info "$PKG"/usr/share/info/sframe-spec.info "$PKG"/usr/share/info/dir \
+rm -f "$PKG"/usr/bin/c++filt "$PKG"/usr/share/info/ctf-spec.info "$PKG"/usr/share/info/sframe-spec.info "$PKG"/usr/share/info/dir \
 	"$PKG"/usr/include/ctf-api.h "$PKG"/usr/include/ctf.h "$PKG"/usr/include/dis-asm.h \
 	"$PKG"/usr/include/sframe-api.h "$PKG"/usr/include/sframe.h \
 	"$PKG"/usr/lib/libctf.a "$PKG"/usr/lib/libctf-nobfd.a "$PKG"/usr/lib/libopcodes.a "$PKG"/usr/lib/libsframe.a
