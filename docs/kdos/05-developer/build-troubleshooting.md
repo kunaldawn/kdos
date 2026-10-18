@@ -1041,7 +1041,9 @@ in the build notices.
 GNU `install` writes the mode `-m` names, whatever the source, `/dev/stdin` included, so
 `install -Dm644` in a recipe is enough. A file a build writes with a generator, a heredoc or
 `cp` takes the generator's mode or the umask's: neverball's `mapc` writes its compiled levels
-0600, and its recipe follows the copy with `chmod -R a+rX`. A file that must stay private, such
+0600, and its recipe follows the copy with `chmod -R a+rX`. A state file its daemon creates when
+missing and rewrites at every start belongs in no package: nfs-utils' recipe removes
+`/var/lib/nfs/state`, which `rpc.statd` writes 0600 as root. A file that must stay private, such
 as a credential, belongs on the lint's allowlist, with the reason, in `src/system/kdos-kpkg/lint.c`
 and in the table on that page.
 

@@ -34,7 +34,8 @@ make
 make DESTDIR=$PKG install
 rm -f "$PKG/usr/share/man/man7/nfs.systemd.7" \
 	"$PKG/usr/bin/rpcgen" \
-	"$PKG/usr/share/man/man1/rpcgen.1"
+	"$PKG/usr/share/man/man1/rpcgen.1" \
+	"$PKG/var/lib/nfs/state"
 test -x "$PKG/usr/sbin/mount.nfs"
 test ! -e "$PKG/sbin"
 
