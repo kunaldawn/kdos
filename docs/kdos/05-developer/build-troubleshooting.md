@@ -118,6 +118,7 @@ lists everything preflight checks.
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
 | `cp: not writing through dangling symlink` in an install step | [A link at a copy's destination](#a-link-at-a-copys-destination) |
 | `ERROR: lint: <path>: mode 0600: not readable by users`, or `a program with no x bit` | [A file installed unreadable](#a-file-installed-unreadable) |
+| A test suite whose expected `env` output differs by quotes: `+FOO='a b'` against `-FOO=a b` | [Quoted `env` output](#quoted-env-output) |
 | `ERROR: lint: <path>: …` with any other reason, then `the staged tree failed <N> lint check(s)` | [A package the lint refuses](#a-package-the-lint-refuses) |
 | A package index or a clone reached during the offline build | [A build that reaches the network](#a-build-that-reaches-the-network) |
 | `Unknown options: …` at meson setup | [An unknown meson option](#an-unknown-meson-option) |
@@ -1043,6 +1044,16 @@ GNU `install` writes the mode `-m` names, whatever the source, `/dev/stdin` incl
 0600, and its recipe follows the copy with `chmod -R a+rX`. A file that must stay private, such
 as a credential, belongs on the lint's allowlist, with the reason, in `src/system/kdos-kpkg/lint.c`
 and in the table on that page.
+
+### Quoted `env` output
+
+coreutils' `env` and `printenv` print each value in shell-escape quoting whenever it holds a
+space or a shell metacharacter (`FOO='a b'`), as `ls` quotes names. A test that compares
+`env` output against a file written for the unquoted form fails on every such variable.
+`QUOTING_STYLE=literal` in the test's environment restores the bare form. A harness that starts
+each test under `env -i` drops it, so the variable has to go through the harness's own
+per-test environment: bmake's recipe passes it as `ENV.<test>`, and for `export`, which prints
+the whole environment, filters it back out of the compared output.
 
 ### A package the lint refuses
 
