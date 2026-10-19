@@ -4586,7 +4586,8 @@ shift
 case \$1 in
 --build-only)
     p=\${@: -1}
-    echo "start \$p jobs=\$KDOS_JOBS cpus=\$(nproc)" >> "\$L"
+    js=none; [ -p "\${KDOS_JOBSERVER:-}" ] && js=fifo
+    echo "start \$p jobs=\$KDOS_JOBS js=\$js cpus=\$(nproc)" >> "\$L"
     if [ "\$(cat "$PJ/fail" 2>/dev/null)" = "\$p" ]; then
         echo "fail \$p" >> "\$L"; exit 1
     fi
@@ -4636,12 +4637,15 @@ grep -qx 'commit a b' "$PJ/kpkg.log" \
     && [ "$(pj_line 'commit c')" -lt "$(pj_line 'start e')" ] \
     || { echo "  a port started before its dependencies were committed"; cat "$PJ/kpkg.log"; exit 1; }
 grep -q '^install' "$PJ/kpkg.log" && { echo "  a level ran a plain install"; cat "$PJ/kpkg.log"; exit 1; }
-# KDOS_JOBS=6 over three slots is 2 each, and each runs on a window of at most
-# twice that.
+# KDOS_JOBS=6 over three slots is 2 each; every port is handed the jobserver
+# FIFO, which is gone once the build ends, and none is pinned to fewer CPUs.
 grep '^start' "$PJ/kpkg.log" | grep -qv 'jobs=2 ' \
     && { echo "  a port was not given KDOS_JOBS=2"; cat "$PJ/kpkg.log"; exit 1; }
-grep '^start' "$PJ/kpkg.log" | grep -qvE 'cpus=[1-4]$' \
-    && { echo "  a port ran outside its CPU window"; cat "$PJ/kpkg.log"; exit 1; }
+grep '^start' "$PJ/kpkg.log" | grep -qv ' js=fifo ' \
+    && { echo "  a port was not given the jobserver"; cat "$PJ/kpkg.log"; exit 1; }
+grep '^start' "$PJ/kpkg.log" | grep -qvx ".* cpus=$(nproc)" \
+    && { echo "  a port was pinned to fewer CPUs"; cat "$PJ/kpkg.log"; exit 1; }
+[ -e "$PJ/build/jobserver" ] && { echo "  the jobserver outlived the build"; exit 1; }
 if command -v python3 >/dev/null 2>&1; then
     pj_steps "$PJ/run.json" | sort | uniq -d | grep -q . \
         && { echo "  a step event was reported twice"; cat "$PJ/run.json"; exit 1; }

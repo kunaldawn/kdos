@@ -35,6 +35,12 @@
  * against the earlier phases and the lower levels and nothing else: what it
  * sees is a function of the tree, never of which sibling finished first.
  * expand_levels() has the graph and its rules.
+ *
+ * THE PORTS OF A LEVEL SHARE ONE JOBSERVER: a GNU make FIFO at
+ * <repo>/build/jobserver holding KDOS_JOBS - 1 tokens, which make, ninja and
+ * cargo take a job slot from. A port building alone therefore runs as many
+ * jobs as the whole build may, and four share the same count as they need it.
+ * jobserver_open() and jobserver_refill() have its rules.
  */
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -229,6 +235,7 @@ void mgr_init(Manager *m, const char *script_dir, const char *build_dir)
 		m->worker[w].log_fd = -1;
 	}
 	m->port_jobs = 1;
+	m->js_fd = -1;
 	m->lvl_from = m->lvl_commit = -1;
 
 	/* The CPUs this process may run on, in order: a level's slots are
@@ -307,6 +314,14 @@ void mgr_apply_plan(Manager *m)
 
 void mgr_free(Manager *m)
 {
+	if (m->js_fd >= 0) {
+		char path[600];
+		snprintf(path, sizeof(path), "%.560s/" KB_JOBSERVER_REL,
+			 m->repo_root);
+		close(m->js_fd);
+		m->js_fd = -1;
+		unlink(path);
+	}
 	free(m->host_conf);
 	m->host_conf = NULL;
 	for (int i = 0; i < m->nroot; i++)
@@ -549,16 +564,18 @@ static void grow_pipe(int fd)
 #endif
 }
 
-/* In the forked child of a level's port, before exec: slot `w` of N runs on
- * min(ncpu, 2k) of this process's CPUs, starting w*ncpu/N along the list, so
- * the cargo, rustc and go that size themselves from the CPUs they may use
- * size themselves to the window rather than to the whole machine. The
- * windows overlap, so a port whose neighbours are linking or idle still gets
- * twice its share. A refusal leaves the child on every CPU, which is slower
- * under contention, not wrong. */
+/* In the forked child of a level's port, before exec, when there is no
+ * jobserver: slot `w` of N runs on min(ncpu, 2k) of this process's CPUs,
+ * starting w*ncpu/N along the list, so the cargo, rustc and go that size
+ * themselves from the CPUs they may use size themselves to the window rather
+ * than to the whole machine. The windows overlap, so a port whose neighbours
+ * are linking or idle still gets twice its share. A refusal leaves the child
+ * on every CPU, which is slower under contention, not wrong. With a jobserver
+ * nothing is pinned: the tokens bound the jobs, and a window would hold a
+ * port building alone to a fraction of the machine. */
 static void pin_window(const Manager *m, int w)
 {
-	if (m->ncpu < 1 || m->port_jobs < 2)
+	if (m->ncpu < 1 || m->port_jobs < 2 || m->js_fd >= 0)
 		return;
 	int width = 2 * m->port_k;
 	if (width > m->ncpu)
@@ -1083,6 +1100,58 @@ static int name_pos(const NameAt *idx, int n, const char *name)
 }
 
 /*
+ * THE JOBSERVER is a FIFO, the transport GNU make 4.4 names in
+ * `--jobserver-auth=fifo:PATH`: each byte in it is one job slot beyond the one
+ * every client holds without a token. It is made once, at <repo>/build/jobserver
+ * so that every chroot entry finds it at /kdos/build/jobserver, and held open
+ * read-write here so that it neither blocks a client's open nor reads as
+ * end-of-file between clients. A stale one from a killed run is replaced.
+ * Returns 0 when there is none, and the level then shares KDOS_JOBS out as
+ * fixed per-port counts.
+ */
+static int jobserver_open(Manager *m, int jobs)
+{
+	m->js_tokens = jobs > 1 ? jobs - 1 : 0;
+	if (m->js_fd >= 0)
+		return 1;
+	char path[600];
+	snprintf(path, sizeof(path), "%.560s/" KB_JOBSERVER_REL, m->repo_root);
+	unlink(path);
+	if (mkfifo(path, 0666) != 0)
+		return 0;
+	/* 0666 whatever the umask: a build step that drops to another user
+	 * opens it too, and a make that cannot falls back to one job. */
+	(void)chmod(path, 0666);
+	m->js_fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+	if (m->js_fd < 0) {
+		unlink(path);
+		return 0;
+	}
+	return 1;
+}
+
+/* Put the FIFO back to exactly js_tokens tokens. Only with no port running:
+ * then every token is in the FIFO or was lost with a client killed while it
+ * held one, so draining it and writing the count afresh returns the lost ones
+ * and cannot hand out a token twice. */
+static void jobserver_refill(Manager *m)
+{
+	if (m->js_fd < 0 || m->nrunning)
+		return;
+	char buf[256];
+	while (read(m->js_fd, buf, sizeof(buf)) > 0)
+		;
+	memset(buf, '+', sizeof(buf));
+	for (int left = m->js_tokens; left > 0;) {
+		ssize_t n = write(m->js_fd, buf, left < (int)sizeof(buf) ?
+				  (size_t)left : sizeof(buf));
+		if (n <= 0)
+			break;
+		left -= (int)n;
+	}
+}
+
+/*
  * THE LEVEL GRAPH of a package phase run with --port-jobs above 1.
  *
  * A port's edges are the names on its recipe's `depends` line that are ports
@@ -1188,6 +1257,14 @@ static int expand_levels(Manager *m, BStep *g, BStep **nodes, int n,
 	if (jobs < 1)
 		jobs = m->ncpu > 0 ? m->ncpu : 1;
 	m->port_k = jobs / m->port_jobs > 0 ? jobs / m->port_jobs : 1;
+	int js = jobserver_open(m, jobs);
+	char js_env[640] = "";
+	if (js && g->step_type == SX_CHROOT)
+		snprintf(js_env, sizeof(js_env),
+			 " KDOS_JOBSERVER=" KB_JOBSERVER_CHROOT);
+	else if (js)
+		snprintf(js_env, sizeof(js_env), " KDOS_JOBSERVER=%.560s/"
+			 KB_JOBSERVER_REL, m->repo_root);
 
 	char env[600];
 	env_source(m, g, env, sizeof(env));
@@ -1201,9 +1278,10 @@ static int expand_levels(Manager *m, BStep *g, BStep **nodes, int n,
 			int forced = m->have_plan &&
 				     kbuild_plan_forced(&m->plan, node->title);
 			KbBuf cl = {0};
-			kb_buf_printf(&cl, "export KDOS_JOBS=%d && %skpkg "
+			kb_buf_printf(&cl, "export KDOS_JOBS=%d%s && %skpkg "
 				      "install --build-only%s %s", m->port_k,
-				      env, forced ? " -f" : "", node->title);
+				      js_env, env, forced ? " -f" : "",
+				      node->title);
 			node_set_cmd(m, g, node, cl.p);
 			node->level = L;
 			out[k++] = node;
@@ -1223,9 +1301,14 @@ static int expand_levels(Manager *m, BStep *g, BStep **nodes, int n,
 		out[k++] = cs;
 	}
 	free(lvl);
-	mgr_notice(m, "%s: %d ports in %d levels, up to %d at a time with "
-		   "KDOS_JOBS=%d each", dir_name, n, top, m->port_jobs,
-		   m->port_k);
+	if (js)
+		mgr_notice(m, "%s: %d ports in %d levels, up to %d at a time "
+			   "sharing %d jobs through a jobserver", dir_name, n,
+			   top, m->port_jobs, jobs);
+	else
+		mgr_notice(m, "%s: %d ports in %d levels, up to %d at a time "
+			   "with KDOS_JOBS=%d each", dir_name, n, top,
+			   m->port_jobs, m->port_k);
 	return k;
 }
 
@@ -1591,10 +1674,12 @@ static int memory_ok(void)
 	return total <= 0 || avail < 0 || avail * 4 >= total;
 }
 
-/* The cursor has reached the first port of a level: find its commit step and
- * ask again about every port of it the host found installed. */
+/* The cursor has reached the first port of a level: find its commit step,
+ * ask again about every port of it the host found installed, and refill the
+ * jobserver, which nothing holds a token of now. */
 static void open_level(Manager *m)
 {
+	jobserver_refill(m);
 	const BStep *first = m->order[m->cursor];
 	int c = m->cursor;
 	while (c < m->norder && !(m->order[c]->is_commit &&
@@ -2092,6 +2177,54 @@ static int order_consistent(const Manager *m)
 	return n == m->norder;
 }
 
+/* The jobserver FIFO under <dir>/build: made with KDOS_JOBS - 1 tokens, filled
+ * back to that count at a level's start whatever was taken from it, left alone
+ * while a port runs, and removed with the manager. */
+static int count_tokens(int fd)
+{
+	char buf[64];
+	int n = 0;
+	ssize_t r;
+	while ((r = read(fd, buf, sizeof(buf))) > 0)
+		n += (int)r;
+	return n;
+}
+
+static int jobserver_selftest(const char *dir)
+{
+	mfail = 0;
+	char script[600], fifo[600];
+	snprintf(script, sizeof(script), "%s/script", dir);
+	snprintf(fifo, sizeof(fifo), "%s/" KB_JOBSERVER_REL, dir);
+	Manager *m = kb_calloc(1, sizeof(*m));
+	mgr_init(m, script, "build");
+	struct stat st;
+	mok(jobserver_open(m, 5) && m->js_fd >= 0 &&
+	    stat(fifo, &st) == 0 && S_ISFIFO(st.st_mode),
+	    "the jobserver is a FIFO under the repository's build directory");
+	jobserver_refill(m);
+	mok(count_tokens(m->js_fd) == 4, "it holds KDOS_JOBS - 1 tokens");
+	jobserver_refill(m);
+	char one = 0;
+	mok(read(m->js_fd, &one, 1) == 1, "a client takes a token");
+	jobserver_refill(m);
+	mok(count_tokens(m->js_fd) == 4,
+	    "a level's start returns the tokens taken and never returned");
+	jobserver_refill(m);
+	m->nrunning = 1;
+	mok(read(m->js_fd, &one, 1) == 1, "a running port holds a token");
+	jobserver_refill(m);
+	mok(count_tokens(m->js_fd) == 3, "nothing is refilled while a port runs");
+	m->nrunning = 0;
+	mok(jobserver_open(m, 9) && m->js_tokens == 8,
+	    "opened again, it keeps the FIFO and takes the new count");
+	mgr_free(m);
+	free(m);
+	mok(stat(fifo, &st) != 0, "the manager removes the FIFO");
+	printf(mfail ? "jobserver: %d failed\n" : "jobserver: ok\n", mfail);
+	return mfail ? 1 : 0;
+}
+
 int mgr_selftest(void)
 {
 	mfail = 0;
@@ -2203,7 +2336,9 @@ int mgr_selftest(void)
 out:
 	mgr_free(m);
 	free(m);
-	kb_rmtree(dir);
 	printf(mfail ? "retry: %d failed\n" : "retry: ok\n", mfail);
-	return mfail ? 1 : 0;
+	int failed = mfail;
+	failed |= jobserver_selftest(dir);
+	kb_rmtree(dir);
+	return failed ? 1 : 0;
 }

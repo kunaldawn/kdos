@@ -45,6 +45,10 @@
 #define KB_MAX_LOG     2000	/* lines kept per step                      */
 #define KB_MAX_NOTICE  50
 #define KB_MAX_WORKERS 8	/* --port-jobs ceiling: steps run at once   */
+/* The jobserver FIFO, as the repository root names it and as a chroot entry
+ * sees it: script/chroot/exec.sh binds <repo>/build at /kdos/build. */
+#define KB_JOBSERVER_REL	"build/jobserver"
+#define KB_JOBSERVER_CHROOT	"/kdos/build/jobserver"
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* The step tree                                                            */
@@ -233,11 +237,16 @@ typedef struct {
 
 	/* --port-jobs: 1 runs every phase one port at a time. `port_k` is the
 	 * KDOS_JOBS each port of a level is given, and `cpu` the CPUs this
-	 * process may use, from which each slot's affinity window is cut. */
+	 * process may use, from which each slot's affinity window is cut when
+	 * there is no jobserver. `js_fd` is the jobserver FIFO
+	 * (<repo>/build/jobserver) held open read-write, -1 without one, and
+	 * `js_tokens` the tokens it holds when no port is running. */
 	int port_jobs;
 	int port_k;
 	int cpu[1024];
 	int ncpu;
+	int js_fd;
+	int js_tokens;
 
 	/* The level being built: order[lvl_from .. lvl_commit - 1] are its
 	 * ports and order[lvl_commit] its commit step; lvl_commit is -1 when
@@ -270,7 +279,7 @@ BStep *mgr_phase_of(BStep *s);
  * run is going again; -1 with `why` filled when nothing failed or a step is
  * still running. */
 int mgr_retry(Manager *m, char *why, size_t cap);
-int mgr_selftest(void);		/* --selftest: the retry's reset           */
+int mgr_selftest(void);		/* --selftest: the retry, the jobserver    */
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Snapshots — creating and extracting, on top of libkbuild's inventory     */

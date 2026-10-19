@@ -363,7 +363,12 @@ job count before running `/usr/bin/ninja`, so a bare `ninja`, `meson compile`, `
 CMake Ninja build all follow `KDOS_JOBS`; a call that passes its own `-j`, a tool (`-t`) or
 `--version` goes through unchanged. A recipe that has to pass a job count explicitly, to a build
 system of its own, reads `$KDOS_JOBS`, never `nproc` and never a parse of `MAKEFLAGS`: `nproc`
-ignores both a lowered `KDOS_JOBS` and the memory clamp.
+ignores both a lowered `KDOS_JOBS` and the memory clamp. Under `kdosbuild --port-jobs` the port
+also has `KDOS_JOBSERVER`, the FIFO make, ninja and cargo take their job slots from (see
+[Building a package phase by level](build-system.md#building-a-package-phase-by-level)), and
+`KDOS_JOBS` is its share. A recipe that lowers `KDOS_JOBS` to save memory unsets
+`KDOS_JOBSERVER`, `GNUMAKEFLAGS` and `CARGO_MAKEFLAGS` on the same line, as `orcaslicer`'s does, or
+those tools keep taking slots from the whole build's count.
 
 The minimal autotools recipe is three lines:
 

@@ -321,7 +321,7 @@ followed by one commit step titled `install L<n> (<count>)`. The ports of a leve
 side, each with:
 
 ```sh
-export KDOS_JOBS=<k> && source script/phases/41_system/phase.env && kpkg install --build-only <port>
+export KDOS_JOBS=<k> KDOS_JOBSERVER=/kdos/build/jobserver && source script/phases/41_system/phase.env && kpkg install --build-only <port>
 ```
 
 `--build-only` builds the port into the package cache and installs nothing. Once every port of the
@@ -332,13 +332,23 @@ by which port finished first. `--port-jobs 2` and `--port-jobs 3` therefore buil
 the serial run, provided every recipe declares what it builds against (see
 [Writing ports](writing-ports.md)).
 
-The jobs are divided between the ports. `J` is `KDOS_JOBS` as the build was given it, or else every
-CPU the orchestrator may use, and each port gets `k = J / N` (at least 1) as its `KDOS_JOBS`, from
-which `common.env` sets `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, and
-`script/bin/ninja` hands ninja as `-jk`. Each port is also bound to a window of `min(CPUs, 2k)`
-CPUs, slot `w` of `N` starting `w × CPUs / N` along the list, so cargo, rustc and go, which size
-themselves from the CPUs they may use, size themselves to the window. The windows overlap, so a
-port beside an idle or linking neighbour still has twice its share.
+The ports of a level share the jobs through a **jobserver**, GNU make's job-slot protocol. `J` is
+`KDOS_JOBS` as the build was given it, or else every CPU the orchestrator may use. The orchestrator
+makes a FIFO at `build/jobserver`, which every chroot entry sees at `/kdos/build/jobserver`, and
+puts `J − 1` tokens in it; each client holds one job without a token and takes a token for every
+job beyond it. `common.env` hands the FIFO to GNU make through `GNUMAKEFLAGS` and to cargo through
+`CARGO_MAKEFLAGS`, and leaves `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS` unset, so `cmake
+--build` and cargo reach it rather than a fixed count; `script/bin/ninja` gives ninja the FIFO in
+place of `-j`. A port building alone therefore runs `J` jobs, and ports side by side share `J` as
+each needs it: one that is configuring, linking or packaging leaves its slots to the others. The
+FIFO is refilled to `J − 1` whenever a level opens, when no port holds a token, so a client killed
+while holding one costs that level a slot and no more. It is removed when the orchestrator exits.
+
+Each port's own `KDOS_JOBS` is still `k = J / N` (at least 1), and `MAKEFLAGS` stays `-jk`: that is
+the count a recipe gets when it passes one itself, to rust's `x.py`, a GHC or a waf build, which
+take no part in the jobserver. A ninja call whose `-j` is exactly `k`, as `ninja $MAKEFLAGS`
+passes, is taken for the build's own count and joins the jobserver; any other `-j` is the
+recipe's. Go sizes itself from the CPUs it may use, and no port is pinned to a subset of them.
 
 A free slot takes the level's next pending port in the resolved order, and only while
 `MemAvailable` is at least a quarter of `MemTotal`; with nothing running a port always starts. A port the host found installed and current is asked again when its level opens,
@@ -439,7 +449,7 @@ script phase never takes it for a step. The settings every phase shares are writ
 
 | File | Sourced by | Holds |
 |---|---|---|
-| `common.env` | Every phase, through one of the two below | The settings that make packages reproducible (`SOURCE_DATE_EPOCH`, `TZ`, `LC_ALL`, `-ffile-prefix-map`, `--build-id=sha1`), described in [Reproducible packages](../03-architecture/packaging.md#reproducible-packages); the job count `KDOS_JOBS` (when not given, the thread count clamped to one job per 2 GiB of memory) exported as `MAKEFLAGS=-j$KDOS_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`; `KPKG_STRICT_RECIPE=1` |
+| `common.env` | Every phase, through one of the two below | The settings that make packages reproducible (`SOURCE_DATE_EPOCH`, `TZ`, `LC_ALL`, `-ffile-prefix-map`, `--build-id=sha1`), described in [Reproducible packages](../03-architecture/packaging.md#reproducible-packages); the job count `KDOS_JOBS` (when not given, the thread count clamped to one job per 2 GiB of memory) exported as `MAKEFLAGS=-j$KDOS_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, or, given a jobserver in `KDOS_JOBSERVER`, `GNUMAKEFLAGS` and `CARGO_MAKEFLAGS` naming it in place of the last two; `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross` and `10_bootstrap` | The target triplet, the paths of the workspace, `build/`, the sysroot and the cross toolchain, `pkg-config` pointed at the sysroot, the cross toolchain first on `PATH`, and the base compiler flags. It empties `build/tmp` |
 | `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, the compiler named outright (`CC=gcc`, `CXX=g++`), the release compiler and linker flags with fortification (`CFLAGS`, `CXXFLAGS`, `FFLAGS`, `FCFLAGS`, `LDFLAGS`), and after `common.env` the defaults for the build systems that do not read `CFLAGS` (`CMAKE_BUILD_TYPE=Release`, `CARGO_PROFILE_RELEASE_DEBUG=0`, `GOFLAGS`, `CGO_CFLAGS`, `CGO_CXXFLAGS`, `CGO_LDFLAGS`), all set out in [Writing ports](writing-ports.md#the-release-flags); `script/bin` first on `PATH` once `/usr/bin/ninja` exists, whose `ninja` adds `-j$KDOS_JOBS` to a ninja call that names no job count and whose `meson` adds `--wrap-mode=nodownload` to a setup that names no wrap mode; the CMake compiler cache; `ac_cv_prog_cxx_cxx11` set empty; `LANG` and `LC_ALL` set to `C.UTF-8` over `common.env`'s `C`; `PIP_ROOT_USER_ACTION=ignore`; `CONFIG_SITE`, naming `script/env/config.site`, which puts an Autoconf build's `sysconfdir`, `localstatedir` and `sharedstatedir` at `/etc`, `/var` and `/var/lib` under `--prefix=/usr`; from `40_lang` on, the Rust `-sys` switches that link the system library (`LIBGIT2_NO_VENDOR`, `RUSTONIG_SYSTEM_LIBONIG`, `LIBSQLITE3_SYS_USE_PKG_CONFIG`, `ZSTD_SYS_USE_PKG_CONFIG`); `TERM=dumb`, and `KPKG_SKIP_INDEX=man`, which leaves the manual index to `70_image`. It removes nothing: `kpkg` empties each port's own work directory before building it and again after a successful build |
 
@@ -1358,7 +1368,7 @@ check the engine itself; see [Testing](testing.md).
 ### Diagnostics with no build
 
 ```sh
-kdosbuild --selftest                        # the layout, log-classifier and retry assertions
+kdosbuild --selftest                        # the layout, log-classifier, retry and jobserver assertions
 kdosbuild --preview <screen> <WxH> <tier>   # one screen, as text
 ```
 

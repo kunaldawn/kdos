@@ -112,7 +112,7 @@ about what it produces:
 
 | Variable | Effect |
 |---|---|
-| `KDOS_JOBS=N` | The job count for every phase: `MAKEFLAGS=-jN`, `CMAKE_BUILD_PARALLEL_LEVEL`, `CARGO_BUILD_JOBS` and `-jN` on every ninja call that names no job count, and a `--cpus` cap of N on the build container, no higher than the host's thread count, so cargo and go follow it. Unset, `script/env/common.env` takes the host's thread count clamped to one job per 2 GiB of memory. Lower it when a large C++ port is OOM-killed |
+| `KDOS_JOBS=N` | The job count for every phase: `MAKEFLAGS=-jN`, `CMAKE_BUILD_PARALLEL_LEVEL`, `CARGO_BUILD_JOBS` and `-jN` on every ninja call that names no job count, and a `--cpus` cap of N on the build container, no higher than the host's thread count, so cargo and go follow it. Unset, `script/env/common.env` takes the host's thread count clamped to one job per 2 GiB of memory. Under `--port-jobs` it is the size of the jobserver the ports of a level share. Lower it when a large C++ port is OOM-killed |
 | `KDOS_CPU_SHARES=N` | The build container's CPU weight, default `256`. It is not a cap: an idle host still gives the build every thread, and it only orders the build against other containers and system services |
 | `KDOS_CCACHE=0` | Turns off the compiler cache, default `1`: CMake ports inside the chroot compile through ccache into `build/ccache`, and a cached object is byte-identical to a compiled one (see [The compiler cache](how-kdos-is-built.md#the-compiler-cache)). Forwarded into the chroot by `script/chroot/exec.sh` |
 | `KDOS_PKG_STORE=1` | Turns on the package store, default `0`: a port whose recipe, environment and dependencies' exact bytes match a package built before is installed from `build/pkgstore` instead of being built, and every package built is stored. `check` builds every hit anyway and logs any difference to `build/logs/pkgstore-check.log`. Use `0` or `check` for a release. See [The package store](../03-architecture/packaging.md#the-package-store) |
@@ -242,8 +242,9 @@ The orchestrator options used most often are these; the full list is in
 | `--plain`, `--json` | No interface: plain lines, or one JSON object per event |
 
 **Building ports side by side.** `make build BUILD_ARGS="--port-jobs 3"` runs each package phase
-level by level: the ports whose dependencies are all installed build together, each with
-`KDOS_JOBS` divided between them and on its own window of CPUs, and one commit step then installs
+level by level: the ports whose dependencies are all installed build together, taking their jobs
+from one jobserver of `KDOS_JOBS` slots, so a port left building alone uses them all, and one
+commit step then installs
 the level in the serial order. What each port builds against is decided by the tree, not by timing,
 so the result matches a serial build as long as every recipe declares its dependencies. It pays
 where a phase has many ports too small to use every CPU, the configure, install and packaging time

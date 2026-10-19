@@ -1756,7 +1756,9 @@ Every phase runs `KDOS_JOBS` jobs at once, and a heavy C++ translation unit or l
 than 2 GiB on its own, which is the budget per job the default job count assumes. Lower the job
 count for the build: `make build KDOS_JOBS=6`. It reaches make, `cmake --build` (WebKit and most
 CMake ports build through it) and cargo, and it caps the container's CPUs, which the chroot sees
-through its read-only cgroup mount, so a bare `ninja` in a recipe follows it too. WebKit runs at
+through its read-only cgroup mount, so a bare `ninja` in a recipe follows it too. Under
+`--port-jobs` it is the size of the jobserver the ports of a level share, so a large port left
+building alone runs that many jobs. WebKit runs at
 most four links at once whatever the job count; its CMake reads `WEBKIT_NINJA_COMPILE_MAX` and
 `WEBKIT_NINJA_LINK_MAX` from the environment at configure time to size its compile and link pools
 apart from the job count, and since the chroot clears the environment, only `webkitgtk`'s own

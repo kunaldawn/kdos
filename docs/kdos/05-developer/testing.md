@@ -173,7 +173,8 @@ blocks fall into these groups, in roughly this order:
    host's signed index and delta packages; `kdosbuild --selftest` laying out the build screen and
    its HUD at every size, and retrying a failed phase over a three-phase tree in a temporary
    directory (kpkg's step first, a finished script keeping its result, a package phase's rows
-   dropped and resolved again, nothing pointing at a freed row); `kdosbuild` running a synthetic
+   dropped and resolved again, nothing pointing at a freed row), and its jobserver FIFO keeping
+   its token count across a level; `kdosbuild` running a synthetic
    two-phase build end to end, writing no snapshot unless `--snapshot` asks and timing every phase
    in its result;
    `kdosbuild` writing a three-phase build's snapshots as a full archive and then layers, each
@@ -185,7 +186,7 @@ blocks fall into these groups, in roughly this order:
    announcing one as running, and running it after all when its recipe is edited while an earlier
    step of the phase runs; and `kdosbuild --port-jobs` over a stub `kpkg`: the order run first,
    a level's ports building side by side, committed together in serial order before the next level
-   starts, each given its share of `KDOS_JOBS` and its CPU window, an ownership inversion named, a
+   starts, each given its share of `KDOS_JOBS` and the jobserver FIFO and pinned to no CPU window, an ownership inversion named, a
    failure letting its running sibling finish and committing nothing, every step reported exactly
    once, and `--port-jobs 1` running exactly the serial commands.
 5. **The system programs.** Timers, reminders, the boot slots and their rollback, the initramfs's
