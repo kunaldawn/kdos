@@ -216,7 +216,7 @@ cpy1 = FV/QEMU_EFI.fd  edk2-aarch64-code.fd
 cpy2 = FV/QEMU_VARS.fd edk2-arm-vars.fd
 EDK2
 cd roms
-env -u MAKEFLAGS CLANGDWARF_BIN=/usr/bin/ python3 edk2-build.py --config kdos-edk2.config \
+env -u MAKEFLAGS -u GNUMAKEFLAGS CLANGDWARF_BIN=/usr/bin/ python3 edk2-build.py --config kdos-edk2.config \
 	--version-override "$EDK2_STABLE-kdos" --release-date "$EDK2_DATE" \
 	--silent --no-logs
 cd ..

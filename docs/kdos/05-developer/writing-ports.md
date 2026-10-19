@@ -368,7 +368,9 @@ also has `KDOS_JOBSERVER`, the FIFO make, ninja and cargo take their job slots f
 [Building a package phase by level](build-system.md#building-a-package-phase-by-level)), and
 `KDOS_JOBS` is its share. A recipe that lowers `KDOS_JOBS` to save memory unsets
 `KDOS_JOBSERVER`, `GNUMAKEFLAGS` and `CARGO_MAKEFLAGS` on the same line, as `orcaslicer`'s does, or
-those tools keep taking slots from the whole build's count.
+those tools keep taking slots from the whole build's count. A recipe that runs a `make` serially
+by clearing `MAKEFLAGS` clears `GNUMAKEFLAGS` with it, as `qemu`'s firmware build does, or the
+jobserver still makes it parallel.
 
 The minimal autotools recipe is three lines:
 
