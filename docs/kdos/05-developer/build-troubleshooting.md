@@ -112,6 +112,7 @@ lists everything preflight checks.
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
 | `'fenv_t' has not been declared`, then `Cannot compile std module`, in `10_bootstrap` | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
+| `checking if libtool supports shared libraries... no`, then only a `.a` installed, and a consumer that links it fails on the library's own dependencies | [A libtool 1.x package on musl](#a-libtool-1x-package-on-musl) |
 | `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, `execinfo.h: No such file or directory`, `'canonicalize_file_name' was not declared`, or `'stat64' ... has incomplete type` | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
@@ -887,6 +888,17 @@ wrapper. Its include guard is already set, so the C library's declarations never
 leaves only the headers of the libstdc++ being built. GCC's own configure adds `-nostdinc++` when it
 builds the target libraries with the compiler in its own build directory; `10_bootstrap` builds them
 with the cross-compiler instead, so the flag has to be passed.
+
+### A libtool 1.x package on musl
+
+A source whose libtool predates 1.5 configures it with `ltconfig`, which knows Linux as
+`linux-gnu*` only. On `x86_64-pc-linux-musl` it answers `dynamic linker characteristics... no`,
+turns shared libraries off and builds the static archive whatever `--disable-static` says. A
+static library carries no `NEEDED` entries, so a consumer that links it fails on the symbols it
+needs from elsewhere: GStreamer's aasink on `libaa.a`'s curses calls. Refreshing `config.sub`
+does not help, because the host is recognised and then not matched. `aalib`'s
+`ltconfig-musl.patch` adds `linux-musl*` to the `linux-gnu*` case, and its recipe checks that
+`libaa.so.1` names ncurses.
 
 ### Gettext on musl
 
