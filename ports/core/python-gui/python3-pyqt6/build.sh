@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/qt612-edit-focus.patch"
+
 sip-build \
 	--confirm-license \
 	--qmake /usr/lib/qt6/bin/qmake \

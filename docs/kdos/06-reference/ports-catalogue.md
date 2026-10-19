@@ -3005,7 +3005,7 @@ The Qt 6 modules, and everything in `group = qt6`. 29 ports, under `ports/core/q
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `python3-pyside6` | 6.11.2 | PySide6 and Shiboken6, the official Qt 6 bindings for Python (FreeCAD's scripting GUI) | `43_toolkits` |
+| `python3-pyside6` | 6.12.0 | PySide6 and Shiboken6, the official Qt 6 bindings for Python (FreeCAD's scripting GUI) | `43_toolkits` |
 | `qt6-qt3d` | 6.12.0 | Qt 6 3D — scene graph, render, input, logic, animation and extras aspects, C++ and QML | `43_toolkits` |
 | `qt6-qt5compat` | 6.12.0 | Qt 6 Core5Compat — QTextCodec, QRegExp and the Qt 5 graphical effects for code ported from Qt 5 | `43_toolkits` |
 | `qt6-qtbase` | 6.12.0 | Qt 6 core, GUI, widgets, network, SQL, D-Bus and printing, with the Wayland and X11 platform plugins | `43_toolkits` |

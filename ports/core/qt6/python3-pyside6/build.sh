@@ -9,8 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-patch -p1 -i "$PORT_SRC/fix-header-install-dir.patch"
-
 patch -p1 -i "$PORT_SRC/pyi-build-tree-shiboken.patch"
 patch -p1 -i "$PORT_SRC/pc-dirs.patch"
 
