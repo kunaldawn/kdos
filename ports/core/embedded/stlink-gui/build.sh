@@ -14,6 +14,7 @@ cmake -B build -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -Wno-error" \
 	-DCMAKE_INSTALL_PREFIX=/usr \
+	-DCMAKE_SKIP_RPATH=ON \
 	-DSTLINK_MODPROBED_DIR=/etc/modprobe.d \
 	-DSTLINK_UDEV_RULES_DIR=/etc/udev/rules.d
 ninja -C build stlink-gui

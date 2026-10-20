@@ -2141,7 +2141,7 @@ Notes:
 - `mumble`: a Qt 5 program, so it links the `openssl3` slot with headers generated from the
   slot's release, as `qt5-qtbase` does. Its `find_pkg` tries a CMake config package before
   FindOpenSSL, so `CMAKE_IGNORE_PATH` hides OpenSSL 4's `/usr/lib/cmake/OpenSSL` (and the same
-  directory under the `/` prefix); found, that package wins over the `OPENSSL_*` paths. The build
+  directory reached through `/usr/lib64`, `/lib` and `/lib64`); found, that package wins over the `OPENSSL_*` paths. The build
   fails if `mumble` or `mumble-server` NEEDs anything but `libssl.so.3`.
 - `nheko`: linked with `-z stack-size=1048576`: musl gives a thread 128 KiB of stack unless
   `PT_GNU_STACK` asks for more, and nheko's worker threads outgrow it.

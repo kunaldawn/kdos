@@ -1098,8 +1098,9 @@ A few habits recur in the tree's application recipes, and a new one should follo
   package unrequired and, after the configure, checks the generated build for what the package
   enables. See [A requirement a find module misreads](build-troubleshooting.md#a-requirement-a-find-module-misreads).
 - **A CMake project that finds GLEW ignores GLEW's own package.**
-  `-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew'`, naming both because `/lib` is the
-  same directory: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path
+  `-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/usr/lib64/cmake/glew;/lib/cmake/glew;/lib64/cmake/glew'`,
+  naming all four because `/lib`, `/usr/lib64` and `/lib64` are the same directory and CMake
+  matches the path it searched, not the directory it reached: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path
   from it only as a Windows import library, so `GLEW_LIBRARY` is NOTFOUND and generation stops.
   Ignored, FindGLEW finds `libGLEW.so` itself.
 - **KDE applications install into Qt's own paths.** `-D KDE_INSTALL_USE_QT_SYS_PATHS=ON` with

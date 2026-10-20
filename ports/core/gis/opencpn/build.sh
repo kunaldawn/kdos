@@ -32,7 +32,7 @@ cmake -S . -B build -G Ninja \
 	-DOCPN_USE_UDEV_PORTS=ON \
 	-DOCPN_BUILD_TEST=OFF \
 	-DOCPN_CI_BUILD=OFF \
-	-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew' \
+	-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/usr/lib64/cmake/glew;/lib/cmake/glew;/lib64/cmake/glew' \
 	"-DOCPN_TARGET_TUPLE=kdos;1;$(uname -m)"
 cmake --build build
 DESTDIR=$PKG cmake --install build

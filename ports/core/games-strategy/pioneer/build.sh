@@ -21,7 +21,7 @@ cmake .. -G Ninja \
 	-DPIONEER_INSTALL_DATADIR=share/pioneer \
 	-DPIONEER_INSTALL_BINDIR=bin \
 	-DUSE_SYSTEM_LIBGLEW=ON \
-	-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew' \
+	-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/usr/lib64/cmake/glew;/lib/cmake/glew;/lib64/cmake/glew' \
 	-DUSE_SYSTEM_LIBLUA=OFF \
 	-DUSE_SSE42=OFF \
 	-DUSE_AVX2=OFF \

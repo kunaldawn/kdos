@@ -117,6 +117,7 @@
 093747e7e03b232e08ff77f1ad7f48552c06ac5236316a5012db4269951c39db sources-1 3d--libspnav-1.2.tar.gz libspnav/libspnav-1.2.tar.gz
 0943132b5db8de6b6a7f1d162682173e8763c7ed94e80fd39113292845f67762 sources-4 qt6--qt6-qtimageformats-6.12.0.tar.xz qt6-qtimageformats/qt6-qtimageformats-6.12.0.tar.xz
 094868f11c8c46e57a077c2788a39c6ee0b0ebc2b64279c6f7c70a5152f518e7 sources-3 kf6--kpeople-6.30.0.tar.xz kpeople/kpeople-6.30.0.tar.xz
+099c1a597cf33c1b000e11cf68a0b82d216fb802bf81726efc720394f10c7751 sources-4 qt6--python3-pyside6-6.12.0.tar.xz python3-pyside6/python3-pyside6-6.12.0.tar.xz
 09ad50570b26aada0408bb9ccfaabf629c56ec89a9972c8b0e155ab780f577cf sources-3 kf6--knotifications-6.30.0.tar.xz knotifications/knotifications-6.30.0.tar.xz
 09b0766528db061730af57a65a05187c0a51d44d14789e29020fe60d71f9c4ad sources-3 pim--taskwarrior-vendor-3.5.0.tar.xz taskwarrior/taskwarrior-vendor-3.5.0.tar.xz
 0a017596de225309757728d38255ef9427eade4be0596d1eab642dc70773478d sources-3 pim--qownnotes-26.9.13.tar.xz qownnotes/qownnotes-26.9.13.tar.xz
