@@ -1,0 +1,15 @@
+--- a/release/Config.cmake.in
++++ b/release/Config.cmake.in
+@@ -1,4 +1,12 @@
+ @PACKAGE_INIT@
+ 
++if(@WITH_SYSTEM_SPNG@)
++  include(CMakeFindDependencyMacro)
++  find_dependency(PkgConfig)
++  if(NOT TARGET PkgConfig::spng)
++    pkg_check_modules(spng REQUIRED spng IMPORTED_TARGET)
++  endif()
++endif()
++
+ include("${CMAKE_CURRENT_LIST_DIR}/@CMAKE_PROJECT_NAME@Targets.cmake")
+ check_required_components("@CMAKE_PROJECT_NAME@")
