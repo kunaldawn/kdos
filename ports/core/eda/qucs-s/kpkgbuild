@@ -10,7 +10,7 @@
 
 name        = qucs-s
 version     = 26.1.1
-release     = 1
+release     = 2
 source      = https://github.com/ra3xdh/qucs_s/releases/download/$version/qucs-s-$version.tar.gz
 sha256      = 8f898fca5a738383ddeefdcda8f552ea60d966e8f89d9e378e6e10cf174fb06e  qucs-s-26.1.1.tar.gz
 description = Circuit schematic capture and simulation front end for ngspice, with RF filter, attenuator and line calculators
