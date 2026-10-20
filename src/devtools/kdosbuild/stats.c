@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdosbuild — timing history, the ETA model and the telemetry sampler
+ *   kdosbuild — the telemetry sampler and the shared formatting
  * ---------------------------------
  */
 
@@ -21,242 +21,9 @@
 
 #include "kdosbuild.h"
 
-#define EWMA_ALPHA 0.4
 #define FAST_INTERVAL 1.0
 #define WALK_INTERVAL 20.0
 #define WALK_BUDGET 15.0	/* the fs walk is a HUD counter, not a job */
-
-/* ──────────────────────────────────────────────────────────────────────── */
-/* Timing history                                                           */
-
-static TimeRec *rec_find(TimeRec *v, int n, const char *key)
-{
-	for (int i = 0; i < n; i++)
-		if (!strcmp(v[i].key, key))
-			return &v[i];
-	return NULL;
-}
-
-static void rec_set(TimeRec **v, int *n, int *cap, const char *key, double secs)
-{
-	TimeRec *at = rec_find(*v, *n, key);
-	if (!at) {
-		if (*n == *cap) {
-			*cap = *cap ? *cap * 2 : 64;
-			TimeRec *nv = kb_calloc((size_t)*cap, sizeof(*nv));
-			/* Guarded: the first record grows from NULL, and memcpy
-			 * from NULL is undefined even for zero bytes. */
-			if (*n)
-				memcpy(nv, *v, (size_t)*n * sizeof(*nv));
-			free(*v);
-			*v = nv;
-		}
-		at = &(*v)[(*n)++];
-		kb_strlcpy(at->key, key, sizeof(at->key));
-		at->secs = 0;
-	}
-	at->secs = secs;
-}
-
-static void load_section(const KjNode *root, const char *name, TimeRec **v,
-			 int *n, int *cap)
-{
-	const KjNode *sec = kj_get(root, name);
-	if (!sec || sec->type != KJ_OBJ)
-		return;
-	for (const KjNode *c = sec->child; c; c = c->next)
-		if (c->key && c->type == KJ_NUM)
-			rec_set(v, n, cap, c->key, c->num);
-}
-
-void tm_load(Timings *t, const char *path)
-{
-	memset(t, 0, sizeof(*t));
-	kb_strlcpy(t->path, path, sizeof(t->path));
-
-	size_t len = 0;
-	char *text = kb_read_all(path, &len);
-	if (!text)
-		return;
-	KjNode *root = kj_parse(text);
-	free(text);
-	if (!root) {
-		/* A corrupt timings file is history, not state: start over
-		 * rather than refuse to build. */
-		kj_free(root);
-		return;
-	}
-	load_section(root, "steps", &t->step, &t->nstep, &t->stepcap);
-	load_section(root, "phases", &t->phase, &t->nphase, &t->phasecap);
-	kj_free(root);
-}
-
-static void dump_section(KbBuf *b, const char *name, const TimeRec *v, int n,
-			 int last)
-{
-	kb_buf_printf(b, " \"%s\": {", name);
-	for (int i = 0; i < n; i++)
-		kb_buf_printf(b, "%s\n  \"%s\": %g", i ? "," : "", v[i].key,
-			      v[i].secs);
-	kb_buf_printf(b, "%s}%s\n", n ? "\n " : "", last ? "" : ",");
-}
-
-void tm_save(Timings *t)
-{
-	if (!t->dirty)
-		return;
-
-	char dir[512];
-	kb_strlcpy(dir, t->path, sizeof(dir));
-	char *slash = strrchr(dir, '/');
-	if (slash) {
-		*slash = 0;
-		kb_mkdir_p(dir);
-	}
-
-	KbBuf b = {0};
-	kb_buf_str(&b, "{\n");
-	dump_section(&b, "steps", t->step, t->nstep, 0);
-	dump_section(&b, "phases", t->phase, t->nphase, 1);
-	kb_buf_str(&b, "}");
-
-	char tmp[600];
-	snprintf(tmp, sizeof(tmp), "%s.tmp", t->path);
-	if (kb_write_all(tmp, b.p, b.n) == 0 && rename(tmp, t->path) == 0)
-		t->dirty = 0;
-	kb_buf_free(&b);
-}
-
-/* Round to two decimals, half away from zero: the timings file is plain text
- * and a value that reads back differently from how it was written would let
- * the EWMA drift by a rounding step every save. */
-static double blend(double old, double now)
-{
-	double v = old <= 0 ? now : old * (1 - EWMA_ALPHA) + now * EWMA_ALPHA;
-	return (double)((long long)(v * 100 + (v < 0 ? -0.5 : 0.5))) / 100.0;
-}
-
-void tm_record_step(Timings *t, const char *key, double secs)
-{
-	if (secs <= 0)
-		return;
-	TimeRec *at = rec_find(t->step, t->nstep, key);
-	rec_set(&t->step, &t->nstep, &t->stepcap, key,
-		blend(at ? at->secs : 0, secs));
-	t->dirty = 1;
-}
-
-void tm_record_phase(Timings *t, const char *key, double secs)
-{
-	if (secs <= 0)
-		return;
-	TimeRec *at = rec_find(t->phase, t->nphase, key);
-	rec_set(&t->phase, &t->nphase, &t->phasecap, key,
-		blend(at ? at->secs : 0, secs));
-	t->dirty = 1;
-}
-
-double tm_step_est(const Timings *t, const char *key, double fallback)
-{
-	TimeRec *at = rec_find(t->step, t->nstep, key);
-	return at ? at->secs : fallback;
-}
-
-double tm_phase_est(const Timings *t, const char *dir_name)
-{
-	TimeRec *at = rec_find(t->phase, t->nphase, dir_name);
-	return at ? at->secs : -1;
-}
-
-void tm_free(Timings *t)
-{
-	free(t->step);
-	free(t->phase);
-	t->step = t->phase = NULL;
-	t->nstep = t->nphase = 0;
-}
-
-/* ──────────────────────────────────────────────────────────────────────── */
-/* ETA                                                                      */
-
-/* The time left, from each step's recorded duration. Under --port-jobs it is
- * approximate: a level is taken to divide evenly among its slots, which a
- * level ruled by one long port does not. */
-double eta_seconds(const Manager *m, const Timings *t)
-{
-	double observed = 0;
-	int nobserved = 0;
-	for (int i = 0; i < m->norder; i++) {
-		const BStep *s = m->order[i];
-		if (s->is_group || s->status != ST_DONE)
-			continue;
-		double d = step_duration(s);
-		if (d > 0) {
-			observed += d;
-			nobserved++;
-		}
-	}
-	double known = 0;
-	for (int i = 0; i < t->nstep; i++)
-		known += t->step[i].secs;
-
-	double fallback = nobserved ? observed / nobserved
-				    : (t->nstep ? known / t->nstep : -1);
-
-	double total = 0;
-	int have = 0;
-	for (int i = 0; i < m->nroot; i++) {
-		const BStep *g = m->root[i];
-		if (g->status == ST_SKIPPED || g->status == ST_DONE)
-			continue;
-
-		if (g->nchild) {
-			/* A level's ports run up to --port-jobs at once, so
-			 * what is left of one is its ports' sum over the
-			 * number that can still run side by side. A level's
-			 * rows are contiguous and end at its commit step. */
-			double level_sum = 0;
-			int level_left = 0;
-			for (int k = 0; k < g->nchild; k++) {
-				const BStep *c = g->child[k];
-				if (c->is_commit && level_left) {
-					int div = level_left < m->port_jobs
-						  ? level_left : m->port_jobs;
-					total += level_sum / (div > 0 ? div : 1);
-					level_sum = 0;
-					level_left = 0;
-				}
-				if (c->status == ST_DONE || c->status == ST_SKIPPED)
-					continue;
-				char key[192];
-				step_timing_key(c, key, sizeof(key));
-				double est = tm_step_est(t, key, fallback);
-				if (est < 0)
-					continue;
-				have = 1;
-				double left = est;
-				if (c->status == ST_RUNNING) {
-					left = est - step_duration(c);
-					if (left < 0)
-						left = 0;
-				}
-				if (c->level && !c->is_commit) {
-					level_sum += left;
-					level_left++;
-				} else {
-					total += left;
-				}
-			}
-		} else {
-			double est = tm_phase_est(t, g->meta->dir_name);
-			if (est < 0)
-				continue;
-			have = 1;
-			total += est;
-		}
-	}
-	return have ? total : -1;
-}
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Sampler
@@ -280,7 +47,7 @@ static void read_meminfo(Sampler *s)
 	char *data = kb_read_all("/proc/meminfo", &len);
 	if (!data)
 		return;
-	long long total = 0, avail = 0;
+	long long total = 0, avail = 0, swap_total = 0, swap_free = 0;
 	for (char *line = data, *next; line && *line; line = next) {
 		char *nl = strchr(line, '\n');
 		next = nl ? nl + 1 : NULL;
@@ -290,12 +57,57 @@ static void read_meminfo(Sampler *s)
 			total = strtoll(line + 9, NULL, 10) * 1024;
 		else if (!strncmp(line, "MemAvailable:", 13))
 			avail = strtoll(line + 13, NULL, 10) * 1024;
-		if (total && avail)
-			break;
+		else if (!strncmp(line, "SwapTotal:", 10))
+			swap_total = strtoll(line + 10, NULL, 10) * 1024;
+		else if (!strncmp(line, "SwapFree:", 9))
+			swap_free = strtoll(line + 9, NULL, 10) * 1024;
 	}
 	free(data);
 	s->mem_total = total;
 	s->mem_used = total - avail > 0 ? total - avail : 0;
+	long long swap = swap_total - swap_free > 0 ? swap_total - swap_free : 0;
+	if (swap > s->swap_used)
+		s->swap_rose_at = kb_now_s();
+	s->swap_used = swap;
+}
+
+/* Busy over the last tick: user, nice, system, irq, softirq and steal against
+ * those plus idle and iowait, from the counters' deltas. The first read has
+ * no previous one and gives the average since boot. Guest time is already
+ * inside user and nice, so it is not added again. */
+static void read_cpu(Sampler *s)
+{
+	size_t len = 0;
+	char *data = kb_read_all("/proc/stat", &len);
+	if (!data)
+		return;
+	unsigned long long v[8] = { 0 };
+	int ncpu = 0;
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		next = nl ? nl + 1 : NULL;
+		if (nl)
+			*nl = 0;
+		if (!strncmp(line, "cpu ", 4))
+			sscanf(line + 4, "%llu %llu %llu %llu %llu %llu %llu %llu",
+			       &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6],
+			       &v[7]);
+		else if (!strncmp(line, "cpu", 3) &&
+			 line[3] >= '0' && line[3] <= '9')
+			ncpu++;
+	}
+	free(data);
+	unsigned long long busy = v[0] + v[1] + v[2] + v[5] + v[6] + v[7];
+	unsigned long long total = busy + v[3] + v[4];
+	unsigned long long db = busy - s->cpu_busy_ticks;
+	unsigned long long dt = total - s->cpu_total_ticks;
+	if (total > s->cpu_total_ticks && busy >= s->cpu_busy_ticks)
+		s->cpu_busy = (double)db / (double)dt;
+	s->cpu_busy_ticks = busy;
+	s->cpu_total_ticks = total;
+	if (s->cpu_busy > 1)
+		s->cpu_busy = 1;
+	s->ncpu = ncpu;
 }
 
 static void read_loadavg(Sampler *s)
@@ -362,6 +174,24 @@ static void reap_walk(Sampler *s)
 	}
 }
 
+static void push_one(double *hist, int n, double v)
+{
+	if (n == KB_HIST) {
+		memmove(hist, hist + 1, sizeof(hist[0]) * (KB_HIST - 1));
+		n--;
+	}
+	hist[n] = v;
+}
+
+void sam_push(Sampler *s, double cpu, double mem, double rate)
+{
+	push_one(s->cpu_hist, s->nhist, cpu);
+	push_one(s->mem_hist, s->nhist, mem);
+	push_one(s->rate_hist, s->nhist, rate);
+	if (s->nhist < KB_HIST)
+		s->nhist++;
+}
+
 void sam_pump(Sampler *s, Manager *m)
 {
 	reap_walk(s);
@@ -377,24 +207,12 @@ void sam_pump(Sampler *s, Manager *m)
 	s->lines_per_sec = delta > 0 ? (double)delta / dt : 0;
 	s->last_lines = lines;
 
-	int cap = (int)(sizeof(s->history) / sizeof(s->history[0]));
-	if (s->nhistory == cap) {
-		memmove(s->history, s->history + 1,
-			sizeof(s->history[0]) * (size_t)(cap - 1));
-		s->nhistory--;
-	}
-	s->history[s->nhistory++] = s->lines_per_sec;
-
 	read_loadavg(s);
-
-	int lcap = (int)(sizeof(s->load_hist) / sizeof(s->load_hist[0]));
-	if (s->nload == lcap) {
-		memmove(s->load_hist, s->load_hist + 1,
-			sizeof(s->load_hist[0]) * (size_t)(lcap - 1));
-		s->nload--;
-	}
-	s->load_hist[s->nload++] = s->load1;
+	read_cpu(s);
 	read_meminfo(s);
+	sam_push(s, s->cpu_busy,
+		 s->mem_total ? (double)s->mem_used / (double)s->mem_total : 0,
+		 s->lines_per_sec);
 	struct statvfs st;
 	if (statvfs(m->build_dir, &st) == 0)
 		s->disk_free = (long long)st.f_bavail * (long long)st.f_frsize;

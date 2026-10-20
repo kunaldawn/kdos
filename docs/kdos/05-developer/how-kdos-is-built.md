@@ -142,8 +142,8 @@ git, and 2,448 are fetched. A complete cache holds those 2,448 files; its size i
 **Vendor bundles.** Rust, Go, Python, Haskell and Node software usually downloads its own dependencies
 while it builds, which a build with no network cannot allow. For those ports the dependencies are
 collected in advance into a *vendor bundle*, `<name>-vendor-<version>.tar.xz`, made by the
-language's own package manager and held to its own `sha256 =` line like any other source. 159
-recipes in `ports/core` declare one with a `vendoring =` key: 71 Rust, 38 Go, 45 Python, 4 Haskell
+language's own package manager and held to its own `sha256 =` line like any other source. 161
+recipes in `ports/core` declare one with a `vendoring =` key: 75 Rust, 39 Go, 42 Python, 4 Haskell
 and 1 Node. Five more name a vendor bundle with no `vendoring =` key (`python3-lsp-ruff` through its
 `pypackages` line, and the hand-made bundles of `pdfium`, `libreoffice`, `librepcb` and `surfer`),
 so 164 ports carry one in all. A bundle is normally fetched from the archive like everything else.
@@ -200,7 +200,9 @@ port at a time, first. Since nothing is installed while a level builds, each por
 it would see in a serial build, provided its recipe declares everything it builds against. See
 [Building a package phase by level](build-system.md#building-a-package-phase-by-level).
 
-When a phase completes, kdosbuild archives the paths it declared into `build/snapshots/<phase>/`.
+When a phase completes in a run that writes snapshots (`--snapshot`, or the picker's `S`; a run
+writes none unless asked), kdosbuild archives the paths it declared into
+`build/snapshots/<phase>/`.
 The first two phases declare `cross`, `fs` and `mark` (the cross toolchain, the target tree and the
 "already done" markers); the package phases up to `50_desktop` declare `fs`; `60_kernel` and
 `70_image` declare nothing and are re-run on the tree they find. The first snapshot of a path holds
@@ -210,7 +212,9 @@ a list of what was removed. A later build can restore any snapshot, by extractin
 at the bottom of its chain and each layer above it, and continue from the phase after it,
 so a failure hours in does not mean starting again. Before a build begins, a picker on the terminal
 asks which snapshot to start from and whether to write new ones. Snapshots, their disk cost and the
-rules that keep a restore safe are in [Snapshots](build-system.md#snapshots).
+rules that keep a restore safe are in [Snapshots](build-system.md#snapshots). A step that fails does
+not need either: with the fix made, `R` in the failure panel runs that phase again in the same run,
+`kpkg` first; see [Retrying a failed phase](build-system.md#retrying-a-failed-phase).
 
 ## The cross toolchain: `00_cross`
 
@@ -757,9 +761,9 @@ make build BUILD_ARGS="--phases 41_system,70_image --rebuild pv"
 kdosbuild runs `41_system` and `70_image` only. `41_system` resolves its order as always; every
 other port in the order is installed and current, so kdosbuild marks it `installed` and runs no
 step for it; `pv` is forced with `kpkg install -f` and rebuilt; its dependencies are not forced. `70_image` then produces a new ISO
-from the updated tree. A plan that narrows the build also stops kdosbuild writing snapshots,
-because a snapshot of a partly re-run tree would be filed under a phase whose contents it does not
-match. The recipe for each kind of change (a file under `fs/`, a port, a desktop program, a
+from the updated tree. A plan that narrows the build writes no snapshots unless `--snapshot` is
+given, because a snapshot of a partly re-run tree would be filed under a phase whose contents it
+does not match. The recipe for each kind of change (a file under `fs/`, a port, a desktop program, a
 library) is the table in
 [Rebuilding one thing](developing.md#rebuilding-one-thing), and the rules of a plan are in
 [Build plans](build-system.md#build-plans).
@@ -780,7 +784,7 @@ These figures come from the chapters that measure them:
 | One program rebuilt, with packaging | Not yet measured with the zstd image; most of it is writing the ISO, and `KDOS_ISO_COMP=zstd:3` shortens that part | [The fast loop](testing.md#the-fast-loop) |
 | One program rebuilt without packaging, patched into a booted ISO | About three minutes, or 1m37s when nothing is rebuilt and the session is not restarted (`KDOS_QUICK_NOBUILD=1 KDOS_QUICK_KEEP=1`) | [The fast loop](testing.md#the-fast-loop) |
 
-Snapshots are optional, and the startup picker can turn them off. A build from scratch also needs
+Snapshots are written only when a run asks for them, with `--snapshot` or the startup picker's `S`. A build from scratch also needs
 the progress markers emptied first: `--fresh` runs every phase on the tree already in `build/`, and
 does not start from nothing; see [Building from scratch](developing.md#building-from-scratch).
 

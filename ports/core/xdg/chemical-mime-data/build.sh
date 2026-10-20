@@ -18,7 +18,7 @@ autoreconf -fi
 	--without-gnome-mime \
 	--without-kde-mime \
 	--without-hicolor-theme \
-	RSVG=true
+	RSVG=/usr/bin/true
 make
 make DESTDIR=$PKG install
 rm -rf "$PKG/usr/share/doc"

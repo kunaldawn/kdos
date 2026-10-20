@@ -1,0 +1,11 @@
+--- a/ltconfig
++++ b/ltconfig
+@@ -1984,7 +1984,7 @@
+   ;;
+ 
+ # This must be Linux ELF.
+-linux-gnu*)
++linux-gnu* | linux-musl*)
+   version_type=linux
+   need_lib_prefix=no
+   need_version=no

@@ -43,6 +43,7 @@ rustflags = ["-Cstrip=debuginfo"]
 
 [target.$_triplet]
 llvm-config = "/usr/bin/llvm-config"
+llvm-filecheck = "/usr/lib/llvm/utils/FileCheck"
 crt-static = false
 EOF
 

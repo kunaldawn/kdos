@@ -16,6 +16,7 @@ patch -p1 -i "$PORT_SRC/lfs64.patch"
 patch -p1 -i "$PORT_SRC/musl-no-linux-prctl.patch"
 patch -p1 -i "$PORT_SRC/rust-lto-thin.patch"
 patch -p1 -i "$PORT_SRC/sandbox-sched_setscheduler.patch"
+patch -p1 -i "$PORT_SRC/parakeet-cstdint.patch"
 
 _gcc_triple="--gcc-triple=$(gcc -dumpmachine)"
 export CC=clang

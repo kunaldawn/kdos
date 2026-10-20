@@ -18,3 +18,4 @@
 	--with-logfile-dir=/var/log/ppp
 make
 make DESTDIR=$PKG install
+chmod 644 "$PKG"/etc/ppp/*.example

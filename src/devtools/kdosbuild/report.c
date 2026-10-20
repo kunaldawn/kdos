@@ -136,13 +136,31 @@ static void t_snap_tick(const Manager *m)
 	fflush(stdout);
 }
 
+/* A phase's wall-clock time, or what it is instead: "skipped", or "-" for one
+ * that never started. */
+static const char *phase_time(const BStep *g)
+{
+	if (g->status == ST_SKIPPED)
+		return "skipped";
+	double d = step_duration(g);
+	return d > 0 ? human_time(d) : "-";
+}
+
 static void t_finish(const Manager *m)
 {
+	break_line();
+	printf("==> phase times\n");
+	for (int i = 0; i < m->nroot; i++) {
+		const BStep *g = m->root[i];
+		printf("    %-40s %s%s\n",
+		       g->meta ? g->meta->dir_name : g->title, phase_time(g),
+		       g->status == ST_FAIL ? " (failed)" : "");
+	}
 	if (m->error_step)
-		printf("BUILD FAILED at %s\n", m->error_step->title);
+		printf("BUILD FAILED at %s after %s\n", m->error_step->title,
+		       human_time(mgr_elapsed(m)));
 	else
-		printf("BUILD COMPLETE in %s\n",
-		       human_time(kb_now_s() - m->start_time));
+		printf("BUILD COMPLETE in %s\n", human_time(mgr_elapsed(m)));
 	fflush(stdout);
 }
 
@@ -322,13 +340,28 @@ static void j_finish(const Manager *m)
 		      m->error_step ? "failed" : "complete");
 	kb_buf_printf(&b, ", \"seconds\": %.2f, \"ok\": %d, \"installed\": %d, "
 		      "\"failed\": %d, \"skipped\": %d",
-		      kb_now_s() - m->start_time, ok, installed, failed,
-		      skipped);
+		      mgr_elapsed(m), ok, installed, failed, skipped);
 	if (m->error_step) {
 		kb_buf_str(&b, ", \"failed_step\": ");
 		kb_json_str(&b, m->error_step->title);
 		json_phase_of(&b, "failed_phase", m->error_step);
 	}
+	/* Every phase in build order with its wall-clock seconds; null for one
+	 * skipped or never started. */
+	kb_buf_str(&b, ", \"phases\": [");
+	for (int i = 0; i < m->nroot; i++) {
+		const BStep *g = m->root[i];
+		double d = step_duration(g);
+		kb_buf_str(&b, i ? ", {\"phase\": " : "{\"phase\": ");
+		kb_json_str(&b, g->meta ? g->meta->dir_name : g->title);
+		kb_buf_str(&b, ", \"status\": ");
+		kb_json_str(&b, status_name(g->status));
+		if (g->status == ST_SKIPPED || d <= 0)
+			kb_buf_str(&b, ", \"seconds\": null}");
+		else
+			kb_buf_printf(&b, ", \"seconds\": %.2f}", d);
+	}
+	kb_buf_str(&b, "]");
 	emit(&b);
 }
 

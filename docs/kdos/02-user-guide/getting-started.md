@@ -43,7 +43,7 @@ Plan for the cost before you start:
 
 Later builds are much shorter. The build runs in thirteen *phases*, stages that each run in order
 (see [The build system](../05-developer/build-system.md#phases)); after each one it can save a
-*snapshot* of the tree, so a later build can resume from that point. Most changes need only a
+*snapshot* of the tree, when asked to, so a later build can resume from that point. Most changes need only a
 narrow rebuild of one port or one phase. [Developing](../05-developer/developing.md)
 describes those targeted loops.
 
@@ -109,7 +109,8 @@ its packages; after that Docker reuses the image and the whole build runs offlin
 
 When `make build` runs in a terminal, the orchestrator opens a *startup picker* before it does
 anything. Choose *start fresh* and press `Enter` to run every phase; the picker also asks whether
-to write phase snapshots, and `S` toggles that. `make build BUILD_ARGS=--fresh` skips the picker.
+to write phase snapshots, which is off until `S` turns it on. `make build BUILD_ARGS=--fresh` skips
+the picker, and `--snapshot` writes snapshots without it.
 [The startup picker](../05-developer/build-system.md#the-startup-picker) describes both questions.
 
 The result is one file:
@@ -126,7 +127,7 @@ A few variables change what the build produces:
 
 | Variable | Effect |
 |---|---|
-| `BUILD_ARGS="…"` | Flags for the orchestrator, such as `--fresh`, `--no-snapshot`, `--continue-from <phase>` or `--rebuild <port>`. See [The build system](../05-developer/build-system.md) |
+| `BUILD_ARGS="…"` | Flags for the orchestrator, such as `--fresh`, `--snapshot`, `--continue-from <phase>` or `--rebuild <port>`. See [The build system](../05-developer/build-system.md) |
 | `KDOS_ISO_SOURCES=1` | Copies the ports tree with its fetched sources, `src/`, `script/` and `fs/` onto the ISO under `sources/`, together with a `SOURCES` stamp that `kdos rebuild` prints. No rebuild from such a medium has been run through every phase; see [KDOS can build KDOS](../01-philosophy/why-kdos.md#kdos-can-build-kdos) |
 | `KDOS_PACK_KDOS=1` | Also packs the finished system as a base pack named `kdos`, written to `build/kdos-base/kdos.kpack` and carried on the medium under `packs/` |
 

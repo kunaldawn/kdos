@@ -26,7 +26,7 @@ at `build/iso-build/kdos.iso`. Four layers take part, each started by the one be
 2. **`script/kdosbuild.sh`**, inside that container, compiles the orchestrator from source when
    its sources, flags or compiler changed, and runs it.
 3. **`kdosbuild`**, the orchestrator, discovers the phases under `script/phases/` and runs them in
-   order, writing logs, snapshots and timing history as it goes.
+   order, writing logs as it goes, and a snapshot of each phase when asked to.
 4. **The phases** do the work: the first two in the container itself, the rest inside the target
    root filesystem through `script/chroot/exec.sh`.
 
@@ -321,7 +321,7 @@ followed by one commit step titled `install L<n> (<count>)`. The ports of a leve
 side, each with:
 
 ```sh
-export KDOS_JOBS=<k> && source script/phases/41_system/phase.env && kpkg install --build-only <port>
+export KDOS_JOBS=<k> KDOS_JOBSERVER=/kdos/build/jobserver && source script/phases/41_system/phase.env && kpkg install --build-only <port>
 ```
 
 `--build-only` builds the port into the package cache and installs nothing. Once every port of the
@@ -332,17 +332,26 @@ by which port finished first. `--port-jobs 2` and `--port-jobs 3` therefore buil
 the serial run, provided every recipe declares what it builds against (see
 [Writing ports](writing-ports.md)).
 
-The jobs are divided between the ports. `J` is `KDOS_JOBS` as the build was given it, or else every
-CPU the orchestrator may use, and each port gets `k = J / N` (at least 1) as its `KDOS_JOBS`, from
-which `common.env` sets `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, and
-`script/bin/ninja` hands ninja as `-jk`. Each port is also bound to a window of `min(CPUs, 2k)`
-CPUs, slot `w` of `N` starting `w × CPUs / N` along the list, so cargo, rustc and go, which size
-themselves from the CPUs they may use, size themselves to the window. The windows overlap, so a
-port beside an idle or linking neighbour still has twice its share.
+The ports of a level share the jobs through a **jobserver**, GNU make's job-slot protocol. `J` is
+`KDOS_JOBS` as the build was given it, or else every CPU the orchestrator may use. The orchestrator
+makes a FIFO at `build/jobserver`, which every chroot entry sees at `/kdos/build/jobserver`, and
+puts `J − 1` tokens in it; each client holds one job without a token and takes a token for every
+job beyond it. `common.env` hands the FIFO to GNU make through `GNUMAKEFLAGS` and to cargo through
+`CARGO_MAKEFLAGS`, and leaves `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS` unset, so `cmake
+--build` and cargo reach it rather than a fixed count; `script/bin/ninja` gives ninja the FIFO in
+place of `-j`. A port building alone therefore runs `J` jobs, and ports side by side share `J` as
+each needs it: one that is configuring, linking or packaging leaves its slots to the others. The
+FIFO is refilled to `J − 1` whenever a level opens, when no port holds a token, so a client killed
+while holding one costs that level a slot and no more. It is removed when the orchestrator exits.
 
-A free slot takes the level's pending port with the longest recorded time, the earlier in the order
-on a tie, and only while `MemAvailable` is at least a quarter of `MemTotal`; with nothing running a
-port always starts. A port the host found installed and current is asked again when its level opens,
+Each port's own `KDOS_JOBS` is still `k = J / N` (at least 1), and `MAKEFLAGS` stays `-jk`: that is
+the count a recipe gets when it passes one itself, to rust's `x.py`, a GHC or a waf build, which
+take no part in the jobserver. A ninja call whose `-j` is exactly `k`, as `ninja $MAKEFLAGS`
+passes, is taken for the build's own count and joins the jobserver; any other `-j` is the
+recipe's. Go sizes itself from the CPUs it may use, and no port is pinned to a subset of them.
+
+A free slot takes the level's next pending port in the resolved order, and only while
+`MemAvailable` is at least a quarter of `MemTotal`; with nothing running a port always starts. A port the host found installed and current is asked again when its level opens,
 as the serial run asks when it reaches the row. A port `--build-only` reports as current builds
 nothing and is left out of the commit, and a commit with nothing to install is marked done without
 running.
@@ -363,9 +372,8 @@ kpkgadd's `Taking <n> path(s) from <port>` and names such a pair in a notice, `<
 from <port>; the serial order had <port> last — pin <port> before <taker> in 00-order.txt`; pinning
 the pair in that order makes the serial run install them the way the levels did.
 
-The header shows how many steps are running, and its ETA is marked `~`: it divides each level's
-remaining time evenly between its slots, which a level ruled by one long port does not. A phase's
-recorded duration is the wall-clock span of its steps.
+The header shows how many steps are running in place of the running step's time. A phase's
+duration is the wall-clock span of its steps.
 
 ### Running a step
 
@@ -441,7 +449,7 @@ script phase never takes it for a step. The settings every phase shares are writ
 
 | File | Sourced by | Holds |
 |---|---|---|
-| `common.env` | Every phase, through one of the two below | The settings that make packages reproducible (`SOURCE_DATE_EPOCH`, `TZ`, `LC_ALL`, `-ffile-prefix-map`, `--build-id=sha1`), described in [Reproducible packages](../03-architecture/packaging.md#reproducible-packages); the job count `KDOS_JOBS` (when not given, the thread count clamped to one job per 2 GiB of memory) exported as `MAKEFLAGS=-j$KDOS_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`; `KPKG_STRICT_RECIPE=1` |
+| `common.env` | Every phase, through one of the two below | The settings that make packages reproducible (`SOURCE_DATE_EPOCH`, `TZ`, `LC_ALL`, `-ffile-prefix-map`, `--build-id=sha1`), described in [Reproducible packages](../03-architecture/packaging.md#reproducible-packages); the job count `KDOS_JOBS` (when not given, the thread count clamped to one job per 2 GiB of memory) exported as `MAKEFLAGS=-j$KDOS_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, or, given a jobserver in `KDOS_JOBSERVER`, `GNUMAKEFLAGS` and `CARGO_MAKEFLAGS` naming it in place of the last two; `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross` and `10_bootstrap` | The target triplet, the paths of the workspace, `build/`, the sysroot and the cross toolchain, `pkg-config` pointed at the sysroot, the cross toolchain first on `PATH`, and the base compiler flags. It empties `build/tmp` |
 | `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, the compiler named outright (`CC=gcc`, `CXX=g++`), the release compiler and linker flags with fortification (`CFLAGS`, `CXXFLAGS`, `FFLAGS`, `FCFLAGS`, `LDFLAGS`), and after `common.env` the defaults for the build systems that do not read `CFLAGS` (`CMAKE_BUILD_TYPE=Release`, `CARGO_PROFILE_RELEASE_DEBUG=0`, `GOFLAGS`, `CGO_CFLAGS`, `CGO_CXXFLAGS`, `CGO_LDFLAGS`), all set out in [Writing ports](writing-ports.md#the-release-flags); `script/bin` first on `PATH` once `/usr/bin/ninja` exists, whose `ninja` adds `-j$KDOS_JOBS` to a ninja call that names no job count and whose `meson` adds `--wrap-mode=nodownload` to a setup that names no wrap mode; the CMake compiler cache; `ac_cv_prog_cxx_cxx11` set empty; `LANG` and `LC_ALL` set to `C.UTF-8` over `common.env`'s `C`; `PIP_ROOT_USER_ACTION=ignore`; `CONFIG_SITE`, naming `script/env/config.site`, which puts an Autoconf build's `sysconfdir`, `localstatedir` and `sharedstatedir` at `/etc`, `/var` and `/var/lib` under `--prefix=/usr`; from `40_lang` on, the Rust `-sys` switches that link the system library (`LIBGIT2_NO_VENDOR`, `RUSTONIG_SYSTEM_LIBONIG`, `LIBSQLITE3_SYS_USE_PKG_CONFIG`, `ZSTD_SYS_USE_PKG_CONFIG`); `TERM=dumb`, and `KPKG_SKIP_INDEX=man`, which leaves the manual index to `70_image`. It removes nothing: `kpkg` empties each port's own work directory before building it and again after a successful build |
 
@@ -778,9 +786,11 @@ with your machine's own toolchains.
 
 ## Snapshots
 
-A full build takes many hours. Every completed phase from `00_cross` to `50_desktop` is therefore
-archived to `build/snapshots/<phase directory>/`, so that a later build can start from it instead of
-from the beginning. `60_kernel` and `70_image` take no snapshot: they are re-run on the tree they
+A full build takes many hours. A run given `--snapshot`, or started with snapshot writing turned on
+in the [startup picker](#the-startup-picker), therefore archives every phase from `00_cross` to
+`50_desktop` as it completes, to `build/snapshots/<phase directory>/`, so that a later build can
+start from it instead of from the beginning. Writing is off otherwise: a run writes no snapshot
+unless asked to, and restoring from the snapshots that exist works either way. `60_kernel` and `70_image` take no snapshot: they are re-run on the tree they
 find, which costs minutes, where archiving the image phase's tree would cost more than running it.
 
 Each phase declares what its snapshot holds. `KDOS_SNAPSHOT_PATHS` lists paths relative to
@@ -806,8 +816,7 @@ to change. A restore past it takes `fs` from the newest snapshot below it, and a
 there re-runs the phase, which `kpkg` makes cheap for every port already installed. A snapshot
 directory still under such a phase's name is a leftover: it is never restored or layered into a
 restore, the picker does not offer it, and `--list` marks it `leftover (phase declares no paths)`
-so that `--delete` can remove it. To skip writing
-snapshots for one run only, use `--no-snapshot` or the picker's `S`.
+so that `--delete` can remove it.
 
 ### Layers and full snapshots
 
@@ -897,8 +906,6 @@ under `paths`, for each path: its archive, `kind` (`full` or `layer`), `base` (t
 restored as a full archive, and can be a base once it has been restored. A `kdosbuild` that knows
 only `entries` finds no array in a schema-4 manifest and treats that snapshot as absent rather than
 restore a layer as a whole tree.
-`build/snapshots/timings.json`, beside the snapshots, keeps the step and phase timing history that
-the build screen's time estimate uses.
 
 **Writing.** A snapshot is written into `build/snapshots/.new-<phase directory>/`: its archives,
 its `.gone` lists and its manifest. Then it commits:
@@ -970,9 +977,9 @@ opens a picker before running anything. It answers two questions:
   with its size and kind, and what restoring it reads, as in
   `restores: fs 61M layer · restore reads 1.8G from 10 archives`; the next line names the phase the
   build continues from.
-- **Whether to write snapshots during this build.** `S` toggles it, and the footer shows
-  `writing: on|off`. `--no-snapshot` sets what the picker opens on. Writing off is shown as a
-  warning, because a run with writing off that fails in its last phase has nothing to resume from.
+- **Whether to write snapshots during this build.** It opens off, or on when `--snapshot` was
+  given; `S` toggles it, and the footer shows `writing: on|off`. While it is off, a line under the
+  list says the run leaves no restore points.
 
 | Key | Does |
 |---|---|
@@ -1077,10 +1084,11 @@ completely reads as no plan.
 
 Three rules make a plan safe:
 
-1. **Snapshots are suppressed while a plan narrows execution.** Re-running an early phase on a later
-   tree would otherwise file that tree under the earlier phase's name. The suppression applies
-   whatever the snapshot toggle says, and `--snapshot` overrides it. A rebuild list on its own does
-   not narrow, so it keeps them.
+1. **A plan that narrows execution writes no snapshots unless `--snapshot` is given.** Re-running an
+   early phase on a later tree would otherwise file that tree under the earlier phase's name, so a
+   narrowing plan turns off writing that the picker's `S` turned on, and says so in a notice;
+   `--snapshot` on the command line is the one way to write them anyway. A rebuild list on its own
+   does not narrow, so it keeps whatever writing was chosen.
 2. **Only named ports are forced.** `kpkg install -f` is passed for the ports the plan names and no
    others; their dependencies keep the usual skip-if-installed behaviour. Forcing everything would
    rebuild the whole tree. A named port is forced in every selected phase whose resolved install
@@ -1151,9 +1159,8 @@ compiler there; `make build` runs the script inside the container.
 | `--fresh` | Skip the startup picker and run every phase on the existing tree. Steps and ports already done are skipped; see [The startup picker](#the-startup-picker) |
 | `--restore PHASE` | Restore a snapshot and continue after it. `PHASE` is a short name, directory name, 1-based index, or `latest` |
 | `--continue-from PHASE` | Resume at `PHASE` on the existing tree, with no restore. `PHASE` takes the same forms as `--restore` |
-| `--no-snapshot` | Do not write snapshots in this build. With the full-screen interface, this is what the picker opens on |
 | `--full-snapshots` | Archive every snapshot path whole in this build, never as a layer; see [Layers and full snapshots](#layers-and-full-snapshots) |
-| `--snapshot` | Write snapshots even for a narrowing plan |
+| `--snapshot` | Write a snapshot of each phase as it completes, a narrowing plan's included. Without it no snapshot is written. With the full-screen interface, this is what the picker opens on |
 | `--plan` | Open the plan picker and run the plan on this tree |
 | `--phases LIST` | Run only these phases |
 | `--steps LIST` | Run only these scripts, `PHASE:script.sh` |
@@ -1165,7 +1172,7 @@ compiler there; `make build` runs the script inside the container.
 | `--delete PHASE` | Delete one phase's snapshot and exit. `PHASE` takes the same forms as `--restore`. A snapshot that others layer on is held until the last of them goes, and the message names them: `deleted 41_system; kept as the base of 42_graphics…50_desktop` |
 | `--build-dir DIR` | The build directory. Defaults to `$KDOS_BUILD_DIR`, then `build` |
 | `--script-dir DIR` | The script directory, whose `phases/` holds the phases. Defaults to `script`. The repository root is taken as its parent, which is where the chroot wrapper and every path handed into the chroot are resolved from, so it is never `script/phases` |
-| `--selftest` | Run the layout and log-classifier assertions and exit. Must be the first argument |
+| `--selftest` | Run the layout, log-classifier and retry assertions and exit. Must be the first argument |
 | `--preview SCREEN WxH TIER` | Draw one screen offscreen and print it. Must be the first argument; see [Diagnostics with no build](#diagnostics-with-no-build) |
 | `-h`, `--help` | Print usage |
 
@@ -1201,11 +1208,11 @@ that step does not ask `git`, so an image built without `make build` is unstampe
 | File | Owns |
 |---|---|
 | `main.c` | The command line, restore validation and the headless run loop |
-| `manager.c` | The execution order, phase expansion and the step runner |
+| `manager.c` | The execution order, phase expansion, the step runner, the retry of a failed phase, and the retry's `--selftest` assertions, run over a three-phase tree in a temporary directory |
 | `snapshot.c` | Writing and extracting archives |
-| `stats.c` | Timing history, the time estimate, and the sampler behind the build screen's gauges: load average, memory in use, free space on `build/`, and the size and file count of `build/fs` |
+| `stats.c` | The sampler behind the build screen's graphs and figures: CPU busy time, load average, memory and swap in use, free space on `build/`, lines of output a second, and the size and file count of `build/fs`; and the size, time and count formatting the screens share |
 | `tui.c` | The full-screen interface: the startup picker, the plan and port pickers, the build screen |
-| `view.c` | The layout and log-classification decisions, the `--selftest` assertions, and the preview fixture |
+| `view.c` | The layout and log-classification decisions, the HUD's panel geometry, the `--selftest` assertions, and the preview fixture |
 | `report.c` | The plain and structured output, from one traversal |
 
 The build is a single loop with no threads: check each running step, take those samples, draw, wait
@@ -1223,6 +1230,54 @@ otherwise stall the snapshot; with the timeout it costs a dropped frame instead.
 screen is redrawn at most ten times a second, however often the snapshot reports progress, and
 reads keys on every report, so `Q` cancels at once.
 
+### The build screen
+
+The build screen is a header, the step tree on the left, the selected step's log on the right, a
+row of boxed measurement panels above the key row, and the keys.
+
+**The header** names the current phase and, under it, a bar for the phase's steps, the steps done
+of the phase's total, and three elapsed times: the running step's (`step`; under `--port-jobs`, how
+many steps are running), the phase's (`phase`, the wall-clock span of its steps) and the run's
+(`total`, from the start of the build until it stops; a retry starts it counting again). There is
+no estimate of the time left. A narrow terminal gives up the step's time first, then the phase's,
+then the run's, before the bar goes below ten columns. Each step's own duration is beside it in the
+tree, and selecting a phase shows, below its details, a table of every phase's time: a finished
+phase its duration, the running one its time so far marked `running`, a skipped one `skipped`, and
+one that has not started `-`.
+
+**The measurement panels** are boxes six rows tall from 26 rows of terminal, each titled in its top
+border — `CPU`, `Memory`, `Output` and `Build` — with the graph four rows high inside, giving it
+sixteen levels, and its captions to the graph's right. From 16 rows the panels become one unboxed
+row; below that they are gone. Each graph is on a fixed scale whose ends are its box's top and bottom
+borders, so a height means the same quantity on every frame. A graph has no gridlines, because a
+dotted rule across it reads as data. It moves one sample a second, the newest at its right edge, two
+samples to a character cell:
+
+| Graph | Scale | Beside it |
+|---|---|---|
+| CPU | 0–100% of every CPU busy (user, nice, system, interrupt and steal time, from `/proc/stat`) | Busy now, the peak over the graph's width, the CPU count and the one-minute load average |
+| Memory | 0 to all of `MemTotal`, in use being `MemTotal − MemAvailable` | In use, the total, swap in use and free space on `build/` |
+| Output | Lines a second from the running steps, logarithmic from 1 to 100,000, about three levels to each power of ten | Lines a second now, the peak, `scale log` and the lines written so far |
+
+A graph is drawn in the accent colour, in the warning colour above 85%, and memory in the error
+colour above 95%; swap in use is in the warning colour while it is still growing. A rich terminal
+draws the graphs in braille, eight dots a cell; the Linux console's font has no braille, so there a
+cell is a full block, a medium shade or a light shade by how much of it is filled, and the ascii
+tier uses `#`, `:` and `.`. The `Build` panel to the right, when there is room, holds the size and file count of
+`build/fs` (taken every 20 seconds by a walk that gives up after 15, and marked `partial` when it
+did), a strip with one cell per finished step coloured and sized by its duration in fixed bands
+(under 10 seconds, a minute, 10 minutes and an hour, and longer) with a legend for the bands, and the
+latest notice. As the terminal narrows the `Build` panel goes first, then the output graph, then
+memory.
+
+**The terminal outside the frame.** When a step fails, and when the run ends, completed or stopped,
+the build rings the terminal bell and sends a desktop notification, once per event, in both forms
+terminals take, `OSC 777;notify` and `OSC 9`. The terminal's title follows the build, at most once a
+second: `kdosbuild 41_system 312/750 2h13m`, `kdosbuild FAILED rust 31_compilers`, or `kdosbuild done
+19h42m`. The title the terminal had is saved on xterm's title stack at the start and put back at the
+end; a terminal without that stack is left titled `kdosbuild`. The Linux console gets the bell and
+nothing else.
+
 ### Keys
 
 | Key | Does |
@@ -1238,6 +1293,7 @@ reads keys on every report, so `Q` cancels at once.
 | `E` | Jump to the first line classified as an error |
 | `O` | Open the step's log in `$PAGER` (default `less`), started directly and never through a shell |
 | `T` | Cycle through the colour schemes |
+| `R` | After a step has failed and the run has stopped: [retry its phase](#retrying-a-failed-phase) |
 | `Q` | Stop: every running step's process group gets `SIGTERM` at once, then `SIGKILL` after five seconds, and nothing after it runs. Press again to kill them at once and quit |
 
 A click selects a step, and a second click on a selected phase's fold marker folds it.
@@ -1246,12 +1302,38 @@ When a step fails, a failure panel opens. While it is up it takes every key exce
 
 | Key | Does |
 |---|---|
+| `R` | Retry the failed step's phase. Offered once nothing is running: a failed level first lets its running ports finish |
 | `O` | Open the failing step's log in the pager |
 | `C` | Copy the log's path to the clipboard. On the Linux console the copy is not possible, and the notice says so |
 | `Esc`, `Enter` | Close the panel, leaving the failed step selected |
 
 After a successful build a completion panel appears; `Esc` or `Enter` closes it and leaves the tree
 and logs browsable.
+
+### Retrying a failed phase
+
+`R` runs the failed step's phase again without leaving the orchestrator, so a fix made while the
+failure panel is up is picked up by the same run:
+
+1. **`kpkg` first.** For a phase after `10_bootstrap`, `10_bootstrap/120_kpkg.sh` runs as an
+   ordinary step at the head of the phase, writing the log of `10_bootstrap`'s own run of it. Its
+   mark holds a hash of every source `kpkg` is compiled from, so it does nothing unless one changed,
+   and then compiles `kpkg` into the tree again: a fix to `kpkg` or its libraries reaches the rest of
+   the run. `00_cross` and `10_bootstrap` are retried without it, since the compiler `kpkg` is built
+   with may not exist yet and `10_bootstrap` runs the script in its own place. A tree with no such
+   script says so in a notice and goes straight on.
+2. **The phase from its list as it reads now.** The phase's rows are dropped. A package phase is
+   resolved again with `kpkgdepends`, so an edited recipe, phase list or `depends =` line is used;
+   its ports installed and current are skipped as on any pass, and under `--port-jobs` the packages a
+   drained level built are taken from the cache. A script phase reads its scripts again and runs
+   from the one that failed: a script that finished keeps its result, and one added since runs.
+3. **To the end of the run.** The phases before it keep what they did, the phases after it are still
+   pending, and the build carries on through every phase it was started with.
+
+`R` is offered in the failure panel and the key row once the run has stopped: under `--port-jobs`
+the ports still running beside a failed one finish first. The headless reporters have no retry;
+there, and after quitting, `--continue-from` with the failed phase does the same from the command
+line, without the `kpkg` step.
 
 ### Headless and structured output
 
@@ -1270,8 +1352,12 @@ The plain and structured reporters are two implementations of one interface, dri
 traversal, so they cannot disagree about what ran. Each step is opened when it starts and closed when
 it ends, once each; under `--port-jobs` the opens and closes of a level interleave, so a consumer
 pairs a `running` event with its result by phase and step name, never by position. The plain
-reporter prints a step's title again on its result line when another line came between. Errors
-go to standard error and stay out of the structured stream.
+reporter prints a step's title again on its result line when another line came between. At the end
+the plain reporter lists every phase's time (`skipped`, or `-` for one that never started) before
+`BUILD COMPLETE in <time>` or `BUILD FAILED at <step> after <time>`, and the `result` event carries
+the same as `phases`, one `{"phase", "status", "seconds"}` per phase in build order, `seconds` being
+`null` for a phase skipped or never started. Errors go to standard error and stay out of the
+structured stream.
 
 Structured output is one JSON object per line rather than one document, because a build can be
 killed at any moment and the point of a machine-readable log is being able to read the end of one
@@ -1282,7 +1368,7 @@ check the engine itself; see [Testing](testing.md).
 ### Diagnostics with no build
 
 ```sh
-kdosbuild --selftest                        # the layout and log-classifier assertions
+kdosbuild --selftest                        # the layout, log-classifier, retry and jobserver assertions
 kdosbuild --preview <screen> <WxH> <tier>   # one screen, as text
 ```
 
@@ -1296,7 +1382,8 @@ kdosbuild --preview <screen> <WxH> <tier>   # one screen, as text
 
 It is the way to check a layout without running a build or sitting at a terminal of that size. The
 preview data is chosen to break layouts rather than to look plausible: a multi-terabyte total, a
-nine-digit file count, an hour-long estimate, a port name longer than any pane. Only the spinner
+nine-digit file count, hour-scale elapsed times, graphs crossing their warning levels, a notice too
+long for one row, a port name longer than any pane. It writes nothing to disk. Only the spinner
 varies between runs, because it is picked from the clock. The phases are fixed data too, not the
 ones under `script/phases/`: the `startup` screen lists the thirteen phases, and the `build`
 screen stands up three. Check the `vt` and `ascii` tiers in

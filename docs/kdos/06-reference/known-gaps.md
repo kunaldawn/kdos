@@ -1207,7 +1207,7 @@ most machines. `testing/devdeps-image.sh` builds a container where they run.
 `testing/selftest.sh` runs the orchestrator end to end against a synthetic two-phase tree (forking
 steps, writing logs, taking and restoring snapshots) and a three-phase one whose snapshots are
 layers, each restored and compared entry by entry with the tree it came from, and `kdosbuild --selftest` asserts its view
-geometry and log classifier. `testing/selftest.sh` also builds `kpkg` and drives it against
+geometry, log classifier, retry and jobserver. `testing/selftest.sh` also builds `kpkg` and drives it against
 synthetic, source-less ports, covering reproducible packaging, shared indexes, file ownership,
 recipe-hash skipping, binhost signing and package deltas. A package built twice to compare its
 bytes is that synthetic port, not a real one, and no test reconstructs a pack from a pack delta

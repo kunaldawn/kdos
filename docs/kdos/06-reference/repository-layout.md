@@ -322,7 +322,7 @@ those keys are written in every `phase.env`. Everything shared is sourced from `
 
 | File | Sourced by | Holds |
 |---|---|---|
-| `common.env` | every phase, through one of the two below | The reproducibility settings, the job count `KDOS_JOBS` with the `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS` it sets, and `KPKG_STRICT_RECIPE=1` |
+| `common.env` | every phase, through one of the two below | The reproducibility settings, the job count `KDOS_JOBS` with the `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS` it sets (under a jobserver, `GNUMAKEFLAGS` and `CARGO_MAKEFLAGS` in place of the last two), and `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross`, `10_bootstrap` | The target triplet, the sysroot and cross-toolchain paths, and the cross `pkg-config` setup |
 | `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the release flags, `CMAKE_BUILD_TYPE`, `CARGO_PROFILE_RELEASE_DEBUG`, `GOFLAGS` and the `CGO_*FLAGS`, the CMake compiler cache, `KPKG_SKIP_INDEX=man`; it removes nothing, since `kpkg` empties each port's own work directory |
 

@@ -28,8 +28,9 @@ build/logs/<phase directory>/<NNNN>_<name>.log
 For a script step, `<name>` is the script's file name without its numeric prefix
 (`build/logs/10_bootstrap/0000_file_system.sh.log`); for a port built from a phase's package list it
 is the port name followed by `.install` (`build/logs/42_graphics/0123_mesa.install.log`). The
-orchestrator names the failing step, and in its failure panel `O` opens the log and `C` copies the
-path. The message at the very end of a build's output is usually not the error: read upward from the
+orchestrator names the failing step, and in its failure panel `O` opens the log, `C` copies the
+path, and `R`, once the fix is made, runs the phase again in the same run (see
+[Retrying a failed phase](build-system.md#retrying-a-failed-phase)). The message at the very end of a build's output is usually not the error: read upward from the
 end of the log. Three other files sit under `build/logs/`: `snapshots.log` (every notice the build
 showed), `chroot.log` (warnings from `script/chroot/exec.sh`) and `<phase>/expansion.log` (why
 a phase's package list could not be resolved). [Step logs](build-system.md#step-logs) has the
@@ -111,12 +112,14 @@ lists everything preflight checks.
 | `unknown type name 'bool'` inside a GCC target header, while building libgcc | [A language standard reaching the compiler's own runtime](#a-language-standard-reaching-the-compilers-own-runtime) |
 | `'fenv_t' has not been declared`, then `Cannot compile std module`, in `10_bootstrap` | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
+| `checking if libtool supports shared libraries... no`, then only a `.a` installed, and a consumer that links it fails on the library's own dependencies | [A libtool 1.x package on musl](#a-libtool-1x-package-on-musl) |
 | `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, `execinfo.h: No such file or directory`, `'canonicalize_file_name' was not declared`, or `'stat64' ... has incomplete type` | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
 | `cp: not writing through dangling symlink` in an install step | [A link at a copy's destination](#a-link-at-a-copys-destination) |
 | `ERROR: lint: <path>: mode 0600: not readable by users`, or `a program with no x bit` | [A file installed unreadable](#a-file-installed-unreadable) |
+| A test suite whose expected `env` output differs by quotes: `+FOO='a b'` against `-FOO=a b` | [Quoted `env` output](#quoted-env-output) |
 | `ERROR: lint: <path>: …` with any other reason, then `the staged tree failed <N> lint check(s)` | [A package the lint refuses](#a-package-the-lint-refuses) |
 | A package index or a clone reached during the offline build | [A build that reaches the network](#a-build-that-reaches-the-network) |
 | `Unknown options: …` at meson setup | [An unknown meson option](#an-unknown-meson-option) |
@@ -656,13 +659,12 @@ continue from:
 The startup picker offers only *start fresh*, `--restore` answers `no snapshot for <phase>`, and
 `10_bootstrap` re-runs every step, although `build/snapshots/` is full.
 
-Snapshots, logs and timing history are filed by phase directory name, and the orchestrator looks
+Snapshots and logs are filed by phase directory name, and the orchestrator looks
 only under the names of the directories in `script/phases/`. State filed under a name no phase
 directory has, such as a `build/` shared with a checkout whose phases are named differently, is
 invisible to it. For each phase, file its state under the name of the phase's directory: the
 snapshot directory under `build/snapshots/` and the `phase` and `phase_dir` fields of its
-`manifest.json`, the log directory under `build/logs/`, the phase and step keys of
-`build/snapshots/timings.json`, and the names in `build/.devplan.json`. The two host phases'
+`manifest.json`, the log directory under `build/logs/`, and the names in `build/.devplan.json`. The two host phases'
 markers are filed by the `MARK=` directory their `phase.env` names, `build/mark/cross` and
 `build/mark/bootstrap`, and a marker under any other name makes `10_bootstrap` re-run its steps.
 
@@ -679,8 +681,8 @@ files later phases have replaced. Its scripts skip on their markers (see
 [Guards in the early phases](build-system.md#guards-in-the-early-phases)), but one whose guard
 stands down installs its early build into `build/fs` over the newer versions, and a failure that
 follows looks like an ordinary build error. A full run would also overwrite that phase's snapshot
-with the later tree filed under its name. Use `--continue-from` or a
-narrowed plan instead; a plan that narrows the run suppresses snapshots unless `--snapshot` is
+with the later tree filed under its name, if that run writes snapshots. Use `--continue-from` or a
+narrowed plan instead; a plan that narrows the run writes no snapshots unless `--snapshot` is
 given. See [Snapshots](build-system.md#snapshots) and [Build plans](build-system.md#build-plans).
 
 ### A port that needs `--port-jobs 1`
@@ -887,6 +889,17 @@ leaves only the headers of the libstdc++ being built. GCC's own configure adds `
 builds the target libraries with the compiler in its own build directory; `10_bootstrap` builds them
 with the cross-compiler instead, so the flag has to be passed.
 
+### A libtool 1.x package on musl
+
+A source whose libtool predates 1.5 configures it with `ltconfig`, which knows Linux as
+`linux-gnu*` only. On `x86_64-pc-linux-musl` it answers `dynamic linker characteristics... no`,
+turns shared libraries off and builds the static archive whatever `--disable-static` says. A
+static library carries no `NEEDED` entries, so a consumer that links it fails on the symbols it
+needs from elsewhere: GStreamer's aasink on `libaa.a`'s curses calls. Refreshing `config.sub`
+does not help, because the host is recognised and then not matched. `aalib`'s
+`ltconfig-musl.patch` adds `linux-musl*` to the `linux-gnu*` case, and its recipe checks that
+`libaa.so.1` names ncurses.
+
 ### Gettext on musl
 
 `undefined reference to libintl_gettext` (or `libintl_ngettext`) at link, from a program that
@@ -1040,9 +1053,21 @@ in the build notices.
 GNU `install` writes the mode `-m` names, whatever the source, `/dev/stdin` included, so
 `install -Dm644` in a recipe is enough. A file a build writes with a generator, a heredoc or
 `cp` takes the generator's mode or the umask's: neverball's `mapc` writes its compiled levels
-0600, and its recipe follows the copy with `chmod -R a+rX`. A file that must stay private, such
+0600, and its recipe follows the copy with `chmod -R a+rX`. A state file its daemon creates when
+missing and rewrites at every start belongs in no package: nfs-utils' recipe removes
+`/var/lib/nfs/state`, which `rpc.statd` writes 0600 as root. A file that must stay private, such
 as a credential, belongs on the lint's allowlist, with the reason, in `src/system/kdos-kpkg/lint.c`
 and in the table on that page.
+
+### Quoted `env` output
+
+coreutils' `env` and `printenv` print each value in shell-escape quoting whenever it holds a
+space or a shell metacharacter (`FOO='a b'`), as `ls` quotes names. A test that compares
+`env` output against a file written for the unquoted form fails on every such variable.
+`QUOTING_STYLE=literal` in the test's environment restores the bare form. A harness that starts
+each test under `env -i` drops it, so the variable has to go through the harness's own
+per-test environment: bmake's recipe passes it as `ENV.<test>`, and for `export`, which prints
+the whole environment, filters it back out of the compared output.
 
 ### A package the lint refuses
 
@@ -1731,7 +1756,9 @@ Every phase runs `KDOS_JOBS` jobs at once, and a heavy C++ translation unit or l
 than 2 GiB on its own, which is the budget per job the default job count assumes. Lower the job
 count for the build: `make build KDOS_JOBS=6`. It reaches make, `cmake --build` (WebKit and most
 CMake ports build through it) and cargo, and it caps the container's CPUs, which the chroot sees
-through its read-only cgroup mount, so a bare `ninja` in a recipe follows it too. WebKit runs at
+through its read-only cgroup mount, so a bare `ninja` in a recipe follows it too. Under
+`--port-jobs` it is the size of the jobserver the ports of a level share, so a large port left
+building alone runs that many jobs. WebKit runs at
 most four links at once whatever the job count; its CMake reads `WEBKIT_NINJA_COMPILE_MAX` and
 `WEBKIT_NINJA_LINK_MAX` from the environment at configure time to size its compile and link pools
 apart from the job count, and since the chroot clears the environment, only `webkitgtk`'s own

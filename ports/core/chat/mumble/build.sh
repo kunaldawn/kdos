@@ -76,7 +76,7 @@ cmake -S . -B build -G Ninja \
 	-Doverlay-xcompile=OFF \
 	-Dice=OFF \
 	-Dmanual-plugin=ON \
-	-DCMAKE_IGNORE_PATH="/usr/lib/cmake/OpenSSL;/lib/cmake/OpenSSL" \
+	-DCMAKE_IGNORE_PATH="/usr/lib/cmake/OpenSSL;/usr/lib64/cmake/OpenSSL;/lib/cmake/OpenSSL;/lib64/cmake/OpenSSL" \
 	-DOPENSSL_INCLUDE_DIR="$_ossl/include" \
 	-DOPENSSL_SSL_LIBRARY=/usr/lib/libssl.so.3 \
 	-DOPENSSL_CRYPTO_LIBRARY=/usr/lib/libcrypto.so.3

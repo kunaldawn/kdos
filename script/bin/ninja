@@ -23,6 +23,13 @@
 # recipe's own -j wins and `ninja --version`, which meson and CMake read to
 # accept a ninja, prints the real one's version.
 #
+# UNDER A JOBSERVER (KDOS_JOBSERVER names a FIFO; script/env/common.env) no -j
+# is added, and a -j N or -jN whose N is KDOS_JOBS is removed: that is the
+# build's own count passed on by a recipe (`ninja $MAKEFLAGS`, qtwebengine's
+# NINJAFLAGS), and ninja ignores the jobserver whenever it is given -j. The
+# real ninja gets the FIFO in MAKEFLAGS, as a client of GNU make's would,
+# and every job it runs takes a slot from it. Any other -j still wins.
+#
 # THE REAL NINJA IS NAMED BY ITS ABSOLUTE PATH. Searching PATH would find this
 # file again and never return. KDOS_NINJA names another only for a test.
 #
@@ -37,28 +44,52 @@ real=${KDOS_NINJA:-/usr/bin/ninja}
 # ninja's own option string is "d:f:j:k:l:nt:vw:C:h": d f j k l t w C take a
 # value, attached or as the next argument, and getopt permutes, so an option
 # may follow a target. `--` ends the options.
-skip=0
-for a in "$@"; do
-    if [ "$skip" = 1 ]; then
-        skip=0
-        continue
-    fi
+js=
+[ -n "${KDOS_JOBSERVER:-}" ] && [ -p "$KDOS_JOBSERVER" ] && js=$KDOS_JOBSERVER
+argv=("$@")
+n=${#argv[@]}
+args=()
+explicit=0
+k=0
+while [ "$k" -lt "$n" ]; do
+    a=${argv[k]}
+    k=$((k + 1))
     case $a in
-        --) break ;;
+        --) args+=("${argv[@]:k-1}"); break ;;
         --version|--help) exec "$real" "$@" ;;
-        --*|-|[!-]*) continue ;;
+        --*|-|[!-]*) args+=("$a"); continue ;;
     esac
+    if [ -n "$js" ]; then
+        [ "$a" = "-j$KDOS_JOBS" ] && continue
+        if [ "$a" = -j ] && [ "$k" -lt "$n" ] && [ "${argv[k]}" = "$KDOS_JOBS" ]; then
+            k=$((k + 1))
+            continue
+        fi
+    fi
+    args+=("$a")
     i=1
     while [ "$i" -lt "${#a}" ]; do
         c=${a:i:1}
         case $c in
-            j|t|h) exec "$real" "$@" ;;
-            d|f|k|l|w|C)
-                [ "$((i + 1))" -lt "${#a}" ] || skip=1
+            t|h) exec "$real" "$@" ;;
+            j|d|f|k|l|w|C)
+                [ "$c" = j ] && explicit=1
+                if [ "$((i + 1))" -ge "${#a}" ] && [ "$k" -lt "$n" ]; then
+                    args+=("${argv[k]}")
+                    k=$((k + 1))
+                fi
                 break ;;
         esac
         i=$((i + 1))
     done
 done
 
+[ "$explicit" = 1 ] && exec "$real" "$@"
+if [ -n "$js" ]; then
+    case " ${MAKEFLAGS:-} " in
+        *" --jobserver-auth="*) ;;
+        *) export MAKEFLAGS="${MAKEFLAGS:+$MAKEFLAGS }--jobserver-auth=fifo:$js" ;;
+    esac
+    exec "$real" "${args[@]}"
+fi
 exec "$real" -j"$KDOS_JOBS" "$@"

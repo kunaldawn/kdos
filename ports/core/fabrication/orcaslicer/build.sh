@@ -15,6 +15,7 @@ _jobs=$((_mem / 6291456))
 [ "$_jobs" -le "$KDOS_JOBS" ] || _jobs=$KDOS_JOBS
 [ "$_jobs" -ge 1 ] || _jobs=1
 export KDOS_JOBS=$_jobs MAKEFLAGS=-j$_jobs CMAKE_BUILD_PARALLEL_LEVEL=$_jobs
+unset KDOS_JOBSERVER GNUMAKEFLAGS CARGO_MAKEFLAGS
 
 _deps="$SRC_ROOT/orcadeps"
 _dl="$SRC_ROOT/dl"

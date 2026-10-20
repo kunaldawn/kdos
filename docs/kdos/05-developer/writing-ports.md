@@ -363,7 +363,14 @@ job count before running `/usr/bin/ninja`, so a bare `ninja`, `meson compile`, `
 CMake Ninja build all follow `KDOS_JOBS`; a call that passes its own `-j`, a tool (`-t`) or
 `--version` goes through unchanged. A recipe that has to pass a job count explicitly, to a build
 system of its own, reads `$KDOS_JOBS`, never `nproc` and never a parse of `MAKEFLAGS`: `nproc`
-ignores both a lowered `KDOS_JOBS` and the memory clamp.
+ignores both a lowered `KDOS_JOBS` and the memory clamp. Under `kdosbuild --port-jobs` the port
+also has `KDOS_JOBSERVER`, the FIFO make, ninja and cargo take their job slots from (see
+[Building a package phase by level](build-system.md#building-a-package-phase-by-level)), and
+`KDOS_JOBS` is its share. A recipe that lowers `KDOS_JOBS` to save memory unsets
+`KDOS_JOBSERVER`, `GNUMAKEFLAGS` and `CARGO_MAKEFLAGS` on the same line, as `orcaslicer`'s does, or
+those tools keep taking slots from the whole build's count. A recipe that runs a `make` serially
+by clearing `MAKEFLAGS` clears `GNUMAKEFLAGS` with it, as `qemu`'s firmware build does, or the
+jobserver still makes it parallel.
 
 The minimal autotools recipe is three lines:
 
@@ -389,8 +396,9 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
 4. Replace every `config.guess` and `config.sub` under `$SRC_ROOT` whose `timestamp=` line is older
    than automake's (`/usr/share/automake-*/`) with automake's copy. An old `config.guess` names this
    host `x86_64-pc-linux-gnu` instead of `x86_64-pc-linux-musl`, and a configure that believes it
-   builds for the wrong C library. A copy newer than automake's is left alone, and nothing is
-   replaced before automake is installed.
+   builds for the wrong C library. A copy newer than automake's is left alone, and so is any copy
+   inside a vendored Rust crate (a directory with `.cargo-checksum.json`), whose recorded hashes
+   cargo checks. Nothing is replaced before automake is installed.
 5. Run `build.sh`.
 6. Copy `postinstall.sh`, when there is one, into the package as `.POSTINSTALL`, preceded by the
    recipe's keys and helpers as shell assignments.
@@ -507,7 +515,21 @@ The same file exports `LANG` and `LC_ALL` as `C.UTF-8`, `PIP_ROOT_USER_ACTION=ig
   its own `<string.h>` keeps its own header, because `-I` directories come first. The port's
   `late-feature-macro.patch` declares each wrapped function that a feature macro gates
   (`mempcpy`, `strlcpy`, `realpath` and the rest) before wrapping it, so a source that defines
-  `_GNU_SOURCE` after its first system header still compiles.
+  `_GNU_SOURCE` after its first system header still compiles. Its `lto-no-always-inline.patch` drops `always_inline` from
+  the wrappers GCC sees: a fortified function whose address a program takes (libstdc++'s
+  `std::to_string` passes `vsnprintf`) becomes a direct call only after link-time optimisation has
+  partitioned the program, where an `always_inline` body the linker may replace cannot be inlined,
+  and GCC stops the link. Without the attribute that one call goes to the C library's own function,
+  unchecked; GCC still inlines these small wrappers at every direct call in an optimised build, so
+  those stay checked. The wrappers `#undef` each function they wrap before defining it, so a
+  source that defines a name as itself to dodge its own ban on it loses that macro when it includes
+  a system header: Ghostscript's `stdio_.h` turns `sprintf` into `DO_NOT_USE_SPRINTF` unless it is
+  already a macro, and `ghostscript` ships `sprintf-guard.patch` to drop the ban after the includes
+  in the two files that call it. The wrappers are function definitions, so a header that has them
+  (`<string.h>`, `<stdio.h>`, `<sys/socket.h>` and the rest) cannot be included inside a function
+  body: a configure test that does so fails as a nested function and turns the feature off without
+  an error. waf's `CHECK_CODE` wraps its code in `main()` unless given `addmain=False`, and
+  `samba`'s `musl-netlink.patch` gives its netlink checks their own `main`.
 - `-D_GLIBCXX_ASSERTIONS` turns on libstdc++'s precondition checks: an out-of-range
   `operator[]`, `front()` on an empty container, `*` on an empty `optional`. A failed one aborts the
   program with the assertion's text, where it would otherwise read or write out of bounds.
@@ -1076,8 +1098,9 @@ A few habits recur in the tree's application recipes, and a new one should follo
   package unrequired and, after the configure, checks the generated build for what the package
   enables. See [A requirement a find module misreads](build-troubleshooting.md#a-requirement-a-find-module-misreads).
 - **A CMake project that finds GLEW ignores GLEW's own package.**
-  `-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/lib/cmake/glew'`, naming both because `/lib` is the
-  same directory: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path
+  `-DCMAKE_IGNORE_PATH='/usr/lib/cmake/glew;/usr/lib64/cmake/glew;/lib/cmake/glew;/lib64/cmake/glew'`,
+  naming all four because `/lib`, `/usr/lib64` and `/lib64` are the same directory and CMake
+  matches the path it searched, not the directory it reached: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path
   from it only as a Windows import library, so `GLEW_LIBRARY` is NOTFOUND and generation stops.
   Ignored, FindGLEW finds `libGLEW.so` itself.
 - **KDE applications install into Qt's own paths.** `-D KDE_INSTALL_USE_QT_SYS_PATHS=ON` with
@@ -1883,8 +1906,8 @@ The build has no network, so a program whose language fetches its dependencies a
 (Rust crates, Go modules, Python packages, Hackage packages) needs them downloaded in advance. That
 is vendoring: `ports/fetch` runs the language's own tool against the port's source and packs what
 it downloads into `<name>-vendor-<version>.tar.xz` beside the tarball. `build.sh` unpacks that
-bundle and builds offline. Set `vendoring =` in the recipe to ask for it; 159 ports do (71 Rust,
-38 Go, 45 Python, 4 Haskell, 1 Node).
+bundle and builds offline. Set `vendoring =` in the recipe to ask for it; 161 ports do (75 Rust,
+39 Go, 42 Python, 4 Haskell, 1 Node).
 
 A bundle with a `sha256 =` line is an archived source like any other: `ports/fetch` takes it from
 the port directory, the cache or the source archive first, and generates it only when none of them
@@ -2200,7 +2223,9 @@ installs into clang's resource directory, `/usr/lib/clang/<major>`, where the dr
 `llvm` installs its test utilities (`FileCheck`, `not`, `count`, `split-file`, `yaml-bench` and
 the rest of `LLVM_INSTALL_UTILS`) in `/usr/lib/llvm/utils`, not `/usr/bin`, where generic names
 such as `not` and `count` could collide with another port's. They stay installed because LLVM's
-CMake package exports them, and `find_package(LLVM)` fails when an exported file is missing.
+CMake package exports them, and `find_package(LLVM)` fails when an exported file is missing. A
+consumer that runs one names its path: `rust` passes `llvm-filecheck = "/usr/lib/llvm/utils/FileCheck"`,
+because its bootstrap refuses to start when an external LLVM has no `FileCheck`.
 
 The 21 slot uses the per-component tarballs that upstream published for 21.x. `lld21` carries
 `libunwind-<version>.src.tar.xz` as a third source and names its `include` directory in the C++

@@ -105,7 +105,7 @@ leaving out any an earlier phase installed.
 | `00_cross` | Cross Toolchain | none: steps | — | — |
 | `10_bootstrap` | Base Userland | none: steps | — | — |
 | `20_selfhost` | Self-Hosting Bootstrap | `packages.txt` | 9 | 15 |
-| `30_foundation` | Build Foundation | `packages.txt` | 137 | 127 |
+| `30_foundation` | Build Foundation | `packages.txt` | 138 | 127 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
 | `40_lang` | Languages | `packages.d/`, 13 files | 177 | 177 |
 | `41_system` | System | `packages.d/`, 96 files | 1,012 | 1,012 |
@@ -115,9 +115,9 @@ leaving out any an earlier phase installed.
 | `50_desktop` | Desktop | `packages.txt` | 22 | 22 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,108 | 2,104 |
+| Total | | | 2,109 | 2,104 |
 
-The lists hold 2,108 lines naming 2,100 distinct ports; 8 of those ports are named by more than one
+The lists hold 2,109 lines naming 2,100 distinct ports; 9 of those ports are named by more than one
 phase. Following `depends =` from the lists reaches 2,104 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that is every recipe but 1, listed in `ports/unbuilt`: `texlive-doc`,
 a recipe kept for `kpkg install` that no phase builds, marked `not built` in its table.
@@ -466,7 +466,7 @@ The native compilers, the linker, the C library, and the LLVM family. 39 ports, 
 | `crubit` | 0.20260811 | Crubit's cc_bindings_from_rs, which writes C++ headers for calling Rust crates, and its C++ support library | `40_lang` |
 | `elfutils` | 0.196 | utilities and libraries for handling ELF files | `30_foundation` |
 | `flex` | 2.6.4 | Lexical analyser generator | `30_foundation` |
-| `fortify-headers` | 3.0.2 | Standalone _FORTIFY_SOURCE implementation for musl, as overlay headers | `20_selfhost` |
+| `fortify-headers` | 3.0.2 | Standalone _FORTIFY_SOURCE implementation for musl, as overlay headers | `20_selfhost`, named again by `30_foundation` |
 | `gcc` | 16.2.0 | The GNU compiler collection | `20_selfhost`, named again by `30_foundation` |
 | `gperf` | 3.3 | Generates a perfect hash function from a key set | `30_foundation` |
 | `ispc` | 1.32.0 | Intel SPMD Program Compiler — C-like SIMD kernels compiled for SSE, AVX and AVX-512, with a runtime dispatcher | `41_system` |
@@ -2141,7 +2141,7 @@ Notes:
 - `mumble`: a Qt 5 program, so it links the `openssl3` slot with headers generated from the
   slot's release, as `qt5-qtbase` does. Its `find_pkg` tries a CMake config package before
   FindOpenSSL, so `CMAKE_IGNORE_PATH` hides OpenSSL 4's `/usr/lib/cmake/OpenSSL` (and the same
-  directory under the `/` prefix); found, that package wins over the `OPENSSL_*` paths. The build
+  directory reached through `/usr/lib64`, `/lib` and `/lib64`); found, that package wins over the `OPENSSL_*` paths. The build
   fails if `mumble` or `mumble-server` NEEDs anything but `libssl.so.3`.
 - `nheko`: linked with `-z stack-size=1048576`: musl gives a thread 128 KiB of stack unless
   `PT_GNU_STACK` asks for more, and nheko's worker threads outgrow it.
@@ -3005,7 +3005,7 @@ The Qt 6 modules, and everything in `group = qt6`. 29 ports, under `ports/core/q
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `python3-pyside6` | 6.11.2 | PySide6 and Shiboken6, the official Qt 6 bindings for Python (FreeCAD's scripting GUI) | `43_toolkits` |
+| `python3-pyside6` | 6.12.0 | PySide6 and Shiboken6, the official Qt 6 bindings for Python (FreeCAD's scripting GUI) | `43_toolkits` |
 | `qt6-qt3d` | 6.12.0 | Qt 6 3D — scene graph, render, input, logic, animation and extras aspects, C++ and QML | `43_toolkits` |
 | `qt6-qt5compat` | 6.12.0 | Qt 6 Core5Compat — QTextCodec, QRegExp and the Qt 5 graphical effects for code ported from Qt 5 | `43_toolkits` |
 | `qt6-qtbase` | 6.12.0 | Qt 6 core, GUI, widgets, network, SQL, D-Bus and printing, with the Wayland and X11 platform plugins | `43_toolkits` |
@@ -5431,6 +5431,7 @@ No other list names a port an earlier phase installs.
 |---|---|---|
 | `binutils` | `20_selfhost`, `30_foundation` | `20_selfhost` |
 | `diffutils` | `20_selfhost`, `30_foundation` | `20_selfhost` |
+| `fortify-headers` | `20_selfhost`, `30_foundation` | `20_selfhost` |
 | `gawk` | `20_selfhost`, `30_foundation` | `20_selfhost` |
 | `gcc` | `20_selfhost`, `30_foundation` | `20_selfhost` |
 | `m4` | `20_selfhost`, `30_foundation` | `20_selfhost` |

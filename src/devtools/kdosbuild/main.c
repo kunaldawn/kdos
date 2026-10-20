@@ -25,7 +25,6 @@ typedef struct {
 	int fresh;
 	const char *restore;
 	const char *continue_from;
-	int no_snapshot;
 	int full_snapshots;
 	int want_plan;
 	const char *phases;
@@ -54,17 +53,18 @@ static void usage(void)
 "  --restore PHASE       restore a snapshot and continue after it\n"
 "                        (phase name, directory name, 1-based index, 'latest')\n"
 "  --continue-from PHASE resume at PHASE on the existing tree, no restore\n"
-"  --no-snapshot         do not write snapshots during this build; with a TUI\n"
-"                        this is what the picker opens on, and S toggles it\n"
 "  --full-snapshots      archive every snapshot path whole, never as a layer\n"
 "                        on the snapshot before it\n"
 "  --plan                open the build-plan picker and run it on this tree\n"
 "  --phases LIST         only run these phases\n"
 "  --steps LIST          only run these scripts, PHASE:script.sh\n"
 "  --rebuild LIST        force-rebuild these ports even though installed\n"
-"  --snapshot            write snapshots even for a partial plan\n"
+"  --snapshot            write snapshots during this build (off by default),\n"
+"                        a narrowing plan's included; with a TUI this is what\n"
+"                        the picker opens on, and S toggles it\n"
 "  --port-jobs N         build up to N ports of a package phase at once, by\n"
-"                        dependency level (1-8; default 1, one at a time)\n"
+"                        dependency level (1-8; default 1, one at a time),\n"
+"                        sharing KDOS_JOBS through a jobserver\n"
 "  --plain               no TUI: plain lines (implied by a non-tty stdout)\n"
 "  --json                no TUI: one JSON object per event (NDJSON), and\n"
 "                        --list prints the snapshot inventory as one object\n"
@@ -72,13 +72,14 @@ static void usage(void)
 "  --delete PHASE        delete one snapshot and exit; one that others layer\n"
 "                        on is held until the last of them goes\n"
 "\n"
-"  --selftest            run the view-geometry and log-classifier assertions\n"
+"  --selftest            run the view-geometry, log-classifier, retry and\n"
+"                        jobserver assertions\n"
 "  --preview SCREEN WxH TIER\n"
 "                        draw one screen offscreen and dump it as plain text.\n"
-"                        SCREEN: build activity failure pinned startup plan\n"
-"                                packages\n"
-"                        TIER:   rich (eighth blocks) | vt (the 512-glyph\n"
-"                                console font) | ascii\n");
+"                        SCREEN: build activity failure pinned complete\n"
+"                                startup plan packages\n"
+"                        TIER:   rich (braille and eighth blocks) | vt (the\n"
+"                                512-glyph console font) | ascii\n");
 }
 
 static const KbuildPhase *resolve_phase(Manager *m, const char *token)
@@ -471,7 +472,7 @@ static int do_restore(Manager *m, const KbuildPhase *target, int plain,
  * ONE traversal, two renderings. `rep` is text or NDJSON (report.c); this loop
  * does not know which, so the two cannot disagree about what happened.
  */
-static void run_plain(Manager *m, Sampler *sam, Timings *tm)
+static void run_plain(Manager *m, Sampler *sam)
 {
 	snap_set_tick(m, snap_tick_hook);
 	if (rep->begin)
@@ -534,7 +535,6 @@ static void run_plain(Manager *m, Sampler *sam, Timings *tm)
 	rep->finish(m);
 
 	sam_stop(sam);
-	tm_save(tm);
 }
 
 /* A fatal message on the TUI screen, then a key. Reached only after the
@@ -578,7 +578,7 @@ int main(int argc, char **argv)
 	kb_set_progname("kdosbuild");
 
 	if (argc > 1 && !strcmp(argv[1], "--selftest"))
-		return view_selftest();
+		return view_selftest() | mgr_selftest();
 	/* Matched on argv[1] rather than on argc so a short `--preview build`
 	 * says what it wants instead of falling through to the option parser
 	 * and reporting `--preview` itself as an unknown argument. */
@@ -609,8 +609,6 @@ int main(int argc, char **argv)
 			a.restore = argv[++i];
 		else if (!strcmp(argv[i], "--continue-from") && v)
 			a.continue_from = argv[++i];
-		else if (!strcmp(argv[i], "--no-snapshot"))
-			a.no_snapshot = 1;
 		else if (!strcmp(argv[i], "--full-snapshots"))
 			a.full_snapshots = 1;
 		else if (!strcmp(argv[i], "--plan"))
@@ -779,28 +777,16 @@ int main(int argc, char **argv)
 	int plain = a.plain || a.json || !isatty(STDOUT_FILENO) ||
 		    (term && !strcmp(term, "dumb"));
 
-	char timings_path[700];
-	snprintf(timings_path, sizeof(timings_path), "%s/timings.json",
-		 m.snap_root);
-	Timings tm;
-	tm_load(&tm, timings_path);
-	m.timings = &tm;
-
 	if (plain) {
 		int prc = 0;
 
-		m.snapshot_enabled = !a.no_snapshot;
-		if (m.have_plan && kbuild_plan_narrows(&m.plan) && !a.snapshot)
-			m.snapshot_enabled = 0;
+		m.snapshot_enabled = a.snapshot;
 		if (m.have_plan && kbuild_plan_custom(&m.plan)) {
 			mgr_apply_plan(&m);
 			kbuild_plan_save(&m.plan, a.build_dir);
 			char sum[1024];
 			kbuild_plan_summary(&m.plan, sum, sizeof(sum));
 			mgr_notice(&m, "plan: %s", sum[0] ? sum : "everything");
-			if (!m.snapshot_enabled && !a.no_snapshot)
-				mgr_notice(&m, "snapshots disabled for this "
-					   "partial run");
 		}
 
 		if (continue_at) {
@@ -830,11 +816,9 @@ int main(int argc, char **argv)
 
 		Sampler sam;
 		sam_init(&sam);
-		run_plain(&m, &sam, &tm);
+		run_plain(&m, &sam);
 		prc = m.error_step ? 1 : 0;
 plain_out:
-		tm_save(&tm);
-		tm_free(&tm);
 		mgr_free(&m);
 		return prc;
 	}
@@ -853,6 +837,7 @@ plain_out:
 	ktui_term_set_write_timeout(2000);
 	ktui_draw_init();
 	ktui_input_init(1);
+	term_title_begin();
 
 	int rc = 0;
 	char commit[64];
@@ -861,7 +846,7 @@ plain_out:
 
 	/* The command line sets what the picker OPENS on; what the operator
 	 * leaves it at is what the build uses. */
-	m.snapshot_enabled = !a.no_snapshot;
+	m.snapshot_enabled = a.snapshot;
 
 	/* Interactive entry points. A plan given on the command line wins.
 	 *
@@ -891,9 +876,12 @@ plain_out:
 		}
 	}
 
-	/* A plan that narrows anything suppresses snapshots: one taken from a
-	 * partially re-run tree would be filed under a phase it no longer is. */
-	if (m.have_plan && kbuild_plan_narrows(&m.plan) && !a.snapshot)
+	/* A plan that narrows anything suppresses the picker's S: a snapshot
+	 * taken from a partially re-run tree would be filed under a phase it
+	 * no longer is. --snapshot on the command line is the one way past. */
+	int narrowed = m.have_plan && kbuild_plan_narrows(&m.plan) &&
+		       !a.snapshot && m.snapshot_enabled;
+	if (narrowed)
 		m.snapshot_enabled = 0;
 
 	if (m.have_plan && kbuild_plan_custom(&m.plan)) {
@@ -902,7 +890,7 @@ plain_out:
 		char sum[1024];
 		kbuild_plan_summary(&m.plan, sum, sizeof(sum));
 		mgr_notice(&m, "plan: %s", sum[0] ? sum : "everything");
-		if (!m.snapshot_enabled && !a.no_snapshot)
+		if (narrowed)
 			mgr_notice(&m, "snapshots disabled for this partial run");
 	}
 
@@ -936,15 +924,14 @@ plain_out:
 	{
 		Sampler sam;
 		sam_init(&sam);
-		screen_build(&m, &sam, &tm);
+		screen_build(&m, &sam);
 		rc = m.error_step ? 1 : 0;
 	}
 
 quit:
+	term_title_end();
 	ktui_input_shutdown();
 	ktui_term_shutdown();
-	tm_save(&tm);
-	tm_free(&tm);
 	mgr_free(&m);
 	return rc;
 }

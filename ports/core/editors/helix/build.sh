@@ -9,9 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+
 export HELIX_DEFAULT_RUNTIME=/usr/lib/helix/runtime
+export HELIX_DISABLE_AUTO_GRAMMAR_BUILD=1
 export RUSTFLAGS="-C target-feature=-crt-static"
-cargo build --release --locked
+cargo build --release --frozen --offline
+CARGO_MANIFEST_DIR="$PWD/helix-term" target/release/hx --grammar build
+test -f runtime/grammars/rust.so
 install -Dm755 target/release/hx $PKG/usr/bin/hx
 install -d $PKG/usr/lib/helix
 cp -r runtime $PKG/usr/lib/helix/

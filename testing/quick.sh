@@ -65,7 +65,7 @@ TAR=build/fix.tar
 # ── 1. build, without 70_image ──────────────────────────────────────────
 if [ "${KDOS_QUICK_NOBUILD:-0}" != 1 ]; then
 	echo "==> building $PORTS ($PHASES, no image)"
-	make build BUILD_ARGS="--phases $PHASES --rebuild $PORTS --no-snapshot"
+	make build BUILD_ARGS="--phases $PHASES --rebuild $PORTS"
 fi
 
 # ── 2. tar exactly what those ports own ─────────────────────────────────

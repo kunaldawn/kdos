@@ -4191,7 +4191,7 @@ EOF
 chmod +x "$E"/script/phases/*/*.sh
 KB="$OUT/kdosbuild"
 
-( cd "$E" && "$KB" --script-dir script --build-dir build --fresh ) > "$OUT/e2e.log" 2>&1
+( cd "$E" && "$KB" --script-dir script --build-dir build --fresh --snapshot ) > "$OUT/e2e.log" 2>&1
 grep -q "BUILD COMPLETE" "$OUT/e2e.log" || { echo "  build did not complete"; cat "$OUT/e2e.log"; exit 1; }
 [ -f "$E/build/snapshots/00_alpha/manifest.json" ] || { echo "  no snapshot written"; exit 1; }
 [ -f "$E/build/logs/00_alpha/0000_tree.sh.log" ] || { echo "  no step log written"; exit 1; }
@@ -4213,15 +4213,16 @@ rm -rf "$E/build/fs" "$E/build/ports"
 grep -q "restored 00_alpha" "$OUT/e2e-restore.log" || { echo "  restore not announced"; exit 1; }
 echo "  restore and resume"
 
-# A plan that narrows must suppress snapshots and must set KDOS_REPLAY for a
-# step it named — 17 phase scripts exit 0 on a second pass without it.
+# A plan writes no snapshot unless --snapshot asks, and must set KDOS_REPLAY
+# for a step it named — 17 phase scripts exit 0 on a second pass without it.
+beta_id=$(grep -o '"id": "[^"]*"' "$E/build/snapshots/01_beta/manifest.json")
 ( cd "$E" && "$KB" --script-dir script --build-dir build \
     --steps beta:00_ports.sh ) > "$OUT/e2e-plan.log" 2>&1
-grep -q "snapshots disabled for this partial run" "$OUT/e2e-plan.log" \
-    || { echo "  a narrowing plan did not suppress snapshots"; exit 1; }
+[ "$(grep -o '"id": "[^"]*"' "$E/build/snapshots/01_beta/manifest.json")" = "$beta_id" ] \
+    || { echo "  a plan wrote a snapshot nobody asked for"; exit 1; }
 grep -q "replay=1" "$E"/build/logs/01_beta/*.log \
     || { echo "  KDOS_REPLAY not set for a named step"; exit 1; }
-echo "  build plan narrowing and KDOS_REPLAY"
+echo "  a plan writes no snapshot unasked, and sets KDOS_REPLAY"
 
 # A failing step stops the build, exits 1, and does NOT snapshot the phase.
 F="$OUT/fail"
@@ -4230,7 +4231,7 @@ echo 'export KDOS_SNAPSHOT_PATHS="fs"' > "$F/script/phases/00_a/phase.env"
 printf '#!/bin/bash\necho starting\nexit 3\n' > "$F/script/phases/00_a/00_boom.sh"
 printf '#!/bin/bash\necho unreachable\n' > "$F/script/phases/00_a/01_after.sh"
 chmod +x "$F"/script/phases/*/*.sh
-if ( cd "$F" && "$KB" --script-dir script --build-dir build --fresh ) \
+if ( cd "$F" && "$KB" --script-dir script --build-dir build --fresh --snapshot ) \
         > "$OUT/fail.log" 2>&1; then
     echo "  a failing step did not fail the build"; exit 1
 fi
@@ -4253,6 +4254,8 @@ grep -q '"event": "step", "status": "failed", "step": "boom", "phase": "00_a".*"
     "$OUT/fail.json" || { echo "  the failing step is not in the stream"; exit 1; }
 grep -q '"event": "result", "status": "failed".*"failed": 1.*"failed_step": "boom"' \
     "$OUT/fail.json" || { echo "  no result event"; exit 1; }
+grep -q '"phases": \[{"phase": "00_a", "status": "failed", "seconds": [0-9.]*}\]' \
+    "$OUT/fail.json" || { echo "  the result does not time its phases"; cat "$OUT/fail.json"; exit 1; }
 grep -q '"status": "running", "step": "after"' "$OUT/fail.json" \
     && { echo "  reported a step that never ran"; exit 1; }
 ( cd "$E" && "$KB" --script-dir script --build-dir build --list --json ) \
@@ -4293,7 +4296,7 @@ printf '#!/bin/bash
 echo img > "$PWD/build/fs/who"
 ' > "$L/script/phases/01_img/00_img.sh"
 chmod +x "$L"/script/phases/*/*.sh
-( cd "$L" && "$KB" --script-dir script --build-dir build --fresh ) > "$OUT/leftover.log" 2>&1
+( cd "$L" && "$KB" --script-dir script --build-dir build --fresh --snapshot ) > "$OUT/leftover.log" 2>&1
 grep -q "BUILD COMPLETE" "$OUT/leftover.log" || { echo "  leftover fixture did not build"; cat "$OUT/leftover.log"; exit 1; }
 [ -d "$L/build/snapshots/01_img" ] && { echo "  a phase with no paths was snapshotted"; exit 1; }
 cp -a "$L/build/snapshots/00_base" "$L/build/snapshots/01_img"
@@ -4314,6 +4317,13 @@ grep -q "01_img declares no snapshot paths; its snapshot is a leftover" \
     | grep -q '"phase": "01_img".*"leftover": true' \
     || { echo "  --list --json does not mark the leftover"; exit 1; }
 echo "  a leftover snapshot is listed, refused and never layered"
+
+# Without --snapshot a complete build writes none.
+rm -rf "$L/build/snapshots"
+( cd "$L" && "$KB" --script-dir script --build-dir build --fresh ) > "$OUT/nosnap.log" 2>&1
+grep -q "BUILD COMPLETE" "$OUT/nosnap.log" || { echo "  the default run did not build"; cat "$OUT/nosnap.log"; exit 1; }
+[ -d "$L/build/snapshots/00_base" ] && { echo "  a default run wrote a snapshot"; exit 1; }
+echo "  snapshot writing is off unless --snapshot asks"
 
 echo
 echo "==> kdosbuild snapshots are layers, and every layer restores exactly"
@@ -4370,7 +4380,7 @@ esac; fi
 EOF
     chmod +x "$S/script/phases/$p/00_edit.sh"
 done
-KL() { ( cd "$S" && "$KB" --script-dir script --build-dir build --plain "$@" ); }
+KL() { ( cd "$S" && "$KB" --script-dir script --build-dir build --plain --snapshot "$@" ); }
 kind_of() {  # <phase dir> -> "full" or "layer:<base id>"
     grep -o '"kind": "[a-z]*"\|"base": "[^"]*"' "$S/build/snapshots/$1/manifest.json" \
         | sed 's/.*": "//; s/"$//' | paste -sd: -
@@ -4491,7 +4501,7 @@ hs_run() {  # <order> [kdosbuild args...]: the kpkg calls land in kpkg.log
     echo "$1" > "$HS/order"; shift
     rm -f "$HS/kpkg.log" "$HS/after"; : > "$HS/kpkg.log"
     ( cd "$HS" && PATH="$HS/bin:$PATH" "$KB" --script-dir script \
-        --build-dir build --json "$@" ) > "$HS/run.json" 2>&1
+        --build-dir build --json --snapshot "$@" ) > "$HS/run.json" 2>&1
     grep -q '"event": "result", "status": "complete"' "$HS/run.json" \
         || { echo "  the build did not complete"; cat "$HS/run.json"; exit 1; }
     [ -e "$HS/after" ] || { echo "  the phase after it never ran"; exit 1; }
@@ -4576,7 +4586,8 @@ shift
 case \$1 in
 --build-only)
     p=\${@: -1}
-    echo "start \$p jobs=\$KDOS_JOBS cpus=\$(nproc)" >> "\$L"
+    js=none; [ -p "\${KDOS_JOBSERVER:-}" ] && js=fifo
+    echo "start \$p jobs=\$KDOS_JOBS js=\$js cpus=\$(nproc)" >> "\$L"
     if [ "\$(cat "$PJ/fail" 2>/dev/null)" = "\$p" ]; then
         echo "fail \$p" >> "\$L"; exit 1
     fi
@@ -4626,12 +4637,15 @@ grep -qx 'commit a b' "$PJ/kpkg.log" \
     && [ "$(pj_line 'commit c')" -lt "$(pj_line 'start e')" ] \
     || { echo "  a port started before its dependencies were committed"; cat "$PJ/kpkg.log"; exit 1; }
 grep -q '^install' "$PJ/kpkg.log" && { echo "  a level ran a plain install"; cat "$PJ/kpkg.log"; exit 1; }
-# KDOS_JOBS=6 over three slots is 2 each, and each runs on a window of at most
-# twice that.
+# KDOS_JOBS=6 over three slots is 2 each; every port is handed the jobserver
+# FIFO, which is gone once the build ends, and none is pinned to fewer CPUs.
 grep '^start' "$PJ/kpkg.log" | grep -qv 'jobs=2 ' \
     && { echo "  a port was not given KDOS_JOBS=2"; cat "$PJ/kpkg.log"; exit 1; }
-grep '^start' "$PJ/kpkg.log" | grep -qvE 'cpus=[1-4]$' \
-    && { echo "  a port ran outside its CPU window"; cat "$PJ/kpkg.log"; exit 1; }
+grep '^start' "$PJ/kpkg.log" | grep -qv ' js=fifo ' \
+    && { echo "  a port was not given the jobserver"; cat "$PJ/kpkg.log"; exit 1; }
+grep '^start' "$PJ/kpkg.log" | grep -qvx ".* cpus=$(nproc)" \
+    && { echo "  a port was pinned to fewer CPUs"; cat "$PJ/kpkg.log"; exit 1; }
+[ -e "$PJ/build/jobserver" ] && { echo "  the jobserver outlived the build"; exit 1; }
 if command -v python3 >/dev/null 2>&1; then
     pj_steps "$PJ/run.json" | sort | uniq -d | grep -q . \
         && { echo "  a step event was reported twice"; cat "$PJ/run.json"; exit 1; }
