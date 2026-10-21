@@ -11,6 +11,7 @@
 
 patch -p1 -i "$PORT_SRC/0001-fftw-use-pkgconfig.patch"
 patch -p1 -i "$PORT_SRC/sip-abi.patch"
+patch -p1 -i "$PORT_SRC/uic-assistants-class-name.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
