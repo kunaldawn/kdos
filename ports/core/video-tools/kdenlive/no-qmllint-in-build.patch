@@ -1,0 +1,11 @@
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -371,8 +371,6 @@
+     )
+ endif()
+ 
+-add_dependencies(kdenlive all_qmllint)
+-
+ ecm_finalize_qml_module(kdenliveLib
+     DESTINATION ${KDE_INSTALL_QMLDIR})
+ 
