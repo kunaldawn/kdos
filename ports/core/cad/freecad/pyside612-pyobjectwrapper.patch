@@ -1,0 +1,10 @@
+--- a/src/Gui/PythonWrapper.cpp
++++ b/src/Gui/PythonWrapper.cpp
+@@ -120,6 +120,7 @@
+ #endif  // HAVE_SHIBOKEN
+ 
+ #ifdef HAVE_PYSIDE
++# include <pyobjectwrapper.h>
+ # include <signalmanager.h>
+ #endif  // HAVE_PYSIDE
+ 
