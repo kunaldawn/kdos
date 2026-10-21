@@ -10,7 +10,7 @@
 
 name        = musescore
 version     = 4.7.5
-release     = 1
+release     = 2
 _mnxdom     = 488aa8757ec602c20ff8cf599a2c6857339d8e93
 _jsv        = 40af3ec39670e768fc3f01f935140af311d71024
 source      = $name-$version.tar.gz::https://github.com/musescore/MuseScore/archive/refs/tags/v$version.tar.gz

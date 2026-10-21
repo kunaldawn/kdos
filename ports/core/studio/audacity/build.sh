@@ -13,6 +13,7 @@ patch -p1 -i "$PORT_SRC/sqlite-helpers-cstdint.patch"
 patch -p1 -i "$PORT_SRC/beats-formatter-pow10.patch"
 patch -p1 -i "$PORT_SRC/vst-stub-include.patch"
 patch -p1 -i "$PORT_SRC/wayland-platform.patch"
+patch -p1 -i "$PORT_SRC/muse-extensions-qml-no-unity.patch"
 export EXTDEPS_CACHE="$SRC/offline-deps"
 export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE"
 cmake -S . -B build -G Ninja \

@@ -15,6 +15,7 @@ cd unpacked
 
 patch -p1 -i "$PORT_SRC/no-execinfo.patch"
 patch -p1 -i "$PORT_SRC/UnlimitedUnsigned.h-cstdint.patch"
+patch -p1 -i "$PORT_SRC/pyside612-pyobjectwrapper.patch"
 
 _coin=$(pkg-config --modversion Coin)
 _prefix=/usr/lib/freecad

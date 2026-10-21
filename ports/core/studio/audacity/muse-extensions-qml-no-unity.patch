@@ -1,0 +1,10 @@
+--- a/muse/framework/extensions/qml/Muse/Extensions/CMakeLists.txt
++++ b/muse/framework/extensions/qml/Muse/Extensions/CMakeLists.txt
+@@ -54,5 +54,7 @@
+ 
+ fixup_qml_module_dependencies(muse_extensions_qml)
+ 
++set_target_properties(muse_extensions_qml PROPERTIES UNITY_BUILD OFF)
++
+ # Necessary for the auto-generated sources
+ target_include_directories(muse_extensions_qml PRIVATE devtools)

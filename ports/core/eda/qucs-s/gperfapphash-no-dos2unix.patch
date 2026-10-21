@@ -1,0 +1,11 @@
+--- a/qucsator_rf/src/CMakeLists.txt
++++ b/qucsator_rf/src/CMakeLists.txt
+@@ -247,7 +247,7 @@
+ 
+ add_custom_command(
+   OUTPUT gperfapphash.gph
+-  COMMAND ${gperfappgen_exe} > ${CMAKE_CURRENT_BINARY_DIR}/gperfapphash.gph && dos2unix ${CMAKE_CURRENT_BINARY_DIR}/gperfapphash.gph  
++  COMMAND ${gperfappgen_exe} > ${CMAKE_CURRENT_BINARY_DIR}/gperfapphash.gph
+   DEPENDS ${gperfappgen_exe})
+ 
+ #
