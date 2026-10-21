@@ -10,10 +10,10 @@
 
 name        = kdegraphics-thumbnailers
 version     = 26.08.1
-release     = 1
+release     = 2
 source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
 sha256      = dfa5ff87674eb255fdf25fa7e5adbef387fc712fe9e1180fe6dcced138f3092d  kdegraphics-thumbnailers-26.08.1.tar.xz
 description = KIO thumbnailers for PostScript, PDF, Blender and camera raw files
 homepage    = https://invent.kde.org/graphics/kdegraphics-thumbnailers
 license     = GPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-or-later
-depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kio libkexiv2 libkdcraw ghostscript
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kio libkexiv2 libkdcraw ghostscript kdegraphics-mobipocket

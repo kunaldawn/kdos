@@ -10,7 +10,7 @@
 
 name        = kio
 version     = 6.30.0
-release     = 1
+release     = 2
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
 sha256      = c19cbd4878347b67a9e05ee6541083f51dd90f9e58ee245b4d7634e09f9c04b2  kio-6.30.0.tar.xz
 description = KDE Frameworks: network-transparent file access, workers and file dialogs
