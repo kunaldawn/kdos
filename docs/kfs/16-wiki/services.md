@@ -17,7 +17,7 @@ Services are part of every image. Three things provide them:
 <!-- kfs:include src/system/kdos-tools/build.sh lines=25-27 pin=3545e2d02ffd -->
 
 - The base filesystem, `fs/etc/init.d/` in the tree, supplies the scripts every image has, and
-  `/etc/init.d/service_helper`, the three shell functions those scripts call.
+  `/etc/init.d/service_helper`, the shell functions those scripts call.
 - Ports add scripts of their own from their `build.sh`, so a script exists only while its package is
   installed. [rcS and the service scripts](../../kdos/03-architecture/boot-and-init.md#rcs-and-the-service-scripts)
   in the KDOS book lists both sets, and [Services](../../kdos/02-user-guide/administration.md#services) says what
@@ -54,9 +54,18 @@ The last field is whether the service is on by default.
 
 ### /etc/init.d/service_helper
 
-Every supervised script sources this file. Its three functions are thin wrappers over `ksvc`:
+Every supervised script sources this file. Three of its functions are thin wrappers over `ksvc`:
 
-<!-- kfs:include fs/etc/init.d/service_helper lines=29-39 pin=e25ef977dc8e -->
+<!-- kfs:include fs/etc/init.d/service_helper lines=33-43 pin=e25ef977dc8e -->
+
+The fourth, `wait_bus_name NAME`, returns once `NAME` has an owner on the system bus, or after ten
+seconds with `[WARN] NAME is not on the system bus after 10 seconds` and status 1. `40_dbus.sh`
+waits for `org.freedesktop.DBus`, `41_polkitd.sh` for `org.freedesktop.PolicyKit1` and
+`42_modemmanager.sh` for `org.freedesktop.ModemManager1`, so each daemon answers on the bus before
+the scripts after it start. A daemon `ksvc` supervises has no D-Bus activation file, so the bus
+never starts a second copy of it, and a call to its name while it is stopped is refused with
+`ServiceUnknown`; see
+[How polkit and ModemManager are started](../../kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
 
 ### A service script
 
@@ -93,7 +102,9 @@ and supervises `dhcpcd`.
    service status sshd
    ```
 
-   A supervised service answers `[ OK ] sshd  (pid N)` or `[DOWN] sshd`. A service with no daemon
+   A supervised service answers `[ OK ] sshd  (pid N)` or `[DOWN] sshd`, or
+   `[FAIL] sshd  (exited with code N; restarting)` while its daemon keeps exiting and the
+   supervisor keeps starting it again (see Troubleshooting). A service with no daemon
    reports what it applied instead; the meaning of each is in
    [Services with no daemon](../../kdos/02-user-guide/administration.md#services-with-no-daemon).
 
@@ -223,8 +234,11 @@ A `[SKIP]` line gives the reason the script did not start the daemon. The script
 themselves on unsuitable hardware are listed in
 [Services that skip themselves](../../kdos/02-user-guide/administration.md#services-that-skip-themselves).
 
-**The daemon keeps restarting.** The supervisor restarts it five seconds after every exit. Its log
-shows each exit and the daemon's own last words:
+**The daemon keeps restarting.** The supervisor restarts it five seconds after every exit, and
+`service status` answers `[FAIL] <name>  (exited with code N; restarting)` between the starts and
+`[FAIL] <name>  (crash loop: M failed starts in a row, …)` while a daemon that failed twice in a
+row is running again and has not yet lasted a minute. The supervisor keeps that state in
+`/run/kdos-svc.<name>.state`. Its log shows each exit and the daemon's own last words:
 
 ```bash
 sudo tail -n 40 /run/kdos-svc.<name>.log

@@ -322,7 +322,11 @@ static int serve(void)
 	kd_log("listening on %s, %d pack(s)", path, kd_npack);
 
 	for (;;) {
-		int c = accept(srv, NULL, NULL);
+		/* CLOEXEC, the rule every root daemon here keeps: a connection
+		 * must never reach a program the daemon or a library it calls
+		 * execs, or that program holds it open and the client never
+		 * reads the end of its reply. */
+		int c = accept4(srv, NULL, NULL, SOCK_CLOEXEC);
 		struct ucred cred = {0};
 		socklen_t len = sizeof(cred);
 		char buf[1024] = {0};

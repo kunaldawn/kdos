@@ -378,9 +378,8 @@ ls -ld /var/lib/swtpm-localca
 Reinstalling the swtpm package runs its install script again.
 
 **A guest's log.** `virtlogd` keeps each guest's console and QEMU output in
-`/var/log/libvirt/qemu/<guest>.log`. A freshly booted image has no `/var/log/libvirt` at all,
-because the image carries `/var/log` empty, so the directory's absence before the first guest is
-not a fault.
+`/var/log/libvirt/qemu/<guest>.log`. The directory is the package's, and the image carries it
+empty, so before the first guest it holds nothing.
 
 **QEMU stops with "Could not find ROM image".** The machine type needs firmware the recipe does not
 build; see the first item under [Known gaps](#known-gaps).

@@ -378,7 +378,7 @@ The file defines two devices and a default:
 | Name | Is | Shown as |
 |---|---|---|
 | `kdos_pipewire` | PipeWire | "Default Audio Device (PipeWire)" |
-| `kdos_card` | `plug` onto `sysdefault`, the card directly | "Sound Card (no sound server)" |
+| `kdos_card` | `empty`, a pass-through, onto `sysdefault`: the card directly | "Sound Card (no sound server)" |
 | `pcm.!default` | Whichever PCM `$KDOS_ALSA_DEFAULT` names; `kdos_pipewire` when unset | |
 
 A login that runs no session script has no PipeWire: a tty2 login, a serial console and an ssh
@@ -397,6 +397,12 @@ hardware, so the panel's volume control keeps working when PipeWire is what went
 Every redefinition in that file carries its `!`. The hooks run after the rest of `alsa.conf` is
 parsed, so a plain `pcm.default { … }` aborts the whole configuration load and leaves every ALSA
 program with no configuration at all. Check any edit with `aplay -L`.
+
+`kdos_card` is a pass-through and not a `plug` of its own. `pcm.!default` is already a `plug`, and
+`sysdefault` starts with one, so a third between them makes alsa-lib abort whatever program opens
+`default` with `Assertion failed: !snd_interval_empty(i)` and exit status 134, while
+`aplay -D kdos_card` on its own still plays. Check an edit to either device with
+`KDOS_ALSA_DEFAULT=kdos_card aplay <file>.wav` as well as `aplay -L`.
 
 ### JACK programs on the host
 
@@ -720,6 +726,14 @@ anything and the file would end empty with no error. The frames come from
 `max_fps=30` in the same `xdg-desktop-portal-wlr` config bounds what that costs; without the
 line, a still screen is captured and encoded at the output's own refresh rate for as long as the
 recording runs.
+
+**The capture survives the pipeline's start.** `pipewiresrc` pauses and resumes the stream on
+its way to playing, while it still holds the stream's buffers, so the backend comes back to
+streaming with no buffer to fill. The stream is its own driver, so nothing asks for a frame again
+unless a capture completes; `xdg-desktop-portal-wlr`'s `stream-start-retry.patch` arms its retry
+timer at that point, and a capture timed for a buffer the pause took back asks the stream for
+another. Without it a recording is a header with at most one frame. On the software renderer
+the frames are copied into shared memory, so a recording there needs no GPU.
 
 **A portal session belongs to one connection**, which is why `kdos-record` is a program rather
 than a script. The portal ties a session to the unique bus name that created it and closes it

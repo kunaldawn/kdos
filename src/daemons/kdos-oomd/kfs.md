@@ -2,9 +2,10 @@
 
 `kdos-oomd` kills the process that is starving the machine of memory before the desktop freezes.
 It writes a trigger into the kernel's memory-pressure file, `/proc/pressure/memory`, sleeps until
-the kernel reports a stall, and then kills one process: the largest in a box over its declared
-memory budget first, otherwise preferably a boxed one, and never the compositor, the panel, the
-audio session or the other programs the desktop is made of. It frees the victim's memory at once
+the kernel reports a stall, and then, when `MemAvailable` is also at most a tenth of `MemTotal`,
+kills one process: the largest in a box over its declared memory budget first, otherwise
+preferably a boxed one, and never the compositor, the panel, the audio session or the other
+programs the desktop is made of. It frees the victim's memory at once
 with `process_mrelease()`. It acts at most once every ten seconds. The kernel's own out-of-memory
 killer fires only when an allocation fails, which on a machine with swap can be long after the
 session stopped responding. How it chooses, and the socket `kdos doctor` asks, are in
@@ -24,3 +25,4 @@ answers `ping` and `status`; `kdos doctor` reports whether the socket is present
 
 The protected programs are matched by process name, a list compiled into `main.c`. A desktop
 program renamed, or a new one added to the session, is a candidate victim until the list names it.
+Any other process is protected by an `oom_score_adj` of -500 or lower, which its children inherit.

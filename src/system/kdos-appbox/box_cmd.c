@@ -775,19 +775,57 @@ static int cmd_box_stop(const char *box)
 	}
 }
 
+/*
+ * The stack is released only once the container is gone: decomposing under a
+ * container podman refused to remove (a running box without --force, or one
+ * that outlasts `podman rm -f`) pulls the root out from under a live box.
+ * Podman's own sentence is the diagnosis, so its stderr is kept, as `create`
+ * keeps it.
+ */
 static int cmd_box_remove(const char *box, int force)
 {
 	KbArgv a = {0};
+	KbArgv q = {0};
+	int rc;
 
 	if (!name_ok(box))
 		kb_die("a box name is [A-Za-z0-9._-]");
+	kb_proc_verbose = 1;
+	/* `podman container exists` is 0 for yes, 1 for no and 125 for a
+	 * podman that could not tell; only a 1 is "no container". box_exists
+	 * folds the 125 into "no", and that would release the stack of a box
+	 * that may be running. */
+	kb_argv_add(&q, "podman");
+	kb_argv_add(&q, "container");
+	kb_argv_add(&q, "exists");
+	kb_argv_add(&q, box);
+	kb_argv_end(&q);
+	rc = kb_run(&q);
+	if (rc == 1) {
+		/* A failed create can leave a composed stack with no container;
+		 * nothing runs on it, so it is released either way. */
+		pack_decompose(box);
+		kb_warn("%s has no container to remove", box);
+		return 1;
+	}
+	if (rc != 0) {
+		kb_warn("%s was not removed (podman container exists exited %d)",
+			box, rc);
+		return rc;
+	}
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "rm");
 	if (force)
 		kb_argv_add(&a, "-f");
 	kb_argv_add(&a, box);
 	kb_argv_end(&a);
-	kb_run(&a);
+	rc = kb_run(&a);
+	if (rc != 0) {
+		kb_warn("%s was not removed (podman rm exited %d)%s", box, rc,
+			force ? "" : " — a running box needs `kdos-box stop` "
+				     "first, or --force");
+		return rc;
+	}
 	/* The overlay goes with it; the PACKS do not, because another box may
 	 * be using the same runtime. kdos-packd reference-counts them. */
 	pack_decompose(box);

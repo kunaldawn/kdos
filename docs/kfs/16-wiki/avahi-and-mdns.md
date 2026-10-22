@@ -13,7 +13,7 @@ The [avahi](#port-avahi) port provides the daemon, [`avahi-daemon`]{.idx}, and t
 ([`avahi-browse`]{.idx}, `avahi-resolve-host-name`, [`avahi-publish`]{.idx} and the rest). Every image carries it.
 Its `postinstall.sh` creates the system accounts the daemon and [`avahi-autoipd`]{.idx} drop to:
 
-<!-- kfs:include ports/core/net-libs/avahi/postinstall.sh lines=23-31 pin=df89e3cad53e -->
+<!-- kfs:include ports/core/net-libs/avahi/postinstall.sh lines=24-32 pin=df89e3cad53e -->
 
 The service script is part of the base filesystem, `fs/etc/init.d/45_avahi.sh`, so it runs at every
 boot on the live medium and on an installed system alike; the installer offers no choice for it.

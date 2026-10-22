@@ -15,7 +15,7 @@ this port. Why a prompt cannot work here and what is granted instead is in
 [polkit, and why the desktop has no authentication agent](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent).
 
 `polkitd` is started at boot by `/etc/init.d/41_polkitd.sh`, after D-Bus and before
-NetworkManager, rather than by D-Bus activation; see
+ModemManager and NetworkManager, and never by D-Bus activation; see
 [How polkit and ModemManager are started](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
 
 ## Flags
@@ -59,6 +59,14 @@ fragments at fixed default paths, and none of them is read on KDOS. The account 
 made by the port's `postinstall.sh` instead, in the root being installed into; `41_polkitd.sh`
 skips the daemon when the account is missing, because `polkitd` drops to it after starting and
 would exit at once without it.
+
+The recipe also deletes `/usr/share/dbus-1/system-services/org.freedesktop.PolicyKit1.service`,
+the D-Bus activation file the build installs with no option to leave it out. `41_polkitd.sh`
+supervises `polkitd`, and with the file a caller that asked for `org.freedesktop.PolicyKit1` before
+the supervised daemon held it (ModemManager does as it starts) would make the bus start a second,
+unsupervised `polkitd`; whichever lost the name would exit, and a supervised one that lost would be
+restarted every five seconds without ever getting it. Without the file the call is refused, and
+`41_polkitd.sh` waits until `polkitd` holds the name before the scripts after it run.
 
 The rules files are JavaScript, which `polkitd` runs with [duktape](#port-duktape), the one
 JavaScript engine polkit's build accepts.

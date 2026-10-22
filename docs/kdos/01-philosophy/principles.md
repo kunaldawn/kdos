@@ -68,8 +68,9 @@ this in two ways:
    that holds processes cannot enable controllers for its children, and podman creates its
    container cgroups beside the caller's.
 2. [`kdos-oomd`](../04-programs/daemons.md#kdos-oomd) watches memory pressure through
-   `/proc/pressure/memory` and, when the machine stalls, kills the largest process that is neither
-   the desktop nor its plumbing. A box over the `memory` budget its profile declares is chosen
+   `/proc/pressure/memory` and, when the machine stalls while `MemAvailable` is at most a tenth of
+   `MemTotal` ([how it decides](../04-programs/daemons.md#how-it-decides)), kills the largest
+   process that is neither the desktop nor its plumbing. A box over the `memory` budget its profile declares is chosen
    first, so the profile key still means something where the limit itself could not be applied.
    Otherwise the largest boxed process is preferred to a host one whenever it holds at least half
    the memory of the largest candidate.

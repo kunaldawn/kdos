@@ -42,7 +42,9 @@ repairs.
 - `-D system_pid_file=/run/dbus/pid`, `-D system_socket=/run/dbus/system_bus_socket` — The
   system bus's pid file and listening socket, written into `system.conf` and compiled into
   libdbus as the default system bus address. They are the paths meson derives from
-  `--prefix=/usr` anyway.
+  `--prefix=/usr` anyway. `40_dbus.sh` starts the bus with `--nopidfile`, so the pid file is never
+  written: `dbus-daemon` leaves it behind when it exits on SIGTERM and will not start while it
+  exists, which would make every restart by the supervisor or by `service restart dbus` fail.
 
 ## Notes
 

@@ -29,12 +29,17 @@ to be edited for a store to be used: at boot the initramfs asks `blkid` for a fi
 the generator's escaping: the init is written by a heredoc, and the generated script has a plain
 `$`):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1023-1083 pin=d1415a7820cc -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1128-1189 pin=df8a4d87c418 -->
+
+`find_persist` is the lookup. It asks for the label again every tenth of a second while USB storage
+is still arriving, so a store on a stick that is enumerated after the medium is found is still used:
+
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=931-1034 pin=4d82dbf65d60 -->
 
 The store's mount is moved into the new root as `/mnt/persist`, so the running session can see it
 and the shutdown's `umount -a -r` flushes it:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1123-1132 pin=65f01fb10a3e -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1229-1238 pin=65f01fb10a3e -->
 
 On the store itself, the overlay uses two directories, `upper/` (the session's files) and `work/`
 (overlayfs's own), which the initramfs creates when they are missing.
@@ -45,7 +50,7 @@ On the store itself, the overlay uses two directories, `upper/` (the session's f
 
 The menu entry that skips the store:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=299-304 pin=00a38d5e1ac3 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=326-331 pin=00a38d5e1ac3 -->
 
 ## Usage
 
@@ -92,8 +97,8 @@ the image from an optical drive, as a virtual machine with the ISO attached does
 
 ### Making a store on another device
 
-The store can be on an internal disk; the label is what the boot looks for, and the device must
-already be present when the medium is found (see the end of this section).
+The store can be on a second USB stick or on an internal disk; the label is what the boot looks
+for, wherever it is.
 
 1. Make it with `kdos persist`, naming the disk: `sudo kdos persist create /dev/sdb`. The new
    partition goes in the free space after that disk's last partition.
@@ -105,14 +110,18 @@ already be present when the medium is found (see the end of this section).
    error about the label's length; an NTFS volume takes the label, and the boot refuses it.
 3. Reboot with that device attached.
 
-The initramfs asks for the label once, as soon as it has found the medium, and does not wait for
-devices that are still appearing. A store on a device that enumerates later than the medium is
-not seen, and the session runs in RAM. A virtual machine booted from an emulated optical drive
-shows this with the store on a USB stick: the overlay is mounted about a second into the boot and
-the stick's partitions appear a second after that, so `kdos persist` then reports the store as
-`present, NOT in use by this session`. A store on the stick the image was booted from is always
-seen, because the medium is found on that same device. A store on a disk the firmware has already
-brought up, such as an internal SATA, NVMe or virtio disk, is seen as well.
+The initramfs asks for the label as soon as it has found the medium, and keeps asking while USB
+storage is still arriving: while a hub port holds a device that is not yet configured, or a USB
+mass-storage interface has no disk beneath it. A new stick has no disk for about a second after
+it is enumerated, because usb-storage waits that long before it scans it. While a hub other than a
+root hub is attached, the initramfs also waits until the set of USB devices has stood still for
+one second, since a hub shows nothing in the moment before it reports what is plugged into it.
+The console shows `Waiting for USB devices to settle before looking for a persistence store...`
+while it waits. The wait ends as soon as the store answers, and after 10 seconds at most, with
+`USB storage still settling after 10s; no persistence store found`, after which the session runs
+in RAM. A boot with no USB storage pending and no external hub does not wait. It asks once, and
+once more straight away for each USB disk that has appeared since the last ask, because the kernel
+creates a disk before it has read the disk's partitions.
 
 Keep one store attached. With two filesystems labelled `KDOS_PERSIST`, `blkid -L` answers with one
 of them, and which one is not settled.
@@ -162,9 +171,11 @@ The console then shows `Mounting OverlayFS...` with no `(persistent)`, and `kdos
 
 **`kdos persist` says `present, NOT in use by this session`.** The store was made during this
 boot, the boot was a clean session, the boot refused the store for its type (see the next
-entry), or the store is on a device that appeared after the medium was found, such as a second
-USB stick (see [Making a store on another device](#making-a-store-on-another-device)). Reboot
-with `KDOS Live`; for the last case, put the store on the boot stick or on an internal disk.
+entry), or the store is on a device that took more than 10 seconds to appear, which the console
+reports as `USB storage still settling after 10s; no persistence store found` (see
+[Making a store on another device](#making-a-store-on-another-device)). Reboot with `KDOS Live`;
+for the last case, put the store on the boot stick, on an internal disk, or on a port that is
+not behind a slow hub.
 
 **The store is there, but every boot starts clean.** The initramfs prints why on the console,
 which on the live medium is the serial line: `persistence store /dev/vda1 is ntfs, which cannot

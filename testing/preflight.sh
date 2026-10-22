@@ -915,7 +915,9 @@ for d in "${PORTS_ALL[@]}"; do
     # AN UNCLAIMED ARCHIVE GIT IGNORES IS A STALE FETCH, NOT A DEFECT. Fetched
     # archives are untracked, so a checkout or pull that moves a port to
     # another version leaves the old one in the port directory, and nothing
-    # the build reads names it. It is counted and reported, never failed:
+    # the build reads names it. `make fetch` removes each one that is a hard
+    # link into ports/.srccache; what is left here is a copy or a file with no
+    # other link, the only one on this machine. It is counted and reported, never failed:
     # failing it would make every branch switch fail preflight. Only a
     # TRACKED unclaimed archive, or one outside a checkout where git cannot
     # say, is the hand-placed download this check exists for.
@@ -962,7 +964,7 @@ done
 [ "$unhashed" = 0 ] && note "every source is hashed; every one on disk is non-empty" "ok"
 [ "$unfetched" = 0 ] || note "sources not fetched yet" "$unfetched — run make fetch before make build"
 if [ -n "$stale" ]; then
-    note "stale fetched archives no recipe names" "$(printf '%s\n' $stale | wc -l) — safe to delete; a fetched copy stays in ports/.srccache"
+    note "stale fetched archives no recipe names" "$(printf '%s\n' $stale | wc -l) — make fetch removes each one linked into ports/.srccache; any other is the only copy here"
     for s in $stale; do printf '      %s\n' "$s"; done
 fi
 

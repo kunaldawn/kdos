@@ -1456,7 +1456,7 @@ font.
 ## Patches
 
 A patch is the last resort after a build flag, and it is a file, never an edit made in place: a
-unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. 436 of
+unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. 607 of
 them sit in port directories under `ports/core`. `kpkg` does not apply them. `build.sh` does, from
 the unpacked source it starts in, normally before it configures:
 
@@ -2239,7 +2239,17 @@ published with `ports/publish <port>` on every version bump:
 if it is the vendor bundle, or if it has its own `sha256 =` line; `kpkg` verifies every `sha256`
 entry, including the ones no source names. Any other archive fails preflight when git tracks it. An
 untracked, gitignored one is a stale fetch that a version change left behind, and preflight lists
-it as safe to delete instead (a copy stays in `ports/.srccache`). Preflight also fails an archive
+it instead of failing.
+
+`make fetch` removes such a file itself when it is a hard link to its own entry in
+`ports/.srccache`, which is how a fetch places every source when the cache and the checkout share
+a filesystem: an untracked file in the port directory that no `sha256 =` or `source =` line of the
+recipe names, and that is the same inode as the cache entry for its hash, goes, and the cache
+keeps the bytes. It has to: the [recipe hash](../03-architecture/packaging.md#e--the-recipe-hash)
+covers every file beside a recipe that no `sha256 =` line names, so a tarball a version change
+left behind would change the port's hash and rebuild it. `make fetch-check` lists the same files
+without removing them. A file with no other link, a copy made across filesystems, or a file git
+tracks is never removed; preflight still lists it, and it is the only copy on that machine. Preflight also fails an archive
 that is empty or whose first bytes are none of gzip, bzip2, xz, zstd, lzip, zip or tar, which is
 what a mirror's HTML error page saved under a tarball's name looks like, and fails any
 recipe-hashed archive that git tracks, because sources belong in the archive and not in git.

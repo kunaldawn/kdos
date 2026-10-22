@@ -45,10 +45,12 @@ points ALSA's `default` at one of them, chosen by the environment variable `KDOS
 PipeWire when it is unset. The mixer control is left on the card. The comments at the top of the
 file give the rule behind each part; these are its definitions:
 
-<!-- kfs:include fs/etc/alsa/conf.d/99-kdos-pipewire.conf lines=27-74 pin=36d48bd6f098 -->
+<!-- kfs:include fs/etc/alsa/conf.d/99-kdos-pipewire.conf lines=27-80 pin=785af6f62550 -->
 
 `kdos_card` is the sound card with no server in between, and it is exclusive: while a program
-holds it PipeWire cannot open the card, and the other way round. Why the file lives in
+holds it PipeWire cannot open the card, and the other way round. It is a pass-through, `type
+empty`, because `default` is already a `plug` and `sysdefault` starts with one: a third `plug`
+between them makes alsa-lib abort any program that opens `default`. Why the file lives in
 [`/etc/alsa/conf.d`]{.idx} and why every redefinition carries its `!` are in
 [Reaching the graph from a plain ALSA program on the host](../../kdos/03-architecture/session.md#reaching-the-graph-from-a-plain-alsa-program-on-the-host).
 

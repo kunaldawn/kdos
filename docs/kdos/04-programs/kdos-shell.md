@@ -782,8 +782,8 @@ and mpd itself with `--no-daemon`, once an mpd configuration file exists in one 
 looks (`~/.config/mpd/mpd.conf`, `~/.mpdconf`, `~/.mpd/mpd.conf` or `/etc/mpd.conf`). The image
 ships none, and mpd exits at once without one. The watcher outlives mpd: when mpd goes away it
 empties the file and looks again every five seconds. Both keep running after Log Out and end with
-the login; the watcher also exits if `$XDG_RUNTIME_DIR` is removed, which nothing does before
-shutdown. The file's leading `>` or `||` is the play state and is stripped before the title is drawn.
+the login; with no mpd to follow, the watcher also exits once `$XDG_RUNTIME_DIR/kdos` is gone,
+which nothing removes before shutdown. The file's leading `>` or `||` is the play state and is stripped before the title is drawn.
 One widget reads both, because two cells disagreeing about what is playing is worse than one that is
 sometimes empty.
 

@@ -162,7 +162,7 @@ again whenever the machine moves between battery and mains.
    it stopped, saying so once in the system log:
 
    ```bash
-   grep -a thermald /var/log/messages
+   grep thermald /var/log/messages
    ```
 
 ### Seeing which application uses the processor's power
@@ -190,7 +190,7 @@ members of `wheel` may read it.
   brackets; `mem_sleep_default=deep` on the kernel command line asks for S3 where the firmware
   offers both. See [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md).
 - Every refused `kdos-powerd` request is logged with the caller's uid, so a power key that does
-  nothing can be traced: `grep -a kdos-powerd /var/log/messages` shows lines such as
+  nothing can be traced: `grep kdos-powerd /var/log/messages` shows lines such as
   `kdos-powerd: refused uid 1001 (not root and in neither seat nor wheel)`.
 - Most virtual machines have no RAPL counter, so `56_energyd` skips itself there, logging
   `[SKIP] kdos-energyd: no readable RAPL energy domain` in `/run/kdos-init.energyd.log`, and

@@ -59,7 +59,7 @@ line of the table names. Every key and line is described in
 **The installer's lines.** On an installed system the installer puts its own lines in front of the
 image's, keeping every shipped one, from `src/system/kdos-installer/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1508-1534 pin=722f1c369b15 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1570-1596 pin=722f1c369b15 -->
 
 So an installed `fstab` begins with the root by its filesystem UUID, the EFI system partition at
 `/boot/efi` with `umask=0077` and pass 2, and any [swap]{.idx} partition or swap file. The root's type,

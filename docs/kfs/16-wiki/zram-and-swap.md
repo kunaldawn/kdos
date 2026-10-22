@@ -39,7 +39,7 @@ that sizes the device, makes it swap at priority 100 and then changes the two ke
 **`/etc/fstab`** carries any disk swap. The image's own `fs/etc/fstab` has no swap line; the
 installer appends one, in one of these two forms, from `src/system/kdos-installer/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1522-1529 pin=99d9a475fbf5 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1584-1591 pin=99d9a475fbf5 -->
 
 `rcS` turns on every swap line of `/etc/fstab` once the filesystems are mounted, from
 `fs/etc/init.d/rcS`:
@@ -192,8 +192,10 @@ with no disk swap and no message on the screen.
 
 - zram's `size` is the most the device may claim to hold, not the memory it occupies. Raising it
   does not reserve RAM; the compressed pages take RAM only as they arrive.
-- A full swap is not what [kdos-oomd](out-of-memory.md) watches. It acts on the time the machine
-  spends stalled on memory, which is what the desktop feels, whether or not swap is full.
+- A full swap is not what [kdos-oomd](out-of-memory.md) watches. It acts when the machine spends
+  time stalled on memory, which is what the desktop feels, and `MemAvailable` is at most a tenth
+  of `MemTotal` as well ([how it decides](../../kdos/04-programs/daemons.md#how-it-decides)),
+  whether or not swap is full.
 - `kdos explain swapfile` prints the reasoning behind the three ways of making a swap file.
 
 ## Troubleshooting

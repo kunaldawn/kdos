@@ -45,7 +45,7 @@ sudo passwd root
 The service scripts are run by this loop in `rcS`, which writes each script's output to a log and
 skips any script with a marker under `/etc/service.disabled/`:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=134-171 pin=b95063da693e -->
+<!-- kfs:include fs/etc/init.d/rcS lines=134-173 pin=403936cc08ac -->
 
 ## Usage
 
@@ -200,13 +200,15 @@ With the ESP mounted at `/mnt/target/boot/efi`, and the whole disk as `/dev/sdX`
 
    ```bash
    sudo cp /usr/share/limine/limine-bios.sys /mnt/target/boot/efi/
-   sudo limine bios-install /dev/sdX
+   sudo limine bios-install /dev/sdX 2
    ```
 
-   On a disk the installer partitioned, `bios-install` fails with
-   `error: Installing to a GPT device, but no BIOS boot partition specified or detected.` and
-   undoes its work: the installer's GPT layout has no BIOS boot partition, so such a disk starts
-   only through UEFI, and the installer's own run of this command fails the same way.
+   The `2` is the BIOS boot partition, partition 2 of the layout the installer's erase plan
+   writes, where Limine's stage goes on a GPT disk. Without the number Limine finds a BIOS boot
+   partition by its type itself (`Autodetected partition 2 as BIOS boot partition.`), and on a
+   dos (MBR) disk it needs none. A GPT disk with no BIOS boot partition gets
+   `error: Installing to a GPT device, but no BIOS boot partition specified or detected.`, the
+   command undoes its work, and the disk starts only through UEFI.
 
 3. On a UEFI machine, the firmware entry the installer writes, naming the ESP's partition number:
 
@@ -224,7 +226,8 @@ With the ESP mounted at `/mnt/target/boot/efi`, and the whole disk as `/dev/sdX`
 
 These are the installer's own steps (`src/system/kdos-installer/install.c`), run by hand. Steps 1,
 3 and 4 have been run from the live medium against an installed virtual machine, which then
-booted through UEFI.
+booted through UEFI; step 2, on a disk with the erase plan's layout, made it start Limine and its
+kernel on SeaBIOS.
 
 ### After an update
 

@@ -46,7 +46,7 @@ in `depends`.
 `build.sh` writes the service script `/etc/init.d/76_postgresql.sh`. It skips itself until the
 `postgres` account exists and `/var/lib/postgres/data` holds a cluster (`sudo -u postgres initdb -D
 /var/lib/postgres/data` makes one), then supervises `postgres -D /var/lib/postgres/data` run as
-`postgres` through `setpriv`. It looks the account up with `grep` in `/etc/passwd`.
+`postgres` through `setpriv`. It looks the account up with `getent passwd postgres`.
 
 `postinstall.sh` creates the `postgres` group and account with `/var/lib/postgres` as its home,
 and gives that directory to it at mode `0700`. The package carries the directory at that mode

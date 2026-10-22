@@ -21,8 +21,9 @@ Read `\$ROOT_UUID` as `$ROOT_UUID`. After a build, `build/initramfs/init` holds 
 kernel runs it.
 
 `testing/selftest.sh` extracts the here-document the same way, undoing the escapes, checks it with
-`bash -n`, and runs two of its functions, `unlock_root` and `activate_lvm`, against stub programs.
-The variables `PASS_TTY`, `CRYPT_MAPPER_DIR` and `LVM_BIN` below exist so that it can.
+`bash -n`, and runs three of its functions, `unlock_root`, `activate_lvm` and `find_persist`,
+against stub programs. The variables `PASS_TTY`, `CRYPT_MAPPER_DIR`, `LVM_BIN` and `USB_DEVICES`
+below exist so that it can.
 
 ## The stages at a glance
 
@@ -234,9 +235,38 @@ stage is marked failed and the next line opens the rescue shell.
 
 ## The live medium
 
+### Waiting for USB storage
+
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=931-1034 pin=4d82dbf65d60 -->
+
+These three functions are defined before the live path and called once, from the overlay stage,
+to find the persistence store. `uptime_cs` sets `NOW` to the uptime in hundredths of a second.
+`usb_scan` reads the USB device tree under `USB_DEVICES` and sets four variables:
+
+- `USB_BUSY` names every hub port whose `state` is not `not attached`, `configured` or
+  `suspended`, which is a device still being enumerated, and every interface of class `08` (mass
+  storage) with no `host*/target*/*/block/*` beneath it, which is a stick usb-storage has not
+  scanned yet.
+- `USB_SEEN` lists the names of the USB devices, root hubs included.
+- `USB_DISKS` lists the block devices found beneath the mass-storage interfaces.
+- `USB_HUB` is 1 when a device other than a root hub has device class `09`, a hub.
+
+`find_persist` calls `usb_scan` and then `blkid -L KDOS_PERSIST`, every tenth of a second. A
+lookup that answers sets `PERSIST` and returns 0. Otherwise it returns 1 when `USB_BUSY` is empty,
+the quiet time has passed and `USB_DISKS` is what it was at the scan before, or when 10 seconds
+have passed since the first call. The quiet time is reset to now whenever `USB_SEEN` changes, and
+to one second from now when a hub is present: a hub's empty ports report nothing between the hub
+being configured and its first connection being seen. A disk's block device appears before the
+kernel has read its partition table, so a lookup started then can miss the partition that holds
+the store. That lookup opens the disk, and the open waits for the read, so when `USB_DISKS` has
+changed the function makes one more lookup at once, without sleeping, before it gives up. A boot
+from a USB stick therefore makes two lookups. Before its first sleep it prints
+`Waiting for USB devices to settle before looking for a persistence store...`, and when the bound
+is reached `USB storage still settling after 10s; no persistence store found`.
+
 ### Boot media
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=931-993 pin=3548e7cafecb -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1036-1098 pin=3548e7cafecb -->
 
 With no `root=UUID=`, the script looks for the medium the image was booted from. It tries every node
 of `/dev/sr*`, `/dev/sd*`, `/dev/vd*`, `/dev/nvme*` and `/dev/mmcblk*` in turn, mounting each as
@@ -260,7 +290,7 @@ there.
 
 ### System image
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=995-1016 pin=342c388bc0e9 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1100-1121 pin=342c388bc0e9 -->
 
 `losetup -f` prints the first unused loop device, with `/dev/loop0` as the fallback. `losetup -r`
 attaches `system.sfs` to it read-only, since it sits on a read-only filesystem, and the device is
@@ -269,13 +299,14 @@ mounted at `/mnt/system` as [squashfs]{.idx term="SquashFS"}. A failure of eithe
 
 ### Overlay root
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1018-1090 pin=3dbdf38cc5c5 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1123-1196 pin=397af640c193 -->
 
 The root of a live session is an [overlay]{.idx}: `system.sfs` as the read-only lower layer, and a writable
 upper layer where every change lands. The upper layer comes from one of two places.
 
-1. Unless the command line has `nopersist`, `blkid -L KDOS_PERSIST` looks for a filesystem with that
-   label. When one exists and is not of a type that cannot hold an upper layer (vfat, exfat, ntfs,
+1. Unless the command line has `nopersist`, `find_persist` looks for a filesystem labelled
+   `KDOS_PERSIST`, waiting for USB storage as
+   [Waiting for USB storage](#waiting-for-usb-storage) describes. When one exists and is not of a type that cannot hold an upper layer (vfat, exfat, ntfs,
    iso9660, squashfs), it is mounted at `/mnt/persist`, and its `upper` and `work` directories are
    used. If the overlay mount over it fails, the store is unmounted and the script goes on to the
    second choice.
@@ -288,7 +319,7 @@ overlay mount is not checked. What the store is and how `kdos persist` makes one
 
 ### Moving the mounts
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1092-1132 pin=a6db6149b6c6 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1198-1238 pin=a6db6149b6c6 -->
 
 The mount points the real init expects are made in the new root, and `/dev`, `/proc` and `/sys` are
 moved into it. Two more mounts are moved: `/mnt/iso`, the medium itself, guarded by a test for
@@ -297,7 +328,7 @@ from the booted system. The squashfs and tmpfs mounts under `/mnt` stay behind i
 
 ### Switching root
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1134-1163 pin=eee243888baa -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1240-1269 pin=eee243888baa -->
 
 `udevadm control --exit` stops this `udevd`, and `switch_root` starts the real `/sbin/init` from the
 overlay, as on the installed path. The splash survives the switch, as the comment says. A missing

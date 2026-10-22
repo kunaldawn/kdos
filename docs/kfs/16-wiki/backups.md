@@ -57,13 +57,14 @@ is set on it. A different file can be named with `password-file`.
 **What `--once` runs**, from `src/desktop/kdos-shell/backup.c`. It reads the two files, refuses
 before starting restic if either is missing or unsafe, and waits for restic to finish:
 
-<!-- kfs:include src/desktop/kdos-shell/backup.c lines=936-970 pin=168313ef99ab -->
+<!-- kfs:include src/desktop/kdos-shell/backup.c lines=936-983 pin=166d90508f24 -->
 
 It exits 0 when restic succeeded and 1 for any failure, including a missing `repo` or `include`.
 The checks run in that order: `repo`, then the password file, then `include`. A refusal before
-restic starts is printed. restic itself runs with its standard output and standard error on
-`/dev/null`, so a failure inside restic, a repository that does not exist among them, shows only
-as the exit status.
+restic starts is printed. restic runs with `kdos-backup`'s own standard output and standard error,
+so its summary and its errors are printed where `--once` was run, and a failure inside restic adds
+`kdos-backup: restic exited N` with restic's status: 10 for a repository that does not exist, 12
+for a wrong password, 3 for a snapshot made with some files unread.
 
 ## Usage
 
@@ -98,12 +99,8 @@ the repository on another disk. See [`kdos persist`](../../kdos/04-programs/kdos
    echo $?
    ```
 
-   `0` is a snapshot made. `1` with no message is restic failing; run restic with the same
-   arguments to read why:
-
-   ```bash
-   restic -r /srv/backup/restic --password-file ~/.config/kdos/backup.pass backup ~/Documents
-   ```
+   `0` is a snapshot made, after restic's summary of what it read and added. `1` follows a
+   message: `kdos-backup`'s own refusal, or restic's error and then `kdos-backup: restic exited N`.
 
 5. Open `kdos-backup`. The new snapshot is at the top of the list, newest first.
 
@@ -138,8 +135,7 @@ mounted before the slot.
 Your timers are the session's own background loops, not a supervised service. Log Out does not
 stop them; they end with the login, and the next login starts them again, so a nightly job runs
 only while somebody is logged in. The job's output is discarded, so a failing nightly backup prints nothing anywhere. Check the date of the newest snapshot in `kdos-backup` from time to
-time, or run the restic command of [Setting up kdos-backup](#setting-up-kdos-backup) by hand to
-read restic's message; `kdos-backup --once` prints none of it. `snooze -n -H 3 -M 40 true` prints
+time, or run `kdos-backup --once` by hand to read restic's message. `snooze -n -H 3 -M 40 true` prints
 the next times the line would run, one a line, such as
 `2026-10-22T03:40:00+0000 Thu  0d  7h 26m 51s`. A backup that must run whether or not anyone is logged in
 belongs in the system's table; see [Backing up the system's own files](#backing-up-the-systems-own-files).
@@ -236,10 +232,10 @@ or carries a group or other permission bit. Create it, or run `chmod 600 ~/.conf
 and check that the file named by `password-file`, if set, is the one you mean.
 
 **`restic answered nothing — is <repo> a repository?`, or restic says there is no repository at the
-location, or `--once` exits 1 and prints nothing.** The path in `repo` is not a restic repository:
+location, or `--once` prints `restic exited 10`.** The path in `repo` is not a restic repository:
 a USB disk that is not mounted, a mistyped path, or a repository never made with `restic init`.
-restic run by hand on that path says `Fatal: repository does not exist: unable to open config
-file` and exits 10.
+restic's own line, which `--once` prints above its status, is `Fatal: repository does not exist:
+unable to open config file`.
 
 **restic reports `Fatal: wrong password or no key found`.** The password file does not hold the
 repository's password. The file must hold the password and nothing else.

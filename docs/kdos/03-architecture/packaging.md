@@ -602,7 +602,10 @@ ERROR: File conflict detected:
 
 The refusal holds for `kpkg install -f` and for the build, which installs every package through
 this scan. `kpkgadd -f` alone skips it, placing the files over whatever claims them and leaving each
-contested path claimed by both packages; nothing in the build passes it.
+contested path claimed by both packages; nothing in the build passes it. Of several claimants of one
+path, the one every ownership question names (the conflict scan, `kdos why`, `kpkg check`'s
+unowned walk) is the first by package name in byte order, whichever C library `kpkg` was built
+against and whether the whole table was read or only the claims on the staged paths.
 
 Ownership is compared on the canonical path. The root's `bin`, `sbin`, `lib` and `lib64` are
 links into `/usr`, so a package built with `--exec-prefix=` records `./bin/free` for the same file
@@ -711,6 +714,12 @@ took leaves the old owner's manifest, so it is checked only against its new owne
 symbolic link, device node or FIFO is checked for presence only, and so is every file of a package
 installed with no file record. The record is taken once the install hook has run, so a mode or a
 file the hook sets is what is checked.
+
+A freshly built image checks with no `missing`, `changed` or `mode` line and exits 0. The image
+leaves out the build tree's logs and caches, but recreates every directory a package claims under
+`/var/log` and `/var/cache`, empty and with the tree's mode and owner
+([the live medium](boot-and-init.md#the-live-medium-and-persistence)); a package that installed a
+file there, rather than a directory, would be `missing` on the image.
 
 `kdos update apply` runs `kpkg check --all` on an A/B slot it installed into, before it puts the
 slot's kernel on the ESP and marks the slot to be tried; a slot that fails the check is not tried,
@@ -883,7 +892,10 @@ files and its named sources hashes exactly as its recipe files alone.
 The files this reaches are the ones `build.sh` reads from `$PORT_SRC` and nothing else vouches
 for. `linux` starts its kernel configuration from `kdos.config`, signs modules under the identity in
 `x509.genkey` and copies in its panic-screen logo this way, and `epy` installs a `.desktop` file; editing one rebuilds the port. A stray file beside a recipe,
-such as an editor backup or a `kpkgbuild.new`, also changes the hash and rebuilds the port. A
+such as an editor backup, a `kpkgbuild.new` or a fetched tarball no `sha256 =` line names any
+more, also changes the hash and rebuilds the port; `make fetch` removes the last kind when it is
+a hard link into `ports/.srccache` (see
+[Archives preflight accepts](../05-developer/writing-ports.md#archives-preflight-accepts)). A
 directory named `__pycache__` is skipped at every depth: it is bytecode Python writes beside a
 module it imports, and a port that links in a tree of scripts, as `kdos-kfs` links
 `script/book`, would otherwise hash whatever a host run happened to import.

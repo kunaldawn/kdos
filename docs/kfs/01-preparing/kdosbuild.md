@@ -232,7 +232,9 @@ and the reading of a failed log, case by case, in
 ## Step timings
 
 kdosbuild writes the time of every step that did its work to `build/snapshots/timings.json`,
-keeping the figures of every step a run did not measure. The book's build times are these figures
+keeping the figures of every step a run did not measure, and files each figure under the machine
+that measured it: the processor's model name, the CPUs kdosbuild may run on, `MemTotal` and
+`KDOS_JOBS`, read inside the container when the run starts. The book's build times are these figures
 divided by the time of `00_cross/binutils`; see
 [Typographical conventions](../00-front/conventions.md#build-times-and-the-sbu), and for what
 counts as measured, [Step timings](../../kdos/05-developer/build-system.md#step-timings).

@@ -225,7 +225,7 @@ the rule's keys, reload, and trigger again.
 
 ```bash
 cat /run/kdos-init.udev.log
-grep -a udevd /var/log/messages
+grep udevd /var/log/messages
 ```
 
 and check the module by hand with `sudo modprobe <module>` and `dmesg`. The system log holds

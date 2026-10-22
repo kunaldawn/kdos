@@ -36,5 +36,9 @@ and `-lutmps -lskarnet`. A consumer
 built without them compiles and links cleanly against musl's stubs, and its `who` or `last` then
 reports no one.
 
+`runlvl-replace.patch` makes `utmps-utmpd` keep a single runlevel record, replacing it at each
+change of runlevel as glibc does, so that `who -r` prints one line and `runlevel` the current
+runlevel rather than the one the machine booted into.
+
 The socket paths are compiled in at their defaults, `/run/utmps/.utmpd-socket` and
 `/run/utmps/.wtmpd-socket`, which are the paths `06_utmps.sh` serves.

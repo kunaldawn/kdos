@@ -135,17 +135,18 @@ describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, 
 ## Notes
 `dhcpcd` and NetworkManager must not both run. `/etc/init.d/30_network.sh` (see
 [Services](../../../../docs/kfs/16-wiki/services.md)) stands down when
-`/usr/sbin/NetworkManager` is executable and `/etc/service.disabled/networkmanager` is absent; the
-marker alone does not keep NetworkManager off, because the image ships a D-Bus activation file,
-`/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service`, which lets the system
-bus start it on the first call to its name, and `kdos-netagent` makes that call in every
-session. [`/etc/service.disabled/<name>`](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/configuration.md#etcservicedisabledname)
-says what else has to go.
+`/usr/sbin/NetworkManager` is executable and `/etc/service.disabled/networkmanager` is absent, and
+the marker alone keeps NetworkManager off. With systemd off the build installs no D-Bus activation
+file for `org.freedesktop.NetworkManager`, and the image adds none, so the system bus never starts
+NetworkManager: the call `kdos-netagent` makes in every session while the name has no owner is
+refused rather than answered by a second, unsupervised NetworkManager; see
+[`/etc/service.disabled/<name>`](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/configuration.md#etcservicedisabledname).
 
 ModemManager has to be on the bus first. `42_modemmanager.sh` sorts before
-`42_networkmanager.sh` for that reason: NetworkManager's WWAN and Bluetooth DUN devices are
-ModemManager's modems, and a NetworkManager that found no ModemManager would call its name and so
-start it through D-Bus activation, the root-service path KDOS keeps network authorisation off; see
+`42_networkmanager.sh` and returns once ModemManager holds its name: NetworkManager's WWAN and
+Bluetooth DUN devices are ModemManager's modems, and NetworkManager calls the name as it starts.
+The call can start nothing, because the modemmanager port deletes the activation file its build
+installs; see
 [How polkit and ModemManager are started](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
 
 A file of the same name in `/etc/NetworkManager/conf.d` overrides `10-kdos-dns.conf`, which is

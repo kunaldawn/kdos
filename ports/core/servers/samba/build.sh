@@ -77,6 +77,11 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
+        # smbd never makes its log directory, and an emptied /var/log takes
+        # it away: without it every line goes only to the supervisor's log,
+        # and testparm calls a missing cache directory an ERROR until smbd
+        # first writes there.
+        install -d -m 755 /var/log/samba /var/cache/samba
         supervise "$NAME" "$DAEMON" --foreground --no-process-group
         ;;
     stop)   stop_service "$NAME" ;;

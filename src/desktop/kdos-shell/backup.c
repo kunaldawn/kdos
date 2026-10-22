@@ -935,6 +935,7 @@ int backup_main(int argc, char **argv)
 
 	if (once) {
 		KbArgv a = { 0 };
+		int rc;
 
 		read_conf();
 		if (why[0] || !repo[0] || !password_ok()) {
@@ -952,6 +953,12 @@ int backup_main(int argc, char **argv)
 		 * process the supervisor is watching: detaching here would
 		 * report success the instant restic started, and a backup that
 		 * failed every night would look like one that ran.
+		 *
+		 * restic KEEPS THIS PROCESS'S OUTPUT. At a prompt its own
+		 * sentence (no repository, wrong password, a file it could not
+		 * read) is the diagnosis, and a status with no reason sends the
+		 * person off to rebuild the command line by hand. Under a user
+		 * timer the session's loop sends both streams to /dev/null.
 		 */
 		kb_argv_add(&a, "restic");
 		kb_argv_add(&a, "-r");
@@ -966,7 +973,13 @@ int backup_main(int argc, char **argv)
 			kb_argv_add(&a, exc[i]);
 		}
 		kb_argv_end(&a);
-		return kb_run(&a) == 0 ? 0 : 1;
+		rc = kb_run_tty(&a);
+		if (rc != 0) {
+			fprintf(stderr, "kdos-backup: restic exited %d%s\n", rc,
+				rc == 127 ? " (restic is not installed)" : "");
+			return 1;
+		}
+		return 0;
 	}
 
 	keys.doc = "backup";

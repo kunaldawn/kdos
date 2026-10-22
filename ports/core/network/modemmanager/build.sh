@@ -36,3 +36,5 @@ meson setup build \
 	-Dfuzzer=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+
+rm "$PKG/usr/share/dbus-1/system-services/org.freedesktop.ModemManager1.service"

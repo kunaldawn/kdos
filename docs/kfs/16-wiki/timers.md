@@ -85,7 +85,10 @@ The two jobs in the skeleton. The backup job is commented out:
    service status timers
    ```
 
-   Each job prints `[ OK ] kdos-timer-NAME  (pid N)` or `[DOWN] kdos-timer-NAME`.
+   Each job prints `[ OK ] kdos-timer-NAME  (pid N)` or `[DOWN] kdos-timer-NAME`. For the five
+   seconds after a run whose command failed, before `snooze` starts again, it prints
+   `[FAIL] kdos-timer-NAME  (exited with code N; restarting)`; a run that succeeded leaves it
+   `[ OK ]`.
 
 2. Ask about one system job:
 
@@ -212,7 +215,7 @@ and to the system log, tagged `kdos-timer-NAME`:
 
 ```bash
 sudo cat /run/kdos-svc.kdos-timer-NAME.log
-grep -a kdos-timer-NAME /var/log/messages
+grep kdos-timer-NAME /var/log/messages
 ```
 
 **A user job never fires.** The session reports nothing. Check the timespec with `snooze -n` and the

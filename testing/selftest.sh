@@ -413,6 +413,22 @@ check 'boxgraft tiles -> ~/.local/share/kdos/packs/tiles' \
 grep -q 'data\.tiles.*REFUSED' "$OUT/fx.txt" && { echo "  FAIL  data pack graft"; exit 1; }
 echo "  ok    a data pack is never composed into a box root"
 
+# THE INSTALLED PACK IS <id>.kpack. An install keeps the version it supersedes
+# as <id>-<version>.kpack for rollback, and `-` sorts before `.`, so a store
+# holding both lists the kept one unless the scan reads the name. v1 and v2
+# are the two versions of v.demo assembled above.
+mkdir -p "$OUT/kept"
+cp "$OUT/v2.kpack" "$OUT/kept/v.demo.kpack"
+cp "$OUT/v1.kpack" "$OUT/kept/v.demo-1.0.kpack"
+"$OUT/kdos-packd" --fixture "$OUT/kept" > "$OUT/fxkept.txt"
+if grep -qE '^  v\.demo +9\.9 ' "$OUT/fxkept.txt" &&
+   [ "$(grep -cE '^  v\.demo +[0-9]' "$OUT/fxkept.txt")" = 1 ]; then
+    echo "  ok    the store lists <id>.kpack, never the version kept for rollback"
+else
+    echo "  FAIL  the kept <id>-<version>.kpack was listed"
+    sed 's/^/        /' "$OUT/fxkept.txt"; exit 1
+fi
+
 
 # libkcell and libkwl are the TWO libraries here with real external
 # dependencies — libkcell is the glyph cache and the cell painter, libkwl is
@@ -3159,6 +3175,42 @@ rm -rf "$_tw"
 echo "  a star stays a star, and a row with no -- is reported and skipped"
 
 #
+# A CRASH-LOOPING SERVICE IS NOT REPORTED AS RUNNING. The pid file names the
+# supervisor, which outlives every exit of its daemon, so `ksvc check` reads
+# the supervisor's state file as well: judged by the pid file alone, a daemon
+# that aborts on every start is `[ OK ]` for as long as the machine is up. One
+# exit with status 0 is not yet a loop — a supervised snooze exits 0 after
+# every job. ksvc is built with RUN_DIR inside the suite's directory, so
+# nothing touches /run.
+#
+echo "==> a crash-looping service is [FAIL], a running one [ OK ]"
+_kv="$OUT/ksvc-run"
+mkdir -p "$_kv/run"
+printf 'int ksvc_main(int, char **);\nint main(int c, char **v) { return ksvc_main(c, v); }\n' \
+    > "$_kv/main.c"
+$CC $STD $WARN $INC -Isrc/system/kdos-tools -DRUN_DIR="\"$_kv/run\"" \
+    -o "$_kv/ksvc" "$_kv/main.c" src/system/kdos-tools/ksvc.c \
+    src/libs/libkbase/*.c
+"$_kv/ksvc" supervise crash sh -c 'exit 3' >/dev/null
+"$_kv/ksvc" supervise good sleep 600 >/dev/null
+"$_kv/ksvc" supervise clean true >/dev/null
+sleep 1
+_kfail=""
+"$_kv/ksvc" check crash > "$_kv/out" && _kfail="$_kfail crash-exits-0"
+grep -q '^\[FAIL\] crash  (exited with code 3' "$_kv/out" || _kfail="$_kfail crash-not-FAIL"
+"$_kv/ksvc" check good | grep -q '^\[ OK \] good' || _kfail="$_kfail running-not-OK"
+"$_kv/ksvc" check clean | grep -q '^\[ OK \] clean' || _kfail="$_kfail one-exit-0-not-OK"
+for _n in crash good clean; do "$_kv/ksvc" stop-supervised "$_n" >/dev/null; done
+if [ -e "$_kv/run/kdos-svc.crash.state" ]; then _kfail="$_kfail state-left-by-stop"; fi
+if [ -z "$_kfail" ]; then
+    echo "  a daemon that exits non-zero is [FAIL]; a running one and one exit 0 are [ OK ]"
+else
+    echo "  KSVC REPORTS A CRASH LOOP WRONGLY:$_kfail"
+    cat "$_kv/out"
+    exit 1
+fi
+
+#
 # AND A PER-USER TIMER REPEATS, which for a release it did not.
 #
 # `snooze` waits for its slot, runs the command ONCE and exits. The system
@@ -4074,6 +4126,86 @@ sed -n '/Wait for device to appear/,/^    done$/p' "$IR/init" | grep -q 'activat
     || { echo "  the root wait no longer activates a late physical volume's group"; exit 1; }
 echo "  volume groups: no lvm without a PV, once per newly seen set of PVs, thin and cache targets first"
 
+# AND THE PERSISTENCE STORE IS LOOKED FOR UNTIL USB STORAGE HAS SETTLED.
+# find_persist reads a fake USB device tree (USB_DEVICES) and a blkid stub
+# that answers `-L KDOS_PERSIST` from its Nth call on, running $PS/on_<n> as
+# that call is made so the tree can change mid-wait. A stick whose disk has
+# not been scanned is waited for; a boot with nothing pending pays one
+# lookup, and one more for each USB disk, whose partitions the first lookup
+# may not yet see; a stick that never answers costs the 10-second bound and
+# no more.
+PS="$OUT/persist"
+mkdir -p "$PS/bin"
+cat > "$PS/bin/blkid" <<'EOF'
+#!/bin/sh
+[ "$1 $2" = "-L KDOS_PERSIST" ] || exit 2
+n=$(( $(cat "$PS/count") + 1 )); echo "$n" > "$PS/count"
+[ -x "$PS/on_$n" ] && "$PS/on_$n"
+[ -n "$STORE_AT" ] && [ "$n" -ge "$STORE_AT" ] && { echo /dev/sdb1; exit 0; }
+exit 2
+EOF
+chmod +x "$PS/bin/blkid"
+persist_try() {   # <store at call N, or ""> -> prints "<rc> <calls> <PERSIST>"
+    echo 0 > "$PS/count"
+    ( . /dev/stdin <<EOF
+$(sed -n '/^: ".*USB_DEVICES:=/p; /^uptime_cs() {/,/^}/p; /^usb_scan() {/,/^}/p; /^find_persist() {/,/^}/p' "$IR/init")
+EOF
+      export PS STORE_AT="$1"
+      PATH="$PS/bin:$PATH" USB_DEVICES="$PS/sys"
+      find_persist >/dev/null 2>&1
+      echo "$? $(cat "$PS/count") $PERSIST" )
+}
+persist_tree() {  # a root hub with two empty ports, plus what the case adds
+    rm -rf "$PS/sys" "$PS"/on_*
+    mkdir -p "$PS/sys/usb1" "$PS/sys/1-0:1.0/usb1-port1" "$PS/sys/1-0:1.0/usb1-port2"
+    echo 09 > "$PS/sys/usb1/bDeviceClass"
+    echo "not attached" > "$PS/sys/1-0:1.0/usb1-port1/state"
+    echo "not attached" > "$PS/sys/1-0:1.0/usb1-port2/state"
+}
+persist_stick() { # <device>: configured, its mass-storage interface not yet scanned
+    mkdir -p "$PS/sys/$1" "$PS/sys/$1:1.0/host2"
+    echo 00 > "$PS/sys/$1/bDeviceClass"
+    echo 08 > "$PS/sys/$1:1.0/bInterfaceClass"
+}
+persist_on() {    # <n> <shell line>: run at the nth lookup
+    printf '#!/bin/sh\n%s\n' "$2" > "$PS/on_$1"; chmod +x "$PS/on_$1"
+}
+_disk='mkdir -p "$PS/sys/1-1:1.0/host2/target2:0:0/2:0:0:0/block/sdb"'
+
+persist_tree
+[ "$(persist_try "")" = "1 1 " ] \
+    || { echo "  with no USB storage pending, find_persist did not stop after one lookup"; exit 1; }
+persist_tree; persist_stick 1-1; persist_on 5 "$_disk"
+[ "$(persist_try 6)" = "0 6 /dev/sdb1" ] \
+    || { echo "  a store on a stick scanned late was not found ($(persist_try 6))"; exit 1; }
+persist_tree; persist_stick 1-1; persist_on 5 "$_disk"
+[ "$(persist_try "")" = "1 7 " ] \
+    || { echo "  a late stick with no store did not end the wait one lookup after its disk appeared"; exit 1; }
+persist_tree; persist_stick 1-1; eval "$_disk"
+[ "$(persist_try 2)" = "0 2 /dev/sdb1" ] \
+    || { echo "  a store whose partition the first lookup missed was not looked for again"; exit 1; }
+persist_tree; persist_stick 1-1; eval "$_disk"
+[ "$(persist_try "")" = "1 2 " ] \
+    || { echo "  a USB disk already scanned cost more than one extra lookup ($(persist_try ""))"; exit 1; }
+persist_tree; echo default > "$PS/sys/1-0:1.0/usb1-port2/state"
+persist_on 3 'echo configured > "$PS/sys/1-0:1.0/usb1-port2/state"; mkdir -p "$PS/sys/1-1" "$PS/sys/1-1:1.0/host2"; echo 08 > "$PS/sys/1-1:1.0/bInterfaceClass"'
+persist_on 8 "$_disk"
+[ "$(persist_try 9)" = "0 9 /dev/sdb1" ] \
+    || { echo "  a store on a device still enumerating was not found"; exit 1; }
+persist_tree; mkdir -p "$PS/sys/1-2"; echo 09 > "$PS/sys/1-2/bDeviceClass"
+_r=$(persist_try ""); _n=${_r#1 }; _n=${_n% }
+[ "${_r%% *}" = 1 ] && [ "$_n" -ge 5 ] && [ "$_n" -le 13 ] \
+    || { echo "  behind an idle hub, find_persist did not wait its one quiet second ($_r)"; exit 1; }
+persist_tree; persist_stick 1-1
+_t0=$(date +%s)
+_r=$(persist_try "")
+_t=$(( $(date +%s) - _t0 ))
+[ "${_r%% *}" = 1 ] && [ "$_t" -ge 9 ] && [ "$_t" -le 12 ] \
+    || { echo "  a stick that never scans did not cost exactly the 10-second bound ($_r, ${_t}s)"; exit 1; }
+grep -qE '^[[:space:]]+find_persist ;;$' "$IR/init" \
+    || { echo "  the overlay no longer looks for its store through find_persist"; exit 1; }
+echo "  persistence store: one lookup when USB is idle, one more per new disk, waits for a late stick, bounded at 10 s"
+
 # AND THE blkid THE INITRAMFS SHIPS IS UTIL-LINUX'S. Every lookup in the
 # generated init is `blkid -U` — the root filesystem, the ESP holding the A/B
 # state, and the LUKS container — and a prober without `-U` or `crypto_LUKS`
@@ -4284,7 +4416,9 @@ echo "  restore and resume"
 # A plan writes no snapshot unless --snapshot asks, and must set KDOS_REPLAY
 # for a step it named — 17 phase scripts exit 0 on a second pass without it.
 beta_id=$(grep -o '"id": "[^"]*"' "$E/build/snapshots/01_beta/manifest.json")
-alpha_t=$(grep -o '"00_alpha/build the rootfs": [0-9.]*' "$E/build/snapshots/timings.json")
+# The first match is the figure: "steps" is written before "machine", which
+# names the same key with a machine id.
+alpha_t=$(grep -o '"00_alpha/build the rootfs": [0-9.]*' "$E/build/snapshots/timings.json" | head -n 1)
 [ -n "$alpha_t" ] && grep -q '"01_beta/ports": [0-9.]*' "$E/build/snapshots/timings.json" \
     && grep -q '"00_alpha": [0-9.]*' "$E/build/snapshots/timings.json" \
     || { echo "  the build recorded no step timings"; cat "$E/build/snapshots/timings.json"; exit 1; }
@@ -4801,6 +4935,29 @@ grep -qE "^ +[0-9]+ +Packs +skipped" "$OUT/plan.txt" \
     || { echo "  the packs step ran with no medium"; exit 1; }
 grep -q '"title": "Partition".*"state": "skipped"' "$OUT/plan.json" \
     || { echo "  text and json disagree about Partition"; exit 1; }
+# The erase plan's layout, by the names the install gives it: the ESP first,
+# the BIOS boot partition Limine's legacy stage goes into second, swap when it
+# is a partition, the root last. A disk the probe cannot see keeps the payload
+# walk out of this, and says "all of the group" with the -l that lvcreate gets.
+"$KI" --save "$OUT/wipe.conf" >/dev/null
+sed -i 's|^disk .*|disk = /dev/kinstall-fixture0|; s/^plan.*/plan = wipe/; s/^swap .*/swap = partition/; s/^lvm .*/lvm = 1/' \
+    "$OUT/wipe.conf"
+"$KI" --config "$OUT/wipe.conf" --dump plan > "$OUT/wipe.txt" 2>&1
+"$KI" --config "$OUT/wipe.conf" --dump plan --json > "$OUT/wipe.json" 2>&1
+grep -qx 'esp           /dev/kinstall-fixture0p1 (format)' "$OUT/wipe.txt" \
+    && grep -qx 'bios boot     /dev/kinstall-fixture0p2, 1 MiB, made by the layout' "$OUT/wipe.txt" \
+    && grep -qx 'root          lvm kdos/root_a on /dev/kinstall-fixture0p4, all of the group (-l 100%FREE)' "$OUT/wipe.txt" \
+    || { echo "  the erase plan's layout is not ESP, BIOS boot, swap, root"; cat "$OUT/wipe.txt"; exit 1; }
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1]));
+assert d["bios_boot"] == "/dev/kinstall-fixture0p2", d["bios_boot"]
+assert d["root"] == "/dev/kinstall-fixture0p4", d["root"]
+assert d["lvm"]["extent"] == "100%FREE" and not d["lvm"]["half"], d["lvm"]' "$OUT/wipe.json" \
+    || { echo "  text and json disagree about the erase plan's layout"; exit 1; }
+# A reused disk the probe cannot see has no BIOS boot partition to find, and
+# the plan says what that costs.
+grep -qx 'bios boot     none: the disk starts on UEFI only' "$OUT/plan.txt" \
+    || { echo "  a reuse plan with no BIOS boot partition claims a BIOS path"; cat "$OUT/plan.txt"; exit 1; }
+echo "  the erase plan lays out a BIOS boot partition"
 # A dump ends up in bug reports and CI logs, and the answer file carries the
 # passwords in the clear because crypt() is about to be called on them. The
 # sentinel is what proves neither rendering repeats one.
@@ -5495,6 +5652,25 @@ grep -q "would kill kdosbuild" "$OUT/oomd4.txt" \
     || { echo "  without the profiles the answer should be the larger host process"
          cat "$OUT/oomd4.txt"; exit 1; }
 echo "  a box over its own declared budget is preferred, and the check is load-bearing"
+
+# …and a stall is not a shortage. One copy streaming through the page cache
+# stalls every task that wants to run — itself — with most of memory still
+# available, and killing it frees nothing anyone was short of. The same tree
+# with a meminfo at 80% available is no kill; at 7.5% it is the usual answer.
+cp -R testing/fixtures/oomd/hostwins "$OUT/oomd-mem"
+printf 'MemTotal:        4000000 kB\nMemFree:          200000 kB\nMemAvailable:    3200000 kB\n' \
+    > "$OUT/oomd-mem/meminfo"
+if "$OUT/kdos-oomd" --fixture "$OUT/oomd-mem" > "$OUT/oomd5.txt"; then
+    echo "  a stall with 80% of memory available chose a victim"; cat "$OUT/oomd5.txt"; exit 1
+fi
+grep -q "no kill: 3200000 of 4000000 kB available" "$OUT/oomd5.txt" \
+    || { echo "  the refusal does not say how much was available"; cat "$OUT/oomd5.txt"; exit 1; }
+printf 'MemTotal:        4000000 kB\nMemFree:          100000 kB\nMemAvailable:     300000 kB\n' \
+    > "$OUT/oomd-mem/meminfo"
+"$OUT/kdos-oomd" --fixture "$OUT/oomd-mem" > "$OUT/oomd6.txt" \
+    && grep -q "would kill kdosbuild (pid 950" "$OUT/oomd6.txt" \
+    || { echo "  memory short and stalled, and no victim"; cat "$OUT/oomd6.txt"; exit 1; }
+echo "  a stall kills only when MemAvailable is at or under a tenth of MemTotal"
 
 echo
 echo "==> kdos-mountd offers the stick and refuses everything else"

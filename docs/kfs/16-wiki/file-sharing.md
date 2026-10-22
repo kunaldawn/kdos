@@ -56,19 +56,20 @@ rule that joins them:
 The samba port installs no `smb.conf`. Its service script starts [`smbd`]{.idx} only once a non-empty one
 exists, and starts `smbd` alone: no `nmbd` and no `winbindd`.
 
-<!-- kfs:include ports/core/servers/samba/build.sh lines=62-87 pin=4507f5f8e3da -->
+<!-- kfs:include ports/core/servers/samba/build.sh lines=62-92 pin=3749e544b879 -->
 
 The configure options set where Samba keeps its files: the configuration under [`/etc/samba`]{.idx}, the
 password database under `/var/lib/samba/private` and the logs under [`/var/log/samba`]{.idx}:
 
 <!-- kfs:include ports/core/servers/samba/build.sh lines=16-24 pin=087bd4fbb30a -->
 
-The image ships `/var/log` and `/var/cache` empty, the script creates neither `/var/log/samba`
-nor `/var/cache/samba`, and `smbd` does not create them either. It runs without them: `testparm`
-reports `ERROR: cache directory /var/cache/samba does not exist`, and the log lines go to the
-supervisor's `/run/kdos-svc.samba.log`, with *Unable to open new log file
-'/var/log/samba/log.smbd'* among them. [Serving a folder over SMB](#serving-a-folder-over-smb)
-creates both.
+`smbd` creates neither `/var/log/samba` nor `/var/cache/samba`. Both are directories the package
+claims, and the image carries every such directory under `/var/log` and `/var/cache`, empty
+([110_iso](../15-image/110-iso.md)), so both exist on the live medium and on an installed system,
+and the service script creates both again each time it starts `smbd`, so emptying `/var/log` does
+not cost the server its log. Without them `testparm` reports `ERROR: cache directory /var/cache/samba does not exist`, and the
+log lines go to the supervisor's `/run/kdos-svc.samba.log`, with *Unable to open new log file
+'/var/log/samba/log.smbd'* among them.
 
 ### /etc/exports and the NFS scripts
 
@@ -193,12 +194,10 @@ sudo mount -t cifs //fileserver/projects /mnt -o username=you,uid=$(id -u),gid=$
    ```
 
 2. Create the shared folder, owned by the account, since the server writes into it as that
-   account and a folder root owns refuses every write with *Permission denied*; and create the
-   directories Samba logs and caches in:
+   account and a folder root owns refuses every write with *Permission denied*:
 
    ```bash
    sudo install -d -o kdos -g kdos /srv/share
-   sudo mkdir -p /var/log/samba /var/cache/samba
    ```
 
 3. Check the file, and give the account a Samba password (Samba keeps its own; it does not use
@@ -347,7 +346,7 @@ cat /run/kdos-init.samba.log
 `[SKIP] samba: no /etc/samba/smb.conf` means the file is missing or empty. The file holds the
 boot's output only; a later `sudo service start samba` prints on the terminal. Otherwise run
 `testparm -s`, and read the supervisor's log, `/run/kdos-svc.samba.log`, and
-`/var/log/samba/log.smbd` once that directory exists.
+`/var/log/samba/log.smbd`.
 
 **Another machine cannot reach this one's share.** The firewall drops it. `kdos-power firewall
 list` shows which names are on; `smb` serves SMB and `nfs` serves NFS.

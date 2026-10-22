@@ -74,10 +74,15 @@
 #                              phase builds goes at the end of this part
 #   <!-- kfs:sbu -->           in any page: the snapshot's stamp (the
 #                              checkout's commit when it was gathered, the
-#                              date of its newest installed package and the
-#                              seconds one SBU took), then one
-#                              table per package phase of every port with a
-#                              measured time, in build order. A port the
+#                              date of its newest installed package, the
+#                              seconds one SBU took and the machine that
+#                              measured it), how many figures share that
+#                              machine and which do not, the package phases
+#                              with a measured port, then one
+#                              table per such phase of every port with a
+#                              measured time, in build order, a figure from
+#                              another machine or naming none marked `*`
+#                              when the SBU names one. A port the
 #                              snapshot has `-` for is left out, and the
 #                              package phases with no measured port are
 #                              named in one closing line
@@ -1476,7 +1481,7 @@ class Gen:
         pk = self.data.packages.get(p.name)
         if pk and len(pk) >= 6:
             if pk[5] and pk[5] != "-":
-                rows.append(("Build time", "%s SBU" % esc(pk[5])))
+                rows.append(("Build time", self.sbu_text(pk)))
             rows.append(("Installed size", "%s in %s" % (esc(human_bytes(pk[3])), files_n(pk[4]))))
         rows.append(("Recipe", link(code(p.rel + "/kpkgbuild"), GITHUB + p.rel + "/kpkgbuild")))
         # Every value is already a cell: text through esc(), whose `\|` is a
@@ -1834,7 +1839,7 @@ class Gen:
         pk = self.data.packages.get(p.name)
         if pk and len(pk) >= 6:
             if pk[5] and pk[5] != "-":
-                facts.append("%s SBU" % esc(pk[5]))
+                facts.append(self.sbu_text(pk))
             facts.append("%s, %s" % (esc(human_bytes(pk[3])), files_n(pk[4])))
         if p.phase:
             facts.append("%s, %s of %s" % (esc(p.phase.name), p.position, len(p.phase.order)))
@@ -1876,6 +1881,17 @@ class Gen:
 
     # ── Generated appendices: the kfs:sbu and kfs:licences directives
 
+    def sbu_text(self, pk):
+        """A port's build time, saying so when its figure was measured on
+        another machine than the SBU it is divided by, or names none."""
+        unit_m = self.data.stamp.get("sbu-machine", "-") or "-"
+        m = pk[6] if len(pk) >= 7 and pk[6] else "-"
+        if unit_m != "-" and m == "-":
+            return "%s SBU, on a machine its figure does not name" % esc(pk[5])
+        if unit_m != "-" and m != unit_m:
+            return "%s SBU, measured on another machine than the SBU" % esc(pk[5])
+        return "%s SBU" % esc(pk[5])
+
     def sbu_tables(self, arg=""):
         st = self.data.stamp
         unit = st.get("sbu-seconds", "-")
@@ -1886,30 +1902,83 @@ class Gen:
                 "the newest of them dated %s, while the checkout stood at commit %s."
                 % (esc(st.get("packages", "an unknown number of")),
                    esc(st.get("date", "unknown")), code(st.get("commit", "unknown"))))
+        unit_m = st.get("sbu-machine", "-") or "-"
+
+        def mach(m):
+            return st.get("machine-%s" % m, "")
+
         if unit not in ("", "-"):
-            head += " One SBU, the time `00_cross/binutils` took there, was %s seconds." % esc(unit)
+            head += " One SBU, the time `00_cross/binutils` took there, was %s seconds" % esc(unit)
+            if mach(unit_m):
+                head += ", measured on machine %s: %s." % (esc(unit_m), esc(mach(unit_m)))
+            else:
+                head += (", in a figure that names no machine: the kdosbuild that measured it "
+                         "filed none.")
         else:
             head += " It records no SBU, so no time below can be given."
-        head += " The stamp does not record the machine the times were taken on."
         out.append(head)
-        out.append("%d of those packages have a measured time." % len(measured))
-        for ph in self.phases:
+
+        # Every port figure is divided by that one SBU, whichever run and
+        # machine measured it, so a figure from another machine is a ratio
+        # of two machines' speeds and is marked as one.
+        def where(r):
+            return r[6] if len(r) >= 7 and r[6] else "-"
+
+        others = sorted({where(r) for r in measured.values()} - {unit_m},
+                        key=lambda m: (m == "-", m))
+        line = "%d of those packages have a measured time" % len(measured)
+        if measured and unit_m == "-":
+            named = sorted({where(r) for r in measured.values()} - {"-"})
+            line += (". The SBU's own figure names no machine, so whether a figure shares the "
+                     "SBU's machine cannot be told")
+            if named:
+                line += "; %s" % "; ".join(
+                    "%d name machine %s (%s)"
+                    % (sum(1 for r in measured.values() if where(r) == m), esc(m),
+                       esc(mach(m) or "unknown")) for m in named)
+            line += "."
+        elif measured and not others:
+            line += ", every one on the machine that measured the SBU."
+        elif measured:
+            parts = []
+            for m in others:
+                k = sum(1 for r in measured.values() if where(r) == m)
+                if m == "-":
+                    parts.append("%d in figures that name no machine" % k)
+                else:
+                    parts.append("%d on machine %s (%s)" % (k, esc(m), esc(mach(m) or "unknown")))
+            line += (". The figures come from more than one run, and not all of them from the "
+                     "SBU's machine: %s. Those are marked \\* below; each is still divided by the "
+                     "one SBU, so it is a ratio across two machines, or for a figure that names "
+                     "none may be, not a ratio of one machine's times." % "; ".join(parts))
+        else:
+            line += "."
+        out.append(line)
+        done = [ph for ph in self.phases if any(n in measured for n in ph.order)]
+        bare = [ph for ph in self.phases if ph.order and not any(n in measured for n in ph.order)]
+        if done:
+            out.append("The package phases with measured ports are %s."
+                       % ", ".join(code(ph.name) for ph in done))
+        for ph in done:
             rows = [n for n in ph.order if n in measured]
-            if not rows:
-                continue
             total = sum(float(measured[n][5]) for n in rows)
             name = esc(ph.name)
             if "phase-" + ph.name in self.book.ids:
                 name = "[%s](#phase-%s)" % (name, ph.name)
-            out.append("**%s**, %s: %d of %d ports measured, %.1f SBU in all."
-                       % (name, esc(ph.title), len(rows), len(ph.order), total))
+            if len(rows) == len(ph.order):
+                cover = "all %d ports measured" % len(rows)
+            else:
+                cover = ("%d of %d ports measured, so the phase costs more than the measured "
+                         "ones' sum" % (len(rows), len(ph.order)))
+            out.append("**%s**, %s: %s, %.1f SBU in all."
+                       % (name, esc(ph.title), cover, total))
             t = ["| Port | Version | SBU |", "|:-------------------------|:---------------|------:|"]
             for n in rows:
                 r = measured[n]
-                t.append("| %s | %s | %s |" % (port_link(self.ports, n), esc(r[1] + "-" + r[2]),
-                                               esc(r[5])))
+                mark = "" if unit_m == "-" or where(r) == unit_m else " \\*"
+                t.append("| %s | %s | %s%s |" % (port_link(self.ports, n),
+                                                 esc(r[1] + "-" + r[2]), esc(r[5]), mark))
             out.append("\n".join(t))
-        bare = [ph for ph in self.phases if ph.order and not any(n in measured for n in ph.order)]
         if bare and measured:
             out.append("No port of %s has a measured time in the snapshot."
                        % ", ".join(code(ph.name) for ph in bare))

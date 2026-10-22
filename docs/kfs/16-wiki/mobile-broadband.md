@@ -6,7 +6,7 @@ NetworkManager makes the connection, and [`mmcli`]{.idx} shows the modem's state
 its text messages. Mobile broadband is built and
 [has not been connected on hardware](../../kdos/06-reference/known-gaps.md#a-usb-modem-that-first-appears-as-a-storage-device-is-not-switched-into-a-modem),
 so nothing here has been seen to unlock a SIM, register or connect. What has been run, on a
-machine with no modem, is the service and which ModemManager holds the bus name, `mmcli`'s
+machine with no modem, is the service and that the supervised ModemManager holds the bus name, `mmcli`'s
 answers when there is no modem, and the creation of each profile below.
 
 ## Installation
@@ -39,16 +39,18 @@ It logs to the system log, `/var/log/messages`; the script's own output is in
 `/run/kdos-init.modemmanager.log`. Its name for `service` is `modemmanager`, and
 `service status modemmanager` reports the process as `ModemManager`.
 
-On the booted image the ModemManager that serves is not the supervised one. The image also
-ships `/usr/share/dbus-1/system-services/org.freedesktop.ModemManager1.service`, NetworkManager
-asks for that name as it starts (the system log records *Activating service
-name='org.freedesktop.ModemManager1' requested by ... comm="/usr/sbin/NetworkManager
---no-daemon"*), and the bus starts a ModemManager of its own. The supervised one then cannot take
-the name: it logs *could not acquire the 'org.freedesktop.ModemManager1' service name*, exits,
-and is started again every five seconds, for as long as the machine runs.
-`service status modemmanager` still reports `[ OK ]`, because it reports the supervisor.
-`ps -eo pid,ppid,args | grep '[M]odemManager'` tells the two apart: the one serving has parent 1,
-and the supervised attempts appear in `/run/kdos-svc.ModemManager.log`.
+The supervised ModemManager is the only one. The port's `build.sh` deletes the D-Bus activation
+file ModemManager's build installs, so the system bus never starts a ModemManager of its own, and
+the script returns only once the daemon holds `org.freedesktop.ModemManager1`
+(`wait_bus_name`, from [Services](services.md#etcinitdservice_helper)), so NetworkManager, which
+asks for that name as it starts, finds it taken. With the activation file, NetworkManager's call
+would make the bus start a second ModemManager beside the supervised one, and whichever lost the
+name would exit; the supervised one, restarted every five seconds, would never get it, and
+`service status modemmanager` would answer `[FAIL]`: ModemManager exits with status 0 when it
+cannot take its name, and the supervisor counts an exit 0 within five seconds of the start as a
+failed start ([Services](services.md#troubleshooting)). `pgrep -a ModemManager`
+prints one process, a child of the supervisor, and NetworkManager logs *modem-manager:
+ModemManager available*.
 
 ### Who may drive the modem
 
@@ -167,8 +169,9 @@ has a persistence store.
 Check that the kernel sees one: `dmesg | grep -iE 'mbim|qmi|wwan'` shows the driver binding to
 it, and `ls /sys/class/net` then lists its network interface. A USB stick that shows up as a small read-only disk is in
 its storage mode, and nothing on KDOS switches it; see [Known gaps](#known-gaps). If the kernel has
-the device and ModemManager does not, check that a ModemManager holds the bus name
-(`pgrep -a ModemManager`; see [The service script](#the-service-script)) and read the system log.
+the device and ModemManager does not, check that ModemManager is running and holds the bus name
+(`service status modemmanager`, then `mmcli -L`, which answers *error: couldn't find the
+ModemManager process in the bus* when nothing owns it; see [The service script](#the-service-script)) and read the system log.
 
 **`mmcli` refuses to unlock or enable the modem, or to list its messages.**
 Your account is not in `wheel`, the group the polkit rule grants. `id` lists your groups; `sudo`
@@ -177,14 +180,13 @@ works either way.
 **The modem is `registered` and the connection fails.**
 The APN is the usual cause. Compare the profile's with the carrier's (`nmcli -f gsm connection show
 mobile`), or turn on `gsm.auto-config`. NetworkManager's reason is in the system log:
-`sudo grep -a NetworkManager /var/log/messages`.
+`sudo grep NetworkManager /var/log/messages`.
 
 **More detail is needed.**
 `sudo mmcli -G DEBUG` raises ModemManager's log level (it answers `Successfully set logging
 level`), and `sudo tail -f /var/log/messages` then
-shows what it says to the modem. The level holds until the ModemManager that serves exits.
-`sudo service restart modemmanager` does not reset it, because it restarts only the supervised
-copy, which never holds the bus name (see [The service script](#the-service-script)).
+shows what it says to the modem. The level holds until ModemManager exits;
+`sudo service restart modemmanager` sets it back to the default.
 
 ## Known gaps
 

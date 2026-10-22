@@ -74,12 +74,47 @@ unsigned long long ki_need_bytes(void)
 	       1024;
 }
 
-/* The layout do_partition writes: a 512 MiB ESP, the swap partition when one
- * was asked for, and the rest. */
+void ki_part_name(const char *disk, int n, char *out, size_t cap)
+{
+	size_t l = strlen(disk);
+	int digit = l && isdigit((unsigned char)disk[l - 1]);
+
+	snprintf(out, cap, "%s%s%d", disk, digit ? "p" : "", n);
+}
+
+int ki_wipe_part_swap(void)
+{
+	return cfg.swap == SWAP_PART && cfg.swap_mb > 0 ? 3 : 0;
+}
+
+int ki_wipe_part_root(void)
+{
+	return ki_wipe_part_swap() ? 4 : 3;
+}
+
+int ki_bios_boot_part(void)
+{
+	Disk *d;
+
+	if (cfg.plan == PLAN_WIPE)
+		return KI_PART_BIOS_BOOT;
+	d = disk_by_path(cfg.disk);
+	if (!d)
+		return -1;
+	for (int i = 0; i < d->nparts; i++)
+		if (d->part[i].is_bios_boot && d->part[i].num > 0)
+			return d->part[i].num;
+	return !strcmp(d->table, "dos") ? 0 : -1;
+}
+
+/* The layout do_partition writes: the ESP, the BIOS boot partition, the swap
+ * partition when one was asked for, and the rest. */
 unsigned long long ki_wipe_root_bytes(void)
 {
 	Disk *d = disk_by_path(cfg.disk);
-	unsigned long long total, used = 512ULL << 20;
+	unsigned long long total;
+	unsigned long long used = (unsigned long long)(KI_ESP_MB + KI_BIOS_BOOT_MB)
+				  << 20;
 
 	if (!d)
 		return 0;
@@ -109,6 +144,11 @@ int ki_lvm_half(void)
 		return 0;
 	root -= 32ULL << 20;
 	return root / 2 >= need;
+}
+
+const char *ki_lvm_extent(void)
+{
+	return ki_lvm_half() ? "50%VG" : "100%FREE";
 }
 
 void conf_defaults(void)

@@ -28,15 +28,16 @@ the image carries.
 
 The daemon has no configuration file. What it watches for and what it never kills are compiled
 into `src/daemons/kdos-oomd/main.c`. `KO_TRIGGER` is written into `/proc/pressure/memory` as a
-stall amount in microseconds and the window it is measured over, and `KO_COOLDOWN` is the shortest
-time between two scans:
+stall amount in microseconds and the window it is measured over, `KO_COOLDOWN` is the shortest
+time between two scans, and `KO_AVAIL_PCT` is the share of `MemTotal` that `MemAvailable` in
+`/proc/meminfo` must be at or under before a stall kills anything:
 
-<!-- kfs:include src/daemons/kdos-oomd/main.c lines=63-66 pin=26c5e09f2ec5 -->
+<!-- kfs:include src/daemons/kdos-oomd/main.c lines=64-70 pin=80fc432106d5 -->
 
 The programs it never chooses, matched by process name; every process whose name starts with
 `pipewire` is spared as well:
 
-<!-- kfs:include src/daemons/kdos-oomd/main.c lines=203-216 pin=86589480a7f6 -->
+<!-- kfs:include src/daemons/kdos-oomd/main.c lines=240-253 pin=86589480a7f6 -->
 
 **`/etc/init.d/57_oomd.sh`**, from `fs/etc/init.d/57_oomd.sh`:
 
@@ -51,7 +52,8 @@ Two settings outside the daemon change its choice:
   with nothing restarted. The key is described in
   [`~/.config/kdos/boxes/<name>.conf`](../../kdos/06-reference/configuration.md#configkdosboxesnameconf).
 - **A process's `oom_score_adj`.** The daemon never chooses a process whose
-  `/proc/<pid>/oom_score_adj` is -500 or lower. Lowering the value needs root.
+  `/proc/<pid>/oom_score_adj` is -500 or lower. Lowering the value needs root, and a child
+  inherits it, so a program that lowers its own shields everything it starts afterwards.
 
 ## Usage
 
@@ -89,15 +91,13 @@ Two settings outside the daemon change its choice:
 2. Read every kill since the system log started, each with the pressure that caused it:
 
    ```bash
-   grep -a kdos-oomd /var/log/messages
+   grep kdos-oomd /var/log/messages
    ```
 
    A kill is logged as
-   `kdos-oomd: killed <name> [(appbox <box>)] (pid <pid>, <size> MB) — memory pressure avg10 full=<f> some=<s>`.
-   For example `kdos-oomd: killed tail (pid 3801, 3344 MB) — memory pressure avg10 full=0.00 some=0.00`:
+   `kdos-oomd: killed <name> [(appbox <box>)] (pid <pid>, <size> MB) — memory pressure avg10 full=<f> some=<s>, <avail> of <total> MB available`.
+   For example `kdos-oomd: killed python3 (pid 3485, 1122 MB) — memory pressure avg10 full=1.17 some=1.23, 227 of 3892 MB available`:
    a stall that fills a one-second window can be over before the ten-second average moves.
-   `syslogd` escapes the dash's bytes, so in `/var/log/messages` it reads `�M-^@M-^T`, and that
-   line is what makes a plain `grep` call the file binary; hence `-a`.
    The same lines are in `/run/kdos-svc.kdos-oomd.log`, which also holds them from before `syslogd`
    started; see [Supervision and logging](../../kdos/04-programs/daemons.md#supervision-and-logging).
 
@@ -115,8 +115,15 @@ cat /proc/pressure/memory
 
 The `full` line is the share of time every runnable task was stalled on memory, averaged over 10,
 60 and 300 seconds. The daemon acts when the `full` stall within one window of `KO_TRIGGER`
-reaches its amount. `avg10` is averaged over ten seconds, so a short stall that fires the trigger
-can read lower there.
+reaches its amount and `MemAvailable` is at most `KO_AVAIL_PCT` percent of `MemTotal`:
+
+```bash
+grep -E 'MemTotal|MemAvailable' /proc/meminfo
+```
+
+A single busy program, such as a large copy that recycles the page cache, can stall every task that
+wants to run while most of memory is still available; the daemon leaves it alone. `avg10` is
+averaged over ten seconds, so a short stall that fires the trigger can read lower there.
 
 ### Watching it act
 
@@ -192,7 +199,8 @@ Start it with `sudo service start oomd`, the command the doctor's warning names.
 `sudo`, or see [Users and groups](users-and-groups.md).
 
 **The desktop froze and no kill was logged.** Check the count with the `status` query above, then
-the pressure: a machine whose `full` stall stays under `KO_TRIGGER` does not fire it. Read `dmesg` for a kill by the kernel. If a protected program is the one using
+the pressure: a machine whose `full` stall stays under `KO_TRIGGER` does not fire it, and one whose
+`MemAvailable` stays above `KO_AVAIL_PCT` percent of `MemTotal` kills nothing when it does. Read `dmesg` for a kill by the kernel. If a protected program is the one using
 the memory, the daemon finds nothing to kill; `ps -eo rss,comm --sort=-rss | head` shows the
 largest.
 
@@ -201,27 +209,18 @@ first a `memory` budget, or lower the score of the process that should stay, as 
 several large processes the daemon picks is tested only against recorded process tables (see
 [Known gaps](#known-gaps)).
 
-**The installer stops at Copy system with `rsync failed (exit 128)`.** On a machine with 4 GB of
-memory the daemon can kill the installer's `rsync`. The installer's Prepare step turns all swap
-off, zram included; with no swap and the page cache holding most of the memory, the copy stalls the
-machine long enough to fire the trigger, and `rsync`, though it holds under 100 MB, is the process
-chosen. The system log shows it:
-
-```bash
-grep -a 'killed rsync' /var/log/messages
-```
-
-`kdos-oomd: killed rsync (pid 3136, 89 MB) — memory pressure avg10 full=0.00 some=0.04` is this
-case. Stop the daemon for the length of the install, then start the installer again:
-
-```bash
-sudo service stop oomd
-```
+**A large copy fires the trigger.** The installer's Copy system step, and any copy of many
+gigabytes, streams through the page cache and can stall the machine long enough to fire
+`KO_TRIGGER`, most of all with swap off, as the installer's Prepare step leaves it. The page cache
+counts as available memory, so `MemAvailable` stays high and the daemon kills nothing; the `status`
+query's count stays where it was. The installer's copy is out of reach even when memory does run
+short: `kinstall` sets its own score to -900 when an install starts, and `rsync` and every other
+program the install runs inherit it (`cat /proc/$(pgrep -x rsync | head -1)/oom_score_adj` during
+the Copy system step prints `-900`). Any other copy that must not be killed is started with a
+lowered score, as *Keeping one process out of its reach* under [Usage](#usage) shows.
 
 ## Known gaps
 
-- The daemon can end the installer's copy on a 4 GB machine; see
-  [Troubleshooting](#troubleshooting).
 - [Security](../../kdos/06-reference/known-gaps.md#security): the daemon's choice between several
   large processes is tested only against recorded process tables.
 - [Status](../../kdos/06-reference/status.md#daemons) rates the daemon Beta and gives the one run in

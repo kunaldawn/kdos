@@ -74,7 +74,7 @@ A table of facts follows:
 | Phase | The phase that installs it, its title, and the port's place in that phase's build order | the phase lists, resolved as `kpkgdepends` resolves them |
 | Licence | The SPDX licence expression | `license =` |
 | Homepage | The project's home page | `homepage =` |
-| Build time | In SBUs, as [Typographical conventions](conventions.md#build-times-and-the-sbu) defines them; the row is missing when the snapshot has no measurement | `docs/kfs/data/packages.tsv` |
+| Build time | In SBUs, as [Typographical conventions](conventions.md#build-times-and-the-sbu) defines them, and said to be measured on another machine than the SBU, or on one it does not name, when its figure was; the row is missing when the snapshot has no measurement | `docs/kfs/data/packages.tsv` |
 | Installed size | The bytes of its regular files and how many files it installed | `docs/kfs/data/packages.tsv` |
 | Recipe | A link to its `kpkgbuild` | the port's directory |
 

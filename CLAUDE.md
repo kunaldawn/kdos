@@ -295,8 +295,9 @@ tree. The ISO is the pristine shipped system.
 - **The harness kills the emulator without a shutdown**, so a root script must
   `sync` after writing to the disk or the filesystem leaves the rewritten files
   zero-length on the next boot.
-- **A pipeline reading a supervised service's output never returns**, because the
-  supervisor keeps the pipe open.
+- **A supervised daemon's output is not on the pipe that started it**: `service
+  start x | cat` returns when the script does, and the daemon's lines are in
+  `/run/kdos-svc.<name>.log` and syslog.
 - **A static screen produces no frame events**, so anything about dropped frames
   needs something animating first.
 - **A plain virtual display puts the compositor on software rendering**, so the

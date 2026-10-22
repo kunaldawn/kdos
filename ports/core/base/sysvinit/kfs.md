@@ -9,8 +9,12 @@ runlevel, are in
 the boot it drives is in
 [rcS and the service scripts](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 
-`init` and `halt` also write the boot and shutdown records that `who -b` and `last` read, so the build is against [utmps](#port-utmps), like every other reader and writer of
+`init` and `halt` also write the boot, runlevel and shutdown records that `who -b`, `who -r` and
+`last` read, so the build is against [utmps](#port-utmps), like every other reader and writer of
 those records ([Login records](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#login-records)).
+`init` writes a record into `/run/utmps/utmp` only if that file already exists and is writable,
+and skips it without a word otherwise, which is why `06_utmps.sh` creates the file empty before
+`utmpd` starts rather than leaving it to `utmpd`'s first request.
 
 ## Flags
 - `VERSION=$version` — The version string compiled into the programs. Upstream's top-level Makefile

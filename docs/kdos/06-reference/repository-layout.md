@@ -48,7 +48,7 @@ kdos/
 │   │   ├── kpkgbuild          declarative metadata — parsed, never sourced
 │   │   ├── build.sh           the build; bash, run in the unpacked source
 │   │   ├── postinstall.sh     optional install-time hook (27 ports have one)
-│   │   ├── *.patch            optional patches, tracked (436 files)
+│   │   ├── *.patch            optional patches, tracked (607 files)
 │   │   ├── kfs.md             optional: the port's note in KDOS from Scratch; never hashed
 │   │   ├── other support files  configuration, data files, single-file sources — tracked
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked

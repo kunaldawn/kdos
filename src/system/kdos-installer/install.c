@@ -15,7 +15,7 @@
  *   S<n>  begin step n        K<n>  skip step n
  *   P<f>  progress 0..1, or -1 for indeterminate
  *   N<s>  one-line note for the current step
- *   L<s>  log line
+ *   L<s>  log line               W<s>  warning: the install carries on
  *   F<s>  fail, with reason      D  all done
  *
  * There is no system() and no shell in this file. Device paths, user names
@@ -44,7 +44,14 @@
 
 Install inst;
 
-#define TARGET "/mnt"
+/*
+ * THE TARGET IS A DIRECTORY OF ITS OWN, never `/mnt` itself. The live
+ * session's boot medium is mounted at /mnt/iso and a stick carrying an
+ * exported set at /mnt/<name>; a root mounted over /mnt would hide both —
+ * the medium's font.bin and the archive the Packs step imports — and the
+ * Prepare step's sweep of mounts under the target would unmount them.
+ */
+#define TARGET "/mnt/kinstall"
 
 enum {
 	S_PREPARE = 0,
@@ -66,15 +73,15 @@ static const struct {
 	const char *detail;
 } steps[S_COUNT] = {
 	{ "Prepare",     "unmount the target, stop swap" },
-	{ "Partition",   "write the GPT layout" },
+	{ "Partition",   "write the GPT layout: ESP, BIOS boot, root" },
 	{ "Format",      "encrypt and make the volume group if asked, then the filesystems" },
-	{ "Mount",       "attach the target at /mnt" },
+	{ "Mount",       "attach the target at " TARGET },
 	{ "Copy system", "the live tree, verbatim" },
 	{ "Packs",       "the applications chosen from the medium" },
 	{ "Configure",   "fstab, hostname, keymap, autologin, services" },
 	{ "Accounts",    "users, passwords, sudo" },
 	{ "Theme",       "regenerate the accent for the new home" },
-	{ "Bootloader",  "Limine on the ESP, the UEFI boot entry" },
+	{ "Bootloader",  "Limine on the ESP, the BIOS boot code, the UEFI boot entry" },
 	{ "Finish",      "flush and unmount" },
 };
 
@@ -109,6 +116,7 @@ void install_plan(void)
 	inst.cur = -1;
 	inst.failed = inst.done = inst.running = 0;
 	inst.failmsg[0] = 0;
+	inst.nwarn = 0;
 }
 
 void install_log(const char *line)
@@ -125,6 +133,35 @@ void install_log(const char *line)
 		strftime(stamp, sizeof(stamp), "%H:%M:%S", &tm);
 		dprintf(inst.logfd, "[%s] %s\n", stamp, line);
 	}
+}
+
+/*
+ * THE INSTALL IS SHIELDED FROM kdos-oomd, the wizard and every process it
+ * starts alike: the value is inherited across fork and exec, so the copy's
+ * rsync, cryptsetup's key derivation and mkfs carry it too. The copy streams
+ * the whole live tree through the page cache, and on a 4 GB machine that
+ * stalls memory long enough for the daemon's pressure trigger; it picks the
+ * largest process it does not protect, which is rsync, and a killed copy is
+ * an install that stops half written. kdos-oomd passes over any process at
+ * or below -500. -900 stays above OOM_SCORE_ADJ_MIN, so the kernel's own OOM
+ * killer can still end the install when memory is truly gone.
+ *
+ * Lowering the value needs CAP_SYS_RESOURCE, which root has; without it the
+ * write fails, and the Prepare step then refuses the install for not being
+ * root.
+ */
+#define KI_OOM_SCORE_ADJ "-900"
+
+static void shield_from_oomd(void)
+{
+	int fd = open("/proc/self/oom_score_adj", O_WRONLY | O_CLOEXEC);
+
+	if (fd < 0)
+		return;
+	if (write(fd, KI_OOM_SCORE_ADJ, sizeof(KI_OOM_SCORE_ADJ) - 1) < 0)
+		install_log("could not lower oom_score_adj; kdos-oomd may "
+			    "end the install under memory pressure");
+	close(fd);
 }
 
 void install_start(int from_step)
@@ -153,6 +190,8 @@ void install_start(int from_step)
 	inst.done = 0;
 	inst.failmsg[0] = 0;
 	inst.t0 = kb_now_s();
+	if (!cfg.dry_run)
+		shield_from_oomd();
 
 	pid_t pid = fork();
 	if (pid < 0) {
@@ -218,6 +257,22 @@ static void handle_line(char *s)
 	case 'L':
 		install_log(arg);
 		break;
+	case 'W': {
+		/* A retried step sends its warning again; it is one warning. */
+		int seen = 0;
+		char line[LOG_COLS];
+
+		for (int i = 0; i < inst.nwarn; i++)
+			if (!strcmp(inst.warn[i], arg))
+				seen = 1;
+		if (!seen && inst.nwarn < (int)(sizeof(inst.warn) /
+						sizeof(inst.warn[0])))
+			kb_strlcpy(inst.warn[inst.nwarn++], arg,
+				   sizeof(inst.warn[0]));
+		snprintf(line, sizeof(line), "warning: %s", arg);
+		install_log(line);
+		break;
+	}
 	case 'F':
 		inst.failed = 1;
 		kb_strlcpy(inst.failmsg, arg, sizeof(inst.failmsg));
@@ -360,6 +415,21 @@ static void fail(const char *fmt, ...)
 	_exit(1);
 }
 
+/* A BIOS boot path that could not be written: a failure on a machine that
+ * booted from legacy BIOS, which has no other way to start the disk, and a
+ * warning on UEFI, where the EFI path is complete. */
+static void bios_problem(const char *fmt, ...)
+{
+	char buf[512];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+	if (!ki_sys.uefi)
+		fail("%s", buf);
+	emit('W', "%s", buf);
+}
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 typedef void (*LineParse)(const char *line);
@@ -487,13 +557,6 @@ static void try_(char *const argv[])
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
-
-static void partname(const char *disk, int n, char *out, size_t cap)
-{
-	size_t l = strlen(disk);
-	int digit = l && isdigit((unsigned char)disk[l - 1]);
-	snprintf(out, cap, "%s%s%d", disk, digit ? "p" : "", n);
-}
 
 /* The index of a partition within its disk, read from the kernel, or -1 when
  * the node is not a partition. The kernel's own attribute is what makes sdaN,
@@ -969,6 +1032,15 @@ static void do_prepare(void)
 			fail("required tool missing: %s", *p);
 	if (!kb_have_prog(ki_fs(cfg.fstype)->mkfs))
 		fail("required tool missing: %s", ki_fs(cfg.fstype)->mkfs);
+	/* The Layout page refuses this too; an unattended install never
+	 * shows it, and this is before anything is written. */
+	if (!ki_sys.uefi && ki_bios_boot_part() < 0)
+		fail("this machine starts in legacy BIOS mode and %s has no "
+		     "BIOS boot partition — the installed system could not "
+		     "start here", cfg.disk);
+	if (!ki_sys.uefi && !kb_have_prog("limine"))
+		fail("required tool missing: limine — this machine starts in "
+		     "legacy BIOS mode and needs its BIOS boot code");
 
 	char *sw[] = { "swapoff", "-a", NULL };
 	try_(sw);
@@ -988,22 +1060,28 @@ static void do_prepare(void)
 static void do_partition(void)
 {
 	char layout[512];
-	long esp_mb = 512;
 
 	emit('N', "wiping %s", cfg.disk);
 	char *wipe[] = { "wipefs", "-a", cfg.disk, NULL };
 	must(wipe);
 
-	/* `V` is sfdisk's name for the Linux LVM type, which is what a
-	 * physical volume's partition is marked as. */
+	/*
+	 * ONE LINE PER PARTITION, numbered in order, so the order here IS
+	 * KI_PART_ESP, KI_PART_BIOS_BOOT, ki_wipe_part_swap() and
+	 * ki_wipe_part_root(). sfdisk has no shortcut for the BIOS boot type
+	 * and takes its GUID. `V` is sfdisk's name for the Linux LVM type,
+	 * which is what a physical volume's partition is marked as.
+	 */
 	char rtype = cfg.lvm ? 'V' : 'L';
-	if (cfg.swap == SWAP_PART && cfg.swap_mb > 0)
+	if (ki_wipe_part_swap())
 		snprintf(layout, sizeof(layout),
-			 "label: gpt\n,%ldM,U\n,%ldM,S\n,,%c\n", esp_mb,
+			 "label: gpt\n,%dM,U\n,%dM,%s\n,%ldM,S\n,,%c\n",
+			 KI_ESP_MB, KI_BIOS_BOOT_MB, KI_GUID_BIOS_BOOT,
 			 cfg.swap_mb, rtype);
 	else
 		snprintf(layout, sizeof(layout),
-			 "label: gpt\n,%ldM,U\n,,%c\n", esp_mb, rtype);
+			 "label: gpt\n,%dM,U\n,%dM,%s\n,,%c\n", KI_ESP_MB,
+			 KI_BIOS_BOOT_MB, KI_GUID_BIOS_BOOT, rtype);
 
 	logf_("sfdisk layout:");
 	for (char *p = layout, *nl; (nl = strchr(p, '\n')); p = nl + 1) {
@@ -1024,14 +1102,45 @@ static void do_partition(void)
 	char *us[] = { "udevadm", "settle", NULL };
 	try_(us);
 
-	/* udev can be a beat behind sfdisk; the node has to exist before mkfs */
+	/* udev can be a beat behind sfdisk; the node has to exist before mkfs.
+	 * The root is the last partition, so its node is the last to appear. */
 	for (int i = 0; i < 50; i++) {
 		char p2[96];	/* same width as part_esp/part_root */
-		partname(cfg.disk, 2, p2, sizeof(p2));
+		ki_part_name(cfg.disk, ki_wipe_part_root(), p2, sizeof(p2));
 		if (kb_path_exists(p2) || cfg.dry_run)
 			break;
 		struct timespec ts = { 0, 100000000 };
 		nanosleep(&ts, NULL);
+	}
+
+	/*
+	 * THE BIOS BOOT PARTITION STARTS ZEROED. It is raw space, at an offset
+	 * an earlier layout of this disk may have given a filesystem, and
+	 * `limine bios-install` refuses a partition whose first sector still
+	 * reads as FAT or NTFS.
+	 */
+	char bb[96];
+	ki_part_name(cfg.disk, KI_PART_BIOS_BOOT, bb, sizeof(bb));
+	logf_("zeroing %s", bb);
+	if (!cfg.dry_run) {
+		static const char zero[65536];
+		int fd = open(bb, O_WRONLY | O_CLOEXEC);
+		size_t left = (size_t)KI_BIOS_BOOT_MB << 20;
+
+		if (fd < 0)
+			fail("cannot open %s: %s", bb, strerror(errno));
+		while (left) {
+			ssize_t w = write(fd, zero, left < sizeof(zero)
+							     ? left
+							     : sizeof(zero));
+			if (w <= 0) {
+				close(fd);
+				fail("cannot zero %s: %s", bb, strerror(errno));
+			}
+			left -= (size_t)w;
+		}
+		if (fsync(fd) < 0 || close(fd) < 0)
+			fail("cannot zero %s: %s", bb, strerror(errno));
 	}
 	emit('P', "1");
 }
@@ -1052,13 +1161,12 @@ static char pv_dev[192];
 static void resolve_parts(void)
 {
 	if (cfg.plan == PLAN_WIPE) {
-		partname(cfg.disk, 1, part_esp, sizeof(part_esp));
-		if (cfg.swap == SWAP_PART && cfg.swap_mb > 0) {
-			partname(cfg.disk, 2, part_swap, sizeof(part_swap));
-			partname(cfg.disk, 3, part_root, sizeof(part_root));
-		} else {
-			partname(cfg.disk, 2, part_root, sizeof(part_root));
-		}
+		ki_part_name(cfg.disk, KI_PART_ESP, part_esp, sizeof(part_esp));
+		if (ki_wipe_part_swap())
+			ki_part_name(cfg.disk, ki_wipe_part_swap(), part_swap,
+				     sizeof(part_swap));
+		ki_part_name(cfg.disk, ki_wipe_part_root(), part_root,
+			     sizeof(part_root));
 	} else {
 		kb_strlcpy(part_esp, cfg.part_esp, sizeof(part_esp));
 		kb_strlcpy(part_root, cfg.part_root, sizeof(part_root));
@@ -1116,7 +1224,7 @@ static void make_volume_group(void)
 	char *pv[] = { "lvm", "pvcreate", "-y", pv_dev, NULL };
 	char *vg[] = { "lvm", "vgcreate", "-y", (char *)KI_VG, pv_dev, NULL };
 	char *lv[] = { "lvm", "lvcreate", "-y", "-n", (char *)KI_LV_A, "-l",
-		       ki_lvm_half() ? "50%VG" : "100%FREE", (char *)KI_VG,
+		       (char *)ki_lvm_extent(), (char *)KI_VG,
 		       NULL };
 	char *us[] = { "udevadm", "settle", NULL };
 
@@ -1127,8 +1235,8 @@ static void make_volume_group(void)
 	emit('N', "volume group %s on %s", KI_VG, pv_dev);
 	must(pv);
 	must(vg);
-	emit('N', "%s/%s, %s of the group", KI_VG, KI_LV_A,
-	     ki_lvm_half() ? "half" : "all");
+	emit('N', "%s/%s, %s of the group (-l %s)", KI_VG, KI_LV_A,
+	     ki_lvm_half() ? "half" : "all", ki_lvm_extent());
 	must(lv);
 	try_(us);
 
@@ -1216,55 +1324,9 @@ static void do_format(void)
 	emit('P', "1");
 }
 
-/*
- * WHERE AN EXPORTED SET IS READ FROM, and it cannot be a path under TARGET.
- *
- * TARGET is `/mnt`, and a stick with an archive on it is mounted at
- * `/mnt/<something>` — so the moment the target root is mounted, that stick is
- * UNDERNEATH it and every path into it resolves inside the filesystem that was
- * just created empty. `do_apps` would then report that an archive it listed a
- * moment ago is not there.
- *
- * The tree is bind-mounted somewhere the target cannot cover BEFORE that
- * happens, and the archive path is rewritten to the new location. A bind
- * rather than a second mount of the device because the device is not the
- * installer's to name: it was mounted by the initramfs or by the mount daemon,
- * and the only handle anything has on it is the path.
- *
- * AN ARCHIVE OUTSIDE TARGET IS LEFT ALONE. `/media` and `/run/media` are not
- * covered by mounting `/mnt`, so binding them would be work that buys nothing.
- */
-#define MEDIUM_BIND "/run/kdos-medium"
-
-static void bind_medium(void)
-{
-	char *b[] = { "mount", "--bind", TARGET, (char *)MEDIUM_BIND, NULL };
-	/* MEDIUM_BIND replaces TARGET at the front, and it is the longer of the
-	 * two — so the rewritten path can exceed the field it came out of. */
-	char moved[sizeof(ki_apps_archive) + sizeof(MEDIUM_BIND)];
-
-	if (!ki_apps_archive[0])
-		return;
-	if (strncmp(ki_apps_archive, TARGET "/", sizeof(TARGET)))
-		return;			/* not under the target's mountpoint */
-
-	mkpath(MEDIUM_BIND);
-	if (run(b) != 0) {
-		logf_("could not bind %s; %s becomes unreadable once the "
-		      "target is mounted", TARGET, ki_apps_archive);
-		ki_apps_archive[0] = '\0';
-		return;
-	}
-	snprintf(moved, sizeof(moved), "%s%s", MEDIUM_BIND,
-		 ki_apps_archive + sizeof(TARGET) - 1);
-	logf_("archive %s -> %s", ki_apps_archive, moved);
-	kb_strlcpy(ki_apps_archive, moved, sizeof(ki_apps_archive));
-}
-
 static void do_mount(void)
 {
 	resolve_parts();
-	bind_medium();
 	mkpath(TARGET);
 	emit('N', "mounting %s at %s", part_root, TARGET);
 	char *m[] = { "mount", part_root, TARGET, NULL };
@@ -2103,18 +2165,19 @@ static void do_boot(void)
 	 * installed under.
 	 */
 	/*
-	 * THE FACE LIVES ON THE MEDIUM AND NOWHERE ELSE. `psf2limine.py` writes
-	 * font.bin straight into the ISO tree during 70_image, so it is never
-	 * inside the root filesystem: /boot/limine/ exists on the ISO9660 volume
-	 * the initramfs mounts at /mnt/iso, and a running KDOS has no such
-	 * directory. Look in both, in that order, or an installed machine falls
-	 * back to Limine's built-in typeface while the stick it came from does
-	 * not.
+	 * THE FACE LIVES ON A BOOT VOLUME AND NEVER IN THE ROOT FILESYSTEM.
+	 * `psf2limine.py` writes font.bin straight into the ISO tree during
+	 * 70_image, so on a live session it is on the ISO9660 volume the
+	 * initramfs mounts at /mnt/iso — readable here because TARGET is a
+	 * directory below /mnt and not /mnt itself. An install run from an
+	 * installed KDOS finds the copy this step put on that machine's own
+	 * ESP. Neither found, and the installed menu falls back to Limine's
+	 * built-in typeface while the medium it came from does not.
 	 */
 	const char *fontline = "";
 	static const char *const fonts[] = {
-		"/boot/limine/font.bin",
 		"/mnt/iso/boot/limine/font.bin",
+		"/boot/efi/EFI/kdos/font.bin",
 	};
 	for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++)
 		if (kb_path_exists(fonts[i])) {
@@ -2239,7 +2302,7 @@ static void do_boot(void)
 	 * shape it regenerates, and the command line it carries over.
 	 *
 	 * Written straight rather than through kdos-bootctl: this runs from the
-	 * live image against a target at /mnt, and the tool's default path is
+	 * live image against a target at /mnt/kinstall, and the tool's default path is
 	 * the RUNNING system's ESP. One file, and the format is in bootctl.c.
 	 *
 	 * `crypt_a` IS WHAT JOINS THE TWO MECHANISMS. `slot_a` is the
@@ -2265,27 +2328,39 @@ static void do_boot(void)
 	}
 
 	/*
-	 * THE BIOS BOOT CODE IS ASKED FOR WHATEVER THIS MACHINE BOOTED AS, so
-	 * that a disk imaged on a UEFI machine could start on a legacy one.
-	 * On a GPT disk Limine needs a BIOS boot partition for its second
-	 * stage and do_partition() lays out none, so on this installer's own
-	 * layout the call fails and the disk starts on UEFI only.
+	 * THE BIOS BOOT CODE IS WRITTEN WHATEVER THIS MACHINE BOOTED AS, so a
+	 * disk installed on a UEFI machine also starts on a legacy one. On a
+	 * GPT disk Limine's BIOS stage goes into the BIOS boot partition whose
+	 * number is passed — the erase plan's own, or one a reused disk
+	 * already has — because the gap after the boot sector holds the GPT;
+	 * on a dos table it goes into that gap and takes no number. A reused
+	 * GPT disk with no BIOS boot partition gets none and starts on UEFI
+	 * only.
 	 *
-	 * Failure is not fatal: the EFI path above is already complete, and
-	 * refusing the install here would throw away a working system over a
-	 * legacy fallback. handle_line() drops 'W' events, so only limine's
-	 * own output reaches kinstall.log and the wizard shows nothing.
+	 * A FAILURE STOPS THE INSTALL ONLY WHERE IT LEAVES THIS MACHINE
+	 * UNABLE TO START IT. Booted from legacy BIOS, the BIOS stage is the
+	 * only way in, so the step fails; on UEFI the EFI path above is
+	 * complete and the failure is a warning the Install and Done pages
+	 * list. Limine's own `error:` lines are in kinstall.log either way.
 	 */
-	if (kb_have_prog("limine")) {
-		emit('N', "BIOS boot code onto %s", cfg.disk);
-		char disk[64];
-		kb_strlcpy(disk, cfg.disk, sizeof(disk));
-		char *bi[] = { "limine", "bios-install", disk, NULL };
-		if (run(bi) != 0)
-			emit('W', "limine bios-install failed — this disk will "
-				  "boot on UEFI but not on legacy BIOS");
+	int bb = ki_bios_boot_part();
+	if (bb < 0) {
+		bios_problem("%s has no BIOS boot partition — this disk starts "
+			     "on UEFI only", cfg.disk);
+	} else if (!kb_have_prog("limine")) {
+		bios_problem("limine not on PATH — no BIOS boot code written; "
+			     "this disk starts on UEFI only");
 	} else {
-		emit('W', "limine not on PATH — no BIOS boot code written");
+		char disk[64], num[12];
+		kb_strlcpy(disk, cfg.disk, sizeof(disk));
+		snprintf(num, sizeof(num), "%d", bb);
+		emit('N', "BIOS boot code onto %s", cfg.disk);
+		char *bi[] = { "limine", "bios-install", disk, bb ? num : NULL,
+			       NULL };
+		if (run(bi) != 0)
+			bios_problem("limine bios-install failed (see "
+				     "/var/log/kinstall.log) — this disk "
+				     "starts on UEFI only");
 	}
 
 	if (kb_have_prog("efibootmgr") && ki_sys.uefi) {
@@ -2346,12 +2421,6 @@ static void do_finish(void)
 	emit('N', "flushing");
 	if (!cfg.dry_run)
 		sync();
-	/* The medium's bind is OUTSIDE the target on purpose, so
-	 * `unmount_below(TARGET)` cannot reach it and it would keep the medium
-	 * busy for whatever unmounts it next. */
-	char *um[] = { "umount", (char *)MEDIUM_BIND, NULL };
-	if (kb_path_exists(MEDIUM_BIND))
-		try_(um);
 	unmount_below(TARGET "/");
 	char *u[] = { "umount", TARGET, NULL };
 	try_(u);

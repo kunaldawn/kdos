@@ -61,8 +61,7 @@ case "$1" in
             standalone|netserver|netclient) ;;
             *) echo "[SKIP] nut: MODE is '${mode:-none}' in $CONF"; exit 0 ;;
         esac
-        # Read /etc/passwd directly: there is no getent on musl.
-        if ! grep -q '^nut:' /etc/passwd 2>/dev/null; then
+        if ! getent passwd nut >/dev/null; then
             echo "[SKIP] nut: no nut account (the port's postinstall makes it)"
             exit 0
         fi

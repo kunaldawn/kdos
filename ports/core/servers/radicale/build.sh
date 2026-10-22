@@ -60,8 +60,7 @@ USERS="/etc/radicale/users"
 case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
-        # Read /etc/passwd directly: there is no getent on musl.
-        if ! grep -q '^radicale:' /etc/passwd 2>/dev/null; then
+        if ! getent passwd radicale >/dev/null; then
             echo "[SKIP] $NAME: no radicale account (the port's postinstall makes it)"
             exit 0
         fi

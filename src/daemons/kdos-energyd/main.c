@@ -155,7 +155,12 @@ static int serve(void)
 			break;
 
 		if (rc > 0 && (pfd.revents & POLLIN)) {
-			int c = accept(srv, NULL, NULL);
+			/* CLOEXEC, the rule every root daemon here keeps: a
+			 * connection must never reach a program the daemon or
+			 * a library it calls execs, or that program holds it
+			 * open and the client never reads the end of its
+			 * reply. */
+			int c = accept4(srv, NULL, NULL, SOCK_CLOEXEC);
 			if (c >= 0) {
 				struct ucred cred = {0};
 				socklen_t len = sizeof(cred);

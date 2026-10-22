@@ -26,6 +26,7 @@ go through udev; see [Services](../../../../docs/kdos/02-user-guide/administrati
   `/etc/reader.conf.d`.
 - `-Dfilter_names=true` — Honour `PCSCLITE_FILTER_IGNORE_READER_NAMES` and
   `PCSCLITE_FILTER_EXTEND_READER_NAMES`, which hide readers by name or add text to their names.
+  `47_pcscd` reads both from `/etc/default/pcscd` and exports them to the daemon.
 - `-Dembedded=false` — Keep logging; the embedded build drops it to save memory and CPU.
 - `-Dusbdropdir=/usr/lib/pcsc/drivers`, `-Dserialconfdir=/etc/reader.conf.d`,
   `-Dipcdir=/run/pcscd` — The driver directory, the serial-reader configuration directory and the
@@ -34,6 +35,11 @@ go through udev; see [Services](../../../../docs/kdos/02-user-guide/administrati
   configuration is installed.
 
 ## Notes
+`build.sh` also deletes upstream's `/etc/default/pcscd`, whose comments describe the variables as
+read by the systemd unit. The base filesystem ships its own `/etc/default/pcscd` with the same keys,
+which `47_pcscd` parses at every start; see
+[/etc/default/pcscd](../../../../docs/kfs/16-wiki/fingerprint-fido-smartcards.md#etcdefaultpcscd).
+
 `postinstall.sh` creates the `pcscd` system group and account, the ones upstream's `sysusers.d`
 file declares; ccid's udev rule gives readers to that group. `47_pcscd` runs `pcscd --foreground`
 as root under the supervisor, after `polkitd`, because every client is authorised through polkit

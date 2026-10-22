@@ -33,7 +33,7 @@ The state is one file on the ESP, `EFI/kdos/bootstate`, which is
 `/boot/efi/EFI/kdos/bootstate` on the running system. No file in the tree ships it; the installer
 writes the first version:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2252-2265 pin=ab8cb81addd9 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2315-2328 pin=ab8cb81addd9 -->
 
 `kdos-bootctl` writes every later version, under a header of its own
 (`Written by kdos-bootctl; the initramfs reads it before it mounts a root filesystem.`), and adds
@@ -79,7 +79,7 @@ the init is written by a heredoc, and the generated script has a plain `$`.
 
 At the end of `rcS`, after every service script has run:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=175-187 pin=31fd40a83831 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=177-189 pin=31fd40a83831 -->
 
 `mark-good`'s own messages are discarded there; `kdos-bootctl status` afterwards shows what it
 decided.

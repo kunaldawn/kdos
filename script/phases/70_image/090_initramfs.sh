@@ -928,6 +928,111 @@ if [ -n "\$ROOT_UUID" ]; then
     rescue "Disk boot failed: no root at UUID=\$ROOT_UUID with /sbin/init on it"
 fi
 
+#
+# THE PERSISTENCE STORE IS LOOKED FOR UNTIL USB STORAGE HAS SETTLED. The
+# medium is found the moment its own device answers, and a store on another
+# USB stick is still being enumerated then: behind a hub it gets an address a
+# few hundred milliseconds later, and usb-storage waits a further delay_use
+# (one second) before it scans the disk. A single lookup at that point finds
+# nothing and the session runs in RAM with the store attached.
+#
+# USB IS BUSY while a hub port holds a device that is not yet configured, or
+# a mass-storage interface has no block device beneath it. Neither state is
+# visible for the moment between a hub being configured and its first port
+# reporting a connection (power-good plus debounce, well under a second), so
+# while a hub other than a root hub is present the lookup also waits until
+# the set of USB devices has stood still for one second. With nothing busy
+# and no such hub, a boot with no store pays one blkid and no wait. The bound
+# is 10 seconds, the bound the medium and the root device get: a device that
+# never finishes costs that much and no more, and the boot goes on in RAM.
+#
+# A NEW DISK GETS ONE MORE LOOKUP. Its block device appears in sysfs before
+# the kernel has read its partition table, so a blkid that starts then can
+# list the disk without the partition holding the store. blkid opens every
+# disk it lists, and the open waits for that read, so the lookup after it
+# sees the partitions: the wait ends only after a lookup whose scan counted
+# the same USB disks as the scan before the previous one. That second lookup
+# runs at once, with no sleep.
+: "\${USB_DEVICES:=/sys/bus/usb/devices}"
+uptime_cs() {
+    local u
+    read -r u _ < /proc/uptime
+    NOW=\$(( 10#\${u%.*}\${u#*.} ))
+}
+usb_scan() {
+    local p s d found
+    USB_BUSY=""
+    USB_SEEN=""
+    USB_DISKS=""
+    USB_HUB=0
+    for p in "\$USB_DEVICES"/*:*/*-port*/state; do
+        [ -r "\$p" ] || continue
+        read -r s < "\$p"
+        case "\$s" in
+        "not attached"|configured|suspended) ;;
+        *) USB_BUSY="\$USB_BUSY \${p%/state}" ;;
+        esac
+    done
+    for d in "\$USB_DEVICES"/*; do
+        [ -e "\$d" ] || continue
+        case "\${d##*/}" in
+        *:*)
+            [ -r "\$d/bInterfaceClass" ] || continue
+            read -r s < "\$d/bInterfaceClass"
+            [ "\$s" == "08" ] || continue
+            found=0
+            for p in "\$d"/host*/target*/*/block/*; do
+                [ -e "\$p" ] || continue
+                found=1
+                USB_DISKS="\$USB_DISKS \${p##*/}"
+            done
+            [ "\$found" == "1" ] || USB_BUSY="\$USB_BUSY \$d"
+            ;;
+        usb*)
+            USB_SEEN="\$USB_SEEN \${d##*/}"
+            ;;
+        *)
+            USB_SEEN="\$USB_SEEN \${d##*/}"
+            [ -r "\$d/bDeviceClass" ] || continue
+            read -r s < "\$d/bDeviceClass"
+            [ "\$s" == "09" ] && USB_HUB=1
+            ;;
+        esac
+    done
+}
+find_persist() {
+    local deadline quiet last=x disks="" said=0
+    PERSIST=""
+    uptime_cs
+    deadline=\$(( NOW + 1000 ))
+    while :; do
+        usb_scan
+        PERSIST=\$(blkid -L KDOS_PERSIST 2>/dev/null)
+        [ -n "\$PERSIST" ] && return 0
+        uptime_cs
+        if [ "\$USB_SEEN" != "\$last" ]; then
+            last="\$USB_SEEN"
+            quiet=\$NOW
+            [ "\$USB_HUB" == "1" ] && quiet=\$(( NOW + 100 ))
+        fi
+        if [ -z "\$USB_BUSY" ] && [ "\$NOW" -ge "\$quiet" ]; then
+            [ "\$USB_DISKS" == "\$disks" ] && return 1
+            disks="\$USB_DISKS"
+            continue
+        fi
+        disks="\$USB_DISKS"
+        if [ "\$NOW" -ge "\$deadline" ]; then
+            echo "USB storage still settling after 10s; no persistence store found"
+            return 1
+        fi
+        if [ "\$said" == "0" ]; then
+            echo "Waiting for USB devices to settle before looking for a persistence store..."
+            said=1
+        fi
+        sleep 0.1
+    done
+}
+
 # Live ISO Boot Mode (Fallback)
 mkdir -p /mnt/iso
 echo "Searching for KDOS boot media..."
@@ -1024,7 +1129,8 @@ if [ "\$FOUND" == "1" ]; then
              # survives a power-off is the whole of what persistence means. A
              # filesystem labelled KDOS_PERSIST is used as the upper when one
              # is present; with no store the upper is a tmpfs and the session
-             # is gone at reboot. \`kdos persist\` makes the store.
+             # is gone at reboot. \`kdos persist\` makes the store, and
+             # find_persist waits for USB storage before it gives up on one.
              #
              # \`nopersist\` ON THE COMMAND LINE FORCES A CLEAN SESSION, and the
              # boot menu carries an entry that passes it. A store holding a
@@ -1041,7 +1147,7 @@ if [ "\$FOUND" == "1" ]; then
              *" nopersist "*)
                  echo "nopersist: this session will not be saved" ;;
              *)
-                 PERSIST=\$(blkid -L KDOS_PERSIST 2>/dev/null) ;;
+                 find_persist ;;
              esac
 
              UPPER=""

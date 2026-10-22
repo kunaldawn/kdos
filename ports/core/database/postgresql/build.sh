@@ -51,8 +51,7 @@ DATA="/var/lib/postgres/data"
 case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
-        # Read /etc/passwd directly: there is no getent on musl.
-        if ! grep -q '^postgres:' /etc/passwd 2>/dev/null; then
+        if ! getent passwd postgres >/dev/null; then
             echo "[SKIP] $NAME: no postgres account (the port's postinstall makes it)"
             exit 0
         fi

@@ -30,7 +30,7 @@ reboot. `/run` is a tmpfs on both, so everything under it is gone at every reboo
 
 The [sysklogd](#port-sysklogd) port's `build.sh` writes the file:
 
-<!-- kfs:include ports/core/base/sysklogd/build.sh lines=26-48 pin=9f360f605576 -->
+<!-- kfs:include ports/core/base/sysklogd/build.sh lines=26-45 pin=452c61443245 -->
 
 Each rule is a selector, `facility.level`, and a destination; a `-` before a path writes without
 syncing after every message. The routing, the rotation and `secure_mode` are described in
@@ -57,7 +57,7 @@ buffer and the system log.
 | Message | File | Kept |
 |:--|:--|:--|
 | Everything but authentication | [`/var/log/messages`]{.idx} | Rotated by size, as `rotate_size` and `rotate_count` say; older copies gzipped |
-| Logins, `sudo`, other authentication | `/var/log/auth.log` | The same |
+| Logins, `sudo`, polkit, other authentication | `/var/log/auth.log` | The same |
 | The kernel | [`/var/log/kern.log`]{.idx}, and `dmesg` | The same; the ring buffer until it wraps |
 | A service script's output at boot | `/run/kdos-init.<service>.log` | Until reboot |
 | A supervised daemon's output | `/run/kdos-svc.<name>.log` (root only, mode 0640), and the system log tagged `<name>` | 64 KiB, one `.old` beside it |
@@ -86,15 +86,14 @@ name the script gave the supervisor, such as `chronyd`. The two differ for some 
 2. Pick out one daemon. Each supervised daemon's lines carry its name as the tag:
 
    ```bash
-   grep -a 'kdos-powerd' /var/log/messages
+   grep 'kdos-powerd' /var/log/messages
    ```
 
    A line carries the time, the host name, the tag and the message:
-   `Oct 21 19:10:29 kdos kdos-powerd: [KDOS] (kdos-powerd) Starting: /usr/sbin/kdos-powerd`. `-a`
-   reads the file as text whatever bytes the daemons wrote into it. `syslogd` escapes a character
-   outside ASCII only in part, so a message holding one, such as the `—` in `kdos-oomd`'s kill
-   line, leaves a byte `grep` takes for binary, and from then on a plain `grep` prints only
-   `binary file matches`.
+   `Oct 21 19:10:29 kdos kdos-powerd: [KDOS] (kdos-powerd) Starting: /usr/sbin/kdos-powerd`.
+   `syslogd` runs with `-8`, so a message in UTF-8, such as `kdos-oomd`'s kill line with its `—`,
+   is written as it was sent and the file stays text. ASCII control characters in a message are
+   still written as `^x`.
 
 3. Authentication is kept apart:
 
@@ -157,9 +156,11 @@ The line lands in `/var/log/messages` with the tag `backup`.
 ```bash
 last
 who -b
+who -r
 ```
 
-`last` reads `/var/log/wtmp`, which the `wtmpd` service appends to, and `who -b` asks `utmpd`; see
+`last` reads `/var/log/wtmp`, which the `wtmpd` service appends to, and `who -b` and `who -r`, the
+last boot and the current runlevel, ask `utmpd`; see
 [Login records](../../kdos/03-architecture/boot-and-init.md#login-records).
 
 ### Changing where messages go
@@ -234,8 +235,7 @@ tail -n 40 /run/user/1000/kdos-comp.log
 
 ## Known gaps
 
-- [The installer's warnings are shown nowhere](../../kdos/06-reference/known-gaps.md#the-installers-warnings-are-shown-nowhere):
-  not even in `/var/log/kinstall.log`
+[Known gaps](../../kdos/06-reference/known-gaps.md) lists nothing for this topic.
 
 ## See also
 

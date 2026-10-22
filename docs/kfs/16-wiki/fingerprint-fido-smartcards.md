@@ -56,9 +56,26 @@ The `kdos` account is in `dialout`. Any other account needs it for a key:
 
 ### /etc/init.d/47_pcscd.sh
 
-From `fs/etc/init.d/`. It runs `pcscd` in the foreground under the supervisor:
+From `fs/etc/init.d/`. It runs `pcscd` in the foreground under the supervisor, after reading
+`/etc/default/pcscd`:
 
-<!-- kfs:include fs/etc/init.d/47_pcscd.sh lines=7-19 pin=120540c49910 -->
+<!-- kfs:include fs/etc/init.d/47_pcscd.sh lines=56-80 pin=a8554e864709 -->
+
+`read_defaults`, above that block in the script, parses the file and does not source it. It
+exports `PCSCLITE_FILTER_IGNORE_READER_NAMES`, `PCSCLITE_FILTER_EXTEND_READER_NAMES` and
+`PCSCLITE_HP_DROPDIR` to the daemon, and splits `PCSCD_ARGS` into extra arguments after
+`--foreground`. A line that is not `KEY=value`, or names any other key, is reported in
+`/run/kdos-init.pcscd.log` (or on the terminal, for `service start`) and skipped.
+
+### /etc/default/pcscd
+
+From `fs/etc/default/`. The file and its keys are pcsc-lite's own, the ones `pcscd(8)` documents,
+and every key ships commented out, so out of the box `pcscd` sees every reader under its own name:
+
+<!-- kfs:include fs/etc/default/pcscd -->
+
+pcsc-lite is built `-Dfilter_names=true`, which is what makes `pcscd` read the two filter
+variables. A value is taken as written, without its quotes; `$HOSTNAME` is the one expansion.
 
 ### /etc/polkit-1/rules.d/50-kdos.rules
 
@@ -175,6 +192,40 @@ Not verified on real hardware: no card has been used in a reader on this system.
    from its module file; see
    [Thunderbolt, phones, smart cards and firmware updates](../../kdos/02-user-guide/administration.md#thunderbolt-phones-smart-cards-and-firmware-updates).
 
+### Hiding or renaming a reader
+
+A dual-interface reader shows up as two readers, one for contact cards and one for
+contactless ones, and a program that takes the first reader it finds may take the wrong one.
+`pcscd` can drop readers by name, and can add text to every reader's name.
+
+1. List the readers' names:
+
+   ```bash
+   opensc-tool --list-readers
+   ```
+
+2. Edit `/etc/default/pcscd`:
+
+   ```bash
+   sudoedit /etc/default/pcscd
+   ```
+
+   Uncomment `PCSCLITE_FILTER_IGNORE_READER_NAMES` and set it to a word from the name of each
+   reader to hide, with `:` between words; a reader is hidden when its name contains any of them.
+   Uncomment `PCSCLITE_FILTER_EXTEND_READER_NAMES` to add its value to every name, such as
+   `" $HOSTNAME"`, which tells a reader redirected into a remote desktop apart from the remote
+   machine's own.
+
+3. Restart the service, which reads the file only when it starts:
+
+   ```bash
+   sudo service restart pcscd
+   ```
+
+4. Check: `opensc-tool --list-readers` leaves out a hidden reader, and `pcscd` logs
+   `Reader name "<name>" contains "<word>": ignored` in `/run/kdos-svc.pcscd.log` each time it
+   skips one.
+
 ## Tips
 
 - `kdos doctor` checks `dbus-daemon-launch-helper`'s setuid bit and its `messagebus` group.
@@ -182,7 +233,9 @@ Not verified on real hardware: no card has been used in a reader on this system.
 - A FIDO key asks for a touch before it signs, so `dialout` membership alone does not let another
   process use it silently.
 - `ssh-keygen -t ecdsa-sk` makes an ECDSA key instead, for a token that does not support Ed25519.
-- The pcscd service's log is `/run/kdos-svc.pcscd.log`.
+- The pcscd service's log is `/run/kdos-svc.pcscd.log`. `PCSCD_ARGS="--debug"` in
+  `/etc/default/pcscd`, then `sudo service restart pcscd`, makes it log at its debug level, which
+  includes every reader it finds and the driver it loads for it.
 
 ## Troubleshooting
 

@@ -187,7 +187,7 @@ The first log is the boot script's output, the second chronyd's own messages, wh
 log says why:
 
 ```bash
-sudo grep -a 'command socket\|Wrong permissions' /run/kdos-svc.chronyd.log
+sudo grep 'command socket\|Wrong permissions' /run/kdos-svc.chronyd.log
 ```
 
 `Wrong permissions on /run/chrony` and `Disabled command socket /run/chrony/chronyd.sock` mean the

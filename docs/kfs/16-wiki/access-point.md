@@ -197,7 +197,7 @@ For a hotspot, check that the machine itself is online and that `nm-shared-<inte
 
 **`hostapd` keeps restarting.**
 It exits on an error in its configuration and the supervisor starts it again five seconds later.
-`sudo grep -a hostapd /var/log/messages` shows the line it refused. Running it once in the foreground
+`sudo grep hostapd /var/log/messages` shows the line it refused. Running it once in the foreground
 with debugging, `sudo hostapd -d /etc/hostapd/hostapd.conf`, after `sudo service stop hostapd`,
 prints the same reason on the terminal.
 

@@ -32,7 +32,9 @@
 # topmost directories no other package shares) and kfsrender.py reads the
 # full lists from a live database only, into the HTML only.
 #
-#   packages.tsv   name, version, release, installed bytes, files, SBU
+#   packages.tsv   name, version, release, installed bytes, files, SBU, and
+#                  the id of the machine that measured the figure (`-` for a
+#                  figure kdosbuild filed under none)
 #   contents.tsv   name, programs, libraries, directories (space-separated)
 #   whatis.tsv     program, section, NAME line, owning package (sections
 #                  1, 6 and 8, read from the pages themselves: mandoc.db is
@@ -40,8 +42,11 @@
 #   pc.tsv         .pc name, Description:, owning package
 #   sources.tsv    sha256, bytes, for every source the cache holds
 #   stamp          the checkout's commit when the data was gathered, the
-#                  date of the newest installed package, the package count
-#                  and the seconds of one SBU
+#                  date of the newest installed package, the package count,
+#                  the seconds of one SBU and the machine that measured it;
+#                  each machine a port figure names, with its port count;
+#                  the count of figures that name none; and the package
+#                  phases with a measured port and those without
 #   recipes.stamp  one SHA-256 over every recipe file kpkg hashes, then
 #                  every kfs.md, phase list and environment, bootstrap step
 #                  script and kfs:include target, but for the ports that
@@ -50,6 +55,13 @@
 #
 # ONE SBU is the seconds `00_cross/binutils` took. A port with no figure in
 # timings.json has `-`: a step served from the package store records none.
+# THE FIGURES ARE OF DIFFERENT RUNS. kdosbuild merges each step's figure
+# into the file, so one port's may be a week older than the next, and from
+# another machine; every figure is divided by the one SBU there is, and the
+# machine column and the stamp say which figures share the SBU's machine. A
+# port's figure is the one filed under its current phase, else the single
+# one another package phase holds for it (its list moved since it was
+# measured).
 #
 # Only stdlib: the same script runs on the host, in CI and in the chroot.
 # ---------------------------------
@@ -156,6 +168,31 @@ def name_line(text):
     return ""
 
 
+def describe_machine(m):
+    """One line for a timings.json machine: kdosbuild's probe of the
+    processor, the CPUs the build could run on, MemTotal, and KDOS_JOBS."""
+    cpu = " ".join(str(m.get("cpu") or "unknown").split())
+    parts = [cpu]
+    try:
+        cpus = int(m.get("cpus") or 0)
+    except (TypeError, ValueError):
+        cpus = 0
+    if cpus:
+        parts.append("%d CPU%s" % (cpus, "" if cpus == 1 else "s"))
+    try:
+        mem = float(m.get("memory") or 0)
+    except (TypeError, ValueError):
+        mem = 0
+    if mem:
+        parts.append("%.1f GiB" % (mem / (1 << 30)))
+    try:
+        jobs = int(m.get("jobs") or 0)
+    except (TypeError, ValueError):
+        jobs = 0
+    parts.append("KDOS_JOBS=%d" % jobs if jobs > 0 else "KDOS_JOBS unset")
+    return ", ".join(parts)
+
+
 def write_stamp(root, out):
     digest, n, files = kfsgen.stamp_digest(root)
     with open(os.path.join(out, "recipes.stamp"), "w", encoding="utf-8") as f:
@@ -202,13 +239,45 @@ def main():
     phases = kfsgen.resolve_phases(root, ports)
     db = read_db(buildfs)
 
-    steps, unit = {}, None
+    steps, on, machines = {}, {}, {}
     try:
         with open(timings, encoding="utf-8") as f:
-            steps = json.load(f).get("steps", {})
-        unit = steps.get("00_cross/binutils")
-    except (OSError, ValueError):
+            tj = json.load(f)
+        steps = tj.get("steps", {})
+        on = tj.get("machine", {})
+        machines = tj.get("machines", {})
+    except (OSError, ValueError, AttributeError):
         pass
+    if not isinstance(steps, dict):
+        steps = {}
+    if not isinstance(on, dict):
+        on = {}
+    if not isinstance(machines, dict):
+        machines = {}
+    unit = steps.get("00_cross/binutils")
+    if not isinstance(unit, (int, float)) or unit <= 0:
+        unit = None
+    pkg_phases = [ph.name for ph in phases if ph.is_packages]
+
+    def machine_of(key):
+        m = on.get(key)
+        m = str(int(m)) if isinstance(m, (int, float)) else None
+        return m if m in machines and isinstance(machines[m], dict) else None
+
+    def figure(n, phase):
+        """A port's seconds and the key they were filed under. A figure is
+        filed under the phase the port was built in, which is the one its
+        list named at the time: a port whose list has moved since keeps the
+        one figure another package phase holds for it, and two such figures
+        are one too many to choose between."""
+        key = "%s/%s" % (phase, n)
+        if isinstance(steps.get(key), (int, float)):
+            return steps[key], key
+        alt = [k for k in ("%s/%s" % (ph, n) for ph in pkg_phases if ph != phase)
+               if isinstance(steps.get(k), (int, float))]
+        if len(alt) == 1:
+            return steps[alt[0]], alt[0]
+        return None, None
 
     # Directory owners, so a package's own directories can be told from the
     # shared ones every package lists.
@@ -269,13 +338,14 @@ def main():
                 except OSError:
                     pass
                 pc_rows.append((m.group(1), " ".join(desc.split()), n))
-        sbu = "-"
+        sbu, mach = "-", "-"
         p = ports.get(n)
         if unit and p is not None and p.phase is not None:
-            s = steps.get("%s/%s" % (p.phase.name, n))
+            s, key = figure(n, p.phase.name)
             if s is not None:
                 sbu = "%.1f" % (s / unit) if s / unit >= 0.1 else "0.1"
-        pk_rows.append((n, e["version"], e["release"], str(size), str(files), sbu))
+                mach = machine_of(key) or "-"
+        pk_rows.append((n, e["version"], e["release"], str(size), str(files), sbu, mach))
         ct_rows.append((n, " ".join(sorted(set(progs))), " ".join(sorted(libs)),
                         " ".join(sorted(dirs))))
 
@@ -288,7 +358,8 @@ def main():
             for r in rows:
                 f.write("\t".join(clean(x) for x in r) + "\n")
 
-    write("packages.tsv", ("name", "version", "release", "bytes", "files", "sbu"), pk_rows)
+    write("packages.tsv", ("name", "version", "release", "bytes", "files", "sbu", "machine"),
+          pk_rows)
     write("contents.tsv", ("name", "programs", "libraries", "directories"), ct_rows)
     seen = set()
     wi = []
@@ -327,6 +398,23 @@ def main():
         f.write("date %s\n" % time.strftime("%Y-%m-%d", time.gmtime(newest)))
         f.write("packages %d\n" % len(db))
         f.write("sbu-seconds %s\n" % (("%.2f" % unit) if unit else "-"))
+        unit_m = machine_of("00_cross/binutils") if unit else None
+        f.write("sbu-machine %s\n" % (unit_m or "-"))
+        counts = {}
+        for r in pk_rows:
+            if r[5] != "-":
+                counts[r[6]] = counts.get(r[6], 0) + 1
+        named = sorted({m for m in counts if m != "-"} | ({unit_m} if unit_m else set()), key=int)
+        for m in named:
+            f.write("machine-%s %s\n" % (m, describe_machine(machines[m])))
+            f.write("machine-%s-ports %d\n" % (m, counts.get(m, 0)))
+        f.write("unrecorded-ports %d\n" % counts.get("-", 0))
+        measured = {ports[r[0]].phase.name for r in pk_rows
+                    if r[5] != "-" and r[0] in ports and ports[r[0]].phase is not None}
+        f.write("measured-phases %s\n" % (" ".join(ph for ph in pkg_phases if ph in measured)
+                                          or "-"))
+        f.write("unmeasured-phases %s\n" % (" ".join(ph for ph in pkg_phases if ph not in measured)
+                                            or "-"))
 
     write_stamp(root, out)
 

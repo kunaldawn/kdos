@@ -474,6 +474,7 @@ int main(int argc, char **argv)
 
 	fputs("kinstall: measuring the live system...\n", stderr);
 	probe_system();
+	probe_payload();
 	probe_disks();
 
 	ktui_term_init(want_mouse);

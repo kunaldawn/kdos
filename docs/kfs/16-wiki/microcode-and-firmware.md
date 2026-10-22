@@ -41,7 +41,7 @@ runs past the end of the file:
 The image build turns both vendors' files into the uncompressed archive the early loader scans
 (`script/phases/70_image/090_initramfs.sh`):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1167-1231 pin=b6eaf412d8f2 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1273-1337 pin=b6eaf412d8f2 -->
 
 ### Device firmware
 

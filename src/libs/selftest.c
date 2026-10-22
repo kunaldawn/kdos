@@ -1335,8 +1335,11 @@ static void test_pkg(void)
 	free(cp);
 
 	ow = kp_owned_load(&mconf);
-	ok(kp_owned_owner(ow, "bin/free") != NULL,
-	   "either spelling finds the claim");
+	eq_str(kp_owned_owner(ow, "bin/free"), "procps",
+	       "either spelling finds the claim, and of two claimants the "
+	       "owner is the first by package name");
+	eq_str(kp_owned_owner(ow, "usr/bin/free"), "procps",
+	       "under either spelling");
 	ok(kp_owned_owner(ow, "usr/lib/x") == NULL,
 	   "a path under a real directory keeps its own name");
 	eq_str(kp_owned_other(ow, "usr/bin/free", "usrfree"), "procps",

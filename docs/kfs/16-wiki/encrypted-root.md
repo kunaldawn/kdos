@@ -46,7 +46,7 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
 it, from `src/system/kdos-installer/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2003-2021 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2065-2083 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -58,7 +58,7 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2252-2265 pin=ab8cb81addd9 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2315-2328 pin=ab8cb81addd9 -->
 
 The initramfs asks `kdos-bootctl crypt` for the container of the slot it chose, and uses
 `cryptdevice=` only when the slot records none; see

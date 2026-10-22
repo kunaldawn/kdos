@@ -77,9 +77,13 @@ branch switch that names files fetched before downloads nothing again. The cache
 and survives both `make cleanbuild` and `make clean`; deleting it costs a full download and nothing
 else. A second checkout can share it by setting `KDOS_SRCCACHE` to the same directory in both.
 
-A fetched source is never committed. When a port moves to a new version, the old tarball stays in
-its port directory as an untracked file that no recipe names; nothing reads it and it can be
-deleted.
+A fetched source is never committed. When a port moves to a new version, the next `make fetch`
+removes the old tarball from its port directory: a file there that no line of the recipe names,
+and that is the same inode as its cache entry, is deleted, and the copy in the cache stays. A file
+beside a recipe changes the port's recipe hash unless a `sha256 =` line names it, so one left
+behind would rebuild the port for bytes no build reads. A file that is not a link into the cache
+(one copied across filesystems, or placed by hand) is left where it is; `testing/preflight.sh`
+lists it.
 
 ## The archive
 

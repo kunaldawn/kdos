@@ -76,7 +76,7 @@ per build, default 5), `KDOS_MARCH_LEVEL` (the level to measure against) and `KD
 `KDOS_ISO_SOURCES=1` makes the image's last step copy the tree onto the medium beside the system
 image, and write a stamp `kdos rebuild` prints before it starts:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=165-188 pin=a3950da6288f -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=192-215 pin=a3950da6288f -->
 
 ## Usage
 

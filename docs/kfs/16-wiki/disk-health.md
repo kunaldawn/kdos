@@ -139,7 +139,7 @@ smartmontools.
 `smartd` logs through syslog under its own name, and its supervisor keeps its output in `/run`:
 
 ```bash
-grep -a smartd /var/log/messages
+grep smartd /var/log/messages
 cat /run/kdos-svc.smartd.log
 ```
 

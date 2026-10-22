@@ -35,13 +35,13 @@ the firmware boot entry labelled `KDOS` is written by the installer with
 The medium's menu is a heredoc in the ISO step, written into the ISO tree and never into the root
 filesystem:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=284-312 pin=315b5e610a4f -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=311-339 pin=315b5e610a4f -->
 
 `$BOOT_THEME` is the output of `kdos-bootctl theme --print` for the [accent]{.idx} the image is built in;
 `$WALLPAPER` and `$FONT_LINES` name the backdrop and the converted Terminus face, when the build
 found them. The memory test entry is appended after it:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=326-340 pin=0c1a7fc58339 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=353-367 pin=0c1a7fc58339 -->
 
 The medium is ISO9660 and read-only, so this file cannot be edited on a written stick. A change
 for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change is a change to
@@ -53,16 +53,17 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2198-2230 pin=49d43fc22fb4 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2261-2293 pin=49d43fc22fb4 -->
 
 The file is `/boot/efi/limine.conf`. The ESP is mounted with `umask=0077`, as the installer's
 `fstab` line says, so only root can read or change anything under `/boot/efi`.
 
-The installed menu carries the medium's colours and backdrop (`EFI/kdos/wallpaper.png`) but, on a
-machine installed from the live medium, no `term_font` line and no `EFI/kdos/font.bin`: the
-installer looks for the face under `/mnt/iso/boot/limine/`, which its own target, mounted at
-`/mnt`, covers by the time the boot loader step runs. The installed menu is therefore drawn in
-Limine's built-in face; the entries and colours are unaffected.
+The installed menu carries the medium's colours, backdrop (`EFI/kdos/wallpaper.png`) and face
+(`EFI/kdos/font.bin`, with the `term_font` lines). The installer copies the face from
+`/mnt/iso/boot/limine/font.bin` on the live medium, which stays readable because the target is
+mounted beside it at `/mnt/kinstall`, or from the running system's own ESP when it is run from an
+installed KDOS. Without either the menu is drawn in Limine's built-in face; the entries and colours
+are unaffected.
 
 ### What kdos-bootctl rewrites
 
@@ -185,12 +186,14 @@ for what can be changed and what cannot.
 **The firmware finds nothing to boot.** On UEFI, check that Secure Boot is off in the firmware
 setup: Limine's EFI loader is unsigned. Then, from a working system or the live medium, check that
 `EFI/BOOT/BOOTX64.EFI` exists on the ESP and that `efibootmgr` lists a `KDOS` entry, which the
-installer puts first in `BootOrder`, its line ending in `KDOS HD(1,GPT,…)/\EFI\BOOT\BOOTX64.EFI`. On BIOS, the boot
-code is written by `limine bios-install <disk>`, and the second stage, `limine-bios.sys`, is found
-by name at the root of the ESP, where the installer puts it; restoring both is a step of
+installer puts first in `BootOrder`, its line ending in `KDOS HD(1,GPT,…)/\EFI\BOOT\BOOTX64.EFI`.
+On BIOS, the boot code is written by `limine bios-install <disk> 2`, which puts Limine's stage into
+partition 2, the 1 MiB BIOS boot partition of the installer's layout, and the second stage,
+`limine-bios.sys`, is found by name at the root of the ESP, where the installer puts it; restoring
+both is a step of
 [Recovering an unbootable system](recovering-an-unbootable-system.md#putting-the-boot-loader-back).
-A disk the installer partitioned has no BIOS boot partition, so `bios-install` fails on it and
-the disk starts only on UEFI firmware.
+`sudo sfdisk -d <disk>` lists that partition with
+`type=21686148-6449-6E6F-744E-656564454649`; a GPT disk without one starts only on UEFI firmware.
 
 **The menu appears in Limine's own font and colours, with no backdrop.** Limine falls back to its
 own terminal when the theme leaves it fewer rows than it needs. Check `term_margin` against the

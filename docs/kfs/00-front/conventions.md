@@ -116,13 +116,18 @@ The figures come from `build/snapshots/timings.json`, where kdosbuild records th
 took when it did work, keyed by phase and step: `00_cross/binutils`, `10_bootstrap/gcc`,
 `41_system/pv`; see [Step timings](../../kdos/05-developer/build-system.md#step-timings). `make book-data` divides each by the SBU and writes the result into the snapshot.
 The snapshot's stamp names the commit and the date of the tree it was taken from, how many packages
-that tree had installed, and, as `sbu-seconds`, how long one SBU was on the machine that built it.
-It does not name that machine: neither the built tree nor its logs record the processor, only the
-architecture and, where a configure script prints `uname`, the host's kernel. Which phases have measured times is said in [Build times](../17-appendices/sbu.md):
+that tree had installed, and, as `sbu-seconds`, how long one SBU was. `sbu-machine` is the machine
+that measured it, as kdosbuild recorded it beside the figure, and each `machine-<n>` line describes
+one machine a figure names: its processor, the CPUs the build could run on, its memory and the
+`KDOS_JOBS` it was given, then, as `machine-<n>-ports`, how many port figures it measured.
+`unrecorded-ports` counts the figures that name no machine, recorded by a kdosbuild that filed
+none, and `-` for `sbu-machine` means the SBU is one of those. `measured-phases` and
+`unmeasured-phases` divide the package phases by whether any of their ports has a figure.
+[Build times](../17-appendices/sbu.md) lists them:
 
 <!-- kfs:include docs/kfs/data/stamp -->
 
-Read an SBU figure as a proportion, not a promise. Three things move it:
+Read an SBU figure as a proportion, not a promise. Four things move it:
 
 - **The job count.** Every phase runs make with `-j$KDOS_JOBS`, and the cross binutils is built in
   parallel too, so the figures hold roughly across job counts; a port whose build is mostly one
@@ -134,6 +139,10 @@ Read an SBU figure as a proportion, not a promise. Three things move it:
   it was installed and current, one installed from the package store, and a script whose "already
   done" marker made it exit at once record nothing, and the figure from the last run that did the
   work stays.
+- **Which run measured it.** The figures of one snapshot come from as many runs as built its
+  ports, each on the machine that run had, and every one is divided by the one SBU there is. A
+  figure measured on another machine than the SBU, or on one it does not name, is a ratio across
+  two machines or may be, and its page and the appendix say so.
 
 A figure below 0.1 SBU is shown as 0.1. A package page with no build time on it has no measurement
 in the snapshot. [Build times](../17-appendices/sbu.md), in the appendices, lists every figure the

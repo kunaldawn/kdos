@@ -30,15 +30,6 @@
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-/* nvme0n1 -> nvme0n1p1, sda -> sda1. Same rule the installer uses when it
- * writes the table, so the preview and the result cannot disagree. */
-static void pname(const char *disk, int n, char *out, size_t cap)
-{
-	size_t l = strlen(disk);
-	int digit = l && isdigit((unsigned char)disk[l - 1]);
-	snprintf(out, cap, "%s%s%d", disk, digit ? "p" : "", n);
-}
-
 /* ════════════════════════════════════════════════════════════════════════
  * 1 · WELCOME
  * ════════════════════════════════════════════════════════════════════════ */
@@ -126,20 +117,6 @@ static void welcome_draw(KRect b)
 		y++;
 	}
 
-	/* A LEGACY BOOT IS A WARNING AND NOT A REFUSAL. The GPT layout
-	 * do_partition() writes has no BIOS boot partition, so Limine's BIOS
-	 * stage cannot be installed on it and the disk starts on UEFI only;
-	 * the install itself completes, and the disk may be meant for a UEFI
-	 * machine. This note is the one place a BIOS user is told. */
-	if (!ki_sys.uefi) {
-		y++;
-		ktui_para(b.x, y, b.w,
-		     "This machine booted in legacy BIOS mode. A disk this "
-		     "installer partitions has no BIOS boot partition, so the "
-		     "installed system starts on UEFI only: it will not start "
-		     "on this machine in legacy mode.",
-		     KT_ERR);
-	}
 }
 
 static int welcome_validate(char *err, size_t n)
@@ -678,7 +655,8 @@ static void disk_draw(KRect b)
 				   p->name,
 				   kb_human_size(p->sectors * 512ULL),
 				   p->is_esp ? "ESP"
-					     : p->fstype[0] ? p->fstype : "-",
+				   : p->is_bios_boot ? "BIOS boot"
+				   : p->fstype[0] ? p->fstype : "-",
 				   p->label[0] ? p->label : "-",
 				   p->mounted ? p->mountpoint : "");
 		}
@@ -757,7 +735,9 @@ static void part_row_generic(int idx, int x, int y, int w, int selected,
 	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
 	ktui_draw_textf(x + 1, y, w - 1, fg, bg, 0, "%-12s %8s  %-8s %s", p->name,
 		   kb_human_size(p->sectors * 512ULL),
-		   p->is_esp ? "ESP" : p->fstype[0] ? p->fstype : "-",
+		   p->is_esp ? "ESP"
+		   : p->is_bios_boot ? "BIOS boot"
+		   : p->fstype[0] ? p->fstype : "-",
 		   p->label);
 }
 
@@ -853,7 +833,9 @@ static void layout_draw(KRect b)
 
 	ktui_radio(b.x, y++, b.w, "Erase the whole disk and lay it out for KDOS",
 		 &cfg.plan, PLAN_WIPE);
-	ktui_note(b.x + 4, y++, b.w, "GPT: 512M EFI system partition, then root");
+	ktui_note(b.x + 4, y++, b.w,
+		  "GPT: 512M EFI system, 1M BIOS boot, then root; "
+		  "starts on UEFI and on legacy BIOS");
 	ktui_radio(b.x, y++, b.w, "Use partitions that already exist",
 		 &cfg.plan, PLAN_REUSE);
 	ktui_note(b.x + 4, y++, b.w,
@@ -872,8 +854,10 @@ static void layout_draw(KRect b)
 		y += 2;
 		ktui_para(b.x, y, b.w,
 		     "cfdisk takes over the screen. Make an EFI System partition "
-		     "and a Linux partition, write the table, quit — the "
-		     "installer comes back and switches to picking them.", KT_MID);
+		     "and a Linux partition, and a 1 MiB BIOS boot partition "
+		     "for the disk to start on legacy BIOS too; write the "
+		     "table, quit — the installer comes back and switches to "
+		     "picking them.", KT_MID);
 		return;
 	}
 
@@ -924,6 +908,30 @@ static void layout_draw(KRect b)
 			  ki_nlv ? "the root is reformatted, always; a logical "
 				   "volume keeps its group and its neighbours"
 				 : "the root partition is reformatted, always");
+		/* WHICH FIRMWARES THE REUSED DISK WILL START ON, said before
+		 * anything is written: this plan makes no partition, so a GPT
+		 * disk without a BIOS boot partition stays UEFI-only. */
+		{
+			int bb = ki_bios_boot_part();
+			char bn[96];
+
+			if (bb > 0) {
+				ki_part_name(d->path, bb, bn, sizeof(bn));
+				ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0,
+						"legacy BIOS: Limine's stage goes "
+						"into BIOS boot partition %s", bn);
+			} else if (bb == 0) {
+				ktui_note(b.x, y++, b.w,
+					  "legacy BIOS: Limine's stage goes "
+					  "after the MBR");
+			} else {
+				ktui_draw_text(b.x, y++, b.w,
+					       "no BIOS boot partition: this "
+					       "disk will start on UEFI only",
+					       ki_sys.uefi ? KT_WARN : KT_ERR,
+					       KT_BG, 0);
+			}
+		}
 		y++;
 		ktui_section(b.x, y, b.w, "ROOT FILESYSTEM");
 		y++;
@@ -1021,11 +1029,11 @@ static void layout_draw(KRect b)
 	y++;
 
 	unsigned long long total = d->sectors * (unsigned long long)d->sector_size;
-	unsigned long long esp = 512ULL << 20;
-	unsigned long long swp = cfg.swap == SWAP_PART
+	unsigned long long esp = (unsigned long long)KI_ESP_MB << 20;
+	unsigned long long swp = ki_wipe_part_swap()
 					 ? (unsigned long long)cfg.swap_mb << 20
 					 : 0;
-	unsigned long long root = total > esp + swp ? total - esp - swp : 0;
+	unsigned long long root = ki_wipe_root_bytes();
 
 	int bx = b.x, bwid = b.w;
 	int wesp = (int)((double)esp / total * bwid);
@@ -1051,16 +1059,19 @@ static void layout_draw(KRect b)
 	y += 2;
 
 	char nm[96];
-	int n = 1;
-	pname(d->path, n++, nm, sizeof(nm));
+	ki_part_name(d->path, KI_PART_ESP, nm, sizeof(nm));
 	ktui_draw_textf(b.x, y++, b.w, KT_WARN, KT_BG, 0, "  %-14s %-9s %s", nm,
 		   kb_human_size(esp), "EFI System, FAT32, mounted at /boot/efi");
+	ki_part_name(d->path, KI_PART_BIOS_BOOT, nm, sizeof(nm));
+	ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0, "  %-14s %-9s %s", nm,
+		   kb_human_size((unsigned long long)KI_BIOS_BOOT_MB << 20),
+		   "BIOS boot, Limine's legacy-BIOS stage");
 	if (swp) {
-		pname(d->path, n++, nm, sizeof(nm));
+		ki_part_name(d->path, ki_wipe_part_swap(), nm, sizeof(nm));
 		ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0, "  %-14s %-9s %s", nm,
 			   kb_human_size(swp), "Linux swap");
 	}
-	pname(d->path, n++, nm, sizeof(nm));
+	ki_part_name(d->path, ki_wipe_part_root(), nm, sizeof(nm));
 	char rootdesc[64];
 	snprintf(rootdesc, sizeof(rootdesc), "%s, mounted at /", cfg.fstype);
 	if (cfg.lvm) {
@@ -1131,6 +1142,19 @@ static int layout_validate(char *err, size_t n)
 					 "partition");
 			return 1;
 		}
+		/* Limine's BIOS stage lives raw in that partition; a
+		 * filesystem made on it is a disk that no longer starts on
+		 * legacy BIOS. */
+		Disk *bd = disk_by_path(cfg.disk);
+		for (int i = 0; bd && i < bd->nparts; i++)
+			if (bd->part[i].is_bios_boot &&
+			    (!strcmp(bd->part[i].path, cfg.part_esp) ||
+			     !strcmp(bd->part[i].path, cfg.part_root))) {
+				snprintf(err, n, "%s is the BIOS boot partition "
+						 "— pick another",
+					 bd->part[i].path);
+				return 1;
+			}
 		/*
 		 * The root as the prober saw it, partition or volume. A PHYSICAL
 		 * VOLUME AND A HELD DEVICE ARE REFUSED HERE: mkfs on either
@@ -1174,6 +1198,17 @@ static int layout_validate(char *err, size_t n)
 				 cfg.part_root,
 				 kb_human_size((unsigned long long)
 						       ki_sys.payload_kb * 1024));
+			return 1;
+		}
+		/* A DISK THAT COULD NOT START ON THIS MACHINE is refused here,
+		 * before the root is formatted. On UEFI it is a note on the
+		 * page: the disk still starts here. */
+		if (!ki_sys.uefi && ki_bios_boot_part() < 0) {
+			snprintf(err, n, "this machine starts in legacy BIOS "
+					 "mode and %s has no BIOS boot partition "
+					 "— add a 1 MiB one with cfdisk, or erase "
+					 "the disk",
+				 cfg.disk);
 			return 1;
 		}
 	}
@@ -1711,6 +1746,10 @@ static void summary_draw(KRect b)
 		ktui_kv(b.x, y++, b.w, "format ESP", cfg.format_esp ? "yes" : "no",
 		      KT_TEXT);
 	}
+	ktui_kv(b.x, y++, b.w, "starts on",
+		ki_bios_boot_part() < 0 ? "UEFI only (no BIOS boot partition)"
+					: "UEFI and legacy BIOS",
+		ki_bios_boot_part() < 0 ? KT_WARN : KT_TEXT);
 	snprintf(v, sizeof(v), "%s",
 		 cfg.swap == SWAP_NONE ? "none"
 				       : cfg.swap == SWAP_FILE ? "swap file"
@@ -1749,7 +1788,7 @@ static void summary_draw(KRect b)
 		      cfg.dry_run ? "REHEARSE INSTALL" : "BEGIN INSTALL", 1, 1)) {
 		install_plan();
 		install_start(0);
-		page_goto(8);
+		page_goto(page_index("install"));
 	}
 	if (ktui_button(krect(b.x + 33, y, 24, 1), "Save answer file", 1, 0)) {
 		if (conf_save("/tmp/kinstall.conf") == 0)
@@ -1884,6 +1923,16 @@ static void install_draw(KRect b)
 		   elapsed / 60, elapsed % 60);
 	y++;
 
+	/* What the installed system will lack, as it happens: a warning in
+	 * the scrolling output is gone by the next step. */
+	if (inst.nwarn) {
+		ktui_section(b.x, y, b.w, "WARNINGS");
+		y++;
+		for (int i = 0; i < inst.nwarn; i++)
+			y += ktui_para(b.x, y, b.w, inst.warn[i], KT_WARN);
+		y++;
+	}
+
 	int tail = b.y + b.h - y - 3;
 	if (tail > 2) {
 		ktui_section(b.x, y, b.w, "OUTPUT");
@@ -1914,7 +1963,7 @@ static void install_draw(KRect b)
 			ki_quit = 1;
 	} else if (inst.done) {
 		if (ktui_button(krect(b.x, b.y + b.h - 1, 20, 1), "Continue", 1, 1))
-			page_goto(9);
+			page_goto(page_index("done"));
 	}
 }
 
@@ -1982,7 +2031,14 @@ static void done_draw(KRect b)
 	ktui_kv(b.x, y++, b.w, "took", v, KT_TEXT);
 	ktui_kv(b.x, y++, b.w, "installed to", cfg.disk, KT_TEXT);
 	ktui_kv(b.x, y++, b.w, "log", "/var/log/kinstall.log", KT_TEXT);
-	y += 2;
+	y++;
+	if (inst.nwarn) {
+		ktui_section(b.x, y, b.w, "FINISHED WITH WARNINGS");
+		y++;
+		for (int i = 0; i < inst.nwarn; i++)
+			y += ktui_para(b.x, y, b.w, inst.warn[i], KT_WARN);
+	}
+	y++;
 
 	y += ktui_para(b.x, y, b.w,
 		  "Remove the boot medium before restarting, or the firmware "

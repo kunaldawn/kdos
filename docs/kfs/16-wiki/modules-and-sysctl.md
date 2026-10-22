@@ -64,7 +64,7 @@ their own:
 
 The installer's file is written from the time zone's country:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1632-1640 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1694-1702 pin=5a0dbdc98892 -->
 
 ### Udev and coldplug
 

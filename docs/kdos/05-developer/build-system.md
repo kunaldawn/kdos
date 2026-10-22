@@ -450,9 +450,11 @@ Reading a failed step's log is covered in [Build troubleshooting](build-troubles
 ### Step timings
 
 The orchestrator records how long each step took in `build/snapshots/timings.json`, which sits
-beside the snapshots and is never part of one. It is a JSON object with two members. `steps` maps
+beside the snapshots and is never part of one. It is a JSON object with four members. `steps` maps
 `<phase directory>/<step>` to seconds, where a script step is named by its title and a port by its
-name; `phases` maps a phase directory to the wall-clock seconds of the whole phase:
+name; `phases` maps a phase directory to the wall-clock seconds of the whole phase; `machine` maps
+each key of the two to the machine that measured its figure; and `machines` describes each machine
+by what the run was given to build with:
 
 ```json
 {
@@ -463,15 +465,38 @@ name; `phases` maps a phase directory to the wall-clock seconds of the whole pha
  },
  "phases": {
   "00_cross": 381.09
+ },
+ "machine": {
+  "00_cross/binutils": 1,
+  "10_bootstrap/linux headers": 1,
+  "41_system/zlib": 2,
+  "00_cross": 1
+ },
+ "machines": {
+  "1": {"cpu": "AMD Ryzen 9 7950X 16-Core Processor", "cpus": 32, "memory": 66000000000, "jobs": 0},
+  "2": {"cpu": "AMD Ryzen 9 7950X 16-Core Processor", "cpus": 32, "memory": 66000000000, "jobs": 6}
  }
 }
 ```
 
+A machine is the first `model name` of `/proc/cpuinfo` (`unknown` on a processor that has none),
+the number of CPUs the orchestrator may run on, `MemTotal` in bytes, and `KDOS_JOBS` as the build
+was given it, `0` when it was unset and each step worked it out from the CPUs and the memory
+([the phase environment](#the-phase-environment)). They are read inside the container: `cpus` is
+the orchestrator's CPU affinity, which the `--cpus` cap `make build` sets from `KDOS_JOBS` does not
+narrow, so `jobs` is what records that cap, and `memory` is the host's. Two runs that differ in any of
+the four are two machines, so a run with `KDOS_JOBS=6` files its figures apart from one without.
+An SBU is a ratio of two figures and holds only between figures of one machine, which is what the
+`machine` map lets a reader tell; a machine no figure names any more is dropped when the file is
+written.
+
 Every phase is recorded, `70_image` included. Each figure is the last measured time, not an
 average, rounded to two decimals. A step's figure is written when the step succeeds, and every
-write is a merge: the file is read, the step's key is set, and the whole file is written back
-atomically. A `--continue-from`, `--phases` or `--steps` run therefore changes the keys it measured
-and keeps every other one. A file that does not parse is started again from the run's own figures.
+write is a merge: the file is read, the step's key and its machine are set, and the whole file is
+written back atomically. A `--continue-from`, `--phases` or `--steps` run therefore changes the
+keys it measured and keeps every other one, each still naming the machine of the run that measured
+it, so the figures of one file may come from several runs and machines. A file that does not parse
+is started again from the run's own figures.
 
 Only a step that did its work is recorded, so a step that did nothing never replaces the figure of
 one that did:
@@ -488,7 +513,9 @@ earlier figure. The `kpkg` step a [retry](#retrying-a-failed-phase) runs ahead o
 as `10_bootstrap/kpkg`, the script's own phase, whichever phase it runs ahead of.
 
 `make book-data` copies `steps` into the KDOS from Scratch book under `docs/kfs`, whose build-time
-column counts in units of `00_cross/binutils`. `make cleanbuild` keeps the file with the snapshots;
+column counts in units of `00_cross/binutils`, with the machine each figure names; its stamp
+describes the machine that measured the unit, and its build-times appendix marks a figure from
+another one. `make cleanbuild` keeps the file with the snapshots;
 `make clean` removes it.
 
 ## The phase environment

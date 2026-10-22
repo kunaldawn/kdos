@@ -28,7 +28,8 @@ sudo kpkg check networkmanager
 
 NetworkManager is started at boot by [`/etc/init.d/42_networkmanager.sh`]{.idx}, which comes from the
 tree's `fs/` and not from the package. It sorts after `40_dbus`, `41_polkitd` and
-`42_modemmanager`, so the system bus, polkit and ModemManager are already running when it starts;
+`42_modemmanager`, and each of those three returns only once its daemon holds its bus name, so
+the system bus, polkit and ModemManager are already answering when NetworkManager starts;
 the comment in `42_modemmanager.sh`, shown on [Mobile broadband](mobile-broadband.md#the-service-script),
 says why ModemManager must come first. The service is enabled on the live medium. The installer's
 *Services* page has it ticked by default; untick it, and the installed system gets the marker
@@ -36,8 +37,8 @@ says why ModemManager must come first. The service is enabled on the live medium
 
 [`/etc/init.d/30_network.sh`]{.idx} starts `dhcpcd`, the fallback [DHCP client]{.idx} from the
 [dhcpcd](#port-dhcpcd) port, and stands down whenever NetworkManager is installed and not
-disabled, so on a machine set up as shipped only one of the two runs. The one way both end up
-running is described under [Troubleshooting](#troubleshooting).
+disabled, so only one of the two runs. Nothing else starts NetworkManager: the image ships no
+[D-Bus activation]{.idx} file for its bus name (see [D-Bus activation](#d-bus-activation)).
 
 ## Configuration
 
@@ -75,25 +76,16 @@ drop-in takes effect when the daemon restarts; see [Restarting the daemon](#rest
 
 ### Restarting the daemon
 
-In a desktop session, `sudo service restart networkmanager` on its own does not restart the
-daemon. `kdos-netagent` calls NetworkManager's bus name within moments of the daemon leaving the
-bus, the [activation file](#d-bus-activation) lets the bus start a NetworkManager of its own in
-that gap, and the supervised one the restart starts then exits with *NetworkManager is already
-running* every five seconds. The one left running is outside the supervisor and keeps the
-configuration it started with. Take the activation file out of the bus's directory for the length
-of the restart:
-
 ```bash
-sudo mv /usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service /root/
 sudo service restart networkmanager
-sudo mv /root/org.freedesktop.NetworkManager.service /usr/share/dbus-1/system-services/
 ```
 
-`pgrep -a NetworkManager` tells the two apart: the supervised daemon is
-`/usr/sbin/NetworkManager --no-daemon`, the bus's is `/usr/sbin/NetworkManager` alone, and
-`/run/kdos-svc.NetworkManager.log` repeats *already running* while the bus's holds the name. If
-that has already happened, stop the stray one with `sudo kill <pid>` while the activation file is
-out, and the supervisor's next attempt takes over.
+The restart works the same in a desktop session as outside one. `kdos-netagent` calls
+NetworkManager's bus name within moments of the daemon leaving the bus, and while the name has no
+owner the bus refuses the call, because nothing lets it start NetworkManager itself (see
+[D-Bus activation](#d-bus-activation)); the agent tries again every five seconds and registers
+with the supervised daemon once that has the name. `pgrep -a NetworkManager` then shows one
+process, `/usr/sbin/NetworkManager --no-daemon`.
 
 ### Connection profiles
 
@@ -130,12 +122,21 @@ is in
 
 ### D-Bus activation
 
-<!-- kfs:include fs/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service -->
+There is no `/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service`.
+NetworkManager's build installs none when systemd is off, and the image adds none, so the system
+bus never starts NetworkManager; only `42_networkmanager.sh` does. A call to
+`org.freedesktop.NetworkManager` while the name has no owner fails at once with
+*org.freedesktop.DBus.Error.ServiceUnknown*, and `kdos-netagent`, the network surface and `nmcli`
+report NetworkManager as not running. With such a file, the call `kdos-netagent` makes whenever the
+name has no owner would start a second NetworkManager outside the supervisor: at every login on a
+machine where the service is disabled, and in the gap of every restart, after which the supervised
+one would exit with *NetworkManager is already running* every five seconds. The same holds for
+ModemManager and polkit, whose ports delete the activation file their builds install; see
+[How polkit and ModemManager are started](../../kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
 
-This file, also from `fs/`, lets the system bus start NetworkManager on the first call to its
-name. `kdos-netagent` makes that call in every desktop session, so the file decides whether a
-disabled NetworkManager stays off; see
-[Turning NetworkManager off](#turning-networkmanager-off) below.
+The services NetworkManager itself starts on the bus, its dispatcher
+(`org.freedesktop.nm_dispatcher`) and its privileged helper (`org.freedesktop.nm_priv_helper`),
+keep their activation files: nothing supervises them, and the bus is what starts them.
 
 ### The menu entry
 
@@ -250,20 +251,11 @@ are built and have not been connected on hardware.
 
 On a machine that should use plain DHCP, such as a server:
 
-1. Stop the bus from starting NetworkManager. The marker the next step writes covers only the
-   boot-time start; the [activation file](#d-bus-activation) lets `kdos-netagent` start
-   NetworkManager again within moments of it stopping, and at every desktop login, beside
-   `dhcpcd`. Move the file out of the bus's directory first, keeping it so that it can be put back:
-
-   ```bash
-   sudo mv /usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service /root/
-   ```
-
-   Removing the `networkmanager` package has the same effect. The configuration reference's entry
-   for [the service.disabled markers](../../kdos/06-reference/configuration.md#etcservicedisabledname)
-   describes both.
-
-2. Disable the service, so it does not start at the next boot, and stop it:
+1. Disable the service, so it does not start at the next boot, and stop it. The marker is the
+   whole of it: nothing but `42_networkmanager.sh` starts NetworkManager (see
+   [D-Bus activation](#d-bus-activation)), and the configuration reference's entry for
+   [the service.disabled markers](../../kdos/06-reference/configuration.md#etcservicedisabledname)
+   says what else the marker changes.
 
    ```bash
    sudo service disable networkmanager
@@ -272,18 +264,17 @@ On a machine that should use plain DHCP, such as a server:
 
    `pgrep -a NetworkManager` then prints nothing.
 
-3. Start `dhcpcd`, which `30_network` starts once the marker exists:
+2. Start `dhcpcd`, which `30_network` starts once the marker exists:
 
    ```bash
    sudo service start network
    ```
 
-4. Reboot. A stopped NetworkManager leaves its address, its default route, its `dnsmasq` and its
+3. Reboot. A stopped NetworkManager leaves its address, its default route, its `dnsmasq` and its
    `resolvconf` entry in place, so until the next boot `ip route` shows two `default` routes, one
    NetworkManager's at metric 100 and one `dhcpcd`'s.
 
-To bring NetworkManager back, move the activation file back, run
-`sudo service enable networkmanager`, and reboot.
+To bring NetworkManager back, run `sudo service enable networkmanager` and reboot.
 
 ### On the live medium and on an installed system
 
@@ -317,7 +308,7 @@ installing is joined on the installed system too.
 **`kdos-net` says "NetworkManager is not answering".**
 Check `service status networkmanager`, then read `/run/kdos-init.networkmanager.log`, the
 supervisor's `/run/kdos-svc.NetworkManager.log`, and the lines NetworkManager wrote to the system
-log with `sudo grep -a NetworkManager /var/log/messages`.
+log with `sudo grep NetworkManager /var/log/messages`.
 Start it with `sudo service start networkmanager`, the command the message names.
 
 **A network you joined does not come back after a reboot.**
@@ -328,13 +319,12 @@ On the live medium with no persistence store, that is expected; see
 `sudo nmcli connection modify "<profile>" connection.permissions ""`.
 
 **The machine holds two leases, or `ip route` shows two `default` routes.**
-NetworkManager and `dhcpcd` are both running, or ran since the last boot. `pgrep -a dhcpcd` and
-`service status network` show `dhcpcd`, and `pgrep -a NetworkManager` shows a NetworkManager the
-bus started (no `--no-daemon`) on a machine where it was disabled; `service status networkmanager`
-does not see that one, because it is not supervised. Finish
-[Turning NetworkManager off](#turning-networkmanager-off) in its order, or re-enable
-NetworkManager and run `sudo service stop network`, and reboot: neither program withdraws the
-route the other left.
+NetworkManager and `dhcpcd` both ran since the last boot: `dhcpcd` was started by hand while
+NetworkManager was enabled, or NetworkManager was stopped and `dhcpcd` started without the reboot
+that ends [Turning NetworkManager off](#turning-networkmanager-off). `pgrep -a dhcpcd` and
+`service status network` show `dhcpcd`, and `service status networkmanager` shows NetworkManager.
+Finish turning NetworkManager off in its order, or run `sudo service stop network`, and reboot:
+neither program withdraws the route the other left.
 
 **The Wi-Fi list is empty.**
 On a machine with no wireless device, `nmcli device wifi list` prints nothing, `nmcli general
@@ -361,8 +351,8 @@ sudo tail -f /var/log/messages
 ```
 
 `kdos doctor` checks the wireless regulatory database, and `dbus-daemon-launch-helper`, through
-which the system bus starts root services such as `wpa_supplicant` and, by its activation file,
-NetworkManager; see [kdos doctor](../../kdos/04-programs/kdos-command.md#kdos-doctor).
+which the system bus starts the root services NetworkManager asks for: `wpa_supplicant`, the
+dispatcher and the privileged helper; see [kdos doctor](../../kdos/04-programs/kdos-command.md#kdos-doctor).
 
 ## Known gaps
 

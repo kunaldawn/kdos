@@ -133,11 +133,11 @@ video-call program on a KDOS image (see Known gaps), and the `SCR` lamp has not 
    is closed properly.
 
 The recording is video only, H.264 when GStreamer's `x264enc` is installed, as it is on the image,
-and VP8 otherwise. On the live medium in a virtual machine, with the compositor on its software
-renderer, a recording stopped cleanly and left a 408-byte file with no video in it, both of a
-still screen and of a terminal window redrawing twenty times a second. The recorder's PipeWire
-node stayed `idle` and no `SCR` lamp showed while it ran: the stream was set up and no frame
-arrived.
+and VP8 otherwise. It works with the compositor on its software renderer: the frames are copied
+into shared memory, with no GPU involved. A recording keeps receiving frames only because of
+`xdg-desktop-portal-wlr`'s `stream-start-retry.patch`. `pipewiresrc` pauses and resumes the
+stream as it starts, while it still holds the stream's buffers, and without the patch the backend
+gives up on capturing at that moment: the file is a header with at most one frame in it.
 Whether frames arrive on a GPU renderer has not been tried
 ([Status](../../kdos/06-reference/status.md#libraries-tooling-and-documentation)).
 

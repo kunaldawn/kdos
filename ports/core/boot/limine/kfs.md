@@ -4,7 +4,8 @@ Limine is the [boot loader]{.idx}, and the only one KDOS has. One build serves b
 same menu and the same `limine.conf` start the system on a BIOS machine and on a UEFI one, so what
 a machine shows at power-on does not depend on how it started. The port installs Limine's boot
 files in `/usr/share/limine` and the `limine` host program, which writes the BIOS boot code into a
-disk's first sector (`limine bios-install`).
+disk's first sector and, on a GPT disk, Limine's stage into a BIOS boot partition (`limine
+bios-install <disk> [<partition number>]`; `kinstall` lays out partition 2 for it).
 
 Two programs read `/usr/share/limine`. `script/phases/70_image/110_iso.sh` copies the boot files
 onto the ISO and writes its menu, and `kinstall` copies them onto an installed disk's EFI system

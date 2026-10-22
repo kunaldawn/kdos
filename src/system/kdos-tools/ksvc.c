@@ -40,10 +40,20 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 
 #include "kdos-tools.h"
 
 #define RESPAWN_DELAY 5
+
+/* A run shorter than this that ends with a non-zero status is the next in a
+ * row of failures; a longer one starts the count again at one. */
+#define STABLE_SECS 60
+
+/* A run shorter than this that ends with status 0 is a failure as well: the
+ * daemon gave up at once (ModemManager exits 0 when its bus name is taken).
+ * A longer one is a clean exit and ends the row. */
+#define QUICK_SECS RESPAWN_DELAY
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
@@ -52,6 +62,58 @@ static char *pidfile(const char *name)
 	char leaf[128];
 	snprintf(leaf, sizeof(leaf), "%s.pid", name);
 	return kb_path_join(RUN_DIR, leaf);
+}
+
+/*
+ * THE PID FILE NAMES THE SUPERVISOR, AND THE SUPERVISOR OUTLIVES ITS DAEMON.
+ * A daemon that aborts on start is respawned every RESPAWN_DELAY seconds by a
+ * supervisor that never dies, so "the pid in the pid file is alive" is true of
+ * a service that has not run for longer than a second since boot. The state
+ * file is what the supervisor knows and the pid file cannot say:
+ *
+ *     up <daemon pid> <since> <failures> <last status>
+ *     wait 0 <since> <failures> <last status>
+ *
+ * `up` while the daemon runs, `wait` during the delay before the next start.
+ * <since> is CLOCK_BOOTTIME seconds, so a clock step at boot cannot age a run.
+ * <failures> counts the failing exits in a row: a non-zero status from a run
+ * shorter than STABLE_SECS, or status 0 from one shorter than QUICK_SECS. A
+ * longer run that exits 0 is no failure, because a supervised `snooze` exits 0
+ * after every job it runs (18_timers.sh) and waits at least until its next
+ * slot first. The file is replaced by rename, so a reader never sees half a
+ * line.
+ */
+static char *statefile(const char *name)
+{
+	char leaf[160];
+	snprintf(leaf, sizeof(leaf), "kdos-svc.%s.state", name);
+	return kb_path_join(RUN_DIR, leaf);
+}
+
+static long boot_secs(void)
+{
+	struct timespec ts;
+	if (clock_gettime(CLOCK_BOOTTIME, &ts) != 0)
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (long)ts.tv_sec;
+}
+
+static void write_state(const char *name, const char *phase, pid_t daemon,
+			int fails, int last)
+{
+	char buf[96];
+	snprintf(buf, sizeof(buf), "%s %d %ld %d %d\n", phase, (int)daemon,
+		 boot_secs(), fails, last);
+	char *p = statefile(name);
+	kb_write_file_atomic(p, buf);
+	free(p);
+}
+
+static void drop_state(const char *name)
+{
+	char *p = statefile(name);
+	unlink(p);
+	free(p);
 }
 
 static pid_t read_pid(const char *name)
@@ -151,8 +213,11 @@ static int run_script(const char *script, const char *action)
 /*
  * A supervised daemon's stdout and stderr, and the supervisor's own Starting
  * and Exited lines, go to syslog under the service's name — the daemon
- * facility, one message per line — and to /run/kdos-svc.<name>.log, which
- * holds at most LOG_CAP bytes and one previous generation beside it.
+ * facility unless `--facility` names another, one message per line, at info —
+ * and to /run/kdos-svc.<name>.log, which holds at most LOG_CAP bytes and one
+ * previous generation beside it. syslog.conf routes by facility, so a daemon
+ * whose own syslog() calls use authpriv needs its forwarded lines under
+ * authpriv too, or they land in /var/log/messages instead of auth.log.
  *
  * Never the descriptors the supervisor was started with. Under rcS those are
  * the boot step's capture file on the /run tmpfs, open for as long as the
@@ -165,13 +230,33 @@ static int run_script(const char *script, const char *action)
  */
 #define LOG_CAP (64 * 1024)
 
-static void forward_lines(const char *name, int fd)
+static const struct {
+	const char *name;
+	int facility;
+} facilities[] = {
+	{ "auth", LOG_AUTH },	  { "authpriv", LOG_AUTHPRIV },
+	{ "daemon", LOG_DAEMON }, { "user", LOG_USER },
+	{ "local0", LOG_LOCAL0 }, { "local1", LOG_LOCAL1 },
+	{ "local2", LOG_LOCAL2 }, { "local3", LOG_LOCAL3 },
+	{ "local4", LOG_LOCAL4 }, { "local5", LOG_LOCAL5 },
+	{ "local6", LOG_LOCAL6 }, { "local7", LOG_LOCAL7 },
+};
+
+static int facility_by_name(const char *name)
+{
+	for (size_t i = 0; i < sizeof(facilities) / sizeof(facilities[0]); i++)
+		if (!strcmp(facilities[i].name, name))
+			return facilities[i].facility;
+	return -1;
+}
+
+static void forward_lines(const char *name, int facility, int fd)
 {
 	char path[160], old[168];
 	snprintf(path, sizeof(path), RUN_DIR "/kdos-svc.%s.log", name);
 	snprintf(old, sizeof(old), "%s.old", path);
 
-	openlog(name, LOG_NDELAY, LOG_DAEMON);
+	openlog(name, LOG_NDELAY, facility);
 	int out = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0640);
 	off_t size = out >= 0 ? lseek(out, 0, SEEK_END) : 0;
 
@@ -219,7 +304,7 @@ static void forward_lines(const char *name, int fd)
  * place: output going to the old place is better than a daemon that cannot
  * start.
  */
-static void route_output(const char *name)
+static void route_output(const char *name, int facility)
 {
 	int p[2];
 	if (pipe(p) < 0)
@@ -240,7 +325,7 @@ static void route_output(const char *name)
 		}
 		signal(SIGTERM, SIG_IGN);
 		signal(SIGHUP, SIG_IGN);
-		forward_lines(name, p[0]);
+		forward_lines(name, facility, p[0]);
 	}
 	close(p[0]);
 	if (null >= 0) {
@@ -265,30 +350,49 @@ static void route_output(const char *name)
  * the machine is up. On that code the supervisor says so once, removes its pid
  * file and exits; every other status, and every death by signal, is still
  * respawned.
+ *
+ * `--facility NAME` is the syslog facility the forwarded output is sent
+ * under (see forward_lines); daemon when it is not given.
  */
 static int cmd_supervise(int argc, char **argv)
 {
 	int final[MAX_FINAL];
 	int nfinal = 0;
+	int facility = LOG_DAEMON;
 
-	while (argc >= 2 && !strcmp(argv[0], "--final-exit")) {
-		char *end;
-		long c = strtol(argv[1], &end, 10);
-		if (*argv[1] == 0 || *end || c < 0 || c > 255)
-			kb_die("--final-exit wants an exit status, got '%s'",
-			       argv[1]);
-		if (nfinal == MAX_FINAL)
-			kb_die("at most %d --final-exit codes", MAX_FINAL);
-		final[nfinal++] = (int)c;
+	while (argc >= 2) {
+		if (!strcmp(argv[0], "--final-exit")) {
+			char *end;
+			long c = strtol(argv[1], &end, 10);
+			if (*argv[1] == 0 || *end || c < 0 || c > 255)
+				kb_die("--final-exit wants an exit status, "
+				       "got '%s'", argv[1]);
+			if (nfinal == MAX_FINAL)
+				kb_die("at most %d --final-exit codes",
+				       MAX_FINAL);
+			final[nfinal++] = (int)c;
+		} else if (!strcmp(argv[0], "--facility")) {
+			facility = facility_by_name(argv[1]);
+			if (facility < 0)
+				kb_die("--facility wants a syslog facility "
+				       "(auth, authpriv, daemon, user, "
+				       "local0..local7), got '%s'", argv[1]);
+		} else {
+			break;
+		}
 		argc -= 2;
 		argv += 2;
 	}
 	if (argc < 2)
-		kb_die("usage: ksvc supervise [--final-exit CODE]... <name> "
-		       "<command> [args...]");
+		kb_die("usage: ksvc supervise [--final-exit CODE]... "
+		       "[--facility NAME] <name> <command> [args...]");
 	const char *name = argv[0];
 	if (!name_ok(name))
 		kb_die("bad service name '%s'", name);
+
+	/* A state file left by an earlier supervisor of this name would be
+	 * read as this one's until its first start writes a new one. */
+	drop_state(name);
 
 	/* The child blocks on this pipe until the pid file exists, so a
 	 * supervisor that stops at once removes the file its parent wrote
@@ -315,21 +419,27 @@ static int cmd_supervise(int argc, char **argv)
 			;
 		close(gate[0]);
 
-		route_output(name);
+		route_output(name, facility);
 
+		int fails = 0, last = 0;
 		for (;;) {
 			printf("[KDOS] (%s) Starting: %s\n", name, argv[1]);
 			fflush(stdout);
 
+			long t0 = boot_secs();
 			pid_t d = fork();
 			if (d == 0) {
 				execvp(argv[1], argv + 1);
 				_exit(127);
 			}
 			int st = 0;
-			if (d > 0)
+			if (d > 0) {
+				write_state(name, "up", d, fails, last);
 				while (waitpid(d, &st, 0) < 0 && errno == EINTR)
 					;
+			} else {
+				st = 127 << 8;
+			}
 			int rc = WIFEXITED(st) ? WEXITSTATUS(st)
 					       : 128 + WTERMSIG(st);
 			for (int i = 0; WIFEXITED(st) && i < nfinal; i++) {
@@ -342,8 +452,16 @@ static int cmd_supervise(int argc, char **argv)
 				char *pf = pidfile(name);
 				unlink(pf);
 				free(pf);
+				drop_state(name);
 				_exit(0);
 			}
+			long ran = boot_secs() - t0;
+			if (rc == 0)
+				fails = ran < QUICK_SECS ? fails + 1 : 0;
+			else
+				fails = ran < STABLE_SECS ? fails + 1 : 1;
+			last = rc;
+			write_state(name, "wait", 0, fails, last);
 			printf("[KDOS] (%s) Exited with code %d. Restarting in "
 			       "%ds...\n", name, rc, RESPAWN_DELAY);
 			fflush(stdout);
@@ -381,6 +499,7 @@ static int cmd_stop_supervised(const char *name)
 		       "file\n", name, (int)pid);
 		unlink(p);
 		free(p);
+		drop_state(name);
 		return 1;
 	}
 
@@ -395,19 +514,56 @@ static int cmd_stop_supervised(const char *name)
 	}
 	unlink(p);
 	free(p);
+	drop_state(name);
 	printf("[KDOS] (%s) Stopped\n", name);
 	return 0;
 }
 
+/*
+ * `[ OK ]` only while the daemon itself is running and not crash-looping.
+ * A live supervisor whose daemon has just exited non-zero, or whose daemon
+ * failed its last two starts in a row and is waiting for the next or has not
+ * yet run STABLE_SECS this time, is `[FAIL]` with the exit status: from the
+ * pid file alone each reads as a running service (see statefile). A
+ * supervisor with no state file — one started by a ksvc that wrote none — is
+ * judged by the pid file alone.
+ */
 static int cmd_check(const char *name)
 {
 	pid_t pid = name_ok(name) ? read_pid(name) : 0;
-	if (alive(pid)) {
-		printf("[ OK ] %s  (pid %d)\n", name, (int)pid);
-		return 0;
+	if (!alive(pid)) {
+		printf("[DOWN] %s\n", name);
+		return 1;
 	}
-	printf("[DOWN] %s\n", name);
-	return 1;
+
+	char line[96], phase[8];
+	int dpid = 0, fails = 0, last = 0;
+	long since = 0;
+	char *sp = statefile(name);
+	int have = kb_read_line_file(sp, line, sizeof(line)) > 0 &&
+		   sscanf(line, "%7s %d %ld %d %d", phase, &dpid, &since,
+			  &fails, &last) == 5;
+	free(sp);
+
+	if (have && !strcmp(phase, "wait") && (last != 0 || fails > 1)) {
+		if (fails > 1)
+			printf("[FAIL] %s  (exited with code %d, %d failed "
+			       "starts in a row; restarting)\n",
+			       name, last, fails);
+		else
+			printf("[FAIL] %s  (exited with code %d; restarting)\n",
+			       name, last);
+		return 1;
+	}
+	if (have && !strcmp(phase, "up") && fails > 1 &&
+	    boot_secs() - since < STABLE_SECS) {
+		printf("[FAIL] %s  (crash loop: %d failed starts in a row, "
+		       "last exit code %d; pid %d)\n",
+		       name, fails, last, (int)pid);
+		return 1;
+	}
+	printf("[ OK ] %s  (pid %d)\n", name, (int)pid);
+	return 0;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

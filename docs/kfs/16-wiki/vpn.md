@@ -29,7 +29,7 @@ bringing one up without being asked.
 
 ### The OpenVPN plugin
 
-<!-- kfs:include ports/core/network/networkmanager-openvpn/postinstall.sh lines=21-33 pin=1e036feb972f -->
+<!-- kfs:include ports/core/network/networkmanager-openvpn/postinstall.sh lines=22-34 pin=1e036feb972f -->
 
 The package's `postinstall.sh` creates the `nm-openvpn` account and its chroot directory.
 NetworkManager's OpenVPN service runs `openvpn` as that account, inside that directory when it
@@ -207,7 +207,7 @@ sudo useradd -r -g nm-openvpn -d /var/lib/openvpn/chroot -s /sbin/nologin nm-ope
 ```
 
 `openvpn` itself logs to the system log under the name `nm-openvpn`:
-`sudo grep -a nm-openvpn /var/log/messages`.
+`sudo grep nm-openvpn /var/log/messages`.
 
 **A VPN profile fails without asking for a password.**
 The question went to a secret agent and none answered. In a session, `pgrep -a kdos-netagent`

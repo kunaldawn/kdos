@@ -41,7 +41,11 @@ typedef struct {
 	char fstype[16];
 	char label[40];
 	char uuid[40];
+	int num;		/* the kernel's partition number, 1-based  */
 	int is_esp;
+	/* GPT type 21686148-6449-6E6F-744E-656564454649: the raw space
+	 * Limine's BIOS stage is written into on a GPT disk. */
+	int is_bios_boot;
 	int mounted;
 	char mountpoint[64];
 	/* Another block device sits on this one — an open LUKS container, an
@@ -123,6 +127,10 @@ extern Lv ki_lv[MAX_LVS];
 extern int ki_nlv;
 
 void probe_system(void);
+/* The size of the tree an install copies, into ki_sys.payload_kb and
+ * appbox_kb: a walk of the whole root filesystem, the one slow probe, and so
+ * called on its own. */
+void probe_payload(void);
 /* Also activates every volume group, once per process and only as root, then
  * lists the logical volumes into ki_lv. */
 void probe_disks(void);
@@ -316,11 +324,47 @@ const Filesystem *ki_fs(const char *name);
 #define KI_LV_A "root_a"
 #define KI_LV_B "root_b"
 
+/*
+ * THE ERASE PLAN'S LAYOUT, by partition number, so do_partition, the
+ * Layout page, the Summary and `--dump plan` name the same partitions: the
+ * ESP first, then a 1 MiB BIOS boot partition, then swap when it is a
+ * partition, then the root. The ESP stays partition 1 and the root stays
+ * the last, which is what a person reading `lsblk` expects of a disk.
+ *
+ * The BIOS boot partition is what lets one disk start on both firmwares.
+ * On a GPT disk Limine's BIOS stage cannot live in the gap after the boot
+ * sector, because the GPT itself is there; `limine bios-install` writes it
+ * into this partition, raw, and refuses a GPT disk that has none. It needs
+ * 32 KiB; 1 MiB keeps every later partition on a 1 MiB boundary.
+ */
+#define KI_ESP_MB 512
+#define KI_BIOS_BOOT_MB 1
+#define KI_PART_ESP 1
+#define KI_PART_BIOS_BOOT 2
+#define KI_GUID_BIOS_BOOT "21686148-6449-6E6F-744E-656564454649"
+/* Partition n of a disk's node: sda -> sda1, nvme0n1 -> nvme0n1p1. One rule
+ * for the partitioner and every page that previews it, so the two cannot
+ * disagree. */
+void ki_part_name(const char *disk, int n, char *out, size_t cap);
+int ki_wipe_part_swap(void);	/* 3, or 0 when swap is not a partition */
+int ki_wipe_part_root(void);	/* the last partition: 4 or 3          */
+
+/*
+ * WHERE LIMINE'S BIOS STAGE GOES on the plan's disk: the number of its BIOS
+ * boot partition (the erase plan's own, or one a reused disk already has),
+ * 0 for the gap after a dos partition table's boot sector, or -1 for a GPT
+ * disk with no BIOS boot partition — a disk that starts on UEFI only.
+ */
+int ki_bios_boot_part(void);
+
 /* Bytes this install copies onto the root, as the Disk page states it. */
 unsigned long long ki_need_bytes(void);
 /* The erase plan's root partition, in bytes, for the disk and swap chosen. */
 unsigned long long ki_wipe_root_bytes(void);
 int ki_lvm_half(void);
+/* That decision as lvcreate's `-l` argument, for the Format step and the
+ * dump alike: "50%VG" or "100%FREE". */
+const char *ki_lvm_extent(void);
 
 void conf_defaults(void);
 int conf_load(const char *path);
@@ -357,6 +401,11 @@ typedef struct {
 	int failed;
 	int done;
 	char failmsg[256];
+	/* Every warning the child sent: something the installed system will
+	 * lack while the install carries on. The Install and Done pages list
+	 * them, and each is in the log with a `warning:` prefix. */
+	char warn[8][LOG_COLS];
+	int nwarn;
 	pid_t pid;
 	int fd;
 	double t0;

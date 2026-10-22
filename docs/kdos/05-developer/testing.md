@@ -183,7 +183,8 @@ blocks fall into these groups, in roughly this order:
    directory (kpkg's step first, a finished script keeping its result, a package phase's rows
    dropped and resolved again, nothing pointing at a freed row), its jobserver FIFO keeping
    its token count across a level, and `timings.json` merged on every
-   record (a silent step, a skipped port and a retried phase keeping their earlier figures, a
+   record (each figure filed under the machine of the run that measured it, a second machine
+   under a second id, a machine no figure names dropped, a silent step, a skipped port and a retried phase keeping their earlier figures, a
    port's own build line told from another port's); `kdosbuild` running a synthetic
    two-phase build end to end, writing no snapshot unless `--snapshot` asks, timing every phase
    in its result, and keeping in `timings.json` the steps a narrower run did not measure;
@@ -807,7 +808,7 @@ or a variable moves one directory walk. There are 50 fixture directories under
 | `res/*/sys/class/net/*/device` | A `uevent` file inside the directory | Whether an interface is real. The test is the directory's presence, and git stores no empty directory, so the file keeps the directory in every clone |
 | `stutter` | Two snapshots half a second apart, plus the frame events between them | That the application is named with its box, the blocked process comes first, pressure is quoted, and exactly one event is blamed on the compositor |
 | `energy` | Four recorded power and process trees | The nesting rule, the counter wrap, the roll-up onto one application, and the short-lived residue |
-| `oomd` | Three trees arranged so only the memory budget produces the right answer | That the budget check matters: the host process is larger than anything in either box |
+| `oomd` | Three trees arranged so only the memory budget produces the right answer; the self-test replays one with a `meminfo` written beside it | That the budget check matters: the host process is larger than anything in either box. And that a stall with 80% of memory available kills nothing while the same tree at 7.5% does |
 | `mountd` | A block-device tree plus two hand-built superblocks | The acceptance and both refusals. The internal disk carries a real superblock, so a broken check shows up as an extra row rather than as nothing |
 | `privacy` | Three processes: one holding a camera twice, one an audio device that must be ignored | The camera indicator, on a machine with no camera |
 | `portup` | Recorded upstream responses (a registry index, git tag lists and branch heads, feeds, a releases API answer, directory listings) and, under `ports/`, the recipes seven ports were recorded at | Every discovery adapter and filter in `kdos-portup --selftest`, and all three outcomes end to end, offline and unaffected by bumps to the live recipes |
@@ -1154,9 +1155,9 @@ itself, as the login shell's profile would have.
 | `--wait <s>` | Seconds to let the session settle after boot (default 25) |
 | `--soak <s>` | Let the session run after every step and before the final shot (default 0) |
 | `--cmd <cmd>` | Run a command in the desktop session |
-| `--root-cmd <cmd>` | Run a command as root on the serial console and print its output |
+| `--root-cmd <cmd>` | Run a command as root on the serial console, wait for it to finish and print its output |
 | `--root-script <file>` | Send a local script into the guest and run it as root |
-| `--script-timeout <s>` | How long a `--root-script` may take (default 900) |
+| `--script-timeout <s>` | How long a `--root-script` or a `--root-cmd` may take (default 900) |
 | `--console-cmd <text>` | Type this on `tty1` during start-up, before any step. `tty1` is the desktop, so it reaches the icon layer's type-ahead, not a shell; to run a command in a terminal window use `--keys meta_l-ret` then `--type` |
 | `--size WxH` | The guest's screen (default `1280x800`, virtio-gpu's own default) |
 | `--gl` | `virtio-vga-gl` on a headless EGL display, so the compositor gets GLES2 and the phosphor pass runs. Needs `/dev/dri`. No Vulkan |
@@ -1292,8 +1293,9 @@ The following behaviours of the rig and the guest cause false results.
 - The harness stops the emulator without a shutdown, so a root script must `sync` after writing,
   or a file it wrote comes back zero-length, whether it is read out of the guest or found on the
   next boot.
-- A pipeline that reads a supervised service's output never returns, because the supervisor keeps
-  the pipe open.
+- A supervised daemon's output is not on the pipe that started it. `service start x | cat` returns
+  as soon as the script does, with the script's own lines only; the daemon's are in
+  `/run/kdos-svc.<name>.log` and syslog.
 - A static screen produces no frame events, so anything about dropped frames needs something
   animating first.
 - A step costs seconds, so anything with a timeout must be photographed with no sleep before it.
@@ -1302,7 +1304,7 @@ The following behaviours of the rig and the guest cause false results.
   the shot photographs the desktop after the thing has gone, and the picture looks exactly like the
   feature being broken.
 - A `--root-cmd` or `--root-script` round trip outlasts a five-second toast. It runs over the
-  serial console and waits for a prompt, which takes longer than the notification it raised stays
+  serial console and waits for the command to finish, which takes longer than the notification it raised stays
   on screen. Raise a toast with `--type`, which goes over the keyboard and is quick, or ask for a
   timeout longer than the rest of the run.
 
@@ -1574,7 +1576,7 @@ Run them against a medium or a store you have put those packs into.
 | Harness | Runs | Does |
 |---|---|---|
 | `packlane.sh` | In the guest, desktop up | The pack lane end to end: the daemon, the keyring, an install from the medium or the store, the launchers, a box on a pack base, the telemetry and a timed launch, reporting pass, fail or skip with a reason and carrying on past a failure. It exercises no rollback, and its checks for a base and `rt-gtk` in the store fail until packs have been imported |
-| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The second half boots the disk with `--no-cdrom` |
+| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The second half boots the disk with `--no-cdrom` |
 | `bios-boot.sh` | On the host | Boots the ISO as a USB stick on an xHCI controller under SeaBIOS, with no OVMF anywhere. `vnc-shot.py` always boots UEFI, so it cannot answer this. The proof is the serial log reaching `switch_root`, not the exit status |
 | `appsweep.sh` | In the guest, `--boot-disk` | For each catalogue application: install it off the medium, launch it through its shim, wait for the compositor to report a window, photograph it, and remove the box. Usage `appsweep.sh <outdev> <runtime\|all> [max]` |
 | `appreport.sh` | On the host, needs ImageMagick | Reads what the sweep wrote to the scratch disk and renders it as a table and a contact sheet, flagging windows that mapped but painted nothing. Usage `appreport.sh <scratch.img> [outdir]` |

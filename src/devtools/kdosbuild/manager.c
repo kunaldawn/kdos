@@ -248,6 +248,12 @@ void mgr_init(Manager *m, const char *script_dir, const char *build_dir)
 			if (CPU_ISSET(c, &set))
 				m->cpu[m->ncpu++] = c;
 
+	/* Every figure this run records is filed under the machine it ran
+	 * on (timings.c). */
+	TmMachine here;
+	tm_machine_probe(&here);
+	tm_use_machine(&here);
+
 	char *abs = realpath(script_dir, NULL);
 	kb_strlcpy(m->script_dir, abs ? abs : script_dir, sizeof(m->script_dir));
 	free(abs);

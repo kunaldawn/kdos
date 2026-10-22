@@ -17,7 +17,8 @@
  *
  * So this blocks on a PSI trigger — write the threshold into the pressure
  * file, poll(2) for POLLPRI; the kernel's own trigger API, no sampling loop —
- * and when it fires, kills the largest-RSS process that is neither the desktop
+ * and when it fires on a machine whose MemAvailable is also low (memory_short)
+ * kills the largest-RSS process that is neither the desktop
  * nor the plumbing, SIGKILL then process_mrelease(2) so the pages come back
  * NOW rather than whenever the zombie is reaped. Boxed processes are preferred
  * as victims: an alien app is the likely culprit, is supervised by podman, and
@@ -64,6 +65,9 @@
  * for 15% of the last second. A desktop is already visibly hitching there. */
 #define KO_TRIGGER  "full 150000 1000000"
 #define KO_COOLDOWN 10.0	/* seconds between victim scans, at least */
+/* A kill also needs memory to be SHORT: MemAvailable at or under this share
+ * of MemTotal. See memory_short(). */
+#define KO_AVAIL_PCT 10
 
 #ifndef SYS_pidfd_open
 #define SYS_pidfd_open 434
@@ -127,6 +131,38 @@ static void read_pressure(double *some, double *full)
 	free(data);
 }
 
+/*
+ * THE STALL ALONE IS NOT ENOUGH. `full` means every task that wanted to run
+ * was waiting on memory, and a machine with one busy task — a copy streaming
+ * gigabytes through the page cache, reclaiming cache for its own next read —
+ * reaches it with most of its memory still available and nothing else asking
+ * for any. Killing there ends the copy and frees nothing anyone was short of.
+ * So a trigger kills only when MemAvailable, the kernel's own estimate of
+ * what it could hand out without swapping, is at or under KO_AVAIL_PCT of
+ * MemTotal; a working set being pushed out by a hog is that and a cache being
+ * recycled is not. A meminfo that cannot be read or parsed leaves the stall
+ * as the only test, so a recorded tree without one replays as before.
+ */
+static int memory_short(long long *avail_kb, long long *total_kb)
+{
+	*avail_kb = *total_kb = -1;
+	char *data = slurp("%s/meminfo", g_proc);
+	if (!data)
+		return 1;
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		next = nl ? nl + 1 : NULL;
+		if (!strncmp(line, "MemTotal:", 9))
+			*total_kb = atoll(line + 9);
+		else if (!strncmp(line, "MemAvailable:", 13))
+			*avail_kb = atoll(line + 13);
+	}
+	free(data);
+	if (*avail_kb < 0 || *total_kb <= 0)
+		return 1;
+	return *avail_kb * 100 <= *total_kb * KO_AVAIL_PCT;
+}
+
 typedef struct {
 	int pid;
 	int ppid;
@@ -188,7 +224,8 @@ static int box_of(int pid, char *out, size_t cap)
 
 /*
  * The protected set. pid 1, kernel threads (empty cmdline), anything that
- * opted out through oom_score_adj, this daemon itself, and the desktop's own
+ * opted out through oom_score_adj (the contract below), this daemon itself,
+ * and the desktop's own
  * chrome plus the session's plumbing by comm — killing kdos-comp to save the
  * desktop is not a trade, and a dead pipewire takes every app's audio with it.
  * The three chrome names are argv[0]s of one binary, which is what comm
@@ -236,9 +273,16 @@ static int is_protected(const KoProc *p)
 	if (kthread)
 		return 1;
 
-	/* <= -500: the convention oomd and earlyoom honour. -1000 is
-	 * OOM_SCORE_ADJ_MIN, "never kill"; halfway is "someone deliberately
-	 * shielded this" and that decision is respected here too. */
+	/*
+	 * THE PROTECTION CONTRACT: oom_score_adj <= -500 is never a victim.
+	 * -1000 is OOM_SCORE_ADJ_MIN, "never kill"; halfway is "someone
+	 * deliberately shielded this", the convention earlyoom honours too.
+	 * Lowering the value needs root (CAP_SYS_RESOURCE) and a child
+	 * inherits it, which is how a root program shields work it must
+	 * finish: it lowers its own value, and every process it starts after
+	 * that is spared. A program is protected this way and not by name;
+	 * the name list above is the desktop, which never asks.
+	 */
 	char *adj = slurp("%s/%d/oom_score_adj", g_proc, p->pid);
 	if (adj) {
 		int v = atoi(adj);
@@ -482,7 +526,8 @@ static int pick_victim(KoVictim *v)
  * and "the pressure ends when the thrashing machine gets round to it". A
  * kernel without it (pre-5.15) just skips the release; the SIGKILL stands.
  */
-static void kill_victim(const KoVictim *v, double some, double full)
+static void kill_victim(const KoVictim *v, double some, double full,
+			long long avail_kb, long long total_kb)
 {
 	int pidfd = (int)syscall(SYS_pidfd_open, v->p.pid, 0);
 	if (kill(v->p.pid, SIGKILL) != 0) {
@@ -505,7 +550,8 @@ static void kill_victim(const KoVictim *v, double some, double full)
 	/* The one line that attributes a vanished app. stderr is the
 	 * supervisor's log; the PSI numbers are the why. */
 	fprintf(stderr, "kdos-oomd: killed %s — memory pressure avg10 "
-			"full=%.2f some=%.2f\n", g_last, full, some);
+			"full=%.2f some=%.2f, %lld of %lld MB available\n",
+		g_last, full, some, avail_kb / 1024, total_kb / 1024);
 }
 
 /* ── the daemon ────────────────────────────────────────────────────────── */
@@ -662,6 +708,7 @@ static int serve(void)
 			double now = kb_now_s();
 			if (now - last_kill >= KO_COOLDOWN) {
 				double some, full;
+				long long avail, total;
 				KoVictim v = {0};
 				/* Armed on the TRIGGER, not on the kill: the
 				 * cooldown is how often this daemon may walk
@@ -672,12 +719,19 @@ static int serve(void)
 				 * memory. */
 				last_kill = now;
 				read_pressure(&some, &full);
-				if (pick_victim(&v))
-					kill_victim(&v, some, full);
+				if (memory_short(&avail, &total) &&
+				    pick_victim(&v))
+					kill_victim(&v, some, full, avail,
+						    total);
 			}
 		}
 		if (fds[1].revents & POLLIN) {
-			int c = accept(srv, NULL, NULL);
+			/* CLOEXEC, the rule every root daemon here keeps: a
+			 * connection must never reach a program the daemon or
+			 * a library it calls execs, or that program holds it
+			 * open and the client never reads the end of its
+			 * reply. */
+			int c = accept4(srv, NULL, NULL, SOCK_CLOEXEC);
 			if (c >= 0)
 				answer(c);
 		}
@@ -697,7 +751,9 @@ static int serve(void)
 /*
  * One selection pass against a recorded tree, printing the choice and
  * signalling nobody. Exit 0 with a candidate, 1 without — which is what makes
- * the selection assertable from a test with no memory pressure to hand.
+ * the selection assertable from a test with no memory pressure to hand. A
+ * tree whose meminfo says memory is not short gets `no kill` and 1, the
+ * answer the daemon gives a trigger there.
  */
 static int fixture(const char *dir)
 {
@@ -709,8 +765,13 @@ static int fixture(const char *dir)
 	g_proc = dir;
 	kpr_root_set(dir, NULL);
 	double some, full;
+	long long avail, total;
 	KoVictim v = {0};
 	read_pressure(&some, &full);
+	if (!memory_short(&avail, &total)) {
+		printf("no kill: %lld of %lld kB available\n", avail, total);
+		return 1;
+	}
 	if (!pick_victim(&v)) {
 		printf("no candidate\n");
 		return 1;

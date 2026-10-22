@@ -281,10 +281,10 @@ echo 'rollback app.hugin' | socat - UNIX-CONNECT:/run/kdos-packd.sock
 echo 'remove app.hugin' | socat - UNIX-CONNECT:/run/kdos-packd.sock
 ```
 
-A rollback answers `ok <id> <old> -> <new>` and a removal `ok <id> removed`. While a superseded
-version is kept, the daemon's row for the id is that kept file rather than the installed one (see
-[Known gaps](#known-gaps)): `list` and `info` report the older version, `mount` mounts it, and
-`remove` deletes it and leaves the installed file. See
+A rollback answers `ok <id> <old> -> <new>` and a removal `ok <id> removed`. The daemon's row for
+an id is the installed `<id>.kpack`: `list`, `info`, `mount` and `remove` act on it, and a kept
+`<id>-<version>.kpack` is reached only by `rollback`, which takes the newest kept version by version
+comparison. See
 [Installing a pack](../../kdos/03-architecture/packs-and-boxes.md#installing-a-pack).
 
 ### On the live medium and on an installed system
@@ -348,10 +348,6 @@ A frozen box imports and its box is not created
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)
 - The catalogue's grafts are carried out by nothing in the tree, so a data pack does not reach the
   application that needs it; see [Grafts and data packs](../../kdos/03-architecture/packs-and-boxes.md#grafts-and-data-packs).
-- With a superseded version kept in the store, the daemon takes `<id>-<version>.kpack` for the
-  id's row instead of `<id>.kpack`: its store scan keeps the first file of an id in name order,
-  and `-` sorts before `.`. With the default `retain = 1`, every pack installed over an older one
-  is then listed, mounted and removed as the older version.
 - No harness exercises the daemon's `rollback`, which has been run by hand on the live medium
   only; see the kdos-packd row of
   [Applications and boxes](../../kdos/06-reference/status.md#applications-and-boxes) in the status page.

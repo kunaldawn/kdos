@@ -110,7 +110,7 @@ while kill -0 "$kpid" 2>/dev/null; do
 	# thirty seconds and never move again — so a run that was copying
 	# steadily and a run that was wedged printed the same line, which is
 	# the failure the heartbeat exists to prevent. kinstall mounts at
-	# /mnt; `df` on it is the one number that tracks the work.
+	# /mnt/kinstall; `df` on it is the one number that tracks the work.
 	# AND THE INSTALLER'S OWN LAST LINE. `df` says whether anything is being
 	# written; it cannot say which STEP is running, and a plateau is
 	# ambiguous between "finished this step" and "stopped". kinstall writes
@@ -118,7 +118,7 @@ while kill -0 "$kpid" 2>/dev/null; do
 	# that file dies with the live session's tmpfs — so it is read here,
 	# while it exists, and copied out at the end.
 	printf '  %4ds  %s | %s\n' "$beat" \
-	       "$(df -h /mnt 2>/dev/null | awk 'NR==2 {printf "used %s of %s (%s)", $3, $2, $5}')" \
+	       "$(df -h /mnt/kinstall 2>/dev/null | awk 'NR==2 {printf "used %s of %s (%s)", $3, $2, $5}')" \
 	       "$(tail -n 1 /var/log/kinstall.log 2>/dev/null | cut -c1-90)"
 	[ "$beat" -gt "$CAP" ] && { echo "  giving up after ${CAP}s"; kill "$kpid"; break; }
 done

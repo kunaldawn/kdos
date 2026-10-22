@@ -27,3 +27,7 @@ its deadlines and its traps are in
 - **A recording of a still screen depends on a wlroots patch.** `wlroots`'
   `idle-capture-frame.patch` makes every capture request ask for a frame; without it a screen
   where nothing moves yields one frame and the file ends with no header.
+- **Any recording at all depends on an `xdg-desktop-portal-wlr` patch.** `pipewiresrc` pauses
+  and resumes the stream on its way to playing, while it still holds both buffers;
+  `stream-start-retry.patch` makes the backend retry the capture rather than stop, and without it
+  every recording is a header with at most one frame, on any renderer.

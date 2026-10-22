@@ -275,6 +275,20 @@ other group is a new right.
   [What is granted instead](../../kdos/03-architecture/security-model.md#what-is-granted-instead-50-kdosrules).
 - `50-kdos.rules` does not grant `org.freedesktop.policykit.exec`, the action `pkexec` asks for
   to run an arbitrary command. Use `sudo`.
+- polkitd logs no allow or deny decision. A rule of your own can record one with `polkit.log()`,
+  which writes a line to `/var/log/auth.log` tagged `polkitd`, once. Put the rule in a file of its
+  own sorting after `50-kdos.rules`, such as `/etc/polkit-1/rules.d/60-log.rules`; polkitd reads
+  it as soon as it is written:
+
+  ```javascript
+  polkit.addRule(function (action, subject) {
+      if (action.id.indexOf("org.freedesktop.NetworkManager.") == 0 && !subject.isInGroup("wheel"))
+          polkit.log("not granted: " + action.id + " for " + subject.user);
+  });
+  ```
+
+  The rule returns no result, so the decision is still the one the other rules and the action's
+  policy make; `sudo grep 'not granted' /var/log/auth.log` lists the lines.
 
 ## Troubleshooting
 
@@ -313,7 +327,8 @@ sudo service start polkitd
 **A program says it is not authorised, and the account is in `wheel`.** Run `pkcheck` for the
 action, as [above](#checking-what-polkit-grants). `1` or `2` means the action is not in
 `50-kdos.rules` and its own policy refuses it or asks for a password: do it with `sudo`, or add a
-rule. polkitd writes an error in a rules file to `/var/log/auth.log`, tagged `polkitd`:
+rule. polkitd writes an error in a rules file, and every `polkit.log()` line, to
+`/var/log/auth.log`, tagged `polkitd`:
 
 ```bash
 sudo grep polkitd /var/log/auth.log
@@ -322,6 +337,10 @@ sudo grep polkitd /var/log/auth.log
 ```text
 polkitd[880]: Error compiling script /etc/polkit-1/rules.d/61-bad.rules: SyntaxError: unterminated statement (line 1)
 ```
+
+Each start of polkitd also writes
+`polkitd: Error loading /var/run/ConsoleKit/database: ... No such file or directory`. That one is
+expected: there is no ConsoleKit here, which is why no subject is ever in an active session.
 
 ## Known gaps
 

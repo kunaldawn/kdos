@@ -54,7 +54,7 @@ A program that talks to a running BRLTTY goes through BrlAPI, which asks polkit.
 installs, `/usr/share/polkit-1/rules.d/org.a11y.brlapi.rules`, grants the action to the `brlapi`
 group. The port's install hook creates the group and adds the `kdos` account the first time:
 
-<!-- kfs:include ports/core/accessibility/brltty/postinstall.sh lines=21-26 pin=7426fd1e7455 -->
+<!-- kfs:include ports/core/accessibility/brltty/postinstall.sh lines=22-27 pin=7426fd1e7455 -->
 
 ### ~/.config/kdos/comp.conf
 
@@ -269,11 +269,15 @@ write the file, and run `sudo service start brltty`.
 **BRLTTY runs, and there is no speech.**
 The desktop holds the sound card. Speech at the console works while no graphical session's
 PipeWire has the card open, for instance before the desktop starts or after logging out of it.
-With the card held, BRLTTY's speech driver can abort the whole program: the log ends
-`Assertion failed: !snd_interval_empty(i) (pcm_params.c: snd1_pcm_hw_param_get_min: 175)` and
-`[KDOS] (brltty) Exited with code 134. Restarting in 5s...`, and the supervisor starts it again
-every five seconds while `service status brltty` still answers `[ OK ]`. Drop the
-`speech-driver` line for braille only, or stop the service with `sudo service stop brltty`.
+Drop the `speech-driver` line for braille only, or stop the service with
+`sudo service stop brltty`.
+
+**`service status brltty` answers `[FAIL] brltty  (exited with code 134; restarting)`.**
+BRLTTY aborts and the supervisor starts it again every five seconds. Read its last words with
+`sudo tail /run/kdos-svc.brltty.log`. `Assertion failed: !snd_interval_empty(i)` there means the
+voice's sound device is a `plug` stacked on another `plug`: check that `kdos_card` in
+`/etc/alsa/conf.d/99-kdos-pipewire.conf` is `type empty`, as shipped, and that
+`KDOS_ALSA_DEFAULT=kdos_card aplay /usr/share/sounds/alsa/Front_Center.wav` plays as root.
 
 **A BrlAPI client such as `brltty-clip` is refused.**
 The account is not in `brlapi`: check with `id`, then add it as above and log in again.

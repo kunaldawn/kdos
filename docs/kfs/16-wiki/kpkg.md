@@ -156,19 +156,17 @@ the SHA-256 and mode of every regular file it placed.
    exit status. Each line names the package first, and the last line counts them:
 
    ```text
-   freeipmi: missing ./var/cache/ipmimonitoringsdrcache/
    libvirt: config ./etc/libvirt/qemu/networks/default.xml
-   libvirt: missing ./var/log/libvirt/
    unowned ./usr/bin/kpkg
-   2104 packages checked: 10 missing, 0 changed, 0 mode, 57 config, 334 unowned
+   2104 packages checked: 0 missing, 0 changed, 0 mode, 57 config, 334 unowned
    ```
 
-   That is the freshly booted image, and it exits 1. Its ten `missing` lines are directories that
-   freeipmi, libvirt, minidlna and samba own under `/var/log` and `/var/cache`, which the image
-   carries empty ([110_iso](../15-image/110-iso.md)), so on the image those lines are not a
-   fault. Its `config` lines are libvirt's network and filter files under `/etc/libvirt` and the
-   cursor theme's files under `/etc/skel`, whose recorded hashes the image's files do not match;
-   the `unowned` ones include `kpkg` and `kinstall` themselves. The meaning of each line is in
+   That is the freshly booted image, and it exits 0. The image leaves out the build's logs and
+   caches but carries every directory a package claims under `/var/log` and `/var/cache`, empty
+   ([110_iso](../15-image/110-iso.md)), so none of them is `missing`. Its `config` lines are
+   libvirt's network and filter files under `/etc/libvirt` and the cursor theme's files under
+   `/etc/skel`, whose recorded hashes the image's files do not match; the `unowned` ones include
+   `kpkg` and `kinstall` themselves. The meaning of each line is in
    [Checking an installed root](../../kdos/03-architecture/packaging.md#checking-an-installed-root).
 
 3. Check another root, such as a mounted second slot, with `--root`:

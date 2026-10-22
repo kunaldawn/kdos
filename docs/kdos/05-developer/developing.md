@@ -339,7 +339,7 @@ no firmware.
 | `build/logs/chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree it could not bind read-only, an open-files limit it could not raise | |
 | `build/snapshots/<phase>/` | Phase snapshots | Kept by `cleanbuild` |
 | `build/snapshots/.held/<phase>@<id>/` | Snapshots replaced or deleted while later snapshots still layer on them | Deleted by the orchestrator once nothing needs them |
-| `build/snapshots/timings.json` | The seconds each step and phase last took when it did its work | Merged on every step, so a partial run keeps the figures it did not measure. Kept by `cleanbuild`. See [Step timings](build-system.md#step-timings) |
+| `build/snapshots/timings.json` | The seconds each step and phase last took when it did its work, and the machine that measured each | Merged on every step, so a partial run keeps the figures it did not measure. Kept by `cleanbuild`. See [Step timings](build-system.md#step-timings) |
 | `build/.snap-lineage/` | One index per snapshot path, describing the tree as the last snapshot or restore left it; the next snapshot is a layer of the difference | Removed by `cleanbuild`, which makes the next snapshot full |
 | `build/ccache/` | The compiler cache CMake ports compile through, up to 20 GB | Kept by `cleanbuild`, removed by `clean`. Written as root; remove it from a container |
 | `build/pkgstore/` | The package store, `<key[0:2]>/<key>/` holding one package and its `META`, up to `KDOS_PKG_STORE_MAX` | Written only with `KDOS_PKG_STORE` on. Kept by `cleanbuild`, removed by `clean` |
@@ -468,8 +468,13 @@ cache unless `KDOS_SRCCACHE` points both at a shared path, or unless it is fetch
 cache. `KDOS_ALLOW_UNVERIFIED=1` silences the warning. A vendor bundle with no hash is generated.
 
 **Leftover archives.** Source files are not tracked by git, so a pull or branch switch that moves a
-port to another version leaves the old file in the port directory. Nothing the build reads names
-it; `testing/preflight.sh` lists it as a stale fetched archive, and it is safe to delete.
+port to another version leaves the old file in the port directory. No build reads it, but the
+[recipe hash](../03-architecture/packaging.md#e--the-recipe-hash) covers every file beside a recipe
+that no `sha256 =` line names, so it would rebuild the port. The next `make fetch` removes it when
+it is a hard link to its own entry in `ports/.srccache`, and the cache keeps the bytes; `make
+fetch-check` lists it. A copy with no link into the cache is left where it is, and
+`testing/preflight.sh` lists it as a stale fetched archive; it may be the only copy on the machine.
+See [Archives preflight accepts](writing-ports.md#archives-preflight-accepts).
 
 **Interrupted downloads.** A download goes to `<file>.part` and is renamed into place only once it
 verifies. The next run resumes the partial file. If a resumed download fails its hash, it is fetched

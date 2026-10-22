@@ -120,8 +120,8 @@ other snapshots still layer on is moved to `build/snapshots/.held/` when it is r
 nothing needs it. Writing snapshots is off unless a run asks for it.
 [kdosbuild](kdosbuild.md) shows how to ask, and how to restore one.
 
-The same directory holds `timings.json`, the seconds each step took the last time it did its work,
-which the book's build times are computed from; see
+The same directory holds `timings.json`, the seconds each step took the last time it did its work
+and the machine each was measured on, which the book's build times are computed from; see
 [Typographical conventions](../00-front/conventions.md#build-times-and-the-sbu). Like the
 snapshots, it survives `make cleanbuild`.
 

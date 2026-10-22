@@ -595,15 +595,6 @@ of one physical volume on the target disk, and makes no `root_b`: slot B's space
 its volume is made by hand like the rest of slot B; see
 [Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups).
 
-### An installed disk starts on UEFI only
-
-The installer's GPT layout has an EFI partition and a root (and a swap partition when asked for),
-and no BIOS boot partition. Limine's BIOS stage needs one on a GPT disk, so the installer's
-`limine bios-install` fails with
-`error: Installing to a GPT device, but no BIOS boot partition specified or detected.`, the wizard
-shows nothing, and the disk does not start on a legacy BIOS machine. See
-[Both firmwares](../04-programs/kinstall.md#both-firmwares).
-
 ### `lsblk` shows a filesystem's type, label and UUID to root only
 
 util-linux is built without libudev, because eudev needs util-linux's libblkid first, so lsblk can
@@ -690,17 +681,6 @@ session any disk with an ISO 9660 partition is refused as the boot disk.
 
 ## Installation
 
-### An interactive install stays on the Summary page
-
-The wizard's pages are counted from zero, and Summary, Install and Done are pages 8, 9 and 10.
-*BEGIN INSTALL* starts the install and moves to page 8, which is Summary itself, so the progress,
-the log and the *Retry step* button on the Install page are never shown, and neither is the Done
-page. *BEGIN INSTALL* stays live while the install runs, and pressing it again starts a second
-install child beside the first. The Install page's *Continue*, when it is reached, moves to page 9,
-which is Install again. The install itself runs to the end and writes its log to
-`/var/log/kinstall.log` on the live system. An unattended install is not affected: it finds the
-Install page by its id. See [The pages](../04-programs/kinstall.md#the-pages).
-
 ### Applications imported or built during an install stay in the live session
 
 Of the three routes the Applications step can take, only *pending* reaches the installed machine:
@@ -719,30 +699,11 @@ makes before it lets you continue are never run: that the target is not the runn
 and not read-only, that it is large enough, that the two passphrases and the two passwords match,
 that the hostname and user name are well formed, that root is not locked while the user is not an
 administrator, and that no other disk already holds a volume group named `kdos`. An answer file
-that the wizard would refuse goes to the install as it is. Loading the same file into the wizard
+that the wizard would refuse goes to the install as it is. The one page check the Prepare step
+also makes is the firmware one: on a machine booted in legacy BIOS mode it refuses a reused GPT
+disk with no BIOS boot partition. Loading the same file into the wizard
 (`kinstall --config <file>`) and stepping through the pages runs the checks. See
 [Installing unattended](../02-user-guide/installation.md#installing-unattended).
-
-### The installer's warnings are shown nowhere
-
-The install child reports its progress to the wizard as one-letter lines, and the wizard drops every
-warning (`W`) line: it is neither drawn nor written to `/var/log/kinstall.log`. What goes unreported
-is a Limine with no `BOOTIA32.EFI`, a failed `limine bios-install` or no `limine` on the path, no
-partition index for the EFI partition and so no firmware boot entry, an EFI partition too small for
-a second slot's kernel, and an application route that fell back to *pending*. The install finishes
-as if none of them happened. See [The install runs in a child
-process](../04-programs/kinstall.md#the-install-runs-in-a-child-process).
-
-### The memory guard can kill the installer's copy on a 4 GB machine
-
-The Copy system step streams the whole live tree, about 48 GB, through the page cache. In a 4 GB
-virtual machine that holds memory stalled long enough for `kdos-oomd`'s pressure trigger, and the
-daemon kills the copy within the first minute: `/run/kdos-svc.kdos-oomd.log` records
-`kdos-oomd: killed rsync`, `kinstall.log` reports `rsync failed (exit 128)`, and the install
-stops. Neither the installer nor `rsync` is among the processes the daemon protects. With the
-daemon stopped first (`sudo service stop oomd`) an unattended install onto LVM finished in about
-ten and a half minutes and the disk booted. Measured in the rig only; see
-[kdos-oomd](../04-programs/daemons.md#kdos-oomd).
 
 ## Boot and updates
 

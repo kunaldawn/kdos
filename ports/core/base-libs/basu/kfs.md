@@ -15,6 +15,8 @@ so this is the sd-bus every one of them gets.
   and the rest); without it those queries have nothing to answer from. `enabled` makes a missing
   libcap an error rather than a quieter library.
 
-## Patches
+## Notes
 
-- `no-getent.patch` — Skips the block of `meson.build` that runs `getent passwd 65534` and `id -u nobody` to warn when the local `nobody` user differs from the `nobody-user` option. musl has no `getent`, and meson stops at a `run_command` whose program is missing. The two commands only ever produce a warning, so the library built is the same.
+`meson setup` runs `getent passwd 65534` and `id -u nobody` and warns that the local `nobody`
+user has UID 99, not the 65534 the `nobody-user` option expects. The check only prints that
+warning; the library built is the same.

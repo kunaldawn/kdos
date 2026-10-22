@@ -67,10 +67,15 @@ esac
 echo "Squashing Root Filesystem ($ISO_COMP)..."
 # The pseudo filesystems, build artifacts and caches are excluded, and the
 # mountpoints they need are recreated as empty directories — an excluded /proc
-# is a root that cannot mount one. /var/cache and /var/log come back empty for
-# the same reason: a daemon creates its own directory under them with a single
-# mkdir(2), which fails with no parent — cupsd's CacheDir and smbd's cache
-# directory among them — and the installed system is copied from this root.
+# is a root that cannot mount one. /var/cache and /var/log come back holding
+# only the directories installed packages claim under them, empty, with the
+# tree's mode and owner: a daemon creates its own directory there with a single
+# mkdir(2), which fails with no parent, and some (smbd's log and cache
+# directories, libvirt's) are never created by the daemon at all. A claimed
+# directory left out is also `missing` to `kpkg check --all`, which fails a
+# pristine image. The installed system is copied from this root. A package
+# FILE under either is not carried: the build's logs and caches are what the
+# exclusion is for.
 #
 # `-e` CONSUMES THE REST OF THE COMMAND LINE: every argument after it is an
 # exclude pattern, so it goes LAST and every option goes ahead of it. An option
@@ -88,6 +93,29 @@ echo "Squashing Root Filesystem ($ISO_COMP)..."
 # 105_ports.sh staged is appended below in its place. var/tmp/kdos-home is the
 # build's HOME (script/chroot/exec.sh), recreated by every chroot entry after
 # 020_cleanup.sh emptied var/tmp.
+#
+# A pseudo-directory whose parent is neither in the image nor defined first is
+# fatal to mksquashfs, so every claimed directory brings its parents, and the
+# sorted list puts each parent ahead of its children.
+VAR_PSEUDO=/kdos/build/sfs-var.pseudo
+{
+    echo 'var/cache d 755 0 0'
+    echo 'var/log d 755 0 0'
+    grep -h -e '^\./var/cache/..*/$' -e '^\./var/log/..*/$' /var/lib/kpkg/db/* |
+        while IFS= read -r d; do
+            d=${d#./}
+            d=${d%/}
+            while [ "$d" != var/cache ] && [ "$d" != var/log ]; do
+                printf '%s\n' "$d"
+                d=${d%/*}
+            done
+        done |
+        LC_ALL=C sort -u |
+        while IFS= read -r d; do
+            m=$(stat -c '%a %u %g' "/$d" 2>/dev/null) || m="755 0 0"
+            printf '"%s" d %s\n' "$d" "$m"
+        done
+} > $VAR_PSEUDO
 mksquashfs / $ISO_ROOT/system.sfs \
     -noappend "${SFS_COMP[@]}" -b 1M \
     -p "proc d 555 0 0" \
@@ -97,8 +125,7 @@ mksquashfs / $ISO_ROOT/system.sfs \
     -p "run d 755 0 0" \
     -p "mnt d 755 0 0" \
     -p "media d 755 0 0" \
-    -p "var/cache d 755 0 0" \
-    -p "var/log d 755 0 0" \
+    -pf $VAR_PSEUDO \
     -e proc sys dev tmp run mnt media var/cache var/log var/tmp/kdos-home build kdos ports
 
 # 2a. The recipe tree, appended as /ports.

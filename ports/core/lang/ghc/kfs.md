@@ -39,9 +39,6 @@ which is how upstream's release tarballs are installed too.
   `ld`, and tells gcc to use the first that works; [lld](#port-lld) is installed earlier in this
   phase, so GHC would link everything with lld. Both `configure` runs carry it, because the binary
   distribution's makes the same search and records the result in the installed `settings`.
-- `CONF_GCC_LINKER_OPTS_STAGE1="-Wl,-z,now"` — Reaches only `configure`'s own checks of the C
-  linker. This GHC's `configure` writes no stage-1 link flags into anything Hadrian reads, so the
-  line changes no binary; the flags that link the shipped compiler are the next ones.
 - `CONF_GCC_LINKER_OPTS_STAGE2="-Wl,-z,now"` — The link flags of the target toolchain. The first
   configure writes them into Hadrian's `default.target`, which the first-stage compiler links
   with, so the second-stage `ghc` that ships and its libraries bind every symbol at load time

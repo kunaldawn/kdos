@@ -142,7 +142,8 @@ that names it.
 ### The boot medium
 
 A live session mounts its boot medium at `/mnt/iso`. The installer and the pack daemon read it
-there.
+there. While it installs, the installer mounts the target root beside it at `/mnt/kinstall`, and
+the target's ESP at `/mnt/kinstall/boot/efi`.
 
 | Path | Is |
 |---|---|
@@ -161,10 +162,10 @@ Emptied at every boot.
 | `kdos-powerd.sock`, `kdos-energyd.sock`, `kdos-oomd.sock`, `kdos-mountd.sock`, `kdos-packd.sock` | The root daemons' sockets; see [Sockets](#sockets) |
 | `<name>.pid` | The process ID of the `ksvc` supervisor running service `<name>`. The supervisor leads its own process group, so stopping the service kills the daemon under it too |
 | `kdos-svc.<name>.log` | A supervised service's output, capped at 64 KiB with one `.old`. Every line also goes to syslog |
+| `kdos-svc.<name>.state` | The supervisor's one line about its daemon: `up` or `wait`, the daemon's pid, since when, its failing exits in a row and its last exit status. `service status` reads it to report a crash loop as `[FAIL]`; see [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
 | `kdos-init.<name>.log` | What a service's start script printed at boot |
 | `kdos-getty.<tty>.log` | `kdos-getty`'s messages for that terminal |
 | `kdos-fsck.log` | What the boot-time filesystem check reported, written only when it said something |
-| `kdos-medium` | Where the installer binds the boot medium while installing |
 | `utmps/` | Owned by `utmp`: the live login records (`utmp`) and the sockets of `utmpd` and `wtmpd` (`.utmpd-socket`, `.wtmpd-socket`), which libutmps talks to; see [Login records](../03-architecture/boot-and-init.md#login-records) |
 
 ### Boot files

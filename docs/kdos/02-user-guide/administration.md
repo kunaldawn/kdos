@@ -50,6 +50,13 @@ service disable <name>        # do not start it at boot
 `ksvc check <name>` asks the supervisor directly whether the process it started under that name is
 alive, which is how a single periodic job is checked (see [Periodic jobs](#periodic-jobs)).
 
+A supervised service is `[ OK ]` only while its daemon runs. A daemon that keeps exiting is not:
+the supervisor stays up and restarts it every five seconds, and `service status` reports
+`[FAIL] <name>  (exited with code N; restarting)` between the starts, or `(crash loop: …)` while a
+daemon that has failed twice in a row is running again and has not yet lasted a minute. The
+daemon's own last words are in `/run/kdos-svc.<name>.log`. The exact lines are in
+[ksvc and service](../04-programs/kdos-command.md#ksvc-and-service).
+
 `<name>` is the part of the file name between the number and `.sh`: `sshd` for `70_sshd.sh`. For
 `status`, `start`, `stop` and `restart`, an exact name is tried first and then any service whose
 name contains what you typed, so `service status ssh` finds `sshd`. `enable` and `disable` check
@@ -846,7 +853,10 @@ mode.
 OpenPGP and national ID cards. Its `opensc.module` registers it with p11-kit, so openconnect accepts
 a `pkcs11:` URI and GnuTLS programs see the card's certificates; `ssh -I /usr/lib/opensc-pkcs11.so`
 uses it directly. `pkcs11-tool --list-slots` tells you whether the card is seen at all. Members of
-`wheel` reach smart cards without `sudo`.
+`wheel` reach smart cards without `sudo`. `/etc/default/pcscd` hides readers by name or adds text
+to every reader's name, through pcsc-lite's `PCSCLITE_FILTER_IGNORE_READER_NAMES` and
+`PCSCLITE_FILTER_EXTEND_READER_NAMES`; `sudo service restart pcscd` applies it (see
+[Configuration](../06-reference/configuration.md#other-machine-files)).
 
 ## Printing
 
@@ -1086,7 +1096,7 @@ no separate `klogd`. `/etc/syslog.conf` routes them:
 | File | Holds |
 |---|---|
 | `/var/log/messages` | Everything except authentication |
-| `/var/log/auth.log` | Logins, `sudo` and other authentication |
+| `/var/log/auth.log` | Logins, `sudo`, polkit and other authentication |
 | `/var/log/kern.log` | Kernel messages |
 | `/var/log/cron` | The `cron` facility; nothing on the image logs there by default |
 
@@ -1094,6 +1104,8 @@ no separate `klogd`. `/etc/syslog.conf` routes them:
 `messages.1.gz` to `messages.5.gz`, compressed — so no `logrotate` job exists.
 The limit matters on the live medium, where `/var/log` is in RAM and an unbounded log would take
 memory rather than disk. Emergency messages are also written to every logged-in terminal.
+`syslogd` runs with `-8`, so a message in UTF-8 is written as it was sent and the files stay text
+that a plain `grep` reads; only ASCII control characters are rewritten, as `^x`.
 
 Three more places hold what the system log does not:
 
@@ -1188,7 +1200,9 @@ baseline level there is nothing to measure, and it says so.
 listing the snapshots in your repository, newest first: `b` starts a backup (it does not wait for
 it to finish) and `r` re-reads the repository. `kdos-backup --once` backs up without a window, waits
 for restic, and exits 0 on success, 1 on any failure and 2 on a bad argument; that is what the
-timer runs.
+timer runs. restic's summary and errors are printed where `--once` runs, and a failure inside
+restic ends with `kdos-backup: restic exited N`, restic's own status. Under the timer both are
+discarded.
 
 Set it up once:
 

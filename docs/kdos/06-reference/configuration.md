@@ -1041,18 +1041,12 @@ it.
 absent or disabled this way, so turning NetworkManager off hands DHCP back to `dhcpcd` rather than
 leaving the machine with no DHCP client.
 
-The marker stops only the boot-time start. The image also ships
-`/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service`, which lets the system
-bus start NetworkManager as root on the first call to its name, and `kdos-netagent`, which every
-desktop session runs, makes that call when it registers as NetworkManager's secret agent and
-again within moments of NetworkManager leaving the bus. On a machine with the marker and the
-package still installed, NetworkManager therefore starts at the first desktop login, outside the
-service supervisor and beside the `dhcpcd` that `30_network` started, and both lease every
-interface. In a running session the same call answers `service stop networkmanager` and
-`service restart networkmanager`: the bus starts an unsupervised NetworkManager in the gap, the
-supervised one then exits with "NetworkManager is already running" every five seconds, and the
-unsupervised one keeps the configuration it started with. A machine that must not run
-NetworkManager needs the activation file removed as well, or the `networkmanager` package removed.
+The marker is the only switch a supervised daemon needs. No daemon a service script supervises
+(NetworkManager, ModemManager and `polkitd` among them) has a D-Bus activation file, so the system
+bus never starts one of them itself: a call to the name of one that is stopped or disabled, such
+as the one `kdos-netagent` makes in every desktop session whenever NetworkManager's name has no
+owner, fails with `org.freedesktop.DBus.Error.ServiceUnknown` and starts nothing. A stopped
+service therefore stays stopped, and `service restart` leaves exactly one copy, the supervised one.
 
 ### `/etc/modprobe.d/kdos-regdom.conf`
 
@@ -1097,19 +1091,18 @@ See [Packaging](../03-architecture/packaging.md).
 
 ### Other machine files
 
-Files the image ships, under `/etc` and one under `/usr/share`, that an administrator may need to
-find. Each is in the
-format of the program that reads it.
+Files the image ships under `/etc` that an administrator may need to find. Each is in the format
+of the program that reads it.
 
 | Path | Read by | Does |
 |---|---|---|
 | `/etc/hostname` | `/etc/init.d/05_hostname.sh`, at boot | The machine's name: its first line is passed to `hostname` |
 | `/etc/ld-musl-x86_64.path` | musl's dynamic loader, at every program start | The shared-library search path, one directory per line: `/usr/lib`, then `/usr/lib64`. It replaces musl's built-in default, so `/usr/local/lib` is not searched. There is no cache to rebuild, and `ldconfig` (from the `musl` port) exits 0 without doing anything: a directory added here applies to the next program started |
-| `/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service` | `dbus-daemon`, the system bus | Lets the bus start `/usr/sbin/NetworkManager` as root on the first call to its name, whether or not `/etc/service.disabled/networkmanager` exists; see [above](#etcservicedisabledname) |
 | `/etc/sysctl.conf` | `/etc/init.d/10_sysctl.sh`, at boot | Unprivileged ICMP sockets for every group (`ping` needs no setuid bit), the `protected_*` link, FIFO and regular-file protections, fatal-signal logging and per-task delay accounting |
 | `/etc/modules-load.d/*.conf` | `/etc/init.d/02_modules.sh`, at boot | Modules loaded unconditionally: `tun` and `overlay` for containers, the virtual-machine display drivers, the `nct6775`, `it87` and `drivetemp` sensor drivers, and `i2c-dev` |
 | `/etc/modprobe.d/kdos-sdr.conf` | `modprobe` | Blacklists `dvb_usb_rtl28xxu`, so an RTL-SDR stick is free for the SDR tools rather than claimed as a TV tuner |
 | `/etc/alsa/conf.d/99-kdos-pipewire.conf` | Every ALSA program | Routes the ALSA default device to PipeWire |
+| `/etc/default/pcscd` | `/etc/init.d/47_pcscd.sh`, at each start | pcsc-lite's own keys, every one commented out: `PCSCD_ARGS` (extra `pcscd` arguments), `PCSCLITE_FILTER_IGNORE_READER_NAMES` (readers to hide, by a word of their name, `:` between words), `PCSCLITE_FILTER_EXTEND_READER_NAMES` (text added to every reader's name) and `PCSCLITE_HP_DROPDIR` (the USB driver directory). One `KEY=value` per line, parsed and not sourced: the quotes are removed, `$HOSTNAME` is the one expansion, and any other key is reported and skipped. `sudo service restart pcscd` applies an edit |
 | `/etc/pipewire/pipewire.conf.d/99-kdos-vm.conf` | PipeWire | In a virtual machine only, raises the audio quantum (the block of frames PipeWire processes in one cycle) to 4096, and its ceiling to 8192 |
 | `/etc/polkit-1/rules.d/50-kdos.rules` | `polkitd` | Grants members of `wheel` the named polkit actions the desktop calls, without a prompt; see the [security model](../03-architecture/security-model.md) |
 | `/etc/udev/rules.d/70-kdos-*.rules` | `udevd` | Device access by group: serial, SDR, logic-analyser, debug-probe, instrument, scanner, camera, security-key and GPIO devices to `dialout`, gamepads to `input`, I²C buses and backlight brightness to `video` |

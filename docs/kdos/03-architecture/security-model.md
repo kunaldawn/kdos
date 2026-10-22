@@ -562,9 +562,22 @@ machine's network authorisation off that dependency. When activation fails it fa
 service never starts, every call is refused, and the only trace is a `Spawn.ExecFailed` in the
 log. `kdos doctor` checks the helper's owner, group and mode for that reason.
 
+A daemon the supervisor runs is never activatable as well. The polkit and ModemManager ports
+delete the activation file their builds install, and NetworkManager's build installs none. With a
+file, a caller that asked for the name before the supervised daemon held it would make the bus
+start a second copy outside the supervisor, and whichever lost the name would exit. A supervised
+daemon that lost would be restarted every five seconds and fail to take the name each time.
+NetworkManager asks for ModemManager as it
+starts and ModemManager asks for polkit, so the race would be run at every boot. Without the
+files, a call to a name nobody owns fails with `ServiceUnknown` and starts nothing. Each of `40_dbus.sh`,
+`41_polkitd.sh` and `42_modemmanager.sh` waits, through `wait_bus_name` in
+`/etc/init.d/service_helper`, until its daemon owns its name (`org.freedesktop.DBus`,
+`org.freedesktop.PolicyKit1`, `org.freedesktop.ModemManager1`) before the next script starts, at
+most ten seconds, so the order the scripts sort in is the order the names appear.
+
 Left to D-Bus activation, and so dependent on the helper: `wpa_supplicant`, `fprintd`, `fwupd`,
 `boltd`, `upower`, `geoclue`, `udisksd`, the KAuth helpers of K3b and KTextEditor, and
-NetworkManager's dispatcher.
+NetworkManager's dispatcher and privileged helper. None of these is also supervised.
 
 ### What the grant allows
 
@@ -577,6 +590,14 @@ produce one; a design that pretended otherwise would be a control that fails sil
 The list of action ids is the entire boundary, and the only record of its use is a log line.
 NetworkManager is built `-Dlibaudit=no`, so an authorised change leaves no audit record beyond
 NetworkManager's own message to syslog.
+
+polkitd itself logs no allow or deny decision. What it does log, such as a rules file that does not
+compile, it sends to syslog as `authpriv`, so to `/var/log/auth.log`. A rule that wants a decision
+recorded calls `polkit.log()`, which polkitd prints on its standard error; `41_polkitd.sh` has
+`ksvc` forward that stream under `authpriv` too, so the line lands in `/var/log/auth.log` once,
+tagged `polkitd`, and not in `/var/log/messages`. polkitd's standard output repeats every line it
+sends to syslog, and the script points it at `/dev/null` with execline's `redirfd` so that nothing
+is logged twice.
 
 ## Containers
 

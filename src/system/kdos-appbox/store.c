@@ -28,8 +28,9 @@
  *
  * PROGRESS IS ONE FLUSHED LINE PER STEP, so a surface reading this process's
  * stdout shows it without parsing podman. The child is a DIRECT child of the
- * surface and never a supervised one: a pipeline reading a supervised
- * service's output never returns, because the supervisor holds the pipe open.
+ * surface and never a supervised one: a supervised service's output goes to
+ * syslog and /run/kdos-svc.<name>.log, never to whoever started it, so a
+ * surface would read nothing.
  *
  * NOTHING ROLLS BACK. Six applications where the fourth fails leaves five
  * installed and names the fourth: an installed application is not damaged by a
@@ -550,13 +551,37 @@ int store_uninstall(const char *id)
 {
 	const CatPack *chain[CAT_CHAIN_MAX];
 	KbArgv a = {0};
-	int n;
+	KbArgv q = {0};
+	int n, rc;
 
-	kb_argv_add(&a, "kdos-box");
-	kb_argv_add(&a, "remove");
-	kb_argv_add(&a, id);
-	kb_argv_end(&a);
-	kb_run(&a);
+	/* An image still holding a container cannot be removed, so a box that
+	 * refused to go ends the uninstall here; kdos-box has said why. One
+	 * that was never created (`podman container exists` exits 1) has
+	 * nothing to refuse. Any other status is a podman that could not tell,
+	 * and the uninstall stops before an image is touched. */
+	kb_argv_add(&q, "podman");
+	kb_argv_add(&q, "container");
+	kb_argv_add(&q, "exists");
+	kb_argv_add(&q, id);
+	kb_argv_end(&q);
+	rc = kb_run(&q);
+	if (rc != 0 && rc != 1) {
+		fprintf(stderr, "kdos-appbox: podman could not say whether %s "
+			"has a container (podman container exists exited %d); "
+			"%s was not uninstalled\n", id, rc, id);
+		return rc;
+	}
+	if (rc == 0) {
+		kb_argv_add(&a, "kdos-box");
+		kb_argv_add(&a, "remove");
+		kb_argv_add(&a, id);
+		kb_argv_end(&a);
+		if (kb_run_tty(&a) != 0) {
+			fprintf(stderr, "kdos-appbox: %s was not uninstalled\n",
+				id);
+			return 1;
+		}
+	}
 
 	n = cat_chain(id, chain);
 	/* The application's own image first, then any runtime above the base

@@ -266,8 +266,9 @@ built and names the fourth: what one application built is not harmed by a later 
 undoing it would throw away a long apt run. Progress is one flushed line per step (`==> building kdos/app.hugin`,
 `==> app.hugin installed`), so a program showing install progress can read standard output without
 parsing the container engine. Such a program should start `kdos-appbox` itself and read its output
-directly. Reading it through the output of a service that `ksvc`, the service supervisor (see
-[The daemons](daemons.md)), runs never ends, because the supervisor keeps the pipe open.
+directly. A service that `ksvc`, the service supervisor (see [The daemons](daemons.md)), runs
+cannot carry it: the supervisor sends a supervised program's output to syslog and
+`/run/kdos-svc.<name>.log`, never to whoever started the service.
 
 When the images are built, install creates the box with `kdos-box create <id>
 base=image:kdos/<id>`. Like every `image:` create, that first runs `podman pull` on the reference
@@ -289,7 +290,10 @@ only, and the pack applications' launchers, table rows and shims are swept. Runn
 instead, because every run writes the whole set. The exit status is the number of applications
 that failed.
 
-`uninstall` removes the box with `kdos-box remove`, then the application's own image, then each
+`uninstall` removes the box with `kdos-box remove`, and stops there, printing
+`<id> was not uninstalled` and counting a failure, when that refuses. A podman that cannot say
+whether the box has a container (`podman container exists` exits neither 0 nor 1) stops it the same
+way, before any image is touched. Then it removes the application's own image, then each
 runtime above the base, top down, stopping at the first one that a remaining container's chain still
 names. It then regenerates the launchers from what remains. The base image is never removed: it is
 every chain's floor. Which runtimes are still wanted is asked of the catalogue rather than of the
@@ -980,7 +984,7 @@ snapshot tag, is 1 to 63 characters from `A-Z a-z 0-9 . _ -` and does not start 
 | `snapshots <name>` | Lists them with their sizes |
 | `rollback <name> <tag>` | Replaces the writable layer with a snapshot. Refused while the box is running |
 | `start`, `stop`, `restart <name>` | Start recovers a stuck box and composes a pack box first, as the launch path does. Stop waits up to 10 seconds before killing |
-| `remove <name> [--force]` | Removes the container and releases its composed stack. The profile (`~/.config/kdos/boxes/<name>.conf`) is kept, and so is `~/.local/share/kdos/boxes/<name>`: a pack box's writable layer, its snapshots and a private home. A store box's writes are inside its container and go with it. The confirmation line names only the second directory, for both. It runs `podman rm`, with `-f` under `--force`, ignores its result, and prints the confirmation and exits 0 either way: a running box is refused without `--force`, and a running box made from an image can outlast `podman rm -f` too, left `stopping`. Stop the box before removing it |
+| `remove <name> [--force]` | Removes the container and releases its composed stack. The profile (`~/.config/kdos/boxes/<name>.conf`) is kept, and so is `~/.local/share/kdos/boxes/<name>`: a pack box's writable layer, its snapshots and a private home. A store box's writes are inside its container and go with it. The confirmation line names only the second directory, for both. It runs `podman rm`, with `-f` under `--force`, and keeps podman's standard error. When podman refuses, it prints `<name> was not removed (podman rm exited N)`, releases nothing and exits with podman's status: a running box is refused without `--force`, and a running box made from an image can outlast `podman rm -f` too, left `stopping`. A box with no container prints `<name> has no container to remove`, releases any composed stack and exits 1; when `podman container exists` cannot tell (status 125), it releases nothing and exits with that status. Stop the box before removing it |
 | `profile <name> [key=value ...]` | Prints the profile, or sets keys and then prints it |
 | `gc [--dry-run]` | Stops idle boxes. See [Warmup and collection](#warmup-and-collection) |
 

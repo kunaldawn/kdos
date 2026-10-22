@@ -56,9 +56,16 @@ The password
 
 Running it every night
 
-  /etc/kdos/timers.d/ and ~/.config/kdos/timers.d/ hold one line per job:
+  ~/.config/kdos/timers.d/10-backup.timer holds the nightly line, commented
+  out until you uncomment it:
 
-    backup 03:17 -- kdos-backup --once
+    backup  -H 3 -M 40 -s 8h  --  kdos-backup --once
+
+  `kdos-backup --once` backs up with no window and waits for restic. At a
+  terminal it prints restic's summary and errors, and a failure inside restic
+  ends with `kdos-backup: restic exited N`. It exits 0 on success and 1 on
+  any failure. Under the timer its output is discarded, so check the date of
+  the newest snapshot here from time to time.
 
   See [[doc:index]] for the timer format.
 

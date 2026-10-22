@@ -9,7 +9,7 @@ belongs to that port's package. Managing a service once it exists is on [Service
 ## Installation
 
 Nothing extra is needed. The [supervisor]{.idx term="supervisor (ksvc)"} is `ksvc`, from [kdos-tools](#port-kdos-tools), and
-`/etc/init.d/service_helper`, from the base filesystem, gives a script the three functions it
+`/etc/init.d/service_helper`, from the base filesystem, gives a script the functions it
 calls. A daemon from a package you build yourself is installed with
 `kpkg` like any other port; see [kpkg](kpkg.md) and [Anatomy of a kpkg install](../04-chroot/kpkg-install.md).
 
@@ -32,7 +32,7 @@ code that enforces it:
 | `start` exits 0 when it started the service or deliberately skipped it, non-zero only on a failure | `rcS` | The splash marks the stage failed and shows the last six lines of output |
 | A skip prints `[SKIP] <name>: <reason>` and exits 0 | the shipped scripts | The boot log says nothing about why the service is down |
 | A daemon runs in the foreground under `supervise` | `ksvc` | The supervisor sees the parent exit as soon as the daemon forks, and starts it again every five seconds |
-| `start` returns once the daemon is launched | `rcS`, which waits for each script | The boot stops at that stage |
+| `start` returns once the daemon is launched, or, for a daemon that owns a bus name, once it holds the name (`wait_bus_name`, at most ten seconds) | `rcS`, which waits for each script | The boot stops at that stage |
 | The `<name>` passed to `supervise` is letters, digits, `_`, `-` and `.`, at most 64 characters | `ksvc` | `ksvc` refuses it: `bad service name` |
 
 `NN` places the script in the boot order. Pick a number above every script whose service yours
@@ -62,12 +62,12 @@ script is part of the recipe and `testing/preflight.sh` can check it. The [ngirc
 port's script skips until the server has a configuration file and an account, and runs the daemon
 as that account:
 
-<!-- kfs:include ports/core/servers/ngircd/build.sh lines=22-52 pin=2ce56e74e4f9 -->
+<!-- kfs:include ports/core/servers/ngircd/build.sh lines=22-51 pin=eba2a08c9c42 -->
 
 The account comes from the port's `postinstall.sh`, which runs on the target at every install and
 writes under `PKG_ROOT`:
 
-<!-- kfs:include ports/core/servers/ngircd/postinstall.sh lines=19-22 pin=f7b763078e75 -->
+<!-- kfs:include ports/core/servers/ngircd/postinstall.sh lines=20-23 pin=f7b763078e75 -->
 
 Why a script lives in the recipe and not beside it, and the rules a `postinstall.sh` keeps, are in
 [Shipping a script the port carries](../../kdos/05-developer/writing-ports.md#shipping-a-script-the-port-carries)
@@ -198,15 +198,20 @@ and [postinstall.sh](../../kdos/05-developer/writing-ports.md#postinstallsh).
 - **Name a final exit.** When only the daemon itself can tell that it has nothing to do, find the
   exit status it uses for that and pass `--final-exit <code>` to `supervise`.
 - **Run as an account, not as root,** with `setpriv --reuid=<user> --regid=<group> --init-groups`
-  in front of the daemon, as `79_ngircd.sh` does. Test for the account first, with
-  `getent passwd <user>` (from [musl-utils](#port-musl-utils)) or, as `79_ngircd.sh` does,
-  `grep -q '^<user>:' /etc/passwd`.
+  in front of the daemon, as `79_ngircd.sh` does. Test for the account first, as it does, with
+  `getent passwd <user>` (from [musl-utils](#port-musl-utils)).
 - **Start every long-running process through `supervise`, never with `&`.** The supervisor points
   its own output and the daemon's at its log forwarder and its input at `/dev/null`, so
   `sudo service start mydaemon | tee out.txt` returns as soon as the script does. A process the
   script backgrounds itself keeps the script's output open for as long as it lives, so a pipeline
   reading that output waits as long, and nothing restarts the process when it dies. `rcS` writes
   each script's output to `/run/kdos-init.<name>.log` and prints the file afterwards.
+- **A daemon that owns a system-bus name ships no D-Bus activation file.** Delete the one its build
+  installs in `/usr/share/dbus-1/system-services/` from the port's `build.sh`, as the polkit and
+  modemmanager ports do, and end `start` with `wait_bus_name <name>` after `supervise`. With the
+  file, a client that calls the name before the supervised daemon holds it, or while it restarts,
+  makes the bus start a second copy outside the supervisor; the supervised one then cannot take the
+  name and is restarted every five seconds for as long as the other copy runs.
 - **Name the daemon by its full path**, as every shipped script does. Under `rcS` and `rcK` the
   `PATH` includes `/usr/local`, but a script started by `service` inherits the `PATH` of whatever
   ran it.
@@ -221,8 +226,8 @@ and [postinstall.sh](../../kdos/05-developer/writing-ports.md#postinstallsh).
 executable. `ls -l /etc/init.d/` must show `-rwxr-xr-x`.
 
 **The boot stops at the script's stage.** `start` did not return. Either the daemon was started in
-the foreground without `supervise`, or the script reads from a pipe something the supervisor
-holds open. Boot with `emergency` (see [Init and runlevels](init-and-runlevels.md#single-user-mode)),
+the foreground without `supervise`, or the script waits on a pipe that a process it backgrounded
+still holds open. Boot with `emergency` (see [Init and runlevels](init-and-runlevels.md#single-user-mode)),
 make the script non-executable with `chmod -x`, and reboot.
 
 **The supervisor's log shows `Exited with code 127`.** The supervisor could not execute the command:

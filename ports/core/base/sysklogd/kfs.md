@@ -9,7 +9,11 @@ for journald (see
 `/etc/init.d/22_syslog.sh` starts it at boot under the supervisor, before the network comes up,
 with `-F` so that it stays in the foreground where the supervisor can watch it, and with
 `-P /run/syslogd/syslogd.pid`, because its default pid file, `/run/syslogd.pid`, is the path the
-supervisor keeps its own process id in. Which messages go
+supervisor keeps its own process id in, and with `-8`, which writes the bytes 0x80 to 0x9F as they
+arrive. Without it `syslogd` replaces each with `M-` and the matching ASCII character, and those
+are the bytes that follow the first byte of most UTF-8 punctuation: an em dash then leaves its
+first byte alone in the file, which is no longer valid UTF-8, and `grep` reports
+`binary file matches` for the whole of `/var/log/messages`. Which messages go
 to which file is in [Logs](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#logs).
 
 ## Flags

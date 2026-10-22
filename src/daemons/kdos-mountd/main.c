@@ -2648,7 +2648,17 @@ static int serve(void)
 		if (!(fds[li].revents & POLLIN))
 			continue;
 
-		int c = accept(srv, NULL, NULL);
+		/*
+		 * CLOEXEC, because the verbs exec programs that outlive the
+		 * request: cryptsetup, mount helpers and mkfs inherit every
+		 * descriptor that lacks it, which is this client and every
+		 * subscriber held open below. A helper that stays running holds
+		 * those connections, so a client never reads the end of its
+		 * reply and a session that went away is never seen to hang up.
+		 * The write worker keeps `c` across its fork; it never execs,
+		 * so close-on-exec never closes it there.
+		 */
+		int c = accept4(srv, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) {
 			if (errno == EINTR)
 				continue;

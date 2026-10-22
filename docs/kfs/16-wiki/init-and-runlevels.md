@@ -53,7 +53,7 @@ a boot are explained in
 `rcS` is the `sysinit` entry. After mounting the filesystems it runs every numbered service script,
 and this is the loop that does it:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=134-171 pin=b95063da693e -->
+<!-- kfs:include fs/etc/init.d/rcS lines=134-173 pin=403936cc08ac -->
 
 ### /etc/init.d/rcK
 
@@ -92,9 +92,11 @@ initramfs passes both on to init. Their meaning is in
    who -b
    ```
 
-   It prints a line such as `system boot  Oct 21 19:11`. `who -r`, which would print the runlevel
-   from the same records, prints nothing on a booted image: the records hold no runlevel entry.
-   `runlevel` reads the records first and, finding no runlevel there, answers from
+   It prints a line such as `system boot  Oct 21 19:11`. `who -r` prints the runlevel from the
+   same records, with the time init entered it, as a line such as
+   `run-level 3  Oct 21 19:11  last=S`; `who` shows the `N` of "no previous runlevel" as `S`.
+   After a change of runlevel the line names the new one, and `last=` the one before it.
+   `runlevel` reads the records too and, should they hold no runlevel, answers from
    `/run/runlevel`, the one-character file init writes at every change of runlevel.
 
 ### Applying an edit to /etc/inittab

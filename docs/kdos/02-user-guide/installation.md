@@ -2,10 +2,9 @@
 
 This chapter is for anyone putting KDOS onto a disk. The installer, `kinstall`, copies the running
 live system onto a target disk, configures the copy for its new machine and makes it bootable on
-UEFI firmware; a disk it partitions does not start on legacy BIOS (see [Known
-gaps](../06-reference/known-gaps.md#an-installed-disk-starts-on-uefi-only)). It ships on every KDOS
-image, draws its own full-screen interface on a bare text console, a terminal window or a serial
-line, and can install a machine unattended from an answer file. Read [Getting
+both UEFI and legacy BIOS firmware. It ships on every KDOS image, draws its own full-screen
+interface on a bare text console, a terminal window or a serial line, and can install a machine
+unattended from an answer file. Read [Getting
 started](getting-started.md) first if you do not yet have a booted live image. Terms this chapter
 does not define are in the [Glossary](../06-reference/glossary.md).
 
@@ -139,21 +138,21 @@ Below that is a preflight list:
 The first two stop you on this page; the other three only mark a warning. The disk line counts every
 disk the installer found, read-only ones included; a read-only disk is refused on the Disk page. The
 install's first step checks `mount`, `umount`, `mkfs.vfat`, `rsync` and the chosen filesystem's
-`mkfs` again, and refuses before anything is written. It does not check for Limine again: if the
-Limine files are missing, the install writes the disk and then fails at the Bootloader step, leaving
-a machine that cannot boot. Do not start an install while that line is marked.
+`mkfs` again, and refuses before anything is written; on a machine that booted in legacy BIOS mode
+it also checks for the `limine` program. It does not check for the Limine files: if they are
+missing, the install writes the disk and then fails at the Bootloader step, leaving a machine that
+cannot boot. Do not start an install while that line is marked.
 
 The disk count leaves out loop, RAM, optical, zram, device-mapper, software RAID, floppy and network
 block devices.
 
-The firmware line is information, never a refusal. Only the UEFI path is installed on a disk the
-installer partitions, so the line tells you whether the result will start on this machine:
+The firmware line is information, never a refusal. A disk the installer partitions starts on both
+firmwares whichever this machine booted as:
 
-- `legacy BIOS`: this machine booted that way, and the page adds a warning in red. The install
-  completes, but its GPT layout has no BIOS boot partition, so the disk starts on UEFI only and not
-  on this machine in legacy mode; see [Known
-  gaps](../06-reference/known-gaps.md#an-installed-disk-starts-on-uefi-only). Switch the firmware to
-  UEFI and boot the medium again before installing.
+- `legacy BIOS`: this machine booted that way. The install writes the BIOS boot code as on any
+  machine, and a failure to write it stops the install, because this machine has no other way to
+  start the disk. Reusing partitions on a GPT disk needs a BIOS boot partition on it; see
+  [The reuse plan](#the-reuse-plan).
 - `UEFI  (32-bit firmware)`: a 64-bit processor with 32-bit UEFI firmware, as on some early Atom
   tablets. The firmware boot entry then names the 32-bit EFI loader.
 - `(Secure Boot enabled)`: the install completes, but the installed machine will not start until
@@ -211,9 +210,9 @@ manager, which divides a partition into resizable volumes) and encryption.
 
 | Plan | What happens |
 |---|---|
-| Erase the whole disk | A new GPT (GUID partition table): a 512 MiB EFI System Partition (ESP), a swap partition if you asked for one, then the root |
+| Erase the whole disk | A new GPT (GUID partition table): a 512 MiB EFI System Partition (ESP), a 1 MiB BIOS boot partition, a swap partition if you asked for one, then the root |
 | Use partitions that already exist | You choose the ESP and the root; every other partition on the disk is left alone and the Partition step is skipped. The root can be a partition or an existing LVM logical volume, and whichever you choose is always reformatted |
-| Partition it myself | `Open cfdisk` hands the screen to `cfdisk`. Create an EFI System partition and a Linux partition, write the table and quit. The installer rereads the disk and switches to the reuse plan, where you assign the two partitions |
+| Partition it myself | `Open cfdisk` hands the screen to `cfdisk`. Create an EFI System partition and a Linux partition, and a 1 MiB partition of type *BIOS boot* for the disk to start on legacy BIOS too; write the table and quit. The installer rereads the disk and switches to the reuse plan, where you assign the ESP and the root |
 
 The root filesystem is chosen on both the erase and the reuse plan. A filesystem whose `mkfs` tool
 is missing from the image is still listed, labelled `no mkfs on this image`, and the install refuses
@@ -222,7 +221,10 @@ it before writing anything.
 #### The erase plan
 
 On the erase plan the page offers swap, LVM and encryption, and draws what will be written: the
-partitions by name and size, as a bar and as a list.
+partitions by name and size, as a bar and as a list. The ESP is always partition 1, the BIOS boot
+partition 2, a swap partition 3, and the root the last. The BIOS boot partition holds no filesystem:
+it is the raw space Limine's legacy-BIOS stage is written into, and it is what lets the disk start on
+both firmwares.
 
 #### Swap
 
@@ -272,6 +274,16 @@ The reuse plan refuses as the root:
 - a partition or volume that something else holds open, such as an open encrypted container or an
   active volume group;
 - a partition smaller than the install.
+
+It also refuses the disk's BIOS boot partition as either the ESP or the root.
+
+Under the lists the page says which firmwares the disk will start on. A GPT disk with a partition of
+type *BIOS boot* gets Limine's legacy-BIOS stage in it, and a disk with an MBR (dos) partition table
+gets it after the boot sector; on either the disk starts on UEFI and on legacy BIOS. A GPT disk with
+no BIOS boot partition starts on UEFI only, because this plan makes no partition: on a UEFI machine
+the page says so, and on a machine that booted in legacy BIOS mode the page refuses the plan,
+because the result could not start there. Add a 1 MiB BIOS boot partition with *Partition it
+myself*, or erase the disk.
 
 A software RAID array and an opened LUKS container are not offered as the root. The reuse plan shows
 no swap choice; the swap setting it installs with is the one the erase plan last showed, which is a
@@ -417,35 +429,28 @@ later from the application store.
 
 Your answers on one screen: keymap, time zone, hostname, user, root account, accent, whether the
 alien app library is copied, the application groups and their route, the enabled services, the
-target disk, the plan, the root and ESP on the reuse plan, the LVM layout when there is one, and
-swap. The Summary shows encryption only as part of the erase plan's LVM line, so with encryption on
-and LVM off, or on the reuse plan, check the Layout page before you begin. The destructive parts are
+target disk, the plan, the root and ESP on the reuse plan, the LVM layout when there is one, which
+firmwares the disk will start on (`UEFI and legacy BIOS`, or `UEFI only` for a reused GPT disk with
+no BIOS boot partition), and swap. The Summary shows encryption only as part of the erase plan's
+LVM line, so with encryption on and LVM off, or on the reuse plan, check the Layout page before you
+begin. The destructive parts are
 in the error colour, and a rule across the page reads `EVERYTHING ABOVE THIS LINE IS STILL
 REVERSIBLE`. Two buttons sit under it:
 
 - `BEGIN INSTALL`: starts writing to the disk. Under `--dry-run` it reads `REHEARSE INSTALL`.
 - `Save answer file`: writes your answers to `/tmp/kinstall.conf` and installs nothing.
 
-`BEGIN INSTALL` starts the install in the background and leaves the screen on the Summary page. An
-interactive install does not move to the Install page: the screen shows no progress, no failed
-step and none of the Install page's buttons, and `BEGIN INSTALL` stays live, so a second press
-starts a second run on the same disk. This is a known gap; see [Known
-gaps](../06-reference/known-gaps.md#an-interactive-install-stays-on-the-summary-page). Press it
-once, then follow the install from another console:
-
-```sh
-sudo tail -f /var/log/kinstall.log
-```
-
-The log records every command as it runs and, when a step fails, the reason. A finished install
-ends with the Finish step unmounting `/mnt`. `Ctrl+Q` still warns that the target would be left
-half written while the install is running. The Install page below is what an unattended install
-shows, and no install reaches the Done page; see [kinstall](../04-programs/kinstall.md#the-pages).
+`BEGIN INSTALL` starts the install in the background and moves to the Install page, which has no
+way back: the Summary and its button are not reachable again while the install runs. `Ctrl+Q`
+warns that the target would be left half written while the install is running. The log,
+`/var/log/kinstall.log`, records every command as it runs and, when a step fails, the reason; it can
+be followed from another console with `sudo tail -f /var/log/kinstall.log`.
 
 ### 10. Install
 
-The page an unattended install opens on (see [Installing unattended](#installing-unattended)):
-the work, with an overall progress bar, one line per step and the tail of the log. The install runs
+The page an install runs on, interactive or unattended (see [Installing
+unattended](#installing-unattended)): the work, with an overall progress bar, one line per step and
+the tail of the log. The install runs
 in a separate process, so the screen stays responsive during a multi-gigabyte copy. Each step is
 marked as it starts, finishes, is skipped (`not needed`) or fails; the Copy step shows the amount
 copied, the speed and the time remaining. `L` switches to the full log, where `PgUp` and `PgDn`
@@ -454,31 +459,36 @@ scroll.
 | Step | What it does | Skipped when |
 |---|---|---|
 | Prepare | Checks the tools and the target, stops swap, unmounts the target and anything on the disk, and on the erase plan takes down volume groups and containers on it | |
-| Partition | Wipes the disk's signatures and writes the GPT layout | The plan is not "erase" |
+| Partition | Wipes the disk's signatures, writes the GPT layout and zeroes the BIOS boot partition | The plan is not "erase" |
 | Format | Encrypts and creates the volume group if asked, then makes the root filesystem, the ESP (when it is to be formatted) and the swap partition | |
-| Mount | Mounts the root at `/mnt` and the ESP at `/mnt/boot/efi` | |
-| Copy system | Copies the live system with `rsync`. On a machine with about 4 GB of memory the memory guard can kill the copy; run `sudo service stop oomd` before installing ([known gap](../06-reference/known-gaps.md#the-memory-guard-can-kill-the-installers-copy-on-a-4-gb-machine)) | |
+| Mount | Mounts the root at `/mnt/kinstall` and the ESP at `/mnt/kinstall/boot/efi`; the boot medium at `/mnt/iso` and any stick under `/mnt` stay reachable beside it | |
+| Copy system | Copies the live system with `rsync`. The installer and everything it starts run at `oom_score_adj` -900, so the memory guard, `kdos-oomd`, passes over the copy however long it stalls memory | |
 | Packs | Imports, builds or records the applications you chose | Nothing was chosen, or the medium has no catalogue |
 | Configure | `fstab`, hostname, `/etc/hosts`, time zone, Wi-Fi country, keymap, automatic login, DNS resolver, services and the swap file | |
 | Accounts | Users, passwords, the administrator choice | |
 | Theme | Regenerates the chosen accent in `/etc/skel` and the new home directory | The accent is the default, `bone` |
-| Bootloader | Limine on the ESP for UEFI, and the firmware boot entry; the BIOS boot code is attempted and fails on the installer's layout | |
+| Bootloader | Limine on the ESP, the BIOS boot code into the BIOS boot partition, and the firmware boot entry | |
 | Finish | Flushes and unmounts | |
 
 A failed step stops there and offers `Retry step`, `View log`, `Shell` and `Abort`. `Shell` opens a
 login shell on the console; a fixable failure, such as a missing tool or a device that went away,
 can be fixed there and the install continued from the failed step with `Retry step`. `Abort` leaves
-the installer. When every step has finished, `Continue` appears, but it stays on the Install page;
-an unattended run then ends by itself after five seconds.
+the installer. When every step has finished, `Continue` appears and leads to the Done page; an
+unattended run instead ends by itself after five seconds.
+
+A warning is something the installed system will lack while the install carries on: no
+`BOOTIA32.EFI` for 32-bit UEFI, no BIOS boot code (a reused GPT disk with no BIOS boot partition,
+or a failed `limine bios-install` on a UEFI machine), no partition number for the firmware boot
+entry, an ESP too small for a second slot's kernel, or an application route that fell back to the
+first login. Each is listed under `WARNINGS` as it arrives and written to the log with a `warning:`
+prefix.
 
 ### 11. Done
 
-No install reaches this page, interactive or unattended, because `Continue` on the Install page
-does not lead to it. The page is drawn to show what was installed, where, and how long it took,
-with `Reboot now` (which asks first), `Back to the live desktop` and `View log`. After an
-interactive install whose log ends with the Finish step, quit the installer with `Ctrl+Q`
-and restart the machine yourself. Remove the boot medium before restarting, or the firmware may
-start the live image again.
+What was installed, where, and how long it took, the warnings again under `FINISHED WITH WARNINGS`
+when there were any, and `Reboot now` (which asks first), `Back to the live desktop` and `View
+log`. Remove the boot medium before restarting, or the firmware may start the live image again. An
+unattended run does not show this page.
 
 ## The root filesystem
 
@@ -644,8 +654,9 @@ An unattended run skips the wizard, and with it every check the pages make: it d
 boot medium, a disk that is too small, an existing `kdos` volume group on another disk, a missing
 passphrase, or a locked root with no administrator. What it checks is what the Prepare step checks
 on every install: a disk is named and exists, the installer runs as root, the required tools are
-present (including `cryptsetup` for `luks = 1` and `lvm` for `lvm = 1`), and the chosen filesystem's
-`mkfs` exists. Check an answer file with `--dump plan` and a `--dry-run` before you trust it with a
+present (including `cryptsetup` for `luks = 1` and `lvm` for `lvm = 1`), the chosen filesystem's
+`mkfs` exists, and, on a machine booted in legacy BIOS mode, `limine` is present and a reused GPT
+disk has a BIOS boot partition. Check an answer file with `--dump plan` and a `--dry-run` before you trust it with a
 disk. `--dry-run` does not change what happens when an unattended run ends: with the default
 `reboot = 1`, `kinstall --dry-run --unattended` reboots the live machine once the rehearsal
 finishes, so rehearse with `reboot = 0` in the answer file.
@@ -691,7 +702,7 @@ machine when the rehearsal finishes.
 | Where | What |
 |---|---|
 | The ESP | Formatted FAT32 with the label `KDOS_EFI` (on the reuse plan, only when you asked for it). Limine: both EFI loaders, `EFI/BOOT/BOOTX64.EFI` and `EFI/BOOT/BOOTIA32.EFI`, the BIOS second stage `limine-bios.sys`, and the generated `limine.conf`, all at fixed paths. Slot A's kernel and initramfs in `EFI/kdos/a/`, the A/B boot state `EFI/kdos/bootstate`, memtest86+ as `EFI/kdos/memtest.efi`, and the menu's font and wallpaper (`EFI/kdos/font.bin`, `EFI/kdos/wallpaper.png`) where the medium has them |
-| The disk | Nothing outside its partitions: `limine bios-install` is run and fails on the installer's GPT layout, which has no BIOS boot partition |
+| The disk | Limine's BIOS boot code: its boot sector in the disk's first sector, and its second stage in the BIOS boot partition (on a dos partition table, in the gap after the boot sector) |
 | Firmware | A boot entry labelled `KDOS`, on a machine booted through UEFI |
 | Root | The system, copied from the live medium with `rsync` |
 | `/etc/fstab` | Prepended to, never replaced: the root, the ESP at `/boot/efi` (`umask=0077`), and the swap partition or `/swapfile`, above the shipped entries, which include the `/tmp` mount graphical applications depend on |
@@ -737,17 +748,18 @@ from `/sys/firmware/efi/fw_platform_size`, and the ESP's partition number, read 
 Where that number cannot be read, no entry is written and the disk starts through the
 removable-media path instead.
 
-The BIOS boot code is asked for whichever way the installing machine booted, and on the layout the
-erase plan writes it is not installed: on a GPT disk Limine's BIOS stage needs a BIOS boot
-partition, and the layout has none. `kinstall.log` holds Limine's
-`error: Installing to a GPT device, but no BIOS boot partition specified or detected.`, the wizard
-shows nothing, the install carries on because the EFI path is already complete, and the disk starts
-on UEFI only; see [Known gaps](../06-reference/known-gaps.md#an-installed-disk-starts-on-uefi-only).
-A BIOS boot of an installed disk has not been measured.
+The BIOS boot code is written whichever way the installing machine booted, so one disk starts on
+both firmwares: `limine bios-install <disk> 2` puts Limine's second stage into the erase plan's BIOS
+boot partition, and Limine then finds `limine-bios.sys` and `limine.conf` at the root of the ESP.
+On a machine that booted in legacy BIOS mode a failure here stops the install, because that machine
+has no other way in; on UEFI it is a warning on the Install and Done pages, and Limine's own
+`error:` lines are in `kinstall.log`. A disk laid out this way has started Limine and its kernel
+on SeaBIOS in the rig; a whole installed system has not yet been booted on legacy BIOS.
 
 On the reuse plan, the ESP's `EFI/BOOT/BOOTX64.EFI` and `EFI/BOOT/BOOTIA32.EFI` are replaced with
-Limine's, as is the disk's BIOS boot code where Limine can install it, and the Limine menu lists only KDOS. Another operating system
-on the same disk is started through its own firmware boot entry.
+Limine's, as is the disk's BIOS boot code where the disk has room for it (a BIOS boot partition, or
+a dos partition table), and the Limine menu lists only KDOS. Another operating system on the same
+disk is started through its own firmware boot entry.
 
 ### The boot menu
 

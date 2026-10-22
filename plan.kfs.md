@@ -269,64 +269,65 @@ or a decision of the user's. Measurements behind each are under
   storage.conf, `accept4(SOCK_CLOEXEC)` in kdos-powerd, bootctl's deploy
   pipe fix (host and static-binary guest only), kdos-shell's `disks.c`,
   `print.c`, `audio.c`, panel quick-launch and run-or-raise, `kb_proc.c`,
-  the `service <verb> <name>` hints, the installer's legacy-BIOS
-  warning on its Welcome page (red; says the disk starts on UEFI only,
-  never drawn on a BIOS boot in the rig), and the `kdos-kfs` port. A
+  the `service <verb> <name>` hints, and the `kdos-kfs` port. A
   `KDOS_GOLDEN_UPDATE=1` selftest in kdos-devdeps reproduces every golden
   in the worktree byte for byte.
+  Fixed in the tree and seen only by host build, harness or a patched
+  guest of the old ISO:
+  - the installer: a BIOS boot partition and `limine bios-install` in
+    the erase layout, its warnings listed, Summary -> Install -> Done,
+    the target at /mnt/kinstall (font.bin found), `--dump plan` probing
+    as the install does, and the wizard at `oom_score_adj` -900 (its
+    mark build/mark/bootstrap/kinstall must go for the image to carry it);
+  - kdos-oomd killing only when `MemAvailable` is at most a tenth of
+    `MemTotal`; `accept4(SOCK_CLOEXEC)` in kdos-oomd, kdos-packd,
+    kdos-energyd and kdos-mountd; kdos-packd's row and rollback reading
+    `<id>.kpack` only;
+  - the initramfs waiting for USB to settle before `blkid -L
+    KDOS_PERSIST` (a store on a second stick);
+  - NetworkManager, ModemManager and polkit no longer bus-activatable,
+    `wait_bus_name` after `supervise`, dbus supervised with
+    `--nopidfile`;
+  - ksvc's state file (`[FAIL]` for a crash loop), `supervise
+    --facility`, polkitd without `--no-debug`, syslogd `-8`, the
+    pre-created /run/utmps/utmp and utmps' RUN_LVL patch, the samba
+    directories, /etc/default/pcscd read by `47_pcscd.sh` (pcsc-lite
+    rebuilt, then `000_file_system.sh` again), `kdos_card` as `type
+    empty`;
+  - libkpkg's stable owner choice, the image carrying the package
+    directories under /var/log and /var/cache, `ports/fetch` removing
+    stale sources;
+  - `kdos-box remove` and `kdos-appbox uninstall` honouring podman's
+    result, `kdos-backup --once` showing restic's output, the
+    xdg-desktop-portal-wlr stream-start retry for `kdos-record`;
+  - getent in the generated init scripts, basu without its patch, ghc
+    without the STAGE1 line;
+  - kdosbuild recording the machine of each figure.
   Build times exist for 20/30/31 only: c4fc3bf5's kdosbuild recorded no
   port time after 31_compilers; a worktree build then `make book-data`
-  fills 40_lang..60_kernel. `data/stamp` names no machine.
-- **An installed disk.** kdos-oomd kills kinstall's rsync in a 4 GB VM
-  (known gap); one install succeeded with oomd stopped and booted (LVM,
-  UEFI: A/B trial, menu trial, rollback, single-user, emergency). Still
-  unbooted: an encrypted root, thin/cached LVM, BIOS (the installer's GPT
-  has no BIOS boot partition, a known gap the user guide, kinstall,
-  boot-and-init and the wizard now all state; whether to add a BIOS boot
-  partition or refuse a legacy install is the user's call), the installer's fstab swap
-  lines, keymap, serial login, CUPS-off, a box warmed from the desktop.
-  A full install needs ~48 GB of host disk.
+  fills 40_lang..60_kernel and names the machine.
+- **An installed disk.** One install succeeded with oomd stopped and
+  booted (LVM, UEFI: A/B trial, menu trial, rollback, single-user,
+  emergency). The erase layout now has a BIOS boot partition; on a
+  patched guest it ran `limine bios-install` and started Limine and a
+  kernel on SeaBIOS. Still unbooted: a whole installed system on BIOS, a
+  full install with oomd running, an encrypted root, thin/cached LVM,
+  the installer's fstab swap lines, keymap, serial login, CUPS-off, a
+  box warmed from the desktop. A full install needs ~48 GB of host disk.
 - **Hardware.** Radios, printers, scanners, SMART/NVMe, backlight, lid,
   battery, Thunderbolt, fingerprint/FIDO/smart card, suspend, capsule
   updates, a physical firmware's BootNext, GPUs other than virtio-gpu
   (whether the live splash shows before fbcon takes over).
-- **Tree defects reported, not fixed (the user's call).**
-  - kdos-oomd kills the installer's copy (protected list lacks rsync).
-  - A persistence store on a second USB stick is not used: the initramfs
-    runs `blkid -L KDOS_PERSIST` once, before usb-storage has settled.
-  - `service restart networkmanager` in a session: kdos-netagent
-    bus-activates an unsupervised NetworkManager in the gap.
-  - The supervised ModemManager never holds its bus name (NetworkManager
-    activates another), while `service status` says OK.
-  - smbd has no /var/log/samba or /var/cache/samba (needs a recipe mkdir).
-  - The pack daemon picks a kept `<id>-<ver>.kpack` over `<id>.kpack`.
-  - `kdos-box remove` ignores podman's result, with or without --force.
-  - `kdos-record` writes an empty file on the software renderer.
-  - BRLTTY with `speech-driver en` crash-loops while status says OK.
-  - `who -r` prints nothing: the records hold no RUN_LVL entry (cause
-    not traced; the pages say so).
-  - kdos-oomd, kdos-packd, kdos-energyd, kdos-mountd accept without
-    SOCK_CLOEXEC, as kdos-powerd did.
-  - The installer's font lookup under /mnt/iso is hidden by its own /mnt
-    target (no `font.bin` on an installed menu); its `--dump plan` says
-    "all of the group" while it makes `-l 50%VG`.
-  - `kdos-backup --once` discards restic's output; `kpkg check --all`
-    exits 1 on a pristine image (the emptied /var/log, /var/cache dirs).
-  - On musl (kdos-devdeps) selftest.c's "a partial table names the owner
-    the full one names" fails, on c4fc3bf5 as in the worktree: for a path
-    two packages claim, `kp_owned_load_some` and `kp_owned_load` pick
-    different owners. The glibc host run passes.
-  - syslogd half-escapes the em dash in oomd's kill line, so plain grep
-    calls /var/log/messages binary (the wiki uses `grep -a`).
-  - polkitd's `--no-debug` discards `polkit.log()` output; the ghc
-    `CONF_GCC_LINKER_OPTS_STAGE1` line changes no binary; sysklogd's
-    "1M x 5" comment is ambiguous; pcscd's reader filters are not wired.
-- **Tree text the measurements contradict, left for the user.**
-  CLAUDE.md, testing.md, `store.c` say a pipeline reading a supervised
-  service's output never returns; `service start x | cat` returned (the
-  rcS loop's own comment, about a script run directly, still holds).
-  `ngircd/build.sh` says musl has no getent (it ships one; editing it
-  changes the recipe hash). `mpctl.c`'s comment on the watcher's exit.
+- **Tree defects reported, not fixed.**
+  - `service start <name>` on a running service starts a second
+    supervisor for every service but dbus; a guard belongs in ksvc.
+  - kdos-record's H.264 is High 4:4:4 (BGRx into x264), which many
+    players cannot decode; 4:2:0 needs even dimensions first.
+  - `remove <id>` in kdos-packd leaves every kept `<id>-<ver>.kpack`.
+  - The box base pack (`100_packs.sh`) still empties var/cache and
+    var/log, so `kpkg check` inside a box reports them missing.
+  - libkbase's `kb_proc` pipes lack CLOEXEC (short-lived; a library edit
+    rebuilds every port).
 - The ten in-app help pages in `fs/usr/share/kdos/doc/` stay as they are; the
   wiki links to them and does not replace them.
 - `port.fix.plan.md` becomes moot for Pages once `_config.yml` retires.

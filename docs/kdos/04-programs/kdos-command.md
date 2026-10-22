@@ -1419,14 +1419,19 @@ a file pattern could match anything.
 The init scripts start their daemons through `ksvc supervise`:
 
 ```sh
-ksvc supervise [--final-exit CODE]... <name> <command> [args...]
+ksvc supervise [--final-exit CODE]... [--facility NAME] <name> <command> [args...]
 ```
 
 It forks a supervisor, writes the supervisor's process id to `/run/<name>.pid`, and runs the
 daemon under it. The daemon's output and the supervisor's own start and exit lines go to the
-system log under the service's name and to `/run/kdos-svc.<name>.log`, which holds at most 64 KiB
-with one previous generation beside it as `.old`. The file is what is left before the system
-logger is up and while it restarts.
+system log under the service's name, one `info` message per line, and to
+`/run/kdos-svc.<name>.log`, which holds at most 64 KiB with one previous generation beside it as
+`.old`. The file is what is left before the system logger is up and while it restarts.
+
+The messages go under the `daemon` facility, so to `/var/log/messages`, unless `--facility` names
+another: `auth`, `authpriv`, `daemon`, `user` or `local0` to `local7`. `41_polkitd.sh` passes
+`--facility authpriv`, so that what polkitd prints lands in `/var/log/auth.log` with what it sends
+to syslog itself.
 
 The supervisor restarts the daemon five seconds after any exit. The exception is an exit status
 named by `--final-exit` (up to eight): a status restarting cannot change, such as thermald on an
@@ -1439,7 +1444,25 @@ script's `stop` calls) signals the supervisor, the daemon and the log forwarder 
 `SIGKILL` after a second if `SIGTERM` was not enough. A supervisor that did not lead its own
 group would be killed alone, orphaning the daemon while reporting success. The forwarder ignores
 the group's `SIGTERM` and leaves when the daemon closes its output, so a stopping daemon's last
-lines still reach the log. `ksvc check <name>` prints `[ OK ]` or `[DOWN]` from the pid file.
+lines still reach the log.
+
+The pid file names the supervisor, which outlives every exit of its daemon, so the supervisor
+also keeps `/run/kdos-svc.<name>.state`: whether the daemon is running or waiting to be restarted,
+since when, how many failing exits it has had in a row and the last exit status. A non-zero exit
+is a failure, and starts the count again at one after a run of 60 seconds or more. An exit with
+status 0 is a failure only after a run shorter than five seconds, a daemon giving up at once
+(ModemManager exits 0 when its bus name is taken); after a longer run it is a clean exit and
+clears the count, because a periodic job's `snooze` exits 0 after every job it runs.
+`ksvc check <name>` prints one of these lines, and exits 0 for `[ OK ]` and 1 for the rest:
+
+| Line | When |
+|---|---|
+| `[ OK ] <name>  (pid N)` | The supervisor is alive, and its daemon is running or exited 0 |
+| `[FAIL] <name>  (exited with code N; restarting)` | The supervisor is waiting five seconds to start the daemon again after a non-zero exit, or after its second failing exit in a row of any status; `M failed starts in a row` is added once there are two or more |
+| `[FAIL] <name>  (crash loop: M failed starts in a row, last exit code N; pid P)` | The daemon is running again after two or more failing exits in a row, and has not yet run 60 seconds |
+| `[DOWN] <name>` | No pid file, or its supervisor is gone |
+
+Stopping the service, and a final exit, remove the state file with the pid file.
 
 ### kdos-bootctl
 

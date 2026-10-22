@@ -8,7 +8,9 @@ or a network printer often speaks SMB and nothing else. The Active Directory dom
 domain membership and winbind are not built.
 
 The package carries a service script, `83_samba`, that runs `smbd` under the supervisor once a
-non-empty `/etc/samba/smb.conf` exists and skips itself before then; other machines reach it after
+non-empty `/etc/samba/smb.conf` exists and skips itself before then. It creates `/var/log/samba`
+and `/var/cache/samba` before each start, because `smbd` never makes its log directory and writes
+nothing but the supervisor's log without it. Other machines reach the server after
 the firewall's `smb` name is opened (see
 [Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services)).
 

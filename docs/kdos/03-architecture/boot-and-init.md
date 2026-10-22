@@ -95,11 +95,12 @@ the only one. The same binary, the same configuration file and the same menu ser
 so what a machine shows at power-on does not depend on how it started. On UEFI the firmware loads
 `EFI/BOOT/BOOTX64.EFI`. On BIOS it runs the boot code in the first sector, which `limine
 bios-install` writes and which finds `limine-bios.sys` by name in the root, `/boot`, `/limine` or
-`/boot/limine` of a volume it can read. The live medium carries both paths. The installer asks for
-that boot code on the target disk whatever the installing machine booted as, but on a GPT disk
-Limine's BIOS stage needs a BIOS boot partition and the installer's layout has none, so an installed
-disk starts on UEFI only; see [Known
-gaps](../06-reference/known-gaps.md#an-installed-disk-starts-on-uefi-only).
+`/boot/limine` of a volume it can read. The live medium carries both paths, and so does an
+installed disk: the installer writes that boot code whatever the installing machine booted as. On
+a GPT disk the gap after the first sector holds the partition table, so Limine's BIOS stage goes
+into a 1 MiB BIOS boot partition (type `21686148-6449-6E6F-744E-656564454649`), partition 2 of the
+erase plan's layout, which `limine bios-install <disk> 2` fills; see
+[kinstall](../04-programs/kinstall.md#both-firmwares).
 
 `BOOTIA32.EFI` sits beside the 64-bit binary, and the two never compete. A 64-bit CPU does not
 imply a 64-bit firmware: early Atom tablets and a few netbooks run this kernel and this userland
@@ -203,7 +204,7 @@ themselves are the ones that name files rather than colours (`wallpaper`, `term_
 
 | File | On the live medium | On an installed machine |
 |---|---|---|
-| Font | `psf2limine.py` converts `ter-i16n` in the image phase and writes `boot/limine/font.bin` straight into the ISO tree. It is not in the root filesystem. | `kinstall` copies `/boot/limine/font.bin`, or `/mnt/iso/boot/limine/font.bin` (where the initramfs mounts the medium), to `EFI/kdos/font.bin` |
+| Font | `psf2limine.py` converts `ter-i16n` in the image phase and writes `boot/limine/font.bin` straight into the ISO tree. It is not in the root filesystem. | `kinstall` copies `/mnt/iso/boot/limine/font.bin` (where the initramfs mounts the medium; the target is mounted beside it at `/mnt/kinstall`), else the running system's own `/boot/efi/EFI/kdos/font.bin`, to `EFI/kdos/font.bin` |
 | Backdrop | `/usr/share/kdos/boot/kdos-backdrop.png`, falling back to `kdos-banner.png`, copied to `boot/limine/wallpaper.png` | The same two files, which the `fs/` overlay ships in the root, copied to `EFI/kdos/wallpaper.png`, so an install run with no medium mounted still gets its artwork |
 
 Either file missing is survivable: Limine draws its own face on a plain backdrop, and the entries
@@ -974,15 +975,26 @@ On the live medium the init mounts `system.sfs` read-only through a loop device 
 overlay on top of it as the new root. `system.sfs` is the whole root filesystem, compressed by
 `mksquashfs` in the image phase (`110_iso.sh`) with zstd at level 15 unless `KDOS_ISO_COMP` names
 another codec, with the pseudo-filesystem mount points recreated empty. The
-contents of `/var/cache` and `/var/log` are left out, and both directories are recreated empty too,
-because a daemon makes its own directory under them with a single `mkdir` that needs the parent.
+contents of `/var/cache` and `/var/log` are left out, and both are recreated holding only the
+directories installed packages claim under them, empty and with the build tree's mode and owner: a
+daemon makes its own directory there with a single `mkdir` that needs the parent, some (Samba's,
+libvirt's) never make theirs at all, and a claimed directory that is absent fails
+[`kpkg check --all`](packaging.md#checking-an-installed-root).
 The overlay's writable upper layer decides whether the session survives a power-off:
 
 - A filesystem labelled `KDOS_PERSIST` is used as the upper layer when one is present, in `upper/`
   and `work/` directories on it. `kdos persist` creates such a store, as an ext4 partition in the
-  free space after the image. The label is looked up once, right after the medium is found, with
-  no wait: a store on a device that enumerates later, such as a second USB stick, is not seen
-  and the session runs in RAM.
+  free space after the image. The label is looked up right after the medium is found, and again
+  every tenth of a second while USB storage is still arriving: a hub port holds a device that is
+  not yet configured, or a mass-storage interface has no disk beneath it yet (usb-storage waits
+  a second before it scans a new stick). While a hub other than a root hub is present, the lookup
+  also waits until the set of USB devices has not changed for one second, because a hub's empty
+  ports show nothing during the moment before a connection is reported. The wait ends at the
+  first answer and is bounded at 10 seconds, the bound the medium and the root get, so a store on
+  a second USB stick is used. A boot with nothing pending and no such hub does not wait; behind an
+  idle hub, a boot with no store waits that one second. A USB disk that has appeared since the
+  previous lookup gets one more lookup at once, because the kernel creates the disk before it has
+  read its partition table and the first lookup can miss the partition that holds the store.
 - With no store, the upper layer is a tmpfs and the session is gone at reboot.
 - `nopersist` on the command line (the menu's `KDOS Live (clean session)` entry) ignores the store.
   That entry exists so a store holding a change that stops the desktop coming up can be bypassed
@@ -1100,8 +1112,10 @@ field is free of shell metacharacters, so init executes each one directly rather
 6. Runs each executable `/etc/init.d/NN_name.sh` with `start`, in numeric order, skipping any with a
    marker in `/etc/service.disabled/`. Each script's output goes to `/run/kdos-init.<name>.log` and
    is then printed to the console; the splash shows one stage per script and, if one fails, up to
-   six lines of its output. The output goes to a file rather than through a pipe because a
-   supervised daemon's supervisor would hold a pipe open and `rcS` would never see the end of it. A
+   six lines of its output. The output goes to a file rather than through a pipe because any
+   process a script left running with that output open would hold the pipe's write end, and `rcS`
+   would never see the end of it; a supervised daemon is not such a process, since `ksvc` points
+   it and its supervisor at a log forwarder of their own. A
    supervised daemon's own output does not stay in that file: `ksvc` sends it to syslog and to
    `/run/kdos-svc.<name>.log`; see [The daemons](../04-programs/daemons.md#the-shape-they-share).
 7. Runs `kdos-bootctl mark-good`.
@@ -1203,18 +1217,27 @@ Each is `utmps-utmpd` or `utmps-wtmpd` behind s6's `s6-ipcserver`, run as the `u
 through `s6-setuidgid`; `utmps-utmpd` opens `utmp` in its working directory, which execline's
 `execline-cd` sets. Each daemon reads the client's uid and gid from the socket: `utmpd` changes a
 record only for root or the `utmp` group, and `wtmpd` appends one only for root or for the user the
-record names, so only root's writers (`init`, `agetty`, `login`) can log someone in. `06_utmps` creates `/run/utmps` and `/var/log/wtmp` for `utmp` and waits up
-to two seconds for both sockets, because `init` writes its boot record the moment `rcS` returns
-and a record sent with no socket listening is lost. With either daemon down, `who`, `users` and
+record names, so only root's writers (`init`, `agetty`, `login`) can log someone in. `06_utmps` creates `/run/utmps`, an empty `/run/utmps/utmp` and `/var/log/wtmp` for `utmp`, and
+waits up to two seconds for both sockets, because `init` writes its boot record the moment `rcS`
+returns and a record sent with no socket listening is lost. The empty `utmp` is needed because
+`utmpd` creates the file only when its first request arrives, while `init` checks that the file
+exists and is writable before each record and skips the record silently when it is not: left to
+`utmpd`, the file would first appear with the first `agetty`'s login record, after the boot and
+runlevel records had been skipped. With either daemon down, `who`, `users` and
 `pinky` print nothing and that boot's records are gone; `runlevel` still answers, from
 `/run/runlevel`.
 
 `init` writes an `INIT_PROCESS` record when it starts an inittab entry, such as a console's
 `agetty`, and a `DEAD_PROCESS` record when that entry exits, the `BOOT_TIME` record when it leaves
-the `sysinit` entries, which is after `rcS` has started both daemons, and is built to write a
-`RUN_LVL` record on every runlevel change. `who -b` reads the boot record. A booted image's records
-hold no runlevel entry, so `who -r` prints nothing, and `runlevel` answers from `/run/runlevel`,
-which `init` also writes. Its `wtmp` copies, and `halt`'s shutdown record, do not go through
+the `sysinit` entries, which is after `rcS` has started both daemons, and a `RUN_LVL` record on
+every runlevel change. `who -b` reads the boot record and `who -r` the runlevel record
+(`run-level 3`, with the time `init` entered it). `utmpd` keeps one record of each of these two
+types, replacing it with the next: utmps matches a record to replace by its type alone only for
+the time records POSIX lists, and the `utmps` port patches the runlevel record in among them, as
+glibc has it. Without that each runlevel record would be appended, `who -r` would print one line
+for every runlevel entered since boot, and `runlevel`, which prints the first runlevel record it
+finds, would report the runlevel of the boot after any `telinit`. `runlevel` reads the same records
+and, finding none, answers from `/run/runlevel`, which `init` also writes. Its `wtmp` copies, and `halt`'s shutdown record, do not go through
 `wtmpd`: sysvinit appends them to `/var/log/wtmp` itself, in utmps' record layout, because the
 `updwtmp` call it would otherwise use exists only in glibc. A boot record `init` cannot write
 because `/var/log/wtmp` is missing is written before its next `wtmp` record.

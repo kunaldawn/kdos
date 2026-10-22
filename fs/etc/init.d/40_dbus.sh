@@ -25,8 +25,22 @@ case "$1" in
         # until the line above writes its target, from being made again.
         [ -e /etc/machine-id ] || [ -L /etc/machine-id ] || \
             ln -s /var/lib/dbus/machine-id /etc/machine-id
-        # --nofork keeps it in foreground for supervision
-        supervise "$NAME" "$DAEMON" --system --nofork
+        # A second bus would take the socket from the first, and every client
+        # already connected would be on a bus nobody else can reach.
+        case "$(ksvc check "$NAME")" in
+            "[DOWN]"*) ;;
+            *) echo "[SKIP] $NAME: already supervised"; exit 0 ;;
+        esac
+        # --nofork keeps it in foreground for supervision. --nopidfile,
+        # because dbus-daemon leaves /run/dbus/pid behind when it exits on
+        # SIGTERM or dies, and refuses to start while the file exists: the
+        # supervisor's restart, and every `service restart dbus`, would fail
+        # for as long as the machine ran. The supervisor's own pid file is the
+        # guard against a second bus instead.
+        supervise "$NAME" "$DAEMON" --system --nofork --nopidfile
+        # The daemons after this connect at once, and one that finds no
+        # socket yet exits and is started again five seconds later.
+        wait_bus_name org.freedesktop.DBus
         ;;
     stop)
         stop_service "$NAME"

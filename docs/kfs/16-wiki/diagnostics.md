@@ -275,7 +275,6 @@ Those columns are filled for root only; run `sudo lsblk -f`.
 - [kdos doctor cannot check hardware a machine does not have](../../kdos/06-reference/known-gaps.md#kdos-doctor-cannot-check-hardware-a-machine-does-not-have)
 - [lsblk shows a filesystem's type, label and UUID to root only](../../kdos/06-reference/known-gaps.md#lsblk-shows-a-filesystems-type-label-and-uuid-to-root-only)
 - [btop's GPU panel is empty on Intel graphics unless btop runs as root](../../kdos/06-reference/known-gaps.md#btops-gpu-panel-is-empty-on-intel-graphics-unless-btop-runs-as-root)
-- [The installer's warnings are shown nowhere](../../kdos/06-reference/known-gaps.md#the-installers-warnings-are-shown-nowhere)
 - [kdos-res draws its selected row in the accent colour](../../kdos/06-reference/known-gaps.md#kdos-res-draws-its-selected-row-in-the-accent-colour)
 
 ## See also

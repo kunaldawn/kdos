@@ -91,5 +91,5 @@ port ships its own init script, `/etc/init.d/75_mumble-server.sh`. It runs the s
 there is no account or no database yet; a database is made by running `mumble-server -supw` as
 that account. `postinstall.sh` creates the account and group in the root being installed into,
 `PKG_ROOT`, and gives the account `/var/lib/mumble-server` (mode 0750) and the `.ini`, which only
-its group may read. It reads `/etc/passwd` and `/etc/group` directly, because musl has no
-`getent`. See [postinstall.sh](../../../../docs/kdos/05-developer/writing-ports.md#postinstallsh).
+its group may read. It reads `/etc/passwd` and `/etc/group` under `PKG_ROOT` directly, because
+`getent` answers for the running system and not the tree being installed. See [postinstall.sh](../../../../docs/kdos/05-developer/writing-ports.md#postinstallsh).

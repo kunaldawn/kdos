@@ -171,13 +171,16 @@ profile exists and whose container does not is `not created`. A box made from an
 container, does not exit on podman's stop signal, so its `stop` takes the whole ten seconds and
 the kill (15 seconds on the live medium), and `list` may still show it `stopping` for a moment.
 
-`remove` runs `podman rm` without `-f`, which refuses a running box, and it prints
+`remove` runs `podman rm` without `-f`, which refuses a running box. On success it prints
 `<name> removed — its profile and its writable layer are still in ~/.local/share/kdos/boxes/<name>`
-and exits 0 whether or not the container went. Stop the box first with `kdos-box stop`, then
-remove it, and check with `kdos-box list` or `podman ps -a`. `--force`
-(`kdos-box remove app.hugin --force`) adds `-f` to `podman rm`, which does not remove a running
-box made from an image on the live medium: podman gives up with `given PID did not die within
-timeout`, the box is left `stopping`, and `kdos-box remove` still prints `removed` and exits 0.
+and exits 0. When podman refuses, podman's own error is printed, then
+`<name> was not removed (podman rm exited N)`, and `kdos-box remove` exits with podman's status;
+the box and its stack are left as they were. Stop the box first with `kdos-box stop`, then remove
+it. `--force` (`kdos-box remove app.hugin --force`) adds `-f` to `podman rm`, which does not
+remove a running box made from an image on the live medium: podman gives up with `given PID did
+not die within timeout`, the box is left `stopping`, and `kdos-box remove` reports the failure
+the same way. A name with no container answers `<name> has no container to remove` and exits 1, after
+releasing any composed stack that a failed `create` left behind.
 
 `kdos-box enter` with no command, from a terminal, opens a new `foot` window titled
 `<name> — KDOS box`; with `KDOS_BOX_NOTERM` set to anything it runs in the current terminal.
@@ -391,8 +394,6 @@ A profile change has no effect
 - [A box is not a security boundary against you](../../kdos/06-reference/known-gaps.md#a-box-is-not-a-security-boundary-against-you)
 - [Changing the accent colour reaches running GTK3 applications, not running libadwaita or KDE ones](../../kdos/06-reference/known-gaps.md#changing-the-accent-colour-reaches-running-gtk3-applications-not-running-libadwaita-or-kde-ones)
 - [Applications imported or built during an install stay in the live session](../../kdos/06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session)
-- `kdos-box remove` reports a box removed, and exits 0, when podman refused to remove it because
-  it is running, with or without `--force`; see [Managing boxes](#managing-boxes).
 
 ## See also
 

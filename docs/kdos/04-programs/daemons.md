@@ -95,7 +95,8 @@ whatever is left.
 
 The daemon's output goes to syslog and to a small file in `/run`. The supervisor points the
 daemon's standard output and error, and its own *Starting* and *Exited* lines, at a forwarder
-process. Each line becomes a daemon-facility syslog message tagged with the daemon's full name, and
+process. Each line becomes a daemon-facility syslog message tagged with the daemon's full name
+(`supervise --facility <name>` picks another facility; none of these five daemons uses it), and
 is also appended to `/run/kdos-svc.<full name>.log`: for example `/run/kdos-svc.kdos-powerd.log`,
 tagged `kdos-powerd`. Files and tags use the full name; only the `service` command takes the short
 one. The file holds at most 64 KiB; when it would grow past that it is renamed to
@@ -116,12 +117,21 @@ restarted every five seconds for as long as the machine is up. `service_helper` 
 `supervise --final-exit <code>`, which stops the respawn on an exit status restarting cannot
 change. None of these five daemons uses it: each one's usual refusal is caught by its init script,
 and a refusal the script cannot see (`kdos-energyd` finding no usable energy domain after the
-script's glob matched) is restarted every five seconds.
+script's glob matched) is restarted every five seconds, and `service status` reports it as
+`[FAIL]` with its exit status rather than `[ OK ]` (see
+[ksvc and service](kdos-command.md#ksvc-and-service)).
 
 ### The socket and the identity check
 
 Each daemon owns one socket in `/run`, named after the daemon, and removes a stale one before
 binding so that a socket file left by a crash cannot hold the name.
+
+The listening socket and every accepted connection are close-on-exec (`SOCK_CLOEXEC` on the
+`socket()` and on `accept4()`), so no program a daemon runs inherits a client's connection. A
+program that kept one open would hold it past the reply: `kdos-powerd`'s `firewall ssh on` starts
+`sshd` under its supervisor, and `kdos-mountd`'s verbs run `cryptsetup`, mount helpers and `mkfs`
+while its `subscribe` connections are open, and a client whose connection a running program still
+holds never reads the end of its answer.
 
 The socket is mode 0666, and anyone may connect; the real check is the caller's identity. The
 daemon asks the kernel for the connecting process's user id (`SO_PEERCRED`, which the caller cannot
@@ -573,8 +583,20 @@ modest machine.
   pressure file (150 ms of full stall within a one-second window, meaning every runnable thread was
   stuck on memory for 15% of the last second) and sleeps until the kernel signals it. A sampling
   loop would itself compete for processor time with the stall it is trying to notice.
+- A stall kills only when memory is short. When the trigger fires the daemon reads
+  `/proc/meminfo` and kills nothing unless `MemAvailable` is at most 10% of `MemTotal`. A single
+  busy process stalls every task that wants to run when it waits on reclaim itself: a copy
+  streaming gigabytes through the page cache, such as the installer's `rsync`, fires the trigger
+  with most of memory available and nothing else asking for any, and killing it would free
+  nothing anyone was short of. A process pushing the working set out is the case that also takes
+  `MemAvailable` down. A `/proc/meminfo` that cannot be read leaves the stall as the only test.
+- A process can be protected by its `oom_score_adj`. A process whose
+  `/proc/<pid>/oom_score_adj` is -500 or lower is never a victim; -1000 is the kernel's "never
+  kill" and -500 is the threshold other user-space killers honour. Only root can lower the value,
+  and a child inherits it, so a root program shields everything it will start by lowering its own
+  first (`choom -n -1000 -p $$` in a shell). This is the contract a program uses to keep work it
+  must finish out of reach; no program outside the desktop is protected by name.
 - The desktop is never a victim. Protected are process 1, kernel threads, the daemon itself,
-  anything whose `oom_score_adj` is -500 or lower (the opt-out other user-space killers honour),
   and these by process name: `kdos-comp`, `kdos-shell`, `kdos-desk`, `kdos-notifyd`, `Xwayland`,
   `dbus-daemon`, `seatd`, `ksvc`, `kdos-powerd`, `kdos-energyd`, `kdos-oomd`, `wireplumber`, and
   every process whose name starts with `pipewire`. Killing the compositor to save the desktop is
@@ -604,9 +626,10 @@ modest machine.
   once a second on a machine that is already stalling.
 
 The daemon shields itself from the emergency it watches: at start-up it sets its own
-`oom_score_adj` to -1000 and locks its memory with `mlockall`. Each kill is logged with the victim
-and the ten-second pressure averages that caused it, in the form
-`kdos-oomd: killed <name> [(appbox <box>)] (pid <pid>, <size> MB) — memory pressure avg10 full=<f> some=<s>`.
+`oom_score_adj` to -1000 and locks its memory with `mlockall`. Each kill is logged with the victim,
+the ten-second pressure averages and the memory available when it chose, in the form
+`kdos-oomd: killed <name> [(appbox <box>)] (pid <pid>, <size> MB) — memory pressure avg10 full=<f> some=<s>, <avail> of <total> MB available`.
+A trigger that finds memory not short logs nothing.
 
 ### The socket
 
@@ -624,7 +647,10 @@ and answers root, `seat` and `wheel`:
 
 `kdos-oomd --fixture <dir>` reads a recorded `/proc` tree, prints the process it would kill as
 `would kill <name> … (pid <pid>, <size> kB)` with the recorded pressure, and signals nobody. It
-exits 0 when there is a candidate and 1 (printing `no candidate`) when there is none.
+exits 0 when there is a candidate and 1 (printing `no candidate`) when there is none. A tree with a
+`meminfo` whose `MemAvailable` is above 10% of `MemTotal` prints
+`no kill: <avail> of <total> kB available` and exits 1, the answer the daemon gives a trigger
+there; a tree without one is judged on the stall alone.
 
 `testing/oomd-fire.sh` exercises the real path in a booted virtual machine: it allocates and
 touches memory until the trigger fires, then asks the socket what happened rather than watching
@@ -1175,9 +1201,17 @@ rest of its life; restart it (`service restart packd`) after changing the file.
 
 The sweep that deletes older versions runs after an install and at no other time, so nothing deletes
 a rollback while somebody is deciding whether to use it. `rollback` keeps the current file as
-`<id>-<version>.kpack`, renames the retained version whose version string sorts last (compared as
-text) into its place, and answers `ok <id> <current> -> <restored>`. The version rolled away
-from stays in the store under its own version.
+`<id>-<version>.kpack`, renames the newest retained version (by version comparison, as the sweep
+keeps them, so `1.10` is newer than `1.9`) into its place, and answers
+`ok <id> <current> -> <restored>`. The version rolled away from stays in the store under its own
+version. A retained copy of the installed version itself, left by installing the same version
+again, is never the one restored; with nothing else retained the answer is
+`err no earlier <id> is kept`.
+
+The store's row for an id is `<id>.kpack` and no other file. A retained `<id>-<version>.kpack` is
+material for `rollback` and is never listed, mounted or composed. The sweep and `rollback` count a
+file as a retained version of an id only when its own metadata names that id, because an id may
+contain `-`: `foo-bar.kpack` is the installed pack `foo-bar`, not a version `bar` of `foo`.
 
 ### Diagnosis and testing
 
