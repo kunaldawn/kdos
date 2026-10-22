@@ -90,7 +90,7 @@ int sh_mountd_list(ShMountRow *out, int max, char *why, size_t nwhy)
 	if (sh_mountd_ask("list", buf, sizeof(buf)) != 0) {
 		if (why && nwhy)
 			snprintf(why, nwhy, "kdos-mountd is not running "
-					    "(service start 58_mountd)");
+					    "(service start mountd)");
 		return 0;
 	}
 	for (char *p = buf; *p && n < max;) {
@@ -132,7 +132,7 @@ int sh_mountd_shares(ShShareRow *out, int max, char *why, size_t nwhy)
 	if (sh_mountd_ask("shares", buf, sizeof(buf)) != 0) {
 		if (why && nwhy)
 			snprintf(why, nwhy, "kdos-mountd is not running "
-					    "(service start 58_mountd)");
+					    "(service start mountd)");
 		return 0;
 	}
 	for (char *p = buf; *p && n < max;) {
@@ -187,7 +187,7 @@ int sh_mountd_browse(ShServerRow *out, int max, char *why, size_t nwhy)
 		close(fd);
 		if (why && nwhy)
 			snprintf(why, nwhy, "kdos-mountd is not running "
-					    "(service start 58_mountd)");
+					    "(service start mountd)");
 		return 0;
 	}
 	dprintf(fd, "browse\n");

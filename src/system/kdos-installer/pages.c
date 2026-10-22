@@ -126,17 +126,19 @@ static void welcome_draw(KRect b)
 		y++;
 	}
 
-	/* A LEGACY BOOT IS A NOTE AND NOT A REFUSAL. Limine writes both paths
-	 * onto the disk whichever way this machine started, so what changes is
-	 * which one the firmware will use — not whether the install works. */
+	/* A LEGACY BOOT IS A WARNING AND NOT A REFUSAL. The GPT layout
+	 * do_partition() writes has no BIOS boot partition, so Limine's BIOS
+	 * stage cannot be installed on it and the disk starts on UEFI only;
+	 * the install itself completes, and the disk may be meant for a UEFI
+	 * machine. This note is the one place a BIOS user is told. */
 	if (!ki_sys.uefi) {
 		y++;
 		ktui_para(b.x, y, b.w,
-		     "This machine booted in legacy BIOS mode. Limine is "
-		     "written for both firmwares, so the installed system will "
-		     "start here and on a UEFI machine — but the firmware's own "
-		     "boot entry cannot be created in legacy mode.",
-		     KT_MID);
+		     "This machine booted in legacy BIOS mode. A disk this "
+		     "installer partitions has no BIOS boot partition, so the "
+		     "installed system starts on UEFI only: it will not start "
+		     "on this machine in legacy mode.",
+		     KT_ERR);
 	}
 }
 

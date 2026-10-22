@@ -152,7 +152,11 @@ This book is on every image, as HTML under `/usr/share/doc/kdos`: open
 `man kdos-appbox` for example, whose description is the section of the book that documents the
 command, so the page and the book cannot disagree; `apropos kdos` lists them all with the one-line
 description from the [command index](../06-reference/command-index.md). The `kdos-doc` port writes
-all of it from `docs/` at build time; see [Developing](../05-developer/developing.md#rebuilding-one-thing).
+all of it from `docs/kdos` at build time; see [Developing](../05-developer/developing.md#rebuilding-one-thing).
+
+The second book, *KDOS from Scratch*, which builds KDOS phase by phase and package by package, is
+on the image too: open `/usr/share/doc/kfs/index.html`, or read the whole of it as
+`/usr/share/doc/kfs/kfs.pdf`. The `kdos-kfs` port writes both from `docs/kfs` and the recipes.
 
 ### kdos status
 
@@ -212,8 +216,9 @@ Checks the faults that are known to occur on KDOS rather than running a generic 
 Each check reports one of three levels:
 
 - `ok`: checked and fine;
-- `warn`: checked and wrong, with the fix where there is one ("start with: service powerd
-  start", "run: kdos theme phosphor");
+- `warn`: checked and wrong, with the fix where there is one ("start with: service start
+  powerd", "run: kdos theme bone", which names the accent in use, the default `bone` when none is
+  applied);
 - `skip`: could not be checked here, with the reason. Much of the hardware section cannot be
   answered in a virtual machine (no SOF audio device, no wireless, no NVIDIA GPU, no boot
   medium), and a green line for something never tested would be as misleading as a warning that
@@ -869,10 +874,12 @@ which is how the corpus is read from a checkout. Each document starts with a hea
 
 `why` answers what provides a path or a port and why it is configured that way. For an absolute
 path it first prints the owning package and version, from the package database's own file list,
-and the recipe it was built from. A path no package owns is reported as `none — provided by fs/,
-or not installed`: files from the base filesystem tree are copied into the image rather than
-installed by a package, so that is a common answer. It then prints in full every reason whose
-`path:` names the path or a directory above it, or whose `port:` names the port.
+and the recipe it was built from. A path no package owns is reported as `none — provided by fs/
+or 10_bootstrap, or not installed`: files from the base filesystem tree are copied into the image
+rather than installed by a package, and `10_bootstrap` compiles `kpkg` (with its four other names
+and `/etc/kpkg.conf`) and `kinstall` straight into the root, so that is a common answer. It then
+prints in full every reason whose `path:` names the path or a directory above it, or whose `port:`
+names the port.
 
 `explain` browses the corpus. With no topic it lists every reason's title. With a topic it prints
 in full each reason that mentions the topic anywhere, ignoring case, so `kdos explain musl` finds
@@ -1191,9 +1198,10 @@ count, size and build time, and `kdos rebuild` prints it before it starts; the p
 number of recipes in the medium's own `ports/core`, found at `<name>/` or one shelf down.
 
 Inside the chroot, `/kdos` is a non-recursive bind of the build container's `/workspace`, and
-`script/chroot/exec.sh` binds `script/`, `src/` and `fs/` back over it and binds `ports/` at
-`/ports`; the step reads each from there. The build container mounts only `build/`, `src/`, `fs/`,
-`script/` and `ports/`, so the three top-level files are normally not there to copy. `kdos
+`script/chroot/exec.sh` binds `script/`, `src/`, `fs/`, the `Makefile` and the `Dockerfile` back
+over it and binds `ports/` at `/ports`; the step reads each from there. The build container mounts
+the `Makefile` and the `Dockerfile` beside the directories, and not `CLAUDE.md`, so a medium made by
+`make build` carries the first two and not the third. `kdos
 rebuild` names its copy of the tree in `KDOS_WORKSPACE`, and the host environment
 (`script/env/host.env`) takes `WORKSPACE` from that variable, so the bootstrap phase's file-system
 step copies the overlay from the copy's `fs/` rather than from `/workspace/fs`. No rebuild from a

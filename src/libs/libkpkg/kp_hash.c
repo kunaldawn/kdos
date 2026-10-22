@@ -13,8 +13,9 @@
  *
  *   E:  the RECIPE — kpkgbuild, build.sh, postinstall.sh and every .patch,
  *       sorted by name, each contributing its name AND its bytes, then every
- *       other file beside them that no `sha256 =` line names. A recipe hash
- *       is an exact statement of what a package was built FROM.
+ *       other file beside them that no `sha256 =` line names, except the
+ *       book's note `kfs.md` and any `__pycache__`. A recipe hash is an
+ *       exact statement of what a package was built FROM.
  *   B:  the BUILD CONFIG — the flags, the target, the libc and the compiler.
  *       Two machines with the same B produce comparable binaries; two with
  *       different B do not, whatever the recipe says.
@@ -42,6 +43,30 @@ static int recipe_file(const char *name)
 	return !strcmp(name, "kpkgbuild") || !strcmp(name, "build.sh") ||
 	       !strcmp(name, "postinstall.sh") ||
 	       (n > 6 && !strcmp(name + n - 6, ".patch"));
+}
+
+/* `kfs.md` beside a recipe is the book's note on the port (docs/kfs), and the
+ * port's own build never reads it: hashing it would rebuild the port for an
+ * edit to its prose. It is skipped only at the top of a walk, never below it,
+ * because a fork's `src/` holds sources and a file of that name there is one
+ * of them. script/book/kfsgen.py's recipe_hash mirrors this hash, skip
+ * included, and the two must change together or the book's `recipes.stamp`
+ * goes stale on a tree whose recipes did not move. That stamp then hashes
+ * each kfs.md on its own, so an edited note still rebuilds kdos-kfs, the
+ * port that renders it. */
+static int book_note(const char *name)
+{
+	return !strcmp(name, "kfs.md");
+}
+
+/* `__pycache__` is bytecode Python writes beside a module it imports, at any
+ * depth: a port that links in a tree of scripts (kdos-kfs's `book`) would
+ * otherwise hash whatever a host run happened to import, and a clean clone,
+ * or /ports with its caches stripped, would read the same recipe as stale.
+ * It is skipped at every level, and kfsgen.py's _hash_tree skips it too. */
+static int byte_cache(const char *name)
+{
+	return !strcmp(name, "__pycache__");
 }
 
 /* Does a `sha256 = <hash> <file>` line of this kpkgbuild text name `name`?
@@ -137,9 +162,12 @@ static void hash_tree(KbSha256 *s, const char *root, const char *rel, int depth,
 		char *data;
 
 		/* Hashed already by the caller, and hashing them twice would
-		 * make the two loops' order load-bearing; or vouched for by
-		 * their own `sha256 =` line. */
-		if (!*rel && (recipe_file(names[i]) ||
+		 * make the two loops' order load-bearing; vouched for by their
+		 * own `sha256 =` line; or the book's note, which no build
+		 * reads. A bytecode cache is skipped at every depth. */
+		if (byte_cache(names[i]))
+			continue;
+		if (!*rel && (recipe_file(names[i]) || book_note(names[i]) ||
 			      (recipe && sha256_names(recipe, names[i]))))
 			continue;
 		if (*rel)

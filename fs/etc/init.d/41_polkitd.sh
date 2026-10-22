@@ -39,7 +39,11 @@ case "$1" in
         echo "[KDOS] Starting $NAME..."
         mkdir -p /run/polkit-1
         # polkitd never forks, so the supervisor watches the daemon itself.
-        # --no-debug only silences its diagnostic output on stdout.
+        # --no-debug points its stdin, stdout and stderr at /dev/null: the
+        # copy of each log line it would print, and a rule's polkit.log()
+        # output, are discarded. What it logs goes to syslog as authpriv, so
+        # /var/log/auth.log; polkitd logs no allow or deny decision at any
+        # --log-level.
         supervise "$NAME" "$DAEMON" --no-debug
         ;;
     stop)

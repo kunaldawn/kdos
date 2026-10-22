@@ -1,6 +1,6 @@
 +=[ connect to server ]================================+
 |                                                      |
-| kdos-mountd is not running (service start 58_mountd) |
+| kdos-mountd is not running (service start mountd)    |
 |                                                      |
 |                                                      |
 |                                                      |

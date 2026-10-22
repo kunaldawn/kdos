@@ -36,8 +36,8 @@ valgrind
 # offline is a permanently broken feature that looks like a config bug.
 tree-sitter
 
-# Without the rust-src component it fails silently: navigation into std reports
-# nothing rather than erroring. ports/core/lang/rust installs that source.
+# Without the rust-src component it cannot load std, and says so only in its log
+# and a server-status warning; ports/core/lang/rust installs that source.
 rust-analyzer
 
 # bpftrace's `find_package(LibBcc REQUIRED)` is unconditional.

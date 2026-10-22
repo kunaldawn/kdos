@@ -579,7 +579,7 @@ static int nm_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 	if (sd_bus_message_is_method_error(reply, NULL)) {
 		snprintf(why, sizeof(why),
 			 "NetworkManager is not answering "
-			 "(service start 42_networkmanager)");
+			 "(service start networkmanager)");
 		return 0;
 	}
 	why[0] = '\0';

@@ -31,5 +31,11 @@ kdos-pack
 kdos-boxinit
 
 # The book under /usr/share/doc/kdos, kdos(7), and a manual page per kdos-*
-# command, rendered from docs/ by lowdown.
+# command, rendered from docs/kdos by lowdown.
 kdos-doc
+
+# KDOS from Scratch under /usr/share/doc/kfs, HTML and one PDF, rendered from
+# docs/kfs and the recipes by pandoc and typst. The full file lists in its
+# HTML come from the package database, so they name only what is installed
+# by the time it builds.
+kdos-kfs

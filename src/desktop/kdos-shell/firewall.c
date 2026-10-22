@@ -84,7 +84,7 @@ static void refresh(void)
 	}
 	if (!buf[0]) {
 		snprintf(why, sizeof(why),
-			 "kdos-powerd is not running (service start 55_powerd)");
+			 "kdos-powerd is not running (service start powerd)");
 		return;
 	}
 	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp);

@@ -209,7 +209,7 @@ static int bt_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 	pending = 0;
 	if (sd_bus_message_is_method_error(reply, NULL)) {
 		snprintf(why, sizeof(why),
-			 "not running — service start 60_bluetooth");
+			 "not running — service start bluetooth");
 		return 0;
 	}
 	why[0] = '\0';

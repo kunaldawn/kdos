@@ -89,9 +89,9 @@ static const struct {
 	{ "kdos-desk", &kdos_conf.desktop_icons, true },
 	/*
 	 * The dockapp column. Off by default — a slit nobody configured is a
-	 * column of dim `!` marks — and it had no row here at all for a
-	 * release, which meant writing ~/.config/kdos/slit.conf did nothing
-	 * whatever the file's own comment claimed.
+	 * column of dim `!` marks — and without this row writing
+	 * ~/.config/kdos/slit.conf would do nothing, whatever the file's own
+	 * comment claims.
 	 */
 	{ "kdos-slit", &kdos_conf.slit, true },
 	/*
@@ -186,12 +186,10 @@ child_build_argv(struct kdos_child *c)
 		c->argv[n++] = c->output;
 	}
 	/*
-	 * One font for all of the chrome, from comp.conf. kdos_conf outlives
-	 * every child, so pointing into it is safe — the same rule the output
-	 * name follows by living in the slot.
-	 */
-	/*
-	 * The BAR has its own font and everything else has the chrome's.
+	 * The BAR has its own font and everything else has the chrome's, both
+	 * from comp.conf. kdos_conf outlives every child, so pointing into it
+	 * is safe — the same rule the output name follows by living in the
+	 * slot.
 	 *
 	 * The panel's thickness is its font size — a cell is half as wide as
 	 * it is tall — so this is the knob that makes the taskbar 40 pixels
@@ -254,9 +252,9 @@ child_build_argv(struct kdos_child *c)
  * EVERY disposition, not just SIGPIPE the way labwc's own spawn.c does: labwc
  * assumes it inherited nothing, and a session started under anything that
  * ignores a signal — `nohup kdos-desktop` is the obvious one — hands that
- * SIG_IGN all the way down to kdos-shell. Measured: SigIgn 0x1 on a running
- * panel, so `kdos theme <accent>` SIGHUPed a process that could not receive
- * it and the live retint silently did nothing.
+ * SIG_IGN all the way down to kdos-shell. A panel with SigIgn 0x1 never
+ * receives the SIGHUP `kdos theme <accent>` sends, and the live retint
+ * silently does nothing.
  */
 static void
 child_reset_signals(void)
@@ -381,7 +379,7 @@ kdos_children_output_add(const char *name)
 		/* a `stopping` slot is the SAME name on its way out — a
 		 * replugged monitor (DP retrain on resume) re-creates the
 		 * output before the old chrome is reaped, and matching it
-		 * here left the new screen bare for the session */
+		 * here would leave the new screen bare for the session */
 		if (children[i].live && !children[i].stopping
 				&& !strcmp(children[i].output, name)) {
 			return;	/* already has its set */
@@ -540,8 +538,8 @@ kdos_child_pid(const char *cmd)
 /*
  * Reconfigure re-arms supervision: the counters reset and a child that
  * crossed RESPAWN_MAX gets exactly one more run of attempts. That is
- * the recovery the give-up dialog names — before it, a crashed-out
- * panel was gone until the next login.
+ * the recovery the give-up dialog names; without it a crashed-out
+ * panel stays gone until the next login.
  */
 void
 kdos_children_reconfigure(void)

@@ -194,6 +194,13 @@ When the compositor exits:
   with `exec`, so a session that fails to come up also leaves a working shell. Typing `exit` there
   ends the login; tty1 then gets a fresh login, and with autologin on that logs straight back in
   and starts the desktop again.
+
+  Log Out stops only the compositor and what needs its display, such as the screen-capture
+  backend. Everything else the session started is still running at that prompt: PipeWire,
+  WirePlumber and `pipewire-pulse`, the portal front end (`xdg-desktop-portal`), mpd and its
+  watcher, the per-user timer loops and the `kdos-box gc` loop. All of them are in the login's own
+  session on tty1, so the hangup that ends the login ends them too. The session bus is not:
+  `dbus-daemon --fork` starts a session of its own, and the bus runs until the machine shuts down.
 - **Any other status is a crash.** The script prints the last 20 lines of the log and asks
   `r=restart session, anything else=exit to tty`. Answering `r` re-executes the script, which
   starts the portal stack again (the screen-capture backend died with the compositor) but not a
@@ -220,7 +227,7 @@ background subshell so that none of it delays the desktop:
 |---|---|---|
 | The login sound (`kdos-sfx login`) | `kdos-sfx` installed | Silent on failure |
 | The keybinding card (`kdos-keys --first-run`) | `~/.config/kdos/first-run` does not exist | `kdos-keys` writes the marker once the card has been seen; delete it to see the card again |
-| `mpd --no-daemon` and `kdos-mpctl watch` | `mpd` installed and a readable config in `~/.config/mpd/mpd.conf`, `~/.mpdconf`, `~/.mpd/mpd.conf` or `/etc/mpd.conf` | The image ships no mpd config, so this is opt-in. mpd stays a child of the login and ends with it; one already running is left alone. The watcher feeds the panel's media cell |
+| `mpd --no-daemon` and `kdos-mpctl watch` | `mpd` installed and a readable config in `~/.config/mpd/mpd.conf`, `~/.mpdconf`, `~/.mpd/mpd.conf` or `/etc/mpd.conf` | The image ships no mpd config, so this is opt-in. mpd keeps running after Log Out and ends with the login; one already running is left alone. The watcher feeds the panel's media cell |
 | The pending-applications offer | See [below](#applications-chosen-during-installation) | |
 | The per-user timers | `~/.config/kdos/timers.d/*.timer` and `snooze` | See below |
 | Session restore | `~/.config/kdos/session-restore` exists | Relaunches the `app` lines of `${XDG_STATE_HOME:-~/.local/state}/kdos/session` with `kdos-appbox run`, two seconds apart |
@@ -236,7 +243,8 @@ loop stops a command that fails instantly from spinning it. The loops are childr
 login, not of a root service. Their process ids are written to
 `$XDG_RUNTIME_DIR/kdos/timers.pid`, and the next session start on the same boot stops the
 previous set (each loop's `snooze` child first) before starting its own. Nothing stops them when
-the compositor exits, so they keep running at the tty1 prompt a logout leaves.
+the compositor exits, so they keep running at the tty1 prompt Log Out leaves; they end with the
+login.
 
 Two tables are shipped in `/etc/skel`: `20-updatedb.timer` rebuilds the `plocate` index of the
 home directory nightly at 03:05, and `10-backup.timer` holds a nightly `kdos-backup --once` line
@@ -294,14 +302,15 @@ Three details of the startup matter:
   `flock`), so two sessions starting at once cannot both decide the daemon is down, with the
   loser removing the winner's socket.
 - **The lock is closed for the daemon** (`7>&-`). `dbus-daemon --fork` inherits open descriptors
-  and outlives the subshell, so without that it would hold the lock until logout, and the
-  *second* login of a boot would block before starting the compositor.
+  and outlives the subshell and every login, so without that it would hold the lock until
+  shutdown, and the *second* login of a boot would block before starting the compositor.
 
 ## Audio
 
 PipeWire runs on the host, started by `kdos_session_audio` from `kdos-desktop-start`, once per
 user: a restart finds it running and starts nothing, because two PipeWire daemons would fight
-over the same devices. Three programs, in this order:
+over the same devices. It keeps running after Log Out and ends with the login, so the next login
+starts it again. Three programs, in this order:
 
 1. `pipewire`, the media graph;
 2. `wireplumber`, its session manager, which connects to the daemon's socket;

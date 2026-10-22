@@ -313,8 +313,8 @@ static void load_dir(void)
 
 	/*
 	 * A directory that cannot be READ still gets its `..` below — Ctrl+L
-	 * into somebody else's home, or a cwd deleted under us, used to leave a
-	 * chooser with no rows at all and therefore no way out that is drawn
+	 * into somebody else's home, or a cwd deleted under us, would otherwise
+	 * leave a chooser with no rows at all and therefore no way out that is drawn
 	 * anywhere. The reason goes in the note, or an empty list explains
 	 * nothing.
 	 */
@@ -371,7 +371,7 @@ static void load_dir(void)
 /*
  * Reload, keeping the multi-select marks — by NAME, because the row indexes
  * are the one thing a reload does not preserve. Toggling hidden files to
- * find one more attachment used to throw away every mark already made.
+ * find one more attachment must not throw away every mark already made.
  */
 static void reload_keep_marks(void)
 {

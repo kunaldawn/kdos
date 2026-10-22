@@ -66,12 +66,13 @@ between these and the stable core: their arithmetic is asserted against recorded
 candidate. KDOS builds for x86_64 only.
 
 The natively ported applications are the least proved part. The lists of the userland phases,
-`40_lang` to `44_apps`, name 1,916 recipes for the languages, the system, the graphical stacks,
-the toolkits and the applications, every source fetched and hashed; 76 of them are not in the
-build tree: 11 of 177 in `40_lang`, 49 of 1,012 in `41_system`, 5 of 193 in `42_graphics`, 5 of
-248 in `43_toolkits` and 6 of 286 in `44_apps`. No application has been started on an image. No
-package in the build tree was built from its current recipe: every recipe hash differs from the
-one recorded under `/var/lib/kpkg/db/.recipe/`, so the next build rebuilds every port. See
+`40_lang` to `44_apps`, name 1,917 recipes for the languages, the system, the graphical stacks,
+the toolkits and the applications, every source fetched and hashed. A build has run every phase
+from `00_cross` to `70_image` and written the image, and its tree holds all of those recipes but
+one, `kdos-kfs` of `41_system`, which no build has installed yet. No application has been started
+on an image. Of the 2,104 packages in the build tree, 2,065 were built from their current recipe:
+their `kp_recipe_hash` equals the one recorded under `/var/lib/kpkg/db/.recipe/`, and the next
+build rebuilds the other 39. See
 [Applications and boxes](#applications-and-boxes) below.
 
 Screen reading of KDOS's own windows has no row, because there is nothing to rate: a KDOS surface
@@ -88,10 +89,10 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,106 recipes, 2,081 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
+| The ports tree | Stable | 2,107 recipes, 2,081 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata`, `XZ_OPT='-e --check=sha256 -T1'` and a 300 MiB `XZ_DEFAULTS` memory limit, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times, and equal to their tar recompressed on two threads with `xz -9 --block-size=32MiB`. It also installs the port through `kpkg install`, once with the deleted `xz -0` package and once with a kept cache that must match the `-9` bytes. Full-size ports are not rebuilt twice by any harness |
-| The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry, the log classifier, the retry and the jobserver |
+| The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry, the log classifier, the retry of a failed phase, the jobserver and the merge of `build/snapshots/timings.json` |
 | Snapshots and plans | Beta | Used by every incremental build, and by the synthetic-tree run above. Layered snapshots have been through synthetic trees only: the self-test's three-phase fixture, and a ten-phase tree emulating the distribution's phases with package installs, in which every phase's restore, including after a restore into fresh inodes and after a retaken phase, matched the tree it came from entry by entry. No real build has written a layered set yet |
 | Upstream sources | In progress | The format-2 index names no file yet, so every source comes from upstream until `ports/publish` fills it. Preflight checks the scripts and the index; no harness publishes to or fetches from the archive |
 | The pack format | Stable | Malformed footers, both footer formats, signature states and a flipped payload byte are each asserted by the library self-test |
@@ -101,24 +102,27 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,106 recipes, 86 are absent from the build tree's package
-  database. 85 are named by a phase list and no build of the tree has installed them: 76 in
-  `40_lang` to `44_apps` (above), 8 in `30_foundation` (`grep`, `mpdecimal`, `muon`, `musl-utils`,
-  `skalibs`, `sysvinit`, `utmps`, `which`) and `fortify-headers` in `20_selfhost`. The 86th is
-  `kdos-installer`, which `10_bootstrap` compiles by script and never records as a package. The
-  database also holds `toybox`, which no recipe names, and `texlive-doc`, whose recipe
-  `ports/unbuilt` lists as built by no phase; the orphan sweep removes both from the image. Every
-  other recipe is named by a phase list or built by a phase script, and `testing/bookcounts.py`
-  fails on one that is not. The figure is the
-  recipe names absent from the package database: the names of the directories holding a
-  `kpkgbuild` (`ports/core/*/*/kpkgbuild` and `src/*/*/kpkgbuild`), sorted under `LC_ALL=C`, and
-  `comm -23` of them against `ls build/fs/var/lib/kpkg/db`.
+- **The ports tree.** Of the 2,107 recipes, 3 are absent from the build tree's package
+  database, and the database holds no name that no recipe gives. `kdos-kfs` is named by the
+  `41_system` list and no build of the tree has installed it. The other two are `kdos-installer`,
+  which `10_bootstrap` compiles by script and never records as a package, and `texlive-doc`,
+  whose recipe `ports/unbuilt` lists as built by no phase. Every other port a package phase
+  installs, the names on its list and the dependencies they bring in that no earlier phase
+  installed, is in the database: 15 by `20_selfhost` (its list names 9), 127 by
+  `30_foundation` (its list names 138, 11 of them installed by `20_selfhost`), 22 by
+  `31_compilers`, 177 by `40_lang`, 1,013 of the 1,014 of `41_system`, 193 by `42_graphics`, 249
+  by `43_toolkits`, 284 by `44_apps`, 22 by `50_desktop` and 2 by `60_kernel`. Every other recipe is named by a phase
+  list or built by a phase script, and `testing/bookcounts.py` fails on one that is not. The
+  figure is the recipe names absent from the package database: the names of the directories
+  holding a `kpkgbuild` (`ports/core/*/*/kpkgbuild` and `src/*/*/kpkgbuild`), sorted under
+  `LC_ALL=C`, and `comm -23` of them against `ls build/fs/var/lib/kpkg/db`.
   `testing/preflight.sh` checks that every recipe parses as metadata, declares
   a name, version and release, has a `build.sh` that parses, carries the KDOS banner and names a
   hash for every source; that every recipe sits on a shelf `ports/shelves` lists, under a name no
   other port has; that every `depends` names a port that exists; that every phase's list resolves
   to a dependency order; and, through `testing/phaseclosure.py`, that every package phase from
-  `30_foundation` on installs exactly the ports its list names.
+  `30_foundation` on installs exactly the ports its list names, and that each port of `41_system`
+  to `44_apps` is in the phase its closure gives it.
 - **Upstream sources.** `ports/fetch` (run by `make fetch`) resolves every recipe hash from the port
   directory, the cache `ports/.srccache`, the `kunaldawn/kdos` archive or upstream, and regenerates
   a port's own vendor bundle when none of those holds it. `ports/publish` uploads new sources and
@@ -152,7 +156,7 @@ See [Boot and init](../03-architecture/boot-and-init.md) and [kinstall](../04-pr
 | Subsystem | Status | Evidence |
 |---|---|---|
 | Boot and init | Stable | Boots from the ISO. Preflight checks that the ISO script builds every boot path: BIOS and UEFI, from a disc (El Torito) and from a written stick (the partition table); and that every program `fs/etc/inittab` names is on the image. The self-test drives `kdos-bootctl` through an update that is never confirmed over three boots, and requires the rollback to the working slot |
-| A/B root slots | In progress | The state machine is complete and asserted on the build host: each slot boots its own kernel, the menu follows the state, and on UEFI a candidate gets one boot through `BootNext` (the firmware variable naming the entry to boot once). `kdos update apply` installs into the mounted inactive slot, deploys its kernel and marks it to try. Nothing creates or first fills the second slot, and per-slot kernels have not been booted; see [Known gaps](known-gaps.md#boot-and-updates) |
+| A/B root slots | In progress | The state machine is complete and asserted on the build host: each slot boots its own kernel, the menu follows the state, and on UEFI a candidate gets one boot through `BootNext` (the firmware variable naming the entry to boot once). `kdos update apply` installs into the mounted inactive slot, deploys its kernel and marks it to try. Nothing creates or first fills the second slot. On an installed virtual machine with UEFI firmware, slot B's own kernel booted through `BootNext`, a menu-led trial confirmed, and a hung trial rolled back to the confirmed slot; no physical firmware has run a trial; see [Known gaps](known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only) |
 | Encrypted root | In progress | The initramfs unlock path is exercised against stub tools, with no encrypted volume and without root privileges. The initramfs unlocks the chosen slot's own container, and rolling from slot B back to A is asserted to hand back A's container. A second encrypted slot has never been booted |
 | kinstall, the installer | Stable | Installs. Exercised on a disk by `testing/install-to-disk.sh`. `kinstall --dump probe` and `--dump plan` print what it sees and what it would run without installing anything; the self-test asserts the plan against saved answers. Preflight checks that every filesystem it offers can be mounted by the initramfs. The unattended path is the one exercised: an interactive install runs to the end but stays on the Summary page with no progress shown, and a second press of *BEGIN INSTALL* starts a second install on the same disk; see [Known gaps](known-gaps.md#an-interactive-install-stays-on-the-summary-page) |
 
@@ -217,7 +221,7 @@ See [Packs and boxes](../03-architecture/packs-and-boxes.md) and
 | kdos-packd | Beta | The self-test runs `kdos-packd --fixture`, which solves and composes without mounting: it asserts the lowerdir order (application, runtime, base), signature verification, and the refusal to compose a data pack into a box root. On a booted machine that already holds packs, `testing/packlane.sh` installs a pack, mounts it read-only, composes a box and reports each skip with its reason. The image carries no packs, so they must be imported before that harness can pass. Rollback is not exercised by any harness |
 | Boxes | Stable | One box per application, in daily use. The self-test asserts that a box profile prints the podman flag behind every key, reports an unknown key by name, and says which keys it cannot enforce rather than reporting success |
 | kdos-appbox | Stable | Every application launcher on the system goes through it. The self-test asserts launcher generation from an image's desktop entries, that a second box's launcher cannot collide with the default's, and that `kdos-appbox open` resolves a path to the program that opens it |
-| Native applications | Experimental | 534 recipes in `43_toolkits` and `44_apps`, with their dependencies in `40_lang` to `42_graphics`, from the X11 client libraries, GTK, Qt 6 and 5, QtWebEngine, KDE Frameworks 6, WebKitGTK and wxWidgets up to the browsers, office suites, creative, science, radio and CAD applications, games and emulators, each named in the list of the userland phase that builds it, `40_lang` to `44_apps`, in the file of its shelf. Every source is fetched and its hash recorded; the published source archive holds almost none of them. Of those 522, 427 have not been through a build, and no application has been started on an image. See [Known gaps](known-gaps.md#the-native-applications-have-not-been-built) |
+| Native applications | Experimental | 533 recipes in `43_toolkits` and `44_apps`, with their dependencies in `40_lang` to `42_graphics`, from the X11 client libraries, GTK, Qt 6 and 5, QtWebEngine, KDE Frameworks 6, WebKitGTK and wxWidgets up to the browsers, office suites, creative, science, radio and CAD applications, games and emulators, each named in the list of the userland phase that builds it, `40_lang` to `44_apps`, in the file of its shelf. Every source is fetched and its hash recorded; the published source archive holds almost none of them. All 533 are in the build tree and on the image it made, and no application has been started on an image. See [Known gaps](known-gaps.md#the-native-applications-have-not-been-run) |
 | kdos-boxsock | Stable | Every boxed client is tagged through it with the `security-context-v1` protocol (which marks a Wayland connection as coming from a sandbox), and the compositor grants a box an interface only when its profile names it. The self-test compiles it against the protocol |
 
 ## Daemons
@@ -227,7 +231,7 @@ See [The daemons](../04-programs/daemons.md).
 | Subsystem | Status | Evidence |
 |---|---|---|
 | kdos-powerd | Stable | In daily use by the desktop's power actions. The self-test asserts through `--explain` that only root, members of `seat` (the group of the person at the machine) and of `wheel` are admitted, and that a group whose name merely starts with `wheel` is not |
-| kdos-mountd | Stable | Asserted against a recorded device tree with hand-built superblocks: the removable stick and the data disc are offered, the internal disk is refused, exactly five of the fixture's six devices are eligible (the stick, an encrypted stick, a live medium's two partitions and the data disc), and a stick claimed by `/etc/fstab` stops being offered |
+| kdos-mountd | Stable | Asserted against a recorded device tree with hand-built superblocks: the removable stick and the data disc are offered, the internal disk is refused, exactly five of the fixture's six devices are eligible (the stick, an encrypted stick, a live medium's two partitions and the data disc), and a stick claimed by `/etc/fstab` stops being offered. On a booted live image with an emulated USB stick, `kdos-mount` listed, mounted and unmounted a FAT partition, a LUKS partition was unlocked through the socket and its ext4 mounted, `eject` was refused while mounted and powered the disk down once unmounted, and the `LABEL=`, `UUID=` and device-path `fstab` rules held as documented. Writing an image and formatting have not been run on a real stick |
 | kdos-energyd | In progress | Asserted against four recorded power and process trees: nested RAPL domains (the processor's energy counters, where one counter can include another) are not double-counted, a wrapped counter is handled, a boxed application's processes roll up to it, and exited processes are accounted separately. Its report appears on the Energy page of `kdos-res` and, from a right-click on the panel's resource indicator, in `kdos-status`; the panel shows no energy reading of its own, and the readings are relative by design |
 | kdos-oomd | Beta | Victim selection is asserted against three recorded trees, one arranged so that only the memory budget can produce the right answer. It has fired on a real machine: `testing/oomd-fire.sh` on a 4 GB guest took `full` memory pressure (the kernel's PSI measure of time during which every task stalled) to 158 ms against a 150 ms trigger, and the socket went from `kills 0` to `kills 1, last: python3 (pid 1615, 3644 MB)`. No run has had to choose between several large processes |
 
@@ -254,9 +258,9 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,106 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
+| Port recipes | 2,107 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
 | — in `ports/core` | 2,081 | `find ports/core -name kpkgbuild \| wc -l` |
-| — in `src/system` | 6 | `find src/system -name kpkgbuild \| wc -l` |
+| — in `src/system` | 7 | `find src/system -name kpkgbuild \| wc -l` |
 | — in `src/art` | 6 | `find src/art -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 8 | `find src/desktop -name kpkgbuild \| wc -l` |
 | — in `src/daemons` | 5 | `find src/daemons -name kpkgbuild \| wc -l` |

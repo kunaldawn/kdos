@@ -415,8 +415,8 @@ change workspace), is off unless `window_motion = yes` is set. One line in
 motion = no
 ```
 
-It takes effect at the next reload of the compositor (`kdos-comp -r`, or **Reload Configuration** in
-the desktop's right-click menu): every popup then appears and disappears in a single frame, windows
+It takes effect at the next reload of the compositor (`kdos-comp -r`, or `pkill -HUP -x
+kdos-comp`): every popup then appears and disappears in a single frame, windows
 make no transitions whatever `window_motion` says, and the picture neither wobbles nor collapses.
 The desktop's own programs read the same line each time they start an animation, so they follow it
 without a reload: the panel's launch pulse, the accent that flashes twice over a pinned button for

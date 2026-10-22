@@ -63,7 +63,7 @@
 /* 150 ms of full stall in a 1 s window: every runnable thread stuck on memory
  * for 15% of the last second. A desktop is already visibly hitching there. */
 #define KO_TRIGGER  "full 150000 1000000"
-#define KO_COOLDOWN 10.0	/* seconds between kills, at most */
+#define KO_COOLDOWN 10.0	/* seconds between victim scans, at least */
 
 #ifndef SYS_pidfd_open
 #define SYS_pidfd_open 434

@@ -157,7 +157,7 @@ static void read_chrony(void)
 	}
 	if (!buf[0] || strstr(buf, "Cannot talk to daemon")) {
 		snprintf(chrony, sizeof(chrony),
-			 "chronyd is not running (service start 35_chrony)");
+			 "chronyd is not running (service start chrony)");
 		return;
 	}
 	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp); ln;

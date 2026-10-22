@@ -17,8 +17,12 @@ case "$1" in
         # it finds a key file for, so a type left ungenerated is one a client
         # that insists on it cannot connect with.
         ssh-keygen -A
-        # -D = don't detach (foreground for supervision)
-        supervise "$NAME" "$DAEMON" -D
+        # -D = don't detach (foreground for supervision). PidFile=none:
+        # sshd's own default, /var/run/sshd.pid, is the supervisor's
+        # /run/sshd.pid. Written there, it replaces the supervisor's id, so
+        # `service stop` signals the daemon alone and it is restarted, and
+        # sshd removes it on exit, so `status` reports the service down.
+        supervise "$NAME" "$DAEMON" -D -o PidFile=none
         ;;
     stop)
         stop_service "$NAME"

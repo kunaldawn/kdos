@@ -99,7 +99,7 @@ runs, not under the image's BusyBox. It then runs that image with:
 | `--privileged` | The later phases mount `/proc`, `/sys` and bind mounts inside the target tree and `chroot` into it, which needs those privileges |
 | `--cpu-shares=256` | A weight, not a cap: an idle host gives the build every thread; under contention it yields to other containers and services, and on a systemd cgroup-v2 host shares the CPU evenly with the user session. `KDOS_CPU_SHARES` changes the weight. The environment every phase shares sets one job count, `KDOS_JOBS`, for make, `cmake --build` and cargo: the host's thread count, clamped to one job per 2 GiB of memory |
 | `--cpus=N`, only with `KDOS_JOBS=N` | Caps the container at the job count, and at the host's thread count, so cargo and go, which size themselves from the container's cgroup `cpu.max` (bind-mounted read-only into the chroot), follow a lowered `KDOS_JOBS` too; ninja is handed `-j$KDOS_JOBS` by `script/bin/ninja` |
-| `build/` mounted writable; `src/`, `fs/`, `script/`, `ports/`, `docs/` and `testing/` read-only | A build cannot modify its own sources. `testing/` is there for the tree gates `70_image` runs, and nothing in it is installed |
+| `build/` mounted writable; `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/`, the `Makefile` and the `Dockerfile` read-only | A build cannot modify its own sources. `testing/` is there for the tree gates `70_image` runs, and nothing in it is installed; the `Makefile` and the `Dockerfile` for the listings *KDOS from Scratch* shows of them |
 
 The container is a fixed, known starting point. Whatever distribution your machine runs, the
 compilers that start the bootstrap are the same ones, which is why a build on one developer's
@@ -421,7 +421,8 @@ and `$version` itself. Only `build.sh` is bash. This is what installing it invol
 The database under `/var/lib/kpkg/db` is how the build knows what is installed, what each package
 owns, and which recipe each came from. It ships in the image, and the running system's `kpkg` uses
 the same one. The recipe hash covers `kpkgbuild`, `build.sh`, any `postinstall.sh`, every
-patch and every other file beside them that no `sha256 =` line names, so editing any of them is
+patch and every other file beside them that no `sha256 =` line names, except the book note
+[`kfs.md`](../03-architecture/packaging.md#e--the-recipe-hash), so editing any of them is
 enough for the next build to rebuild the port. For KDOS's own
 programs, which have no upstream archive, it also covers the port's whole directory and all of
 `src/libs`. The rules are in
@@ -444,8 +445,8 @@ package claims, it adopts the path, so rebuilding these ports turns the hand-ins
 assembler, linker and compiler into packages with manifests. Second, it makes KDOS
 **self-hosting**: after this phase, the C library and the compiler are themselves compiled by a
 compiler running on KDOS, inside KDOS, and depend on nothing the container produced. `m4`, `gawk`
-and `diffutils` are tools the GMP and GCC builds run. `tar` is rebuilt because `10_bootstrap` built
-it with the container's compiler. The native compiler's target is `x86_64-pc-linux-musl`, not
+and `diffutils` are tools the GMP and GCC builds run. `tar` is rebuilt for the same two reasons as
+the toolchain, and early, because kpkg unpacks every later source with it. The native compiler's target is `x86_64-pc-linux-musl`, not
 `10_bootstrap`'s `x86_64-kdos-linux-musl`, so the bootstrap compiler's target-named trees (about
 195 MB) are files no package replaces; the `gcc` package's install hook deletes them once the native
 compiler is in place.
@@ -572,9 +573,12 @@ the one the file describes:
 | `CONFIG_RUST`, `CONFIG_DRM_PANIC_SCREEN_QR_CODE`, `CONFIG_DEBUG_INFO_BTF`, `CONFIG_DEBUG_INFO_BTF_MODULES`, `CONFIG_SQUASHFS_ZSTD` and `CONFIG_SQUASHFS_XZ` must be `=y` | A missing toolchain. `olddefconfig` drops an option whose compiler or tool is absent without a word, and everything depending on it with it: `CONFIG_RUST` (the QR-code panic screen, the Rust binder) needs `rustc`, `bindgen`, `libclang` and the `rust` port's `rust-src` library sources, and BTF (`bpftrace`, `sched_ext`, CO-RE BPF programs) needs `pahole` |
 
 `savedefconfig` leaves out a value equal to its default, so a setting that must not change when a
-later kernel changes its default is written into `kdos.config` explicitly even so: the hardening
-settings in [The security model](../03-architecture/security-model.md#the-kernel) are four such
-lines. Regenerating the file with `savedefconfig` drops them, and they have to be put back.
+later kernel changes its default is written into `kdos.config` explicitly even so. Of the six hardening
+settings in [The security model](../03-architecture/security-model.md#the-kernel), four equal the
+kernel's default and are such lines: `CONFIG_X86_X32_ABI`, `CONFIG_UEVENT_HELPER` and
+`CONFIG_PM_AUTOSLEEP` off, and `CONFIG_PROC_MEM_FORCE_PTRACE` on. Regenerating the file with
+`savedefconfig` drops those four, and they have to be put back; `CONFIG_LDISC_AUTOLOAD` off and
+`CONFIG_BUG_ON_DATA_CORRUPTION` on differ from the default and stay.
 
 To change the configuration, configure a kernel tree from the file, change it, and write the file
 back:
@@ -589,6 +593,11 @@ After that, put the banner header and the explicit default-valued lines back. Ru
 (`script/chroot/exec.sh`) or anywhere with the same `rustc`, `clang` and `pahole`: on a host
 without them, `olddefconfig` drops `CONFIG_RUST` and BTF and `savedefconfig` writes a file without
 them.
+
+*KDOS from Scratch* tables the options the rest of the system relies on, each with the value
+`kdos.config` gives it, in [Configuring the kernel](../../kfs/14-kernel/configuring.md).
+`python3 testing/kfscheck.py --only kernel` fails when the file and a row of those tables disagree,
+so a change to an option listed there changes its row too.
 
 The rest of `build.sh` holds four constraints:
 
@@ -656,8 +665,12 @@ stamps every inode with the epoch, so the clamp is also what the medium shows.
 only, so a shipped machine can update by building from source. `105_ports.sh` stages it: every
 file in each port directory except the sources its recipe hashes (`sha256 =`) and any archive,
 `ports/shelves`, `ports/sources.idx`, `src/` at `/ports/src` for the programs of our own, whose
-sources no archive holds, and `docs/` at `/ports/docs`, the source of `kdos-doc`, which reaches it
-through its `docs` link. The tree is about 100 MB unsquashed; the fetched sources it leaves out are
+sources no archive holds, `docs/kdos`, `docs/screenshots` and `docs/kfs` under `/ports/docs`, and
+`script/book` at `/ports/script/book`. Those last are the sources of `kdos-doc` and `kdos-kfs`,
+which reach them through links in their port directories; a link left dangling would drop out of
+the port's recipe hash, and the machine would take the installed book for stale. `kdos-kfs` still
+builds only in a checkout, because its renderer reads `ports/core` and `script/phases`, and `/ports`
+has neither. The tree is about 100 MB unsquashed; the fetched sources it leaves out are
 about 39 GB. `/etc/kpkg.conf`'s default `PORT_REPO` names `/ports/core` and the four areas of
 `/ports/src` that hold ports. `/ports/TREE` names the commit and its time (`kdos-tree 1`, then
 `commit` and `time` lines), which is how `kdos update fetch` tells a newer published tree from an

@@ -870,10 +870,10 @@ static void test_base(void)
 	free(leaf);
 	free(nested);
 
-	/* Output bigger than the buffer must TRUNCATE, not hang. It used to
-	 * hang: the child inherited the pipe's read end, so closing ours left
-	 * the pipe writable and the child blocked in write() while we blocked
-	 * in waitpid(). `kpkg install zig` died there on a 1.1 MB listing. */
+	/* Output bigger than the buffer must TRUNCATE, not hang. A child that
+	 * inherits the pipe's read end keeps the pipe writable after ours is
+	 * closed, and then blocks in write() while we block in waitpid() — a
+	 * 1.1 MB listing such as `kpkg install zig` prints is enough. */
 	KbArgv gen = {0};
 	kb_argv_add(&gen, "seq");
 	kb_argv_add(&gen, "100000");
@@ -4829,7 +4829,7 @@ static void test_wm(void)
 	/*
 	 * Rows the replay deliberately does not drive, and rows it did not
 	 * recognise at all. The second must stay zero: a kind with no branch
-	 * used to leave the file silently, which is a contract row nothing
+	 * would otherwise leave the file silently, which is a contract row nothing
 	 * checks wearing the appearance of one that passed.
 	 */
 	int stated = 0, unknown = 0;

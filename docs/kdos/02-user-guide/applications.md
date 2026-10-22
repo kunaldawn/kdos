@@ -623,14 +623,12 @@ still imports, and the command ends with a count of what imported and what faile
 
 The archive holds a `SELECTION` file, plain text with one id per line, so a set can be read,
 compared and edited by hand. A group named on the export command line is written as a `group` line
-and its members are not listed under it. An import with no ids reads only the id lines and skips
-every `group` line, so it imports the applications that were named individually and not the
-members of a group. In the example above, `kdos app import ~/apps.ktar` imports VSCodium alone; the
-creative applications the archive carries are imported by naming them:
-
-```sh
-kdos app import ~/apps.ktar app.scribus   # a member of a group, named on its own
-```
+with the ids the group held at export listed under it, and each id appears once even when it was
+also named on its own or is held by two picked groups. An import with no ids reads the id lines and
+skips the `group` lines, so in the example above `kdos app import ~/apps.ktar` imports the creative
+applications and VSCodium. An id in `SELECTION` whose application was not installed on the exporting
+machine has no pack in the archive; import names it as not in this archive and counts it as a
+failure.
 
 The installer looks for a set on a stick too; see
 [Installation](installation.md#8-applications) for what it does with one. On a live session an
@@ -666,10 +664,8 @@ app" notification appears while a box comes up.
 It is also why, when you log in, the session runs `kdos-appbox warmup` in the background at
 `nice` 10. The warmup reads your pinned applications from `~/.config/kdos/favorites`, where each
 line is a desktop id optionally followed by a launch code such as `code=WW`, and starts the boxes
-of up to eight of them, one at a time. It takes the whole line as the desktop id, so a line that
-carries a launch code names no desktop entry and is skipped; every line of the shipped list
-carries one, so on a new account the warmup starts no box until you pin a boxed application
-without a code. A second warmup while one is running does nothing.
+of up to eight of them, one at a time. It takes the first word of a line as the desktop id and
+ignores the code. A second warmup while one is running does nothing.
 
 To see where a launch spent its time, read `$XDG_RUNTIME_DIR/kdos-appbox.trace`, which gets one
 timestamped line per stage.

@@ -316,10 +316,11 @@ static int cmd_box_create(int argc, char **argv)
 
 /*
  * A TERMINAL THAT SAYS WHERE IT IS. foot cannot reload its configuration, but
- * it takes overrides on the command line and `kdos theme` already generates a
- * palette per accent — so a box with `accent = amber` opens an amber terminal
- * and there is never a question about which window is which. A starship module
- * reads KDOS_BOX and puts the name in the prompt.
+ * it takes a --config at start and `kdos theme` already generates a palette
+ * per accent — so a box with `accent = amber` opens an amber terminal titled
+ * with the box's name, and there is never a question about which window is
+ * which. Inside, KDOS_BOX carries the name for a prompt to show; the shipped
+ * starship.toml does not read it.
  */
 static int cmd_box_enter(int argc, char **argv)
 {
@@ -344,8 +345,10 @@ static int cmd_box_enter(int argc, char **argv)
 	if (!box_setup_done(box))
 		box_wait_ready(box, 30);
 
-	/* Under a terminal already, exec straight in: wrapping a shell in
-	 * another terminal window is what `enter` is for, not what it means. */
+	/* In place when there is no terminal to replace (input is not a tty),
+	 * when a command is given, or under the foot window this opens below
+	 * (KDOS_BOX_NOTERM). A bare `enter` typed at a terminal opens a new
+	 * foot window in the box's accent and re-enters there. */
 	if (!isatty(STDIN_FILENO) || argc > 1 || getenv("KDOS_BOX_NOTERM")) {
 		kb_argv_add(&a, "podman");
 		kb_argv_add(&a, "exec");

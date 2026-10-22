@@ -1180,7 +1180,8 @@ int devices_main(int argc, char **argv)
 				 * because a key that sometimes unmounts is a
 				 * key nobody trusts. EJECT is a separate verb
 				 * on the daemon and is not bound here: the
-				 * surface that offers it is kdos-disks. */
+				 * surface that offers it is kdos-mediad's
+				 * media-ready notification. */
 				const ShMountRow *m = &media[rows[tbl.sel].idx];
 				if (!m->mnt[0]) {
 					media_action(rows[tbl.sel].idx, "mount");

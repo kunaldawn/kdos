@@ -73,14 +73,13 @@ const char *sh_fav_id(const char *id)
 /*
  * THE ID IS THE FIRST WORD; THE REST OF THE LINE IS METADATA.
  *
- * A favourites line is `mc code=FM` since the two-letter launch codes landed,
- * and every comparison here was against the WHOLE trimmed line. So `sh_fav_has`
- * answered no for all seven seeded favourites, and three things followed from
- * that one mistake: the context menu offered to Pin what was already pinned,
- * clicking it appended a second line WITHOUT the code rather than unpinning,
- * and `sh_fav_move` could not find a coded row to reorder it. The whole line is
- * still what gets KEPT on a rewrite, or the codes would be dropped by the first
- * pin of anything else.
+ * A favourites line is `id` or `id code=XX`, so every comparison is against
+ * the first word. Compared against the whole trimmed line, `sh_fav_has`
+ * answers no for every coded favourite: the context menu offers to Pin what is
+ * already pinned, the click appends a second line without the code instead of
+ * unpinning, and `sh_fav_move` cannot find a coded row to reorder. The whole
+ * line is still what gets KEPT on a rewrite, or the codes would be dropped by
+ * the first pin of anything else.
  */
 static int line_is(const char *line, const char *id)
 {

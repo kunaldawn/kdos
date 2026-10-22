@@ -9,19 +9,29 @@
 #   mkbook — the KDOS book on the image, and a manual page per kdos-* command
 #
 #     mkbook.py DOCS DEST SRC
+#     mkbook.py --html DOCS DEST
 #
-#   DOCS  the repository's docs/ (the book in kdos/, its pictures in
-#         screenshots/)
-#   DEST  the package root
+#   DOCS  a directory holding the book in kdos/ and its pictures in
+#         screenshots/, and nothing else is read from it: the port's own
+#         directory, whose `kdos` and `screenshots` links name exactly those
+#         two, or the repository's docs/
+#   DEST  the package root; with --html, the directory the book's
+#         README.html lands in
 #   SRC   the repository's src/, read for the manual pages programs ship
 #         themselves
 #
 # THREE OUTPUTS, ONE SOURCE. The book is rendered to HTML under
-# /usr/share/doc/kdos with the tree's own layout; kdos(7) says where it is and
-# lists its chapters; and every `kdos-*` row of the command index becomes a
-# manual page whose DESCRIPTION is the book section that row links to. A
-# manual page written by hand beside the book would be a second description
-# going stale; this one is the book's own words.
+# /usr/share/doc/kdos with the tree's own layout and kdos.css from beside
+# this file; kdos(7) says where it is and lists its chapters; and every
+# `kdos-*` row of the command index becomes a manual page whose DESCRIPTION
+# is the book section that row links to. A manual page written by hand beside
+# the book would be a second description going stale; this one is the book's
+# own words. --html writes the first output alone, straight into DEST, which
+# is how the published site is made.
+#
+# DOCS IS TWO LINKS IN THE PORT, NOT ONE TO docs/: the recipe hash follows
+# every link in a port's directory, so a link to the whole of docs/ would
+# rebuild this port for an edit to any other book kept there.
 #
 # A COMMAND WHOSE PROGRAM SHIPS ITS OWN PAGE IS LEFT TO IT: a `kdos-*.1` file
 # anywhere under SRC names one, and two packages owning one path is a conflict
@@ -148,9 +158,17 @@ def github_ids(html, text, rel):
     return "".join(out)
 
 
-def render_book(docs, dest):
+def copy_file(src, dst):
+    with open(src, "rb") as f:
+        data = f.read()
+    with open(dst, "wb") as f:
+        f.write(data)
+
+
+def render_book(docs, root):
     book = os.path.join(docs, "kdos")
-    root = os.path.join(dest, DOCROOT.lstrip("/"))
+    if not os.path.isfile(os.path.join(book, "README.md")):
+        sys.exit(f"mkbook: {docs} holds no kdos/README.md")
     chapters = []
     for d, dirs, files in os.walk(book):
         dirs.sort()
@@ -182,10 +200,10 @@ def render_book(docs, dest):
     if os.path.isdir(shots):
         os.makedirs(os.path.join(root, "screenshots"), exist_ok=True)
         for name in sorted(os.listdir(shots)):
-            with open(os.path.join(shots, name), "rb") as f:
-                data = f.read()
-            with open(os.path.join(root, "screenshots", name), "wb") as f:
-                f.write(data)
+            copy_file(os.path.join(shots, name),
+                      os.path.join(root, "screenshots", name))
+    copy_file(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "kdos.css"), os.path.join(root, "kdos.css"))
     os.symlink("README.html", os.path.join(root, "index.html"))
     return chapters
 
@@ -292,13 +310,18 @@ def write(path, text):
 
 
 def main():
-    if len(sys.argv) != 4:
-        sys.exit("usage: mkbook.py DOCS DEST SRC")
+    usage = "usage: mkbook.py DOCS DEST SRC | mkbook.py --html DOCS DEST"
+    if len(sys.argv) == 4 and sys.argv[1] == "--html":
+        chapters = render_book(sys.argv[2], sys.argv[3])
+        print(f"mkbook: {len(chapters)} chapters")
+        return
+    if len(sys.argv) != 4 or sys.argv[1].startswith("-"):
+        sys.exit(usage)
     docs, dest, src = sys.argv[1:]
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", "0"))
     date = time.strftime("%Y-%m-%d", time.gmtime(epoch))
 
-    chapters = render_book(docs, dest)
+    chapters = render_book(docs, os.path.join(dest, DOCROOT.lstrip("/")))
 
     skip = own_pages(src)
     made, missing = [], []

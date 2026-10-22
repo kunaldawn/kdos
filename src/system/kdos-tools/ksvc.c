@@ -104,7 +104,7 @@ static const char *script_name(const char *file)
 }
 
 /* Exact match first, then a substring: the order prefix and the suffix are
- * already stripped, so `ssh` reaches `20_sshd.sh` while an exactly-named
+ * already stripped, so `ssh` reaches `70_sshd.sh` while an exactly-named
  * service can never be shadowed by a longer one that contains it. */
 static char *find_script(const char *want)
 {
@@ -446,11 +446,10 @@ static int cmd_list(void)
 			 is_disabled(name) ? "DISABLED" : "ENABLED");
 		printf("  %-20s %-12s ", name, tag);
 		fflush(stdout);
-		/* The script's own status line is the whole answer. The shell
-		 * version appended "[UNKN] <name>" whenever the script exited
-		 * non-zero — which is exactly what a DOWN service does, so
-		 * every stopped service printed two lines saying different
-		 * things. */
+		/* The script's own status line is the whole answer, and its
+		 * exit status adds nothing: a DOWN service exits non-zero, so a
+		 * second line keyed on that status would only repeat the first
+		 * in different words. */
 		run_script(path, "status");
 		free(path);
 	}

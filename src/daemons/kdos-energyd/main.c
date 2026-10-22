@@ -344,7 +344,7 @@ static int client(int argc, char **argv)
 	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sock_path());
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		fprintf(stderr, "kdos-energy: no kdos-energyd — `service "
-				"kdos-energyd start`\n");
+				"start energyd`\n");
 		close(fd);
 		return 1;
 	}

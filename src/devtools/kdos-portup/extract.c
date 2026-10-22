@@ -132,8 +132,8 @@ int pu_extract(const char *raw, char out[][PU_MAX_VER], int max)
 			continue;
 
 		/* Use a closure/fixpoint approach: apply transformations iteratively
-		 * until no new candidates are generated. Cost a debug cycle: node-v22.14.0
-		 * needs both "node-" stripping AND "v" stripping to yield "22.14.0". */
+		 * until no new candidates are generated: node-v22.14.0 needs both
+		 * "node-" stripping AND "v" stripping to yield "22.14.0". */
 		char temp_cands[PU_MAX_CAND][PU_MAX_VER];
 		int temp_n = 0;
 		char queue[PU_MAX_CAND][PU_MAX_VER];

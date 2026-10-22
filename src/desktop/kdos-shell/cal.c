@@ -374,10 +374,10 @@ int cal_main(int argc, char **argv)
 			at_x = atoi(argv[++i]);
 			at_y = atoi(argv[++i]);
 		}
-		/* The panel is on the BOTTOM edge and has spawned
-		 * `kdos-cal --at-bottom X Y` for a release; this program only
-		 * knew `--at`, so it fell into the usage branch and exited
-		 * before a surface existed — a click on the clock did nothing
+		/* The panel is on the BOTTOM edge and spawns
+		 * `kdos-cal --at-bottom X Y`; a program that knew only `--at`
+		 * would fall into the usage branch and exit before a surface
+		 * existed — a click on the clock would do nothing
 		 * whatsoever. Anchoring TOP cannot express "above the bar":
 		 * the client does not know the output's pixel height. */
 		else if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {

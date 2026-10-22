@@ -130,9 +130,9 @@ fi
 # IT IS THE ONLY PACK A MEDIUM CARRIES. Applications are built by podman on the
 # machine that asks for one, or imported from an exported set; nothing is baked.
 # GATED ON THE FLAG, NOT ON THE FILE. `build/` is not cleaned between runs, so
-# testing whether the artefact EXISTS carries a 9.1 GB pack from an earlier
-# opt-in build onto every ISO after it — measured, on a build that never set
-# KDOS_PACK_KDOS at all. The flag is what the user asked for; the file is just
+# testing whether the artefact EXISTS would carry a 9.1 GB pack from an
+# earlier opt-in build onto every ISO after it, including builds that never
+# set KDOS_PACK_KDOS. The flag is what the user asked for; the file is just
 # what is lying around.
 if [ "${KDOS_PACK_KDOS:-0}" = "1" ] && [ -f /kdos/build/kdos-base/kdos.kpack ]; then
     mkdir -p $ISO_ROOT/packs
@@ -153,10 +153,11 @@ fi
 # `make build KDOS_ISO_SOURCES=1` is a developer stick, not the default one.
 #
 # The copy reads the tree where the chroot mounts it: ports/ at /ports, and
-# src/, script/ and fs/ bound back over /kdos, whose own bind of the build
-# container's /workspace is non-recursive and shows each of them as an empty
-# mount point. The three top-level files are not mounted into the container
-# and are copied only when present. Of ports/ everything but its
+# src/, script/, fs/, the Makefile and the Dockerfile bound back over /kdos,
+# whose own bind of the build container's /workspace is non-recursive and
+# shows each of them as an empty mount point. CLAUDE.md is not mounted into
+# the container, and each top-level file is copied only when present. Of
+# ports/ everything but its
 # dot-directories travels, every fetched source beside its recipe: those are
 # the fetch cache, whose bytes each port directory already holds by hard link,
 # and compiled host helpers. A binhost this build wrote (KDOS_MAKE_BINHOST=1) goes
@@ -386,9 +387,9 @@ xorriso -as mkisofs \
 limine bios-install $ISO_BUILD/kdos.iso
 
 # EVERY BOOT PATH IS VERIFIED, NOT ASSUMED, because all four fail silently.
-# xorriso accepts a boot flag it does not implement without a word — the
-# previous `-isohybrid-gpt-basdat` did, and produced an image whose first 512
-# bytes were zero for as long as nobody wrote one to a stick. A build that
+# xorriso accepts a boot flag it has nothing to act on without a word, and the
+# image it then writes can have a first 512 bytes of zero, which nothing shows
+# until somebody writes it to a stick. A build that
 # cannot boot has to fail here rather than on somebody's machine.
 # THE TYPE HAS TWO NAMES AND THE IMAGE ENDS UP WITH THE SECOND ONE.
 # `limine bios-install` converts the GPT xorriso wrote into an MBR — it says so

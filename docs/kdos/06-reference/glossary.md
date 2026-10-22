@@ -577,14 +577,14 @@ init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 
 The files that describe how to build one *port*: its *kpkgbuild*, its `build.sh`, and any
 `postinstall.sh` and patches beside them. The *recipe hash* is taken over them and every other
-file beside them that no `sha256 =` line names. See [Writing
+file beside them that no `sha256 =` line names, except the book note `kfs.md`. See [Writing
 ports](../05-developer/writing-ports.md).
 
 ### recipe hash
 
 The other of the two package hashes: a SHA-256 over a port's recipe files (`kpkgbuild`, `build.sh`,
 `postinstall.sh` and every patch) and every other file in its directory that no `sha256 =` line
-names, so editing a kernel config beside a recipe changes it. For a port with no `source =` that is
+names except the book note `kfs.md`, so editing a kernel config beside a recipe changes it. For a port with no `source =` that is
 the port's whole directory, and for one of KDOS's own ports under `src/` all of `src/libs` as well, so editing a
 program's source or a shared library changes it. Written `E:` in a package index. It decides what
 the build rebuilds. Not to be confused with a *source hash*. See

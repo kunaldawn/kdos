@@ -1,0 +1,7 @@
+# One SHA-256 over every recipe file kpkg hashes, then every kfs.md,
+# phase list and environment, bootstrap step script and kfs:include
+# target; the ports that link a book under docs/ excluded:
+# written by make_data.py, compared by testing/kfscheck.py
+sha256 27d45b97b300f024119127ce7981b37804be10efac8018c4a8dda463cc31b741
+ports 2105
+files 1496

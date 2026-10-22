@@ -175,8 +175,9 @@ enabled" added when they apply). A preflight list marks each item that fails:
 - the Limine payload, `/usr/share/limine`, present.
 
 The page refuses to continue without root or without a disk. On a machine that booted in legacy
-BIOS mode it also says that the installed system will start, but that the firmware's own boot
-entry cannot be created.
+BIOS mode it also warns, in the error colour, that a disk this installer partitions starts on UEFI
+only and will not start on this machine (see [Both firmwares](#both-firmwares)); it does not
+refuse.
 
 **Keyboard.** Lists every keymap under `/usr/share/keymaps` and `/usr/share/kbd/keymaps`, with a
 filter field. Moving the selection applies the map at once with `loadkeys`, and a test field
@@ -276,7 +277,7 @@ rather than run.
 | 7 | Configure | `fstab`, hostname, time zone, keymap, autologin, services, swap file | — |
 | 8 | Accounts | Users, passwords, groups | — |
 | 9 | Theme | Runs `kdos theme <accent>` for the new home and `/etc/skel` | The accent is the default, `bone` |
-| 10 | Bootloader | Limine on the ESP for UEFI and BIOS, kernel and initramfs, the menu, the NVRAM entry | — |
+| 10 | Bootloader | Limine on the ESP for UEFI, kernel and initramfs, the menu, the NVRAM entry; the BIOS boot code is attempted ([Both firmwares](#both-firmwares)) | — |
 | 11 | Finish | Flushes and unmounts | — |
 
 **Prepare** fails when no disk is chosen, the disk has gone, the installer is not root, or a tool
@@ -311,7 +312,10 @@ which a password set in the live session would be carried over. The image itself
 them: `70_image` removes them. Without the boxed-application library (`alien_apps = 0`), the live user's
 container storage under `/home/kdos/.local/share/containers` is left out as well. `rsync` exit
 status 24 ("some files vanished") is accepted, since files come and go on a running live system.
-The excluded directories are then created empty, `/tmp` with mode `01777`.
+The excluded directories are then created empty, `/tmp` with mode `01777`. On a machine with
+about 4 GB of memory, `kdos-oomd` can kill this `rsync` (`rsync failed (exit 128)`); stop it
+first with `sudo service stop oomd`. See [The memory guard can kill the installer's copy on a 4 GB
+machine](../06-reference/known-gaps.md#the-memory-guard-can-kill-the-installers-copy-on-a-4-gb-machine).
 
 **Configure** writes the files listed in [What the rest of the tree
 provides](#what-the-rest-of-the-tree-provides), copies the live `/etc/resolv.conf`, and makes the
@@ -527,9 +531,11 @@ Three columns each prevent a failure that would only show up later:
 - **Only ext4 gets a non-zero `fstab` pass.** A non-zero pass asks for a filesystem check at boot,
   and none of the others has a checker worth running then (`f2fs.fsck` exists, but it is a repair
   tool).
-- **The swap file is made differently per filesystem.** `fallocate` leaves unwritten extents,
-  which xfs and f2fs refuse to swap on, and btrfs needs a file that is not copy-on-write and not
-  compressed. The wrong method installs cleanly and then boots with no swap and nothing saying
+- **The swap file is made differently per filesystem.** btrfs needs a file that is not
+  copy-on-write and not compressed, and its `swapon` answers `Invalid argument` for one `fallocate`
+  made. `fallocate` leaves unwritten extents, and whether `swapon` takes those on xfs and f2fs
+  depends on the kernel (the KDOS kernel does), so on those two the file is written out in full
+  with `dd`. The wrong method installs cleanly and then boots with no swap and nothing saying
   why. Where `fallocate` or `btrfs` is missing, the step falls back to `dd`.
 - **f2fs is a kernel module**, so it is in the initramfs module list in
   `script/phases/70_image/090_initramfs.sh`. ext4, btrfs and xfs are built in: `kdos.config` in the
@@ -800,11 +806,15 @@ without `--enable-uefi-ia32` has none), with nothing on the screen or in the log
 the install over a fallback for firmware this machine does not have would throw away a working
 system.
 
-The BIOS boot code is written whatever firmware the install ran on: `limine-bios.sys` goes to the
-root of the ESP and `limine bios-install <disk>` writes the boot sector, so a disk installed on a
-UEFI machine and moved to a legacy BIOS one still starts. If it fails, or `limine` is not on the
-`PATH`, the install carries on, because the UEFI path is already complete, and nothing on the
-screen or in the log says so.
+The BIOS boot code is asked for whatever firmware the install ran on: `limine-bios.sys` goes to the
+root of the ESP and `limine bios-install <disk>` is run. On a GPT disk Limine needs a BIOS boot
+partition for its second stage, and the installer's layout has none, so on a disk it partitioned
+the call fails with
+`error: Installing to a GPT device, but no BIOS boot partition specified or detected.` and the disk
+starts on UEFI only; see
+[An installed disk starts on UEFI only](../06-reference/known-gaps.md#an-installed-disk-starts-on-uefi-only).
+When it fails, or `limine` is not on the `PATH`, the install carries on, because the UEFI path is
+already complete, and the wizard shows nothing.
 
 ### The NVRAM boot entry
 

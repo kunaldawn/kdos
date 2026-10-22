@@ -79,6 +79,8 @@ lists everything preflight checks.
 | `sha256 MISMATCH for the generated <name>-vendor-<version>.tar.xz` | [A sha256 mismatch on a vendor bundle](#a-sha256-mismatch-on-a-vendor-bundle) |
 | `cannot generate <bundle> without its source`, `this needs docker or podman`, `failed to build the recipe reader`, or `--tree never generates` | [A vendor bundle that cannot be generated](#a-vendor-bundle-that-cannot-be-generated) |
 | `pre-push: the ports layout is broken at <commit>:` | [Pre-push refused: the ports layout](#pre-push-refused-the-ports-layout) |
+| `pre-push: a new or changed patch has no Subject: header`, or preflight's `has no Subject: line before its first diff` | [A patch with no Subject line](#a-patch-with-no-subject-line) |
+| `pre-push: the books do not match the tree`, or `kfscheck` reporting `STAMP … is stale` | [The books do not match the tree](#the-books-do-not-match-the-tree) |
 | `pre-push: these sources are named by a recipe but not in the archive at that commit` | [Pre-push refused: an unpublished source](#pre-push-refused-an-unpublished-source) |
 | Preflight: `shelf <shelf> has no volume`, or `ports/publish` saying `shelf <shelf> has no volume; run ports/publish --plan` | [A shelf with no volume](#a-shelf-with-no-volume) |
 | `Failed to download` for every file, `is in no cache, and the archive is off`, or `pre-push: cannot reach the source archive` | [Fetch cannot reach the archive](#fetch-cannot-reach-the-archive) |
@@ -361,6 +363,43 @@ tool assumes. Each line names one breach:
 `testing/preflight.sh` checks the same rules and more, so run it first; the hook holds when
 preflight was not run. `KDOS_SKIP_LAYOUT_CHECK=1` skips this check only, and
 `KDOS_SKIP_PUBLISH_CHECK=1` skips only the archive check that follows.
+
+### A patch with no Subject line
+
+```text
+pre-push: a new or changed patch has no Subject: header at <commit>:
+  ports/core/<shelf>/<name>/<file>.patch: no Subject: line says what it changes
+pre-push: (KDOS_SKIP_PATCH_CHECK=1 git push … skips this check)
+```
+
+A `.patch` or `.diff` that is new, or edited, since the remotes last saw it must open with a mail
+header whose `Subject:` line says in one line what the patch changes, ahead of its first `diff `,
+`--- ` or `Index: ` line. `testing/preflight.sh` and `testing/kfscheck.py` report the same patch as
+`<path>: new or changed, and has no Subject: line before its first diff`. Add the line at the top of
+the patch (or regenerate it with `git format-patch`); `patch` ignores the text before the first
+`---`, so the port builds the same. A `Subject:` holding only a `[PATCH]` tag does not count, and
+neither does one inside a hunk. Moving a patch unchanged to another shelf is not a change and does
+not trigger this.
+
+### The books do not match the tree
+
+```text
+pre-push: the books do not match the tree (testing/docscheck.sh, testing/kfscheck.py)
+pre-push: (KDOS_SKIP_BOOK_CHECK=1 git push … skips this check)
+```
+
+The lines above it are the two checks' own reports, read off the working copy. The common one after
+a recipe change is `STAMP docs/kfs/data/recipes.stamp is stale`: *KDOS from Scratch* renders every
+package page from its recipe and its `kfs.md`, and shows lines of the phase scripts, the `Makefile`
+and the `Dockerfile`; the stamp is how the port that ships the book notices that one of them
+changed. Run `make book-stamp`, which needs no built tree, and commit `docs/kfs/data/recipes.stamp`.
+An `INCLUDE` line saying the pinned lines are now elsewhere means a script the book shows gained or
+lost lines above a range: `python3 testing/kfscheck.py --repin` moves the range, and a range whose
+own lines changed is fixed by hand. A `NOTE` line
+names a new or changed port that carries a patch, vendors its dependencies, has a long `build.sh` or
+many reverse dependencies, and so needs a `kfs.md` beside its recipe with an About or a Notes
+section; a `SIDECAR` line names a `kfs.md` that describes a flag `build.sh` does not pass. Every
+report is explained under [kfscheck.py](testing.md#kfscheckpy) and [docscheck.sh](testing.md#docschecksh).
 
 ### Pre-push refused: an unpublished source
 

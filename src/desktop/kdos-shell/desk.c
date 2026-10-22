@@ -118,12 +118,10 @@ enum { CT_RENAME, CT_NEWDIR, CT_NEWFILE, CT_EMPTY, CT_REFRESH, CT_SORT,
  * are two different menus and this is one table, because two tables are two
  * places for "New Folder" to drift apart.
  *
- * The desktop half exists because there was NONE. Every click on bare
- * wallpaper fell through to the compositor, so the only way to reach New
- * Folder was to right-click an icon — and on a fresh login the only icons are
- * Home and Trash, both of which are places rather than files. A desktop you
- * cannot create anything on is a desktop that looks read-only, which is
- * exactly what it was reported as.
+ * The desktop half is what a right click on bare wallpaper opens. Without it
+ * New Folder would be reachable only by right-clicking an icon, and on a
+ * fresh login the only icons are Home and Trash, both places rather than
+ * files: a desktop nothing can be created on reads as read-only.
  */
 #define SC_ITEM 1		/* an icon was under the pointer */
 #define SC_DESK 2		/* bare wallpaper */
@@ -721,8 +719,9 @@ static void input_region(void)
 	 *
 	 * Claiming it all is only correct while this menu carries everything
 	 * labwc's root menu offers (Applications, Settings, Displays); a row
-	 * dropped from here is a verb with no way in. `W-space` opens the
-	 * compositor's own menu for anyone who wants it.
+	 * dropped from here is a verb with no way in. No key binding opens the
+	 * compositor's root menu, so while this surface is up that menu is out
+	 * of reach; `desktop_icons = no` gives the wallpaper back to it.
 	 */
 	kdisp_input_cells(NULL, -1);
 }

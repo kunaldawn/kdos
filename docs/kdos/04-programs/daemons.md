@@ -219,13 +219,11 @@ past that.
 | Exit status | Means |
 |---|---|
 | 0 | The daemon answered `ok`, or closed the connection without answering any verb other than `ping` (for `suspend`, `poweroff` and `reboot` that is the machine going away) |
-| 1 | The daemon answered `err …`, or is not running (`kdos-power: no kdos-powerd — ` followed by the hint ``service kdos-powerd start``, which ksvc rejects; see below) |
+| 1 | The daemon answered `err …`, or is not running (``kdos-power: no kdos-powerd — `service start powerd` ``) |
 | 2 | Bad usage, or an argument too long for the request line |
 
-When the daemon is not running, start it with `service start powerd`. The command the client
-suggests puts the daemon's full name where the verb goes, so ksvc answers
-`Error: Unknown command 'kdos-powerd'` and starts nothing (see
-[Starting and stopping one by hand](#starting-and-stopping-one-by-hand)).
+When the daemon is not running, start it with the command the client prints, `service start
+powerd` (see [Starting and stopping one by hand](#starting-and-stopping-one-by-hand)).
 
 For every verb except `firewall`, an error is printed to standard error as `kdos-power: <reply>`.
 `firewall` prints the daemon's whole reply on standard output, the `err` line included, because
@@ -353,8 +351,9 @@ logs straight into the desktop. `autologin off` turns it off.
 - The account must be one that can log in. `kb_users()` in `libkbase` decides that; a name it
   would not list is refused with `err no such account`. Pointing autologin at a service account
   with `nologin` would give a machine that boots to a login nobody can complete.
-- `off` replaces the key line with the fixed text `#autologin = kdos`, whatever account was set,
-  rather than emptying the value. The login program only hands `agetty --autologin` a non-empty
+- `off` comments the key line out as it stands, so `autologin = alice` becomes
+  `#autologin = alice`, the form the installer writes, and a line already commented is left as it
+  is. It does not empty the value. The login program only hands `agetty --autologin` a non-empty
   name, so an empty value would read as a setting and behave as none.
 - Only the key line changes. A line counts as the key when it starts with `autologin`, or with
   one `#` then `autologin`, and contains `=`. Prose that merely mentions the key is left alone.
@@ -471,8 +470,7 @@ kdos-energy [--json|ping]
 `kdos-energy` prints the report (or JSON with `--json`) and exits 0. It exits 1 when the daemon is
 not running or answered `err`, and 2 on bad usage. An `err` answer goes to standard error. The
 Energy page in `kdos-res` shows the same report, and its Boxes page shows each box's share. When
-the daemon is not running the client suggests `service kdos-energyd start`, which ksvc rejects
-as an unknown command; the command is `service start energyd` (see
+the daemon is not running the client suggests `service start energyd` (see
 [Starting and stopping one by hand](#starting-and-stopping-one-by-hand)).
 
 This is the report the test fixture in `testing/fixtures/energy` produces (thirty seconds of
@@ -661,7 +659,7 @@ A **row** below is a number from the daemon's own `list`; a **share row** is a n
 | `unmount <row>` | Unmount it and remove the mountpoint the daemon made | `ok <mountpoint>` |
 | `eject <row>` | Power the medium down. An optical disc ejects its own drive; any other device ejects its **parent disk**, because a stop command sent to one partition means nothing to the hardware | `ok <kname>` |
 | `unlock <row> <count>` | Open a LUKS volume. The passphrase is the second frame | `ok kdos-<kname>` |
-| `close <row>` | Close the mapping `unlock` made | `ok kdos-<kname>` |
+| `close <row>` | Close the mapping `unlock` made; `<row>` is the container's row, the one `unlock` was sent for, not the mapping's | `ok kdos-<kname>` |
 | `format <row> <fs> <count>` | Write a filesystem. **Off unless `format = yes`.** The second frame is the device's kernel name, typed by the person | `ok <kname>` |
 | `smart <row>` | The drive's health | `ok <model>\t<serial>\t<health>` |
 | `cifs <server> <share> <user> <domain> <count>` | Mount an SMB share. The password is the second frame | `ok <mountpoint>` |

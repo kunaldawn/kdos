@@ -11,13 +11,13 @@
  *
  * kdos-splash — the KDOS boot animation.
  *
- * Draws straight to /dev/fb0. It can do that because of a happy accident of
- * this system's console setup: the kernel is built with
+ * Draws straight to /dev/fb0. The kernel is built with
  * CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER, so fbcon does not claim the
- * framebuffer until something actually prints to tty0 — and nothing does,
- * because `console=tty0 console=ttyS0` makes the LAST one /dev/console, so
- * every boot message goes to the serial port. The screen is therefore ours,
- * uncontested, from the moment devtmpfs is mounted until agetty starts.
+ * framebuffer until a glyph is printed on a virtual terminal. /dev/console is
+ * the LAST console=: the serial port on the live entries (`console=tty0
+ * console=ttyS0`), so boot messages go there and the screen is the splash's
+ * until agetty starts; tty0 on an installed machine, where the initramfs's
+ * first echo ends the deferral and fbcon draws every boot message over it.
  *
  * The animation is the window-open shader from the compositor, applied to the
  * whole machine: a flash, then the picture unfolding vertically from a
@@ -26,9 +26,9 @@
  * — collapse to a line, pinch to a dot, decay.
  *
  * Every failure path here exits 0 without drawing. A boot animation that can
- * stop a boot is a bug, not a feature. Boot messages still go to the serial
- * console either way, so a machine that dies behind the splash is still
- * debuggable from there.
+ * stop a boot is a bug, not a feature. Boot messages still go to /dev/console
+ * either way, and a boot the initramfs cannot finish puts its reason and a
+ * shell on tty1, so a machine that dies behind the splash is still debuggable.
  *
  *   kdos-splash run                 draw, and read commands until told to quit
  *   kdos-splash step "PROBING..."   begin a stage (prints NAME ....... )
@@ -779,19 +779,16 @@ static void present(double vopen, double hopen, double flash, double gain,
 /* ------------------------------------------------------------------ init */
 
 /*
- * Wake the console up, then tell it to sit still.
+ * Tell the console to sit still.
  *
  * The kernel is built with CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER, which
- * is the whole reason the framebuffer is free for us — but it also means the
- * DRM fbdev client has not done its modeset yet, so nothing we write to
- * /dev/fb0 is being scanned out. The display still shows whatever the firmware
- * and the bootloader left in the EFI framebuffer, and the splash paints
- * perfectly into a buffer nobody looks at.
- *
- * One byte to /dev/tty0 ends the deferral: fbcon takes over, the modeset runs,
- * and our buffer becomes the thing on screen. Clear it and hide the cursor in
- * the same write so fbcon does not leave a blinking block on top of the
- * animation.
+ * is the whole reason the framebuffer is free for us. Only a printed glyph
+ * ends the deferral, and this write is escape sequences alone, so it claims
+ * nothing: where fbcon has already taken over (an installed machine's
+ * console=tty0) it clears the console and hides the cursor, so no blinking
+ * block sits on the animation, and elsewhere it changes nothing on screen.
+ * On virtio-gpu the framebuffer is scanned out with the deferral still
+ * pending, measured in the rig.
  */
 static void console_claim(void)
 {

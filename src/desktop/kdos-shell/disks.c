@@ -536,9 +536,22 @@ static int on_key(const KtuiEvent *ev)
 	case 'c':
 		/* Close the MAPPING, which is the other half of unlock and
 		 * has no button: it is the rare verb, and a bar that carried
-		 * every verb would drop the common ones on a narrow window. */
-		if (r && !strncmp(r->kname, "kdos-", 5))
-			do_verb("close");
+		 * every verb would drop the common ones on a narrow window.
+		 * The request names the CONTAINER's row, the one `unlock` was
+		 * sent for: the daemon derives `kdos-<kname>` from the row it
+		 * is given, so the mapping's own row would ask it to close
+		 * `kdos-kdos-<kname>`, which does not exist. */
+		if (r && !strncmp(r->kname, "kdos-", 5)) {
+			for (int i = 0; i < nrows; i++) {
+				if (is_locked(&rows[i]) &&
+				    !strcmp(rows[i].kname, r->kname + 5)) {
+					sh_mountd_do(rows[i].idx, "close",
+						     status, sizeof(status));
+					refresh();
+					break;
+				}
+			}
+		}
 		break;
 	case 's':
 		do_smart();

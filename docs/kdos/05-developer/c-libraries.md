@@ -234,8 +234,9 @@ program could share. It is a file name, never a security check.
   `$XDG_STATE_HOME` (or `~/.local/state`) on every call, and returns 0 when there is no home.
 - `kb_json_str()` is the escaper every `--json` output goes through.
 - `kb_notify()` raises a desktop notification through `gdbus`, detached and best effort, so a
-  program that emitted a notification escape is never blocked by it. Nothing here links a D-Bus
-  library.
+  program that emitted a notification escape is never blocked by it. `gdbus`'s reply, the
+  notification's id, goes to `/dev/null` rather than to the caller's terminal. Nothing here links a
+  D-Bus library.
 - `kb_terminal()` names the terminal emulator to open a terminal program in, and answers NULL where
   there is no session (a bare virtual terminal, a serial console, an ssh login).
 - `kb_desktop_prefix()` gives the lowercased first name in `$XDG_CURRENT_DESKTOP`, which is how

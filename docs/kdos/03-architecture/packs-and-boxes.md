@@ -465,8 +465,8 @@ pack therefore contains its base and runtime as well as the application, carries
 line, and carries no deletion markers of any kind, so nothing has to agree about how a deletion is
 spelled and no step needs root. Its metadata holds the id, the kind, a version equal to the export
 time in seconds, the display name and the tagline. The archive also contains a `SELECTION` file,
-one id per line with a `group` line recording each group that was picked, which is what `import`
-reads when no ids are named, and a `PACKAGES` index, signed when the `KDOS_PACK_KEY` environment
+one id per line with a `group` line recording each group that was picked above the ids it held,
+which is what `import` reads when no ids are named, and a `PACKAGES` index, signed when the `KDOS_PACK_KEY` environment
 variable names a readable key and unsigned, with a message saying so, otherwise.
 
 A frozen box requires its base. `kdos-box freeze` writes metadata with the id `box.<name>`,

@@ -253,17 +253,16 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 		kb_argv_addf(a, "WAYLAND_DISPLAY=%s", sock);
 	/* PODMAN EXEC DOES NOT INHERIT PID 1's ENVIRONMENT. kdos-boxinit sets
 	 * this PATH for what IT starts; a launch is a separate exec and gets
-	 * podman's default, which has no /usr/games — so every Debian game in
-	 * the catalogue died on `env: 'sol': No such file or directory`. */
+	 * podman's default, which has no /usr/games — so without this every
+	 * Debian game in the catalogue dies on
+	 * `env: 'sol': No such file or directory`. */
 	kb_argv_add(a, "PATH=" KB_BOX_PATH);
 
 	/*
 	 * THE REST OF WHAT A LOGIN GIVES YOU, because `podman exec` gives none
-	 * of it and distrobox-enter used to. The image lane inherited a full
-	 * environment from distrobox; the pack lane replaced that with a bare
-	 * exec and kept only the variables this function had always added, so a
-	 * boxed application came up with no locale, no USER and no
-	 * XDG_RUNTIME_DIR. Measured across the catalogue:
+	 * of it, unlike distrobox-enter. A launch is a bare exec, and with only
+	 * the variables above a boxed application comes up with no locale, no
+	 * USER and no XDG_RUNTIME_DIR. Measured across the catalogue:
 	 *
 	 *   aisleriot   Non UTF-8 locale (ANSI_X3.4-1968) is not supported!
 	 *   solvespace  Sorry, only UTF-8 locales are supported.
@@ -420,7 +419,7 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 		kb_argv_add(a, "LIBGL_ALWAYS_SOFTWARE=1");
 
 	/*
-	 * Cost a debug cycle: a few apps are X11-only and their own .desktop
+	 * DISPLAY, for the few apps that are X11-only and whose own .desktop
 	 * says so (debian ships audacity as `env GDK_BACKEND=x11 audacity`).
 	 * kdos-comp runs Xwayland rootlessly but exports DISPLAY only to what
 	 * IT spawned, so a launcher fired from the dock may not have it and the
@@ -698,6 +697,9 @@ int cmd_warmup(void)
 			line++;
 		if (!*line || *line == '#')
 			continue;
+		/* The id is the first word: a line may carry `code=XX` after
+		 * it, and the whole line names no desktop entry. */
+		line[strcspn(line, " \t")] = '\0';
 		/*
 		 * A FAVORITE IS A DESKTOP ID AND THE TABLE IS KEYED BY SHIM.
 		 * `org.gnome.GHex` is the launcher's file id; its Exec= names

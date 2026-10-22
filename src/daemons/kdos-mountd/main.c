@@ -409,8 +409,8 @@ static bool root_is_overlay(void)
  * then `switch_root` MS_MOVEs the new root — so those mounts stay in the OLD
  * namespace and the running system's /proc/mounts has one line for the whole
  * arrangement: `overlay / overlay ... lowerdir=/mnt/system`, naming a path
- * that no longer exists. Measured on a booted ISO, where kdos-mountd cheerfully
- * offered `sr0 iso9660 8.8G` — the disc it was running from.
+ * that no longer exists. Nothing in it names the disc, so a scan alone would
+ * offer `sr0 iso9660 8.8G` — the disc the system is running from.
  *
  * So a live session refuses every ISO9660 medium. The cost is that a second
  * data CD cannot be mounted while running live; the alternative is a desktop

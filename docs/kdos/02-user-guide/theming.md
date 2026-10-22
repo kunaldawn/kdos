@@ -371,10 +371,10 @@ The pass runs only on the GPU (GLES2) renderer. Where there is no GPU accelerati
 virtual machine without 3D (virgl) enabled, it is off, because a full-screen effect on software
 rendering drops to a few frames a second. If the pass fails on one
 screen while running, that screen falls back to the plain picture for a while and retries later.
-It also steps aside while the screen magnifier is on, since zoomed text is harder to read through
-the effect. Each of these is recorded in the compositor's log, `$XDG_RUNTIME_DIR/kdos-comp.log`,
-as a line beginning `crt:`. (For developers: `make run` boots without 3D and shows no pass,
-`make run-hw` boots with virgl and does; see [Developing](../05-developer/developing.md).)
+Both are recorded in the compositor's log, `$XDG_RUNTIME_DIR/kdos-comp.log`, as a line beginning
+`crt:`. It also steps aside, with nothing logged, while the screen magnifier is on, since zoomed
+text is harder to read through the effect. (For developers: `make run` boots without 3D and shows
+no pass, `make run-hw` boots with virgl and does; see [Developing](../05-developer/developing.md).)
 
 ### Screenshots
 

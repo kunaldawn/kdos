@@ -383,11 +383,13 @@ launchers the way install does, with the same limit on a machine that also holds
 
 `SELECTION` is plain text and can be edited or compared. It opens with `#` comment lines giving the
 export date and the catalogue's identity (its row count and byte length). A `group <name>` line
-records a group that was picked, and a bare line is an id. Import reads only the bare id lines. The
-export writes an id line only for an id named on its command line, not for the members of a picked
-group, even though the member packs are in the archive. An archive exported by group name alone
-therefore imports nothing unless the ids are named on the `import` command line: a bare `import`
-of it reports `0 imported, 0 failed` and exits 0.
+records a group that was picked, and a bare line is an id. Under each `group` line the export
+writes the ids that group held in the catalogue at export, then the ids named on its command line;
+each id is written once, under the first group that holds it. Import reads only the bare id lines,
+so a bare `import` installs every member of every picked group and every named id, whatever the
+catalogue on the importing machine says the group holds. An id whose application was not built on
+the exporting machine is still listed but has no pack; import prints `<id>: not in this archive`
+and counts it as a failure.
 
 ### list, apps, warmup, status
 
@@ -978,7 +980,7 @@ snapshot tag, is 1 to 63 characters from `A-Z a-z 0-9 . _ -` and does not start 
 | `snapshots <name>` | Lists them with their sizes |
 | `rollback <name> <tag>` | Replaces the writable layer with a snapshot. Refused while the box is running |
 | `start`, `stop`, `restart <name>` | Start recovers a stuck box and composes a pack box first, as the launch path does. Stop waits up to 10 seconds before killing |
-| `remove <name> [--force]` | Removes the container and releases its composed stack. The profile (`~/.config/kdos/boxes/<name>.conf`) is kept, and so is `~/.local/share/kdos/boxes/<name>`: a pack box's writable layer, its snapshots and a private home. A store box's writes are inside its container and go with it. The confirmation line names only the second directory, for both |
+| `remove <name> [--force]` | Removes the container and releases its composed stack. The profile (`~/.config/kdos/boxes/<name>.conf`) is kept, and so is `~/.local/share/kdos/boxes/<name>`: a pack box's writable layer, its snapshots and a private home. A store box's writes are inside its container and go with it. The confirmation line names only the second directory, for both. It runs `podman rm`, with `-f` under `--force`, ignores its result, and prints the confirmation and exits 0 either way: a running box is refused without `--force`, and a running box made from an image can outlast `podman rm -f` too, left `stopping`. Stop the box before removing it |
 | `profile <name> [key=value ...]` | Prints the profile, or sets keys and then prints it |
 | `gc [--dry-run]` | Stops idle boxes. See [Warmup and collection](#warmup-and-collection) |
 
@@ -1081,7 +1083,9 @@ naming a shim is looked up in the table by that name. A favourite that resolves 
 skipped and does not count towards the eight. A lock (`$XDG_RUNTIME_DIR/kdos-appbox.warmup.lock`)
 makes a second warmup a no-op rather than a queue.
 
-The session also runs `kdos-box gc` every ten minutes at `nice -n 10`. It looks only at running
+The session also runs `kdos-box gc` every ten minutes at `nice -n 10`, in a loop that keeps running
+after Log Out and ends with the login (see [the session](../03-architecture/session.md#what-kdos-desktop-start-does)).
+It looks only at running
 boxes, and stops only those whose profile sets `autostop`; the default is never. The time is counted
 from when the box started, not from when its last window closed. A box past its time is stopped at
 the next run, but only after asking the compositor (`kdos hey boxes`) whether the box has a window
@@ -1089,8 +1093,10 @@ open. A box with a window is left alone, and so is every box when there is no se
 because "cannot tell" is not "no window". `--dry-run` prints what would be stopped.
 
 Boxes that a launch or the warmup creates get a default profile with no `autostop`, so with the
-defaults a warmed box stays running for the rest of the session. To have warmed boxes given back
-when idle, set `autostop` on your favourites' boxes, for example
+defaults a warmed box stays running until the machine shuts down. Nothing at logout stops a box:
+Log Out leaves it running, and the end of the login ends the collection loop but not the box,
+whose container runs under the engine's own monitor outside the login's session. To have warmed
+boxes given back when idle, set `autostop` on your favourites' boxes, for example
 `kdos-box profile app.hugin autostop=30m`.
 
 ## Storage drivers

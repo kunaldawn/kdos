@@ -15,10 +15,11 @@ signed, and verification always uses the key from THIS directory.
 KDOS ships no key HERE, and that is deliberate: a distro that shipped its own
 trusted key for the host's packages would be asking you to trust whoever built
 the image, which is exactly the question signing exists to let you answer for
-yourself. Nothing signs KDOS packages today either — a port is built from
-source on this machine and its integrity comes from the `sha256 =` in the
-recipe, so there is no third party to attest to. This ring is for a binhost you
-choose to trust.
+yourself. The image's own packages carry no signature either — a port is
+built from source and its integrity comes from the `sha256 =` in its recipe,
+so there is no third party to attest to. This ring is for a binhost you
+choose to trust, a build's own included: `make build KDOS_MAKE_BINHOST=1`
+signs one with a key kept under build/ and puts its .pub beside the index.
 
 `packs/` IS SHIPPED WITH A KEY, and it is a different question. It verifies the
 signed index beside the packs on the medium, and what it asserts is only that

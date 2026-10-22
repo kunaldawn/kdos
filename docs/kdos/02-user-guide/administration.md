@@ -245,9 +245,10 @@ a desktop switched off every night would never reach an overnight one.
 ### Your own jobs
 
 Put your own jobs in `~/.config/kdos/timers.d/*.timer`, in the same format. Your desktop session
-starts them when you log in and stops them when you log out: a job that writes into your home
-directory should not outlive the login that started it. While you are logged in they repeat like
-the system ones — each line runs in a loop that restarts `snooze` after every run.
+starts them when you log in, and they repeat like the system ones — each line runs in a loop that
+restarts `snooze` after every run. Log Out does not stop them: they keep running at the tty1
+prompt it leaves, and end when that login ends (`exit` at the prompt). Starting the desktop again
+from the same prompt stops the running set before starting its own.
 
 Differences from the system table:
 
@@ -255,7 +256,8 @@ Differences from the system table:
   is skipped **silently**. If a job never fires, check the line with `snooze -n <timespec>`, which
   prints the next five times it would run.
 - The job's output is discarded.
-- A job that must run every night whether or not anyone is logged in belongs in the system table.
+- A job that must run every night whether or not anyone has logged in since boot belongs in the
+  system table.
 
 Give each job a minute of its own. A laptop that wakes after its slots have passed runs every job
 whose slack covers the gap at the same moment, and jobs that start together compete for one disk.
@@ -443,8 +445,11 @@ stores nothing; only a request that allows interaction raises a box.
 
 **DNS.** NetworkManager starts a caching `dnsmasq` on `127.0.0.1` and `::1` and feeds it the
 servers of each connection, as set by `/usr/lib/NetworkManager/conf.d/10-kdos-dns.conf`. DNS is
-split: a VPN's servers answer for the VPN's own domains rather than replacing every server the
-machine has. A file of the same name in `/etc/NetworkManager/conf.d` overrides the shipped one.
+split by domain: each connection's servers answer for the domains in its search list, and a name
+in no connection's list goes to the servers of the connections holding the default route. A VPN
+that carries only its own networks answers only for its own domains; one that takes the default
+route answers every other name as well. A file of the same name in `/etc/NetworkManager/conf.d`
+overrides the shipped one.
 `/etc/resolv.conf` has one writer, `resolvconf` (openresolv), which NetworkManager, the fallback
 `dhcpcd` and `wg-quick` all go through, so none of them overwrites another's entries.
 
@@ -452,7 +457,10 @@ machine has. A file of the same name in `/etc/NetworkManager/conf.d` overrides t
 PKCS#11 hardware tokens are not supported by the OpenVPN build. WireGuard works two ways:
 
 - `nmcli connection import type wireguard file wg0.conf` makes a NetworkManager profile, and its
-  `DNS=` servers go to the local `dnsmasq` for the tunnel's domains.
+  `DNS=` addresses go to the local `dnsmasq`. The names on the `DNS=` line become the tunnel's
+  domains; a line with addresses only gives the profile the domain `~`, so the tunnel's servers
+  answer every name. A `DNS=` line is dropped for an address family the `Address=` line has none
+  of.
 - `wg-quick up wg0` hands a `DNS=` line to `resolvconf`, which makes the tunnel's servers the only
   ones in `/etc/resolv.conf` until `wg-quick down wg0`.
 
@@ -641,11 +649,11 @@ Check, then apply:
 
 ```sh
 sudo nft -c -f /etc/nftables.conf     # check only
-sudo service nftables start           # apply
+sudo service start nftables           # apply
 ```
 
 `25_nftables` runs the same check before loading, so a file with a mistake is refused as a whole
-and the rules already loaded stay in force. `sudo service nftables stop` removes the `inet filter`
+and the rules already loaded stay in force. `sudo service stop nftables` removes the `inet filter`
 table, which leaves the machine unfiltered until the next start.
 
 ## Hardware
@@ -747,7 +755,7 @@ descriptor declares FIDO, and the scanner rule every scanner a SANE backend supp
 | `kdos-i2c.conf` | `i2c-dev` | No `/dev/i2c-*`, and the i2c rule has nothing to grant |
 | `kdos-hwmon.conf` | `nct6775` (Nuvoton), `it87` (ITE), `drivetemp` (SATA disk temperature) | `sensors` and `kdos-res` show CPU and GPU temperatures only — no fans, voltages or board temperatures |
 | `kdos-containers.conf` | `tun`, `overlay` | Container networking and overlay storage |
-| `kdos-drm.conf` | `virtio_gpu`, `qxl`, `bochs`, `vmwgfx` | Virtual machines' display drivers |
+| `kdos-drm.conf` | `qxl`, `vmwgfx`; it also names `virtio_gpu` and `bochs`, which are built into the kernel | Virtual machines' display drivers |
 
 Each hwmon driver binds only a chip it finds; on other hardware, or where the firmware has claimed
 the chip, the load fails and `02_modules` logs a skip. `sensors-detect` is not shipped, because it
@@ -850,10 +858,13 @@ sudo service enable cups
 sudo service start cups
 ```
 
-`kdos-print` (Printers in Settings, under System) lists the queues and their jobs, and adds a
-printer CUPS has discovered. It runs as you, not through a root daemon: CUPS is built with
-`lpadmin` as its system group, so membership of `lpadmin` is the authority to manage printers, and
-the `kdos` account has it. It sets a printer up only as IPP Everywhere, the driverless protocol a
+`kdos-print` (Printers in Settings, under System) lists the queues with their state and the
+default, and on a second page the devices `lpinfo -v` reports, less the `file` and `serial`
+backends and the bare backend names with no address, which name no printer. It adds one of those
+devices as a queue, makes a queue the default and removes one. It shows no print jobs; `lpstat -o`
+lists them. It runs as you, not through a root daemon: CUPS is built with `lpadmin` as its system
+group, so membership of `lpadmin` is the authority to manage printers, and the `kdos` account has
+it. It sets a printer up only as IPP Everywhere, the driverless protocol a
 printer advertises and CUPS configures without a PPD file; a printer that needs a vendor driver is
 refused, and the window says so. The same from a terminal:
 
@@ -965,7 +976,7 @@ more than 180 days old.
 [glossary](../06-reference/glossary.md)). What counts as "an update" is a newer ports tree, so
 `kdos update` needs one on the machine, and every image carries one at `/ports`: each port's
 `kpkgbuild`, `build.sh` and patches, `ports/shelves`, `ports/sources.idx`, KDOS's own programs
-under `/ports/src` and the book they render under `/ports/docs`, with no source archive. `PORT_REPO` in `/etc/kpkg.conf` names where `kpkg`
+under `/ports/src` and the two books they render under `/ports/docs`, with no source archive. `PORT_REPO` in `/etc/kpkg.conf` names where `kpkg`
 looks: a space-separated list of recipe directories, by default the five of that tree,
 `/ports/core /ports/src/system /ports/src/art /ports/src/desktop /ports/src/daemons`. The KDOS
 source tree keeps its recipes in the same five directories — `ports/core` for upstream software,
@@ -1079,7 +1090,8 @@ no separate `klogd`. `/etc/syslog.conf` routes them:
 | `/var/log/kern.log` | Kernel messages |
 | `/var/log/cron` | The `cron` facility; nothing on the image logs there by default |
 
-`syslogd` rotates each file itself at 1 MB and keeps five old copies, so no `logrotate` job exists.
+`syslogd` rotates each file itself at 1 MB and keeps six old copies — `messages.0`, then
+`messages.1.gz` to `messages.5.gz`, compressed — so no `logrotate` job exists.
 The limit matters on the live medium, where `/var/log` is in RAM and an unbounded log would take
 memory rather than disk. Emergency messages are also written to every logged-in terminal.
 

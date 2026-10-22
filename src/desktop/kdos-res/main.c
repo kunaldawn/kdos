@@ -41,9 +41,9 @@ const int kdos_disp_n = 1;
 
 /*
  * THE PAGE LIST IS READ OUT OF THE REGISTRY, never spelled again here. A
- * hand-written copy stopped at `energy` while `boxes` was the tenth row of
- * RES_PAGES for a release — so the page existed, `--page boxes` worked, and
- * the only way to find that out was to already know. The ids in
+ * hand-written copy falls behind RES_PAGES the day a row is added, and then
+ * the page exists, `--page` reaches it, and the usage line never says so —
+ * the only way to find it is to already know. The ids in
  * `enum res_page_id` are the one spelling: `--page` takes them, res.conf's
  * sort keys use them and the goldens are named after them.
  */

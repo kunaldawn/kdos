@@ -13,13 +13,13 @@
 # Reconcile the alien-app launchers against the packs this image actually
 # carries.
 #
-# A LAUNCHER OUTLIVES ITS PACK UNLESS SOMETHING RECONCILES THEM, and nothing
-# did. The generated set — `/etc/skel/.local/share/applications/*.desktop`,
+# A LAUNCHER OUTLIVES ITS PACK UNLESS SOMETHING RECONCILES THEM. The
+# generated set — `/etc/skel/.local/share/applications/*.desktop`,
 # `/usr/share/kdos/alien-apps` and the `/usr/local/bin` shims — is written by
 # `kdos-appbox genlaunchers`, and the `fs-manifest` guard cannot reach any of
 # it: that guard only owns paths `fs/` itself provided, and these are generated
-# here. So a medium that carries no applications still offered Firefox, GIMP,
-# LibreOffice, KeePassXC and zathura in the Start menu, each tagged `[box]`,
+# here. Unreconciled, a medium that carries no applications offers in its
+# Start menu every launcher an earlier build generated, each tagged `[box]`,
 # each dispatching to a pack the machine has never had.
 #
 # GENLAUNCHERS RECONCILES RATHER THAN APPENDS, which is why this is one call
@@ -39,17 +39,17 @@
 # `--packs-dir` AND NOT `--packs`, because at image time there is no
 # kdos-packd and no mount: the build is a chroot in an unprivileged container.
 # The flag reads one extracted pack per subdirectory, named after the pack,
-# which is the shape `kdos-pack image` + `fsck.erofs --extract` produce. The
-# directory is empty today because nothing is baked; the day a pack is baked
-# again this same call populates the set from it.
+# which is the shape `kdos-pack image` + `fsck.erofs --extract` produce.
+# Nothing is baked, so the directory is empty; a pack extracted into it is
+# read by this same call, which populates the set from it.
 
 set -e
 source script/phases/70_image/phase.env
 
-# The extraction root a bake would fill. Created empty rather than skipped when
-# absent: the reconcile has to run on a tree with no packs — that is the case
-# that leaves ghosts — and genlaunchers refuses a source directory that is not
-# there.
+# The extraction root a bake would fill, created empty when absent. The
+# reconcile has to run on a tree with no packs — that is the case that leaves
+# ghosts — and genlaunchers reads a missing or empty directory alike, as no
+# packs, and sweeps.
 EXTRACT="${KDOS_PACK_EXTRACT:-/var/tmp/kdos-pack-extract}"
 mkdir -p "$EXTRACT"
 

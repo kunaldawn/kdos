@@ -198,7 +198,7 @@ Five classes are exempt, and nothing outside them is:
   `ttf-dejavu`, `terminus-ttf`, `noto-emoji`, `font-liberation` and the X.org bitmap fonts.
 - **Bootstrap seeds.** The `rust` stage-0 toolchain, the `go` bootstrap toolchain, `zig1.wasm`
   inside the `zig` source, the upstream musl GHC that `ghc` builds with, the musl JDK that
-  `openjdk` boots from, `ocaml`'s `boot/ocamlc`, and the Groovy jars `kodi`'s binding generator
+  `openjdk` boots from, `ocaml`'s `boot/ocamlc` and `boot/ocamllex`, and the Groovy jars `kodi`'s binding generator
   runs on. A compiler written in its own language needs a working copy first; the seed is used by
   the build and never installed.
 - **Data with no other source form.** The `tessdata-eng` OCR models, the Whisper and SoundFont

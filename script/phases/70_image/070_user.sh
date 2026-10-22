@@ -13,7 +13,7 @@
 # Materialize home directories for the human users declared in fs/etc/passwd.
 # The fs/ overlay is copied in 10_bootstrap, before shadow exists, and git cannot
 # carry ownership — so the homes are created here, in the chroot, from
-# /etc/skel. Idempotent: existing files are left alone.
+# /etc/skel. Rerunnable: skel overwrites every file it provides (see below).
 
 set -e
 source script/phases/70_image/phase.env
@@ -88,9 +88,9 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # second kdos-shell beside the supervised one, and the loser of that
     # bus-name race is whichever of the two asks second.
     rm -rf "$home/.config/kdos-comp"
-    # Same reason, and the alien launchers need it most: they have been named
-    # kdos-<id> and <upstream-id> at different times, so a merge leaves both
-    # and the app library shows every alien app twice.
+    # Same reason, and the alien launchers need it most: a launcher whose file
+    # name changes would stay under its old name as well, and the app library
+    # would show that app twice.
     rm -rf "$home/.local/share/applications"
     if [ -d /etc/skel ]; then
         cp -r /etc/skel/. "$home"/ 2>/dev/null || true

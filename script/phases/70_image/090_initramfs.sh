@@ -29,9 +29,9 @@ cp /etc/passwd etc/passwd
 cp /etc/group etc/group
 
 # copy_closure DEST SRC: SRC to DEST, then every library its NEEDED entries
-# name, and theirs, from /usr/lib or /lib into lib/. `ldd` is not available,
-# so NEEDED is read with readelf. A library that is installed nowhere stops
-# the build here, naming the program that wanted it.
+# name, and theirs, from /usr/lib or /lib into lib/. NEEDED is read with
+# readelf, from the dynamic section, without loading the file. A library that
+# is installed nowhere stops the build here, naming the program that wanted it.
 #
 # THE READER IS PROVEN BEFORE IT IS TRUSTED. A readelf that is absent or
 # prints another format fails inside a command substitution, which `set -e`
@@ -245,9 +245,11 @@ fi
 #
 # Copied WITH its libraries and skipped entirely when it is not installed: an
 # initramfs that half-carries a cryptsetup is an initramfs that fails at the
-# passphrase prompt instead of at build time. `ldd` is not available here, so
-# the list is explicit — and if one is missing the boot says "cryptsetup: not
-# found" rather than something subtler.
+# passphrase prompt instead of at build time. The list is explicit and each
+# entry is copied only when /usr/lib has it; a library cryptsetup NEEDs that
+# the list misses or /usr/lib lacks is caught by the closure check at the end
+# of this step, which stops the build and names it. `init` asks only whether
+# /bin/cryptsetup exists, when a cryptdevice= needs it.
 if [ -x /usr/sbin/cryptsetup ]; then
     cp /usr/sbin/cryptsetup bin/cryptsetup
     for _l in libcryptsetup.so.12 libdevmapper.so.1.02 libjson-c.so.5 \
@@ -255,10 +257,8 @@ if [ -x /usr/sbin/cryptsetup ]; then
               libuuid.so.1 libblkid.so.1 libz.so.1; do
         [ -f /usr/lib/$_l ] && cp /usr/lib/$_l lib/$_l
     done
-    HAVE_CRYPT=1
 else
     echo "Note: cryptsetup not installed — the initramfs cannot unlock a LUKS root"
-    HAVE_CRYPT=0
 fi
 
 # Install lvm and dmsetup, for a root on a logical volume.
@@ -436,18 +436,18 @@ MODULES="overlay squashfs isofs cdrom sr_mod loop sd_mod ata_piix ahci libahci v
 # of each one's dependencies.
 MODULES="$MODULES vmd mmc_block sdhci-pci sdhci-acpi cqhci rtsx_pci_sdmmc hv_storvsc xen-blkfront vmw_pvscsi megaraid_sas mpt3sas"
 
+# vfat, so the initramfs can read the boot state off the ESP.
+MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
+# Root filesystems the installer can create. EVERY ROW OF ki_filesystems[] NOT
+# BUILT INTO THE KERNEL MUST APPEAR HERE: the installer's table offers the
+# choice, this makes it bootable, and a root the initramfs cannot mount
+# installs perfectly and never boots again. f2fs is CONFIG_F2FS_FS=m; xfs is =y
+# and its copy is a no-op, kept so a kernel with xfs as a module still boots.
+MODULES="$MODULES xfs f2fs"
 # dm-crypt and the ciphers a LUKS2 default header actually uses. Carried
 # unconditionally: they are small, and a kernel that has them built in makes
 # copy_module a no-op anyway. The generic AES, SHA-256 and SHA-512 code is
 # built into this kernel and has no module to name.
-# vfat, so the initramfs can read the boot state off the ESP.
-MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
-# Root filesystems the installer can create. ext4 and btrfs are built in and
-# copy_module is a no-op for them; xfs and f2fs are CONFIG_*_FS=m, and a root
-# on either that the initramfs cannot mount installs perfectly and never boots
-# again. EVERY ROW OF ki_filesystems[] MUST APPEAR HERE — the installer's table
-# is what offers the choice and this is what makes the choice bootable.
-MODULES="$MODULES xfs f2fs"
 MODULES="$MODULES dm-crypt dm-mod aesni-intel xts crypto_null algif_skcipher"
 # Software RAID. A root ON an array needs these before anything can be
 # assembled, and a machine whose DATA disks are an array needs them before
@@ -508,10 +508,10 @@ mount -t devpts devpts /dev/pts
 mkdir -p /dev/shm
 mount -t tmpfs -o nosuid,nodev tmpfs /dev/shm
 
-# The screen has been dark since the bootloader handed over: /dev/console is
-# ttyS0 (the last console= wins), so none of these messages reach it, and fbcon
-# defers taking the framebuffer until something prints to tty0. Nothing does.
-# Paint it ourselves.
+# fbcon defers taking the framebuffer until a glyph is printed on a virtual
+# terminal. /dev/console is the last console=: ttyS0 on the live entries, so
+# none of these messages reach the screen; tty0 on an installed machine, where
+# the echo above has ended the deferral and fbcon draws them over the splash.
 if [ -x /bin/kdos-splash ]; then
     /bin/kdos-splash run </dev/null >/dev/null 2>&1 &
 fi
@@ -643,18 +643,18 @@ done
 # first is the LUKS container's, the second belongs to the filesystem that only
 # exists once the container is open. kinstall writes both.
 #
-# The prompt goes through the SPLASH, not to /dev/console. console= is ttyS0 on
-# this kernel command line (the last one wins), so a plain \`read -p\` prompts a
-# serial port nobody is looking at while the screen shows a boot splash that
-# appears to have frozen. The keystrokes are read from /dev/tty1, which is where
-# the keyboard actually is.
+# The prompt goes through the SPLASH, not to /dev/console, which is the last
+# console=: tty0 under the splash on an installed machine, ttyS0 on the live
+# entries, where a plain \`read -p\` prompts a serial port nobody is looking at
+# while the screen shows a splash that appears to have frozen. The keystrokes
+# are read from /dev/tty1, which is where the keyboard actually is.
 #
 # There is no per-keystroke feedback: the splash owns the framebuffer and bash
 # owns the terminal, and a passphrase field that echoed dots would mean moving
 # the read into the splash. Stated rather than hidden.
 #
-# Two knobs, both defaulted to the real thing. The keyboard is on tty1 because
-# console= is the serial port, and the mapper directory is where the kernel puts
+# Two knobs, both defaulted to the real thing. The keyboard is on tty1 whatever
+# console= names, and the mapper directory is where the kernel puts
 # an opened container. They are variables so \`testing/selftest.sh\` can exercise
 # this function without a LUKS volume and without root — the same trick
 # \`kdos stutter --fixture\` uses for /proc.
@@ -696,7 +696,7 @@ unlock_root() {
         [ -x /bin/kdos-splash ] && /bin/kdos-splash msg \
             "PASSPHRASE FOR \$name (attempt \$tries of 3)" 2>/dev/null
         # -s: never echo the passphrase. Read from tty1 because the keyboard
-        # is there and /dev/console is the serial port.
+        # is there, whatever /dev/console is.
         PASS=""
         read -r -s PASS < "\$PASS_TTY" || true
         # Fed on STDIN, never as an argument: /proc/<pid>/cmdline is readable
@@ -1230,8 +1230,8 @@ if [ -n "$(ls -A $UCODE/kernel/x86/microcode)" ]; then
         > $UCODE_CPIO 2>/dev/null
 fi
 
-# EVERY PROGRAM'S LIBRARIES ARE HERE, or the initramfs is not built. `ldd` is
-# not available, so NEEDED is read with the reader proven above, for each
+# EVERY PROGRAM'S LIBRARIES ARE HERE, or the initramfs is not built. NEEDED is
+# read with the reader proven above, without loading anything, for each
 # program in bin/ and usr/sbin/ and each library in lib/. A file that is not
 # ELF -- a script -- names nothing. A missing one is an init that cannot exec -- the kernel
 # panics with "Attempted to kill init" -- or a tool that says "not found" at

@@ -2,11 +2,12 @@
 
 This chapter is for anyone putting KDOS onto a disk. The installer, `kinstall`, copies the running
 live system onto a target disk, configures the copy for its new machine and makes it bootable on
-both UEFI and legacy BIOS firmware. It ships on every KDOS image, draws its own full-screen
-interface on a bare text console, a terminal window or a serial line, and can install a machine
-unattended from an answer file. Read [Getting started](getting-started.md) first if you do not yet
-have a booted live image. Terms this chapter does not define are in the
-[Glossary](../06-reference/glossary.md).
+UEFI firmware; a disk it partitions does not start on legacy BIOS (see [Known
+gaps](../06-reference/known-gaps.md#an-installed-disk-starts-on-uefi-only)). It ships on every KDOS
+image, draws its own full-screen interface on a bare text console, a terminal window or a serial
+line, and can install a machine unattended from an answer file. Read [Getting
+started](getting-started.md) first if you do not yet have a booted live image. Terms this chapter
+does not define are in the [Glossary](../06-reference/glossary.md).
 
 The chapter follows the order in which you meet things. [Before you start](#before-you-start) lists
 what to decide and what the installer needs; [The pages](#the-pages) walks through the wizard screen
@@ -145,11 +146,14 @@ a machine that cannot boot. Do not start an install while that line is marked.
 The disk count leaves out loop, RAM, optical, zram, device-mapper, software RAID, floppy and network
 block devices.
 
-The firmware line is information, never a refusal. Limine is written for both firmware types
-whichever way this machine started, so the line only tells you which path the firmware will use:
+The firmware line is information, never a refusal. Only the UEFI path is installed on a disk the
+installer partitions, so the line tells you whether the result will start on this machine:
 
-- `legacy BIOS`: this machine booted that way. It gets the same install, without the firmware boot
-  entry, which cannot be created in legacy mode.
+- `legacy BIOS`: this machine booted that way, and the page adds a warning in red. The install
+  completes, but its GPT layout has no BIOS boot partition, so the disk starts on UEFI only and not
+  on this machine in legacy mode; see [Known
+  gaps](../06-reference/known-gaps.md#an-installed-disk-starts-on-uefi-only). Switch the firmware to
+  UEFI and boot the medium again before installing.
 - `UEFI  (32-bit firmware)`: a 64-bit processor with 32-bit UEFI firmware, as on some early Atom
   tablets. The firmware boot entry then names the 32-bit EFI loader.
 - `(Secure Boot enabled)`: the install completes, but the installed machine will not start until
@@ -257,8 +261,9 @@ as FAT32. Leave that off when another operating system boots from the same ESP. 
 the disk's partitions, then every LVM logical volume on the machine, named `vg/lv`. The installer
 activates every volume group when it starts, so volumes on this disk appear. Thin and cached volumes
 are offered as ordinary volumes, and the initramfs carries `thin_check` and `cache_check` for them;
-their internal volumes are not listed. A root on LVM of any kind has not been booted; see [Known
-gaps](../06-reference/known-gaps.md#hardware-and-platform).
+their internal volumes are not listed. A plain LVM root has been booted in a virtual machine; an
+encrypted, thin or cached one has not; see [Known
+gaps](../06-reference/known-gaps.md#a-root-filesystem-on-lvm-has-been-booted-in-one-shape-only).
 
 The reuse plan refuses as the root:
 
@@ -452,12 +457,12 @@ scroll.
 | Partition | Wipes the disk's signatures and writes the GPT layout | The plan is not "erase" |
 | Format | Encrypts and creates the volume group if asked, then makes the root filesystem, the ESP (when it is to be formatted) and the swap partition | |
 | Mount | Mounts the root at `/mnt` and the ESP at `/mnt/boot/efi` | |
-| Copy system | Copies the live system with `rsync` | |
+| Copy system | Copies the live system with `rsync`. On a machine with about 4 GB of memory the memory guard can kill the copy; run `sudo service stop oomd` before installing ([known gap](../06-reference/known-gaps.md#the-memory-guard-can-kill-the-installers-copy-on-a-4-gb-machine)) | |
 | Packs | Imports, builds or records the applications you chose | Nothing was chosen, or the medium has no catalogue |
 | Configure | `fstab`, hostname, `/etc/hosts`, time zone, Wi-Fi country, keymap, automatic login, DNS resolver, services and the swap file | |
 | Accounts | Users, passwords, the administrator choice | |
 | Theme | Regenerates the chosen accent in `/etc/skel` and the new home directory | The accent is the default, `bone` |
-| Bootloader | Limine on the ESP, for BIOS and UEFI, and the firmware boot entry | |
+| Bootloader | Limine on the ESP for UEFI, and the firmware boot entry; the BIOS boot code is attempted and fails on the installer's layout | |
 | Finish | Flushes and unmounts | |
 
 A failed step stops there and offers `Retry step`, `View log`, `Shell` and `Abort`. `Shell` opens a
@@ -686,7 +691,7 @@ machine when the rehearsal finishes.
 | Where | What |
 |---|---|
 | The ESP | Formatted FAT32 with the label `KDOS_EFI` (on the reuse plan, only when you asked for it). Limine: both EFI loaders, `EFI/BOOT/BOOTX64.EFI` and `EFI/BOOT/BOOTIA32.EFI`, the BIOS second stage `limine-bios.sys`, and the generated `limine.conf`, all at fixed paths. Slot A's kernel and initramfs in `EFI/kdos/a/`, the A/B boot state `EFI/kdos/bootstate`, memtest86+ as `EFI/kdos/memtest.efi`, and the menu's font and wallpaper (`EFI/kdos/font.bin`, `EFI/kdos/wallpaper.png`) where the medium has them |
-| The disk | Limine's BIOS boot code, written by `limine bios-install` |
+| The disk | Nothing outside its partitions: `limine bios-install` is run and fails on the installer's GPT layout, which has no BIOS boot partition |
 | Firmware | A boot entry labelled `KDOS`, on a machine booted through UEFI |
 | Root | The system, copied from the live medium with `rsync` |
 | `/etc/fstab` | Prepended to, never replaced: the root, the ESP at `/boot/efi` (`umask=0077`), and the swap partition or `/swapfile`, above the shipped entries, which include the `/tmp` mount graphical applications depend on |
@@ -732,12 +737,16 @@ from `/sys/firmware/efi/fw_platform_size`, and the ESP's partition number, read 
 Where that number cannot be read, no entry is written and the disk starts through the
 removable-media path instead.
 
-The BIOS boot code is written whichever way the installing machine booted. It costs one sector, and
-it means a disk installed on a UEFI machine still starts when moved to a legacy one. A failure there
-does not stop the install, because on a UEFI machine the EFI path is already complete.
+The BIOS boot code is asked for whichever way the installing machine booted, and on the layout the
+erase plan writes it is not installed: on a GPT disk Limine's BIOS stage needs a BIOS boot
+partition, and the layout has none. `kinstall.log` holds Limine's
+`error: Installing to a GPT device, but no BIOS boot partition specified or detected.`, the wizard
+shows nothing, the install carries on because the EFI path is already complete, and the disk starts
+on UEFI only; see [Known gaps](../06-reference/known-gaps.md#an-installed-disk-starts-on-uefi-only).
+A BIOS boot of an installed disk has not been measured.
 
-On the reuse plan, the ESP's `EFI/BOOT/BOOTX64.EFI` and `EFI/BOOT/BOOTIA32.EFI` and the disk's BIOS
-boot code are replaced with Limine's, and the Limine menu lists only KDOS. Another operating system
+On the reuse plan, the ESP's `EFI/BOOT/BOOTX64.EFI` and `EFI/BOOT/BOOTIA32.EFI` are replaced with
+Limine's, as is the disk's BIOS boot code where Limine can install it, and the Limine menu lists only KDOS. Another operating system
 on the same disk is started through its own firmware boot entry.
 
 ### The boot menu

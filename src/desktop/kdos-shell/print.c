@@ -78,7 +78,8 @@ struct found {
  * A surface whose picture depends on three programs on the host's PATH cannot
  * be goldened at all: a machine with CUPS set up and one without draw
  * different frames, and neither is wrong. `--fixture DIR` reads `lpstat-p`,
- * `lpstat-d` and `lpinfo-v` out of a directory instead of running them, which
+ * `lpstat-d`, `lpstat-r` and `lpinfo-v` out of a directory instead of running
+ * them (a file that is not there reads as an empty answer), which
  * is the same seam kdos-mountd and kdos-energyd use and the same reason.
  */
 static const char *fixture;
@@ -139,9 +140,27 @@ static void scan_printers(void)
 		kb_run_capture(&a, buf, sizeof(buf));
 	}
 
-	if (strstr(buf, "Scheduler is not running") || !buf[0]) {
-		snprintf(why, sizeof(why),
-			 "cupsd is not running (service start 80_cups)");
+	/*
+	 * AN EMPTY ANSWER IS TWO STATES, so `lpstat -r` tells them apart.
+	 * Both "No destinations added" and "Scheduler is not running" go to
+	 * stderr, which the capture discards: a running cupsd with no queue
+	 * yet prints nothing on stdout, exactly like a stopped one, and
+	 * calling that "not running" hides the Discovered page from the one
+	 * person who needs it — the one adding a first printer.
+	 */
+	if (!buf[0]) {
+		char rbuf[128];
+		KbArgv r = { 0 };
+
+		if (!recorded("lpstat-r", rbuf, sizeof(rbuf))) {
+			kb_argv_add(&r, "lpstat");
+			kb_argv_add(&r, "-r");
+			kb_argv_end(&r);
+			kb_run_capture(&r, rbuf, sizeof(rbuf));
+		}
+		if (!strstr(rbuf, "scheduler is running"))
+			snprintf(why, sizeof(why),
+				 "cupsd is not running (service start cups)");
 		return;
 	}
 	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp);
@@ -205,6 +224,12 @@ static void scan_found(void)
 		 * produce a page.
 		 */
 		if (!strcmp(f->kind, "file") || !strcmp(f->kind, "serial"))
+			continue;
+		/* A BARE BACKEND NAME IS NOT A DEVICE. `lpinfo -v` also lists
+		 * each backend that finds nothing by itself — `network socket`,
+		 * `network ipp`, `direct hp` — with no address after the
+		 * scheme, and `lpadmin -v socket` names no printer at all. */
+		if (!strchr(f->uri, ':'))
 			continue;
 		nfnd++;
 	}

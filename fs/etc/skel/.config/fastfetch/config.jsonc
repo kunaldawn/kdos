@@ -14,11 +14,11 @@
 // DOES NOT USE IT: kdos-banner runs fastfetch with `--logo none` and pastes
 // /usr/share/kdos/logo.txt on beside the result itself, because fastfetch's
 // own logo placement works by moving the cursor back UP over the logo block,
-// which cannot survive being animated one line at a time (it painted the
+// which cannot survive being animated one line at a time (it paints the
 // whole banner twice, offset, over the mascot). Consequence worth knowing:
-// the info column no longer has to be taller than the logo.
+// in the banner the info column need not be taller than the logo.
 //
-// Layout rules learned the hard way:
+// Layout rules:
 //
 //   * Keys are padded to 10 characters by hand. display.key.width looks like
 //     the right knob but fastfetch places values at an ABSOLUTE column, so

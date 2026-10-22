@@ -631,10 +631,9 @@ A control whose two renderings disagree about its own state is worse than either
 ### Quick launch
 
 Pinned applications, read from `~/.config/kdos/favorites`, the file the Start menu's pinned column
-also reads. The row looks up each whole trimmed line as a desktop-entry identifier and skips a line
-that names no entry, so a line carrying `code=` or any other word after the identifier is not shown.
-Every shipped line carries a code, so on a new account the row is empty until an application is
-pinned from a menu, which appends a bare identifier. The file's format is in
+also reads. The row takes the first word of each line as a desktop-entry identifier, ignores a
+`code=` or any other word after it, and skips an identifier that names no entry. The file's format
+is in
 [Configuration](../06-reference/configuration.md#configkdosfavorites).
 
 Hover is a fill behind the icon, never a tint of the icon, because tinting changes what the
@@ -782,8 +781,9 @@ reading it at most once a second because the draw is not on a tick. The session 
 and mpd itself with `--no-daemon`, once an mpd configuration file exists in one of the places mpd
 looks (`~/.config/mpd/mpd.conf`, `~/.mpdconf`, `~/.mpd/mpd.conf` or `/etc/mpd.conf`). The image
 ships none, and mpd exits at once without one. The watcher outlives mpd: when mpd goes away it
-empties the file, looks again every five seconds, and exits when the login's runtime directory is
-removed. The file's leading `>` or `||` is the play state and is stripped before the title is drawn.
+empties the file and looks again every five seconds. Both keep running after Log Out and end with
+the login; the watcher also exits if `$XDG_RUNTIME_DIR` is removed, which nothing does before
+shutdown. The file's leading `>` or `||` is the play state and is stripped before the title is drawn.
 One widget reads both, because two cells disagreeing about what is playing is worse than one that is
 sometimes empty.
 
@@ -1764,10 +1764,13 @@ advertises and what CUPS resolves without a PPD, and a driver picker would be a 
 `lpinfo -m` rows to choose from. A printer needing more than that needs its vendor's tooling, and
 the surface says so.
 
-The `file` and `serial` backends are dropped from the discovered list. `lpinfo -v` names every
-backend CUPS has, and offering one that prints to a file or one that names an empty serial port is
-offering a queue that will never produce a page. The queue name is derived from the URI rather than
-asked for, because CUPS refuses a name carrying a space, a slash or a `#`, and a device URI is full
+The `file` and `serial` backends are dropped from the discovered list, and so is every line that
+carries a bare backend name with no address (`network socket`, `direct hp`). `lpinfo -v` names
+every backend CUPS has, and offering one that prints to a file, one that names an empty serial
+port or a scheme with no device behind it is offering a queue that will never produce a page. An
+empty `lpstat -p` is told apart by `lpstat -r`: a running scheduler with no queue yet prints
+nothing on stdout, as a stopped one does, and only the second is reported as `cupsd is not
+running`. The queue name is derived from the URI rather than asked for, because CUPS refuses a name carrying a space, a slash or a `#`, and a device URI is full
 of all three.
 
 ## Notifications

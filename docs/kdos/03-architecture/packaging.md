@@ -68,12 +68,12 @@ There are five port repositories, all in the same format, searched in this order
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
 | `/ports/core` | `ports/core/` | 2,081 | Upstream software, filed on 102 shelves |
-| `/kdos/src/system` | `src/system/` | 6 | KDOS's own `kdos` command and tools, the packer, the box runtime and its init, the installer, and the book on the image |
+| `/kdos/src/system` | `src/system/` | 7 | KDOS's own `kdos` command and tools, the packer, the box runtime and its init, the installer, and the two books on the image |
 | `/kdos/src/art` | `src/art/` | 6 | KDOS's own theme generator, icon, cursor and GTK themes, boot splash and demo |
 | `/kdos/src/desktop` | `src/desktop/` | 8 | KDOS's own compositor, panel, terminal, lock screen, resource monitor, box socket, recorder and portal |
 | `/kdos/src/daemons` | `src/daemons/` | 5 | KDOS's own root daemons |
 
-That is 2,106 recipes in all (counted as directories holding a `kpkgbuild`).
+That is 2,107 recipes in all (counted as directories holding a `kpkgbuild`).
 
 A repository holds a port either directly, as `<repo>/<name>/`, or one level down, as
 `<repo>/<shelf>/<name>/`. The `src/` areas hold theirs directly. `ports/core` holds none directly:
@@ -172,15 +172,15 @@ as one list. A phase has one or the other, never both.
 | `30_foundation` | `packages.txt` | 138 | 127 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
 | `40_lang` | `packages.d/`, 13 files | 177 | 177 |
-| `41_system` | `packages.d/`, 96 files | 1,012 | 1,012 |
+| `41_system` | `packages.d/`, 96 files | 1,014 | 1,014 |
 | `42_graphics` | `packages.d/`, 54 files | 193 | 193 |
-| `43_toolkits` | `packages.d/`, 46 files | 248 | 248 |
-| `44_apps` | `packages.d/`, 59 files | 286 | 286 |
+| `43_toolkits` | `packages.d/`, 47 files | 249 | 249 |
+| `44_apps` | `packages.d/`, 58 files | 284 | 284 |
 | `50_desktop` | `packages.txt` | 22 | 22 |
 | `60_kernel` | `packages.txt` | 2 | 2 |
 
 "Names" counts the port names a list writes; "Installs" counts the packages the phase installs
-that no earlier phase did. Between them the lists name 2,100 distinct ports and install 2,104:
+that no earlier phase did. Between them the lists name 2,101 distinct ports and install 2,105:
 2,080 of the 2,081 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
 the bootstrap builds by name. The one recipe in `ports/core` no list reaches is `texlive-doc`,
 which `ports/unbuilt` names: a recipe kept for `kpkg install` and built by no phase, and removed
@@ -882,9 +882,22 @@ files and its named sources hashes exactly as its recipe files alone.
 
 The files this reaches are the ones `build.sh` reads from `$PORT_SRC` and nothing else vouches
 for. `linux` starts its kernel configuration from `kdos.config`, signs modules under the identity in
-`x509.genkey` and copies in its panic-screen logo this way, and `epy` installs a `.desktop` file; editing one rebuilds the port. The rule has no
-exceptions, so a stray file beside a recipe, such as an editor backup or a `kpkgbuild.new`, also
-changes the hash and rebuilds the port.
+`x509.genkey` and copies in its panic-screen logo this way, and `epy` installs a `.desktop` file; editing one rebuilds the port. A stray file beside a recipe,
+such as an editor backup or a `kpkgbuild.new`, also changes the hash and rebuilds the port. A
+directory named `__pycache__` is skipped at every depth: it is bytecode Python writes beside a
+module it imports, and a port that links in a tree of scripts, as `kdos-kfs` links
+`script/book`, would otherwise hash whatever a host run happened to import.
+
+The one file never hashed is `kfs.md`, the port's note in the KDOS from Scratch book under
+`docs/kfs`. The port's own build never reads it, so adding, editing or removing it leaves the hash, and the installed
+package, as they were; this holds for a port with or without a `source =`. It is skipped only
+directly beside the recipe: a file of that name in a subdirectory, such as a fork's `src/`, is
+hashed like any other. The note still changes the book's text, so the book keeps a stamp of its
+own, `docs/kfs/data/recipes.stamp`: `script/book/kfsgen.py` takes every port's recipe hash by this
+rule, which must change with `kp_hash.c`'s, and then hashes every `kfs.md`, the phase lists and
+every other file the book reads that no recipe hash covers. A changed note stales the stamp,
+`testing/kfscheck.py` fails until `make book-stamp` rewrites it, and the rewritten stamp under
+`docs/kfs` changes the recipe hash of `kdos-kfs`, the port that ships the book, and of no other.
 
 A port with no `source =` is different, and this is what keeps the rule true for this tree's own
 code. Such a port builds out of its own directory: nothing names those files and no checksum covers
@@ -1059,7 +1072,7 @@ The other half is five settings in `script/env/common.env`, which every phase's 
 
 | Line | Purpose |
 |---|---|
-| `SOURCE_DATE_EPOCH=1735689600` | A pinned epoch, not the current date and not derived from git: the build container mounts only `build`, `src`, `fs`, `script` and `ports`, not the repository's `.git` |
+| `SOURCE_DATE_EPOCH=1735689600` | A pinned epoch, not the current date and not derived from git: the build container mounts `build`, `src`, `fs`, `script`, `ports`, `docs`, `testing`, the `Makefile` and the `Dockerfile`, never the repository's `.git` |
 | `TZ=UTC` | Dates formatted during the build do not depend on the builder's zone |
 | `LC_ALL=C` | Sorting and formatting do not depend on the builder's locale. The chroot phases replace it with `C.UTF-8` in `script/env/chroot.env`; musl collates every locale byte by byte and formats dates in `C.UTF-8` as in `C`, so the output is the same |
 | `-ffile-prefix-map=/var/cache/kpkg/work=/build`, on `CFLAGS` and `CXXFLAGS`, and on `FFLAGS` and `FCFLAGS` where the phase sets them | Rewrites the build directory out of `__FILE__` and debug paths |

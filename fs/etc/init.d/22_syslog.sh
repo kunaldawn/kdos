@@ -16,7 +16,12 @@ case "$1" in
         # while bringing an interface up is exactly the one whose log you want.
         # -F keeps it in the foreground for ksvc; without it the supervisor
         # watches a process that has already forked away.
-        supervise "$NAME" "$DAEMON" -F
+        # -P moves syslogd's own pid file off /run/syslogd.pid, which is the
+        # supervisor's: written there, it replaces the supervisor's id, so
+        # `service stop` signals the daemon alone and it is restarted, and
+        # syslogd removes it on exit, so `status` reports the service down.
+        mkdir -p /run/syslogd
+        supervise "$NAME" "$DAEMON" -F -P /run/syslogd/syslogd.pid
         ;;
     stop)
         stop_service "$NAME"

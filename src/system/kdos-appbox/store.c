@@ -631,6 +631,22 @@ int store_uninstall_many(const char *const *ids, int n)
  * diffed and hand-edited; a format only this program can write is one nobody
  * can correct when an id is wrong.
  */
+
+/* One id line, unless the manifest already has it. An id both named and held
+ * by a picked group, or held by two, is listed once, under the first group
+ * that holds it; listed twice, an import stages and installs the same pack
+ * twice. Every line ends in a newline and the header comes first, so an id
+ * line is always "\n<id>\n". */
+static int sel_add_id(char *out, size_t outn, const char *id)
+{
+	size_t len = strlen(id);
+
+	for (const char *p = strchr(out, '\n'); p; p = strchr(p + 1, '\n'))
+		if (!strncmp(p + 1, id, len) && p[1 + len] == '\n')
+			return 1;
+	return addf(out, outn, "%s\n", id);
+}
+
 int store_selection(const char *const *ids, int n, const char *catver,
 		    char *out, size_t outn)
 {
@@ -653,14 +669,18 @@ int store_selection(const char *const *ids, int n, const char *catver,
 		  "# archive actually carries.\n", date, catver ? catver : "unknown"))
 		return -1;
 	for (int i = 0; i < n; i++) {
-		if (cat_group_find(ids[i])) {
-			if (!addf(out, outn, "group %s\n", ids[i]))
-				return -1;
+		const CatGroup *g = cat_group_find(ids[i]);
+
+		if (!g)
 			continue;
-		}
+		if (!addf(out, outn, "group %s\n", ids[i]))
+			return -1;
+		for (int m = 0; m < g->nmember; m++)
+			if (!sel_add_id(out, outn, g->members[m]))
+				return -1;
 	}
 	for (int i = 0; i < n; i++)
-		if (!cat_group_find(ids[i]) && !addf(out, outn, "%s\n", ids[i]))
+		if (!cat_group_find(ids[i]) && !sel_add_id(out, outn, ids[i]))
 			return -1;
 	return 0;
 }
@@ -1131,19 +1151,22 @@ int store_selftest(void)
 	 * back. A format whose writer and reader disagree is an archive that
 	 * restores nothing and reports success. */
 	{
-		const char *sel[] = { "app.one", "beta" };
+		const char *sel[] = { "app.one", "beta", "app.two" };
 		char m[4096], back[16][CAT_ID_MAX];
 		int k;
 
-		store_selection(sel, 2, "test", m, sizeof(m));
+		store_selection(sel, 3, "test", m, sizeof(m));
 		cat_chk(m[0] == '#', "the manifest opens with a comment");
-		cat_chk(strstr(m, "\ngroup beta\n") != NULL,
-			"a picked group is recorded as a group");
+		cat_chk(strstr(m, "\ngroup beta\napp.two\napp.bare\n") != NULL,
+			"a picked group is recorded with its members under it");
 		cat_chk(strstr(m, "\napp.one\n") != NULL, "an id is recorded");
 
 		k = store_selection_parse(m, back, 16);
-		cat_chk(k == 1, "the group line is not read back as an id");
-		cat_chk(k == 1 && !strcmp(back[0], "app.one"), "the id survives");
+		cat_chk(k == 3, "the group line is not read back as an id, and "
+			"an id named and held by a group is listed once");
+		cat_chk(k == 3 && !strcmp(back[0], "app.two") &&
+			!strcmp(back[1], "app.bare") &&
+			!strcmp(back[2], "app.one"), "the ids survive");
 
 		k = store_selection_parse("# only a comment\n\n", back, 16);
 		cat_chk(k == 0, "a manifest with no ids is empty, not an error");

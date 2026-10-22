@@ -74,7 +74,7 @@ static const struct {
 	{ "Configure",   "fstab, hostname, keymap, autologin, services" },
 	{ "Accounts",    "users, passwords, sudo" },
 	{ "Theme",       "regenerate the accent for the new home" },
-	{ "Bootloader",  "Limine on the ESP, BIOS and UEFI" },
+	{ "Bootloader",  "Limine on the ESP, the UEFI boot entry" },
 	{ "Finish",      "flush and unmount" },
 };
 
@@ -1806,10 +1806,10 @@ static void do_config(void)
 		 * next boot's `swapon -a`, with the machine simply having no
 		 * swap and nothing saying why.
 		 *
-		 * fallocate leaves unwritten extents; swapon rejects those on
-		 * xfs ("swapfile has holes"). btrfs additionally needs the file
-		 * to be NOCOW and uncompressed, which is the whole reason
-		 * `btrfs filesystem mkswapfile` exists.
+		 * fallocate leaves unwritten extents, so xfs and f2fs get a
+		 * file written out in full, which no kernel's swapon can refuse
+		 * for them. btrfs needs the file NOCOW and uncompressed, which
+		 * is the whole reason `btrfs filesystem mkswapfile` exists.
 		 */
 		int mode = ki_fs(cfg.fstype)->swapfile;
 		if (mode == KI_SWAPFILE_FALLOCATE && !kb_have_prog("fallocate"))
@@ -2265,15 +2265,16 @@ static void do_boot(void)
 	}
 
 	/*
-	 * THE BIOS BOOT CODE IS WRITTEN WHATEVER THIS MACHINE BOOTED AS, and
-	 * that is deliberate: it costs one sector and it makes the installed
-	 * disk start on firmware that is not the firmware it was installed
-	 * from. A disk imaged on a UEFI machine and moved to a legacy one is
-	 * the case that would otherwise install perfectly and never boot.
+	 * THE BIOS BOOT CODE IS ASKED FOR WHATEVER THIS MACHINE BOOTED AS, so
+	 * that a disk imaged on a UEFI machine could start on a legacy one.
+	 * On a GPT disk Limine needs a BIOS boot partition for its second
+	 * stage and do_partition() lays out none, so on this installer's own
+	 * layout the call fails and the disk starts on UEFI only.
 	 *
-	 * Failure is reported and not fatal. On a UEFI machine the EFI path
-	 * above is already complete and refusing the install here would throw
-	 * away a working system over a legacy fallback.
+	 * Failure is not fatal: the EFI path above is already complete, and
+	 * refusing the install here would throw away a working system over a
+	 * legacy fallback. handle_line() drops 'W' events, so only limine's
+	 * own output reaches kinstall.log and the wizard shows nothing.
 	 */
 	if (kb_have_prog("limine")) {
 		emit('N', "BIOS boot code onto %s", cfg.disk);

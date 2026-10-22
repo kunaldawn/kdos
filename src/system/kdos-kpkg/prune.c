@@ -148,8 +148,9 @@ static int foreign_stem(const char *base)
 
 /* HTML a program opens itself, so pruning it breaks a feature rather than
  * dropping a manual nobody's program reads:
- *   - the two manuals that are HTML and nothing else: mednafen's, and the
- *     book kdos-doc renders;
+ *   - the manuals that are HTML and nothing else: mednafen's, the book
+ *     kdos-doc renders, and KDOS from Scratch, which kdos-kfs renders with
+ *     its one PDF beside it;
  *   - R's help.start() index and the R.css every page of its dynamic help
  *     server links;
  *   - the manuals behind a Help menu: geany's (Help > Help, html/index.html),
@@ -162,6 +163,7 @@ static int foreign_stem(const char *base)
 static const char *const DOC_KEEP[] = {
 	"usr/share/doc/mednafen",
 	"usr/share/doc/kdos",
+	"usr/share/doc/kfs",
 	"usr/share/doc/R/html",
 	"usr/share/doc/geany/html",
 	"usr/share/doc/gimagereader",

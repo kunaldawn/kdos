@@ -17,16 +17,16 @@
  *   ║ ◀▶ change  Enter edit  a apply  Esc close      [ Apply ]  ║
  *   ╚══════════════════════════════════════════════════════════╝
  *
- * Every knob on this desktop was a text file and nothing else — which is the
- * right storage and the wrong interface for somebody who does not already know
- * the file exists. This is the OS/2-setup lineage: a category list, a form, and
+ * Every knob on this desktop lives in a text file — which is the right
+ * storage and the wrong interface for somebody who does not already know the
+ * file exists. This is the OS/2-setup lineage: a category list, a form, and
  * no mode the mouse cannot reach.
  *
  * AND EVERY VALUE IS A CONTROL. A number is a `ktui_slider` — press its track,
  * drag it, roll the wheel over it, click an end cap for one step — and a
- * choice is a `ktui_dropdown` that opens under its row. Both were printed
- * strings changed with Left and Right, which made this a settings window
- * somebody holding a mouse could select a row in and do nothing else with.
+ * choice is a `ktui_dropdown` that opens under its row. A printed string
+ * changed with Left and Right would make this a settings window somebody
+ * holding a mouse could select a row in and do nothing else with.
  *
  * THE CONTROL ANSWERS THE FIRST PRESS. One gesture selects the row and sets
  * the value; a slider that needed the row selecting first would be two
@@ -281,8 +281,7 @@ static struct row rows[] = {
 	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_PANEL, FT_CHOICE, ST_COMP, SC_LOGIN, "panel", "panel",
 	  PANELS, 3, 0, 0, 0,
-	  "which edge the one taskbar is on, or off entirely. There were two "
-	  "panels here; there is one",
+	  "which edge the one taskbar is on, or off entirely",
 	  "bottom", "bottom" },
 	{ CAT_PANEL, FT_INT, ST_COMP, SC_LOGIN, "panel_cells", "panel_cells",
 	  NULL, 0, 1, 4, 1,
@@ -714,9 +713,9 @@ static int napps;
  *
  * THE CONFIGURATION HALF, where configuration already lives. `kdos-box list`
  * is the runtime half — what is running, what it has written — and belongs at
- * a prompt and on kdos-res's Boxes page. What was missing was the other one:
- * every property of a box could only be set by knowing that
- * `~/.config/kdos/boxes/<name>.conf` existed.
+ * a prompt and on kdos-res's Boxes page. This is the other one: without it
+ * every property of a box could be set only by knowing that
+ * `~/.config/kdos/boxes/<name>.conf` exists.
  *
  * THIS PAGE NEVER WRITES A PROFILE. It reads them (they are `key = value`,
  * the shape every file this program touches uses) and it writes by running
@@ -1763,7 +1762,7 @@ static void cycle(struct row *r, int dir)
 /*
  * ── THE VALUE COLUMN IS A CONTROL ────────────────────────────────
  *
- * Every knob here was a printed string changed with Left and Right, which is a
+ * A knob that is a printed string changed with Left and Right is a
  * settings window a mouse cannot use: a person who came to this surface with a
  * pointer could select a row and nothing else. A number is a slider, a choice
  * is a dropdown, and both answer a press, a drag and a wheel.
@@ -1871,9 +1870,9 @@ static void commit_edit(void)
 
 /*
  * A value too wide for its column, marked as such — libktui clips silently,
- * and a clipped value is indistinguishable from the real one. Measured on a
- * booted ISO: `wallpaper` read `/usr/share/backgrounds/kdos/`, which is a
- * directory that exists, so nothing about it looked wrong.
+ * and a clipped value is indistinguishable from the real one: an unmarked
+ * `wallpaper` clipped to `/usr/share/backgrounds/kdos/` reads as a directory
+ * that exists, so nothing about it looks wrong.
  *
  * A PATH keeps its TAIL, because the file name is the part being identified
  * and every wallpaper on this machine shares the first three components.
@@ -2604,8 +2603,8 @@ int settings_main(int argc, char **argv)
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
-		 * move and no resize in the protocol at all, so every native
-		 * app on this desktop was a rectangle nailed to the screen
+		 * move and no resize in the protocol at all, so a native app
+		 * drawn as one would be a rectangle nailed to the screen
 		 * while every boxed one could be dragged and pulled about. A
 		 * toplevel also gets the compositor's own frame, which is the
 		 * other half of it: the decoration then MATCHES an alien app's
@@ -2661,10 +2660,9 @@ int settings_main(int argc, char **argv)
 		if (sel < 0)
 			sel = 0;
 		/* The viewport follows the SELECTION only when the selection is
-		 * what moved. `sel_follow` was declared for this and read by
-		 * nothing, so a hand-rolled pull sat here instead — which is
-		 * why the wheel and the scrollbar could not move the page: the
-		 * next frame put it straight back. */
+		 * what moved, which is what `sel_follow` records. A pull towards
+		 * the selection on every frame would undo the wheel and the
+		 * scrollbar: the next frame would put the page straight back. */
 		sel_settle();
 		kch_list_clamp(&top, sel, n, pane_rows, sel_follow);
 

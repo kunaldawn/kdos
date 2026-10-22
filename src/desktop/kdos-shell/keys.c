@@ -1047,8 +1047,8 @@ int keys_main(int argc, char **argv)
 			continue;
 
 		/*
-		 * A PRINTABLE KEY TYPES; IT DOES NOT CLOSE. The card used to
-		 * dismiss on any key but the ones that scroll it, which is the
+		 * A PRINTABLE KEY TYPES; IT DOES NOT CLOSE. Dismissing on any
+		 * key but the ones that scroll the card would be the
 		 * right rule for a card you only read and the wrong one for a
 		 * card you can ask. Escape is the way out — and where a query
 		 * has been typed it clears the query first, because a field

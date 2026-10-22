@@ -224,7 +224,8 @@ single-user mode is util-linux's `sulogin`.
 The question was which init runs the numbered shell scripts, with systemd ruled out by
 [principle](principles.md#no-systemd). sysvinit gives runlevels, so single-user mode, power-off and
 reboot are states of `/etc/inittab` rather than code paths of their own; it builds on musl and
-against utmps with no patch, so it writes the boot and runlevel records `who -b` and `who -r` read;
+against utmps with no patch, so it writes the boot record `who -b` reads and the `/run/runlevel`
+file `runlevel` answers from;
 and its shutdown order is a list of `wait` entries anyone can read. It does not supervise services:
 that stays `ksvc`'s job, so the choice of PID 1 changes nothing about how a daemon is run.
 

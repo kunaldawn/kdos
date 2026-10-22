@@ -345,7 +345,7 @@ any of them needs a working copy first. That copy is the *seed*.
 | `zig` | 0.16.0 | `stage1/zig1.wasm`, inside the source tarball: a WebAssembly build of the compiler that the build translates to C and compiles to start its own bootstrap |
 | `ghc` | 9.12.4 | 239 MiB of upstream GHC 9.10.3 for musl, the statically linked Alpine build, beside the 32 MiB source. It compiles Hadrian, GHC's build system, and GHC's first stage |
 | `openjdk` | 25.0.4.1 | 134 MiB of Adoptium's Temurin 25.0.4.1 JDK for Alpine (musl), the same feature release, beside the 114 MiB source. It is the boot JDK the build compiles the class library and tools with |
-| `ocaml` | 5.5.1 | `boot/ocamlc`, inside the source tarball: a bytecode image of the compiler, run by the `ocamlrun` the build compiles first, which rebuilds every compiler from source |
+| `ocaml` | 5.5.1 | `boot/ocamlc` and `boot/ocamllex`, inside the source tarball: bytecode images of the compiler and the lexer generator, run by the `ocamlrun` the build compiles first, which rebuild every compiler and tool from source |
 
 Every seed is pinned by version and sha256 like every other source, so the offline build still
 holds, and no seed is installed. Everything the seeds produce is compiled here: the shipped
@@ -353,7 +353,7 @@ holds, and no seed is installed. Everything the seeds produce is compiled here: 
 Haskell, Java and OCaml program in the tree.
 
 One build-only tool rides in the same class. `kodi` generates its Python add-on bindings with a
-Groovy script, and Groovy is not a port, so the recipe carries the Apache Groovy 4.0.26 binary
+Groovy script, and Groovy is not a port, so the recipe carries the Apache Groovy 4.0.33 binary
 distribution and the commons-lang3 3.17.0 and commons-text 1.13.0 jars it needs. They run on the
 `openjdk` port during the build, and nothing of them reaches the package. Every other Java
 library in the tree is compiled here from the `-sources.jar` Maven Central publishes for it.

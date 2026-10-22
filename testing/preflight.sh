@@ -16,6 +16,15 @@
 #
 # It cannot prove the build works. It can prove the build will not fail for one
 # of the dull reasons.
+#
+# One check is about the change rather than the tree: a .patch or .diff under
+# ports/ or src/ that is new or changed — on no remote yet — must carry a
+# `Subject:` line in its mail header, which the package page in KDOS from
+# Scratch prints as what the patch does. The older patches without one are
+# left alone until the patch itself is next added, edited or moved.
+# testing/kfscheck.py holds the
+# rule and this runs it; KDOS_CHECK_BASE=<ref> measures new and changed
+# against <ref> instead of the remotes.
 
 cd "$(dirname "$0")/.."
 
@@ -1734,6 +1743,36 @@ else
     note "port sources" "skipped — not a git checkout"
 fi
 
+# A PATCH SAYS WHAT IT CHANGES, in the Subject: line of its mail header: the
+# package page prints that line, and a patch without one is "undescribed" to
+# every reader of the book. Only a patch on no remote yet is held to it, so the
+# hundreds that predate the rule fail nothing until the patch itself is next
+# added, edited or moved. testing/kfscheck.py's `patches` check is the one statement of the
+# rule (which lines count as the header, what "new or changed" means), and
+# script/hooks/pre-push applies the same rule to the commits it pushes.
+echo
+echo "==> every new or changed patch carries a Subject: line"
+if [ ! -f testing/kfscheck.py ]; then
+    bad "testing/kfscheck.py" "missing"
+else
+    _ph=$(python3 testing/kfscheck.py --only patches 2>&1)
+    _phrc=$?
+    _phn=0
+    while IFS= read -r _l; do
+        case "$_l" in
+            PATCHHDR*)
+                _l=${_l#PATCHHDR}; _l=${_l#"${_l%%[! ]*}"}
+                bad "${_l%%: *}" "${_l#*: }"
+                _phn=$((_phn + 1)) ;;
+        esac
+    done <<< "$_ph"
+    if [ "$_phrc" = 0 ]; then
+        note "patch headers" "$(sed -n 's/^  patches: //p' <<< "$_ph")"
+    elif [ "$_phn" = 0 ]; then
+        bad "testing/kfscheck.py --only patches" "$(tail -1 <<< "$_ph")"
+    fi
+fi
+
 # KDOS shipped exactly that file for a release. The symptom on a booted ISO is
 # "the mouse does not work" and it is invisible to every other check here: the
 # XML is valid, the recipe parses, the build succeeds.
@@ -1808,14 +1847,17 @@ for f in fs/etc/skel/.config/kdos-comp/rc.xml \
          fs/etc/skel/.config/kdos-comp/menu.xml; do
     [ -f "$f" ] || continue
     # command="foo -x" and <promptCommand>foo …</promptCommand>; the first
-    # word is the program. `foot -e mc` also contributes `mc`, because a
-    # terminal wrapper that opens nothing is the same failure one level down.
+    # word is the program. `foot --app-id=mc -e mc` also contributes the word
+    # after `-e`, because a terminal wrapper that opens nothing is the same
+    # failure one level down.
     { sed -n 's/.*command="\([^"]*\)".*/\1/p' "$f"
       sed -n 's,.*<promptCommand>\([^<]*\)</promptCommand>.*,\1,p' "$f"
     } | while read -r line; do
         set -- $line
         echo "$1"
-        [ "$1" = foot ] && [ "$2" = "-e" ] && echo "$3"
+        [ "$1" = foot ] || continue
+        while [ $# -gt 0 ] && [ "$1" != "-e" ]; do shift; done
+        [ $# -ge 2 ] && echo "$2"
     done
 done
 # AND THE ROUTES. `menu.conf` is `route = argv`, so the first word of the

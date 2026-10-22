@@ -707,9 +707,9 @@ int teams_main(int argc, char **argv)
 	for (int i = 1; i < argc; i++) {
 		/*
 		 * ANCHORED WHEN THE PANEL OPENS IT. The window list is what
-		 * the taskbar's `+N` cell now leads to — the overflow used to
-		 * step one window per click, which on a bar with four hidden
-		 * windows is a guessing game — and a popup belonging to a bar
+		 * the taskbar's `+N` cell leads to — an overflow that stepped
+		 * one window per click would make a bar with four hidden
+		 * windows a guessing game — and a popup belonging to a bar
 		 * has to grow out of that bar. Typed by name it is still a
 		 * centred window: the same one flag decides both, exactly as
 		 * it does for the device managers.

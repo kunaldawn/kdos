@@ -43,6 +43,13 @@ Read the map below before touching anything.
 | Every command / config key / socket / path | [`06-reference/`](docs/kdos/06-reference/command-index.md) |
 | Every port, by shelf and phase | [`06-reference/ports-catalogue.md`](docs/kdos/06-reference/ports-catalogue.md) |
 | What does not exist | [`06-reference/known-gaps.md`](docs/kdos/06-reference/known-gaps.md) |
+| *KDOS from Scratch* — the second book, phase by phase and port by port, rendered by `script/book/` | [`docs/kfs/README.md`](docs/kfs/README.md); its renderer, data snapshot and targets in [`developing.md`](docs/kdos/05-developer/developing.md#make-targets) |
+| **Writing a port's `kfs.md`**, or a patch's `Subject:` header | [`05-developer/writing-ports.md`](docs/kdos/05-developer/writing-ports.md#the-ports-note-kfsmd) |
+| The book checks: `docscheck --book`, `anchorcheck`, `booknav`, `kfscheck`, the patch gate | [`05-developer/testing.md`](docs/kdos/05-developer/testing.md#kfscheckpy) |
+
+`docs/kdos/` stays the authority on mechanism and rationale. `docs/kfs/` owns
+build steps, per-package pages and task procedures, and links to `docs/kdos`
+for everything else rather than restating it.
 
 **If a page and the tree disagree, measure the tree and fix the page in the same
 change.** A stale-optimistic page sends the next reader past a bug; a
@@ -53,7 +60,7 @@ stale-pessimistic one makes them re-verify something that already works.
 ## Hard rules — do not violate
 
 1. **Every change updates its documentation, in the same change.** A change in
-   behaviour updates every page under `docs/kdos/`, every code comment and every
+   behaviour updates every page under `docs/kdos/` and `docs/kfs/`, every code comment and every
    shipped configuration file that describes that behaviour — before the change
    is done, not afterwards and not in a follow-up. **The update REPLACES the old
    description.** It does not append to it, annotate it, or record what the
@@ -97,8 +104,17 @@ stale-pessimistic one makes them re-verify something that already works.
    [`principles.md`](docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)
    and [`applications.md`](docs/kdos/02-user-guide/applications.md).
 
-6. **No rationale comments in a recipe.** Banner header plus the metadata keys.
-   Reasoning belongs in a commit message or in the book.
+6. **No rationale comments in a recipe.** Banner header plus the metadata keys
+   or the commands, in `kpkgbuild` and `build.sh` alike. Why a port passes a
+   flag or carries a patch, and the traps in its build, go in its `kfs.md`
+   beside the recipe — never in `kpkgbuild` or `build.sh`. `kfs.md` is not
+   hashed, so editing it rebuilds nothing, and `kfscheck` fails when a flag it
+   explains is gone from `build.sh`. A new or changed port with a patch, a
+   vendor bundle, a `build.sh` over 30 lines or 20 reverse dependencies needs
+   one. Other reasoning belongs in a commit message or in the book. Every new
+   or changed `.patch` opens with a `Subject:` line saying what it changes;
+   preflight and the pre-push hook refuse one without. See
+   [`writing-ports.md`](docs/kdos/05-developer/writing-ports.md#the-ports-note-kfsmd).
 
 7. **Do not auto-commit.** The user commits manually, often squashing many edits
    into one logical commit.
@@ -119,7 +135,8 @@ stale-pessimistic one makes them re-verify something that already works.
 
 A port is two files. `kpkgbuild` is declarative metadata that is **parsed, never
 sourced**; `build.sh` beside it is ordinary bash with the working directory set
-to the unpacked source.
+to the unpacked source. An optional third, `kfs.md`, holds the port's About,
+Flags, Patches and Notes sections for *KDOS from Scratch* (hard rule 6).
 
 ```
 name        = foo
@@ -161,7 +178,7 @@ State the rule and its consequence. Never the story. See hard rule 2.
 ## Build and iteration
 
 ```sh
-git config core.hooksPath script/hooks           # once per clone: the pre-push layout and source checks
+git config core.hooksPath script/hooks           # once per clone: the pre-push layout, patch-header, book and source checks
 make fetch                                       # every source; networked, as is the first builder-image build
 make fetch-check                                 # offline: what is missing or wrong
 make build                                       # everything — no network
@@ -169,7 +186,19 @@ make build BUILD_ARGS=--fresh                    # skip the picker
 make build BUILD_ARGS="--continue-from 41_system"
 make run            # plain graphics: no phosphor pass
 make run-hw         # accelerated: the pass is on
+make book BUILDFS=build/fs     # KDOS from Scratch into build/kfs: html/, kfs.pdf, kfs-html.tar.zst (~2 min)
+make book-data BUILDFS=build/fs  # rewrite docs/kfs/data from a built tree; after a build
+make book-stamp                  # rewrite docs/kfs/data/recipes.stamp alone; no built tree
 ```
+
+`make book` renders with the pandoc and typst inside `BUILDFS`, run through
+that tree's own loader; `KFS_PANDOC` and `KFS_TYPST` replace them. Package
+pages are generated from the recipes on every render and never committed;
+only `docs/kfs/data/` is, and its `recipes.stamp` goes stale on every edit
+to a recipe, a `kfs.md`, a phase list or a file a page includes, which
+`kfscheck` and the pre-push hook refuse until `make book-stamp` (or
+`book-data`) has run. An include range moved by an edit above it is fixed
+with `python3 testing/kfscheck.py --repin`.
 
 **Narrow it.** A full build is hours and almost nothing needs one:
 
@@ -216,7 +245,16 @@ make run-hw         # accelerated: the pass is on
 testing/preflight.sh                     # the wiring, about 2.5 minutes
 testing/selftest.sh                      # libraries and consumers, about 2.5 minutes
 CC="cc -fsanitize=address,undefined -g" testing/selftest.sh   # when you touch a parser
+python3 testing/kfscheck.py              # a recipe, patch or kfs.md: sidecar drift, notes, Subject: headers, the recipe stamp, a full render
+bash testing/docscheck.sh                # either book's pages; --book docs/kfs for one book
+python3 testing/anchorcheck.py           # every #fragment in both books lands on a heading
+python3 testing/booknav.py               # chapter footers and docs/kfs contents; --write after adding or moving a page
+make check                               # every check above but the ASan selftest, plus phaseclosure
 ```
+
+A new or changed `.patch` without a `Subject:` line fails preflight and the
+pre-push hook. "New or changed" means on no remote yet; `--base REF` or
+`KDOS_CHECK_BASE=REF` measures against a ref instead.
 
 ---
 
@@ -281,7 +319,7 @@ ls build/fs/var/lib/kpkg/db/ | wc -l                   # installed packages
 git status --short | wc -l                             # tracked changes
 ls build/logs/41_system/*.log                          # which packages have logs
 tail -40 build/logs/41_system/<N>_<pkg>.install.log    # debug a failure
-bash testing/docscheck.sh                              # the book: links, prose, page contract
+bash testing/docscheck.sh                              # both books: links, prose, page contract
 ```
 
 ---
@@ -304,7 +342,9 @@ bash testing/docscheck.sh                              # the book: links, prose,
   our own goes at `src/<area>/<name>/` in one of the four areas that hold
   ports (`system`, `art`, `desktop`, `daemons`), listed in
   `packages.d/src-<area>.txt` of its phase, or in `50_desktop`'s `packages.txt`
-  for `desktop` and `daemons`.
+  for `desktop` and `daemons`. Put the reasons for its flags and patches in a
+  `kfs.md` beside the recipe, and run `make book-stamp` (`make book-data`
+  once it is built) so the book's recipe stamp matches.
 - **"why is X off"** → usually because dependencies weren't present when the port
   was added. Name the missing dependencies and offer to add them; don't pretend
   it was a deliberate choice.

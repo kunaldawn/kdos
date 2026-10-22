@@ -48,9 +48,9 @@ const Filesystem ki_filesystems[] = {
 	  "large files and parallel IO; it cannot be shrunk" },
 	/* fs_passno 0: there is no fsck.f2fs worth running at boot — f2fs.fsck
 	 * exists but is a repair tool, not a boot-time check. The swapfile is
-	 * dd'd for the same reason xfs's is: f2fs refuses a swapfile with
-	 * unwritten extents, so fallocate produces a file `swapon -a` rejects
-	 * at the NEXT boot, with no swap and nothing saying why. */
+	 * dd'd for the same reason xfs's is: a file written out in full has no
+	 * unwritten extent for any kernel's `swapon -a` to refuse at the NEXT
+	 * boot, where a refusal leaves no swap and nothing saying why. */
 	{ "f2fs",  "mkfs.f2fs",  "-f", "defaults,noatime", 0,
 	  KI_SWAPFILE_DD,
 	  "log-structured, for flash: a stick, an SD card or a cheap eMMC" },

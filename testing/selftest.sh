@@ -1662,7 +1662,11 @@ echo "==> a game's desktop entry is what makes it reachable, and nothing checks 
 # with the plural, a missing `Terminal=true`, or an `Exec=` naming a binary the
 # recipe never installs all build, install and then land the program under
 # Accessories or nowhere, with no warning at any stage. That is the whole of
-# what a game port can get wrong here, so it is what this asserts.
+# what a game port can get wrong here, so it is what this asserts. An Exec=
+# is a bare command, or the full path of a program in /usr/games: that
+# directory is on a login's PATH (profile.d/10-wayland.sh) but not on the
+# PATH testing/entrycheck.py resolves a bare name against, so a game there is
+# named by its path.
 #
 # The entries are read out of the build.sh heredocs rather than out of a built
 # image, so this runs on any host and fails at the recipe rather than after a
@@ -1694,7 +1698,8 @@ for _p in nethack frotz bsd-games moon-buggy; do
            if(!c) printf "  ENTRY %s: Categories has no Game token\n", n
            if(x=="") printf "  ENTRY %s: no Exec\n", n
            split(x,w," ");
-           if(w[1] ~ /\//) printf "  ENTRY %s: Exec names a path, not a command\n", n
+           if(w[1] ~ /\// && w[1] !~ /^\/usr\/games\/[^\/]+$/)
+             printf "  ENTRY %s: Exec names a path outside /usr/games, not a command\n", n
            print "  " n " -> " w[1]
            e=0 }' "$_bs" > "$OUT/game-$_p.entries"
     grep -q "^  ENTRY " "$OUT/game-$_p.entries" && { sed -n 's/^  ENTRY/    /p' \
@@ -1703,7 +1708,7 @@ for _p in nethack frotz bsd-games moon-buggy; do
 done
 if [ "$_gamefail" = 0 ]; then
     echo "  four recipes parse; every entry is Terminal=true, Game-categorised"
-    echo "  and names a bare command"
+    echo "  and names a bare command or a program in /usr/games"
 else
     echo "  A GAME ENTRY WOULD INSTALL AND NOT BE REACHABLE"
     exit 1
@@ -1927,6 +1932,7 @@ for f in usr/share/locale/de/LC_MESSAGES/pol.mo usr/share/locale/en_GB/LC_MESSAG
          usr/share/doc/pol/README usr/share/doc/pol/a.html usr/share/doc/pol/b.PDF \
          usr/share/doc/pol/html/x.png usr/share/doc/mednafen/index.html \
          usr/share/doc/kdos/index.html usr/share/doc/HTML/en/pol/index.docbook \
+         usr/share/doc/kfs/index.html usr/share/doc/kfs/kfs.pdf \
          usr/share/doc/HTML/de/pol/index.docbook usr/share/man/man1/pol.1 \
          usr/share/man/de/man1/pol.1 usr/share/texmf-dist/doc/latex/pol/pol.pdf \
          usr/share/licenses/pol/extra.html usr/share/X11/locale/de_DE.UTF-8/Compose \
@@ -1964,6 +1970,7 @@ for _p in usr/share/licenses/pol/LICENSE usr/share/licenses/pol/COPYING.LIB \
           usr/share/pol/translations/pol_en.qm usr/share/pol/translations/pol_rgb2pct.qm \
           usr/share/doc/pol/README usr/share/doc/mednafen/index.html \
           usr/share/doc/kdos/index.html usr/share/doc/HTML/en/pol/index.docbook \
+          usr/share/doc/kfs/index.html usr/share/doc/kfs/kfs.pdf \
           usr/share/man/man1/pol.1 usr/share/X11/locale/de_DE.UTF-8/Compose \
           usr/share/licenses/pol/LICENCE.alias usr/share/pol/org.kde.pol.mo \
           usr/share/doc/R/html/index.html usr/share/doc/R/html/R.css \
@@ -1985,7 +1992,7 @@ done
     || { echo "  a licence was written through a symlink out of \$PKG"; exit 1; }
 grep -qxF 'pol-license: [unset]' "$PP/out" \
     || { echo "  the license key reached build.sh as \$license"; exit 1; }
-echo "  licences copied; HTML, PDF and non-English catalogs, handbooks and man pages pruned; English, the HTML programs open and the book kept"
+echo "  licences copied; HTML, PDF and non-English catalogs, handbooks and man pages pruned; English, the HTML programs open and both books kept"
 if [ -n "$_pcc" ]; then
     rm -rf "$PP/x"; mkdir -p "$PP/x"
     tar -xf "$PP/pkgs/pol-1.0-1.tar.xz" -C "$PP/x" ./usr/bin/big ./usr/lib/libbig.a ./usr/lib/big.o
@@ -2454,6 +2461,38 @@ kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
 kstrict KPKG_STRICT_RECIPE=1 >/dev/null
 echo "  a source-less port's own sources are part of its recipe"
 
+# THE BOOK'S NOTE IS NOT PART OF THE RECIPE. `kfs.md` beside a recipe is
+# docs/kfs's prose about the port and no build reads it, so adding, editing or
+# removing it leaves the hash where it was, while build.sh beside it still
+# moves it. Below the port directory the name is an ordinary source file.
+H4=$(cat "$SIDE")
+printf '# demo\n\n## Notes\nA note.\n' > "$SR/ports/demo/kfs.md"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  adding kfs.md rebuilt the port"; exit 1; }
+printf '# demo\n\n## Notes\nAnother note.\n' > "$SR/ports/demo/kfs.md"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  editing kfs.md rebuilt the port"; exit 1; }
+[ "$H4" = "$(cat "$SIDE")" ] \
+    || { echo "  the recipe hash moved with kfs.md"; exit 1; }
+printf '# with a note beside it\n' >> "$SR/ports/demo/build.sh"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+    || { echo "  build.sh changed beside kfs.md and the port did not rebuild"
+         exit 1; }
+H5=$(cat "$SIDE")
+[ "$H4" != "$H5" ] || { echo "  the recipe hash did not move with build.sh"; exit 1; }
+rm -f "$SR/ports/demo/kfs.md"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  removing kfs.md rebuilt the port"; exit 1; }
+mkdir -p "$SR/ports/demo/src"
+printf 'not a note\n' > "$SR/ports/demo/src/kfs.md"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+    || { echo "  a kfs.md below the port directory was not hashed"; exit 1; }
+rm -rf "$SR/ports/demo/src"
+kstrict KPKG_STRICT_RECIPE=1 >/dev/null
+[ "$H5" = "$(cat "$SIDE")" ] \
+    || { echo "  the recipe hash did not return once src/kfs.md went"; exit 1; }
+echo "  kfs.md beside a recipe leaves its hash alone; build.sh still moves it"
+
 # UNKNOWN, both ways. An absent sidecar is every package on a tree that
 # predates the mechanism; a corrupt one is a truncated write. Neither may read
 # as "changed".
@@ -2597,6 +2636,13 @@ kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Building withsrc" \
     || { echo "  EDITING a file beside a sourced recipe did not rebuild it"; exit 1; }
 rm -f "$KB/ports/withsrc/demo.config"
 echo "  a file beside a sourced recipe that no sha256 names is part of its hash"
+# Except the book's note, which a sourced port skips as a source-less one does.
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 >/dev/null
+printf '# withsrc\n\n## Notes\nA note.\n' > "$KB/ports/withsrc/kfs.md"
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  kfs.md beside a sourced recipe rebuilt it"; exit 1; }
+rm -f "$KB/ports/withsrc/kfs.md"
+echo "  kfs.md beside a sourced recipe is not part of its hash"
 
 # ── kpkg install --build-only / --commit ────────────────────────────────────
 #
@@ -3707,6 +3753,28 @@ esb deploy "$ES/rc" a >/dev/null \
 mkird "$ES/rc/boot/initramfs-kdos.cpio.gz" ""
 esb deploy "$ES/rc" a >/dev/null \
     || { echo "  an initramfs with no module tree was refused"; exit 1; }
+# The reader stops at the first matching module path, and whatever follows it
+# must not hold deploy up: here a megabyte of archive comes after the match,
+# far more than a pipe buffer, as the rest of a real initramfs does.
+python3 - "$ES/rc/boot/initramfs-kdos.cpio.gz" <<'PYEOF'
+import gzip, sys
+def ent(i, n, body=b''):
+    nb = n.encode() + b'\0'
+    f = [i, 0o100644, 0, 0, 1, 0, len(body), 0, 0, 0, 0, len(nb), 0]
+    h = b'070701' + b''.join(b'%08X' % x for x in f) + nb
+    h += b'\0' * (-len(h) % 4)
+    return h + body + b'\0' * (-len(body) % 4)
+a = ent(1, 'lib/modules/7.2.8/kernel/fs/fat/vfat.ko')
+a += ent(2, 'blob', bytes(range(256)) * 4096) + ent(3, 'TRAILER!!!')
+open(sys.argv[1], 'wb').write(gzip.compress(a))
+PYEOF
+timeout 20 env KDOS_BOOTSTATE="$ES/esp/EFI/kdos/bootstate" "$OUT/kdos-bootctl" \
+    deploy "$ES/rc" a >/dev/null 2>&1 </dev/null
+case $? in
+0) ;;
+124) echo "  deploy hung on an initramfs larger than a pipe buffer"; exit 1 ;;
+*) echo "  an initramfs whose module tree comes first was refused"; exit 1 ;;
+esac
 # With no boot state the kernel goes where the menu boots it from, which is
 # slot A's directory on anything kinstall wrote.
 rm -f "$ES/esp/EFI/kdos/bootstate" "$ES/esp/EFI/kdos/vmlinuz"
@@ -4216,8 +4284,14 @@ echo "  restore and resume"
 # A plan writes no snapshot unless --snapshot asks, and must set KDOS_REPLAY
 # for a step it named — 17 phase scripts exit 0 on a second pass without it.
 beta_id=$(grep -o '"id": "[^"]*"' "$E/build/snapshots/01_beta/manifest.json")
+alpha_t=$(grep -o '"00_alpha/build the rootfs": [0-9.]*' "$E/build/snapshots/timings.json")
+[ -n "$alpha_t" ] && grep -q '"01_beta/ports": [0-9.]*' "$E/build/snapshots/timings.json" \
+    && grep -q '"00_alpha": [0-9.]*' "$E/build/snapshots/timings.json" \
+    || { echo "  the build recorded no step timings"; cat "$E/build/snapshots/timings.json"; exit 1; }
 ( cd "$E" && "$KB" --script-dir script --build-dir build \
     --steps beta:00_ports.sh ) > "$OUT/e2e-plan.log" 2>&1
+grep -qF "$alpha_t" "$E/build/snapshots/timings.json" \
+    || { echo "  a narrower run lost a step it did not run from timings.json"; exit 1; }
 [ "$(grep -o '"id": "[^"]*"' "$E/build/snapshots/01_beta/manifest.json")" = "$beta_id" ] \
     || { echo "  a plan wrote a snapshot nobody asked for"; exit 1; }
 grep -q "replay=1" "$E"/build/logs/01_beta/*.log \
@@ -4478,8 +4552,8 @@ printf 'cur\nnew\nfrc\ngone\n' > "$HS/script/phases/10_pk/packages.txt"
 printf '#!/bin/bash\ntouch "$PWD/after"\n' > "$HS/script/phases/20_after/00_mark.sh"
 printf '#!/bin/bash\ncat "%s/order"\n' "$HS" > "$HS/bin/kpkgdepends"
 # A step for `new` runs whatever $HS/during holds first: an edit made while
-# the phase is running.
-printf '#!/bin/bash\n[ "${@: -1}" = new ] && [ -f "%s/during" ] && . "%s/during"\necho "$*" >> "%s/kpkg.log"\n' \
+# the phase is running. It is the one port the stub says it builds.
+printf '#!/bin/bash\n[ "${@: -1}" = new ] && [ -f "%s/during" ] && . "%s/during"\n[ "${@: -1}" = new ] && echo "==> Building new..."\necho "$*" >> "%s/kpkg.log"\n' \
     "$HS" "$HS" "$HS" > "$HS/bin/kpkg"
 chmod +x "$HS/script/chroot/exec.sh" "$HS/script/phases/20_after/00_mark.sh" \
     "$HS/bin/kpkgdepends" "$HS/bin/kpkg"
@@ -4523,6 +4597,12 @@ for want in "install new" "install -f frc" "install gone"; do
 done
 grep -q '"installed": 1,' "$HS/run.json" \
     || { echo "  the result does not count the installed port"; cat "$HS/run.json"; exit 1; }
+# Only a port whose step built it is timed: `new` said so, `frc` and `gone`
+# printed no build line and `cur` never ran.
+grep -q '"10_pk/new": [0-9.]*' "$HS/build/snapshots/timings.json" \
+    || { echo "  a port that built was not timed"; cat "$HS/build/snapshots/timings.json"; exit 1; }
+grep -q '"10_pk/\(cur\|frc\|gone\)"' "$HS/build/snapshots/timings.json" \
+    && { echo "  a port that built nothing was timed"; cat "$HS/build/snapshots/timings.json"; exit 1; }
 
 # Every port current: no step runs, and the phase still finishes — its
 # snapshot is taken, and counts every port as done.
@@ -5268,6 +5348,23 @@ _alw=$(grep -c '^#' fs/etc/kdos/login.conf)
     && echo "  ok    and every comment in login.conf survived the rewrite" \
     || { echo "  FAIL  the rewrite lost comments ($_alc against $_alw)"
          al_fail=1; }
+# OFF KEEPS THE ACCOUNT. It comments the line as it stands, the form the
+# installer writes, so the file still says who autologin was for; off checks no
+# account, so this half needs none from the host.
+ALO="$OUT/alwork-off"
+rm -rf "$ALO"
+mkdir -p "$ALO/kdos"
+printf '# a comment\nautologin = someone-else\n' > "$ALO/kdos/login.conf"
+KDOS_POWERD_ETC="$ALO" "$OUT/kdos-powerd" --set-autologin off >/dev/null 2>&1 || true
+grep -qx "#autologin = someone-else" "$ALO/kdos/login.conf" \
+    && echo "  ok    off comments the key and keeps the account it named" \
+    || { echo "  FAIL  off did not keep the account"
+         cat "$ALO/kdos/login.conf"; al_fail=1; }
+KDOS_POWERD_ETC="$ALO" "$OUT/kdos-powerd" --set-autologin off >/dev/null 2>&1 || true
+grep -qx "#autologin = someone-else" "$ALO/kdos/login.conf" \
+    && echo "  ok    and off on a commented key leaves it as it is" \
+    || { echo "  FAIL  a second off changed the commented key"
+         cat "$ALO/kdos/login.conf"; al_fail=1; }
 [ "$al_fail" = 0 ] || exit 1
 
 echo "  --explain, the non-root refusal, and the client's message"

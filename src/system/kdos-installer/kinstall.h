@@ -280,10 +280,12 @@ extern int ki_nservices;
  * worth running and no fsck.xfs at all, so a non-zero pass is an instruction
  * to run a checker that is not installed.
  *
- * `swapfile` is the trap. `fallocate` produces unwritten extents, and swapon
- * refuses those on xfs ("swapfile has holes"); btrfs needs a NOCOW,
- * uncompressed file, which is what `btrfs filesystem mkswapfile` makes. Only
- * ext4 is happy with the fast path.
+ * `swapfile` is the trap. btrfs needs a NOCOW, uncompressed file, which is
+ * what `btrfs filesystem mkswapfile` makes; swapon refuses a fallocate'd one
+ * with EINVAL. xfs and f2fs get a file written out in full, which leaves no
+ * unwritten extent for any kernel's swapon to judge; the KDOS kernel accepts
+ * a fallocate'd file on both, so dd there is the kernel-independent choice.
+ * ext4 takes the fast path.
  */
 enum { KI_SWAPFILE_FALLOCATE = 0, KI_SWAPFILE_DD, KI_SWAPFILE_BTRFS };
 

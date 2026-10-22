@@ -1403,9 +1403,9 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 	 * here lives in a container, and the first launch of one costs a
 	 * container start — eighteen seconds cold, measured. A menu that
 	 * showed no difference between that and a host program was hiding the
-	 * one thing a person is entitled to know before they click. The
-	 * launcher has said it for a release; the shared index knows it now,
-	 * so the two cannot disagree.
+	 * one thing a person is entitled to know before they click. The flag
+	 * comes from the shared index, by the sh_exec_box() test Open With
+	 * applies too, so the two cannot disagree.
 	 */
 	int tagw = r->app && r->app->alien ? 6 : 0;
 	/*

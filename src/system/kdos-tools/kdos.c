@@ -3900,7 +3900,8 @@ static int hw_dir_has_prefix(const char *dir, const char *pfx)
 /*
  * The wireless regulatory database.
  *
- * kdos.config sets CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y, so the kernel will
+ * kdos.config leaves CFG80211_CERTIFICATION_ONUS unset, so olddefconfig keeps
+ * CONFIG_CFG80211_REQUIRE_SIGNED_REGDB at its default of y and the kernel will
  * load regulatory.db ONLY with a valid regulatory.db.p7s beside it. A database
  * regenerated locally from db.txt fails that check in silence and leaves the
  * radio exactly where it was: country 00, world-roaming, no 5 GHz DFS, reduced
@@ -4130,8 +4131,8 @@ static void check_packs(void)
 			   route ? route + 6 : "");
 		} else if (kb_path_exists("/var/lib/kdos/packs/base.kpack")) {
 			warn_("there are packs in /var/lib/kdos/packs and "
-			      "kdos-packd is not answering — `service packd "
-			      "status`");
+			      "kdos-packd is not answering — `service status "
+			      "packd`");
 		} else {
 			skip_("no packs installed and no kdos-packd — this "
 			      "machine has no application catalogue");
@@ -4367,14 +4368,18 @@ static int cmd_doctor(int argc, char **argv)
 	if (kb_path_exists(ct))
 		ok("accent applied (%s)", current_theme());
 	else
-		warn_("no accent applied — run: kdos theme phosphor");
+		warn_("no accent applied — run: kdos theme %s",
+		      current_theme());
 	free(ct);
 
+	/* Both fixes name the accent the session wears, the default when none
+	 * is applied, so following one changes no colour. */
 	char *ft = kdt_cfg_home("foot/themes/kdos");
 	if (kb_path_exists(ft))
 		ok("foot theme present");
 	else
-		warn_("foot theme missing — run: kdos theme phosphor");
+		warn_("foot theme missing — run: kdos theme %s",
+		      current_theme());
 	free(ft);
 
 	/*
@@ -4511,15 +4516,16 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("/etc/subuid or /etc/subgid is missing — a rootless box "
 		      "has no subordinate range to map into");
 
-	/* `service <name>` keys on the init SCRIPT — ksvc strips the numeric
-	 * prefix and the .sh, so 55_powerd.sh is `powerd`. The NAME= inside the
-	 * script is the pidfile, not the lookup key, and naming that here
-	 * printed a command that finds no service. */
+	/* `service <verb> <name>` takes the verb first and keys on the init
+	 * SCRIPT — ksvc strips the numeric prefix and the .sh, so 55_powerd.sh
+	 * is `powerd`. The NAME= inside the script names the pid file, not the
+	 * lookup key: a hint naming `kdos-powerd`, or putting the name before
+	 * the verb, prints a command that finds no service. */
 	if (kb_path_exists("/run/kdos-powerd.sock"))
 		ok("kdos-powerd listening");
 	else
 		warn_("kdos-powerd not running — no suspend, poweroff or reboot "
-		      "from the desktop (start with: service powerd start)");
+		      "from the desktop (start with: service start powerd)");
 
 	/*
 	 * kdos-energyd, and WHY it is not running is the whole of what is worth
@@ -4543,8 +4549,8 @@ static int cmd_doctor(int argc, char **argv)
 		kb_strv_free(dom);
 		if (any)
 			warn_("kdos-energyd not running — no per-app energy "
-			      "attribution (start with: service energyd "
-			      "start)");
+			      "attribution (start with: service start "
+			      "energyd)");
 		else
 			warn_("no RAPL energy domain on this machine — per-app "
 			      "energy cannot be measured here at all");
@@ -4579,8 +4585,8 @@ static int cmd_doctor(int argc, char **argv)
 		ok("kdos-oomd watching /proc/pressure/memory");
 	else
 		warn_("kdos-oomd not running — nothing protects the session "
-		      "under memory pressure (start with: service oomd "
-		      "start)");
+		      "under memory pressure (start with: service start "
+		      "oomd)");
 
 	/* The frame-timing socket. Absent means `kdos stutter` has nothing to
 	 * watch — which is normal outside a session and worth saying inside one,

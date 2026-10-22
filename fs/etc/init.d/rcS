@@ -107,17 +107,18 @@ chmod 1777 /tmp
 # or a /swapfile). `mount -a` ignores swap lines, and inittab already has the
 # matching swapoff on shutdown, so this is the only place it gets turned on.
 swapon -a 2>/dev/null || true
-# /etc/localtime belongs to no package, so a tzdata upgrade leaves a chosen
-# zone alone once the installed tzdata no longer lists it. UTC is linked here only when nothing is there —
-# every boot of the live medium, whose /etc starts as the image's — and a link
-# that exists, dangling or not, is the machine's own choice and is left alone.
+# /etc/localtime belongs to no package, so a tzdata upgrade never rewrites a
+# chosen zone, even one the new tzdata no longer lists. UTC is linked here only
+# when nothing is there — every boot of the live medium, whose /etc starts as
+# the image's — and a link that exists, dangling or not, is the machine's own
+# choice and is left alone.
 [ -L /etc/localtime ] || [ -e /etc/localtime ] || \
     ln -s /usr/share/zoneinfo/UTC /etc/localtime 2>/dev/null
 splash ok
 
-# Console font and palette are NOT set here: fbcon's deferred take-over (which
-# happens when the first getty writes to its VT, after rcS is long gone) resets
-# every VT to the kernel's built-in font, wiping whatever setfont loaded.
+# Console font and palette are NOT set here: fbcon's deferred take-over resets
+# every VT to the kernel's built-in font, and on the live medium it happens only
+# when the first getty prints on its VT, after rcS is long gone.
 # /usr/local/sbin/kdos-getty does both, per VT, at the only time it sticks.
 
 # Make / recursively shared. systemd does this at PID1; OpenRC/Alpine document the
@@ -159,8 +160,8 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
         splash ok
     else
         splash fail
-        # The reason, not just the verdict. fbcon has not taken the console
-        # over yet, so on a framebuffer boot this output is otherwise gone.
+        # The reason, not just the verdict. On the live medium this output
+        # goes to the serial line, and the screen shows only the splash.
         while IFS= read -r _l; do
             splash detail "$_l"
         done < <(tail -n 6 "$_log" 2>/dev/null)
@@ -186,8 +187,8 @@ if command -v kdos-bootctl >/dev/null 2>&1; then
 fi
 
 # Hand the screen back. This runs the power-off animation and leaves the
-# framebuffer black, so the first write to tty1 — which is what finally
-# triggers fbcon's deferred take-over — paints onto a clean console instead of
+# framebuffer black, so the getty's first write to tty1 (on the live medium,
+# what ends fbcon's deferred take-over) paints onto a clean console instead of
 # fighting a process that is still drawing.
 #
 # SYNCHRONOUS, and the desktop depends on it twice over. `kdos-splash quit`

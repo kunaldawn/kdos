@@ -14,8 +14,9 @@
 # /usr/share/kdos/SOURCES.
 #
 # /ports IS RECIPES AND NOTHING ELSE: each port's kpkgbuild, build.sh, patches
-# and other recipe files, ports/shelves, ports/sources.idx, and src/ and docs/
-# for the programs of our own, whose sources no archive holds. A shipped machine updates
+# and other recipe files, ports/shelves, ports/sources.idx, and src/, the two
+# books under docs/ and script/book for the programs of our own, whose sources
+# no archive holds. A shipped machine updates
 # by building from this tree, and kpkg fetches each source over the network
 # from the sources-<N> archive or upstream. The fetched tarballs are about
 # 39 GB and stay off the medium.
@@ -31,9 +32,16 @@
 #
 # src/ goes to /ports/src, keeping its areas side by side: a desktop program's
 # build.sh reaches the libraries as $PORT_SRC/../../libs. kpkg.conf names the
-# areas that hold ports in PORT_REPO. docs/ goes to /ports/docs beside it:
-# kdos-doc's source is the book, reached through its `docs` link
-# (../../../docs), and without it that port cannot build from /ports.
+# areas that hold ports in PORT_REPO. docs/ goes to /ports/docs beside it,
+# and script/book to /ports/script/book: kdos-doc reaches its book through
+# its `kdos` and `screenshots` links (../../../docs/kdos and
+# ../../../docs/screenshots), and kdos-kfs reaches KDOS from Scratch and its
+# renderer through its `docs` and `book` links (../../../docs/kfs and
+# ../../../script/book). The recipe hash follows those links, and one left
+# dangling drops out of it, so /ports would hash the port differently from
+# the tree its package was built from and the machine would take the
+# installed package for stale. kdos-kfs builds only in a checkout even so:
+# its renderer reads ports/core and script/phases, which /ports does not have.
 
 set -e
 source script/phases/70_image/phase.env
@@ -80,9 +88,12 @@ done
 [ "$nports" -gt 0 ] || { echo "FATAL: no recipe under /ports/core" >&2; exit 1; }
 
 cp -R /kdos/src "$TREE/src"
-[ -d /kdos/docs/kdos ] || { echo "FATAL: /kdos/docs is not mounted; kdos-doc needs the book" >&2; exit 1; }
-cp -R /kdos/docs "$TREE/docs"
-find "$TREE/src" "$TREE/docs" -mindepth 1 \( -name '.*' -o -name __pycache__ \) -prune -exec rm -rf {} +
+for d in docs/kdos docs/screenshots docs/kfs script/book; do
+    [ -d "/kdos/$d" ] || { echo "FATAL: /kdos/$d is missing; kdos-doc and kdos-kfs link to it" >&2; exit 1; }
+    mkdir -p "$TREE/${d%/*}"
+    cp -R "/kdos/$d" "$TREE/$d"
+done
+find "$TREE/src" "$TREE/docs" "$TREE/script" -mindepth 1 \( -name '.*' -o -name __pycache__ \) -prune -exec rm -rf {} +
 chmod -R u=rwX,go=rX "$STAGE"
 nsrc=$(find "$TREE/src" -mindepth 3 -maxdepth 3 -name kpkgbuild | wc -l)
 

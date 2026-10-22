@@ -283,7 +283,8 @@ Your pinned applications: one desktop-entry identifier per line — the entry's 
 `/usr/share/applications` or `~/.local/share/applications`, without `.desktop`. The panel and the
 menus write it when you pin, unpin or reorder.
 
-Two surfaces read this one file: the panel's quick-launch row and the Start menu's pinned column.
+Two surfaces draw this one file as launchers: the panel's quick-launch row and the Start menu's
+pinned column.
 
 It ships with seven rows:
 
@@ -309,12 +310,9 @@ palette holds a first letter back only while some code starts with it; with no c
 first letter no code starts with, the letters go into the search field. `kdos-launcher` does not
 act on codes.
 
-The Start menu and the palette read the first word of a line as the identifier and ignore anything
-else after it, so a line that carries a field these surfaces do not know still launches. The
-panel's quick-launch row does not split the line: it looks up the whole line as the identifier, so
-a line that carries `code=` or any other word finds no entry and is not shown on the panel. All
-seven shipped lines carry a code, so on a new account the panel's quick-launch row is empty and the
-pinned applications appear only in the Start menu and the palette.
+Every reader of the file — the Start menu, the palette, the panel's quick-launch row and
+`kdos-appbox warmup` — takes the first word of a line as the identifier and ignores anything after
+it, so a line that carries a field these readers do not know still launches.
 
 **The terminal.** A line naming `foot` or `kdos-term` opens whichever terminal emulator the session
 uses — the same one every chord, menu row and `Terminal=true` entry gets. Every other line opens
@@ -420,7 +418,7 @@ The two tiers differ in when a job can fire:
 | Tier | Started by | Fires |
 |---|---|---|
 | `/etc/kdos/timers.d/` | The system supervisor, at boot (`/etc/init.d/18_timers.sh`), as root | Every occurrence, whether or not anybody is logged in |
-| `~/.config/kdos/timers.d/` | Your session, at login; the next session start on the same boot stops the previous set | Every occurrence until the next login on the same boot, or a reboot; a logout does not stop them |
+| `~/.config/kdos/timers.d/` | Your session, at login; the next session start on the same boot stops the previous set | Every occurrence until the login ends; Log Out alone does not stop them, and a session started again in the same login replaces them |
 
 `snooze` waits for its slot, runs the command once and exits, so something has to start it again.
 For the system tier the supervisor does that; each system job is a service named
@@ -784,7 +782,9 @@ Applies at next login, or on reload for the parts the compositor re-reads.
 
 ### `~/.config/kdos-comp/menu.xml`
 
-The desktop's root menu (a right click on the background) and the window menu, in labwc's format.
+The compositor's root menu and the window menu, in labwc's format. A right click on the background
+opens the root menu only with `desktop_icons = no` in `comp.conf`; with desktop icons on,
+`kdos-shell`'s desktop surface owns the wallpaper and opens its own menu.
 The root menu lists no applications by name: its Applications, Places and System rows run
 `kdos-menu`, which reads the same desktop entries everything else does, so the menu cannot go
 stale. Its Log Out, Restart and Shut Down rows save the session list before they ask; see
@@ -1044,11 +1044,15 @@ leaving the machine with no DHCP client.
 The marker stops only the boot-time start. The image also ships
 `/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service`, which lets the system
 bus start NetworkManager as root on the first call to its name, and `kdos-netagent`, which every
-desktop session runs, makes that call when it registers as NetworkManager's secret agent. On a
-machine with the marker and the package still installed, NetworkManager therefore starts at the
-first desktop login, outside the service supervisor and beside the `dhcpcd` that `30_network`
-started, and both lease every interface. A machine that must not run NetworkManager needs the
-activation file removed as well, or the `networkmanager` package removed.
+desktop session runs, makes that call when it registers as NetworkManager's secret agent and
+again within moments of NetworkManager leaving the bus. On a machine with the marker and the
+package still installed, NetworkManager therefore starts at the first desktop login, outside the
+service supervisor and beside the `dhcpcd` that `30_network` started, and both lease every
+interface. In a running session the same call answers `service stop networkmanager` and
+`service restart networkmanager`: the bus starts an unsupervised NetworkManager in the gap, the
+supervised one then exits with "NetworkManager is already running" every five seconds, and the
+unsupervised one keeps the configuration it started with. A machine that must not run
+NetworkManager needs the activation file removed as well, or the `networkmanager` package removed.
 
 ### `/etc/modprobe.d/kdos-regdom.conf`
 
@@ -1247,7 +1251,7 @@ System-wide files that packages install for the tools above:
 | `/etc/nanorc` | `nano` | Includes every syntax definition under `/usr/share/nano` |
 | `/usr/lib/NetworkManager/conf.d/10-kdos-dns.conf` | `networkmanager` | `dns=dnsmasq`: a local caching `dnsmasq` on `127.0.0.1`, with split DNS for VPNs. A file of the same name in `/etc/NetworkManager/conf.d` overrides it |
 | `/etc/resolvconf.conf` | `openresolv` | `resolvconf`'s own settings. It is the one writer of `/etc/resolv.conf`, for NetworkManager, `dhcpcd` and `wg-quick` alike |
-| `/etc/resolv.conf` | musl's resolver, every name lookup | Before a network is up it names only `nameserver 127.0.0.1`, where nothing answers until NetworkManager starts its `dnsmasq`, so an early lookup fails at once and reaches no outside resolver. `resolvconf` replaces it with the servers of the link that comes up |
+| `/etc/resolv.conf` | musl's resolver, every name lookup | Before a network is up it names only `nameserver 127.0.0.1`, where nothing answers until NetworkManager starts its `dnsmasq`, so an early lookup fails at once and reaches no outside resolver. `resolvconf` replaces it with the servers of the link that comes up. Its first line, `# Generated by resolvconf`, is openresolv's signature: `resolvconf` refuses to replace a file that does not start with it, and every `resolvconf -a` then fails |
 | `/etc/sudoers.d/00-sudo` | `sudo` | Mode 0440. Members of `wheel` may run anything. `secure_path` is `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin`, which is what lets `sudo kdos` find `kdos`. `EDITOR`, `VISUAL` and `SUDO_EDITOR` survive `env_reset`, so `sudoedit` and `visudo` open your editor; with none of the three set they open `nvim`, or `nano` where neovim is not installed |
 | `/etc/zsh/zprofile`, `/etc/zsh/zshrc` | `zsh` | A login zsh reads `/etc/profile`; every interactive one runs `atuin init zsh` |
 
@@ -1259,7 +1263,7 @@ System-wide files that packages install for the tools above:
 | Path | Sets |
 |---|---|
 | `/etc/containers/containers.conf` | `cgroupfs` as the cgroup manager (there is no systemd to delegate one); the file event logger; `crun` as the runtime; `netavark` with the `nftables` firewall driver; `pasta` for a rootless container's network |
-| `/etc/containers/storage.conf` | The overlay driver, mounted through `fuse-overlayfs`; root's store under `/var/lib/containers/storage` |
+| `/etc/containers/storage.conf` | The overlay driver, mounted through `fuse-overlayfs`, and no store path: root's store is the engine's default, `/var/lib/containers/storage`, and an ordinary account's is its own under `~/.local/share/containers/storage`. A `graphroot` or `runroot` here is read by rootless podman too, which cannot write root's store, so every rootless container would fail with `mkdir /var/lib/containers/storage: permission denied` |
 | `/etc/containers/registries.conf` | `docker.io` as the one registry a short image name is looked up in |
 | `/etc/containers/policy.json` | Upstream's default: any image is accepted and no signature is checked. Without this file every pull refuses to start |
 

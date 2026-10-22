@@ -131,6 +131,15 @@ typedef struct BStep {
 	 * 10_bootstrap's: renumber() leaves its step_number alone. */
 	int kpkg_retry;
 
+	/* Whether this run's seconds for the step are a measurement of its
+	 * work (watch_line): 1 when a script step wrote any output or a port's
+	 * step built that port and nothing else, 0 when it did no work — a
+	 * guard that exited at once, a port skipped as installed, reused from
+	 * the package store or already built — and -1 when a port's step built
+	 * other ports too. Only 1 is recorded in timings.json, so a step that
+	 * did nothing never replaces the figure of one that did. */
+	int measured;
+
 	int opened;		/* headless mode has printed its start    */
 } BStep;
 
@@ -176,6 +185,7 @@ typedef struct {
 	char build_dir[512];
 	char repo_root[512];
 	char snap_root[512];
+	char timings_path[600];	/* <snap_root>/timings.json (timings.c)    */
 	/* Stable storage: cmd_prefix() puts this in a KbArgv, which keeps the
 	 * pointer rather than a copy, so a local would dangle at return. */
 	char chroot_exec[600];
@@ -312,6 +322,18 @@ typedef struct {
 Usage dir_usage(const char *path, double deadline,
 		void (*on_tick)(long long files, long long bytes, void *user),
 		void *user);
+
+/* ──────────────────────────────────────────────────────────────────────── */
+/* Timings — build/snapshots/timings.json, merged on every record           */
+
+/* Sets one key of `section` ("steps" or "phases") to `secs`, rounded to two
+ * decimals, and keeps every other key the file holds. 0 written, -1 refused
+ * or not written. */
+int tm_record(const char *path, const char *section, const char *key,
+	      double secs);
+/* The seconds stored for `key`, -1 when there are none. */
+double tm_lookup(const char *path, const char *section, const char *key);
+int tm_selftest(void);		/* --selftest: the merge                   */
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Telemetry sampler — cheap counters plus an occasional forked tree walk   */
