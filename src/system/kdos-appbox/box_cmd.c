@@ -186,10 +186,21 @@ static int cmd_box_list(void)
  * fetches unsigned content from somebody else's registry; KDOS_REQUIRE_SIG
  * does not cover it and pretending otherwise would be dishonest. The medium's
  * own bases are the trusted set.
+ *
+ * AN IMAGE ALREADY IN THE LOCAL STORE IS USED AS IT IS. `podman pull` always
+ * asks a registry, even for an image built here: `kdos/<id>` resolves to
+ * `localhost/kdos/<id>`, no registry answers at localhost, and every store
+ * install would fail at the box after its image had built.
  */
 static int base_pull(const char *ref)
 {
 	const char *w[3];
+
+	w[0] = "image";
+	w[1] = "exists";
+	w[2] = ref;
+	if (podman(w, 3) == 0)
+		return 0;
 
 	fprintf(stderr,
 		"==> %s is an OCI image: this reaches the network and fetches\n"
@@ -802,9 +813,20 @@ static int cmd_box_remove(const char *box, int force)
 	kb_argv_end(&q);
 	rc = kb_run(&q);
 	if (rc == 1) {
-		/* A failed create can leave a composed stack with no container;
-		 * nothing runs on it, so it is released either way. */
+		/* A failed create leaves its profile, and can leave a composed
+		 * stack, with no container. Nothing runs on either, so both go:
+		 * a profile kept here would list the box as `not created` with
+		 * no verb left that removes it. */
+		char *pp = profile_path(box);
+		int had = unlink(pp) == 0;
+
+		free(pp);
 		pack_decompose(box);
+		if (had) {
+			printf("%s had no container — its profile is removed\n",
+			       box);
+			return 0;
+		}
 		kb_warn("%s has no container to remove", box);
 		return 1;
 	}
@@ -1047,10 +1069,17 @@ int box_main(int argc, char **argv)
 			for (int i = 2; i < argc; i++)
 				profile_set(&p, argv[i]);
 			profile_save(&p);
-			printf("%s: written — namespaces and volumes apply at "
-			       "CREATE time, so run `kdos-box remove %s` and "
-			       "create it again for those to take effect.\n",
-			       argv[1], argv[1]);
+			/* Only a box with a container is removed and made
+			 * again: removing one without a container deletes the
+			 * profile just written. */
+			if (box_exists(argv[1]))
+				printf("%s: written — namespaces and volumes "
+				       "apply at CREATE time, so run `kdos-box "
+				       "remove %s` and create it again for those "
+				       "to take effect.\n", argv[1], argv[1]);
+			else
+				printf("%s: written — it applies when the box "
+				       "is created.\n", argv[1]);
 		}
 		profile_print(&p);
 		return 0;

@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/t-linux64-lib.patch"
+patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/libstdcxx-generic-locale-names.patch"
 
 mkdir -v build
 cd       build
@@ -42,6 +43,7 @@ install -m644 ../gcc/doc/{gcc,g++,gfortran}.1 -t "$PKG/usr/share/man/man1"
 install -d "$PKG/usr/share/info"
 install -m644 ../gcc/doc/{gcc,gccint,cpp,cppinternals}.info ../gcc/fortran/gfortran.info \
 	-t "$PKG/usr/share/info"
+rm -f "$PKG/usr/share/info/gccinstall.info"
 
 ln -sv /usr/bin/gcc $PKG/usr/bin/cc
 

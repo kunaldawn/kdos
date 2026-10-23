@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Network Password
+GenericName=Network Secrets Agent
+Comment=Answer NetworkManager when it asks for a passphrase
+Exec=kdos-netagent
+Icon=dialog-password
+Terminal=false
+NoDisplay=true
+Categories=Network;
+StartupWMClass=kdos-netagent

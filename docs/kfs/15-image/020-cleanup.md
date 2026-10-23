@@ -4,14 +4,14 @@ By the time the image phase starts, `build/fs` has been the working root of ever
 and it holds what those builds left behind: scratch files, caches, built package archives, Python
 bytecode written by build tools, a container store, and whatever a tool wrote into root's home.
 `script/phases/70_image/020_cleanup.sh` removes all of it, so that the root carries only what a
-package or `fs/` put there. It also fails the image when a packaged Python module has no compiled
-bytecode. This page goes through the script in order.
+package or `fs/` put there, and removes the translations and HTML manuals that no package owns. It also fails the image when a packaged Python module has no
+compiled bytecode. This page goes through the script in order.
 
 ## The switches
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=26-29 pin=774dca90cca2 -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=26-30 pin=4ebbfd4c867f -->
 
-Each of the three passes below is guarded by one of these variables, set in the script itself. No
+Each of the four passes below is guarded by one of these variables, set in the script itself. No
 `make` variable reaches them; turning a pass off means editing the line. The removal of podman's
 stores and the reset of `/root` have no switch.
 
@@ -20,7 +20,7 @@ log.
 
 ## The build cache
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=47-60 pin=e547544be06f -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=48-61 pin=e547544be06f -->
 
 `root/.cache`, `root/.cargo` and `root/.npm` are the caches tools write into root's home; the
 contents of `/tmp` and `/var/tmp` are scratch, and `/var/tmp` is also `HOME` for every chroot
@@ -34,7 +34,7 @@ directories' contents and the directories themselves stay.
 
 ## The package cache
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=67-76 pin=c20e8d77290e -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=68-77 pin=c20e8d77290e -->
 
 `/var/cache/kpkg/packages` holds the package archives kpkg keeps: every package of the build when
 `KDOS_MAKE_BINHOST=1` (which is why [010_binhost.sh](010-binhost.md) runs first), and the packages
@@ -50,7 +50,7 @@ read-only on the live medium, so a module with no `.pyc` would be compiled again
 The pass is one embedded Python program, run only when [`python3`]{.idx} is installed. Its first half
 reads every package's file list and removes the bytecode no package owns:
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=104-151 pin=26318ff72863 -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=105-152 pin=26318ff72863 -->
 
 `canon` folds the merged-`/usr` aliases, because a package may list `./lib/x` for the file that is
 on disk at `usr/lib/x`. The bytecode no package owns is what build tools wrote while importing
@@ -59,7 +59,7 @@ modules in the chroot, with the build's time in it; no package would ever remove
 
 The second half is the check:
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=153-190 pin=d693c124dc63 -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=154-191 pin=d693c124dc63 -->
 
 Every `.py` a package owns under `/usr` or `/opt` must have bytecode for this interpreter at the
 path `importlib.util.cache_from_source` gives. Four kinds of file are exempt:
@@ -77,9 +77,32 @@ owns it was built by a kpkg that does not compile bytecode, or compiled it under
 interpreter. See
 [Databases stamped into the image](../../kdos/05-developer/build-system.md#databases-stamped-into-the-image).
 
+## Unowned documentation and catalogues
+
+kpkg applies its
+[size and language policy](../../kdos/05-developer/writing-ports.md#size-and-language-policy) to
+each package it makes, and drops every non-English message catalogue, translated manual page and
+HTML manual. [Part III](../03-bootstrap/intro.md#what-the-bootstrap-leaves-behind) installs its
+tools with no package, and a port installed over them later adopts only the paths it ships, so a
+bootstrap copy of a file the policy prunes is adopted by nothing. The bootstrap steps install none
+of these themselves; this pass removes any the tree carries, whatever wrote it. It is a second
+embedded Python program, which reads the package file lists the same way, adds the paths of `fs/`
+from `/var/lib/kdos/fs-manifest`, and then decides what to remove:
+
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=244-286 pin=0541469b754d -->
+
+A file is removed only when no package owns it and `fs/` does not provide it, and only when the
+policy would have pruned it from a package: a catalogue under `usr/share/locale/<lang>/LC_MESSAGES`
+whose language is not English, anything under a `usr/share/man` directory that is not a
+`man<section>` one, and an `.html`, `.htm` or `.pdf` under `usr/share/doc`. `EXTRA` adds the
+files the gawk and binutils ports delete from their packages, which the policy does not cover. A
+directory the pass empties is removed with it; one that was empty before is left.
+[087_gates.sh](087-gates.md) stops the image on any unowned file still under those four
+directories.
+
 ## podman's stores
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=201-215 pin=9abf4339ed4b -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=299-313 pin=9abf4339ed4b -->
 
 A shipped root carries no container store. An application's box is built on the machine that asks
 for it, in that user's home, so images in `/home/kdos/.local/share/containers` or in the root
@@ -89,7 +112,7 @@ installed system. No package owns these paths, so they are removed with `rm` and
 
 ## root's home
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=225-232 pin=5d44f628e809 -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=323-330 pin=5d44f628e809 -->
 
 `/root` is replaced with exactly what `fs/root` holds, with no file writable by group or others
 and the directory itself at mode 0700. The chroot's `HOME` is a scratch directory, but a tool that

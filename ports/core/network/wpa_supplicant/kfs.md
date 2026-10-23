@@ -49,7 +49,11 @@ for what that activation depends on). `wpa_cli` and `wpa_passphrase` are install
 - `CONFIG_WPA_CLI_EDIT=y` — wpa_supplicant's own limited line editing and history in `wpa_cli`,
   in place of GNU Readline (`CONFIG_READLINE`). Upstream's sample configuration notes that
   Readline is GPL-licensed, so the BSD license may not apply to a `wpa_cli` linked with it.
-- `CONFIG_ELOOP_EPOLL=y` — Run the event loop on `epoll` instead of `select`.
+- `CONFIG_ELOOP_POLL=y` — Run the event loop on `poll` instead of `select`, so a descriptor
+  numbered past `FD_SETSIZE` can still be watched. Not `epoll`: the D-Bus interface registers its
+  bus socket three times, for reading, writing and exceptions, and `epoll` refuses the second
+  `EPOLL_CTL_ADD` of one descriptor with `EEXIST`. The interface is then never answered, and
+  NetworkManager reports every Wi-Fi device `unavailable`.
 
 ## Notes
 `build.sh` writes the whole `.config`; nothing from upstream's `defconfig` applies, so a feature

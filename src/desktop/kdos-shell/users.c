@@ -32,7 +32,7 @@
  * would be invisible: an account listed here and refused by the daemon reads
  * as a bug in whichever was opened second.
  *
- * WHAT IT DELIBERATELY DOES NOT DO. `passwd`, `adduser`, `deluser` and
+ * WHAT IT DELIBERATELY DOES NOT DO. `passwd`, `useradd`, `userdel` and
  * `usermod` are on the image and are what a person changing accounts uses;
  * wrapping them would mean a surface that has to reproduce their prompts,
  * their validation and their failure modes, and would put a root-spawning
@@ -223,7 +223,7 @@ static void draw(void)
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 	sh_frame(w, h, "Accounts", KT_ACCENT, KT_BG, 1);
 	top = kch_header(w, "system-users", "Accounts",
-			 "who may log in — changing one is `passwd` and `adduser`",
+			 "who may log in — changing one is `passwd` and `useradd`",
 			 icons_on);
 
 	/*

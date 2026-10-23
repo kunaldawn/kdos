@@ -38,6 +38,7 @@ _hadrian="$SRC/hadrian/bootstrap/_build/bin/hadrian"
 	--target=x86_64-unknown-linux \
 	--with-system-libffi \
 	--disable-ld-override \
+	--disable-numa \
 	CONF_GCC_LINKER_OPTS_STAGE2="-Wl,-z,now" \
 	GHC="$_seedghc"
 

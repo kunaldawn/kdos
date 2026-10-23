@@ -54,9 +54,10 @@ unless it is written to a mounted disk.
 The libvirt recipe writes both scripts as heredocs. They run their daemon under `ksvc supervise`,
 in the foreground, so the supervisor restarts it after a crash:
 
-<!-- kfs:include ports/core/virt/libvirt/build.sh lines=143-161 pin=510c612cabdc -->
+<!-- kfs:include ports/core/virt/libvirt/build.sh lines=143-161 pin=66465bf63e11 -->
 
-`62_virtlogd` has the same shape. `-Dremote_default_mode=legacy` makes clients connect to the
+`62_virtlogd` has the same shape. Each gives its daemon a pid file under `/run/libvirt`, because
+run as root the daemon's default, `/run/<name>.pid`, is the supervisor's own pid file. `-Dremote_default_mode=legacy` makes clients connect to the
 single `libvirtd`, which serves `qemu:///system` and the other drivers; the recipe writes no
 service script for upstream's per-driver daemons.
 
@@ -307,6 +308,17 @@ What the guest does differently from real hardware:
   where the phosphor pass is off:
 
   <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=37-39 pin=ce1eec971951 -->
+
+- A display device with no render node puts the compositor on software rendering too, with the
+  phosphor pass off: QEMU's standard VGA (`-vga std`) and QXL, VirtualBox's VBoxVGA, and
+  Hyper-V's synthetic video:
+
+  <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=44-51 pin=1dd3d9c5da95 -->
+
+  A virtual GPU that has a render node and no 3D, VMware's SVGA or VirtualBox's VBoxSVGA with 3D
+  acceleration off, is caught when the compositor refuses `llvmpipe`: `kdos-desktop-start` runs it once more
+  on the software renderer; see
+  [What `kdos-desktop-start` does](../../kdos/03-architecture/session.md#what-kdos-desktop-start-does).
 
 - The compositor's idle dim, lock and screen-off timers and the lid action default to off; see
   [In a virtual machine](../../kdos/04-programs/kdos-comp.md#in-a-virtual-machine).

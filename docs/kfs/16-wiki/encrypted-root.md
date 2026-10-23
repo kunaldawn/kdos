@@ -46,7 +46,7 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
 it, from `src/system/kdos-installer/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2065-2083 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2117-2135 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -58,7 +58,7 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2315-2328 pin=ab8cb81addd9 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2367-2380 pin=ab8cb81addd9 -->
 
 The initramfs asks `kdos-bootctl crypt` for the container of the slot it chose, and uses
 `cryptdevice=` only when the slot records none; see
@@ -68,7 +68,7 @@ The initramfs asks `kdos-bootctl crypt` for the container of the slot it chose, 
 `cryptdevice=`, from `script/phases/70_image/090_initramfs.sh` (the `\$` is the escape of the
 heredoc the init is written from):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=845-860 pin=093a88f36da4 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=865-880 pin=093a88f36da4 -->
 
 `unlock_root`, the function it calls, is walked through on
 [The initramfs init](../15-image/091-initramfs-init.md#the-unlock-function).

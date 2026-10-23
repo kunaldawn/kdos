@@ -293,7 +293,7 @@ static void draw(void)
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 	sh_frame(w, h, "Verify", KT_ACCENT, KT_BG, 1);
-	body_top = kch_header(w, "security-high", "Verify",
+	body_top = kch_header(w, "document-edit-verify", "Verify",
 			      "files against a checksum list or a par2 set",
 			      icons_on);
 

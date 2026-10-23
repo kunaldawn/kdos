@@ -56,7 +56,7 @@ ship, is run with `sh` each time Xwayland becomes ready.
 
 Every login shell exports the toolkits' back ends, and [Wayland]{.idx} comes first in each:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=71-83 pin=bdaffc9a9711 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-90 pin=bdaffc9a9711 -->
 
 - **GTK** tries Wayland first on its own; `GDK_BACKEND` is left unset, so a program that sets
   `GDK_BACKEND=x11` for itself gets Xwayland.

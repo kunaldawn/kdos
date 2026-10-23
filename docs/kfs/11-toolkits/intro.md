@@ -43,7 +43,7 @@ that has only an X11 path still runs, under [Xwayland]{.idx}. Which one an appli
 not decided by its recipe. The login profile sets the preference, in
 [`fs/etc/profile.d/10-wayland.sh`]{.idx term="/etc/profile.d/10-wayland.sh"}:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=71-83 pin=bdaffc9a9711 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-90 pin=bdaffc9a9711 -->
 
 What each line means for each toolkit, and how they take the desktop's colours, is in
 [Toolkits, Wayland and X11](../../kdos/02-user-guide/applications.md#toolkits-wayland-and-x11);

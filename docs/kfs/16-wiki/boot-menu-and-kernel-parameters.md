@@ -53,7 +53,7 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2261-2293 pin=49d43fc22fb4 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2313-2345 pin=49d43fc22fb4 -->
 
 The file is `/boot/efi/limine.conf`. The ESP is mounted with `umask=0077`, as the installer's
 `fstab` line says, so only root can read or change anything under `/boot/efi`.

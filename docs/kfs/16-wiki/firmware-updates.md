@@ -35,7 +35,7 @@ is mounted:
 [`/boot/efi`]{.idx} is where the installer mounts the ESP of an installed system, in the `fstab` it writes
 (`src/system/kdos-installer/install.c`):
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1577-1582 pin=d44ca257584d -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1629-1634 pin=d44ca257584d -->
 
 fwupd normally finds the ESP by asking udisks. The recipe patches it to describe the FAT filesystem
 mounted at `EspLocation` from sysfs instead

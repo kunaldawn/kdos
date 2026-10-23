@@ -16,7 +16,7 @@ source script/lib/port.sh
 
 mkdir -pv $SYSROOT/{etc,var,tmp,root,home,run,dev,proc,sys}
 mkdir -pv $SYSROOT/usr/{bin,lib,sbin,include,share,local}
-mkdir -pv $SYSROOT/var/{lib,log,local,tmp}
+mkdir -pv $SYSROOT/var/{empty,lib,log,local,tmp}
 mkdir -pv $SYSROOT/var/local/log
 # 1777 on both: rootless podman/skopeo stage pulled image layers in /var/tmp.
 chmod 1777 $SYSROOT/tmp $SYSROOT/var/tmp

@@ -44,12 +44,12 @@ tzdata's `zone.tab`, which gives each zone one country.
 
 The installer writes it from the zone chosen on its *Time* page:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1694-1702 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1746-1754 pin=5a0dbdc98892 -->
 
 `kdos-powerd` writes it whenever the time zone is changed later, and runs `iw reg set` so the
 running radio follows at once. A zone with no country, such as `UTC`, removes the file:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=803-814 pin=7a5ecb4a3526 -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=808-819 pin=7a5ecb4a3526 -->
 
 The file is read when `cfg80211` loads, which is during boot, as the first wireless driver loads,
 or, on a machine with no wireless driver, when a program such as `iw` first asks for the wireless

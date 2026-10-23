@@ -76,3 +76,7 @@ the QEMU driver refuses to start a system-mode guest when it cannot reach virtlo
 `62_virtlogd` comes before `63_libvirtd`. Both run without `--daemon`, so the supervisor watches
 the daemon itself (see
 [Supervision and logging](../../../../docs/kdos/04-programs/daemons.md#supervision-and-logging)).
+Both are also given `--pid-file /run/libvirt/<name>.pid`: run as root, each would otherwise write
+its pid to `/run/<name>.pid`, the supervisor's own pid file, and `service stop` would then signal
+the daemon instead of its supervisor, which restarts it. `libvirtd` opens its pid file before it
+creates `/run/libvirt`, so each script creates the directory first.

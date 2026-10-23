@@ -10,7 +10,9 @@ domain membership and winbind are not built.
 The package carries a service script, `83_samba`, that runs `smbd` under the supervisor once a
 non-empty `/etc/samba/smb.conf` exists and skips itself before then. It creates `/var/log/samba`
 and `/var/cache/samba` before each start, because `smbd` never makes its log directory and writes
-nothing but the supervisor's log without it. Other machines reach the server after
+nothing but the supervisor's log without it. It passes `supervise --stop-grace 15`, so `smbd`
+has time to end its per-client children and close their open files before the supervisor's
+`SIGKILL`; five seconds is the default. Other machines reach the server after
 the firewall's `smb` name is opened (see
 [Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services)).
 

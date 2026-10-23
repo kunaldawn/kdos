@@ -25,8 +25,11 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
-        # Foreground by default; it logs to syslog.
-        supervise "$NAME" "$DAEMON"
+        # Foreground by default. Left to its own syslog writer it opens the
+        # log with no ident and copies each line to stderr, which the
+        # supervisor logs again: every line twice, once untagged. On stdout
+        # the supervisor logs it once, tagged ModemManager.
+        supervise "$NAME" "$DAEMON" --log-file=/dev/stdout
         wait_bus_name org.freedesktop.ModemManager1
         ;;
     stop)

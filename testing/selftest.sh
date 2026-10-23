@@ -172,6 +172,21 @@ assert d["apps"], "the plan chose no applications"
 assert d["apps_bytes"] > 0, "the chosen set costs nothing"
 assert d["apps_route"] in ("none","import","network","pending"), d["apps_route"]'
 echo "  kinstall plan"
+# An answer file's unknown key is named, and a file `--save` wrote names none:
+# a key the parser drops in silence installs its default with no sign.
+printf 'packs = x\napps = essential\n' > "$OUT/answers-unknown"
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --config "$OUT/answers-unknown" --dump plan 2>&1 >/dev/null \
+    | grep -qx "kinstall: $OUT/answers-unknown: unknown key 'packs' ignored" \
+    || { echo "kinstall did not name an unknown answer-file key" >&2; exit 1; }
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --save "$OUT/answers-saved"
+if KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --config "$OUT/answers-saved" --dump plan 2>&1 >/dev/null | grep -q 'unknown key'; then
+    echo "kinstall does not read back a key its own --save writes" >&2
+    exit 1
+fi
+echo "  kinstall answer file"
 $CC $STD $WARN $INC -Isrc/system/kdos-appbox -o "$OUT/kdos-appbox" \
     src/system/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
     src/libs/libkcolor/*.c src/libs/libkxdg/*.c
@@ -2121,6 +2136,17 @@ EOF
 cat > "$TR/ports/icontool/build.sh" <<'EOF'
 install -Dm755 /dev/null "$PKG/usr/bin/gtk-update-icon-cache"
 EOF
+mkdir -p "$TR/ports/vlcplug"
+cat > "$TR/ports/vlcplug/kpkgbuild" <<'EOF'
+name        = vlcplug
+version     = 1.0
+release     = 1
+description = a synthetic port that carries a VLC plugin and the plugin cache tool
+EOF
+cat > "$TR/ports/vlcplug/build.sh" <<'EOF'
+install -Dm755 /dev/null "$PKG/usr/lib/vlc/vlc-cache-gen"
+install -Dm755 /dev/null "$PKG/usr/lib/vlc/plugins/misc/libfeed_plugin.so"
+EOF
 # The MIME and desktop-database stubs leave a generated file behind, as the
 # real tools do: that is what keeps each directory alive after the last XML or
 # desktop entry is removed. The makewhatis stub writes the database, which is
@@ -2200,7 +2226,23 @@ grep -q 'index skipped: man' "$TR/skip.log" \
     || { echo "  KPKG_SKIP_INDEX=man did not say it skipped the manual index"; exit 1; }
 [ -e "$TR/root2/usr/share/man/mandoc.db" ] || grep -q makewhatis "$TR/calls" \
     && { echo "  KPKG_SKIP_INDEX=man still ran makewhatis"; exit 1; }
-echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index, ls-R, desktop database and icon caches"
+# vlc-cache-gen runs inside the root, so as a user the trigger can only say it
+# needs root; as root it runs the stub, which is not a program.
+( cd "$TR/ports/vlcplug" && ktrig "$OUT/kpkgbuild" >/dev/null ) \
+    || { echo "  the synthetic VLC plugin port did not build"; exit 1; }
+mkdir -p "$TR/root3"
+ktrig "$OUT/kpkgadd" --root "$TR/root3" "$TR/pkgs/vlcplug-1.0-1.tar.xz" > "$TR/vlc.log" \
+    || { echo "  the synthetic VLC plugin package did not install"; exit 1; }
+if [ "$(id -u)" = 0 ]; then
+    grep -q 'Updating index: /usr/lib/vlc/vlc-cache-gen' "$TR/vlc.log"
+else
+    grep -q "vlc-cache-gen under $TR/root3 needs root" "$TR/vlc.log"
+fi || { echo "  installing a VLC plugin did not rebuild plugins.dat"; exit 1; }
+: > "$TR/root3/usr/lib/vlc/plugins/plugins.dat"
+ktrig "$OUT/kpkgdel" --root "$TR/root3" vlcplug >/dev/null
+[ -e "$TR/root3/usr/lib/vlc" ] \
+    && { echo "  removing vlc-cache-gen left plugins.dat and its directories"; exit 1; }
+echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index, ls-R, desktop database, icon caches and VLC plugin cache"
 
 echo
 
@@ -3206,6 +3248,92 @@ if [ -z "$_kfail" ]; then
     echo "  a daemon that exits non-zero is [FAIL]; a running one and one exit 0 are [ OK ]"
 else
     echo "  KSVC REPORTS A CRASH LOOP WRONGLY:$_kfail"
+    cat "$_kv/out"
+    exit 1
+fi
+
+#
+# ONE SUPERVISOR PER NAME, AND A STOP THAT WAITS FOR THE DAEMON. A second
+# `supervise` of a live name would take over the pid file, and the first
+# supervisor and its daemon would run on with nothing that can stop them.
+# `stop` waits for the process group to empty, up to the name's stop grace:
+# a daemon that exits at once is stopped at once, one that needs two seconds
+# for its shutdown gets them, and one that ignores SIGTERM is killed when the
+# grace runs out.
+#
+echo "==> a running service is supervised once, and stop waits out its grace"
+_kfail=""
+# Microseconds from bash itself: busybox date has no %N.
+_now() { echo "${EPOCHREALTIME/./}"; }
+_ms() { echo $(( ($(_now) - $1) / 1000 )); }
+"$_kv/ksvc" supervise twice sleep 600 >/dev/null
+_p1=$(cat "$_kv/run/twice.pid")
+"$_kv/ksvc" supervise twice sleep 600 > "$_kv/out"
+grep -q '^\[SKIP\] twice: already supervised' "$_kv/out" || _kfail="$_kfail no-skip"
+[ "$(cat "$_kv/run/twice.pid")" = "$_p1" ] || _kfail="$_kfail pid-file-taken"
+sleep 0.3
+_t=$(_now)
+"$_kv/ksvc" stop-supervised twice >/dev/null
+[ "$(_ms "$_t")" -lt 800 ] || _kfail="$_kfail quick-stop-$(_ms "$_t")ms"
+kill -0 "$_p1" 2>/dev/null && _kfail="$_kfail first-supervisor-left"
+"$_kv/ksvc" supervise twice sleep 600 | grep -q 'Supervisor started' \
+    || _kfail="$_kfail no-start-after-stop"
+"$_kv/ksvc" stop-supervised twice >/dev/null
+"$_kv/ksvc" supervise --stop-grace 10 slow \
+    sh -c 'trap "sleep 2; exit 0" TERM; while :; do sleep 0.1; done' >/dev/null
+sleep 0.3
+_d=$(awk '{print $2}' "$_kv/run/kdos-svc.slow.state")
+_t=$(_now)
+"$_kv/ksvc" stop-supervised slow > "$_kv/out"
+_e=$(_ms "$_t")
+{ [ "$_e" -ge 1800 ] && [ "$_e" -lt 5000 ]; } || _kfail="$_kfail slow-stop-${_e}ms"
+grep -q 'killing' "$_kv/out" && _kfail="$_kfail slow-killed"
+kill -0 "$_d" 2>/dev/null && _kfail="$_kfail slow-daemon-left"
+"$_kv/ksvc" supervise --stop-grace 1 deaf \
+    sh -c 'trap "" TERM; while :; do sleep 0.1; done' >/dev/null
+sleep 0.3
+_d=$(awk '{print $2}' "$_kv/run/kdos-svc.deaf.state")
+_t=$(_now)
+"$_kv/ksvc" stop-supervised deaf > "$_kv/out"
+_e=$(_ms "$_t")
+{ [ "$_e" -ge 900 ] && [ "$_e" -lt 2500 ]; } || _kfail="$_kfail deaf-stop-${_e}ms"
+grep -q 'Still running after 1s, killing' "$_kv/out" || _kfail="$_kfail deaf-not-killed"
+sleep 0.2
+kill -0 "$_d" 2>/dev/null && _kfail="$_kfail deaf-daemon-left"
+if [ -z "$_kfail" ]; then
+    echo "  a second supervise is [SKIP]; stop waits for the daemon, up to its grace, then kills"
+else
+    echo "  KSVC SUPERVISES TWICE OR STOPS WRONGLY:$_kfail"
+    cat "$_kv/out"
+    exit 1
+fi
+
+#
+# A `service list` ROW IS ONE LINE. A script's status is free-form: nothing,
+# or several lines. Printed as it comes, a silent one joins the next row and a
+# long one spills into it.
+#
+echo "==> service list prints one line per service"
+mkdir -p "$_kv/init.d" "$_kv/off"
+printf '#!/bin/sh\n' > "$_kv/init.d/02_quiet.sh"
+printf '#!/bin/sh\necho "  one: fine"\n' > "$_kv/init.d/10_single.sh"
+printf '#!/bin/sh\necho a; echo; echo b; echo c\n' > "$_kv/init.d/20_many.sh"
+chmod 755 "$_kv/init.d"/*.sh
+$CC $STD $WARN $INC -Isrc/system/kdos-tools -DRUN_DIR="\"$_kv/run\"" \
+    -DINIT_DIR="\"$_kv/init.d\"" -DDISABLED_DIR="\"$_kv/off\"" \
+    -o "$_kv/ksvc-list" "$_kv/main.c" src/system/kdos-tools/ksvc.c \
+    src/libs/libkbase/*.c
+"$_kv/ksvc-list" list > "$_kv/out"
+_kfail=""
+grep -qx '  quiet                \[ENABLED\]    —' "$_kv/out" || _kfail="$_kfail silent-not-dash"
+grep -qx '  single               \[ENABLED\]    one: fine' "$_kv/out" || _kfail="$_kfail single"
+grep -qx '  many                 \[ENABLED\]    a (+2 more: service status many)' "$_kv/out" \
+    || _kfail="$_kfail many"
+[ "$(grep -c '^  [a-z]' "$_kv/out")" = 3 ] || _kfail="$_kfail row-count"
+if [ -z "$_kfail" ]; then
+    echo "  a silent script is —, a multi-line one its first line and a count"
+else
+    echo "  SERVICE LIST ROWS ARE BROKEN:$_kfail"
     cat "$_kv/out"
     exit 1
 fi
@@ -5471,7 +5599,9 @@ alwant() {  # <arg> <expected substring> <what it proves>
     esac
 }
 alwant "definitely-not-an-account" "no such account" \
-    "an account that cannot log in is refused"
+    "an account that does not exist is refused"
+alwant "root" "not an account that can log in" \
+    "an account that exists and cannot log in is refused as that"
 # An account `kb_users()` WOULD list, chosen the way it chooses — uid in
 # [1000, 65534) with a shell that is not a refusal. This picks the daemon's
 # INPUT, it does not re-decide the rule: if the two ever disagreed the daemon
@@ -7474,6 +7604,12 @@ if "$DUMPCK" --have update; then
     KDOS_UPDATE_JSON="$_uf/update.json" KDOS_CVE_JSON="$_uf/cve.json" \
     KDOS_SLOT_TEXT="$_uf/slot.txt" \
         golden update-security 80x24 update --security --dump
+    # No findings and two bundled copies: the subtitle says 0 with a known
+    # vulnerability, because the `"bundled"` rows after the findings share
+    # their shape and are not findings.
+    KDOS_UPDATE_JSON="$_uf/update.json" KDOS_CVE_JSON="$_uf/cve-bundled.json" \
+    KDOS_SLOT_TEXT="$_uf/slot.txt" \
+        golden update-bundled 80x24 update --security --dump
 fi
 # kdos-firewall asks kdos-powerd for the service table, so its picture depends
 # on a running daemon. Recorded instead.
@@ -8424,6 +8560,15 @@ KDOS_CONTACT_LIST="$OUT/contacts.txt" \
 keydrive chars 80x24 \
     "text:arrow down down pgdn home bs resize:60x22 esc tick" chars
 keydrive verify 80x24 "l text:abc f1 f10 bs resize:70x20 esc tick" verify
+# THE DESKTOP MENU OPENED ON THE BOTTOM ROWS stands on the status row, not in
+# it: its bottom border is the row above the hints. No Esc — the frame wanted
+# is the one with the menu down. The live path makes the fixture's ~/Desktop,
+# and kdos-start lists that as a place: it is taken away again, or every later
+# frame of the start menu gains a row.
+_dkd=testing/fixtures/shell/Desktop
+_dkhad=0; [ -e "$_dkd" ] && _dkhad=1
+keydrive desk-menu 80x24 "rclick:40,21 tick" desk
+[ "$_dkhad" = 1 ] || rmdir "$_dkd" 2>/dev/null || true
 KDOS_UPDATE_JSON="$PWD/testing/fixtures/update/update.json" \
 KDOS_CVE_JSON="$PWD/testing/fixtures/update/cve.json" \
 KDOS_SLOT_TEXT="$PWD/testing/fixtures/update/slot.txt" \
@@ -8624,11 +8769,14 @@ fi
 
 echo
 echo "==> kdos cve compares pins against the vendored security database"
-# Four ports and a five-row table, which is enough to exercise every rule the
-# real 4 099-row one exercises: a pin behind two fixes, a pin that only LOOKS
-# behind one because Alpine's `-rN` packaging revision is not upstream's
-# version, a port whose Alpine name differs (`secdb =`), and a port Alpine has
-# never heard of — which must read as UNKNOWN and never as clean.
+# Six ports and an eleven-row table, which is enough to exercise every rule
+# the real 4 099-row one exercises: a pin behind two fixes, a pin that only
+# LOOKS behind one because Alpine's `-rN` packaging revision is not upstream's
+# version, a port whose Alpine name differs (`secdb =`), a port Alpine has
+# never heard of — which must read as UNKNOWN and never as clean — and two on
+# a branch: one whose CVEs its own branch's row closed although a newer
+# branch's row names them too, which is clean, and one still behind its own
+# branch's fix, whose CVE that only the newer branch fixed stays open.
 CV="$OUT/cve.txt"
 ln -sf kdos-tools "$OUT/kdos"
 if PORT_REPO="$PWD/testing/fixtures/cve/ports" KPKG_CONF=/nonexistent \
@@ -8648,7 +8796,12 @@ if grep -q "newpkg" "$CV"; then
 fi
 grep -q "mappedpkg .*fixed in 3.1" "$CV" \
     || { echo "  the 'secdb =' name mapping was not honoured"; exit 1; }
-grep -q "4 checked, 1 not in the database, 2 behind a recorded fix" "$CV" \
+if grep -q "branchpkg" "$CV"; then
+    echo "  a CVE its own branch closed was reported from a newer branch's row"; cat "$CV"; exit 1
+fi
+grep -q "branchold .*3.6.5 .*fixed in 4.1.1 .*CVE-2026-7001,CVE-2026-7002" "$CV" \
+    || { echo "  a pin behind its own branch's fix was not reported"; cat "$CV"; exit 1; }
+grep -q "6 checked, 1 not in the database, 3 behind a recorded fix" "$CV" \
     || { echo "  the summary miscounted"; cat "$CV"; exit 1; }
 grep -q "the database is .* days old" "$CV" \
     || { echo "  a stale database was not called stale"; exit 1; }
@@ -8658,7 +8811,7 @@ PORT_REPO="$PWD/testing/fixtures/cve/ports" KPKG_CONF=/nonexistent \
     >/dev/null 2>&1 || rc=$?
 test "$rc" = 2 \
     || { echo "  a missing database did not report itself as unrunnable"; exit 1; }
-echo "  fix rows merged, -rN ignored, 'secdb =' honoured, unknown ≠ clean"
+echo "  fix rows merged, -rN ignored, branches judged per CVE, 'secdb =' honoured, unknown ≠ clean"
 
 echo
 echo "==> the key card can be printed without a display server"

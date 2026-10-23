@@ -37,6 +37,15 @@ their libraries, with no switch for any of them, so every library they need is i
 `build.sh` checks for `atilibusb.so`, one of the libusb plugins, after the install, so a build in
 which the probe failed stops there.
 
+The Python package is `lirc` in `site-packages`, with the `_client` extension inside it.
+`lirc/client.py` imports `lirc.config`, the module that holds the configured paths
+(`SYSCONFDIR`, `VARRUNDIR`), but `Makefile.am` installs the generated `config.py` only into the
+copy of the package source under `/usr/share/lirc/python-pkg`, one directory above its package;
+`build.sh` installs it into `site-packages/lirc` as well. It then imports `lirc.client` and
+`lirc.config` from the package with `LD_LIBRARY_PATH` naming the package's own `liblirc_client`,
+so a package in which the bindings cannot load stops the build, and checks that `_client.so` is
+still there afterwards, since importing `lirc` runs `paths.py`.
+
 configure installs systemd units whatever `--with-systemdsystemunitdir` says when the build host's
 `/proc/version` names Ubuntu, and inside the chroot that file belongs to the host's kernel; the
 recipe deletes `lib/systemd` and `usr/lib/systemd` from the package. The install also creates

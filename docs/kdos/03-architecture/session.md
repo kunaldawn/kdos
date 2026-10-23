@@ -156,7 +156,12 @@ included. Where that directory is absent the layout is exported unchecked.
    without virgl there is no GL at all. It reads the feature bit from
    `/sys/bus/virtio/devices/*/features` rather than from the kernel log: the log is root-only
    under `dmesg_restrict`, so reading it would force software rendering for every ordinary user.
-3. Runs `kdos_session_runtime`, `kdos_session_keymap`, `kdos_session_boxes` and
+3. When there is no render node at all (no `/dev/dri/renderD*`), sets `WLR_RENDERER=pixman`.
+   A display device without one has no GL of its own: QEMU's standard VGA (`bochs-drm`) and QXL,
+   `simpledrm`, and the server and hypervisor adapters (`ast`, `mgag200`, `cirrus`,
+   `hyperv_drm`, `vboxvideo`). EGL would offer wlroots `llvmpipe`, which it refuses, and the
+   compositor would exit before its first frame.
+4. Runs `kdos_session_runtime`, `kdos_session_keymap`, `kdos_session_boxes` and
    `kdos_session_bus`, then executes `kdos-desktop-start`.
 
 The compositor talks to `seatd` through libseat. `seatd` is a small daemon that hands the
@@ -176,6 +181,12 @@ there is no logind or elogind on the host. How this compares with a systemd-base
 5. Runs `kdos-comp` in the foreground, with its standard error written to
    `$XDG_RUNTIME_DIR/kdos-comp.log` (the previous session's log is kept as `kdos-comp.log.old`)
    and shown on the terminal as well.
+6. When the compositor fails, no renderer was chosen and the log says `Software rendering
+   detected`, sets `WLR_RENDERER=pixman` and runs it once more, in place. That is a device with a
+   render node and still no hardware GL: `vmwgfx` with 3D off, or `nouveau` and `amdgpu` without
+   their firmware. The retry is in place rather than a re-execution of the script so that the
+   background subshells of step 3, still waiting for a socket, start the portals and helpers
+   once.
 
 The compositor has start-up hooks of its own, inherited from labwc, the compositor `kdos-comp`
 is forked from: it reads an optional `environment` file and runs optional `autostart` and
@@ -197,10 +208,11 @@ When the compositor exits:
 
   Log Out stops only the compositor and what needs its display, such as the screen-capture
   backend. Everything else the session started is still running at that prompt: PipeWire,
-  WirePlumber and `pipewire-pulse`, the portal front end (`xdg-desktop-portal`), mpd and its
-  watcher, the per-user timer loops and the `kdos-box gc` loop. All of them are in the login's own
-  session on tty1, so the hangup that ends the login ends them too. The session bus is not:
-  `dbus-daemon --fork` starts a session of its own, and the bus runs until the machine shuts down.
+  WirePlumber and `pipewire-pulse`, mpd and its watcher, the per-user timer loops and the
+  `kdos-box gc` loop. All of them are in the login's own session on tty1, so the hangup that ends
+  the login ends them too. The session bus is not: `dbus-daemon --fork` starts a session of its
+  own, and the bus runs until the machine shuts down, with the portal front end and every other
+  service it activated; the next session's start replaces the front end.
 - **Any other status is a crash.** The script prints the last 20 lines of the log and asks
   `r=restart session, anything else=exit to tty`. Answering `r` re-executes the script, which
   starts the portal stack again (the screen-capture backend died with the compositor) but not a
@@ -533,12 +545,21 @@ die at once. A background subshell of `kdos-desktop-start` therefore does five t
 2. Pushes `WAYLAND_DISPLAY`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_TYPE`, `XCURSOR_THEME`,
    `XCURSOR_SIZE` and `BROWSER` into the bus's activation environment with
    `dbus-update-activation-environment`.
-3. Starts the capture backend, `/usr/lib/xdg-desktop-portal-wlr`.
-4. Waits (up to 20 seconds) for it to own `org.freedesktop.impl.portal.desktop.wlr`.
-5. Stops any front end that is already running, and starts `/usr/lib/xdg-desktop-portal`.
+3. Asks the bus to start the capture backend (`StartServiceByName`
+   `org.freedesktop.impl.portal.desktop.wlr`), and repeats the request, up to 100 times and 0.2
+   seconds apart, until the backend owns its name: a backend a client activated with the old
+   environment may still be pending, and the bus answers the first request with it.
+4. Ends any front end that is already running with SIGTERM, and waits (up to 5 seconds) for
+   `org.freedesktop.portal.Desktop` to have no owner.
+5. Asks the bus to start the front end (`StartServiceByName` `org.freedesktop.portal.Desktop`).
 
 If the front end starts before the capture backend owns its name, screen capture is unavailable
 for the whole session (OBS reports "No capture sources available").
+
+Neither is started by running its binary. The bus runs one instance per name and folds every
+concurrent request into it. A copy run by hand alongside one a client's call has activated makes
+two front ends; one loses the name and exits, and which one survives is a race, so it can be the
+one that started before the capture backend.
 
 ### The KDOS backend
 

@@ -29,6 +29,14 @@
 # `supervise --facility NAME foo ...` sends the daemon's forwarded output to
 # syslog under that facility instead of `daemon`, so syslog.conf files it with
 # what the daemon logs itself: 41_polkitd.sh passes `authpriv`.
+#
+# `supervise --stop-grace SECS foo ...` is how long `stop_service` waits for
+# the daemon to exit after SIGTERM before it sends SIGKILL; five seconds when
+# not given. A daemon whose clean shutdown writes data out names a longer one.
+#
+# `supervise` on a name whose supervisor is alive starts nothing and prints
+# `[SKIP] <name>: already supervised`, so `service start` on a running service
+# is safe to repeat.
 
 supervise() {
     ksvc supervise "$@"

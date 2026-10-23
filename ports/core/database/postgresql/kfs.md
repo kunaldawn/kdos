@@ -46,7 +46,10 @@ in `depends`.
 `build.sh` writes the service script `/etc/init.d/76_postgresql.sh`. It skips itself until the
 `postgres` account exists and `/var/lib/postgres/data` holds a cluster (`sudo -u postgres initdb -D
 /var/lib/postgres/data` makes one), then supervises `postgres -D /var/lib/postgres/data` run as
-`postgres` through `setpriv`. It looks the account up with `getent passwd postgres`.
+`postgres` through `setpriv`. It looks the account up with `getent passwd postgres`. It passes
+`supervise --stop-grace 30`: `SIGTERM` is PostgreSQL's smart shutdown, which waits for the open
+sessions to end and then writes a checkpoint, and the supervisor's default five seconds would
+`SIGKILL` the server partway through and leave the next start to crash recovery.
 
 `postinstall.sh` creates the `postgres` group and account with `/var/lib/postgres` as its home,
 and gives that directory to it at mode `0700`. The package carries the directory at that mode

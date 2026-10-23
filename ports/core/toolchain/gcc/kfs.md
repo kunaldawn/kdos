@@ -77,7 +77,7 @@ build directory outside the tree and says a subdirectory of it, as here, should 
 
 ## Notes
 
-After `make install`, `build.sh` does three more things:
+After `make install`, `build.sh` does four more things:
 
 - It copies the manual pages of `gcc`, `g++` and `gfortran` and the info manuals of `gcc`,
   `gccint`, `cpp`, `cppinternals` and `gfortran` from the source, where the release carries them
@@ -86,6 +86,11 @@ After `make install`, `build.sh` does three more things:
   [texinfo](#port-texinfo); both ports are built in `30_foundation`, after this one. Without
   them, `make install` writes a placeholder file for each of the three pages and installs none of
   those info manuals.
+- It deletes `gccinstall.info` from the package. `make install` writes that manual only when
+  `makeinfo` exists, so without the deletion the package's contents would depend on whether
+  [texinfo](#port-texinfo) was already in the tree. The install hook removes the bootstrap
+  compiler's copy of the same path, and a package that owned it would have its own file deleted
+  by its own hook and fail `kpkg check`.
 - It links `/usr/bin/cc` to `/usr/bin/gcc`, the name make's built-in rules and many makefiles call.
 - It moves libstdc++'s pretty-printer hook, `libstdc++.so.6.*-gdb.py`, to
   `/usr/share/gdb/auto-load/usr/lib/`. gdb runs such a script only from its safe auto-load path, so

@@ -661,10 +661,11 @@ and recoloured:
 
 The source artwork ships (4.4 MB of it for the cursors) because `kdos theme` recolours from it on
 the running system; without it an accent switch would leave the icons and cursors in the build's
-colours. `kdos-cursors` also puts a copy of `KDOS-cursors` in `/etc/skel/.icons`, because a box
-shares your home directory but not `/usr/share/icons`, and ships
-`/usr/share/icons/default/index.theme` inheriting `KDOS-cursors`, which is the theme a program
-started without `XCURSOR_THEME` (through `sudo` or `pkexec`, or an X client) falls back to.
+colours. The copy of `KDOS-cursors` in `/etc/skel/.icons`, which a box needs because it shares your
+home directory but not `/usr/share/icons`, is written by the image build's `kdos theme` run and by
+no package. `kdos-cursors` ships `/usr/share/icons/default/index.theme` inheriting
+`KDOS-cursors`, which is the theme a program started without `XCURSOR_THEME` (through `sudo` or
+`pkexec`, or an X client) falls back to.
 
 `kdos-theme` is the generator that recolours them. The packages run it once at build time to make
 the system copies, always in `phosphor`. Those copies never follow the accent, and nothing in a

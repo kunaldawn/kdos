@@ -124,7 +124,7 @@ whole tree; the others are local to their step:
 | `060_udev_hwdb.sh` | There is no `*.hwdb` source, or no trie was written |
 | `080_whatis.sh` | No manual root exists, or no `mandoc.db` was written |
 | `085_fontcache.sh` | `/usr/share/fonts` is missing, no cache file was written, or fontconfig rejects it |
-| `087_gates.sh` | `testing/linkcheck.py` or `testing/entrycheck.py` reports a finding |
+| `087_gates.sh` | `testing/linkcheck.py` or `testing/entrycheck.py` reports a finding, or `testing/unowned.py` finds a file no package owns under `/usr/share/locale`, `man`, `doc` or `info` |
 | `100_packs.sh` | With `KDOS_PACK_KDOS=1`: `mkfs.erofs` does not honour the excludes |
 | `105_ports.sh` | `ports/shelves`, `ports/sources.idx`, a recipe under `/ports/core` or one of the book directories is missing, a file over 16 MB is in the recipe tree, or no installed package's source is in `sources.idx` |
 

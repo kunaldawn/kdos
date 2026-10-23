@@ -103,7 +103,7 @@ check that finds its directory there reports what is missing from it.
 | Permissions and accounts | `/etc/shadow` on the built tree is mode 600 or 640 and the file-system step narrows it; the polkit and udev rule directories and files are owned by root; no udev rule sets `GROUP=`, `MODE=` or `OWNER=` on a device class that has no node, and every group a rule grants is one the desktop user is in; every account a shipped daemon drops to exists in `fs/etc/passwd`; the desktop user is in the groups its surfaces need |
 | Shell | All shipped and build shell is syntactically valid; every file a build script, a `phase.env` or a shared environment file sources exists, and a step sources its own phase's `phase.env`; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
 | Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; every script under `fs/etc/init.d` but `service_helper` is executable in the work tree and recorded as `100755` in git; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the compiler cache sets no `base_dir`, checks the compiler by a string rather than a modification time, has its `KDOS_CCACHE` switch both passed by the `Makefile` and named by `script/chroot/exec.sh`, and puts no masquerade directory on a `PATH`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; only `kdos_crt_scanout()` in the compositor writes the scene's direct-scanout switch; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
-| Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load; every `kdos-*` command on the built tree has a manual page |
+| Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every window a program of ours opens as a toplevel has a desktop entry named after its `app_id`; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load; every `kdos-*` command on the built tree has a manual page |
 | Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; every icon name a surface asks for resolves on the image; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=`; no visible entry reads as a server, session picker, launch pad, tray helper or diagnostic unless `testing/visible-entries.allow` names it, and that file names only entries that are visible and read that way |
 
 Preflight cannot prove the build works. It proves the build will not fail for a mechanical reason
@@ -814,7 +814,7 @@ or a variable moves one directory walk. There are 50 fixture directories under
 | `portup` | Recorded upstream responses (a registry index, git tag lists and branch heads, feeds, a releases API answer, directory listings) and, under `ports/`, the recipes seven ports were recorded at | Every discovery adapter and filter in `kdos-portup --selftest`, and all three outcomes end to end, offline and unaffected by bumps to the live recipes |
 | `cve` | Four ports and a five-row database | A version behind two fixes, one that only looks behind because of a packaging revision, a name mapping, and a package the database has never heard of |
 | `about` | A whole machine under one root: `os-release` with a build stamp, a kernel, eight threads, a process tree with a boxed browser, a boot state mid-trial, one empty keyring and one with a key, a fourteen-package database, and the logo | `kdos-about`'s three pages, through `KDOS_ABOUT_ROOT` |
-| `update` | Recorded answers from `kdos update check --json`, `kdos cve --json` and `kdos-bootctl status` | `kdos-update`'s frames, through `KDOS_UPDATE_JSON`, `KDOS_CVE_JSON` and `KDOS_SLOT_TEXT` |
+| `update` | Recorded answers from `kdos update check --json`, `kdos cve --json` and `kdos-bootctl status`, plus a second `kdos cve` answer with no findings and two bundled copies | `kdos-update`'s frames, through `KDOS_UPDATE_JSON`, `KDOS_CVE_JSON` and `KDOS_SLOT_TEXT`, and that bundled copies are not counted as vulnerabilities |
 | `clone` | Three hand-built image headers | The two-record length rule |
 | `tray` | A second *process* that behaves like a real tray item | The whole protocol conversation |
 | `traymenu`, `net`, `netagent` | D-Bus peers on a private bus | See [Surfaces that talk D-Bus](#surfaces-that-talk-d-bus) |
@@ -1165,6 +1165,7 @@ itself, as the login shell's profile would have.
 | `--audio` | Give the guest an HDA controller, so audio paths reach a real device |
 | `--disk <qcow2>` | Attach a virtio disk, the target an unattended `kinstall` writes to |
 | `--no-cdrom` | Leave the ISO off, so the disk is what boots |
+| `--root-password <pw>` | What to answer when the serial console's login asks root for a password, as an installed system does; the live image asks none (default `kdos`, the one `install-to-disk.sh` sets) |
 | `--boot-disk` | Boot the disk with the ISO still attached, so an installed system can still reach the medium |
 | `--data-disk <file>` | Attach a raw file as a plain virtio disk, to carry a large file into a guest with no network. Input only |
 | `--scratch <file>` | Attach a raw file the guest writes a tar onto, which is how files come back out |
@@ -1568,15 +1569,15 @@ stock ISO:
   `/var/lib/kdos/packs` when there is no medium, and reports every check that needs one (a base,
   `rt-gtk`, the index, `app.vorta` (`PACKLANE_APP`) and `app.meld` (`PACKLANE_QTAPP`)) as
   failed;
-- `install-to-disk.sh` asks the installer for `app.zathura app.kcalc alpine` unless
-  `INSTALL_PACKS` names others.
+- `install-to-disk.sh` asks the installer for the `essential` group unless `INSTALL_APPS` names
+  other catalogue group ids.
 
 Run them against a medium or a store you have put those packs into.
 
 | Harness | Runs | Does |
 |---|---|---|
 | `packlane.sh` | In the guest, desktop up | The pack lane end to end: the daemon, the keyring, an install from the medium or the store, the launchers, a box on a pack base, the telemetry and a timed launch, reporting pass, fail or skip with a reason and carrying on past a failure. It exercises no rollback, and its checks for a base and `rt-gtk` in the store fail until packs have been imported |
-| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The second half boots the disk with `--no-cdrom` |
+| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The answer file sets root's password to `kdos`. The second half boots the disk with `--no-cdrom`, and the rig logs root in on the serial console with `--root-password` |
 | `bios-boot.sh` | On the host | Boots the ISO as a USB stick on an xHCI controller under SeaBIOS, with no OVMF anywhere. `vnc-shot.py` always boots UEFI, so it cannot answer this. The proof is the serial log reaching `switch_root`, not the exit status |
 | `appsweep.sh` | In the guest, `--boot-disk` | For each catalogue application: install it off the medium, launch it through its shim, wait for the compositor to report a window, photograph it, and remove the box. Usage `appsweep.sh <outdev> <runtime\|all> [max]` |
 | `appreport.sh` | On the host, needs ImageMagick | Reads what the sweep wrote to the scratch disk and renders it as a table and a contact sheet, flagging windows that mapped but painted nothing. Usage `appreport.sh <scratch.img> [outdir]` |
@@ -1701,6 +1702,7 @@ outside its package root, a tool run against the live root, or a manifest that l
 
 ```sh
 python3 testing/unowned.py --root build/fs        # --fs <repo>/fs; --all lists every path
+python3 testing/unowned.py --root build/fs --fail-under usr/share/doc   # fail only on findings there
 ```
 
 Paths are keyed as `kpkg` keys them, and a manifest line is read with `tar`'s quoting undone, so a
@@ -1718,7 +1720,14 @@ what the build's own tools wrote is unowned until `020_cleanup.sh` deletes it, w
 unfinished tree would otherwise list.
 
 The report groups paths by directory, largest group first. Exit status is 1 when it reports a path
-and 0 otherwise. `70_image` runs it in `087_gates.sh` as a report and does not stop on it.
+and 0 otherwise. `--fail-under DIR`, which may be repeated, keeps the report whole but makes the
+status 1 only for a path under one of the named directories, and prints each such path on a
+`FAIL unowned` line. `70_image` runs it in `087_gates.sh` with `--fail-under` for
+`usr/share/locale`, `usr/share/man`, `usr/share/doc` and `usr/share/info`, after `020_cleanup.sh`
+has removed every unowned file there that the
+[size and language policy](writing-ports.md#size-and-language-policy) prunes: what is left there
+unowned is documentation that would ship and nothing could remove, and it stops the image. Any
+other finding is a report the step does not stop on.
 
 ### Run-time references
 

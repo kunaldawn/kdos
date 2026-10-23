@@ -22,6 +22,10 @@
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside
 # them, or when a shelf file names a port an earlier phase installs.
 
+# The full-colour icons Adwaita inherits; adwaita-icon-theme in 44_apps depends
+# on it.
+adwaita-icon-theme-legacy
+
 # The style that, with plasma-integration's platform theme, makes a Qt
 # application read kdeglobals.
 breeze

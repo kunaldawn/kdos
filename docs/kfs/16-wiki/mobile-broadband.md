@@ -35,8 +35,9 @@ live medium and on an installed system alike. It sorts after `41_polkitd` and be
 
 ModemManager is started here rather than by the bus, for the reason given in
 [How polkit and ModemManager are started](../../kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
-It logs to the system log, `/var/log/messages`; the script's own output is in
-`/run/kdos-init.modemmanager.log`. Its name for `service` is `modemmanager`, and
+It writes its log to standard output (`--log-file=/dev/stdout`), so the supervisor keeps it in
+`/run/kdos-svc.ModemManager.log` and the system log, `/var/log/messages`, under the tag
+`ModemManager`; the script's own output is in `/run/kdos-init.modemmanager.log`. Its name for `service` is `modemmanager`, and
 `service status modemmanager` reports the process as `ModemManager`.
 
 The supervised ModemManager is the only one. The port's `build.sh` deletes the D-Bus activation

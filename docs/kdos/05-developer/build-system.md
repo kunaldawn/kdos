@@ -754,7 +754,7 @@ the initramfs and ISO carry it into the image.
 |---|---|
 | `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into `build/binhost/` and signs an index over them with `kpkg index --sign`, making the key in `build/binhost-key/` on first use; without it, does nothing. The directory accumulates across runs, so a complete binhost needs one `--fresh` build with the flag set |
 | `015_pkgstore.sh` | With the package store on, runs `kpkg store gc` over `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used entries first; with it off, does nothing |
-| `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory, and the built-package cache with its `.pending` records, and any podman container store left in `/home/kdos/.local/share/containers` or `/var/lib/containers/storage` (applications are built on the machine that wants them). Resets `/root` to exactly what `fs/root` holds, mode 0700, so no CMake package registry, git setting or log a build wrote there ships. Removes Python bytecode no package owns and checks that every packaged module has its own (see below) |
+| `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory, and the built-package cache with its `.pending` records, and any podman container store left in `/home/kdos/.local/share/containers` or `/var/lib/containers/storage` (applications are built on the machine that wants them). Resets `/root` to exactly what `fs/root` holds, mode 0700, so no CMake package registry, git setting or log a build wrote there ships. Removes Python bytecode no package owns and checks that every packaged module has its own (see below). Removes every file no package owns that the [size and language policy](writing-ports.md#size-and-language-policy) prunes from a package (a non-English message catalog, a translated manual page, an HTML or PDF manual under `/usr/share/doc`) and the gawk and binutils manuals those ports leave out, so a copy `10_bootstrap` installed and its port does not adopt never ships |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries, through `kdos-appbox genlaunchers` |
 | `040_orphans.sh` | Removes installed packages that have no recipe in the tree, or whose recipe `ports/unbuilt` lists |
 | `045_identity.sh` | Writes `BUILD_ID` (the commit, `-dirty` when the tree had unrecorded changes) and `KDOS_BUILD_DATE` (that commit's date) into `/etc/os-release`, replacing any earlier pair; with no `KDOS_GIT_COMMIT` it writes neither. The commit's date and not the clock's, so two builds of one commit stamp the same file. It runs before `100_packs.sh` so the base pack carries the stamp |
@@ -763,7 +763,7 @@ the initramfs and ISO carry it into the image.
 | `070_user.sh` | Removes empty directories under `/etc/skel/.config`, then creates the home directory of each ordinary user (UID 1000–65533) from `/etc/skel`, first clearing the generated trees skel owns outright (see [Syncing `fs/`](#syncing-fs)). Removes `/etc/passwd-`, `group-`, `shadow-` and `gshadow-`, the backups shadow's tools write, which carry the live accounts' password hashes |
 | `080_whatis.sh` | Builds the manual-page index for `apropos` and `whatis` |
 | `085_fontcache.sh` | Clamps the font directories' times to `SOURCE_DATE_EPOCH` and writes the fontconfig cache, failing unless fontconfig accepts it (see below) |
-| `087_gates.sh` | Runs `testing/unowned.py` as a report, then `testing/linkcheck.py` and `testing/entrycheck.py` over the finished tree, and fails the phase when either reports; see [Testing](testing.md#run-time-references) |
+| `087_gates.sh` | Runs `testing/unowned.py`, then `testing/linkcheck.py` and `testing/entrycheck.py` over the finished tree, and fails the phase when linkcheck or entrycheck reports or a file no package owns is left under `/usr/share/locale`, `/usr/share/man`, `/usr/share/doc` or `/usr/share/info`; any other unowned file is a report. See [Testing](testing.md#files-nothing-owns) and [Testing](testing.md#run-time-references) |
 | `090_initramfs.sh` | Builds the initramfs (the small RAM filesystem the kernel boots into first) in `build/initramfs` and `build/initramfs.cpio.gz` |
 | `100_packs.sh` | Creates the pack store directories, and with `KDOS_PACK_KDOS=1` the base pack `kdos` in `build/kdos-base` |
 | `105_ports.sh` | Stages the recipe-only ports tree in `build/image-ports`: every port's recipe files without the sources it hashes or any archive, `ports/shelves`, `ports/sources.idx`, `src/`, `docs/kdos`, `docs/screenshots`, `docs/kfs`, `script/book` and a `TREE` stamp; puts `build/keys/kdos-release.pub` in `/etc/kdos/keys/tree`; writes the source offer `/usr/share/kdos/SOURCES` (see [How KDOS is built](how-kdos-is-built.md#packaging-70_image)) |
@@ -840,6 +840,19 @@ listed and passes. Ownership is read with the merged-`/usr` aliases folded. Hash
 carries no timestamp, and the interpreter checks the hash on import, so a source file a later
 upgrade replaces is recompiled rather than served stale. A module with no bytecode would be
 compiled on every import of every start, because `/usr` is read-only to a running program.
+
+**Unowned documentation.** `kpkg` applies the
+[size and language policy](writing-ports.md#size-and-language-policy) to each package it makes,
+but `10_bootstrap` installs its tools with no package, and a port installed over them later adopts
+only the paths it ships itself. A bootstrap copy of something the policy prunes from that port, or
+of a file the port's `build.sh` deletes, is adopted by nothing and stays in the tree. The bootstrap
+steps build with `--disable-nls` and delete those files after their install, and `020_cleanup.sh`
+removes, where no package owns them and `fs/` does not provide them, every non-English message
+catalog under `/usr/share/locale`, everything under a `/usr/share/man` directory that is not a
+`man<section>` one, every `.html`, `.htm` and `.pdf` under `/usr/share/doc`, and gawk's
+`gawknotes.info` and binutils' `dlltool`, `windres` and `windmc` pages. `087_gates.sh` then fails
+the image on any file no package owns left under `/usr/share/locale`, `/usr/share/man`,
+`/usr/share/doc` or `/usr/share/info`.
 
 ## Fetching sources in a container
 

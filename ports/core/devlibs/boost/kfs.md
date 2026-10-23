@@ -32,9 +32,6 @@ all the headers and Boost's CMake package files. Its dependents run from KDE pro
 - `variant=release`, `link=shared`, `threading=multi` — Optimised, shared, thread-safe libraries
   only.
 
-## Patches
-- `musl-filesystem-locale.patch` — Makes Boost.Filesystem on Linux without glibc convert paths with its own UTF-8 codecvt facet, as it does on the BSDs, macOS, Solaris and Haiku, instead of the facet of `std::locale("")`. libstdc++ on musl builds only the `C` and `POSIX` locales by name, so `std::locale("")` fails under any other `LANG`, `C.UTF-8` among them, and a program converting a path then fails with it; on musl the file names are UTF-8 in any case.
-
 ## Notes
 `bootstrap.sh` turns on Boost.Regex's ICU side and builds `boost_numpy` whenever it finds ICU and
 numpy, so both are in `depends`: a build root that happened to lack either would produce a

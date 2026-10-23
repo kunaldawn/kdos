@@ -1,0 +1,12 @@
+Subject: Create the user state directory in the SDL UI's archdep_init, as the GTK3 UI does
+
+--- a/src/arch/sdl/archdep.c
++++ b/src/arch/sdl/archdep.c
+@@ -102,6 +102,7 @@
+ 
+     archdep_create_user_cache_dir();
+     archdep_create_user_config_dir();
++    archdep_create_user_state_dir();
+ 
+     if (SDL_REALINIT(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0) {
+         fprintf(stderr, "SDL error: %s\n", SDL_GetError());

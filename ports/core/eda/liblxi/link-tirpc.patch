@@ -1,0 +1,18 @@
+Subject: Link liblxi against libtirpc on every system that uses it
+
+The XDR and CLNT calls resolve in libtirpc; without it in NEEDED the library
+fails to relocate on a C library that carries no Sun RPC.
+
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -53,9 +53,9 @@
+ 
+ if host_machine.system() not in tirpc_excluded_systems
+   tirpc_dep = dependency('libtirpc', required: true)
++  liblxi_deps += tirpc_dep
+ if(build_machine.system() == 'cygwin')
+   tirpc_incpath = join_paths(tirpc_dep.get_variable(pkgconfig: 'includedir'), 'rpc')
+-    liblxi_deps += tirpc_dep
+ else
+   tirpc_incpath = join_paths(tirpc_dep.get_variable(pkgconfig: 'includedir'), 'tirpc')
+ endif

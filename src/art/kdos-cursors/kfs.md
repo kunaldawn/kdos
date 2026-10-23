@@ -20,13 +20,16 @@ running system; see
   `/usr/share/kdos/cursors/art`, which this package is about to install.
 
 ## Notes
-`build.sh` writes two more things than the theme. A copy of `KDOS-cursors` goes into
-`/etc/skel/.icons`, because a box shares the home directory but not the host's
-`/usr/share/icons`, so an application in a box finds the theme only there.
-`/usr/share/icons/default/index.theme` inherits `KDOS-cursors`, and is the theme a program falls
-back to when it never sees `XCURSOR_THEME`: one started through `sudo` or `pkexec`, or an X
-client; see the `XCURSOR_THEME` row in
+`build.sh` writes two more things than the theme: the vendored art under
+`/usr/share/kdos/cursors/art`, and `/usr/share/icons/default/index.theme`, which inherits
+`KDOS-cursors` and is the theme a program falls back to when it never sees `XCURSOR_THEME`: one
+started through `sudo` or `pkexec`, or an X client; see the `XCURSOR_THEME` row in
 [Starting a session](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#starting-a-session).
+
+The package puts nothing in `/etc/skel`. The copy in `/etc/skel/.icons`, which a box needs because
+it shares the home directory and not the host's `/usr/share/icons`, is written by `kdos theme` in
+`70_image`'s `050_theme.sh`; a second copy owned by this package would be rewritten there and show
+up as modified files in `kpkg check`.
 
 The aliases point from the X11 names to the CSS names, never the other way. A tree laid out in the
 opposite direction, installed over this one, would leave a link and its target pointing at each

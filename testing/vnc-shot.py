@@ -590,6 +590,11 @@ def main():
     ap.add_argument("--no-cdrom", action="store_true",
                     help="leave the ISO off entirely, so the DISK is what "
                          "boots. The second half of an install test")
+    ap.add_argument("--root-password", default="kdos",
+                    help="what to answer when the serial console's login "
+                         "asks root for a password, as an installed system "
+                         "does. The default is the one install-to-disk.sh "
+                         "sets")
     ap.add_argument("--boot-disk", action="store_true",
                     help="boot the DISK with the ISO still attached — an "
                          "installed system that can still reach the medium. "
@@ -818,10 +823,18 @@ def main():
         tries = 0
         while time.time() < deadline and not ready:
             ser.pump()
+            # THE LIVE IMAGE LOGS ROOT IN WITH NO PASSWORD; AN INSTALLED ONE
+            # ASKS. The answer goes only straight after `root`, never on its
+            # own: on a line that is already a shell it would run as a
+            # command.
             if b"login:" in ser.buf[-400:]:
                 ser.send("root")
                 time.sleep(2)
                 ser.pump()
+                if b"assword" in ser.buf[-200:]:
+                    ser.send(args.root_password)
+                    time.sleep(3)
+                    ser.pump()
             ser.send("echo KDOS''PROBE")
             tries += 1
             if ser.expect("KDOSPROBE", timeout=4):

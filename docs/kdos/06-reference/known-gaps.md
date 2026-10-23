@@ -296,7 +296,8 @@ on an overlay. When `kdos-packd` composes a box there, the layer falls back to a
 the session. `kdos doctor` reports this as a warning about where the session's home directory
 lives, not as a failure. `kdos-box create <name> base=pack:<id>` asks podman for a container on
 top of that composition, and when podman refuses on a live session it says that a persistent box
-needs an installed system, takes the composition down, and leaves the profile it wrote.
+needs an installed system, takes the composition down, and leaves the profile it wrote, which
+`kdos-box remove <name>` deletes.
 
 ### `kdos-box create` with a `box:` base never finishes
 
@@ -740,7 +741,9 @@ container and not B's, which is the failure the mechanism exists to prevent.
 ### The update path has not been run against a published tree
 
 `kdos update fetch` takes `kdos-ports.tar.xz` from the latest release, and only a release made by
-`ports/publish --release` with a release key carries one; until then it reports `fetch-failed`. Its
+`ports/publish --release` with a release key carries one; until then it reports `fetch-failed`. An
+image built without that key has an empty `/etc/kdos/keys/tree`, and on it `fetch` stops before the
+network and reports `no-key`: such an image updates only from the recipes in its own `/ports`. Its
 signature check, the refusal of an older tree, the exchange with `/ports`, `kpkg fetch`'s archive
 and upstream order, and the recorded problems have been exercised against local directories in a
 container with no network, and `kpkg fetch` is asserted by the self-test, but none of it against a
@@ -863,6 +866,12 @@ never fetched on demand either; the transformations that need no grid are the on
 repository and not in the crate, and the only way to swap in a rebuilt dump is a patch to
 presenterm's theme loading. Its grammars, and bat's themes, are compiled here by the `bat` port.
 
+### `ping` and `tracepath` take no internationalised host name
+
+`iputils` is built with `-DUSE_IDN=false`: with IDN on, both pass glibc's `AI_IDN` to `getaddrinfo`,
+which musl rejects, and every lookup fails. A host name is looked up as written, so a non-ASCII name
+must be given in its `xn--` form.
+
 ### Strawberry has no tag fetcher
 
 The fetcher sends a song's fingerprint to AcoustID and MusicBrainz, so `strawberry` is configured with
@@ -956,16 +965,18 @@ see [Testing](../05-developer/testing.md).
 | `gdb` | CTF traces, source highlighting through GNU source-highlight, Intel Processor Trace, AMD GPU debugging, debuginfod | babeltrace, source-highlight, libipt, amd-dbgapi; elfutils is built without debuginfod | one feature each, vendor; Pygments colours the source |
 | `gdk-pixbuf` | Sandboxed image loading through glycin | glycin | one feature; the built-in loaders read every format |
 | `gimp` | MNG, WMF and ILBM files; JavaScript and Lua plug-ins; full dashboard backtraces | libmng, libwmf, libilbm, gjs, lua-lgi, libbacktrace | one feature each |
+| `git` | `git svn` and `git cvsserver`, which are removed from the package | Subversion's Perl bindings (SVN::Core); DBI with DBD::SQLite | one feature each |
 | `glabels` | GNU Barcode and IEC 16022 symbologies; the Evolution address book | GNU Barcode, libiec16022, Evolution Data Server | one feature each; QR comes from qrencode |
 | `glib-networking`, `openconnect` | PAC proxy configuration | libproxy | one feature; `http_proxy` and friends are honoured |
 | `gmsh` | CGNS, Mmg remeshing and PETSc solvers | CGNS, Mmg, PETSc | large |
-| `gnucash` | The SQL back ends and online banking | libdbi, AqBanking | one feature each; XML books are built |
+| `gnucash` | The SQL back ends, online banking and online price quotes | libdbi, AqBanking, Finance::Quote and its Perl modules (JSON, LWP, HTML::TreeBuilder, DateTime) | one feature each; XML books are built |
 | `gnumeric` | Psion and Paradox import, the database plug-in | psiconv, pxlib, libgda | one feature each |
 | `goldendict-ng` | EPWING dictionaries | libeb | one feature |
+| `gramps` | The Geography view | osm-gps-map | service (online tiles); its only release links libsoup 2, which is not a port |
 | `gthumb` | Display colour management | colord | one feature |
 | `gvfs` | Approving a WebDAV server's untrusted certificate; Windows network discovery | gcr, wsdd | one feature each; `network://` lists what Avahi finds |
 | `ifcopenshell` | COLLADA and USD output, the RocksDB cache | OpenCOLLADA, USD, RocksDB | large |
-| `imagemagick` | Liquid rescale, Ultra HDR, MagickCache | liblqr, libultrahdr, MagickCache | one feature each |
+| `imagemagick` | Liquid rescale, Ultra HDR, MagickCache; the PostScript base-35 font names (`Helvetica`, `Times-Roman`, …) | liblqr, libultrahdr, MagickCache, URW base-35 fonts | one feature each; the Liberation fonts are metric-compatible under their own names |
 | `iperf3` | SCTP tests | lksctp-tools | one feature |
 | `k3b`, `scummvm`, `vlc` | Musepack audio | libmpcdec | one feature |
 | `kate` | The telemetry settings page | KUserFeedback | one feature |

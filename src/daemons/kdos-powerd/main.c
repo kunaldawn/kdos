@@ -520,7 +520,9 @@ static int fw_verb(const char *arg, char *out, size_t nout)
  * THE ACCOUNT MUST BE ONE THAT CAN LOG IN. `kb_users()` is the one place that
  * decides who may, and pointing autologin at a name it would not list is a
  * machine that boots to a login nobody can complete — a service account with
- * `nologin`, or a name that is not there at all.
+ * `nologin`, or a name that is not there at all. The refusal says which of the
+ * two it is: "no such account" for root would send the reader looking for a
+ * typo.
  *
  * OFF IS A COMMENTED LINE, NOT AN EMPTY VALUE. kdos-login asks for a password
  * when it finds no key, and `autologin =` with nothing after it would be a key
@@ -547,7 +549,10 @@ static int set_autologin(const char *who, char *out, size_t nout)
 			if (!strcmp(u[i].name, who))
 				break;
 		if (i == n) {
-			snprintf(out, nout, "err no such account\n");
+			snprintf(out, nout, getpwnam(who)
+				 ? "err not an account that can log in (a "
+				   "system account, or no login shell)\n"
+				 : "err no such account\n");
 			return -1;
 		}
 	}

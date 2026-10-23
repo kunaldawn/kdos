@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = xhost
+version     = 1.0.10
+release     = 1
+source      = https://www.x.org/releases/individual/app/$name-$version.tar.xz
+sha256      = a8afd70059479c712948b895e41c35a4a8bfcede3ba2d5a4b855c88bbb725be1  xhost-1.0.10.tar.xz
+description = X server access control tool — admits a local account such as root to Xwayland
+homepage    = https://gitlab.freedesktop.org/xorg/app/xhost
+license     = MIT AND MIT-open-group
+depends     = pkgconf libX11 libXau libXmu xorgproto

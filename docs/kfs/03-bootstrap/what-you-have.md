@@ -47,10 +47,9 @@ replaces them never uses.
 **The tools carry almost no optional features.** Beyond what earlier steps built, no step found
 an optional library to link: coreutils without ACLs, extended attributes, libcap, GMP or OpenSSL;
 grep without `-P`; gawk without readline or MPFR; patch and sed without ACL or extended-attribute
-support. Native-language support is off in every step that passes `--disable-nls`: libstdc++, tar,
-coreutils, diffutils, findutils, gawk, grep, sed, binutils, GCC and make. xz and bash are given no
-such switch, find the GNU gettext functions in musl itself, and are built with it on, so both
-install their message catalogues under `/usr/share/locale`; gzip, patch and readline have no
+support. Native-language support is off in every step that passes `--disable-nls`: libstdc++, xz,
+tar, coreutils, diffutils, findutils, gawk, grep, sed, bash, binutils, GCC and make, so no step
+installs a message catalogue under `/usr/share/locale`; gzip, patch and readline have no
 native-language support to switch. The flags are the plain `-O2 -pipe` of `script/env/host.env`, not the
 [release flags](../../kdos/05-developer/writing-ports.md#the-release-flags), and nothing has been
 compiled against [`fortify-headers`]{.idx}. readline and bash are built without their upstream patch

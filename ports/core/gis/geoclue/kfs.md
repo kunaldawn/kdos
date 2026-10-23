@@ -45,7 +45,10 @@ the system bus that is not refused by name; see
 
 The `geoclue` account is made by `postinstall.sh`, under `PKG_ROOT`, the root the package is being
 installed into. `dbus-daemon-launch-helper` refuses to start a service whose `User=` does not
-exist, so without the account the first client's request fails. The `sysusers.d` file upstream
+exist, so without the account the first client's request fails. Its home is `/nonexistent`:
+geoclue writes no files. The hook creates the account only when `etc/passwd` lacks it, and then
+sets the home with `usermod` whether it created the account or not, so a tree that already had a
+`geoclue` account with another home is given `/nonexistent` as well. The `sysusers.d` file upstream
 installs for the same account is removed with the `systemd` directory: both are systemd's.
 
 `where-am-i`, the demo client, stays installed as a command under `/usr/lib/geoclue-2.0/demos`.

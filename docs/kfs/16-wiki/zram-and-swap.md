@@ -39,7 +39,7 @@ that sizes the device, makes it swap at priority 100 and then changes the two ke
 **`/etc/fstab`** carries any disk swap. The image's own `fs/etc/fstab` has no swap line; the
 installer appends one, in one of these two forms, from `src/system/kdos-installer/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1584-1591 pin=99d9a475fbf5 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1636-1643 pin=99d9a475fbf5 -->
 
 `rcS` turns on every swap line of `/etc/fstab` once the filesystems are mounted, from
 `fs/etc/init.d/rcS`:

@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-shot [region|screen|window]
+ *   kdos-shot [region|screen|full|window|qr]
  *
  * Screenshot to the clipboard AND to disk. One keystroke, region selected
  * with the mouse, image on the clipboard ready to paste, a copy filed under
@@ -134,36 +134,48 @@ static int shot_qr(const char *png)
 	return 0;
 }
 
+static void shot_usage(FILE *o)
+{
+	fprintf(o, "usage: kdos-shot [region|screen|full|window|qr]\n");
+}
+
+/*
+ * EVERY ARGUMENT IS READ BEFORE ANYTHING IS DONE. The default mode is region,
+ * which waits in slurp for a drag: an argument taken for "no mode given" would
+ * leave a script that asked for help, or passed a typo, waiting on a pointer
+ * nobody is moving. So an option is either one of the two below or an error,
+ * and a refusal comes before the screenshot directory is made.
+ */
 int shot_main(int argc, char **argv)
 {
-	const char *mode = argc > 1 && argv[1][0] != '-' ? argv[1] : "region";
-	const char *geom = NULL;
+	const char *mode = NULL;
 
+	for (int i = 1; i < argc; i++) {
+		const char *a = argv[i];
+		if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
+			shot_usage(stdout);
+			return 0;
+		}
+		if (!strcmp(a, "--geom")) {
+			fprintf(stderr, "kdos-shot: --geom is refused: this "
+				"desktop selects with the pointer\n");
+			return 1;
+		}
+		if (a[0] == '-' || mode) {
+			shot_usage(stderr);
+			return 1;
+		}
+		mode = a;
+	}
+	if (!mode)
+		mode = "region";
 	if (!strcmp(mode, "window"))
 		mode = "region";	/* per-window needs the compositor's help */
 
 	if (strcmp(mode, "region") && strcmp(mode, "screen") &&
 	    strcmp(mode, "full") && strcmp(mode, "qr")) {
-		fprintf(stderr,
-			"usage: kdos-shot [region|screen|window|qr] "
-			"[--geom X,Y,W,H]\n");
+		shot_usage(stderr);
 		return 1;
-	}
-
-	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "--geom") || i + 1 >= argc)
-			continue;
-		geom = argv[++i];
-	}
-	if (geom) {
-		int g[4];
-
-		if (sscanf(geom, "%d,%d,%d,%d", &g[0], &g[1], &g[2], &g[3]) !=
-		    4) {
-			fprintf(stderr,
-				"kdos-shot: --geom wants X,Y,W,H\n");
-			return 1;
-		}
 	}
 
 	const char *pics = getenv("XDG_PICTURES_DIR");
@@ -176,10 +188,6 @@ int shot_main(int argc, char **argv)
 	 * having been read. */
 	if (strcmp(mode, "qr"))
 		kb_mkdir_p(dir);
-
-	if (geom)
-		kb_die("--geom is a cell rectangle and this desktop selects "
-		       "with slurp");
 
 	if (!kb_have_prog("grim"))
 		kb_die("grim is not installed");

@@ -54,29 +54,30 @@ has no 3D support it puts the compositor on software rendering (`WLR_RENDERER=pi
 directory, the keyboard layout, the box warm-up and the session bus, and hands over to the second
 script:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop lines=44-52 pin=ca4700af0db5 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop lines=53-61 pin=ca4700af0db5 -->
 
 ### /usr/local/bin/kdos-desktop-start
 
 The second starts audio, the portals and the input method, then runs the compositor with its
-standard error kept in a log:
+standard error kept in a log, and once more on the software renderer if it refused a GPU with no
+hardware GL:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=142-150 pin=4a1bc6f2516c -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=163-186 pin=28d9770dd344 -->
 
 What it does when the compositor exits:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=160-188 pin=550e5678fa39 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=196-224 pin=550e5678fa39 -->
 
 ### /etc/profile.d/10-wayland.sh
 
 Every login shell reads this file, so every program the session starts inherits what it exports.
 It points a shell that the session did not start at the session's bus:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=36-41 pin=767720f2e945 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=43-48 pin=767720f2e945 -->
 
 and it chooses each toolkit's back end:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=71-95 pin=b852ff9235db -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-102 pin=b852ff9235db -->
 
 Every variable it sets is tabulated in
 [Shell environment](../../kdos/06-reference/configuration.md#shell-environment). A box receives

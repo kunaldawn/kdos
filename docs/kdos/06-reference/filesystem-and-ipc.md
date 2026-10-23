@@ -65,7 +65,7 @@ The host package manager's own configuration is `/etc/kpkg.conf`; see
 | `march.ledger` | Measured per-machine optimisation results | `kdos march` |
 | `apps-pending` | Applications chosen in the installer that could not be installed | `kinstall` |
 | `update.json` | What `kdos update check --json` found, and the last problem; the panel's update badge reads it | The update-check timer, nightly at 04:17, and `kdos update fetch` and `apply` when they finish |
-| `update.state` | The outcome of the last `kdos update fetch` and the last `apply`: `ok`, `no-network`, `fetch-failed` or `build-failed`, with a time and a sentence | `kdos update fetch` and `apply` |
+| `update.state` | The outcome of the last `kdos update fetch` and the last `apply`: `ok`, `no-key`, `no-network`, `fetch-failed` or `build-failed`, with a time and a sentence | `kdos update fetch` and `apply` |
 | `update.state.lock` | The lock `fetch` and `apply` hold, so a tree is never replaced under a build | `kdos update fetch` and `apply` |
 | `update.state.sig` | The signature of the tree last installed; a published signature equal to it is the same tree, and the tree is not downloaded again | `kdos update fetch` |
 

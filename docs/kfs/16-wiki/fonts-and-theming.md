@@ -126,7 +126,7 @@ Three root-owned files follow the accent as well: [`/etc/kdos/accent`]{.idx} (th
 The login shell exports what sends native GTK and Qt applications to the portal and to the KDOS
 palette, from `fs/etc/profile.d/10-wayland.sh`:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=85-95 pin=6e24c8e47783 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=92-102 pin=6e24c8e47783 -->
 
 A GTK application that does not use the portal reads GSettings, whose defaults KDOS sets in
 `/usr/share/glib-2.0/schemas/90_kdos.gschema.override`, from the same path under `fs/`:

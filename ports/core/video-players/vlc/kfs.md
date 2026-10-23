@@ -74,8 +74,11 @@ builds the Wayland outputs too, for `QT_QPA_PLATFORM=wayland vlc`.
 ## Notes
 The install hook writes `plugins.dat`, a cache of each plugin's size and modification time.
 Packaging resets every modification time, so the installed files would not match the cache, and the
-cache would differ between two builds; `build.sh` deletes it, and VLC reads the plugin directory
-when it starts.
+cache would differ between two builds; `build.sh` deletes it. kpkg writes it instead, once the
+files are in place, by running `vlc-cache-gen` whenever a package touches `/usr/lib/vlc/plugins`
+(see [Shared indexes](../../../../docs/kdos/05-developer/writing-ports.md#shared-indexes)). Without
+the cache libvlc loads every plugin at start to learn what it does, the Qt 5 interface included, and
+Elisa, a Qt 6 program that links libvlc, crashes inside it.
 
 The browser-plugin directory `/usr/lib/mozilla` and the KDE 4 service menus in
 `/usr/share/kde4` name programs KDOS does not have, and are removed.

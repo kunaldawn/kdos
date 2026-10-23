@@ -88,12 +88,13 @@ util_linux_only() {
 }
 
 # GNU coreutils, grep and sed. The first row is what `init` runs; the rest are
-# the rescue shell's, for the boot that does not reach a root. Each must
+# the rescue shell's, for the boot that does not reach a root, and the udev
+# rules' (63-md-raid-arrays runs readlink and basename). Each must
 # answer --version as GNU's (`dd` alone names its package `coreutils`, without
 # the GNU) and is copied with its libraries.
 for _n in cat chmod cut ls mkdir mknod seq sleep \
           cp mv rm ln rmdir head tail wc stat df dd sync uname readlink touch \
-          sort tr grep sed; do
+          basename sort tr grep sed; do
     _p=""
     for _d in /usr/bin /usr/sbin; do
         if [ -x "$_d/$_n" ]; then
@@ -173,10 +174,13 @@ ln -sf bash bin/sh
 util_linux_only /usr/sbin/blkid
 copy_closure bin/blkid /usr/sbin/blkid
 
-# Install mdadm, for a root that lives on a software RAID array. Only
-# libudev beyond libc, and that is already carried below for udevd.
+# Install mdadm, for a root that lives on a software RAID array. At
+# /usr/sbin, the path its udev rules run it from, with the init's bin/mdadm a
+# link to it.
 if [ -x /usr/sbin/mdadm ]; then
-    cp /usr/sbin/mdadm bin/mdadm
+    mkdir -p usr/sbin
+    copy_closure usr/sbin/mdadm /usr/sbin/mdadm
+    ln -sf ../usr/sbin/mdadm bin/mdadm
 else
     echo "Note: mdadm not installed — the initramfs cannot assemble an array"
 fi
@@ -339,7 +343,8 @@ else
     echo "Note: lvm2 not installed — the initramfs cannot activate a volume group"
 fi
 
-# Install udev rules and helpers
+# Install udev rules and helpers. Which of them stay is decided once every
+# program and library is in the tree; see the udev check before the pack.
 mkdir -p lib/udev/rules.d etc/udev/rules.d
 cp -r /usr/lib/udev/rules.d/* lib/udev/rules.d/ 2>/dev/null || true
 cp -r /etc/udev/rules.d/* etc/udev/rules.d/ 2>/dev/null || true
@@ -347,6 +352,17 @@ cp -r /usr/lib/udev/* lib/udev/ 2>/dev/null || true
 # udev reads only the compiled hwdb.bin, which this tree does not carry; the
 # sources would be carried for nothing.
 rm -rf lib/udev/hwdb.d
+
+# THE RULES NAME THE ROOT'S PATHS, so the initramfs answers at them. udevd
+# runs a bare helper name from /usr/lib/udev, and the packages' rules run
+# /usr/bin, /usr/sbin and /sbin; here the programs are in bin/ and the
+# helpers in lib/udev, so each of those paths is a link into the tree. lvm2's
+# and mdadm's binaries are in usr/sbin itself.
+mkdir -p usr/lib usr/sbin
+ln -sfn ../../lib/udev usr/lib/udev
+ln -sfn ../bin usr/bin
+ln -sfn bin sbin
+ln -sf ../../bin/blkid usr/sbin/blkid
 
 # Install kmod and overlay module
 cp /usr/bin/kmod bin/kmod
@@ -504,7 +520,11 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 mkdir -p /dev/pts
-mount -t devpts devpts /dev/pts
+# This mount is the root's too: it is moved there, and nothing remounts it.
+# gid=5 (tty) and mode 620 are what a new terminal is created with, so write
+# and wall can reach it; ptmxmode=666 lets every user open /dev/pts/ptmx.
+# The kernel's defaults are the opener's group, 600 and 000.
+mount -t devpts -o gid=5,mode=620,ptmxmode=666 devpts /dev/pts
 mkdir -p /dev/shm
 mount -t tmpfs -o nosuid,nodev tmpfs /dev/shm
 
@@ -1058,6 +1078,12 @@ while :; do
     PASS=\$(( PASS + 1 ))
     for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme* /dev/mmcblk*; do
         [ -e "\$dev" ] || continue
+        # A DRIVE WITH NO MEDIUM IN IT IS PASSED OVER. Opening it fails
+        # (ENOMEDIUM), so the scan opens before it mounts: a mount of it only
+        # prints "Can't open blockdev", and its sysfs size is no test, since
+        # an empty optical drive reports a guessed size rather than 0. It is
+        # not marked checked: a disc still spinning up opens on a later pass.
+        { : < "\$dev"; } 2>/dev/null || continue
         # ONE INSPECTION PER DEVICE. A node that mounts as iso9660 and has no
         # system.sfs on it will not grow one, so repeating the mount/umount
         # pair for it every 100 ms is churn on a device the scan has already
@@ -1335,6 +1361,67 @@ if [ -n "$(ls -A $UCODE/kernel/x86/microcode)" ]; then
     ( cd $UCODE && find . | LC_ALL=C sort | cpio -o -H newc --reproducible ) \
         > $UCODE_CPIO 2>/dev/null
 fi
+
+# EVERY UDEV RULE CARRIED HERE CAN RUN WHAT IT NAMES. The rules and helpers
+# above are the root's whole set, and a rule whose program is absent makes
+# udevd log "failed to execute" for every device it matches. Nothing is lost
+# by leaving one out: the root's udev replays every rule once it starts.
+#
+# A helper first: one that links a library this tree does not carry (libmtp,
+# libinput's, libgpod's) exists and fails at every event, so it goes. Then a
+# rules file any of whose RUN, PROGRAM or IMPORT{program} keys names a
+# program the tree lacks -- an absolute path, or a bare name, which udevd
+# runs from /usr/lib/udev -- goes whole: removing lines would leave its
+# GOTOs and LABELs unbalanced.
+#
+# THE RULES THAT ASSEMBLE A ROOT MUST STAY, or the build stops. device-mapper
+# (10-dm, 11-dm-lvm, 13-dm-disk, 95-dm-notify) is what LUKS and LVM wait on;
+# md's assemble an array; 64-btrfs completes a multi-device btrfs; and
+# 60-persistent-storage makes /dev/disk/by-*. Each is required only when the
+# root has it, and one that names a missing program is a program this step
+# failed to carry.
+for _f in lib/udev/*; do
+    [ -f "$_f" ] && [ ! -L "$_f" ] || continue
+    for _l in $(needed_libs "$_f" 2>/dev/null); do
+        if [ ! -e "lib/$_l" ]; then
+            echo "Note: udev helper ${_f##*/} needs $_l, which the initramfs does not carry — left out"
+            rm -f "$_f"
+            break
+        fi
+    done
+done
+_required=" 10-dm 11-dm-lvm 13-dm-disk 95-dm-notify 63-md-raid-arrays 64-md-raid-assembly 64-btrfs 60-persistent-storage "
+for _r in lib/udev/rules.d/*.rules etc/udev/rules.d/*.rules; do
+    [ -f "$_r" ] || continue
+    for _p in $(grep -v '^[[:space:]]*#' "$_r" \
+                | grep -oE '(RUN(\{program\})?|PROGRAM|IMPORT\{program\})[+:]?==?"[^"]*"' \
+                | sed 's/^[^"]*"[[:space:]]*//; s/[[:space:]].*//; s/"$//' | sort -u); do
+        case "$_p" in
+        /*) _t=".$_p" ;;
+        *[!A-Za-z0-9_.-]*) continue ;;
+        *) _t="lib/udev/$_p" ;;
+        esac
+        [ -e "$_t" ] && continue
+        _b=${_r##*/}
+        case "$_required" in
+        *" ${_b%.rules} "*)
+            echo "FATAL: the udev rule $_r runs $_p, which the initramfs does not carry." >&2
+            echo "       A root that needs this rule could not be assembled." >&2
+            exit 1
+            ;;
+        esac
+        echo "Note: udev rule $_b runs $_p, which the initramfs does not carry — left out"
+        rm -f "$_r"
+        break
+    done
+done
+for _r in $_required; do
+    if [ -f /usr/lib/udev/rules.d/$_r.rules ] && [ ! -f lib/udev/rules.d/$_r.rules ]; then
+        echo "FATAL: the udev rule $_r.rules is on the root and not in the initramfs." >&2
+        exit 1
+    fi
+done
+unset _f _l _r _p _t _b _required
 
 # EVERY PROGRAM'S LIBRARIES ARE HERE, or the initramfs is not built. NEEDED is
 # read with the reader proven above, without loading anything, for each

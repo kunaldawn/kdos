@@ -1,0 +1,16 @@
+Subject: Test the array itself, not defined(@v), in Foomatic::PPD::_tag
+
+Perl 5.22 and later refuse defined() on an array at compile time, so the
+module does not load. An empty array is what the test means.
+
+--- a/lib/Foomatic/PPD.pm
++++ b/lib/Foomatic/PPD.pm
+@@ -164,7 +164,7 @@
+ sub _tag {
+     my ($t, @v) = @_;
+ 
+-    return '' if !defined(@v);
++    return '' if !@v;
+ 
+     if (0) {
+ 	$v =~ s!\&!\&amp\;!g;

@@ -660,6 +660,31 @@ static void unmount_below(const char *prefix)
 	}
 }
 
+/*
+ * EVERY SWAP AREA BUT ZRAM. A swap partition or file on the disk holds it
+ * busy through partitioning and formatting. The compressed swap in RAM
+ * holds no disk; turned off, its pages have to come back into a live
+ * system's memory and the copy then runs with no swap at all.
+ */
+static void swapoff_disks(void)
+{
+	char buf[8192];
+	if (slurp("/proc/swaps", buf, sizeof(buf)) < 0)
+		return;
+	char *save = NULL;
+	/* The first line is the column header. */
+	char *l = strtok_r(buf, "\n", &save);
+	while (l && (l = strtok_r(NULL, "\n", &save))) {
+		char dev[192];
+		if (sscanf(l, "%191s", dev) != 1 ||
+		    !strncmp(dev, "/dev/zram", 9))
+			continue;
+		char *a[] = { "swapoff", dev, NULL };
+		logf_("turning off swap on %s", dev);
+		try_(a);
+	}
+}
+
 static void unmount_disk(const char *disk)
 {
 	char buf[16384];
@@ -1042,8 +1067,7 @@ static void do_prepare(void)
 		fail("required tool missing: limine — this machine starts in "
 		     "legacy BIOS mode and needs its BIOS boot code");
 
-	char *sw[] = { "swapoff", "-a", NULL };
-	try_(sw);
+	swapoff_disks();
 	unmount_below(TARGET "/");
 	char *um[] = { "umount", "-R", TARGET, NULL };
 	try_(um);
@@ -1343,7 +1367,7 @@ static void do_mount(void)
 
 static void do_copy(void)
 {
-	char *argv[32];
+	char *argv[48];
 	int n = 0;
 
 	argv[n++] = "rsync";
@@ -1360,7 +1384,35 @@ static void do_copy(void)
 	argv[n++] = "--exclude=/mnt/*";
 	argv[n++] = "--exclude=/media/*";
 	argv[n++] = "--exclude=/lost+found";
-	argv[n++] = "--exclude=/var/log/kinstall.log";
+	/*
+	 * THE LIVE SESSION'S RECORD STAYS ON THE MEDIUM. Every file under
+	 * /var/log and /var/cache was written by the live boot — the image
+	 * ships those trees as directories alone — so copied, the installed
+	 * system's syslog and `last` open with a session it never ran, and
+	 * this run's own kinstall.log among them. The directories are kept:
+	 * packages own them, and `kpkg check` reports a missing one. Rules
+	 * match in order, so the directory include comes before the exclude.
+	 */
+	argv[n++] = "--include=/var/log/**/";
+	argv[n++] = "--exclude=/var/log/**";
+	argv[n++] = "--include=/var/cache/**/";
+	argv[n++] = "--exclude=/var/cache/**";
+	/*
+	 * NOR THE LIVE ACCOUNTS' HISTORY. Shell and atuin history, and root's
+	 * caches, are what was typed and run before the install — a password
+	 * passed on a command line among it. The live account's own caches go
+	 * too, except the two the image builds into it: kdos (the theme name
+	 * and the rendered wallpaper, which the Theme step only rewrites for a
+	 * non-default accent) and bat (its syntax cache).
+	 */
+	argv[n++] = "--exclude=/root/.bash_history";
+	argv[n++] = "--exclude=/root/.cache/***";
+	argv[n++] = "--exclude=/root/.local/share/atuin/***";
+	argv[n++] = "--exclude=/home/kdos/.bash_history";
+	argv[n++] = "--include=/home/kdos/.cache/kdos/***";
+	argv[n++] = "--include=/home/kdos/.cache/bat/***";
+	argv[n++] = "--exclude=/home/kdos/.cache/*";
+	argv[n++] = "--exclude=/home/kdos/.local/share/atuin/***";
 	/*
 	 * PER-MACHINE IDENTITY IS NOT COPIED. Both of these are generated on
 	 * first boot only when absent (fs/etc/init.d/40_dbus.sh,

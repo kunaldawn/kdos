@@ -41,7 +41,7 @@ runs past the end of the file:
 The image build turns both vendors' files into the uncompressed archive the early loader scans
 (`script/phases/70_image/090_initramfs.sh`):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1273-1337 pin=b6eaf412d8f2 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1299-1363 pin=b6eaf412d8f2 -->
 
 ### Device firmware
 
@@ -65,7 +65,7 @@ The country is a module option, [`/etc/modprobe.d/kdos-regdom.conf`]{.idx}. No f
 installer writes it from the [time zone]{.idx} you choose, and `kdos-powerd` writes it whenever the time
 zone is set, as a two-letter code taken from `zone.tab`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=798-824 pin=07f9a54f24a7 -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=803-829 pin=07f9a54f24a7 -->
 
 A zone with no country, such as `UTC`, removes the file, and the radio stays on the world domain,
 `00`. On a machine installed with the zone `Europe/Berlin`, the file reads:

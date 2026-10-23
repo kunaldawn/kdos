@@ -26,10 +26,15 @@
  * - **A service name is checked before it is used.** It arrives from argv and
  *   selects a file; interpolated into a glob instead, `service start '*'`
  *   matches whatever it likes.
+ *
+ * - **One supervisor per name.** `supervise` on a name whose supervisor is
+ *   alive starts nothing (see cmd_supervise): a second one would take over the
+ *   pid file, and the first, with its daemon, could then never be stopped.
  * ---------------------------------
  */
 
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -38,6 +43,7 @@
 #include <string.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -55,6 +61,11 @@
  * A longer one is a clean exit and ends the row. */
 #define QUICK_SECS RESPAWN_DELAY
 
+/* How long `stop` waits for the service's processes to leave after SIGTERM
+ * before it sends SIGKILL, unless `supervise --stop-grace` names another. */
+#define STOP_GRACE 5
+#define MAX_GRACE 600
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static char *pidfile(const char *name)
@@ -71,8 +82,8 @@ static char *pidfile(const char *name)
  * a service that has not run for longer than a second since boot. The state
  * file is what the supervisor knows and the pid file cannot say:
  *
- *     up <daemon pid> <since> <failures> <last status>
- *     wait 0 <since> <failures> <last status>
+ *     up <daemon pid> <since> <failures> <last status> <stop grace>
+ *     wait 0 <since> <failures> <last status> <stop grace>
  *
  * `up` while the daemon runs, `wait` during the delay before the next start.
  * <since> is CLOCK_BOOTTIME seconds, so a clock step at boot cannot age a run.
@@ -80,8 +91,9 @@ static char *pidfile(const char *name)
  * shorter than STABLE_SECS, or status 0 from one shorter than QUICK_SECS. A
  * longer run that exits 0 is no failure, because a supervised `snooze` exits 0
  * after every job it runs (18_timers.sh) and waits at least until its next
- * slot first. The file is replaced by rename, so a reader never sees half a
- * line.
+ * slot first. <stop grace> is the `--stop-grace` the supervisor was started
+ * with, which `stop` reads because it runs in another process. The file is
+ * replaced by rename, so a reader never sees half a line.
  */
 static char *statefile(const char *name)
 {
@@ -99,11 +111,11 @@ static long boot_secs(void)
 }
 
 static void write_state(const char *name, const char *phase, pid_t daemon,
-			int fails, int last)
+			int fails, int last, int grace)
 {
-	char buf[96];
-	snprintf(buf, sizeof(buf), "%s %d %ld %d %d\n", phase, (int)daemon,
-		 boot_secs(), fails, last);
+	char buf[112];
+	snprintf(buf, sizeof(buf), "%s %d %ld %d %d %d\n", phase, (int)daemon,
+		 boot_secs(), fails, last, grace);
 	char *p = statefile(name);
 	kb_write_file_atomic(p, buf);
 	free(p);
@@ -130,6 +142,33 @@ static pid_t read_pid(const char *name)
 static int alive(pid_t pid)
 {
 	return pid > 1 && kill(pid, 0) == 0;
+}
+
+/*
+ * Whether `pid` is the supervisor of `name`: its command line is
+ * `ksvc supervise [--option VALUE]... <name> ...`. A pid file outlives a
+ * supervisor killed by SIGKILL, and its number can by then belong to anything,
+ * so a live pid alone does not make the service running.
+ */
+static int is_supervisor(pid_t pid, const char *name)
+{
+	if (!alive(pid))
+		return 0;
+	char path[48], buf[4096];
+	snprintf(path, sizeof(path), "/proc/%d/cmdline", (int)pid);
+	int n = kb_read_file(path, buf, sizeof(buf));
+	if (n <= 0)
+		return 0;
+	const char *arg[64];
+	int na = 0;
+	for (int i = 0; i < n && na < 64; i += (int)strlen(buf + i) + 1)
+		arg[na++] = buf + i;
+	if (na < 3 || strcmp(arg[1], "supervise"))
+		return 0;
+	int i = 2;
+	while (i + 1 < na && !strncmp(arg[i], "--", 2))
+		i += 2;
+	return i < na && !strcmp(arg[i], name);
 }
 
 /*
@@ -353,12 +392,18 @@ static void route_output(const char *name, int facility)
  *
  * `--facility NAME` is the syslog facility the forwarded output is sent
  * under (see forward_lines); daemon when it is not given.
+ *
+ * `--stop-grace SECS` is how long `stop` gives the service's processes to
+ * exit after SIGTERM before it sends SIGKILL; STOP_GRACE when it is not
+ * given. A daemon whose clean shutdown writes data out (a database flushing
+ * its buffers) names a longer one.
  */
 static int cmd_supervise(int argc, char **argv)
 {
 	int final[MAX_FINAL];
 	int nfinal = 0;
 	int facility = LOG_DAEMON;
+	int grace = STOP_GRACE;
 
 	while (argc >= 2) {
 		if (!strcmp(argv[0], "--final-exit")) {
@@ -377,6 +422,13 @@ static int cmd_supervise(int argc, char **argv)
 				kb_die("--facility wants a syslog facility "
 				       "(auth, authpriv, daemon, user, "
 				       "local0..local7), got '%s'", argv[1]);
+		} else if (!strcmp(argv[0], "--stop-grace")) {
+			char *end;
+			long g = strtol(argv[1], &end, 10);
+			if (*argv[1] == 0 || *end || g < 1 || g > MAX_GRACE)
+				kb_die("--stop-grace wants seconds from 1 to "
+				       "%d, got '%s'", MAX_GRACE, argv[1]);
+			grace = (int)g;
 		} else {
 			break;
 		}
@@ -385,10 +437,25 @@ static int cmd_supervise(int argc, char **argv)
 	}
 	if (argc < 2)
 		kb_die("usage: ksvc supervise [--final-exit CODE]... "
-		       "[--facility NAME] <name> <command> [args...]");
+		       "[--facility NAME] [--stop-grace SECS] <name> "
+		       "<command> [args...]");
 	const char *name = argv[0];
 	if (!name_ok(name))
 		kb_die("bad service name '%s'", name);
+
+	/* A second supervisor of a running name would overwrite the pid file
+	 * with its own id: `stop` would then end the second alone, and the
+	 * first, with its daemon, would run on with nothing left that can stop
+	 * it. A second system bus is worse — it takes the socket, and every
+	 * client already connected is left on a bus nobody else can reach.
+	 * `service start` on a running service is therefore a no-op that says
+	 * so, with status 0. */
+	pid_t old = read_pid(name);
+	if (is_supervisor(old, name)) {
+		printf("[SKIP] %s: already supervised (pid %d)\n", name,
+		       (int)old);
+		return 0;
+	}
 
 	/* A state file left by an earlier supervisor of this name would be
 	 * read as this one's until its first start writes a new one. */
@@ -434,7 +501,7 @@ static int cmd_supervise(int argc, char **argv)
 			}
 			int st = 0;
 			if (d > 0) {
-				write_state(name, "up", d, fails, last);
+				write_state(name, "up", d, fails, last, grace);
 				while (waitpid(d, &st, 0) < 0 && errno == EINTR)
 					;
 			} else {
@@ -461,7 +528,7 @@ static int cmd_supervise(int argc, char **argv)
 			else
 				fails = ran < STABLE_SECS ? fails + 1 : 1;
 			last = rc;
-			write_state(name, "wait", 0, fails, last);
+			write_state(name, "wait", 0, fails, last, grace);
 			printf("[KDOS] (%s) Exited with code %d. Restarting in "
 			       "%ds...\n", name, rc, RESPAWN_DELAY);
 			fflush(stdout);
@@ -481,6 +548,80 @@ static int cmd_supervise(int argc, char **argv)
 	return 0;
 }
 
+/* The stop grace and the running daemon's pid from the state file: the
+ * defaults (STOP_GRACE, none) when there is no file yet, or one written by a
+ * ksvc that recorded no grace. */
+static void read_stop_state(const char *name, int *grace, pid_t *daemon)
+{
+	char line[112], phase[8];
+	int dpid = 0, fails, last, g = 0;
+	long since;
+	*grace = STOP_GRACE;
+	*daemon = 0;
+	char *sp = statefile(name);
+	if (kb_read_line_file(sp, line, sizeof(line)) > 0) {
+		int got = sscanf(line, "%7s %d %ld %d %d %d", phase, &dpid,
+				 &since, &fails, &last, &g);
+		if (got >= 2 && !strcmp(phase, "up") && dpid > 1)
+			*daemon = (pid_t)dpid;
+		if (got == 6 && g >= 1 && g <= MAX_GRACE)
+			*grace = g;
+	}
+	free(sp);
+}
+
+/* Whether `pid` is a process that has not yet exited, and its process group.
+ * A zombie has exited: it waits only for its parent to collect it, and a
+ * kill(pid, 0) that counted it would hold `stop` for the whole grace under a
+ * parent slow to do that. */
+static int running(pid_t pid, pid_t *pgrp)
+{
+	char path[48], buf[512];
+	snprintf(path, sizeof(path), "/proc/%d/stat", (int)pid);
+	if (pid <= 1 || kb_read_file(path, buf, sizeof(buf)) <= 0)
+		return 0;
+	char *r = strrchr(buf, ')');
+	char state;
+	int ppid, pg;
+	if (!r || sscanf(r + 1, " %c %d %d", &state, &ppid, &pg) != 3)
+		return 0;
+	if (pgrp)
+		*pgrp = (pid_t)pg;
+	return state != 'Z' && state != 'X';
+}
+
+/* Anything left of the service: the supervisor, a member of its process
+ * group, or a daemon that left the group. */
+static int service_left(pid_t pid, pid_t daemon)
+{
+	if (running(pid, NULL) || running(daemon, NULL))
+		return 1;
+	DIR *d = opendir("/proc");
+	if (!d)
+		return kill(-pid, 0) == 0;
+	int left = 0;
+	struct dirent *e;
+	while (!left && (e = readdir(d))) {
+		if (!isdigit((unsigned char)e->d_name[0]))
+			continue;
+		pid_t pg;
+		left = running((pid_t)atoi(e->d_name), &pg) && pg == pid;
+	}
+	closedir(d);
+	return left;
+}
+
+/*
+ * SIGTERM to the supervisor's process group, then a wait of at most the stop
+ * grace for every process in it to exit, polled every 50 ms, then SIGKILL to
+ * whatever is left. The wait ends as soon as the group is empty, so a daemon
+ * that exits at once costs no more than that; a fixed pause would cost every
+ * service the same time at shutdown, and a daemon still flushing its data
+ * when the pause ran out would lose it. The supervisor dies on the SIGTERM at
+ * once, so it is the daemon's exit (and the log forwarder's, which follows
+ * it) that the wait measures. A daemon that put itself in a group of its own
+ * is signalled by its pid from the state file as well.
+ */
 static int cmd_stop_supervised(const char *name)
 {
 	if (!name_ok(name))
@@ -503,14 +644,28 @@ static int cmd_stop_supervised(const char *name)
 		return 1;
 	}
 
+	int grace;
+	pid_t daemon;
+	read_stop_state(name, &grace, &daemon);
+	pid_t dg;
+	if (daemon && (!running(daemon, &dg) || dg == pid))
+		daemon = 0;
+
 	printf("[KDOS] (%s) Stopping (pid %d)...\n", name, (int)pid);
-	/* The group, so the daemon goes with its supervisor. */
 	if (kill(-pid, SIGTERM) < 0)
 		kill(pid, SIGTERM);
-	sleep(1);
-	if (alive(pid)) {
+	if (daemon)
+		kill(daemon, SIGTERM);
+	struct timespec tick = { 0, 50 * 1000 * 1000 };
+	for (int i = 0; i < grace * 20 && service_left(pid, daemon); i++)
+		nanosleep(&tick, NULL);
+	if (service_left(pid, daemon)) {
+		printf("[KDOS] (%s) Still running after %ds, killing\n", name,
+		       grace);
 		if (kill(-pid, SIGKILL) < 0)
 			kill(pid, SIGKILL);
+		if (daemon)
+			kill(daemon, SIGKILL);
 	}
 	unlink(p);
 	free(p);
@@ -576,8 +731,83 @@ static int is_disabled(const char *name)
 	return off;
 }
 
+/* The columns before the status in a `list` row: two spaces, the name in
+ * twenty, a space, the tag in twelve, a space. */
+#define LIST_PREFIX 36
+
+static int list_width(void)
+{
+	struct winsize ws;
+	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col)
+		return ws.ws_col;
+	return 0;
+}
+
+/*
+ * One row's STATUS column from what the script's `status` printed: the first
+ * line that is not blank, then ` (+N more: service status <name>)` when more
+ * lines follow, or `—` when there is none. A script's status is free-form —
+ * nothing, or the several lines of `tlp-stat -s` or of two supervised daemons
+ * — and written straight to the terminal it either joins the next row or
+ * spills into it. On a terminal the line is cut to the width left after the
+ * prefix, at a character boundary, so that a row is always one line.
+ */
+static void list_status(const char *name, const char *out, int width)
+{
+	const char *first = NULL;
+	size_t flen = 0;
+	int more = 0;
+	for (const char *l = out; *l;) {
+		const char *e = strchr(l, '\n');
+		size_t n = e ? (size_t)(e - l) : strlen(l);
+		size_t a = 0, b = n;
+		while (a < b && isspace((unsigned char)l[a]))
+			a++;
+		while (b > a && isspace((unsigned char)l[b - 1]))
+			b--;
+		if (b > a) {
+			if (!first) {
+				first = l + a;
+				flen = b - a;
+			} else {
+				more++;
+			}
+		}
+		if (!e)
+			break;
+		l = e + 1;
+	}
+	if (!first) {
+		printf("—\n");
+		return;
+	}
+	char tail[192] = "";
+	if (more)
+		snprintf(tail, sizeof(tail), " (+%d more: service status %s)",
+			 more, name);
+	if (width > LIST_PREFIX) {
+		size_t room = (size_t)(width - LIST_PREFIX - 1);
+		size_t tl = strlen(tail);
+		if (tl > room) {
+			tail[0] = 0;
+			tl = 0;
+		}
+		size_t cps = 0, i = 0;
+		while (i < flen && cps < room - tl) {
+			i++;
+			while (i < flen && ((unsigned char)first[i] & 0xC0) ==
+						   0x80)
+				i++;
+			cps++;
+		}
+		flen = i;
+	}
+	printf("%.*s%s\n", (int)flen, first, tail);
+}
+
 static int cmd_list(void)
 {
+	int width = list_width();
 	printf("\nKDOS Services\n"
 	       "─────────────────────────────────────────────────────────\n"
 	       "  %-20s %-12s %s\n"
@@ -600,13 +830,19 @@ static int cmd_list(void)
 		char tag[24];
 		snprintf(tag, sizeof(tag), "[%s]",
 			 is_disabled(name) ? "DISABLED" : "ENABLED");
-		printf("  %-20s %-12s ", name, tag);
-		fflush(stdout);
-		/* The script's own status line is the whole answer, and its
+		/* The script's own status output is the whole answer, and its
 		 * exit status adds nothing: a DOWN service exits non-zero, so a
 		 * second line keyed on that status would only repeat the first
 		 * in different words. */
-		run_script(path, "status");
+		KbArgv a = {0};
+		kb_argv_add(&a, path);
+		kb_argv_add(&a, "status");
+		kb_argv_end(&a);
+		KbBuf out = {0};
+		kb_run_capture_buf(&a, &out);
+		printf("  %-20s %-12s ", name, tag);
+		list_status(name, out.p ? out.p : "", width);
+		kb_buf_free(&out);
 		free(path);
 	}
 	kb_strv_free(files);

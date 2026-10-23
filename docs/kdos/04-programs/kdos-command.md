@@ -149,9 +149,11 @@ runs `kdos help --pager` in a terminal.
 This book is on every image, as HTML under `/usr/share/doc/kdos`: open
 `/usr/share/doc/kdos/index.html` in a browser for the title page and the table of contents.
 `man 7 kdos` says where it is and lists its chapters. Every `kdos-*` command has a manual page,
-`man kdos-appbox` for example, whose description is the section of the book that documents the
-command, so the page and the book cannot disagree; `apropos kdos` lists them all with the one-line
-description from the [command index](../06-reference/command-index.md). The `kdos-doc` port writes
+`man kdos-appbox` for example, and so do the commands of ours without the prefix: `kpkg` and its
+four other names, `ksvc` and `service` (section 8), `kinstall` and `xdg-terminal-exec`. Each page's
+description is the section of the book that documents the command, so the page and the book cannot
+disagree, and its one-line summary is the command's row in the
+[command index](../06-reference/command-index.md); `apropos kdos` lists the `kdos-*` pages. The `kdos-doc` port writes
 all of it from `docs/kdos` at build time; see [Developing](../05-developer/developing.md#rebuilding-one-thing).
 
 The second book, *KDOS from Scratch*, which builds KDOS phase by phase and package by package, is
@@ -230,8 +232,8 @@ Each check reports one of three levels:
 | Hardware | The wireless regulatory database, its signature and the regulatory domain; SOF audio firmware and topologies; NVIDIA GSP firmware when `nouveau` is bound; whether the calling user can open each attached serial, camera and instrument device (`/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/video*`, `/dev/usbtmc*`), naming the owning group of any it cannot; and, on a live session, whether the boot medium is reachable at `/mnt/iso` |
 | Boxes | Whether erofs is available to the kernel, whether `kdos-packd` answers and by which mount route, whether the user is uid 1000 (packs are built for it), whether the home directory's filesystem can hold a container's writable layer, and whether every mounted pack still has a file behind it |
 | Session | Whether the compositor's socket exists (not only whether `WAYLAND_DISPLAY` is set), `XDG_RUNTIME_DIR`, and whether `kdos-comp`, `kdos-shell` and `xdg-desktop-portal-wlr` are running |
-| Containers | That the mount-namespace root is `/`, and the `/etc/subuid` and `/etc/subgid` entries rootless containers need; run as root, a warning instead |
-| Desktop | The accent state file, the foot theme, the KDOS scheme in `~/.config/kdeglobals`, an Xwayland socket in `/tmp/.X11-unix`, five setuid helpers (below), `/etc/subuid` and `/etc/subgid`, `kdos-powerd`, `kdos-energyd` (or the absence of any RAPL energy counter), `fcitx5` when installed, `kdos-oomd`, the compositor's frame-timing and command sockets, `kdos-keys`, the screen-capture portal and its `kdos-portals.conf`, and `~/.local/bin` on `PATH` |
+| Containers | That the mount-namespace root is `/`, the `/etc/subuid` and `/etc/subgid` entries rootless containers need, and, when podman is installed, that `podman info` opens this account's store: `ok` with the store's path, or a warning with podman's own first line of complaint; run as root, a warning instead |
+| Desktop | The accent state file, the foot theme, the KDOS scheme in `~/.config/kdeglobals`, an Xwayland socket in `/tmp/.X11-unix`, five setuid helpers (below), `/etc/subuid` and `/etc/subgid`, `kdos-powerd`, `kdos-energyd` (a `skip` on a machine with no RAPL energy counter, most virtual machines among them), `fcitx5` when installed, `kdos-oomd`, the compositor's frame-timing and command sockets (a `skip` when `kdos-comp` runs under another account, root's doctor among them, because the sockets are in that account's runtime directory), `kdos-keys`, the screen-capture portal and its `kdos-portals.conf`, and `~/.local/bin` on `PATH` |
 | Security | Whether the `kdos` password is still the shipped default. The section appears only when `/etc/shadow` is readable, so an ordinary user gets no section rather than a check that pretends it looked |
 
 The session check looks for the socket because a session that died leaves `WAYLAND_DISPLAY` set in
@@ -989,7 +991,10 @@ Offline vulnerability tracking: every installed package is compared against a pr
 Alpine security database vendored into the image at `/usr/share/kdos/secdb.txt` (override with
 `$KDOS_SECDB`). Alpine is the proxy because it also builds on musl from the same upstream
 releases. The comparison uses `kpkg`'s version comparator: a package is behind when its version is
-older than the one Alpine records as fixing a CVE. Nothing is scanned and nothing is fetched.
+older than the one Alpine records as fixing a CVE on the version's own branch, or, for a CVE that
+branch has no row for, older than every recorded fix. A CVE that a later branch also fixed is not
+counted against a version whose own release already closed it. Nothing is scanned and nothing is
+fetched.
 Details are in [Packaging](../03-architecture/packaging.md#vulnerability-tracking).
 
 Name a port to check only that one. On a system with no package database, the recipes in the
@@ -1044,7 +1049,7 @@ counts.
 | Verb | Does |
 |---|---|
 | `check` (the default when no argument is given; name it to pass an option) | Lists each package whose installed version differs from the ports tree, counts packages with no recipe here, names the tree's commit, and reports the last problem. Exit 0 up to date, 1 something behind, 2 no tree or no package database. `--json` prints the same as a document; `--out PATH` writes that document atomically to `PATH` and implies `--json`; `--fetch` runs `fetch` first |
-| `fetch` | Downloads the newest published tree, checks its signature against `/etc/kdos/keys/tree`, and installs it as `/ports`. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
+| `fetch` | Downloads the newest published tree, checks its signature against `/etc/kdos/keys/tree`, and installs it as `/ports`. With no key in that directory it downloads nothing and records `no-key`. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
 | `apply` | Downloads the sources of every package `check` lists, then builds and installs each one with `kpkg install -f`. An A/B slot it installed into is then checked with [`kpkg check --all --root`](../03-architecture/packaging.md#checking-an-installed-root), and a slot with a missing file, or a changed one outside `/etc`, is not tried; edited configuration under `/etc` is reported and does not stop it |
 | `theme` | Re-runs the theme generators for `$HOME` with the accent in force, after an update changes the artwork |
 
@@ -1053,14 +1058,17 @@ counts.
 release on GitHub (`https://github.com/kunaldawn/kdos/releases/latest/download`). A value with no
 scheme is a directory holding the two files, such as a USB stick. `ports/publish --release` makes
 both files and signs the tree with the release key; the image trusts that key because the build put
-its public half in `/etc/kdos/keys/tree`. Nothing is unpacked before the signature verifies. A tree
+its public half in `/etc/kdos/keys/tree`. An image built without a release key has none there, and
+on it `fetch` stops before the network with `no trusted tree key in /etc/kdos/keys/tree: this image
+can verify no published tree; `kdos update apply` builds from /ports`: the tree the image carries is
+the only one it can use. Nothing is unpacked before the signature verifies. A tree
 whose `TREE` stamp is older than the installed tree's is refused, and the same commit is reported
 as current. The signature is downloaded first, and one byte for byte the installed tree's (kept as
 `/var/lib/kdos/update.state.sig`) is reported as current without downloading the tree. The old tree and the new one change places in one rename. On the live ISO `/ports` lies in the overlay's read-only lower layer, which cannot be renamed, so there the old entries are removed and the new ones moved in one at a time.
 
 **What went wrong is recorded.** `fetch` and `apply` write their outcome to
 `/var/lib/kdos/update.state`, and `check` reports the first problem of: `no-tree`, then the last
-fetch's `no-network` or `fetch-failed`, then the last apply's `no-network`, `fetch-failed` or
+fetch's `no-key`, `no-network` or `fetch-failed`, then the last apply's `no-network`, `fetch-failed` or
 `build-failed`. In JSON these are the `"problem"` and `"detail"` fields beside `"behind"`, `"tree"`
 and `"packages"`. The nightly timer runs `kdos update check --fetch --out /var/lib/kdos/update.json`,
 and `fetch` and `apply` rewrite that file when they finish, so the panel's update badge shows a
@@ -1404,9 +1412,11 @@ service enable|disable <name>
 
 Services are the executable scripts `/etc/init.d/NN_<name>.sh`, and a service's name is the
 script's name without the number and the `.sh`. A name matches a script exactly first, then as a
-substring, so `service start ssh` finds `70_sshd.sh`. `list` prints each service, whether it
-starts at boot, and the script's own status line. `restart` runs the script's `stop`, waits a
-second and runs its `start`.
+substring, so `service start ssh` finds `70_sshd.sh`. `list` prints one line per service: its
+name, whether it starts at boot, and the first line the script's `status` printed, cut to the
+terminal's width. A script that printed more lines gets ` (+N more: service status <name>)` after
+it, and one that printed nothing gets `—`. `restart` runs the script's `stop`, waits a second and
+runs its `start`.
 
 `disable` creates `/etc/service.disabled/<name>` and `enable` removes it; the boot scripts skip a
 service with that marker (see
@@ -1419,11 +1429,15 @@ a file pattern could match anything.
 The init scripts start their daemons through `ksvc supervise`:
 
 ```sh
-ksvc supervise [--final-exit CODE]... [--facility NAME] <name> <command> [args...]
+ksvc supervise [--final-exit CODE]... [--facility NAME] [--stop-grace SECS] <name> <command> [args...]
 ```
 
 It forks a supervisor, writes the supervisor's process id to `/run/<name>.pid`, and runs the
-daemon under it. The daemon's output and the supervisor's own start and exit lines go to the
+daemon under it. When `/run/<name>.pid` already names a live supervisor of that name, it starts
+nothing, prints `[SKIP] <name>: already supervised (pid N)` and exits 0, so `service start` on a
+running service changes nothing. A second supervisor would overwrite the pid file, and the first,
+with its daemon, could then never be stopped; a second system bus would also take the socket from
+the clients already connected to the first. The daemon's output and the supervisor's own start and exit lines go to the
 system log under the service's name, one `info` message per line, and to
 `/run/kdos-svc.<name>.log`, which holds at most 64 KiB with one previous generation beside it as
 `.old`. The file is what is left before the system logger is up and while it restarts.
@@ -1440,15 +1454,21 @@ then says so once, removes its pid file and exits, instead of restarting the dae
 seconds for as long as the machine is up. A death by signal is always restarted.
 
 The supervisor runs in its own session and process group, so `ksvc stop-supervised` (what a
-script's `stop` calls) signals the supervisor, the daemon and the log forwarder together, with
-`SIGKILL` after a second if `SIGTERM` was not enough. A supervisor that did not lead its own
+script's `stop` calls) signals the supervisor, the daemon and the log forwarder together. It sends
+`SIGTERM`, then waits for every process in the group to exit, checking every 50 ms, for at most the
+stop grace: five seconds, or what `--stop-grace` (1 to 600) named. Whatever is still running then
+gets `SIGKILL`, after the line `[KDOS] (<name>) Still running after Ns, killing`. A daemon that
+exits at once is stopped at once, and one whose clean shutdown takes longer names a longer grace:
+`76_postgresql` passes 30 and `83_samba` 15. A daemon that moved itself into a process group of its
+own is signalled by its pid as well. A supervisor that did not lead its own
 group would be killed alone, orphaning the daemon while reporting success. The forwarder ignores
 the group's `SIGTERM` and leaves when the daemon closes its output, so a stopping daemon's last
 lines still reach the log.
 
 The pid file names the supervisor, which outlives every exit of its daemon, so the supervisor
 also keeps `/run/kdos-svc.<name>.state`: whether the daemon is running or waiting to be restarted,
-since when, how many failing exits it has had in a row and the last exit status. A non-zero exit
+its pid, since when, how many failing exits it has had in a row, the last exit status and the stop
+grace. A non-zero exit
 is a failure, and starts the count again at one after a run of 60 seconds or more. An exit with
 status 0 is a failure only after a run shorter than five seconds, a daemon giving up at once
 (ModemManager exits 0 when its bus name is taken); after a longer run it is a clean exit and
@@ -1489,6 +1509,7 @@ It is also copied into the initramfs. The full boot flow is in
 
 ```sh
 kdos-shot [region|screen|full|window|qr]
+kdos-shot --help
 ```
 
 | Mode | Takes |
@@ -1503,8 +1524,13 @@ The capture is taken with `grim`. A screenshot is saved as
 `$XDG_PICTURES_DIR/Screenshots` when that variable is set, copied to the clipboard with `wl-copy`,
 announced in a toast, and its path printed. `qr` writes its picture only to the runtime directory
 and deletes it once read, so nothing appears under `~/Pictures`, and its toast says only that a
-code was copied, never what it says. `--geom` is refused with an error: selection on this desktop
-is done with the pointer. An unknown mode prints the usage and exits 1.
+code was copied, never what it says.
+
+Every argument is read before anything is done. `-h` and `--help` print the usage to standard
+output and exit 0. `--geom` is refused with an error and exit 1, before the screenshot directory is
+made: selection on this desktop is done with the pointer. Any other option, a second mode or an
+unknown mode prints the usage to standard error and exits 1, so a mistyped argument never leaves
+the command waiting in `slurp` for a drag.
 
 ### kdos-banner and kdos-getty
 

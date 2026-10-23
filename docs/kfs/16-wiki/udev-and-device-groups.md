@@ -229,9 +229,11 @@ grep udevd /var/log/messages
 ```
 
 and check the module by hand with `sudo modprobe <module>` and `dmesg`. The system log holds
-`udevd`'s own complaints, such as `failed to execute '…'` for a rule's program. The lines of that
-kind logged in the first second of the boot, before the second `starting eudev` line, come from the
-initramfs's `udevd`, which reads rules whose helper programs it does not carry; they are expected.
+`udevd`'s own complaints, such as `failed to execute '…'` for a rule's program, which means the
+rule names a program that is not installed. The initramfs's `udevd`, which runs in the first second
+of the boot before the second `starting eudev` line, logs none: the image build leaves out every
+rule whose program the initramfs does not carry (see
+[The udev check](../15-image/090-initramfs.md#the-udev-check)).
 
 **A serial programmer, a board or an instrument looks like a broken cable.** That is the missing
 group, not the cable. Run `kdos doctor`; it names the group that owns each node you cannot open.

@@ -230,10 +230,18 @@ static void scan_cve(void)
 		 gen[0] ? gen : "?", age[0] ? age : "?", unk[0] ? unk : "?");
 
 	const char *p = strstr(buf, "\"findings\":");
+	const char *end;
 
 	if (!p)
 		return;
-	while (ncve < UP_MAX && (p = strchr(p, '{')) != NULL) {
+	/* THE FINDINGS END AT THEIR OWN `]`. The `"bundled"` array follows
+	 * with rows of the same shape and a `port` key, so a walk bounded only
+	 * by the next `{` counts every bundled copy as a vulnerability. No
+	 * field of a finding holds a `]`. */
+	end = strchr(p, ']');
+	if (!end)
+		return;
+	while (ncve < UP_MAX && (p = strchr(p, '{')) != NULL && p < end) {
 		struct row *r = &cve[ncve];
 
 		memset(r, 0, sizeof(*r));
@@ -327,7 +335,7 @@ static void draw(void)
 
 	snprintf(sub, sizeof(sub), "%d behind, %d with a known vulnerability",
 		 nbehind, ncve);
-	top = kch_header(w, "system-software-update", "Updates", sub, icons_on);
+	top = kch_header(w, "system-upgrade", "Updates", sub, icons_on);
 
 	ktui_tabs_draw(krect(2, top, w - 4, 1), PAGES, PG_N, page, -1, 0);
 	/*

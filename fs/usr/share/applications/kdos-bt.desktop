@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Bluetooth
+GenericName=Bluetooth Settings
+Comment=Pair and connect Bluetooth devices
+Exec=kdos-bt
+Icon=bluetooth
+Terminal=false
+NoDisplay=true
+Categories=Settings;HardwareSettings;
+StartupWMClass=kdos-bt

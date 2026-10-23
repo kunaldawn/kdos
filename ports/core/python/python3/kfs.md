@@ -14,7 +14,8 @@ modules [zlib](#port-zlib), [bzip2](#port-bzip2), [xz](#port-xz) and [zstd](#por
 The package has no Tk binding. `python3` is built in `30_foundation`, long before Tk exists, so
 `_tkinter` is turned off and the Tk-only parts of the standard library are deleted after the
 install. [python3-tkinter](#port-python3-tkinter) configures the same tarball again once Tk is
-installed and packages only that module and the `tkinter` package; both recipes carry `group =
+installed and packages that module with the Tk-only parts: the `tkinter` package, `turtle`,
+`turtledemo`, `idlelib` and the `idle3` command; both recipes carry `group =
 python3` so the version checker offers them as one bump, as [A second build of the same
 source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source)
 describes.
@@ -64,6 +65,10 @@ pip wheel where `python3 -m venv` looks for it.
   checks for the Bluetooth headers in advance, so the `socket` module is built without
   `AF_BLUETOOTH` whether or not [bluez](#port-bluez)'s headers are installed when python3 builds.
   BlueZ is a port of `41_system`.
+- `ac_cv_lib_intl_textdomain=no` — answers configure's check for `textdomain` in `-lintl` in
+  advance, so `libpython` does not link [libintl](#port-libintl), which the recipe does not
+  declare. musl's C library carries the gettext functions the `locale` module calls, and the
+  `undeclared` gate in `70_image` fails a `libpython` that names `libintl.so.8`.
 - `py_cv_module__tkinter=n/a` — marks `_tkinter` as not available, so configure never builds it,
   even when a rebuild finds Tcl and Tk installed. [python3-tkinter](#port-python3-tkinter) builds
   it.
@@ -102,6 +107,6 @@ libmpdec found; falling back to bundled libmpdec", and builds the copy from its 
 `NEEDED` entry for `libmpdec` when the build used it. `--with-system-expat` has no such fallback:
 configure links `pyexpat` with `-lexpat` without checking, so a missing expat fails the build.
 
-After the install, `build.sh` removes `tkinter`, `idlelib`, `turtledemo`, `turtle.py` and the
-`idle3` commands, which need Tk; links `python` to `python3`, and its manual page, so that both
+After the install, `build.sh` removes `tkinter`, `idlelib`, `turtledemo`, `turtle.py` with its bytecode in `__pycache__` and the
+`idle3` commands, which need Tk and which [python3-tkinter](#port-python3-tkinter) ships; links `python` to `python3`, and its manual page, so that both
 names work; and writes the `EXTERNALLY-MANAGED` file.

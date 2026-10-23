@@ -629,7 +629,7 @@ Its sixteen scripts run inside the chroot in the order their numbers give:
 |---|---|
 | `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into a signed binhost under `build/binhost/`; otherwise does nothing |
 | `015_pkgstore.sh` | With the package store on, evicts `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used first; otherwise does nothing |
-| `020_cleanup.sh` | Removes build-only files: the build user's caches, the kpkg work and package caches, podman's stores, and Python bytecode no package owns, then fails if a packaged Python module has no bytecode (each package carries its own, compiled by `kpkg` as hash-checked bytecode); resets `/root` to what `fs/root` holds, mode 0700 |
+| `020_cleanup.sh` | Removes build-only files: the build user's caches, the kpkg work and package caches, podman's stores, and Python bytecode no package owns, then fails if a packaged Python module has no bytecode (each package carries its own, compiled by `kpkg` as hash-checked bytecode); removes the translations and HTML manuals no package owns, which the packages themselves never carry; resets `/root` to what `fs/root` holds, mode 0700 |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries; with none, it removes every one |
 | `040_orphans.sh` | Removes every installed package that has no recipe in the tree |
 | `045_identity.sh` | Stamps `/etc/os-release` with the commit the image was built from (`BUILD_ID`) and that commit's date (`KDOS_BUILD_DATE`), which `kdos-about` shows |
@@ -638,7 +638,7 @@ Its sixteen scripts run inside the chroot in the order their numbers give:
 | `070_user.sh` | Creates each ordinary user's home directory from `/etc/skel`, and removes the account files' backups (`/etc/passwd-` and its kin), which carry the live accounts' password hashes |
 | `080_whatis.sh` | Builds the manual-page index `apropos` and `whatis` search |
 | `085_fontcache.sh` | Writes the fontconfig cache into `/usr/lib/fontconfig/cache` and checks that fontconfig accepts it |
-| `087_gates.sh` | Checks the finished tree: reports the files no package owns (`testing/unowned.py`), and stops the build on an undeclared library owner, an interpreter that does not resolve or OpenSSL 3 and 4 in one process (`testing/linkcheck.py`), or on a dangling link, a dead `Exec=`, a missing icon or udev program (`testing/entrycheck.py`) |
+| `087_gates.sh` | Checks the finished tree: reports the files no package owns (`testing/unowned.py`) and stops the build on one under `/usr/share/locale`, `man`, `doc` or `info`, and on an undeclared library owner, an interpreter that does not resolve or OpenSSL 3 and 4 in one process (`testing/linkcheck.py`), or on a dangling link, a dead `Exec=`, a missing icon or udev program (`testing/entrycheck.py`) |
 | `090_initramfs.sh` | Builds the initramfs, `build/initramfs.cpio.gz` |
 | `100_packs.sh` | Creates the pack store's directories; with `KDOS_PACK_KDOS=1`, also packs the system as the base pack `kdos` |
 | `105_ports.sh` | Stages the recipe-only ports tree for `/ports` in `build/image-ports` with its `TREE` stamp, puts the release key's public half in `/etc/kdos/keys/tree`, and writes the source offer `/usr/share/kdos/SOURCES` |
@@ -675,7 +675,8 @@ about 39 GB. `/etc/kpkg.conf`'s default `PORT_REPO` names `/ports/core` and the 
 `/ports/src` that hold ports. `/ports/TREE` names the commit and its time (`kdos-tree 1`, then
 `commit` and `time` lines), which is how `kdos update fetch` tells a newer published tree from an
 older one, and `build/keys/kdos-release.pub`, when it exists, goes into `/etc/kdos/keys/tree` as the
-key such a tree must be signed with; without it the image fetches no tree. The same step writes `/usr/share/kdos/SOURCES`, the written source
+key such a tree must be signed with. Without it the image trusts no tree, and `kdos update fetch`
+there stops before downloading anything, recording `no-key`. The same step writes `/usr/share/kdos/SOURCES`, the written source
 offer: the repository, the commit the image was built from (`-dirty` when the tree had unrecorded
 changes), its date, and each `sources-<N>` release of the archive that holds a source of an
 installed package, found through `sources.idx`; a source the index lacks is warned about in the

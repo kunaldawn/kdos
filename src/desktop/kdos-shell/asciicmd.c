@@ -10,10 +10,10 @@
  *   $ grim -t ppm - | kdos-ascii
  *   $ kdos-ascii shot.ppm --width 100 --plain
  *
- * The CPU half of the Super+A effect, and the thing that makes it a claim
- * rather than a demo: the compositor's GLES2 pass and this share ONE algorithm
- * in libkcell — the same candidate table, the same six discs, the same contrast
- * pass, the same distance metric. When they disagree, one of them is wrong.
+ * The algorithm is libkcell's, not this file's: the candidate table, the six
+ * discs, the contrast pass and the distance metric are kcell_ascii's, which
+ * kdos-devices' camera preview draws with too. This file only reads the
+ * picture and prints the grid.
  *
  * It lives in kdos-shell rather than in kdos-tools for a dependency reason and
  * not an organisational one: measuring a glyph's shape needs the glyph, which

@@ -271,14 +271,12 @@ cannot carry it: the supervisor sends a supervised program's output to syslog an
 `/run/kdos-svc.<name>.log`, never to whoever started the service.
 
 When the images are built, install creates the box with `kdos-box create <id>
-base=image:kdos/<id>`. Like every `image:` create, that first runs `podman pull` on the reference
-(see [kdos-box](#kdos-box)), and that pull fails. `podman pull` always contacts a registry: it
-resolves the short name `kdos/<id>` to the image just built, `localhost/kdos/<id>`, and asks a
-registry at `localhost` for it, where none answers. `create` therefore stops with `could not fetch
-kdos/<id>`, and install prints `<id>: the image built and the box did not`, counts the application
-as failed and does not regenerate the launchers for it. The images stay built and no box or launcher
-is made, so a store install does not reach the Start menu as shipped. Where a box is created, install
-regenerates your launchers before the command returns. The regeneration extracts `usr/share/applications` from the
+base=image:kdos/<id>`. The image is the one just built, `localhost/kdos/<id>` in your own image
+store, and an `image:` create uses a stored image as it is, without asking a registry (see
+[kdos-box](#kdos-box)). When the create fails, install prints `<id>: the image built and the box
+did not`, counts the application as failed and does not regenerate the launchers for it; the images
+stay built, and `kdos-box remove <id>` deletes the profile the failed create wrote. Where a box is
+created, install regenerates your launchers before the command returns. The regeneration extracts `usr/share/applications` from the
 image of every container whose name is a catalogue `app` row, and runs the
 `genlaunchers --packs-dir` form over them into your tree. If no such container yields entries, it
 falls back to `genlaunchers --packs --user`, which reads the installed packs instead; the two sources
@@ -893,8 +891,10 @@ would delete everybody else's, and a setting that disappears when an unrelated o
 than no setting.
 
 Namespaces and volumes apply at create time. A namespace or a volume cannot be changed on a running
-container, so `kdos-box profile <name> key=value` writes the file and then tells you to
-`kdos-box remove <name>` and create it again for those keys to take effect.
+container, so `kdos-box profile <name> key=value` writes the file and, for a box that has a
+container, tells you to `kdos-box remove <name>` and create it again for those keys to take effect.
+For a box with no container yet it says the profile applies when the box is created: `remove` would
+delete the profile just written.
 
 ### render
 
@@ -984,7 +984,7 @@ snapshot tag, is 1 to 63 characters from `A-Z a-z 0-9 . _ -` and does not start 
 | `snapshots <name>` | Lists them with their sizes |
 | `rollback <name> <tag>` | Replaces the writable layer with a snapshot. Refused while the box is running |
 | `start`, `stop`, `restart <name>` | Start recovers a stuck box and composes a pack box first, as the launch path does. Stop waits up to 10 seconds before killing |
-| `remove <name> [--force]` | Removes the container and releases its composed stack. The profile (`~/.config/kdos/boxes/<name>.conf`) is kept, and so is `~/.local/share/kdos/boxes/<name>`: a pack box's writable layer, its snapshots and a private home. A store box's writes are inside its container and go with it. The confirmation line names only the second directory, for both. It runs `podman rm`, with `-f` under `--force`, and keeps podman's standard error. When podman refuses, it prints `<name> was not removed (podman rm exited N)`, releases nothing and exits with podman's status: a running box is refused without `--force`, and a running box made from an image can outlast `podman rm -f` too, left `stopping`. A box with no container prints `<name> has no container to remove`, releases any composed stack and exits 1; when `podman container exists` cannot tell (status 125), it releases nothing and exits with that status. Stop the box before removing it |
+| `remove <name> [--force]` | Removes the container and releases its composed stack. The profile (`~/.config/kdos/boxes/<name>.conf`) is kept, and so is `~/.local/share/kdos/boxes/<name>`: a pack box's writable layer, its snapshots and a private home. A store box's writes are inside its container and go with it. The confirmation line names only the second directory, for both. It runs `podman rm`, with `-f` under `--force`, and keeps podman's standard error. When podman refuses, it prints `<name> was not removed (podman rm exited N)`, releases nothing and exits with podman's status: a running box is refused without `--force`, and a running box made from an image can outlast `podman rm -f` too, left `stopping`. A box with no container, such as one whose create failed, has its profile deleted and any composed stack released, prints `<name> had no container — its profile is removed` and exits 0; a name with neither a container nor a profile releases any composed stack the same way, prints `<name> has no container to remove` and exits 1. When `podman container exists` cannot tell (status 125), it releases nothing and exits with that status. Stop the box before removing it |
 | `profile <name> [key=value ...]` | Prints the profile, or sets keys and then prints it |
 | `gc [--dry-run]` | Stops idle boxes. See [Warmup and collection](#warmup-and-collection) |
 
@@ -994,9 +994,10 @@ does not: a box that will not start reports only `could not start <name>`, and `
 home is on overlayfs, says that a box's writable layer has nowhere to go and that a persistent box
 needs an installed system.
 
-A `create` with an `image:` base prints that it reaches the network and fetches unsigned content,
-runs `podman pull <ref>`, and stops if the pull fails. It then creates the box with
-`distrobox create`. The strict signature setting does not cover an `image:` base; `pack:` is the
+A `create` with an `image:` base first asks `podman image exists <ref>`. An image already in your
+image store, such as one `kdos app install` built, is used as it is, with no network. Otherwise the
+create prints that it reaches the network and fetches unsigned content, runs `podman pull <ref>`,
+and stops if the pull fails. It then creates the box with `distrobox create`. The strict signature setting does not cover an `image:` base; `pack:` is the
 offline, verified base.
 
 ### enter and the terminal window

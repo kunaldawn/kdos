@@ -194,8 +194,8 @@ members of `wheel` may read it.
   `kdos-powerd: refused uid 1001 (not root and in neither seat nor wheel)`.
 - Most virtual machines have no RAPL counter, so `56_energyd` skips itself there, logging
   `[SKIP] kdos-energyd: no readable RAPL energy domain` in `/run/kdos-init.energyd.log`, and
-  `kdos doctor` warns `no RAPL energy domain on this machine — per-app energy cannot be measured
-  here at all`. On an AMD host the guest's thermald is skipped as not Intel; on most Intel hosts
+  `kdos doctor` reports `[skip] no RAPL energy domain on this machine — per-app energy cannot be
+  measured here at all`, which leaves its exit status 0. On an AMD host the guest's thermald is skipped as not Intel; on most Intel hosts
   the guest's thermald exits with its status 2.
 - `upower -e` lists what the UPower service sees; with no battery that is only
   `/org/freedesktop/UPower/devices/DisplayDevice`. The first call starts the service.

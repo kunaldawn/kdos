@@ -65,7 +65,7 @@ quick-launch row read the first word of each line and ignore a `code=` after it:
 The menus, the launcher and the palette read desktop entries from the `applications` directory
 under each of `$XDG_DATA_HOME` and `$XDG_DATA_DIRS`, which the login shell sets:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=43-48 pin=3d54cc20891a -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=50-55 pin=3d54cc20891a -->
 
 So `~/.local/share/applications` holds an account's own entries, and `/usr/share/applications`
 and `/usr/local/share/applications` the system's; the image fills only the first of the two

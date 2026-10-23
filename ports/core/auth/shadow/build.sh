@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/no-mail-spool.patch"
+
 ./configure \
 	--prefix=/usr \
 	--bindir=/usr/bin \
@@ -30,6 +32,8 @@
 	--without-selinux \
 	--without-tcb \
 	--with-group-name-max-length=32 \
+	shadow_cv_maildir=none \
+	shadow_cv_mailfile=none \
 	CPPFLAGS=-I/usr/include/utmps LIBS="-lutmps -lskarnet"
 
 make

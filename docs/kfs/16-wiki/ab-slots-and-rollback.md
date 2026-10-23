@@ -33,7 +33,7 @@ The state is one file on the ESP, `EFI/kdos/bootstate`, which is
 `/boot/efi/EFI/kdos/bootstate` on the running system. No file in the tree ships it; the installer
 writes the first version:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2315-2328 pin=ab8cb81addd9 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2367-2380 pin=ab8cb81addd9 -->
 
 `kdos-bootctl` writes every later version, under a header of its own
 (`Written by kdos-bootctl; the initramfs reads it before it mounts a root filesystem.`), and adds
@@ -75,7 +75,7 @@ In the initramfs, the `BOOT SLOT` stage mounts the ESP, asks `select` for the ro
 that root's container, and unmounts it again. The `\$` in this excerpt is the generator's escaping:
 the init is written by a heredoc, and the generated script has a plain `$`.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=740-795 pin=75069784095f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=760-815 pin=75069784095f -->
 
 At the end of `rcS`, after every service script has run:
 

@@ -326,8 +326,8 @@ text and exits 1. `kdos update` is the command that updates the system; see
 | `kdos-getty` | `/usr/local/sbin` | Load the console font and palette onto a VT, then run a getty: `kdos-getty TTY GETTY [ARGS…]` | [Boot and init](../03-architecture/boot-and-init.md#the-console) |
 | `kdos-login` | `/usr/local/sbin` | Hand `tty1` to `agetty`, logging in automatically when `/etc/kdos/login.conf` names an account | [Boot and init](../03-architecture/boot-and-init.md#the-console) |
 | `kdos-banner` | `/usr/local/bin` | The login banner | [Boot and init](../03-architecture/boot-and-init.md#the-login-banner) |
-| `ksvc` | `/usr/sbin` | The service supervisor | [Administration](../02-user-guide/administration.md#services) |
-| `service` | `/usr/sbin` | The same supervisor, under the conventional name | [Administration](../02-user-guide/administration.md#services) |
+| `ksvc` | `/usr/sbin` | The service supervisor | [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
+| `service` | `/usr/sbin` | The same supervisor, under the conventional name | [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
 | `kinstall` | `/usr/bin` | The installer | [kinstall](../04-programs/kinstall.md) |
 
 `/etc/inittab` runs `kdos-getty tty1 kdos-login tty1` on the first console and

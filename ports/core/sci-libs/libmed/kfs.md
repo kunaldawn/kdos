@@ -17,6 +17,11 @@ MED-file's sources with both its autotools and its CMake build; the recipe uses 
 - `-DMEDFILE_BUILD_DOC=OFF`, `-DMEDFILE_INSTALL_DOC=OFF` — Neither generate the API documentation
   with Doxygen nor install the pre-built HTML documentation the source carries, which upstream
   installs by default.
+- `-DDESTDIR="$PKG"` — The staging directory, as a CMake variable. `tools/mdump/CMakeLists.txt`
+  makes the `mdump` and `xmdump` links with `install(CODE …)` in `${DESTDIR}/usr/bin`, a variable
+  expanded when CMake configures, not the `DESTDIR` environment variable the install reads, so
+  without it both links are written into the build root's `/usr/bin` and the package has none.
+  `build.sh` checks for both links after the install.
 
 ## Patches
 

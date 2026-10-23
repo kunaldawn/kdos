@@ -21,8 +21,10 @@ and what to read for a given failure. Every command on this page runs on a runni
 
 The services `syslog` and `dmesg` are enabled on every image. On the live medium `/var/log` is in the overlay's upper
 layer, which is memory unless a persistence store exists (`kdos persist`), so the log of a live
-session is gone at power-off. On an installed system it is on the root filesystem and survives a
-reboot. `/run` is a tmpfs on both, so everything under it is gone at every reboot.
+session is gone at power-off. The installer copies no file under `/var/log` to the disk, so an
+installed system's log and its `last` record begin at its first boot. On an installed system the
+log is on the root filesystem and survives a reboot. `/run` is a tmpfs on both, so everything under
+it is gone at every reboot.
 
 ## Configuration
 
@@ -71,6 +73,12 @@ buffer and the system log.
 name the script gave the supervisor, such as `chronyd`. The two differ for some services; see
 [Services](services.md#a-service-script). The `/run` files are listed in
 [/run/ — system runtime](../../kdos/06-reference/filesystem-and-ipc.md#run--system-runtime).
+
+A supervised daemon that wrote to the system log itself and copied each line to its standard
+error would reach the log twice, so each is set to one of the two. ModemManager writes to standard
+output and is logged under `ModemManager`; `dbus-daemon` runs with `--syslog-only`, its lines carry
+the tag `dbus-daemon`, and `/run/kdos-svc.dbus.log` holds only what the services the bus starts
+print.
 
 ## Usage
 

@@ -195,6 +195,7 @@ static int generated(const char *rel)
 		"usr/lib/gio/modules/giomodule.cache",
 		"usr/share/info/dir",
 		"usr/share/applications/mimeinfo.cache",
+		"usr/lib/vlc/plugins/plugins.dat",
 	};
 	for (size_t i = 0; i < sizeof(exact) / sizeof(*exact); i++)
 		if (!strcmp(rel, exact[i]))

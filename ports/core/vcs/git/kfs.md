@@ -42,6 +42,13 @@ so the whole configuration is the `_mk` array, passed unchanged to the main buil
 The second `make`, in `contrib/subtree`, builds and installs `git subtree` and its manual page:
 it is shipped in Git's source but not built by the top-level Makefile.
 
+`git svn` and `git cvsserver` are removed from the package after the install, with their manual
+pages and the `Git::SVN` modules. Git's Makefile has no switch to leave them out, and neither can
+start here: `git svn` needs Subversion's Perl bindings (`SVN::Core`) and `git cvsserver` needs
+DBI with its SQLite driver, and none of them is a port. `git cvsimport`, `git cvsexportcommit` and
+`git archimport` stay; they start, and run the `cvsps`, `cvs` or `tla` program their work needs,
+none of which is a port either.
+
 `build.sh` installs two shell files from `contrib/completion`. `git-completion.bash` goes to
 `/usr/share/bash-completion/completions/git`, where bash-completion loads it the first time `git`
 is completed. `git-prompt.sh` goes to `/usr/share/git`, for a prompt to source; nothing sources it

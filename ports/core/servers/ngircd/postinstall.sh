@@ -20,4 +20,9 @@
 root="${PKG_ROOT:-/}"
 grep -q '^ngircd:' "$root/etc/group" 2>/dev/null || groupadd -R "$root" -r ngircd
 grep -q '^ngircd:' "$root/etc/passwd" 2>/dev/null || \
-	useradd -R "$root" -r -g ngircd -d /var/empty -s /sbin/nologin ngircd
+	useradd -R "$root" -r -g ngircd -d /nonexistent -s /sbin/nologin ngircd
+
+# The guard leaves an existing account as it is, so the home is set apart
+# from it: a tree that already has the account takes /nonexistent too. usermod
+# exits 0 without writing when the home is already /nonexistent.
+usermod -R "$root" -d /nonexistent ngircd

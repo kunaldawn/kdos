@@ -21,7 +21,7 @@ What it carries comes from these ports:
 |---|---|
 | [bash](#port-bash), [coreutils](#port-coreutils), [grep](#port-grep), [sed](#port-sed) | The shell `init` is written in, and the tools it and the rescue shell run |
 | [util-linux](#port-util-linux) | [`blkid`]{.idx}, [`mount`]{.idx}, [`umount`]{.idx}, `losetup`, `switch_root`, `dmesg`, `setsid` |
-| [eudev](#port-eudev), [kmod](#port-kmod) | `udevd`, `udevadm`, `modprobe` and the udev rules |
+| [eudev](#port-eudev), [kmod](#port-kmod) | `udevd`, `udevadm`, `modprobe` and the udev rules whose programs the initramfs carries |
 | [linux](#port-linux) | The modules in the build's list |
 | [e2fsprogs](#port-e2fsprogs) | [`e2fsck`]{.idx}, for the check an ext root gets before it is mounted |
 | [mdadm](#port-mdadm), [cryptsetup](#port-cryptsetup), [lvm2](#port-lvm2), [thin-provisioning-tools](#port-thin-provisioning-tools) | RAID assembly, the LUKS unlock and volume-group activation, each when installed |
@@ -42,7 +42,7 @@ one on the machine.
 
 The module list, in the build script, decides which disks and filesystems can hold a root:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=429-475 pin=e85bf30992e0 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=445-491 pin=e85bf30992e0 -->
 
 The last line writes the same list to the image as [`/boot/initramfs.modules`]{.idx}. That file is the one
 setting on the machine: the [`linux`]{.idx} postinstall reads it to decide which modules to append for a
@@ -51,11 +51,11 @@ new kernel. A module named there is carried for the next kernel installed into t
 The command-line words the generated `init` reads (`\$` here is the generator's escaping: the init
 is written by a heredoc, and the generated script has a plain `$`):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=611-635 pin=0cddbb0c0606 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=631-655 pin=0cddbb0c0606 -->
 
 The rescue helper, which every failure ends in:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=535-557 pin=17c2e4e0f539 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=555-577 pin=17c2e4e0f539 -->
 
 The new kernel's initramfs and its deploy, in the `linux` postinstall:
 

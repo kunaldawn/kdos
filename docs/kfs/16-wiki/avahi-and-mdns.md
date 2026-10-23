@@ -15,6 +15,9 @@ Its `postinstall.sh` creates the system accounts the daemon and [`avahi-autoipd`
 
 <!-- kfs:include ports/core/net-libs/avahi/postinstall.sh lines=24-32 pin=df89e3cad53e -->
 
+It then gives `/var/lib/avahi-autoipd`, which the package carries, to `avahi-autoipd`: the
+directory is that account's home and the root `avahi-autoipd` chroots into.
+
 The service script is part of the base filesystem, `fs/etc/init.d/45_avahi.sh`, so it runs at every
 boot on the live medium and on an installed system alike; the installer offers no choice for it.
 It runs after `40_dbus`, because the daemon is a system-bus service:
@@ -50,7 +53,7 @@ Each `.service` file here is a service the daemon publishes for as long as it ru
 two, for SSH and SFTP; the port deletes them, so this machine advertises no SSH server, whether or
 not one is running:
 
-<!-- kfs:include ports/core/net-libs/avahi/build.sh lines=51-51 pin=b6918143adf3 -->
+<!-- kfs:include ports/core/net-libs/avahi/build.sh lines=52-52 pin=b6918143adf3 -->
 
 ### The firewall
 
@@ -66,6 +69,14 @@ On a glibc system, `nss-mdns` in this file is what lets every program resolve `.
 C library, musl, does not read the file at all, and the file says so:
 
 <!-- kfs:include fs/etc/nsswitch.conf -->
+
+### Who may change the daemon's host name
+
+Any user may browse, resolve and publish through the daemon. Its D-Bus policy,
+`/usr/share/dbus-1/system.d/avahi-dbus.conf`, keeps `SetHostName`, which renames the machine on
+the local network, to root and the members of `wheel`, the group the avahi port's
+`--with-avahi-priv-access-group=wheel` names. A member of `wheel` may run
+`avahi-set-host-name <name>`; the name lasts until the daemon restarts.
 
 ## Usage
 
@@ -180,8 +191,8 @@ hostname.
 machine on another subnet is never listed; reach it by its address. A machine that is asleep, or
 whose own firewall drops UDP 5353, does not answer either.
 
-**`ping name.local` fails.** It prints `ping: name.local: Invalid flags`, which is what this
-`ping` prints for every name it cannot resolve, and `getent hosts name.local` prints nothing.
+**`ping name.local` fails.** It prints `ping: name.local: Name does not resolve`, and
+`getent hosts name.local` prints nothing.
 That is expected; see [Resolving a .local name](#resolving-a-local-name).
 
 ## Known gaps

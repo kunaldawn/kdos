@@ -22,8 +22,8 @@ their start-up order fit together is in [Portals](../../kdos/03-architecture/ses
 | [geoclue](#port-geoclue) | The location service behind the Location portal |
 | [kdos-tools](#port-kdos-tools) | [`kdos-shot`]{.idx}, the [screenshot]{.idx} tool, which captures through the compositor directly with `grim` rather than through a portal |
 
-Every one is named in a phase list, so all are on the image. None is a system service. The front end and the capture backend are
-started by `kdos-desktop-start` once the compositor's socket exists, in that order; the KDOS and
+Every one is named in a phase list, so all are on the image. None is a system service. `kdos-desktop-start` has D-Bus start the capture backend and then the
+front end once the compositor's socket exists; the KDOS and
 GTK backends are started by D-Bus when first asked, which the front end does as it starts, so both
 are running within seconds of a login; GeoClue is started on the system bus by D-Bus.
 A login on `tty2` or over SSH has no portals of its own, because no compositor is running for it.
@@ -61,7 +61,7 @@ Every key is described in `xdg-desktop-portal-wlr(5)`, which the port installs.
 The start-up order is set in `fs/usr/local/bin/kdos-desktop-start`, installed as
 `/usr/local/bin/kdos-desktop-start`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=46-74 pin=0bd98f27d533 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=46-95 pin=9602b31a72c7 -->
 
 ### The capture keys
 
@@ -227,10 +227,14 @@ order:
 ```bash
 /usr/lib/xdg-desktop-portal-wlr -r &
 sleep 1
-/usr/lib/xdg-desktop-portal -r &
+pkill -f '^/usr/lib/xdg-desktop-portal$'
+sleep 1
+dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
+  org.freedesktop.DBus.StartServiceByName string:org.freedesktop.portal.Desktop uint32:0
 ```
 
-`-r` replaces a running instance. Logging out and in again does the same.
+`-r` replaces the running backend. The front end is ended and started by the bus, as the session
+starts it. Logging out and in again does the same.
 
 **`kdos doctor` warns `kdos-portals.conf missing`.**
 Without the file ScreenCast has no backend. It belongs to the base filesystem rather than to a

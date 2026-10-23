@@ -456,7 +456,7 @@ twelve Alpine branches (`main` and `community` for v3.19 to v3.24) by `secdb/ven
 committed and diffable, so the answer needs no network.
 
 The question it answers is narrow and exact: is the version KDOS pins older than the version
-Alpine records as fixing a CVE. That is a version comparison with libkpkg's `kp_vercmp`, the same
+Alpine records as fixing a CVE on the branch KDOS pins. That is a version comparison with libkpkg's `kp_vercmp`, the same
 comparator `kdos-portup`, the port-version checker, uses, not a scan of binaries.
 
 NVD was rejected because its data feeds are retired in favour of an API, which needs a network;

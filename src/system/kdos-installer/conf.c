@@ -181,7 +181,8 @@ void conf_defaults(void)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-static void set_kv(const char *k, const char *v)
+/* -1 for a key this installer does not know. */
+static int set_kv(const char *k, const char *v)
 {
 	if (!strcmp(k, "keymap"))
 		kb_strlcpy(cfg.keymap, v, sizeof(cfg.keymap));
@@ -238,9 +239,9 @@ static void set_kv(const char *k, const char *v)
 		kb_strlcpy(cfg.theme, v, sizeof(cfg.theme));
 	else if (!strcmp(k, "alien_apps"))
 		cfg.with_appbox = atoi(v);
-	/* Space-separated group or application ids. An unknown one falls back
-	 * to `essential` — see ki_apps_enter(); refusing here would leave a
-	 * machine with no operating system on it over one misspelling. */
+	/* Space-separated catalogue group ids. A line none of whose ids names
+	 * a group falls back to `essential` — see ki_apps_enter(); refusing
+	 * would leave a machine with no operating system over a misspelling. */
 	else if (!strcmp(k, "apps"))
 		kb_strlcpy(cfg.apps, v, sizeof(cfg.apps));
 	else if (!strcmp(k, "reboot"))
@@ -252,7 +253,9 @@ static void set_kv(const char *k, const char *v)
 			if (!p)
 				cfg.svc_off |= 1u << i;
 		}
-	}
+	} else
+		return -1;
+	return 0;
 }
 
 int conf_load(const char *path)
@@ -281,7 +284,12 @@ int conf_load(const char *path)
 		n = strlen(v);
 		while (n && (v[n - 1] == ' ' || v[n - 1] == '\r'))
 			v[--n] = 0;
-		set_kv(k, v);
+		/* Named, not refused: the key still does nothing, but an answer
+		 * file whose key was misspelt or renamed otherwise installs the
+		 * default for it with no sign that the line was never read. */
+		if (set_kv(k, v) < 0)
+			fprintf(stderr, "kinstall: %s: unknown key '%s' ignored\n",
+				path, k);
 	}
 	return 0;
 }

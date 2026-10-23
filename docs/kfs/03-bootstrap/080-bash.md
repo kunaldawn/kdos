@@ -11,7 +11,7 @@ and [ncurses](040-ncurses.md) already in `build/fs`, and makes `sh` a link to it
 
 The step unpacks the port's tarball and builds in a `build` directory inside it:
 
-<!-- kfs:include script/phases/10_bootstrap/080_bash.sh lines=24-41 pin=942b58766c3b -->
+<!-- kfs:include script/phases/10_bootstrap/080_bash.sh lines=24-46 pin=d5499a5633a8 -->
 
 As with readline, only the tarball is unpacked: the upstream patch series beside the recipe
 (`bash<ver>-NNN`, numbered from 001) is not applied to this build.
@@ -42,9 +42,17 @@ As with readline, only the tarball is unpacked: the upstream patch series beside
 : Use musl's `malloc` rather than the allocator bash ships, so the shell allocates memory the way
   every other program in the root does.
 
-No switch names native-language support, so configure's default holds: it finds the GNU gettext
-functions in musl itself, and bash is built with translated messages, its catalogues installed
-under `/usr/share/locale`.
+`--disable-nls`
+: Build no message catalogues. The bash port builds them and kpkg prunes them from its package,
+  so a copy installed here would be adopted by no package and outlive every install.
+
+### Removing the HTML manuals
+
+The `rm` deletes `bash.html` and `bashref.html`, which the install writes under
+`/usr/share/doc/bash`. kpkg prunes HTML manuals from every package (see
+[Size and language policy](../../kdos/05-developer/writing-ports.md#size-and-language-policy)), so
+the bash port never installs them again, and these copies would be adopted by no package (see
+[Part III](intro.md#what-the-bootstrap-leaves-behind)).
 
 ### The `sh` link
 
@@ -61,7 +69,7 @@ adopts [`bash`]{.idx} and the `sh` link left here. The port build:
 - applies the upstream patch series in order before configuring;
 - adds `-DSYS_BASHRC='"/etc/bash.bashrc"'` to `CFLAGS`, so an interactive shell reads the
   system-wide `/etc/bash.bashrc`. An interactive bootstrap shell reads no system-wide bashrc;
-- passes the same four switches as this step;
+- passes the same four switches as this step, without `--disable-nls`;
 - installs `bash` and the `sh` link under `/bin`, the same directory as `/usr/bin` on the merged
   layout, and is compiled with the chroot's
   [release flags](../../kdos/05-developer/writing-ports.md#the-release-flags).

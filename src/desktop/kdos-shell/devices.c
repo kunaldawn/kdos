@@ -33,18 +33,17 @@
  * the portal, so PipeWire would report nothing at all.
  *
  * THE PREVIEW IS ASCII, and that is not a joke — it is libkcell's shape-vector
- * renderer (`kcell_ascii_image`), the same engine behind `Super+A` and
- * `kdos-shot --text`, pointed at one grabbed frame. A camera test that draws
- * the camera as characters on a phosphor desktop is the most in-character
- * thing in this program and it costs about forty lines, because the renderer
- * was already here.
+ * renderer (`kcell_ascii_image`), the same engine behind `kdos-ascii`, pointed
+ * at one grabbed frame. A camera test that draws the camera as characters on
+ * a phosphor desktop is the most in-character thing in this program and it
+ * costs about forty lines, because the renderer was already here.
  *
  * THE SCANNERS COME FROM `scanimage -L`, NOT FROM libsane. Linking the library
  * would put every backend's shared object and its configuration into this
  * process to ask a question `scanimage` already answers — and the scanning
  * itself is `scanimage` too, so there is nothing left for the link to buy. The
  * probe walks a USB bus and the network and takes seconds, so it runs once per
- * refresh and never on a keystroke.
+ * refresh as a job the loop reads, and the window is never held back for it.
  *
  * OPENING A CAMERA TO PREVIEW IT *IS* USING IT. The privacy lamp lights for
  * this program exactly as it would for anything else, the fd is closed the
@@ -59,6 +58,7 @@
 #include <limits.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -147,11 +147,13 @@ static struct dv_cam cams[DV_MAX_CAM];
 static int ncam;
 static struct dv_mic mics[DV_MAX_MIC];
 static int nmic;
+static int npcm;		/* every PCM, playback included */
 static struct dv_input inputs[DV_MAX_INPUT];
 static int ninput;
 static struct dv_scan scans[DV_MAX_SCAN];
 static int nscan;
 static char scan_why[96];
+static ShJob scan_job;
 static ShMountRow media[DV_MAX_MEDIA];
 static int nmedia;
 static char media_why[96];
@@ -513,6 +515,7 @@ static void scan_mics(void)
 	KprSoundPcm *p = kpr_sound_pcms(&n);
 
 	nmic = 0;
+	npcm = n;
 	for (int i = 0; i < n && nmic < DV_MAX_MIC; i++) {
 		if (!p[i].capture)
 			continue;
@@ -599,54 +602,81 @@ static void media_action(int i, const char *verb)
  *
  * ONE CALL, AND IT IS SLOW. Probing a USB bus and the network for scanners
  * takes seconds, so it runs once per refresh like the update check and never
- * on a keystroke.
+ * on a keystroke — and as a job the loop pumps, never waited for before the
+ * window maps: a toplevel that maps only after the probe is a shortcut that
+ * does nothing for that long, and a window that stops answering configures.
+ * The section says it is looking until the answer lands.
  *
  * `-f` RATHER THAN THE DEFAULT LISTING, because the default is prose — "device
  * `x' is a Y Z flatbed scanner" — with the device string in backquotes that a
  * parser has to find. The format string asks for exactly two fields and a
- * separator no SANE name contains.
+ * separator no SANE name contains. The job's pipe carries stderr too, and a
+ * line with no tab in it is SANE talking, not a scanner.
  */
-static void scan_scanners(void)
+static void scan_line(const char *line, void *user)
 {
-	char buf[4096];
-	KbArgv a = { 0 };
+	char ln[256];
+	char *tab;
 
-	nscan = 0;
+	(void)user;
+	if (nscan >= DV_MAX_SCAN)
+		return;
+	snprintf(ln, sizeof(ln), "%s", line);
+	tab = strchr(ln, '\t');
+	if (!tab)
+		return;
+	*tab = '\0';
+	if (!ln[0])
+		return;
+	snprintf(scans[nscan].dev, sizeof(scans[nscan].dev), "%s", ln);
+	snprintf(scans[nscan].name, sizeof(scans[nscan].name), "%s", tab + 1);
+	nscan++;
+}
+
+/*
+ * A SCANNER THE USER CANNOT OPEN LOOKS EXACTLY LIKE NO SCANNER, and that is
+ * the failure worth naming: 70-kdos-scanner.rules grants the device to
+ * `dialout`, and without that membership SANE enumerates nothing and reports
+ * no error at all.
+ */
+static void scan_done(void)
+{
 	scan_why[0] = '\0';
-	if (!recorded("scanimage-L", buf, sizeof(buf))) {
-		kb_argv_add(&a, "scanimage");
-		kb_argv_add(&a, "-f");
-		kb_argv_add(&a, "%d\t%v %m\n");
-		kb_argv_end(&a);
-		if (kb_run_capture(&a, buf, sizeof(buf)) < 0) {
-			snprintf(scan_why, sizeof(scan_why),
-				 "scanimage is not installed");
-			return;
-		}
-	}
-	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp);
-	     ln && nscan < DV_MAX_SCAN; ln = strtok_r(NULL, "\n", &sp)) {
-		char *tab = strchr(ln, '\t');
-
-		if (!tab)
-			continue;
-		*tab = '\0';
-		if (!ln[0])
-			continue;
-		snprintf(scans[nscan].dev, sizeof(scans[nscan].dev), "%s", ln);
-		snprintf(scans[nscan].name, sizeof(scans[nscan].name), "%s",
-			 tab + 1);
-		nscan++;
-	}
-	/*
-	 * A SCANNER THE USER CANNOT OPEN LOOKS EXACTLY LIKE NO SCANNER, and
-	 * that is the failure worth naming: 70-kdos-scanner.rules grants the
-	 * device to `dialout`, and without that membership SANE enumerates
-	 * nothing and reports no error at all.
-	 */
-	if (!nscan && !scan_why[0])
+	if (!nscan)
 		snprintf(scan_why, sizeof(scan_why),
 			 "none found — `id` should list dialout");
+}
+
+/*
+ * The recorded answer is read at once, so a golden draws the finished list.
+ * 1 when a probe was started and the loop has to pump it.
+ */
+static int scan_scanners(void)
+{
+	char buf[4096];
+	const char *argv[] = { "scanimage", "-f", "%d\t%v %m\n", NULL };
+
+	if (scan_job.running)
+		return 1;
+	nscan = 0;
+	scan_why[0] = '\0';
+	if (recorded("scanimage-L", buf, sizeof(buf))) {
+		for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp); ln;
+		     ln = strtok_r(NULL, "\n", &sp))
+			scan_line(ln, NULL);
+		scan_done();
+		return 0;
+	}
+	scan_job.line = scan_line;
+	scan_job.user = NULL;
+	if (sh_job_start(&scan_job, argv, NULL) != 0) {
+		snprintf(scan_why, sizeof(scan_why), "%s",
+			 scan_job.last[0] ? "scanimage is not installed"
+					  : "scanimage would not start");
+		return 0;
+	}
+	snprintf(scan_why, sizeof(scan_why), "looking for scanners");
+	return 1;
 }
 
 /*
@@ -790,22 +820,32 @@ static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 			 * out as `can ca`. */
 			empty = "none — no /dev/video device";
 		else if (!strcmp(r->head, "MICROPHONES") && !nmic)
-			empty = "none — no sound card is present";
+			/* A card that only plays — HDMI, a USB DAC — is a
+			 * sound card and still no microphone. */
+			empty = npcm ? "none — no card can record"
+				     : "none — no sound card is present";
 		else if (!strcmp(r->head, "REMOVABLE MEDIA") && !nmedia)
 			empty = media_why[0] ? media_why : "nothing plugged in";
 		else if (!strcmp(r->head, "APPLICATION SETS ON A STICK") &&
 			 !updates_n)
-			empty = "none — no .ktar on a mounted stick";
+			empty = "none on a mounted stick";
 		else if (!strcmp(r->head, "SCANNERS") && !nscan)
 			empty = scan_why;
 		else if (!strcmp(r->head, "INPUT") && !ninput)
 			empty = "none";
+		/* Past the heading, never over it: column twenty holds every
+		 * heading but the longest, and the popup's fifty-six columns
+		 * leave that one's note twenty-three. */
+		int nx = 2 + ktui_utf8_width(r->head) + 2;
+
+		if (nx < 20)
+			nx = 20;
 		if (empty)
-			ktui_draw_text(20, y, list_w - 22, empty,
+			ktui_draw_text(nx, y, list_w - nx - 2, empty,
 				       media_why[0] &&
 					       !strcmp(r->head,
 						       "REMOVABLE MEDIA")
-					       ? KT_ERR : KT_DIM,
+					       ? KT_ERR : KT_MID,
 				       KT_BG, KT_A_NONE);
 		return;
 	}
@@ -952,6 +992,24 @@ static void draw_frame(void)
 	ktui_draw_flush();
 }
 
+/* The rows are rebuilt under the selection; it stays on the device it was
+ * on rather than on the index, which a scanner row arriving above it moves. */
+static void rebuild_rows(void)
+{
+	int kind = tbl.sel < nrows ? rows[tbl.sel].kind : R_HEAD;
+	int idx = tbl.sel < nrows ? rows[tbl.sel].idx : 0;
+
+	build_rows();
+	for (int i = 0; kind != R_HEAD && i < nrows; i++)
+		if (rows[i].kind == kind && rows[i].idx == idx) {
+			tbl.sel = i;
+			break;
+		}
+	ktui_table_clamp(&tbl, nrows, ktui_h > 4 ? ktui_h - 4 : 1);
+}
+
+/* Everything but the scanners is a file read and answers at once; the
+ * scanners' probe is started here and lands in scan_pump(). */
 static void rescan(void)
 {
 	scan_cameras();
@@ -960,7 +1018,35 @@ static void rescan(void)
 	scan_media();
 	scan_updates();
 	scan_scanners();
-	build_rows();
+	rebuild_rows();
+}
+
+static void scan_pump(void)
+{
+	if (!scan_job.running)
+		return;
+	sh_job_pump(&scan_job);
+	if (scan_job.running)
+		return;
+	scan_done();
+	rebuild_rows();
+}
+
+/*
+ * A PROBE DOES NOT OUTLIVE ITS WINDOW. sh_job_start ignores SIGPIPE in the
+ * child so a burn survives its surface closing, and that would leave a
+ * `scanimage` walking the USB bus and the network for seconds after the
+ * window is gone, an orphan with nobody to read its answer. Stopped and
+ * reaped on every way out once the probe may have started; a dump has
+ * already waited for it.
+ */
+static void scan_stop(void)
+{
+	if (!scan_job.running)
+		return;
+	kill(scan_job.pid, SIGTERM);
+	scan_job.line = NULL;
+	sh_job_wait(&scan_job);
 }
 
 int devices_main(int argc, char **argv)
@@ -1007,6 +1093,12 @@ int devices_main(int argc, char **argv)
 	ktui_keys_layer(&keys, "Back", pv_up, pv_hide, NULL);
 
 	if (dump) {
+		/* A dump draws the finished list, so it waits for the probe. */
+		if (scan_job.running) {
+			sh_job_wait(&scan_job);
+			scan_done();
+			build_rows();
+		}
 		sh_theme_from_cache();
 		ktui_offscreen_init(DV_COLS, DV_ROWS);
 		draw_frame();
@@ -1047,6 +1139,7 @@ int devices_main(int argc, char **argv)
 	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr,
 			"kdos-devices: no compositor or no layer-shell\n");
+		scan_stop();
 		return 1;
 	}
 	ktui_draw_init();
@@ -1056,10 +1149,14 @@ int devices_main(int argc, char **argv)
 
 	while (!kdisp_should_close()) {
 		sh_theme_poll();
+		scan_pump();
 		draw_frame();
 
+		/* A tenth of a second while the probe runs, so its answer is
+		 * drawn when it lands. */
 		KtuiEvent ev;
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
+		if (!ktui_backend()->poll_event(&ev,
+						scan_job.running ? 100 : 1000)) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();
@@ -1212,5 +1309,6 @@ int devices_main(int argc, char **argv)
 	}
 done:
 	kdisp_shutdown();
+	scan_stop();
 	return 0;
 }

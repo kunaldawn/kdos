@@ -11,6 +11,7 @@
 
 patch -p1 -i "$PORT_SRC/offline-defaults.patch"
 
+export LDFLAGS="$LDFLAGS -Wl,-z,stack-size=8388608"
 cmake -S . -B build -G Ninja \
 	-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-D CMAKE_BUILD_TYPE=Release \

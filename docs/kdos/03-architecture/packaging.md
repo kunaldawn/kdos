@@ -67,13 +67,13 @@ There are five port repositories, all in the same format, searched in this order
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 2,081 | Upstream software, filed on 102 shelves |
+| `/ports/core` | `ports/core/` | 2,083 | Upstream software, filed on 102 shelves |
 | `/kdos/src/system` | `src/system/` | 7 | KDOS's own `kdos` command and tools, the packer, the box runtime and its init, the installer, and the two books on the image |
 | `/kdos/src/art` | `src/art/` | 6 | KDOS's own theme generator, icon, cursor and GTK themes, boot splash and demo |
 | `/kdos/src/desktop` | `src/desktop/` | 8 | KDOS's own compositor, panel, terminal, lock screen, resource monitor, box socket, recorder and portal |
 | `/kdos/src/daemons` | `src/daemons/` | 5 | KDOS's own root daemons |
 
-That is 2,107 recipes in all (counted as directories holding a `kpkgbuild`).
+That is 2,109 recipes in all (counted as directories holding a `kpkgbuild`).
 
 A repository holds a port either directly, as `<repo>/<name>/`, or one level down, as
 `<repo>/<shelf>/<name>/`. The `src/` areas hold theirs directly. `ports/core` holds none directly:
@@ -173,15 +173,15 @@ as one list. A phase has one or the other, never both.
 | `31_compilers` | `packages.txt` | 22 | 22 |
 | `40_lang` | `packages.d/`, 13 files | 177 | 177 |
 | `41_system` | `packages.d/`, 96 files | 1,014 | 1,014 |
-| `42_graphics` | `packages.d/`, 54 files | 193 | 193 |
-| `43_toolkits` | `packages.d/`, 47 files | 249 | 249 |
+| `42_graphics` | `packages.d/`, 54 files | 194 | 194 |
+| `43_toolkits` | `packages.d/`, 47 files | 250 | 250 |
 | `44_apps` | `packages.d/`, 58 files | 284 | 284 |
 | `50_desktop` | `packages.txt` | 22 | 22 |
 | `60_kernel` | `packages.txt` | 2 | 2 |
 
 "Names" counts the port names a list writes; "Installs" counts the packages the phase installs
-that no earlier phase did. Between them the lists name 2,101 distinct ports and install 2,105:
-2,080 of the 2,081 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
+that no earlier phase did. Between them the lists name 2,103 distinct ports and install 2,107:
+2,082 of the 2,083 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
 the bootstrap builds by name. The one recipe in `ports/core` no list reaches is `texlive-doc`,
 which `ports/unbuilt` names: a recipe kept for `kpkg install` and built by no phase, and removed
 from the image by the orphan sweep if an earlier build left it installed. Any other recipe no list
@@ -447,7 +447,7 @@ Options and environment:
 | `KPKG_CONF` | Configuration file (default `/etc/kpkg.conf`) |
 | `KPKG_KEYRING` | Trusted-key directory (default `/etc/kdos/keys`) |
 | `KPKG_REQUIRE_SIG=1` | Refuse any package without a valid signature |
-| `KPKG_SKIP_INDEX` | Space-separated [shared indexes](../05-developer/writing-ports.md#shared-indexes) not to rebuild after an install or removal (`man`, `schemas`, `gio`, `pixbuf`, `mime`, `fonts`, `info`, `hwdb`, `xfonts`, `texmf`, `desktop`, `icons`). The build's chroot phases set `man`; nothing sets it on a running system |
+| `KPKG_SKIP_INDEX` | Space-separated [shared indexes](../05-developer/writing-ports.md#shared-indexes) not to rebuild after an install or removal (`man`, `schemas`, `gio`, `pixbuf`, `mime`, `fonts`, `info`, `hwdb`, `xfonts`, `texmf`, `desktop`, `icons`, `vlc`). The build's chroot phases set `man`; nothing sets it on a running system |
 | `KPKG_STRICT_RECIPE=1` | Rebuild an installed package whose recipe hash differs; without it, every installed package is skipped. See [Deciding what to rebuild](#deciding-what-to-rebuild) |
 | `KPKG_STORE=<dir>` | Install a port from the [package store](#the-package-store) in `<dir>` when its key is there, and store every package it builds; empty or unset, the store is off |
 | `KPKG_STORE_CHECK=1` | Build every store hit anyway and log a difference; see [Check mode](#check-mode) |
@@ -668,7 +668,8 @@ An install or removal ends by rebuilding the shared indexes its manifest fed, fr
 on disk: the GSettings schemas, the GIO module and pixbuf loader caches, the MIME database, the
 desktop entries' `mimeinfo.cache`, the font cache and the X core fonts' `fonts.dir`, the info
 directory, the TeX `ls-R` files, the udev hardware database and the `icon-theme.cache` of each icon
-theme it touched, or of every theme when the package carries `gtk-update-icon-cache` itself. The
+theme it touched, or of every theme when the package carries `gtk-update-icon-cache` itself, and
+VLC's plugin cache, `plugins.dat`. The
 manual index is merged instead: an install that only adds pages adds them to `mandoc.db`, and the
 index is rebuilt from the whole tree only when a page was removed (by a removal, or as an upgrade's
 orphan) or when there is no `mandoc.db` yet. A tool that is not installed yet is skipped, and a
@@ -1293,14 +1294,22 @@ network. Alpine is a close proxy for KDOS because it is also a musl distribution
 upstream tarballs. See [Decisions](../01-philosophy/decisions.md) for why Alpine rather than a
 larger source.
 
-Four details each change the answer:
+Five details each change the answer:
 
 - Alpine's packaging revision is stripped before comparing. Leaving it on makes every version look
   old.
 - "Fixed in 0" means never affected in that branch, and falls out of the comparison, since nothing
   is older than 0.
-- The newest fix a version is behind is the one reported, because it closes every earlier one too,
-  and the identifiers from all matching rows are merged.
+- Each CVE is judged on its own, against the branch the version is on (its first two fields,
+  `3.6` of `3.6.7`). Alpine records a CVE once per branch that shipped the fix, so mbedtls 3.6.7
+  appears behind the 4.1.1 row for holes its own 3.6.7 row closed. A CVE is closed when a row on
+  the version's branch fixed it at or below the version, or when the version is at or above every
+  row naming it. An open CVE's fix is the lowest row above the version on its branch, or the lowest
+  above it on any branch when its own has none; the newest of those is the one reported, because
+  it closes every open one, and the open identifiers from all rows are merged.
+- A row Alpine recorded under a version upstream never released is corrected or dropped as the
+  table is written, from `secdb/corrections.txt` beside it: such a row is above every real version
+  and would flag every pin for good. aerc's `1.21.0` is 0.21.0, and vorbis-tools' `9.54` is 1.4.3.
 - A `secdb =` key in a recipe maps a port whose name differs from Alpine's.
 
 A package the database does not carry is reported as UNKNOWN, never as clean. A large part of the

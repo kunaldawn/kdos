@@ -15,7 +15,7 @@ a linker to call once the build moves inside `build/fs`. `090_binutils.sh` build
 The step unpacks the port's tarball and builds in a separate `build` directory, as binutils'
 own documentation recommends:
 
-<!-- kfs:include script/phases/10_bootstrap/090_binutils.sh lines=24-43 pin=dd06cbb12ef5 -->
+<!-- kfs:include script/phases/10_bootstrap/090_binutils.sh lines=24-47 pin=41d2618656a3 -->
 
 ### The meaning of the configure options
 
@@ -59,6 +59,13 @@ The `rm -f` line deletes those five `.la` files. They are installed outside any 
 later removes them, and libtool copies an `.la` file's dependency list into every library linked
 against it. Left in place, every later build that linked `libbfd` or `libopcodes` would inherit
 them.
+
+### Removing the Windows tools' manual pages
+
+The last `rm` deletes the manual pages of `dlltool`, `windres` and `windmc`, which the install
+writes although those programs are built only for Windows targets. The binutils port deletes the
+same three pages from its package, so these copies would be adopted by no package and outlive every
+install.
 
 The step then removes the source and touches `build/mark/bootstrap/binutils`.
 

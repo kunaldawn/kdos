@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Printers
+GenericName=Printer Settings
+Comment=Printers, over the tools CUPS ships
+Exec=kdos-print
+Icon=printer
+Terminal=false
+NoDisplay=true
+Categories=Settings;HardwareSettings;Printing;
+StartupWMClass=kdos-print

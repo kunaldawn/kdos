@@ -625,7 +625,9 @@ step is named, as in the installer row above.
 **The book is a port too.** `src/system/kdos-doc` renders `docs/kdos` to HTML under
 `/usr/share/doc/kdos`, writes `kdos(7)`, which says where the book is and lists its chapters, and
 writes one manual page for every `kdos-*` command in [the command index](../06-reference/command-index.md),
-whose DESCRIPTION is the book section that command's row links to. Its directory holds two
+and for the commands of ours named without the prefix (`kpkg`, `kpkgadd`, `kpkgdel`, `kpkgbuild`,
+`kpkgdepends`, `ksvc`, `service`, `kinstall`, `xdg-terminal-exec`, listed in `mkbook.py`), whose
+DESCRIPTION is the book section that command's row links to. Its directory holds two
 symbolic links, `kdos` to `docs/kdos` and `screenshots` to `docs/screenshots`, and the recipe hash
 follows them, so an edit anywhere in the book or its pictures changes `kdos-doc`'s hash and the
 next `41_system` run rebuilds it with no `--rebuild`. An edit elsewhere under `docs/` does not.

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Status
+GenericName=Status Centre
+Comment=The panel widgets behind the chevron, and what they have to say
+Exec=kdos-status
+Icon=speedometer
+Terminal=false
+NoDisplay=true
+Categories=System;Monitor;
+StartupWMClass=kdos-status

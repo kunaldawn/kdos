@@ -304,7 +304,7 @@ static void draw(void)
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 	sh_frame(w, h, "Time", KT_ACCENT, KT_BG, 1);
-	top = kch_header(w, "preferences-system-time", "Time",
+	top = kch_header(w, "clock", "Time",
 			 "the zone this machine keeps, and whether it is right",
 			 icons_on);
 

@@ -114,8 +114,10 @@ The first two need membership of `wheel`, the third needs root. Each changes onl
    kdos-power autologin off       # ask for a password on tty1
    ```
 
-   The daemon refuses an account that cannot log in with `err no such account`, and writes the
-   off state by commenting the key line, `#autologin = <user>`, keeping the account it named. Its rules are in
+   The daemon refuses a name that is no account with `err no such account`, and one that exists but
+   cannot log in (root, a system account, a `nologin` shell) with `err not an account that can log
+   in (a system account, or no login shell)`. It writes the off state by commenting the key line,
+   `#autologin = <user>`, keeping the account it named. Its rules are in
    [autologin](../../kdos/04-programs/daemons.md#autologin).
 
 3. By hand, as root: edit `/etc/kdos/login.conf` and set or comment out the `autologin` line.
@@ -169,13 +171,11 @@ sudo useradd -m -G wheel,seat,audio,video,render,input -s /bin/bash alice
 sudo passwd alice
 ```
 
-`useradd` prints `Creating mailbox file: No such file or directory`; the image has no mail spool
-directory, and the account is made all the same.
-
 The new account can log in on `tty2` at once, and over SSH when the server is on. To make it the
 one `tty1` logs in, run `kdos-power autologin alice`. Until its runtime directory exists, every
-login of the account prints `mkdir: cannot create directory ‘/run/user/<uid>’: Permission denied`,
-because `/etc/profile.d/10-wayland.sh` runs as the account and `/run/user` is root's. Before its
+login of the account prints `kdos: no /run/user/<uid> yet — run 'sudo service start userdirs' (or
+reboot) before starting the desktop`, because `/etc/profile.d/10-wayland.sh` runs as the account
+and `/run/user` is root's, so it cannot make the directory itself. Before its
 first desktop login, create the directory, and the account's control group with it, with
 `sudo service start userdirs`, or reboot.
 

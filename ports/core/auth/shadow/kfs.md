@@ -41,12 +41,25 @@ check `/etc/shadow` themselves.
   labels and no per-user `tcb` shadow files. None of the three libraries is in the tree.
 - `--with-group-name-max-length=32` — Refuse group names longer than 32 characters. It is
   upstream's default value, stated.
+- `shadow_cv_maildir=none`, `shadow_cv_mailfile=none` — Compile in no mail spool directory and
+  no mailbox file name. configure otherwise takes the first of `/var/mail`, `/var/spool/mail` and
+  two others that exists in the build root, and the first of `Mailbox`, `mail`, `.mail` and two
+  others that exists in the builder's home, and the tools fall back to them whenever `login.defs`
+  names neither, which with `no-mail-spool.patch` (see Notes) would bring back the mailbox the
+  image has no directory for, or make `login` print `No mail.`.
 - `CPPFLAGS=-I/usr/include/utmps`, `LIBS="-lutmps -lskarnet"` — Build `login` against
   [utmps](#port-utmps), so it writes the login records `who` and `last` read. musl's own `utmpx`
   functions are stubs; see
   [Login records](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#login-records).
 
 ## Notes
+`no-mail-spool.patch` comments out `MAIL_DIR` in `/etc/login.defs`, and `MAIL_FILE` stays
+commented, so no tool keeps a mailbox. Nothing on KDOS delivers local mail and the image has no
+spool directory: with the line in place `useradd` prints `Creating mailbox file: No such file or
+directory` for every account it makes, and `userdel -r` prints `mail spool
+(/var/spool/mail/<user>) not found` for every one it removes. `login` then also sets no `MAIL`, so
+it prints no `No mail.`.
+
 `build.sh` ends by setting mode 4755 on `newuidmap` and `newgidmap` itself. `make install` sets the
 bit already, unless shadow is configured `--with-fcaps` to rely on file capabilities instead;
 repeating it means no configure change can leave the two without it. A file capability would not

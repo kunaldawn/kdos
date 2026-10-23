@@ -74,7 +74,9 @@ libstdc++ has no port of its own. It is built again as part of GCC, twice:
 - The [native GCC](100-gcc.md) of step 100 builds it with the compiler and installs it into
   `build/fs`, with its headers in `/usr/include/c++/<version>` in the root.
 - The [gcc](#port-gcc) port, in `20_selfhost`, does the same inside the chroot. It applies
-  `t-linux64-lib.patch`, so its libraries go to `/usr/lib` directly, and it moves the
+  `t-linux64-lib.patch`, so its libraries go to `/usr/lib` directly, and
+  `libstdcxx-generic-locale-names.patch`, so `std::locale("")` accepts any locale name musl
+  accepts instead of only `C` and `POSIX`, and it moves the
   `libstdc++.so.6.*-gdb.py` pretty-printer hook to `/usr/share/gdb/auto-load/usr/lib`, where gdb
   will load it. kpkg adopts the files this step installed in `/usr/lib` as the `gcc` package's.
 

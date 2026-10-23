@@ -82,7 +82,7 @@ case "$1" in
         # and testparm calls a missing cache directory an ERROR until smbd
         # first writes there.
         install -d -m 755 /var/log/samba /var/cache/samba
-        supervise "$NAME" "$DAEMON" --foreground --no-process-group
+        supervise --stop-grace 15 "$NAME" "$DAEMON" --foreground --no-process-group
         ;;
     stop)   stop_service "$NAME" ;;
     status) check_status "$NAME" ;;

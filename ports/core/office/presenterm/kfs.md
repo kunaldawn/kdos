@@ -3,7 +3,8 @@ presenterm presents a Markdown file as slides in the terminal, with syntax-highl
 pictures. It is built from its
 [Rust vendor bundle](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)
 and highlights code with the syntax and theme sets the [bat](#port-bat) port compiles. The
-package adds a desktop entry, "Slides", which opens a file in a terminal.
+package adds a desktop entry, "Slides", which opens a file in a terminal. It is `NoDisplay=true`:
+presenterm given no file exits at once, so Start does not list it.
 
 ## Flags
 - `X-KDOS-Term=kdos-term` — In the desktop entry `build.sh` writes: open the program in

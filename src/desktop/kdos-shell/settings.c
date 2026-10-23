@@ -101,7 +101,7 @@ static const struct {
 	 * fits on a wide screen is a line that is truncated on the shipped
 	 * one, which is where it has to read. */
 	{ "color-picker",      "accent, CRT, wallpaper" },
-	{ "panel",             "the taskbar and tray" },
+	{ "user-desktop",      "the taskbar and tray" },
 	{ "desktop",           "icons and workspaces" },
 	{ "computer",          "screens, net, sound" },
 	{ "system-shutdown",   "idle, lock and power" },
@@ -115,7 +115,7 @@ static const struct {
 	 * front door has no door for the machine teaches that the machine is
 	 * not reachable from here, and that is the harder thing to unteach.
 	 */
-	{ "computer-symbolic", "disks, jobs, services" },
+	{ "drive-harddisk-system", "disks, jobs, services" },
 };
 
 /* Where the app starts and what Escape steps back to. */
@@ -1977,7 +1977,7 @@ static void draw_home(void)
 		ktui_draw_text(tx, cy, cx + tw - 2 - tx, CAT_NAMES[i], fg, bg,
 			       KT_A_NONE);
 		ktui_draw_text(cx + 1, cy + 1, tw - 3, CAT_TILE[i].blurb,
-			       on ? fg : KT_DIM, bg, KT_A_NONE);
+			       on ? fg : KT_MID, bg, KT_A_NONE);
 		tile_hit[i] = krect(cx, cy, tw - 1, 2);
 	}
 

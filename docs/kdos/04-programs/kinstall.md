@@ -270,7 +270,7 @@ rather than run.
 
 | # | Step | Does | Skipped when |
 |---|---|---|---|
-| 1 | Prepare | Checks the target and the tools, stops swap, takes down anything holding the disk | — |
+| 1 | Prepare | Checks the target and the tools, stops every swap area but zram, takes down anything holding the disk | — |
 | 2 | Partition | Writes the GPT layout: a 512 MiB ESP, a 1 MiB BIOS boot partition, an optional swap partition, then the root | The plan is not `wipe` |
 | 3 | Format | Encrypts and creates the volume group if asked, then makes the filesystems | — |
 | 4 | Mount | Mounts the root at `/mnt/kinstall` and the ESP at `/mnt/kinstall/boot/efi` | — |
@@ -286,7 +286,9 @@ rather than run.
 is missing: `mount`, `umount`, `mkfs.vfat`, `rsync`, the chosen filesystem's `mkfs`, `cryptsetup`
 when encrypting, `lvm` for a root on LVM, and `limine` on a machine that booted in legacy BIOS mode.
 It also fails on such a machine when the plan reuses a GPT disk with no BIOS boot partition, before
-anything is written. It then runs `swapoff -a`, unmounts everything under `/mnt/kinstall` and
+anything is written. It then runs `swapoff` on every entry of `/proc/swaps` except `/dev/zram*`,
+so a swap partition or file on the disk does not keep it busy, while the live session's compressed
+swap in memory stays on through the copy. It unmounts everything under `/mnt/kinstall` and
 `/mnt/kinstall` itself, and lazily unmounts every mount whose device name begins with the disk's.
 The boot medium at `/mnt/iso` and a stick mounted at `/mnt/<name>` are beside the target, not
 under it, so this leaves them mounted. On the `wipe` plan it takes down whatever holds the disk (see [A root on
@@ -312,7 +314,13 @@ rsync -aHAX -x --numeric-ids --info=progress2 --no-inc-recursive <excludes> / /m
 ```
 
 The excludes are the contents of `/dev`, `/proc`, `/sys`, `/tmp`, `/run`, `/mnt` and `/media`;
-`/lost+found`; the run's own log; and what must be unique to each machine,
+`/lost+found`; every file under `/var/log` and `/var/cache`, the run's own log among them, keeping
+the directories (packages own them, and `kpkg check` reports one that is missing), so the installed
+system's log and `last` begin at its own first boot; the live accounts' history, `.bash_history`
+and `.local/share/atuin` in `/root` and `/home/kdos`; root's `.cache`, and everything in
+`/home/kdos/.cache` except `kdos` (the theme name and the rendered wallpaper, which the Theme step
+rewrites only for an accent other than `bone`) and `bat` (its syntax cache), the two the image
+builds into the live account; and what must be unique to each machine,
 `/var/lib/dbus/machine-id` and `/etc/ssh/ssh_host_*`, which the installed system generates on
 its first boot; and the account files' backup copies, `/etc/passwd-`, `/etc/group-`,
 `/etc/shadow-` and `/etc/gshadow-`, which shadow's tools write beside each file they change and in
@@ -360,7 +368,9 @@ Without `kdos` on the `PATH` the step logs that and leaves the accent the image 
 
 An answer file is plain `key = value` lines; `#` starts a comment line, and spaces around the key
 and value are trimmed. `--save` writes one with every key except the three secrets, and
-`--config` reads one. A key the installer does not recognise is ignored.
+`--config` reads one. A key the installer does not recognise is ignored and named on standard
+error, `kinstall: <file>: unknown key '<key>' ignored`, before anything else runs, so a misspelt
+key shows in `--dump plan` rather than installing that key's default unnoticed.
 
 ```sh
 kinstall --save answers.conf                      # the defaults, to edit

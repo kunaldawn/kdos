@@ -81,7 +81,7 @@ directory above the first repository it names. See [kpkg](kpkg.md#etckpkgconf).
 
 | File | Written by | Holds |
 |---|---|---|
-| [`/var/lib/kdos/update.state`]{.idx} | `fetch`, `apply` | The outcome of the last fetch and the last apply: `ok`, `no-network`, `fetch-failed` or `build-failed`, with a time and a sentence |
+| [`/var/lib/kdos/update.state`]{.idx} | `fetch`, `apply` | The outcome of the last fetch and the last apply: `ok`, `no-key`, `no-network`, `fetch-failed` or `build-failed`, with a time and a sentence |
 | [`/var/lib/kdos/update.state.lock`]{.idx} | `fetch`, `apply` | The lock both hold, so a tree is never replaced under a build |
 | [`/var/lib/kdos/update.state.sig`]{.idx} | `fetch` | The signature of the tree last installed |
 | [`/var/lib/kdos/update.json`]{.idx} | The nightly check, `fetch`, `apply` | What `check --json` found; the panel's update badge reads it |
@@ -109,14 +109,14 @@ there has been no newer signed tree to take. See [Known gaps](#known-gaps).
    `kdos update` with no verb does the same. It lists each installed package whose version, or
    release, is older than its recipe in `/ports`, counts the installed packages that have no recipe
    there, names the tree's commit, and reports the last problem a fetch or an apply recorded. On
-   an image whose tree matches what it carries, after a fetch that failed:
+   an image built without a release key, after a fetch:
 
    ```text
    KDOS update  —  the ports tree against what is installed
 
      0 behind, 0 with no recipe on this machine
      tree <commit>, <date> at /ports
-     fetch-failed: https://github.com/kunaldawn/kdos/releases/latest/download/kdos-ports.tar.xz could not be downloaded
+     no-key: no trusted tree key in /etc/kdos/keys/tree: this image can verify no published tree; `kdos update apply` builds from /ports
    ```
 
 2. Read the exit status: 0 nothing is behind, 1 something is behind, 2 there is no tree or no
@@ -168,7 +168,8 @@ can stand in for the network for the tree:
    sudo kdos update fetch --from /media/stick
    ```
 
-   The signature is fetched first: a directory without the two files fails with curl's
+   An image with no tree key stops at `no-key` before reading the stick. On one with a key, the
+   signature is fetched first: a directory without the two files fails with curl's
    `(37) Could not open file /media/stick/kdos-ports.tar.xz.sig`, then
    `kdos update: file:///media/stick/kdos-ports.tar.xz could not be downloaded`, exit 1, and
    `fetch-failed` in `/var/lib/kdos/update.state`.
@@ -274,8 +275,8 @@ kdos app install app.hugin
 
 The removal takes the application's own image and every runtime image no other box needs; the base
 image is kept, so the Debian userland under every application is not rebuilt. Installing an
-application that is already installed builds nothing and reports a failure. As shipped, the
-install stops after the images, at creating the box; see
+application that is already installed builds nothing and reports a failure. The fresh install
+builds the images and then creates the box on them; see
 [Installing an application](boxes.md#installing-an-application) and
 [Updating](../../kdos/02-user-guide/applications.md#updating) in the user guide.
 
@@ -301,7 +302,8 @@ live medium has no slot state, so `apply` updates the running root.
 ## Troubleshooting
 
 The badge shows `!`, or `kdos update check` reports a problem
-: `check` names the first of `no-tree`, then the last fetch's `no-network` or `fetch-failed`, then
+: `check` names the first of `no-tree`, then the last fetch's `no-key`, `no-network` or
+  `fetch-failed`, then
   the last apply's `no-network`, `fetch-failed` or `build-failed`. The sentence beside it is in
   `/var/lib/kdos/update.state`:
 
@@ -313,12 +315,16 @@ The badge shows `!`, or `kdos update check` reports a problem
 : There is no tree at the root `PORT_REPO` names, or no package database. Check `/ports/core` and
   `/etc/kpkg.conf`.
 
+`no-key` on every fetch
+: The image's ring, `/etc/kdos/keys/tree/`, holds no key: the image was built without the
+  release key, so it can verify no published tree, and `fetch` stops before downloading anything,
+  exit 1. `ls /etc/kdos/keys/tree/` shows whether a `kdos-release.pub` is there; on such an image
+  the directory holds only its `README`. `kdos update apply` still builds whatever the recipes in
+  `/ports` are ahead of. See [Known gaps](#known-gaps).
+
 `fetch-failed` on every fetch
-: The image's ring, `/etc/kdos/keys/tree/`, holds no key when the image was built without the
-  release key, and then every tree is refused. `ls /etc/kdos/keys/tree/` shows whether a
-  `kdos-release.pub` is there; on an image built without it the directory holds only its
-  `README`. A release that carries no `kdos-ports.tar.xz` fails before that, at the download:
-  the latest release is such a one, and `sudo kdos update fetch` with no `update.conf` prints
+: A release that carries no `kdos-ports.tar.xz` fails at the download: the latest release is such
+  a one, and `sudo kdos update fetch` with no `update.conf` prints
   `curl: (22) The requested URL returned error: 404` and exits 1. See
   [Known gaps](#known-gaps).
 

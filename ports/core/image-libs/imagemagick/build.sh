@@ -31,7 +31,6 @@
 	--with-freetype \
 	--with-fontconfig \
 	--with-pango \
-	--with-dejavu-font-dir=/usr/share/fonts/TTF \
 	--without-x \
 	--without-perl \
 	--with-fftw \

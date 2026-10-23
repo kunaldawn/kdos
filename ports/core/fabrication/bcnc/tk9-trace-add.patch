@@ -1,0 +1,70 @@
+Subject: Use trace_add("write") instead of the trace("w") API Tk 9 removed
+
+diff -ru a/bCNC/CNCCanvas.py b/bCNC/CNCCanvas.py
+--- a/bCNC/CNCCanvas.py
++++ b/bCNC/CNCCanvas.py
+@@ -2098,7 +2098,7 @@
+ 
+         self.loadConfig()
+ 
+-        self.view.trace("w", self.viewChange)
++        self.view.trace_add("write", self.viewChange)
+ 
+         toolbar = Frame(self, relief=RAISED)
+         toolbar.grid(row=0, column=0, columnspan=2, sticky=EW)
+diff -ru a/bCNC/lib/tkExtra.py b/bCNC/lib/tkExtra.py
+--- a/bCNC/lib/tkExtra.py
++++ b/bCNC/lib/tkExtra.py
+@@ -3030,7 +3030,7 @@
+ 
+         # Arrow button
+         self._post = IntVar()
+-        self._post.trace("w", self._showList)
++        self._post.trace_add("write", self._showList)
+         self._arrowBtn = Checkbutton(
+             self,
+             text="\u25BC",
+diff -ru a/bCNC/ProbePage.py b/bCNC/ProbePage.py
+--- a/bCNC/ProbePage.py
++++ b/bCNC/ProbePage.py
+@@ -306,8 +306,8 @@
+               text=_("Fast Probe Feed:")).grid(row=row, column=col, sticky=E)
+         col += 1
+         self.fastProbeFeed = StringVar()
+-        self.fastProbeFeed.trace(
+-            "w", lambda *_: ProbeCommonFrame.probeUpdate())
++        self.fastProbeFeed.trace_add(
++            "write", lambda *_: ProbeCommonFrame.probeUpdate())
+         ProbeCommonFrame.fastProbeFeed = tkExtra.FloatEntry(
+             frame,
+             background=tkExtra.GLOBAL_CONTROL_BACKGROUND,
+@@ -328,7 +328,7 @@
+         Label(frame, text=_("Probe Feed:")).grid(row=row, column=col, sticky=E)
+         col += 1
+         self.probeFeedVar = StringVar()
+-        self.probeFeedVar.trace("w", lambda *_: ProbeCommonFrame.probeUpdate())
++        self.probeFeedVar.trace_add("write", lambda *_: ProbeCommonFrame.probeUpdate())
+         ProbeCommonFrame.probeFeed = tkExtra.FloatEntry(
+             frame,
+             background=tkExtra.GLOBAL_CONTROL_BACKGROUND,
+@@ -2299,7 +2299,7 @@
+ 
+         self.tabGroup = CNCRibbon.Page.groups["Probe"]
+         self.tabGroup.tab.set("Probe")
+-        self.tabGroup.tab.trace("w", self.tabChange)
++        self.tabGroup.tab.trace_add("write", self.tabChange)
+ 
+     # -----------------------------------------------------------------------
+     def tabChange(self, a=None, b=None, c=None):
+diff -ru a/bCNC/ToolsPage.py b/bCNC/ToolsPage.py
+--- a/bCNC/ToolsPage.py
++++ b/bCNC/ToolsPage.py
+@@ -1935,7 +1935,7 @@
+         self.tools.setWidget("toolHelpFrame", frame)
+         self.tools.setWidget("toolHelp", toolHelp)
+ 
+-        app.tools.active.trace("w", self.change)
++        app.tools.active.trace_add("write", self.change)
+         self.change()
+ 
+     # ----------------------------------------------------------------------

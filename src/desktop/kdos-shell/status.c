@@ -561,10 +561,12 @@ static void draw_list(int w, int h)
 			ktui_draw_text(ix + 15, y, rw - ix - 15, r->detail,
 				       on ? fg : KT_MID, bg, KT_A_NONE);
 	}
+	/* Fifty-two columns: the list popup's width less its frame and gutter,
+	 * so the sentence is whole where it is drawn. */
 	if (!nrows)
 		ktui_draw_text(2, y0, w - 4,
 			       "Widgets named by `overflow =` in panel.conf "
-			       "live here.",
+			       "go here.",
 			       KT_MID, KT_BG, KT_A_NONE);
 	kch_scrollbar(0, w - 2, y0, vis, nrows, top, KT_BG);
 

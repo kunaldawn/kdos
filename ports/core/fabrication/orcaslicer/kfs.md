@@ -66,9 +66,8 @@ libraries OrcaSlicer is written against, through upstream's own dependency super
 
 ## Patches
 
-- `0001-Boost-musl-locale.patch` — Applied by the superbuild to its Boost (see `deps-musl-patch-step.patch`). Boost.Filesystem builds its path locale on Linux as `std::locale("")`, which musl's libstdc++ refuses for any name but `C` and `POSIX`, so the program aborts before `main` under a UTF-8 `LANG`. The patch gives Linux without glibc the UTF-8 codecvt facet the BSDs get.
 - `0002-OCCT-musl.patch` — Applied by the superbuild to its OpenCASCADE. OCCT reads heap usage with `mallinfo`, traps floating-point exceptions with `feenableexcept`/`fegetexcept`, and prints stack traces through `<execinfo.h>`, none of which musl has; the patch takes the branches OCCT has for platforms without them.
-- `deps-musl-patch-step.patch` — Adds the two patches above to the superbuild: OCCT's `git apply` takes `0002-OCCT-musl.patch` after upstream's own `0001-OCCT-fix.patch`, and Boost gains a `PATCH_COMMAND` for `0001-Boost-musl-locale.patch`. `build.sh` copies both into `deps/OCCT/` and `deps/Boost/`, where those commands look.
+- `deps-musl-patch-step.patch` — Adds `0001-Boost-musl-locale.patch` and `0002-OCCT-musl.patch` to the superbuild: OCCT's `git apply` takes `0002-OCCT-musl.patch` after upstream's own `0001-OCCT-fix.patch`, and Boost gains a `PATCH_COMMAND` for `0001-Boost-musl-locale.patch`. `build.sh` copies both into `deps/OCCT/` and `deps/Boost/`, where those commands look.
 - `deps-system-gmp-mpfr.patch` — Removes the superbuild's GMP and MPFR projects and the dependencies of CGAL and Eigen on them, so CGAL finds the [gmp](#port-gmp) and [mpfr](#port-mpfr) ports instead of private copies.
 - `mdns-select.patch` — The bundled mDNS client in `deps_src/mdns/mdns.h` uses `select()`, `fd_set` and `struct timeval` and includes neither `<sys/select.h>` nor `<sys/time.h>`, which glibc's socket headers pull in and musl's do not; the patch includes both.
 - `serial-unistd.patch` — `src/slic3r/Utils/Serial.cpp` includes `<sys/unistd.h>`, a name only glibc carries; the patch includes `<unistd.h>`.

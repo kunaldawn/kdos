@@ -11,11 +11,13 @@ through the script in order and says what each part guarantees.
 
 ## The directory skeleton
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=17-22 pin=4a1f14265952 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=17-22 pin=dad701630cf9 -->
 
 These are the directories every later step installs into, or that the running system expects to
 find: the kernel's mount points (`dev`, `proc`, `sys`, `run`), `/usr` and its usual
-subdirectories, and `/var` with its state, log and temporary directories.
+subdirectories, and `/var` with its state, log and temporary directories. `/var/empty` stays empty
+and belongs to no package: it is the directory a program names when it needs one that holds
+nothing, such as the build context `kdos-appbox` gives podman for a box image.
 
 `/tmp` and `/var/tmp` are mode `1777`, world-writable with the sticky bit, so any account can create
 files there and only a file's owner can remove it. `/var/tmp` must be writable by the desktop user

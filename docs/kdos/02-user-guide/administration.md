@@ -83,6 +83,7 @@ are absent if that package is removed.
 | `02_modules` | Modules listed in `/etc/modules-load.d` |
 | `03_lvm` | LVM volume groups, activated once at boot, then any `fstab` entry on a logical volume checked and mounted. On a disk boot the initramfs has already activated the groups it saw; this pass catches the rest — every group on a live boot, and any on a disk that appeared after the initramfs ran. A group plugged in later is not activated automatically; run `sudo vgchange -aay` |
 | `05_hostname` | The hostname |
+| `06_utmps` | Login records: `utmpd` and `wtmpd`, the two daemons through which `login`, `who`, `last` and init read and write the records of who is logged in and since when, because musl's own utmp calls do nothing. It waits up to two seconds for their sockets, so init's boot record is not lost — see [Login records](../03-architecture/boot-and-init.md#login-records) |
 | `10_sysctl` | Kernel parameters from `/etc/sysctl.conf`: unprivileged `ping`; the name of the fatal signal in the kernel log when a program crashes; the `fs.protected_*` link protections, which stop a user redirecting a root job's write in `/tmp` onto another file; per-task delay accounting, which `iotop`'s IO% and `htop`'s delay columns read, at a small cost on every wait the kernel accounts; no ICMP redirect accepted or sent; the loose reverse-path filter; and kernel addresses hidden from every account but root |
 | `12_zram` | Compressed swap in RAM — see [Storage](#storage) |
 | `15_userdirs` | `/run/user/<uid>` for every account with a UID from 1000 to 65533, and a delegated cgroup subtree for each with the `cpu`, `memory` and `pids` controllers, which is what lets rootless podman apply a *box*'s memory and CPU limits (a box is the rootless container one application runs in; see [the glossary](../06-reference/glossary.md)) |
@@ -186,7 +187,8 @@ Twelve scripts leave nothing for the supervisor to watch: `01_udev`, `02_modules
 result to the kernel, which keeps it. For these, `service status` reports what the script applied
 rather than a running process: `sysctl: applied`, the zram device and its nominal size, whether a
 firewall ruleset is loaded, the logical volumes (`lvs`), or TLP's own summary (`tlp-stat -s`).
-`02_modules` and `15_userdirs` print nothing. Two report a process after all:
+`02_modules` and `15_userdirs` print nothing, and `service list` shows `—` for them. Two report a
+process after all:
 `service status boltd` says whether the bus has `boltd` running, and `service status udev` says
 whether `udevd` is running, because `udevd` runs on its own once the script has started it.
 
@@ -340,7 +342,25 @@ Add the other groups from the table as needed. Two things to check afterwards:
   shipped files give `kdos` the range starting at 100000 and `root` the one starting at 200000,
   65536 IDs each, so a range added by hand for another account must not overlap those.
 - **`/run/user/<uid>`** is created by `15_userdirs` at boot for the accounts that exist then. For an
-  account added since, run `sudo service start userdirs` or reboot before its first desktop login.
+  account added since, run `sudo service start userdirs` or reboot before its first desktop login;
+  until then each of its logins prints `kdos: no /run/user/<uid> yet` with that instruction.
+
+No account keeps a mailbox: nothing on KDOS delivers local mail, so `/etc/login.defs` names no mail
+spool, and `useradd` and `userdel` neither make nor look for one.
+
+**Removing a user.** End the account's processes first, then remove it with its home directory:
+
+```sh
+sudo pkill -u alice
+sudo userdel -r alice
+```
+
+Every login starts an `ssh-agent` for the account (`/etc/profile.d/50-ssh-agent.sh`, from the
+`openssh` package), and it keeps running after the login ends. `userdel` refuses an account with a
+running process, printing `user alice is currently used by process <pid>` and exiting 8 with
+nothing removed. `userdel -r` also takes the account's own group and its `/etc/subuid` and
+`/etc/subgid` ranges. If `/etc/kdos/login.conf` names the account, point `autologin` elsewhere
+first, or `tty1` boots to a login nobody can complete.
 
 ## Storage
 
@@ -1072,8 +1092,8 @@ The checks are grouped into sections:
 | Hardware | The wireless regulatory database is signed and loaded, and the domain is not the world domain `00`; Intel audio firmware (`sof-firmware`); GPU firmware; device nodes you cannot open, naming the group that owns each (see [the udev rules](#the-device-groups-and-the-udev-rules)); the boot medium |
 | Boxes | The application packs |
 | Session | `WAYLAND_DISPLAY` names a socket that exists; `XDG_RUNTIME_DIR` is set; `kdos-comp`, `kdos-shell` and the wlr desktop portal are running |
-| Containers | The mount namespace root is `/`, and `/etc/subuid` and `/etc/subgid` carry your range |
-| Desktop | The accent, the foot theme and the KDE palette (`kdeglobals`) are applied; Xwayland is reachable; the setuid bits on `kdos-checkpass`, `kdos-resctl`, `newuidmap` and `newgidmap`, and on `dbus-daemon-launch-helper` with group `messagebus`; `/etc/subuid` and `/etc/subgid` exist; `kdos-powerd`, `kdos-energyd` (or the absence of any RAPL energy counter) and `kdos-oomd` are running, and `fcitx5` when it is installed; the compositor's frame-timing and command sockets exist; `kdos-keys` and the screen-capture portal with `kdos-portals.conf` are installed; `~/.local/bin` is on `PATH` |
+| Containers | The mount namespace root is `/`; `/etc/subuid` and `/etc/subgid` carry your range; `podman info` opens your container store |
+| Desktop | The accent, the foot theme and the KDE palette (`kdeglobals`) are applied; Xwayland is reachable; the setuid bits on `kdos-checkpass`, `kdos-resctl`, `newuidmap` and `newgidmap`, and on `dbus-daemon-launch-helper` with group `messagebus`; `/etc/subuid` and `/etc/subgid` exist; `kdos-powerd`, `kdos-energyd` (a `skip` where there is no RAPL energy counter, as in most virtual machines) and `kdos-oomd` are running, and `fcitx5` when it is installed; the compositor's frame-timing and command sockets exist (a `skip` when the compositor runs under another account); `kdos-keys` and the screen-capture portal with `kdos-portals.conf` are installed; `~/.local/bin` is on `PATH` |
 | Security | Run as root only: whether the `kdos` account still has the shipped password `kdos` |
 
 Without its setuid bit, `kdos-checkpass` cannot read `/etc/shadow`, so the lock screen refuses every
@@ -1081,7 +1101,8 @@ password and locks you out of your own session, recoverable only from `tty2`; th
 `chown root` and `chmod 4755`. The shipped-password check needs to read `/etc/shadow`, so an
 ordinary user's run has no Security section at all rather than a check that pretends to have
 looked; run `sudo kdos doctor` to get it, and expect the session and container checks of that run
-to warn, since root has no desktop session.
+to warn, since root has no desktop session; the compositor's sockets are a `skip` there, because
+they are in the desktop user's runtime directory.
 
 `service list` and `service status <name>` show each service's state. After an upgrade,
 `kdos restarts` lists the running processes that still use code the upgrade replaced or removed;

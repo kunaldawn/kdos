@@ -879,6 +879,12 @@ no update to its port reaches. Preflight fails any recipe that runs `cargo build
 which loads `libclang` at build time and cannot do so from a static binary; `ports/fetch` warns
 when it vendors `bindgen` for a recipe that lacks the `RUSTFLAGS` line.
 
+A meson project with Rust code takes the flag in `RUSTC="rustc -C target-feature=-crt-static"`,
+not in `RUSTFLAGS`: meson asks the bare compiler command whether the target is `crt-static`, and
+with the answer yes it links Rust's own `libc.a` into every shared library that takes a Rust
+static library. See
+[Rust with a binding generator](build-troubleshooting.md#rust-with-a-binding-generator).
+
 From `40_lang` on, `script/env/chroot.env` exports the switches that make a `-sys` crate link the
 system library through pkg-config instead of compiling the copy it carries: `LIBGIT2_NO_VENDOR=1`
 (libgit2-sys, even under a `vendored-libgit2` feature), `RUSTONIG_SYSTEM_LIBONIG=1` (onig_sys),
@@ -1456,7 +1462,7 @@ font.
 ## Patches
 
 A patch is the last resort after a build flag, and it is a file, never an edit made in place: a
-unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. 607 of
+unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. 619 of
 them sit in port directories under `ports/core`. `kpkg` does not apply them. `build.sh` does, from
 the unpacked source it starts in, normally before it configures:
 
@@ -1615,12 +1621,14 @@ into `$PKG/usr/share/applications/`. A package owns its entry, so installing the
 row and removing the port takes it away; the same file under `fs/` is owned by nothing and outlives
 the program it names.
 
-Four entries are under `fs/usr/share/applications/`, all `NoDisplay=true` handlers that exist for
-their `MimeType=` line. `kdos-openarchive.desktop` names a script that is itself under `fs/`
-(`fs/usr/local/bin/kdos-openarchive`), so entry and program have the same lifetime.
-`kdos-peek.desktop`, `kdos-pix.desktop` and `kdos-burn.desktop` name front ends that the `kdos-shell` port installs as
-links to `kdos-shell`; they are the exception to this rule, and without `kdos-shell` they would
-name programs that are not there.
+The entries under `fs/usr/share/applications/` are all `NoDisplay=true`.
+`kdos-openarchive.desktop` is a handler that exists for its `MimeType=` line and names a script
+that is itself under `fs/` (`fs/usr/local/bin/kdos-openarchive`), so entry and program have the
+same lifetime. The rest, one per window-opening front end from `kdos-peek.desktop` to
+`kdos-users.desktop`, name front ends that the `kdos-shell` port installs as links to
+`kdos-shell`, and give each window its name and picture on the taskbar; `kdos-peek`, `kdos-pix`
+and `kdos-burn` also carry a `MimeType=` line. They are the exception to this rule, and without
+`kdos-shell` they would name programs that are not there.
 
 ```bash
 install -d "$PKG/usr/share/applications"
@@ -1685,19 +1693,23 @@ collision.
 
 **`NoDisplay=true` on an entry that is not how a person starts the program.** Start, the launcher
 and the search list every visible entry, so an entry for something the session, another program or
-a configuration step starts is a row that opens nothing a person wanted. Five kinds are hidden: a
+a configuration step starts is a row that opens nothing a person wanted. Six kinds are hidden: a
 server and a client that needs one nothing starts (`foot --server` and `footclient`,
-`freeciv-server`), a session picker (`kdevelop --ps`, which the main
-entry already offers as an action), a launch pad that only lists the program's other entries
-(PDF4QT's), a diagnostic (LinuxCNC's latency test), and a tray helper that something else starts.
+`freeciv-server`, and `rmpc`, whose mpd runs only once somebody configures it), a session picker
+(`kdevelop --ps`, which the main entry already offers as an action), a launch pad that only lists
+the program's other entries (PDF4QT's), a diagnostic (LinuxCNC's latency test), a tray helper that
+something else starts, and a terminal program that exits at once when started from Start, with no
+argument, in the home directory (`tig` needs a repository, `ledger` a journal, `presenterm` a file,
+`taskwarrior-tui` a `~/.taskrc`). A terminal program that has a way to stay open on its own is
+given it instead and stays visible: `w3m -v` opens w3m's welcome page.
 The entry stays installed, for its `MimeType=` and its actions. Write the key into an
 entry the recipe writes; on one upstream installs, run
 `desktop-file-edit --set-key=NoDisplay --set-value=true` on the file under `$PKG`, with
 `desktop-file-utils` in `depends`. A server or tray program that is itself what a person opens,
 with no other way in, keeps its entry visible: `cncjs`'s entry starts the server its browser
 interface is served from, and `syncthingtray` is the Syncthing interface. When a build tree exists,
-`testing/preflight.sh` matches every visible entry's `Name=` and `Exec=` against the words those
-five kinds carry (server, daemon, session, launch pad, tray, latency, diagnostic) and refuses a
+`testing/preflight.sh` matches every visible entry's `Name=` and `Exec=` against the words the
+first five kinds carry (server, daemon, session, launch pad, tray, latency, diagnostic) and refuses a
 match that `testing/visible-entries.allow` does not name. That file is the reviewed list of
 entries that match and are launchable, one file name per line.
 
@@ -1740,6 +1752,11 @@ manuals were all HTML leaves no empty `usr/share/doc/<name>`. A recipe therefore
 this itself. Turning translations off at configure time (`--disable-nls`,
 `-DKF_SKIP_PO_PROCESSING=ON`) is welcome where it saves build time and changes nothing else, but it
 is not needed for the result.
+
+The same rule holds for a file no package owns, such as a copy `10_bootstrap` installed that its
+port does not adopt: `70_image` removes it, and fails the image on anything unowned left under
+`usr/share/locale`, `man`, `doc` or `info` (see
+[Databases stamped into the image](build-system.md#databases-stamped-into-the-image)).
 
 The cost is stated in [Known gaps](../06-reference/known-gaps.md#every-program-speaks-english): a
 person who reads another language has no translated interface anywhere on the system.
@@ -1941,14 +1958,15 @@ removed and rebuild each index whose directory it touched, once, from what is th
 | `/usr/share/texmf-dist/`, `/usr/share/texmf-local/` | `mktexlsr` over those two trees and `/usr/share/texmf-var`, the `ls-R` files through which every TeX program finds a file |
 | `/usr/share/applications/` | `update-desktop-database`, the `mimeinfo.cache` that `kdos-appbox open` and the shell's Open With read for a type no `mimeapps.list` names |
 | `/usr/share/icons/<theme>/` | `gtk-update-icon-cache -q -t -f`, the `icon-theme.cache` of each theme the package touched that holds an `index.theme`; without one, every GTK program walks the theme's directories at start |
+| `/usr/lib/vlc/plugins/` | `/usr/lib/vlc/vlc-cache-gen`, the `plugins.dat` libvlc reads each plugin's description from; without it libvlc loads every plugin into the program that starts it, and a Qt 6 program such as Elisa crashes in VLC's Qt 5 interface. Under `--root` it runs inside the root, which needs root; a root whose `vlc-cache-gen` has gone loses the cache |
 
 A port therefore installs its schema, loader, MIME XML, font, info page, hwdb file, manual page,
-TeX file, desktop entry or icon and does nothing else. A per-port hook would rebuild the index only when that port is installed,
+TeX file, desktop entry, icon or VLC plugin and does nothing else. A per-port hook would rebuild the index only when that port is installed,
 not when the next one adds to it or the last one leaves.
 
 `KPKG_SKIP_INDEX` names indexes to leave alone, space-separated, by the name `kpkg` prints in
 `index skipped: <name>`: `schemas`, `gio`, `pixbuf`, `mime`, `fonts`, `info`, `hwdb`, `man`,
-`xfonts`, `texmf`, `desktop` and `icons`. The build's chroot phases set it to `man`; a running system does
+`xfonts`, `texmf`, `desktop`, `icons` and `vlc`. The build's chroot phases set it to `man`; a running system does
 not set it, and there every index above is kept current.
 
 The font cache a build's installs leave is not the one the image ships. Under `SOURCE_DATE_EPOCH`
@@ -2375,8 +2393,9 @@ includes `GLib-2.0`, `GObject-2.0` or `Gio-2.0` from the second. `libqrtr-glib`,
 
 `python3` is split the same way for Tk. It is built before `tk`, so `_tkinter` is off and the
 Tk-only standard library is removed from its package. `python3-tkinter` configures the same
-tarball again once `tk` is installed, builds only `_tkinter`, and packages that module with the
-`tkinter` package. It carries `python3-$version.tar.xz` with `python3`'s checksum, its `version`
+tarball again once `tk` is installed, builds only `_tkinter` and the `idle` launcher, and
+packages them with the Tk-only standard library: `tkinter`, `turtle`, `turtledemo` and `idlelib`.
+It carries `python3-$version.tar.xz` with `python3`'s checksum, its `version`
 must equal `python3`'s because the module is compiled for that interpreter's ABI, and both recipes
 carry `group = python3`.
 

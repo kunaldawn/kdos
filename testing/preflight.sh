@@ -2375,6 +2375,26 @@ for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
 done
 note "mimeapps handlers" "$_mh kdos-* row(s), each with an entry"
 
+# ── every window of ours has a desktop entry named after its app_id ─────
+#
+# The taskbar, the window switcher and `kdos appid` find a window's name and
+# picture through the entry whose id is its app_id. A toplevel with none is a
+# letter on the taskbar and a MISMATCH in `kdos appid`. Read from the source:
+# every `.app_id` literal in a file that asks for KDISP_ROLE_TOPLEVEL.
+echo
+echo "==> toplevel app_ids: every one has a desktop entry"
+_ta=0
+for _f in $(grep -rl 'KDISP_ROLE_TOPLEVEL' src --include='*.c' |
+            grep -v '^src/libs/'); do
+    for _id in $(sed -n 's/.*\.app_id *= *"\([^"]*\)".*/\1/p' "$_f" | sort -u); do
+        _ta=$((_ta + 1))
+        [ -f "fs/usr/share/applications/$_id.desktop" ] ||
+            find src -name "$_id.desktop" 2>/dev/null | grep -q . ||
+            bad "toplevel $_id" "$_f opens a window as $_id, and no $_id.desktop is shipped"
+    done
+done
+note "toplevel app_ids" "$_ta app_id(s), each with an entry"
+
 # ── AND EVERY OTHER ID, against the build tree ──────────────────────────
 #
 # The rows above are ours to ship; a row naming a PORT's entry is the port's,
@@ -2461,9 +2481,15 @@ for _ in range(n):
 for p in glob.glob('build/fs/**/icons/hicolor/*/apps/*.png', recursive=True):
     names.add(os.path.basename(p)[:-4])
 
-# Every literal name a surface hands to the icon layer. Three spellings,
-# because the name reaches it as an argument, as a row field, or as a table
-# column, and a check that knew only one would pass the other two.
+# Every literal name a surface hands to the icon layer. Five spellings,
+# because the name reaches it as an argument to libkicon, as a field
+# assignment, as a designated initialiser, as the argument of any function
+# whose parameter is `const char *icon` or `*icon_name` (kch_header, the
+# panel's applet tiles), or as the column of a positional table whose struct
+# has such a member (the Settings tiles, kdos-res's pages). A check that knew
+# fewer passes the rest: a positional row names its icon with no `icon`
+# anywhere on the line. A literal is read bare or as either arm of a
+# ternary; a computed name is not a literal and is not checked.
 pats = (r'kicon_slot(?:_pad)?\("([a-z0-9._-]+)"',
         r'kicon_pixmap\("([a-z0-9._-]+)"',
         r'(?:->|\.)icon = "([a-z0-9._-]+)"')
@@ -2476,6 +2502,143 @@ for line in out.splitlines():
         if m:
             used.add(m.group(1))
             break
+
+def skip_lit(s, i):
+    j = i + 1
+    while j < len(s) and s[j] != s[i]:
+        j += 2 if s[j] == '\\' else 1
+    return j + 1
+
+def uncomment(s):
+    out, i = [], 0
+    while i < len(s):
+        if s[i] in '"\'':
+            j = skip_lit(s, i)
+            out.append(s[i:j])
+            i = j
+        elif s.startswith('/*', i):
+            j = s.find('*/', i + 2)
+            i = len(s) if j < 0 else j + 2
+            out.append(' ')
+        elif s.startswith('//', i) or (s[i] == '#' and (i == 0 or s[i - 1] == '\n')):
+            while True:
+                j = s.find('\n', i)
+                if j < 0 or s[j - 1] != '\\':
+                    break
+                i = j + 1
+            i = len(s) if j < 0 else j
+        else:
+            out.append(s[i])
+            i += 1
+    return ''.join(out)
+
+def closing(s, i):
+    depth = 0
+    while i < len(s):
+        if s[i] in '"\'':
+            i = skip_lit(s, i)
+            continue
+        if s[i] in '([{':
+            depth += 1
+        elif s[i] in ')]}':
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+def split_top(s):
+    parts, depth, start, i = [], 0, 0, 0
+    while i < len(s):
+        if s[i] in '"\'':
+            i = skip_lit(s, i)
+            continue
+        if s[i] in '([{':
+            depth += 1
+        elif s[i] in ')]}':
+            depth -= 1
+        elif s[i] == ',' and depth == 0:
+            parts.append(s[start:i].strip())
+            start = i + 1
+        i += 1
+    parts.append(s[start:].strip())
+    return parts
+
+ICONP = re.compile(r'\bconst\s+char\s*\*\s*(?:const\s+)?icon(?:_name)?$')
+LIT = r'"[^"\\]*"'
+BARE = re.compile(r'(?:[^"?]*\?\s*)?%s(?:\s*:\s*%s)?' % (LIT, LIT))
+
+def literals(arg):
+    return re.findall(r'"([^"\\]*)"', arg) if BARE.fullmatch(arg) else []
+
+# Function name -> the index of its icon parameter.
+def icon_params(src):
+    found = {}
+    for m in re.finditer(r'\b(\w+)\s*\(', src):
+        e = closing(src, m.end() - 1)
+        if e > 0 and src[e + 1:e + 40].lstrip()[:1] in ('{', ';'):
+            for k, p in enumerate(split_top(src[m.end():e])):
+                if ICONP.search(p):
+                    found[m.group(1)] = k
+    return found
+
+# Struct tag, typedef name, or (for an unnamed struct) the offset of its
+# closing brace -> the column of its icon member. `int a, b;` is two columns.
+def icon_columns(src):
+    found = {}
+    for m in re.finditer(r'\bstruct\s*(\w*)\s*\{', src):
+        e = closing(src, m.end() - 1)
+        if e < 0:
+            continue
+        col, k = None, 0
+        for d in (d.strip() for d in src[m.end():e].split(';')):
+            if not d:
+                continue
+            if ICONP.search(d):
+                col = k
+            k += 1 if '(' in d else 1 + d.count(',')
+        if col is None:
+            continue
+        if m.group(1):
+            found['struct ' + m.group(1)] = col
+        t = re.match(r'\s*(\w+)\s*;', src[e + 1:])
+        if t and src[:m.start()].rstrip().endswith('typedef'):
+            found[t.group(1)] = col
+        found[e] = col
+    return found
+
+def names_in(src, params, columns):
+    for name, k in params.items():
+        for m in re.finditer(r'\b%s\s*\(' % re.escape(name), src):
+            e = closing(src, m.end() - 1)
+            args = split_top(src[m.end():e]) if e > 0 else []
+            if k < len(args):
+                yield from literals(args[k])
+    for m in re.finditer(r'(struct\s+\w+|\w+|\})\s+(?:const\s+)?\w+\s*'
+                         r'\[[^\]]*\]\s*=\s*\{', src):
+        k = columns.get(m.start(1) if m.group(1) == '}' else m.group(1))
+        if k is None:
+            continue
+        e = closing(src, m.end() - 1)
+        for row in split_top(src[m.end():e]):
+            cells = split_top(row[1:-1]) if row.startswith('{') else []
+            if k < len(cells) and not any(c.startswith('.') for c in cells):
+                yield from literals(cells[k])
+
+sources = {p: uncomment(open(p, errors='replace').read())
+           for p in glob.glob('src/**/*.[ch]', recursive=True)}
+params, columns = {}, {}
+for p, s in sources.items():
+    if p.endswith('.h'):
+        params.update(icon_params(s))
+        columns.update({k: v for k, v in icon_columns(s).items()
+                        if isinstance(k, str)})
+for p, s in sources.items():
+    if p.endswith('.c'):
+        for n in names_in(s, {**params, **icon_params(s)},
+                          {**columns, **icon_columns(s)}):
+            if re.fullmatch(r'[a-z0-9._-]+', n):
+                used.add(n)
 
 for name in sorted(used - names):
     print(name)

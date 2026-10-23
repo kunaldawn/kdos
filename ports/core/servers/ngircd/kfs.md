@@ -44,4 +44,6 @@ The init script starts `ngircd -n -f /etc/ngircd.conf` through `setpriv`, which 
 watches it, and `ServerUID` in the configuration is not needed. Neither port needs privilege to
 bind. The account is made by `postinstall.sh` under `PKG_ROOT`, the root the package is being
 installed into, so an install into another tree, such as the inactive A/B slot, gets the account
-in that tree.
+in that tree. Its home is `/nonexistent`: the server keeps no files of its own.
+The hook sets the home with `usermod` after the creation check, so a tree that already had an
+`ngircd` account with another home is given `/nonexistent` as well.

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Backup
+GenericName=Backup
+Comment=Browse the backup repository, add to it and restore from it
+Exec=kdos-backup
+Icon=folder-backup
+Terminal=false
+NoDisplay=true
+Categories=System;Archiving;
+StartupWMClass=kdos-backup

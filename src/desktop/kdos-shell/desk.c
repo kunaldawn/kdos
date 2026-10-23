@@ -1032,7 +1032,23 @@ static void draw(const char *status)
 	 * and the row below is what drains the pool. A draw that skipped it
 	 * while the menu was down would leave a frame's hints in the pool for
 	 * the next one.
+	 *
+	 * AND IT STANDS ON THE STATUS ROW, NOT IN IT. The widget keeps a pane
+	 * inside the surface, whose last row here is the one the hints, the
+	 * rename line and a warning are drawn on after it, so a menu opened
+	 * near the bottom edge would lose its bottom border to them. The pane is lifted
+	 * by the rows it is about to draw, counted the way the widget counts
+	 * them: every item ctx_show() keeps, a rule included — a walk paid
+	 * only when the whole table could not fit under where the pane opened.
 	 */
+	if (ktui_menu_active(&menu) && menu.y + ctx_pane.n + 2 > h - 1) {
+		int n = 0;
+
+		for (int i = 0; i < ctx_pane.n; i++)
+			n += ctx_show(i, menu.user) != 0;
+		if (menu.y + n + 2 > h - 1)
+			menu.y = h - 1 - (n + 2) > 0 ? h - 1 - (n + 2) : 0;
+	}
 	ktui_menu_draw(&menu);
 	/* The status row is shared. The hints have it only while nothing else
 	 * is saying anything — a message about a failed rename outranks a

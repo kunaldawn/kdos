@@ -20,6 +20,11 @@ KDOS the daemon is started by `/etc/init.d/45_avahi.sh` once the system bus is u
   `--with-autoipd-user` and `--with-autoipd-group` naming the rest: `avahi` and
   `avahi-autoipd`, the names upstream defaults to, stated so the build matches the two accounts
   `postinstall.sh` creates.
+- `--with-avahi-priv-access-group=wheel` — The group whose members the daemon's D-Bus policy lets
+  call every method, `SetHostName` among them; anyone else may browse, resolve and publish.
+  Upstream's default is `netdev`, a Debian group KDOS does not have, so the policy would name a
+  group that does not exist and the bus would log the unknown group at every start. `wheel` is the
+  group of the users who administer the machine.
 - `--enable-dbus` — Build the daemon's D-Bus interface and `libavahi-client`, which talks to it.
   CUPS, gvfs, geoclue and the `libdns_sd` compatibility library all reach the daemon through
   `libavahi-client`.
@@ -58,6 +63,8 @@ system and the [package lint](https://github.com/kunaldawn/kdos/blob/main/docs/k
 refuses files there; the init script creates `/run/avahi-daemon` and gives it to `avahi` before
 it starts the daemon. `ssh.service` and `sftp-ssh.service` are removed from
 `/etc/avahi/services`, so a KDOS machine does not announce an SSH server on the local network.
+`/var/lib/avahi-autoipd` is created in the package and given to `avahi-autoipd` by
+`postinstall.sh`: it is that account's home and the directory the daemon chroots into.
 
 With `--disable-python` the service type database `service-types.db` is not generated, because
 upstream builds it with a Python script. `avahi-browse`, built with GDBM, then finds no database

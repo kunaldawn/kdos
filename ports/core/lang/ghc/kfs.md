@@ -39,6 +39,10 @@ which is how upstream's release tarballs are installed too.
   `ld`, and tells gcc to use the first that works; [lld](#port-lld) is installed earlier in this
   phase, so GHC would link everything with lld. Both `configure` runs carry it, because the binary
   distribution's makes the same search and records the result in the installed `settings`.
+- `--disable-numa` — Builds the runtime system without libnuma. The default, `auto`, links
+  [numactl](#port-numactl)'s `libnuma` whenever it is installed, and numactl is a port of
+  `41_system`, so a rebuild on a tree past that phase would make `ghc` need a library its recipe
+  does not declare, which the `undeclared` gate in `70_image` fails.
 - `CONF_GCC_LINKER_OPTS_STAGE2="-Wl,-z,now"` — The link flags of the target toolchain. The first
   configure writes them into Hadrian's `default.target`, which the first-stage compiler links
   with, so the second-stage `ghc` that ships and its libraries bind every symbol at load time

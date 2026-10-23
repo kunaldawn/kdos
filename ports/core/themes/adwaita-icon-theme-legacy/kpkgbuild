@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = adwaita-icon-theme-legacy
+version     = 46.2
+release     = 1
+source      = https://download.gnome.org/sources/$name/${version%.*}/$name-$version.tar.xz
+sha256      = 548480f58589a54b72d18833b755b15ffbd567e3187249d74e2e1f8f99f22fb4  adwaita-icon-theme-legacy-46.2.tar.xz
+description = AdwaitaLegacy, the full-colour icons Adwaita inherits for applications that look up the old icon names
+homepage    = https://gitlab.gnome.org/GNOME/adwaita-icon-theme-legacy
+license     = LGPL-3.0-only OR CC-BY-SA-3.0
+depends     = meson gtk3 hicolor-icon-theme

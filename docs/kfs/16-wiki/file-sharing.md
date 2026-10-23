@@ -56,7 +56,7 @@ rule that joins them:
 The samba port installs no `smb.conf`. Its service script starts [`smbd`]{.idx} only once a non-empty one
 exists, and starts `smbd` alone: no `nmbd` and no `winbindd`.
 
-<!-- kfs:include ports/core/servers/samba/build.sh lines=62-92 pin=3749e544b879 -->
+<!-- kfs:include ports/core/servers/samba/build.sh lines=62-92 pin=88369dbfc015 -->
 
 The configure options set where Samba keeps its files: the configuration under [`/etc/samba`]{.idx}, the
 password database under `/var/lib/samba/private` and the logs under [`/var/log/samba`]{.idx}:

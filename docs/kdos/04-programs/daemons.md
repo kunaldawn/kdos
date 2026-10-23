@@ -90,8 +90,9 @@ diagnose and review all five.
 A daemon runs in the foreground and never forks into the background. The init script calls
 `supervise <name> <binary>` from `/etc/init.d/service_helper`; the supervisor leads its own process
 group, writes `/run/<full name>.pid`, and restarts the daemon five seconds after it exits.
-`service stop <name>` sends SIGTERM to the whole group, waits a second, then sends SIGKILL to
-whatever is left.
+`service stop <name>` sends SIGTERM to the whole group, waits for it to empty for at most five
+seconds, then sends SIGKILL to whatever is left. `supervise` on a name whose supervisor is alive
+starts nothing and says `[SKIP]`, so a second `service start` cannot leave a daemon nothing stops.
 
 The daemon's output goes to syslog and to a small file in `/run`. The supervisor points the
 daemon's standard output and error, and its own *Starting* and *Exited* lines, at a forwarder
@@ -359,7 +360,9 @@ chosen during installation.
 logs straight into the desktop. `autologin off` turns it off.
 
 - The account must be one that can log in. `kb_users()` in `libkbase` decides that; a name it
-  would not list is refused with `err no such account`. Pointing autologin at a service account
+  would not list is refused: with `err not an account that can log in (a system account, or no
+  login shell)` when the account exists, as root does, and `err no such account` when it does
+  not. Pointing autologin at a service account
   with `nologin` would give a machine that boots to a login nobody can complete.
 - `off` comments the key line out as it stands, so `autologin = alice` becomes
   `#autologin = alice`, the form the installer writes, and a line already commented is left as it
@@ -1237,7 +1240,9 @@ kdos-boxsock <box> [instance-id]
 
 What it does:
 
-1. Checks the box name: 1 to 64 characters from `[A-Za-z0-9._-]`, and not `.` or `..`.
+1. Checks the box name: 1 to 64 characters from `[A-Za-z0-9._-]`, the first a letter or a digit,
+   so an option is never taken for a name; a bad one exits 2 with `bad box name`. `-h` or `--help`
+   alone prints the usage and exits 0.
 2. Takes a lock on `$XDG_RUNTIME_DIR/kdos-box-<box>@<display>.lock`. If another `kdos-boxsock` for
    the same box and compositor already holds it, this one exits 0 and does nothing. The lock, not
    the socket file, answers "is this box already served", because a socket file is also left

@@ -1213,7 +1213,9 @@ static void write_delta(const KcolScheme *sc)
 /* newsboat: `include <path>` from the shipped config. INDICES, not hex — `#`
  * is newsboat's comment character, so a hex colour truncates the line and the
  * entry is refused outright. kcol_xterm256 is where the scheme is
- * approximated, and it is approximated because there is no other way in. */
+ * approximated, and it is approximated because there is no other way in.
+ * ONLY ELEMENTS NEWSBOAT KNOWS: an unknown one (2.44 has no `important`) is
+ * a configuration error, and newsboat then refuses to start at all. */
 static void write_newsboat(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("newsboat/kdos-colors");
@@ -1241,11 +1243,10 @@ static void write_newsboat(const KcolScheme *sc)
 		"color hint-key color%d color%d bold\n"
 		"color hint-description color%d color%d\n"
 		"color title color%d color%d bold\n"
-		"color end-of-text-marker color%d color%d\n"
-		"color important color%d color%d bold\n",
+		"color end-of-text-marker color%d color%d\n",
 		text, deep, text, deep, p, deep, deep, p, deep, p,
 		deep, sec, text, deep, sec, deep, text, deep,
-		deep, sec, mut, deep, kcol_xterm256(sc->urgent), deep);
+		deep, sec, mut, deep);
 	kb_write_all(f, b.p, b.n);
 	kb_buf_free(&b);
 	free(f);
@@ -3254,7 +3255,7 @@ static void help_body(FILE *o)
 	fprintf(o, "  %-24s %s\n", "the host",
 		"kpkg — compiled here from source, against musl");
 	fprintf(o, "  %-24s %s\n", "applications",
-		"kdos app — one signed file each; installing is a mount");
+		"kdos app — each built here into a box; needs a network");
 	fprintf(o, "  %-24s %s\n", "environments",
 		"kdos-box — a box you built is a file you can give away");
 	fprintf(o, "\n");
@@ -3265,7 +3266,7 @@ static void help_body(FILE *o)
 		{ "explain [topic]", "the recorded debug cycles, browsable" },
 		{ "sandbox <prof> -- <cmd>", "run a native app under Landlock" },
 		{ "kdos app search <t>", "the applications here and on the medium" },
-		{ "kdos app install <id>", "one signed file, mounted — also remove, rollback" },
+		{ "kdos app install <id>", "build one application here — also remove" },
 		{ "kdos-box list", "environments: create, enter, freeze, export" },
 		{ "kdos-fetch-app <name>", "install an alien app from a network" },
 		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | paper | next | prev | list" },
@@ -3536,7 +3537,7 @@ static int cmd_status(int argc, char **argv)
 		if (kb_run_capture(&a, buf, sizeof(buf)) == 0 && buf[0])
 			printf("%s\n", buf);
 		else
-			printf("  none — try: kdos app gimp\n");
+			printf("  none — try: kdos app search <word>\n");
 	}
 	putchar('\n');
 
@@ -3707,6 +3708,20 @@ static int running(const char *exact, const char *contains)
 		kb_argv_add(&a, "-f");
 		kb_argv_add(&a, contains);
 	}
+	kb_argv_end(&a);
+	return kb_run_capture(&a, buf, sizeof(buf)) == 0 && buf[0];
+}
+
+/* `exact` is running under this process's real uid. */
+static int running_as_me(const char *exact)
+{
+	char buf[4096];
+	KbArgv a = {0};
+	kb_argv_add(&a, "pgrep");
+	kb_argv_add(&a, "-x");
+	kb_argv_add(&a, "-U");
+	kb_argv_addf(&a, "%u", (unsigned)getuid());
+	kb_argv_add(&a, exact);
 	kb_argv_end(&a);
 	return kb_run_capture(&a, buf, sizeof(buf)) == 0 && buf[0];
 }
@@ -4354,6 +4369,29 @@ static int cmd_doctor(int argc, char **argv)
 			ok("subgid mapping present");
 		else
 			warn_("no /etc/subgid entry");
+		/* The mappings and the files are only what podman needs; asking
+		 * podman itself is what proves its configuration and its store
+		 * work for this account. `info` opens the store without running
+		 * a container, and its refusal names what is wrong. */
+		if (kb_have_prog("podman")) {
+			KbArgv a = {0};
+			kb_argv_add(&a, "podman");
+			kb_argv_add(&a, "info");
+			kb_argv_add(&a, "--format");
+			kb_argv_add(&a, "{{.Store.GraphRoot}}");
+			kb_argv_end(&a);
+			char gr[512];
+			if (kb_run_capture(&a, gr, sizeof(gr)) == 0 && gr[0]) {
+				ok("podman store %s", gr);
+			} else {
+				char err[512];
+				kb_run_feed_env(&a, NULL, 0, "", 0, err,
+						sizeof(err));
+				err[strcspn(err, "\n")] = 0;
+				warn_("podman info fails — %s",
+				      err[0] ? err : "no reason given");
+			}
+		}
 	} else {
 		warn_("running as root — alien apps are meant to run as the kdos "
 		      "user");
@@ -4552,7 +4590,7 @@ static int cmd_doctor(int argc, char **argv)
 			      "attribution (start with: service start "
 			      "energyd)");
 		else
-			warn_("no RAPL energy domain on this machine — per-app "
+			skip_("no RAPL energy domain on this machine — per-app "
 			      "energy cannot be measured here at all");
 	}
 
@@ -4591,11 +4629,21 @@ static int cmd_doctor(int argc, char **argv)
 	/* The frame-timing socket. Absent means `kdos stutter` has nothing to
 	 * watch — which is normal outside a session and worth saying inside one,
 	 * because the alternative is a tool that appears to hang. */
+	/* Both sockets are in the runtime directory of the account that runs
+	 * kdos-comp. Asked from another account — root, or a second user on
+	 * a console — a running compositor has neither in the caller's
+	 * directory, and that is not a fault this account can see or fix. */
 	const char *rtd = getenv("XDG_RUNTIME_DIR");
+	int comp = running("kdos-comp", NULL);
+	int comp_mine = comp && running_as_me("kdos-comp");
 	if (rtd && *rtd) {
 		char *fs = kb_path_join(rtd, "kdos-frames.sock");
 		if (kb_path_exists(fs))
 			ok("kdos-comp is reporting frame timing (kdos stutter)");
+		else if (comp && !comp_mine)
+			skip_("kdos-comp runs in another account's session — "
+			      "run kdos doctor as that user to check frame "
+			      "timing");
 		else
 			warn_("no frame-timing socket — `kdos stutter` has "
 			      "nothing to watch (is kdos-comp this session's "
@@ -4612,10 +4660,13 @@ static int cmd_doctor(int argc, char **argv)
 		char *cs = kb_path_join(rtd, "kdos-cmd.sock");
 		if (kb_path_exists(cs))
 			ok("kdos-comp answers `kdos hey`");
-		else if (running("kdos-comp", NULL))
+		else if (comp_mine)
 			warn_("kdos-comp is running but exposes no command "
 			      "socket — `kdos hey` and kdos-teams have nothing "
 			      "to talk to (this compositor predates it)");
+		else if (comp)
+			skip_("kdos-comp runs in another account's session — "
+			      "run kdos doctor as that user to check `kdos hey`");
 		else
 			warn_("no command socket — `kdos hey` needs a running "
 			      "kdos-comp");

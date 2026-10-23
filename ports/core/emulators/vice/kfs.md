@@ -39,6 +39,11 @@ exemptions in
 
 ## Notes
 
+The SDL front end writes its log to `vice.log` in `~/.local/state/vice` and does not survive
+failing to open it, so an emulator started on an account without that directory crashes before
+its window. The patch creates the directory at start-up beside the cache and configuration
+directories, as the GTK 3 front end does.
+
 configure refuses any `--enable-` or `--with-` switch it does not list itself, so the usual
 `--disable-static` is not passed.
 

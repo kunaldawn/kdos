@@ -39,9 +39,6 @@ MagickWand libraries. Many ports depend on it, among them
 - `--with-fftw` — The `-fft` and `-ift` operators, through [fftw](#port-fftw).
 - `--with-djvu` — DjVu documents, through [djvulibre](#port-djvulibre).
 - `--with-jbig` — JBIG bi-level images, through [jbigkit](#port-jbigkit).
-- `--with-dejavu-font-dir=/usr/share/fonts/TTF` — Where [ttf-dejavu](#port-ttf-dejavu) installs,
-  so the generated `type-dejavu.xml` gives the Sans, Serif and Mono names a font without a
-  fontconfig lookup.
 - `--without-x` — No X11 display (`display`, `animate`, `import`) and no X11 delegates.
 - `--without-perl` — No PerlMagick.
 - `--without-lqr`, `--without-uhdr`, `--without-dmr`, `--without-fpx`, `--without-wmf` — No
@@ -53,6 +50,18 @@ MagickWand libraries. Many ports depend on it, among them
   `/usr/share/doc/ImageMagick-7/www` is absent.
 
 ## Notes
+
+`type.xml` includes none of the font tables installed beside it in `/etc/ImageMagick-7`, so they
+are read by nothing, and every font ImageMagick names comes from fontconfig, which
+`--with-fontconfig` builds in: `magick -list font` lists every face the system has, and
+`-font DejaVu-Sans` or a file path selects one. configure writes an include for each upstream
+table whose font directory it finds or is given. `type-dejavu.xml` is not a table of DejaVu
+faces: it maps the PostScript base names (`Helvetica`, `Times-Roman`, `AvantGarde-Book` and
+the rest) to URW base-35 files such as `NimbusSans-Regular.ttf`, which no port installs, so the
+recipe passes no `--with-dejavu-font-dir`, and none of the directories configure searches for it
+exists here. A PostScript base name is therefore no font: `-font Helvetica` stops with `unable to
+read font`, and `Liberation-Sans`, `Liberation-Serif` and `Liberation-Mono`, metric-compatible with
+Helvetica, Times and Courier, are the names to use instead.
 
 Upstream's release numbers carry a hyphen before the last field, which a KDOS version may not (see
 [kpkgbuild](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#kpkgbuild)). The recipe's

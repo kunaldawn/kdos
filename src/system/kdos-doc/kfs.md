@@ -3,7 +3,9 @@
 renders every page of `docs/kdos` to HTML under `/usr/share/doc/kdos` with
 [lowdown](#port-lowdown), styled by `kdos.css` from the port directory; writes `kdos(7)`, which
 says where the book is and lists its chapters; and writes a manual page for every `kdos-*` command
-in the book's command index, whose DESCRIPTION is the section of the book that command's row links
+in the book's command index, and for each command of ours named without the prefix that `OURS` in
+`mkbook.py` lists (`kpkg` and its four other names, `ksvc`, `service`, `kinstall`,
+`xdg-terminal-exec`), whose DESCRIPTION is the section of the book that command's row links
 to. So `man kdos-appbox` and the book say the same thing, in the same words. How a reader finds
 them is in
 [Manual pages and the book](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-command.md#manual-pages-and-the-book).
@@ -31,7 +33,10 @@ The build fails when a row of the command index links a section the book does no
 renamed heading is caught here rather than shipped as a manual page with no body.
 
 A command whose own port ships a `kdos-*.1` page, as [kdos-bb](#port-kdos-bb) does, is left to that
-port. Two packages that wrote the same path would be a conflict kpkg refuses.
+port. Two packages that wrote the same path would be a conflict kpkg refuses, which is also why a
+name without the prefix is listed by hand in `OURS` rather than taken from every row: the command
+index names upstream programs too (`ping`, `getent`, `init`), whose own ports install their pages.
+`ksvc` and `service`, installed in `/usr/sbin`, are section 8.
 
 Headings are given the ids GitHub gives them, by the same rule as `script/book/kfsgen.py` and
 `testing/anchorcheck.py`, so a link that works on GitHub works in the installed book; a change to

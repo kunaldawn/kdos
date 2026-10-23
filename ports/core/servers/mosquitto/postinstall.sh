@@ -24,3 +24,12 @@ root="${PKG_ROOT:-/}"
 grep -q '^mosquitto:' "$root/etc/group" 2>/dev/null || groupadd -R "$root" -r mosquitto
 grep -q '^mosquitto:' "$root/etc/passwd" 2>/dev/null || \
 	useradd -R "$root" -r -g mosquitto -d /var/lib/mosquitto -s /sbin/nologin mosquitto
+
+# chown resolves a name against the running root's passwd, so the ids are read
+# out of PKG_ROOT's. The account's home is where a configuration that turns
+# persistence on keeps the broker's state, and the broker writes it as this
+# account.
+while IFS=: read -r n _ uid gid _; do
+	[ "$n" = mosquitto ] || continue
+	chown "$uid:$gid" "$root/var/lib/mosquitto"
+done < "$root/etc/passwd"

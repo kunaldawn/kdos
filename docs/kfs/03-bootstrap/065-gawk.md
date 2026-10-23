@@ -11,7 +11,7 @@ explains them.
 
 ## Installation of gawk
 
-<!-- kfs:include script/phases/10_bootstrap/065_gawk.sh lines=23-42 pin=e9118a5b8311 -->
+<!-- kfs:include script/phases/10_bootstrap/065_gawk.sh lines=23-42 pin=755ee3a74b1a -->
 
 ### The meaning of the configure options
 
@@ -33,10 +33,10 @@ explains them.
 `--disable-nls`
 : Build no message catalogues.
 
-The `rm` deletes `gawk.csh`, the C-shell variant of the profile script. The gawk port leaves it out
-of its package, so a copy installed here would never be replaced or removed (see
-[Part III](intro.md#what-the-bootstrap-leaves-behind)). `gawk.sh` stays, and the port installs over
-it.
+The `rm` deletes `gawk.csh`, the C-shell variant of the profile script, and `gawknotes.info`, the
+maintainers' notes. The gawk port leaves both out of its package, so a copy installed here would
+never be replaced or removed (see [Part III](intro.md#what-the-bootstrap-leaves-behind)).
+`gawk.sh` stays, and the port installs over it.
 
 ## Contents of gawk
 
@@ -55,7 +55,7 @@ The [gawk](#port-gawk) port's page describes each program.
 The [gawk](#port-gawk) port, in `20_selfhost`, is built inside the chroot with readline, MPFR and
 GMP installed before it, and kpkg adopts the files this step installed. It swaps the two `without`
 switches for `--with-mpfr` and `--with-readline`, so its `gawk` links libreadline, libmpfr and
-libgmp. It deletes `gawk.csh` from its package as this step does, and `gawknotes.info` with it.
+libgmp. It deletes `gawk.csh` and `gawknotes.info` from its package, as this step does.
 
 ## See also
 

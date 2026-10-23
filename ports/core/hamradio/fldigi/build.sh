@@ -11,6 +11,7 @@
 
 patch -p1 -i "$PORT_SRC/nullptr-def.patch"
 patch -p1 -i "$PORT_SRC/x11-hints-on-x11-only.patch"
+patch -p1 -i "$PORT_SRC/combo-empty-add.patch"
 
 ./configure \
 	--prefix=/usr \

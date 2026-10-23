@@ -39,7 +39,7 @@ because a box shares the home and not `/usr/share`. See
 
 ## The files it checks
 
-<!-- kfs:include script/phases/70_image/050_theme.sh lines=46-75 pin=4d607408d104 -->
+<!-- kfs:include script/phases/70_image/050_theme.sh lines=46-76 pin=1907415c5083 -->
 
 `test -s` fails on a file that is missing or empty, and `set -e` then stops the phase. In order:
 
@@ -50,13 +50,13 @@ because a box shares the home and not `/usr/share`. See
 | `.themes/KDOS-<accent>/gtk-3.0/gtk.css`, and `.themes/KDOS` linking to it | GTK, through the theme name `KDOS`. GTK reloads a theme when its name moves, never when a file under an unchanged name is rewritten, so the stylesheet's directory carries the accent |
 | `.icons/KDOS/index.theme` | The icon theme |
 | `.config/kdos-comp/themerc-override` | kdos-comp's window frames, which it reads again on the `SIGHUP` `kdos theme` sends |
-| `.icons/KDOS-cursors/cursors/default` | The cursor theme. The `kdos-cursors` package installs a build of its own here; this rewrites it from the same generator and art |
+| `.icons/KDOS-cursors/cursors/default` | The cursor theme, generated from the art `kdos-cursors` ships in `/usr/share/kdos/cursors/art`. It is the only copy in `/etc/skel`: the package installs none there, so `kpkg check` has no second copy to report as modified |
 | `.config/kdeglobals`, `.local/share/color-schemes/KDOS.colors` | KDE applications, including boxed ones, which read them out of the shared home |
 | `.config/qt5ct/qt5ct.conf` and `colors/KDOS.conf`, the same under `qt6ct` | Qt 5 applications, and Qt 6 ones run under qt6ct, with no KDE platform theme |
 
 ## The two shared indexes
 
-<!-- kfs:include script/phases/70_image/050_theme.sh lines=84-98 pin=2e28026933ab -->
+<!-- kfs:include script/phases/70_image/050_theme.sh lines=85-99 pin=2e28026933ab -->
 
 `fs/` ships two kinds of file that reach their readers only through an index. KDOS's GSettings
 defaults, `fs/usr/share/glib-2.0/schemas/90_kdos.gschema.override`, take effect only once

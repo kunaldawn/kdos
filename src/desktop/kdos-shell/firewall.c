@@ -171,7 +171,7 @@ static void draw(void)
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 	sh_frame(w, h, "Firewall", KT_ACCENT, KT_BG, 1);
-	top = kch_header(w, "security-high", "Firewall",
+	top = kch_header(w, "lock", "Firewall",
 			 "which of this machine's services answer the network",
 			 icons_on);
 

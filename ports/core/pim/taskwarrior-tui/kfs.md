@@ -5,4 +5,5 @@ itself, only watches the file's modification time to know when to refresh; every
 runs the `task` program, which is why `taskwarrior` is in
 `depends` and why the two cannot disagree about a task. It is built from its
 [Rust vendor bundle](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring).
-The package adds a desktop entry, "Tasks", which opens it in a terminal.
+The package adds a desktop entry, "Tasks", which opens it in a terminal. It is `NoDisplay=true`:
+until `task` has written a `~/.taskrc` taskwarrior-tui exits at once, so Start does not list it.

@@ -42,5 +42,9 @@ make DESTDIR=$SYSROOT install
 # dependency lists into every library linked against libbfd or libopcodes.
 rm -f $SYSROOT/usr/lib/lib{bfd,ctf,ctf-nobfd,opcodes,sframe}.la
 
+# The manual pages of the Windows resource tools, which a Linux target does
+# not build; the binutils port deletes them from its package too.
+rm -f $SYSROOT/usr/share/man/man1/{dlltool,windres,windmc}.1
+
 rm -rf "$BINUTILS_SRC"
 touch "$MARK/binutils"

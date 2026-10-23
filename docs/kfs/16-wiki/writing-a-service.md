@@ -67,7 +67,7 @@ as that account:
 The account comes from the port's `postinstall.sh`, which runs on the target at every install and
 writes under `PKG_ROOT`:
 
-<!-- kfs:include ports/core/servers/ngircd/postinstall.sh lines=20-23 pin=f7b763078e75 -->
+<!-- kfs:include ports/core/servers/ngircd/postinstall.sh lines=20-23 pin=900e8395b1a6 -->
 
 Why a script lives in the recipe and not beside it, and the rules a `postinstall.sh` keeps, are in
 [Shipping a script the port carries](../../kdos/05-developer/writing-ports.md#shipping-a-script-the-port-carries)
@@ -197,6 +197,10 @@ and [postinstall.sh](../../kdos/05-developer/writing-ports.md#postinstallsh).
   a kernel feature, a configuration file) first, and print `[SKIP]` with the reason.
 - **Name a final exit.** When only the daemon itself can tell that it has nothing to do, find the
   exit status it uses for that and pass `--final-exit <code>` to `supervise`.
+- **Name a stop grace when shutting down takes time.** `stop` sends `SIGTERM`, waits for the
+  daemon to exit, and sends `SIGKILL` after five seconds. A daemon that writes data out before it
+  exits — a database flushing its buffers, a file server waiting for its children — passes
+  `--stop-grace <seconds>` to `supervise`: `76_postgresql.sh` passes 30.
 - **Run as an account, not as root,** with `setpriv --reuid=<user> --regid=<group> --init-groups`
   in front of the daemon, as `79_ngircd.sh` does. Test for the account first, as it does, with
   `getent passwd <user>` (from [musl-utils](#port-musl-utils)).
@@ -240,8 +244,9 @@ background and the supervisor saw the parent exit: the log repeats
 line. Add the daemon's foreground switch. Otherwise read its own complaint in
 `/run/kdos-svc.<name>.log`.
 
-**`service stop` reports `Stopped`, but the daemon keeps running.** Either the daemon left the
-supervisor's process group (a daemon that calls `setsid` itself does), or it rewrote
+**`service stop` reports `Stopped`, but the daemon keeps running.** Either a child of the daemon
+left the supervisor's process group (one that calls `setsid` itself does; `stop` signals the
+group and the daemon's own pid, never such a child), or the daemon rewrote
 `/run/<name>.pid`. Check with `ps -o pid,pgid,args -p "$(cat /run/<name>.pid)"`; the process should
 be `ksvc supervise …`, and the daemon should share its process group.
 

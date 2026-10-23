@@ -7,6 +7,11 @@ text. The program is called `goldendict`.
 
 ## Flags
 
+- `-Wl,-z,stack-size=8388608`, added to `LDFLAGS` — ask for an 8 MiB stack in the program's
+  `PT_GNU_STACK` header, the size a thread gets by default on glibc, where upstream develops. musl
+  gives each new thread 128 KiB unless that header asks for more, and the pooled thread that loads
+  dictionaries overruns it in `Dsl::makeDictionaries`, whose DSL scanner alone keeps a 64 KiB read
+  buffer on the stack: the program crashes at start, before its window.
 - `-D CMAKE_SKIP_INSTALL_RPATH=ON` — Install the program with no `RPATH`; every library it loads is
   in `/usr/lib`.
 - `-D WITH_EPWING_SUPPORT=OFF` — No EPWING dictionaries. They need libeb, which is not a port, and

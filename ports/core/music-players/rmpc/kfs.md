@@ -24,7 +24,10 @@ The manual page and the bash, fish and zsh completions are not in the tarball: `
 them into `target/man` and `target/completions` during the build, and `build.sh` installs them from
 there.
 
-The desktop entry is KDOS's own. It sets `Terminal=true` and `X-KDOS-Term=kdos-term`, which asks
+The desktop entry is KDOS's own. It is `NoDisplay=true`: rmpc exits at once when no mpd is
+running, and the session starts mpd only once an `mpd.conf` exists, which the image does not ship,
+so Start does not list it; `Super+Shift+U` opens it. It sets
+`Terminal=true` and `X-KDOS-Term=kdos-term`, which asks
 for [kdos-term](../../../../docs/kdos/04-programs/kdos-term.md) whatever the session's terminal is,
 because the album art is drawn in the terminal's cell grid; see
 [Terminal entries](../../../../docs/kdos/04-programs/kdos-appbox.md#terminal-entries). rmpc's

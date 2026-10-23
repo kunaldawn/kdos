@@ -39,4 +39,5 @@ and the install rule names the `.info` file whether or not it was built.
 After the install, `build.sh` moves upstream's `contrib` directory from `/usr/share/contrib` to
 `/usr/share/ledger/contrib`, takes its bash completion out to
 `/usr/share/bash-completion/completions/ledger`, and drops the test data of the non-profit audit
-reports. The desktop entry is KDOS's own, with `Terminal=true`.
+reports. The desktop entry is KDOS's own, with `Terminal=true` and `NoDisplay=true`: ledger with
+no journal exits at once, so Start does not list it, and it runs from a prompt with `-f`.

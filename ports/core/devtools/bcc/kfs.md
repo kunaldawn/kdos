@@ -21,6 +21,15 @@ directories.
   `cmake/clang_libs.cmake` links the single aggregate `libLLVM.so`, which the [llvm](#port-llvm)
   port does not build: it installs one shared library per component
   (`LLVM_BUILD_LLVM_DYLIB=OFF`, `BUILD_SHARED_LIBS=ON`).
+- `-Dlibclang$_c=$_clang` — One cache entry per clang library the top-level `CMakeLists.txt`
+  looks up, `libclangAnalysis` through `libclangAPINotes`, each set to [clang](#port-clang)'s
+  aggregate `libclang-cpp.so`. `find_library` keeps a set entry, so `libbcc.so` links that one
+  shared library, as bpftrace does. Left to the search, each entry finds the static
+  `libclang<Name>.a`, and `cmake/clang_libs.cmake` links only those fifteen archives; clang 23's
+  code in them calls into archives the list does not name (`clangAnalysisLifetimeSafety`,
+  `clangDependencyScanning`, `clangOptions`, the `clangScalableStaticAnalysis*` set) and into
+  `libLLVMABI`, so 45 symbols would stay unresolved in `libbcc.so.0` and `import bcc` would stop
+  at load. The `ldd` test after the install fails the build when any symbol is unresolved.
 - `-DENABLE_CLANG_JIT=ON` — Build the clang front end that compiles BPF C at run time. It is
   upstream's default, and it is what bpftrace links; without it neither the tools nor the manual
   pages are built either.

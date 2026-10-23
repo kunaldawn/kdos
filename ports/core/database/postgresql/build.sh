@@ -60,8 +60,8 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
-        supervise "$NAME" setpriv --reuid=postgres --regid=postgres \
-            --init-groups "$DAEMON" -D "$DATA"
+        supervise --stop-grace 30 "$NAME" setpriv --reuid=postgres \
+            --regid=postgres --init-groups "$DAEMON" -D "$DATA"
         ;;
     stop)   stop_service "$NAME" ;;
     status) check_status "$NAME" ;;

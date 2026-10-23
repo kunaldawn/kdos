@@ -784,8 +784,8 @@ static int icon_ok(void)
 	 * both of those are pixels: on a character grid the same button is a
 	 * 2x2 picture floating on the bar's own background with nothing
 	 * saying it is a button, is running, or is minimised — and an
-	 * application the atlas has no artwork for comes out as one lowercase
-	 * letter in four cells. The labelled chip is what the cell layer can
+	 * application the atlas has no artwork for comes out as the first
+	 * letter of its label in four cells. The labelled chip is what the cell layer can
 	 * actually draw: a fill for the shape, a name, and a □/■ for the
 	 * state.
 	 *
@@ -2399,7 +2399,8 @@ static int cpu_percent(void);
  * read per frame would be a read per frame for a number that moves once a day.
  *
  * THE SAME DOCUMENT CARRIES WHAT WENT WRONG: `"problem"` is `no-tree`,
- * `no-network`, `fetch-failed` or `build-failed` (null when nothing did) and
+ * `no-key`, `no-network`, `fetch-failed` or `build-failed` (null when nothing
+ * did) and
  * `"detail"` says it in a sentence. A machine that cannot learn of updates is
  * not a machine with nothing behind, so a problem draws the badge on its own,
  * in the warning colour, even at zero.
@@ -5504,7 +5505,7 @@ static void build_overflow(struct sh_state *sh)
 			snprintf(buf, sizeof(buf),
 				 "%d package%s the ports tree pins newer", n,
 				 n == 1 ? "" : "s");
-			ov_push("update", "system-software-update", "Updates",
+			ov_push("update", "system-upgrade", "Updates",
 				buf, 0);
 		}
 	}
@@ -6230,7 +6231,7 @@ static void draw_taskbar(struct sh_state *sh)
 				else
 					snprintf(label, sizeof(label), "!");
 				applet_tile(sh, SH_AP_UPDATE, &right_x,
-					    floor_x, "system-software-update",
+					    floor_x, "system-upgrade",
 					    label, warn ? KT_WARN : KT_ACCENT,
 					    warn ? KT_WARN : KT_ACCENT);
 				break;

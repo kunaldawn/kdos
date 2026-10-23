@@ -52,18 +52,19 @@ The command the login shell runs. It refuses when the compositor is not installe
 
 <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=7-11 pin=382d0335a0d6 -->
 
-On a virtio [GPU]{.idx} it then turns off hardware cursors, and when the GPU does not offer virgl it sets
-`WLR_RENDERER=pixman`, so the compositor renders in software. Last it prepares the runtime
+On a virtio [GPU]{.idx} it then turns off hardware cursors, and when the GPU does not offer virgl, or
+when there is no render node at all, it sets `WLR_RENDERER=pixman`, so the compositor renders in
+software. Last it prepares the runtime
 directory, the [keymap]{.idx}, the boxes and the session bus, and hands over to `kdos-desktop-start`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop lines=44-52 pin=ca4700af0db5 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop lines=53-61 pin=ca4700af0db5 -->
 
 ### /usr/local/bin/kdos-desktop-start
 
 Runs the compositor in the foreground with its log in a file, and offers a restart when it crashes.
 From `fs/usr/local/bin/kdos-desktop-start`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=142-188 pin=c9e6c8058ef5 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=163-224 pin=97fd93ee7f98 -->
 
 ### ~/.config/kdos-comp/rc.xml and ~/.config/kdos/comp.conf
 

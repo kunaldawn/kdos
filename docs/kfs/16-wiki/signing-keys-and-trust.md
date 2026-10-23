@@ -279,14 +279,15 @@ The binhost has no such package, or its architecture, build configuration or rec
 from this machine's; the message says which. That is a match failure, not a trust failure, and
 `binhost` installs nothing: build the port with `kpkg install`.
 
-**`kdos update check` reports `fetch-failed`.**
-Run `sudo kdos update fetch` to see the reason. With no `/etc/kdos/update.conf` it downloads from
-the project's latest release, and while none carries a tree it ends
+**`kdos update check` reports `no-key` or `fetch-failed`.**
+Run `sudo kdos update fetch` to see the reason. The ring is read first: an image built without a
+release key has an empty `/etc/kdos/keys/tree`, and `fetch` stops there, before any download, with
+`no trusted tree key in /etc/kdos/keys/tree` and the state `no-key`. With a key, and no
+`/etc/kdos/update.conf`, it downloads from the project's latest release, and while none carries a
+tree it ends
 `kdos update: https://github.com/kunaldawn/kdos/releases/latest/download/kdos-ports.tar.xz could not be downloaded`,
-after curl's `The requested URL returned error: 404`. A tree that does download is checked against
-the ring next: an image built without a release key has an empty `/etc/kdos/keys/tree` and refuses
-every tree with `no trusted tree key in /etc/kdos/keys/tree`. A tree whose signature does not
-verify, or whose `TREE` stamp is older than the installed one, is refused. The states are in
+after curl's `The requested URL returned error: 404`. A tree whose signature does not verify, or
+whose `TREE` stamp is older than the installed one, is refused. The states are in
 [kdos update](../../kdos/04-programs/kdos-command.md#kdos-update).
 
 **A pack import is refused.**

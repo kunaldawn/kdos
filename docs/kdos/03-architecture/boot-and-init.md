@@ -428,12 +428,12 @@ The programs carried, and the rule each follows:
 | Program | Rule |
 |---|---|
 | `cat`, `chmod`, `cut`, `ls`, `mkdir`, `mknod`, `seq`, `sleep` | GNU coreutils: what `init` runs. The build stops if one is missing or its `--version` names no GNU package. |
-| `cp`, `mv`, `rm`, `ln`, `rmdir`, `head`, `tail`, `wc`, `stat`, `df`, `dd`, `sync`, `uname`, `readlink`, `touch`, `sort`, `tr`, `grep`, `sed` | GNU coreutils, grep and sed, for the [rescue shell](#the-rescue-shell), under the same check. |
+| `cp`, `mv`, `rm`, `ln`, `rmdir`, `head`, `tail`, `wc`, `stat`, `df`, `dd`, `sync`, `uname`, `readlink`, `touch`, `basename`, `sort`, `tr`, `grep`, `sed` | GNU coreutils, grep and sed, for the [rescue shell](#the-rescue-shell) and the udev rules (`63-md-raid-arrays.rules` runs `readlink` and `basename`), under the same check. |
 | `switch_root`, `mount`, `umount`, `losetup`, `dmesg`, `setsid` | Always util-linux's: the build stops unless each one's `--version` names util-linux. See [`switch_root`](#switch_root). |
 | `blkid` | Always util-linux's, under the same check; see [`blkid`](#blkid). |
 | `kdos-splash` | Carried with `/usr/share/kdos/splash.psf` when installed; otherwise the build warns and the machine boots without a splash. |
-| `udevd`, `udevadm`, `kmod` (as `modprobe`, `insmod`, `depmod`) | Always, with the udev rules from `/usr/lib/udev` and `/etc/udev`. |
-| `mdadm` | When installed. |
+| `udevd`, `udevadm`, `kmod` (as `modprobe`, `insmod`, `depmod`) | Always, with the udev rules from `/usr/lib/udev` and `/etc/udev` whose programs the initramfs carries (below). |
+| `mdadm` | When installed, at `/usr/sbin/mdadm`, the path its udev rules run, with `bin/mdadm` a link to it. |
 | `e2fsck` | With `libext2fs`, `libcom_err` and `libe2p`, or not at all. |
 | `kdos-bootctl` | With `libpng16`, or not at all (below). |
 | `cryptsetup` | With its libraries, only when installed. |
@@ -458,10 +458,25 @@ thin-provisioning-tools' single binary, `pdata_tools`, which is copied with its 
 the matching one before it activates a thin pool or a cache, and refuses the volume without it. A
 generated `etc/lvm/lvm.conf` names those two paths and nothing else.
 
+The udev rules name the real root's paths, and the initramfs answers at them: `/usr/bin` is a link
+to `bin/`, `/sbin` a link to `bin/`, `/usr/lib/udev` a link to `lib/udev` (udevd runs a bare helper
+name from there), and `/usr/sbin/blkid` a link to `bin/blkid`. Once every program and library is
+in the tree, two passes decide what udev keeps. A helper in `lib/udev` that links a library the
+initramfs does not carry (`mtp-probe`, libinput's and libgpod's) is removed. Then every rules file
+any of whose `RUN`, `PROGRAM` or `IMPORT{program}` keys names a program the tree lacks is removed
+whole, and the build prints a `Note:` line naming the file and the program; removing single lines
+would leave a file's `GOTO`s and `LABEL`s unbalanced. Nothing is lost by it, because the root's
+`01_udev` replays every rule, but a rule left in would make udevd log `failed to execute` for each
+device it matched. The rules that assemble a root are never removed: `10-dm`, `11-dm-lvm`,
+`13-dm-disk`, `95-dm-notify`, `63-md-raid-arrays`, `64-md-raid-assembly`, `64-btrfs` and
+`60-persistent-storage`, each when the root has it.
+
 The build stops, naming the problem, when:
 
 - lvm2 is installed and `lvm`, `dmsetup`, `thin_check` or `cache_check` is missing;
 - a udev rule names `dmsetup` or `lvm` anywhere but `/usr/sbin`;
+- one of the rules that assemble a root names a program the initramfs does not carry, or is on the
+  root and not in the initramfs;
 - a library in a program's closure is installed nowhere;
 - a GNU or util-linux program above is missing, or its `--version` does not name its package;
 - no working `readelf` is found. `readelf`, or `llvm-readelf` in its place, must find libblkid
@@ -956,7 +971,8 @@ not always the one holding the medium, and a class that has not appeared yet mus
 chance. A device that mounts is inspected only once, though: a filesystem without `system.sfs` on
 it will not grow one, so it is remembered and skipped, and only nodes that have not mounted yet are
 retried. That is one mount and unmount for a wrong disk across the whole scan, rather than one per
-pass.
+pass. A node whose size in `/sys/class/block` is 0, such as an optical drive with no disc in it, is
+passed over without a mount and without a message, and looked at again on the next pass.
 
 `/mnt/iso` is the only mount point the scan has, so the unmount is checked. A mount point left
 busy would take a second filesystem stacked on top of it and every later test would read the wrong
@@ -1322,9 +1338,12 @@ table, and it would run after the network scripts while the interfaces are still
 leaving the machine on the network with nothing filtering until power-off. The ruleset goes when
 the kernel does.
 
-Stopping a supervised service costs `ksvc` a second (`SIGTERM` to the process group, a one-second
-wait, then `SIGKILL` if it is still alive), so a shutdown takes about as many seconds as there are
-daemons running. `kdos-powerd` runs `telinit 0` or `telinit 6` and then waits sixty seconds before
+Stopping a supervised service costs `ksvc` as long as its daemon takes to exit: `SIGTERM` to the
+process group, a wait for the group to empty polled every 50 ms, and `SIGKILL` to what is left when
+the stop grace runs out. The grace is five seconds unless the script passed `supervise
+--stop-grace`; PostgreSQL's is 30 and Samba's 15, so a server writing its data out is not killed
+partway through. Most daemons exit within a tick, so `rcK`'s walk costs a fraction of a second per
+service. `kdos-powerd` runs `telinit 0` or `telinit 6` and then waits sixty seconds before
 calling `reboot(2)` itself. That is longer than init's three seconds for the consoles plus `rcK`'s
 walk down to `55_powerd`, which ends it, so the fallback fires only when init never acted on the
 request. No signal can stand in for `telinit`: sysvinit ignores `SIGTERM`, and `SIGUSR2` closes

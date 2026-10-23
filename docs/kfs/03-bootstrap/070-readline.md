@@ -13,7 +13,7 @@ source tarball against the ncurses that [`040_ncurses.sh`](040-ncurses.md) insta
 The step unpacks the port's tarball and builds in a `build` directory inside it, so the source tree
 itself is never written:
 
-<!-- kfs:include script/phases/10_bootstrap/070_readline.sh lines=24-35 pin=f3c7cebde99f -->
+<!-- kfs:include script/phases/10_bootstrap/070_readline.sh lines=24-39 pin=e48860606062 -->
 
 `extract_port_source` unpacks the tarball the recipe names first and nothing else, so the official
 upstream patch series the port carries beside it (`readline<ver>-NNN`, numbered from 001) is not
@@ -39,6 +39,14 @@ applied here.
   records that it needs `libncursesw.so`. readline calls the terminal functions, and built without
   this it leaves them for every program that links readline to supply. Given on the `make` command
   line, the variable overrides the value configure wrote into the makefile.
+
+### Removing the HTML manuals
+
+The `rm` deletes the HTML manuals the install writes under `/usr/share/doc/readline`. kpkg prunes
+HTML manuals from every package (see
+[Size and language policy](../../kdos/05-developer/writing-ports.md#size-and-language-policy)), so
+the readline port never installs these files again, and a copy left here would be adopted by no
+package and outlive every install (see [Part III](intro.md#what-the-bootstrap-leaves-behind)).
 
 The step then removes the source and touches `build/mark/bootstrap/readline`.
 

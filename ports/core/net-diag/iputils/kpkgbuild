@@ -16,4 +16,4 @@ sha256      = 6f213700dbf96b5cc4499ca70cb15ecd69c09f405b06785bb4a1a10b572b6276  
 description = ping, arping, tracepath and clockdiff — ping runs unprivileged through ICMP sockets
 homepage    = https://github.com/iputils/iputils
 license     = BSD-3-Clause AND GPL-2.0-or-later
-depends     = libcap libidn2 meson ninja
+depends     = libcap meson ninja

@@ -50,7 +50,9 @@ login shell) unless they exist. Started as root, the broker drops to that accoun
 Mosquitto falls back to `nobody`, which every other daemon asking for an unprivileged account
 shares. Everything is written under `PKG_ROOT`, so an install into another root, such as an A/B update,
 gets the account too, and the guard reads that root's `/etc/group` and `/etc/passwd` itself:
-`getent` would answer for the running system instead.
+`getent` would answer for the running system instead. The package carries the home directory and
+`postinstall.sh` gives it to the account, so a configuration that turns persistence on can name
+`persistence_location /var/lib/mosquitto/`.
 
 cJSON is a required dependency with no option of its own (`find_package(cJSON REQUIRED)`);
 [cjson](#port-cjson) is in `depends`.

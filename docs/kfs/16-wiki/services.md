@@ -56,7 +56,7 @@ The last field is whether the service is on by default.
 
 Every supervised script sources this file. Three of its functions are thin wrappers over `ksvc`:
 
-<!-- kfs:include fs/etc/init.d/service_helper lines=33-43 pin=e25ef977dc8e -->
+<!-- kfs:include fs/etc/init.d/service_helper lines=41-51 pin=e25ef977dc8e -->
 
 The fourth, `wait_bus_name NAME`, returns once `NAME` has an owner on the system bus, or after ten
 seconds with `[WARN] NAME is not on the system bus after 10 seconds` and status 1. `40_dbus.sh`
@@ -90,11 +90,11 @@ and supervises `dhcpcd`.
    service list
    ```
 
-   Each row is the service name, `[ENABLED]` or `[DISABLED]`, and whatever the script's own
-   `status` printed, unchanged. A script that supervises several daemons prints a line for each,
-   so `utmps` shows both `utmpd` and `wtmpd` and `timers` one line per job; `tlp` prints its whole
-   status report; and a script whose `status` prints nothing (`modules`, `lvm`, `userdirs`)
-   leaves its row unfinished, so the next service's name follows on the same line.
+   Each row is one line: the service name, `[ENABLED]` or `[DISABLED]`, and the first line the
+   script's own `status` printed, cut to the terminal's width. A script that prints more —
+   `utmps` a line for each of `utmpd` and `wtmpd`, `timers` one per job, `tlp` its whole status
+   report — gets ` (+N more: service status <name>)` after that line, and `service status <name>`
+   shows the rest. A script whose `status` prints nothing (`modules`, `lvm`, `userdirs`) shows `—`.
 
 2. Ask about one service:
 
@@ -119,7 +119,9 @@ and supervises `dhcpcd`.
    ```
 
    `restart` runs the script's `stop`, waits a second and runs its `start`. A supervised daemon
-   takes about a second to stop.
+   is stopped as soon as it exits after `SIGTERM`, and killed if it is still running when its stop
+   grace runs out (five seconds unless the script named another). `start` on a service that is
+   already running starts nothing: it prints `[SKIP] <name>: already supervised (pid N)`.
 
 2. A name that matches no script exactly is matched as part of one, so `service status ssh` reaches
    `70_sshd.sh`. Rely on this only for `status`, `start`, `stop` and `restart`; see the warning
@@ -185,8 +187,10 @@ and prints `ok ssh off`. See
    sudo service start network
    ```
 
-The marker stops only the boot-time start. The system bus can still start NetworkManager when a
-desktop session first calls it; how to stop that too is in the configuration reference's
+Nothing else starts it again. NetworkManager has no D-Bus activation file, so a call to its name
+while it is stopped, such as the one `kdos-netagent` makes in every desktop session, fails with
+`org.freedesktop.DBus.Error.ServiceUnknown` and starts nothing; the marker is the only switch. The
+same holds for every daemon a service script supervises; see the configuration reference's
 [entry for the marker](../../kdos/06-reference/configuration.md#etcservicedisabledname).
 
 ## Tips
@@ -204,8 +208,8 @@ desktop session first calls it; how to stop that too is in the configuration ref
 - `kdos doctor` checks that `kdos-powerd`, `kdos-energyd` and `kdos-oomd` are running, by their
   sockets, and warns about each one that is not with the `service start` command that starts it.
   On a machine with no RAPL energy counters, most virtual machines among them, it reports
-  `no RAPL energy domain on this machine` instead of a stopped `kdos-energyd`, whose script skips
-  it there.
+  `[skip] no RAPL energy domain on this machine` instead of a stopped `kdos-energyd`, whose script
+  skips it there.
 - `kdos restarts` lists the processes still running files that an upgrade replaced. Restart a
   daemon among them with `sudo service restart <service>`, using the service's name, not the
   process's.

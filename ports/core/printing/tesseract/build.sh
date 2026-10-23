@@ -21,8 +21,9 @@ cmake .. -G Ninja \
 	-DDISABLE_ARCHIVE=OFF \
 	-DDISABLE_CURL=OFF \
 	-DGRAPHICS_DISABLED=ON \
-	-DUSE_SYSTEM_ICU=ON
-for def in HAVE_TIFFIO_H HAVE_LIBARCHIVE HAVE_LIBCURL; do
+	-DUSE_SYSTEM_ICU=ON \
+	-DTESSDATA_PREFIX=/usr/share
+for def in HAVE_TIFFIO_H HAVE_LIBARCHIVE HAVE_LIBCURL TESSDATA_PREFIX; do
 	grep -q "^#define $def " config_auto.h || { echo "tesseract: $def not configured" >&2; exit 1; }
 done
 ninja

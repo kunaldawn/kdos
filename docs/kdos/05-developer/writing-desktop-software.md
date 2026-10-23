@@ -403,7 +403,7 @@ implementation of any of these diverges from `libkchrome` as soon as either one 
 
 ```c
 ktui_draw_box(krect(0, 0, w, h), " Updates ", KT_ACCENT, KT_BG, 1);
-int top = kch_header(w, "system-software-update", "Updates", sub, icons_on);
+int top = kch_header(w, "system-upgrade", "Updates", sub, icons_on);
 kch_group(2, top, w - 4, "Behind");
 int left = kch_buttons(w, h - 3, buttons, nbuttons, focus);  /* its own left edge */
 ```
@@ -1022,10 +1022,16 @@ several places, and most of them fail silently.
    line to an error stream nobody reads and exits before a surface exists, so the symptom is a
    control that silently does nothing. A front end on `sh_run()` takes `--font` and `--dump` in
    `shell.c`, and the check reads that file for them.
-8. If it opens files by type, give it a desktop entry. The `kdos-shell` front ends that have one,
-   `kdos-peek`, `kdos-pix` and `kdos-burn`, ship it under `fs/usr/share/applications/` with `NoDisplay=true`
-   and a `MimeType=` line, so a file of that type can be opened with it while the menu does not
-   list it. The entry's file name is the front end's `app_id` plus `.desktop`.
+8. If it opens a window, give it a desktop entry. Every `kdos-shell` front end that asks for
+   `KDISP_ROLE_TOPLEVEL` ships one under `fs/usr/share/applications/`, named after its `app_id`
+   plus `.desktop`, with `NoDisplay=true` so the menu does not list it, and `Name=`, `Icon=`,
+   `Exec=` and `StartupWMClass=`. The taskbar, the window switcher and `kdos appid` find a window's
+   name and picture through that entry; without one the taskbar draws the first letter of the
+   title and `kdos appid` reports a `MISMATCH`. `Icon=` names a picture the icon atlas carries,
+   because the atlas holds no application artwork to fall back to. A front end that opens files
+   by type adds a `MimeType=` line, as `kdos-peek`, `kdos-pix` and `kdos-burn` do, so a file of
+   that type can be opened with it. `testing/preflight.sh` refuses a toplevel `app_id` with no
+   entry.
 
 ## A program of its own
 

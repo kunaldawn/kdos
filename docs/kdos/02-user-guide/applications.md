@@ -92,7 +92,10 @@ native and boxed applications alike. Qt 6 applications read the palette, fonts a
 
 Each table names the applications ported for one kind of work. The names are the applications'
 own, and the command that starts each is its upstream name. Those with a window of their own have a
-row in the Start menu; the rest, such as llama.cpp, Waypipe or ClamAV, run from a prompt.
+row in the Start menu; the rest, such as llama.cpp, Waypipe or ClamAV, run from a prompt. So does
+a terminal program that would exit at once from a Start row, with no argument and no setup: `tig`
+outside a repository, `ledger` without a journal, `presenterm` without a file, `taskwarrior-tui`
+before `task` has written `~/.taskrc`, and `rmpc` while no mpd is running.
 
 ### Browsing the web and the small internet
 

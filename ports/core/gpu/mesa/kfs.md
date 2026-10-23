@@ -31,8 +31,17 @@ does not depend on what happens to be installed when Mesa builds. Two probes hav
   rusticl's Rust bindings to the OpenCL and Mesa headers, finds libclang.
 - `RUST_BACKTRACE=1` — Print a backtrace when a Rust build step panics, so a failure in the log
   says where.
-- `RUSTFLAGS="-C prefer-dynamic"` — Link the Rust standard library dynamically into Mesa's Rust
-  code rather than statically.
+- `RUSTC="rustc -C target-feature=-crt-static"` — Link Mesa's Rust code against the shared C
+  library. The musl target defaults to `crt-static`, and NVK's compiler and rusticl are Rust
+  static libraries linked into `libvulkan_nouveau.so` and `libRusticlOpenCL.so`: with the default,
+  each carries a private copy of musl, uninitialised, and every Vulkan, zink or OpenCL client
+  that loads the driver faults in it, on a machine with no NVIDIA GPU as well. The flag goes in
+  `RUSTC` and not in `RUSTFLAGS` because meson reads only the compiler command when it asks
+  `rustc` whether the target is `crt-static` and which native libraries a static library needs;
+  given the flag in `RUSTFLAGS` alone, it still puts Rust's `self-contained` directory, which
+  holds a `libc.a`, on the final link line and the copy is linked in anyway. `-C prefer-dynamic`
+  is not passed: with `crt-static` off it takes effect, and meson's sanity program then needs a
+  `libstd-*.so` the loader does not find.
 - `-D b_ndebug=true` — Compile with `NDEBUG`, so Mesa's assertions are off in the release build.
 - `-D opengl=true`, `-D gles1=disabled`, `-D gles2=enabled` — Desktop OpenGL and OpenGL ES 2 and
   3; no OpenGL ES 1.
@@ -90,6 +99,11 @@ does not depend on what happens to be installed when Mesa builds. Two probes hav
 - `-D valgrind=disabled` — No Valgrind client requests compiled into the drivers.
 
 ## Notes
+After the install, the recipe reads the symbol table of every shared library in the package and
+fails the build if one defines musl's `__libc`, `__libc_malloc_impl` or `__stdio_write` as a local
+symbol, the mark of a private C library. It runs before the packager strips the symbol table of
+every file over 32 MiB, after which no check of the installed tree can see the copy in one.
+
 The crate blocks have to match the wrap files of the Mesa version being built. A bump that
 moves a crate's version changes the wrap's `directory`, and a block left at the old name leaves
 meson wanting a download the build cannot make; the crate's `source` and `sha256` lines in the

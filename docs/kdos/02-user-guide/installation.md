@@ -458,7 +458,7 @@ scroll.
 
 | Step | What it does | Skipped when |
 |---|---|---|
-| Prepare | Checks the tools and the target, stops swap, unmounts the target and anything on the disk, and on the erase plan takes down volume groups and containers on it | |
+| Prepare | Checks the tools and the target, stops swap on disks (the compressed swap in memory stays on), unmounts the target and anything on the disk, and on the erase plan takes down volume groups and containers on it | |
 | Partition | Wipes the disk's signatures, writes the GPT layout and zeroes the BIOS boot partition | The plan is not "erase" |
 | Format | Encrypts and creates the volume group if asked, then makes the root filesystem, the ESP (when it is to be formatted) and the swap partition | |
 | Mount | Mounts the root at `/mnt/kinstall` and the ESP at `/mnt/kinstall/boot/efi`; the boot medium at `/mnt/iso` and any stick under `/mnt` stay reachable beside it | |
@@ -722,8 +722,12 @@ machine when the rehearsal finishes.
 ### What is not copied
 
 The copy leaves out the contents of `/dev`, `/proc`, `/sys`, `/tmp`, `/run`, `/mnt` and `/media`
-(the directories themselves are created, `/tmp` with mode 1777), `/lost+found`, the installer's own
-log, and the live container store when you unticked it. Two files are deliberately left out as well:
+(the directories themselves are created, `/tmp` with mode 1777), `/lost+found`, and the live
+container store when you unticked it. The live session's own record stays on the medium too: every
+file under `/var/log` and `/var/cache` (the directories are kept), the installer's own log among
+them, so the installed system's log and `last` start at its first boot; the shell and atuin history
+of `root` and `kdos`; root's caches; and the live account's caches other than the theme and `bat`
+caches the image ships. Two files are deliberately left out as well:
 `/var/lib/dbus/machine-id` and the SSH host keys in `/etc/ssh/`. Each installed machine makes its
 own: the machine ID on first boot, and the host keys the first time the SSH server starts; copied,
 every machine installed from one medium would share the same identity and the same host keys.

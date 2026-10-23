@@ -143,7 +143,13 @@ files one port at a time (see
 not install is adopted by nobody and stays, unowned, for good. The steps therefore delete what
 their port leaves out: the libtool archives (`.la`), which kpkg strips from every package and which
 would otherwise put build-directory paths on later link lines, findutils' `locate`, which belongs
-to plocate, and gawk's C-shell profile script.
+to plocate, gawk's C-shell profile script and maintainers' notes, binutils' manual pages for the
+Windows tools, and the message catalogues, translated manual pages and HTML manuals that kpkg's
+[size and language policy](../../kdos/05-developer/writing-ports.md#size-and-language-policy)
+prunes from every package: xz and bash are built with `--disable-nls`, and the readline and bash
+steps delete their HTML manuals. The image phase removes any such file that is still unowned and
+stops on one under `/usr/share/locale`, `man`, `doc` or `info` (see
+[Cleaning up the root](../15-image/020-cleanup.md)).
 
 ## See also
 

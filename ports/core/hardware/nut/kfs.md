@@ -74,4 +74,7 @@ into, so an install into another tree (`--root`, or an A/B update) gives that tr
 It also puts `nut` in the `dialout` group, the group the tree's udev rules give serial adapters
 and other plug-in devices. Both checks read
 `etc/group` and `etc/passwd` under `PKG_ROOT` directly, so they test the tree being installed into
-rather than the running system's account database.
+rather than the running system's account database. The account's home is `/nonexistent`: the
+state `upsd` and the drivers keep is under `/run/nut`, which the script creates. The hook sets
+the home with `usermod` after the creation check, so a tree that already had a `nut` account with
+another home is given `/nonexistent` as well.

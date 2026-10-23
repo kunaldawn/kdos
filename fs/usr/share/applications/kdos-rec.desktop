@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Recording
+GenericName=Sound Recorder
+Comment=Pick an input, watch the level, keep the file
+Exec=kdos-rec
+Icon=media-record
+Terminal=false
+NoDisplay=true
+Categories=AudioVideo;Audio;Recorder;
+StartupWMClass=kdos-rec

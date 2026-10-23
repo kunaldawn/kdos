@@ -24,7 +24,7 @@ image has them, live and installed. There is no service script. fcitx5 is a prog
 desktop session, started for each login by `kdos-desktop-start` once the compositor is up
 (`fs/usr/local/bin/kdos-desktop-start`):
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=96-108 pin=74e73dc30bb8 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=117-129 pin=74e73dc30bb8 -->
 
 `kdos-ime` starts first, because fcitx5 hands its candidate window to whoever owns
 `org.kde.impanel` when it appears. With fcitx5 not installed the block does nothing and prints

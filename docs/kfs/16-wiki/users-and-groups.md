@@ -99,8 +99,6 @@ still has it.
 
    For an account that runs the desktop but does not administer the machine, leave `wheel` out of
    the list. `seat` is what lets it suspend, power off, reboot and mount removable media.
-   `useradd` prints `Creating mailbox file: No such file or directory`, because the image has no
-   `/var/spool/mail`; the account is made all the same.
 
 2. Give it a password:
 
@@ -179,9 +177,12 @@ cannot log in. [Login and autologin](login-and-autologin.md) has the rest of the
    ```
 
 2. Remove it with its home directory. If `login.conf` names it, point the automatic login
-   elsewhere first:
+   elsewhere first. End its processes before `userdel`: every login of an account starts an
+   `ssh-agent` from `/etc/profile.d/50-ssh-agent.sh` that outlives the login, and `userdel` refuses
+   an account with a running process (`user alice is currently used by process <pid>`, exit 8):
 
    ```bash
+   sudo pkill -u alice
    sudo userdel -r alice
    ```
 
@@ -256,19 +257,18 @@ as that account, lists the nodes it cannot open with their groups in its Hardwar
 group as [above](#adding-an-account-to-a-group).
 
 **`userdel` prints `user alice is currently used by process <pid>` and exits 8.** A process of the
-account is still running, such as a shell or a container's pause process, and `userdel` removes
-nothing. End them and try again:
+account is still running, such as the `ssh-agent` its first login started, a shell or a
+container's pause process, and `userdel` removes nothing. End them and try again:
 
 ```bash
 sudo pkill -u alice
 sudo userdel -r alice
 ```
 
-`userdel: alice mail spool (/var/spool/mail/alice) not found` after it is the missing mail
-directory again, and the account is gone.
-
-**`kdos-power autologin` prints `err no such account`.** The name is not an account that can log
-in: a service account with `/sbin/nologin` is refused.
+**`kdos-power autologin` prints `err no such account`.** No account has that name; check the
+spelling against `getent passwd`. **It prints `err not an account that can log in`.** The account
+exists, but it is root, a system account or one whose shell is `/sbin/nologin`, and tty1 could
+never complete its login.
 
 **`sudo` says the account is not in the sudoers file.** It is not in `wheel`; see
 [sudo, PAM and polkit](sudo-pam-polkit.md).

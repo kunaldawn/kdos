@@ -490,7 +490,7 @@ static void draw(void)
 	sh_frame(w, h, "Applications", KT_ACCENT, KT_BG, 1);
 
 	snprintf(sub, sizeof(sub), "%d applications, %d groups", napp, ngroup);
-	top = kch_header(w, "system-software-install", "Applications", sub,
+	top = kch_header(w, "package", "Applications", sub,
 			 icons_on);
 
 	ktui_tabs_draw(krect(2, top, w - 4, 1), tabs, ntab, page, -1, 0);

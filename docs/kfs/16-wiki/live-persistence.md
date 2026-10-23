@@ -29,17 +29,17 @@ to be edited for a store to be used: at boot the initramfs asks `blkid` for a fi
 the generator's escaping: the init is written by a heredoc, and the generated script has a plain
 `$`):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1128-1189 pin=df8a4d87c418 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1154-1215 pin=df8a4d87c418 -->
 
 `find_persist` is the lookup. It asks for the label again every tenth of a second while USB storage
 is still arriving, so a store on a stick that is enumerated after the medium is found is still used:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=931-1034 pin=4d82dbf65d60 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=951-1054 pin=4d82dbf65d60 -->
 
 The store's mount is moved into the new root as `/mnt/persist`, so the running session can see it
 and the shutdown's `umount -a -r` flushes it:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1229-1238 pin=65f01fb10a3e -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1255-1264 pin=65f01fb10a3e -->
 
 On the store itself, the overlay uses two directories, `upper/` (the session's files) and `work/`
 (overlayfs's own), which the initramfs creates when they are missing.

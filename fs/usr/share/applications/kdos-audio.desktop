@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sound
+GenericName=Sound Devices
+Comment=Choose the output and input devices and their levels
+Exec=kdos-audio
+Icon=audio-speakers
+Terminal=false
+NoDisplay=true
+Categories=AudioVideo;Audio;Settings;
+StartupWMClass=kdos-audio

@@ -66,7 +66,7 @@ between these and the stable core: their arithmetic is asserted against recorded
 candidate. KDOS builds for x86_64 only.
 
 The natively ported applications are the least proved part. The lists of the userland phases,
-`40_lang` to `44_apps`, name 1,917 recipes for the languages, the system, the graphical stacks,
+`40_lang` to `44_apps`, name 1,919 recipes for the languages, the system, the graphical stacks,
 the toolkits and the applications, every source fetched and hashed. A build has run every phase
 from `00_cross` to `70_image` and written the image, and its tree holds all of those recipes but
 one, `kdos-kfs` of `41_system`, which no build has installed yet. No application has been started
@@ -89,7 +89,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,107 recipes, 2,081 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
+| The ports tree | Stable | 2,109 recipes, 2,083 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata`, `XZ_OPT='-e --check=sha256 -T1'` and a 300 MiB `XZ_DEFAULTS` memory limit, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times, and equal to their tar recompressed on two threads with `xz -9 --block-size=32MiB`. It also installs the port through `kpkg install`, once with the deleted `xz -0` package and once with a kept cache that must match the `-9` bytes. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry, the log classifier, the retry of a failed phase, the jobserver and the merge of `build/snapshots/timings.json`, with the machine each figure is filed under |
@@ -102,7 +102,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,107 recipes, 3 are absent from the build tree's package
+- **The ports tree.** Of the 2,109 recipes, 3 are absent from the build tree's package
   database, and the database holds no name that no recipe gives. `kdos-kfs` is named by the
   `41_system` list and no build of the tree has installed it. The other two are `kdos-installer`,
   which `10_bootstrap` compiles by script and never records as a package, and `texlive-doc`,
@@ -110,7 +110,7 @@ What each of the shortened rows above rests on:
   installs, the names on its list and the dependencies they bring in that no earlier phase
   installed, is in the database: 15 by `20_selfhost` (its list names 9), 127 by
   `30_foundation` (its list names 138, 11 of them installed by `20_selfhost`), 22 by
-  `31_compilers`, 177 by `40_lang`, 1,013 of the 1,014 of `41_system`, 193 by `42_graphics`, 249
+  `31_compilers`, 177 by `40_lang`, 1,013 of the 1,014 of `41_system`, 194 by `42_graphics`, 250
   by `43_toolkits`, 284 by `44_apps`, 22 by `50_desktop` and 2 by `60_kernel`. Every other recipe is named by a phase
   list or built by a phase script, and `testing/bookcounts.py` fails on one that is not. The
   figure is the recipe names absent from the package database: the names of the directories
@@ -158,7 +158,7 @@ See [Boot and init](../03-architecture/boot-and-init.md) and [kinstall](../04-pr
 | Boot and init | Stable | Boots from the ISO. Preflight checks that the ISO script builds every boot path: BIOS and UEFI, from a disc (El Torito) and from a written stick (the partition table); and that every program `fs/etc/inittab` names is on the image. The self-test drives `kdos-bootctl` through an update that is never confirmed over three boots, and requires the rollback to the working slot |
 | A/B root slots | In progress | The state machine is complete and asserted on the build host: each slot boots its own kernel, the menu follows the state, and on UEFI a candidate gets one boot through `BootNext` (the firmware variable naming the entry to boot once). `kdos update apply` installs into the mounted inactive slot, deploys its kernel and marks it to try. Nothing creates or first fills the second slot. On an installed virtual machine with UEFI firmware, slot B's own kernel booted through `BootNext`, a menu-led trial confirmed, and a hung trial rolled back to the confirmed slot; no physical firmware has run a trial; see [Known gaps](known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only) |
 | Encrypted root | In progress | The initramfs unlock path is exercised against stub tools, with no encrypted volume and without root privileges. The initramfs unlocks the chosen slot's own container, and rolling from slot B back to A is asserted to hand back A's container. A second encrypted slot has never been booted |
-| kinstall, the installer | Stable | Installs. Exercised on a disk by `testing/install-to-disk.sh`. `kinstall --dump probe` and `--dump plan` print what it sees and what it would run without installing anything; the self-test asserts the plan against saved answers. Preflight checks that every filesystem it offers can be mounted by the initramfs. The unattended path is the one exercised; an interactive install moves from the Summary to the Install and Done pages by page identifier, which no rig run has yet photographed. The erase plan's layout, with its BIOS boot partition and Limine's BIOS stage in it, has started Limine and a kernel on SeaBIOS; a whole installed system has been booted on UEFI only |
+| kinstall, the installer | Stable | Installs. Exercised on a disk by `testing/install-to-disk.sh`. `kinstall --dump probe` and `--dump plan` print what it sees and what it would run without installing anything; the self-test asserts the plan against saved answers, and that an answer file's unknown key is named on standard error while a file written by `--save` reads back with none. Preflight checks that every filesystem it offers can be mounted by the initramfs. The unattended path is the one exercised; an interactive install moves from the Summary to the Install and Done pages by page identifier, which no rig run has yet photographed. The erase plan's layout, with its BIOS boot partition and Limine's BIOS stage in it, has started Limine and a kernel on SeaBIOS; a whole installed system has been booted on UEFI only |
 
 ## The desktop
 
@@ -258,8 +258,8 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,107 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 2,081 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 2,109 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 2,083 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/system` | 7 | `find src/system -name kpkgbuild \| wc -l` |
 | — in `src/art` | 6 | `find src/art -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 8 | `find src/desktop -name kpkgbuild \| wc -l` |

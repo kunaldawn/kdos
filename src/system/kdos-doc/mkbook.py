@@ -6,7 +6,7 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   mkbook — the KDOS book on the image, and a manual page per kdos-* command
+#   mkbook — the KDOS book on the image, and a manual page per KDOS command
 #
 #     mkbook.py DOCS DEST SRC
 #     mkbook.py --html DOCS DEST
@@ -23,8 +23,9 @@
 # THREE OUTPUTS, ONE SOURCE. The book is rendered to HTML under
 # /usr/share/doc/kdos with the tree's own layout and kdos.css from beside
 # this file; kdos(7) says where it is and lists its chapters; and every
-# `kdos-*` row of the command index becomes a manual page whose DESCRIPTION
-# is the book section that row links to. A manual page written by hand beside
+# `kdos-*` row of the command index, and the row of each command in OURS,
+# becomes a manual page whose DESCRIPTION is the book section that row links
+# to. A manual page written by hand beside
 # the book would be a second description going stale; this one is the book's
 # own words. --html writes the first output alone, straight into DEST, which
 # is how the published site is made.
@@ -55,7 +56,14 @@ SCHEME_RE = re.compile(r'^[A-Za-z][A-Za-z0-9+.-]*:')
 FENCE_RE = re.compile(r'^\s*(```|~~~)')
 HEAD_RE = re.compile(r'^(#{1,6})\s+(.*?)\s*#*\s*$')
 CELL_RE = re.compile(r'(?<!\\)\|')
-NAME_RE = re.compile(r'^`(kdos-[a-z0-9-]+)`$')
+NAME_RE = re.compile(r'^`([a-z][a-z0-9-]*)`$')
+# The commands this repository ships under a name without the kdos- prefix.
+# A name is listed by hand rather than taken from every row: the command
+# index also names upstream programs (ping, getent, init), whose own packages
+# install their manual pages, and a second page at the same path is a file
+# conflict kpkg refuses.
+OURS = {"kpkg", "kpkgadd", "kpkgdel", "kpkgbuild", "kpkgdepends", "ksvc",
+        "service", "kinstall", "xdg-terminal-exec"}
 HTAG_RE = re.compile(r'<h([1-6])(?:\s+id="[^"]*")?>')
 DOC_RE = re.compile(r'^\[[^\]]*\]\(([^)#]+)(#[^)]*)?\)$')
 
@@ -258,11 +266,12 @@ def own_pages(src):
 
 def commands(docs):
     """(name, description, page, fragment, section) for every kdos-* row of
-    the command index that links a book section, first row per name, up to
-    the host-only tools. A row's first cell is the name, its last the link,
-    and the one before the link what the command does, whatever columns (an
-    install directory, a port) sit between. A root daemon is section 8, the
-    rest section 1."""
+    the command index, and every row of a name in OURS, that links a book
+    section, first row per name, up to the host-only tools. A row's first
+    cell is the name, its last the link, and the one before the link what the
+    command does, whatever columns (an install directory, a port) sit
+    between. A root daemon, and a command of OURS installed in /usr/sbin, is
+    section 8, the rest section 1."""
     index = os.path.join(docs, "kdos", "06-reference", "command-index.md")
     out, seen, part = [], set(), ""
     with open(index, encoding="utf-8") as f:
@@ -281,11 +290,15 @@ def commands(docs):
             if not n or not d or n.group(1) in seen:
                 continue
             name = n.group(1)
+            if not name.startswith("kdos-") and name not in OURS:
+                continue
             seen.add(name)
             page = os.path.normpath(os.path.join(
                 os.path.dirname(index), d.group(1)))
             frag = (d.group(2) or "#")[1:]
-            sec = "8" if part == "Daemons" and name.endswith("d") else "1"
+            sbin = name in OURS and "`/usr/sbin`" in cells
+            sec = ("8" if (part == "Daemons" and name.endswith("d")) or sbin
+                   else "1")
             desc = plain(cells[-2]).replace("\\|", "|")
             out.append((name, desc, page, frag, sec))
     return out
@@ -349,9 +362,10 @@ def main():
           "# DESCRIPTION\n\n"
           f"The whole KDOS book is installed as HTML under *{DOCROOT}*; open "
           f"*{DOCROOT}/index.html* in a browser for its title page, reading "
-          "paths and table of contents. Every **kdos-**\\* command has a "
-          "manual page taken from the section of the book that documents "
-          "it.\n\n## Chapters\n\n" + toc + "\n\n"
+          "paths and table of contents. Every **kdos-**\\* command, and "
+          "**kpkg**, **ksvc**, **service**, **kinstall** and "
+          "**xdg-terminal-exec**, has a manual page taken from the section "
+          "of the book that documents it.\n\n## Chapters\n\n" + toc + "\n\n"
           "# SEE ALSO\n\n" + cmds + "\n")
     write(os.path.join(dest, "usr/share/man/man7/kdos.7"),
           lowdown(["-s", "-tman", "-M", "title=KDOS", "-M", "section=7",

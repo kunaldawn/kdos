@@ -40,7 +40,7 @@ An application row and its description, as an example:
 
 <!-- kfs:include src/system/kdos-appbox/catalogue lines=314-314 pin=db241a9ade70 -->
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=502-502 pin=fdc887213656 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=502-502 pin=6a389e27c186 -->
 
 The format of every line kind is in
 [The catalogue file](../../kdos/04-programs/kdos-appbox.md#the-catalogue-file).
@@ -128,19 +128,16 @@ per application and data pack. `kdos app info app.hugin` names the runtime row t
 3. Read the result. Progress is one line per step (`==> building kdos/app.hugin`); the exit status
    is the number of applications that failed.
 
-The step after the images, creating the box with `kdos-box create <id> base=image:kdos/<id>`,
-fails as shipped: that create runs `podman pull` on the image's name, which asks a registry at
-`localhost` for the image it has built, and none answers. With a local image of that name in
-place, the create prints podman's
-`pinging container registry localhost: Get "https://localhost/v2/": … connection refused` three
-times, then `kdos-appbox: could not fetch kdos/<id>`. The install command prints
-`<id>: the image built and the box did not`, and no launcher is made. See
+The step after the images creates the box with `kdos-box create <id> base=image:kdos/<id>`. The
+image is already in your image store, so the create uses it without asking a registry, and the
+install then writes the application's launchers. When the create fails, the install prints
+`<id>: the image built and the box did not`, no launcher is made, and the images stay built;
+`kdos-box remove <id>` deletes the profile the failed create left. See
 [install and uninstall](../../kdos/04-programs/kdos-appbox.md#install-and-uninstall).
 
-The images stay built, and `kdos app export` packs only built images, so the pack route can take
-over from here: export the application to a set and import the set, as [Packs](packs.md) shows,
-and the import creates a box on the packs. Each half is documented; the two have not been run
-one after the other.
+`kdos app export` packs only built images, so the pack route can take over from a built image as
+well: export the application to a set and import the set, as [Packs](packs.md) shows, and the
+import creates a box on the packs.
 
 ### Launching
 
@@ -179,8 +176,10 @@ the box and its stack are left as they were. Stop the box first with `kdos-box s
 it. `--force` (`kdos-box remove app.hugin --force`) adds `-f` to `podman rm`, which does not
 remove a running box made from an image on the live medium: podman gives up with `given PID did
 not die within timeout`, the box is left `stopping`, and `kdos-box remove` reports the failure
-the same way. A name with no container answers `<name> has no container to remove` and exits 1, after
-releasing any composed stack that a failed `create` left behind.
+the same way. A box with no container, such as one whose `create` failed, has its profile deleted
+and any composed stack released, answers `<name> had no container — its profile is removed` and
+exits 0; a name with neither a container nor a profile answers `<name> has no container to remove`
+and exits 1, after releasing any composed stack the same way.
 
 `kdos-box enter` with no command, from a terminal, opens a new `foot` window titled
 `<name> — KDOS box`; with `KDOS_BOX_NOTERM` set to anything it runs in the current terminal.
@@ -252,8 +251,8 @@ A snapshot costs as much disk as the box has written. Without a tag it is named 
 
 A box made from a container image is a working environment, not tied to an application:
 
-1. Create it. An `image:` base pulls from a registry over the network, and prints that the content
-   is unsigned:
+1. Create it. An `image:` base not yet in your image store is pulled from a registry over the
+   network, with a line saying the content is unsigned; one already stored is used as it is:
 
    ```bash
    kdos-box create scratch base=image:docker.io/library/alpine:latest
@@ -316,8 +315,8 @@ remaining box's chain names, then regenerates the launchers. The base image is n
 ### Updating an application
 
 There is no update verb. `kdos app remove` and then `kdos app install` rebuild the application's
-image, and the box creation after it fails as [Installing an application](#installing-an-application)
-says; see [Updating](updating.md#updating-boxed-applications).
+image and create its box again, as [Installing an application](#installing-an-application) says;
+see [Updating](updating.md#updating-boxed-applications).
 
 ### On the live medium and on an installed system
 
@@ -354,8 +353,9 @@ home can hold a box's writable layer; its Containers and Desktop sections check 
 `/etc/subgid` and the setuid bits on [`newuidmap`]{.idx} and [`newgidmap`]{.idx}.
 
 `<id>: the image built and the box did not`
-: The box create after a store install fails as shipped; see
-  [Installing an application](#installing-an-application).
+: The box create after the images failed, with podman's own message above this line; the images
+  stay built. `kdos-box remove <id>` deletes the profile it left, and `kdos app install <id>`
+  then tries the box again. See [Installing an application](#installing-an-application).
 
 A launch does nothing
 : Run it from a terminal with the engine's messages shown: `kdos-appbox -v run <app>`. The

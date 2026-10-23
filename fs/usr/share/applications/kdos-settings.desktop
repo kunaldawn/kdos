@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+GenericName=System Settings
+Comment=The desktop's settings
+Exec=kdos-settings
+Icon=configure
+Terminal=false
+NoDisplay=true
+Categories=Settings;
+StartupWMClass=kdos-settings

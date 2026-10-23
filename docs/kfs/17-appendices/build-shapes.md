@@ -127,7 +127,7 @@ into `$PKG` by hand, since `cargo build` installs nothing. See
 
 A Go program builds from its module vendor tree, also offline:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=918-921 pin=945a281da9a7 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=924-927 pin=945a281da9a7 lang=bash -->
 
 `-ldflags "-s -w"` is required, because the Go linker otherwise writes DWARF and a symbol table that
 kpkg does not strip; `testing/preflight.sh` fails a `go build` without both. `-trimpath`,
@@ -160,7 +160,7 @@ without uninstalling the copy the build root holds. kpkg compiles the bytecode a
 
 A Qt project that ships a `.pro` file:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=969-972 pin=3c09c3145853 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=975-978 pin=3c09c3145853 lang=bash -->
 
 qmake reads no flags from the environment, so the three `QMAKE_*_RELEASE` variables hand it the
 exported ones, and `CONFIG+=release` keeps a debug build out. The install goes to `INSTALL_ROOT`,
@@ -185,7 +185,7 @@ See [Python, Perl, Haskell, Node and OCaml modules](../../kdos/05-developer/writ
 
 A project with only a makefile:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1050-1052 pin=88831e0ba377 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1056-1058 pin=88831e0ba377 lang=bash -->
 
 The flags are exported, not passed as make arguments. A variable on the make command line overrides
 the makefile's own assignment of it, so passing `CFLAGS=...` there would discard whatever the

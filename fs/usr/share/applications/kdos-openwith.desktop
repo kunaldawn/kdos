@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Open With
+GenericName=Application Chooser
+Comment=Choose the application that opens a file
+Exec=kdos-openwith
+Icon=document-open
+Terminal=false
+NoDisplay=true
+Categories=Utility;
+StartupWMClass=kdos-openwith

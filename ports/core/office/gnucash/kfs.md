@@ -39,3 +39,8 @@ installed, whether or not the tests are run, so it is a dependency.
 
 `gnucash-valgrind`, a script that starts GnuCash under Valgrind, is installed by an
 `install(FILES ...)` rule, which gives it mode 644; `build.sh` makes it executable.
+
+Online price quotes (the Price Database's *Get Quotes* button and `gnucash-cli --quotes`) run
+`finance-quote-wrapper`, a Perl script that needs Finance::Quote and its modules (JSON, LWP,
+HTML::TreeBuilder, DateTime and more), none of which is a port. GnuCash itself starts; the quote
+command reports `Can't locate JSON.pm` and fetches nothing.

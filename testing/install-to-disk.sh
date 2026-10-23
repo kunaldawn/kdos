@@ -28,7 +28,7 @@ set -u
 
 DISK=${INSTALL_DISK:-/dev/vda}
 ANSWERS=/tmp/kdos-answers
-PACKS=${INSTALL_PACKS:-"app.zathura app.kcalc alpine"}
+APPS=${INSTALL_APPS:-essential}
 CAP=${INSTALL_CAP:-5400}   # kinstall in a VM is slow; 40 minutes was not enough
 # AN ENCRYPTED INSTALL IS THE SAME RUN WITH ONE KEY CHANGED, which is the
 # whole reason it is a knob here rather than a second script: what an
@@ -47,9 +47,11 @@ say "the target"
 ls -l "$DISK" 2>&1 || { echo "no $DISK — was --disk passed?"; exit 2; }
 cat /proc/partitions
 
-# alien_apps = 0 is deliberate: an application is built on the machine that
-# and this run exists to exercise packs. reboot = 0 because the rig decides
-# when the machine goes down, not the installer.
+# alien_apps = 0 is deliberate: this run exercises packs, and the live
+# account's container storage stays out of the copy. `apps` takes catalogue
+# GROUP ids — an application id matches no group, and a line on which nothing
+# matches falls back to `essential`. reboot = 0 because the rig decides when
+# the machine goes down, not the installer.
 say "the answer file"
 cat > "$ANSWERS" <<EOF
 # written by testing/install-to-disk.sh
@@ -75,7 +77,7 @@ root_locked    = 0
 
 theme          = phosphor
 alien_apps     = 0
-packs          = $PACKS
+apps           = $APPS
 reboot         = 0
 EOF
 cat "$ANSWERS"

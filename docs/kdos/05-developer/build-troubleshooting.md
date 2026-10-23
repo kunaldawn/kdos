@@ -781,6 +781,17 @@ script that runs bindgen is linked statically again. Such a recipe also sets `RU
 script that runs rustc with the same flag appended: cargo runs every rustc call, host and target,
 through it. `firefox-esr`, `librewolf` and `thunderbird` are the recipes that do.
 
+Meson does not read `RUSTFLAGS` when it asks rustc whether the target is `crt-static` and which
+native libraries a Rust static library needs. Given the flag there alone, it still adds Rust's
+`self-contained` directory, which holds a `libc.a`, to the link of every shared library that takes
+a Rust static library, and the library carries an uninitialised musl that faults on its first
+allocation. A meson recipe with Rust code puts the flag in the compiler command instead, as
+`mesa` does:
+
+```sh
+export RUSTC="rustc -C target-feature=-crt-static"
+```
+
 A recipe whose crates run bindgen also points it at `libclang`, which saves it a search:
 
 ```sh
