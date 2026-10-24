@@ -313,11 +313,13 @@ What the guest does differently from real hardware:
   phosphor pass off: QEMU's standard VGA (`-vga std`) and QXL, VirtualBox's VBoxVGA, and
   Hyper-V's synthetic video:
 
-  <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=44-51 pin=1dd3d9c5da95 -->
+  <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=44-51 pin=da56a7c7b973 -->
 
   A virtual GPU that has a render node and no 3D, VMware's SVGA or VirtualBox's VBoxSVGA with 3D
-  acceleration off, is caught when the compositor refuses `llvmpipe`: `kdos-desktop-start` runs it once more
-  on the software renderer; see
+  acceleration off, is not caught here. When wlroots refuses its EGL device as software,
+  `kdos-desktop-start` runs the compositor once more on the software renderer; when Mesa falls
+  back to `kms_swrast` instead, the compositor runs in GLES2 on `llvmpipe` and declines only the
+  phosphor pass; see
   [What `kdos-desktop-start` does](../../kdos/03-architecture/session.md#what-kdos-desktop-start-does).
 
 - The compositor's idle dim, lock and screen-off timers and the lid action default to off; see

@@ -54,9 +54,9 @@ void kwl_list_view(int x, int y, int w, int h, int top)
 	(void)x; (void)y; (void)w; (void)h; (void)top;
 }
 /* The header band's icon, which nothing here draws. */
-int kicon_slot(const char *name, int cw, int ch)
+int kicon_slot_ink(const char *name, int cw, int ch, uint32_t rgb)
 {
-	(void)name; (void)cw; (void)ch;
+	(void)name; (void)cw; (void)ch; (void)rgb;
 	return -1;
 }
 

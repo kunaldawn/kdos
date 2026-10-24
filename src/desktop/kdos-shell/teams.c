@@ -550,7 +550,7 @@ static void draw(int sel, int top)
 
 		ktui_draw_text(2, 2, w - 4,
 			       failed ? errline : "no windows are open",
-			       failed ? KT_ERR : KT_DIM, KT_SURFACE, KT_A_NONE);
+			       failed ? KT_ERR : KT_MID, KT_SURFACE, KT_A_NONE);
 		if (!sock_up)
 			ktui_draw_text(2, 4, w - 4,
 				       "kdos-comp serves "

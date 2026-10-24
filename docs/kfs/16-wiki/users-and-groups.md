@@ -57,9 +57,16 @@ in. The two files are the same:
 
 <!-- kfs:include fs/etc/shells -->
 
-**`/etc/login.defs`** is shadow's own file, installed unchanged from upstream. It sets the ranges
-`useradd` picks ids from and the hash `passwd` writes; its `ENCRYPT_METHOD` line is commented out,
-so passwords are hashed with SHA-512. See the [shadow](#port-shadow) page.
+**`/etc/login.defs`** is shadow's own file. It sets the ranges `useradd` picks ids from and the
+hash `passwd` writes; its `ENCRYPT_METHOD` line is commented out, so passwords are hashed with
+SHA-512, and the port comments out its `MAIL_DIR` line, so no account keeps a mailbox. See the
+[shadow](#port-shadow) page.
+
+**`/etc/default/useradd`**, from `fs/etc/default/useradd`, holds the defaults `useradd` gives a
+new account. It sets only `CREATE_MAIL_SPOOL=no`; every other key keeps `useradd`'s compiled
+default, and `useradd -D` prints them all:
+
+<!-- kfs:include fs/etc/default/useradd -->
 
 **`/etc/skel`**, from `fs/etc/skel`, is copied into each new home by `useradd -m`: the shell
 profiles that start the desktop on `tty1`, and the desktop's own starting configuration.

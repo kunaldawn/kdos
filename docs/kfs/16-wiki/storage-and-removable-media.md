@@ -83,9 +83,12 @@ See
 
 ## Usage
 
-The live medium and an installed system behave the same here, with one difference: in a live
-session, every disk that carries an ISO 9660 partition is taken for the boot medium and refused
-whole, so a second data CD cannot be mounted while running live.
+The disk the system runs from is never offered, every partition with it: the one mounted at `/`,
+`/boot` or `/mnt/iso`, and the persistence stick at `/mnt/persist`. The live medium and an
+installed system otherwise behave the same here, with one difference: in a live session, every
+disk that carries an ISO 9660 superblock, on the whole disk as the shipped image does or on a
+partition, is taken for the boot medium and refused whole, so neither a second data CD nor a
+stick holding another system's image can be mounted while running live.
 
 ### Mounting a stick from the desktop
 

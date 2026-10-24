@@ -118,7 +118,7 @@ static void draw_sidebar(KRect r)
 		const char *mark = state == 2 ? ktui_glyph[KT_G_SQUARE]
 					      : state == 1 ? ktui_glyph[KT_G_RIGHT]
 							   : ktui_glyph[KT_G_DOT];
-		int fg = state == 1 ? KT_BG : state == 2 ? KT_MID : KT_DIM;
+		int fg = state == 1 ? KT_BG : KT_MID;
 		int bg = state == 1 ? KT_ACCENT : KT_BG;
 
 		ktui_draw_fill(krect(r.x, y, r.w, 1), bg);
@@ -144,13 +144,13 @@ static void draw_sidebar(KRect r)
 	y = r.y + r.h - 5;
 	if (y > ki_npages + r.y) {
 		ktui_draw_hline(r.x, y++, r.w - 1, KT_G_HL, KT_DIM, KT_BG);
-		ktui_draw_textf(r.x + 1, y++, r.w - 2, KT_DIM, KT_BG, 0, "accent  %s",
+		ktui_draw_textf(r.x + 1, y++, r.w - 2, KT_MID, KT_BG, 0, "accent  %s",
 			   ktui_theme->name);
-		ktui_draw_textf(r.x + 1, y++, r.w - 2, KT_DIM, KT_BG, 0, "mouse   %s",
+		ktui_draw_textf(r.x + 1, y++, r.w - 2, KT_MID, KT_BG, 0, "mouse   %s",
 			   (ktui_caps & KT_CAP_MOUSE)
 				   ? ((ktui_caps & KT_CAP_LINUXVT) ? "evdev" : "sgr")
 				   : "off");
-		ktui_draw_textf(r.x + 1, y++, r.w - 2, KT_DIM, KT_BG, 0, "colour  %s",
+		ktui_draw_textf(r.x + 1, y++, r.w - 2, KT_MID, KT_BG, 0, "colour  %s",
 			   (ktui_caps & KT_CAP_TRUECOLOR) ? "24-bit"
 			   : (ktui_caps & KT_CAP_256)     ? "256"
 			   : (ktui_caps & KT_CAP_LINUXVT) ? "vt palette"
@@ -167,7 +167,7 @@ static void draw_nav(int y)
 	if (nav_err[0] && kb_now_s() - nav_err_at < 8.0)
 		ktui_draw_textf(1, y, ktui_w - 40, KT_ERR, KT_BG, 0, "! %s", nav_err);
 	else if (p->subtitle)
-		ktui_draw_text(1, y, ktui_w - 40, p->subtitle, KT_DIM, KT_BG, 0);
+		ktui_draw_text(1, y, ktui_w - 40, p->subtitle, KT_MID, KT_BG, 0);
 
 	if (p->hide_nav)
 		return;

@@ -36,10 +36,16 @@ cat > "$PKG/usr/bin/kdos-podman-api" <<'KDOS_SH'
 #!/bin/sh
 # kdos-podman-api COMMAND [ARG...] — run COMMAND against this user's Podman
 # API socket, starting `podman system service` first if nothing answers on it.
-[ $# -gt 0 ] || {
+case "$1" in
+-h|--help)
+	echo "usage: kdos-podman-api COMMAND [ARG...]"
+	exit 0
+	;;
+''|-*)
 	echo "usage: kdos-podman-api COMMAND [ARG...]" >&2
 	exit 2
-}
+	;;
+esac
 if [ "$(id -u)" = 0 ]; then
 	_dir=/run/podman
 else

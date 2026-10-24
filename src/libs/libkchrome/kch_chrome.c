@@ -55,10 +55,25 @@
 
 /* ── the header band ───────────────────────────────────────────────────── */
 
+/*
+ * The picture is INKED in KT_SURFACE, the slot the title takes on this plate.
+ * Most of the atlas is one-colour symbolic artwork whose tint stays light, and
+ * light on the KT_ACCENT plate measures 1.15:1; KT_SURFACE on it clears 4.5:1
+ * in every accent, warmed or not, which testing/fixtures/iconink asserts.
+ */
+static uint32_t header_ink(void)
+{
+	KRgb c = ktui_theme->slot[KT_SURFACE];
+
+	return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+}
+
 int kch_header(int w, const char *icon_name, const char *title,
 		     const char *subtitle, int icons_on)
 {
-	int icon = icons_on && icon_name ? kicon_slot(icon_name, 2, 1) : -1;
+	int icon = icons_on && icon_name
+			   ? kicon_slot_ink(icon_name, 2, 1, header_ink())
+			   : -1;
 	int tx = 2;
 
 	if (w < 8)
@@ -224,15 +239,15 @@ int kch_buttons(int w, int row, const struct kch_button *b, int n,
 			 : hot		? KT_DIM
 					: kch_body_slot();
 
-		ktui_draw_text(x, row, 1, "[", hot ? KT_TEXT : KT_DIM,
+		ktui_draw_text(x, row, 1, "[", hot ? KT_TEXT : KT_MID,
 			       kch_body_slot(), KT_A_NONE);
 		ktui_draw_fill(krect(x + 1, row, lw + 2, 1), bg);
 		ktui_draw_text(x + 2, row, lw, b[i].label,
-			       !enabled	  ? KT_DIM
+			       !enabled	  ? KT_MID
 			       : on	  ? KT_SURFACE
 					  : KT_TEXT,
 			       bg, KT_A_NONE);
-		ktui_draw_text(x + lw + 3, row, 1, "]", hot ? KT_TEXT : KT_DIM,
+		ktui_draw_text(x + lw + 3, row, 1, "]", hot ? KT_TEXT : KT_MID,
 			       kch_body_slot(), KT_A_NONE);
 		/* The span is what was DRAWN, and a disabled button still
 		 * records one: a click on it has to be swallowed rather than
@@ -491,9 +506,11 @@ void kch_scrollbar(int id, int x, int y, int rows, int n, int top, int bg)
 	 * KT_DIM, which is the same thing the slider's caps say.
 	 */
 	ktui_draw_text(x, y, 1, ktui_glyph[KT_G_ARROW_UP],
-		       top > 0 ? KT_MID : KT_DIM, bg, KT_A_NONE);
+		       top > 0 ? KT_MID : KT_DIM /* not text */, bg,
+		       KT_A_NONE);
 	ktui_draw_text(x, y + rows - 1, 1, ktui_glyph[KT_G_ARROW_DOWN],
-		       top < max ? KT_MID : KT_DIM, bg, KT_A_NONE);
+		       top < max ? KT_MID : KT_DIM /* not text */, bg,
+		       KT_A_NONE);
 
 	/*
 	 * `▒` TRACK AND `█` THUMB, AND THE PAIR HAS TO STAY TWO DENSITIES

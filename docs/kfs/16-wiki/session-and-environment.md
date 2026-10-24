@@ -62,11 +62,11 @@ The second starts audio, the portals and the input method, then runs the composi
 standard error kept in a log, and once more on the software renderer if it refused a GPU with no
 hardware GL:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=163-186 pin=28d9770dd344 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=163-188 pin=6d5a742e6bd9 -->
 
 What it does when the compositor exits:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=196-224 pin=550e5678fa39 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=198-226 pin=550e5678fa39 -->
 
 ### /etc/profile.d/10-wayland.sh
 

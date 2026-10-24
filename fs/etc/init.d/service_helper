@@ -34,9 +34,16 @@
 # the daemon to exit after SIGTERM before it sends SIGKILL; five seconds when
 # not given. A daemon whose clean shutdown writes data out names a longer one.
 #
+# `supervise --restart-with OTHER foo ...` restarts foo's daemon whenever the
+# daemon of the supervised service OTHER is restarted or stopped, and holds
+# each start while OTHER's daemon is between two runs. 42_networkmanager.sh
+# passes `dbus`: NetworkManager does not exit when its bus goes away.
+#
 # `supervise` on a name whose supervisor is alive starts nothing and prints
 # `[SKIP] <name>: already supervised`, so `service start` on a running service
-# is safe to repeat.
+# is safe to repeat. Nor does it start one beside a daemon whose supervisor
+# was killed: it waits for that daemon for the stop grace, then refuses with
+# `[FAIL]`, and `stop_service` ends the daemon.
 
 supervise() {
     ksvc supervise "$@"

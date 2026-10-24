@@ -754,7 +754,7 @@ static void draw(const char *title)
 			char sz[32];
 			human(r->size, sz, sizeof(sz));
 			ktui_draw_text_right(0, list_top + i, lw - 2, sz,
-					     on ? KT_SURFACE : KT_DIM, bg,
+					     ktui_sel_dim(on, 1), bg,
 					     KT_A_NONE);
 		}
 	}
@@ -950,7 +950,7 @@ static void draw(const char *title)
 		ktui_draw_text(btn_cancel_x, btn_row, cw, cancel, KT_TEXT, cbg,
 			       KT_A_NONE);
 		ktui_draw_text(btn_ok_x, btn_row, 1, "[",
-			       hover_btn == 0 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       hover_btn == 0 ? KT_TEXT : KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 		/* The default action is already accent-filled, so its hover is
 		 * the WARN fill — the same "brighter than rest, different from
@@ -958,7 +958,7 @@ static void draw(const char *title)
 		ktui_draw_text(btn_ok_x + 1, btn_row, okw - 2, ok, KT_SURFACE,
 			       hover_btn == 0 ? KT_WARN : KT_ACCENT, KT_A_NONE);
 		ktui_draw_text(btn_ok_end - 1, btn_row, 1, "]",
-			       hover_btn == 0 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       hover_btn == 0 ? KT_TEXT : KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 	} else {
 		/* No room: the buttons are the first thing to go, because the

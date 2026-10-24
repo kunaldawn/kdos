@@ -31,7 +31,7 @@
  *
  *   ok       an entry whose id was observed on a real window
  *   MISMATCH an app_id was observed that no installed entry is named after
- *   unknown  an entry never yet observed — it may be perfect, or it may be
+ *   unknown  a menu entry never yet observed — it may be perfect, or it may be
  *            broken and simply not have been launched since the file was last
  *            emptied. Reporting it as ok would be a confident wrong answer,
  *            which is the one thing this must not give.
@@ -119,7 +119,17 @@ static int entry_id(const char *fname, char *out, size_t len)
 	return 0;
 }
 
-static void collect_entries(StrList *ids, const char *dir)
+/*
+ * Every entry that loads is a match for a window, NoDisplay or not: NoDisplay
+ * keeps an entry out of the menu, not out of the taskbar and the switcher,
+ * which resolve a window to it by file ID all the same — every kdos-shell
+ * front end's entry is NoDisplay, and skipping those would call each of its
+ * windows a MISMATCH. Hidden=true is the spec's "this entry is deleted", and
+ * is no match. `listed` gets the entries a menu shows, the only ones the "not
+ * yet observed" count is about: a NoDisplay helper nobody launches by hand is
+ * not news.
+ */
+static void collect_entries(StrList *ids, StrList *listed, const char *dir)
 {
 	DIR *d = opendir(dir);
 	struct dirent *e;
@@ -134,11 +144,11 @@ static void collect_entries(StrList *ids, const char *dir)
 		snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
 		if (kxdg_load(&ent, path, "Desktop Entry") != 0)
 			continue;
-		/* NoDisplay entries never appear in a shell, so they can never
-		 * produce the mismatch this looks for. Checking them would be
-		 * noise that trains people to ignore the output. */
-		if (!kxdg_bool(&ent, "NoDisplay", 0))
+		if (!kxdg_bool(&ent, "Hidden", 0)) {
 			sl_add(ids, id);
+			if (!kxdg_bool(&ent, "NoDisplay", 0))
+				sl_add(listed, id);
+		}
 		kxdg_free(&ent);
 	}
 	closedir(d);
@@ -166,7 +176,7 @@ static void collect_observed(StrList *seen)
 
 int appid_main(int argc, char **argv)
 {
-	StrList ids = {0}, seen = {0};
+	StrList ids = {0}, listed = {0}, seen = {0};
 	int quiet = 0, mismatches = 0, ok = 0, unknown = 0;
 
 	colours();
@@ -181,12 +191,12 @@ int appid_main(int argc, char **argv)
 	}
 
 	for (size_t i = 0; i < sizeof(ENTRY_DIRS) / sizeof(ENTRY_DIRS[0]); i++)
-		collect_entries(&ids, ENTRY_DIRS[i]);
+		collect_entries(&ids, &listed, ENTRY_DIRS[i]);
 	{
 		char user_dir[1024];
 		snprintf(user_dir, sizeof(user_dir), "%s/.local/share/applications",
 			 kb_home_dir());
-		collect_entries(&ids, user_dir);
+		collect_entries(&ids, &listed, user_dir);
 	}
 	collect_observed(&seen);
 
@@ -220,6 +230,7 @@ int appid_main(int argc, char **argv)
 		printf("kdos-comp records an app_id the first time each window "
 		       "maps; launch some apps and run this again.\n");
 		sl_free(&ids);
+		sl_free(&listed);
 		sl_free(&seen);
 		return 0;
 	}
@@ -242,8 +253,8 @@ int appid_main(int argc, char **argv)
 		       "%s.desktop is installed\n",
 		       C_W, C_0, seen.v[i], seen.v[i]);
 	}
-	for (int i = 0; i < ids.n; i++)
-		if (!sl_has(&seen, ids.v[i]))
+	for (int i = 0; i < listed.n; i++)
+		if (!sl_has(&seen, listed.v[i]))
 			unknown++;
 
 	printf("\n%d matched, %d mismatched, %d entries not yet observed\n",
@@ -256,6 +267,7 @@ int appid_main(int argc, char **argv)
 		       "StartupWMClass.\n", C_D, C_0);
 
 	sl_free(&ids);
+	sl_free(&listed);
 	sl_free(&seen);
 	return mismatches ? 1 : 0;
 }

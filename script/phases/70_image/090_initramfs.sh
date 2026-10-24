@@ -1224,19 +1224,34 @@ if [ "\$FOUND" == "1" ]; then
             # Create missing mountpoints in newroot
             mkdir -p /newroot/dev /newroot/proc /newroot/sys /newroot/run /newroot/tmp
 
+            # THE SQUASHFS AND THE RAM UPPER ARE DETACHED, and their mount
+            # points removed, so nothing is left under /mnt. switch_root
+            # deletes the initramfs but never crosses into another filesystem:
+            # a mount still on /mnt/system or /mnt/overlay keeps /mnt from
+            # being removed, and every live boot prints \`failed to unlink mnt:
+            # Directory not empty\`. The overlay took private clones of its
+            # layers when it was mounted, so / keeps reading them; the detach
+            # only takes away names switch_root would leave unreachable anyway.
+            # It runs BEFORE /proc moves: util-linux umount looks its target up
+            # in /proc/self/mountinfo and, with no /proc, fails with "No such
+            # file or directory" and detaches nothing. It runs only once
+            # /sbin/init is known to be there, so a rescue shell for a missing
+            # init still finds both mounts.
+            if [ -x /newroot/sbin/init ]; then
+                umount -l /mnt/system
+                [ -z "\$UPPER" ] && umount -l /mnt/overlay
+                rmdir /mnt/system /mnt/overlay 2>/dev/null
+            fi
+
             # Move pseudo-filesystems under the new root (standard; Alpine mkinitfs does this)
             mount --move /dev /newroot/dev
             mount --move /proc /newroot/proc
             mount --move /sys /newroot/sys
 
-            # Backing mounts (squashfs /mnt/system, overlay tmpfs /mnt/overlay)
-            # stay in the old rootfs; switch_root leaves them alone (its wipe
-            # skips anything on another device) and the overlay keeps an
-            # internal kernel ref to the squashfs, so / stays valid.
-            #
-            # /mnt/iso is the EXCEPTION and has to be MOVED. Left behind it
-            # dies with the initramfs namespace, and everything the booted
-            # system reads off the boot medium becomes unreachable BY NAME
+            # /mnt/iso HAS TO BE MOVED, not detached like the squashfs and the
+            # tmpfs are above. Left behind it dies with the initramfs
+            # namespace, and everything the booted system reads off the boot
+            # medium becomes unreachable BY NAME
             # while the bytes are still on the disk: \`kdos rebuild\` looks in
             # /mnt/iso/sources, and would report a stick empty that is carrying
             # the sources it was built with.

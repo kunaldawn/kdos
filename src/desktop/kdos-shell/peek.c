@@ -515,6 +515,8 @@ int peek_main(int argc, char **argv)
 	}
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		draw();
 
 		KtuiEvent ev;

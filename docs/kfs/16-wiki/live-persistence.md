@@ -39,7 +39,7 @@ is still arriving, so a store on a stick that is enumerated after the medium is 
 The store's mount is moved into the new root as `/mnt/persist`, so the running session can see it
 and the shutdown's `umount -a -r` flushes it:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1255-1264 pin=65f01fb10a3e -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1270-1279 pin=65f01fb10a3e -->
 
 On the store itself, the overlay uses two directories, `upper/` (the session's files) and `work/`
 (overlayfs's own), which the initramfs creates when they are missing.
@@ -132,8 +132,8 @@ of them, and which one is not settled.
 2. Choose `KDOS Live (clean session)`.
 
 The command line gains `nopersist`, the console shows `nopersist: this session will not be saved`
-and `Mounting OverlayFS...`, and the session runs in RAM, its upper layer at `/mnt/overlay/upper`,
-as with no store. The store is left exactly as it was, and `kdos persist` reports it as
+and `Mounting OverlayFS...`, and the session runs in RAM, its upper layer on a tmpfs, as with no
+store. The store is left exactly as it was, and `kdos persist` reports it as
 `present, NOT in use by this session`. This is the way past a change saved in the store that
 stops the desktop from starting.
 
@@ -160,10 +160,7 @@ The console then shows `Mounting OverlayFS...` with no `(persistent)`, and `kdos
   (`kdos persist: a store already exists on /dev/vda2` and `remove it first, or use it as it is`,
   exit status 1), and when no device is named and the system did not boot from a medium.
 - On a persistent boot the console shows `Persistent session on /dev/vda2 (ext4)`,
-  `Mounting OverlayFS (persistent)...`; a boot in RAM shows `Mounting OverlayFS...` alone. Every
-  live boot then prints `switch_root: failed to unlink mnt: Directory not empty`, which is
-  expected: the system image the overlay reads from is still mounted under the initramfs's `/mnt`
-  when `switch_root` clears the old root out.
+  `Mounting OverlayFS (persistent)...`; a boot in RAM shows `Mounting OverlayFS...` alone.
 - Software installed with `kpkg` in a persistent session is kept with everything else the session
   writes, in `upper/`.
 

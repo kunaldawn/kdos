@@ -510,7 +510,7 @@ static void time_draw(KRect b)
 		ry++;
 		ktui_para(rx, ry, rw,
 		     "The hardware clock is left exactly as it is; only the "
-		     "environment is set.", KT_DIM);
+		     "environment is set.", KT_MID);
 	}
 }
 
@@ -578,7 +578,7 @@ static void draw_parttable(KRect r, Disk *d)
 {
 	if (!d->nparts) {
 		ktui_draw_hline(r.x, r.y, r.w, KT_G_SHADE, KT_DIM, KT_BG);
-		ktui_draw_text(r.x + 2, r.y, r.w - 4, " unpartitioned ", KT_DIM, KT_BG, 0);
+		ktui_draw_text(r.x + 2, r.y, r.w - 4, " unpartitioned ", KT_MID, KT_BG, 0);
 		return;
 	}
 	for (int i = 0; i < r.w; i++)
@@ -1353,7 +1353,7 @@ static void accounts_draw(KRect b)
 		     "with one account and no password has nothing to ask, and "
 		     "one you installed does. The name here is the account "
 		     "/etc/kdos/login.conf carries, and an answer file is what "
-		     "turns its autologin back on.", KT_DIM);
+		     "turns its autologin back on.", KT_MID);
 }
 
 static int accounts_validate(char *err, size_t n)
@@ -1450,7 +1450,7 @@ static void system_draw(KRect b)
 	y += ktui_para(b.x + 4, y, b.w - 4,
 		  "The pre-baked Debian container behind every GUI app — "
 		  "browser, office, GIMP, the lot. Leaving it out installs a "
-		  "much smaller system that can still fetch it later.", KT_DIM);
+		  "much smaller system that can still fetch it later.", KT_MID);
 	y++;
 
 	ktui_section(b.x, y, b.w, "SERVICES AT BOOT");
@@ -1541,9 +1541,9 @@ static void app_row(int idx, int x, int y, int w, int selected, int focus,
 	ktui_draw_text(x + 1, y, 2, g->chosen ? ktui_glyph[KT_G_FULL] : " ",
 		       selected ? fg : KT_ACCENT, bg, 0);
 	ktui_draw_text(x + 4, y, descw, g->desc[0] ? g->desc : g->id, fg, bg, 0);
-	ktui_draw_text(x + 4 + descw, y, nw, n, selected ? fg : KT_DIM, bg, 0);
+	ktui_draw_text(x + 4 + descw, y, nw, n, ktui_sel_dim(selected, focus), bg, 0);
 	ktui_draw_text(x + 4 + descw + nw, y, szw, size,
-		       selected ? fg : KT_MID, bg, 0);
+		       ktui_sel_dim(selected, focus), bg, 0);
 }
 
 void ki_apps_enter(void)
@@ -1840,7 +1840,7 @@ static void install_draw(KRect b)
 				  inst.log[(base + top + i) % LOG_LINES], KT_MID,
 				  KT_BG, 0);
 		ktui_draw_text(b.x, b.y + b.h - 1, b.w,
-			  "L back to progress   PgUp/PgDn scroll", KT_DIM, KT_BG,
+			  "L back to progress   PgUp/PgDn scroll", KT_MID, KT_BG,
 			  0);
 		return;
 	}
@@ -1867,7 +1867,7 @@ static void install_draw(KRect b)
 	for (int i = 0; i < inst.nsteps; i++) {
 		StepUi *s = &inst.step[i];
 		const char *mark = ktui_glyph[KT_G_DOT];
-		int fg = KT_DIM;
+		int fg = KT_MID;
 		switch (s->state) {
 		case ST_RUNNING:
 			mark = ktui_glyph[KT_G_RIGHT];
@@ -1883,7 +1883,7 @@ static void install_draw(KRect b)
 			break;
 		case ST_SKIP:
 			mark = "-";
-			fg = KT_DIM;
+			fg = KT_MID;
 			break;
 		default:
 			break;
@@ -1906,9 +1906,9 @@ static void install_draw(KRect b)
 		} else if (s->state == ST_DONE) {
 			char t[24];
 			snprintf(t, sizeof(t), "%.1fs", s->t1 - s->t0);
-			ktui_draw_text(b.x + 21, y, b.w - 21, t, KT_DIM, KT_BG, 0);
+			ktui_draw_text(b.x + 21, y, b.w - 21, t, KT_MID, KT_BG, 0);
 		} else if (s->state == ST_SKIP) {
-			ktui_draw_text(b.x + 21, y, b.w - 21, "not needed", KT_DIM,
+			ktui_draw_text(b.x + 21, y, b.w - 21, "not needed", KT_MID,
 				  KT_BG, 0);
 		} else if (s->state == ST_FAIL) {
 			ktui_draw_text(b.x + 21, y, b.w - 21, inst.failmsg, KT_ERR,
@@ -1919,7 +1919,7 @@ static void install_draw(KRect b)
 	y++;
 
 	int elapsed = (int)(kb_now_s() - inst.t0);
-	ktui_draw_textf(b.x, y++, b.w, KT_DIM, KT_BG, 0, "elapsed %02d:%02d",
+	ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0, "elapsed %02d:%02d",
 		   elapsed / 60, elapsed % 60);
 	y++;
 

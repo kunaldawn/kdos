@@ -1053,6 +1053,51 @@ static void test_trash(void)
 	}
 
 	/*
+	 * ONE LOADER FOR THE ACCENT AND THE CAST. Every surface loads its
+	 * palette through ktui_theme_load(), so a surface that read the scheme
+	 * and skipped the toggle — or returned early on a missing state file
+	 * before reaching it — would draw cold beside a warmed panel.
+	 */
+	{
+		char dir[512], cdir[512], tf[600];
+		const KtuiTheme *other =
+			&ktui_themes[(KCOL_DEFAULT_INDEX + 1) % ktui_ntheme];
+		const KtuiTheme *dflt = &ktui_themes[KCOL_DEFAULT_INDEX];
+
+		snprintf(dir, sizeof(dir), "%s/load-state", work);
+		snprintf(cdir, sizeof(cdir), "%s/load-cache", work);
+		setenv("XDG_STATE_HOME", dir, 1);
+		setenv("XDG_CACHE_HOME", cdir, 1);
+		snprintf(tf, sizeof(tf), "%s/kdos", cdir);
+		kb_mkdir_p(tf);
+		snprintf(tf, sizeof(tf), "%s/kdos/theme", cdir);
+		kb_write_file(tf, other->name);
+
+		ktui_theme_load();
+		ok(ktui_theme == other, "the cached accent is the one loaded");
+
+		kb_toggle_set("night-light", 1);
+		ktui_theme_load();
+		ok(ktui_theme != other &&
+		   ktui_theme->slot[KT_ACCENT].r == other->slot[KT_ACCENT].r &&
+		   ktui_theme->slot[KT_BG].b <= other->slot[KT_BG].b,
+		   "and the night-light toggle warms it in the same call");
+
+		unlink(tf);
+		ktui_theme_load();
+		ok(ktui_theme != dflt &&
+		   ktui_theme->slot[KT_ACCENT].r == dflt->slot[KT_ACCENT].r,
+		   "a missing state file is the default scheme, still warmed");
+
+		kb_toggle_set("night-light", 0);
+		ktui_theme_load();
+		ok(ktui_theme == dflt, "and turning the toggle off is a load too");
+
+		unsetenv("XDG_STATE_HOME");
+		unsetenv("XDG_CACHE_HOME");
+	}
+
+	/*
 	 * WHICH DESKTOP, for the `<desktop>-mimeapps.list` searched ahead of the
 	 * plain one. The FIRST name only and lowercased: the variable is a
 	 * preference ORDER, and the file the spec asks for is spelled in lower

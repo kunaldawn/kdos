@@ -531,8 +531,11 @@ Scanlines ship off because they fight the text underneath. The desktop is a grid
 and a dark line on every third physical row crosses the glyphs at a period nothing on screen
 shares, so crisp two-colour text arrives striped. `crt_scanlines = 60` turns them on.
 
-The pass needs the GLES2 renderer. On software rendering, including a virtual machine with plain
-graphics, it is switched off at startup and the log says so.
+The pass needs the GLES2 renderer on a GPU. It is switched off at startup, and the log says so,
+on the pixman renderer and on a GLES2 renderer whose `GL_RENDERER` names `llvmpipe`, `softpipe` or
+`swrast`: Mesa's software drivers, which wlroots accepts when EGL falls back to `kms_swrast` and on
+which the shader would run on the CPU over every pixel of every frame. A virtual machine with plain
+graphics is one of these.
 
 Two short animations belong to the pass and run only when it is active and `motion` is on (see
 [Motion](#motion)):
@@ -1140,6 +1143,13 @@ Before starting a child, the compositor clears the signal mask and resets every 
 had ignored. Ignored signals survive `exec`, so a session started under something like `nohup`
 would otherwise pass that on, and the live retint, which is delivered as `SIGHUP`, would never
 arrive.
+
+Every child, and the dialog that names one given up on, is sent `SIGTERM` when the compositor
+exits (`PR_SET_PDEATHSIG`, set after `setsid()`; a child whose compositor is already gone by then
+exits at once). Each child runs in a session of its own, so nothing else would end it, and a
+desktop restarted from tty1 would meet the previous one's children still running: the old
+`kdos-netagent` still registered with NetworkManager, which refuses the new one, and the new one's
+every exit counted as a crash until it is given up on.
 
 Programs launched by key bindings are not supervised: a terminal opened with a key is not part of
 the desktop's chrome.

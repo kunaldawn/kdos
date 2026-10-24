@@ -2490,7 +2490,7 @@ for p in glob.glob('build/fs/**/icons/hicolor/*/apps/*.png', recursive=True):
 # fewer passes the rest: a positional row names its icon with no `icon`
 # anywhere on the line. A literal is read bare or as either arm of a
 # ternary; a computed name is not a literal and is not checked.
-pats = (r'kicon_slot(?:_pad)?\("([a-z0-9._-]+)"',
+pats = (r'kicon_slot(?:_pad|_ink)?\("([a-z0-9._-]+)"',
         r'kicon_pixmap\("([a-z0-9._-]+)"',
         r'(?:->|\.)icon = "([a-z0-9._-]+)"')
 used = set()
@@ -2656,6 +2656,40 @@ else
 fi
 
 echo
+echo "==> every front end that asks for an icon initialises the icon layer"
+# kicon_slot() ANSWERS -1 UNTIL kicon_init() HAS RUN, and -1 is the ordinary
+# answer of a terminal or of `--no-icons`, so a front end that never
+# initialised the layer draws its header band with no picture and nothing
+# says so. The rule is per file because each kdos-shell front end is a file
+# with its own entry: a file that brings up a display (`kdisp_init(` or
+# `sh_run(`) and names an icon (`kicon_slot*(`, `kicon_pixmap(`, or a
+# `kch_header(` whose icon is not NULL) must call `kicon_init(` itself or,
+# on the runner, point `.icons` at its flag so sh_run() does.
+_noinit=$(python3 - <<'PYEOF'
+import glob, re
+
+ASKS = re.compile(r'\bkicon_slot(?:_pad|_ink|_png|_for_path)?\(|\bkicon_pixmap\('
+                  r'|\bkch_header\(\s*[^,()]+,\s*(?!NULL\b)')
+ENTRY = re.compile(r'\b(?:kdisp_init|sh_run)\(')
+INIT = re.compile(r'\bkicon_init\(|\.icons\s*=\s*&')
+for p in sorted(glob.glob('src/**/*.c', recursive=True)):
+    if p.startswith('src/libs/'):
+        continue
+    s = re.sub(r'/\*.*?\*/|//[^\n]*', ' ', open(p, errors='replace').read(),
+               flags=re.S)
+    if ENTRY.search(s) and ASKS.search(s) and not INIT.search(s):
+        print(p)
+PYEOF
+)
+if [ -n "$_noinit" ]; then
+    for _f in $_noinit; do
+        bad "icon layer: $_f" "names an icon and never calls kicon_init()"
+    done
+else
+    note "icon layer" "every front end that names an icon initialises it"
+fi
+
+echo
 echo "==> every chrome glyph is one the console font can actually draw"
 # A GLYPH THE CONSOLE FONT DOES NOT CARRY RENDERS AS A BLANK ON tty1, and
 # nothing anywhere says so: the cell is written, the flush succeeds, and the
@@ -2763,6 +2797,102 @@ if ! awk '/^static void leave_screen/,/^\}$/' src/libs/libktui/ktui_term.c |
     _sync=$((_sync + 1))
 fi
 [ "$_sync" = 0 ] && note "libktui" "the bracket closes on the drop and on the way out"
+
+echo "==> no text is drawn in KT_DIM"
+# KT_DIM IS A FILL. It measures about 1.6:1 against the page and IS the
+# selection fill, so a word drawn in it is a word nobody can read — and on a
+# selected row it is not there at all. Labels take KT_MID; a secondary column
+# on a selectable row takes ktui_sel_dim(). The check reads the foreground
+# argument of every text draw (ktui_draw_text, _textf, _text_right, _cell,
+# ktui_kv, ktui_para, ktui_menu_label, ktui_table_text, ktui_textarea_draw,
+# kch_px_text, kch_display_text, kcell_canvas_text, and the slot-taking text
+# wrappers in kdosbuild and the panel) across line breaks, so
+# `on ? KT_SURFACE : KT_DIM` is caught as surely as a bare KT_DIM. A call
+# whose string is a rule, shade or block glyph (ktui_glyph[KT_G_HL], "─") or
+# a blank cell is a fill and passes; a "-" does not, because that is what an
+# empty cell says, and neither does a button's "[", which is KT_MID.
+# Anything else in KT_DIM that is not read — a grid of dots, a rule of
+# hyphens, a scrollbar's spent cap, the unpinned half of a pinned/unpinned
+# pair of marks — carries `/* not text */` inside the call, which is the whole
+# allow list.
+_dimtext=$(python3 - src <<'PYEOF'
+import glob, re, sys
+
+# function -> (index of the foreground argument, index of the string or None)
+TEXT = {
+    'ktui_draw_text': (4, 3), 'ktui_draw_text_right': (4, 3),
+    'ktui_draw_textf': (3, None), 'ktui_draw_cell': (3, 2),
+    'ktui_kv': (5, 4), 'ktui_para': (4, 3), 'ktui_menu_label': (4, 3),
+    'ktui_table_text': (5, 4), 'kch_px_text': (5, 4),
+    'kch_display_text': (2, 1), 'ktui_textarea_draw': (5, 2),
+    'kcell_canvas_text': (5, 4),
+    # Text wrappers that take a slot (kdosbuild/tui.c, kdos-shell/panel.c).
+    'centre': (2, 1), 'wrap2': (5, 4), 'hud_cap': (4, 3),
+    'hud_glyph': (3, 2), 'applet': (5, 4), 'applet_w': (5, 4),
+}
+FILL_GLYPH = re.compile(r'^ktui_glyph\[KT_G_(?:HL|VL|TL|TR|BL|BR|CROSS|TEE_[TBLR]'
+                        r'|D(?:HL|VL|TL|TR|BL|BR)|FULL|SHADE|SHADE_MED)\]$')
+FILL_LIT = re.compile(r'^"[─│▒░█ ]*"$|^\' \'$')
+CALL = re.compile(r'\b(' + '|'.join(TEXT) + r')\s*\(')
+
+def strip(s):
+    # Comments to blanks and string contents kept, offsets preserved.
+    return re.sub(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'',
+                  lambda m: m.group(0) if m.group(0)[0] in '"\''
+                  else re.sub(r'[^\n]', ' ', m.group(0)), s, flags=re.S)
+
+def args(s, i):
+    out, depth, st, k = [], 0, i + 1, i
+    while k < len(s):
+        c = s[k]
+        if c in '"\'':
+            # Past the literal, or a "[" in it would count as a bracket.
+            k += 1
+            while k < len(s) and s[k] != c:
+                k += 2 if s[k] == '\\' else 1
+        elif c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+            if depth == 0:
+                out.append(s[st:k])
+                return out, k
+        elif c == ',' and depth == 1:
+            out.append(s[st:k])
+            st = k + 1
+        k += 1
+    return out, len(s)
+
+for p in sorted(glob.glob(sys.argv[1] + '/**/*.[ch]', recursive=True)):
+    raw = open(p, errors='replace').read()
+    s = strip(raw)
+    for m in CALL.finditer(s):
+        a, end = args(s, m.end() - 1)
+        fi, si = TEXT[m.group(1)]
+        if fi >= len(a) or not re.search(r'\bKT_DIM\b', a[fi]):
+            continue
+        if si is not None and si < len(a):
+            arg = ' '.join(a[si].split())
+            # A glyph picked by a ternary is a fill when every glyph it
+            # can pick is one.
+            names = re.findall(r'\bKT_G_\w+', arg)
+            if FILL_LIT.match(arg):
+                continue
+            if 'ktui_glyph[' in arg and '"' not in arg and names and all(
+                    FILL_GLYPH.match('ktui_glyph[%s]' % n) for n in names):
+                continue
+        if '/* not text */' in raw[m.start():end]:
+            continue
+        print('%s:%d' % (p, s.count('\n', 0, m.start()) + 1))
+PYEOF
+) || _dimtext="testing/preflight.sh:the-KT_DIM-scanner-did-not-run"
+if [ -n "$_dimtext" ]; then
+    for _f in $_dimtext; do
+        bad "KT_DIM text: $_f" "a text foreground in KT_DIM — KT_MID, or ktui_sel_dim() on a selectable row"
+    done
+else
+    note "KT_DIM text" "every text draw takes a readable slot"
+fi
 
 echo "==> a literal colour is set at the render boundary and nowhere else"
 # CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following

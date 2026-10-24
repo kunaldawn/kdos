@@ -543,6 +543,7 @@ int verify_main(int argc, char **argv)
 			.app_id = "kdos-verify",
 			.keyboard = 1,
 		},
+		.icons = &icons_on,
 		.usage = "[--font NAME] [--no-icons] [--dump] [LIST]",
 		.keys = &keys,
 		.arg = vf_arg,

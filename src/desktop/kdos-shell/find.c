@@ -466,6 +466,8 @@ int find_main(int argc, char **argv)
 		search_files();
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		/* Names first, then contents if they were asked for: two
 		 * children at once would interleave their lines into one
 		 * list. */

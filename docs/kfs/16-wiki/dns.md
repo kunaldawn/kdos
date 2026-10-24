@@ -41,10 +41,13 @@ entries names it. The installer copies the live system's copy to the disk
 
 ### `resolvconf`
 
-<!-- kfs:include ports/core/network/openresolv/build.sh lines=12-16 pin=09c9d19b36e4 -->
+<!-- kfs:include ports/core/network/openresolv/build.sh lines=12-17 pin=1f1f557ea867 -->
 
 `SUBSCRIBERS` names the programs `resolvconf` can pass the merged result to; `libc` is the one
-that writes `/etc/resolv.conf`. The package also installs upstream's [`/etc/resolvconf.conf`]{.idx}, whose
+that writes `/etc/resolv.conf`. `RESTARTCMD` is the command a subscriber runs, with a service's
+name in `$1`, to restart that service when `service status` reports it running, so it reads the
+new servers; `resolvconf -R` prints it. The quoting it needs to pass through make and the
+Makefile's `sed` intact is explained in the [openresolv](#port-openresolv) port's notes. The package also installs upstream's [`/etc/resolvconf.conf`]{.idx}, whose
 `resolv_conf` line names that file; `resolvconf.conf(5)` lists the other keys. Each program that
 brings a link up hands `resolvconf` the servers for that link under a name of its own, which
 `resolvconf -i` lists, and `resolvconf` merges them, so none of them overwrites another's
@@ -183,10 +186,9 @@ reboot unless the medium has a persistence store.
 - `kdos why /etc/resolv.conf` reports the file as provided by `fs/`, not by a package: the copy
   in the image is the placeholder above, and `resolvconf` writes the one in use.
 - `sudo resolvconf -u` rebuilds `/etc/resolv.conf` from what the links last handed it, which is
-  what to run after editing `/etc/resolvconf.conf`. It, and every `wg-quick up` and `down`,
-  prints `Usage: service nscd <name>`: after each update `resolvconf` tries to restart `nscd`
-  with `service nscd`, which is not the order KDOS's `service` takes (`resolvconf -R` prints the
-  command). No `nscd` is installed, so nothing is lost.
+  what to run after editing `/etc/resolvconf.conf`. After it, and after every `wg-quick up` and
+  `down`, the `libc` subscriber asks `service status nscd` and restarts `nscd` only when that
+  reports it running; no `nscd` is installed, so nothing is restarted and nothing is printed.
 - A `.local` name is mDNS, answered by Avahi rather than by a DNS server; `avahi-resolve -n
   <name>.local` looks one up.
 - After changing the host name, change the `127.0.1.1` line of `/etc/hosts` to match. The C

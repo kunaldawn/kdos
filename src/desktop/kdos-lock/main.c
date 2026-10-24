@@ -108,35 +108,6 @@ static void pass_clear(void)
 	nchars = 0;
 }
 
-/*
- * The accent the desktop is wearing, read the way every kdos-shell front end
- * reads it (sh_theme_from_cache) — replicated rather than linked, because this
- * program must stay a lock screen and nothing else.
- */
-static void theme_from_cache(void)
-{
-	char path[512], name[64];
-	const char *cache = getenv("XDG_CACHE_HOME");
-	const char *home = getenv("HOME");
-
-	if (cache && *cache)
-		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
-	else if (home && *home)
-		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
-	else
-		return;
-
-	FILE *f = fopen(path, "r");
-	if (!f)
-		return;
-	if (fgets(name, sizeof(name), f)) {
-		name[strcspn(name, "\n")] = '\0';
-		if (*name)
-			ktui_theme_set(name);
-	}
-	fclose(f);
-}
-
 /* ── the logo ──────────────────────────────────────────────────────────── */
 
 /*
@@ -160,7 +131,7 @@ static int slot_for(const char *sgr, size_t n)
 		{ "1;32", KT_TEXT },	/* wordmark, bright */
 		{ "1;37", KT_TEXT },	/* belly, eyes      */
 		{ "0;33", KT_WARN },	/* beak, feet       */
-		{ "2;32", KT_DIM },	/* tagline          */
+		{ "2;32", KT_MID },	/* tagline          */
 	};
 	for (size_t i = 0; i < sizeof(map) / sizeof(map[0]); i++)
 		if (n == strlen(map[i].code) && !strncmp(sgr, map[i].code, n))
@@ -289,7 +260,7 @@ static void draw(const char *user, const char *host)
 		       KT_SURFACE, KT_A_NONE);
 	/* Ends two cells short of the right border: text_right takes an origin
 	 * and a width, not an end column. */
-	ktui_draw_text_right(box.x, box.y + 1, box.w - 2, clock, KT_DIM,
+	ktui_draw_text_right(box.x, box.y + 1, box.w - 2, clock, KT_MID,
 			     KT_SURFACE, KT_A_NONE);
 
 	char who[80];
@@ -318,7 +289,7 @@ static void draw(const char *user, const char *host)
 	}
 	dots[k] = '\0';
 
-	ktui_draw_text(box.x + 2, box.y + 4, 10, "password", KT_DIM, KT_SURFACE,
+	ktui_draw_text(box.x + 2, box.y + 4, 10, "password", KT_MID, KT_SURFACE,
 		       KT_A_NONE);
 	ktui_draw_text(box.x + 12, box.y + 4, box.w - 14, dots, KT_ACCENT,
 		       KT_SURFACE, KT_A_NONE);
@@ -329,7 +300,7 @@ static void draw(const char *user, const char *host)
 
 	ktui_draw_text(box.x + 2, box.y + 6, box.w - 4,
 		       status ? status : "Enter to unlock",
-		       failed ? KT_ERR : KT_DIM, KT_SURFACE, KT_A_NONE);
+		       failed ? KT_ERR : KT_MID, KT_SURFACE, KT_A_NONE);
 
 	ktui_draw_flush();
 }
@@ -415,7 +386,7 @@ int main(int argc, char **argv)
 		.app_id = "kdos-lock",
 		.keyboard = 1,
 	};
-	theme_from_cache();
+	ktui_theme_load();
 	logo_load();
 
 	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {

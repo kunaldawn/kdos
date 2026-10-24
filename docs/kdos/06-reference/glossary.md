@@ -603,10 +603,9 @@ and init](../03-architecture/boot-and-init.md#restamping-an-installed-machine).
 
 To re-read the theme and repaint in its colours. A running surface retints on `SIGHUP`, which `kdos
 theme` and `kdos toggle night-light` send; a program with no `SIGHUP` handler is not signalled.
-Most `kdos-shell` front ends are not sent it and poll the theme file's time instead, once per pass
-of their loop; every front end on the surface runner does. A front end that does neither keeps the
-colours it opened with until it is closed. See
-[Theming](../02-user-guide/theming.md) and [Filesystem and IPC](filesystem-and-ipc.md).
+Most `kdos-shell` front ends are not sent it and instead check, once per pass of their loop,
+the theme file's time and whether the `night-light` toggle has changed; every front end on the
+surface runner does. See [Theming](../02-user-guide/theming.md) and [Filesystem and IPC](filesystem-and-ipc.md).
 
 ### rig
 

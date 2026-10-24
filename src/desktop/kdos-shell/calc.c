@@ -130,13 +130,14 @@ static void draw(void)
 	/* The sum being typed, and its answer under it in the accent — the
 	 * shape every calculator has had since they had two rows. */
 	ktui_draw_text(2, 1, w - 4, input[0] ? input : "type a sum",
-		       input[0] ? KT_TEXT : KT_DIM, KT_SURFACE, KT_A_NONE);
+		       input[0] ? KT_TEXT : KT_MID, KT_SURFACE, KT_A_NONE);
 	if (result[0])
 		ktui_draw_text_right(0, 2, w - 3, result, KT_ACCENT,
 				     KT_SURFACE, KT_A_BOLD);
 
 	for (int x = 1; x < w - 1; x++)
-		ktui_draw_text(x, 3, 1, "-", KT_DIM, KT_SURFACE, KT_A_NONE);
+		ktui_draw_text(x, 3, 1, "-", KT_DIM /* not text */, KT_SURFACE,
+			       KT_A_NONE);
 
 	/* Newest first: the thing a person wants back is usually the last one
 	 * they worked out. */
@@ -219,6 +220,8 @@ int calc_main(int argc, char **argv)
 	kch_px_popup(KT_SURFACE);
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		draw();
 		ktui_draw_flush();
 

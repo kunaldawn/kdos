@@ -2082,7 +2082,7 @@ static void draw_page(void)
 			ktui_draw_text(fx + c3, y, fw - c3 - 1,
 				       b->described ? b->persist
 						    : "no profile yet",
-				       on ? fg : b->described ? KT_MID : KT_DIM,
+				       on ? fg : KT_MID,
 				       bg, KT_A_NONE);
 			continue;
 		}
@@ -2175,30 +2175,23 @@ static void draw_page(void)
 			 * does on every other surface. */
 			ktui_field_draw(vr, &edit, 1, KT_SURFACE);
 		} else {
-			/* AN UNSET VALUE IS THE ONE THING KT_DIM STILL SAYS
-			 * HERE, and only off the fill: KT_DIM on KT_DIM is one
-			 * colour, so a selected row would lose the distinction
-			 * between "(unset)" and a value entirely. */
+			/* AN UNSET VALUE SAYS SO IN WORDS, not in a darker
+			 * slot: KT_DIM is below the reading floor on the page
+			 * and is the selection fill itself, so "(unset)" in it
+			 * is a value nobody can read. */
 			int vfg = ktui_sel_dim(on, pane == 1);
 
-			if (!r->val[0] && !(on && pane == 1))
-				vfg = KT_DIM;
 			ktui_draw_text(vr.x, y, vr.w,
 				       elide(r->val[0] ? r->val : "(unset)",
 					     vr.w, shown, sizeof(shown)),
 				       vfg, bg, KT_A_NONE);
 		}
 		/* Same rule for the scope tag. `live` and `login` are the
-		 * answer to "did that do anything", so a selected row is
-		 * exactly when they have to be readable. */
-		{
-			int tfg = ktui_sel_dim(on, pane == 1);
-
-			if (r->scope != SC_LIVE && !(on && pane == 1))
-				tfg = KT_DIM;
-			ktui_draw_text_right(0, y, w - 2, tag, tfg, bg,
-					     KT_A_NONE);
-		}
+		 * answer to "did that do anything", so every one of them has
+		 * to be readable, on the selected row most of all. */
+		ktui_draw_text_right(0, y, w - 2, tag,
+				     ktui_sel_dim(on, pane == 1), bg,
+				     KT_A_NONE);
 	}
 
 	/*
@@ -2355,7 +2348,7 @@ static void draw_page(void)
 		ktui_draw_text(btn_x, btn_row, 1, "[", KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 		ktui_draw_text(btn_x + 1, btn_row, bw - 2, blabel,
-			       pending ? KT_SURFACE : KT_DIM,
+			       pending ? KT_SURFACE : KT_MID,
 			       pending ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
 		ktui_draw_text(btn_end - 1, btn_row, 1, "]", KT_MID, KT_SURFACE,
 			       KT_A_NONE);

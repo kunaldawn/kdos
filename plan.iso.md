@@ -193,7 +193,7 @@ Effort: S = under 1 h, M = up to 1 day.
 - **Root cause:** `src/system/kdos-tools/cve.c:157-230` `check_one()` counts any row above `have`, with no notion of a branch; `secdb/secdb.txt:12,:3747` hold mis-versioned rows that `vendor.py` cannot correct.
 - **Fix:** decide per CVE: closed if some row naming it has a fix ≤ have on have's major.minor, or have ≥ every row; 'fixed in' is the lowest version above have on have's branch, else the lowest row above have. Rewrite the header comment and the `:190-202` comment. Add `secdb/corrections.txt` (`aerc 1.21.0-r0 drop`, `vorbis-tools 9.54-r1 1.4.3`), apply it in vendor.py, regenerate secdb.txt. Selftest fixture with two branches. Docs: `kdos-command.md#kdos-cve`.
 - **Rebuild:** kdos-tools (42_graphics).
-- **Rig check:** `su - kdos -c 'kdos cve mbedtls aerc vorbis-tools; echo rc=$?'` → nothing vulnerable, rc 0; `time kdos cve` finishes (record the time; it was over 20 s).
+- **Rig check:** `su - kdos -c 'for p in mbedtls aerc vorbis-tools; do kdos cve $p; echo $p rc=$?; done'` → nothing vulnerable, rc 0 for each (one call with three names reports only the last name's verdict in its rc); `time kdos cve` finishes (record the time; it was over 20 s).
 
 ### M8 — kdos-shot option parsing
 - **Root cause:** `src/system/kdos-tools/shot.c:137-179`: `argv[1][0] != '-'` makes any option mean region mode; unknown options are skipped; `--geom` is refused only after `kb_mkdir_p`; the usage still shows `[--geom X,Y,W,H]`.
@@ -259,7 +259,7 @@ Effort: S = under 1 h, M = up to 1 day.
 - **Root cause:** `src/desktop/kdos-shell/cal.c:403` `cal_scan()` (blocking `khal list`) runs before `kdisp_init()` (`:431`).
 - **Fix:** start khal as an `sh_job_start` job after kdisp_init; map at CAL_ROWS; poll every ~100 ms while the job runs; when it ends, parse into marks and the agenda and call `kdisp_overlay_resize` (the surface is bottom-anchored, so it grows upwards). Changing month starts a job too. The `KDOS_CAL_LIST` fixture stays synchronous (goldens unchanged). Rewrite the 'sized ONCE' comment (`:417-419`) and `kdos-shell.md:2381`.
 - **Rebuild:** kdos-shell (50_desktop). For a quick look: `testing/quick.sh kdos-shell`.
-- **Rig check:** fresh boot, `--wait 30 --keys esc --click 1840,1060 --shot a.png` with no sleep; ink present over (1480,640)-(1920,1040). After `khal new today 10:00 11:00 X`, click again: the agenda strip appears.
+- **Rig check:** fresh boot, `--wait 30 --keys esc --click 1840,1060 --shot a.png` with no sleep; ink present over (1480,640)-(1920,1040). After `su - kdos -c 'mkdir -p ~/.local/share/calendars/personal; khal new -a personal today 10:00 11:00 X'` (khal has no calendar to write to until the directory exists), click again: the agenda strip appears.
 
 ### M19 — toast body `KT_DIM`
 - **Fix:** `src/desktop/kdos-shell/notifyd.c:870` `fg = KT_MID`. Regenerate the notifyd goldens in kdos-devdeps if they change.
@@ -297,9 +297,9 @@ Effort: S = under 1 h, M = up to 1 day.
 - **Rig check:** 10 boots: `dmesg | grep -c 'xdg-desktop-por.*segfault'` = 0; each portal binary appears once in `pgrep -af xdg-desktop-portal`; `kdos doctor` portal line ok.
 
 ### L6 — empty optical drive noise
-- **Fix:** in the 090_initramfs.sh live scan loop (~1069), skip a device whose `/sys/class/block/<n>/size` is 0. Describe switch_root's `failed to unlink mnt` as expected output in `docs/kfs/15-image/091-initramfs-init.md`.
+- **Fix:** in the 090_initramfs.sh live scan loop, skip a node that cannot be opened (an empty drive answers ENOMEDIUM; its sysfs size is a guessed 2097151, not 0). Detach `/mnt/system`, and `/mnt/overlay` without a persistent store, before the `/dev`, `/proc`, `/sys` moves, so switch_root can delete the initramfs's `/mnt`.
 - **Rebuild:** 70_image.
-- **Rig check:** SeaBIOS USB-stick boot: `grep -c "Can't open blockdev" serial.log` = 0.
+- **Rig check:** SeaBIOS USB-stick boot with an empty CD drive: `grep -c "Can't open blockdev" serial.log` = 0 and `grep -c "failed to unlink mnt" serial.log` = 0, with and without a `KDOS_PERSIST` stick.
 
 ### L7 — services.md NetworkManager activation text
 - **Fix:** replace `docs/kfs/16-wiki/services.md:187-190` with the ServiceUnknown rule, linking `configuration.md#etcservicedisabledname`. `docscheck --book docs/kfs`, `anchorcheck`, `make book-stamp` if kfscheck asks for it.
@@ -410,7 +410,7 @@ Effort: S = under 1 h, M = up to 1 day.
 ### L28 — doctor podman check
 - **Fix:** in the `kdos.c` Containers section (`:4330-4361`), when not root and podman exists, run `podman info --format {{.Store.GraphRoot}}` through the argv builder: warn with podman's first line on failure, ok with the path on success. Docs: the doctor check list in `kdos-command.md`.
 - **Rebuild:** kdos-tools.
-- **Rig check:** as kdos `kdos doctor | sed -n '/Containers/,/^$/p'` → ok with `/home/kdos/.local/share/containers/storage`; after `chmod 000 ~/.local/share/containers` → warn.
+- **Rig check:** as kdos `kdos doctor | sed -n '/Containers/,/^$/p'` → ok with `/home/kdos/.local/share/containers/storage`; after `mkdir -p ~/.config/containers; printf '[storage\ndriver=\n' > ~/.config/containers/storage.conf` → `podman info` fails and doctor warns with its first line; remove the file afterwards (a `chmod 000` on the store does not break rootless podman, which runs in its own user namespace).
 
 ### L29 — install-to-disk.sh `packs` key
 - **Fix:** `testing/install-to-disk.sh:31,50-51,78` → `APPS=${INSTALL_APPS:-essential}`, `apps = $APPS`; `testing.md:1571-1572`; `conf.c` `set_kv()` gets a final else printing `kinstall: <path>: unknown key '<k>' ignored`; the kinstall.md answer-file section. selftest.
@@ -491,7 +491,7 @@ Checks are numbered as in `fix-final.json` `iso_checks` (#0–#23); run those as
 | F17 | kdos-energyd main.c:351 | `su - kdos -c kdos-energy` → hint `service start energyd` |
 | F18 | pcsc-lite build.sh; fs/etc/default/pcscd | #17 |
 | F19 | install.c pump `case 'W'` | `grep -c '^\[..:..:..\] warning:' /var/log/kinstall.log` ≥ 1 when apps fall back to pending, with the reason |
-| F20 | audio.c BT timeout; kdos.c hint; why.c; kdos-backup; packd.conf; kdos-kfs | #7 (packd.conf), #20 (backup); kdos-audio BT pane with bluetoothd running shows no 'not running'; `kdos why /usr/bin/kpkg` names its package; `ls /usr/share/doc/kfs` |
+| F20 | audio.c BT timeout; kdos.c hint; why.c; kdos-backup; packd.conf; kdos-kfs | #7 (packd.conf), #20 (backup); kdos-audio BT pane with bluetoothd running shows no 'not running'; `kdos why /usr/bin/kpkg` → `(none — provided by fs/ or 10_bootstrap, or not installed)`, since kpkg comes from 10_bootstrap and no package owns it; `ls /usr/share/doc/kfs` |
 | — | the rest of fix-final (oomd rule, ALSA/BRLTTY, Samba, recording, text items, book data) | #5, #15, #16, #21, #22, #23 |
 
 ---

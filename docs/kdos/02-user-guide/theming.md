@@ -148,7 +148,13 @@ switch, which brings everything else into line. Leaving the picker any other way
 stopping it with `SIGTERM` or `SIGINT`, puts the original accent back.
 
 Night light (`Super+Ctrl+Shift+N`, or `kdos toggle night-light`) warms the palette itself rather
-than adding a filter, so it reaches every surface on the same signal as an accent switch.
+than adding a filter. Every surface KDOS draws in cells honours it, because each one loads its
+palette through the same library call that reads both the accent and the toggle: the panel, the
+desktop icons, the notifications, every `kdos-shell` dialog and tool, `kdos-res`, `kdos-term` and
+the lock screen. A running surface warms or cools the way it follows an accent switch, on the
+signal `kdos toggle` sends or on its next pass when it watches the files instead. The lock screen
+reads it each time it locks. The compositor's window frames and wallpaper and every application
+that is not a KDOS surface (GTK, Qt, foot, anything in a box) keep their colours.
 
 ## What changes when
 
@@ -367,9 +373,10 @@ Two parts of the pass are decided when the compositor starts:
 
 ### When it switches itself off
 
-The pass runs only on the GPU (GLES2) renderer. Where there is no GPU acceleration, such as a
-virtual machine without 3D (virgl) enabled, it is off, because a full-screen effect on software
-rendering drops to a few frames a second. If the pass fails on one
+The pass runs only on the GPU (GLES2) renderer, and only when a GPU is behind it. Where there is no
+GPU acceleration, such as a virtual machine without 3D (virgl) enabled, or where the GL is Mesa's
+software `llvmpipe`, it is off, because a full-screen effect on software rendering drops to a few
+frames a second. If the pass fails on one
 screen while running, that screen falls back to the plain picture for a while and retries later.
 Both are recorded in the compositor's log, `$XDG_RUNTIME_DIR/kdos-comp.log`, as a line beginning
 `crt:`. It also steps aside, with nothing logged, while the screen magnifier is on, since zoomed

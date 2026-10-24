@@ -639,7 +639,7 @@ static void draw(void)
 
 		const struct tmitem *it = &tm[rows[idx]];
 		bool on = idx == sel;
-		uint8_t fg = it->enabled ? KT_TEXT : KT_DIM;
+		uint8_t fg = it->enabled ? KT_TEXT : KT_MID;
 		uint8_t bg = KT_SURFACE;
 
 		if (it->separator) {
@@ -709,14 +709,14 @@ static void draw(void)
 
 		ktui_draw_text(lx, 1 + r, lw, it->label, fg, bg, KT_A_NONE);
 		/*
-		 * THE CHORD IS DIMMED EVEN ON THE SELECTED ROW. It is not a
+		 * THE CHORD IS MUTED EVEN ON THE SELECTED ROW. It is not a
 		 * thing to aim at — this desktop cannot press it — and at the
 		 * label's own weight it reads as a second label.
 		 */
 		if (it->chord[0] && chordw)
 			ktui_draw_text_right(w - 4 - chordw + 1, 1 + r,
 					     chordw - 1, it->chord,
-					     it->enabled ? KT_MID : KT_DIM, bg,
+					     KT_MID, bg,
 					     KT_A_NONE);
 		if (it->submenu)
 			ktui_draw_text(w - 3, 1 + r, 1, ktui_glyph[KT_G_RIGHT],

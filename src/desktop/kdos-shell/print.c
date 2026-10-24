@@ -350,7 +350,7 @@ static void prn_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		ktui_draw_text(x, y, w, p->name, fg, bg, KT_A_NONE);
 		break;
 	case 1:
-		ktui_draw_text(x, y, w, p->state, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(x, y, w, p->state, on ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	default:
@@ -370,7 +370,7 @@ static void fnd_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 
 	(void)user;
 	if (col == 0)
-		ktui_draw_text(x, y, w, f->kind, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(x, y, w, f->kind, on ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 	else
 		ktui_draw_text(x, y, w, f->uri, fg, bg, KT_A_NONE);
@@ -568,6 +568,7 @@ int print_main(int argc, char **argv)
 			.app_id = "kdos-print",
 			.keyboard = 1,
 		},
+		.icons = &icons_on,
 		.usage = "[--font NAME] [--no-icons] [--found] [--fixture DIR] "
 			 "[--dump]",
 		.keys = &keys,

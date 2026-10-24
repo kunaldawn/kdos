@@ -30,6 +30,12 @@
  * - **One supervisor per name.** `supervise` on a name whose supervisor is
  *   alive starts nothing (see cmd_supervise): a second one would take over the
  *   pid file, and the first, with its daemon, could then never be stopped.
+ *   Nor does it start beside a daemon an earlier supervisor left running.
+ *
+ * - **A supervisor never dies alone.** SIGTERM to the supervisor itself is
+ *   passed on to its process group before it exits (see forward_term), so a
+ *   `kill <supervisor pid>` ends the daemon too rather than leaving it running
+ *   where no pid file names it.
  * ---------------------------------
  */
 
@@ -65,6 +71,15 @@
  * before it sends SIGKILL, unless `supervise --stop-grace` names another. */
 #define STOP_GRACE 5
 #define MAX_GRACE 600
+
+/* How often a supervisor started with `--restart-with` looks at the other
+ * service's state file and at its own daemon, in milliseconds. */
+#define WITH_POLL_MS 250
+
+/* How long after the other service's daemon is back that this one is started
+ * again: a bus that has just been exec'd has not yet opened its socket, and a
+ * client started into that gap exits and waits out RESPAWN_DELAY. */
+#define WITH_SETTLE_MS 1000
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
@@ -116,9 +131,17 @@ static void write_state(const char *name, const char *phase, pid_t daemon,
 	char buf[112];
 	snprintf(buf, sizeof(buf), "%s %d %ld %d %d %d\n", phase, (int)daemon,
 		 boot_secs(), fails, last, grace);
+	/* SIGTERM held off for the write: the supervisor exits in its handler,
+	 * and one caught between the temporary file and the rename would leave
+	 * the temporary file in /run for good. */
+	sigset_t term, was;
+	sigemptyset(&term);
+	sigaddset(&term, SIGTERM);
+	sigprocmask(SIG_BLOCK, &term, &was);
 	char *p = statefile(name);
 	kb_write_file_atomic(p, buf);
 	free(p);
+	sigprocmask(SIG_SETMASK, &was, NULL);
 }
 
 static void drop_state(const char *name)
@@ -169,6 +192,103 @@ static int is_supervisor(pid_t pid, const char *name)
 	while (i + 1 < na && !strncmp(arg[i], "--", 2))
 		i += 2;
 	return i < na && !strcmp(arg[i], name);
+}
+
+/* The stop grace and the running daemon's pid from the state file: the
+ * defaults (STOP_GRACE, none) when there is no file yet, or one written by a
+ * ksvc that recorded no grace. *phase_up says whether the file exists and
+ * reads `up`; NULL when the caller does not ask. */
+static void read_state(const char *name, int *grace, pid_t *daemon,
+		       int *phase_up)
+{
+	char line[112], phase[8];
+	int dpid = 0, fails, last, g = 0;
+	long since;
+	*grace = STOP_GRACE;
+	*daemon = 0;
+	if (phase_up)
+		*phase_up = 0;
+	char *sp = statefile(name);
+	if (kb_read_line_file(sp, line, sizeof(line)) > 0) {
+		int got = sscanf(line, "%7s %d %ld %d %d %d", phase, &dpid,
+				 &since, &fails, &last, &g);
+		if (got >= 2 && !strcmp(phase, "up") && dpid > 1) {
+			*daemon = (pid_t)dpid;
+			if (phase_up)
+				*phase_up = 1;
+		}
+		if (got == 6 && g >= 1 && g <= MAX_GRACE)
+			*grace = g;
+	}
+	free(sp);
+}
+
+/* Whether `pid` is a process that has not yet exited, and its process group.
+ * A zombie has exited: it waits only for its parent to collect it, and a
+ * kill(pid, 0) that counted it would hold `stop` for the whole grace under a
+ * parent slow to do that. */
+static int running(pid_t pid, pid_t *pgrp)
+{
+	char path[48], buf[512];
+	snprintf(path, sizeof(path), "/proc/%d/stat", (int)pid);
+	if (pid <= 1 || kb_read_file(path, buf, sizeof(buf)) <= 0)
+		return 0;
+	char *r = strrchr(buf, ')');
+	char state;
+	int ppid, pg;
+	if (!r || sscanf(r + 1, " %c %d %d", &state, &ppid, &pg) != 3)
+		return 0;
+	if (pgrp)
+		*pgrp = (pid_t)pg;
+	return state != 'Z' && state != 'X';
+}
+
+/*
+ * The daemon left behind by a supervisor of `name` that has exited, or
+ * 0. `sup` is the pid from the pid file. The daemon is the one the state file
+ * names, and it counts only while it is still in the dead supervisor's process
+ * group: a pid number is not reused while a group of that number has members,
+ * so a daemon pid that has since been reused by something else cannot pass
+ * the group test. SIGKILL to a supervisor, which nothing can catch, leaves
+ * this; so does a supervisor whose daemon is still shutting down after the
+ * SIGTERM the supervisor passed on.
+ */
+static pid_t orphan_daemon(const char *name, pid_t sup)
+{
+	if (sup <= 1 || is_supervisor(sup, name))
+		return 0;
+	int grace;
+	pid_t d, pg;
+	read_state(name, &grace, &d, NULL);
+	return running(d, &pg) && pg == sup ? d : 0;
+}
+
+/*
+ * The pid of the daemon `name`'s supervisor is running now, or 0 when it has
+ * none: no supervisor, or one that is between a daemon's exit and its next
+ * start. *restarting is set when there is a live supervisor and it is in that
+ * gap, so its daemon is about to come back.
+ */
+static pid_t with_daemon(const char *name, int *restarting)
+{
+	pid_t sup = read_pid(name);
+	*restarting = 0;
+	if (!is_supervisor(sup, name))
+		return 0;
+	int grace, up;
+	pid_t d;
+	read_state(name, &grace, &d, &up);
+	if (up && running(d, NULL))
+		return d;
+	*restarting = 1;
+	return 0;
+}
+
+static void sleep_ms(int ms)
+{
+	struct timespec t = { ms / 1000, (long)(ms % 1000) * 1000000L };
+	while (nanosleep(&t, &t) < 0 && errno == EINTR)
+		;
 }
 
 /*
@@ -397,13 +517,61 @@ static void route_output(const char *name, int facility)
  * exit after SIGTERM before it sends SIGKILL; STOP_GRACE when it is not
  * given. A daemon whose clean shutdown writes data out (a database flushing
  * its buffers) names a longer one.
+ *
+ * `--restart-with NAME` ties the daemon to another supervised service's
+ * daemon. Whenever that daemon is not the one that was running when this one
+ * started — it exited, was restarted, or the service was stopped — this
+ * daemon is sent SIGTERM (SIGKILL after the stop grace) and started again
+ * once the other is back, WITH_SETTLE_MS later. Before every start, a live
+ * supervisor of NAME that is between two runs of its daemon is waited for.
+ * NetworkManager passes `--restart-with dbus`: it does not exit when its bus
+ * connection closes, and without this it would run on, holding no name on
+ * the restarted bus, while `check` called it `[ OK ]`. Such a restart is no
+ * failure and does not wait RESPAWN_DELAY.
  */
+
+/*
+ * A SIGTERM sent to the supervisor alone is passed on to its process group,
+ * the daemon in it included, before the supervisor exits; ignored first, so
+ * the group signal does not come back here (the log forwarder ignores it as
+ * well). `stop` signals the whole group itself and creates the stop marker
+ * first, and with the marker present this passes nothing on: a second SIGTERM
+ * is not harmless to every daemon — llama-server takes one as "terminate
+ * immediately". access() is async-signal-safe, and the path is built before
+ * the handler is installed. A daemon that put itself in a group of its own is
+ * signalled by its pid as well, as `stop` does; g_daemon is set only while a
+ * daemon is unreaped, so the pid cannot belong to anything else.
+ */
+static char g_stopping[192];
+static volatile pid_t g_daemon;
+
+static char *stopmark(const char *name)
+{
+	char leaf[160];
+	snprintf(leaf, sizeof(leaf), "kdos-svc.%s.stopping", name);
+	return kb_path_join(RUN_DIR, leaf);
+}
+
+static void forward_term(int sig)
+{
+	(void)sig;
+	signal(SIGTERM, SIG_IGN);
+	if (access(g_stopping, F_OK) != 0) {
+		kill(-getpgrp(), SIGTERM);
+		pid_t d = g_daemon;
+		if (d > 0 && getpgid(d) != getpgrp())
+			kill(d, SIGTERM);
+	}
+	_exit(128 + SIGTERM);
+}
+
 static int cmd_supervise(int argc, char **argv)
 {
 	int final[MAX_FINAL];
 	int nfinal = 0;
 	int facility = LOG_DAEMON;
 	int grace = STOP_GRACE;
+	const char *with = NULL;
 
 	while (argc >= 2) {
 		if (!strcmp(argv[0], "--final-exit")) {
@@ -429,6 +597,11 @@ static int cmd_supervise(int argc, char **argv)
 				kb_die("--stop-grace wants seconds from 1 to "
 				       "%d, got '%s'", MAX_GRACE, argv[1]);
 			grace = (int)g;
+		} else if (!strcmp(argv[0], "--restart-with")) {
+			if (!name_ok(argv[1]))
+				kb_die("--restart-with wants a service name, "
+				       "got '%s'", argv[1]);
+			with = argv[1];
 		} else {
 			break;
 		}
@@ -437,11 +610,13 @@ static int cmd_supervise(int argc, char **argv)
 	}
 	if (argc < 2)
 		kb_die("usage: ksvc supervise [--final-exit CODE]... "
-		       "[--facility NAME] [--stop-grace SECS] <name> "
-		       "<command> [args...]");
+		       "[--facility NAME] [--stop-grace SECS] "
+		       "[--restart-with NAME] <name> <command> [args...]");
 	const char *name = argv[0];
 	if (!name_ok(name))
 		kb_die("bad service name '%s'", name);
+	if (with && !strcmp(with, name))
+		kb_die("--restart-with names the service itself");
 
 	/* A second supervisor of a running name would overwrite the pid file
 	 * with its own id: `stop` would then end the second alone, and the
@@ -457,9 +632,34 @@ static int cmd_supervise(int argc, char **argv)
 		return 0;
 	}
 
+	/* A daemon whose supervisor is gone is as much a running instance as
+	 * one that is supervised. One still shutting down after its
+	 * supervisor's SIGTERM is waited for, up to its stop grace; one that
+	 * outlives that (its supervisor was SIGKILLed) is refused, because
+	 * starting a second beside it is what the check above prevents. */
+	pid_t left = orphan_daemon(name, old);
+	if (left) {
+		int g;
+		pid_t d;
+		read_state(name, &g, &d, NULL);
+		for (int i = 0; i < g * 20 && orphan_daemon(name, old); i++)
+			sleep_ms(50);
+		if (orphan_daemon(name, old)) {
+			printf("[FAIL] %s: daemon pid %d of a supervisor that "
+			       "is gone is still running; `ksvc stop-supervised "
+			       "%s` ends it\n", name, (int)left, name);
+			return 1;
+		}
+	}
+
 	/* A state file left by an earlier supervisor of this name would be
-	 * read as this one's until its first start writes a new one. */
+	 * read as this one's until its first start writes a new one, and a
+	 * stop marker left by a `stop` that never finished would keep this
+	 * one's SIGTERM from reaching its daemon. */
 	drop_state(name);
+	char *mark = stopmark(name);
+	unlink(mark);
+	free(mark);
 
 	/* The child blocks on this pipe until the pid file exists, so a
 	 * supervisor that stops at once removes the file its parent wrote
@@ -487,25 +687,87 @@ static int cmd_supervise(int argc, char **argv)
 		close(gate[0]);
 
 		route_output(name, facility);
+		char *mark = stopmark(name);
+		kb_strlcpy(g_stopping, mark, sizeof(g_stopping));
+		free(mark);
+		signal(SIGTERM, forward_term);
 
 		int fails = 0, last = 0;
 		for (;;) {
+			pid_t with_pid = 0;
+			if (with) {
+				int restarting, waited = 0;
+				while (with_pid = with_daemon(with, &restarting),
+				       !with_pid && restarting) {
+					waited = 1;
+					sleep_ms(WITH_POLL_MS);
+				}
+				if (waited) {
+					sleep_ms(WITH_SETTLE_MS);
+					with_pid = with_daemon(with, &restarting);
+				}
+			}
+
 			printf("[KDOS] (%s) Starting: %s\n", name, argv[1]);
 			fflush(stdout);
 
+			/* SIGTERM held off across the fork: the child would
+			 * otherwise run forward_term until it resets the
+			 * handler, and the supervisor would take it before
+			 * g_daemon and the state file name the daemon. */
+			sigset_t term, was;
+			sigemptyset(&term);
+			sigaddset(&term, SIGTERM);
+			sigprocmask(SIG_BLOCK, &term, &was);
 			long t0 = boot_secs();
 			pid_t d = fork();
 			if (d == 0) {
+				signal(SIGTERM, SIG_DFL);
+				sigprocmask(SIG_SETMASK, &was, NULL);
 				execvp(argv[1], argv + 1);
 				_exit(127);
 			}
-			int st = 0;
+			int st = 0, bounced = 0;
 			if (d > 0) {
+				g_daemon = d;
 				write_state(name, "up", d, fails, last, grace);
-				while (waitpid(d, &st, 0) < 0 && errno == EINTR)
-					;
 			} else {
 				st = 127 << 8;
+			}
+			sigprocmask(SIG_SETMASK, &was, NULL);
+			if (d > 0 && !with) {
+				while (waitpid(d, &st, 0) < 0 && errno == EINTR)
+					;
+			}
+			/* Polled rather than blocked on: the other service's
+			 * state file is read between the looks at the daemon. */
+			for (int ticks = 0; d > 0 && with; ticks++) {
+				pid_t r = waitpid(d, &st, WNOHANG);
+				if (r == d || (r < 0 && errno != EINTR))
+					break;
+				int restarting;
+				if (!bounced &&
+				    with_daemon(with, &restarting) != with_pid) {
+					printf("[KDOS] (%s) %s restarted or "
+					       "stopped: restarting %s\n", name,
+					       with, name);
+					fflush(stdout);
+					kill(d, SIGTERM);
+					bounced = 1;
+					ticks = 0;
+				} else if (bounced &&
+					   ticks == grace * 1000 / WITH_POLL_MS) {
+					kill(d, SIGKILL);
+				}
+				sleep_ms(WITH_POLL_MS);
+			}
+			g_daemon = 0;
+			/* Status 0 for the wait: the daemon was ended, it did
+			 * not fail, and `check` reads a non-zero last status
+			 * in a wait as an exit to report. */
+			if (bounced) {
+				write_state(name, "wait", 0, fails, 0, grace);
+				continue;
 			}
 			int rc = WIFEXITED(st) ? WEXITSTATUS(st)
 					       : 128 + WTERMSIG(st);
@@ -548,48 +810,6 @@ static int cmd_supervise(int argc, char **argv)
 	return 0;
 }
 
-/* The stop grace and the running daemon's pid from the state file: the
- * defaults (STOP_GRACE, none) when there is no file yet, or one written by a
- * ksvc that recorded no grace. */
-static void read_stop_state(const char *name, int *grace, pid_t *daemon)
-{
-	char line[112], phase[8];
-	int dpid = 0, fails, last, g = 0;
-	long since;
-	*grace = STOP_GRACE;
-	*daemon = 0;
-	char *sp = statefile(name);
-	if (kb_read_line_file(sp, line, sizeof(line)) > 0) {
-		int got = sscanf(line, "%7s %d %ld %d %d %d", phase, &dpid,
-				 &since, &fails, &last, &g);
-		if (got >= 2 && !strcmp(phase, "up") && dpid > 1)
-			*daemon = (pid_t)dpid;
-		if (got == 6 && g >= 1 && g <= MAX_GRACE)
-			*grace = g;
-	}
-	free(sp);
-}
-
-/* Whether `pid` is a process that has not yet exited, and its process group.
- * A zombie has exited: it waits only for its parent to collect it, and a
- * kill(pid, 0) that counted it would hold `stop` for the whole grace under a
- * parent slow to do that. */
-static int running(pid_t pid, pid_t *pgrp)
-{
-	char path[48], buf[512];
-	snprintf(path, sizeof(path), "/proc/%d/stat", (int)pid);
-	if (pid <= 1 || kb_read_file(path, buf, sizeof(buf)) <= 0)
-		return 0;
-	char *r = strrchr(buf, ')');
-	char state;
-	int ppid, pg;
-	if (!r || sscanf(r + 1, " %c %d %d", &state, &ppid, &pg) != 3)
-		return 0;
-	if (pgrp)
-		*pgrp = (pid_t)pg;
-	return state != 'Z' && state != 'X';
-}
-
 /* Anything left of the service: the supervisor, a member of its process
  * group, or a daemon that left the group. */
 static int service_left(pid_t pid, pid_t daemon)
@@ -619,8 +839,12 @@ static int service_left(pid_t pid, pid_t daemon)
  * service the same time at shutdown, and a daemon still flushing its data
  * when the pause ran out would lose it. The supervisor dies on the SIGTERM at
  * once, so it is the daemon's exit (and the log forwarder's, which follows
- * it) that the wait measures. A daemon that put itself in a group of its own
- * is signalled by its pid from the state file as well.
+ * it) that the wait measures. The stop marker exists for the length of the
+ * stop, so the supervisor does not pass the group a second SIGTERM (see
+ * forward_term). A daemon that put itself in a group of its own is signalled
+ * by its pid from the state file as well. A daemon whose supervisor is gone
+ * (see orphan_daemon) is stopped the same way, through the group its
+ * supervisor led.
  */
 static int cmd_stop_supervised(const char *name)
 {
@@ -635,7 +859,9 @@ static int cmd_stop_supervised(const char *name)
 		free(p);
 		return 1;
 	}
-	if (!alive(pid)) {
+	int sup = is_supervisor(pid, name);
+	pid_t left = sup ? 0 : orphan_daemon(name, pid);
+	if (!sup && !left) {
 		printf("[KDOS] (%s) Process %d not found, removing stale PID "
 		       "file\n", name, (int)pid);
 		unlink(p);
@@ -646,19 +872,24 @@ static int cmd_stop_supervised(const char *name)
 
 	int grace;
 	pid_t daemon;
-	read_stop_state(name, &grace, &daemon);
+	read_state(name, &grace, &daemon, NULL);
 	pid_t dg;
 	if (daemon && (!running(daemon, &dg) || dg == pid))
 		daemon = 0;
 
-	printf("[KDOS] (%s) Stopping (pid %d)...\n", name, (int)pid);
+	if (sup)
+		printf("[KDOS] (%s) Stopping (pid %d)...\n", name, (int)pid);
+	else
+		printf("[KDOS] (%s) Supervisor %d is gone; stopping daemon "
+		       "%d...\n", name, (int)pid, (int)left);
+	char *mark = stopmark(name);
+	kb_write_file(mark, "");
 	if (kill(-pid, SIGTERM) < 0)
 		kill(pid, SIGTERM);
 	if (daemon)
 		kill(daemon, SIGTERM);
-	struct timespec tick = { 0, 50 * 1000 * 1000 };
 	for (int i = 0; i < grace * 20 && service_left(pid, daemon); i++)
-		nanosleep(&tick, NULL);
+		sleep_ms(50);
 	if (service_left(pid, daemon)) {
 		printf("[KDOS] (%s) Still running after %ds, killing\n", name,
 		       grace);
@@ -667,6 +898,8 @@ static int cmd_stop_supervised(const char *name)
 		if (daemon)
 			kill(daemon, SIGKILL);
 	}
+	unlink(mark);
+	free(mark);
 	unlink(p);
 	free(p);
 	drop_state(name);
@@ -686,7 +919,13 @@ static int cmd_stop_supervised(const char *name)
 static int cmd_check(const char *name)
 {
 	pid_t pid = name_ok(name) ? read_pid(name) : 0;
-	if (!alive(pid)) {
+	if (!is_supervisor(pid, name)) {
+		pid_t left = orphan_daemon(name, pid);
+		if (left) {
+			printf("[FAIL] %s  (supervisor gone; daemon pid %d "
+			       "still running)\n", name, (int)left);
+			return 1;
+		}
 		printf("[DOWN] %s\n", name);
 		return 1;
 	}

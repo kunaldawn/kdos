@@ -480,7 +480,7 @@ static void draw_osd(const char *label, int pct, int muted)
 		snprintf(right, sizeof(right), "%d%%", pct);
 
 	ktui_draw_text(2, 1, w - 4, label, KT_TEXT, KT_SURFACE, KT_A_NONE);
-	ktui_draw_text_right(0, 1, w - 2, right, muted ? KT_DIM : KT_ACCENT,
+	ktui_draw_text_right(0, 1, w - 2, right, muted ? KT_MID : KT_ACCENT,
 			     KT_SURFACE, KT_A_NONE);
 
 	/*
@@ -724,13 +724,13 @@ static void slider_draw(int pct, int muted, int hover, int dragging)
 		int mbg = hover == 2 ? KT_ACCENT : muted ? KT_ERR : KT_DIM;
 
 		ktui_draw_text(sl_mute_x, 2, 1, "[",
-			       hover == 2 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       hover == 2 ? KT_TEXT : KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 		ktui_draw_fill(krect(sl_mute_x + 1, 2, mw + 2, 1), mbg);
 		ktui_draw_text(sl_mute_x + 2, 2, mw, ml, KT_SURFACE, mbg,
 			       KT_A_NONE);
 		ktui_draw_text(sl_mute_x + mw + 3, 2, 1, "]",
-			       hover == 2 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       hover == 2 ? KT_TEXT : KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 	}
 
@@ -801,6 +801,8 @@ static int slider_main(int at_x, int at_y, const char *font)
 
 	int hover = 0, dragging = 0;
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		pct = sh_volume_get(&muted);
 		if (pct < 0)
 			pct = 0;

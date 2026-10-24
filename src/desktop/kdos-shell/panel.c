@@ -1580,7 +1580,7 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 			ktui_draw_text(x, ry, 1,
 				       c->allmin ? ktui_glyph[KT_G_DOT]
 						 : ktui_glyph[KT_G_SQUARE],
-				       c->allmin ? KT_DIM : fg, bg, KT_A_NONE);
+				       fg, bg, KT_A_NONE);
 			ktui_draw_text(x + 2, ry, per - 3, c->label, fg, bg,
 				       KT_A_NONE);
 		} else {

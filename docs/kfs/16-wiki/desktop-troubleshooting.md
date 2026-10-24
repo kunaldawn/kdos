@@ -64,7 +64,7 @@ directory, the [keymap]{.idx}, the boxes and the session bus, and hands over to 
 Runs the compositor in the foreground with its log in a file, and offers a restart when it crashes.
 From `fs/usr/local/bin/kdos-desktop-start`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=163-224 pin=97fd93ee7f98 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=163-226 pin=b485a0ab3200 -->
 
 ### ~/.config/kdos-comp/rc.xml and ~/.config/kdos/comp.conf
 

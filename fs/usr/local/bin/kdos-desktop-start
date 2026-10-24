@@ -168,14 +168,16 @@ tail -f "$_log" >&2 2>/dev/null &
 _tail=$!
 kdos-comp 2>>"$_log"
 rc=$?
-# A RENDER NODE IS NOT HARDWARE GL. vmwgfx with 3D off, and nouveau or amdgpu
-# without their firmware, offer one whose EGL is llvmpipe; wlroots refuses it,
-# says so in the log and exits before it opens a socket. kdos-desktop cannot
-# tell such a device from sysfs, so the refusal is the test: when nothing chose
-# a renderer, run the compositor once more on pixman, in place. Re-exec'ing this
+# A RENDER NODE IS NOT HARDWARE GL. When the EGL device on it reports itself
+# as software, wlroots refuses it, says so in the log ("Software rendering
+# detected") and exits before it opens a socket. kdos-desktop cannot tell such
+# a device from sysfs, so the refusal is the test: when nothing chose a
+# renderer, run the compositor once more on pixman, in place. Re-exec'ing this
 # script instead would start a second set of the background waiters above
 # while the first set is still waiting for a socket, and both would start every
-# portal and helper.
+# portal and helper. A node whose Mesa falls back to kms_swrast instead is not
+# refused: wlroots composites in GLES2 on llvmpipe, the compositor runs, and
+# only the phosphor pass is declined, by the GL renderer's name.
 if [ "$rc" -ne 0 ] && [ -z "$WLR_RENDERER" ] && \
    grep -q 'Software rendering detected' "$_log"; then
 	echo "kdos-desktop: no hardware GL; starting kdos-comp on the pixman renderer" >>"$_log"

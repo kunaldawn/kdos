@@ -406,11 +406,18 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
 	int json = 0;
 	const char *only = NULL;
 
+	/* One port or every one. A second name is refused rather than taken in
+	 * place of the first: the report would then answer for a port the
+	 * caller never meant to ask about alone, and say nothing of the others. */
 	for (int i = 0; i < argc; i++) {
-		if (!strcmp(argv[i], "--json"))
+		if (!strcmp(argv[i], "--json")) {
 			json = 1;
-		else if (argv[i][0] != '-')
+		} else if (argv[i][0] != '-' && !only) {
 			only = argv[i];
+		} else {
+			fprintf(stderr, "usage: kdos cve [--json] [port]\n");
+			return 2;
+		}
 	}
 
 	const char *path = getenv("KDOS_SECDB");

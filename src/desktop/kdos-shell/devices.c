@@ -855,7 +855,7 @@ static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		ktui_draw_text(3, y, 14, c->path, fg, bg, KT_A_NONE);
 		ktui_draw_text(18, y, 24, c->name, fg, bg, KT_A_NONE);
 		ktui_draw_text(43, y, 10, c->driver,
-			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
 		if (c->holder[0])
 			ktui_draw_textf(54, y, list_w - 56,
 					on ? KT_SURFACE : KT_WARN, bg,
@@ -884,9 +884,9 @@ static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 			       m->label[0] ? m->label : "(no label)", fg, bg,
 			       KT_A_NONE);
 		ktui_draw_text(35, y, 8, m->fstype,
-			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
 		ktui_draw_text(44, y, 8, m->size,
-			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
 		ktui_draw_text(53, y, list_w - 55,
 			       m->mnt[0] ? m->mnt : "not mounted",
 			       on	   ? KT_SURFACE
@@ -904,12 +904,12 @@ static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		 * they would have to type at scanimage. */
 		ktui_draw_text(3, y, 30, sc->name, fg, bg, KT_A_NONE);
 		ktui_draw_text(34, y, list_w - 36, sc->dev,
-			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
 	} else {
 		const struct dv_input *d = &inputs[r->idx];
 
 		ktui_draw_text(3, y, 10, d->kind,
-			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
 		ktui_draw_text(14, y, list_w - 16, d->name, fg, bg, KT_A_NONE);
 	}
 }

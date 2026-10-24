@@ -815,7 +815,7 @@ static void draw(int top, int welcome)
 			KT_A_NONE, "%s%s", query, ktui_glyph[KT_G_FULL]);
 	if (!qlen)
 		ktui_draw_text(4, input_y(welcome), w - 6, "type to filter",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 
 	if (parse_note[0])
 		ktui_draw_text(2, y0, w - 4, parse_note, KT_ERR, KT_SURFACE,

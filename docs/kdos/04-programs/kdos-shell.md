@@ -921,7 +921,7 @@ of its own.
 A row carries its picture and its chord. `icon-name` goes through the theme lookup every other
 surface in this binary makes, and `icon-data` is a PNG decoded straight off the bus. A row that
 publishes its own bytes usually publishes no name, so declining the bytes would be declining the
-icon. `shortcut` is drawn on the right, dimmed even on the selected row: this desktop cannot press
+icon. `shortcut` is drawn on the right, muted even on the selected row: this desktop cannot press
 it, and a menu that names the key is how somebody stops opening the menu. A toggle is drawn,
 because a row that says "Pause" with no mark is a row whose state is a guess.
 
@@ -1483,8 +1483,8 @@ The scope tag and the value column lift off the muted colour when their row is s
 asking, but muted on the selection fill measures 2.44:1 to 3.38:1 depending on the accent (see
 [The design language](../03-architecture/design-language.md#a-selected-row-is-kt_dim-under-kt_text-and-the-accent-is-one-cell)),
 so left alone the right-hand half of the row would disappear at the moment it matters. `ktui_sel_dim()` is
-that question asked in one place. `KT_DIM` survives in one role only, and off the fill: an
-`(unset)` value, where it carries the distinction and is not meant to be read.
+that question asked in one place. An `(unset)` value takes the same slot as a set one: the word
+says it is unset, and `KT_DIM` would make it unreadable.
 
 Every page is cut into sections. A page of forty knobs reads as one undifferentiated list, and the
 store a row writes (the compositor's file, the panel's, the monitor's) is exactly what a person

@@ -152,7 +152,7 @@ static void fw_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		ktui_draw_text(x, y, w, v->on ? "open" : "closed",
 			       on	 ? KT_SURFACE
 			       : v->on	 ? KT_WARN
-					 : KT_DIM,
+					 : KT_MID,
 			       bg, KT_A_NONE);
 		break;
 	default:
@@ -200,7 +200,7 @@ static void draw(void)
 	 * means — "anything unasked is dr" is not a policy. */
 	ktui_draw_text(2, h - 4, w - 4,
 		       "otherwise: replies and ping get in, nothing else",
-		       KT_DIM, KT_BG, KT_A_NONE);
+		       KT_MID, KT_BG, KT_A_NONE);
 
 	struct kch_button b[FB_N];
 
@@ -314,6 +314,7 @@ int firewall_main(int argc, char **argv)
 			.app_id = "kdos-firewall",
 			.keyboard = 1,
 		},
+		.icons = &icons_on,
 		.usage = "[--font NAME] [--no-icons] [--dump]",
 		.keys = &keys,
 		.arg = fw_arg,

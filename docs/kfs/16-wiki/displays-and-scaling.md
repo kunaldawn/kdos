@@ -33,7 +33,7 @@ The saved layout. No file ships: `kdos-display` writes it when you keep a layout
 `kdos-display --apply` replays it. The compositor runs that replay at login and each time a screen
 appears, one second after the last one, so a dock bringing up several screens triggers one replay:
 
-<!-- kfs:include src/desktop/kdos-comp/src/kdos-child.c lines=342-348 pin=e83210160ec5 -->
+<!-- kfs:include src/desktop/kdos-comp/src/kdos-child.c lines=363-369 pin=e83210160ec5 -->
 
 The writer, one line per screen, refresh in millihertz and scale in thousandths:
 
@@ -255,8 +255,10 @@ grep comp.conf "$XDG_RUNTIME_DIR/kdos-comp.log"
 means the display controller published no I2C bus at all, which is what a virtual machine's
 emulated GPU does: there is no monitor line to talk to.
 
-**Night light did not change a window.** It is applied by each KDOS surface on its reload signal.
-A boxed or native application draws its own colours and does not follow it.
+**Night light did not change a window.** Every KDOS cell surface applies it with the accent: a
+long-lived one on the reload signal `kdos toggle` sends, a `kdos-shell` dialog on its next pass, the
+lock screen each time it locks. The compositor's window frames and wallpaper, and every boxed or
+native application, draw their own colours and do not follow it.
 
 ## Known gaps
 

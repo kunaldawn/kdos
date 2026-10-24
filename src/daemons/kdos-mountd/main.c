@@ -37,8 +37,10 @@
  *   - it must not already be mounted anywhere, and it must not appear in
  *     /etc/fstab. An fstab entry is a decision somebody already made and this
  *     daemon does not get to second-guess it.
- *   - it must not be the medium THIS SYSTEM BOOTED FROM. Offering to unmount
- *     the live ISO is offering to kill the session.
+ *   - it must not be on the disk THIS SYSTEM RUNS FROM — the boot medium or
+ *     the persistence store in use — and that disk is refused whole, every
+ *     partition with it. Offering to unmount, eject or format it is offering
+ *     to kill the session.
  *
  * THE MOUNT IS `nosuid,nodev` ALWAYS and `noexec` by default. A stick is
  * somebody else's filesystem; a setuid root binary on one is a local root hole
@@ -402,32 +404,20 @@ static bool root_is_overlay(void)
 }
 
 /*
- * The medium this system booted from, so it is never offered.
- *
- * THE LIVE ISO CANNOT BE FOUND IN /proc/mounts AT ALL, and that is the trap
- * this function exists around. The initramfs mounts the ISO and the squashfs,
- * then `switch_root` MS_MOVEs the new root — so those mounts stay in the OLD
- * namespace and the running system's /proc/mounts has one line for the whole
- * arrangement: `overlay / overlay ... lowerdir=/mnt/system`, naming a path
- * that no longer exists. Nothing in it names the disc, so a scan alone would
- * offer `sr0 iso9660 8.8G` — the disc the system is running from.
- *
- * So a live session refuses every ISO9660 medium. The cost is that a second
- * data CD cannot be mounted while running live; the alternative is a desktop
- * that offers to eject the operating system. An INSTALLED system has a real
- * root and offers optical media normally.
+ * A NODE THE RUNNING SYSTEM STANDS ON: the source of `/`, `/boot`, `/mnt/iso`
+ * or `/mnt/persist`. The initramfs moves the boot medium's mount to /mnt/iso
+ * under the node it found the medium on, and a KDOS_PERSIST store's to
+ * /mnt/persist, so /proc/mounts names both. Unmounting the first takes the
+ * session's lower layer away; the second is its upper layer.
  */
-static bool is_boot_medium(const char *node, const char *fstype)
+static bool km_node_is_system(const char *node)
 {
-	if (fstype && !strcmp(fstype, "iso9660") && root_is_overlay())
-		return true;
-
 	char *data = kb_read_all(mounts_path(), NULL);
-	bool boot = false;
+	bool sys = false;
 
 	if (!data)
 		return false;
-	for (char *p = data; *p && !boot;) {
+	for (char *p = data; *p && !sys;) {
 		char *nl = strchr(p, '\n');
 		if (nl)
 			*nl = '\0';
@@ -435,14 +425,37 @@ static bool is_boot_medium(const char *node, const char *fstype)
 		if (sscanf(p, "%255s %255s", dev, mnt) == 2 &&
 		    !strcmp(dev, node) &&
 		    (!strcmp(mnt, "/") || !strcmp(mnt, "/mnt/iso") ||
-		     !strcmp(mnt, "/boot")))
-			boot = true;
+		     !strcmp(mnt, "/mnt/persist") || !strcmp(mnt, "/boot")))
+			sys = true;
 		if (!nl)
 			break;
 		p = nl + 1;
 	}
 	free(data);
-	return boot;
+	return sys;
+}
+
+/*
+ * The medium this system booted from, so it is never offered — judged for ONE
+ * node. `km_disk_is_boot()` carries the rule that matters for a stick, because
+ * this one cannot see a sibling: the shipped isohybrid image is mounted at
+ * /mnt/iso as the WHOLE disk, `/dev/sda`, with the ISO 9660 superblock on the
+ * disk itself, `sda1` a 64-sector stub with no filesystem and `sda2` the FAT
+ * ESP. No partition row carries that mount.
+ *
+ * A LIVE SESSION ALSO REFUSES EVERY ISO9660 MEDIUM, mounted or not. The
+ * initramfs moves /mnt/iso into the running system only when it found
+ * system.sfs there, so a boot that reached its root another way leaves no
+ * line naming the medium, and this is the rule that does not depend on one.
+ * The cost is that a second data CD cannot be mounted while running live; the
+ * alternative is a desktop that offers to eject the operating system. An
+ * INSTALLED system has a real root and offers optical media normally.
+ */
+static bool is_boot_medium(const char *node, const char *fstype)
+{
+	if (fstype && !strcmp(fstype, "iso9660") && root_is_overlay())
+		return true;
+	return km_node_is_system(node);
 }
 
 /*
@@ -532,29 +545,48 @@ static void probe_fs(const char *node, char *label, size_t nlabel, char *type,
  * IS THIS WHOLE DISK THE MEDIUM THE SESSION IS RUNNING FROM?
  *
  * `is_boot_medium()` answers for one node and cannot see a sibling. A live USB
- * carries an iso9660 partition AND a vfat ESP, and only the first is refused
- * by that rule — so the second is offered, and destroying it destroys the
- * medium. Any disk with an iso9660 partition on it is the boot disk, whole.
+ * carries the system AND a vfat ESP, and formatting or ejecting the ESP's disk
+ * destroys the running session — so the refusal is by the DISK, and every
+ * partition on it goes with it. A disk is the boot disk when:
  *
- * ONLY IN A LIVE SESSION. An installed system has a real root, and a data DVD
- * in the drive is an ordinary thing to be handed.
+ *   - the disk node or any partition of it is mounted at `/`, `/boot`,
+ *     `/mnt/iso` or `/mnt/persist`, in any session. The shipped stick is
+ *     mounted at /mnt/iso as the whole disk; a persistence store is the
+ *     session's upper layer, and ejecting its disk pulls it out from under
+ *     the overlay;
+ *   - in a LIVE session, the disk node itself probes as iso9660, which is the
+ *     isohybrid layout: the superblock is the disk's, `sda1` is a stub with
+ *     no filesystem, and no partition would ever answer iso9660;
+ *   - in a live session, any partition probes as iso9660, which is a medium
+ *     written with the system in a partition of its own.
+ *
+ * The iso9660 halves are LIVE-ONLY: an installed system has a real root, and a
+ * data DVD in the drive or a stick carrying another system's image is an
+ * ordinary thing to be handed.
  */
 static bool km_disk_is_boot(const char *disk)
 {
-	char path[512];
+	char path[512], node[512], label[KM_NAME], fstype[32];
 	int pn = 0;
-	bool boot = false;
+	bool live, boot = false;
 	char **parts;
 
-	if (!disk || !*disk || !root_is_overlay())
+	if (!disk || !*disk)
 		return false;
+	live = root_is_overlay();
+	snprintf(node, sizeof(node), "%s/%s", devroot(), disk);
+	if (km_node_is_system(node))
+		return true;
+	if (live) {
+		probe_fs(node, label, sizeof(label), fstype, sizeof(fstype));
+		if (!strcmp(fstype, "iso9660"))
+			return true;
+	}
 	snprintf(path, sizeof(path), "%s/block/%s", sysroot(), disk);
 	parts = kb_listdir(path, &pn);
 	if (!parts)
 		return false;
 	for (int k = 0; k < pn && !boot; k++) {
-		char node[256], label[KM_NAME], fstype[32];
-
 		if (strncmp(parts[k], disk, strlen(disk)))
 			continue;
 		snprintf(path, sizeof(path), "%s/block/%s/%s/partition",
@@ -562,9 +594,13 @@ static bool km_disk_is_boot(const char *disk)
 		if (access(path, F_OK) != 0)
 			continue;
 		snprintf(node, sizeof(node), "%s/%s", devroot(), parts[k]);
-		probe_fs(node, label, sizeof(label), fstype, sizeof(fstype));
-		if (!strcmp(fstype, "iso9660"))
+		if (km_node_is_system(node)) {
 			boot = true;
+		} else if (live) {
+			probe_fs(node, label, sizeof(label), fstype,
+				 sizeof(fstype));
+			boot = !strcmp(fstype, "iso9660");
+		}
 	}
 	kb_strv_free(parts);
 	return boot;
@@ -655,6 +691,10 @@ static void scan(void)
 		    !strncmp(disk, "dm-", 3) || !strncmp(disk, "zram", 4))
 			continue;
 		if (!is_removable(disk))
+			continue;
+		/* The boot disk is left out whole, not row by row: its ESP
+		 * passes every per-partition rule below. */
+		if (km_disk_is_boot(disk))
 			continue;
 
 		/* The partitions of the disk, and the disk itself when it has

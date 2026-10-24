@@ -129,7 +129,7 @@ void res_draw_sensors(int x, int y, int w, int h)
 	if (!g_nsen) {
 		ktui_draw_text(x + 2, y + 1, w - 4,
 			       "This machine publishes no hwmon or thermal "
-			       "sensor.", KT_DIM, KT_BG, 0);
+			       "sensor.", KT_MID, KT_BG, 0);
 		return;
 	}
 
@@ -169,7 +169,7 @@ void res_draw_sensors(int x, int y, int w, int h)
 				frac = 1;
 			ktui_gauge(x + 40, row, w - 52, frac, temp_slot(s),
 				   KT_BG);
-			ktui_draw_textf(x + w - 11, row, 10, KT_DIM, KT_BG, 0,
+			ktui_draw_textf(x + w - 11, row, 10, KT_MID, KT_BG, 0,
 					"crit %.0f", s->crit);
 		}
 		row++;

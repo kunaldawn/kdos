@@ -367,7 +367,8 @@ created or mounted.
 
 - internal disks, loop, RAM, zram and device-mapper nodes, filesystems it does not recognise, and
   anything listed in `fstab`;
-- every partition of the disk the system booted from;
+- every partition of the disk the system booted from, and of the disk holding the persistence
+  store in use;
 - anything currently mounted, for a verb that writes;
 - a verb carrying a token nobody issued, and a device index that is not a number;
 - a device node that differs from the one the scan recorded;

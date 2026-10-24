@@ -329,22 +329,28 @@ overlay mount is not checked. What the store is and how `kdos persist` makes one
 
 ### Moving the mounts
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1224-1264 pin=a6db6149b6c6 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1224-1279 pin=e6969a9e190d -->
 
-The mount points the real init expects are made in the new root, and `/dev`, `/proc` and `/sys` are
-moved into it. Two more mounts are moved: `/mnt/iso`, the medium itself, guarded by a test for
-`system.sfs` on it, and `/mnt/persist` when a store is in use. Both have to be reachable by name
-from the booted system. The squashfs and tmpfs mounts under `/mnt` stay behind in the initramfs.
+The mount points the real init expects are made in the new root. Then, once `/sbin/init` has been
+found in it, `umount -l` detaches the squashfs at `/mnt/system` and, on a boot in RAM, the tmpfs at
+`/mnt/overlay`, and `rmdir` removes both mount points. The overlay took private copies of its
+layers when it was mounted, so the root keeps reading them. The detach comes before `/proc` moves,
+because util-linux `umount` finds its target in `/proc/self/mountinfo` and without it detaches
+nothing. A missing `/sbin/init` skips it, so the rescue shell still sees both mounts.
+
+`/dev`, `/proc` and `/sys` are then moved into the new root. Two more mounts are moved: `/mnt/iso`,
+the medium itself, guarded by a test for `system.sfs` on it, and `/mnt/persist` when a store is in
+use. Both have to be reachable by name from the booted system.
 
 ### Switching root
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1266-1295 pin=eee243888baa -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1281-1310 pin=eee243888baa -->
 
-`udevadm control --exit` stops this `udevd`, and `switch_root` starts the real `/sbin/init` from the
-overlay, as on the installed path. Before it does, `switch_root` deletes the initramfs's own files
-to give back their memory, and it never crosses into another mount, so `/mnt`, with the squashfs
-and tmpfs mounts still under it, cannot go: `switch_root: failed to unlink mnt: Directory not empty`
-on the console is expected output of a live boot, not a fault. The splash survives the switch, as
+`udevadm control --exit` stops this `udevd`, and `switch_root` starts the real `/sbin/init` from
+the overlay, as on the installed path. Before it does, it deletes the initramfs's own files to give
+back their memory, and it never crosses into another mount: one mount still under `/mnt` would keep
+`/mnt` from going, with `switch_root: failed to unlink mnt: Directory not empty` on the console,
+which is why the squashfs and the tmpfs were detached above. The splash survives the switch, as
 the comment says. A missing `/sbin/init` prints what `ls -l` can see of it and opens the rescue
 shell. The last line of the script is a `rescue` too, so that `init` never runs off its end.
 

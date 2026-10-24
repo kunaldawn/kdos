@@ -1,0 +1,7 @@
+# useradd's defaults for a new account. `useradd -D` prints every key with
+# its value, this file's or the compiled one. `useradd -D -s SHELL` and its
+# other flags write every key into this file, keeping these comments.
+
+# No mailbox: login.defs names no MAIL_DIR, nothing delivers local mail and the
+# image has no spool directory, so this says what useradd does.
+CREATE_MAIL_SPOOL=no

@@ -93,6 +93,10 @@ group, writes `/run/<full name>.pid`, and restarts the daemon five seconds after
 `service stop <name>` sends SIGTERM to the whole group, waits for it to empty for at most five
 seconds, then sends SIGKILL to whatever is left. `supervise` on a name whose supervisor is alive
 starts nothing and says `[SKIP]`, so a second `service start` cannot leave a daemon nothing stops.
+A `SIGTERM` sent to the supervisor alone is passed on to its group, so the daemon goes with it. A
+daemon whose supervisor was killed outright is still found through the state file: `service
+status` reports it as `[FAIL]` rather than `[DOWN]`, `service start` refuses to start a second
+beside it, and `service stop` ends it.
 
 The daemon's output goes to syslog and to a small file in `/run`. The supervisor points the
 daemon's standard output and error, and its own *Starting* and *Exited* lines, at a forwarder
@@ -793,13 +797,25 @@ if every one of these holds:
 | Its disk is removable, or is on USB | An internal disk is the administrator's. An external drive in a USB enclosure reports itself as non-removable, so the bus is checked too |
 | It carries a filesystem the daemon recognises | See the list below |
 | It is not named in `/etc/fstab`, by device path or by `LABEL=` | An entry there is a decision somebody already made |
-| It is not the medium this system booted from | Offering to unmount the live medium is offering to end the session |
+| It is not on the disk this system runs from | Offering to unmount or eject the live medium, or the persistence store, is offering to end the session |
 
-A device that is already mounted is listed, with its mountpoint in the last column. The boot
-medium is a device mounted at `/`, `/mnt/iso` or `/boot`, and in a live session (root on an
-overlay) any ISO 9660 medium. The live ISO does not appear in the running system's `/proc/mounts`
-at all, because the initramfs moved the root out from under those mounts, so this broad rule is
-the only reliable one; the cost is that a second data CD cannot be mounted while running live.
+A device that is already mounted is listed, with its mountpoint in the last column. The disk this
+system runs from is left out whole, every partition with it. It is a disk where:
+
+- the disk node or any of its partitions is mounted at `/`, `/boot`, `/mnt/iso` or `/mnt/persist`.
+  The initramfs moves the boot medium's mount to `/mnt/iso` under the node it found the medium on,
+  and a `KDOS_PERSIST` store's to `/mnt/persist`, so `/proc/mounts` names both. The persistence
+  store is the session's upper layer;
+- in a live session (root on an overlay), the disk node itself carries an ISO 9660 superblock.
+  That is the shipped isohybrid image on a stick: the superblock is the whole disk's, mounted as
+  `/dev/sda`; `sda1` is a 64-sector stub with no filesystem and `sda2` is the FAT EFI partition,
+  so no partition row carries the mount or probes as ISO 9660;
+- in a live session, any partition carries an ISO 9660 superblock.
+
+A live session also refuses every ISO 9660 medium on its own, mounted or not. The initramfs moves
+`/mnt/iso` into the running system only when it found `system.sfs` there, and this rule does not
+depend on that line existing. The cost is that neither a second data CD nor a stick holding
+another system's image can be mounted while running live.
 
 The label and filesystem type are read directly from the superblock rather than through a
 detection library. The daemon recognises, in this order:
@@ -941,11 +957,14 @@ That is why it is a verb of its own rather than `cifs` with an empty password.
 that is mounted (`err unmount it first`), a device on the boot medium, and a device node that has changed
 since the scan.
 
-The boot medium is refused by the disk, not by the partition. A live USB carries an ISO 9660
-partition and a FAT EFI partition beside it. Every per-partition rule would offer the EFI partition
-(it is removable, it is FAT, it is unmounted and no fstab names it), and formatting it would destroy
-the running session. In a live session any disk carrying an ISO 9660 partition is treated as the
-boot disk, whole: `err that is the medium this session booted from`.
+The boot medium is refused by the disk, not by the partition. A live USB carries the system and a
+FAT EFI partition beside it. Every per-partition rule would offer the EFI partition (it is
+removable, it is FAT, it is unmounted and no fstab names it), and formatting it, or ejecting its
+disk, would destroy the running session. The disk this system runs from, as
+[Which devices are offered](#which-devices-are-offered) defines it, is never in `list`, so no row
+index reaches it: a verb naming the index its row would have taken is past the list. The same
+disk-level rule is checked again here and answers
+`err that is the medium this session booted from`.
 
 The device node is checked again at the moment of use. Between the scan that built the row and
 the call that acts on it, a path could become a symlink or a different device. The daemon opens it
@@ -1014,8 +1033,9 @@ makes the new partitions appear and sends every subscriber `changed`. A worker w
 carries on to the end; its progress lines are dropped.
 
 A disk with no filesystem the daemon recognises is not in `list` at all, so an image cannot be
-written onto it through this verb; and in a live session any disk carrying an ISO 9660 partition is
-treated as the boot disk, so a stick that already holds another system's image is refused there.
+written onto it through this verb; and in a live session any disk carrying an ISO 9660 superblock,
+on the disk or on a partition, is treated as the boot disk, so a stick that already holds another
+system's image is refused there.
 
 Every program it runs is named by absolute path: `/usr/bin/eject`, `/usr/sbin/cryptsetup`,
 `/usr/sbin/smartctl`, the `mkfs` programs above, `/sbin/modprobe`, `/sbin/mount.cifs`,
@@ -1079,10 +1099,15 @@ kernel's hotplug socket).
 The daemon started by the init script reads none of them: an environment variable that moved its
 idea of `/dev` would be a way to aim a format at any device on the machine.
 
-The committed fixture, `testing/fixtures/mountd`, is a recorded `/sys/block` tree with six hand-built
-device images. Five are on removable disks and are offered: a FAT32 stick labelled `KDOSSTICK`, a
-LUKS container, a live-USB pair (an ISO 9660 partition and a FAT ESP beside it) and an optical
-disc. One is an ext4 filesystem on an internal disk and is never offered. The fixture also carries
+The committed fixture, `testing/fixtures/mountd`, is a recorded `/sys/block` tree with hand-built
+device images. On removable disks: a FAT32 stick labelled `KDOSSTICK`, a LUKS container, a
+live-USB pair (an ISO 9660 partition and a FAT ESP beside it), the shipped isohybrid layout (`sde`:
+an ISO 9660 superblock on the whole disk, a 64-sector `sde1` with no filesystem, a FAT `sde2`), a
+whole-disk ext4 stick (`sdf`) standing in for a persistence store, and an optical disc. On a real
+root with nothing of theirs mounted all seven are offered; the selftest mounts `sde` at `/mnt/iso`
+and `sdf` at `/mnt/persist`, and serves a live session, and asserts that neither boot disk
+appears in `list` and that no verb reaches it. One more is an ext4 filesystem on an internal
+disk and is never offered. The fixture also carries
 an `fstab` that claims the stick by label, and a `mounts-live` table from a booted live medium with
 one mounted network share. The internal disk carries a real superblock so that a broken removable
 check shows up as an extra row rather than as nothing.

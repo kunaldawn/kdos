@@ -280,7 +280,7 @@ sign on the frame's left border:
 |---|---|
 | Bullet in the error colour | The command failed |
 | Bullet in the accent colour | The command succeeded |
-| Dim dot | Nothing has finished at this prompt yet |
+| Muted dot | Nothing has finished at this prompt yet |
 
 Under the compositor the frame is the compositor's, so there is no border column to draw on and the
 signs are not shown; the chords still work.
@@ -353,7 +353,8 @@ is never blended. It applies only under a compositor.
 receives whatever is `cat`-ed into it, including a file someone sent you.
 
 Colours do not come from this file but from two generated ones. The accent is the scheme name
-`kdos theme` writes to `~/.cache/kdos/theme`. The sixteen colours a program asks for by number come
+`kdos theme` writes to `~/.cache/kdos/theme`, warmed while the `night-light` toggle is on; both are
+read at start and on `SIGHUP`. The sixteen colours a program asks for by number come
 from `~/.config/kdos/term-colors.conf`, which `kdos theme` also writes: eighteen `name = #rrggbb`
 lines (the sixteen colours, then `foreground` and `background`). The palette is used only when all
 eighteen lines are present; otherwise the built-in one stays. See

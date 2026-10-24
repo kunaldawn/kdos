@@ -45,6 +45,7 @@
 #include <strings.h>
 
 #include "kbase.h"
+#include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
 
@@ -413,7 +414,7 @@ static void app_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 			 a->installed ? ktui_glyph[KT_G_BULLET]
 				      : a->ticked ? "x" : " ");
 		ktui_draw_text(x, y, w, mark,
-			       on ? KT_SURFACE : a->installed ? KT_DIM
+			       on ? KT_SURFACE : a->installed ? KT_MID
 							      : KT_ACCENT,
 			       bg, KT_A_NONE);
 		break;
@@ -424,7 +425,7 @@ static void app_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		break;
 	case 2:
 		ktui_draw_text(x, y, w, a->parent,
-			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
 		break;
 	case 3:
 		ktui_draw_text(x, y, w, kb_human_size(a->bytes),
@@ -455,7 +456,7 @@ static void grp_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 			 : st == GT_ALL ? "x" : st == GT_SOME ? "-" : " ");
 		ktui_draw_text(x, y, w, mark,
 			       on ? KT_SURFACE
-				  : st == GT_DONE ? KT_DIM : KT_ACCENT,
+				  : st == GT_DONE ? KT_MID : KT_ACCENT,
 			       bg, KT_A_NONE);
 		break;
 	}
@@ -465,7 +466,7 @@ static void grp_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		break;
 	case 2:
 		snprintf(n, sizeof(n), "%d", g->nmember);
-		ktui_draw_text(x, y, w, n, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(x, y, w, n, on ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	case 3:
@@ -785,9 +786,18 @@ int store_main(int argc, char **argv)
 		fprintf(stderr, "kdos-store: no display server\n");
 		return 1;
 	}
+	/* AFTER kdisp_init: the icon layer needs the cell size and the
+	 * scale. Without it kicon_slot() answers -1 and the header has no
+	 * picture. */
+	if (icons_on) {
+		sh_pic_backend();
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
+	}
 	ktui_draw_init();
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		draw();
 		ktui_draw_flush();
 

@@ -196,7 +196,7 @@ static void ch_cell(int row, int col, int x, int y, int w, int fg, int bg,
 		ktui_draw_text(x, y, w, buf, fg, bg, KT_A_NONE);
 		break;
 	case 1:
-		ktui_draw_textf(x, y, w, bg == KT_ACCENT ? KT_SURFACE : KT_DIM,
+		ktui_draw_textf(x, y, w, bg == KT_ACCENT ? KT_SURFACE : KT_MID,
 				bg, KT_A_NONE, "U+%04X", e->cp);
 		break;
 	default:
@@ -233,7 +233,7 @@ static void draw(void)
 
 	/* The query row, then a rule, then the hits. */
 	ktui_draw_text(2, 1, w - 4, query[0] ? query : "type a name",
-		       query[0] ? KT_TEXT : KT_DIM, KT_SURFACE, KT_A_NONE);
+		       query[0] ? KT_TEXT : KT_MID, KT_SURFACE, KT_A_NONE);
 	ktui_draw_hline(1, 2, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 
 	if (why) {

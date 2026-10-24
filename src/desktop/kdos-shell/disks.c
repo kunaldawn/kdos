@@ -58,6 +58,7 @@
 #include <unistd.h>
 
 #include "kbase.h"
+#include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
 
@@ -317,18 +318,18 @@ static void dk_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		break;
 	case 1:
 		ktui_draw_text(x, y, w, r->label[0] ? r->label : "-",
-			       on ? KT_SURFACE : r->label[0] ? fg : KT_DIM, bg,
+			       on ? KT_SURFACE : r->label[0] ? fg : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	case 2:
 		ktui_draw_text(x, y, w, r->fstype,
 			       on	       ? KT_SURFACE
 			       : is_locked(r) ? KT_WARN
-					      : KT_DIM,
+					      : KT_MID,
 			       bg, KT_A_NONE);
 		break;
 	case 3:
-		ktui_draw_text(x, y, w, r->size, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(x, y, w, r->size, on ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	default:
@@ -650,10 +651,19 @@ int disks_main(int argc, char **argv)
 		fprintf(stderr, "kdos-disks: no display server\n");
 		return 1;
 	}
+	/* AFTER kdisp_init: the icon layer needs the cell size and the
+	 * scale. Without it kicon_slot() answers -1 and the header has no
+	 * picture. */
+	if (icons_on) {
+		sh_pic_backend();
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
+	}
 	ktui_draw_init();
 	refresh();
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		if (wr.fd >= 0 && sh_mountd_write_pump(&wr) && !wr.running) {
 			snprintf(status, sizeof(status), "%s: %.140s",
 				 wr.ok ? "written" : "not written", wr.msg);

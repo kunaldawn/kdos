@@ -159,8 +159,9 @@ included. Where that directory is absent the layout is exported unchecked.
 3. When there is no render node at all (no `/dev/dri/renderD*`), sets `WLR_RENDERER=pixman`.
    A display device without one has no GL of its own: QEMU's standard VGA (`bochs-drm`) and QXL,
    `simpledrm`, and the server and hypervisor adapters (`ast`, `mgag200`, `cirrus`,
-   `hyperv_drm`, `vboxvideo`). EGL would offer wlroots `llvmpipe`, which it refuses, and the
-   compositor would exit before its first frame.
+   `hyperv_drm`, `vboxvideo`). Its only GL is Mesa's software rasteriser, which wlroots either
+   refuses as software or composites on in GLES2 as `llvmpipe`, emulating on the CPU what the
+   pixman renderer draws directly.
 4. Runs `kdos_session_runtime`, `kdos_session_keymap`, `kdos_session_boxes` and
    `kdos_session_bus`, then executes `kdos-desktop-start`.
 
@@ -182,11 +183,12 @@ there is no logind or elogind on the host. How this compares with a systemd-base
    `$XDG_RUNTIME_DIR/kdos-comp.log` (the previous session's log is kept as `kdos-comp.log.old`)
    and shown on the terminal as well.
 6. When the compositor fails, no renderer was chosen and the log says `Software rendering
-   detected`, sets `WLR_RENDERER=pixman` and runs it once more, in place. That is a device with a
-   render node and still no hardware GL: `vmwgfx` with 3D off, or `nouveau` and `amdgpu` without
-   their firmware. The retry is in place rather than a re-execution of the script so that the
-   background subshells of step 3, still waiting for a socket, start the portals and helpers
-   once.
+   detected`, sets `WLR_RENDERER=pixman` and runs it once more, in place. wlroots refuses only an
+   EGL device that reports itself as software. A device whose Mesa falls back to `kms_swrast`
+   instead is not refused: the compositor runs in GLES2 on `llvmpipe`, and declines only the
+   [phosphor pass](../04-programs/kdos-comp.md#the-phosphor-pass), by the GL renderer's name. The
+   retry is in place rather than a re-execution of the script so that the background subshells
+   of step 3, still waiting for a socket, start the portals and helpers once.
 
 The compositor has start-up hooks of its own, inherited from labwc, the compositor `kdos-comp`
 is forked from: it reads an optional `environment` file and runs optional `autostart` and
@@ -775,7 +777,8 @@ runtime directory.
 The compositor starts and supervises the desktop's own programs (its *chrome*) from a table in
 `src/desktop/kdos-comp/src/kdos-child.c`, and restarts one when it exits. The mechanism (the
 reasons each program is single-instance or per-output, the crash limit, the signal reset before
-`exec`, what happens to a removed output's children and the table's capacity) is described once,
+`exec`, what happens to a removed output's children, the table's capacity, and the `SIGTERM`
+every child is sent when the compositor exits) is described once,
 in [kdos-comp](../04-programs/kdos-comp.md#supervised-children). This section covers what the
 session sees of it.
 
@@ -798,6 +801,10 @@ height, clock format, margin, opacity and autohide setting from the same file, a
 the panel and the desktop when `icons = no`, and `--hidden` to the on-screen keyboard, which it
 then shows and hides by signal; the keys are listed in
 [kdos-comp](../04-programs/kdos-comp.md).
+
+The chrome lives exactly as long as the compositor: when it exits, every child is sent `SIGTERM`,
+so a desktop restarted from tty1 starts its chrome against no leftover instance still holding a
+bus name or a NetworkManager agent registration.
 
 The per-output programs are started with `--output <name>`, one process per screen, because a
 layer surface (a panel-like surface the compositor anchors to a screen edge) is placed on one

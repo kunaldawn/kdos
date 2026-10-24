@@ -675,7 +675,8 @@ read-back run against a scratch file; the `O_EXCL` claim, the cache drop before 
 partition re-read after it act only on a real block device and have not met one. `write` offers
 only a disk the daemon lists, which means a disk carrying a filesystem it recognises: a blank stick,
 or one holding only a partition type it does not probe, cannot be written through it, and in a live
-session any disk with an ISO 9660 partition is refused as the boot disk.
+session any disk with an ISO 9660 superblock, on the disk or on a partition, is refused as the boot
+disk.
 
 `kdos-verify` checks a BLAKE3 list with `b3sum`, which is not a port, so such a list answers that
 `b3sum` is not on this machine. SHA-256, SHA-512 and par2 are checked.

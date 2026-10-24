@@ -35,6 +35,7 @@
 
 #include "ext-workspace-v1-client-protocol.h"
 #include "kbase.h"
+#include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
@@ -182,33 +183,15 @@ void sh_strip_field_codes(char *exec)
 	*w = '\0';
 }
 
+/*
+ * A name of the panel's own rather than a direct ktui_theme_load() at every
+ * call, because it is the seam a fixture replaces: the netagent harness links
+ * the real dialog with this stubbed out, so its frames do not depend on the
+ * accent and night light of whoever runs the suite.
+ */
 void sh_theme_from_cache(void)
 {
-	char path[512], name[64];
-	const char *cache = getenv("XDG_CACHE_HOME");
-	const char *home = getenv("HOME");
-
-	if (cache && *cache)
-		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
-	else if (home && *home)
-		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
-	else
-		return;
-
-	if (sh_read_line(path, name, sizeof(name)) == 0 && *name)
-		ktui_theme_set(name);
-	/* No file is not an error: ktui_theme_set already defaulted to
-	 * phosphor, which is what a fresh install wears. */
-
-	/*
-	 * NIGHT LIGHT RIDES THE SAME PATH AS THE ACCENT, and it must be read
-	 * after it: the accent is what projects the palette, so a warm shift
-	 * applied before it would be projected away. Every surface reaches the
-	 * palette through this one function, which is why the toggle is read
-	 * here rather than at each of them — one that read it for itself would
-	 * be a surface that warms on a different frame from the panel.
-	 */
-	ktui_theme_night(kb_toggle_on("night-light"));
+	ktui_theme_load();
 }
 
 /*
@@ -235,29 +218,38 @@ void sh_theme_from_cache(void)
 void sh_theme_poll(void)
 {
 	static time_t seen;
-	static int primed;
+	static int night, primed;
 	char path[512];
 	const char *cache = getenv("XDG_CACHE_HOME");
 	const char *home = getenv("HOME");
 	struct stat st;
+	time_t mtime = 0;
+	int warm = kb_toggle_on("night-light");
 
 	if (cache && *cache)
 		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
 	else if (home && *home)
 		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
 	else
-		return;
+		path[0] = '\0';
+	if (*path && stat(path, &st) == 0)
+		mtime = st.st_mtime;
 
-	if (stat(path, &st) != 0)
-		return;
+	/*
+	 * The toggle is watched beside the file: `kdos toggle night-light`
+	 * writes no theme file, so a poll of the file's mtime alone would
+	 * leave every polled dialog cold while the panel warmed.
+	 */
 	if (!primed) {
 		primed = 1;
-		seen = st.st_mtime;
+		seen = mtime;
+		night = warm;
 		return;
 	}
-	if (st.st_mtime == seen)
+	if (mtime == seen && warm == night)
 		return;
-	seen = st.st_mtime;
+	seen = mtime;
+	night = warm;
 	sh_theme_from_cache();
 	ktui_draw_invalidate();
 }
@@ -1351,6 +1343,12 @@ int sh_run(const ShSurface *s, int argc, char **argv)
 	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "%s: no display server\n", name);
 		return 1;
+	}
+	/* AFTER kdisp_init: the sprite budget is counted in the display's
+	 * cells, and the icon layer needs the cell size and the scale. */
+	if (s->icons && *s->icons) {
+		sh_pic_backend();
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	}
 	ktui_draw_init();
 	if (s->popup)

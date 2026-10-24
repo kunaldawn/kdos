@@ -265,11 +265,11 @@ reaches the script. The next chapter shows it piece by piece as it stands in the
 included. `build/initramfs/init` is the same text with those escapes undone, and with every line
 that ends in a backslash joined to the next one, which an unquoted here-document also does.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1296-1297 pin=612d39e844dc -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1311-1312 pin=612d39e844dc -->
 
 ## Microcode
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1299-1335 pin=2374498df0b8 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1314-1350 pin=2374498df0b8 -->
 
 The processor's early microcode loader runs before the kernel unpacks anything, and reads two
 literal paths from the start of the initrd as it is in memory. Those paths are built here in a tree
@@ -278,7 +278,7 @@ builds, copied under the name the loader wants. An empty bundle stops the step, 
 installed `intel-ucode` package with no bundle; with neither, Intel processors keep the microcode
 their firmware loaded, and the step says so.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1337-1363 pin=1677e9d765a0 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1352-1378 pin=1677e9d765a0 -->
 
 The AMD containers come from [linux-firmware](#port-linux-firmware), one per processor family, and
 are concatenated into one file in the order the shell's glob sorts them. A `.bin.zst` is expanded
@@ -289,7 +289,7 @@ least one vendor's file is in it. Why the archive must be uncompressed and first
 
 ## The udev check
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1365-1424 pin=8d290eaeb14f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1380-1439 pin=8d290eaeb14f -->
 
 A rule whose program is absent costs nothing in function, since the root's `01_udev` replays every
 rule, but udevd logs `failed to execute` for every device the rule matches, early in every boot.
@@ -304,7 +304,7 @@ waits on; one of them that would be removed, or that is on the root and not here
 
 ## The closure check
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1426-1444 pin=efc9486cc771 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1441-1459 pin=efc9486cc771 -->
 
 This is the check every hand-written list above relies on. Every regular file in `bin/` and `usr/sbin/`, and
 every shared library in `lib/`, is read with the reader proven at the start, and every library it names must be in
@@ -314,7 +314,7 @@ one line per program and library, in the form `bin/cryptsetup:libjson-c.so.5`.
 
 ## Packing
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1446-1454 pin=0b7432e9b2d1 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1461-1469 pin=0b7432e9b2d1 -->
 
 The tree is listed with `find`, sorted byte by byte so that the order does not depend on the
 filesystem, and written by [cpio](#port-cpio) in copy-out mode (`-o`) in the `newc` format, the one

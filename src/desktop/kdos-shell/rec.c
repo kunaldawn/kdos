@@ -85,6 +85,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kicon.h"
 #include "shell.h"
 #include "kchrome.h"
 #include "kproc.h"
@@ -947,7 +948,7 @@ static void draw_inputs(int y, int rows, int w)
 	}
 	if (!nin)
 		ktui_draw_text(4, y, w - 8, "no capture device on this machine",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 }
 
 static void draw_level(int y, int w)
@@ -1000,7 +1001,7 @@ static void draw_files(int y, int rows, int w)
 				     KT_A_NONE);
 	}
 	if (!nfile)
-		ktui_draw_text(4, y, w - 8, "nothing recorded yet", KT_DIM,
+		ktui_draw_text(4, y, w - 8, "nothing recorded yet", KT_MID,
 			       KT_SURFACE, KT_A_NONE);
 }
 
@@ -1015,7 +1016,7 @@ static void draw_transcript(int y, int rows, int w)
 	 * produced nothing is a real answer and has to be given as one. */
 	if (!*p) {
 		ktui_draw_text(4, y, w - 8, "the model returned no words",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 		return;
 	}
 	while (*p && row < rows) {
@@ -1311,11 +1312,17 @@ int rec_main(int argc, char **argv)
 		fprintf(stderr, "kdos-rec: no display server\n");
 		return 1;
 	}
+	/* AFTER kdisp_init: the icon layer needs the cell size and the
+	 * scale, and the header's microphone is drawn only once it has them. */
+	sh_pic_backend();
+	kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
 	ktui_draw_init();
 
 	long long last_tick = now_ms();
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		if (kid > 0) {
 			unsigned char buf[8192];
 			ssize_t n;

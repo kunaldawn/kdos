@@ -583,9 +583,16 @@ Night light is a transform over the slots, not a scheme. `ktui_theme_night()` wa
 is the shape of a lower colour temperature, and it is why a warmed accent still reads as itself.
 It hands out a copy and keeps the chosen scheme beside it: eight-bit values do not divide back
 exactly, so turning night light off returns to the table rather than undoing the arithmetic. The
-caller reads the toggle, because this library holds no opinion about where a desktop keeps its
-state, and the call returns whether the palette actually changed, so a caller can skip a repaint it
-does not owe. The warmed copy is one buffer rewritten in place, so its address stays the same when
+call returns whether the palette actually changed, so a caller can skip a repaint it does not owe.
+
+A desktop surface calls neither of those directly. `ktui_theme_load()` reads the accent through
+`kcol_theme_name()` and the `night-light` toggle through `kb_toggle_on()`, sets the scheme (the
+default when there is no state file), then applies the toggle, in that order because the scheme is
+what the warm copy is made from. Every surface that follows the desktop's accent loads it through
+this one call, at startup and on every retint, so none can follow the accent and miss the toggle;
+the night-light pass has to run even when the state file is absent, or turning the toggle off would
+leave that surface warm. A program that picks its own scheme, such as the installer or the build
+screen, calls `ktui_theme_set()` instead. The warmed copy is one buffer rewritten in place, so its address stays the same when
 the scheme under it changes. Anything that caches work per palette (the terminal backend's SGR
 table is one) compares the eight slot colours, never the pointer.
 
@@ -1482,7 +1489,11 @@ from its name:
   the pages that are drawn. Every header field, directory entry and blob extent is checked against
   the mapped length before use, so a damaged atlas is absent rather than partial. The atlas is
   tinted into the accent like every other piece of KDOS artwork, so one atlas serves all eight
-  accents.
+  accents. `kicon_slot_ink(name, cw, ch, rgb)` asks for a picture to sit on a lit plate: an atlas
+  picture whose covered pixels are all one colour is a mask and is drawn in `rgb` at its own alpha,
+  and anything else comes back as `kicon_slot()` draws it. The test runs in the pass over pixels the
+  decode has just produced, once per picture built, and the ink is part of the picture's key, so a
+  retint or night light that moves the ink builds a new picture rather than reusing the old one.
 - An application's own icon, found as a PNG under `/usr/share/icons/hicolor/<size>/apps/`, is drawn
   untinted.
 

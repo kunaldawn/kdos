@@ -786,6 +786,13 @@ typedef struct {
 	 * wears the popup plate. */
 	int popup;
 	int popup_bg;
+	/* The surface's own `--no-icons` switch, read once the arguments are
+	 * parsed: non-NULL and set, the icon layer is initialised after
+	 * kdisp_init. NULL for a surface that asks for no icon. A surface
+	 * that hands kch_header an icon name and leaves this NULL draws its
+	 * header with no picture, because kicon_slot() answers -1 until
+	 * kicon_init() has run. */
+	const int *icons;
 	/*
 	 * FRAME EVERY EVENT: the event is dispatched and draw() runs between
 	 * ktui_frame_begin() and ktui_frame_end(), and a second frame with no
@@ -914,8 +921,9 @@ struct sh_entry {
 };
 int sh_desktop_entry(const char *id, struct sh_entry *out);
 
-/* The accent the desktop is currently wearing, from
- * $XDG_CACHE_HOME/kdos/theme. The same file kdos-appbox's TUI reads. */
+/* The palette the desktop is currently wearing — the accent in
+ * $XDG_CACHE_HOME/kdos/theme and the night-light toggle — through
+ * ktui_theme_load(), the one loader every surface shares. */
 void sh_theme_from_cache(void);
 
 /*

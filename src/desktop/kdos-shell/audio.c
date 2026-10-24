@@ -989,7 +989,7 @@ static void au_draw_outputs(struct au_ui *u, int y0, int rows, int w)
 			snprintf(tag, sizeof(tag), "pw");
 		ktui_draw_text(4, y, 6, tag,
 			       d->card >= 0 && d->card == au_default_card
-				       ? KT_ACCENT : KT_DIM,
+				       ? KT_ACCENT : KT_MID,
 			       KT_SURFACE, KT_A_NONE);
 
 		if (d->detail[0] && strcmp(d->detail, "pipewire"))
@@ -1029,7 +1029,7 @@ static void au_draw_outputs(struct au_ui *u, int y0, int rows, int w)
 					 KT_SURFACE);
 			if (d->muted)
 				ktui_draw_text_right(0, y, w - 2, "mute",
-						     KT_DIM, KT_SURFACE,
+						     KT_MID, KT_SURFACE,
 						     KT_A_NONE);
 		} else if (d->card < 0) {
 			ktui_draw_text_right(0, y, w - 2, "[pipewire]", KT_MID,
@@ -1182,7 +1182,7 @@ static void au_draw(struct au_ui *u)
 				     au_bt_discovering ? "scanning"
 				     : au_bt_powered   ? "idle"
 						       : "powered off",
-				     au_bt_discovering ? KT_WARN : KT_DIM,
+				     au_bt_discovering ? KT_WARN : KT_MID,
 				     KT_SURFACE, KT_A_NONE);
 	au_draw_bt(u, bt_y, bt_rows, w);
 

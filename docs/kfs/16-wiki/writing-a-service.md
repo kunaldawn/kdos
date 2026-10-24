@@ -250,6 +250,11 @@ group and the daemon's own pid, never such a child), or the daemon rewrote
 `/run/<name>.pid`. Check with `ps -o pid,pgid,args -p "$(cat /run/<name>.pid)"`; the process should
 be `ksvc supervise …`, and the daemon should share its process group.
 
+**After the system bus restarts, the daemon runs on but answers nothing on the bus.** It does not
+exit when its bus connection closes, so its supervisor never restarts it, and `service status`
+still says `[ OK ]`. Supervise it with `supervise --restart-with dbus <name> …`, as
+`42_networkmanager.sh` does: the supervisor then restarts it once the new bus is up.
+
 **`testing/preflight.sh` reports `KDOS_SH heredoc:` and a syntax error.** The script inside the
 port's heredoc does not parse under `bash -n`. Write the delimiter quoted, `<<'KDOS_SH'`: an
 unquoted one lets `$1` and `$PATH` expand while the recipe runs, and `preflight.sh` does not read

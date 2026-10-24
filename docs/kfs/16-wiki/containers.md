@@ -95,7 +95,7 @@ script that starts `podman system service` when nothing answers on your socket,
 `$XDG_RUNTIME_DIR/podman/podman.sock` (`/run/podman/podman.sock` for root), and runs a command
 against it. The service exits after five minutes with no client:
 
-<!-- kfs:include ports/core/containers/podman/build.sh lines=35-87 pin=3a203fb73dc6 -->
+<!-- kfs:include ports/core/containers/podman/build.sh lines=35-93 pin=2f2d1e86bdb2 -->
 
 The *Containers* menu entry runs [`podman-tui`]{.idx} through it:
 

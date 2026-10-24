@@ -401,14 +401,15 @@ name and whether its file exists, which a shell script, a key binding and a surf
 | Name | Does | Read by |
 |---|---|---|
 | `stay-awake` | Never dim, lock or blank on idle | `kdos-comp`'s idle policy, each time it re-arms its idle timer |
-| `night-light` | Warm the palette | Every surface, on the retint signal |
+| `night-light` | Warm the palette | Every KDOS cell surface, with the accent |
 | `dnd` | Hold notifications back | `kdos-notifyd` |
 
 An unknown name, or a second argument other than `on` or `off`, exits 2. The files and their
 readers are also listed in [Configuration](../06-reference/configuration.md#localstatekdostoggles).
 
-`night-light` is read on the same retint signal `kdos theme` sends, so the toggle writes its file
-first and then sends the signal. The other two are read by their consumers without a signal.
+`night-light` is read with the accent, on the same retint signal `kdos theme` sends, so the toggle
+writes its file first and then sends the signal. A front end that is not signalled sees the file
+change on its next pass. The other two are read by their consumers without a signal.
 `dnd` is the notification daemon's only Do Not Disturb flag, so the notification centre's own
 button and this command change the same state.
 
@@ -850,10 +851,12 @@ to the first time each application maps a window. When there is no ledger yet it
 the windows open now, through `kdos hey`, and says so. The ledger covers every window this
 machine has shown; the fallback covers only what is on screen. The launcher side is every
 `.desktop` file in `/usr/share/applications`, `/usr/local/share/applications` and
-`~/.local/share/applications`.
+`~/.local/share/applications` but one marked `Hidden=true`, `NoDisplay=true` entries included:
+`NoDisplay` keeps an entry out of the menu, not out of the taskbar, which matches a window to it
+all the same, and every `kdos-shell` front end's entry is one.
 
-Each observed identifier is `ok` or `MISMATCH`; a launcher never yet observed is counted as not
-yet observed rather than reported as fine. `--quiet` (`-q`) leaves out the `ok` lines. The fix
+Each observed identifier is `ok` or `MISMATCH`; a launcher the menu lists and that was never yet
+observed is counted as not yet observed rather than reported as fine. `--quiet` (`-q`) leaves out the `ok` lines. The fix
 for a mismatch is to rename the `.desktop` file to the observed identifier: the file name is what
 is matched, not `Name` and not `StartupWMClass`. Exit 1 when a mismatch is found, 2 for a bad
 option.
@@ -997,7 +1000,9 @@ counted against a version whose own release already closed it. Nothing is scanne
 fetched.
 Details are in [Packaging](../03-architecture/packaging.md#vulnerability-tracking).
 
-Name a port to check only that one. On a system with no package database, the recipes in the
+Name a port to check only that one. One name at most: a second, or an option other than
+`--json`, prints the usage line and exits 2 rather than checking only the last name given. On a
+system with no package database, the recipes in the
 ports tree are checked instead. The report gives the database's date and age, each package that
 is behind a recorded fix with the first three CVEs and a count of the rest, and a summary line. A
 database more than 180 days old is flagged.
@@ -1017,7 +1022,7 @@ version behind a recorded fix is a finding named `<port>/<component>`, and every
 |---|---|
 | 0 | Nothing known-vulnerable |
 | 1 | At least one package is behind a recorded fix |
-| 2 | No database at the expected path |
+| 2 | No database at the expected path, a second port name, or an unknown option |
 
 ---
 
@@ -1429,7 +1434,7 @@ a file pattern could match anything.
 The init scripts start their daemons through `ksvc supervise`:
 
 ```sh
-ksvc supervise [--final-exit CODE]... [--facility NAME] [--stop-grace SECS] <name> <command> [args...]
+ksvc supervise [--final-exit CODE]... [--facility NAME] [--stop-grace SECS] [--restart-with NAME] <name> <command> [args...]
 ```
 
 It forks a supervisor, writes the supervisor's process id to `/run/<name>.pid`, and runs the
@@ -1437,7 +1442,10 @@ daemon under it. When `/run/<name>.pid` already names a live supervisor of that 
 nothing, prints `[SKIP] <name>: already supervised (pid N)` and exits 0, so `service start` on a
 running service changes nothing. A second supervisor would overwrite the pid file, and the first,
 with its daemon, could then never be stopped; a second system bus would also take the socket from
-the clients already connected to the first. The daemon's output and the supervisor's own start and exit lines go to the
+the clients already connected to the first. A daemon whose supervisor is gone (one ended by
+`SIGKILL`) counts as running too: `supervise` waits for it to exit for at most the stop grace,
+then prints `[FAIL] <name>: daemon pid N of a supervisor that is gone is still running` and exits
+1, and `ksvc stop-supervised <name>` ends it. The daemon's output and the supervisor's own start and exit lines go to the
 system log under the service's name, one `info` message per line, and to
 `/run/kdos-svc.<name>.log`, which holds at most 64 KiB with one previous generation beside it as
 `.old`. The file is what is left before the system logger is up and while it restarts.
@@ -1453,8 +1461,24 @@ Intel model it does not know, smartd with no disk to watch, or mdadm with no arr
 then says so once, removes its pid file and exits, instead of restarting the daemon every five
 seconds for as long as the machine is up. A death by signal is always restarted.
 
+`--restart-with NAME` ties the daemon to the daemon of another supervised service. The supervisor
+looks at that service's state file four times a second, and when its daemon differs from the one
+that was running when this daemon started (it exited, was restarted, or the service was stopped),
+prints `[KDOS] (<name>) NAME restarted or stopped: restarting <name>`, sends this daemon `SIGTERM`
+(`SIGKILL` after the stop grace) and starts it again: at once when the other service has no
+supervisor, otherwise when its daemon is back, and one second later, the time a bus that has just
+started needs to open its socket. Before every start, a supervisor of NAME that is between two
+runs of its daemon is waited for. Such a restart is not a failure and does not wait the five
+seconds. `42_networkmanager.sh` passes `--restart-with dbus`, because NetworkManager does not exit
+when its connection to the system bus closes: without it, a restarted bus leaves it running with
+no name on the new bus while `check` reports `[ OK ]`.
+
 The supervisor runs in its own session and process group, so `ksvc stop-supervised` (what a
-script's `stop` calls) signals the supervisor, the daemon and the log forwarder together. It sends
+script's `stop` calls) signals the supervisor, the daemon and the log forwarder together. A
+`SIGTERM` sent to the supervisor alone is passed on to the group, and to a daemon that left the
+group by its pid, before the supervisor exits, so the daemon goes with it. `stop-supervised` creates `/run/kdos-svc.<name>.stopping` for as long as
+it runs, and a supervisor that finds it passes nothing on, so the daemon gets one `SIGTERM`, not
+two: llama-server, for one, takes a second as "exit at once". `stop-supervised` sends
 `SIGTERM`, then waits for every process in the group to exit, checking every 50 ms, for at most the
 stop grace: five seconds, or what `--stop-grace` (1 to 600) named. Whatever is still running then
 gets `SIGKILL`, after the line `[KDOS] (<name>) Still running after Ns, killing`. A daemon that
@@ -1477,10 +1501,11 @@ clears the count, because a periodic job's `snooze` exits 0 after every job it r
 
 | Line | When |
 |---|---|
-| `[ OK ] <name>  (pid N)` | The supervisor is alive, and its daemon is running or exited 0 |
+| `[ OK ] <name>  (pid N)` | The supervisor is alive, and its daemon is running, exited 0, or is being restarted with the service `--restart-with` names |
 | `[FAIL] <name>  (exited with code N; restarting)` | The supervisor is waiting five seconds to start the daemon again after a non-zero exit, or after its second failing exit in a row of any status; `M failed starts in a row` is added once there are two or more |
 | `[FAIL] <name>  (crash loop: M failed starts in a row, last exit code N; pid P)` | The daemon is running again after two or more failing exits in a row, and has not yet run 60 seconds |
-| `[DOWN] <name>` | No pid file, or its supervisor is gone |
+| `[FAIL] <name>  (supervisor gone; daemon pid N still running)` | The supervisor named by the pid file is gone, and the daemon it last started still runs in its process group |
+| `[DOWN] <name>` | No pid file, or its supervisor and its daemon are gone |
 
 Stopping the service, and a final exit, remove the state file with the pid file.
 

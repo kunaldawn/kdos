@@ -51,12 +51,19 @@ MagickWand libraries. Many ports depend on it, among them
 
 ## Notes
 
-`type.xml` includes none of the font tables installed beside it in `/etc/ImageMagick-7`, so they
-are read by nothing, and every font ImageMagick names comes from fontconfig, which
-`--with-fontconfig` builds in: `magick -list font` lists every face the system has, and
-`-font DejaVu-Sans` or a file path selects one. configure writes an include for each upstream
-table whose font directory it finds or is given. `type-dejavu.xml` is not a table of DejaVu
-faces: it maps the PostScript base names (`Helvetica`, `Times-Roman`, `AvantGarde-Book` and
+`/etc/ImageMagick-7/type.xml` is the one font table ImageMagick reads, and it includes no other,
+so every font ImageMagick names comes from fontconfig, which `--with-fontconfig` builds in:
+`magick -list font` lists every face the system has, and `-font DejaVu-Sans` or a file path
+selects one. configure writes an include for each upstream table whose font directory it finds or
+is given, and `make install` installs every table, `type-apple.xml`, `type-dejavu.xml`,
+`type-ghostscript.xml`, `type-urw-base35.xml`, `type-urw-base35-type1.xml` and
+`type-windows.xml`, whether `type.xml` includes it or not. `build.sh` deletes them: with no
+include they are read by nothing, and each names font files that no port installs, so a reader
+of `/etc/ImageMagick-7` would take them for fonts the system has. It first checks that
+`type.xml` holds no `<include`, and the build fails if it does: configure finds a font directory
+by the files in it, and a tree that gained one would otherwise ship a `type.xml` naming a table
+the package no longer has. `type-dejavu.xml` is not a table
+of DejaVu faces: it maps the PostScript base names (`Helvetica`, `Times-Roman`, `AvantGarde-Book` and
 the rest) to URW base-35 files such as `NimbusSans-Regular.ttf`, which no port installs, so the
 recipe passes no `--with-dejavu-font-dir`, and none of the directories configure searches for it
 exists here. A PostScript base name is therefore no font: `-font Helvetica` stops with `unable to

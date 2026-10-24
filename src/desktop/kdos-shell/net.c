@@ -1655,7 +1655,7 @@ static void draw_frame(void)
 				       KT_A_NONE);
 			const char *st = dev_state_word(d);
 			ktui_draw_text_right(0, y, w - 2, st,
-					     on ? KT_SURFACE : KT_DIM, bg,
+					     ktui_sel_dim(on, 1), bg,
 					     KT_A_NONE);
 			if (d->type == NMDT_WIFI)
 				ktui_draw_text(tx + 22, y, 12,

@@ -199,16 +199,16 @@ static void us_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		ktui_draw_text(x, y, w, u->name, fg, bg, KT_A_NONE);
 		break;
 	case 1:
-		ktui_draw_textf(x, y, w, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_textf(x, y, w, on ? KT_SURFACE : KT_MID, bg,
 				KT_A_NONE, "%u", (unsigned)u->uid);
 		break;
 	case 2:
 		ktui_draw_text(x, y, w, u->gecos[0] ? u->gecos : "-",
-			       on ? KT_SURFACE : u->gecos[0] ? fg : KT_DIM, bg,
+			       on ? KT_SURFACE : u->gecos[0] ? fg : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	default:
-		ktui_draw_text(x, y, w, u->shell, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(x, y, w, u->shell, on ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	}
@@ -375,6 +375,7 @@ int users_main(int argc, char **argv)
 			.app_id = "kdos-users",
 			.keyboard = 1,
 		},
+		.icons = &icons_on,
 		.usage = "[--font NAME] [--no-icons] [--dump]",
 		.keys = &keys,
 		.arg = us_arg,

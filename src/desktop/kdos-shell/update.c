@@ -309,7 +309,7 @@ static void row_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		ktui_draw_text(x, y, w, r->name, fg, bg, KT_A_NONE);
 		break;
 	case 1:
-		ktui_draw_text(x, y, w, r->have, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(x, y, w, r->have, on ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	case 2:
@@ -392,7 +392,7 @@ static void draw(void)
 	 * it will land.
 	 */
 	if (room > 0)
-		ktui_draw_text(2, h - 2, room, slot, KT_DIM, KT_BG, KT_A_NONE);
+		ktui_draw_text(2, h - 2, room, slot, KT_MID, KT_BG, KT_A_NONE);
 
 	ktui_hint("Left/Right", "page");
 	ktui_hint("r", "refresh");
@@ -495,6 +495,7 @@ int update_main(int argc, char **argv)
 			.app_id = "kdos-update",
 			.keyboard = 1,
 		},
+		.icons = &icons_on,
 		.usage = "[--font NAME] [--no-icons] [--security] [--dump]",
 		.keys = &keys,
 		.arg = up_arg,

@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -277,9 +278,28 @@ child_reset_signals(void)
 	}
 }
 
+/*
+ * A SUPERVISED CHILD DIES WITH THE COMPOSITOR THAT STARTED IT. setsid() takes
+ * it out of the session's process group, so nothing else ends it: a desktop
+ * restarted from tty1 would find the previous kdos-netagent still registered
+ * with NetworkManager, its own registration refused, and its every exit counted
+ * as a crash until the child is given up on. The signal goes to the child when
+ * the forking thread exits, and survives exec of anything that is not setuid.
+ * The getppid() test closes the window in which the compositor died between
+ * fork() and prctl(), when the signal would never be sent.
+ */
+static void
+child_tie_to(pid_t parent)
+{
+	if (prctl(PR_SET_PDEATHSIG, SIGTERM) != 0 || getppid() != parent) {
+		_exit(0);
+	}
+}
+
 static void
 spawn_one(struct kdos_child *c)
 {
+	pid_t parent = getpid();
 	pid_t p = fork();
 	if (p < 0) {
 		wlr_log(WLR_ERROR, "cannot fork for %s", child_label(c));
@@ -287,6 +307,7 @@ spawn_one(struct kdos_child *c)
 	}
 	if (p == 0) {
 		setsid();
+		child_tie_to(parent);
 		child_reset_signals();
 		execvp(c->argv[0], (char *const *)c->argv);
 		_exit(127);
@@ -500,9 +521,11 @@ kdos_child_reap(pid_t pid, int status)
 					child_label(c));
 				const char *argv[] = { "kdos-prompt",
 					"--message", msg, NULL };
+				pid_t parent = getpid();
 				pid_t p = fork();
 				if (p == 0) {
 					setsid();
+					child_tie_to(parent);
 					child_reset_signals();
 					execvp(argv[0], (char *const *)argv);
 					_exit(127);

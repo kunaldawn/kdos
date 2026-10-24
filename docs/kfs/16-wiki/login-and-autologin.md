@@ -92,7 +92,8 @@ shell, `tty1`, `tty2`, serial and SSH alike.
 
 | File | Provided by | Holds |
 |:--|:--|:--|
-| `/etc/login.defs` | [shadow](#port-shadow), as upstream ships it | `login`'s and the account tools' defaults |
+| `/etc/login.defs` | [shadow](#port-shadow), with no `MAIL_DIR` | `login`'s and the account tools' defaults |
+| `/etc/default/useradd` | `fs/etc/default/` | `CREATE_MAIL_SPOOL=no`, the one key `useradd`'s compiled defaults are overridden in |
 | [`/etc/passwd`]{.idx}, `/etc/group`, `/etc/shadow` | `fs/etc/`, then the installer | The accounts; the installer renames `kdos` to the user name it is given |
 | `/etc/sudoers.d/00-sudo` | [sudo](#port-sudo)'s `build.sh` | `%wheel ALL=(ALL) ALL`, which the `sudo` commands below rely on |
 

@@ -11,6 +11,7 @@
 
 #include <string.h>
 
+#include "kbase.h"
 #include "kcolor.h"
 #include "ktui.h"
 
@@ -107,6 +108,24 @@ int ktui_theme_night(int on)
 	night = !!on;
 	project();
 	return 1;
+}
+
+/*
+ * The scheme and the warm cast together, in that order: the scheme is what
+ * project() copies from, so a warm shift applied first would be thrown away
+ * by the scheme that followed it. The night toggle is applied whether or not
+ * a state file named a scheme, because turning it OFF is a retint too, and a
+ * surface that returned early on a missing file would stay warm.
+ */
+void ktui_theme_load(void)
+{
+	char name[64];
+
+	if (kcol_theme_name(name, sizeof(name)))
+		ktui_theme_set(name);
+	else
+		ktui_theme_set(ktui_themes[KCOL_DEFAULT_INDEX].name);
+	ktui_theme_night(kb_toggle_on("night-light"));
 }
 
 /* No sqrt: comparing squares orders identically to comparing roots, and this

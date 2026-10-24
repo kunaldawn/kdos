@@ -33,9 +33,9 @@
 
 /* Named by the scrollbar's own file and not reached by anything below. */
 int kch_body_slot(void) { return KT_BG; }
-int kicon_slot(const char *name, int cw, int ch)
+int kicon_slot_ink(const char *name, int cw, int ch, uint32_t rgb)
 {
-	(void)name; (void)cw; (void)ch;
+	(void)name; (void)cw; (void)ch; (void)rgb;
 	return -1;
 }
 /* Display text has no pixel layer here: it takes its cell form. */

@@ -43,9 +43,9 @@ esac
 
 # A display device with no render node has no GL of its own: bochs-drm behind
 # QEMU's std VGA, QXL, simpledrm, ast, mgag200, cirrus, hyperv_drm, vboxvideo.
-# EGL would hand wlroots llvmpipe, which it refuses, and the compositor would
-# exit before its first frame. A device that has a render node and still no
-# hardware GL is caught later, by kdos-desktop-start.
+# Its only GL is Mesa's software rasteriser, which wlroots either refuses or
+# runs GLES2 on as llvmpipe, emulating on the CPU what pixman draws directly.
+# A render node with no hardware GL behind it is kdos-desktop-start's case.
 if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
 	export WLR_RENDERER=pixman
 fi

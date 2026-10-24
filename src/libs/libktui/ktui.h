@@ -60,7 +60,7 @@ enum {
 	KT_ERR,		/* urgent                          */
 	KT_ACCENT,	/* primary                         */
 	KT_WARN,	/* secondary                       */
-	KT_DIM,		/* inactive borders, disabled text */
+	KT_DIM,		/* fills and rules, never text     */
 	KT_MID,		/* secondary text, bar fill        */
 	KT_SURFACE,	/* panel background                */
 	KT_TEXT,	/* body text                       */
@@ -93,12 +93,24 @@ int ktui_theme_set(const char *name);
  * temperature is and why a warmed accent still reads as itself.
  *
  * Returns non-zero when the palette actually changed, so a caller can skip a
- * repaint it does not owe. THE CALLER READS THE TOGGLE: this library holds no
- * opinion about where a desktop keeps its state, and a surface that loads its
- * scheme already has the state directory in hand. A surface that reads the
- * scheme and not the toggle draws the cold palette while the toggle is on.
+ * repaint it does not owe. A desktop surface does not call it directly: it
+ * calls ktui_theme_load(), which reads the toggle for it.
  */
 int ktui_theme_night(int on);
+
+/*
+ * THE PALETTE A DESKTOP SURFACE WEARS — the accent `kdos theme` wrote to the
+ * cache (kcol_theme_name) and the `night-light` toggle (kb_toggle_on), applied
+ * in the one order that keeps both. No state file means the default scheme.
+ *
+ * Every surface that follows the desktop's accent loads it through this and
+ * nothing else, at startup and again on every retint (the SIGHUP `kdos theme`
+ * and `kdos toggle night-light` send, or a poll of the state file). A surface
+ * that set the scheme itself and skipped the toggle would draw the cold
+ * palette beside a warmed panel. A program that picks its own scheme — the
+ * installer, the build screen — calls ktui_theme_set() instead.
+ */
+void ktui_theme_load(void);
 
 /*
  * THE NEAREST SLOT TO AN ARBITRARY COLOUR, by squared distance.

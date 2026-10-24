@@ -1106,10 +1106,13 @@ int saver_main(int argc, char **argv)
 	const int frame_ms = 1000 / fps;
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		e->draw(cw, ch);
 		/*
-		 * No ktui_draw_invalidate() anywhere in this loop. The cell
-		 * diff is what keeps a full-screen animation cheap: at 10 fps
+		 * No ktui_draw_invalidate() on an ordinary frame — only a
+		 * resize or a retint forces one. The cell diff is what keeps a
+		 * full-screen animation cheap: at 10 fps
 		 * the rain touches a few hundred cells a frame out of tens of
 		 * thousands, and forcing a full repaint would upload the whole
 		 * buffer sixty times a minute for nothing.

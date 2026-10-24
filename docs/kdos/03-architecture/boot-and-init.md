@@ -971,8 +971,10 @@ not always the one holding the medium, and a class that has not appeared yet mus
 chance. A device that mounts is inspected only once, though: a filesystem without `system.sfs` on
 it will not grow one, so it is remembered and skipped, and only nodes that have not mounted yet are
 retried. That is one mount and unmount for a wrong disk across the whole scan, rather than one per
-pass. A node whose size in `/sys/class/block` is 0, such as an optical drive with no disc in it, is
-passed over without a mount and without a message, and looked at again on the next pass.
+pass. A node that cannot be opened, such as an optical drive with no disc in it or a card reader
+with no card (the open fails with `ENOMEDIUM`), is passed over without a mount and without a
+message, and looked at again on the next pass. Its size in `/sys/class/block` is no test, because
+an empty optical drive reports a guessed size rather than 0.
 
 `/mnt/iso` is the only mount point the scan has, so the unmount is checked. A mount point left
 busy would take a second filesystem stacked on top of it and every later test would read the wrong
@@ -1024,8 +1026,10 @@ comes up as it would with no store at all.
 Before `switch_root`, `/mnt/iso` and `/mnt/persist` are moved into the new root. Left behind, they
 would be unreachable by name: `kdos rebuild` looks in `/mnt/iso/sources`, `kdos persist` reports
 how full the store is, and the shutdown's `umount -a -r` can only flush a store that is in the new
-root's mount table. The squashfs and tmpfs backing mounts stay in the old root, where the overlay
-keeps its own reference to them.
+root's mount table. The squashfs at `/mnt/system` and the tmpfs at `/mnt/overlay` are detached
+instead, and their mount points removed: the overlay holds its own private copies of its layers,
+and `switch_root`, which never crosses into another filesystem, can then delete the whole of the
+initramfs, `/mnt` included.
 
 ## Checking the root
 
@@ -1349,6 +1353,14 @@ walk down to `55_powerd`, which ends it, so the fallback fires only when init ne
 request. No signal can stand in for `telinit`: sysvinit ignores `SIGTERM`, and `SIGUSR2` closes
 `/run/initctl` for the rest of the boot, after which no `telinit`, `shutdown` or `reboot` reaches
 init.
+
+A restarted system bus takes every client's connection with it. `40_dbus` supervises
+`dbus-daemon`, so the bus is back five seconds after it dies, and polkitd, ModemManager, avahi and
+bluetoothd exit with their connection and are restarted onto it by their own supervisors.
+NetworkManager does not exit, so `42_networkmanager` supervises it with `--restart-with dbus`: its
+supervisor restarts it once the new bus is up (see [ksvc and
+service](../04-programs/kdos-command.md#ksvc-and-service)), and it brings `wpa_supplicant`, which
+left with the old bus, back by activation.
 
 ### One DHCP client on the link
 

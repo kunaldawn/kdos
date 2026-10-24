@@ -489,7 +489,7 @@ The on/off switches a desktop needs at hand. A file's presence means on; there i
 | Toggle | Means | Read by |
 |---|---|---|
 | `stay-awake` | Never dim, lock or blank on idle | The compositor's idle timers |
-| `night-light` | Warm the colour palette | Every surface, on the reload signal (`SIGHUP`) |
+| `night-light` | Warm the colour palette | Every KDOS cell surface: `kdos-shell` and all its front ends, `kdos-res`, `kdos-term`, `kdos-lock` |
 | `dnd` | Do not disturb: hold notifications back | The notification daemon, `kdos-notifyd` |
 
 `kdos toggle` lists them, `kdos toggle <name>` flips one, and `kdos toggle <name> on|off` sets it.
@@ -498,9 +498,12 @@ The menu routes `toggle.night`, `toggle.quiet` and `toggle.awake` do the same (s
 
 These are state files rather than configuration keys because another process sets them — a chord,
 a menu row, a script before a long build — and their readers must not hold a copy. `stay-awake` and
-`dnd` are checked on a timer their readers already run. `night-light` is applied when a surface
-receives `SIGHUP`, which `kdos toggle` sends to the compositor and every long-lived surface after
-writing the file, as `kdos theme` does after an accent change.
+`dnd` are checked on a timer their readers already run. `night-light` is read with the accent,
+through `ktui_theme_load()`, by every surface that draws in cells, so it applies wherever the
+accent does. `kdos toggle` writes the file and then sends `SIGHUP` to the long-lived surfaces, as
+`kdos theme` does after an accent change; every other `kdos-shell` front end notices the file on
+its next pass, and `kdos-lock` reads it each time it locks. The compositor's window frames and
+wallpaper, and applications that are not KDOS surfaces, do not change.
 
 `stay-awake` suppresses all three idle steps, not only the first: somebody who turned the
 screensaver off for a presentation did not ask to be locked either.
@@ -1103,6 +1106,7 @@ of the program that reads it.
 | `/etc/modprobe.d/kdos-sdr.conf` | `modprobe` | Blacklists `dvb_usb_rtl28xxu`, so an RTL-SDR stick is free for the SDR tools rather than claimed as a TV tuner |
 | `/etc/alsa/conf.d/99-kdos-pipewire.conf` | Every ALSA program | Routes the ALSA default device to PipeWire |
 | `/etc/default/pcscd` | `/etc/init.d/47_pcscd.sh`, at each start | pcsc-lite's own keys, every one commented out: `PCSCD_ARGS` (extra `pcscd` arguments), `PCSCLITE_FILTER_IGNORE_READER_NAMES` (readers to hide, by a word of their name, `:` between words), `PCSCLITE_FILTER_EXTEND_READER_NAMES` (text added to every reader's name) and `PCSCLITE_HP_DROPDIR` (the USB driver directory). One `KEY=value` per line, parsed and not sourced: the quotes are removed, `$HOSTNAME` is the one expansion, and any other key is reported and skipped. `sudo service restart pcscd` applies an edit |
+| `/etc/default/useradd` | `useradd`, at each new account | `CREATE_MAIL_SPOOL=no`: no mailbox for a new account, as `/etc/login.defs` names no `MAIL_DIR` and the image has no mail spool. Every key it does not set keeps `useradd`'s compiled default, which `useradd -D` prints beside it; `useradd -D` with a flag (`-s` for the shell, `-b` for the home base) writes every key into the file |
 | `/etc/pipewire/pipewire.conf.d/99-kdos-vm.conf` | PipeWire | In a virtual machine only, raises the audio quantum (the block of frames PipeWire processes in one cycle) to 4096, and its ceiling to 8192 |
 | `/etc/polkit-1/rules.d/50-kdos.rules` | `polkitd` | Grants members of `wheel` the named polkit actions the desktop calls, without a prompt; see the [security model](../03-architecture/security-model.md) |
 | `/etc/udev/rules.d/70-kdos-*.rules` | `udevd` | Device access by group: serial, SDR, logic-analyser, debug-probe, instrument, scanner, camera, security-key and GPIO devices to `dialout`, gamepads to `input`, I²C buses and backlight brightness to `video` |

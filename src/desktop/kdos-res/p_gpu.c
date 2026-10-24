@@ -94,7 +94,7 @@ void res_draw_gpu(int x, int y, int w, int h)
 	if (!g_ngpu) {
 		ktui_draw_text(x + 1, row, w - 2,
 			       "No DRM device under /sys/class/drm.",
-			       KT_DIM, KT_BG, 0);
+			       KT_MID, KT_BG, 0);
 		return;
 	}
 
@@ -154,5 +154,5 @@ void res_draw_gpu(int x, int y, int w, int h)
 	if (row < bottom - 1 && !kpr_nvml_probe())
 		ktui_draw_text(x + 1, bottom - 1, w - 2,
 			       "NVIDIA management library not present",
-			       KT_DIM, KT_BG, 0);
+			       KT_MID, KT_BG, 0);
 }

@@ -56,7 +56,7 @@ The last field is whether the service is on by default.
 
 Every supervised script sources this file. Three of its functions are thin wrappers over `ksvc`:
 
-<!-- kfs:include fs/etc/init.d/service_helper lines=41-51 pin=e25ef977dc8e -->
+<!-- kfs:include fs/etc/init.d/service_helper lines=48-58 pin=e25ef977dc8e -->
 
 The fourth, `wait_bus_name NAME`, returns once `NAME` has an owner on the system bus, or after ten
 seconds with `[WARN] NAME is not on the system bus after 10 seconds` and status 1. `40_dbus.sh`

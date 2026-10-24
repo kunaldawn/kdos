@@ -53,7 +53,9 @@ alive, which is how a single periodic job is checked (see [Periodic jobs](#perio
 A supervised service is `[ OK ]` only while its daemon runs. A daemon that keeps exiting is not:
 the supervisor stays up and restarts it every five seconds, and `service status` reports
 `[FAIL] <name>  (exited with code N; restarting)` between the starts, or `(crash loop: …)` while a
-daemon that has failed twice in a row is running again and has not yet lasted a minute. The
+daemon that has failed twice in a row is running again and has not yet lasted a minute. A daemon
+whose supervisor was killed outright is `[FAIL] <name>  (supervisor gone; daemon pid N still
+running)`; `service start` will not start a second beside it, and `service stop` ends it. The
 daemon's own last words are in `/run/kdos-svc.<name>.log`. The exact lines are in
 [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service).
 
@@ -346,7 +348,8 @@ Add the other groups from the table as needed. Two things to check afterwards:
   until then each of its logins prints `kdos: no /run/user/<uid> yet` with that instruction.
 
 No account keeps a mailbox: nothing on KDOS delivers local mail, so `/etc/login.defs` names no mail
-spool, and `useradd` and `userdel` neither make nor look for one.
+spool, `/etc/default/useradd` sets `CREATE_MAIL_SPOOL=no`, and `useradd` and `userdel` neither
+make nor look for one.
 
 **Removing a user.** End the account's processes first, then remove it with its home directory:
 
@@ -478,7 +481,10 @@ that carries only its own networks answers only for its own domains; one that ta
 route answers every other name as well. A file of the same name in `/etc/NetworkManager/conf.d`
 overrides the shipped one.
 `/etc/resolv.conf` has one writer, `resolvconf` (openresolv), which NetworkManager, the fallback
-`dhcpcd` and `wg-quick` all go through, so none of them overwrites another's entries.
+`dhcpcd` and `wg-quick` all go through, so none of them overwrites another's entries. After each
+change it runs `service restart nscd` when `service status nscd` reports it running; a
+`dnsmasq`, `named` or `unbound` subscriber turned on in `/etc/resolvconf.conf` restarts its own
+service the same way.
 
 **VPNs.** OpenVPN works through NetworkManager with certificate and password authentication;
 PKCS#11 hardware tokens are not supported by the OpenVPN build. WireGuard works two ways:

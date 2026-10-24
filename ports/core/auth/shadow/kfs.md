@@ -58,7 +58,10 @@ commented, so no tool keeps a mailbox. Nothing on KDOS delivers local mail and t
 spool directory: with the line in place `useradd` prints `Creating mailbox file: No such file or
 directory` for every account it makes, and `userdel -r` prints `mail spool
 (/var/spool/mail/<user>) not found` for every one it removes. `login` then also sets no `MAIL`, so
-it prints no `No mail.`.
+it prints no `No mail.`. `useradd`'s compiled `CREATE_MAIL_SPOOL` is `yes`, and no configure
+switch changes it; with no `MAIL_DIR` it creates no mailbox all the same, and the base file
+system's `/etc/default/useradd` sets the key to `no`, so `useradd -D` reports what `useradd`
+does.
 
 `build.sh` ends by setting mode 4755 on `newuidmap` and `newgidmap` itself. `make install` sets the
 bit already, unless shadow is configured `--with-fcaps` to rely on file capabilities instead;

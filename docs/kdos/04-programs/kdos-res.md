@@ -170,7 +170,7 @@ governor; and whether the machine is bare metal or which hypervisor it runs unde
 
 Under **per core**, a machine with up to sixteen logical processors gets a small chart for each, in
 four columns (two below 60 columns). A machine with more gets a heat strip with one column per
-processor. An offline processor keeps its position and is drawn as a dim label with no chart, so
+processor. An offline processor keeps its position and is drawn as a muted label with no chart, so
 each chart's number matches the kernel's CPU number.
 
 ### Memory
@@ -748,6 +748,7 @@ See [Testing](../05-developer/testing.md#goldens) for how the goldens are regene
 | `/usr/share/kdos/doc/res.txt` | The help page `F1` opens |
 | `~/.config/kdos/res.conf` | Configuration |
 | `~/.cache/kdos/theme` | The accent, read at start and on `SIGHUP` |
+| `~/.local/state/kdos/toggles/night-light` | Night light, read with the accent |
 | `~/.config/kdos/boxes/<name>.conf` | Box profiles, read by the Boxes page for stopped boxes, base and persistence |
 | `~/.local/share/kdos/boxes/<name>` | Each box's writable layer, measured for the Boxes page's DISK column |
 | `/run/kdos-energyd.sock` | The energy daemon's socket, asked by the Energy and Boxes pages |

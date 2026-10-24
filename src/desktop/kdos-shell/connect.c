@@ -261,7 +261,7 @@ static void sv_cell(int row, int col, int x, int y, int w, int fg, int bg,
 {
 	(void)user;
 	ktui_draw_text(x, y, w, col ? srv[row].addr : srv[row].name,
-		       col ? (bg == KT_ACCENT ? KT_SURFACE : KT_DIM) : fg, bg,
+		       col ? (bg == KT_ACCENT ? KT_SURFACE : KT_MID) : fg, bg,
 		       KT_A_NONE);
 }
 
@@ -270,7 +270,7 @@ static void cn_cell(int row, int col, int x, int y, int w, int fg, int bg,
 {
 	(void)user;
 	ktui_draw_text(x, y, w, col ? rows[row].mnt : rows[row].unc,
-		       col ? (bg == KT_ACCENT ? KT_SURFACE : KT_DIM) : fg, bg,
+		       col ? (bg == KT_ACCENT ? KT_SURFACE : KT_MID) : fg, bg,
 		       KT_A_NONE);
 }
 
@@ -307,14 +307,14 @@ static void draw_form(int w, int top, int body)
 			snprintf(shown, sizeof(shown), "%s", field[i]);
 		}
 		ktui_draw_text(2, top + i, 9, FLABEL[i],
-			       off ? KT_DIM : KT_MID, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 		{
 			int cfg, cbg;
 
 			ktui_sel_slots(on, 1, KT_SURFACE, &cfg, &cbg);
 			ktui_draw_fill(krect(11, top + i, w - 13, 1), cbg);
 			ktui_draw_text(11, top + i, w - 13, shown,
-				       off && !on ? KT_DIM : cfg, cbg,
+				       off && !on ? KT_MID : cfg, cbg,
 				       KT_A_NONE);
 		}
 	}
@@ -526,6 +526,8 @@ int connect_main(int argc, char **argv)
 		send_browse();
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		draw();
 		ktui_draw_flush();
 
