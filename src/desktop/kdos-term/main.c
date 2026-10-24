@@ -68,39 +68,6 @@ static const char USAGE[] =
 "Configuration is ~/.config/kdos/term.conf.\n";
 
 /*
- * The accent, from the one word `kdos theme` writes. No colours are read: the
- * palette is compiled in through libkcolor and the state file names which of
- * its schemes is in force.
- */
-static void theme_from_cache(void)
-{
-	char path[512], name[64];
-	const char *cache = getenv("XDG_CACHE_HOME");
-	const char *home = getenv("HOME");
-
-	if (cache && *cache)
-		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
-	else if (home && *home)
-		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
-	else
-		return;
-
-	char *d = kb_read_all(path, NULL);
-
-	if (!d)
-		return;		/* absent: ktui_theme_set already defaulted */
-
-	char *nl = strchr(d, '\n');
-
-	if (nl)
-		*nl = 0;
-	kb_strlcpy(name, d, sizeof(name));
-	free(d);
-	if (*name)
-		ktui_theme_set(name);
-}
-
-/*
  * The default disposition for SIGHUP is death, so a program on
  * reload_session()'s list that does not handle it is a program `kdos theme`
  * KILLS. A flag rather than the work itself: a handler that reparsed a file
@@ -199,7 +166,7 @@ static void draw_marks(int y, int h)
 		ktui_draw_text(0, y + r, 1,
 			       status < 0 ? ktui_glyph[KT_G_DOT]
 					  : ktui_glyph[KT_G_BULLET],
-			       status < 0 ? KT_DIM
+			       status < 0 ? KT_MID
 					  : status ? KT_ERR : KT_ACCENT,
 			       KT_BG, 0);
 	}
@@ -566,7 +533,7 @@ int main(int argc, char **argv)
 	if (!font && *TC.font)
 		font = TC.font;
 
-	theme_from_cache();
+	ktui_theme_load();
 
 	if (dump_w) {
 		if (ktui_offscreen_init(dump_w, dump_h) != 0) {
@@ -651,7 +618,7 @@ int main(int argc, char **argv)
 		if (g_reload) {
 			g_reload = 0;
 			term_conf_load();
-			theme_from_cache();
+			ktui_theme_load();
 			ktui_draw_invalidate();
 		}
 		if (ktui_resized) {

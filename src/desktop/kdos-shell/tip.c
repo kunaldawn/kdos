@@ -88,8 +88,8 @@ static int pv_cols, pv_rows;
  * text is a featureless grey blur with no shape left in it to match. So every
  * textured cell matched the same glyph and a terminal previewed as a wall of
  * `b`, a minimised one as a wall of `|` — photographed on the booted ISO. The
- * shape matcher keeps its other callers (`Super+A`, `kdos-shot --text`, the
- * camera preview), which run at grids where a cell still holds a shape.
+ * shape matcher keeps its other callers (`kdos-ascii` and the camera preview),
+ * which run at grids where a cell still holds a shape.
  *
  * Every cell here is a FULL BLOCK instead, drawn in one of four slots off the
  * palette's own brightness ladder. That is a 2-bit LCD: chunky, no stipple
@@ -361,7 +361,7 @@ static void tip_draw(const char *t1, const char *t2)
 	}
 	ktui_draw_text(1, y, ktui_w - 1, t1, KT_TEXT, KT_DIM, KT_A_NONE);
 	if (t2[0] && ktui_h > y + 1)
-		ktui_draw_text(1, y + 1, ktui_w - 1, t2, KT_MID, KT_DIM,
+		ktui_draw_text(1, y + 1, ktui_w - 1, t2, KT_TEXT, KT_DIM,
 			       KT_A_NONE);
 }
 
@@ -533,6 +533,8 @@ int tip_main(int argc, char **argv)
 	int64_t end = tip_now_ms() + ms;
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		KtuiEvent ev;
 		int64_t left = end - tip_now_ms();
 		int slice = left > 500 ? 500 : (int)left;

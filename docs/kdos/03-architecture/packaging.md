@@ -67,13 +67,13 @@ There are five port repositories, all in the same format, searched in this order
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 2,081 | Upstream software, filed on 102 shelves |
-| `/kdos/src/system` | `src/system/` | 6 | KDOS's own `kdos` command and tools, the packer, the box runtime and its init, the installer, and the book on the image |
+| `/ports/core` | `ports/core/` | 2,083 | Upstream software, filed on 102 shelves |
+| `/kdos/src/system` | `src/system/` | 7 | KDOS's own `kdos` command and tools, the packer, the box runtime and its init, the installer, and the two books on the image |
 | `/kdos/src/art` | `src/art/` | 6 | KDOS's own theme generator, icon, cursor and GTK themes, boot splash and demo |
 | `/kdos/src/desktop` | `src/desktop/` | 8 | KDOS's own compositor, panel, terminal, lock screen, resource monitor, box socket, recorder and portal |
 | `/kdos/src/daemons` | `src/daemons/` | 5 | KDOS's own root daemons |
 
-That is 2,106 recipes in all (counted as directories holding a `kpkgbuild`).
+That is 2,109 recipes in all (counted as directories holding a `kpkgbuild`).
 
 A repository holds a port either directly, as `<repo>/<name>/`, or one level down, as
 `<repo>/<shelf>/<name>/`. The `src/` areas hold theirs directly. `ports/core` holds none directly:
@@ -172,16 +172,16 @@ as one list. A phase has one or the other, never both.
 | `30_foundation` | `packages.txt` | 138 | 127 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
 | `40_lang` | `packages.d/`, 13 files | 177 | 177 |
-| `41_system` | `packages.d/`, 96 files | 1,012 | 1,012 |
-| `42_graphics` | `packages.d/`, 54 files | 193 | 193 |
-| `43_toolkits` | `packages.d/`, 46 files | 248 | 248 |
-| `44_apps` | `packages.d/`, 59 files | 286 | 286 |
+| `41_system` | `packages.d/`, 96 files | 1,014 | 1,014 |
+| `42_graphics` | `packages.d/`, 54 files | 194 | 194 |
+| `43_toolkits` | `packages.d/`, 47 files | 250 | 250 |
+| `44_apps` | `packages.d/`, 58 files | 284 | 284 |
 | `50_desktop` | `packages.txt` | 22 | 22 |
 | `60_kernel` | `packages.txt` | 2 | 2 |
 
 "Names" counts the port names a list writes; "Installs" counts the packages the phase installs
-that no earlier phase did. Between them the lists name 2,100 distinct ports and install 2,104:
-2,080 of the 2,081 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
+that no earlier phase did. Between them the lists name 2,103 distinct ports and install 2,107:
+2,082 of the 2,083 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
 the bootstrap builds by name. The one recipe in `ports/core` no list reaches is `texlive-doc`,
 which `ports/unbuilt` names: a recipe kept for `kpkg install` and built by no phase, and removed
 from the image by the orphan sweep if an earlier build left it installed. Any other recipe no list
@@ -447,7 +447,7 @@ Options and environment:
 | `KPKG_CONF` | Configuration file (default `/etc/kpkg.conf`) |
 | `KPKG_KEYRING` | Trusted-key directory (default `/etc/kdos/keys`) |
 | `KPKG_REQUIRE_SIG=1` | Refuse any package without a valid signature |
-| `KPKG_SKIP_INDEX` | Space-separated [shared indexes](../05-developer/writing-ports.md#shared-indexes) not to rebuild after an install or removal (`man`, `schemas`, `gio`, `pixbuf`, `mime`, `fonts`, `info`, `hwdb`, `xfonts`, `texmf`, `desktop`, `icons`). The build's chroot phases set `man`; nothing sets it on a running system |
+| `KPKG_SKIP_INDEX` | Space-separated [shared indexes](../05-developer/writing-ports.md#shared-indexes) not to rebuild after an install or removal (`man`, `schemas`, `gio`, `pixbuf`, `mime`, `fonts`, `info`, `hwdb`, `xfonts`, `texmf`, `desktop`, `icons`, `vlc`). The build's chroot phases set `man`; nothing sets it on a running system |
 | `KPKG_STRICT_RECIPE=1` | Rebuild an installed package whose recipe hash differs; without it, every installed package is skipped. See [Deciding what to rebuild](#deciding-what-to-rebuild) |
 | `KPKG_STORE=<dir>` | Install a port from the [package store](#the-package-store) in `<dir>` when its key is there, and store every package it builds; empty or unset, the store is off |
 | `KPKG_STORE_CHECK=1` | Build every store hit anyway and log a difference; see [Check mode](#check-mode) |
@@ -602,7 +602,10 @@ ERROR: File conflict detected:
 
 The refusal holds for `kpkg install -f` and for the build, which installs every package through
 this scan. `kpkgadd -f` alone skips it, placing the files over whatever claims them and leaving each
-contested path claimed by both packages; nothing in the build passes it.
+contested path claimed by both packages; nothing in the build passes it. Of several claimants of one
+path, the one every ownership question names (the conflict scan, `kdos why`, `kpkg check`'s
+unowned walk) is the first by package name in byte order, whichever C library `kpkg` was built
+against and whether the whole table was read or only the claims on the staged paths.
 
 Ownership is compared on the canonical path. The root's `bin`, `sbin`, `lib` and `lib64` are
 links into `/usr`, so a package built with `--exec-prefix=` records `./bin/free` for the same file
@@ -665,7 +668,8 @@ An install or removal ends by rebuilding the shared indexes its manifest fed, fr
 on disk: the GSettings schemas, the GIO module and pixbuf loader caches, the MIME database, the
 desktop entries' `mimeinfo.cache`, the font cache and the X core fonts' `fonts.dir`, the info
 directory, the TeX `ls-R` files, the udev hardware database and the `icon-theme.cache` of each icon
-theme it touched, or of every theme when the package carries `gtk-update-icon-cache` itself. The
+theme it touched, or of every theme when the package carries `gtk-update-icon-cache` itself, and
+VLC's plugin cache, `plugins.dat`. The
 manual index is merged instead: an install that only adds pages adds them to `mandoc.db`, and the
 index is rebuilt from the whole tree only when a page was removed (by a removal, or as an upgrade's
 orphan) or when there is no `mandoc.db` yet. A tool that is not installed yet is skipped, and a
@@ -711,6 +715,12 @@ took leaves the old owner's manifest, so it is checked only against its new owne
 symbolic link, device node or FIFO is checked for presence only, and so is every file of a package
 installed with no file record. The record is taken once the install hook has run, so a mode or a
 file the hook sets is what is checked.
+
+A freshly built image checks with no `missing`, `changed` or `mode` line and exits 0. The image
+leaves out the build tree's logs and caches, but recreates every directory a package claims under
+`/var/log` and `/var/cache`, empty and with the tree's mode and owner
+([the live medium](boot-and-init.md#the-live-medium-and-persistence)); a package that installed a
+file there, rather than a directory, would be `missing` on the image.
 
 `kdos update apply` runs `kpkg check --all` on an A/B slot it installed into, before it puts the
 slot's kernel on the ESP and marks the slot to be tried; a slot that fails the check is not tried,
@@ -882,9 +892,25 @@ files and its named sources hashes exactly as its recipe files alone.
 
 The files this reaches are the ones `build.sh` reads from `$PORT_SRC` and nothing else vouches
 for. `linux` starts its kernel configuration from `kdos.config`, signs modules under the identity in
-`x509.genkey` and copies in its panic-screen logo this way, and `epy` installs a `.desktop` file; editing one rebuilds the port. The rule has no
-exceptions, so a stray file beside a recipe, such as an editor backup or a `kpkgbuild.new`, also
-changes the hash and rebuilds the port.
+`x509.genkey` and copies in its panic-screen logo this way, and `epy` installs a `.desktop` file; editing one rebuilds the port. A stray file beside a recipe,
+such as an editor backup, a `kpkgbuild.new` or a fetched tarball no `sha256 =` line names any
+more, also changes the hash and rebuilds the port; `make fetch` removes the last kind when it is
+a hard link into `ports/.srccache` (see
+[Archives preflight accepts](../05-developer/writing-ports.md#archives-preflight-accepts)). A
+directory named `__pycache__` is skipped at every depth: it is bytecode Python writes beside a
+module it imports, and a port that links in a tree of scripts, as `kdos-kfs` links
+`script/book`, would otherwise hash whatever a host run happened to import.
+
+The one file never hashed is `kfs.md`, the port's note in the KDOS from Scratch book under
+`docs/kfs`. The port's own build never reads it, so adding, editing or removing it leaves the hash, and the installed
+package, as they were; this holds for a port with or without a `source =`. It is skipped only
+directly beside the recipe: a file of that name in a subdirectory, such as a fork's `src/`, is
+hashed like any other. The note still changes the book's text, so the book keeps a stamp of its
+own, `docs/kfs/data/recipes.stamp`: `script/book/kfsgen.py` takes every port's recipe hash by this
+rule, which must change with `kp_hash.c`'s, and then hashes every `kfs.md`, the phase lists and
+every other file the book reads that no recipe hash covers. A changed note stales the stamp,
+`testing/kfscheck.py` fails until `make book-stamp` rewrites it, and the rewritten stamp under
+`docs/kfs` changes the recipe hash of `kdos-kfs`, the port that ships the book, and of no other.
 
 A port with no `source =` is different, and this is what keeps the rule true for this tree's own
 code. Such a port builds out of its own directory: nothing names those files and no checksum covers
@@ -1059,7 +1085,7 @@ The other half is five settings in `script/env/common.env`, which every phase's 
 
 | Line | Purpose |
 |---|---|
-| `SOURCE_DATE_EPOCH=1735689600` | A pinned epoch, not the current date and not derived from git: the build container mounts only `build`, `src`, `fs`, `script` and `ports`, not the repository's `.git` |
+| `SOURCE_DATE_EPOCH=1735689600` | A pinned epoch, not the current date and not derived from git: the build container mounts `build`, `src`, `fs`, `script`, `ports`, `docs`, `testing`, the `Makefile` and the `Dockerfile`, never the repository's `.git` |
 | `TZ=UTC` | Dates formatted during the build do not depend on the builder's zone |
 | `LC_ALL=C` | Sorting and formatting do not depend on the builder's locale. The chroot phases replace it with `C.UTF-8` in `script/env/chroot.env`; musl collates every locale byte by byte and formats dates in `C.UTF-8` as in `C`, so the output is the same |
 | `-ffile-prefix-map=/var/cache/kpkg/work=/build`, on `CFLAGS` and `CXXFLAGS`, and on `FFLAGS` and `FCFLAGS` where the phase sets them | Rewrites the build directory out of `__FILE__` and debug paths |
@@ -1268,14 +1294,22 @@ network. Alpine is a close proxy for KDOS because it is also a musl distribution
 upstream tarballs. See [Decisions](../01-philosophy/decisions.md) for why Alpine rather than a
 larger source.
 
-Four details each change the answer:
+Five details each change the answer:
 
 - Alpine's packaging revision is stripped before comparing. Leaving it on makes every version look
   old.
 - "Fixed in 0" means never affected in that branch, and falls out of the comparison, since nothing
   is older than 0.
-- The newest fix a version is behind is the one reported, because it closes every earlier one too,
-  and the identifiers from all matching rows are merged.
+- Each CVE is judged on its own, against the branch the version is on (its first two fields,
+  `3.6` of `3.6.7`). Alpine records a CVE once per branch that shipped the fix, so mbedtls 3.6.7
+  appears behind the 4.1.1 row for holes its own 3.6.7 row closed. A CVE is closed when a row on
+  the version's branch fixed it at or below the version, or when the version is at or above every
+  row naming it. An open CVE's fix is the lowest row above the version on its branch, or the lowest
+  above it on any branch when its own has none; the newest of those is the one reported, because
+  it closes every open one, and the open identifiers from all rows are merged.
+- A row Alpine recorded under a version upstream never released is corrected or dropped as the
+  table is written, from `secdb/corrections.txt` beside it: such a row is above every real version
+  and would flag every pin for good. aerc's `1.21.0` is 0.21.0, and vorbis-tools' `9.54` is 1.4.3.
 - A `secdb =` key in a recipe maps a port whose name differs from Alpine's.
 
 A package the database does not carry is reported as UNKNOWN, never as clean. A large part of the

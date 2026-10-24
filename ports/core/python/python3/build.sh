@@ -26,6 +26,7 @@
 	--disable-test-modules \
 	ac_cv_header_bluetooth_bluetooth_h=no \
 	ac_cv_header_bluetooth_h=no \
+	ac_cv_lib_intl_textdomain=no \
 	py_cv_module__tkinter=n/a \
 	ac_cv_prog_cc_g=no \
 	OPT="-O3 -Wall" \
@@ -37,6 +38,7 @@ make EXTRA_CFLAGS="$CFLAGS" DESTDIR=$PKG install maninstall
 rm -rf $PKG/usr/lib/python${_version}/test
 rm -rf $PKG/usr/lib/python${_version}/ensurepip/_bundled
 rm -rf $PKG/usr/lib/python${_version}/{tkinter,idlelib,turtledemo,turtle.py}
+rm -f $PKG/usr/lib/python${_version}/__pycache__/turtle.*
 rm -f $PKG/usr/bin/idle3 $PKG/usr/bin/idle${_version}
 ln -s python3 $PKG/usr/bin/python
 ln -s python3.1 $PKG/usr/share/man/man1/python.1

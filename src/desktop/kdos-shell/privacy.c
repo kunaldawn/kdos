@@ -116,9 +116,9 @@ static void read_comm(const char *root, const char *pid, char *out, size_t len)
  * must not count the same app a second time — one recording, one lamp.
  *
  * Only against a node that is actually being counted, which is what the dedupe
- * MEANS: any video node used to match, so OBS sharing the screen (a SCR node
- * carrying the same pid) hid the webcam it was also holding — dark CAM lamp
- * with the camera live, and dark in both lamps when that node was idle. The
+ * MEANS: if any video node matched, OBS sharing the screen (a SCR node
+ * carrying the same pid) would hide the webcam it is also holding — a dark
+ * CAM lamp with the camera live, and both lamps dark when that node idles. The
  * dedupe works only for an app that published `application.process.id`; one
  * that did not is counted by both halves and shows as `+1`.
  */

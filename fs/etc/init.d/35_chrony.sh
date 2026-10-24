@@ -11,7 +11,12 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
-        mkdir -p /run/chrony /var/lib/chrony
+        # 0750, set on every start: chronyd refuses its command socket in a
+        # run directory others can open ("Wrong permissions on /run/chrony"),
+        # and without the socket `chronyc makestep` and every other command
+        # that changes the clock answers "501 Not authorised", even for root.
+        install -d -m 0750 /run/chrony
+        mkdir -p /var/lib/chrony
         # After 30_network: chronyd started before an interface exists just
         # logs unreachable pools until the first poll interval expires.
         #

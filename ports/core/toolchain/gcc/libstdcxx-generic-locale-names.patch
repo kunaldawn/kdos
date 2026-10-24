@@ -1,0 +1,46 @@
+Subject: Accept any locale name the C library accepts in libstdc++'s generic locale model
+
+The generic model refuses every name but "C", so std::locale("") throws
+under LANG=C.UTF-8 or any other UTF-8 locale, and so does every library
+that builds a locale from the environment, Boost.Process among them. A
+name newlocale() accepts is now valid; the facets keep the "C" locale's
+data, which is all the generic model has.
+
+--- a/libstdc++-v3/config/locale/generic/c_locale.cc
++++ b/libstdc++-v3/config/locale/generic/c_locale.cc
+@@ -29,6 +29,7 @@
+ // Written by Benjamin Kosnik <bkoz@redhat.com>
+ 
+ #include <cerrno>  // For errno
++#include <clocale>  // For newlocale, freelocale
+ #include <cmath>  // For isinf, finite, finitef, fabs
+ #include <cstdlib>  // For strof, strtold
+ #include <cstring>
+@@ -239,12 +240,23 @@
+   locale::facet::_S_create_c_locale(__c_locale& __cloc, const char* __s,
+ 				    __c_locale)
+   {
+-    // Currently, the generic model only supports the "C" locale.
+-    // See http://gcc.gnu.org/ml/libstdc++/2003-02/msg00345.html
++    // The generic model's facets carry only the "C" locale's data, so
++    // __cloc stays null whatever the name.  A name the C library accepts
++    // is valid all the same: refusing it makes std::locale("") throw in
++    // every program run under a LANG such as C.UTF-8.
+     __cloc = 0;
+     if (strcmp(__s, "C"))
+-      __throw_runtime_error(__N("locale::facet::_S_create_c_locale "
+-			    "name not valid"));
++      {
++#ifdef LC_ALL_MASK
++	if (::locale_t __l = ::newlocale(LC_ALL_MASK, __s, ::locale_t()))
++	  {
++	    ::freelocale(__l);
++	    return;
++	  }
++#endif
++	__throw_runtime_error(__N("locale::facet::_S_create_c_locale "
++				  "name not valid"));
++      }
+   }
+ 
+   void

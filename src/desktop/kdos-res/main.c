@@ -41,9 +41,9 @@ const int kdos_disp_n = 1;
 
 /*
  * THE PAGE LIST IS READ OUT OF THE REGISTRY, never spelled again here. A
- * hand-written copy stopped at `energy` while `boxes` was the tenth row of
- * RES_PAGES for a release — so the page existed, `--page boxes` worked, and
- * the only way to find that out was to already know. The ids in
+ * hand-written copy falls behind RES_PAGES the day a row is added, and then
+ * the page exists, `--page` reaches it, and the usage line never says so —
+ * the only way to find it is to already know. The ids in
  * `enum res_page_id` are the one spelling: `--page` takes them, res.conf's
  * sort keys use them and the goldens are named after them.
  */
@@ -70,36 +70,6 @@ static void usage(FILE *f)
 		col += w;
 	}
 	fputc('\n', f);
-}
-
-/*
- * The accent, from the one word kdos theme writes. No colours are read: the
- * palette is compiled in through libkcolor, and the state file names which of
- * its schemes is in force.
- */
-void res_theme_from_cache(void)
-{
-	char path[512], name[64];
-	const char *cache = getenv("XDG_CACHE_HOME");
-	const char *home = getenv("HOME");
-
-	if (cache && *cache)
-		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
-	else if (home && *home)
-		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
-	else
-		return;
-
-	char *d = kb_read_all(path, NULL);
-	if (!d)
-		return;		/* absent: ktui_theme_set already defaulted */
-	char *nl = strchr(d, '\n');
-	if (nl)
-		*nl = 0;
-	kb_strlcpy(name, d, sizeof(name));
-	free(d);
-	if (*name)
-		ktui_theme_set(name);
 }
 
 /*
@@ -226,7 +196,7 @@ int main(int argc, char **argv)
 		res_page_set(idx);
 	}
 
-	res_theme_from_cache();
+	ktui_theme_load();
 	/* BEFORE the dump face, which draws and reads the Esc verb: a dumped
 	 * frame that consulted an empty ladder would say something the live
 	 * window does not. */
@@ -366,7 +336,7 @@ int main(int argc, char **argv)
 		if (g_reload) {
 			g_reload = 0;
 			res_conf_load();
-			res_theme_from_cache();
+			ktui_theme_load();
 			res_graph_reset();
 			ktui_draw_invalidate();
 		}

@@ -16,6 +16,15 @@
 #
 # It cannot prove the build works. It can prove the build will not fail for one
 # of the dull reasons.
+#
+# One check is about the change rather than the tree: a .patch or .diff under
+# ports/ or src/ that is new or changed — on no remote yet — must carry a
+# `Subject:` line in its mail header, which the package page in KDOS from
+# Scratch prints as what the patch does. The older patches without one are
+# left alone until the patch itself is next added, edited or moved.
+# testing/kfscheck.py holds the
+# rule and this runs it; KDOS_CHECK_BASE=<ref> measures new and changed
+# against <ref> instead of the remotes.
 
 cd "$(dirname "$0")/.."
 
@@ -906,7 +915,9 @@ for d in "${PORTS_ALL[@]}"; do
     # AN UNCLAIMED ARCHIVE GIT IGNORES IS A STALE FETCH, NOT A DEFECT. Fetched
     # archives are untracked, so a checkout or pull that moves a port to
     # another version leaves the old one in the port directory, and nothing
-    # the build reads names it. It is counted and reported, never failed:
+    # the build reads names it. `make fetch` removes each one that is a hard
+    # link into ports/.srccache; what is left here is a copy or a file with no
+    # other link, the only one on this machine. It is counted and reported, never failed:
     # failing it would make every branch switch fail preflight. Only a
     # TRACKED unclaimed archive, or one outside a checkout where git cannot
     # say, is the hand-placed download this check exists for.
@@ -953,7 +964,7 @@ done
 [ "$unhashed" = 0 ] && note "every source is hashed; every one on disk is non-empty" "ok"
 [ "$unfetched" = 0 ] || note "sources not fetched yet" "$unfetched — run make fetch before make build"
 if [ -n "$stale" ]; then
-    note "stale fetched archives no recipe names" "$(printf '%s\n' $stale | wc -l) — safe to delete; a fetched copy stays in ports/.srccache"
+    note "stale fetched archives no recipe names" "$(printf '%s\n' $stale | wc -l) — make fetch removes each one linked into ports/.srccache; any other is the only copy here"
     for s in $stale; do printf '      %s\n' "$s"; done
 fi
 
@@ -1734,6 +1745,36 @@ else
     note "port sources" "skipped — not a git checkout"
 fi
 
+# A PATCH SAYS WHAT IT CHANGES, in the Subject: line of its mail header: the
+# package page prints that line, and a patch without one is "undescribed" to
+# every reader of the book. Only a patch on no remote yet is held to it, so the
+# hundreds that predate the rule fail nothing until the patch itself is next
+# added, edited or moved. testing/kfscheck.py's `patches` check is the one statement of the
+# rule (which lines count as the header, what "new or changed" means), and
+# script/hooks/pre-push applies the same rule to the commits it pushes.
+echo
+echo "==> every new or changed patch carries a Subject: line"
+if [ ! -f testing/kfscheck.py ]; then
+    bad "testing/kfscheck.py" "missing"
+else
+    _ph=$(python3 testing/kfscheck.py --only patches 2>&1)
+    _phrc=$?
+    _phn=0
+    while IFS= read -r _l; do
+        case "$_l" in
+            PATCHHDR*)
+                _l=${_l#PATCHHDR}; _l=${_l#"${_l%%[! ]*}"}
+                bad "${_l%%: *}" "${_l#*: }"
+                _phn=$((_phn + 1)) ;;
+        esac
+    done <<< "$_ph"
+    if [ "$_phrc" = 0 ]; then
+        note "patch headers" "$(sed -n 's/^  patches: //p' <<< "$_ph")"
+    elif [ "$_phn" = 0 ]; then
+        bad "testing/kfscheck.py --only patches" "$(tail -1 <<< "$_ph")"
+    fi
+fi
+
 # KDOS shipped exactly that file for a release. The symptom on a booted ISO is
 # "the mouse does not work" and it is invisible to every other check here: the
 # XML is valid, the recipe parses, the build succeeds.
@@ -1808,14 +1849,17 @@ for f in fs/etc/skel/.config/kdos-comp/rc.xml \
          fs/etc/skel/.config/kdos-comp/menu.xml; do
     [ -f "$f" ] || continue
     # command="foo -x" and <promptCommand>foo …</promptCommand>; the first
-    # word is the program. `foot -e mc` also contributes `mc`, because a
-    # terminal wrapper that opens nothing is the same failure one level down.
+    # word is the program. `foot --app-id=mc -e mc` also contributes the word
+    # after `-e`, because a terminal wrapper that opens nothing is the same
+    # failure one level down.
     { sed -n 's/.*command="\([^"]*\)".*/\1/p' "$f"
       sed -n 's,.*<promptCommand>\([^<]*\)</promptCommand>.*,\1,p' "$f"
     } | while read -r line; do
         set -- $line
         echo "$1"
-        [ "$1" = foot ] && [ "$2" = "-e" ] && echo "$3"
+        [ "$1" = foot ] || continue
+        while [ $# -gt 0 ] && [ "$1" != "-e" ]; do shift; done
+        [ $# -ge 2 ] && echo "$2"
     done
 done
 # AND THE ROUTES. `menu.conf` is `route = argv`, so the first word of the
@@ -2331,6 +2375,26 @@ for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
 done
 note "mimeapps handlers" "$_mh kdos-* row(s), each with an entry"
 
+# ── every window of ours has a desktop entry named after its app_id ─────
+#
+# The taskbar, the window switcher and `kdos appid` find a window's name and
+# picture through the entry whose id is its app_id. A toplevel with none is a
+# letter on the taskbar and a MISMATCH in `kdos appid`. Read from the source:
+# every `.app_id` literal in a file that asks for KDISP_ROLE_TOPLEVEL.
+echo
+echo "==> toplevel app_ids: every one has a desktop entry"
+_ta=0
+for _f in $(grep -rl 'KDISP_ROLE_TOPLEVEL' src --include='*.c' |
+            grep -v '^src/libs/'); do
+    for _id in $(sed -n 's/.*\.app_id *= *"\([^"]*\)".*/\1/p' "$_f" | sort -u); do
+        _ta=$((_ta + 1))
+        [ -f "fs/usr/share/applications/$_id.desktop" ] ||
+            find src -name "$_id.desktop" 2>/dev/null | grep -q . ||
+            bad "toplevel $_id" "$_f opens a window as $_id, and no $_id.desktop is shipped"
+    done
+done
+note "toplevel app_ids" "$_ta app_id(s), each with an entry"
+
 # ── AND EVERY OTHER ID, against the build tree ──────────────────────────
 #
 # The rows above are ours to ship; a row naming a PORT's entry is the port's,
@@ -2417,10 +2481,16 @@ for _ in range(n):
 for p in glob.glob('build/fs/**/icons/hicolor/*/apps/*.png', recursive=True):
     names.add(os.path.basename(p)[:-4])
 
-# Every literal name a surface hands to the icon layer. Three spellings,
-# because the name reaches it as an argument, as a row field, or as a table
-# column, and a check that knew only one would pass the other two.
-pats = (r'kicon_slot(?:_pad)?\("([a-z0-9._-]+)"',
+# Every literal name a surface hands to the icon layer. Five spellings,
+# because the name reaches it as an argument to libkicon, as a field
+# assignment, as a designated initialiser, as the argument of any function
+# whose parameter is `const char *icon` or `*icon_name` (kch_header, the
+# panel's applet tiles), or as the column of a positional table whose struct
+# has such a member (the Settings tiles, kdos-res's pages). A check that knew
+# fewer passes the rest: a positional row names its icon with no `icon`
+# anywhere on the line. A literal is read bare or as either arm of a
+# ternary; a computed name is not a literal and is not checked.
+pats = (r'kicon_slot(?:_pad|_ink)?\("([a-z0-9._-]+)"',
         r'kicon_pixmap\("([a-z0-9._-]+)"',
         r'(?:->|\.)icon = "([a-z0-9._-]+)"')
 used = set()
@@ -2432,6 +2502,143 @@ for line in out.splitlines():
         if m:
             used.add(m.group(1))
             break
+
+def skip_lit(s, i):
+    j = i + 1
+    while j < len(s) and s[j] != s[i]:
+        j += 2 if s[j] == '\\' else 1
+    return j + 1
+
+def uncomment(s):
+    out, i = [], 0
+    while i < len(s):
+        if s[i] in '"\'':
+            j = skip_lit(s, i)
+            out.append(s[i:j])
+            i = j
+        elif s.startswith('/*', i):
+            j = s.find('*/', i + 2)
+            i = len(s) if j < 0 else j + 2
+            out.append(' ')
+        elif s.startswith('//', i) or (s[i] == '#' and (i == 0 or s[i - 1] == '\n')):
+            while True:
+                j = s.find('\n', i)
+                if j < 0 or s[j - 1] != '\\':
+                    break
+                i = j + 1
+            i = len(s) if j < 0 else j
+        else:
+            out.append(s[i])
+            i += 1
+    return ''.join(out)
+
+def closing(s, i):
+    depth = 0
+    while i < len(s):
+        if s[i] in '"\'':
+            i = skip_lit(s, i)
+            continue
+        if s[i] in '([{':
+            depth += 1
+        elif s[i] in ')]}':
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+def split_top(s):
+    parts, depth, start, i = [], 0, 0, 0
+    while i < len(s):
+        if s[i] in '"\'':
+            i = skip_lit(s, i)
+            continue
+        if s[i] in '([{':
+            depth += 1
+        elif s[i] in ')]}':
+            depth -= 1
+        elif s[i] == ',' and depth == 0:
+            parts.append(s[start:i].strip())
+            start = i + 1
+        i += 1
+    parts.append(s[start:].strip())
+    return parts
+
+ICONP = re.compile(r'\bconst\s+char\s*\*\s*(?:const\s+)?icon(?:_name)?$')
+LIT = r'"[^"\\]*"'
+BARE = re.compile(r'(?:[^"?]*\?\s*)?%s(?:\s*:\s*%s)?' % (LIT, LIT))
+
+def literals(arg):
+    return re.findall(r'"([^"\\]*)"', arg) if BARE.fullmatch(arg) else []
+
+# Function name -> the index of its icon parameter.
+def icon_params(src):
+    found = {}
+    for m in re.finditer(r'\b(\w+)\s*\(', src):
+        e = closing(src, m.end() - 1)
+        if e > 0 and src[e + 1:e + 40].lstrip()[:1] in ('{', ';'):
+            for k, p in enumerate(split_top(src[m.end():e])):
+                if ICONP.search(p):
+                    found[m.group(1)] = k
+    return found
+
+# Struct tag, typedef name, or (for an unnamed struct) the offset of its
+# closing brace -> the column of its icon member. `int a, b;` is two columns.
+def icon_columns(src):
+    found = {}
+    for m in re.finditer(r'\bstruct\s*(\w*)\s*\{', src):
+        e = closing(src, m.end() - 1)
+        if e < 0:
+            continue
+        col, k = None, 0
+        for d in (d.strip() for d in src[m.end():e].split(';')):
+            if not d:
+                continue
+            if ICONP.search(d):
+                col = k
+            k += 1 if '(' in d else 1 + d.count(',')
+        if col is None:
+            continue
+        if m.group(1):
+            found['struct ' + m.group(1)] = col
+        t = re.match(r'\s*(\w+)\s*;', src[e + 1:])
+        if t and src[:m.start()].rstrip().endswith('typedef'):
+            found[t.group(1)] = col
+        found[e] = col
+    return found
+
+def names_in(src, params, columns):
+    for name, k in params.items():
+        for m in re.finditer(r'\b%s\s*\(' % re.escape(name), src):
+            e = closing(src, m.end() - 1)
+            args = split_top(src[m.end():e]) if e > 0 else []
+            if k < len(args):
+                yield from literals(args[k])
+    for m in re.finditer(r'(struct\s+\w+|\w+|\})\s+(?:const\s+)?\w+\s*'
+                         r'\[[^\]]*\]\s*=\s*\{', src):
+        k = columns.get(m.start(1) if m.group(1) == '}' else m.group(1))
+        if k is None:
+            continue
+        e = closing(src, m.end() - 1)
+        for row in split_top(src[m.end():e]):
+            cells = split_top(row[1:-1]) if row.startswith('{') else []
+            if k < len(cells) and not any(c.startswith('.') for c in cells):
+                yield from literals(cells[k])
+
+sources = {p: uncomment(open(p, errors='replace').read())
+           for p in glob.glob('src/**/*.[ch]', recursive=True)}
+params, columns = {}, {}
+for p, s in sources.items():
+    if p.endswith('.h'):
+        params.update(icon_params(s))
+        columns.update({k: v for k, v in icon_columns(s).items()
+                        if isinstance(k, str)})
+for p, s in sources.items():
+    if p.endswith('.c'):
+        for n in names_in(s, {**params, **icon_params(s)},
+                          {**columns, **icon_columns(s)}):
+            if re.fullmatch(r'[a-z0-9._-]+', n):
+                used.add(n)
 
 for name in sorted(used - names):
     print(name)
@@ -2446,6 +2653,40 @@ PYEOF
     fi
 else
     note "icon names" "skipped — no build tree"
+fi
+
+echo
+echo "==> every front end that asks for an icon initialises the icon layer"
+# kicon_slot() ANSWERS -1 UNTIL kicon_init() HAS RUN, and -1 is the ordinary
+# answer of a terminal or of `--no-icons`, so a front end that never
+# initialised the layer draws its header band with no picture and nothing
+# says so. The rule is per file because each kdos-shell front end is a file
+# with its own entry: a file that brings up a display (`kdisp_init(` or
+# `sh_run(`) and names an icon (`kicon_slot*(`, `kicon_pixmap(`, or a
+# `kch_header(` whose icon is not NULL) must call `kicon_init(` itself or,
+# on the runner, point `.icons` at its flag so sh_run() does.
+_noinit=$(python3 - <<'PYEOF'
+import glob, re
+
+ASKS = re.compile(r'\bkicon_slot(?:_pad|_ink|_png|_for_path)?\(|\bkicon_pixmap\('
+                  r'|\bkch_header\(\s*[^,()]+,\s*(?!NULL\b)')
+ENTRY = re.compile(r'\b(?:kdisp_init|sh_run)\(')
+INIT = re.compile(r'\bkicon_init\(|\.icons\s*=\s*&')
+for p in sorted(glob.glob('src/**/*.c', recursive=True)):
+    if p.startswith('src/libs/'):
+        continue
+    s = re.sub(r'/\*.*?\*/|//[^\n]*', ' ', open(p, errors='replace').read(),
+               flags=re.S)
+    if ENTRY.search(s) and ASKS.search(s) and not INIT.search(s):
+        print(p)
+PYEOF
+)
+if [ -n "$_noinit" ]; then
+    for _f in $_noinit; do
+        bad "icon layer: $_f" "names an icon and never calls kicon_init()"
+    done
+else
+    note "icon layer" "every front end that names an icon initialises it"
 fi
 
 echo
@@ -2556,6 +2797,102 @@ if ! awk '/^static void leave_screen/,/^\}$/' src/libs/libktui/ktui_term.c |
     _sync=$((_sync + 1))
 fi
 [ "$_sync" = 0 ] && note "libktui" "the bracket closes on the drop and on the way out"
+
+echo "==> no text is drawn in KT_DIM"
+# KT_DIM IS A FILL. It measures about 1.6:1 against the page and IS the
+# selection fill, so a word drawn in it is a word nobody can read — and on a
+# selected row it is not there at all. Labels take KT_MID; a secondary column
+# on a selectable row takes ktui_sel_dim(). The check reads the foreground
+# argument of every text draw (ktui_draw_text, _textf, _text_right, _cell,
+# ktui_kv, ktui_para, ktui_menu_label, ktui_table_text, ktui_textarea_draw,
+# kch_px_text, kch_display_text, kcell_canvas_text, and the slot-taking text
+# wrappers in kdosbuild and the panel) across line breaks, so
+# `on ? KT_SURFACE : KT_DIM` is caught as surely as a bare KT_DIM. A call
+# whose string is a rule, shade or block glyph (ktui_glyph[KT_G_HL], "─") or
+# a blank cell is a fill and passes; a "-" does not, because that is what an
+# empty cell says, and neither does a button's "[", which is KT_MID.
+# Anything else in KT_DIM that is not read — a grid of dots, a rule of
+# hyphens, a scrollbar's spent cap, the unpinned half of a pinned/unpinned
+# pair of marks — carries `/* not text */` inside the call, which is the whole
+# allow list.
+_dimtext=$(python3 - src <<'PYEOF'
+import glob, re, sys
+
+# function -> (index of the foreground argument, index of the string or None)
+TEXT = {
+    'ktui_draw_text': (4, 3), 'ktui_draw_text_right': (4, 3),
+    'ktui_draw_textf': (3, None), 'ktui_draw_cell': (3, 2),
+    'ktui_kv': (5, 4), 'ktui_para': (4, 3), 'ktui_menu_label': (4, 3),
+    'ktui_table_text': (5, 4), 'kch_px_text': (5, 4),
+    'kch_display_text': (2, 1), 'ktui_textarea_draw': (5, 2),
+    'kcell_canvas_text': (5, 4),
+    # Text wrappers that take a slot (kdosbuild/tui.c, kdos-shell/panel.c).
+    'centre': (2, 1), 'wrap2': (5, 4), 'hud_cap': (4, 3),
+    'hud_glyph': (3, 2), 'applet': (5, 4), 'applet_w': (5, 4),
+}
+FILL_GLYPH = re.compile(r'^ktui_glyph\[KT_G_(?:HL|VL|TL|TR|BL|BR|CROSS|TEE_[TBLR]'
+                        r'|D(?:HL|VL|TL|TR|BL|BR)|FULL|SHADE|SHADE_MED)\]$')
+FILL_LIT = re.compile(r'^"[─│▒░█ ]*"$|^\' \'$')
+CALL = re.compile(r'\b(' + '|'.join(TEXT) + r')\s*\(')
+
+def strip(s):
+    # Comments to blanks and string contents kept, offsets preserved.
+    return re.sub(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'',
+                  lambda m: m.group(0) if m.group(0)[0] in '"\''
+                  else re.sub(r'[^\n]', ' ', m.group(0)), s, flags=re.S)
+
+def args(s, i):
+    out, depth, st, k = [], 0, i + 1, i
+    while k < len(s):
+        c = s[k]
+        if c in '"\'':
+            # Past the literal, or a "[" in it would count as a bracket.
+            k += 1
+            while k < len(s) and s[k] != c:
+                k += 2 if s[k] == '\\' else 1
+        elif c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+            if depth == 0:
+                out.append(s[st:k])
+                return out, k
+        elif c == ',' and depth == 1:
+            out.append(s[st:k])
+            st = k + 1
+        k += 1
+    return out, len(s)
+
+for p in sorted(glob.glob(sys.argv[1] + '/**/*.[ch]', recursive=True)):
+    raw = open(p, errors='replace').read()
+    s = strip(raw)
+    for m in CALL.finditer(s):
+        a, end = args(s, m.end() - 1)
+        fi, si = TEXT[m.group(1)]
+        if fi >= len(a) or not re.search(r'\bKT_DIM\b', a[fi]):
+            continue
+        if si is not None and si < len(a):
+            arg = ' '.join(a[si].split())
+            # A glyph picked by a ternary is a fill when every glyph it
+            # can pick is one.
+            names = re.findall(r'\bKT_G_\w+', arg)
+            if FILL_LIT.match(arg):
+                continue
+            if 'ktui_glyph[' in arg and '"' not in arg and names and all(
+                    FILL_GLYPH.match('ktui_glyph[%s]' % n) for n in names):
+                continue
+        if '/* not text */' in raw[m.start():end]:
+            continue
+        print('%s:%d' % (p, s.count('\n', 0, m.start()) + 1))
+PYEOF
+) || _dimtext="testing/preflight.sh:the-KT_DIM-scanner-did-not-run"
+if [ -n "$_dimtext" ]; then
+    for _f in $_dimtext; do
+        bad "KT_DIM text: $_f" "a text foreground in KT_DIM — KT_MID, or ktui_sel_dim() on a selectable row"
+    done
+else
+    note "KT_DIM text" "every text draw takes a readable slot"
+fi
 
 echo "==> a literal colour is set at the render boundary and nowhere else"
 # CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following

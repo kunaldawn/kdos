@@ -1396,16 +1396,16 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 					  ? ktui_glyph[KT_G_LEFT]
 			       : r->app ? ktui_glyph[KT_G_SQUARE]
 					: ktui_glyph[KT_G_DOT],
-			       selected ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+			       ktui_sel_dim(selected, 1), bg, KT_A_NONE);
 	}
 	/*
 	 * `[box]`, WHICH ONLY THIS DISTRO HAS TO SAY. Every fat application
 	 * here lives in a container, and the first launch of one costs a
 	 * container start — eighteen seconds cold, measured. A menu that
 	 * showed no difference between that and a host program was hiding the
-	 * one thing a person is entitled to know before they click. The
-	 * launcher has said it for a release; the shared index knows it now,
-	 * so the two cannot disagree.
+	 * one thing a person is entitled to know before they click. The flag
+	 * comes from the shared index, by the sh_exec_box() test Open With
+	 * applies too, so the two cannot disagree.
 	 */
 	int tagw = r->app && r->app->alien ? 6 : 0;
 	/*
@@ -1428,7 +1428,7 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 	}
 	if (tagw)
 		ktui_draw_text(pin_col(x, w) - tagw, y, tagw - 1, "[box]",
-			       selected ? fg : KT_DIM, bg, KT_A_NONE);
+			       ktui_sel_dim(selected, 1), bg, KT_A_NONE);
 	if (codew)
 		ktui_draw_text(pin_col(x, w) - tagw - codew, y, codew - 1,
 			       r->code, selected ? fg : KT_MID, bg,
@@ -1461,7 +1461,8 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 		 */
 		ktui_draw_text(px + 1, y, 1,
 			       ktui_glyph[r->pinned ? KT_G_SQUARE : KT_G_DOT],
-			       r->pinned ? KT_MID : KT_DIM, bg, KT_A_NONE);
+			       r->pinned ? KT_MID : KT_DIM /* not text */, bg,
+			       KT_A_NONE);
 	}
 }
 

@@ -465,8 +465,8 @@ pack therefore contains its base and runtime as well as the application, carries
 line, and carries no deletion markers of any kind, so nothing has to agree about how a deletion is
 spelled and no step needs root. Its metadata holds the id, the kind, a version equal to the export
 time in seconds, the display name and the tagline. The archive also contains a `SELECTION` file,
-one id per line with a `group` line recording each group that was picked, which is what `import`
-reads when no ids are named, and a `PACKAGES` index, signed when the `KDOS_PACK_KEY` environment
+one id per line with a `group` line recording each group that was picked above the ids it held,
+which is what `import` reads when no ids are named, and a `PACKAGES` index, signed when the `KDOS_PACK_KEY` environment
 variable names a readable key and unsigned, with a message saying so, otherwise.
 
 A frozen box requires its base. `kdos-box freeze` writes metadata with the id `box.<name>`,
@@ -548,8 +548,10 @@ published, and `install` takes a *filename* in the staging directory: no slash, 
 `kdos-appbox import` stages each pack file on its own, without the archive's `PACKAGES`, so an
 imported pack is accepted on step 3: its own payload hash and its own signature block.
 
-The `rollback <id>` verb swaps the installed pack with the kept `<id>-<version>.kpack` whose version
-sorts last as a string (not by version comparison, unlike the retain sweep), and
+The store's row for an id is `<id>.kpack`; a kept `<id>-<version>.kpack` is never listed or
+mounted, and counts as a kept version of an id only when its own metadata names that id. The
+`rollback <id>` verb swaps the installed pack with the newest kept `<id>-<version>.kpack`, by the
+same version comparison the retain sweep uses, and
 `remove <id>` deletes an installed pack. Both refuse while a box is composed over the pack. Neither
 has a command-line wrapper; they are reached by writing the verb to the socket.
 

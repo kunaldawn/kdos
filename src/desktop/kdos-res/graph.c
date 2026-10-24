@@ -118,8 +118,8 @@ static void graph_cells(KRect r, const KprHist *h, double vmax, int colour,
 		if (grid)
 			for (int rr = 0; rr < r.h; rr++)
 				ktui_draw_text(cx, r.y + rr, 1,
-					       ktui_glyph[KT_G_DOT], KT_DIM,
-					       bg, 0);
+					       ktui_glyph[KT_G_DOT],
+					       KT_DIM /* not text */, bg, 0);
 
 		for (int rr = 0; rr < full && rr < r.h; rr++)
 			ktui_draw_text(cx, r.y + r.h - 1 - rr, 1,

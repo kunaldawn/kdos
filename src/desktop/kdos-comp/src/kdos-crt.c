@@ -358,6 +358,28 @@ kdos_crt_init(void)
 		return;
 	}
 
+	/*
+	 * A GLES2 RENDERER IS NOT A GPU. wlroots refuses a software EGL
+	 * device only when the device says so; Mesa's kms_swrast, which a
+	 * render node with no hardware driver falls back to, does not, and
+	 * wlroots then composites in GLES2 on llvmpipe. The shader would run
+	 * on the CPU over every pixel of every frame, so it is declined by
+	 * the renderer's own name.
+	 */
+	const char *rs = (const char *)glGetString(GL_RENDERER);
+	char rend[128];
+	snprintf(rend, sizeof(rend), "%s", rs ? rs : "");
+	if (strstr(rend, "llvmpipe") || strstr(rend, "softpipe")
+			|| strstr(rend, "swrast")) {
+		gl_leave(&sv);
+		wlr_log(WLR_INFO, "crt: off — the GL renderer is %s, which "
+			"runs on the CPU", rend);
+		free(gl);
+		kdos_conf.crt = 0;
+		crt_declined = true;
+		return;
+	}
+
 	bool ok = build_prog(&gl->prog[KDOS_PROG_2D],
 		kdos_crt_frag_head[KDOS_PROG_2D]);
 	/* the external-image program is optional: without the extension

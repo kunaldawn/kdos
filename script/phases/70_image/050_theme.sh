@@ -58,9 +58,10 @@ test -s /etc/skel/.icons/KDOS/index.theme
 # `kdos theme` sends.
 test -s /etc/skel/.config/kdos-comp/themerc-override
 # The cursors are generated here too, from the art kdos-cursors ships in
-# /usr/share/kdos/cursors/art. The package installs a build of its own
-# into /etc/skel/.icons; this rewrites it from the same generator and the same
-# art, so the two agree by construction rather than by luck.
+# /usr/share/kdos/cursors/art, and this is the only writer of the skel copy:
+# the package installs none, so a second copy owned by kpkg cannot drift from
+# this one and turn up as modified files in `kpkg check`. A box shares the home
+# and not /usr/share/icons, so without this copy boxed apps lose the pointer.
 test -s /etc/skel/.icons/KDOS-cursors/cursors/default
 # The KDE bridge: boxed dolphin/okular/kate read this file out of the shared
 # home, and a skel without it hands every new user a grey KDE.

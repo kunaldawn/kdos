@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Accounts
+GenericName=User Accounts
+Comment=Who may log in, and which account logs in on its own
+Exec=kdos-users
+Icon=system-users
+Terminal=false
+NoDisplay=true
+Categories=Settings;
+StartupWMClass=kdos-users

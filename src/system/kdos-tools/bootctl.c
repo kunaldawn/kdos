@@ -436,7 +436,7 @@ static int cmd_theme(int argc, char **argv)
 	const KcolScheme *sc;
 
 	/*
-	 * THE NAME IS ONE OF SEVEN COMPILED-IN STRINGS. That is the whole of
+	 * THE NAME IS ONE OF EIGHT COMPILED-IN STRINGS. That is the whole of
 	 * the validation and the whole of the safety argument for reaching
 	 * this from an unprivileged session: there is no path here to aim, and
 	 * a name that is not a scheme names nothing at all.
@@ -1129,6 +1129,14 @@ static int initramfs_carries(const char *path, const char *ver)
 	if (pid == 0) {
 		dup2(fd, 0);
 		dup2(p[1], 1);
+		/* gzip must hold no copy of the pipe but its stdout. The reader
+		 * stops at the first matching entry and closes its end; a read
+		 * end left open in gzip keeps the pipe alive, gzip blocks on a
+		 * full pipe instead of dying of EPIPE, and the waitpid below
+		 * never returns on any initramfs larger than the pipe buffer. */
+		close(p[0]);
+		if (p[1] != 1)
+			close(p[1]);
 		int nul = open("/dev/null", O_WRONLY);
 		if (nul >= 0)
 			dup2(nul, 2);
@@ -2020,10 +2028,12 @@ static int cmd_mark_good(BootState *st, int have)
 	 * served it goes whatever the state says. */
 	trial_disarm();
 	/*
-	 * A CANDIDATE IS CONFIRMED ONLY ON ITS OWN KERNEL. An init that
-	 * ignores kdos_slot= boots the candidate's root under the confirmed
-	 * slot's kernel after the candidate's kernel died; confirming that
-	 * boot would make the dead kernel the menu's lead. It rolls back.
+	 * A CANDIDATE IS CONFIRMED ONLY ON ITS OWN KERNEL. `select` in the
+	 * initramfs rolls back a boot whose kdos_slot= names another slot;
+	 * this repeats the test for a boot it did not count (an initramfs
+	 * with no kdos-bootctl, a state it could not write), because
+	 * confirming that boot would make a kernel that never ran the menu's
+	 * lead. It rolls back.
 	 */
 	int run = running_slot();
 	if (st->trying >= 0 && run >= 0 && run != st->trying) {
@@ -2038,10 +2048,10 @@ static int cmd_mark_good(BootState *st, int have)
 			return 1;
 		}
 	}
-	/* The menu is brought into line on every boot, confirmed or not: an
-	 * initramfs whose init predates the menu's kdos_slot= counts and rolls
-	 * back without touching the menu, and this is the first code of ours
-	 * that runs after it. Written only when it differs. */
+	/* The menu is brought into line on every boot, confirmed or not:
+	 * `select` rewrites it only when its own decision moves the next boot,
+	 * and leaves the rollback above, a state it could not write and a boot
+	 * it did not run for to this. Written only when it differs. */
 	if (st->trying < 0) {
 		if (menu_sync(st) != 0)
 			fprintf(stderr, "bootctl: cannot rewrite the boot "

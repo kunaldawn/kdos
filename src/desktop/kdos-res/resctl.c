@@ -30,8 +30,8 @@
  * quote. Any other argv is a usage error and exit 2.
  *
  * THE CALLER MUST BE IN `wheel`, BY REAL UID — the same gate kdos-powerd and
- * kdos-energyd apply, and the same group that already has polkit admin and a
- * root login on tty2 on this distro.
+ * kdos-energyd apply, and the same group that already has polkit admin and
+ * sudo on this distro.
  *
  * Exit codes: 0 done · 1 refused · 2 usage · 3 the operation itself failed.
  */
@@ -51,7 +51,7 @@
 /*
  * Overridable at BUILD time only, never at run time: the gate cannot be an
  * environment variable a caller sets. The default is the group that already
- * carries polkit admin and a root login on tty2 on this distro.
+ * carries polkit admin and sudo on this distro.
  */
 #ifndef RESCTL_GROUP
 #define RESCTL_GROUP "wheel"

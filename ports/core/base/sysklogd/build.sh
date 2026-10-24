@@ -35,9 +35,6 @@ cron.*                                  -/var/log/cron
 # `/var/log/messages rotate_size=1M` puts the path where a facility.priority
 # selector belongs and syslogd answers `unknown priority name ""` for every
 # such line.
-#
-# 1M x 5 keeps a boot's worth of history without filling a tmpfs: on the live
-# medium /var/log is RAM, so an unbounded log is an OOM, not a disk-space bug.
 rotate_size  1M
 rotate_count 5
 

@@ -695,7 +695,7 @@ int ktui_button(KRect r, const char *label, int enabled, int primary)
 
 	int fg, bg;
 	if (!enabled) {
-		fg = KT_DIM;
+		fg = KT_MID;
 		bg = KT_SURFACE;
 	} else if (focus) {
 		fg = KT_BG;
@@ -1135,9 +1135,10 @@ void ktui_field_draw(KRect r, const KtuiField *f, int focus, int bg)
 	int len = (int)strlen(buf);
 	int cur = field_caret(buf, f->caret);
 	int secret = f->secret;
-	/* On the selection fill KT_DIM is the fill itself, so the marker and
-	 * the placeholder step up one slot rather than vanish into it. */
-	int quiet = bg == KT_DIM ? KT_MID : KT_DIM;
+	/* The placeholder is secondary text, so it takes the secondary
+	 * slot for the background it is on: KT_MID on the page, KT_TEXT on
+	 * the selection fill, where KT_MID is below the reading floor. */
+	int quiet = bg == KT_DIM ? KT_TEXT : KT_MID;
 	int fg = focus ? KT_TEXT : KT_MID;
 	int room = r.w - 2;
 	int sbyte;

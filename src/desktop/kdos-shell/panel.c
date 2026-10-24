@@ -584,6 +584,10 @@ static void load_favorites(void)
 			continue;
 		struct fav *fv = &favs[nfavs];
 
+		/* The id is the first word; `code=XX` and anything after it
+		 * is metadata the Start menu reads. Looked up whole, a coded
+		 * line names no desktop entry and the row stays empty. */
+		s[strcspn(s, " \t")] = '\0';
 		/* The terminal follows the desktop — see sh_fav_id(). The
 		 * RESOLVED id is what is stored, so Unpin removes the line the
 		 * row actually stands for. */
@@ -780,8 +784,8 @@ static int icon_ok(void)
 	 * both of those are pixels: on a character grid the same button is a
 	 * 2x2 picture floating on the bar's own background with nothing
 	 * saying it is a button, is running, or is minimised — and an
-	 * application the atlas has no artwork for comes out as one lowercase
-	 * letter in four cells. The labelled chip is what the cell layer can
+	 * application the atlas has no artwork for comes out as the first
+	 * letter of its label in four cells. The labelled chip is what the cell layer can
 	 * actually draw: a fill for the shape, a name, and a □/■ for the
 	 * state.
 	 *
@@ -898,9 +902,9 @@ static void build_chips(struct sh_state *sh, int launchers)
 	 * ONE BUTTON TO RULE THEM ALL — the pinned launcher and the running
 	 * window are the SAME button.
 	 *
-	 * There were two rows: a quick-launch strip and a window list, so a
-	 * pinned Firefox that was running appeared twice, in two different
-	 * shapes, a separator apart. Windows 7 unified them for the reason its
+	 * Two rows — a quick-launch strip and a window list — would show a
+	 * pinned Firefox that is running twice, in two different shapes, a
+	 * separator apart. Windows 7 unified them for the reason its
 	 * own designers gave — "under many scenarios of single-instance
 	 * programs, launching and switching were equivalent" — and it buys
 	 * this bar the whole quick-launch segment and one of its separators.
@@ -1576,7 +1580,7 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 			ktui_draw_text(x, ry, 1,
 				       c->allmin ? ktui_glyph[KT_G_DOT]
 						 : ktui_glyph[KT_G_SQUARE],
-				       c->allmin ? KT_DIM : fg, bg, KT_A_NONE);
+				       fg, bg, KT_A_NONE);
 			ktui_draw_text(x + 2, ry, per - 3, c->label, fg, bg,
 				       KT_A_NONE);
 		} else {
@@ -2395,7 +2399,8 @@ static int cpu_percent(void);
  * read per frame would be a read per frame for a number that moves once a day.
  *
  * THE SAME DOCUMENT CARRIES WHAT WENT WRONG: `"problem"` is `no-tree`,
- * `no-network`, `fetch-failed` or `build-failed` (null when nothing did) and
+ * `no-key`, `no-network`, `fetch-failed` or `build-failed` (null when nothing
+ * did) and
  * `"detail"` says it in a sentence. A machine that cannot learn of updates is
  * not a machine with nothing behind, so a problem draws the badge on its own,
  * in the warning colour, even at zero.
@@ -4371,26 +4376,26 @@ static void draw_sep(int x, int h)
 }
 
 /*
- * The pager, CLAMPED: sixteen workspaces on a narrow output pushed it off the
- * left of its own span, the recorded span covered the window list, and a click
- * on an empty stretch of bar switched workspaces. When the squares do not fit,
- * a compact `N/M` readout is drawn instead and the pager records NO span —
- * only what was actually drawn may be hit.
+ * The pager, CLAMPED: unclamped, sixteen workspaces on a narrow output push it
+ * off the left of its own span, the recorded span covers the window list, and
+ * a click on an empty stretch of bar switches workspaces. When the squares do
+ * not fit, a compact `N/M` readout is drawn instead and the pager records NO
+ * span — only what was actually drawn may be hit.
  *
  * It records where it drew each square, not a stride: `<desktops number="12"/>`
  * is a supported thing to write, and from the tenth on a two-cell stride
- * activated the wrong workspace.
+ * would activate the wrong workspace.
  */
 /*
  * THE WORKSPACES ARE LITTLE SCREENS, not a row of dots.
  *
- * One dot per workspace on one row of a two-row bar is the widget that was
- * wasting the most space for the least meaning: four cells that say "four" and
- * a shade of green that says "this one", with nothing underneath and no way to
- * tell workspace 2 from workspace 3 without counting. Every pager since fvwm
- * draws the workspaces as SCREENS, and on a cell grid a screen is a filled
- * block two cells wide with its number under it — which is the same two cells
- * per workspace the dots took, on a row that was already there.
+ * One dot per workspace on one row of a two-row bar would spend the most space
+ * for the least meaning: four cells that say "four" and a shade of green that
+ * says "this one", with nothing underneath and no way to tell workspace 2 from
+ * workspace 3 without counting. Every pager since fvwm draws the workspaces as
+ * SCREENS, and on a cell grid a screen is a filled block two cells wide with
+ * its number under it — the same two cells per workspace a dot would take, on
+ * a row that is there anyway.
  */
 static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 {
@@ -4421,10 +4426,10 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 			 * The screen: ONE cell of the workspace's own colour
 			 * over its number, and the second cell of the stride
 			 * left as background so four of them read as four
-			 * things. Two cells filled looked right for the
-			 * ACTIVE one and turned the other three into a single
-			 * unbroken dark bar with three digits under it —
-			 * photographed. A FILL rather than a block glyph, the
+			 * things. Two cells filled look right for the ACTIVE
+			 * one and turn the other three into a single
+			 * unbroken dark bar with three digits under it.
+			 * A FILL rather than a block glyph, the
 			 * rule the whole panel keeps: an attribute inverts
 			 * only the cells a glyph covers.
 			 */
@@ -5500,7 +5505,7 @@ static void build_overflow(struct sh_state *sh)
 			snprintf(buf, sizeof(buf),
 				 "%d package%s the ports tree pins newer", n,
 				 n == 1 ? "" : "s");
-			ov_push("update", "system-software-update", "Updates",
+			ov_push("update", "system-upgrade", "Updates",
 				buf, 0);
 		}
 	}
@@ -6226,7 +6231,7 @@ static void draw_taskbar(struct sh_state *sh)
 				else
 					snprintf(label, sizeof(label), "!");
 				applet_tile(sh, SH_AP_UPDATE, &right_x,
-					    floor_x, "system-software-update",
+					    floor_x, "system-upgrade",
 					    label, warn ? KT_WARN : KT_ACCENT,
 					    warn ? KT_WARN : KT_ACCENT);
 				break;
@@ -7523,10 +7528,9 @@ int panel_main(int argc, char **argv)
 			dump = 1;
 		else if (!strcmp(argv[i], "--dump-width") && i + 1 < argc)
 			dump_w = atoi(argv[++i]);
-		/* The bar is on the bottom edge now and `--bottom` is what
-		 * every shipped configuration passed for a release, so it stays
-		 * as a no-op rather than becoming a usage error at the next
-		 * login on somebody's edited comp.conf. `--top` is the whole
+		/* The bar is on the bottom edge by default and `--bottom` is
+		 * what the compositor passes for it, so it is accepted as a
+		 * no-op rather than being a usage error. `--top` is the whole
 		 * of what `panel = top` does. */
 		else if (!strcmp(argv[i], "--bottom"))
 			edge = KDISP_EDGE_BOTTOM;

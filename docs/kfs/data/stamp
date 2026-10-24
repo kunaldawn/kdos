@@ -1,0 +1,5 @@
+# The built tree docs/kfs/data was taken from: written by make_data.py
+commit c4fc3bf5
+date 2026-10-21
+packages 2104
+sbu-seconds 43.41

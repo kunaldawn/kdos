@@ -1,0 +1,8 @@
+--- a/src/kiod/org.kde.kiod6.desktop
++++ b/src/kiod/org.kde.kiod6.desktop
+@@ -60,4 +60,4 @@
+ Name[zh_TW]=KIO
+ NoDisplay=true
+ Icon=dialog-password
+-Exec=kiod6
++Exec=/usr/lib/libexec/kf6/kiod6

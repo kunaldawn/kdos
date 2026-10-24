@@ -327,7 +327,7 @@ void res_draw_apps(int x, int y, int w, int h)
 		 "%.1f%% CPU outside the rollup  %s  memory is RSS and "
 		 "over-counts shared pages", g_unmatched_cpu,
 		 ktui_glyph[KT_G_DOT]);
-	ktui_draw_text(x, bottom - 1, w, foot, KT_DIM, KT_BG, 0);
+	ktui_draw_text(x, bottom - 1, w, foot, KT_MID, KT_BG, 0);
 }
 
 /* The same rule as the process table, and it has to BE the same rule: two

@@ -76,11 +76,12 @@ static void probe_text(void)
 		       d->is_boot_media ? "  BOOT MEDIA" : "");
 		for (int k = 0; k < d->nparts; k++) {
 			const Part *p = &d->part[k];
-			printf("    %-12s %8llu MB  %-8s %-16s%s%s\n", p->path,
+			printf("    %-12s %8llu MB  %-8s %-16s%s%s%s\n", p->path,
 			       p->sectors / 2048,
 			       p->fstype[0] ? p->fstype : "-",
 			       p->label[0] ? p->label : "",
 			       p->is_esp ? "  ESP" : "",
+			       p->is_bios_boot ? "  BIOS boot" : "",
 			       p->mounted ? "  mounted" : "");
 		}
 	}
@@ -145,8 +146,10 @@ static void probe_json(void)
 			kb_json_str(&b, p->label);
 			kb_buf_str(&b, ", \"uuid\": ");
 			kb_json_str(&b, p->uuid);
-			kb_buf_printf(&b, ", \"esp\": %s, \"mounted\": %s",
+			kb_buf_printf(&b, ", \"esp\": %s, \"bios_boot\": %s, "
+				      "\"mounted\": %s",
 				      p->is_esp ? "true" : "false",
+				      p->is_bios_boot ? "true" : "false",
 				      p->mounted ? "true" : "false");
 			kb_buf_str(&b, ", \"mountpoint\": ");
 			kb_json_str(&b, p->mountpoint);
@@ -229,6 +232,20 @@ static void plan_services(KbBuf *b, int json)
 
 static void plan_dump(int json)
 {
+	/*
+	 * THE MACHINE IS PROBED AS THE INSTALL PROBES IT, or the plan answers
+	 * about a disk it never looked at: the firmware decides the BIOS
+	 * boot code, the disk's size and the payload decide how much of the
+	 * volume group slot A takes, and a reused disk's partitions decide
+	 * whether it can start on legacy BIOS. The payload is the slow probe —
+	 * a walk of the whole root filesystem — and it is asked for only by
+	 * the plan whose answer depends on it.
+	 */
+	probe_system();
+	probe_disks();
+	if (cfg.plan == PLAN_WIPE && cfg.lvm && disk_by_path(cfg.disk))
+		probe_payload();
+
 	/* The scan FIRST: whether the Packs step runs at all is a question
 	 * about the medium, and install_plan() answers it. Planning before
 	 * scanning reports the step skipped on a machine that would carry
@@ -242,6 +259,21 @@ static void plan_dump(int json)
 	KbBuf svc = {0};
 	plan_services(&svc, json);
 
+	/* The partitions by the names the install will use: the erase plan's
+	 * come from its layout, a reuse plan's from the answers. */
+	char esp[96], root[192], bbn[96] = "";
+	int bb = ki_bios_boot_part();
+
+	if (cfg.plan == PLAN_WIPE) {
+		ki_part_name(cfg.disk, KI_PART_ESP, esp, sizeof(esp));
+		ki_part_name(cfg.disk, ki_wipe_part_root(), root, sizeof(root));
+	} else {
+		kb_strlcpy(esp, cfg.part_esp, sizeof(esp));
+		kb_strlcpy(root, cfg.part_root, sizeof(root));
+	}
+	if (bb > 0)
+		ki_part_name(cfg.disk, bb, bbn, sizeof(bbn));
+
 	if (!json) {
 		printf("keymap        %s\n", cfg.keymap);
 		printf("timezone      %s (%s)\n", cfg.tz_label, cfg.tz);
@@ -254,14 +286,26 @@ static void plan_dump(int json)
 		       ki_fs(cfg.fstype)->force);
 		printf("fstab root    %s %s 0 %d\n", cfg.fstype,
 		       ki_fs(cfg.fstype)->opts, ki_fs(cfg.fstype)->passno);
-		printf("esp           %s%s\n", cfg.part_esp,
+		printf("esp           %s%s\n", esp,
 		       cfg.format_esp ? " (format)" : "");
+		if (bb > 0)
+			printf("bios boot     %s%s\n", bbn,
+			       cfg.plan == PLAN_WIPE ? ", 1 MiB, made by the "
+						       "layout"
+						     : "");
+		else if (bb == 0)
+			printf("bios boot     the gap after the MBR\n");
+		else
+			printf("bios boot     none: the disk starts on UEFI "
+			       "only\n");
 		if (cfg.plan == PLAN_WIPE && cfg.lvm)
-			printf("root          lvm %s/%s, %s of the group%s\n",
-			       KI_VG, KI_LV_A, ki_lvm_half() ? "half" : "all",
+			printf("root          lvm %s/%s on %s, %s of the group "
+			       "(-l %s)%s\n",
+			       KI_VG, KI_LV_A, root,
+			       ki_lvm_half() ? "half" : "all", ki_lvm_extent(),
 			       cfg.luks ? ", inside LUKS2" : "");
 		else
-			printf("root          %s%s\n", cfg.part_root,
+			printf("root          %s%s\n", root,
 			       cfg.luks ? ", inside LUKS2" : "");
 		printf("swap          %s", swap_name());
 		if (cfg.swap != SWAP_NONE)
@@ -329,16 +373,25 @@ static void plan_dump(int json)
 	kb_json_str(&b, ki_fs(cfg.fstype)->opts);
 	kb_buf_printf(&b, ", \"fstab_passno\": %d", ki_fs(cfg.fstype)->passno);
 	kb_buf_str(&b, ",\n  \"esp\": ");
-	kb_json_str(&b, cfg.part_esp);
+	kb_json_str(&b, esp);
 	kb_buf_printf(&b, ", \"format_esp\": %s",
 		      cfg.format_esp ? "true" : "false");
+	/* The partition's node, "mbr" for the gap after a dos table's boot
+	 * sector, or null: no BIOS boot code, a disk that starts on UEFI
+	 * only. */
+	kb_buf_str(&b, ", \"bios_boot\": ");
+	if (bb > 0)
+		kb_json_str(&b, bbn);
+	else
+		kb_buf_str(&b, bb == 0 ? "\"mbr\"" : "null");
 	kb_buf_str(&b, ", \"root\": ");
-	kb_json_str(&b, cfg.part_root);
+	kb_json_str(&b, root);
 	kb_buf_printf(&b, ", \"luks\": %s", cfg.luks ? "true" : "false");
 	if (cfg.plan == PLAN_WIPE && cfg.lvm)
 		kb_buf_printf(&b, ", \"lvm\": {\"vg\": \"%s\", \"lv\": \"%s\", "
-			      "\"half\": %s}", KI_VG, KI_LV_A,
-			      ki_lvm_half() ? "true" : "false");
+			      "\"half\": %s, \"extent\": \"%s\"}", KI_VG,
+			      KI_LV_A, ki_lvm_half() ? "true" : "false",
+			      ki_lvm_extent());
 	else
 		kb_buf_str(&b, ", \"lvm\": null");
 	kb_buf_printf(&b, ",\n  \"swap\": \"%s\", \"swap_mb\": %ld",
@@ -407,6 +460,7 @@ int ki_dump(const char *what, int json)
 {
 	if (!strcmp(what, "probe")) {
 		probe_system();
+		probe_payload();
 		probe_disks();
 		if (json)
 			probe_json();

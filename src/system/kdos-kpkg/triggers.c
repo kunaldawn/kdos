@@ -10,10 +10,11 @@
  * Some files do nothing until an index built from EVERY package's copy is
  * rebuilt: a GSettings schema is invisible until gschemas.compiled holds it,
  * a pixbuf loader is never tried until loaders.cache names it, a MIME XML
- * defines no type until the globs are regenerated. No single package can own
- * that index, so no build.sh can write it, and a per-port postinstall only
- * rebuilds it when that one port is installed — not when the next port adds
- * to it or the last one leaves.
+ * defines no type until the globs are regenerated, and libvlc loads every
+ * VLC plugin into its program until plugins.dat describes them. No single
+ * package can own that index, so no build.sh can write it, and a per-port
+ * postinstall only rebuilds it when that one port is installed — not when
+ * the next port adds to it or the last one leaves.
  *
  * So kpkgadd and kpkgdel read the manifest they just acted on, and every
  * index whose directory it touched is rebuilt once from what is now on disk.
@@ -44,7 +45,10 @@
  *  - `--root`: tools are handed the root-prefixed directory. The pixbuf
  *    loader cache cannot take one — the tool writes the path it was
  *    compiled with — so under `--root` it runs inside the root through
- *    chroot(8), which needs root and the root's own copy of the tool.
+ *    chroot(8), which needs root and the root's own copy of the tool. VLC's
+ *    plugin cache goes the same way: vlc-cache-gen loads every plugin to
+ *    read it, and a plugin loaded from another root links that root's
+ *    libraries against the running system's.
  * ---------------------------------
  */
 
@@ -71,6 +75,7 @@ enum {
 	T_TEXMF,
 	T_DESKTOP,
 	T_ICONS,
+	T_VLC,
 	T_COUNT
 };
 
@@ -93,6 +98,7 @@ static const char *const t_dir[T_COUNT][T_MAXDIRS] = {
 	[T_TEXMF] = { "usr/share/texmf-dist/", "usr/share/texmf-local/" },
 	[T_DESKTOP] = { "usr/share/applications/" },
 	[T_ICONS] = { "usr/share/icons/" },
+	[T_VLC] = { "usr/lib/vlc/plugins/" },
 };
 
 /* What `KPKG_SKIP_INDEX` calls each index. */
@@ -109,6 +115,7 @@ static const char *const t_name[T_COUNT] = {
 	[T_TEXMF] = "texmf",
 	[T_DESKTOP] = "desktop",
 	[T_ICONS] = "icons",
+	[T_VLC] = "vlc",
 };
 
 static const char *const t_tool[T_COUNT] = {
@@ -124,6 +131,7 @@ static const char *const t_tool[T_COUNT] = {
 	[T_TEXMF] = "mktexlsr",
 	[T_DESKTOP] = "update-desktop-database",
 	[T_ICONS] = "gtk-update-icon-cache",
+	[T_VLC] = "/usr/lib/vlc/vlc-cache-gen",
 };
 
 #define MAN_DIR "usr/share/man/"
@@ -495,6 +503,47 @@ static int run_pixbuf_rooted(const char *root)
 	return kb_run(&a);
 }
 
+#define VLC_PLUGINS "usr/lib/vlc/plugins"
+
+/* plugins.dat, which libvlc reads each plugin's description from. Without
+ * it libvlc loads every plugin at start to learn what it does, the Qt 5
+ * interface included, and a Qt 6 program that links libvlc (Elisa) crashes
+ * inside it. The vlc package carries no copy, because the cache records each
+ * plugin's mtime and packaging resets those. Rooted, inside the root. */
+static int run_vlc(const char *root, int rooted)
+{
+	KbArgv a = {0};
+	if (rooted) {
+		kb_argv_add(&a, "chroot");
+		kb_argv_add(&a, root);
+	}
+	kb_argv_add(&a, t_tool[T_VLC]);
+	kb_argv_add(&a, "/" VLC_PLUGINS);
+	kb_argv_end(&a);
+	return kb_run(&a);
+}
+
+/* A root whose cache tool has gone with vlc keeps nothing to read the cache
+ * with: the cache goes, and so do the directories only it held, which no
+ * removal would otherwise ever clean up. 1 when the tool is gone. */
+static int vlc_gone(const char *root)
+{
+	char *tool = kb_path_join(root, t_tool[T_VLC] + 1);
+	int gone = !kb_path_exists(tool);
+	free(tool);
+	if (!gone)
+		return 0;
+	char *dir = kb_path_join(root, VLC_PLUGINS);
+	char *cache = kb_path_join(dir, "plugins.dat");
+	char *top = kb_path_join(root, "usr/lib/vlc");
+	if (unlink(cache) == 0 && rmdir(dir) == 0)
+		rmdir(top);
+	free(top);
+	free(cache);
+	free(dir);
+	return 1;
+}
+
 /* The vector keeps the pointers it is given, so `path` lives until the run
  * is over. */
 static int run_one(const KpTriggers *t, int i, const char *root, int rooted)
@@ -511,6 +560,8 @@ static int run_one(const KpTriggers *t, int i, const char *root, int rooted)
 		return run_icons(t, root);
 	if (i == T_PIXBUF && rooted)
 		return run_pixbuf_rooted(root);
+	if (i == T_VLC)
+		return run_vlc(root, rooted);
 
 	char *path = NULL;
 	KbArgv a = {0};
@@ -568,9 +619,10 @@ static int run_one(const KpTriggers *t, int i, const char *root, int rooted)
 	return rc;
 }
 
-/* Whether the tool is there to run. Rooted, the pixbuf cache is built by the
- * root's copy, so it is the root that must carry it — and chroot(8) needs
- * root, which is a warning worth printing rather than a skip. */
+/* Whether the tool is there to run. Rooted, the pixbuf and VLC caches are
+ * built by the root's copy, so it is the root that must carry it — and
+ * chroot(8) needs root, which is a warning worth printing rather than a skip.
+ * vlc_gone has already answered for a root without vlc-cache-gen. */
 static int have_tool(int i, const char *root, int rooted)
 {
 	if (i == T_PIXBUF && rooted) {
@@ -584,6 +636,15 @@ static int have_tool(int i, const char *root, int rooted)
 			return 0;
 		}
 		return ok && kb_have_prog("chroot");
+	}
+	if (i == T_VLC && rooted) {
+		if (geteuid() != 0) {
+			kp_msg("Warning: %s under %s needs root, to chroot "
+			       "into it; plugins.dat is not rebuilt",
+			       t_tool[i], root);
+			return 0;
+		}
+		return kb_have_prog("chroot");
 	}
 	return kb_have_prog(t_tool[i]);
 }
@@ -614,6 +675,8 @@ void kp_triggers_run(KpTriggers *t, const char *root)
 			kp_msg("index skipped: %s", t_name[i]);
 			continue;
 		}
+		if (i == T_VLC && vlc_gone(root))
+			continue;
 		if (!have_tool(i, root, rooted))
 			continue;
 		kp_msg("Updating index: %s", t_tool[i]);

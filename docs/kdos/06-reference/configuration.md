@@ -283,7 +283,8 @@ Your pinned applications: one desktop-entry identifier per line — the entry's 
 `/usr/share/applications` or `~/.local/share/applications`, without `.desktop`. The panel and the
 menus write it when you pin, unpin or reorder.
 
-Two surfaces read this one file: the panel's quick-launch row and the Start menu's pinned column.
+Two surfaces draw this one file as launchers: the panel's quick-launch row and the Start menu's
+pinned column.
 
 It ships with seven rows:
 
@@ -309,12 +310,9 @@ palette holds a first letter back only while some code starts with it; with no c
 first letter no code starts with, the letters go into the search field. `kdos-launcher` does not
 act on codes.
 
-The Start menu and the palette read the first word of a line as the identifier and ignore anything
-else after it, so a line that carries a field these surfaces do not know still launches. The
-panel's quick-launch row does not split the line: it looks up the whole line as the identifier, so
-a line that carries `code=` or any other word finds no entry and is not shown on the panel. All
-seven shipped lines carry a code, so on a new account the panel's quick-launch row is empty and the
-pinned applications appear only in the Start menu and the palette.
+Every reader of the file — the Start menu, the palette, the panel's quick-launch row and
+`kdos-appbox warmup` — takes the first word of a line as the identifier and ignores anything after
+it, so a line that carries a field these readers do not know still launches.
 
 **The terminal.** A line naming `foot` or `kdos-term` opens whichever terminal emulator the session
 uses — the same one every chord, menu row and `Terminal=true` entry gets. Every other line opens
@@ -420,7 +418,7 @@ The two tiers differ in when a job can fire:
 | Tier | Started by | Fires |
 |---|---|---|
 | `/etc/kdos/timers.d/` | The system supervisor, at boot (`/etc/init.d/18_timers.sh`), as root | Every occurrence, whether or not anybody is logged in |
-| `~/.config/kdos/timers.d/` | Your session, at login; the next session start on the same boot stops the previous set | Every occurrence until the next login on the same boot, or a reboot; a logout does not stop them |
+| `~/.config/kdos/timers.d/` | Your session, at login; the next session start on the same boot stops the previous set | Every occurrence until the login ends; Log Out alone does not stop them, and a session started again in the same login replaces them |
 
 `snooze` waits for its slot, runs the command once and exits, so something has to start it again.
 For the system tier the supervisor does that; each system job is a service named
@@ -491,7 +489,7 @@ The on/off switches a desktop needs at hand. A file's presence means on; there i
 | Toggle | Means | Read by |
 |---|---|---|
 | `stay-awake` | Never dim, lock or blank on idle | The compositor's idle timers |
-| `night-light` | Warm the colour palette | Every surface, on the reload signal (`SIGHUP`) |
+| `night-light` | Warm the colour palette | Every KDOS cell surface: `kdos-shell` and all its front ends, `kdos-res`, `kdos-term`, `kdos-lock` |
 | `dnd` | Do not disturb: hold notifications back | The notification daemon, `kdos-notifyd` |
 
 `kdos toggle` lists them, `kdos toggle <name>` flips one, and `kdos toggle <name> on|off` sets it.
@@ -500,9 +498,12 @@ The menu routes `toggle.night`, `toggle.quiet` and `toggle.awake` do the same (s
 
 These are state files rather than configuration keys because another process sets them — a chord,
 a menu row, a script before a long build — and their readers must not hold a copy. `stay-awake` and
-`dnd` are checked on a timer their readers already run. `night-light` is applied when a surface
-receives `SIGHUP`, which `kdos toggle` sends to the compositor and every long-lived surface after
-writing the file, as `kdos theme` does after an accent change.
+`dnd` are checked on a timer their readers already run. `night-light` is read with the accent,
+through `ktui_theme_load()`, by every surface that draws in cells, so it applies wherever the
+accent does. `kdos toggle` writes the file and then sends `SIGHUP` to the long-lived surfaces, as
+`kdos theme` does after an accent change; every other `kdos-shell` front end notices the file on
+its next pass, and `kdos-lock` reads it each time it locks. The compositor's window frames and
+wallpaper, and applications that are not KDOS surfaces, do not change.
 
 `stay-awake` suppresses all three idle steps, not only the first: somebody who turned the
 screensaver off for a presentation did not ask to be locked either.
@@ -784,7 +785,9 @@ Applies at next login, or on reload for the parts the compositor re-reads.
 
 ### `~/.config/kdos-comp/menu.xml`
 
-The desktop's root menu (a right click on the background) and the window menu, in labwc's format.
+The compositor's root menu and the window menu, in labwc's format. A right click on the background
+opens the root menu only with `desktop_icons = no` in `comp.conf`; with desktop icons on,
+`kdos-shell`'s desktop surface owns the wallpaper and opens its own menu.
 The root menu lists no applications by name: its Applications, Places and System rows run
 `kdos-menu`, which reads the same desktop entries everything else does, so the menu cannot go
 stale. Its Log Out, Restart and Shut Down rows save the session list before they ask; see
@@ -1041,14 +1044,12 @@ it.
 absent or disabled this way, so turning NetworkManager off hands DHCP back to `dhcpcd` rather than
 leaving the machine with no DHCP client.
 
-The marker stops only the boot-time start. The image also ships
-`/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service`, which lets the system
-bus start NetworkManager as root on the first call to its name, and `kdos-netagent`, which every
-desktop session runs, makes that call when it registers as NetworkManager's secret agent. On a
-machine with the marker and the package still installed, NetworkManager therefore starts at the
-first desktop login, outside the service supervisor and beside the `dhcpcd` that `30_network`
-started, and both lease every interface. A machine that must not run NetworkManager needs the
-activation file removed as well, or the `networkmanager` package removed.
+The marker is the only switch a supervised daemon needs. No daemon a service script supervises
+(NetworkManager, ModemManager and `polkitd` among them) has a D-Bus activation file, so the system
+bus never starts one of them itself: a call to the name of one that is stopped or disabled, such
+as the one `kdos-netagent` makes in every desktop session whenever NetworkManager's name has no
+owner, fails with `org.freedesktop.DBus.Error.ServiceUnknown` and starts nothing. A stopped
+service therefore stays stopped, and `service restart` leaves exactly one copy, the supervised one.
 
 ### `/etc/modprobe.d/kdos-regdom.conf`
 
@@ -1093,19 +1094,19 @@ See [Packaging](../03-architecture/packaging.md).
 
 ### Other machine files
 
-Files the image ships, under `/etc` and one under `/usr/share`, that an administrator may need to
-find. Each is in the
-format of the program that reads it.
+Files the image ships under `/etc` that an administrator may need to find. Each is in the format
+of the program that reads it.
 
 | Path | Read by | Does |
 |---|---|---|
 | `/etc/hostname` | `/etc/init.d/05_hostname.sh`, at boot | The machine's name: its first line is passed to `hostname` |
 | `/etc/ld-musl-x86_64.path` | musl's dynamic loader, at every program start | The shared-library search path, one directory per line: `/usr/lib`, then `/usr/lib64`. It replaces musl's built-in default, so `/usr/local/lib` is not searched. There is no cache to rebuild, and `ldconfig` (from the `musl` port) exits 0 without doing anything: a directory added here applies to the next program started |
-| `/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service` | `dbus-daemon`, the system bus | Lets the bus start `/usr/sbin/NetworkManager` as root on the first call to its name, whether or not `/etc/service.disabled/networkmanager` exists; see [above](#etcservicedisabledname) |
 | `/etc/sysctl.conf` | `/etc/init.d/10_sysctl.sh`, at boot | Unprivileged ICMP sockets for every group (`ping` needs no setuid bit), the `protected_*` link, FIFO and regular-file protections, fatal-signal logging and per-task delay accounting |
 | `/etc/modules-load.d/*.conf` | `/etc/init.d/02_modules.sh`, at boot | Modules loaded unconditionally: `tun` and `overlay` for containers, the virtual-machine display drivers, the `nct6775`, `it87` and `drivetemp` sensor drivers, and `i2c-dev` |
 | `/etc/modprobe.d/kdos-sdr.conf` | `modprobe` | Blacklists `dvb_usb_rtl28xxu`, so an RTL-SDR stick is free for the SDR tools rather than claimed as a TV tuner |
 | `/etc/alsa/conf.d/99-kdos-pipewire.conf` | Every ALSA program | Routes the ALSA default device to PipeWire |
+| `/etc/default/pcscd` | `/etc/init.d/47_pcscd.sh`, at each start | pcsc-lite's own keys, every one commented out: `PCSCD_ARGS` (extra `pcscd` arguments), `PCSCLITE_FILTER_IGNORE_READER_NAMES` (readers to hide, by a word of their name, `:` between words), `PCSCLITE_FILTER_EXTEND_READER_NAMES` (text added to every reader's name) and `PCSCLITE_HP_DROPDIR` (the USB driver directory). One `KEY=value` per line, parsed and not sourced: the quotes are removed, `$HOSTNAME` is the one expansion, and any other key is reported and skipped. `sudo service restart pcscd` applies an edit |
+| `/etc/default/useradd` | `useradd`, at each new account | `CREATE_MAIL_SPOOL=no`: no mailbox for a new account, as `/etc/login.defs` names no `MAIL_DIR` and the image has no mail spool. Every key it does not set keeps `useradd`'s compiled default, which `useradd -D` prints beside it; `useradd -D` with a flag (`-s` for the shell, `-b` for the home base) writes every key into the file |
 | `/etc/pipewire/pipewire.conf.d/99-kdos-vm.conf` | PipeWire | In a virtual machine only, raises the audio quantum (the block of frames PipeWire processes in one cycle) to 4096, and its ceiling to 8192 |
 | `/etc/polkit-1/rules.d/50-kdos.rules` | `polkitd` | Grants members of `wheel` the named polkit actions the desktop calls, without a prompt; see the [security model](../03-architecture/security-model.md) |
 | `/etc/udev/rules.d/70-kdos-*.rules` | `udevd` | Device access by group: serial, SDR, logic-analyser, debug-probe, instrument, scanner, camera, security-key and GPIO devices to `dialout`, gamepads to `input`, I²C buses and backlight brightness to `video` |
@@ -1247,7 +1248,7 @@ System-wide files that packages install for the tools above:
 | `/etc/nanorc` | `nano` | Includes every syntax definition under `/usr/share/nano` |
 | `/usr/lib/NetworkManager/conf.d/10-kdos-dns.conf` | `networkmanager` | `dns=dnsmasq`: a local caching `dnsmasq` on `127.0.0.1`, with split DNS for VPNs. A file of the same name in `/etc/NetworkManager/conf.d` overrides it |
 | `/etc/resolvconf.conf` | `openresolv` | `resolvconf`'s own settings. It is the one writer of `/etc/resolv.conf`, for NetworkManager, `dhcpcd` and `wg-quick` alike |
-| `/etc/resolv.conf` | musl's resolver, every name lookup | Before a network is up it names only `nameserver 127.0.0.1`, where nothing answers until NetworkManager starts its `dnsmasq`, so an early lookup fails at once and reaches no outside resolver. `resolvconf` replaces it with the servers of the link that comes up |
+| `/etc/resolv.conf` | musl's resolver, every name lookup | Before a network is up it names only `nameserver 127.0.0.1`, where nothing answers until NetworkManager starts its `dnsmasq`, so an early lookup fails at once and reaches no outside resolver. `resolvconf` replaces it with the servers of the link that comes up. Its first line, `# Generated by resolvconf`, is openresolv's signature: `resolvconf` refuses to replace a file that does not start with it, and every `resolvconf -a` then fails |
 | `/etc/sudoers.d/00-sudo` | `sudo` | Mode 0440. Members of `wheel` may run anything. `secure_path` is `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin`, which is what lets `sudo kdos` find `kdos`. `EDITOR`, `VISUAL` and `SUDO_EDITOR` survive `env_reset`, so `sudoedit` and `visudo` open your editor; with none of the three set they open `nvim`, or `nano` where neovim is not installed |
 | `/etc/zsh/zprofile`, `/etc/zsh/zshrc` | `zsh` | A login zsh reads `/etc/profile`; every interactive one runs `atuin init zsh` |
 
@@ -1259,7 +1260,7 @@ System-wide files that packages install for the tools above:
 | Path | Sets |
 |---|---|
 | `/etc/containers/containers.conf` | `cgroupfs` as the cgroup manager (there is no systemd to delegate one); the file event logger; `crun` as the runtime; `netavark` with the `nftables` firewall driver; `pasta` for a rootless container's network |
-| `/etc/containers/storage.conf` | The overlay driver, mounted through `fuse-overlayfs`; root's store under `/var/lib/containers/storage` |
+| `/etc/containers/storage.conf` | The overlay driver, mounted through `fuse-overlayfs`, and no store path: root's store is the engine's default, `/var/lib/containers/storage`, and an ordinary account's is its own under `~/.local/share/containers/storage`. A `graphroot` or `runroot` here is read by rootless podman too, which cannot write root's store, so every rootless container would fail with `mkdir /var/lib/containers/storage: permission denied` |
 | `/etc/containers/registries.conf` | `docker.io` as the one registry a short image name is looked up in |
 | `/etc/containers/policy.json` | Upstream's default: any image is accepted and no signature is checked. Without this file every pull refuses to start |
 

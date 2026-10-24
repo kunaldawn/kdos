@@ -16,7 +16,17 @@ case "$1" in
         # while bringing an interface up is exactly the one whose log you want.
         # -F keeps it in the foreground for ksvc; without it the supervisor
         # watches a process that has already forked away.
-        supervise "$NAME" "$DAEMON" -F
+        # -P moves syslogd's own pid file off /run/syslogd.pid, which is the
+        # supervisor's: written there, it replaces the supervisor's id, so
+        # `service stop` signals the daemon alone and it is restarted, and
+        # syslogd removes it on exit, so `status` reports the service down.
+        # -8 writes bytes 0x80-0x9F as they arrive. Without it syslogd
+        # rewrites each as `M-^x`, and those bytes are the continuation bytes
+        # of most UTF-8 punctuation, so one em dash leaves a lone lead byte
+        # in the file and grep calls /var/log/messages binary. ASCII control
+        # characters are still escaped as `^x`.
+        mkdir -p /run/syslogd
+        supervise "$NAME" "$DAEMON" -F -8 -P /run/syslogd/syslogd.pid
         ;;
     stop)
         stop_service "$NAME"

@@ -2,7 +2,7 @@ Periodic jobs, one per line, read by /etc/init.d/18_timers.sh at boot.
 
     NAME  TIMESPEC...  --  COMMAND...
 
-NAME names the supervised service, so `service 18_timers status` and
+NAME names the supervised service, so `service status timers` and
 `ksvc check kdos-timer-NAME` can both find it. TIMESPEC is `snooze`'s own
 options and nothing else is invented here. `--` ends the timespec: without it
 nothing can tell where snooze's options stop and the command begins, because

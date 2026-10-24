@@ -1,0 +1,44 @@
+Subject: end the ConsoleKit session monitor's error lines with a newline
+
+Four g_printerr calls in the ConsoleKit session monitor print no line end.
+polkitd prints the first of them at every start when ConsoleKit's database is
+absent, so whatever it writes to stderr next, a rule's polkit.log() line
+among them, is joined onto the error in the supervisor's line-by-line log.
+
+--- a/src/polkitbackend/polkitbackendsessionmonitor.c
++++ b/src/polkitbackend/polkitbackendsessionmonitor.c
+@@ -172,14 +172,14 @@
+   monitor->system_bus = g_bus_get_sync (G_BUS_TYPE_SYSTEM, NULL, &error);
+   if (monitor->system_bus == NULL)
+     {
+-      g_printerr ("Error getting system bus: %s", error->message);
++      g_printerr ("Error getting system bus: %s\n", error->message);
+       g_error_free (error);
+     }
+
+   error = NULL;
+   if (!ensure_database (monitor, &error))
+     {
+-      g_printerr ("Error loading " CKDB_PATH ": %s", error->message);
++      g_printerr ("Error loading " CKDB_PATH ": %s\n", error->message);
+       g_error_free (error);
+     }
+
+@@ -192,7 +192,7 @@
+   g_object_unref (file);
+   if (monitor->database_monitor == NULL)
+     {
+-      g_printerr ("Error monitoring " CKDB_PATH ": %s", error->message);
++      g_printerr ("Error monitoring " CKDB_PATH ": %s\n", error->message);
+       g_error_free (error);
+     }
+   else
+@@ -472,7 +472,7 @@
+   error = NULL;
+   if (!ensure_database (monitor, &error))
+     {
+-      g_printerr ("Error getting boolean `%s' in group `%s': Error ensuring CK database at " CKDB_PATH ": %s",
++      g_printerr ("Error getting boolean `%s' in group `%s': Error ensuring CK database at " CKDB_PATH ": %s\n",
+                   key_name,
+                   group,
+                   error->message);

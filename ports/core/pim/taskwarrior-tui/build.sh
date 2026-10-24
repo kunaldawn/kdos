@@ -29,6 +29,7 @@ Comment=Taskwarrior's tasks, on a grid
 Exec=taskwarrior-tui
 Icon=x-office-document
 Terminal=true
+NoDisplay=true
 Categories=Office;ProjectManagement;
 Keywords=task;todo;project;taskwarrior;
 EOF

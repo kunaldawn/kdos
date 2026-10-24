@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Help
+GenericName=Documentation Viewer
+Comment=Read the KDOS manual
+Exec=kdos-doc
+Icon=help-contents
+Terminal=false
+NoDisplay=true
+Categories=Documentation;Utility;
+StartupWMClass=kdos-doc

@@ -664,7 +664,7 @@ static void draw(void)
 			       KT_MID, KT_BG, KT_A_NONE);
 	}
 	ktui_draw_text(2, by, btn_cancel_x - 3, "Enter connect  Esc cancel",
-		       KT_DIM, KT_BG, KT_A_NONE);
+		       KT_MID, KT_BG, KT_A_NONE);
 	ktui_draw_flush();
 }
 

@@ -1,0 +1,116 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   kfs.css — KDOS from Scratch in a browser
+ *
+ * The KDOS book's palette (src/system/kdos-doc/kdos.css): phosphor on black
+ * when the reader's system is dark, deep green on paper when it is light.
+ * Every colour is a token on :root and nothing below names a literal, so a
+ * palette change is the two token blocks. Body text is a proportional face
+ * for reading at length; headings, code and the chrome are monospace, as
+ * the desktop is.
+ * --------------------------------- */
+
+:root {
+	--bg: #f6fbf4; --fg: #0d2a12; --dim: #3d6b44; --accent: #146b0a;
+	--rule: #c9dcc6; --tint: #e8f2e5; --code: #edf4ea; --note: #eef6ec;
+	--mono: "JetBrains Mono", "DejaVu Sans Mono", ui-monospace, monospace;
+	--sans: system-ui, -apple-system, "Segoe UI", "Noto Sans", "DejaVu Sans", sans-serif;
+	color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--bg: #04120a; --fg: #c6f5bb; --dim: #5fae52; --accent: #39ff14;
+		--rule: #164a24; --tint: #0a2414; --code: #081c10; --note: #0b2615;
+		color-scheme: dark;
+	}
+}
+:root[data-theme="dark"] {
+	--bg: #04120a; --fg: #c6f5bb; --dim: #5fae52; --accent: #39ff14;
+	--rule: #164a24; --tint: #0a2414; --code: #081c10; --note: #0b2615;
+	color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+	background: var(--bg); color: var(--fg); margin: 0 auto; max-width: 54rem;
+	padding: 0 16px 4rem; font: 17px/1.6 var(--sans); overflow-wrap: break-word;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:visited { color: var(--dim); }
+
+.kfs-top {
+	display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: baseline;
+	padding: .8rem 0 .6rem; border-bottom: 1px solid var(--rule); font-family: var(--mono);
+	font-size: .85rem;
+}
+.kfs-brand { font-weight: bold; text-decoration: none; }
+.kfs-edition { color: var(--dim); flex: 1 1 auto; }
+.kfs-toplink { text-decoration: none; }
+.kfs-crumbs { font: .8rem var(--mono); color: var(--dim); padding: .5rem 0 0; }
+.kfs-crumbs a { color: var(--dim); }
+
+h1, h2, h3, h4, h5, h6 { font-family: var(--mono); color: var(--accent); line-height: 1.25; }
+h1 { font-size: 1.9rem; border-bottom: 1px solid var(--rule); padding-bottom: .3em; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.05rem; margin-top: 2em; }
+/* A unit's own heading is the page's title, whatever its level in the book. */
+main > h1:first-child, main > h2:first-child, main > h3:first-child,
+main > div > h3:first-child {
+	font-size: 1.9rem; border-bottom: 1px solid var(--rule); padding-bottom: .3em; margin-top: 1rem;
+}
+
+code, pre, kbd { font-family: var(--mono); font-size: .88em; }
+code { background: var(--code); padding: .05em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+pre {
+	background: var(--code); border: 1px solid var(--rule); border-radius: 4px;
+	padding: .75em 1em; overflow-x: auto; line-height: 1.45; tab-size: 8;
+}
+pre code { background: none; padding: 0; font-size: .82rem; }
+
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid var(--rule); padding: .3em .6em; vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+td:first-child { overflow-wrap: normal; }
+/* A header row with no text at all is dropped; one empty cell in a row that
+   has text keeps its place, or every header after it shifts a column left. */
+thead:not(:has(th:not(:empty))) { display: none; }
+
+blockquote { border-left: 3px solid var(--dim); margin: 1em 0; padding: .1em 1em; color: var(--dim); }
+hr { border: 0; border-top: 1px solid var(--rule); }
+
+.kfs-note {
+	background: var(--note); border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+	border-radius: 4px; padding: .2em 1em; margin: 1.2em 0;
+}
+.kfs-card > p:nth-of-type(2) { font-family: var(--mono); font-size: .85rem; color: var(--dim); }
+
+.kfs-files summary { cursor: pointer; font-family: var(--mono); color: var(--accent); }
+.kfs-files pre { max-height: 32rem; overflow: auto; }
+
+.kfs-contents ul { list-style: none; padding-left: 1.2em; }
+.kfs-contents > ul { padding-left: 0; }
+.kfs-contents li { margin: .15em 0; }
+.kfs-contents .kfs-part > a { font: bold 1.05rem var(--mono); }
+.kfs-contents details > summary { cursor: pointer; font-family: var(--mono); }
+div.kfs-index h2 { font-size: 1.2rem; margin-top: 1.5em; }
+div.kfs-index ul { columns: 16rem; padding-left: 1em; }
+div.kfs-index li { break-inside: avoid; }
+
+.kfs-nav {
+	display: flex; flex-wrap: wrap; justify-content: space-between; gap: .6rem;
+	margin-top: 3rem; padding-top: .8rem; border-top: 1px solid var(--rule);
+	font: .85rem var(--mono);
+}
+.kfs-nav a { text-decoration: none; }
+.kfs-nav .kfs-next { margin-left: auto; text-align: right; }
+
+@media (max-width: 40rem) {
+	body { font-size: 16px; }
+	h1, main > h2:first-child, main > h3:first-child, main > div > h3:first-child { font-size: 1.45rem; }
+}

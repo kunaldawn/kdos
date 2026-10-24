@@ -1,0 +1,53 @@
+Subject: terminal: restore the terminal best-effort, never through fatal()
+
+fatal() calls prepare_for_exit(), which calls term_restore(). A
+term_restore() that calls fatal() when tcgetattr() fails therefore
+recurses without end on a terminal that has hung up, where every
+tcgetattr() fails, and the program dies of SIGSEGV when its stack runs
+out instead of the SIGHUP it was sent. Clear each flag before acting
+on it and ignore the result: a terminal that is gone has nothing to
+restore.
+
+--- a/terminal.c
++++ b/terminal.c
+@@ -77,30 +77,25 @@
+ 
+ void
+ term_restore (void)
+-/* Restore the terminal's original access mode.  */
++/* Restore the terminal's original access mode.
++ * Best effort: a terminal that has hung up cannot be restored and
++ * needs no restoring.  A failure must not reach `fatal', which calls
++ * `prepare_for_exit' and so this function again, without end.  */
+ {
+ #if HAVE_TERMIOS_H
+   struct termios  settings;
+-#endif
+-  int  res;
+ 
+-#if HAVE_TERMIOS_H
+   if (attributes_changed) {
+-    res = tcgetattr (0, &settings);
+-    if (res < 0)
+-      fatal ("Cannot get terminal attributes: %s", strerror (errno));
+-
+-    settings.c_iflag |= IXON;
+-    res = tcsetattr (0, TCSANOW, &settings);
+-    if (res < 0)
+-      fatal ("Cannot set terminal attributes: %s", strerror (errno));
++    attributes_changed = 0;
++    if (tcgetattr (0, &settings) == 0) {
++      settings.c_iflag |= IXON;
++      tcsetattr (0, TCSANOW, &settings);
++    }
+   }
+ #endif
+ 
+   if (term_mode_valid) {
+-    res = fchmod (0, term_mode);
+-    if (res < 0)
+-      fatal ("Cannot restore terminal permissions: %s", strerror (errno));
+     term_mode_valid = 0;
++    fchmod (0, term_mode);
+   }
+ }

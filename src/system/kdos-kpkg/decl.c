@@ -508,9 +508,8 @@ void kp_decl_prelude(const KpDecl *d, KbBuf *b)
 	}
 }
 
-/* `kpkg meta` — the same assignments, for ports/fetch to eval. It used to
- * `. ./kpkgbuild`, which stopped being possible when a recipe stopped being
- * a shell script. */
+/* `kpkg meta` — the same assignments, for ports/fetch to eval. A recipe is
+ * parsed, never sourced, so this is the one way a shell gets its values. */
 void kp_decl_meta(const KpDecl *d)
 {
 	KbBuf b = {0};

@@ -34,5 +34,9 @@ mkdir -p build && cd build
 make SHLIB_LIBS="-lncursesw"
 make DESTDIR=$SYSROOT install
 
+# kpkg prunes the HTML manuals from the readline port's package, so no
+# package adopts these copies and they would outlive every install.
+rm -f $SYSROOT/usr/share/doc/readline/{history,readline,rluserman}.html
+
 rm -rf "$READLINE_SRC"
 touch "$MARK/readline"

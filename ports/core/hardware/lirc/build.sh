@@ -13,6 +13,7 @@ patch -p1 -i "$PORT_SRC/0001-lirc.org-Remove-non-free-advertising.patch"
 patch -p1 -i "$PORT_SRC/0008-fix-event-time-on-32bit.patch"
 patch -p1 -i "$PORT_SRC/0010-lirc-add-include-for-major.patch"
 patch -p1 -i "$PORT_SRC/musl-gcc14.patch"
+patch -p1 -i "$PORT_SRC/py3-keep-client-so.patch"
 
 ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --runstatedir=/run \
 	--libdir=/usr/lib --disable-static \
@@ -24,6 +25,12 @@ patch -p1 -i "$PORT_SRC/musl-gcc14.patch"
 make
 make DESTDIR=$PKG install
 test -e "$PKG"/usr/lib/lirc/plugins/atilibusb.so
+
+_site=$(python3 -c 'import sys, sysconfig; print(sysconfig.get_path("purelib", vars={"base": sys.argv[1]}))' "$PKG/usr")
+install -m644 python-pkg/lirc/config.py -t "$_site/lirc"
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$_site" LD_LIBRARY_PATH="$PKG/usr/lib" \
+	python3 -c 'import lirc.client, lirc.config'
+test -e "$_site/lirc/_client.so"
 
 rm -rf "$PKG/lib/systemd" "$PKG/usr/lib/systemd" "$PKG/var/run"
 

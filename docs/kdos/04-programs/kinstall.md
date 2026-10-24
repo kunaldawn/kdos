@@ -31,10 +31,10 @@ started or skipped, progress, a note, a log line, a warning, a failure, or done.
 the screen and writes `/var/log/kinstall.log` from those lines. See [The install runs in a child
 process](#the-install-runs-in-a-child-process).
 
-The wizard has no handler for the warning letter, `W`, and discards it. A warning therefore reaches
-neither the screen nor the log. Several sections below name a condition that the child reports only
-as a warning. For each of them the install carries on, and at most an indirect trace reaches the
-log; see [The install runs in a child process](#the-install-runs-in-a-child-process).
+A warning, the letter `W`, is a condition the installed system will lack while the install carries
+on. The wizard writes it to the log with a `warning:` prefix and lists it on the Install page and
+again on the Done page; see [The install runs in a child
+process](#the-install-runs-in-a-child-process).
 
 ## Starting the installer
 
@@ -96,8 +96,7 @@ after it overrides the file; `--save` and `--dump` act only after the whole comm
 An option that needs an argument and is last on the line counts as unknown.
 
 The log of a run is `/var/log/kinstall.log`, opened for appending with mode `0600`. Each line
-carries an `[HH:MM:SS]` stamp. On the Install page, `L` shows it in full (an unattended run only;
-see [The pages](#the-pages)).
+carries an `[HH:MM:SS]` stamp. On the Install page, `L` shows it in full.
 
 Only `--dump`, `--save`, `--help` and `--version` work without root. The wizard, `--dry-run`
 included, stops on its first page with "kinstall must run as root — try: sudo kinstall" until it
@@ -121,7 +120,7 @@ fails with "kinstall must run as root" instead.
 | Esc | Back a page, or close the help |
 | PgUp, PgDn | Scroll a page taller than the screen; in the full log, scroll ten lines |
 | F1 | Show or hide the key help |
-| L | The full log, on the Install page (an unattended run only; see [The pages](#the-pages)) |
+| L | The full log, on the Install page |
 | Ctrl+U | Clear a text field |
 | Ctrl+W, Ctrl+Backspace | Delete the word before the caret; Ctrl+Left and Ctrl+Right move by word |
 | Ctrl+Q, Ctrl+C | Quit the installer. It asks first, and while an install is running it warns that stopping leaves the target half written |
@@ -174,9 +173,9 @@ enabled" added when they apply). A preflight list marks each item that fails:
 - `mkfs.ext4` and `mkfs.vfat` present;
 - the Limine payload, `/usr/share/limine`, present.
 
-The page refuses to continue without root or without a disk. On a machine that booted in legacy
-BIOS mode it also says that the installed system will start, but that the firmware's own boot
-entry cannot be created.
+The page refuses to continue without root or without a disk. Neither firmware is refused or
+warned about: a disk the installer partitions starts on both (see [Both
+firmwares](#both-firmwares)).
 
 **Keyboard.** Lists every keymap under `/usr/share/keymaps` and `/usr/share/kbd/keymaps`, with a
 filter field. Moving the selection applies the map at once with `loadkeys`, and a test field
@@ -195,16 +194,21 @@ every package is on the medium; a target needs about 56 GB.
 
 **Layout.** Offers the three plans:
 
-- **Erase the whole disk and lay it out for KDOS** (`wipe`): a GPT table with a 512 MiB ESP, an
-  optional swap partition and the root. The page offers the filesystem, swap (none, a file or a
-  partition, with its size in MiB), **Put the root on LVM**, and **Encrypt the root filesystem
-  (LUKS2)** with its passphrase typed twice. A bar and a table show exactly what will be written.
+- **Erase the whole disk and lay it out for KDOS** (`wipe`): a GPT table with a 512 MiB ESP, a
+  1 MiB BIOS boot partition, an optional swap partition and the root. The page offers the
+  filesystem, swap (none, a file or a partition, with its size in MiB), **Put the root on LVM**,
+  and **Encrypt the root filesystem (LUKS2)** with its passphrase typed twice. A bar and a table
+  show exactly what will be written.
 - **Use partitions that already exist** (`reuse`): two lists, the ESP and the root. The root list
   holds the disk's partitions and then every logical volume on the machine (see [A root on
   LVM](#a-root-on-lvm)). **Reformat the ESP as FAT32** is ticked by default; leave it off when
-  another operating system boots from the same ESP. The root is always reformatted.
+  another operating system boots from the same ESP. The root is always reformatted. A line under
+  the lists says where Limine's BIOS stage will go: the disk's BIOS boot partition, the gap after
+  a dos table's MBR, or nowhere ("no BIOS boot partition: this disk will start on UEFI only").
 - **Partition it myself first (cfdisk)** (`manual`): an **Open cfdisk** button runs `cfdisk` on
   the chosen disk. When `cfdisk` exits, the installer re-reads the disks and switches to `reuse`.
+  The page asks for an EFI System partition, a Linux partition and, for legacy BIOS, a 1 MiB BIOS
+  boot partition.
 
 The encryption checkbox is drawn on the erase plan only, but its value is not cleared when the plan
 changes. A tick made on the erase plan and followed by a switch to `reuse` (directly, or through
@@ -215,9 +219,10 @@ root is to stay unencrypted.
 
 The page refuses an empty or mismatched passphrase, encryption on an image without `cryptsetup`,
 LVM on an image without `lvm`, a swap size of zero, the `manual` plan before `cfdisk` has run, an
-ESP and root that are the same partition, a root smaller than the install, a root that is an LVM
-physical volume or that something holds, and a volume-group name clash (see [A root on
-LVM](#a-root-on-lvm)).
+ESP and root that are the same partition, the disk's BIOS boot partition as either, a root smaller
+than the install, a root that is an LVM physical volume or that something holds, a volume-group
+name clash (see [A root on LVM](#a-root-on-lvm)), and, on a machine that booted in legacy BIOS
+mode, a reuse plan on a GPT disk with no BIOS boot partition, which could not start there.
 
 **Accounts.** Hostname (letters, digits and `-`), full name, user name (lowercase letters,
 digits, `-` and `_`, not starting with a digit), and the password twice, with a strength meter.
@@ -236,28 +241,26 @@ checkbox.
 **Summary.** Every answer on one screen, above a line reading "EVERYTHING ABOVE THIS LINE IS STILL
 REVERSIBLE". **Next** is refused here ("press BEGIN INSTALL to start — Next does not"): the install
 starts from the **BEGIN INSTALL** button (**REHEARSE INSTALL** under `--dry-run`) and only from
-it. **Save answer file** writes the answers to `/tmp/kinstall.conf` and installs nothing.
+it. **Save answer file** writes the answers to `/tmp/kinstall.conf` and installs nothing. The
+Summary also says which firmwares the disk will start on.
 
-**Install.** An overall progress bar, each step with its state and time, the elapsed time and the
-tail of the log. When a step fails, four buttons appear: **Retry step** runs the install again
-from the failed step, **View log** opens the full log, **Shell** runs a login `bash` on the
-console, and **Abort** quits. When every step has finished, **Continue** appears.
+**Install.** An overall progress bar, each step with its state and time, the elapsed time, the
+warnings so far under **WARNINGS**, and the tail of the log. When a step fails, four buttons
+appear: **Retry step** runs the install again from the failed step, **View log** opens the full
+log, **Shell** runs a login `bash` on the console, and **Abort** quits. When every step has
+finished, **Continue** appears and moves to the Done page.
 
-**Done.** No run reaches this page: the Install page's Continue button moves to page index 9,
-which is the Install page itself (see the next paragraph). The page would show the time taken, the
-disk and the log path, a reminder to remove the boot medium, and three buttons: **Reboot now**
-(after a confirmation), **Back to the live desktop** (quit), and **View log** (in `less`, or
+**Done.** The time taken, the disk and the log path, the warnings under **FINISHED WITH
+WARNINGS** when there were any, a reminder to remove the boot medium, and three buttons: **Reboot
+now** (after a confirmation), **Back to the live desktop** (quit), and **View log** (in `less`, or
 `more` where `less` is missing).
 
 The Summary's install button and the Install page's Continue button move to a page by its
-position: to page index 8 and 9 respectively, counted from 0, which in the eleven-page table are
-the Summary and the Install page themselves. An interactive install therefore never leaves the
-Summary. It shows no progress and no failure, the **Retry step**, **View log**, **Shell** and
-**Abort** buttons are never offered, and **BEGIN INSTALL** stays live while the child runs. Follow
-an interactive install in `/var/log/kinstall.log` from another console. An unattended run opens
-the Install page by identifier, so it shows progress and the failure buttons. Its **Continue**
-button stays on the same page, and the run ends from there after five seconds (see [Fallbacks, and
-how an unattended run ends](#fallbacks-and-how-an-unattended-run-ends)).
+identifier, `install` and `done`, as an unattended run opens the Install page: a position is right
+only until a page is added in front of it. The Install page has no way back, so the Summary and its
+button are not reached again while the child runs. An unattended run stays on the Install page and
+ends from there five seconds after the last step (see [Fallbacks, and how an unattended run
+ends](#fallbacks-and-how-an-unattended-run-ends)).
 
 ## The install steps
 
@@ -267,28 +270,36 @@ rather than run.
 
 | # | Step | Does | Skipped when |
 |---|---|---|---|
-| 1 | Prepare | Checks the target and the tools, stops swap, takes down anything holding the disk | — |
-| 2 | Partition | Writes the GPT layout: a 512 MiB ESP, an optional swap partition, then the root | The plan is not `wipe` |
+| 1 | Prepare | Checks the target and the tools, stops every swap area but zram, takes down anything holding the disk | — |
+| 2 | Partition | Writes the GPT layout: a 512 MiB ESP, a 1 MiB BIOS boot partition, an optional swap partition, then the root | The plan is not `wipe` |
 | 3 | Format | Encrypts and creates the volume group if asked, then makes the filesystems | — |
-| 4 | Mount | Mounts the root at `/mnt` and the ESP at `/mnt/boot/efi` | — |
+| 4 | Mount | Mounts the root at `/mnt/kinstall` and the ESP at `/mnt/kinstall/boot/efi` | — |
 | 5 | Copy system | Copies the live tree with `rsync` | — |
 | 6 | Packs | Imports, builds or records the chosen applications | No application catalogue, or nothing chosen |
 | 7 | Configure | `fstab`, hostname, time zone, keymap, autologin, services, swap file | — |
 | 8 | Accounts | Users, passwords, groups | — |
 | 9 | Theme | Runs `kdos theme <accent>` for the new home and `/etc/skel` | The accent is the default, `bone` |
-| 10 | Bootloader | Limine on the ESP for UEFI and BIOS, kernel and initramfs, the menu, the NVRAM entry | — |
+| 10 | Bootloader | Limine on the ESP, kernel and initramfs, the menu, the BIOS boot code ([Both firmwares](#both-firmwares)), the NVRAM entry | — |
 | 11 | Finish | Flushes and unmounts | — |
 
 **Prepare** fails when no disk is chosen, the disk has gone, the installer is not root, or a tool
 is missing: `mount`, `umount`, `mkfs.vfat`, `rsync`, the chosen filesystem's `mkfs`, `cryptsetup`
-when encrypting, and `lvm` for a root on LVM. It then runs `swapoff -a`, unmounts everything under
-`/mnt` and `/mnt` itself, and lazily unmounts every mount whose device name begins with the
-disk's. On the `wipe` plan it takes down whatever holds the disk (see [A root on
+when encrypting, `lvm` for a root on LVM, and `limine` on a machine that booted in legacy BIOS mode.
+It also fails on such a machine when the plan reuses a GPT disk with no BIOS boot partition, before
+anything is written. It then runs `swapoff` on every entry of `/proc/swaps` except `/dev/zram*`,
+so a swap partition or file on the disk does not keep it busy, while the live session's compressed
+swap in memory stays on through the copy. It unmounts everything under `/mnt/kinstall` and
+`/mnt/kinstall` itself, and lazily unmounts every mount whose device name begins with the disk's.
+The boot medium at `/mnt/iso` and a stick mounted at `/mnt/<name>` are beside the target, not
+under it, so this leaves them mounted. On the `wipe` plan it takes down whatever holds the disk (see [A root on
 LVM](#a-root-on-lvm)); on `reuse` it unmounts the chosen root by device number.
 
 **Partition** runs `wipefs -a` on the disk, feeds `sfdisk --wipe always` the layout (ESP type
-`U`, swap type `S`, root type `L`, or `V` for an LVM physical volume), then `partprobe` and
-`udevadm settle`, and waits up to five seconds for the partition nodes to appear. Partition names
+`U` as partition 1, the BIOS boot type `21686148-6449-6E6F-744E-656564454649` as partition 2, swap
+type `S` as partition 3 when swap is a partition, and the root last, type `L`, or `V` for an LVM
+physical volume), then `partprobe` and `udevadm settle`, waits up to five seconds for the root's
+node to appear, and writes zeros over the BIOS boot partition: `limine bios-install` refuses one
+whose first sector still reads as FAT or NTFS from an earlier layout. Partition names
 follow the kernel's rule: a disk whose name ends in a digit gets a `p` before the number
 (`nvme0n1p1`), any other does not (`sda1`).
 
@@ -299,11 +310,17 @@ root](#an-encrypted-root)), makes the root filesystem with the label `KDOS`, for
 **Copy system** runs:
 
 ```sh
-rsync -aHAX -x --numeric-ids --info=progress2 --no-inc-recursive <excludes> / /mnt/
+rsync -aHAX -x --numeric-ids --info=progress2 --no-inc-recursive <excludes> / /mnt/kinstall/
 ```
 
 The excludes are the contents of `/dev`, `/proc`, `/sys`, `/tmp`, `/run`, `/mnt` and `/media`;
-`/lost+found`; the run's own log; and what must be unique to each machine,
+`/lost+found`; every file under `/var/log` and `/var/cache`, the run's own log among them, keeping
+the directories (packages own them, and `kpkg check` reports one that is missing), so the installed
+system's log and `last` begin at its own first boot; the live accounts' history, `.bash_history`
+and `.local/share/atuin` in `/root` and `/home/kdos`; root's `.cache`, and everything in
+`/home/kdos/.cache` except `kdos` (the theme name and the rendered wallpaper, which the Theme step
+rewrites only for an accent other than `bone`) and `bat` (its syntax cache), the two the image
+builds into the live account; and what must be unique to each machine,
 `/var/lib/dbus/machine-id` and `/etc/ssh/ssh_host_*`, which the installed system generates on
 its first boot; and the account files' backup copies, `/etc/passwd-`, `/etc/group-`,
 `/etc/shadow-` and `/etc/gshadow-`, which shadow's tools write beside each file they change and in
@@ -311,7 +328,14 @@ which a password set in the live session would be carried over. The image itself
 them: `70_image` removes them. Without the boxed-application library (`alien_apps = 0`), the live user's
 container storage under `/home/kdos/.local/share/containers` is left out as well. `rsync` exit
 status 24 ("some files vanished") is accepted, since files come and go on a running live system.
-The excluded directories are then created empty, `/tmp` with mode `01777`.
+The excluded directories are then created empty, `/tmp` with mode `01777`. The copy streams the
+tree through the page cache and can fire `kdos-oomd`'s pressure trigger on a machine with little
+memory; the daemon kills nothing while most of memory is still available, and it never picks the
+copy: when an install starts, the wizard sets its own `oom_score_adj` to -900, which the install
+child and every program it runs (`rsync`, `cryptsetup`, `mkfs`) inherit, and the daemon passes over
+any process at or below -500 (see [kdos-oomd](daemons.md#how-it-decides)). -900 is above the
+kernel's "never kill", so the kernel's own OOM killer can still end the install when memory is
+truly gone.
 
 **Configure** writes the files listed in [What the rest of the tree
 provides](#what-the-rest-of-the-tree-provides), copies the live `/etc/resolv.conf`, and makes the
@@ -331,21 +355,22 @@ account when the user name changed, and rewrites `/etc/passwd`, `/etc/group`, `/
 system: neither the image nor the copy carries the `-` backups of these files.
 
 **Theme** runs the live system's `kdos theme <accent>` twice, with `HOME` pointed at
-`/mnt/etc/skel` and at `/mnt/home/<user>`, rather than changing root into the target: the two trees
-carry the same programs, and this way the generators need no `/proc`, `/dev` or bind mounts.
+`/mnt/kinstall/etc/skel` and at `/mnt/kinstall/home/<user>`, rather than changing root into the
+target: the two trees carry the same programs, and this way the generators need no `/proc`, `/dev`
+or bind mounts.
 Without `kdos` on the `PATH` the step logs that and leaves the accent the image was seeded with.
 
 **Bootloader** is described in [What the bootloader step writes](#what-the-bootloader-step-writes).
 
-**Finish** runs `sync`, unmounts `/run/kdos-medium` when that directory exists (the Mount step
-binds the medium there when the application archive is under `/mnt`; see [How the applications
-arrive](#how-the-applications-arrive)), and unmounts everything under `/mnt`.
+**Finish** runs `sync` and unmounts everything under `/mnt/kinstall`, then `/mnt/kinstall` itself.
 
 ## Answer files
 
 An answer file is plain `key = value` lines; `#` starts a comment line, and spaces around the key
 and value are trimmed. `--save` writes one with every key except the three secrets, and
-`--config` reads one. A key the installer does not recognise is ignored.
+`--config` reads one. A key the installer does not recognise is ignored and named on standard
+error, `kinstall: <file>: unknown key '<key>' ignored`, before anything else runs, so a misspelt
+key shows in `--dump plan` rather than installing that key's default unnoticed.
 
 ```sh
 kinstall --save answers.conf                      # the defaults, to edit
@@ -477,16 +502,21 @@ Neither needs a terminal, neither writes to a disk, and both print to standard o
 - **`probe`** is the machine as the installer sees it: firmware (with its width when it is 32-bit,
   and Secure Boot), processor, memory, whether the session is live, the size of the system it
   would copy and of the container library within it, the disks and their partitions (with
-  filesystem, label, and whether each is an ESP, mounted, removable, read-only or the boot
-  medium), and the logical volumes. It is what to paste into a bug report. Run as root it first
+  filesystem, label, and whether each is an ESP, a BIOS boot partition, mounted, removable,
+  read-only or the boot medium), and the logical volumes. It is what to paste into a bug report. Run as root it first
   activates every LVM volume group, as the wizard does, so the logical volumes it lists are the
   ones the reuse plan would offer; run as an ordinary user it lists only those already active. It
   measures the live system by walking the root filesystem, so the test suite does not run it.
 - **`plan`** runs the same planner the wizard does, so the steps and their skips are the real
   ones. It also prints the `mkfs` command and the root's `fstab` line that the filesystem choice
   becomes, the services turned off, and for the applications the selection, the route and an
-  estimated size. It probes neither the disks nor the live system, so its LVM line reports the
-  volume as taking all of the group whatever the disk's size.
+  estimated size. It probes the firmware and the disks as the wizard does, so it names the
+  partitions the install will use: the erase plan's ESP, BIOS boot partition and root by their
+  device names, and on the reuse plan the disk's own BIOS boot partition, the MBR gap, or `none:
+  the disk starts on UEFI only`. On the erase plan with LVM it also measures the live system, as
+  the wizard does at start, so its root line says `half of the group (-l 50%VG)` or `all of the
+  group (-l 100%FREE)` with the `-l` that `lvcreate` will be given; a disk it cannot see leaves the
+  measurement out and reads as all of the group.
 
 The JSON form is a rendering of the same data in the same pass, not a second walk. **No password
 appears in either form**: the plan says whether root is locked and whether the root is encrypted,
@@ -527,9 +557,11 @@ Three columns each prevent a failure that would only show up later:
 - **Only ext4 gets a non-zero `fstab` pass.** A non-zero pass asks for a filesystem check at boot,
   and none of the others has a checker worth running then (`f2fs.fsck` exists, but it is a repair
   tool).
-- **The swap file is made differently per filesystem.** `fallocate` leaves unwritten extents,
-  which xfs and f2fs refuse to swap on, and btrfs needs a file that is not copy-on-write and not
-  compressed. The wrong method installs cleanly and then boots with no swap and nothing saying
+- **The swap file is made differently per filesystem.** btrfs needs a file that is not
+  copy-on-write and not compressed, and its `swapon` answers `Invalid argument` for one `fallocate`
+  made. `fallocate` leaves unwritten extents, and whether `swapon` takes those on xfs and f2fs
+  depends on the kernel (the KDOS kernel does), so on those two the file is written out in full
+  with `dd`. The wrong method installs cleanly and then boots with no swap and nothing saying
   why. Where `fallocate` or `btrfs` is missing, the step falls back to `dd`.
 - **f2fs is a kernel module**, so it is in the initramfs module list in
   `script/phases/70_image/090_initramfs.sh`. ext4, btrfs and xfs are built in: `kdos.config` in the
@@ -552,7 +584,7 @@ partition, and the initramfs activates every volume group before looking for it;
 
 The erase plan's layout is fixed:
 
-- The ESP and any swap partition stay plain partitions.
+- The ESP, the BIOS boot partition and any swap partition stay plain partitions.
 - The root partition is typed Linux LVM and becomes the only physical volume of a volume group
   named `kdos`.
 - The root is the logical volume `root_a`.
@@ -568,8 +600,8 @@ beside it as `root_b`, so adding a second slot needs no repartitioning. `root_a`
 group (`-l 50%VG`) when half still holds the system, the swap file (when swap is a file) and 256
 MiB to spare, after 32 MiB is set aside for the LUKS header and LVM metadata; otherwise it takes
 the whole group (`-l 100%FREE`). The swap file counts because it is written onto the same root
-after the copy. `ki_lvm_half()` makes that decision, and the Layout page, the Summary and the Format
-step all call it, so the size shown is the size created. The other half is left unallocated: the
+after the copy. `ki_lvm_half()` makes that decision, and the Layout page, the Summary, `--dump
+plan` and the Format step all call it, so the size shown is the size created. The other half is left unallocated: the
 installer makes no `root_b`, because an empty volume is not a slot anything can boot or update.
 
 ### Volume-group name clashes
@@ -704,20 +736,15 @@ which route to offer must not send traffic to a third party, and a default route
 attempt a build.
 
 An import or a build that fails falls back to **pending** rather than failing the install. The
-warning that says why is discarded (see [How the installer works](#how-the-installer-works)); the
-only trace on the screen's log tail and in `/var/log/kinstall.log` is the line `<n> group(s)
-recorded for the first login` where `imported from <file>` or `<n> group(s) built` would have
-been. By then the system is installed and bootable, and abandoning it over an archive that would
-not unpack would leave a machine with no operating system.
+warning that says why is listed on the Install and Done pages and logged (see [How the installer
+works](#how-the-installer-works)), beside the line `<n> group(s) recorded for the first login`
+where `imported from <file>` or `<n> group(s) built` would have been. By then the system is
+installed and bootable, and abandoning it over an archive that would not unpack would leave a
+machine with no operating system.
 
-When the archive is under `/mnt`, the Mount step bind-mounts `/mnt` itself to `/run/kdos-medium`
-before mounting the target there, and reads the archive as `/run/kdos-medium/<path below /mnt>`.
-The target mounts at `/mnt`, and a stick mounted at `/mnt/<something>` would be hidden underneath
-it, so the original path would lead into the empty filesystem the Format step made. It is a bind
-of the directory, not a second mount of the device, because the device was mounted by something
-else and its path is the only handle the installer has on it. If the bind fails, the log says so
-and the archive is dropped. An archive under `/media` or `/run/media` needs no bind, since
-mounting `/mnt` does not cover those.
+The target mounts at `/mnt/kinstall`, a directory of its own beside the stick, so an archive at
+`/mnt/<name>` keeps its path while the target is mounted and the Prepare step's sweep of mounts
+under the target never reaches it.
 
 Whichever route runs, the store's directories are created on the target:
 `/var/lib/kdos/packs`, `/var/lib/kdos/packs/staging` (mode `01777`) and `/var/lib/kdos/packs/mnt`.
@@ -741,7 +768,7 @@ fails.
 | `EFI/kdos/a/vmlinuz` | The target's `/boot/vmlinuz-kdos` |
 | `EFI/kdos/a/initramfs.cpio.gz` | The target's `/boot/initramfs-kdos.cpio.gz`, else `/boot/initramfs.cpio.gz` |
 | `EFI/kdos/bootstate` | The initial boot state |
-| `EFI/kdos/font.bin` | The menu typeface, from `/boot/limine/font.bin` or `/mnt/iso/boot/limine/font.bin`, when present |
+| `EFI/kdos/font.bin` | The menu typeface, from the boot medium's `/mnt/iso/boot/limine/font.bin`, else the running system's own `/boot/efi/EFI/kdos/font.bin`, when present. Neither is in a root filesystem, and the medium stays readable because the target is mounted beside it at `/mnt/kinstall` |
 | `EFI/kdos/wallpaper.png` | `/usr/share/kdos/boot/kdos-backdrop.png`, else `kdos-banner.png`, when present |
 | `EFI/kdos/memtest.efi` | `/usr/share/kdos/memtest86plus/memtest.efi`, when present |
 
@@ -778,8 +805,8 @@ attempts = 0
 ```
 
 It is written directly rather than through `kdos-bootctl`, because the tool's default path is the
-running system's ESP and this runs against a target at `/mnt`. `kdos-bootctl` maintains the file
-and regenerates the `KDOS` entries from then on; see [A new
+running system's ESP and this runs against a target at `/mnt/kinstall`. `kdos-bootctl` maintains
+the file and regenerates the `KDOS` entries from then on; see [A new
 kernel](../03-architecture/boot-and-init.md#a-new-kernel).
 
 ### Room for a second slot
@@ -788,23 +815,44 @@ The kernel and initramfs go into slot A's directory, `EFI/kdos/a/`, and later ke
 ESP through `kdos-bootctl deploy`. Every A/B update needs room for a second slot's kernel and
 initramfs beside the first, so the installer checks that the ESP has that much free plus 1 MiB. The
 512 MiB ESP the erase plan makes has plenty; a reused 100 MiB one may not. The free space and the
-need are logged, but the warning when the room is short is discarded, so check the ESP's free space
-yourself when reusing one.
+need are logged, and when the room is short a warning says so on the Install and Done pages.
 
 ### Both firmwares
 
 Both UEFI loaders go onto the ESP, so a disk written on one machine starts on another. A 64-bit
 processor does not imply 64-bit firmware, and firmware only reads the `BOOT<arch>.EFI` it can run.
 `BOOTIA32.EFI` is copied where Limine provides it and skipped where it does not (a Limine built
-without `--enable-uefi-ia32` has none), with nothing on the screen or in the log to say so; failing
-the install over a fallback for firmware this machine does not have would throw away a working
-system.
+without `--enable-uefi-ia32` has none), with a warning that the disk will not start on 32-bit UEFI;
+failing the install over a fallback for firmware this machine does not have would throw away a
+working system.
 
-The BIOS boot code is written whatever firmware the install ran on: `limine-bios.sys` goes to the
-root of the ESP and `limine bios-install <disk>` writes the boot sector, so a disk installed on a
-UEFI machine and moved to a legacy BIOS one still starts. If it fails, or `limine` is not on the
-`PATH`, the install carries on, because the UEFI path is already complete, and nothing on the
-screen or in the log says so.
+The BIOS boot code is written whatever firmware the install ran on, so the disk also starts on the
+other. `limine-bios.sys` goes to the root of the ESP, and `limine bios-install` writes Limine's boot
+sector into the disk's first sector and its second stage where the partition table leaves room:
+
+| The disk | `limine bios-install` is given | Second stage goes |
+|---|---|---|
+| Erase plan | `<disk> 2` | The 1 MiB BIOS boot partition the layout made |
+| Reused GPT disk with a BIOS boot partition | `<disk> <its number>` | That partition |
+| Reused dos (MBR) disk | `<disk>` | The gap between the boot sector and the first partition |
+| Reused GPT disk with none | Not run | Nowhere: the disk starts on UEFI only |
+
+On a GPT disk the gap after the boot sector holds the partition table itself, which is why Limine
+needs a partition there and refuses a GPT disk without one
+(`error: Installing to a GPT device, but no BIOS boot partition specified or detected.`). The
+partition is recognised by its type GUID, `21686148-6449-6E6F-744E-656564454649`, which
+`--dump probe` reports as `BIOS boot`.
+
+What a failure costs depends on the machine. Booted from legacy BIOS, the BIOS stage is this
+machine's only way to start the disk, so a reused GPT disk with no BIOS boot partition is refused
+on the Layout page and by the Prepare step, before anything is written, and a failed `limine
+bios-install`, or no `limine` on the `PATH`, fails the Bootloader step. Booted from UEFI, the EFI
+path is complete and each of these is a warning on the Install and Done pages; Limine's own
+`error:` lines are in `kinstall.log`.
+
+A disk laid out by the erase plan, with `limine bios-install <disk> 2` run on it, has started
+Limine (`Limine 12.9.0 (x86-64, BIOS)`) and then its kernel on SeaBIOS in the rig. A whole
+installed system has not yet been booted on legacy BIOS.
 
 ### The NVRAM boot entry
 
@@ -959,13 +1007,13 @@ nothing but its reporting function can write to that pipe. Each line starts with
 | `F` | Failed, with a message |
 | `D` | Done |
 
-The parent acts on every letter except `W`: it has no handler for warnings and discards them, so
-they reach neither the screen nor `/var/log/kinstall.log`. The child sends a `W` for a missing
-`BOOTIA32.EFI`, a failed `limine bios-install` or a missing `limine`, a missing ESP partition
-index, an ESP with no room for a second slot, and an application import or build that fell back
-to pending. The ESP check logs the free space and the need separately, and the fallback shows as
-the pending route's log line, `<n> group(s) recorded for the first login`; the others leave no
-record of what went wrong.
+A warning is written to `/var/log/kinstall.log` with a `warning:` prefix and kept, up to eight of
+them, for the Install page's **WARNINGS** list and the Done page's **FINISHED WITH WARNINGS**; a
+retried step that sends the same warning again adds no second entry. The child sends a `W` for a
+missing `BOOTIA32.EFI`; on a UEFI machine, for a reused GPT disk with no BIOS boot partition, a
+failed `limine bios-install` or a missing `limine` (on a legacy BIOS machine each of those is an
+`F`); a missing ESP partition index; an ESP with no room for a second slot; and an application
+import or build that fell back to pending.
 
 A step starting closes every earlier step still marked running, not only the one before it. A
 skipped step often sits between two real ones (no repartition, no theme), and closing only the

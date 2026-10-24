@@ -16,7 +16,7 @@ source script/lib/port.sh
 
 mkdir -pv $SYSROOT/{etc,var,tmp,root,home,run,dev,proc,sys}
 mkdir -pv $SYSROOT/usr/{bin,lib,sbin,include,share,local}
-mkdir -pv $SYSROOT/var/{lib,log,local,tmp}
+mkdir -pv $SYSROOT/var/{empty,lib,log,local,tmp}
 mkdir -pv $SYSROOT/var/local/log
 # 1777 on both: rootless podman/skopeo stage pulled image layers in /var/tmp.
 chmod 1777 $SYSROOT/tmp $SYSROOT/var/tmp
@@ -92,14 +92,14 @@ done
 # rebuilds. So: remember what fs/ provided last time, and on the next sync
 # delete the paths it no longer provides.
 #
-# Only ever files, and only ever files this manifest itself put there — a
-# package that later installs to the same path takes ownership and is not the
-# manifest's to remove, which is why the manifest is rewritten AFTER the copy.
+# Only paths this manifest put there: a package installing the same path later
+# owns it, so the manifest is rewritten AFTER the copy. A link is provided even
+# when its target is outside fs/ (etc/mtab, usr/lib64), hence -e OR -L.
 MANIFEST="$SYSROOT/var/lib/kdos/fs-manifest"
 if [ -f "$MANIFEST" ]; then
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
-        [ -e "$WORKSPACE/fs/$rel" ] && continue
+        [ -e "$WORKSPACE/fs/$rel" ] || [ -L "$WORKSPACE/fs/$rel" ] && continue
         if [ -f "$SYSROOT/$rel" ] || [ -L "$SYSROOT/$rel" ]; then
             echo "removing $rel (no longer in fs/)"
             rm -f "$SYSROOT/$rel"

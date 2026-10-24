@@ -403,11 +403,10 @@ the same chord brings it back.
 | `Super+Shift+W` | `micro`, the editor |
 
 Each of these is *run-or-raise*: if a window with the program's name as its app id is open, the key
-focuses and raises it; if not, the key starts `foot -e` *program*. The window the key starts carries
-`foot`'s default app id, `foot`, so the key does not find it again and each further press opens
-another window. A window opened from the Start menu is started with `--app-id=`*program*, and that
-is the window the key raises. A key whose program is not installed opens nothing, and that row is
-left off the shortcut card.
+focuses and raises it; if not, the key starts `foot --app-id=`*program* `-e` *program*, so a further
+press raises the window the key opened. A window opened from the Start menu is started with the same
+app id, and the key raises that one too. A key whose program is not installed opens nothing, and
+that row is left off the shortcut card.
 
 ### Desk accessories
 

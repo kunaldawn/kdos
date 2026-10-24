@@ -1,0 +1,25 @@
+                                                                                
+ # Home            . Trash                                                      
+                                                                                
+                                                                                
+                                        +--------------------+                  
+                                        | Open Terminal Here |                  
+                                        | Add to Places      |                  
+                                        |--------------------|                  
+                                        | New Folder         |                  
+                                        | New File           |                  
+                                        |--------------------|                  
+                                        | Sort Icons         |                  
+                                        | Refresh            |                  
+                                        |--------------------|                  
+                                        | Applications       |                  
+                                        | Change Wallpaper   |                  
+                                        | Display Settings   |                  
+                                        | Settings           |                  
+                                        |--------------------|                  
+                                        | Show Desktop       |                  
+                                        | Screenshot         |                  
+                                        | Lock Screen        |                  
+                                        +--------------------+                  
+ Arrows select | Esc Cancel | Up/Down move | Enter pick                         
+-- 3 of 3 events read

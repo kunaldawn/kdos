@@ -3,8 +3,8 @@
   kdos-comp root menu — right-click (or middle-click) the desktop.
 
   labwc's built-in default is three items: Terminal, Reconfigure, Exit. That
-  is a compositor's menu, not a desktop's, and it was what a KDOS user got
-  because this file did not exist.
+  is a compositor's menu, not a desktop's, and it is what a KDOS user would
+  get without this file.
 
   IT DELIBERATELY DOES NOT LIST APPLICATIONS. Applications, Places and System
   are kdos-menu — a character-cell program that reads the same desktop entries
@@ -21,7 +21,7 @@
       <action name="Execute" command="foot"/>
     </item>
     <item label="Files">
-      <action name="Execute" command="foot -e mc"/>
+      <action name="Execute" command="foot --app-id=mc -e mc"/>
     </item>
     <item label="Run…">
       <action name="Execute" command="kdos-run"/>

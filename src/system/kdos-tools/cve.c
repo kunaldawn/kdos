@@ -14,10 +14,11 @@
  * enough to carry: 270 KB for 798 packages and 4 099 fix records.
  *
  * The question asked is exactly the one the data can answer: **is the version
- * we pin older than the version Alpine says fixed this CVE?** That is a
- * comparison, not a scan; nothing here reads a binary, and the comparator is
- * libkpkg's `kp_vercmp` — the same one `kdos-portup` uses to decide whether
- * upstream is newer, because they are the same question.
+ * we pin older than the version Alpine says fixed this CVE, on the branch we
+ * pin?** (see check_one). That is a comparison, not a scan; nothing here
+ * reads a binary, and the comparator is libkpkg's `kp_vercmp` — the same one
+ * `kdos-portup` uses to decide whether upstream is newer, because they are
+ * the same question.
  *
  * What it will NOT do:
  *
@@ -153,80 +154,137 @@ static int cve_seen(const char *list, const char *want)
 	return 0;
 }
 
+/* The branch a version belongs to: its first two dot-separated fields,
+ * `3.6` of `3.6.7`. A version with one field is its own branch. */
+static void branch_of(const char *v, char *out, size_t cap)
+{
+	kb_strlcpy(out, v, cap);
+	char *dot = strchr(out, '.');
+	if (dot && (dot = strchr(dot + 1, '.')))
+		*dot = 0;
+}
+
+#define CVE_ROWS 256
+
+struct cve_row {
+	char ver[64];		/* the fixed version, revision cut off */
+	const char *cves;	/* into the caller's copy of the table */
+};
+
 /*
- * Walk the table for one package. `have` is what we pin; every row whose fixed
- * version is NEWER is a hole we are still in.
+ * Every row for one package, with the fixed versions bare. The CVE lists
+ * point into `copy`, the package's lines copied out of the table, which the
+ * caller frees.
+ */
+static int rows_for(const char *db, const char *alpine, struct cve_row *rows,
+		    int max, char **copy)
+{
+	size_t alen = strlen(alpine);
+	KbBuf b = {0};
+	int n = 0;
+
+	for (const char *line = db; line && *line;) {
+		const char *nl = strchr(line, '\n');
+		size_t len = nl ? (size_t)(nl - line) : strlen(line);
+		if (*line != '#' && !strncmp(line, alpine, alen) &&
+		    line[alen] == ' ') {
+			kb_buf_add(&b, line, len);
+			kb_buf_add(&b, "", 1);
+		}
+		line = nl ? nl + 1 : NULL;
+	}
+	*copy = b.p;
+	for (size_t o = 0; b.p && o < b.n && n < max;) {
+		char *row = b.p + o;
+		o += strlen(row) + 1;
+		char *ver = row + alen + 1;
+		char *sp = strchr(ver, ' ');
+		if (!sp)
+			continue;
+		*sp = 0;
+		strip_rev(ver, rows[n].ver, sizeof(rows[n].ver));
+		rows[n].cves = sp + 1;
+		n++;
+	}
+	return n;
+}
+
+/*
+ * Which of one package's recorded CVEs are still open at `have`, the version
+ * we pin.
  *
- * Alpine writes `0` for "this branch was never affected", and that falls out of
- * the comparison for free: nothing is older than 0.
+ * Alpine records a CVE once per branch that shipped the fix, each at that
+ * branch's version: mbedtls's 3.6.7 row and its 4.1.1 row name the same
+ * CVEs. Taken row by row, a pin of 3.6.7 is "behind" 4.1.1 for holes its own
+ * release already closed. So the question is asked per CVE: it is CLOSED when
+ * a row naming it on have's branch (see branch_of) fixed it at or below have,
+ * or when have is at or above every row naming it, and open otherwise. An open
+ * CVE's fix is the lowest row above have on have's branch, or, when that
+ * branch has none, the lowest row above have on any — the nearest release that
+ * closes it. The report's "fixed in" is the newest of those, the version that
+ * closes every open one.
+ *
+ * Alpine writes `0` for "this branch was never affected", and that falls out
+ * of the comparison for free: nothing is older than 0.
  */
 static int check_one(const char *db, const char *alpine, const char *have,
 		     struct cve_hit *hit)
 {
-	size_t alen = strlen(alpine);
-	int found = 0;
+	static struct cve_row rows[CVE_ROWS];
+	char *copy = NULL;
+	int n = rows_for(db, alpine, rows, CVE_ROWS, &copy);
+	char hb[64];
+	branch_of(have, hb, sizeof(hb));
 
 	hit->cves[0] = 0;
 	hit->fixed[0] = 0;
-	for (const char *line = db; line && *line;) {
-		const char *nl = strchr(line, '\n');
-		size_t len = nl ? (size_t)(nl - line) : strlen(line);
+	for (int r = 0; r < n; r++) {
+		if (kp_vercmp(have, rows[r].ver) >= 0)
+			continue;	/* every CVE here is closed by this row */
+		char one[64];
+		for (const char *cv = rows[r].cves; *cv;) {
+			const char *comma = strchr(cv, ',');
+			size_t len = comma ? (size_t)(comma - cv) : strlen(cv);
+			if (len >= sizeof(one))
+				len = sizeof(one) - 1;
+			memcpy(one, cv, len);
+			one[len] = 0;
+			cv = comma ? comma + 1 : cv + len;
+			if (cve_seen(hit->cves, one))
+				continue;
 
-		if (*line != '#' && !strncmp(line, alpine, alen) &&
-		    line[alen] == ' ') {
-			char row[1024];
-			if (len >= sizeof(row))
-				len = sizeof(row) - 1;
-			memcpy(row, line, len);
-			row[len] = 0;
-
-			char *ver = row + alen + 1;
-			char *sp = strchr(ver, ' ');
-			if (sp) {
-				*sp = 0;
-				char bare[64];
-				strip_rev(ver, bare, sizeof(bare));
-				if (kp_vercmp(have, bare) < 0) {
-					found = 1;
-					/* The NEWEST fix we are behind is the
-					 * one to report as "fixed in": it is
-					 * the version that closes every hole
-					 * below it too. */
-					if (!hit->fixed[0] ||
-					    kp_vercmp(bare, hit->fixed) > 0)
-						kb_strlcpy(hit->fixed, bare,
-							   sizeof(hit->fixed));
-					/* The same CVE is recorded by every
-					 * branch that shipped the fix, at that
-					 * branch's version — so a merged table
-					 * names it several times and the report
-					 * would too. */
-					char one[64];
-					for (char *cv = sp + 1; *cv;) {
-						char *comma = strchr(cv, ',');
-						size_t n = comma ? (size_t)(comma - cv)
-								 : strlen(cv);
-						if (n >= sizeof(one))
-							n = sizeof(one) - 1;
-						memcpy(one, cv, n);
-						one[n] = 0;
-						if (!cve_seen(hit->cves, one)) {
-							if (hit->cves[0])
-								append(hit->cves,
-								       sizeof(hit->cves),
-								       ",");
-							append(hit->cves,
-							       sizeof(hit->cves),
-							       one);
-						}
-						cv = comma ? comma + 1 : cv + n;
-					}
+			int closed = 0;
+			const char *on_branch = NULL, *any = NULL;
+			for (int k = 0; k < n && !closed; k++) {
+				if (!cve_seen(rows[k].cves, one))
+					continue;
+				char rb[64];
+				branch_of(rows[k].ver, rb, sizeof(rb));
+				int same = !strcmp(rb, hb);
+				if (kp_vercmp(rows[k].ver, have) <= 0) {
+					closed = same;
+					continue;
 				}
+				if (!any || kp_vercmp(rows[k].ver, any) < 0)
+					any = rows[k].ver;
+				if (same && (!on_branch ||
+					     kp_vercmp(rows[k].ver,
+						       on_branch) < 0))
+					on_branch = rows[k].ver;
 			}
+			if (closed)
+				continue;
+			const char *fix = on_branch ? on_branch : any;
+			if (hit->cves[0])
+				append(hit->cves, sizeof(hit->cves), ",");
+			append(hit->cves, sizeof(hit->cves), one);
+			if (fix && (!hit->fixed[0] ||
+				    kp_vercmp(fix, hit->fixed) > 0))
+				kb_strlcpy(hit->fixed, fix, sizeof(hit->fixed));
 		}
-		line = nl ? nl + 1 : NULL;
 	}
-	return found;
+	free(copy);
+	return hit->cves[0] != 0;
 }
 
 /* Does the database carry any row for this name? Matched whole at a line
@@ -348,11 +406,18 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
 	int json = 0;
 	const char *only = NULL;
 
+	/* One port or every one. A second name is refused rather than taken in
+	 * place of the first: the report would then answer for a port the
+	 * caller never meant to ask about alone, and say nothing of the others. */
 	for (int i = 0; i < argc; i++) {
-		if (!strcmp(argv[i], "--json"))
+		if (!strcmp(argv[i], "--json")) {
 			json = 1;
-		else if (argv[i][0] != '-')
+		} else if (argv[i][0] != '-' && !only) {
 			only = argv[i];
+		} else {
+			fprintf(stderr, "usage: kdos cve [--json] [port]\n");
+			return 2;
+		}
 	}
 
 	const char *path = getenv("KDOS_SECDB");

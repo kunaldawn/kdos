@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Time
+GenericName=Date and Time Settings
+Comment=The time zone, the clock and whether the clock is right
+Exec=kdos-time
+Icon=clock
+Terminal=false
+NoDisplay=true
+Categories=Settings;
+StartupWMClass=kdos-time

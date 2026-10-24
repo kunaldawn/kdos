@@ -860,6 +860,7 @@
 545886cf57fa88a65e967fbf705903d7fcb2567c82c7342493e82e8d7b1a210b sources-1 base--gzip-1.15.tar.gz gzip/gzip-1.15.tar.gz
 547b7b7f4d2e44bf91b6fc554664850c69563701deab9fd9cd7e21f694c88ea6 sources-2 filesystem--squashfs-tools-4.7.5.tar.gz squashfs-tools/squashfs-tools-4.7.5.tar.gz
 54837e9e8c16134a3c2e95f91c5fe2f7893d4cc89f252b26735713ceca866387 sources-1 cli--parallel-20260922.tar.bz2 parallel/parallel-20260922.tar.bz2
+548480f58589a54b72d18833b755b15ffbd567e3187249d74e2e1f8f99f22fb4 sources-4 themes--adwaita-icon-theme-legacy-46.2.tar.xz adwaita-icon-theme-legacy/adwaita-icon-theme-legacy-46.2.tar.xz
 548e8f3b74e5a65f3d258b22b86d5c4044e9e4c207b73d5c825b95918e21a3a1 sources-2 files--yazi-vendor-26.9.1.tar.xz yazi/yazi-vendor-26.9.1.tar.xz
 54d4259d1bfae24ecdb5ca79f7acc2eac6c286a02d6a0ae617797cb45f0726d3 sources-3 python-dev--python3-pyzmq-27.2.0.tar.gz python3-pyzmq/python3-pyzmq-27.2.0.tar.gz
 54e3e87eece1aff22e9d6bd6798492a1d23ea5e831e9d0889b51272c7d4f6cdb sources-1 chat--iamb-0.0.12.tar.gz iamb/iamb-0.0.12.tar.gz
@@ -1710,6 +1711,7 @@ a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16 sources-3 math-
 a84559a0e987a1e423055ef4fdf3035d55b65bbe4bf915efaa1a35bef7f8c5dd sources-4 sci-libs--spooles-2.2.tgz spooles/spooles-2.2.tgz
 a87929a050f8adf2fae6a441e95461c2233d97f74de967bbf3a3c12e77b2bcf5 sources-2 fabrication--bcnc-0.9.16.tar.gz bcnc/bcnc-0.9.16.tar.gz
 a8850d841adfe8ee5f7bb9f82cf449ab9b4950dc0633897071718e0d0036b6f6 sources-4 python-gui--python3-dasbus-1.7.tar.gz python3-dasbus/python3-dasbus-1.7.tar.gz
+a8afd70059479c712948b895e41c35a4a8bfcede3ba2d5a4b855c88bbb725be1 sources-4 x11--xhost-1.0.10.tar.xz xhost/xhost-1.0.10.tar.xz
 a8c1516e741562cf95aa4479c64916c3d4d2623e24fdc35e414e2320e7300aae sources-1 crypto--libcbor-0.14.0.tar.gz libcbor/libcbor-0.14.0.tar.gz
 a8c4c4d79a2aa9b39e0efbbd3e0803f1dc5ef36f75f2c2945e295d190575eb09 sources-2 games-rpg--frotz-2.55.tar.gz frotz/frotz-2.55.tar.gz
 a8d584394cf069bf8f17cba3dd5099003b097fce316c31fb094f1b1c171c08a3 sources-3 perl-cpan--perl-yaml-tiny-1.76.tar.gz perl-yaml-tiny/perl-yaml-tiny-1.76.tar.gz

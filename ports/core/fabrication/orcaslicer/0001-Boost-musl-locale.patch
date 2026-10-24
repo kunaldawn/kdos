@@ -1,3 +1,13 @@
+Subject: Convert paths with Boost.Filesystem's UTF-8 codecvt facet on Linux without glibc
+
+Applied by the superbuild to its Boost (see deps-musl-patch-step.patch).
+Boost.Filesystem builds its path locale on Linux as std::locale(""). On
+musl, libstdc++ uses its generic locale model, whose codecvt converts
+through the C library's current locale whatever the C++ locale's name,
+and that is "C" until the program calls setlocale, so the characters of
+a UTF-8 path above U+007F would not be decoded. Linux without glibc now
+gets the UTF-8 codecvt facet the BSDs get.
+
 diff --git a/libs/filesystem/src/path.cpp b/libs/filesystem/src/path.cpp
 --- a/libs/filesystem/src/path.cpp
 +++ b/libs/filesystem/src/path.cpp
@@ -10,14 +20,16 @@ diff --git a/libs/filesystem/src/path.cpp b/libs/filesystem/src/path.cpp
  #include <boost/filesystem/detail/utf8_codecvt_facet.hpp>
  #endif
  
-@@ -1329,7 +1329,10 @@
+@@ -1329,7 +1329,12 @@
  #if defined(BOOST_WINDOWS_API)
      std::locale global_loc = std::locale();
      return std::locale(global_loc, new boost::filesystem::detail::windows_file_codecvt());
 -#elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__HAIKU__)
 +#elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__HAIKU__) || (defined(__linux__) && !defined(__GLIBC__))
-+    // musl's libstdc++ builds only the "C" locale by name, so std::locale("")
-+    // throws under a UTF-8 LANG; file names there are UTF-8, as on the BSDs.
++    // On Linux without glibc, libstdc++'s generic locale model converts through
++    // the C library's current locale ("C" until the program calls setlocale)
++    // whatever name std::locale("") was given; file names there are UTF-8, as on
++    // the BSDs.
 +    //
      // "All BSD system functions expect their string parameters to be in UTF-8 encoding
      // and nothing else." See

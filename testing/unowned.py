@@ -10,6 +10,7 @@
 # ---------------------------------
 #
 #   python3 testing/unowned.py [--root build/fs] [--fs fs] [--all]
+#                              [--fail-under DIR]...
 #
 # A file nothing owns is one no removal takes away and no update replaces: a
 # build that wrote outside its package root, a tool run against the live root,
@@ -41,8 +42,14 @@
 #     bytecode.
 #
 # Grouped by top directories, largest group first; --all lists every path.
-# Exit status 1 when anything is reported, 0 otherwise. 70_image runs it as a
-# report (087_gates.sh) and does not stop on its status.
+# Exit status 1 when anything is reported, 0 otherwise. With --fail-under,
+# which may be repeated, every finding is still reported, but the status is 1
+# only when one lies under a named directory, and each such path is printed
+# on a FAIL line. 70_image runs it in 087_gates.sh with --fail-under for
+# usr/share/locale, usr/share/man, usr/share/doc and usr/share/info, where
+# 020_cleanup.sh has already removed what the size and language policy
+# prunes, so a file left there is one the policy does not cover and nothing
+# owns; any other finding is a report the step does not stop on.
 
 import argparse
 import fnmatch
@@ -71,6 +78,7 @@ GENERATED = (
     'usr/lib/gio/modules/giomodule.cache',
     'usr/lib/gdk-pixbuf-2.0/*/loaders.cache',
     'usr/share/applications/mimeinfo.cache',
+    'usr/lib/vlc/plugins/plugins.dat',
     'usr/share/icons/*/icon-theme.cache',
     'usr/share/fonts/*/fonts.dir',
     'usr/share/fonts/*/fonts.scale',
@@ -140,7 +148,10 @@ def main():
     ap.add_argument('--root', default='build/fs')
     ap.add_argument('--fs', default='fs', help="the repository's fs/ tree")
     ap.add_argument('--all', action='store_true', help='list every unowned path')
+    ap.add_argument('--fail-under', action='append', default=[], metavar='DIR',
+                    help='exit 1 only for a finding under DIR (root-relative); repeatable')
     a = ap.parse_args()
+    fail_under = [d.strip('/') + '/' for d in a.fail_under]
 
     root = a.root
     if not os.path.isdir(os.path.join(root, 'var/lib/kpkg/db')):
@@ -172,7 +183,12 @@ def main():
             print('    ' + rel)
     print(f'unowned: {len(hits)} paths, {sum(s for _, s in hits)} bytes, '
           f'in {len(groups)} groups')
-    return 1 if hits else 0
+    if not fail_under:
+        return 1 if hits else 0
+    fails = sorted(rel for rel, _ in hits if rel.startswith(tuple(fail_under)))
+    for rel in fails:
+        print(f'FAIL unowned /{rel}')
+    return 1 if fails else 0
 
 
 if __name__ == '__main__':

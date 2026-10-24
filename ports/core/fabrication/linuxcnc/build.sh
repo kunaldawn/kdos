@@ -10,6 +10,7 @@
 
 patch -p1 -i "$PORT_SRC/musl.patch"
 patch -p1 -i "$PORT_SRC/tcl9.patch"
+patch -p1 -i "$PORT_SRC/tk9-trace-add.patch"
 patch -p1 -i "$PORT_SRC/no-preconv.patch"
 patch -p1 -i "$PORT_SRC/link-ldflags.patch"
 patch -p1 -i "$PORT_SRC/pygi-glib.patch"

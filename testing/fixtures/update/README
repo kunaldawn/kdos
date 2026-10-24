@@ -10,3 +10,8 @@ package database and its boot state — none of which a golden may depend on, so
 The security table's own AGE is in cve.json on purpose: a table three months
 stale reporting nothing to fix is worse than no answer, and the golden is what
 proves the age reaches the screen.
+
+cve-bundled.json is the answer of a machine with nothing to fix and two bundled
+copies. `kdos cve --json` writes its `"bundled"` rows after the findings in the
+same shape, `port` key included, so the frame it draws must say 0 with a known
+vulnerability: a count of 2 is the bundled rows read as findings.

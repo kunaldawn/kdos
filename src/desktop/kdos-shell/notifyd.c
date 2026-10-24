@@ -867,7 +867,7 @@ static void draw_body_line(const struct toast *t, int start, int len, int x,
 			rn = (int)sizeof(run) - 1;
 		memcpy(run, t->body + i, (size_t)rn);
 		run[rn] = '\0';
-		int fg = KT_DIM, bg = KT_BG, attr = KT_A_NONE;
+		int fg = KT_MID, bg = KT_BG, attr = KT_A_NONE;
 		if (st & ST_A)
 			fg = KT_ACCENT;
 		if (st & ST_U)

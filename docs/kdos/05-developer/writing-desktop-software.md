@@ -403,12 +403,17 @@ implementation of any of these diverges from `libkchrome` as soon as either one 
 
 ```c
 ktui_draw_box(krect(0, 0, w, h), " Updates ", KT_ACCENT, KT_BG, 1);
-int top = kch_header(w, "system-software-update", "Updates", sub, icons_on);
+int top = kch_header(w, "system-upgrade", "Updates", sub, icons_on);
 kch_group(2, top, w - 4, "Behind");
 int left = kch_buttons(w, h - 3, buttons, nbuttons, focus);  /* its own left edge */
 ```
 
 `kch_header()` draws the band in rows 1 to 3 of a boxed window and returns the first body row.
+Its icon is a `kicon_slot_ink()` in the title's slot, which answers -1 until `kicon_init()` has run, so a header drawn by
+a program that never initialised the icon layer has no picture and nothing says so. Every front end
+that draws one initialises the layer after `kdisp_init()` (see [Pixel tiles](#pixel-tiles)
+below), and `testing/preflight.sh` fails a front end that asks for an
+icon and initialises nothing.
 `kch_buttons()` draws at most eight buttons (`SH_MAX_BTN`), right-aligned; when the bar is too wide
 for the window it drops whole buttons from the right, so callers order them most useful first. It
 returns its left edge because the status line shares that row: draw the bar first and clip the
@@ -552,6 +557,13 @@ if (slot >= 0) ktui_draw_sprite(krect(x, y, 2, 1), slot, KT_TEXT, KT_BG);
 else           ktui_draw_text(x, y, 2, fallback_glyph, KT_MID, KT_BG, 0);
 ```
 
+A picture on a lit plate (the `KT_ACCENT` header band is the one in the shell) is asked for with
+`kicon_slot_ink(name, cw, ch, rgb)`, with `rgb` the colour of the slot the plate's text is drawn
+in, read from `ktui_theme->slot[]` at draw time. A one-colour atlas picture is then drawn in that
+ink; through `kicon_slot()` its tint stays light and it vanishes on a light plate. Pictures of
+several colours and application icons come back unchanged. See
+[A picture on a lit plate is inked](../03-architecture/design-language.md#a-picture-on-a-lit-plate-is-inked).
+
 A sprite is two cells wide and one tall wherever it sits beside text. A cell is 16×32 pixels on
 this desktop, twice as tall as it is wide, so two by one is a square on the text's own line. A
 two-by-two box next to a single row of text centres the picture across the row boundary and makes
@@ -644,7 +656,10 @@ that does not fit takes its cell form.
 
 Colour comes from the eight palette slots and never from a literal: `KT_BG`, `KT_ERR`,
 `KT_ACCENT`, `KT_WARN`, `KT_DIM`, `KT_MID`, `KT_SURFACE` and `KT_TEXT`. Use `KT_MID` for labels.
-`KT_DIM` is a fill and measures below any contrast floor for text.
+`KT_DIM` is a fill and measures below any contrast floor for text. `testing/preflight.sh` refuses a
+text draw whose foreground can be `KT_DIM`; a rule, shade or block glyph and a blank cell pass, and
+anything else in `KT_DIM` that is not read, such as a grid of dots, carries `/* not text */` inside
+the call.
 
 Emphasis is a fill with swapped slots, never a reverse attribute over a label. The attribute
 inverts only the cells a glyph covers, so a two-word name comes out as one lit block per word.
@@ -672,7 +687,7 @@ code or a units suffix left muted vanishes exactly when the row is selected.
 ## A minimal surface
 
 The pieces above fit together in one descriptor. This is the shape of a boxed `kdos-shell` window
-with a `--dump` path, reduced from `src/desktop/kdos-shell/firewall.c` (326 lines, one of the
+with a `--dump` path, reduced from `src/desktop/kdos-shell/firewall.c` (327 lines, one of the
 smallest complete windows in the tree and a reasonable file to copy). The `kdos_disp` array is
 defined once per program, in `kdos-shell`'s `main.c`, and declared in `shell.h`, where `ShSurface`
 and `sh_run()` are declared too.
@@ -717,13 +732,17 @@ int thing_main(int argc, char **argv)
 
 1. It reads `--font NAME` and `--dump`, hands every other word to the descriptor's `arg()` and
    prints `usage: <app_id> <usage>` with exit status 2 for one that nobody takes.
-2. It calls `start(dump)`, where the surface reads what it shows, and then applies the theme.
+2. It calls `start(dump)`, where the surface reads what it shows, and then applies the theme and
+   night light through `ktui_theme_load()`.
 3. With `--dump` it draws one frame offscreen at `.cols` × `.rows` through the same `draw()` and
    prints it, before `kdisp_init()` is reached. That is what makes the golden a picture of the real
    surface.
-4. Otherwise it calls `kdisp_init()`, or prints `<app_id>: no display server` and exits 1, puts the
-   popup plate under an overlay that asks for one (`.popup`, `.popup_bg`) and calls `ready()`.
-5. Each pass polls the theme file and draws; the poll waits `timeout()` milliseconds (1000 without
+4. Otherwise it calls `kdisp_init()`, or prints `<app_id>: no display server` and exits 1. When
+   `.icons` points at a set flag (the surface's own `icons_on`, which `--no-icons` clears) it then
+   calls `sh_pic_backend()` and `kicon_init()`. It puts the popup plate under an overlay that asks
+   for one (`.popup`, `.popup_bg`) and calls `ready()`. A surface that names an icon in its header
+   and leaves `.icons` NULL draws the header with no picture.
+5. Each pass polls the theme file and the `night-light` toggle and draws; the poll waits `timeout()` milliseconds (1000 without
    one), and `wake()` runs after it whether an event came or not. A timeout runs `tick()` and then
    the resize step; an animation's frame tick runs the resize step alone, and the next pass draws. An event goes to `ktui_keys()` first, where `CLOSE` ends the loop, `TAKEN`
    goes no further and a menu pick goes to `menu(id)`, and then to `event()`.
@@ -1022,10 +1041,16 @@ several places, and most of them fail silently.
    line to an error stream nobody reads and exits before a surface exists, so the symptom is a
    control that silently does nothing. A front end on `sh_run()` takes `--font` and `--dump` in
    `shell.c`, and the check reads that file for them.
-8. If it opens files by type, give it a desktop entry. The `kdos-shell` front ends that have one,
-   `kdos-peek`, `kdos-pix` and `kdos-burn`, ship it under `fs/usr/share/applications/` with `NoDisplay=true`
-   and a `MimeType=` line, so a file of that type can be opened with it while the menu does not
-   list it. The entry's file name is the front end's `app_id` plus `.desktop`.
+8. If it opens a window, give it a desktop entry. Every `kdos-shell` front end that asks for
+   `KDISP_ROLE_TOPLEVEL` ships one under `fs/usr/share/applications/`, named after its `app_id`
+   plus `.desktop`, with `NoDisplay=true` so the menu does not list it, and `Name=`, `Icon=`,
+   `Exec=` and `StartupWMClass=`. The taskbar, the window switcher and `kdos appid` find a window's
+   name and picture through that entry; without one the taskbar draws the first letter of the
+   title and `kdos appid` reports a `MISMATCH`. `Icon=` names a picture the icon atlas carries,
+   because the atlas holds no application artwork to fall back to. A front end that opens files
+   by type adds a `MimeType=` line, as `kdos-peek`, `kdos-pix` and `kdos-burn` do, so a file of
+   that type can be opened with it. `testing/preflight.sh` refuses a toplevel `app_id` with no
+   entry.
 
 ## A program of its own
 
@@ -1202,7 +1227,7 @@ restated as a procedure:
 |---|---|---|
 | 1 | Box the surface with `ktui_draw_box()`, title on the top edge | `--dump` |
 | 2 | Header band, group headings and button bar from `libkchrome` | `grep kch_` |
-| 3 | Slots for colour, `KT_MID` for labels; selection through `ktui_sel_slots()`, secondary columns through `ktui_sel_dim()` | `grep KT_DIM` in foreground positions; `grep 'KT_ACCENT :'`, where a match is a surface deciding for itself |
+| 3 | Slots for colour, `KT_MID` for labels; selection through `ktui_sel_slots()`, secondary columns through `ktui_sel_dim()` | `testing/preflight.sh` ("no text is drawn in KT_DIM"), which reads the foreground of every text draw, across line breaks and through ternaries; `grep 'KT_ACCENT :'`, where a match is a surface deciding for itself |
 | 4 | Motion, press, wheel, scrollbar drag and header sort | `grep -c KT_EVT_MOUSE`; zero is the defect |
 | 5 | A hit map recorded from the draw | Resize the window and click the top row |
 | 6 | Dump at two sizes and commit both goldens | `testing/devdeps-image.sh` |

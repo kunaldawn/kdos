@@ -1,0 +1,49 @@
+# Gzip
+
+gzip compresses and decompresses the `.gz` format. Many upstream sources still ship as `.tar.gz`,
+and `tar` calls `gzip` to read them, so it is in the root before the first port is built. This
+page shows the commands of `script/phases/10_bootstrap/060_gzip.sh` and explains them.
+
+**Source:** the archive of the [gzip](#port-gzip) port\
+**Installs into:** `build/fs/usr`\
+**Approximate build time:** 0.2 SBU
+
+## Installation of gzip
+
+<!-- kfs:include script/phases/10_bootstrap/060_gzip.sh lines=24-33 pin=651f8ca9bfd0 -->
+
+gzip is configured in its source directory, as its own build expects.
+
+### The meaning of the configure options
+
+`--host=$KDOS_TARGET`, `--build=$(build-aux/config.guess)`
+: A cross build: compiled by the cross toolchain, with configure running no test program (see
+  [Part III](intro.md#the-shape-of-a-step)). gzip keeps `config.guess` in `build-aux/`, as every
+  gnulib-based package from here to `068_sed.sh` does.
+
+`--prefix=/usr`
+: Install under `/usr`.
+
+## Contents of gzip
+
+**Installed programs:** [`gzip`]{.idx}, [`gunzip`]{.idx}, [`zcat`]{.idx}, [`uncompress`]{.idx}, [`gzexe`]{.idx}, [`zcmp`]{.idx}, [`zdiff`]{.idx},
+[`zegrep`]{.idx}, [`zfgrep`]{.idx}, [`zforce`]{.idx}, [`zgrep`]{.idx}, [`zless`]{.idx}, [`zmore`]{.idx} and [`znew`]{.idx}. Most of them are shell scripts
+around `gzip`.
+
+The [gzip](#port-gzip) port's page describes each program.
+
+## Built again later
+
+The [gzip](#port-gzip) port, in `30_foundation`, rebuilds it natively with `--prefix=/usr` alone,
+and kpkg adopts the files this step installed. Apart from the two switches of the cross build, the
+two builds are the same.
+
+## See also
+
+- [Part III](intro.md): the bootstrap
+- [Tar](061-tar.md): the program that calls this one
+
+<!-- book-nav -->
+---
+
+*Part III. The bootstrap, chapter 14.* Previous: [13. Xz](050-xz.md) · [Contents](../README.md) · Next: [15. Tar](061-tar.md)

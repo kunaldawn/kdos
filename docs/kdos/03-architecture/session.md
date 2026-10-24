@@ -156,7 +156,13 @@ included. Where that directory is absent the layout is exported unchecked.
    without virgl there is no GL at all. It reads the feature bit from
    `/sys/bus/virtio/devices/*/features` rather than from the kernel log: the log is root-only
    under `dmesg_restrict`, so reading it would force software rendering for every ordinary user.
-3. Runs `kdos_session_runtime`, `kdos_session_keymap`, `kdos_session_boxes` and
+3. When there is no render node at all (no `/dev/dri/renderD*`), sets `WLR_RENDERER=pixman`.
+   A display device without one has no GL of its own: QEMU's standard VGA (`bochs-drm`) and QXL,
+   `simpledrm`, and the server and hypervisor adapters (`ast`, `mgag200`, `cirrus`,
+   `hyperv_drm`, `vboxvideo`). Its only GL is Mesa's software rasteriser, which wlroots either
+   refuses as software or composites on in GLES2 as `llvmpipe`, emulating on the CPU what the
+   pixman renderer draws directly.
+4. Runs `kdos_session_runtime`, `kdos_session_keymap`, `kdos_session_boxes` and
    `kdos_session_bus`, then executes `kdos-desktop-start`.
 
 The compositor talks to `seatd` through libseat. `seatd` is a small daemon that hands the
@@ -176,6 +182,13 @@ there is no logind or elogind on the host. How this compares with a systemd-base
 5. Runs `kdos-comp` in the foreground, with its standard error written to
    `$XDG_RUNTIME_DIR/kdos-comp.log` (the previous session's log is kept as `kdos-comp.log.old`)
    and shown on the terminal as well.
+6. When the compositor fails, no renderer was chosen and the log says `Software rendering
+   detected`, sets `WLR_RENDERER=pixman` and runs it once more, in place. wlroots refuses only an
+   EGL device that reports itself as software. A device whose Mesa falls back to `kms_swrast`
+   instead is not refused: the compositor runs in GLES2 on `llvmpipe`, and declines only the
+   [phosphor pass](../04-programs/kdos-comp.md#the-phosphor-pass), by the GL renderer's name. The
+   retry is in place rather than a re-execution of the script so that the background subshells
+   of step 3, still waiting for a socket, start the portals and helpers once.
 
 The compositor has start-up hooks of its own, inherited from labwc, the compositor `kdos-comp`
 is forked from: it reads an optional `environment` file and runs optional `autostart` and
@@ -194,6 +207,14 @@ When the compositor exits:
   with `exec`, so a session that fails to come up also leaves a working shell. Typing `exit` there
   ends the login; tty1 then gets a fresh login, and with autologin on that logs straight back in
   and starts the desktop again.
+
+  Log Out stops only the compositor and what needs its display, such as the screen-capture
+  backend. Everything else the session started is still running at that prompt: PipeWire,
+  WirePlumber and `pipewire-pulse`, mpd and its watcher, the per-user timer loops and the
+  `kdos-box gc` loop. All of them are in the login's own session on tty1, so the hangup that ends
+  the login ends them too. The session bus is not: `dbus-daemon --fork` starts a session of its
+  own, and the bus runs until the machine shuts down, with the portal front end and every other
+  service it activated; the next session's start replaces the front end.
 - **Any other status is a crash.** The script prints the last 20 lines of the log and asks
   `r=restart session, anything else=exit to tty`. Answering `r` re-executes the script, which
   starts the portal stack again (the screen-capture backend died with the compositor) but not a
@@ -220,7 +241,7 @@ background subshell so that none of it delays the desktop:
 |---|---|---|
 | The login sound (`kdos-sfx login`) | `kdos-sfx` installed | Silent on failure |
 | The keybinding card (`kdos-keys --first-run`) | `~/.config/kdos/first-run` does not exist | `kdos-keys` writes the marker once the card has been seen; delete it to see the card again |
-| `mpd --no-daemon` and `kdos-mpctl watch` | `mpd` installed and a readable config in `~/.config/mpd/mpd.conf`, `~/.mpdconf`, `~/.mpd/mpd.conf` or `/etc/mpd.conf` | The image ships no mpd config, so this is opt-in. mpd stays a child of the login and ends with it; one already running is left alone. The watcher feeds the panel's media cell |
+| `mpd --no-daemon` and `kdos-mpctl watch` | `mpd` installed and a readable config in `~/.config/mpd/mpd.conf`, `~/.mpdconf`, `~/.mpd/mpd.conf` or `/etc/mpd.conf` | The image ships no mpd config, so this is opt-in. mpd keeps running after Log Out and ends with the login; one already running is left alone. The watcher feeds the panel's media cell |
 | The pending-applications offer | See [below](#applications-chosen-during-installation) | |
 | The per-user timers | `~/.config/kdos/timers.d/*.timer` and `snooze` | See below |
 | Session restore | `~/.config/kdos/session-restore` exists | Relaunches the `app` lines of `${XDG_STATE_HOME:-~/.local/state}/kdos/session` with `kdos-appbox run`, two seconds apart |
@@ -236,7 +257,8 @@ loop stops a command that fails instantly from spinning it. The loops are childr
 login, not of a root service. Their process ids are written to
 `$XDG_RUNTIME_DIR/kdos/timers.pid`, and the next session start on the same boot stops the
 previous set (each loop's `snooze` child first) before starting its own. Nothing stops them when
-the compositor exits, so they keep running at the tty1 prompt a logout leaves.
+the compositor exits, so they keep running at the tty1 prompt Log Out leaves; they end with the
+login.
 
 Two tables are shipped in `/etc/skel`: `20-updatedb.timer` rebuilds the `plocate` index of the
 home directory nightly at 03:05, and `10-backup.timer` holds a nightly `kdos-backup --once` line
@@ -294,14 +316,15 @@ Three details of the startup matter:
   `flock`), so two sessions starting at once cannot both decide the daemon is down, with the
   loser removing the winner's socket.
 - **The lock is closed for the daemon** (`7>&-`). `dbus-daemon --fork` inherits open descriptors
-  and outlives the subshell, so without that it would hold the lock until logout, and the
-  *second* login of a boot would block before starting the compositor.
+  and outlives the subshell and every login, so without that it would hold the lock until
+  shutdown, and the *second* login of a boot would block before starting the compositor.
 
 ## Audio
 
 PipeWire runs on the host, started by `kdos_session_audio` from `kdos-desktop-start`, once per
 user: a restart finds it running and starts nothing, because two PipeWire daemons would fight
-over the same devices. Three programs, in this order:
+over the same devices. It keeps running after Log Out and ends with the login, so the next login
+starts it again. Three programs, in this order:
 
 1. `pipewire`, the media graph;
 2. `wireplumber`, its session manager, which connects to the daemon's socket;
@@ -369,7 +392,7 @@ The file defines two devices and a default:
 | Name | Is | Shown as |
 |---|---|---|
 | `kdos_pipewire` | PipeWire | "Default Audio Device (PipeWire)" |
-| `kdos_card` | `plug` onto `sysdefault`, the card directly | "Sound Card (no sound server)" |
+| `kdos_card` | `empty`, a pass-through, onto `sysdefault`: the card directly | "Sound Card (no sound server)" |
 | `pcm.!default` | Whichever PCM `$KDOS_ALSA_DEFAULT` names; `kdos_pipewire` when unset | |
 
 A login that runs no session script has no PipeWire: a tty2 login, a serial console and an ssh
@@ -388,6 +411,12 @@ hardware, so the panel's volume control keeps working when PipeWire is what went
 Every redefinition in that file carries its `!`. The hooks run after the rest of `alsa.conf` is
 parsed, so a plain `pcm.default { … }` aborts the whole configuration load and leaves every ALSA
 program with no configuration at all. Check any edit with `aplay -L`.
+
+`kdos_card` is a pass-through and not a `plug` of its own. `pcm.!default` is already a `plug`, and
+`sysdefault` starts with one, so a third between them makes alsa-lib abort whatever program opens
+`default` with `Assertion failed: !snd_interval_empty(i)` and exit status 134, while
+`aplay -D kdos_card` on its own still plays. Check an edit to either device with
+`KDOS_ALSA_DEFAULT=kdos_card aplay <file>.wav` as well as `aplay -L`.
 
 ### JACK programs on the host
 
@@ -518,12 +547,21 @@ die at once. A background subshell of `kdos-desktop-start` therefore does five t
 2. Pushes `WAYLAND_DISPLAY`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_TYPE`, `XCURSOR_THEME`,
    `XCURSOR_SIZE` and `BROWSER` into the bus's activation environment with
    `dbus-update-activation-environment`.
-3. Starts the capture backend, `/usr/lib/xdg-desktop-portal-wlr`.
-4. Waits (up to 20 seconds) for it to own `org.freedesktop.impl.portal.desktop.wlr`.
-5. Stops any front end that is already running, and starts `/usr/lib/xdg-desktop-portal`.
+3. Asks the bus to start the capture backend (`StartServiceByName`
+   `org.freedesktop.impl.portal.desktop.wlr`), and repeats the request, up to 100 times and 0.2
+   seconds apart, until the backend owns its name: a backend a client activated with the old
+   environment may still be pending, and the bus answers the first request with it.
+4. Ends any front end that is already running with SIGTERM, and waits (up to 5 seconds) for
+   `org.freedesktop.portal.Desktop` to have no owner.
+5. Asks the bus to start the front end (`StartServiceByName` `org.freedesktop.portal.Desktop`).
 
 If the front end starts before the capture backend owns its name, screen capture is unavailable
 for the whole session (OBS reports "No capture sources available").
+
+Neither is started by running its binary. The bus runs one instance per name and folds every
+concurrent request into it. A copy run by hand alongside one a client's call has activated makes
+two front ends; one loses the name and exits, and which one survives is a race, so it can be the
+one that started before the capture backend.
 
 ### The KDOS backend
 
@@ -712,6 +750,14 @@ anything and the file would end empty with no error. The frames come from
 line, a still screen is captured and encoded at the output's own refresh rate for as long as the
 recording runs.
 
+**The capture survives the pipeline's start.** `pipewiresrc` pauses and resumes the stream on
+its way to playing, while it still holds the stream's buffers, so the backend comes back to
+streaming with no buffer to fill. The stream is its own driver, so nothing asks for a frame again
+unless a capture completes; `xdg-desktop-portal-wlr`'s `stream-start-retry.patch` arms its retry
+timer at that point, and a capture timed for a buffer the pause took back asks the stream for
+another. Without it a recording is a header with at most one frame. On the software renderer
+the frames are copied into shared memory, so a recording there needs no GPU.
+
 **A portal session belongs to one connection**, which is why `kdos-record` is a program rather
 than a script. The portal ties a session to the unique bus name that created it and closes it
 when that name leaves the bus, so a shell script making three `gdbus call` invocations makes
@@ -731,7 +777,8 @@ runtime directory.
 The compositor starts and supervises the desktop's own programs (its *chrome*) from a table in
 `src/desktop/kdos-comp/src/kdos-child.c`, and restarts one when it exits. The mechanism (the
 reasons each program is single-instance or per-output, the crash limit, the signal reset before
-`exec`, what happens to a removed output's children and the table's capacity) is described once,
+`exec`, what happens to a removed output's children, the table's capacity, and the `SIGTERM`
+every child is sent when the compositor exits) is described once,
 in [kdos-comp](../04-programs/kdos-comp.md#supervised-children). This section covers what the
 session sees of it.
 
@@ -754,6 +801,10 @@ height, clock format, margin, opacity and autohide setting from the same file, a
 the panel and the desktop when `icons = no`, and `--hidden` to the on-screen keyboard, which it
 then shows and hides by signal; the keys are listed in
 [kdos-comp](../04-programs/kdos-comp.md).
+
+The chrome lives exactly as long as the compositor: when it exits, every child is sent `SIGTERM`,
+so a desktop restarted from tty1 starts its chrome against no leftover instance still holding a
+bus name or a NetworkManager agent registration.
 
 The per-output programs are started with `--output <name>`, one process per screen, because a
 layer surface (a panel-like surface the compositor anchors to a screen edge) is placed on one

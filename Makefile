@@ -193,6 +193,8 @@ build: check-iso-free ## build everything in the container (BUILD_ARGS narrows i
 		-v $$(pwd)/ports:/workspace/ports:ro \
 		-v $$(pwd)/docs:/workspace/docs:ro \
 		-v $$(pwd)/testing:/workspace/testing:ro \
+		-v $$(pwd)/Makefile:/workspace/Makefile:ro \
+		-v $$(pwd)/Dockerfile:/workspace/Dockerfile:ro \
 		$(DOCKER_TTY) os-dev script/kdosbuild.sh $(BUILD_ARGS)
 
 snapshots: ## list the phase snapshots
@@ -263,13 +265,18 @@ clean: ## wipe build/ except keys
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name keys -exec rm -rf {} + || true
 
-# The checks that stand in for a build. check runs the four that need no built
+# The checks that stand in for a build. check runs the seven that need no built
 # tree; depdrift, debuginfo, unowned, linkcheck and entrycheck read build/fs,
 # which is root's, so they are run from a container or as root. SELFTEST_CC is
-# the compiler selftest-asan uses.
+# the compiler selftest-asan uses. docscheck, anchorcheck and booknav cover
+# both books, docs/kdos and docs/kfs; `make booknav-write` rewrites the
+# chapter footers and KDOS from Scratch's contents that booknav checks.
+# KFSCHECK_ARGS goes to kfscheck, e.g.
+#   make kfscheck KFSCHECK_ARGS="--strict --base origin/main"
 SELFTEST_CC ?= cc -fsanitize=address,undefined -g
+KFSCHECK_ARGS ?=
 
-check: preflight selftest docscheck phaseclosure ## preflight + selftest + docscheck + phaseclosure
+check: preflight selftest docscheck anchorcheck booknav kfscheck phaseclosure ## preflight + selftest + docscheck + anchorcheck + booknav + kfscheck + phaseclosure
 
 preflight: ## the build's wiring, minus the build (~2.5 min)
 	testing/preflight.sh
@@ -280,8 +287,20 @@ selftest: ## the libk* libraries and their consumers (~2.5 min)
 selftest-asan: ## selftest under AddressSanitizer and UBSan (parsers)
 	CC="$(SELFTEST_CC)" testing/selftest.sh
 
-docscheck: ## the book: links, prose, page contract
+docscheck: ## both books: links, prose, page contract, the wiki skeleton, port counts
 	bash testing/docscheck.sh
+
+anchorcheck: ## every #fragment link in both books lands on a heading
+	python3 testing/anchorcheck.py
+
+booknav: ## every chapter footer, and KDOS from Scratch's contents, match the order
+	python3 testing/booknav.py
+
+booknav-write: ## rewrite the chapter footers and KDOS from Scratch's contents
+	python3 testing/booknav.py --write
+
+kfscheck: ## KDOS from Scratch: sidecars, notes, patch headers, data stamp, includes, render
+	python3 testing/kfscheck.py $(KFSCHECK_ARGS)
 
 phaseclosure: ## every phase installs exactly the ports its list names
 	python3 testing/phaseclosure.py
@@ -301,6 +320,35 @@ linkcheck: ## undeclared NEEDED owners, dead interpreters, mixed OpenSSL in buil
 entrycheck: ## dangling links, dead Exec=/Icon=, missing udev programs in build/fs
 	python3 testing/entrycheck.py
 
+# KDOS from Scratch, the second book (docs/kfs). `book` renders it into
+# build/kfs: html/ one page per section, kfs.pdf and kfs-html.tar.zst; every
+# package page is generated from its recipe on each run, so nothing it writes
+# is committed. `book-data` rewrites the committed snapshot in docs/kfs/data
+# from a built tree's kpkg database and build/snapshots/timings.json, and the
+# recipe stamp beside it; run it after a build. `book-stamp` rewrites the
+# stamp alone and needs no built tree: run it after any change that stales
+# the stamp (a recipe, a kfs.md, a phase list, an included script).
+# BUILDFS names that tree and, by default, the pandoc and typst that render
+# the book, run through the tree's own loader so the book is made by KDOS's
+# own binaries; KFS_PANDOC and KFS_TYPST replace them with any command, e.g.
+#   make book BUILDFS=../kdos/build/fs
+#   make book KFS_PANDOC=pandoc KFS_TYPST=typst
+BUILDFS ?= build/fs
+KFS_LOADER = $(BUILDFS)/usr/lib/libc.so --library-path $(BUILDFS)/usr/lib
+KFS_PANDOC ?= $(KFS_LOADER) $(BUILDFS)/usr/bin/pandoc
+KFS_TYPST ?= $(KFS_LOADER) $(BUILDFS)/usr/bin/typst
+
+book: ## render KDOS from Scratch: build/kfs/html, kfs.pdf, kfs-html.tar.zst
+	python3 script/book/kfsgen.py --out build/kfs/src
+	python3 script/book/kfsrender.py --pandoc "$(KFS_PANDOC)" --typst "$(KFS_TYPST)" \
+		--src build/kfs/src --out build/kfs --buildfs "$(BUILDFS)"
+
+book-data: ## rewrite docs/kfs/data from BUILDFS's package database and timings
+	python3 script/book/make_data.py --buildfs "$(BUILDFS)"
+
+book-stamp: ## rewrite docs/kfs/data/recipes.stamp alone, from the checkout; no built tree
+	python3 script/book/make_data.py --stamp-only
+
 # The fast loop and the images it and the rig run in. QUICK names the ports
 # (comma-separated); QUICK_ARGS goes to the rig after `--`, e.g.
 #   make quick QUICK=kdos-shell QUICK_ARGS="--keys meta_l-ctrl-q --sleep 3 --shot build/shots/x.png"
@@ -317,4 +365,4 @@ rig-image: ## build the rig container kdos-qemu-py:latest (networked, once)
 devdeps-image: ## build kdos-devdeps:latest and run the suite in it
 	testing/devdeps-image.sh
 
-.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan docscheck phaseclosure depdrift debuginfo unowned linkcheck entrycheck quick rig-image devdeps-image
+.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan docscheck anchorcheck booknav booknav-write kfscheck phaseclosure depdrift debuginfo unowned linkcheck entrycheck book book-data book-stamp quick rig-image devdeps-image

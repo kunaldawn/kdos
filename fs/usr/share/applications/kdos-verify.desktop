@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Verify
+GenericName=Checksum Verifier
+Comment=Check files against a checksum list
+Exec=kdos-verify
+Icon=document-edit-verify
+Terminal=false
+NoDisplay=true
+Categories=Utility;
+StartupWMClass=kdos-verify

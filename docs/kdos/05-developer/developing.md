@@ -189,13 +189,18 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `cleanbuild` | Delete everything in `build/` except `snapshots`, `ccache`, `pkgstore` and `keys`, and except what only root can remove (see below) | |
 | `clean` | Delete everything in `build/` except `keys`, and except what only root can remove | |
 | `help` | List every target with a one-line description | |
-| `check` | Run `preflight`, `selftest`, `docscheck` and `phaseclosure` in turn | |
+| `check` | Run `preflight`, `selftest`, `docscheck`, `anchorcheck`, `booknav`, `kfscheck` and `phaseclosure` in turn | |
 | `preflight`, `selftest`, `docscheck`, `phaseclosure` | Run that check alone; see [Working without a build at all](#working-without-a-build-at-all) | A C compiler; Python 3 for `phaseclosure` |
+| `anchorcheck`, `booknav`, `kfscheck` | Check every `#fragment` link in both books; every chapter footer and *KDOS from Scratch*'s contents; that book's notes, includes, patch headers, kernel option table and recipe stamp against the tree (`KFSCHECK_ARGS` reaches it, e.g. `--strict`). See [Testing](testing.md#kfscheckpy) | Python 3 |
+| `booknav-write` | Rewrite every chapter footer of both books, and *KDOS from Scratch*'s contents | Python 3 |
 | `selftest-asan` | `selftest` compiled with `SELFTEST_CC`, by default AddressSanitizer and UBSan | A compiler with the sanitizers |
 | `depdrift` | Read `build/fs` for undeclared same-phase link dependencies; advisory | Read access to `build/fs`: a container or root; Python 3 |
 | `debuginfo` | Fail when `build/fs` ships more than 1 MiB of DWARF outside the allowlist (ghc's `-debug` runtimes); lists it by package | Read access to `build/fs`; Python 3 |
 | `unowned` | List the files in `build/fs` no package and no `fs/` path provides | Read access to `build/fs`; Python 3 |
 | `linkcheck`, `entrycheck` | Fail on an undeclared `DT_NEEDED` owner, an interpreter that does not resolve or OpenSSL 3 and 4 in one process; or on a dangling link, a dead desktop or D-Bus `Exec=`, a missing `Icon=` or udev program. `70_image` runs both and stops on a failure | Read access to `build/fs`; Python 3 |
+| `book` | Render *KDOS from Scratch* into `build/kfs`: the HTML book under `html/`, `kfs.pdf` and `kfs-html.tar.zst`. Every package page is generated from its recipe on each run. About two minutes | Python 3; pandoc and typst, by default the ones in `BUILDFS` |
+| `book-data` | Rewrite the book's committed snapshot, `docs/kfs/data`, from `BUILDFS`'s package database and `build/snapshots/timings.json`, with the recipe stamp beside it | Python 3; read access to a built tree's `var/lib/kpkg/db` |
+| `book-stamp` | Rewrite the book's recipe stamp, `docs/kfs/data/recipes.stamp`, alone, from the checkout | Python 3 |
 | `quick` | The fast loop: rebuild the ports named by `QUICK` and patch them into a booted ISO; `QUICK_ARGS` reaches the rig | The rig image, a finished ISO |
 | `rig-image`, `devdeps-image` | Build the rig container, or the development container and run the suite in it | Docker, network once |
 
@@ -224,6 +229,28 @@ The archive targets take `PORTS` (a space-separated port list), `PUBLISH_ARGS` (
 make publish PORTS="zstd lz4"
 make release TAG=v0.2 PUBLISH_ARGS=--dry-run
 ```
+
+The two book targets take `BUILDFS`, the built tree they read, `build/fs` by default. `book-data`
+reads its package database; `book` reads the same database for the full file list of each
+installed package, and by default renders with the pandoc and typst that tree carries, run through
+its own loader (`$(BUILDFS)/usr/lib/libc.so --library-path $(BUILDFS)/usr/lib`), so the book is
+made by KDOS's own binaries on any Linux host. `KFS_PANDOC` and `KFS_TYPST` replace either with
+any command, such as a host's own:
+
+```sh
+make book BUILDFS=../kdos/build/fs
+make book KFS_PANDOC=pandoc KFS_TYPST=typst
+make book-data                     # after a build
+make book-stamp                    # after any change that stales the stamp; no built tree
+```
+
+`docs/kfs/data/recipes.stamp` holds one hash over every recipe, every `kfs.md`, the phase lists
+and environments, the bootstrap step scripts, `fs/etc/os-release` (whose `VERSION` is on the title
+page) and every file a page of the book includes, and
+[kfscheck.py](testing.md#kfscheckpy) fails while it is not this tree's. A change to any of them
+therefore needs `book-stamp` even when no port was built; the rewritten stamp is what rebuilds
+`kdos-kfs`, since none of those files is in its own recipe hash. A port whose snapshot version is not its recipe's renders with a note naming the version
+the snapshot was taken from.
 
 The orchestrator options used most often are these; the full list is in
 [The build system](build-system.md#flags):
@@ -312,9 +339,11 @@ no firmware.
 | `build/logs/chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree it could not bind read-only, an open-files limit it could not raise | |
 | `build/snapshots/<phase>/` | Phase snapshots | Kept by `cleanbuild` |
 | `build/snapshots/.held/<phase>@<id>/` | Snapshots replaced or deleted while later snapshots still layer on them | Deleted by the orchestrator once nothing needs them |
+| `build/snapshots/timings.json` | The seconds each step and phase last took when it did its work, and the machine that measured each | Merged on every step, so a partial run keeps the figures it did not measure. Kept by `cleanbuild`. See [Step timings](build-system.md#step-timings) |
 | `build/.snap-lineage/` | One index per snapshot path, describing the tree as the last snapshot or restore left it; the next snapshot is a layer of the difference | Removed by `cleanbuild`, which makes the next snapshot full |
 | `build/ccache/` | The compiler cache CMake ports compile through, up to 20 GB | Kept by `cleanbuild`, removed by `clean`. Written as root; remove it from a container |
 | `build/pkgstore/` | The package store, `<key[0:2]>/<key>/` holding one package and its `META`, up to `KDOS_PKG_STORE_MAX` | Written only with `KDOS_PKG_STORE` on. Kept by `cleanbuild`, removed by `clean` |
+| `build/kfs/` | *KDOS from Scratch* as `make book` renders it: `src/` the generated Markdown, `html/`, `kfs.pdf`, `kfs-html.tar.zst` | Rewritten on every `make book`; nothing in it is committed |
 | `build/logs/pkgstore-check.log` | What `KDOS_PKG_STORE=check` found: one line per port whose rebuild differed from its stored package, then the members that differ | See [Testing](testing.md#reading-pkgstore-checklog) |
 | `build/mark/` | The early phases' "already done" markers | See [Building from scratch](#building-from-scratch) |
 | `build/cross/` | The cross toolchain (binutils and GCC for `x86_64-kdos-linux-musl`) that the first two phases compile with | |
@@ -439,8 +468,13 @@ cache unless `KDOS_SRCCACHE` points both at a shared path, or unless it is fetch
 cache. `KDOS_ALLOW_UNVERIFIED=1` silences the warning. A vendor bundle with no hash is generated.
 
 **Leftover archives.** Source files are not tracked by git, so a pull or branch switch that moves a
-port to another version leaves the old file in the port directory. Nothing the build reads names
-it; `testing/preflight.sh` lists it as a stale fetched archive, and it is safe to delete.
+port to another version leaves the old file in the port directory. No build reads it, but the
+[recipe hash](../03-architecture/packaging.md#e--the-recipe-hash) covers every file beside a recipe
+that no `sha256 =` line names, so it would rebuild the port. The next `make fetch` removes it when
+it is a hard link to its own entry in `ports/.srccache`, and the cache keeps the bytes; `make
+fetch-check` lists it. A copy with no link into the cache is left where it is, and
+`testing/preflight.sh` lists it as a stale fetched archive; it may be the only copy on the machine.
+See [Archives preflight accepts](writing-ports.md#archives-preflight-accepts).
 
 **Interrupted downloads.** A download goes to `<file>.part` and is renamed into place only once it
 verifies. The next run resumes the partial file. If a resumed download fails its hash, it is fetched
@@ -591,13 +625,37 @@ step is named, as in the installer row above.
 **The book is a port too.** `src/system/kdos-doc` renders `docs/kdos` to HTML under
 `/usr/share/doc/kdos`, writes `kdos(7)`, which says where the book is and lists its chapters, and
 writes one manual page for every `kdos-*` command in [the command index](../06-reference/command-index.md),
-whose DESCRIPTION is the book section that command's row links to. Its directory holds `docs`, a
-symbolic link to the repository's `docs/`, and the recipe hash follows it, so an edit anywhere in
-the book changes `kdos-doc`'s hash and the next `41_system` run rebuilds it with no `--rebuild`.
+and for the commands of ours named without the prefix (`kpkg`, `kpkgadd`, `kpkgdel`, `kpkgbuild`,
+`kpkgdepends`, `ksvc`, `service`, `kinstall`, `xdg-terminal-exec`, listed in `mkbook.py`), whose
+DESCRIPTION is the book section that command's row links to. Its directory holds two
+symbolic links, `kdos` to `docs/kdos` and `screenshots` to `docs/screenshots`, and the recipe hash
+follows them, so an edit anywhere in the book or its pictures changes `kdos-doc`'s hash and the
+next `41_system` run rebuilds it with no `--rebuild`. An edit elsewhere under `docs/` does not.
 The build container mounts `docs/` read-only, and `script/chroot/exec.sh` binds it read-only at
 `/kdos/docs`. The generator, `mkbook.py`, fails the build when a row of the index links a section
 the book does not have, and leaves out a command whose own port ships its manual page
-(`kdos-bb.1`).
+(`kdos-bb.1`). `mkbook.py --html DOCS DEST` writes the HTML book alone, into `DEST`, from any
+directory holding `kdos/` and `screenshots/`; the published site is made that way from `docs/`.
+
+*KDOS from Scratch* is a port the same way. `src/system/kdos-kfs`, also in `41_system`, renders
+`docs/kfs` with pandoc and typst and installs the HTML under `/usr/share/doc/kfs` with `kfs.pdf`
+beside it. Its directory holds `docs`, a link to `docs/kfs`, and `book`, a link to `script/book`,
+so an edit to either book's pages rebuilds only its own port, and an edit to the renderer rebuilds
+`kdos-kfs`. A package page is generated from its recipe, its `kfs.md` and the phase lists, which no
+link reaches, and Parts I to IV show lines of the step scripts, the `Makefile` and the
+`Dockerfile`, so an edit to any of those reaches `kdos-kfs` through `docs/kfs/data/recipes.stamp`
+once `make book-stamp` or `make book-data` has rewritten it. The port renders from `/kdos`, the
+checkout as the chroot sees it, and reads the recipes at `/kdos/ports`; it takes about two minutes. The full file list on each package page comes from the
+chroot's package database, so it names only what is installed before `kdos-kfs` builds.
+
+**Both books are also published.** `.github/workflows/books.yml` renders them on every push to
+`main` and deploys one GitHub Pages site: the KDOS book at its root, *KDOS from Scratch* under
+`kfs/`, and `kfs/kfs.pdf`. It renders `docs/kdos` with `mkbook.py --html` and Ubuntu's lowdown, and
+`docs/kfs` with `make book` and upstream's pandoc and typst release binaries at the ports' versions,
+each checked against a sha256 written in the workflow; a version bump in either recipe is a bump
+there too. When a `v*` release is published the workflow renders the book from its tag and attaches
+`kfs.pdf` and `kfs-html.tar.zst` to it. The repository's Pages source must be *GitHub Actions*: the
+tree carries no Jekyll configuration, and a branch-built site would try to render all of it.
 
 Three programs link the libraries outside any recipe. The orchestrator is recompiled at the start of
 every build. The package manager `kpkg` and the installer `kinstall` are compiled by the

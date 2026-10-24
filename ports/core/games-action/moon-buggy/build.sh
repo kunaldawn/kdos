@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/hangup-restore.patch"
+
 ./configure --prefix=/usr \
             --mandir=/usr/share/man \
             --infodir=/usr/share/info \

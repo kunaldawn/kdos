@@ -29,9 +29,9 @@ cp /etc/passwd etc/passwd
 cp /etc/group etc/group
 
 # copy_closure DEST SRC: SRC to DEST, then every library its NEEDED entries
-# name, and theirs, from /usr/lib or /lib into lib/. `ldd` is not available,
-# so NEEDED is read with readelf. A library that is installed nowhere stops
-# the build here, naming the program that wanted it.
+# name, and theirs, from /usr/lib or /lib into lib/. NEEDED is read with
+# readelf, from the dynamic section, without loading the file. A library that
+# is installed nowhere stops the build here, naming the program that wanted it.
 #
 # THE READER IS PROVEN BEFORE IT IS TRUSTED. A readelf that is absent or
 # prints another format fails inside a command substitution, which `set -e`
@@ -88,12 +88,13 @@ util_linux_only() {
 }
 
 # GNU coreutils, grep and sed. The first row is what `init` runs; the rest are
-# the rescue shell's, for the boot that does not reach a root. Each must
+# the rescue shell's, for the boot that does not reach a root, and the udev
+# rules' (63-md-raid-arrays runs readlink and basename). Each must
 # answer --version as GNU's (`dd` alone names its package `coreutils`, without
 # the GNU) and is copied with its libraries.
 for _n in cat chmod cut ls mkdir mknod seq sleep \
           cp mv rm ln rmdir head tail wc stat df dd sync uname readlink touch \
-          sort tr grep sed; do
+          basename sort tr grep sed; do
     _p=""
     for _d in /usr/bin /usr/sbin; do
         if [ -x "$_d/$_n" ]; then
@@ -173,10 +174,13 @@ ln -sf bash bin/sh
 util_linux_only /usr/sbin/blkid
 copy_closure bin/blkid /usr/sbin/blkid
 
-# Install mdadm, for a root that lives on a software RAID array. Only
-# libudev beyond libc, and that is already carried below for udevd.
+# Install mdadm, for a root that lives on a software RAID array. At
+# /usr/sbin, the path its udev rules run it from, with the init's bin/mdadm a
+# link to it.
 if [ -x /usr/sbin/mdadm ]; then
-    cp /usr/sbin/mdadm bin/mdadm
+    mkdir -p usr/sbin
+    copy_closure usr/sbin/mdadm /usr/sbin/mdadm
+    ln -sf ../usr/sbin/mdadm bin/mdadm
 else
     echo "Note: mdadm not installed — the initramfs cannot assemble an array"
 fi
@@ -245,9 +249,11 @@ fi
 #
 # Copied WITH its libraries and skipped entirely when it is not installed: an
 # initramfs that half-carries a cryptsetup is an initramfs that fails at the
-# passphrase prompt instead of at build time. `ldd` is not available here, so
-# the list is explicit — and if one is missing the boot says "cryptsetup: not
-# found" rather than something subtler.
+# passphrase prompt instead of at build time. The list is explicit and each
+# entry is copied only when /usr/lib has it; a library cryptsetup NEEDs that
+# the list misses or /usr/lib lacks is caught by the closure check at the end
+# of this step, which stops the build and names it. `init` asks only whether
+# /bin/cryptsetup exists, when a cryptdevice= needs it.
 if [ -x /usr/sbin/cryptsetup ]; then
     cp /usr/sbin/cryptsetup bin/cryptsetup
     for _l in libcryptsetup.so.12 libdevmapper.so.1.02 libjson-c.so.5 \
@@ -255,10 +261,8 @@ if [ -x /usr/sbin/cryptsetup ]; then
               libuuid.so.1 libblkid.so.1 libz.so.1; do
         [ -f /usr/lib/$_l ] && cp /usr/lib/$_l lib/$_l
     done
-    HAVE_CRYPT=1
 else
     echo "Note: cryptsetup not installed — the initramfs cannot unlock a LUKS root"
-    HAVE_CRYPT=0
 fi
 
 # Install lvm and dmsetup, for a root on a logical volume.
@@ -339,7 +343,8 @@ else
     echo "Note: lvm2 not installed — the initramfs cannot activate a volume group"
 fi
 
-# Install udev rules and helpers
+# Install udev rules and helpers. Which of them stay is decided once every
+# program and library is in the tree; see the udev check before the pack.
 mkdir -p lib/udev/rules.d etc/udev/rules.d
 cp -r /usr/lib/udev/rules.d/* lib/udev/rules.d/ 2>/dev/null || true
 cp -r /etc/udev/rules.d/* etc/udev/rules.d/ 2>/dev/null || true
@@ -347,6 +352,17 @@ cp -r /usr/lib/udev/* lib/udev/ 2>/dev/null || true
 # udev reads only the compiled hwdb.bin, which this tree does not carry; the
 # sources would be carried for nothing.
 rm -rf lib/udev/hwdb.d
+
+# THE RULES NAME THE ROOT'S PATHS, so the initramfs answers at them. udevd
+# runs a bare helper name from /usr/lib/udev, and the packages' rules run
+# /usr/bin, /usr/sbin and /sbin; here the programs are in bin/ and the
+# helpers in lib/udev, so each of those paths is a link into the tree. lvm2's
+# and mdadm's binaries are in usr/sbin itself.
+mkdir -p usr/lib usr/sbin
+ln -sfn ../../lib/udev usr/lib/udev
+ln -sfn ../bin usr/bin
+ln -sfn bin sbin
+ln -sf ../../bin/blkid usr/sbin/blkid
 
 # Install kmod and overlay module
 cp /usr/bin/kmod bin/kmod
@@ -436,18 +452,18 @@ MODULES="overlay squashfs isofs cdrom sr_mod loop sd_mod ata_piix ahci libahci v
 # of each one's dependencies.
 MODULES="$MODULES vmd mmc_block sdhci-pci sdhci-acpi cqhci rtsx_pci_sdmmc hv_storvsc xen-blkfront vmw_pvscsi megaraid_sas mpt3sas"
 
+# vfat, so the initramfs can read the boot state off the ESP.
+MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
+# Root filesystems the installer can create. EVERY ROW OF ki_filesystems[] NOT
+# BUILT INTO THE KERNEL MUST APPEAR HERE: the installer's table offers the
+# choice, this makes it bootable, and a root the initramfs cannot mount
+# installs perfectly and never boots again. f2fs is CONFIG_F2FS_FS=m; xfs is =y
+# and its copy is a no-op, kept so a kernel with xfs as a module still boots.
+MODULES="$MODULES xfs f2fs"
 # dm-crypt and the ciphers a LUKS2 default header actually uses. Carried
 # unconditionally: they are small, and a kernel that has them built in makes
 # copy_module a no-op anyway. The generic AES, SHA-256 and SHA-512 code is
 # built into this kernel and has no module to name.
-# vfat, so the initramfs can read the boot state off the ESP.
-MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
-# Root filesystems the installer can create. ext4 and btrfs are built in and
-# copy_module is a no-op for them; xfs and f2fs are CONFIG_*_FS=m, and a root
-# on either that the initramfs cannot mount installs perfectly and never boots
-# again. EVERY ROW OF ki_filesystems[] MUST APPEAR HERE — the installer's table
-# is what offers the choice and this is what makes the choice bootable.
-MODULES="$MODULES xfs f2fs"
 MODULES="$MODULES dm-crypt dm-mod aesni-intel xts crypto_null algif_skcipher"
 # Software RAID. A root ON an array needs these before anything can be
 # assembled, and a machine whose DATA disks are an array needs them before
@@ -504,14 +520,18 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 mkdir -p /dev/pts
-mount -t devpts devpts /dev/pts
+# This mount is the root's too: it is moved there, and nothing remounts it.
+# gid=5 (tty) and mode 620 are what a new terminal is created with, so write
+# and wall can reach it; ptmxmode=666 lets every user open /dev/pts/ptmx.
+# The kernel's defaults are the opener's group, 600 and 000.
+mount -t devpts -o gid=5,mode=620,ptmxmode=666 devpts /dev/pts
 mkdir -p /dev/shm
 mount -t tmpfs -o nosuid,nodev tmpfs /dev/shm
 
-# The screen has been dark since the bootloader handed over: /dev/console is
-# ttyS0 (the last console= wins), so none of these messages reach it, and fbcon
-# defers taking the framebuffer until something prints to tty0. Nothing does.
-# Paint it ourselves.
+# fbcon defers taking the framebuffer until a glyph is printed on a virtual
+# terminal. /dev/console is the last console=: ttyS0 on the live entries, so
+# none of these messages reach the screen; tty0 on an installed machine, where
+# the echo above has ended the deferral and fbcon draws them over the splash.
 if [ -x /bin/kdos-splash ]; then
     /bin/kdos-splash run </dev/null >/dev/null 2>&1 &
 fi
@@ -643,18 +663,18 @@ done
 # first is the LUKS container's, the second belongs to the filesystem that only
 # exists once the container is open. kinstall writes both.
 #
-# The prompt goes through the SPLASH, not to /dev/console. console= is ttyS0 on
-# this kernel command line (the last one wins), so a plain \`read -p\` prompts a
-# serial port nobody is looking at while the screen shows a boot splash that
-# appears to have frozen. The keystrokes are read from /dev/tty1, which is where
-# the keyboard actually is.
+# The prompt goes through the SPLASH, not to /dev/console, which is the last
+# console=: tty0 under the splash on an installed machine, ttyS0 on the live
+# entries, where a plain \`read -p\` prompts a serial port nobody is looking at
+# while the screen shows a splash that appears to have frozen. The keystrokes
+# are read from /dev/tty1, which is where the keyboard actually is.
 #
 # There is no per-keystroke feedback: the splash owns the framebuffer and bash
 # owns the terminal, and a passphrase field that echoed dots would mean moving
 # the read into the splash. Stated rather than hidden.
 #
-# Two knobs, both defaulted to the real thing. The keyboard is on tty1 because
-# console= is the serial port, and the mapper directory is where the kernel puts
+# Two knobs, both defaulted to the real thing. The keyboard is on tty1 whatever
+# console= names, and the mapper directory is where the kernel puts
 # an opened container. They are variables so \`testing/selftest.sh\` can exercise
 # this function without a LUKS volume and without root — the same trick
 # \`kdos stutter --fixture\` uses for /proc.
@@ -696,7 +716,7 @@ unlock_root() {
         [ -x /bin/kdos-splash ] && /bin/kdos-splash msg \
             "PASSPHRASE FOR \$name (attempt \$tries of 3)" 2>/dev/null
         # -s: never echo the passphrase. Read from tty1 because the keyboard
-        # is there and /dev/console is the serial port.
+        # is there, whatever /dev/console is.
         PASS=""
         read -r -s PASS < "\$PASS_TTY" || true
         # Fed on STDIN, never as an argument: /proc/<pid>/cmdline is readable
@@ -928,6 +948,111 @@ if [ -n "\$ROOT_UUID" ]; then
     rescue "Disk boot failed: no root at UUID=\$ROOT_UUID with /sbin/init on it"
 fi
 
+#
+# THE PERSISTENCE STORE IS LOOKED FOR UNTIL USB STORAGE HAS SETTLED. The
+# medium is found the moment its own device answers, and a store on another
+# USB stick is still being enumerated then: behind a hub it gets an address a
+# few hundred milliseconds later, and usb-storage waits a further delay_use
+# (one second) before it scans the disk. A single lookup at that point finds
+# nothing and the session runs in RAM with the store attached.
+#
+# USB IS BUSY while a hub port holds a device that is not yet configured, or
+# a mass-storage interface has no block device beneath it. Neither state is
+# visible for the moment between a hub being configured and its first port
+# reporting a connection (power-good plus debounce, well under a second), so
+# while a hub other than a root hub is present the lookup also waits until
+# the set of USB devices has stood still for one second. With nothing busy
+# and no such hub, a boot with no store pays one blkid and no wait. The bound
+# is 10 seconds, the bound the medium and the root device get: a device that
+# never finishes costs that much and no more, and the boot goes on in RAM.
+#
+# A NEW DISK GETS ONE MORE LOOKUP. Its block device appears in sysfs before
+# the kernel has read its partition table, so a blkid that starts then can
+# list the disk without the partition holding the store. blkid opens every
+# disk it lists, and the open waits for that read, so the lookup after it
+# sees the partitions: the wait ends only after a lookup whose scan counted
+# the same USB disks as the scan before the previous one. That second lookup
+# runs at once, with no sleep.
+: "\${USB_DEVICES:=/sys/bus/usb/devices}"
+uptime_cs() {
+    local u
+    read -r u _ < /proc/uptime
+    NOW=\$(( 10#\${u%.*}\${u#*.} ))
+}
+usb_scan() {
+    local p s d found
+    USB_BUSY=""
+    USB_SEEN=""
+    USB_DISKS=""
+    USB_HUB=0
+    for p in "\$USB_DEVICES"/*:*/*-port*/state; do
+        [ -r "\$p" ] || continue
+        read -r s < "\$p"
+        case "\$s" in
+        "not attached"|configured|suspended) ;;
+        *) USB_BUSY="\$USB_BUSY \${p%/state}" ;;
+        esac
+    done
+    for d in "\$USB_DEVICES"/*; do
+        [ -e "\$d" ] || continue
+        case "\${d##*/}" in
+        *:*)
+            [ -r "\$d/bInterfaceClass" ] || continue
+            read -r s < "\$d/bInterfaceClass"
+            [ "\$s" == "08" ] || continue
+            found=0
+            for p in "\$d"/host*/target*/*/block/*; do
+                [ -e "\$p" ] || continue
+                found=1
+                USB_DISKS="\$USB_DISKS \${p##*/}"
+            done
+            [ "\$found" == "1" ] || USB_BUSY="\$USB_BUSY \$d"
+            ;;
+        usb*)
+            USB_SEEN="\$USB_SEEN \${d##*/}"
+            ;;
+        *)
+            USB_SEEN="\$USB_SEEN \${d##*/}"
+            [ -r "\$d/bDeviceClass" ] || continue
+            read -r s < "\$d/bDeviceClass"
+            [ "\$s" == "09" ] && USB_HUB=1
+            ;;
+        esac
+    done
+}
+find_persist() {
+    local deadline quiet last=x disks="" said=0
+    PERSIST=""
+    uptime_cs
+    deadline=\$(( NOW + 1000 ))
+    while :; do
+        usb_scan
+        PERSIST=\$(blkid -L KDOS_PERSIST 2>/dev/null)
+        [ -n "\$PERSIST" ] && return 0
+        uptime_cs
+        if [ "\$USB_SEEN" != "\$last" ]; then
+            last="\$USB_SEEN"
+            quiet=\$NOW
+            [ "\$USB_HUB" == "1" ] && quiet=\$(( NOW + 100 ))
+        fi
+        if [ -z "\$USB_BUSY" ] && [ "\$NOW" -ge "\$quiet" ]; then
+            [ "\$USB_DISKS" == "\$disks" ] && return 1
+            disks="\$USB_DISKS"
+            continue
+        fi
+        disks="\$USB_DISKS"
+        if [ "\$NOW" -ge "\$deadline" ]; then
+            echo "USB storage still settling after 10s; no persistence store found"
+            return 1
+        fi
+        if [ "\$said" == "0" ]; then
+            echo "Waiting for USB devices to settle before looking for a persistence store..."
+            said=1
+        fi
+        sleep 0.1
+    done
+}
+
 # Live ISO Boot Mode (Fallback)
 mkdir -p /mnt/iso
 echo "Searching for KDOS boot media..."
@@ -953,6 +1078,12 @@ while :; do
     PASS=\$(( PASS + 1 ))
     for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme* /dev/mmcblk*; do
         [ -e "\$dev" ] || continue
+        # A DRIVE WITH NO MEDIUM IN IT IS PASSED OVER. Opening it fails
+        # (ENOMEDIUM), so the scan opens before it mounts: a mount of it only
+        # prints "Can't open blockdev", and its sysfs size is no test, since
+        # an empty optical drive reports a guessed size rather than 0. It is
+        # not marked checked: a disc still spinning up opens on a later pass.
+        { : < "\$dev"; } 2>/dev/null || continue
         # ONE INSPECTION PER DEVICE. A node that mounts as iso9660 and has no
         # system.sfs on it will not grow one, so repeating the mount/umount
         # pair for it every 100 ms is churn on a device the scan has already
@@ -1024,7 +1155,8 @@ if [ "\$FOUND" == "1" ]; then
              # survives a power-off is the whole of what persistence means. A
              # filesystem labelled KDOS_PERSIST is used as the upper when one
              # is present; with no store the upper is a tmpfs and the session
-             # is gone at reboot. \`kdos persist\` makes the store.
+             # is gone at reboot. \`kdos persist\` makes the store, and
+             # find_persist waits for USB storage before it gives up on one.
              #
              # \`nopersist\` ON THE COMMAND LINE FORCES A CLEAN SESSION, and the
              # boot menu carries an entry that passes it. A store holding a
@@ -1041,7 +1173,7 @@ if [ "\$FOUND" == "1" ]; then
              *" nopersist "*)
                  echo "nopersist: this session will not be saved" ;;
              *)
-                 PERSIST=\$(blkid -L KDOS_PERSIST 2>/dev/null) ;;
+                 find_persist ;;
              esac
 
              UPPER=""
@@ -1092,19 +1224,34 @@ if [ "\$FOUND" == "1" ]; then
             # Create missing mountpoints in newroot
             mkdir -p /newroot/dev /newroot/proc /newroot/sys /newroot/run /newroot/tmp
 
+            # THE SQUASHFS AND THE RAM UPPER ARE DETACHED, and their mount
+            # points removed, so nothing is left under /mnt. switch_root
+            # deletes the initramfs but never crosses into another filesystem:
+            # a mount still on /mnt/system or /mnt/overlay keeps /mnt from
+            # being removed, and every live boot prints \`failed to unlink mnt:
+            # Directory not empty\`. The overlay took private clones of its
+            # layers when it was mounted, so / keeps reading them; the detach
+            # only takes away names switch_root would leave unreachable anyway.
+            # It runs BEFORE /proc moves: util-linux umount looks its target up
+            # in /proc/self/mountinfo and, with no /proc, fails with "No such
+            # file or directory" and detaches nothing. It runs only once
+            # /sbin/init is known to be there, so a rescue shell for a missing
+            # init still finds both mounts.
+            if [ -x /newroot/sbin/init ]; then
+                umount -l /mnt/system
+                [ -z "\$UPPER" ] && umount -l /mnt/overlay
+                rmdir /mnt/system /mnt/overlay 2>/dev/null
+            fi
+
             # Move pseudo-filesystems under the new root (standard; Alpine mkinitfs does this)
             mount --move /dev /newroot/dev
             mount --move /proc /newroot/proc
             mount --move /sys /newroot/sys
 
-            # Backing mounts (squashfs /mnt/system, overlay tmpfs /mnt/overlay)
-            # stay in the old rootfs; switch_root leaves them alone (its wipe
-            # skips anything on another device) and the overlay keeps an
-            # internal kernel ref to the squashfs, so / stays valid.
-            #
-            # /mnt/iso is the EXCEPTION and has to be MOVED. Left behind it
-            # dies with the initramfs namespace, and everything the booted
-            # system reads off the boot medium becomes unreachable BY NAME
+            # /mnt/iso HAS TO BE MOVED, not detached like the squashfs and the
+            # tmpfs are above. Left behind it dies with the initramfs
+            # namespace, and everything the booted system reads off the boot
+            # medium becomes unreachable BY NAME
             # while the bytes are still on the disk: \`kdos rebuild\` looks in
             # /mnt/iso/sources, and would report a stick empty that is carrying
             # the sources it was built with.
@@ -1230,8 +1377,69 @@ if [ -n "$(ls -A $UCODE/kernel/x86/microcode)" ]; then
         > $UCODE_CPIO 2>/dev/null
 fi
 
-# EVERY PROGRAM'S LIBRARIES ARE HERE, or the initramfs is not built. `ldd` is
-# not available, so NEEDED is read with the reader proven above, for each
+# EVERY UDEV RULE CARRIED HERE CAN RUN WHAT IT NAMES. The rules and helpers
+# above are the root's whole set, and a rule whose program is absent makes
+# udevd log "failed to execute" for every device it matches. Nothing is lost
+# by leaving one out: the root's udev replays every rule once it starts.
+#
+# A helper first: one that links a library this tree does not carry (libmtp,
+# libinput's, libgpod's) exists and fails at every event, so it goes. Then a
+# rules file any of whose RUN, PROGRAM or IMPORT{program} keys names a
+# program the tree lacks -- an absolute path, or a bare name, which udevd
+# runs from /usr/lib/udev -- goes whole: removing lines would leave its
+# GOTOs and LABELs unbalanced.
+#
+# THE RULES THAT ASSEMBLE A ROOT MUST STAY, or the build stops. device-mapper
+# (10-dm, 11-dm-lvm, 13-dm-disk, 95-dm-notify) is what LUKS and LVM wait on;
+# md's assemble an array; 64-btrfs completes a multi-device btrfs; and
+# 60-persistent-storage makes /dev/disk/by-*. Each is required only when the
+# root has it, and one that names a missing program is a program this step
+# failed to carry.
+for _f in lib/udev/*; do
+    [ -f "$_f" ] && [ ! -L "$_f" ] || continue
+    for _l in $(needed_libs "$_f" 2>/dev/null); do
+        if [ ! -e "lib/$_l" ]; then
+            echo "Note: udev helper ${_f##*/} needs $_l, which the initramfs does not carry — left out"
+            rm -f "$_f"
+            break
+        fi
+    done
+done
+_required=" 10-dm 11-dm-lvm 13-dm-disk 95-dm-notify 63-md-raid-arrays 64-md-raid-assembly 64-btrfs 60-persistent-storage "
+for _r in lib/udev/rules.d/*.rules etc/udev/rules.d/*.rules; do
+    [ -f "$_r" ] || continue
+    for _p in $(grep -v '^[[:space:]]*#' "$_r" \
+                | grep -oE '(RUN(\{program\})?|PROGRAM|IMPORT\{program\})[+:]?==?"[^"]*"' \
+                | sed 's/^[^"]*"[[:space:]]*//; s/[[:space:]].*//; s/"$//' | sort -u); do
+        case "$_p" in
+        /*) _t=".$_p" ;;
+        *[!A-Za-z0-9_.-]*) continue ;;
+        *) _t="lib/udev/$_p" ;;
+        esac
+        [ -e "$_t" ] && continue
+        _b=${_r##*/}
+        case "$_required" in
+        *" ${_b%.rules} "*)
+            echo "FATAL: the udev rule $_r runs $_p, which the initramfs does not carry." >&2
+            echo "       A root that needs this rule could not be assembled." >&2
+            exit 1
+            ;;
+        esac
+        echo "Note: udev rule $_b runs $_p, which the initramfs does not carry — left out"
+        rm -f "$_r"
+        break
+    done
+done
+for _r in $_required; do
+    if [ -f /usr/lib/udev/rules.d/$_r.rules ] && [ ! -f lib/udev/rules.d/$_r.rules ]; then
+        echo "FATAL: the udev rule $_r.rules is on the root and not in the initramfs." >&2
+        exit 1
+    fi
+done
+unset _f _l _r _p _t _b _required
+
+# EVERY PROGRAM'S LIBRARIES ARE HERE, or the initramfs is not built. NEEDED is
+# read with the reader proven above, without loading anything, for each
 # program in bin/ and usr/sbin/ and each library in lib/. A file that is not
 # ELF -- a script -- names nothing. A missing one is an init that cannot exec -- the kernel
 # panics with "Attempted to kill init" -- or a tool that says "not found" at

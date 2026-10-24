@@ -815,7 +815,7 @@ static void draw(int top, int welcome)
 			KT_A_NONE, "%s%s", query, ktui_glyph[KT_G_FULL]);
 	if (!qlen)
 		ktui_draw_text(4, input_y(welcome), w - 6, "type to filter",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 
 	if (parse_note[0])
 		ktui_draw_text(2, y0, w - 4, parse_note, KT_ERR, KT_SURFACE,
@@ -1047,8 +1047,8 @@ int keys_main(int argc, char **argv)
 			continue;
 
 		/*
-		 * A PRINTABLE KEY TYPES; IT DOES NOT CLOSE. The card used to
-		 * dismiss on any key but the ones that scroll it, which is the
+		 * A PRINTABLE KEY TYPES; IT DOES NOT CLOSE. Dismissing on any
+		 * key but the ones that scroll the card would be the
 		 * right rule for a card you only read and the wrong one for a
 		 * card you can ask. Escape is the way out — and where a query
 		 * has been typed it clears the query first, because a field

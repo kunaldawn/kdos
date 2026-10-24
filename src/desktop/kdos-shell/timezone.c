@@ -46,6 +46,7 @@
 #include <unistd.h>
 
 #include "kbase.h"
+#include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
 
@@ -157,7 +158,7 @@ static void read_chrony(void)
 	}
 	if (!buf[0] || strstr(buf, "Cannot talk to daemon")) {
 		snprintf(chrony, sizeof(chrony),
-			 "chronyd is not running (service start 35_chrony)");
+			 "chronyd is not running (service start chrony)");
 		return;
 	}
 	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp); ln;
@@ -284,7 +285,7 @@ static void tz_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 
 	(void)user;
 	if (col == 0)
-		ktui_draw_text(x, y, w, z->cc, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(x, y, w, z->cc, on ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 	else
 		ktui_draw_text(x, y, w, z->name,
@@ -304,7 +305,7 @@ static void draw(void)
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 	sh_frame(w, h, "Time", KT_ACCENT, KT_BG, 1);
-	top = kch_header(w, "preferences-system-time", "Time",
+	top = kch_header(w, "clock", "Time",
 			 "the zone this machine keeps, and whether it is right",
 			 icons_on);
 
@@ -330,7 +331,7 @@ static void draw(void)
 
 	ktui_draw_text(2, top + 2, w - 4,
 		       query[0] ? query : "type to narrow the list",
-		       query[0] ? KT_TEXT : KT_DIM, KT_BG, KT_A_NONE);
+		       query[0] ? KT_TEXT : KT_MID, KT_BG, KT_A_NONE);
 	ktui_draw_hline(1, top + 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
 
 	body = h - top - 7;
@@ -440,9 +441,18 @@ int timezone_main(int argc, char **argv)
 		fprintf(stderr, "kdos-time: no display server\n");
 		return 1;
 	}
+	/* AFTER kdisp_init: the icon layer needs the cell size and the
+	 * scale. Without it kicon_slot() answers -1 and the header has no
+	 * picture. */
+	if (icons_on) {
+		sh_pic_backend();
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
+	}
 	ktui_draw_init();
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		draw();
 		ktui_draw_flush();
 

@@ -123,12 +123,12 @@ void res_draw_energy(int x, int y, int w, int h)
 
 	if (!g_text[0]) {
 		ktui_draw_text(x + 1, y + 1, w - 2,
-			       g_why[0] ? g_why : "no answer", KT_DIM,
+			       g_why[0] ? g_why : "no answer", KT_MID,
 			       KT_BG, 0);
 		ktui_draw_text(x + 1, y + 3, w - 2,
 			       "RAPL is root-only since Linux 5.10, so this "
 			       "page is the daemon's answer or nothing.",
-			       KT_DIM, KT_BG, 0);
+			       KT_MID, KT_BG, 0);
 		return;
 	}
 

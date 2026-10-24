@@ -24,7 +24,7 @@ complete -F _kdos kdos
 _kdos_shot() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     [ "$COMP_CWORD" -eq 1 ] &&
-        COMPREPLY=($(compgen -W "region screen window qr colour" -- "$cur"))
+        COMPREPLY=($(compgen -W "region screen full window qr --help" -- "$cur"))
 }
 complete -F _kdos_shot kdos-shot
 

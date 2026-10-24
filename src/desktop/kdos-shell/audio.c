@@ -38,7 +38,7 @@
  * freeze this window for the ten to thirty seconds a headset takes to think
  * about it, and a bounded 300 ms wait for the LIST would still be a surface
  * that stops drawing every two seconds whenever bluetoothd is wedged. The
- * ceiling is now what times the call out, not what the loop spends.
+ * ceiling is what times the call out, not what the loop spends.
  */
 
 #include <alsa/asoundlib.h>
@@ -75,9 +75,19 @@
 #define AU_MAX_BT	32
 #define AU_NAME		64
 
-/* A bluez call that outlives this is a wedged daemon, not a slow bus — the
- * same ceiling and the same reasoning as the tray's property reads. */
-#define BT_TIMEOUT_US	300000
+/* How long the first frame waits for bluez: past this the daemon is wedged,
+ * not slow — the same ceiling and the same reasoning as the tray's property
+ * reads. */
+#define BT_SETTLE_MS	300
+/*
+ * THE ASYNC CALL'S OWN TIMEOUT IS LONGER THAN ONE TURN OF THE LOOP. sd-bus
+ * checks timeouts before it reads the socket, and the loop reaches
+ * sd_bus_process only after a 500 ms poll that does not watch the bus: a
+ * ceiling shorter than that expires every call whose reply is already
+ * waiting, and the pane reads "not running" beside a running bluetoothd.
+ * The async call blocks nothing, so the longer ceiling costs nothing.
+ */
+#define BT_TIMEOUT_US	5000000
 #define BT_REFRESH_S	2
 
 enum { AU_PANE_OUT = 0, AU_PANE_BT };
@@ -744,7 +754,7 @@ static int au_bt_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 
 	if (sd_bus_message_is_method_error(reply, NULL)) {
 		snprintf(au_bt_why, sizeof(au_bt_why),
-			 "not running — service start 60_bluetooth");
+			 "not running — service start bluetooth");
 		return 0;
 	}
 	au_bt_why[0] = '\0';
@@ -979,7 +989,7 @@ static void au_draw_outputs(struct au_ui *u, int y0, int rows, int w)
 			snprintf(tag, sizeof(tag), "pw");
 		ktui_draw_text(4, y, 6, tag,
 			       d->card >= 0 && d->card == au_default_card
-				       ? KT_ACCENT : KT_DIM,
+				       ? KT_ACCENT : KT_MID,
 			       KT_SURFACE, KT_A_NONE);
 
 		if (d->detail[0] && strcmp(d->detail, "pipewire"))
@@ -1019,7 +1029,7 @@ static void au_draw_outputs(struct au_ui *u, int y0, int rows, int w)
 					 KT_SURFACE);
 			if (d->muted)
 				ktui_draw_text_right(0, y, w - 2, "mute",
-						     KT_DIM, KT_SURFACE,
+						     KT_MID, KT_SURFACE,
 						     KT_A_NONE);
 		} else if (d->card < 0) {
 			ktui_draw_text_right(0, y, w - 2, "[pipewire]", KT_MID,
@@ -1172,7 +1182,7 @@ static void au_draw(struct au_ui *u)
 				     au_bt_discovering ? "scanning"
 				     : au_bt_powered   ? "idle"
 						       : "powered off",
-				     au_bt_discovering ? KT_WARN : KT_DIM,
+				     au_bt_discovering ? KT_WARN : KT_MID,
 				     KT_SURFACE, KT_A_NONE);
 	au_draw_bt(u, bt_y, bt_rows, w);
 
@@ -1280,7 +1290,7 @@ int audio_main(int argc, char **argv)
 	if (sd_bus_open_system(&au_bus) < 0)
 		au_bus = NULL;
 	au_bt_refresh();
-	au_bt_settle(BT_TIMEOUT_US / 1000);
+	au_bt_settle(BT_SETTLE_MS);
 	au_refresh();
 
 	if (dump) {

@@ -43,10 +43,10 @@ lld
 # clang's own runtimes: builtins, profile (source-based coverage) and UBSan.
 compiler-rt
 
-# LLVM's libunwind, under /usr/lib/llvm-libunwind. Built in 31_compilers, ahead
-# of 40_lang, because /usr/include/libunwind.h and libunwind.so belong to
-# libunwind-nongnu there, and a tree that still has this package at /usr must
-# have it rebuilt into its prefix before the other one installs.
+# LLVM's libunwind, under /usr/lib/llvm-libunwind and nowhere directly in
+# /usr: /usr/include/libunwind.h and libunwind.so belong to 40_lang's
+# libunwind-nongnu, and a libunwind that held them would make that install a
+# file conflict.
 libunwind
 
 # ---------------------------------

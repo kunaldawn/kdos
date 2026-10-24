@@ -118,12 +118,10 @@ enum { CT_RENAME, CT_NEWDIR, CT_NEWFILE, CT_EMPTY, CT_REFRESH, CT_SORT,
  * are two different menus and this is one table, because two tables are two
  * places for "New Folder" to drift apart.
  *
- * The desktop half exists because there was NONE. Every click on bare
- * wallpaper fell through to the compositor, so the only way to reach New
- * Folder was to right-click an icon — and on a fresh login the only icons are
- * Home and Trash, both of which are places rather than files. A desktop you
- * cannot create anything on is a desktop that looks read-only, which is
- * exactly what it was reported as.
+ * The desktop half is what a right click on bare wallpaper opens. Without it
+ * New Folder would be reachable only by right-clicking an icon, and on a
+ * fresh login the only icons are Home and Trash, both places rather than
+ * files: a desktop nothing can be created on reads as read-only.
  */
 #define SC_ITEM 1		/* an icon was under the pointer */
 #define SC_DESK 2		/* bare wallpaper */
@@ -721,8 +719,9 @@ static void input_region(void)
 	 *
 	 * Claiming it all is only correct while this menu carries everything
 	 * labwc's root menu offers (Applications, Settings, Displays); a row
-	 * dropped from here is a verb with no way in. `W-space` opens the
-	 * compositor's own menu for anyone who wants it.
+	 * dropped from here is a verb with no way in. No key binding opens the
+	 * compositor's root menu, so while this surface is up that menu is out
+	 * of reach; `desktop_icons = no` gives the wallpaper back to it.
 	 */
 	kdisp_input_cells(NULL, -1);
 }
@@ -1033,7 +1032,23 @@ static void draw(const char *status)
 	 * and the row below is what drains the pool. A draw that skipped it
 	 * while the menu was down would leave a frame's hints in the pool for
 	 * the next one.
+	 *
+	 * AND IT STANDS ON THE STATUS ROW, NOT IN IT. The widget keeps a pane
+	 * inside the surface, whose last row here is the one the hints, the
+	 * rename line and a warning are drawn on after it, so a menu opened
+	 * near the bottom edge would lose its bottom border to them. The pane is lifted
+	 * by the rows it is about to draw, counted the way the widget counts
+	 * them: every item ctx_show() keeps, a rule included — a walk paid
+	 * only when the whole table could not fit under where the pane opened.
 	 */
+	if (ktui_menu_active(&menu) && menu.y + ctx_pane.n + 2 > h - 1) {
+		int n = 0;
+
+		for (int i = 0; i < ctx_pane.n; i++)
+			n += ctx_show(i, menu.user) != 0;
+		if (menu.y + n + 2 > h - 1)
+			menu.y = h - 1 - (n + 2) > 0 ? h - 1 - (n + 2) : 0;
+	}
 	ktui_menu_draw(&menu);
 	/* The status row is shared. The hints have it only while nothing else
 	 * is saying anything — a message about a failed rename outranks a

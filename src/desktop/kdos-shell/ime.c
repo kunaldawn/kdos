@@ -173,7 +173,7 @@ static void ime_draw(void)
 			int sel = i == S.cursor;
 
 			x += ktui_draw_text(x, y, right - x, S.label[i],
-					    KT_DIM, KT_SURFACE, 0);
+					    KT_MID, KT_SURFACE, 0);
 			{
 				int cfg, cbg;
 
@@ -189,10 +189,10 @@ static void ime_draw(void)
 		 * and there is nothing for a bar to be proportional to. */
 		if (S.has_next && ktui_w > 4)
 			ktui_draw_text(ktui_w - 3, y, 2, ktui_glyph[KT_G_RIGHT],
-				       KT_DIM, KT_SURFACE, 0);
+				       KT_MID, KT_SURFACE, 0);
 		else if (S.has_prev && ktui_w > 4)
 			ktui_draw_text(ktui_w - 3, y, 2, ktui_glyph[KT_G_LEFT],
-				       KT_DIM, KT_SURFACE, 0);
+				       KT_MID, KT_SURFACE, 0);
 	}
 }
 

@@ -27,5 +27,5 @@ meson setup build \
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
 
-rm -rf "$PKG/usr/lib/systemd" "$PKG/usr/sysusers.d"
+rm -rf "$PKG/usr/lib/systemd" "$PKG/usr/sysusers.d" "$PKG/etc/default"
 install -d "$PKG/usr/lib/pcsc/drivers" "$PKG/etc/reader.conf.d"

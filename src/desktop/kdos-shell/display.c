@@ -922,10 +922,11 @@ static void draw(void)
 		int hfg, hbg;
 
 		ktui_sel_slots(on, 1, KT_SURFACE, &hfg, &hbg);
-		/* A screen that is off or not reporting is secondary — off
-		 * the fill only, where KT_DIM on KT_DIM is one colour. */
+		/* A screen that is off or not reporting is secondary, in
+		 * KT_MID — off the fill only, where KT_MID on KT_DIM is
+		 * below the reading floor. */
 		if (!on && !(hd->enabled && head_live(hd)))
-			hfg = KT_DIM;
+			hfg = KT_MID;
 		ktui_draw_fill(krect(1, 1 + k, w - 2, 1), hbg);
 		ktui_draw_text(2, 1 + k, w - 4, line, hfg, hbg, KT_A_NONE);
 	}
@@ -964,7 +965,7 @@ static void draw(void)
 	 * one row up, and not a legend written by hand beside this. */
 	if (applied_note[0] && room > 0)
 		ktui_draw_text(2, h - 2, room, applied_note,
-			       applied < 0 ? KT_ERR : KT_DIM, KT_SURFACE,
+			       applied < 0 ? KT_ERR : KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 
 	/*

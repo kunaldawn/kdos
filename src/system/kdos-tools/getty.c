@@ -219,8 +219,8 @@ static const char *autologin_user(void)
  *
  * WITHOUT THIS THE WHOLE AUDIO PATH IS SCHED_OTHER AND NOTHING SAYS SO.
  * pcm.!default is the PipeWire ioplug, which puts a data-loop thread inside
- * every ALSA client, and in a VM pipewire.conf forces
- * default.clock.min-quantum = 1024 -- a 21.3 ms deadline at 48 kHz on that
+ * every ALSA client, and in a VM 99-kdos-vm.conf forces
+ * default.clock.min-quantum = 4096 -- an 85.3 ms deadline at 48 kHz on that
  * thread. PipeWire's module-rt is loaded `nofail` in both pipewire.conf and
  * client.conf, so a thread it cannot promote simply stays at nice 0, and
  * RTKit is not shipped for its fallback to reach. A missed cycle is mixed as

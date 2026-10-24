@@ -216,12 +216,10 @@ int kd_mount(int idx, char *msg, size_t n)
 		ksig_ring_load(&ring, KD_KEYS);
 		sig = kpk_verify(&chk, &ring, who);
 		/*
-		 * KPK_SIG_NOKEY is refused with the other two, which keeps
-		 * what this daemon PERMITS exactly as it was: before the state
-		 * existed an empty ring answered KPK_SIG_BAD and landed here.
-		 * Only the sentence changed, and the sentence was the defect —
-		 * "bad signature" sends a reader to inspect the pack when the
-		 * missing thing is the key. Note the asymmetry it leaves
+		 * KPK_SIG_NOKEY is refused with the other two: an empty ring
+		 * permits no signed pack. It gets its own sentence because
+		 * "bad signature" would send a reader to inspect the pack when
+		 * the missing thing is the key. Note the asymmetry it leaves
 		 * standing: KPK_SIG_NONE mounts, so a pack that is signed and
 		 * uncheckable is treated more harshly than the same pack with
 		 * no block at all. Loosening that is a policy decision about

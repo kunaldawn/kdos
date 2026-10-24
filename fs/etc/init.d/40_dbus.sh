@@ -25,8 +25,22 @@ case "$1" in
         # until the line above writes its target, from being made again.
         [ -e /etc/machine-id ] || [ -L /etc/machine-id ] || \
             ln -s /var/lib/dbus/machine-id /etc/machine-id
-        # --nofork keeps it in foreground for supervision
-        supervise "$NAME" "$DAEMON" --system --nofork
+        # --nofork keeps it in foreground for supervision. --nopidfile,
+        # because dbus-daemon leaves /run/dbus/pid behind when it exits on
+        # SIGTERM or dies, and refuses to start while the file exists: the
+        # supervisor's restart, and every `service restart dbus`, would fail
+        # for as long as the machine ran. `supervise` starts nothing for a
+        # name whose supervisor is alive, and that is the guard against a
+        # second bus instead: it would take the socket from the first, and
+        # every client already connected would be on a bus nobody else can
+        # reach. --syslog-only, because dbus-daemon otherwise writes each
+        # line to syslog and to stderr, which the supervisor logs again, and
+        # every line reaches the log twice; the services the bus starts
+        # still print to its stderr, /run/kdos-svc.dbus.log.
+        supervise "$NAME" "$DAEMON" --system --nofork --nopidfile --syslog-only
+        # The daemons after this connect at once, and one that finds no
+        # socket yet exits and is started again five seconds later.
+        wait_bus_name org.freedesktop.DBus
         ;;
     stop)
         stop_service "$NAME"

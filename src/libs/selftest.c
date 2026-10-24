@@ -870,10 +870,10 @@ static void test_base(void)
 	free(leaf);
 	free(nested);
 
-	/* Output bigger than the buffer must TRUNCATE, not hang. It used to
-	 * hang: the child inherited the pipe's read end, so closing ours left
-	 * the pipe writable and the child blocked in write() while we blocked
-	 * in waitpid(). `kpkg install zig` died there on a 1.1 MB listing. */
+	/* Output bigger than the buffer must TRUNCATE, not hang. A child that
+	 * inherits the pipe's read end keeps the pipe writable after ours is
+	 * closed, and then blocks in write() while we block in waitpid() — a
+	 * 1.1 MB listing such as `kpkg install zig` prints is enough. */
 	KbArgv gen = {0};
 	kb_argv_add(&gen, "seq");
 	kb_argv_add(&gen, "100000");
@@ -1050,6 +1050,51 @@ static void test_trash(void)
 		ok(ktui_theme_night(0) == 1, "turning it off changes it back");
 		ok(!memcmp(ktui_theme->slot, cold.slot, sizeof(cold.slot)),
 		   "back to the scheme's own bytes, not the arithmetic undone");
+	}
+
+	/*
+	 * ONE LOADER FOR THE ACCENT AND THE CAST. Every surface loads its
+	 * palette through ktui_theme_load(), so a surface that read the scheme
+	 * and skipped the toggle — or returned early on a missing state file
+	 * before reaching it — would draw cold beside a warmed panel.
+	 */
+	{
+		char dir[512], cdir[512], tf[600];
+		const KtuiTheme *other =
+			&ktui_themes[(KCOL_DEFAULT_INDEX + 1) % ktui_ntheme];
+		const KtuiTheme *dflt = &ktui_themes[KCOL_DEFAULT_INDEX];
+
+		snprintf(dir, sizeof(dir), "%s/load-state", work);
+		snprintf(cdir, sizeof(cdir), "%s/load-cache", work);
+		setenv("XDG_STATE_HOME", dir, 1);
+		setenv("XDG_CACHE_HOME", cdir, 1);
+		snprintf(tf, sizeof(tf), "%s/kdos", cdir);
+		kb_mkdir_p(tf);
+		snprintf(tf, sizeof(tf), "%s/kdos/theme", cdir);
+		kb_write_file(tf, other->name);
+
+		ktui_theme_load();
+		ok(ktui_theme == other, "the cached accent is the one loaded");
+
+		kb_toggle_set("night-light", 1);
+		ktui_theme_load();
+		ok(ktui_theme != other &&
+		   ktui_theme->slot[KT_ACCENT].r == other->slot[KT_ACCENT].r &&
+		   ktui_theme->slot[KT_BG].b <= other->slot[KT_BG].b,
+		   "and the night-light toggle warms it in the same call");
+
+		unlink(tf);
+		ktui_theme_load();
+		ok(ktui_theme != dflt &&
+		   ktui_theme->slot[KT_ACCENT].r == dflt->slot[KT_ACCENT].r,
+		   "a missing state file is the default scheme, still warmed");
+
+		kb_toggle_set("night-light", 0);
+		ktui_theme_load();
+		ok(ktui_theme == dflt, "and turning the toggle off is a load too");
+
+		unsetenv("XDG_STATE_HOME");
+		unsetenv("XDG_CACHE_HOME");
 	}
 
 	/*
@@ -1335,8 +1380,11 @@ static void test_pkg(void)
 	free(cp);
 
 	ow = kp_owned_load(&mconf);
-	ok(kp_owned_owner(ow, "bin/free") != NULL,
-	   "either spelling finds the claim");
+	eq_str(kp_owned_owner(ow, "bin/free"), "procps",
+	       "either spelling finds the claim, and of two claimants the "
+	       "owner is the first by package name");
+	eq_str(kp_owned_owner(ow, "usr/bin/free"), "procps",
+	       "under either spelling");
 	ok(kp_owned_owner(ow, "usr/lib/x") == NULL,
 	   "a path under a real directory keeps its own name");
 	eq_str(kp_owned_other(ow, "usr/bin/free", "usrfree"), "procps",
@@ -4829,7 +4877,7 @@ static void test_wm(void)
 	/*
 	 * Rows the replay deliberately does not drive, and rows it did not
 	 * recognise at all. The second must stay zero: a kind with no branch
-	 * used to leave the file silently, which is a contract row nothing
+	 * would otherwise leave the file silently, which is a contract row nothing
 	 * checks wearing the appearance of one that passed.
 	 */
 	int stated = 0, unknown = 0;

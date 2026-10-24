@@ -737,9 +737,9 @@ char *kcol_retint_text(const char *in, size_t len, const KcolScheme *sc,
  * READING BELONGS HERE, APPLYING DOES NOT. The two paths and the order they
  * are tried in are a contract with `kdos theme`, and a front end resolving
  * them itself drifts from this one the first time the fallback moves. What a
- * front end then does with the name differs — a cell surface calls
- * ktui_theme_set, the compositor rebuilds its own tables — so only the read is
- * here. No colours are read: the palette is compiled in, and this file names
+ * front end then does with the name differs — every cell surface goes through
+ * ktui_theme_load, the compositor rebuilds its own tables — so only the read
+ * is here. No colours are read: the palette is compiled in, and this file names
  * which of its schemes is in force.
  *
  * Returns 0 and leaves `out` empty when there is no state file, which means

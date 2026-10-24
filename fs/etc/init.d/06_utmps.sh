@@ -18,6 +18,14 @@ case "$1" in
         # run as `utmp`, so the directory holding the live utmp file and the
         # wtmp file they append to belong to it.
         install -d -o utmp -g utmp -m 0755 /run/utmps
+        # utmpd makes the utmp file only on its first request, and init
+        # writes a record only to a utmp file that already exists: it checks
+        # access() first and skips silently. Left to utmpd, the file appears
+        # at the first getty's login record, after init has skipped the boot
+        # and runlevel records, and `who -r` prints nothing.
+        [ -e /run/utmps/utmp ] || : > /run/utmps/utmp
+        chown utmp:utmp /run/utmps/utmp
+        chmod 0644 /run/utmps/utmp
         [ -e /var/log/wtmp ] || : > /var/log/wtmp
         chown utmp:utmp /var/log/wtmp
         chmod 0644 /var/log/wtmp

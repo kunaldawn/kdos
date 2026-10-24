@@ -206,7 +206,7 @@ static void ct_cell(int row, int col, int x, int y, int w, int fg, int bg,
 		break;
 	case 1:
 		ktui_draw_text(x, y, w, r->label,
-			       bg == KT_ACCENT ? KT_SURFACE : KT_DIM, bg,
+			       bg == KT_ACCENT ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	default:
@@ -239,7 +239,7 @@ static void draw(void)
 	ktui_draw_box(krect(0, 0, w, h), "contacts", KT_ACCENT, KT_SURFACE, 1);
 
 	ktui_draw_text(2, 1, w - 4, query[0] ? query : "type a name",
-		       query[0] ? KT_TEXT : KT_DIM, KT_SURFACE, KT_A_NONE);
+		       query[0] ? KT_TEXT : KT_MID, KT_SURFACE, KT_A_NONE);
 	ktui_draw_hline(1, 2, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 
 	if (why) {

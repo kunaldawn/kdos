@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Applications
+GenericName=Application Store
+Comment=The applications this machine can install, and one tick to install them
+Exec=kdos-store
+Icon=package
+Terminal=false
+NoDisplay=true
+Categories=System;PackageManager;
+StartupWMClass=kdos-store

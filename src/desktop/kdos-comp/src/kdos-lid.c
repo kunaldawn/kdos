@@ -2,8 +2,8 @@
 /*
  * The laptop lid, graft-shaped like kdos-idle.c beside it. There is no
  * acpid on KDOS and nothing else sees the switch: libinput delivers it
- * as a wlr_switch, labwc's seat has no case for that device type, and a
- * closed lid did precisely nothing.
+ * as a wlr_switch, labwc's seat has no case for that device type, and
+ * without this file a closed lid does precisely nothing.
  *
  * The policy is one key, `lid_close = off|lock|suspend`:
  *   off      screen off only — the clamshell-with-external-monitor case

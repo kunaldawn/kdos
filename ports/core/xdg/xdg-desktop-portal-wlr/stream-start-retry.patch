@@ -1,0 +1,66 @@
+Subject: keep capturing when a cast starts with every buffer held
+
+A consumer that pauses and resumes the stream as it starts, as `pipewiresrc`
+does on its way to PLAYING, hands the stream back to the STREAMING state while
+it still holds the buffers. The STREAMING handler dequeues once, finds none and
+starts a capture with no buffer, which returns; the capture timer armed by the
+first STREAMING fires on the buffer the pause re-queued and returns the same
+way. The stream is its own driver, so nothing calls `process` again: the cast
+delivers at most one frame and `kdos-record` writes a file with no picture in
+it.
+
+The STREAMING handler now arms the same retry timer the process handler uses
+when it finds no buffer, a capture timed for a buffer that went back asks the
+stream for another, and a capture that fires while one is in flight leaves the
+in-flight frame to ask for the next.
+
+--- a/src/screencast/ext_image_copy.c
++++ b/src/screencast/ext_image_copy.c
+@@ -313,8 +313,20 @@
+
+ void xdpw_ext_ic_frame_capture(struct xdpw_screencast_instance *cast) {
+ 	logprint(TRACE, "ext: start screencopy");
++	if (cast->ext_session.frame) {
++		// A capture is already in flight; its ready event asks the
++		// stream for the next buffer.
++		logprint(TRACE, "ext: frame already in flight");
++		return;
++	}
+ 	if (cast->current_frame.xdpw_buffer == NULL) {
+-		logprint(ERROR, "ext: started frame without buffer");
++		// The buffer this capture was timed for went back to the
++		// stream (a pause re-queues it). Ask the stream for another,
++		// or nothing ever captures again.
++		logprint(DEBUG, "ext: no buffer for this frame, asking the stream");
++		if (cast->pwr_stream_state) {
++			pw_stream_trigger_process(cast->stream);
++		}
+ 		return;
+ 	}
+
+--- a/src/screencast/pipewire_screencast.c
++++ b/src/screencast/pipewire_screencast.c
+@@ -353,6 +353,8 @@
+ 	cast->process_retry = NULL;
+ }
+
++static void pwr_arm_process_retry(struct xdpw_screencast_instance *cast);
++
+ static void pwr_handle_stream_state_changed(void *data,
+ 		enum pw_stream_state old, enum pw_stream_state state, const char *error) {
+ 	struct xdpw_screencast_instance *cast = data;
+@@ -366,6 +368,14 @@
+ 	case PW_STREAM_STATE_STREAMING:
+ 		cast->pwr_stream_state = true;
+ 		xdpw_pwr_dequeue_buffer(cast);
++		if (!cast->current_frame.pw_buffer) {
++			// The consumer still holds every buffer. This stream
++			// drives itself, so nothing calls process again unless
++			// a frame completes or the retry timer fires: without
++			// the timer the cast stalls for good.
++			pwr_arm_process_retry(cast);
++			break;
++		}
+ 		xdpw_wlr_frame_capture(cast);
+ 		break;
+ 	case PW_STREAM_STATE_PAUSED:

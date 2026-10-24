@@ -29,6 +29,7 @@ Comment=Present a markdown file as slides
 Exec=presenterm %f
 Icon=x-office-presentation
 Terminal=true
+NoDisplay=true
 Categories=Office;Presentation;
 Keywords=slides;presentation;markdown;talk;presenterm;
 X-KDOS-Term=kdos-term

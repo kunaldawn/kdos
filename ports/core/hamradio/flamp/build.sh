@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/x11-hints-on-x11-only.patch"
+patch -p1 -i "$PORT_SRC/icon-pixmap-on-x11-only.patch"
 
 ./configure \
 	--prefix=/usr \

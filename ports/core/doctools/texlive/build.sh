@@ -144,7 +144,10 @@ close $db or die "texlive.tlpdb: $!\n";
 PERL
 
 rm -f "$PKG/usr/share/texmf-dist/scripts/texlive/tlmgr.pl" \
-	"$PKG/usr/share/texmf-dist/scripts/texlive/tlmgrgui.pl"
+	"$PKG/usr/share/texmf-dist/scripts/texlive/tlmgrgui.pl" \
+	"$PKG/usr/share/texmf-dist/scripts/pythontex/pythontex2.py" \
+	"$PKG/usr/share/texmf-dist/scripts/pythontex/depythontex2.py" \
+	"$PKG/usr/share/texmf-dist/scripts/texaccents/texaccents.sno"
 
 find "$PKG/usr/share/texmf-dist" -name '*.jar' -printf '%h\n' | sort -u > "$SRC_ROOT/jardirs"
 for l in "$PKG"/usr/bin/*; do

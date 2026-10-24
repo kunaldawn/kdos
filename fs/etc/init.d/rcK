@@ -24,7 +24,7 @@
 # BEFORE swapoff AND umount in /etc/inittab. A service stopped after its
 # filesystem went read-only cannot write what it came to save.
 #
-# THE FIREWALL IS NOT STOPPED. `25_nftables stop` flushes the ruleset, and it
+# THE FIREWALL IS NOT STOPPED. `25_nftables stop` deletes `inet filter`, and it
 # would run after the network scripts, whose interfaces stay configured when
 # NetworkManager exits: the machine would sit on the network with nothing
 # filtering until power-off. The ruleset goes when the kernel does.

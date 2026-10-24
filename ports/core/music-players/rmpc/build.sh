@@ -45,6 +45,7 @@ Comment=Play the music library mpd is serving
 Exec=rmpc
 Icon=folder-music
 Terminal=true
+NoDisplay=true
 Categories=AudioVideo;Player;
 Keywords=music;audio;player;mpd;rmpc;
 X-KDOS-Term=kdos-term

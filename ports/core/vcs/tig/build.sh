@@ -29,6 +29,7 @@ Comment=Browse a repository's history
 Exec=tig
 Icon=vcs-normal
 Terminal=true
+NoDisplay=true
 Categories=Development;RevisionControl;
 Keywords=git;log;history;blame;tig;
 EOF

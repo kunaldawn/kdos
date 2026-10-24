@@ -25,6 +25,7 @@ grep -q '^name=zsh/pcre .*link=dynamic' config.modules || {
 }
 make
 make DESTDIR=$PKG install
+rm -f "$PKG"/usr/share/zsh/*/functions/test-repo-git-rebase-*
 
 install -Dm644 /dev/stdin "$PKG/etc/zsh/zprofile" <<'ZPROFILE'
 emulate sh -c '. /etc/profile'

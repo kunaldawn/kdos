@@ -24,7 +24,7 @@
 
 # Containers share the host kernel, so nothing else on the image could run
 # another OS — test a kernel, open an untrusted disk image, boot the installer
-# of the distro being migrated from. On a distro whose own test rig IS qemu.
+# of the distro being migrated from. KDOS's own test rig boots the system under qemu.
 qemu
 
 gtk-vnc

@@ -16,4 +16,4 @@ sha256      = ba561cf3c96305a47179fa5605856ad695c9238ea07f7093aebd9ba80c4e323b  
 description = GNOME's Adwaita icon and cursor theme — the symbolic-icon fallback GTK applications expect
 homepage    = https://gitlab.gnome.org/GNOME/adwaita-icon-theme
 license     = LGPL-3.0-only OR CC-BY-SA-3.0
-depends     = meson gtk3 hicolor-icon-theme
+depends     = meson gtk3 hicolor-icon-theme adwaita-icon-theme-legacy

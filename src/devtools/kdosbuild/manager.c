@@ -248,6 +248,12 @@ void mgr_init(Manager *m, const char *script_dir, const char *build_dir)
 			if (CPU_ISSET(c, &set))
 				m->cpu[m->ncpu++] = c;
 
+	/* Every figure this run records is filed under the machine it ran
+	 * on (timings.c). */
+	TmMachine here;
+	tm_machine_probe(&here);
+	tm_use_machine(&here);
+
 	char *abs = realpath(script_dir, NULL);
 	kb_strlcpy(m->script_dir, abs ? abs : script_dir, sizeof(m->script_dir));
 	free(abs);
@@ -266,6 +272,8 @@ void mgr_init(Manager *m, const char *script_dir, const char *build_dir)
 
 	snprintf(m->snap_root, sizeof(m->snap_root), "%.480s/snapshots",
 		 m->build_dir);
+	snprintf(m->timings_path, sizeof(m->timings_path), "%.500s/timings.json",
+		 m->snap_root);
 	snprintf(m->chroot_exec, sizeof(m->chroot_exec), "%.560s/chroot/exec.sh",
 		 m->script_dir);
 	snprintf(m->phases_dir, sizeof(m->phases_dir), "%.500s/"
@@ -594,6 +602,7 @@ static void start_step_on(Manager *m, int w, BStep *s)
 	set_family_status(s, ST_RUNNING);
 	s->start_time = kb_now_s();
 	s->end_time = 0;
+	s->measured = 0;
 
 	char logp[900];
 	log_path_for(m, s, logp, sizeof(logp));
@@ -705,6 +714,61 @@ static void release_worker(Manager *m, BWorker *wk)
 }
 
 /*
+ * WHETHER A STEP'S SECONDS MEASURE ITS WORK, for timings.json. A script step
+ * did work when it wrote anything: the guard every 00_cross and 10_bootstrap
+ * script opens with exits 0 in silence when its marker exists, and its
+ * fraction of a second is not what the step costs. A port's step did work
+ * when kpkg said `Building <port>...` or `Rebuilding <port> (forced)...` for
+ * that port (kdos-kpkg/front.c); `Skipping`, `Reusing ... from the store` and
+ * `already built` print neither. The build itself then prints `Building
+ * <port>-<version>-<release>...` (kdos-kpkg/build.c), which is the same
+ * port. A serial `kpkg install` that built another port before this one
+ * would charge both to it, so any other port's build line makes the step no
+ * measurement at all. A commit step installs and builds nothing. A change to
+ * any of these wordings in kpkg silently stops ports being recorded, or
+ * records ports that did no work.
+ */
+static int release_line(const char *rest)
+{
+	size_t n = strlen(rest);
+	if (rest[0] != '-' || n < 5 || strcmp(rest + n - 3, "..."))
+		return 0;
+	const char *p = rest + n - 3;
+	const char *digits = p;
+	while (digits > rest && isdigit((unsigned char)digits[-1]))
+		digits--;
+	return digits < p && digits - 1 > rest && digits[-1] == '-';
+}
+
+static void measure_line(BStep *s, const char *line)
+{
+	if (s->is_commit || s->measured < 0)
+		return;
+	if (!s->have_cmd) {
+		s->measured = 1;
+		return;
+	}
+	const char *name = NULL;
+	if (!strncmp(line, "==> Building ", 13))
+		name = line + 13;
+	else if (!strncmp(line, "==> Rebuilding ", 15))
+		name = line + 15;
+	if (!name)
+		return;
+	size_t n = strlen(s->title);
+	if (!strncmp(name, s->title, n)) {
+		const char *rest = name + n;
+		if (!strcmp(rest, "...") || !strcmp(rest, " (forced)...")) {
+			s->measured = 1;
+			return;
+		}
+		if (release_line(rest))
+			return;
+	}
+	s->measured = -1;
+}
+
+/*
  * What a level's steps say that the orchestrator acts on. A port's
  * `--build-only` that finds it installed and current builds nothing and
  * records nothing, so the commit must not name it. A commit prints `kpkg:
@@ -717,6 +781,7 @@ static void release_worker(Manager *m, BWorker *wk)
  */
 static void watch_line(Manager *m, BStep *s, const char *line)
 {
+	measure_line(s, line);
 	if (!s->level)
 		return;
 	if (!s->is_commit) {
@@ -1589,10 +1654,63 @@ static int children_done(const BStep *g)
 	return 1;
 }
 
+/* `<phase directory>/<title>`, the phase taken from the step's own path: a
+ * retry's kpkg step sits in the retried phase's rows but is 10_bootstrap's
+ * script, and its figure is 10_bootstrap's. */
+static void timing_key(const BStep *s, char *out, size_t cap)
+{
+	char dir[512];
+	kb_strlcpy(dir, s->path, sizeof(dir));
+	char *slash = strrchr(dir, '/');
+	if (slash)
+		*slash = 0;
+	snprintf(out, cap, "%.200s/%s", kb_basename(dir), s->title);
+}
+
+static void record_step(Manager *m, const BStep *s)
+{
+	if (s->measured != 1)
+		return;
+	char key[512];
+	timing_key(s, key, sizeof(key));
+	if (tm_record(m->timings_path, "steps", key, step_duration(s)) < 0)
+		mgr_notice(m, "cannot write %s", m->timings_path);
+}
+
+/* A phase's wall clock is recorded only when this run measured every row of
+ * it: a phase that skipped installed ports, ran a guard that did nothing, was
+ * retried (its kpkg step leads the rows, and the rows a retry kept were not
+ * measured again) or ran only the steps a plan named would record a figure
+ * for less than the phase. */
+static void record_phase(Manager *m, const BStep *g)
+{
+	int rows = 0;
+	for (int i = 0; i < g->nchild; i++) {
+		const BStep *c = g->child[i];
+		if (c->is_commit)
+			continue;
+		if (c->kpkg_retry || c->measured != 1)
+			return;
+		rows++;
+	}
+	if (!rows || !g->meta)
+		return;
+	if (g->script_dir[0]) {
+		int nsh = 0;
+		kb_strv_free(kbuild_steps(g->meta, &nsh));
+		if (rows != nsh)
+			return;
+	}
+	if (tm_record(m->timings_path, "phases", g->meta->dir_name,
+		      step_duration(g)) < 0)
+		mgr_notice(m, "cannot write %s", m->timings_path);
+}
+
 static void finish_phase(Manager *m, BStep *g)
 {
 	free(m->host_conf);
 	m->host_conf = NULL;
+	record_phase(m, g);
 	do_snapshot(m, g, 0);
 }
 
@@ -1642,6 +1760,7 @@ static void step_exited(Manager *m, BStep *s)
 		return;
 	}
 	set_family_status(s, ST_DONE);
+	record_step(m, s);
 	if (in_level)
 		return;
 	BStep *p = s->parent;
@@ -2249,7 +2368,7 @@ int mgr_selftest(void)
 	kb_mkdir_p(build);
 	put_file(boot, "000_a.sh", "exit 0\n");
 	put_file(boot, "120_kpkg.sh", "# Title: kpkg\necho compiled\n");
-	put_file(scr, "00_one.sh", "exit 0\n");
+	put_file(scr, "00_one.sh", "echo one\n");
 	char two[800];
 	snprintf(two, sizeof(two), "[ -e %s ] || exit 3\n", fixed);
 	put_file(scr, "01_two.sh", two);
@@ -2265,6 +2384,15 @@ int mgr_selftest(void)
 	BStep *g0 = m->root[0], *g1 = m->root[1], *g2 = m->root[2];
 	g0->status = ST_SKIPPED;
 	g2->status = ST_SKIPPED;
+
+	/* Figures an earlier run measured: `one` writes output and is measured
+	 * again, `three` writes none and keeps its figure, and the phase is
+	 * retried, so its wall clock is not recorded over the old one. */
+	mok(tm_record(m->timings_path, "steps", "20_x/one", 99) == 0 &&
+	    tm_record(m->timings_path, "steps", "20_x/three", 99) == 0 &&
+	    tm_record(m->timings_path, "steps", "00_cross/binutils", 43) == 0 &&
+	    tm_record(m->timings_path, "phases", "20_x", 999) == 0,
+	    "the timings fixture is written");
 
 	mgr_start(m);
 	run_out(m);
@@ -2295,6 +2423,52 @@ int mgr_selftest(void)
 	mok(g1->nchild == 4 && g1->child[0]->status == ST_DONE &&
 	    g1->child[0]->nlog && !strcmp(g1->child[0]->log[0], "compiled"),
 	    "kpkg's step ran first");
+
+	double one = tm_lookup(m->timings_path, "steps", "20_x/one");
+	mok(one >= 0 && one < 99, "a step that wrote output is measured again");
+	mok(tm_lookup(m->timings_path, "steps", "20_x/three") == 99,
+	    "a silent step keeps the figure an earlier run measured");
+	mok(tm_lookup(m->timings_path, "steps", "20_x/two") < 0,
+	    "a silent step that never wrote is not recorded");
+	mok(tm_lookup(m->timings_path, "steps", "10_bootstrap/kpkg") >= 0,
+	    "a retry's kpkg step is filed under 10_bootstrap");
+	mok(tm_lookup(m->timings_path, "steps", "00_cross/binutils") == 43,
+	    "a phase that did not run keeps its figures");
+	mok(tm_lookup(m->timings_path, "phases", "20_x") == 999,
+	    "a retried phase's wall clock is not recorded");
+
+	/* What a port's step prints decides whether it is measured. */
+	static const struct {
+		const char *lines[3];
+		int want;
+	} ms[] = {
+		{ { "==> Skipping zlib (already installed)" }, 0 },
+		{ { "==> Reusing zlib from the store (0123456789ab)" }, 0 },
+		{ { "==> zlib: already built (/var/cache/zlib.tar.xz)" }, 0 },
+		{ { "==> Building zlib...", "==> Building zlib-1.3.1-1..." }, 1 },
+		{ { "==> Rebuilding zlib (forced)...",
+		    "==> Building zlib-1.3.1-2..." }, 1 },
+		{ { "==> Building zlib-ng...", "==> Building zlib-ng-2.2.4-1...",
+		    "==> Building zlib..." }, -1 },
+		{ { "==> Building zlib...", "==> Building pigz..." }, -1 },
+	};
+	for (size_t i = 0; i < sizeof(ms) / sizeof(ms[0]); i++) {
+		BStep *p = step_new("30_pk/00_zlib.install", 0);
+		kb_strlcpy(p->title, "zlib", sizeof(p->title));
+		p->have_cmd = 1;
+		for (int k = 0; k < 3 && ms[i].lines[k]; k++)
+			measure_line(p, ms[i].lines[k]);
+		char what[160];
+		snprintf(what, sizeof(what), "a port's step is measured %d after "
+			 "\"%.80s\"", ms[i].want, ms[i].lines[0]);
+		mok(p->measured == ms[i].want, what);
+		step_free(p);
+	}
+	BStep *cs = step_new("30_pk/L1.commit", 0);
+	cs->have_cmd = cs->is_commit = 1;
+	measure_line(cs, "==> Building zlib...");
+	mok(cs->measured == 0, "a commit step is never measured");
+	step_free(cs);
 
 	/* A package phase failed mid-level: its rows go and the pump resolves
 	 * it again. */

@@ -65,6 +65,7 @@
 #include <unistd.h>
 
 #include "kbase.h"
+#include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
 
@@ -642,9 +643,18 @@ int burn_main(int argc, char **argv)
 		fprintf(stderr, "kdos-burn: no display server\n");
 		return 1;
 	}
+	/* AFTER kdisp_init: the icon layer needs the cell size and the
+	 * scale. Without it kicon_slot() answers -1 and the header has no
+	 * picture. */
+	if (icons_on) {
+		sh_pic_backend();
+		kicon_init(sh_pic_cell_w(), sh_pic_cell_h(), kdisp_scale());
+	}
 	ktui_draw_init();
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		if (job.running && sh_job_pump(&job)) {
 			if (job.running)
 				snprintf(status, sizeof(status), "%.150s",

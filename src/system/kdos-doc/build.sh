@@ -9,5 +9,4 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-python3 "$PORT_SRC/mkbook.py" "$PORT_SRC/docs" "$PKG" "$PORT_SRC/../.."
-install -Dm644 "$PORT_SRC/kdos.css" "$PKG/usr/share/doc/kdos/kdos.css"
+python3 "$PORT_SRC/mkbook.py" "$PORT_SRC" "$PKG" "$PORT_SRC/../.."

@@ -31,7 +31,6 @@
 	--with-freetype \
 	--with-fontconfig \
 	--with-pango \
-	--with-dejavu-font-dir=/usr/share/fonts/TTF \
 	--without-x \
 	--without-perl \
 	--with-fftw \
@@ -54,4 +53,6 @@
 	--without-wmf
 make
 make DESTDIR=$PKG install
+test -z "$(grep '<include' "$PKG/etc/ImageMagick-7/type.xml")"
+rm "$PKG"/etc/ImageMagick-7/type-*.xml
 test ! -e "$PKG/usr/share/doc/ImageMagick-7/www"

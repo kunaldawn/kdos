@@ -228,10 +228,13 @@ int why_main(int argc, char **argv)
 			}
 		} else {
 			/* Everything under fs/ is copied in wholesale rather
-			 * than installed by a package, so "no owner" is a real
-			 * and common answer, not a failure. */
-			printf("  package  %s(none — provided by fs/, or not "
-			       "installed)%s\n", C_DIM, C_OFF);
+			 * than installed by a package, and 10_bootstrap
+			 * compiles kpkg and kinstall straight into the root,
+			 * so "no owner" is a real and common answer, not a
+			 * failure. */
+			printf("  package  %s(none — provided by fs/ or "
+			       "10_bootstrap, or not installed)%s\n",
+			       C_DIM, C_OFF);
 		}
 		if (o)
 			kp_owned_free(o);

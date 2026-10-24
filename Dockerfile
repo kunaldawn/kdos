@@ -10,7 +10,7 @@
 
 FROM alpine:3.23
 
-# Add deps for GCC build: gmp-dev mpfr-dev mpc1-dev
+# GMP, MPFR and MPC are not installed: the cross GCC builds them in its own tree.
 RUN apk update && apk add --no-cache \
     nano \
     git \

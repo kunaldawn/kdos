@@ -10,6 +10,7 @@
 
 patch -p1 -i "$PORT_SRC/no-update-check.patch"
 patch -p1 -i "$PORT_SRC/wm-class.patch"
+patch -p1 -i "$PORT_SRC/tk9-trace-add.patch"
 
 mkdir -p vendor
 tar -xf "$PORT_SRC/$name-vendor-$version.tar.xz" --strip-components=1 -C vendor

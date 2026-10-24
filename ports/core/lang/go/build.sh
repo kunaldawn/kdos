@@ -30,6 +30,7 @@ find $PKG/usr/lib/go/src/runtime/race $PKG/usr/lib/go/src/crypto/internal/boring
 	-name '*.syso' -delete
 rm -rf $PKG/usr/lib/go/pkg/obj
 find $PKG/usr/lib/go/src -type d -name testdata -prune -exec rm -rf {} +
+rm -f $PKG/usr/lib/go/src/*.rc
 install -d $PKG/usr/bin
 ln -s /usr/lib/go/bin/go $PKG/usr/bin/go
 ln -s /usr/lib/go/bin/gofmt $PKG/usr/bin/gofmt

@@ -65,7 +65,7 @@ The host package manager's own configuration is `/etc/kpkg.conf`; see
 | `march.ledger` | Measured per-machine optimisation results | `kdos march` |
 | `apps-pending` | Applications chosen in the installer that could not be installed | `kinstall` |
 | `update.json` | What `kdos update check --json` found, and the last problem; the panel's update badge reads it | The update-check timer, nightly at 04:17, and `kdos update fetch` and `apply` when they finish |
-| `update.state` | The outcome of the last `kdos update fetch` and the last `apply`: `ok`, `no-network`, `fetch-failed` or `build-failed`, with a time and a sentence | `kdos update fetch` and `apply` |
+| `update.state` | The outcome of the last `kdos update fetch` and the last `apply`: `ok`, `no-key`, `no-network`, `fetch-failed` or `build-failed`, with a time and a sentence | `kdos update fetch` and `apply` |
 | `update.state.lock` | The lock `fetch` and `apply` hold, so a tree is never replaced under a build | `kdos update fetch` and `apply` |
 | `update.state.sig` | The signature of the tree last installed; a published signature equal to it is the same tree, and the tree is not downloaded again | `kdos update fetch` |
 
@@ -142,7 +142,8 @@ that names it.
 ### The boot medium
 
 A live session mounts its boot medium at `/mnt/iso`. The installer and the pack daemon read it
-there.
+there. While it installs, the installer mounts the target root beside it at `/mnt/kinstall`, and
+the target's ESP at `/mnt/kinstall/boot/efi`.
 
 | Path | Is |
 |---|---|
@@ -161,10 +162,11 @@ Emptied at every boot.
 | `kdos-powerd.sock`, `kdos-energyd.sock`, `kdos-oomd.sock`, `kdos-mountd.sock`, `kdos-packd.sock` | The root daemons' sockets; see [Sockets](#sockets) |
 | `<name>.pid` | The process ID of the `ksvc` supervisor running service `<name>`. The supervisor leads its own process group, so stopping the service kills the daemon under it too |
 | `kdos-svc.<name>.log` | A supervised service's output, capped at 64 KiB with one `.old`. Every line also goes to syslog |
+| `kdos-svc.<name>.state` | The supervisor's one line about its daemon: `up` or `wait`, the daemon's pid, since when, its failing exits in a row and its last exit status. `service status` reads it to report a crash loop as `[FAIL]`; see [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
+| `kdos-svc.<name>.stopping` | Empty; exists while `service stop <name>` runs, so the supervisor does not pass the group a second `SIGTERM` |
 | `kdos-init.<name>.log` | What a service's start script printed at boot |
 | `kdos-getty.<tty>.log` | `kdos-getty`'s messages for that terminal |
 | `kdos-fsck.log` | What the boot-time filesystem check reported, written only when it said something |
-| `kdos-medium` | Where the installer binds the boot medium while installing |
 | `utmps/` | Owned by `utmp`: the live login records (`utmp`) and the sockets of `utmpd` and `wtmpd` (`.utmpd-socket`, `.wtmpd-socket`), which libutmps talks to; see [Login records](../03-architecture/boot-and-init.md#login-records) |
 
 ### Boot files
@@ -405,8 +407,9 @@ the mountpoint and the options. The device list is rescanned on every request. A
 belongs to a different list, `shares`, built from `/proc/mounts` on every request; a `disconnect`
 index is checked against that list only. An index is meaningful only for the list it came from.
 
-A verb that writes to a device refuses the medium the session booted from, anything currently
-mounted, and any device whose node differs from the one the scan recorded.
+A verb that writes to a device refuses the disk the session runs from (the boot medium and the
+persistence store, which are never in the list either), anything currently mounted, and any device
+whose node differs from the one the scan recorded.
 
 #### Secrets
 
@@ -566,7 +569,7 @@ Neither configuration nor storage: these files are how one program tells another
 |---|---|---|
 | `~/.cache/kdos/theme` | `kdos theme` | The compositor, the panel and every surface, the terminal, the lock screen and the portal: one word |
 | `~/.cache/kdos/wallpaper.png` | `kdos theme` | The compositor, in preference to the configured wallpaper |
-| `~/.local/state/kdos/toggles/<name>` | `kdos toggle`, and the notification daemon's `dnd` verb | The compositor's idle policy (`stay-awake`); every surface on the retint signal, the `SIGHUP` `kdos toggle` sends to make surfaces re-read the theme and repaint (`night-light`); the notification daemon (`dnd`) |
+| `~/.local/state/kdos/toggles/<name>` | `kdos toggle`, and the notification daemon's `dnd` verb | The compositor's idle policy (`stay-awake`); every KDOS cell surface with the accent, on the `SIGHUP` `kdos toggle` sends or on a front end's next pass, and the lock screen each time it locks (`night-light`); the notification daemon (`dnd`) |
 | `$XDG_RUNTIME_DIR/kdos-panel.overflow` | The panel | The overflow popup |
 | `$XDG_RUNTIME_DIR/kdos/nowplaying` | `kdos-mpctl watch` | The panel |
 | `/usr/share/kdos/alien-apps` | The build (`kdos-appbox genlaunchers`) | Every shim, and the launcher dispatcher |

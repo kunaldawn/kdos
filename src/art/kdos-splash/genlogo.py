@@ -22,11 +22,10 @@
 #   * The console font is ter-kdos32n (xos4-2 plus six hand-patched box
 #     chars). It has U+2588 FULL BLOCK, the double-line box drawing the
 #     wordmark needs, AND the shades ░ U+2591 / ▒ U+2592 — grep uni/xos4-2.uni:
-#     what it lacks is ▓ U+2593 and the half blocks ▀ ▄. This file used to say
-#     it had no shades at all and so drew every cell as a full block, which is
-#     why the mascot came out a flat silhouette: with three densities the GLYPH
-#     carries coverage and the COLOUR carries material, and a 34x18 grid gets
-#     soft edges instead of a staircase.
+#     what it lacks is ▓ U+2593 and the half blocks ▀ ▄. Every cell drawn as
+#     a full block would make the mascot a flat silhouette: with three
+#     densities the GLYPH carries coverage and the COLOUR carries material,
+#     and a 34x18 grid gets soft edges instead of a staircase.
 #   * Character cells are twice as tall as they are wide, so the sampling grid
 #     is ~2x wider than tall or the penguin comes out stretched into a pin.
 #   * Colours stay in the 16-colour ANSI set, and the slots are /etc/vtrgb's
@@ -79,13 +78,12 @@ OFF = '\033[0m'
 # penguin.h palette: 0 transparent, 1 black, 2 pale, 3 amber, 4 phosphor,
 # 5 phosphor dim.
 #
-# The body used to share the glow's colour, and that ONE line is why the mascot
-# read as a green blob for a release: 186 of its 273 cells came out the same
-# green, so the silhouette, the arms and the head had no edges between them.
-# kdos.png is a BLACK penguin inside a green halo, and that is what these five
-# entries now say — dark body, bright ring, fading halo, white belly, amber
-# beak. Nothing here is a new artistic choice; it is the source image's own
-# structure, which the old mapping threw away.
+# The body must NOT share the glow's colour: 192 of the 284 cells the penguin
+# covers are body, and in the glow's green the silhouette, the arms and the head have no
+# edges between them — a green blob. kdos.png is a BLACK penguin inside a
+# green halo, and that is what these five entries say — dark body, bright
+# ring, fading halo, white belly, amber beak. Nothing here is a new artistic
+# choice; it is the source image's own structure.
 INK = {1: DARK, 2: PALE, 3: AMBER, 4: LIT, 5: ACCENT}
 PREVIEW_RGB = {                      # /etc/vtrgb, so the preview cannot lie
     DARK: (18, 64, 31),
@@ -99,13 +97,12 @@ GROUND = (0, 10, 3)                  # vtrgb slot 0
 # One glyph per coverage band. A cell that is a third ink is ░, not a full
 # block that swallows a third of a penguin's outline into a staircase.
 SHADES = ((0.42, '░'), (0.78, '▒'), (1.01, '█'))
-# Below this the cell is background. It used to be 0.5 — a full half of a cell
-# had to be ink before anything was drawn at all, which is what ate the thin
-# rim and the feet.
+# Below this the cell is background. A floor of 0.5 — a full half of a cell
+# ink before anything is drawn at all — eats the thin rim and the feet.
 INK_FLOOR = 0.22
 
-# Unchanged on the wire: LIT is the `1;32` these rows always carried and
-# ACCENT the `0;32`, only under names that now say which vtrgb slot they are.
+# LIT is the `1;32` these rows carry and ACCENT the `0;32`, under names that
+# say which vtrgb slot they are.
 WORDMARK = [
     (LIT, '██╗  ██╗██████╗  ██████╗ ███████╗'),
     (LIT, '██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝'),
@@ -150,10 +147,10 @@ def sample(grid, w, h):
     glyph). A cell that is a sliver of a flipper is the same green as the
     middle of the body and must not be drawn as solid as it.
     """
-    # Sampled over the WHOLE bitmap, glow included. Cropping to the body's
-    # bounding box was tried and reverted: the arms span the full width and the
-    # feet the full height, so the crop saves almost nothing, and fitting it to
-    # the grid independently in x and y stretched the bird wide. The full frame
+    # Sampled over the WHOLE bitmap, glow included, not cropped to the body's
+    # bounding box: the arms span the full width and the feet the full height,
+    # so a crop saves almost nothing, and fitting it to the grid independently
+    # in x and y stretches the bird wide. The full frame
     # already carries kdos.png's aspect.
     out = []
     for cy in range(ROWS):

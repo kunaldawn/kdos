@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Devices
+GenericName=Device Overview
+Comment=Cameras, microphones, scanners and what is plugged in
+Exec=kdos-devices
+Icon=camera-web
+Terminal=false
+NoDisplay=true
+Categories=Settings;HardwareSettings;
+StartupWMClass=kdos-devices

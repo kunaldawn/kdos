@@ -336,6 +336,8 @@ void kdisp_font_ask(void) { }
 
 int kicon_slot_pad(const char *n, int cw, int ch, int pad)
 { (void)n; (void)cw; (void)ch; (void)pad; return -1; }
+int kicon_slot_ink(const char *n, int cw, int ch, uint32_t rgb)
+{ (void)n; (void)cw; (void)ch; (void)rgb; return -1; }
 pixman_image_t *kicon_pixmap(const char *n, int w, int h)
 { (void)n; (void)w; (void)h; return NULL; }
 void kicon_pixmap_free(pixman_image_t *img) { (void)img; }

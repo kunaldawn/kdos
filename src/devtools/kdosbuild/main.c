@@ -73,7 +73,7 @@ static void usage(void)
 "                        on is held until the last of them goes\n"
 "\n"
 "  --selftest            run the view-geometry, log-classifier, retry and\n"
-"                        jobserver assertions\n"
+"                        jobserver and timings assertions\n"
 "  --preview SCREEN WxH TIER\n"
 "                        draw one screen offscreen and dump it as plain text.\n"
 "                        SCREEN: build activity failure pinned complete\n"
@@ -578,7 +578,7 @@ int main(int argc, char **argv)
 	kb_set_progname("kdosbuild");
 
 	if (argc > 1 && !strcmp(argv[1], "--selftest"))
-		return view_selftest() | mgr_selftest();
+		return view_selftest() | mgr_selftest() | tm_selftest();
 	/* Matched on argv[1] rather than on argc so a short `--preview build`
 	 * says what it wants instead of falling through to the option parser
 	 * and reporting `--preview` itself as an unknown argument. */

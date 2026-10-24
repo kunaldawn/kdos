@@ -10,10 +10,10 @@
 
 name        = iproute2
 version     = 7.2.0
-release     = 1
+release     = 2
 source      = $name-$version.tar.xz::https://www.kernel.org/pub/linux/utils/net/$name/$name-$version.tar.xz
 sha256      = 4c2fa124c2cf0afd7ca34d1eeacba6ba048a56f6374e2aab93dafbdbd4eea9c0  iproute2-7.2.0.tar.xz
 description = Programs for basic and advanced IPV4-based networking
 homepage    = https://git.kernel.org/pub/scm/network/iproute2/iproute2.git
 license     = GPL-2.0-or-later
-depends     = elfutils libcap libmnl libtirpc libbpf db
+depends     = elfutils libcap libmnl libtirpc libbpf db iptables

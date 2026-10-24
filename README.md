@@ -112,7 +112,8 @@ interfaces are stable enough to document. It is not a release with a support com
 tested hardware matrix: whoever runs it is the integrator.
 
 The natively ported applications and the toolkits under them are recipes written and wired into
-the build. None of them has been through a build, so none has been started on a KDOS image.
+the build. A full build has compiled every one of them into the image, and none has been started on
+a KDOS image.
 
 Some things you may expect are not there. A screen reader reads applications but not the desktop's
 own windows; there is no graphical login screen; there is no public server of prebuilt packages;
@@ -201,6 +202,12 @@ page carries the full table of contents and four reading paths.
 | V. Building and developing | The build, recipes, the C libraries, desktop software, testing | [How KDOS is built](docs/kdos/05-developer/how-kdos-is-built.md) |
 | VI. Reference | Ports, commands, configuration, paths, gaps, status, glossary | [Command index](docs/kdos/06-reference/command-index.md) |
 
+A second book, *KDOS from Scratch* under [`docs/kfs/`](docs/kfs/README.md), builds the system
+phase by phase and package by package, with a page for every port. Both books are on every image,
+under `/usr/share/doc/kdos` and `/usr/share/doc/kfs`, and both are published to the repository's
+GitHub Pages site on every push to `main`; each release carries *KDOS from Scratch* as one PDF and
+as an HTML tarball.
+
 ## Repository layout
 
 ```
@@ -211,7 +218,8 @@ src/libs/         17 C libraries written for this system
 src/desktop/      the compositor, the panel, the terminal, the lock screen, the resource
                   monitor, the screen recorder, the per-box Wayland socket, the portal backend
 src/daemons/      the five root daemons the desktop talks to
-src/system/       the package manager, the kdos command, packs and boxes, the installer
+src/system/       the package manager, the kdos command, packs and boxes, the installer, and
+                  the two books on the image
 src/art/          the theme generators, icons, cursors, the boot splash, the demo
 src/devtools/     kdosbuild (the orchestrator behind make build) and kdos-portup (behind
                   ports/update)
@@ -223,6 +231,8 @@ script/phases/    the thirteen build phases, each with its phase.env and either 
                   numbered step scripts or its package list (packages.txt or packages.d/)
 testing/          preflight, the self-test, fixtures, goldens, the QEMU rig
 docs/kdos/        the book
+docs/kfs/         KDOS from Scratch, rendered by script/book/ (make book)
+.github/          the workflow that publishes both books to GitHub Pages and each release
 ```
 
 [Repository layout](docs/kdos/06-reference/repository-layout.md) annotates every directory.

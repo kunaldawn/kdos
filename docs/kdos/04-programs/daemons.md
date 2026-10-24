@@ -90,12 +90,18 @@ diagnose and review all five.
 A daemon runs in the foreground and never forks into the background. The init script calls
 `supervise <name> <binary>` from `/etc/init.d/service_helper`; the supervisor leads its own process
 group, writes `/run/<full name>.pid`, and restarts the daemon five seconds after it exits.
-`service stop <name>` sends SIGTERM to the whole group, waits a second, then sends SIGKILL to
-whatever is left.
+`service stop <name>` sends SIGTERM to the whole group, waits for it to empty for at most five
+seconds, then sends SIGKILL to whatever is left. `supervise` on a name whose supervisor is alive
+starts nothing and says `[SKIP]`, so a second `service start` cannot leave a daemon nothing stops.
+A `SIGTERM` sent to the supervisor alone is passed on to its group, so the daemon goes with it. A
+daemon whose supervisor was killed outright is still found through the state file: `service
+status` reports it as `[FAIL]` rather than `[DOWN]`, `service start` refuses to start a second
+beside it, and `service stop` ends it.
 
 The daemon's output goes to syslog and to a small file in `/run`. The supervisor points the
 daemon's standard output and error, and its own *Starting* and *Exited* lines, at a forwarder
-process. Each line becomes a daemon-facility syslog message tagged with the daemon's full name, and
+process. Each line becomes a daemon-facility syslog message tagged with the daemon's full name
+(`supervise --facility <name>` picks another facility; none of these five daemons uses it), and
 is also appended to `/run/kdos-svc.<full name>.log`: for example `/run/kdos-svc.kdos-powerd.log`,
 tagged `kdos-powerd`. Files and tags use the full name; only the `service` command takes the short
 one. The file holds at most 64 KiB; when it would grow past that it is renamed to
@@ -116,12 +122,21 @@ restarted every five seconds for as long as the machine is up. `service_helper` 
 `supervise --final-exit <code>`, which stops the respawn on an exit status restarting cannot
 change. None of these five daemons uses it: each one's usual refusal is caught by its init script,
 and a refusal the script cannot see (`kdos-energyd` finding no usable energy domain after the
-script's glob matched) is restarted every five seconds.
+script's glob matched) is restarted every five seconds, and `service status` reports it as
+`[FAIL]` with its exit status rather than `[ OK ]` (see
+[ksvc and service](kdos-command.md#ksvc-and-service)).
 
 ### The socket and the identity check
 
 Each daemon owns one socket in `/run`, named after the daemon, and removes a stale one before
 binding so that a socket file left by a crash cannot hold the name.
+
+The listening socket and every accepted connection are close-on-exec (`SOCK_CLOEXEC` on the
+`socket()` and on `accept4()`), so no program a daemon runs inherits a client's connection. A
+program that kept one open would hold it past the reply: `kdos-powerd`'s `firewall ssh on` starts
+`sshd` under its supervisor, and `kdos-mountd`'s verbs run `cryptsetup`, mount helpers and `mkfs`
+while its `subscribe` connections are open, and a client whose connection a running program still
+holds never reads the end of its answer.
 
 The socket is mode 0666, and anyone may connect; the real check is the caller's identity. The
 daemon asks the kernel for the connecting process's user id (`SO_PEERCRED`, which the caller cannot
@@ -219,13 +234,11 @@ past that.
 | Exit status | Means |
 |---|---|
 | 0 | The daemon answered `ok`, or closed the connection without answering any verb other than `ping` (for `suspend`, `poweroff` and `reboot` that is the machine going away) |
-| 1 | The daemon answered `err …`, or is not running (`kdos-power: no kdos-powerd — ` followed by the hint ``service kdos-powerd start``, which ksvc rejects; see below) |
+| 1 | The daemon answered `err …`, or is not running (``kdos-power: no kdos-powerd — `service start powerd` ``) |
 | 2 | Bad usage, or an argument too long for the request line |
 
-When the daemon is not running, start it with `service start powerd`. The command the client
-suggests puts the daemon's full name where the verb goes, so ksvc answers
-`Error: Unknown command 'kdos-powerd'` and starts nothing (see
-[Starting and stopping one by hand](#starting-and-stopping-one-by-hand)).
+When the daemon is not running, start it with the command the client prints, `service start
+powerd` (see [Starting and stopping one by hand](#starting-and-stopping-one-by-hand)).
 
 For every verb except `firewall`, an error is printed to standard error as `kdos-power: <reply>`.
 `firewall` prints the daemon's whole reply on standard output, the `err` line included, because
@@ -351,10 +364,13 @@ chosen during installation.
 logs straight into the desktop. `autologin off` turns it off.
 
 - The account must be one that can log in. `kb_users()` in `libkbase` decides that; a name it
-  would not list is refused with `err no such account`. Pointing autologin at a service account
+  would not list is refused: with `err not an account that can log in (a system account, or no
+  login shell)` when the account exists, as root does, and `err no such account` when it does
+  not. Pointing autologin at a service account
   with `nologin` would give a machine that boots to a login nobody can complete.
-- `off` replaces the key line with the fixed text `#autologin = kdos`, whatever account was set,
-  rather than emptying the value. The login program only hands `agetty --autologin` a non-empty
+- `off` comments the key line out as it stands, so `autologin = alice` becomes
+  `#autologin = alice`, the form the installer writes, and a line already commented is left as it
+  is. It does not empty the value. The login program only hands `agetty --autologin` a non-empty
   name, so an empty value would read as a setting and behave as none.
 - Only the key line changes. A line counts as the key when it starts with `autologin`, or with
   one `#` then `autologin`, and contains `=`. Prose that merely mentions the key is left alone.
@@ -471,8 +487,7 @@ kdos-energy [--json|ping]
 `kdos-energy` prints the report (or JSON with `--json`) and exits 0. It exits 1 when the daemon is
 not running or answered `err`, and 2 on bad usage. An `err` answer goes to standard error. The
 Energy page in `kdos-res` shows the same report, and its Boxes page shows each box's share. When
-the daemon is not running the client suggests `service kdos-energyd start`, which ksvc rejects
-as an unknown command; the command is `service start energyd` (see
+the daemon is not running the client suggests `service start energyd` (see
 [Starting and stopping one by hand](#starting-and-stopping-one-by-hand)).
 
 This is the report the test fixture in `testing/fixtures/energy` produces (thirty seconds of
@@ -575,8 +590,20 @@ modest machine.
   pressure file (150 ms of full stall within a one-second window, meaning every runnable thread was
   stuck on memory for 15% of the last second) and sleeps until the kernel signals it. A sampling
   loop would itself compete for processor time with the stall it is trying to notice.
+- A stall kills only when memory is short. When the trigger fires the daemon reads
+  `/proc/meminfo` and kills nothing unless `MemAvailable` is at most 10% of `MemTotal`. A single
+  busy process stalls every task that wants to run when it waits on reclaim itself: a copy
+  streaming gigabytes through the page cache, such as the installer's `rsync`, fires the trigger
+  with most of memory available and nothing else asking for any, and killing it would free
+  nothing anyone was short of. A process pushing the working set out is the case that also takes
+  `MemAvailable` down. A `/proc/meminfo` that cannot be read leaves the stall as the only test.
+- A process can be protected by its `oom_score_adj`. A process whose
+  `/proc/<pid>/oom_score_adj` is -500 or lower is never a victim; -1000 is the kernel's "never
+  kill" and -500 is the threshold other user-space killers honour. Only root can lower the value,
+  and a child inherits it, so a root program shields everything it will start by lowering its own
+  first (`choom -n -1000 -p $$` in a shell). This is the contract a program uses to keep work it
+  must finish out of reach; no program outside the desktop is protected by name.
 - The desktop is never a victim. Protected are process 1, kernel threads, the daemon itself,
-  anything whose `oom_score_adj` is -500 or lower (the opt-out other user-space killers honour),
   and these by process name: `kdos-comp`, `kdos-shell`, `kdos-desk`, `kdos-notifyd`, `Xwayland`,
   `dbus-daemon`, `seatd`, `ksvc`, `kdos-powerd`, `kdos-energyd`, `kdos-oomd`, `wireplumber`, and
   every process whose name starts with `pipewire`. Killing the compositor to save the desktop is
@@ -606,9 +633,10 @@ modest machine.
   once a second on a machine that is already stalling.
 
 The daemon shields itself from the emergency it watches: at start-up it sets its own
-`oom_score_adj` to -1000 and locks its memory with `mlockall`. Each kill is logged with the victim
-and the ten-second pressure averages that caused it, in the form
-`kdos-oomd: killed <name> [(appbox <box>)] (pid <pid>, <size> MB) — memory pressure avg10 full=<f> some=<s>`.
+`oom_score_adj` to -1000 and locks its memory with `mlockall`. Each kill is logged with the victim,
+the ten-second pressure averages and the memory available when it chose, in the form
+`kdos-oomd: killed <name> [(appbox <box>)] (pid <pid>, <size> MB) — memory pressure avg10 full=<f> some=<s>, <avail> of <total> MB available`.
+A trigger that finds memory not short logs nothing.
 
 ### The socket
 
@@ -626,7 +654,10 @@ and answers root, `seat` and `wheel`:
 
 `kdos-oomd --fixture <dir>` reads a recorded `/proc` tree, prints the process it would kill as
 `would kill <name> … (pid <pid>, <size> kB)` with the recorded pressure, and signals nobody. It
-exits 0 when there is a candidate and 1 (printing `no candidate`) when there is none.
+exits 0 when there is a candidate and 1 (printing `no candidate`) when there is none. A tree with a
+`meminfo` whose `MemAvailable` is above 10% of `MemTotal` prints
+`no kill: <avail> of <total> kB available` and exits 1, the answer the daemon gives a trigger
+there; a tree without one is judged on the stall alone.
 
 `testing/oomd-fire.sh` exercises the real path in a booted virtual machine: it allocates and
 touches memory until the trigger fires, then asks the socket what happened rather than watching
@@ -661,7 +692,7 @@ A **row** below is a number from the daemon's own `list`; a **share row** is a n
 | `unmount <row>` | Unmount it and remove the mountpoint the daemon made | `ok <mountpoint>` |
 | `eject <row>` | Power the medium down. An optical disc ejects its own drive; any other device ejects its **parent disk**, because a stop command sent to one partition means nothing to the hardware | `ok <kname>` |
 | `unlock <row> <count>` | Open a LUKS volume. The passphrase is the second frame | `ok kdos-<kname>` |
-| `close <row>` | Close the mapping `unlock` made | `ok kdos-<kname>` |
+| `close <row>` | Close the mapping `unlock` made; `<row>` is the container's row, the one `unlock` was sent for, not the mapping's | `ok kdos-<kname>` |
 | `format <row> <fs> <count>` | Write a filesystem. **Off unless `format = yes`.** The second frame is the device's kernel name, typed by the person | `ok <kname>` |
 | `smart <row>` | The drive's health | `ok <model>\t<serial>\t<health>` |
 | `cifs <server> <share> <user> <domain> <count>` | Mount an SMB share. The password is the second frame | `ok <mountpoint>` |
@@ -766,13 +797,25 @@ if every one of these holds:
 | Its disk is removable, or is on USB | An internal disk is the administrator's. An external drive in a USB enclosure reports itself as non-removable, so the bus is checked too |
 | It carries a filesystem the daemon recognises | See the list below |
 | It is not named in `/etc/fstab`, by device path or by `LABEL=` | An entry there is a decision somebody already made |
-| It is not the medium this system booted from | Offering to unmount the live medium is offering to end the session |
+| It is not on the disk this system runs from | Offering to unmount or eject the live medium, or the persistence store, is offering to end the session |
 
-A device that is already mounted is listed, with its mountpoint in the last column. The boot
-medium is a device mounted at `/`, `/mnt/iso` or `/boot`, and in a live session (root on an
-overlay) any ISO 9660 medium. The live ISO does not appear in the running system's `/proc/mounts`
-at all, because the initramfs moved the root out from under those mounts, so this broad rule is
-the only reliable one; the cost is that a second data CD cannot be mounted while running live.
+A device that is already mounted is listed, with its mountpoint in the last column. The disk this
+system runs from is left out whole, every partition with it. It is a disk where:
+
+- the disk node or any of its partitions is mounted at `/`, `/boot`, `/mnt/iso` or `/mnt/persist`.
+  The initramfs moves the boot medium's mount to `/mnt/iso` under the node it found the medium on,
+  and a `KDOS_PERSIST` store's to `/mnt/persist`, so `/proc/mounts` names both. The persistence
+  store is the session's upper layer;
+- in a live session (root on an overlay), the disk node itself carries an ISO 9660 superblock.
+  That is the shipped isohybrid image on a stick: the superblock is the whole disk's, mounted as
+  `/dev/sda`; `sda1` is a 64-sector stub with no filesystem and `sda2` is the FAT EFI partition,
+  so no partition row carries the mount or probes as ISO 9660;
+- in a live session, any partition carries an ISO 9660 superblock.
+
+A live session also refuses every ISO 9660 medium on its own, mounted or not. The initramfs moves
+`/mnt/iso` into the running system only when it found `system.sfs` there, and this rule does not
+depend on that line existing. The cost is that neither a second data CD nor a stick holding
+another system's image can be mounted while running live.
 
 The label and filesystem type are read directly from the superblock rather than through a
 detection library. The daemon recognises, in this order:
@@ -914,11 +957,14 @@ That is why it is a verb of its own rather than `cifs` with an empty password.
 that is mounted (`err unmount it first`), a device on the boot medium, and a device node that has changed
 since the scan.
 
-The boot medium is refused by the disk, not by the partition. A live USB carries an ISO 9660
-partition and a FAT EFI partition beside it. Every per-partition rule would offer the EFI partition
-(it is removable, it is FAT, it is unmounted and no fstab names it), and formatting it would destroy
-the running session. In a live session any disk carrying an ISO 9660 partition is treated as the
-boot disk, whole: `err that is the medium this session booted from`.
+The boot medium is refused by the disk, not by the partition. A live USB carries the system and a
+FAT EFI partition beside it. Every per-partition rule would offer the EFI partition (it is
+removable, it is FAT, it is unmounted and no fstab names it), and formatting it, or ejecting its
+disk, would destroy the running session. The disk this system runs from, as
+[Which devices are offered](#which-devices-are-offered) defines it, is never in `list`, so no row
+index reaches it: a verb naming the index its row would have taken is past the list. The same
+disk-level rule is checked again here and answers
+`err that is the medium this session booted from`.
 
 The device node is checked again at the moment of use. Between the scan that built the row and
 the call that acts on it, a path could become a symlink or a different device. The daemon opens it
@@ -987,8 +1033,9 @@ makes the new partitions appear and sends every subscriber `changed`. A worker w
 carries on to the end; its progress lines are dropped.
 
 A disk with no filesystem the daemon recognises is not in `list` at all, so an image cannot be
-written onto it through this verb; and in a live session any disk carrying an ISO 9660 partition is
-treated as the boot disk, so a stick that already holds another system's image is refused there.
+written onto it through this verb; and in a live session any disk carrying an ISO 9660 superblock,
+on the disk or on a partition, is treated as the boot disk, so a stick that already holds another
+system's image is refused there.
 
 Every program it runs is named by absolute path: `/usr/bin/eject`, `/usr/sbin/cryptsetup`,
 `/usr/sbin/smartctl`, the `mkfs` programs above, `/sbin/modprobe`, `/sbin/mount.cifs`,
@@ -1052,10 +1099,15 @@ kernel's hotplug socket).
 The daemon started by the init script reads none of them: an environment variable that moved its
 idea of `/dev` would be a way to aim a format at any device on the machine.
 
-The committed fixture, `testing/fixtures/mountd`, is a recorded `/sys/block` tree with six hand-built
-device images. Five are on removable disks and are offered: a FAT32 stick labelled `KDOSSTICK`, a
-LUKS container, a live-USB pair (an ISO 9660 partition and a FAT ESP beside it) and an optical
-disc. One is an ext4 filesystem on an internal disk and is never offered. The fixture also carries
+The committed fixture, `testing/fixtures/mountd`, is a recorded `/sys/block` tree with hand-built
+device images. On removable disks: a FAT32 stick labelled `KDOSSTICK`, a LUKS container, a
+live-USB pair (an ISO 9660 partition and a FAT ESP beside it), the shipped isohybrid layout (`sde`:
+an ISO 9660 superblock on the whole disk, a 64-sector `sde1` with no filesystem, a FAT `sde2`), a
+whole-disk ext4 stick (`sdf`) standing in for a persistence store, and an optical disc. On a real
+root with nothing of theirs mounted all seven are offered; the selftest mounts `sde` at `/mnt/iso`
+and `sdf` at `/mnt/persist`, and serves a live session, and asserts that neither boot disk
+appears in `list` and that no verb reaches it. One more is an ext4 filesystem on an internal
+disk and is never offered. The fixture also carries
 an `fstab` that claims the stick by label, and a `mounts-live` table from a booted live medium with
 one mounted network share. The internal disk carries a real superblock so that a broken removable
 check shows up as an extra row rather than as nothing.
@@ -1177,9 +1229,17 @@ rest of its life; restart it (`service restart packd`) after changing the file.
 
 The sweep that deletes older versions runs after an install and at no other time, so nothing deletes
 a rollback while somebody is deciding whether to use it. `rollback` keeps the current file as
-`<id>-<version>.kpack`, renames the retained version whose version string sorts last (compared as
-text) into its place, and answers `ok <id> <current> -> <restored>`. The version rolled away
-from stays in the store under its own version.
+`<id>-<version>.kpack`, renames the newest retained version (by version comparison, as the sweep
+keeps them, so `1.10` is newer than `1.9`) into its place, and answers
+`ok <id> <current> -> <restored>`. The version rolled away from stays in the store under its own
+version. A retained copy of the installed version itself, left by installing the same version
+again, is never the one restored; with nothing else retained the answer is
+`err no earlier <id> is kept`.
+
+The store's row for an id is `<id>.kpack` and no other file. A retained `<id>-<version>.kpack` is
+material for `rollback` and is never listed, mounted or composed. The sweep and `rollback` count a
+file as a retained version of an id only when its own metadata names that id, because an id may
+contain `-`: `foo-bar.kpack` is the installed pack `foo-bar`, not a version `bar` of `foo`.
 
 ### Diagnosis and testing
 
@@ -1205,7 +1265,9 @@ kdos-boxsock <box> [instance-id]
 
 What it does:
 
-1. Checks the box name: 1 to 64 characters from `[A-Za-z0-9._-]`, and not `.` or `..`.
+1. Checks the box name: 1 to 64 characters from `[A-Za-z0-9._-]`, the first a letter or a digit,
+   so an option is never taken for a name; a bad one exits 2 with `bad box name`. `-h` or `--help`
+   alone prints the usage and exits 0.
 2. Takes a lock on `$XDG_RUNTIME_DIR/kdos-box-<box>@<display>.lock`. If another `kdos-boxsock` for
    the same box and compositor already holds it, this one exits 0 and does nothing. The lock, not
    the socket file, answers "is this box already served", because a socket file is also left

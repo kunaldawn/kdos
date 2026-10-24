@@ -30,7 +30,8 @@ mkdir -p build && cd build
 ../configure \
     --host=$KDOS_TARGET \
     --prefix=/usr \
-    --disable-static
+    --disable-static \
+    --disable-nls
 
 make
 make DESTDIR=$SYSROOT install

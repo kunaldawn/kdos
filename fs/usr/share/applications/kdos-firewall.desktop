@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Firewall
+GenericName=Firewall Settings
+Comment=Choose which services answer the network
+Exec=kdos-firewall
+Icon=lock
+Terminal=false
+NoDisplay=true
+Categories=Settings;Security;
+StartupWMClass=kdos-firewall

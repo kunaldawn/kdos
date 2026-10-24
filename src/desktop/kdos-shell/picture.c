@@ -11,8 +11,8 @@
  * between the bytes and the cells is the same: decode through libkimg under a
  * budget, crop, scale, cut into sprite tiles, draw. This is that, once.
  *
- * THE PIECES THAT ARE EASY TO GET WRONG, and each of them cost a debugging
- * session before it was written down:
+ * THE PIECES THAT ARE EASY TO GET WRONG, and each of them fails without a
+ * message:
  *
  *   - The new tile grid is registered BEFORE the old one is given back. The
  *     table hands a freed slot straight out again, so dropping first lets the
