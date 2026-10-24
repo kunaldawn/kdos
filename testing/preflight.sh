@@ -2894,6 +2894,116 @@ else
     note "KT_DIM text" "every text draw takes a readable slot"
 fi
 
+echo "==> no dark ink on the selection fill"
+# THE SELECTION FILL IS KT_DIM, AND DARK INK ON IT IS NOT THERE. A row whose
+# background came from ktui_sel_slots() or ktui_sel_row() is lit KT_DIM, so a
+# cell on it drawn `on ? KT_SURFACE : ...` — the ink for a KT_ACCENT fill —
+# measures about 1.6:1 and the selected row loses the very word it selected.
+# The ink on that fill is the fg ktui_sel_slots() returned (KT_TEXT where none
+# is in scope), and a secondary column is ktui_sel_dim(). The check takes every
+# text, menu-label, sprite and gauge draw inside a function that got its
+# background from one of those calls, or whose background is a parameter a
+# caller in the same file fills from one, and fails one whose background is
+# that fill and whose foreground can be KT_SURFACE or KT_BG, written in the
+# call or in a local the function sets. A row lit KT_ACCENT keeps its dark
+# ink, because its background never came from the selection rule.
+_selink=$(python3 - src <<'PYEOF'
+import glob, re, sys
+
+# function -> (index of the foreground argument, index of the background)
+DRAW = {
+    'ktui_draw_text': (4, 5), 'ktui_draw_text_right': (4, 5),
+    'ktui_draw_textf': (3, 4), 'ktui_draw_cell': (3, 4),
+    'ktui_draw_sprite': (2, 3), 'ktui_gauge': (4, 5),
+    'ktui_menu_label': (4, 5),
+}
+CALL = re.compile(r'\b(' + '|'.join(DRAW) + r')\s*\(')
+SEL = re.compile(r'\bktui_sel_(?:slots|row)\s*\([^;]*&\s*(\w+)\s*\)\s*;')
+DARK = re.compile(r'\bKT_(?:SURFACE|BG)\b')
+
+def strip(s):
+    return re.sub(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'',
+                  lambda m: m.group(0) if m.group(0)[0] in '"\''
+                  else re.sub(r'[^\n]', ' ', m.group(0)), s, flags=re.S)
+
+def args(s, i):
+    out, depth, st, k = [], 0, i + 1, i
+    while k < len(s):
+        c = s[k]
+        if c in '"\'':
+            k += 1
+            while k < len(s) and s[k] != c:
+                k += 2 if s[k] == '\\' else 1
+        elif c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+            if depth == 0:
+                out.append(s[st:k])
+                return out, k
+        elif c == ',' and depth == 1:
+            out.append(s[st:k])
+            st = k + 1
+        k += 1
+    return out, len(s)
+
+# The name and parameters right before a "{" in column 0, so a return type
+# on the line above the name is found as well as one beside it.
+SIG = re.compile(r'\b(\w+)\s*\(((?:[^()]|\([^()]*\))*)\)\s*\n\{')
+
+def dark(b, fg):
+    # The ink itself, or a local the function sets to it before the draw.
+    if DARK.search(fg):
+        return True
+    v = fg.strip()
+    return bool(re.fullmatch(r'\w+', v)) and any(
+        DARK.search(x) for x in
+        re.findall(r'\b' + v + r'\s*=(?!=)([^;]*);', b))
+
+def scan(b, fills, p, base, s):
+    for m in CALL.finditer(b):
+        a, _ = args(b, m.end() - 1)
+        fi, bi = DRAW[m.group(1)]
+        if bi < len(a) and a[bi].strip() in fills and dark(b, a[fi]):
+            print('%s:%d' % (p, s.count('\n', 0, base + m.start()) + 1))
+
+for p in sorted(glob.glob(sys.argv[1] + '/**/*.c', recursive=True)):
+    s = strip(open(p, errors='replace').read())
+    # A function body runs from a "{" in column 0 to the next "}" there.
+    funcs = []
+    for sig in SIG.finditer(s):
+        end = re.compile(r'^\}', re.M).search(s, sig.end())
+        if not end:
+            continue
+        params = [re.findall(r'\w+', q)[-1] if re.findall(r'\w+', q) else ''
+                  for q in sig.group(2).split(',')]
+        funcs.append((sig.group(1), params, sig.end() - 1, s[sig.end() - 1:end.end()]))
+    # A parameter is a fill when a caller in this file hands it one.
+    names = {f[0]: f[1] for f in funcs}
+    passed = {}
+    for name, params, base, b in funcs:
+        fills = set(SEL.findall(b))
+        scan(b, fills, p, base, s)
+        if not fills:
+            continue
+        for m in re.finditer(r'\b(' + '|'.join(map(re.escape, names)) + r')\s*\(', b):
+            a, _ = args(b, m.end() - 1)
+            for i, x in enumerate(a):
+                if x.strip() in fills and i < len(names[m.group(1)]):
+                    passed.setdefault(m.group(1), set()).add(names[m.group(1)][i])
+    for name, params, base, b in funcs:
+        if name in passed:
+            scan(b, passed[name], p, base, s)
+PYEOF
+) || _selink="testing/preflight.sh:the-selection-ink-scanner-did-not-run"
+if [ -n "$_selink" ]; then
+    for _f in $_selink; do
+        bad "dark ink on KT_DIM: $_f" "KT_SURFACE/KT_BG text on a ktui_sel_slots() fill — use the fg it returns, or ktui_sel_dim()"
+    done
+else
+    note "selection ink" "every cell on the selection fill takes a readable slot"
+fi
+
 echo "==> a literal colour is set at the render boundary and nowhere else"
 # CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following
 # `kdos theme`, so the bits that say it has one may be SET in exactly four

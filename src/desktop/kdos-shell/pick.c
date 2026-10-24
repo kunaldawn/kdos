@@ -743,7 +743,7 @@ static void draw(const char *title)
 		ktui_draw_text(2, list_top + i, 2,
 			       r->dir ? ktui_glyph[KT_G_FULL]
 				      : ktui_glyph[KT_G_DOT],
-			       on ? KT_SURFACE : (r->dir ? KT_ACCENT : KT_MID),
+			       on ? fg : (r->dir ? KT_ACCENT : KT_MID),
 			       bg, KT_A_NONE);
 
 		char label[300];

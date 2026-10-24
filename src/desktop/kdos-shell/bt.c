@@ -664,7 +664,7 @@ static void draw_frame(void)
 		int tx = 4;
 		if (icon >= 0) {
 			ktui_draw_sprite(krect(2, y, 2, 1), icon,
-					 on	      ? KT_SURFACE
+					 on	      ? fg
 					 : d->connected ? KT_ACCENT
 						      : KT_MID,
 					 bg);
@@ -673,7 +673,7 @@ static void draw_frame(void)
 			ktui_draw_text(2, y, 1,
 				       d->connected ? ktui_glyph[KT_G_BULLET]
 						    : ktui_glyph[KT_G_DOT],
-				       on ? KT_SURFACE
+				       on ? fg
 					  : d->connected ? KT_ACCENT : KT_MID,
 				       bg, KT_A_NONE);
 		}

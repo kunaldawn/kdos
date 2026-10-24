@@ -684,6 +684,14 @@ A secondary column on a selected row takes `ktui_sel_dim()`, never `KT_MID` (the
 `KT_MID` on the `KT_DIM` selection fill measures below any reading floor, so a tag, a two-letter
 code or a units suffix left muted vanishes exactly when the row is selected.
 
+Every other cell on a selected row takes the `fg` that `ktui_sel_slots()` returned, or `KT_TEXT`
+where no `fg` is in scope. `KT_SURFACE` ink is right only on a `KT_ACCENT` fill: on the `KT_DIM`
+selection fill it measures about 1.6:1, so an icon, a state word or a security tag drawn
+`on ? KT_SURFACE : ...` disappears on the one row the user picked. `testing/preflight.sh` ("no dark
+ink on the selection fill") refuses a text, menu-label, sprite or gauge draw whose background came
+from `ktui_sel_slots()` or `ktui_sel_row()` and whose foreground can be `KT_SURFACE` or `KT_BG`,
+written in the call or in a local the function sets.
+
 ## A minimal surface
 
 The pieces above fit together in one descriptor. This is the shape of a boxed `kdos-shell` window
@@ -1227,7 +1235,7 @@ restated as a procedure:
 |---|---|---|
 | 1 | Box the surface with `ktui_draw_box()`, title on the top edge | `--dump` |
 | 2 | Header band, group headings and button bar from `libkchrome` | `grep kch_` |
-| 3 | Slots for colour, `KT_MID` for labels; selection through `ktui_sel_slots()`, secondary columns through `ktui_sel_dim()` | `testing/preflight.sh` ("no text is drawn in KT_DIM"), which reads the foreground of every text draw, across line breaks and through ternaries; `grep 'KT_ACCENT :'`, where a match is a surface deciding for itself |
+| 3 | Slots for colour, `KT_MID` for labels; selection through `ktui_sel_slots()`, secondary columns through `ktui_sel_dim()` | `testing/preflight.sh` ("no text is drawn in KT_DIM"), which reads the foreground of every text draw, across line breaks and through ternaries, and ("no dark ink on the selection fill"), which refuses `KT_SURFACE` or `KT_BG` ink on a background `ktui_sel_slots()` filled; `grep 'KT_ACCENT :'`, where a match is a surface deciding for itself |
 | 4 | Motion, press, wheel, scrollbar drag and header sort | `grep -c KT_EVT_MOUSE`; zero is the defect |
 | 5 | A hit map recorded from the draw | Resize the window and click the top row |
 | 6 | Dump at two sizes and commit both goldens | `testing/devdeps-image.sh` |

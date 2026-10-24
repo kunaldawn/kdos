@@ -951,7 +951,7 @@ static void draw(const char *status)
 			ktui_draw_sprite(krect(cx, cy, 2, 1), icon, fg, bg);
 		} else {
 			ktui_draw_text(cx, cy, 2, it_glyph(i),
-				       on ? KT_SURFACE
+				       on ? fg
 					  : (entries[i].dir ? KT_ACCENT
 							    : KT_MID),
 				       bg, KT_A_NONE);

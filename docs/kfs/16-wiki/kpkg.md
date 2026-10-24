@@ -158,14 +158,14 @@ the SHA-256 and mode of every regular file it placed.
    ```text
    libvirt: config ./etc/libvirt/qemu/networks/default.xml
    unowned ./usr/bin/kpkg
-   2104 packages checked: 0 missing, 0 changed, 0 mode, 57 config, 334 unowned
+   2107 packages checked: 0 missing, 0 changed, 0 mode, 25 config, 73 unowned
    ```
 
    That is the freshly booted image, and it exits 0. The image leaves out the build's logs and
    caches but carries every directory a package claims under `/var/log` and `/var/cache`, empty
    ([110_iso](../15-image/110-iso.md)), so none of them is `missing`. Its `config` lines are
-   libvirt's network and filter files under `/etc/libvirt` and the cursor theme's files under
-   `/etc/skel`, whose recorded hashes the image's files do not match; the `unowned` ones include
+   libvirt's network and filter files under `/etc/libvirt`, which `libvirtd` rewrites at its first
+   start, so their recorded hashes no longer match; the `unowned` ones include
    `kpkg` and `kinstall` themselves. The meaning of each line is in
    [Checking an installed root](../../kdos/03-architecture/packaging.md#checking-an-installed-root).
 

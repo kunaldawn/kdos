@@ -549,9 +549,9 @@ static void draw(const struct view *v)
 	 * The plate is the whole highlight, so in a dump
 	 * the selected row was indistinguishable from every other row — a
 	 * menu with no visible cursor, on a display where the cursor is the
-	 * only thing saying what Enter will do. An accent fill with the slots
-	 * swapped is what a character grid has, and it is what the row's mark
-	 * is already coloured for.
+	 * only thing saying what Enter will do. The selection fill from
+	 * ktui_sel_slots() is what a character grid has, and its fg is what
+	 * the row's mark is coloured with.
 	 */
 			if (!kch_px_live()) {
 				/* The slots are `uint8_t` here and the rule

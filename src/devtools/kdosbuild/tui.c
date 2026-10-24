@@ -1395,7 +1395,7 @@ static void draw_tree_row(BStep *n, int rx, int y, int width, int bg, int sel)
 	int x = rx;
 	if (!n->is_group)
 		x += 2;
-	ktui_draw_text(x, y, width - x, icon, sel ? KT_BG : icon_fg, bg,
+	ktui_draw_text(x, y, width - x, icon, sel ? KT_TEXT : icon_fg, bg,
 		       KT_A_BOLD);
 	x += (int)strlen(icon) > 4 ? ktui_utf8_width(icon) : 4;
 	x += 1;
@@ -1418,7 +1418,7 @@ static void draw_tree_row(BStep *n, int rx, int y, int width, int bg, int sel)
 	if (room < 1)
 		room = 1;
 	ktui_draw_text(x, y, room, n->title,
-		       sel ? KT_BG : n->installed ? KT_MID : KT_TEXT, bg,
+		       sel ? KT_TEXT : n->installed ? KT_MID : KT_TEXT, bg,
 		       sel ? KT_A_BOLD : 0);
 
 	if (n->is_group && n->nchild) {
@@ -1432,10 +1432,10 @@ static void draw_tree_row(BStep *n, int rx, int y, int width, int bg, int sel)
 		if (width - bw + 1 > x)
 			ktui_gauge(width - bw + 1, y, bw,
 				   (double)cdone / n->nchild,
-				   sel ? KT_BG : KT_ACCENT, bg);
+				   sel ? KT_TEXT : KT_ACCENT, bg);
 	} else if (t[0]) {
 		ktui_draw_text_right(x, y, width - x + 1, t,
-				     sel ? KT_BG : KT_MID, bg, 0);
+				     ktui_sel_dim(sel, 1), bg, 0);
 	}
 }
 

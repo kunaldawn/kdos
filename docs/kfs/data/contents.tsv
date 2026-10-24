@@ -12,6 +12,7 @@ acpica	acpibin acpidump acpiexec acpihelp acpisrc acpixtract iasl
 admesh	admesh	libadmesh.so	usr/include/admesh usr/share/doc/admesh usr/share/licenses/admesh
 adplug	adplugdb	libadplug-2.4.so libadplug.so	usr/include/adplug usr/share/licenses/adplug
 adwaita-icon-theme			usr/share/icons/Adwaita usr/share/licenses/adwaita-icon-theme
+adwaita-icon-theme-legacy			usr/share/icons/AdwaitaLegacy usr/share/licenses/adwaita-icon-theme-legacy
 aerc	aerc carddav-query		usr/libexec/aerc usr/share/aerc usr/share/licenses/aerc
 afflib	affcat affcompare affconvert affcopy affcrypto affdiskprint affinfo affix affrecover affsegment affsign affstats affuse affverify affxml	libafflib.so	usr/include/afflib usr/share/licenses/afflib
 age	age age-inspect age-keygen age-plugin-batchpass		usr/share/licenses/age
@@ -59,7 +60,7 @@ audiofile	sfconvert sfinfo	libaudiofile.so	usr/share/licenses/audiofile
 autoconf	autoconf autoheader autom4te autoreconf autoscan autoupdate ifnames		usr/share/autoconf usr/share/licenses/autoconf
 autoconf-archive			usr/share/doc/autoconf-archive usr/share/licenses/autoconf-archive
 automake	aclocal aclocal-1.19 automake automake-1.19		usr/share/aclocal-1.19 usr/share/automake-1.19 usr/share/doc/automake usr/share/licenses/automake
-avahi	avahi-autoipd avahi-browse avahi-browse-domains avahi-daemon avahi-dnsconfd avahi-publish avahi-publish-address avahi-publish-service avahi-resolve avahi-resolve-address avahi-resolve-host-name avahi-set-host-name	libavahi-client.so libavahi-common.so libavahi-core.so libavahi-glib.so libavahi-gobject.so libdns_sd.so	etc/avahi usr/include/avahi-client usr/include/avahi-common usr/include/avahi-compat-libdns_sd usr/include/avahi-core usr/include/avahi-glib usr/include/avahi-gobject usr/share/avahi usr/share/licenses/avahi
+avahi	avahi-autoipd avahi-browse avahi-browse-domains avahi-daemon avahi-dnsconfd avahi-publish avahi-publish-address avahi-publish-service avahi-resolve avahi-resolve-address avahi-resolve-host-name avahi-set-host-name	libavahi-client.so libavahi-common.so libavahi-core.so libavahi-glib.so libavahi-gobject.so libdns_sd.so	etc/avahi usr/include/avahi-client usr/include/avahi-common usr/include/avahi-compat-libdns_sd usr/include/avahi-core usr/include/avahi-glib usr/include/avahi-gobject usr/share/avahi usr/share/licenses/avahi var/lib/avahi-autoipd
 avidemux	avidemux3_cli avidemux3_jobs_qt6 avidemux3_qt6	libADM6avcodec.so libADM6avformat.so libADM6avutil.so libADM6postproc.so libADM6swscale.so libADM_UIQT66.so libADM_UI_Cli6.so libADM_audioParser6.so libADM_core6.so libADM_coreAudio6.so libADM_coreAudioDevice6.so libADM_coreAudioEncoder6.so libADM_coreAudioFilterAPI6.so libADM_coreDemuxer6.so libADM_coreDemuxerMpeg6.so libADM_coreImage6.so libADM_coreImageLoader6.so libADM_coreJobs.so libADM_coreMuxer6.so libADM_coreScript.so libADM_coreSocket6.so libADM_coreSqlLight3.so libADM_coreSubtitles6.so libADM_coreUI6.so libADM_coreUtils6.so libADM_coreVideoCodec6.so libADM_coreVideoEncoder6.so libADM_coreVideoFilter6.so libADM_openGLQT66.so libADM_render6_QT6.so libADM_render6_cli.so	usr/include/avidemux usr/lib/ADM_plugins6 usr/share/ADM6_addons usr/share/avidemux6 usr/share/licenses/avidemux
 aview	aaflip asciiview aview		usr/share/licenses/aview
 avogadrolibs		libAvogadroCalc.so libAvogadroCore.so libAvogadroIO.so libAvogadroMoleQueue.so libAvogadroQtGui.so libAvogadroQtOpenGL.so libAvogadroQtPlugins.so libAvogadroQuantumIO.so libAvogadroRendering.so	usr/include/avogadro usr/lib/avogadro2 usr/lib/cmake/avogadrolibs usr/share/avogadro2 usr/share/doc/AvogadroLibs usr/share/licenses/avogadrolibs
@@ -402,7 +403,7 @@ giflib	gifbuild gifclrmp giffix giftext giftool	libgif.a libgif.so	usr/share/lic
 gimagereader	gimagereader-qt6		usr/share/doc/gimagereader usr/share/licenses/gimagereader
 gimp	gimp gimp-3 gimp-3.2 gimp-console gimp-console-3 gimp-console-3.2 gimp-script-fu-interpreter-3.0 gimp-test-clipboard gimp-test-clipboard-3 gimp-test-clipboard-3.2 gimptool gimptool-3 gimptool-3.2	libgimp-3.0.so libgimp-scriptfu-3.0.so libgimpbase-3.0.so libgimpcolor-3.0.so libgimpconfig-3.0.so libgimpmath-3.0.so libgimpmodule-3.0.so libgimpthumb-3.0.so libgimpui-3.0.so libgimpwidgets-3.0.so	etc/gimp usr/include/gimp-3.0 usr/lib/gimp usr/share/gimp/3.0/brushes usr/share/gimp/3.0/dynamics usr/share/gimp/3.0/file-raw usr/share/gimp/3.0/fonts usr/share/gimp/3.0/fractalexplorer usr/share/gimp/3.0/gfig usr/share/gimp/3.0/gflare usr/share/gimp/3.0/gimpressionist usr/share/gimp/3.0/gradients usr/share/gimp/3.0/icons usr/share/gimp/3.0/images usr/share/gimp/3.0/menus usr/share/gimp/3.0/palettes usr/share/gimp/3.0/patterns usr/share/gimp/3.0/scripts usr/share/gimp/3.0/tags usr/share/gimp/3.0/themes usr/share/gimp/3.0/tips usr/share/gimp/3.0/tool-presets usr/share/licenses/gimp
 gimp-help			usr/share/gimp/3.0/help usr/share/licenses/gimp-help
-git	git git-cvsserver git-receive-pack git-shell git-upload-archive git-upload-pack scalar		usr/lib/git-core usr/share/git usr/share/git-core usr/share/gitweb usr/share/licenses/git usr/share/perl5/vendor_perl/FromCPAN usr/share/perl5/vendor_perl/Git
+git	git git-receive-pack git-shell git-upload-archive git-upload-pack scalar		usr/lib/git-core usr/share/git usr/share/git-core usr/share/gitweb usr/share/licenses/git usr/share/perl5/vendor_perl/FromCPAN usr/share/perl5/vendor_perl/Git
 git-cola	cola git-cola git-cola-sequence-editor git-dag		usr/lib/python3.14/site-packages/cola usr/lib/python3.14/site-packages/git_cola-4.19.0.dist-info usr/lib/python3.14/site-packages/polib-1.2.0.dist-info usr/share/licenses/git-cola
 git-lfs	git-lfs		usr/share/licenses/git-lfs
 gl2ps		libgl2ps.so	usr/share/doc/gl2ps usr/share/licenses/gl2ps
@@ -632,11 +633,12 @@ kdos-bb	kdos-bb		usr/share/kdos-bb usr/share/licenses/kdos-bb
 kdos-boxinit			usr/libexec/kdos
 kdos-boxsock	kdos-boxsock		
 kdos-comp	kdos-comp		
-kdos-cursors			etc/skel/.icons usr/share/icons/KDOS-cursors usr/share/icons/default usr/share/kdos/cursors usr/share/licenses/kdos-cursors
+kdos-cursors			usr/share/icons/KDOS-cursors usr/share/icons/default usr/share/kdos/cursors usr/share/licenses/kdos-cursors
 kdos-doc			usr/share/doc/kdos
 kdos-energyd	kdos-energy kdos-energyd		
 kdos-gtk-theme			usr/share/kdos/gtk-theme usr/share/licenses/kdos-gtk-theme usr/share/themes/KDOS
 kdos-icons			usr/share/icons/KDOS usr/share/kdos/icons usr/share/licenses/kdos-icons
+kdos-kfs			usr/share/doc/kfs
 kdos-lock	kdos-checkpass kdos-lock		
 kdos-mountd	kdos-mount kdos-mountd		
 kdos-oomd	kdos-oomd		
@@ -906,7 +908,7 @@ libmatroska		libmatroska.so	usr/include/matroska usr/lib/cmake/Matroska usr/shar
 libmaxminddb	mmdblookup	libmaxminddb.so	usr/share/licenses/libmaxminddb
 libmbim	mbim-network mbimcli	libmbim-glib.so	usr/include/libmbim-glib usr/share/licenses/libmbim
 libmd		libmd.a libmd.so	usr/share/licenses/libmd
-libmed	mdump2 mdump3 mdump4 medconforme medimport xmdump2 xmdump3 xmdump4	libmed.so libmedC.so libmedfwrap.so libmedimport.so	usr/include/2.3.6 usr/lib/cmake/medfile-5.0.0 usr/share/licenses/libmed
+libmed	mdump mdump2 mdump3 mdump4 medconforme medimport xmdump xmdump2 xmdump3 xmdump4	libmed.so libmedC.so libmedfwrap.so libmedimport.so	usr/include/2.3.6 usr/lib/cmake/medfile-5.0.0 usr/share/licenses/libmed
 libmediainfo		libmediainfo.so	usr/include/MediaInfo usr/include/MediaInfoDLL usr/lib/cmake/mediainfolib usr/share/licenses/libmediainfo
 libmicrohttpd		libmicrohttpd.so	usr/share/licenses/libmicrohttpd
 libmikmod	libmikmod-config	libmikmod.so	usr/share/licenses/libmikmod
@@ -1171,7 +1173,7 @@ modemmanager	ModemManager mmcli	libmm-glib.so	usr/include/ModemManager usr/inclu
 modemmanager-qt		libKF6ModemManagerQt.so	usr/include/KF6/ModemManagerQt usr/lib/cmake/KF6ModemManagerQt usr/share/licenses/modemmanager-qt
 moon-buggy	moon-buggy		usr/share/licenses/moon-buggy var/lib/moon-buggy
 mosh	mosh mosh-client mosh-server		usr/share/licenses/mosh
-mosquitto	mosquitto mosquitto_ctrl mosquitto_db_dump mosquitto_passwd mosquitto_pub mosquitto_rr mosquitto_signal mosquitto_sub	libmosquitto.so libmosquittopp.so	etc/mosquitto usr/include/mosquitto usr/share/licenses/mosquitto
+mosquitto	mosquitto mosquitto_ctrl mosquitto_db_dump mosquitto_passwd mosquitto_pub mosquitto_rr mosquitto_signal mosquitto_sub	libmosquitto.so libmosquittopp.so	etc/mosquitto usr/include/mosquitto usr/share/licenses/mosquitto var/lib/mosquitto
 motif	uil	libMrm.so libUil.so libXm.so	usr/include/Mrm usr/include/Xm usr/include/uil usr/share/X11/bindings usr/share/licenses/motif usr/share/motif
 movit		libmovit.so	usr/include/movit
 mpc		libmpc.a libmpc.so	usr/share/licenses/mpc
@@ -1286,7 +1288,7 @@ opencc	opencc opencc_dict opencc_phrase_extract	libmarisa.a libopencc.so	usr/inc
 opencl-clhpp			usr/share/cmake/OpenCLHeadersCpp usr/share/licenses/opencl-clhpp
 opencl-headers			usr/share/cmake/OpenCLHeaders usr/share/licenses/opencl-headers
 opencolorio	ocioarchive ociobakelut ociocheck ociochecklut ocioconvert ociocpuinfo ociodisplay ociolutimage ociomakeclf ociomergeconfigs ocioperf ociowrite	libOpenColorIO.so libOpenColorIOimageioapphelpers.a libOpenColorIOoglapphelpers.a	usr/include/OpenColorIO usr/lib/cmake/OpenColorIO usr/share/licenses/opencolorio usr/share/ocio
-openconnect	openconnect	libopenconnect.so	usr/libexec/openconnect usr/share/licenses/openconnect
+openconnect	openconnect	libopenconnect.so	usr/libexec/openconnect usr/share/doc/openconnect usr/share/licenses/openconnect
 opencpn	opencpn opencpn-cmd		usr/lib/opencpn usr/share/doc/opencpn usr/share/licenses/opencpn usr/share/opencpn
 opencsg		libopencsg.so	usr/share/licenses/opencsg
 opencv	opencv_annotation opencv_interactive-calibration opencv_model_diagnostics opencv_version opencv_visualisation	libopencv_aruco.so libopencv_calib3d.so libopencv_core.so libopencv_dnn.so libopencv_features2d.so libopencv_flann.so libopencv_highgui.so libopencv_imgcodecs.so libopencv_imgproc.so libopencv_ml.so libopencv_objdetect.so libopencv_optflow.so libopencv_photo.so libopencv_plot.so libopencv_shape.so libopencv_stitching.so libopencv_superres.so libopencv_tracking.so libopencv_video.so libopencv_videoio.so libopencv_videostab.so libopencv_ximgproc.so	usr/include/opencv4 usr/lib/cmake/opencv4 usr/share/licenses/opencv usr/share/licenses/opencv4 usr/share/opencv4
@@ -1350,7 +1352,7 @@ patchelf	patchelf		usr/share/doc/patchelf usr/share/licenses/patchelf
 pcaudiolib		libpcaudio.so	usr/include/pcaudiolib usr/share/licenses/pcaudiolib
 pciutils	lspci pcilmr setpci update-pciids	libpci.so	usr/include/pci usr/share/licenses/pciutils
 pcre2	pcre2-config pcre2grep pcre2test	libpcre2-16.so libpcre2-32.so libpcre2-8.so libpcre2-posix.so	usr/share/doc/pcre2 usr/share/licenses/pcre2
-pcsc-lite	pcsc-spy pcscd	libpcsclite.so libpcsclite_real.so libpcscspy.so	etc/default usr/include/PCSC usr/share/doc/pcsc-lite usr/share/licenses/pcsc-lite
+pcsc-lite	pcsc-spy pcscd	libpcsclite.so libpcsclite_real.so libpcscspy.so	usr/include/PCSC usr/share/doc/pcsc-lite usr/share/licenses/pcsc-lite
 pdal	pdal pdal-config	libE57Format.so libpdal_plugin_filter_trajectory.so libpdal_plugin_kernel_fauxplugin.so libpdal_plugin_reader_draco.so libpdal_plugin_reader_e57.so libpdal_plugin_reader_hdf.so libpdal_plugin_reader_icebridge.so libpdal_plugin_reader_pgpointcloud.so libpdal_plugin_writer_draco.so libpdal_plugin_writer_e57.so libpdal_plugin_writer_pgpointcloud.so libpdalcpp.so	usr/include/E57Format usr/include/pdal usr/lib/cmake/E57Format usr/lib/cmake/PDAL usr/share/licenses/pdal
 pdf4qt	Pdf4QtDiff Pdf4QtEditor Pdf4QtLaunchPad Pdf4QtPageMaster Pdf4QtViewer PdfTool	libPdf4QtLibCore.so libPdf4QtLibGui.so libPdf4QtLibWidgets.so	usr/include/Pdf4QtLibCore usr/include/Pdf4QtLibWidgets usr/lib/pdf4qt usr/share/licenses/pdf4qt usr/share/pdf4qt
 pdfio		libpdfio.so	usr/share/doc/pdfio usr/share/licenses/pdfio
@@ -1442,7 +1444,7 @@ pulseaudio-qt		libKF6PulseAudioQt.so	usr/include/KF6/KF6PulseAudioQt usr/lib/cma
 purpose		libKF6Purpose.so libKF6PurposeWidgets.so	usr/include/KF6/Purpose usr/include/KF6/PurposeWidgets usr/lib/cmake/KF6Purpose usr/lib/qt6/plugins/kf6/purpose usr/lib/qt6/qml/org/kde/purpose usr/share/kf6/purpose usr/share/licenses/purpose
 pv	pv		usr/share/doc/pv
 pystring		libpystring.so	usr/include/pystring usr/lib/cmake/pystring usr/share/licenses/pystring
-python3	pydoc3 pydoc3.14 python python3 python3-config python3.14 python3.14-config	libpython3.14.so libpython3.so	usr/include/python3.14 usr/lib/python3.14/__phello__ usr/lib/python3.14/__pycache__ usr/lib/python3.14/_pyrepl usr/lib/python3.14/asyncio usr/lib/python3.14/collections usr/lib/python3.14/compression usr/lib/python3.14/concurrent usr/lib/python3.14/config-3.14-x86_64-linux-musl usr/lib/python3.14/ctypes usr/lib/python3.14/curses usr/lib/python3.14/dbm usr/lib/python3.14/email usr/lib/python3.14/encodings usr/lib/python3.14/ensurepip usr/lib/python3.14/html usr/lib/python3.14/http usr/lib/python3.14/importlib usr/lib/python3.14/json usr/lib/python3.14/logging usr/lib/python3.14/multiprocessing usr/lib/python3.14/pathlib usr/lib/python3.14/pydoc_data usr/lib/python3.14/re usr/lib/python3.14/sqlite3 usr/lib/python3.14/string usr/lib/python3.14/sysconfig usr/lib/python3.14/tomllib usr/lib/python3.14/unittest usr/lib/python3.14/urllib usr/lib/python3.14/venv usr/lib/python3.14/wsgiref usr/lib/python3.14/xml usr/lib/python3.14/xmlrpc usr/lib/python3.14/zipfile usr/lib/python3.14/zoneinfo usr/share/licenses/python3
+python3	pydoc3 pydoc3.14 python python3 python3-config python3.14 python3.14-config	libpython3.14.so libpython3.so	usr/include/python3.14 usr/lib/python3.14/__phello__ usr/lib/python3.14/_pyrepl usr/lib/python3.14/asyncio usr/lib/python3.14/collections usr/lib/python3.14/compression usr/lib/python3.14/concurrent usr/lib/python3.14/config-3.14-x86_64-linux-musl usr/lib/python3.14/ctypes usr/lib/python3.14/curses usr/lib/python3.14/dbm usr/lib/python3.14/email usr/lib/python3.14/encodings usr/lib/python3.14/ensurepip usr/lib/python3.14/html usr/lib/python3.14/http usr/lib/python3.14/importlib usr/lib/python3.14/json usr/lib/python3.14/logging usr/lib/python3.14/multiprocessing usr/lib/python3.14/pathlib usr/lib/python3.14/pydoc_data usr/lib/python3.14/re usr/lib/python3.14/sqlite3 usr/lib/python3.14/string usr/lib/python3.14/sysconfig usr/lib/python3.14/tomllib usr/lib/python3.14/unittest usr/lib/python3.14/urllib usr/lib/python3.14/venv usr/lib/python3.14/wsgiref usr/lib/python3.14/xml usr/lib/python3.14/xmlrpc usr/lib/python3.14/zipfile usr/lib/python3.14/zoneinfo usr/share/licenses/python3
 python3-adafruit-nrfutil	adafruit-nrfutil		usr/lib/python3.14/site-packages/adafruit_nrfutil-0.5.3.post16.dist-info usr/lib/python3.14/site-packages/nordicsemi
 python3-asgiref			usr/lib/python3.14/site-packages/asgiref usr/lib/python3.14/site-packages/asgiref-3.12.1.dist-info usr/share/licenses/python3-asgiref
 python3-astropy-iers-data			usr/lib/python3.14/site-packages/astropy_iers_data usr/lib/python3.14/site-packages/astropy_iers_data-0.2026.9.21.0.56.25.dist-info usr/share/licenses/python3-astropy-iers-data
@@ -1603,7 +1605,7 @@ python3-six			usr/lib/python3.14/site-packages/six-1.17.0.dist-info usr/share/li
 python3-soupsieve			usr/lib/python3.14/site-packages/soupsieve usr/lib/python3.14/site-packages/soupsieve-2.10.dist-info usr/share/licenses/python3-soupsieve
 python3-sphinx	sphinx-apidoc sphinx-autogen sphinx-build sphinx-quickstart		usr/lib/python3-sphinx usr/share/licenses/python3-sphinx
 python3-tinycss2			usr/lib/python3.14/site-packages/tinycss2 usr/lib/python3.14/site-packages/tinycss2-1.5.1.dist-info usr/share/licenses/python3-tinycss2
-python3-tkinter			usr/lib/python3.14/tkinter usr/share/licenses/python3-tkinter
+python3-tkinter	idle3 idle3.14		usr/lib/python3.14/idlelib usr/lib/python3.14/tkinter usr/lib/python3.14/turtledemo usr/share/licenses/python3-tkinter
 python3-tomlkit			usr/lib/python3.14/site-packages/tomlkit usr/lib/python3.14/site-packages/tomlkit-0.15.1.dist-info usr/share/licenses/python3-tomlkit
 python3-tornado			usr/lib/python3.14/site-packages/tornado usr/lib/python3.14/site-packages/tornado-6.5.10.dist-info usr/share/licenses/python3-tornado
 python3-trove-classifiers	trove-classifiers		usr/lib/python3.14/site-packages/trove_classifiers usr/lib/python3.14/site-packages/trove_classifiers-2026.9.21.13.dist-info usr/share/licenses/python3-trove-classifiers
@@ -1885,7 +1887,7 @@ taskwarrior-tui	taskwarrior-tui		usr/share/licenses/taskwarrior-tui
 tcl	sqlite3_analyzer tclsh tclsh9.0	libtcl9.0.so libtclstub.a	usr/lib/itcl4.3.8 usr/lib/sqlite3.53.0 usr/lib/tcl9 usr/lib/tdbc1.1.13 usr/lib/tdbcmysql1.1.13 usr/lib/tdbcodbc1.1.13 usr/lib/tdbcpostgres1.1.13 usr/lib/thread3.0.6 usr/share/licenses/tcl
 tcpdump	tcpdump tcpdump.4.99.7		usr/share/licenses/tcpdump
 tdb	tdbbackup tdbdump tdbrestore tdbtool	libtdb.so	usr/share/licenses/tdb
-tealdeer	tldr		etc/skel/.config usr/share/licenses/tealdeer usr/share/tldr
+tealdeer	tldr		etc/skel usr/share/licenses/tealdeer usr/share/tldr
 tenacity	tenacity		usr/lib/tenacity usr/share/doc/tenacity usr/share/licenses/tenacity usr/share/tenacity
 terminus-font			usr/share/consolefonts usr/share/fonts/terminus usr/share/licenses/terminus-font
 terminus-ttf			usr/share/licenses/terminus-ttf
@@ -2055,6 +2057,7 @@ xfburn	xfburn		usr/share/licenses/xfburn usr/share/xfburn
 xfconf	xfconf-query	libxfconf-0.so	usr/include/xfce4/xfconf-0 usr/lib/xfce4 usr/share/gtk-doc/html/xfconf usr/share/licenses/xfconf
 xfsprogs	fsck.xfs mkfs.xfs xfs_admin xfs_bmap xfs_copy xfs_db xfs_estimate xfs_freeze xfs_fsr xfs_growfs xfs_info xfs_io xfs_logprint xfs_mdrestore xfs_metadump xfs_mkfile xfs_ncheck xfs_property xfs_protofile xfs_quota xfs_repair xfs_rtcp xfs_scrub xfs_spaceman	libhandle.a libhandle.so	usr/include/xfs usr/libexec/xfsprogs usr/share/doc/xfsprogs usr/share/licenses/xfsprogs usr/share/xfsprogs var/lib/xfsprogs
 xh	xh xhs		usr/share/licenses/xh
+xhost	xhost		usr/share/licenses/xhost
 xkbcomp	xkbcomp		usr/share/licenses/xkbcomp
 xkeyboard-config			usr/share/licenses/xkeyboard-config usr/share/xkeyboard-config-2
 xmlrpc-c	xml-rpc-api2cpp xml-rpc-api2txt xmlrpc xmlrpc-c-config xmlrpc_cpp_proxy xmlrpc_dumpserver xmlrpc_parsecall xmlrpc_pstream xmlrpc_transport	libxmlrpc++.a libxmlrpc++.so libxmlrpc.a libxmlrpc.so libxmlrpc_abyss++.a libxmlrpc_abyss++.so libxmlrpc_abyss.a libxmlrpc_abyss.so libxmlrpc_client++.a libxmlrpc_client++.so libxmlrpc_client.a libxmlrpc_client.so libxmlrpc_cpp.a libxmlrpc_cpp.so libxmlrpc_openssl.a libxmlrpc_openssl.so libxmlrpc_packetsocket.a libxmlrpc_packetsocket.so libxmlrpc_server++.a libxmlrpc_server++.so libxmlrpc_server.a libxmlrpc_server.so libxmlrpc_server_abyss++.a libxmlrpc_server_abyss++.so libxmlrpc_server_abyss.a libxmlrpc_server_abyss.so libxmlrpc_server_cgi++.a libxmlrpc_server_cgi++.so libxmlrpc_server_pstream++.a libxmlrpc_server_pstream++.so libxmlrpc_util++.a libxmlrpc_util++.so libxmlrpc_util.a libxmlrpc_util.so libxmlrpc_xmlparse.a libxmlrpc_xmlparse.so libxmlrpc_xmltok.a libxmlrpc_xmltok.so	usr/include/xmlrpc-c

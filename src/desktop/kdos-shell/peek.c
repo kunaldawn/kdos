@@ -331,7 +331,7 @@ static void draw_archive(void)
 			       KT_A_NONE);
 		ktui_draw_text(px + pw - 12, y, 11,
 			       kb_human_size(e->bytes),
-			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
+			       ktui_sel_dim(on, 1), bg, KT_A_NONE);
 	}
 }
 

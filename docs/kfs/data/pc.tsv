@@ -467,6 +467,7 @@ absl_vlog_is_on	Abseil vlog_is_on library	abseil-cpp
 absl_weakly_mixed_integer	Abseil weakly_mixed_integer library	abseil-cpp
 adplug	A free AdLib sound player library	adplug
 adwaita-icon-theme	A collection of icons used as the basis for GNOME themes	adwaita-icon-theme
+adwaita-icon-theme-legacy	Icon theme that provides fallback icons for old apps relying on global icon themes	adwaita-icon-theme-legacy
 afflib	Library to support the Advanced Forensic Format	afflib
 akai	C++ library for accessing AKAI disk images	libgig
 alsa	Advanced Linux Sound Architecture (ALSA) - Library	alsa-lib

@@ -1883,7 +1883,6 @@ git-credential-cache--daemon	1	Temporarily store user credentials in memory	git
 git-credential-store	1	Helper to store credentials on disk	git
 git-cvsexportcommit	1	Export a single commit to a CVS checkout	git
 git-cvsimport	1	Salvage your data out of another SCM people love to hate	git
-git-cvsserver	1	A CVS server emulator for Git	git
 git-daemon	1	A really simple server for Git repositories	git
 git-dag	1	The sleek and powerful Git history browser	git-cola
 git-describe	1	Give an object a human readable name based on an available ref	git
@@ -2030,7 +2029,6 @@ git-status	1	Show the working tree status	git
 git-stripspace	1	Remove unnecessary whitespace	git
 git-submodule	1	Initialize, update or inspect submodules	git
 git-subtree	1	Merge subtrees together and split repository into subtrees	git
-git-svn	1	Bidirectional operation between a Subversion repository and Git	git
 git-switch	1	Switch branches	git
 git-symbolic-ref	1	Read, modify and delete symbolic refs	git
 git-tag	1	Create, list, delete or verify tags	git
@@ -2843,6 +2841,7 @@ killall	1	kill processes by name	psmisc
 killall5	8	send a signal to all processes	sysvinit
 killsnoop.bt	8	Trace signals issued by the kill(),tkill(),tgkill() syscall. Uses bpftrace/eBPF.	bpftrace
 kinit	1	obtain and cache Kerberos ticket-granting ticket	krb5
+kinstall	1	The installer	kdos-doc
 kissutil	1	KISS TNC troubleshooting and Application Interface.	direwolf
 kiwix-compile-i18n	1	helper to compile Kiwix i18n (internationalization) data	libkiwix
 kiwix-compile-resources	1	helper to compile and generate some Kiwix resources	libkiwix
@@ -2858,6 +2857,11 @@ korgdump	1	List information about sound files in KORG synthesizer format.	libgig
 kpackagetool6	1	Install, list, remove Plasma packages	kpackage
 kpasswd	1	change a user's Kerberos password	krb5
 kpat	6	A highly addictive card game	kpat
+kpkg	1	The package manager	kdos-doc
+kpkgadd	1	Install a package file	kdos-doc
+kpkgbuild	1	Build the port in the current directory into a package, without installing it	kdos-doc
+kpkgdel	1	Remove a package	kdos-doc
+kpkgdepends	1	Print the resolved install order	kdos-doc
 kpseaccess	1	determine whether a file can be accessed	texlive
 kpsereadlink	1	print contents of symbolic link	texlive
 kpsestat	1	compute octal mode from mode of existing file	texlive
@@ -2866,6 +2870,7 @@ kpsewhere	1	Expanding kpsewhich to separately iterate over each texmf tree liste
 kpsewhich	1	standalone path lookup and and expansion for kpathsea	texlive
 krb5-config	1	tool for linking against MIT Kerberos libraries	krb5
 kstats	1	show statistical FMS algorithm votes for an ivs dump and a specified WEP key	aircrack-ng
+ksvc	8	The service supervisor	kdos-doc
 kswitch	1	switch primary ticket cache	krb5
 ktouch	1	A typing tutor by KDE	ktouch
 ktutil	1	Kerberos keytab file maintenance utility	krb5
@@ -5804,6 +5809,7 @@ seq	1	print a sequence of numbers	coreutils
 serdi	1	read and write RDF syntax	serd
 serialver	1	return the serialVersionUID for one or more classes in a form suitable for copying into an evolving class	openjdk
 serialview	1	Terminal emulator for uCsim	sdcc
+service	8	The same supervisor, under the conventional name	kdos-doc
 setarch	8	change reported architecture in new program environment and/or set personality flags	util-linux
 setcap	8	set file capabilities	libcap
 setconf	1	change settings in configuration textfiles	setconf
@@ -6860,6 +6866,7 @@ xdg-mime	1	command line tool for querying information about file type handling a
 xdg-open	1	opens a file or URL in the users preferred application	xdg-utils
 xdg-screensaver	1	command line tool for controlling the screensaver	xdg-utils
 xdg-settings	1	get various settings from the desktop environment	xdg-utils
+xdg-terminal-exec	1	Run a command in a foot window, for Terminal=true handlers launched through GLib	kdos-doc
 xdvi	1	DVI Previewer for the X Window System	texlive
 xdvipsk	1	convert a TeX DVI file to PostScript (dvips extexsion)	texlive
 xetex	1	extended TeX with native support for Unicode, OpenType, system fonts	texlive
@@ -6896,6 +6903,7 @@ xh	1	Friendly and fast tool for sending HTTP requests	xh
 xhc-hb04	1	HAL non-realtime component for the xhc-hb04 pendant.	linuxcnc
 xhc-hb04-accels	1	Obsolete script for jogging wheel	linuxcnc
 xhc-whb04b-6	1	Non-realtime jog dial HAL component for the wireless XHC WHB04B-6 USB device.	linuxcnc
+xhost	1	server access control program for X	xhost
 ximtoppm	1	convert an Xim file to a PPM image	netpbm
 xindy	1	create sorted and tagged index from raw index	texlive
 xkbcli	1	tool to interact with X Keyboard keymaps	libxkbcommon
