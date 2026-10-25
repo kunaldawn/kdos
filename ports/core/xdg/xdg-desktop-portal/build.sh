@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/camera-leave-pipewire-loop.patch"
+
 meson setup build --buildtype=release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 	-Ddocumentation=disabled \

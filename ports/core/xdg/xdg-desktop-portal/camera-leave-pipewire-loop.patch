@@ -1,0 +1,90 @@
+Subject: leave the camera's PipeWire loop before destroying it
+
+The camera portal's GSource enters the PipeWire loop when it is created and
+leaves it only in its finalize. Nothing drops the camera's own reference, so
+finalize never runs, and the loop is destroyed still entered: its recursive
+mutex freed while the main thread holds it. musl keeps every recursive and
+error-checking mutex a thread holds on that thread's robust list, so the next
+such lock by the main thread writes through the freed mutex, and faults when
+its memory has been unmapped. The portal hits it on exit, after losing its
+bus name or on SIGHUP, and on a PipeWire restart.
+
+Leave the loop and drop the reference in pipewire_remote_destroy_source(),
+called before the remote is destroyed. The leave is not left to finalize:
+on a PipeWire restart the source is destroyed from its own dispatch, glib
+holds a reference until dispatch returns, and finalize would then read the
+remote already freed.
+
+--- a/src/camera.c
++++ b/src/camera.c
+@@ -398,7 +398,7 @@
+   g_hash_table_remove_all (camera->cameras);
+   xdp_dbus_camera_set_is_camera_present (XDP_DBUS_CAMERA (camera), FALSE);
+ 
+-  g_clear_pointer (&camera->pipewire_source, g_source_destroy);
++  g_clear_pointer (&camera->pipewire_source, pipewire_remote_destroy_source);
+   g_clear_pointer (&camera->pipewire_remote, pipewire_remote_destroy);
+ 
+   if (!create_pipewire_remote (camera, &error))
+@@ -483,7 +483,7 @@
+   g_clear_object (&camera->lockdown_impl);
+   g_clear_object (&camera->pipewire_socket_monitor);
+ 
+-  g_clear_pointer (&camera->pipewire_source, g_source_destroy);
++  g_clear_pointer (&camera->pipewire_source, pipewire_remote_destroy_source);
+   g_clear_pointer (&camera->pipewire_remote, pipewire_remote_destroy);
+   g_clear_pointer (&camera->cameras, g_hash_table_unref);
+ 
+--- a/src/pipewire.c
++++ b/src/pipewire.c
+@@ -195,22 +195,12 @@
+   return TRUE;
+ }
+ 
+-static void
+-pipewire_loop_source_finalize (GSource *source)
+-{
+-  PipeWireSource *pipewire_source = (PipeWireSource *) source;
+-  struct pw_loop *loop;
+-
+-  loop = pw_main_loop_get_loop (pipewire_source->remote->loop);
+-  pw_loop_leave (loop);
+-}
+-
+ static GSourceFuncs pipewire_source_funcs =
+ {
+   pipewire_loop_source_prepare,
+   NULL,
+   pipewire_loop_source_dispatch,
+-  pipewire_loop_source_finalize
++  NULL
+ };
+ 
+ void
+@@ -270,6 +260,18 @@
+   return &pipewire_source->base;
+ }
+ 
++void
++pipewire_remote_destroy_source (GSource *source)
++{
++  PipeWireSource *pipewire_source = (PipeWireSource *) source;
++  struct pw_loop *loop;
++
++  loop = pw_main_loop_get_loop (pipewire_source->remote->loop);
++  pw_loop_leave (loop);
++  g_source_destroy (source);
++  g_source_unref (source);
++}
++
+ PipeWireRemote *
+ pipewire_remote_new_sync (struct pw_properties *pipewire_properties,
+                           PipeWireGlobalAddedCallback global_added_cb,
+--- a/src/pipewire.h
++++ b/src/pipewire.h
+@@ -80,3 +80,5 @@
+ void pipewire_remote_roundtrip (PipeWireRemote *remote);
+ 
+ GSource * pipewire_remote_create_source (PipeWireRemote *remote);
++
++void pipewire_remote_destroy_source (GSource *source);

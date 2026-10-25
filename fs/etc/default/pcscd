@@ -1,0 +1,24 @@
+# The smart card daemon's settings. 47_pcscd.sh reads this at every start, so
+# `sudo service restart pcscd` applies an edit. Every key is optional.
+#
+# One KEY=value per line. The file is PARSED, NEVER SOURCED: a value is taken
+# as written, one pair of surrounding quotes removed, and the only expansion is
+# $HOSTNAME, to this machine's host name. A key not listed here is reported
+# in /run/kdos-init.pcscd.log and skipped.
+
+# Extra arguments for pcscd, split at spaces and added after --foreground:
+# --debug or --error for the log level, --reader-name-no-serial and
+# --reader-name-no-interface for shorter reader names; pcscd(8) has the rest.
+#PCSCD_ARGS="--debug"
+
+# Readers to ignore: pcscd skips every reader whose name contains one of these
+# words, ':' between them. "Contactless" hides the contactless half of a dual
+# reader; `opensc-tool --list-readers` prints the names.
+#PCSCLITE_FILTER_IGNORE_READER_NAMES="Contactless"
+
+# Text added to the end of every reader's name, so a reader redirected to
+# another machine (a remote desktop's smart card redirection) says whose it is.
+#PCSCLITE_FILTER_EXTEND_READER_NAMES=" $HOSTNAME"
+
+# Where pcscd looks for USB reader drivers, in place of /usr/lib/pcsc/drivers.
+#PCSCLITE_HP_DROPDIR="/usr/lib/pcsc/drivers"

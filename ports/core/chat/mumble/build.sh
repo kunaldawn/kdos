@@ -121,8 +121,7 @@ INI="/etc/mumble/mumble-server.ini"
 case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
-        # Read /etc/passwd directly: there is no getent on musl.
-        if ! grep -q '^mumble-server:' /etc/passwd 2>/dev/null; then
+        if ! getent passwd mumble-server >/dev/null; then
             echo "[SKIP] $NAME: no mumble-server account (the port's postinstall makes it)"
             exit 0
         fi

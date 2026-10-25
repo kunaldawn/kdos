@@ -86,7 +86,7 @@ share, `chroot/` the chroot wrappers, `lib/port.sh` the port reader the first tw
 | `44_apps` | Applications | Chroot | `packages.d/`: the natively ported graphical applications, and `kdos-appbox` | `fs` |
 | `50_desktop` | Desktop | Chroot | `packages.txt`: wlroots, `kdos-comp`, `kdos-shell`, `kdos-term`, `kdos-lock`, `kdos-res`, `kdos-boxsock`, `kdos-record`, the five root daemons, fcitx5 and its engines, the portals | `fs` |
 | `60_kernel` | Kernel | Chroot | `packages.txt`: `dwarves` and `linux` | none |
-| `70_image` | Image | Chroot | 15 scripts: see [The packaging steps](#the-packaging-steps) | none |
+| `70_image` | Image | Chroot | 16 scripts: see [The packaging steps](#the-packaging-steps) | none |
 
 How many ports each list names and installs is counted in
 [The ports catalogue](../06-reference/ports-catalogue.md#the-phases).
@@ -178,6 +178,13 @@ A name an earlier phase already installed, a **re-list**, is accepted only in a 
 `00-order.txt` in a `packages.d/`, or the names ahead of the first shelf heading in a
 `packages.txt`. In a shelf's file or under a shelf's heading it is refused, naming the phase that
 installs the port, so a shelf's list cannot claim a port another phase builds.
+
+The four phases from `41_system` to `44_apps` are also held to what a port's closure reaches, by
+the table in [Which phase lists a port](writing-ports.md#which-phase-lists-a-port): a
+`41_system` port reaches neither the graphics stack nor a toolkit, a `42_graphics` port reaches
+the graphics stack and no toolkit, a `43_toolkits` port reaches a toolkit, and a `44_apps` port
+is one nothing depends on whose closure reaches a toolkit, or the graphics stack from an
+application shelf. A port listed against its row fails with the phase the table gives it.
 
 The rule is what makes a phase mean something. A port cannot quietly move into an earlier phase
 because something there started depending on it, and a list cannot reach forward into a later one.
@@ -435,10 +442,81 @@ The file is verbatim, escape sequences included. The full-screen interface keeps
 | File | Holds |
 |---|---|
 | `snapshots.log` | Every notice the build shows (snapshots taken, skipped or failed, restores, plans, stop requests), with a time stamp, so a notice survives the interface that displayed it |
-| `chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree or a `docs/` it could not bind read-only, an open-files limit it could not raise |
+| `chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree, or a `docs/`, `testing/`, `Makefile` or `Dockerfile` it could not bind read-only, an open-files limit it could not raise |
 | `<phase>/expansion.log` | Why a package phase could not be resolved |
 
 Reading a failed step's log is covered in [Build troubleshooting](build-troubleshooting.md).
+
+### Step timings
+
+The orchestrator records how long each step took in `build/snapshots/timings.json`, which sits
+beside the snapshots and is never part of one. It is a JSON object with four members. `steps` maps
+`<phase directory>/<step>` to seconds, where a script step is named by its title and a port by its
+name; `phases` maps a phase directory to the wall-clock seconds of the whole phase; `machine` maps
+each key of the two to the machine that measured its figure; and `machines` describes each machine
+by what the run was given to build with:
+
+```json
+{
+ "steps": {
+  "00_cross/binutils": 43.41,
+  "10_bootstrap/linux headers": 7.48,
+  "41_system/zlib": 1.44
+ },
+ "phases": {
+  "00_cross": 381.09
+ },
+ "machine": {
+  "00_cross/binutils": 1,
+  "10_bootstrap/linux headers": 1,
+  "41_system/zlib": 2,
+  "00_cross": 1
+ },
+ "machines": {
+  "1": {"cpu": "AMD Ryzen 9 7950X 16-Core Processor", "cpus": 32, "memory": 66000000000, "jobs": 0},
+  "2": {"cpu": "AMD Ryzen 9 7950X 16-Core Processor", "cpus": 32, "memory": 66000000000, "jobs": 6}
+ }
+}
+```
+
+A machine is the first `model name` of `/proc/cpuinfo` (`unknown` on a processor that has none),
+the number of CPUs the orchestrator may run on, `MemTotal` in bytes, and `KDOS_JOBS` as the build
+was given it, `0` when it was unset and each step worked it out from the CPUs and the memory
+([the phase environment](#the-phase-environment)). They are read inside the container: `cpus` is
+the orchestrator's CPU affinity, which the `--cpus` cap `make build` sets from `KDOS_JOBS` does not
+narrow, so `jobs` is what records that cap, and `memory` is the host's. Two runs that differ in any of
+the four are two machines, so a run with `KDOS_JOBS=6` files its figures apart from one without.
+An SBU is a ratio of two figures and holds only between figures of one machine, which is what the
+`machine` map lets a reader tell; a machine no figure names any more is dropped when the file is
+written.
+
+Every phase is recorded, `70_image` included. Each figure is the last measured time, not an
+average, rounded to two decimals. A step's figure is written when the step succeeds, and every
+write is a merge: the file is read, the step's key and its machine are set, and the whole file is
+written back atomically. A `--continue-from`, `--phases` or `--steps` run therefore changes the
+keys it measured and keeps every other one, each still naming the machine of the run that measured
+it, so the figures of one file may come from several runs and machines. A file that does not parse
+is started again from the run's own figures.
+
+Only a step that did its work is recorded, so a step that did nothing never replaces the figure of
+one that did:
+
+| Step | Recorded when |
+|---|---|
+| A script | It wrote any output. The guard of a `00_cross` or `10_bootstrap` script exits in silence, so a guarded script keeps the figure of the run that built it |
+| A port | `kpkg` printed `Building <port>...` or `Rebuilding <port> (forced)...` for that port and for no other. A port skipped as installed and current, reused from the package store or already built under `--build-only` keeps its earlier figure. A serial `kpkg install` that also built a dependency it found missing is not recorded, because its time covers both ports |
+| A commit step | Never; it installs and builds nothing |
+
+A phase's wall clock is recorded only when every row of it was measured in that run, so a phase
+that skipped installed ports, ran a guard, was retried, or ran only the steps a plan named keeps its
+earlier figure. The `kpkg` step a [retry](#retrying-a-failed-phase) runs ahead of a phase is filed
+as `10_bootstrap/kpkg`, the script's own phase, whichever phase it runs ahead of.
+
+`make book-data` copies `steps` into the KDOS from Scratch book under `docs/kfs`, whose build-time
+column counts in units of `00_cross/binutils`, with the machine each figure names; its stamp
+describes the machine that measured the unit, and its build-times appendix marks a figure from
+another one. `make cleanbuild` keeps the file with the snapshots;
+`make clean` removes it.
 
 ## The phase environment
 
@@ -569,10 +647,13 @@ The phases from `20_selfhost` on run inside the target root filesystem, `build/f
    without it they see every host thread whatever `--cpus` cap the container has.
 3. It bind-mounts the repository at `/kdos`, `build/` at `/kdos/build`, `ports/` at `/ports`, and
    `script/`, `src/` and `fs/` under `/kdos`, and `docs/` read-only at `/kdos/docs` for the
-   `kdos-doc` port, which renders the book from it. `testing/` is bound read-only at
-   `/kdos/testing` and `ports/` again at `/kdos/ports` for `70_image`'s `087_gates.sh`, whose
-   checks run from `/kdos` and read the recipes under it. The repository bind mount does not carry the
-   container's own mounts beneath it, so each directory a step needs is mounted explicitly.
+   `kdos-doc` and `kdos-kfs` ports, which render the two books from it. `testing/` is bound
+   read-only at `/kdos/testing` and `ports/` again at `/kdos/ports` for `70_image`'s
+   `087_gates.sh`, whose checks run from `/kdos` and read the recipes under it. The `Makefile` and
+   the `Dockerfile` are bound read-only over their own paths under `/kdos`, for the listings
+   `kdos-kfs` renders of them and for the sources `110_iso.sh` copies onto a developer medium. The
+   repository bind mount does not carry the container's own mounts beneath it, so each directory
+   and file a step needs is mounted explicitly.
 4. It raises the open-files limit, soft and hard, to at least 4096. QtWebEngine's link runs
    `ulimit -n 4096` itself and fails when the hard limit is lower; a limit it cannot raise is
    logged to `build/logs/chroot.log`.
@@ -673,7 +754,7 @@ the initramfs and ISO carry it into the image.
 |---|---|
 | `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into `build/binhost/` and signs an index over them with `kpkg index --sign`, making the key in `build/binhost-key/` on first use; without it, does nothing. The directory accumulates across runs, so a complete binhost needs one `--fresh` build with the flag set |
 | `015_pkgstore.sh` | With the package store on, runs `kpkg store gc` over `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used entries first; with it off, does nothing |
-| `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory, and the built-package cache with its `.pending` records, and any podman container store left in `/home/kdos/.local/share/containers` or `/var/lib/containers/storage` (applications are built on the machine that wants them). Resets `/root` to exactly what `fs/root` holds, mode 0700, so no CMake package registry, git setting or log a build wrote there ships. Removes Python bytecode no package owns and checks that every packaged module has its own (see below) |
+| `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory, and the built-package cache with its `.pending` records, and any podman container store left in `/home/kdos/.local/share/containers` or `/var/lib/containers/storage` (applications are built on the machine that wants them). Resets `/root` to exactly what `fs/root` holds, mode 0700, so no CMake package registry, git setting or log a build wrote there ships. Removes Python bytecode no package owns and checks that every packaged module has its own (see below). Removes every file no package owns that the [size and language policy](writing-ports.md#size-and-language-policy) prunes from a package (a non-English message catalog, a translated manual page, an HTML or PDF manual under `/usr/share/doc`) and the gawk and binutils manuals those ports leave out, so a copy `10_bootstrap` installed and its port does not adopt never ships |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries, through `kdos-appbox genlaunchers` |
 | `040_orphans.sh` | Removes installed packages that have no recipe in the tree, or whose recipe `ports/unbuilt` lists |
 | `045_identity.sh` | Writes `BUILD_ID` (the commit, `-dirty` when the tree had unrecorded changes) and `KDOS_BUILD_DATE` (that commit's date) into `/etc/os-release`, replacing any earlier pair; with no `KDOS_GIT_COMMIT` it writes neither. The commit's date and not the clock's, so two builds of one commit stamp the same file. It runs before `100_packs.sh` so the base pack carries the stamp |
@@ -682,10 +763,10 @@ the initramfs and ISO carry it into the image.
 | `070_user.sh` | Removes empty directories under `/etc/skel/.config`, then creates the home directory of each ordinary user (UID 1000–65533) from `/etc/skel`, first clearing the generated trees skel owns outright (see [Syncing `fs/`](#syncing-fs)). Removes `/etc/passwd-`, `group-`, `shadow-` and `gshadow-`, the backups shadow's tools write, which carry the live accounts' password hashes |
 | `080_whatis.sh` | Builds the manual-page index for `apropos` and `whatis` |
 | `085_fontcache.sh` | Clamps the font directories' times to `SOURCE_DATE_EPOCH` and writes the fontconfig cache, failing unless fontconfig accepts it (see below) |
-| `087_gates.sh` | Runs `testing/unowned.py` as a report, then `testing/linkcheck.py` and `testing/entrycheck.py` over the finished tree, and fails the phase when either reports; see [Testing](testing.md#run-time-references) |
+| `087_gates.sh` | Runs `testing/unowned.py`, then `testing/linkcheck.py` and `testing/entrycheck.py` over the finished tree, and fails the phase when linkcheck or entrycheck reports or a file no package owns is left under `/usr/share/locale`, `/usr/share/man`, `/usr/share/doc` or `/usr/share/info`; any other unowned file is a report. See [Testing](testing.md#files-nothing-owns) and [Testing](testing.md#run-time-references) |
 | `090_initramfs.sh` | Builds the initramfs (the small RAM filesystem the kernel boots into first) in `build/initramfs` and `build/initramfs.cpio.gz` |
 | `100_packs.sh` | Creates the pack store directories, and with `KDOS_PACK_KDOS=1` the base pack `kdos` in `build/kdos-base` |
-| `105_ports.sh` | Stages the recipe-only ports tree in `build/image-ports`: every port's recipe files without the sources it hashes or any archive, `ports/shelves`, `ports/sources.idx`, `src/`, `docs/` and a `TREE` stamp; puts `build/keys/kdos-release.pub` in `/etc/kdos/keys/tree`; writes the source offer `/usr/share/kdos/SOURCES` (see [How KDOS is built](how-kdos-is-built.md#packaging-70_image)) |
+| `105_ports.sh` | Stages the recipe-only ports tree in `build/image-ports`: every port's recipe files without the sources it hashes or any archive, `ports/shelves`, `ports/sources.idx`, `src/`, `docs/kdos`, `docs/screenshots`, `docs/kfs`, `script/book` and a `TREE` stamp; puts `build/keys/kdos-release.pub` in `/etc/kdos/keys/tree`; writes the source offer `/usr/share/kdos/SOURCES` (see [How KDOS is built](how-kdos-is-built.md#packaging-70_image)) |
 | `110_iso.sh` | Squashes the tree into `system.sfs`, a read-only squashfs image in 1 MiB blocks compressed with zstd at level 15, or with the codec `KDOS_ISO_COMP` names (`xz` or `zstd:<1-22>`; anything else is fatal), appends the staged ports tree as `/ports`, assembles `iso_root` with the kernel, the initramfs and Limine (the bootloader), and writes `build/iso-build/kdos.iso`. With `KDOS_PACK_KDOS=1` it also copies the base pack onto the ISO9660 filesystem at `/packs/kdos.kpack`. It draws the boot menu in the console's own font, converted by `psf2limine.py`, which sits beside it in `70_image/` |
 
 The ISO carries no applications. `100_packs.sh` always creates `/var/lib/kdos/packs/staging` (mode
@@ -759,6 +840,19 @@ listed and passes. Ownership is read with the merged-`/usr` aliases folded. Hash
 carries no timestamp, and the interpreter checks the hash on import, so a source file a later
 upgrade replaces is recompiled rather than served stale. A module with no bytecode would be
 compiled on every import of every start, because `/usr` is read-only to a running program.
+
+**Unowned documentation.** `kpkg` applies the
+[size and language policy](writing-ports.md#size-and-language-policy) to each package it makes,
+but `10_bootstrap` installs its tools with no package, and a port installed over them later adopts
+only the paths it ships itself. A bootstrap copy of something the policy prunes from that port, or
+of a file the port's `build.sh` deletes, is adopted by nothing and stays in the tree. The bootstrap
+steps build with `--disable-nls` and delete those files after their install, and `020_cleanup.sh`
+removes, where no package owns them and `fs/` does not provide them, every non-English message
+catalog under `/usr/share/locale`, everything under a `/usr/share/man` directory that is not a
+`man<section>` one, every `.html`, `.htm` and `.pdf` under `/usr/share/doc`, and gawk's
+`gawknotes.info` and binutils' `dlltool`, `windres` and `windmc` pages. `087_gates.sh` then fails
+the image on any file no package owns left under `/usr/share/locale`, `/usr/share/man`,
+`/usr/share/doc` or `/usr/share/info`.
 
 ## Fetching sources in a container
 
@@ -1172,7 +1266,7 @@ compiler there; `make build` runs the script inside the container.
 | `--delete PHASE` | Delete one phase's snapshot and exit. `PHASE` takes the same forms as `--restore`. A snapshot that others layer on is held until the last of them goes, and the message names them: `deleted 41_system; kept as the base of 42_graphics…50_desktop` |
 | `--build-dir DIR` | The build directory. Defaults to `$KDOS_BUILD_DIR`, then `build` |
 | `--script-dir DIR` | The script directory, whose `phases/` holds the phases. Defaults to `script`. The repository root is taken as its parent, which is where the chroot wrapper and every path handed into the chroot are resolved from, so it is never `script/phases` |
-| `--selftest` | Run the layout, log-classifier and retry assertions and exit. Must be the first argument |
+| `--selftest` | Run the layout, log-classifier, retry and timings assertions and exit. Must be the first argument |
 | `--preview SCREEN WxH TIER` | Draw one screen offscreen and print it. Must be the first argument; see [Diagnostics with no build](#diagnostics-with-no-build) |
 | `-h`, `--help` | Print usage |
 
@@ -1208,7 +1302,8 @@ that step does not ask `git`, so an image built without `make build` is unstampe
 | File | Owns |
 |---|---|
 | `main.c` | The command line, restore validation and the headless run loop |
-| `manager.c` | The execution order, phase expansion, the step runner, the retry of a failed phase, and the retry's `--selftest` assertions, run over a three-phase tree in a temporary directory |
+| `manager.c` | The execution order, phase expansion, the step runner, the retry of a failed phase, which steps' times are measurements, and the `--selftest` assertions over the retry and those timings, run over a three-phase tree in a temporary directory |
+| `timings.c` | `build/snapshots/timings.json`: the merge every recorded step goes through, and its `--selftest` assertions over fixture files |
 | `snapshot.c` | Writing and extracting archives |
 | `stats.c` | The sampler behind the build screen's graphs and figures: CPU busy time, load average, memory and swap in use, free space on `build/`, lines of output a second, and the size and file count of `build/fs`; and the size, time and count formatting the screens share |
 | `tui.c` | The full-screen interface: the startup picker, the plan and port pickers, the build screen |
@@ -1368,7 +1463,7 @@ check the engine itself; see [Testing](testing.md).
 ### Diagnostics with no build
 
 ```sh
-kdosbuild --selftest                        # the layout, log-classifier, retry and jobserver assertions
+kdosbuild --selftest                        # the layout, log-classifier, retry, jobserver and timings assertions
 kdosbuild --preview <screen> <WxH> <tier>   # one screen, as text
 ```
 

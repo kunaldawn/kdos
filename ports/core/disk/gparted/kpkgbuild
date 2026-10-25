@@ -16,4 +16,4 @@ sha256      = 67388ac405f9fe92a40636cb03b0e1e0bb6403ad89ccc174b2ff190ef6f32349  
 description = Create, resize, move, copy and check partitions and filesystems
 homepage    = https://gparted.org/
 license     = GPL-2.0-or-later
-depends     = pkgconf gettext glib gtk3 gtkmm3 glibmm2.66 parted polkit util-linux e2fsprogs dosfstools mtools ntfs-3g exfatprogs btrfs-progs xfsprogs f2fs-tools lvm2 cryptsetup mdadm hfsprogs jfsutils nilfs-utils udftools
+depends     = pkgconf gettext glib gtk3 gtkmm3 glibmm2.66 parted polkit util-linux e2fsprogs dosfstools mtools ntfs-3g exfatprogs btrfs-progs xfsprogs f2fs-tools lvm2 cryptsetup mdadm hfsprogs jfsutils nilfs-utils udftools xhost

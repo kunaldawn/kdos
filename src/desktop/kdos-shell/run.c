@@ -423,6 +423,8 @@ int run_main(int argc, char **argv)
 	int hpos = nhist;
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		run_draw(cmd, strlen(cmd), (size_t)f.caret, &off);
 		ktui_draw_flush();
 

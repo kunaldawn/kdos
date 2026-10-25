@@ -255,7 +255,6 @@ void res_batt_prepare(void);
 const char *res_batt_headline(void);
 const char *res_batt_figure(void);
 void res_draw_batt(int x, int y, int w, int h);
-void res_theme_from_cache(void);
 /* One sample's value as the reading beside a chart says it. */
 typedef void (*ResFmt)(double v, char *out, size_t n);
 /* `id` names the chart's tile: stable, and unique among this program's

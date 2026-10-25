@@ -14,10 +14,10 @@
 # Source this file from individual service scripts via:
 #   . /etc/init.d/service_helper
 #
-# Three thin wrappers over ksvc, which is C. The supervisor must lead its own
-# process group so that stopping it signals the group and the daemon goes with
-# it; a respawn loop in a backgrounded shell subshell leads no group, and
-# stopping it leaves the daemon running while reporting success.
+# Thin wrappers over ksvc, which is C, and wait_bus_name. The supervisor must
+# lead its own process group so that stopping it signals the group and the
+# daemon goes with it; a respawn loop in a backgrounded shell subshell leads no
+# group, and stopping it leaves the daemon running while reporting success.
 #
 # The command is an argument vector: `supervise foo /usr/sbin/foo --flag`, not
 # one string that a later unquoted expansion would re-split.
@@ -25,6 +25,25 @@
 # `supervise --final-exit N foo ...` names an exit status restarting cannot
 # change — "not supported on this machine", "nothing here to watch": on it the
 # supervisor stops instead of restarting the daemon every five seconds for ever.
+#
+# `supervise --facility NAME foo ...` sends the daemon's forwarded output to
+# syslog under that facility instead of `daemon`, so syslog.conf files it with
+# what the daemon logs itself: 41_polkitd.sh passes `authpriv`.
+#
+# `supervise --stop-grace SECS foo ...` is how long `stop_service` waits for
+# the daemon to exit after SIGTERM before it sends SIGKILL; five seconds when
+# not given. A daemon whose clean shutdown writes data out names a longer one.
+#
+# `supervise --restart-with OTHER foo ...` restarts foo's daemon whenever the
+# daemon of the supervised service OTHER is restarted or stopped, and holds
+# each start while OTHER's daemon is between two runs. 42_networkmanager.sh
+# passes `dbus`: NetworkManager does not exit when its bus goes away.
+#
+# `supervise` on a name whose supervisor is alive starts nothing and prints
+# `[SKIP] <name>: already supervised`, so `service start` on a running service
+# is safe to repeat. Nor does it start one beside a daemon whose supervisor
+# was killed: it waits for that daemon for the stop grace, then refuses with
+# `[FAIL]`, and `stop_service` ends the daemon.
 
 supervise() {
     ksvc supervise "$@"
@@ -36,4 +55,24 @@ stop_service() {
 
 check_status() {
     ksvc check "$1"
+}
+
+# `wait_bus_name NAME` returns 0 once NAME has an owner on the system bus, or
+# 1 after ten seconds, saying so. A script whose daemon owns a bus name calls
+# it after `supervise`, so the scripts after it in the order find the name
+# taken. A daemon the supervisor runs ships no D-Bus activation file — the bus
+# would otherwise start a second, unsupervised copy for a caller that came
+# early, and the supervised one could then never take its name — so a call
+# made before the name is owned is refused with ServiceUnknown instead.
+# org.freedesktop.DBus has an owner as soon as the bus accepts connections.
+wait_bus_name() {
+    local i
+    for ((i = 0; i < 100; i++)); do
+        dbus-send --system --print-reply --dest=org.freedesktop.DBus / \
+            org.freedesktop.DBus.NameHasOwner "string:$1" 2>/dev/null |
+            grep -q 'boolean true' && return 0
+        sleep 0.1
+    done
+    echo "[WARN] $1 is not on the system bus after 10 seconds"
+    return 1
 }

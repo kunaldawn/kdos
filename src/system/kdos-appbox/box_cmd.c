@@ -186,10 +186,21 @@ static int cmd_box_list(void)
  * fetches unsigned content from somebody else's registry; KDOS_REQUIRE_SIG
  * does not cover it and pretending otherwise would be dishonest. The medium's
  * own bases are the trusted set.
+ *
+ * AN IMAGE ALREADY IN THE LOCAL STORE IS USED AS IT IS. `podman pull` always
+ * asks a registry, even for an image built here: `kdos/<id>` resolves to
+ * `localhost/kdos/<id>`, no registry answers at localhost, and every store
+ * install would fail at the box after its image had built.
  */
 static int base_pull(const char *ref)
 {
 	const char *w[3];
+
+	w[0] = "image";
+	w[1] = "exists";
+	w[2] = ref;
+	if (podman(w, 3) == 0)
+		return 0;
 
 	fprintf(stderr,
 		"==> %s is an OCI image: this reaches the network and fetches\n"
@@ -316,10 +327,11 @@ static int cmd_box_create(int argc, char **argv)
 
 /*
  * A TERMINAL THAT SAYS WHERE IT IS. foot cannot reload its configuration, but
- * it takes overrides on the command line and `kdos theme` already generates a
- * palette per accent — so a box with `accent = amber` opens an amber terminal
- * and there is never a question about which window is which. A starship module
- * reads KDOS_BOX and puts the name in the prompt.
+ * it takes a --config at start and `kdos theme` already generates a palette
+ * per accent — so a box with `accent = amber` opens an amber terminal titled
+ * with the box's name, and there is never a question about which window is
+ * which. Inside, KDOS_BOX carries the name for a prompt to show; the shipped
+ * starship.toml does not read it.
  */
 static int cmd_box_enter(int argc, char **argv)
 {
@@ -344,8 +356,10 @@ static int cmd_box_enter(int argc, char **argv)
 	if (!box_setup_done(box))
 		box_wait_ready(box, 30);
 
-	/* Under a terminal already, exec straight in: wrapping a shell in
-	 * another terminal window is what `enter` is for, not what it means. */
+	/* In place when there is no terminal to replace (input is not a tty),
+	 * when a command is given, or under the foot window this opens below
+	 * (KDOS_BOX_NOTERM). A bare `enter` typed at a terminal opens a new
+	 * foot window in the box's accent and re-enters there. */
 	if (!isatty(STDIN_FILENO) || argc > 1 || getenv("KDOS_BOX_NOTERM")) {
 		kb_argv_add(&a, "podman");
 		kb_argv_add(&a, "exec");
@@ -772,19 +786,68 @@ static int cmd_box_stop(const char *box)
 	}
 }
 
+/*
+ * The stack is released only once the container is gone: decomposing under a
+ * container podman refused to remove (a running box without --force, or one
+ * that outlasts `podman rm -f`) pulls the root out from under a live box.
+ * Podman's own sentence is the diagnosis, so its stderr is kept, as `create`
+ * keeps it.
+ */
 static int cmd_box_remove(const char *box, int force)
 {
 	KbArgv a = {0};
+	KbArgv q = {0};
+	int rc;
 
 	if (!name_ok(box))
 		kb_die("a box name is [A-Za-z0-9._-]");
+	kb_proc_verbose = 1;
+	/* `podman container exists` is 0 for yes, 1 for no and 125 for a
+	 * podman that could not tell; only a 1 is "no container". box_exists
+	 * folds the 125 into "no", and that would release the stack of a box
+	 * that may be running. */
+	kb_argv_add(&q, "podman");
+	kb_argv_add(&q, "container");
+	kb_argv_add(&q, "exists");
+	kb_argv_add(&q, box);
+	kb_argv_end(&q);
+	rc = kb_run(&q);
+	if (rc == 1) {
+		/* A failed create leaves its profile, and can leave a composed
+		 * stack, with no container. Nothing runs on either, so both go:
+		 * a profile kept here would list the box as `not created` with
+		 * no verb left that removes it. */
+		char *pp = profile_path(box);
+		int had = unlink(pp) == 0;
+
+		free(pp);
+		pack_decompose(box);
+		if (had) {
+			printf("%s had no container — its profile is removed\n",
+			       box);
+			return 0;
+		}
+		kb_warn("%s has no container to remove", box);
+		return 1;
+	}
+	if (rc != 0) {
+		kb_warn("%s was not removed (podman container exists exited %d)",
+			box, rc);
+		return rc;
+	}
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "rm");
 	if (force)
 		kb_argv_add(&a, "-f");
 	kb_argv_add(&a, box);
 	kb_argv_end(&a);
-	kb_run(&a);
+	rc = kb_run(&a);
+	if (rc != 0) {
+		kb_warn("%s was not removed (podman rm exited %d)%s", box, rc,
+			force ? "" : " — a running box needs `kdos-box stop` "
+				     "first, or --force");
+		return rc;
+	}
 	/* The overlay goes with it; the PACKS do not, because another box may
 	 * be using the same runtime. kdos-packd reference-counts them. */
 	pack_decompose(box);
@@ -1006,10 +1069,17 @@ int box_main(int argc, char **argv)
 			for (int i = 2; i < argc; i++)
 				profile_set(&p, argv[i]);
 			profile_save(&p);
-			printf("%s: written — namespaces and volumes apply at "
-			       "CREATE time, so run `kdos-box remove %s` and "
-			       "create it again for those to take effect.\n",
-			       argv[1], argv[1]);
+			/* Only a box with a container is removed and made
+			 * again: removing one without a container deletes the
+			 * profile just written. */
+			if (box_exists(argv[1]))
+				printf("%s: written — namespaces and volumes "
+				       "apply at CREATE time, so run `kdos-box "
+				       "remove %s` and create it again for those "
+				       "to take effect.\n", argv[1], argv[1]);
+			else
+				printf("%s: written — it applies when the box "
+				       "is created.\n", argv[1]);
 		}
 		profile_print(&p);
 		return 0;

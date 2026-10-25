@@ -484,7 +484,7 @@ void res_draw_boxes(int x, int y, int w, int h)
 
 	ktui_draw_text(x, bottom - 1, w,
 		       "Enter for one box: its profile, its processes and the "
-		       "verbs", KT_DIM, KT_BG, 0);
+		       "verbs", KT_MID, KT_BG, 0);
 }
 
 /* ── the pointer and the keys ──────────────────────────────────────────── */

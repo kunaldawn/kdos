@@ -33,9 +33,14 @@ kdos/
 ├── .dockerignore          what the build container's context leaves out
 ├── LICENSE
 ├── kdos.png, kdos.xcf     the mascot, from which the splash, logos and marks derive
+├── .github/workflows/books.yml   renders both books, deploys them to GitHub Pages, and attaches
+│                                 KDOS from Scratch to each release
 │
 ├── docs/
 │   ├── kdos/              this book
+│   ├── kfs/               KDOS from Scratch, the build book: hand-written parts in
+│   │   │                  numbered directories; package pages are generated, not kept
+│   │   └── data/          the committed build-state snapshot `make book-data` writes
 │   └── screenshots/       every image the documentation references
 │
 ├── ports/
@@ -43,7 +48,8 @@ kdos/
 │   │   ├── kpkgbuild          declarative metadata — parsed, never sourced
 │   │   ├── build.sh           the build; bash, run in the unpacked source
 │   │   ├── postinstall.sh     optional install-time hook (27 ports have one)
-│   │   ├── *.patch            optional patches, tracked (436 files)
+│   │   ├── *.patch            optional patches, tracked (619 files)
+│   │   ├── kfs.md             optional: the port's note in KDOS from Scratch; never hashed
 │   │   ├── other support files  configuration, data files, single-file sources — tracked
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
 │   ├── shelves                the closed list of shelves, one `<id> <volume> <description>` per line
@@ -80,12 +86,15 @@ kdos/
 │   │   ├── libkxdg/           desktop entries and the MIME cache
 │   │   └── selftest.c         the shared assertion program
 │   │
-│   ├── system/            the system layer — a port repository, 5 recipes
+│   ├── system/            the system layer — a port repository, 7 recipes
 │   │   ├── kdos-kpkg/         the package manager, under five names (no kpkgbuild)
 │   │   ├── kdos-installer/    kinstall, the installer; also built directly by 10_bootstrap
 │   │   ├── kdos-appbox/       launching boxed applications, box management, the store
 │   │   │   └── catalogue          every installable application, as a chain of apt packages
 │   │   ├── kdos-boxinit/      process 1 inside a box; statically linked
+│   │   ├── kdos-doc/          this book on the image; `kdos` and `screenshots` link to docs/
+│   │   ├── kdos-kfs/          KDOS from Scratch on the image; `docs` links to docs/kfs,
+│   │   │                      `book` to script/book
 │   │   ├── kdos-pack/         build, sign, index and diff packs
 │   │   └── kdos-tools/        one binary: the kdos command, the ksvc supervisor, kdos-getty,
 │   │                          kdos-bootctl and the other small system tools
@@ -133,16 +142,21 @@ kdos/
 │   ├── env/                 common.env, host.env, chroot.env — what the phase.env files share
 │   ├── lib/port.sh          the recipe reader the two host phases source
 │   ├── chroot/              exec.sh runs a step in the chroot; enter.sh opens a shell there
+│   ├── book/                the renderer of KDOS from Scratch (`make book`); kdos-kfs links it
 │   ├── kdosbuild.sh         compiles and runs the orchestrator
-│   └── hooks/pre-push       refuses a push that breaks the ports layout or names an
-│                            unarchived source (opt-in)
+│   └── hooks/pre-push       refuses a push that breaks the ports layout, adds a patch with
+│                            no Subject:, fails the book checks or names an unarchived
+│                            source (opt-in)
 │
 ├── testing/
 │   ├── preflight.sh          compiles kpkg, then checks the tree's wiring (packages resolve,
 │   │                         recipes parse, scripts are valid) without building a port
 │   ├── selftest.sh           the libraries and their consumers
-│   ├── docscheck.sh          the book: dead links, history, the page contract
+│   ├── docscheck.sh          both books: dead links, history, the page contract
 │   ├── bookcounts.py         the book's port counts and catalogue rows, against the tree
+│   ├── anchorcheck.py        every #fragment link in both books lands on a heading
+│   ├── booknav.py            the chapter footers of both books, and KDOS from Scratch's contents
+│   ├── kfscheck.py           KDOS from Scratch against the tree: notes, patch headers, kernel table, stamp
 │   ├── phaseclosure.py       every package phase installs exactly the ports its list names
 │   ├── barcheck.c, boxcheck.c, appindex.c
 │   │                         checks selftest.sh compiles and runs
@@ -202,7 +216,7 @@ port repository; it is the catalogue file `src/system/kdos-appbox/catalogue`.
 | Directory | Holds | Recipes | Layout |
 |---|---|---|---|
 | `ports/core/` | Upstream software: somebody else's source | about 2,000 | `<shelf>/<name>/`, on 102 shelves |
-| `src/system/` | The package manager, the `kdos` command and its services, packs and boxes, the installer, the book on the image (`kdos-doc`, whose `docs` is a link to the repository's `docs/`) | 6 | `<name>/` |
+| `src/system/` | The package manager, the `kdos` command and its services, packs and boxes, the installer, and the two books on the image (`kdos-doc`, whose `kdos` and `screenshots` link to `docs/kdos` and `docs/screenshots`, and `kdos-kfs`, whose `docs` and `book` link to `docs/kfs` and `script/book`) | 7 | `<name>/` |
 | `src/art/` | Theme generators, the themes built from them, the boot splash, the demo | 6 | `<name>/` |
 | `src/desktop/` | Programs that draw the session or serve it over Wayland or D-Bus | 8 | `<name>/` |
 | `src/daemons/` | Root daemons whose client is the desktop account | 5 | `<name>/` |
@@ -372,17 +386,25 @@ mounting only the directories the build reads:
 |---|---|---|
 | `build/` | `/workspace/build` | read-write |
 | `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/` | `/workspace/src`, `/workspace/fs`, `/workspace/script`, `/workspace/ports`, `/workspace/docs`, `/workspace/testing` | read-only |
+| `Makefile`, `Dockerfile` | `/workspace/Makefile`, `/workspace/Dockerfile` | read-only |
 
-The root files are not mounted, so nothing in them can change what a build produces. `testing/` is
+Of the root files only the `Makefile` and the `Dockerfile` are mounted, and the one thing either
+changes in a build is the text of *KDOS from Scratch*, whose first part shows lines of both: an
+edit to them stales the book's stamp, `docs/kfs/data/recipes.stamp`, and so rebuilds `kdos-kfs`
+once the stamp is rewritten. `110_iso.sh` also copies both onto a medium made with
+`KDOS_ISO_SOURCES=1`. `testing/` is
 mounted for the tree gates `70_image` runs (`087_gates.sh`): they can stop a build, and nothing in
 `testing/` is installed.
-`docs/` is mounted for one port, `kdos-doc`, which renders the book onto the image; an edit to
-the book rebuilds that port and no other. The build writes only under `build/`; `build/fs/` is the target root
+`docs/` is mounted for two ports, `kdos-doc` and `kdos-kfs`, which render the two books onto the
+image; an edit to `docs/kdos` rebuilds the first and no other port, and an edit to `docs/kfs` the
+second. The build writes only under `build/`; `build/fs/` is the target root
 filesystem it grows phase by phase.
 
 From `20_selfhost` on, each port is built inside a chroot of `build/fs/`. `script/chroot/exec.sh`
 bind-mounts the container's `/workspace` at `/kdos` inside it, with `build/`, `script/`, `src/` and
-`fs/` mounted again beneath it, `docs/` beneath it read-only, and `ports/` at `/ports`. That is why the phase environments name
+`fs/` mounted again beneath it, `docs/`, `testing/`, the `Makefile` and the `Dockerfile` beneath it
+read-only, and `ports/` at
+`/ports` and again at `/kdos/ports`, where `kdos-kfs` and the image gates read the recipes. That is why the phase environments name
 `/ports/core` and `/kdos/src/system`: they are the same directories as the checkout's
 `ports/core/` and `src/system/`, seen from inside the chroot. The mechanism is in
 [The build system](../05-developer/build-system.md).
@@ -448,7 +470,7 @@ included, stops running in that clone.
 | `ports/.srccache/` | yes | The source cache, `sha256-XX/<hash>`. Plain data: it survives `make clean` and `make cleanbuild` |
 | `ports/.kpkgbin/`, `.portup`, `.portup-tools/` | yes | Compiled host helpers. `.kpkgbin/kpkg` is the recipe reader `ports/fetch` and `ports/publish` use, built by `ports/srclib.sh`; `.portup` is the version checker and `.portup-tools/` its own recipe reader. `.gitignore` also lists `ports/.kpkg-meta`, which nothing in the tree builds |
 | `ports/.update-cache.json` | yes | Per-port version-check results, kept for 24 hours |
-| `docs/` except `docs/kdos/` and `docs/screenshots/` | yes | Room for scratch notes. A new documentation directory needs a line in `.gitignore`, or git will not see anything in it |
+| `docs/` except `docs/kdos/`, `docs/kfs/` and `docs/screenshots/` | yes | Room for scratch notes. A new documentation directory needs a line in `.gitignore`, or git will not see anything in it |
 | `testing/logs/`, `testing/test_results.json` | yes | Test-run output. `testing/fixtures/` is *not* ignored — those are the recorded inputs the self-test replays |
 | `__pycache__/`, `.claude/`, `ports-archived/`, `port-archive.sh` | yes | Local scratch and tool state |
 
@@ -469,6 +491,7 @@ delete them from inside a container rather than with `sudo`.
 | `.dockerignore` | What the build container's context leaves out: `build/` and `ports-archived/` |
 | `.gitignore` | The ignore rules in the table above |
 | `.gitattributes` | Declares that no path goes through a filter |
+| `.github/workflows/books.yml` | The one CI workflow. On a push to `main` it renders both books and deploys them as one GitHub Pages site, the KDOS book at the root and *KDOS from Scratch* under `kfs/` with `kfs/kfs.pdf`; on a published `v*` release it attaches `kfs.pdf` and `kfs-html.tar.zst`. Pages must deploy from GitHub Actions, since the tree holds no Jekyll configuration. See [Developing](../05-developer/developing.md#rebuilding-one-thing) |
 | `LICENSE` | The licence |
 | `kdos.png`, `kdos.xcf` | The mascot; `fs/usr/share/kdos/kdos.png` is a byte-identical copy shipped on the target |
 

@@ -544,7 +544,8 @@ def main():
     ap.add_argument("--cmd", action=Step,
                     help="run in the kdos session")
     ap.add_argument("--root-cmd", action=Step,
-                    help="run as root on the serial console and print it")
+                    help="run as root on the serial console, wait for it to "
+                         "finish and print what it said")
     ap.add_argument("--root-script", action=Step,
                     help="send this LOCAL file into the guest and run it as "
                          "root — the form for a check too long to be one line")
@@ -576,7 +577,8 @@ def main():
     ap.add_argument("--wait", type=int, default=25,
                     help="seconds to let the session settle")
     ap.add_argument("--script-timeout", type=int, default=900,
-                    help="how long a --root-script may take. Installing a "
+                    help="how long a --root-script or a --root-cmd may "
+                         "take. Installing a "
                          "pack off the medium is minutes, not seconds")
     ap.add_argument("--vnc-port", type=int, default=5909)
     ap.add_argument("--audio", action="store_true",
@@ -588,6 +590,11 @@ def main():
     ap.add_argument("--no-cdrom", action="store_true",
                     help="leave the ISO off entirely, so the DISK is what "
                          "boots. The second half of an install test")
+    ap.add_argument("--root-password", default="kdos",
+                    help="what to answer when the serial console's login "
+                         "asks root for a password, as an installed system "
+                         "does. The default is the one install-to-disk.sh "
+                         "sets")
     ap.add_argument("--boot-disk", action="store_true",
                     help="boot the DISK with the ISO still attached — an "
                          "installed system that can still reach the medium. "
@@ -816,10 +823,18 @@ def main():
         tries = 0
         while time.time() < deadline and not ready:
             ser.pump()
+            # THE LIVE IMAGE LOGS ROOT IN WITH NO PASSWORD; AN INSTALLED ONE
+            # ASKS. The answer goes only straight after `root`, never on its
+            # own: on a line that is already a shell it would run as a
+            # command.
             if b"login:" in ser.buf[-400:]:
                 ser.send("root")
                 time.sleep(2)
                 ser.pump()
+                if b"assword" in ser.buf[-200:]:
+                    ser.send(args.root_password)
+                    time.sleep(3)
+                    ser.pump()
             ser.send("echo KDOS''PROBE")
             tries += 1
             if ser.expect("KDOSPROBE", timeout=4):
@@ -953,12 +968,27 @@ def main():
                     ser.pump()
                     ser.buf = ser.buf[-8000:]
             elif kind == "root_cmd":
+                # THE MARKERS ARE TYPED WITH AN EMPTY QUOTE INSIDE THEM, so the
+                # terminal's echo of the typed line never holds what the guest
+                # prints: the wait ends when the command does, not when its own
+                # echo arrives. A marker with `<` in it is a redirection to the
+                # shell, which prints no marker at all.
                 ser.buf = b""
-                ser.send("echo ---8<---; %s 2>&1; echo ---8<---" % value)
-                ser.expect("---8<---", timeout=20)
-                time.sleep(2)
+                ser.send("echo ===KDOSCMD-''BEGIN===; %s 2>&1; "
+                         "echo ===KDOSCMD-''END===" % value)
+                done = ser.expect("===KDOSCMD-END===",
+                                  timeout=args.script_timeout)
                 ser.pump()
-                print("$ %s\n%s" % (value, ser.tail(8000)), flush=True)
+                out = ser.buf.decode("utf-8", "replace")
+                cut = out.rfind("===KDOSCMD-BEGIN===")
+                if cut >= 0:
+                    out = out[cut + len("===KDOSCMD-BEGIN==="):]
+                end = out.find("===KDOSCMD-END===")
+                if end >= 0:
+                    out = out[:end]
+                if not done:
+                    out += "\n[rig] the command never finished"
+                print("$ %s\n%s" % (value, out[-60000:]), flush=True)
             elif kind == "root_script":
                 out = send_script(ser, value, timeout=args.script_timeout)
                 print("$ sh %s\n%s" % (value, out), flush=True)

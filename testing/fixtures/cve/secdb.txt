@@ -7,3 +7,9 @@ oldpkg 1.2.3-r0 CVE-2024-1111,CVE-2024-2222
 oldpkg 1.4.0-r1 CVE-2025-3333
 newpkg 2.0.0-r2 CVE-2023-4444
 upstream-name 3.1-r0 CVE-2026-5555
+branchpkg 2.28.10-r0 CVE-2025-6001
+branchpkg 3.6.3-r0 CVE-2025-6001
+branchpkg 3.6.7-r0 CVE-2026-6002,CVE-2026-6003
+branchpkg 4.1.1-r0 CVE-2026-6002,CVE-2026-6003
+branchold 3.6.7-r0 CVE-2026-7001
+branchold 4.1.1-r0 CVE-2026-7001,CVE-2026-7002

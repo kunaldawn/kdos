@@ -313,8 +313,8 @@ static void load_dir(void)
 
 	/*
 	 * A directory that cannot be READ still gets its `..` below — Ctrl+L
-	 * into somebody else's home, or a cwd deleted under us, used to leave a
-	 * chooser with no rows at all and therefore no way out that is drawn
+	 * into somebody else's home, or a cwd deleted under us, would otherwise
+	 * leave a chooser with no rows at all and therefore no way out that is drawn
 	 * anywhere. The reason goes in the note, or an empty list explains
 	 * nothing.
 	 */
@@ -371,7 +371,7 @@ static void load_dir(void)
 /*
  * Reload, keeping the multi-select marks — by NAME, because the row indexes
  * are the one thing a reload does not preserve. Toggling hidden files to
- * find one more attachment used to throw away every mark already made.
+ * find one more attachment must not throw away every mark already made.
  */
 static void reload_keep_marks(void)
 {
@@ -743,7 +743,7 @@ static void draw(const char *title)
 		ktui_draw_text(2, list_top + i, 2,
 			       r->dir ? ktui_glyph[KT_G_FULL]
 				      : ktui_glyph[KT_G_DOT],
-			       on ? KT_SURFACE : (r->dir ? KT_ACCENT : KT_MID),
+			       on ? fg : (r->dir ? KT_ACCENT : KT_MID),
 			       bg, KT_A_NONE);
 
 		char label[300];
@@ -754,7 +754,7 @@ static void draw(const char *title)
 			char sz[32];
 			human(r->size, sz, sizeof(sz));
 			ktui_draw_text_right(0, list_top + i, lw - 2, sz,
-					     on ? KT_SURFACE : KT_DIM, bg,
+					     ktui_sel_dim(on, 1), bg,
 					     KT_A_NONE);
 		}
 	}
@@ -950,7 +950,7 @@ static void draw(const char *title)
 		ktui_draw_text(btn_cancel_x, btn_row, cw, cancel, KT_TEXT, cbg,
 			       KT_A_NONE);
 		ktui_draw_text(btn_ok_x, btn_row, 1, "[",
-			       hover_btn == 0 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       hover_btn == 0 ? KT_TEXT : KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 		/* The default action is already accent-filled, so its hover is
 		 * the WARN fill — the same "brighter than rest, different from
@@ -958,7 +958,7 @@ static void draw(const char *title)
 		ktui_draw_text(btn_ok_x + 1, btn_row, okw - 2, ok, KT_SURFACE,
 			       hover_btn == 0 ? KT_WARN : KT_ACCENT, KT_A_NONE);
 		ktui_draw_text(btn_ok_end - 1, btn_row, 1, "]",
-			       hover_btn == 0 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       hover_btn == 0 ? KT_TEXT : KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 	} else {
 		/* No room: the buttons are the first thing to go, because the

@@ -1,0 +1,1782 @@
+# name	description	package
+2geom	A 2D geometry framework	lib2geom
+AMD	Routines for permuting sparse matrices prior to factorization in SuiteSparse	suitesparse
+BTF	Software package for permuting a matrix into block upper triangular form in SuiteSparse	suitesparse
+CAMD	Routines for permuting sparse matrices prior to factorization in SuiteSparse	suitesparse
+CCOLAMD	Routines for column approximate minimum degree ordering algorithm in SuiteSparse	suitesparse
+CHOLMOD	Routines for factorizing sparse symmetric positive definite matrices in SuiteSparse	suitesparse
+COLAMD	Routines for column approximate minimum degree ordering algorithm in SuiteSparse	suitesparse
+CXSparse	Direct methods for sparse linear systems for real and complex matrices in SuiteSparse	suitesparse
+Clipper2	A Polygon Clipping and Offsetting library in C++	clipper2
+Clipper2Z	A Polygon Clipping and Offsetting library in C++	clipper2
+Coin	A high-level 3D graphics toolkit, fully compatible with SGI Open Inventor 2.1	coin
+Fcitx5Config	Fcitx Config Library	fcitx5
+Fcitx5Core	Fcitx Core Library	fcitx5
+Fcitx5Module	Fcitx Public Module Library	fcitx5
+Fcitx5Utils	Fcitx Utils Library	fcitx5
+GraphicsMagick	GraphicsMagick image processing library	graphicsmagick
+GraphicsMagick++	C++ API for GraphicsMagick image processing library	graphicsmagick
+GraphicsMagickWand	GraphicsMagick Wand image processing library	graphicsmagick
+INIReader	simple .INI file parser for C++	inih
+ImageMagick	ImageMagick - convert, edit, and compose images (ABI Q16HDRI)	imagemagick
+ImageMagick-7.Q16HDRI	ImageMagick - convert, edit, and compose images (ABI Q16HDRI)	imagemagick
+Imath	Imath library: vector/matrix and math operations, plus the half type.	imath
+KF6Archive	File compression	karchive
+KF6Attica	Qt library to access Open Collaboration Services	attica
+KF6Baloo	Baloo is a file indexing and searching framework for Linux	baloo
+KF6BluezQt	Qt wrapper for BlueZ 5 DBus API	bluez-qt
+KF6CalendarCore	The KDE calendar access library	kcalendarcore
+KF6CoreAddons	Addons to QtCore	kcoreaddons
+KF6GuiAddons	Addons to QtGui	kguiaddons
+KF6PulseAudioQt	libpulse bindings for Qt	pulseaudio-qt
+KF6WindowSystem	Access to the windowing system	kwindowsystem
+KLU	Routines for solving sparse linear systems of equations in SuiteSparse	suitesparse
+KLU_CHOLMOD	Routines for sample ordering for KLU in SuiteSparse	suitesparse
+KWaylandClient	Qt-style API to interact with the wayland-client API	kwayland
+LDL	A sparse LDL' factorization and solve package in SuiteSparse	suitesparse
+LLVMSPIRVLib	LLVM/SPIR-V bi-directional translator	spirv-llvm-translator
+LimeSuite	Driver and GUI for LMS7002M-based SDR platforms.	limesuite
+Magick++	Magick++ - C++ API for ImageMagick (ABI Q16HDRI)	imagemagick
+Magick++-7.Q16HDRI	Magick++ - C++ API for ImageMagick (ABI Q16HDRI)	imagemagick
+MagickCore	MagickCore - C API for ImageMagick (ABI Q16HDRI)	imagemagick
+MagickCore-7.Q16HDRI	MagickCore - C API for ImageMagick (ABI Q16HDRI)	imagemagick
+MagickWand	MagickWand - C API for ImageMagick (ABI Q16HDRI)	imagemagick
+MagickWand-7.Q16HDRI	MagickWand - C API for ImageMagick (ABI Q16HDRI)	imagemagick
+ModemManager	Common headers provided by ModemManager	modemmanager
+Mrm	Motif Resource Manager	motif
+OndselSolver	Assembly Constraints and Multibody Dynamics code	freecad
+OpenCL	Open Computing Language generic Installable Client Driver Loader	ocl-icd
+OpenCL-CLHPP	OpenCL API C++ bindings	opencl-clhpp
+OpenCL-Headers	Khronos OpenCL Headers	opencl-headers
+OpenColorIO	OpenColorIO (OCIO) is a complete color management solution	opencolorio
+OpenEXR	OpenEXR image library	openexr
+OpenImageIO	OpenImageIO is a library for reading and writing images.	openimageio
+ParU	Routines for solving sparse linear system via parallel multifrontal LU factorization algorithms in SuiteSparse	suitesparse
+Qt5Concurrent	Qt Concurrent module	qt5-qtbase
+Qt5Core	Qt Core module	qt5-qtbase
+Qt5DBus	Qt DBus module	qt5-qtbase
+Qt5Designer	Qt Designer module	qt5-qttools
+Qt5Gui	Qt Gui module	qt5-qtbase
+Qt5Help	Qt Help module	qt5-qttools
+Qt5Multimedia	Qt Multimedia module	qt5-qtmultimedia
+Qt5MultimediaWidgets	Qt MultimediaWidgets module	qt5-qtmultimedia
+Qt5Network	Qt Network module	qt5-qtbase
+Qt5OpenGL	Qt OpenGL module	qt5-qtbase
+Qt5OpenGLExtensions	Qt OpenGLExtensions module	qt5-qtbase
+Qt5PrintSupport	Qt PrintSupport module	qt5-qtbase
+Qt5Qml	Qt Qml module	qt5-qtdeclarative
+Qt5QmlModels	Qt QmlModels module	qt5-qtdeclarative
+Qt5QmlWorkerScript	Qt QmlWorkerScript module	qt5-qtdeclarative
+Qt5Quick	Qt Quick module	qt5-qtdeclarative
+Qt5QuickControls2	Qt QuickControls2 module	qt5-qtquickcontrols2
+Qt5QuickTemplates2	Qt QuickTemplates2 module	qt5-qtquickcontrols2
+Qt5QuickTest	Qt QuickTest module	qt5-qtdeclarative
+Qt5QuickWidgets	Qt QuickWidgets module	qt5-qtdeclarative
+Qt5Qwt6	Qt Widgets for Technical Applications	qwt-qt5
+Qt5SerialPort	Qt SerialPort module	qt5-qtserialport
+Qt5Sql	Qt Sql module	qt5-qtbase
+Qt5Svg	Qt Svg module	qt5-qtsvg
+Qt5Test	Qt Unit Testing Library	qt5-qtbase
+Qt5UiPlugin	Qt UiPlugin module	qt5-qttools
+Qt5UiTools	Qt UiTools module	qt5-qttools
+Qt5WaylandClient	Qt WaylandClient module	qt5-qtwayland
+Qt5WaylandCompositor	Qt WaylandCompositor module	qt5-qtwayland
+Qt5WebSockets	Qt WebSockets module	qt5-qtwebsockets
+Qt5Widgets	Qt Widgets module	qt5-qtbase
+Qt5X11Extras	Qt X11Extras module	qt5-qtx11extras
+Qt5Xml	Qt Xml module	qt5-qtbase
+Qt63DAnimation	Qt 3DAnimation module	qt6-qt3d
+Qt63DCore	Qt 3DCore module	qt6-qt3d
+Qt63DExtras	Qt 3DExtras module	qt6-qt3d
+Qt63DInput	Qt 3DInput module	qt6-qt3d
+Qt63DLogic	Qt 3DLogic module	qt6-qt3d
+Qt63DQuick	Qt 3DQuick module	qt6-qt3d
+Qt63DQuickAnimation	Qt 3DQuickAnimation module	qt6-qt3d
+Qt63DQuickExtras	Qt 3DQuickExtras module	qt6-qt3d
+Qt63DQuickInput	Qt 3DQuickInput module	qt6-qt3d
+Qt63DQuickLogic	Qt 3DQuickLogic module	qt6-qt3d
+Qt63DQuickRender	Qt 3DQuickRender module	qt6-qt3d
+Qt63DQuickScene2D	Qt 3DQuickScene2D module	qt6-qt3d
+Qt63DQuickScene3D	Qt 3DQuickScene3D module	qt6-qt3d
+Qt63DRender	Qt 3DRender module	qt6-qt3d
+Qt6Bluetooth	Qt Bluetooth module	qt6-qtconnectivity
+Qt6Charts	Qt Charts module	qt6-qtcharts
+Qt6ChartsQml	Qt ChartsQml module	qt6-qtcharts
+Qt6Concurrent	Qt Concurrent module	qt6-qtbase
+Qt6Core	Qt Core module	qt6-qtbase
+Qt6Core5Compat	Qt Core5Compat module	qt6-qt5compat
+Qt6DBus	Qt DBus module	qt6-qtbase
+Qt6Designer	Qt Designer module	qt6-qttools
+Qt6Graphs	Qt Graphs module	qt6-qtgraphs
+Qt6Graphs2DImpl	Qt Graphs2DImpl module	qt6-qtgraphs
+Qt6GraphsWidgets	Qt GraphsWidgets module	qt6-qtgraphs
+Qt6Gui	Qt Gui module	qt6-qtbase
+Qt6Help	Qt Help module	qt6-qttools
+Qt6LabsAnimation	Qt LabsAnimation module	qt6-qtdeclarative
+Qt6LabsFolderListModel	Qt LabsFolderListModel module	qt6-qtdeclarative
+Qt6LabsPlatform	Qt LabsPlatform module	qt6-qtdeclarative
+Qt6LabsQmlModels	Qt LabsQmlModels module	qt6-qtdeclarative
+Qt6LabsSettings	Qt LabsSettings module	qt6-qtdeclarative
+Qt6LabsSharedImage	Qt LabsSharedImage module	qt6-qtdeclarative
+Qt6LabsStyleKit	Qt LabsStyleKit module	qt6-qtdeclarative
+Qt6LabsStyleKitImpl	Qt LabsStyleKitImpl module	qt6-qtdeclarative
+Qt6LabsSynchronizer	Qt LabsSynchronizer module	qt6-qtdeclarative
+Qt6LabsWavefrontMesh	Qt LabsWavefrontMesh module	qt6-qtdeclarative
+Qt6Linguist	Qt Linguist module	qt6-qttools
+Qt6Location	Qt Location module	qt6-qtlocation
+Qt6Mqtt	Qt Mqtt module	qt6-qtmqtt
+Qt6Multimedia	Qt Multimedia module	qt6-qtmultimedia
+Qt6MultimediaQuick	Qt MultimediaQuick module	qt6-qtmultimedia
+Qt6MultimediaWidgets	Qt MultimediaWidgets module	qt6-qtmultimedia
+Qt6Network	Qt Network module	qt6-qtbase
+Qt6NetworkAuth	Qt NetworkAuth module	qt6-qtnetworkauth
+Qt6Nfc	Qt Nfc module	qt6-qtconnectivity
+Qt6OpenGL	Qt OpenGL module	qt6-qtbase
+Qt6OpenGLWidgets	Qt OpenGLWidgets module	qt6-qtbase
+Qt6Pdf	Qt Pdf module	qt6-qtwebengine
+Qt6PdfQuick	Qt PdfQuick module	qt6-qtwebengine
+Qt6PdfWidgets	Qt PdfWidgets module	qt6-qtwebengine
+Qt6Platform	Qt Platform module	qt6-qtbase
+Qt6Positioning	Qt Positioning module	qt6-qtpositioning
+Qt6PositioningQuick	Qt PositioningQuick module	qt6-qtpositioning
+Qt6PrintSupport	Qt PrintSupport module	qt6-qtbase
+Qt6Qml	Qt Qml module	qt6-qtdeclarative
+Qt6QmlCompiler	Qt QmlCompiler module	qt6-qtdeclarative
+Qt6QmlCore	Qt QmlCore module	qt6-qtdeclarative
+Qt6QmlDesignSupport	Qt QmlDesignSupport module	qt6-qtdeclarative
+Qt6QmlIntegration	Qt QmlIntegration module	qt6-qtdeclarative
+Qt6QmlLocalStorage	Qt QmlLocalStorage module	qt6-qtdeclarative
+Qt6QmlMeta	Qt QmlMeta module	qt6-qtdeclarative
+Qt6QmlModels	Qt QmlModels module	qt6-qtdeclarative
+Qt6QmlNetwork	Qt QmlNetwork module	qt6-qtdeclarative
+Qt6QmlWorkerScript	Qt QmlWorkerScript module	qt6-qtdeclarative
+Qt6QmlXmlListModel	Qt QmlXmlListModel module	qt6-qtdeclarative
+Qt6Quick	Qt Quick module	qt6-qtdeclarative
+Qt6Quick3D	Qt Quick3D module	qt6-qtquick3d
+Qt6Quick3DAssetImport	Qt Quick3DAssetImport module	qt6-qtquick3d
+Qt6Quick3DAssetUtils	Qt Quick3DAssetUtils module	qt6-qtquick3d
+Qt6Quick3DEffects	Qt Quick3DEffects module	qt6-qtquick3d
+Qt6Quick3DHelpers	Qt Quick3DHelpers module	qt6-qtquick3d
+Qt6Quick3DHelpersImpl	Qt Quick3DHelpersImpl module	qt6-qtquick3d
+Qt6Quick3DIblBaker	Qt Quick3DIblBaker module	qt6-qtquick3d
+Qt6Quick3DParticleEffects	Qt Quick3DParticleEffects module	qt6-qtquick3d
+Qt6Quick3DParticles	Qt Quick3DParticles module	qt6-qtquick3d
+Qt6Quick3DRuntimeRender	Qt Quick3DRuntimeRender module	qt6-qtquick3d
+Qt6Quick3DSpatialAudio	Qt Quick3DSpatialAudio module	qt6-qtmultimedia
+Qt6Quick3DUtils	Qt Quick3DUtils module	qt6-qtquick3d
+Qt6QuickControls2	Qt QuickControls2 module	qt6-qtdeclarative
+Qt6QuickControls2Basic	Qt QuickControls2Basic module	qt6-qtdeclarative
+Qt6QuickControls2BasicStyleImpl	Qt QuickControls2BasicStyleImpl module	qt6-qtdeclarative
+Qt6QuickControls2FluentWinUI3	Qt QuickControls2FluentWinUI3 module	qt6-qtdeclarative
+Qt6QuickControls2FluentWinUI3StyleImpl	Qt QuickControls2FluentWinUI3StyleImpl module	qt6-qtdeclarative
+Qt6QuickControls2Fusion	Qt QuickControls2Fusion module	qt6-qtdeclarative
+Qt6QuickControls2FusionStyleImpl	Qt QuickControls2FusionStyleImpl module	qt6-qtdeclarative
+Qt6QuickControls2Imagine	Qt QuickControls2Imagine module	qt6-qtdeclarative
+Qt6QuickControls2ImagineStyleImpl	Qt QuickControls2ImagineStyleImpl module	qt6-qtdeclarative
+Qt6QuickControls2Impl	Qt QuickControls2Impl module	qt6-qtdeclarative
+Qt6QuickControls2Material	Qt QuickControls2Material module	qt6-qtdeclarative
+Qt6QuickControls2MaterialStyleImpl	Qt QuickControls2MaterialStyleImpl module	qt6-qtdeclarative
+Qt6QuickControls2Native	Qt QuickControls2Native module	qt6-qtdeclarative
+Qt6QuickControls2Universal	Qt QuickControls2Universal module	qt6-qtdeclarative
+Qt6QuickControls2UniversalStyleImpl	Qt QuickControls2UniversalStyleImpl module	qt6-qtdeclarative
+Qt6QuickDialogs2	Qt QuickDialogs2 module	qt6-qtdeclarative
+Qt6QuickDialogs2QuickImpl	Qt QuickDialogs2QuickImpl module	qt6-qtdeclarative
+Qt6QuickDialogs2Utils	Qt QuickDialogs2Utils module	qt6-qtdeclarative
+Qt6QuickEffects	Qt QuickEffects module	qt6-qtdeclarative
+Qt6QuickLayouts	Qt QuickLayouts module	qt6-qtdeclarative
+Qt6QuickParticles	Qt QuickParticles module	qt6-qtdeclarative
+Qt6QuickShapes	Qt QuickShapes module	qt6-qtdeclarative
+Qt6QuickShapesDesignHelpers	Qt QuickShapesDesignHelpers module	qt6-qtdeclarative
+Qt6QuickTemplates2	Qt QuickTemplates2 module	qt6-qtdeclarative
+Qt6QuickTest	Qt QuickTest module	qt6-qtdeclarative
+Qt6QuickVectorImage	Qt QuickVectorImage module	qt6-qtdeclarative
+Qt6QuickVectorImageHelpers	Qt QuickVectorImageHelpers module	qt6-qtdeclarative
+Qt6QuickWidgets	Qt QuickWidgets module	qt6-qtdeclarative
+Qt6Qwt6	Qt Widgets for Technical Applications	qwt
+Qt6RemoteObjects	Qt RemoteObjects module	qt6-qtremoteobjects
+Qt6RemoteObjectsQml	Qt RemoteObjectsQml module	qt6-qtremoteobjects
+Qt6RepParser	Qt RepParser module	qt6-qtremoteobjects
+Qt6Scxml	Qt Scxml module	qt6-qtscxml
+Qt6ScxmlQml	Qt ScxmlQml module	qt6-qtscxml
+Qt6Sensors	Qt Sensors module	qt6-qtsensors
+Qt6SensorsQuick	Qt SensorsQuick module	qt6-qtsensors
+Qt6SerialPort	Qt SerialPort module	qt6-qtserialport
+Qt6ShaderTools	Qt ShaderTools module	qt6-qtshadertools
+Qt6SpatialAudio	Qt SpatialAudio module	qt6-qtmultimedia
+Qt6Sql	Qt Sql module	qt6-qtbase
+Qt6StateMachine	Qt StateMachine module	qt6-qtscxml
+Qt6StateMachineQml	Qt StateMachineQml module	qt6-qtscxml
+Qt6Svg	Qt Svg module	qt6-qtsvg
+Qt6SvgWidgets	Qt SvgWidgets module	qt6-qtsvg
+Qt6Test	Qt Test module	qt6-qtbase
+Qt6TextToSpeech	Qt TextToSpeech module	qt6-qtspeech
+Qt6UiPlugin	Qt UiPlugin module	qt6-qttools
+Qt6UiTools	Qt UiTools module	qt6-qttools
+Qt6WaylandClient	Qt WaylandClient module	qt6-qtbase
+Qt6WaylandCompositor	Qt WaylandCompositor module	qt6-qtwayland
+Qt6WaylandCompositorIviapplication	Qt WaylandCompositorIviapplication module	qt6-qtwayland
+Qt6WaylandCompositorPresentationTime	Qt WaylandCompositorPresentationTime module	qt6-qtwayland
+Qt6WaylandCompositorWLShell	Qt WaylandCompositorWLShell module	qt6-qtwayland
+Qt6WaylandCompositorXdgShell	Qt WaylandCompositorXdgShell module	qt6-qtwayland
+Qt6WebChannel	Qt WebChannel module	qt6-qtwebchannel
+Qt6WebChannelQuick	Qt WebChannelQuick module	qt6-qtwebchannel
+Qt6WebEngineCore	Qt WebEngineCore module	qt6-qtwebengine
+Qt6WebEngineQuick	Qt WebEngineQuick module	qt6-qtwebengine
+Qt6WebEngineQuickDelegatesQml	Qt WebEngineQuickDelegatesQml module	qt6-qtwebengine
+Qt6WebEngineWidgets	Qt WebEngineWidgets module	qt6-qtwebengine
+Qt6WebSockets	Qt WebSockets module	qt6-qtwebsockets
+Qt6Widgets	Qt Widgets module	qt6-qtbase
+Qt6Xml	Qt Xml module	qt6-qtbase
+QtSpell-qt6	Spell checking for Qt text widgets.	qtspell
+RBio	MATLAB Toolbox for reading/writing sparse matrices in Rutherford/Boeing format in SuiteSparse	suitesparse
+RapidJSON	A fast JSON parser/generator for C++ with both SAX/DOM style API	rapidjson
+SDL2_Pango	SDL2 library for internationalized text rendering	sdl2-pango
+SDL2_gfx	drawing and graphical effects extension for SDL	sdl2-gfx
+SDL2_image	image loading library for Simple DirectMedia Layer	sdl2-image
+SDL2_mixer	mixer library for Simple DirectMedia Layer	sdl2-mixer
+SDL2_net	net library for Simple DirectMedia Layer	sdl2-net
+SDL2_ttf	ttf library for Simple DirectMedia Layer with FreeType 2 support	sdl2-ttf
+SPEX	Software package for SParse EXact algebra in SuiteSparse	suitesparse
+SPIRV-Headers	Header files from the SPIR-V registry	spirv-headers
+SPIRV-Tools	Tools for SPIR-V	spirv-tools
+SPIRV-Tools-shared	Tools for SPIR-V	spirv-tools
+SPQR	Multithreaded, multifrontal, rank-revealing sparse QR factorization method in SuiteSparse	suitesparse
+SoQt	A Qt Gui-toolkit binding for Coin	soqt
+SoapySDR	Vendor and platform neutral SDR interface library.	soapysdr
+SuiteSparse_Mongoose	Graph partitioning library in SuiteSparse	suitesparse
+SuiteSparse_config	Configuration for SuiteSparse	suitesparse
+SvtAv1Enc	SVT (Scalable Video Technology) for AV1 encoder library	svt-av1
+UMFPACK	Routines solving sparse linear systems via LU factorization in SuiteSparse	suitesparse
+Uil	Motif UIL Library	motif
+abiword-3.0	AbiWord word processing library	abiword
+absl_absl_check	Abseil absl_check library	abseil-cpp
+absl_absl_log	Abseil absl_log library	abseil-cpp
+absl_absl_vlog_is_on	Abseil absl_vlog_is_on library	abseil-cpp
+absl_algorithm	Abseil algorithm library	abseil-cpp
+absl_algorithm_container	Abseil algorithm_container library	abseil-cpp
+absl_any	Abseil any library	abseil-cpp
+absl_any_invocable	Abseil any_invocable library	abseil-cpp
+absl_any_span	Abseil any_span library	abseil-cpp
+absl_atomic_hook	Abseil atomic_hook library	abseil-cpp
+absl_bad_any_cast	Abseil bad_any_cast library	abseil-cpp
+absl_bad_optional_access	Abseil bad_optional_access library	abseil-cpp
+absl_bad_variant_access	Abseil bad_variant_access library	abseil-cpp
+absl_base	Abseil base library	abseil-cpp
+absl_base_cpu_detect	Abseil base_cpu_detect library	abseil-cpp
+absl_base_internal	Abseil base_internal library	abseil-cpp
+absl_bind_back	Abseil bind_back library	abseil-cpp
+absl_bind_front	Abseil bind_front library	abseil-cpp
+absl_bits	Abseil bits library	abseil-cpp
+absl_bounded_utf8_length_sequence	Abseil bounded_utf8_length_sequence library	abseil-cpp
+absl_btree	Abseil btree library	abseil-cpp
+absl_charset	Abseil charset library	abseil-cpp
+absl_check	Abseil check library	abseil-cpp
+absl_chunked_queue	Abseil chunked_queue library	abseil-cpp
+absl_city	Abseil city library	abseil-cpp
+absl_civil_time	Abseil civil_time library	abseil-cpp
+absl_cleanup	Abseil cleanup library	abseil-cpp
+absl_cleanup_internal	Abseil cleanup_internal library	abseil-cpp
+absl_clock_interface	Abseil clock_interface library	abseil-cpp
+absl_common_policy_traits	Abseil common_policy_traits library	abseil-cpp
+absl_compare	Abseil compare library	abseil-cpp
+absl_compressed_tuple	Abseil compressed_tuple library	abseil-cpp
+absl_config	Abseil config library	abseil-cpp
+absl_constexpr_testing_internal	Abseil constexpr_testing_internal library	abseil-cpp
+absl_container_common	Abseil container_common library	abseil-cpp
+absl_container_memory	Abseil container_memory library	abseil-cpp
+absl_cord	Abseil cord library	abseil-cpp
+absl_cord_internal	Abseil cord_internal library	abseil-cpp
+absl_cordz_functions	Abseil cordz_functions library	abseil-cpp
+absl_cordz_handle	Abseil cordz_handle library	abseil-cpp
+absl_cordz_info	Abseil cordz_info library	abseil-cpp
+absl_cordz_sample_token	Abseil cordz_sample_token library	abseil-cpp
+absl_cordz_statistics	Abseil cordz_statistics library	abseil-cpp
+absl_cordz_update_scope	Abseil cordz_update_scope library	abseil-cpp
+absl_cordz_update_tracker	Abseil cordz_update_tracker library	abseil-cpp
+absl_core_headers	Abseil core_headers library	abseil-cpp
+absl_crc32c	Abseil crc32c library	abseil-cpp
+absl_crc_cord_state	Abseil crc_cord_state library	abseil-cpp
+absl_crc_internal	Abseil crc_internal library	abseil-cpp
+absl_debugging	Abseil debugging library	abseil-cpp
+absl_debugging_internal	Abseil debugging_internal library	abseil-cpp
+absl_decode_rust_punycode	Abseil decode_rust_punycode library	abseil-cpp
+absl_demangle_internal	Abseil demangle_internal library	abseil-cpp
+absl_demangle_rust	Abseil demangle_rust library	abseil-cpp
+absl_die_if_null	Abseil die_if_null library	abseil-cpp
+absl_dynamic_annotations	Abseil dynamic_annotations library	abseil-cpp
+absl_endian	Abseil endian library	abseil-cpp
+absl_errno_saver	Abseil errno_saver library	abseil-cpp
+absl_examine_stack	Abseil examine_stack library	abseil-cpp
+absl_exponential_biased	Abseil exponential_biased library	abseil-cpp
+absl_failure_signal_handler	Abseil failure_signal_handler library	abseil-cpp
+absl_fast_type_id	Abseil fast_type_id library	abseil-cpp
+absl_fixed_array	Abseil fixed_array library	abseil-cpp
+absl_flags	Abseil flags library	abseil-cpp
+absl_flags_commandlineflag	Abseil flags_commandlineflag library	abseil-cpp
+absl_flags_commandlineflag_internal	Abseil flags_commandlineflag_internal library	abseil-cpp
+absl_flags_config	Abseil flags_config library	abseil-cpp
+absl_flags_internal	Abseil flags_internal library	abseil-cpp
+absl_flags_marshalling	Abseil flags_marshalling library	abseil-cpp
+absl_flags_parse	Abseil flags_parse library	abseil-cpp
+absl_flags_path_util	Abseil flags_path_util library	abseil-cpp
+absl_flags_private_handle_accessor	Abseil flags_private_handle_accessor library	abseil-cpp
+absl_flags_program_name	Abseil flags_program_name library	abseil-cpp
+absl_flags_reflection	Abseil flags_reflection library	abseil-cpp
+absl_flags_usage	Abseil flags_usage library	abseil-cpp
+absl_flags_usage_internal	Abseil flags_usage_internal library	abseil-cpp
+absl_flat_hash_map	Abseil flat_hash_map library	abseil-cpp
+absl_flat_hash_set	Abseil flat_hash_set library	abseil-cpp
+absl_function_ref	Abseil function_ref library	abseil-cpp
+absl_generic_printer_internal	Abseil generic_printer_internal library	abseil-cpp
+absl_graphcycles_internal	Abseil graphcycles_internal library	abseil-cpp
+absl_hardening	Abseil hardening library	abseil-cpp
+absl_has_ostream_operator	Abseil has_ostream_operator library	abseil-cpp
+absl_hash	Abseil hash library	abseil-cpp
+absl_hash_container_defaults	Abseil hash_container_defaults library	abseil-cpp
+absl_hash_function_defaults	Abseil hash_function_defaults library	abseil-cpp
+absl_hash_policy_traits	Abseil hash_policy_traits library	abseil-cpp
+absl_hashtable_control_bytes	Abseil hashtable_control_bytes library	abseil-cpp
+absl_hashtable_debug	Abseil hashtable_debug library	abseil-cpp
+absl_hashtable_debug_hooks	Abseil hashtable_debug_hooks library	abseil-cpp
+absl_hashtable_profiler	Abseil hashtable_profiler library	abseil-cpp
+absl_hashtablez_sampler	Abseil hashtablez_sampler library	abseil-cpp
+absl_inlined_vector	Abseil inlined_vector library	abseil-cpp
+absl_inlined_vector_internal	Abseil inlined_vector_internal library	abseil-cpp
+absl_int128	Abseil int128 library	abseil-cpp
+absl_internal_optional_ref	Abseil internal_optional_ref library	abseil-cpp
+absl_iterator_traits_internal	Abseil iterator_traits_internal library	abseil-cpp
+absl_iterator_traits_test_helper_internal	Abseil iterator_traits_test_helper_internal library	abseil-cpp
+absl_kernel_timeout_internal	Abseil kernel_timeout_internal library	abseil-cpp
+absl_layout	Abseil layout library	abseil-cpp
+absl_leak_check	Abseil leak_check library	abseil-cpp
+absl_linked_hash_map	Abseil linked_hash_map library	abseil-cpp
+absl_linked_hash_set	Abseil linked_hash_set library	abseil-cpp
+absl_log	Abseil log library	abseil-cpp
+absl_log_entry	Abseil log_entry library	abseil-cpp
+absl_log_flags	Abseil log_flags library	abseil-cpp
+absl_log_globals	Abseil log_globals library	abseil-cpp
+absl_log_initialize	Abseil log_initialize library	abseil-cpp
+absl_log_internal_append_truncated	Abseil log_internal_append_truncated library	abseil-cpp
+absl_log_internal_check_impl	Abseil log_internal_check_impl library	abseil-cpp
+absl_log_internal_check_op	Abseil log_internal_check_op library	abseil-cpp
+absl_log_internal_conditions	Abseil log_internal_conditions library	abseil-cpp
+absl_log_internal_config	Abseil log_internal_config library	abseil-cpp
+absl_log_internal_container	Abseil log_internal_container library	abseil-cpp
+absl_log_internal_flags	Abseil log_internal_flags library	abseil-cpp
+absl_log_internal_fnmatch	Abseil log_internal_fnmatch library	abseil-cpp
+absl_log_internal_format	Abseil log_internal_format library	abseil-cpp
+absl_log_internal_globals	Abseil log_internal_globals library	abseil-cpp
+absl_log_internal_log_impl	Abseil log_internal_log_impl library	abseil-cpp
+absl_log_internal_log_sink_set	Abseil log_internal_log_sink_set library	abseil-cpp
+absl_log_internal_message	Abseil log_internal_message library	abseil-cpp
+absl_log_internal_nullguard	Abseil log_internal_nullguard library	abseil-cpp
+absl_log_internal_nullstream	Abseil log_internal_nullstream library	abseil-cpp
+absl_log_internal_proto	Abseil log_internal_proto library	abseil-cpp
+absl_log_internal_strip	Abseil log_internal_strip library	abseil-cpp
+absl_log_internal_structured	Abseil log_internal_structured library	abseil-cpp
+absl_log_internal_structured_proto	Abseil log_internal_structured_proto library	abseil-cpp
+absl_log_internal_voidify	Abseil log_internal_voidify library	abseil-cpp
+absl_log_severity	Abseil log_severity library	abseil-cpp
+absl_log_sink	Abseil log_sink library	abseil-cpp
+absl_log_sink_registry	Abseil log_sink_registry library	abseil-cpp
+absl_log_streamer	Abseil log_streamer library	abseil-cpp
+absl_log_structured	Abseil log_structured library	abseil-cpp
+absl_malloc_internal	Abseil malloc_internal library	abseil-cpp
+absl_memory	Abseil memory library	abseil-cpp
+absl_meta	Abseil meta library	abseil-cpp
+absl_no_destructor	Abseil no_destructor library	abseil-cpp
+absl_node_hash_map	Abseil node_hash_map library	abseil-cpp
+absl_node_hash_set	Abseil node_hash_set library	abseil-cpp
+absl_node_slot_policy	Abseil node_slot_policy library	abseil-cpp
+absl_non_temporal_arm_intrinsics	Abseil non_temporal_arm_intrinsics library	abseil-cpp
+absl_non_temporal_memcpy	Abseil non_temporal_memcpy library	abseil-cpp
+absl_nullability	Abseil nullability library	abseil-cpp
+absl_nullability_traits_internal	Abseil nullability_traits_internal library	abseil-cpp
+absl_numeric	Abseil numeric library	abseil-cpp
+absl_numeric_representation	Abseil numeric_representation library	abseil-cpp
+absl_optional	Abseil optional library	abseil-cpp
+absl_overload	Abseil overload library	abseil-cpp
+absl_periodic_sampler	Abseil periodic_sampler library	abseil-cpp
+absl_poison	Abseil poison library	abseil-cpp
+absl_prefetch	Abseil prefetch library	abseil-cpp
+absl_pretty_function	Abseil pretty_function library	abseil-cpp
+absl_profile_builder	Abseil profile_builder library	abseil-cpp
+absl_random_bit_gen_ref	Abseil random_bit_gen_ref library	abseil-cpp
+absl_random_distributions	Abseil random_distributions library	abseil-cpp
+absl_random_internal_distribution_caller	Abseil random_internal_distribution_caller library	abseil-cpp
+absl_random_internal_distribution_test_util	Abseil random_internal_distribution_test_util library	abseil-cpp
+absl_random_internal_entropy_pool	Abseil random_internal_entropy_pool library	abseil-cpp
+absl_random_internal_fast_uniform_bits	Abseil random_internal_fast_uniform_bits library	abseil-cpp
+absl_random_internal_fastmath	Abseil random_internal_fastmath library	abseil-cpp
+absl_random_internal_generate_real	Abseil random_internal_generate_real library	abseil-cpp
+absl_random_internal_iostream_state_saver	Abseil random_internal_iostream_state_saver library	abseil-cpp
+absl_random_internal_mock_helpers	Abseil random_internal_mock_helpers library	abseil-cpp
+absl_random_internal_nonsecure_base	Abseil random_internal_nonsecure_base library	abseil-cpp
+absl_random_internal_pcg_engine	Abseil random_internal_pcg_engine library	abseil-cpp
+absl_random_internal_platform	Abseil random_internal_platform library	abseil-cpp
+absl_random_internal_randen	Abseil random_internal_randen library	abseil-cpp
+absl_random_internal_randen_engine	Abseil random_internal_randen_engine library	abseil-cpp
+absl_random_internal_randen_hwaes	Abseil random_internal_randen_hwaes library	abseil-cpp
+absl_random_internal_randen_hwaes_impl	Abseil random_internal_randen_hwaes_impl library	abseil-cpp
+absl_random_internal_randen_slow	Abseil random_internal_randen_slow library	abseil-cpp
+absl_random_internal_salted_seed_seq	Abseil random_internal_salted_seed_seq library	abseil-cpp
+absl_random_internal_seed_material	Abseil random_internal_seed_material library	abseil-cpp
+absl_random_internal_traits	Abseil random_internal_traits library	abseil-cpp
+absl_random_internal_uniform_helper	Abseil random_internal_uniform_helper library	abseil-cpp
+absl_random_internal_wide_multiply	Abseil random_internal_wide_multiply library	abseil-cpp
+absl_random_mocking_access	Abseil random_mocking_access library	abseil-cpp
+absl_random_random	Abseil random_random library	abseil-cpp
+absl_random_seed_gen_exception	Abseil random_seed_gen_exception library	abseil-cpp
+absl_random_seed_sequences	Abseil random_seed_sequences library	abseil-cpp
+absl_raw_hash_map	Abseil raw_hash_map library	abseil-cpp
+absl_raw_hash_set	Abseil raw_hash_set library	abseil-cpp
+absl_raw_hash_set_resize_impl	Abseil raw_hash_set_resize_impl library	abseil-cpp
+absl_raw_logging_internal	Abseil raw_logging_internal library	abseil-cpp
+absl_requires_internal	Abseil requires_internal library	abseil-cpp
+absl_sample_recorder	Abseil sample_recorder library	abseil-cpp
+absl_scoped_set_env	Abseil scoped_set_env library	abseil-cpp
+absl_source_location	Abseil source_location library	abseil-cpp
+absl_span	Abseil span library	abseil-cpp
+absl_spinlock_wait	Abseil spinlock_wait library	abseil-cpp
+absl_stacktrace	Abseil stacktrace library	abseil-cpp
+absl_status	Abseil status library	abseil-cpp
+absl_status_builder	Abseil status_builder library	abseil-cpp
+absl_status_macros	Abseil status_macros library	abseil-cpp
+absl_statusor	Abseil statusor library	abseil-cpp
+absl_str_format	Abseil str_format library	abseil-cpp
+absl_str_format_internal	Abseil str_format_internal library	abseil-cpp
+absl_strerror	Abseil strerror library	abseil-cpp
+absl_string_view	Abseil string_view library	abseil-cpp
+absl_stringify_stream	Abseil stringify_stream library	abseil-cpp
+absl_strings	Abseil strings library	abseil-cpp
+absl_strings_append_and_overwrite	Abseil strings_append_and_overwrite library	abseil-cpp
+absl_strings_internal	Abseil strings_internal library	abseil-cpp
+absl_strings_resize_and_overwrite	Abseil strings_resize_and_overwrite library	abseil-cpp
+absl_symbolize	Abseil symbolize library	abseil-cpp
+absl_synchronization	Abseil synchronization library	abseil-cpp
+absl_throw_delegate	Abseil throw_delegate library	abseil-cpp
+absl_time	Abseil time library	abseil-cpp
+absl_time_zone	Abseil time_zone library	abseil-cpp
+absl_tracing_internal	Abseil tracing_internal library	abseil-cpp
+absl_type_traits	Abseil type_traits library	abseil-cpp
+absl_utf8_for_code_point	Abseil utf8_for_code_point library	abseil-cpp
+absl_utility	Abseil utility library	abseil-cpp
+absl_variant	Abseil variant library	abseil-cpp
+absl_vlog_config_internal	Abseil vlog_config_internal library	abseil-cpp
+absl_vlog_is_on	Abseil vlog_is_on library	abseil-cpp
+absl_weakly_mixed_integer	Abseil weakly_mixed_integer library	abseil-cpp
+adplug	A free AdLib sound player library	adplug
+adwaita-icon-theme	A collection of icons used as the basis for GNOME themes	adwaita-icon-theme
+adwaita-icon-theme-legacy	Icon theme that provides fallback icons for old apps relying on global icon themes	adwaita-icon-theme-legacy
+afflib	Library to support the Advanced Forensic Format	afflib
+akai	C++ library for accessing AKAI disk images	libgig
+alsa	Advanced Linux Sound Architecture (ALSA) - Library	alsa-lib
+alsa-topology	Advanced Linux Sound Architecture (ALSA) - Topology Library	alsa-lib
+aml1	Another main loop library	aml
+anthy-unicode	Japanese conversion engine	anthy-unicode
+ao	ao is a cross-platform audio output library	libao
+applewmproto	AppleWM extension headers	xorgproto
+appstream	Library to work with AppStream metadata.	appstream
+arpack	Collection of Fortran77 subroutines designed to solve large scale eigenvalue problems	arpack-ng
+asio	A cross-platform C++ library for network and low-level I/O programming that provides developers with a consistent asynchronous model using a modern C++ approach.	asio
+assimp	Import various well-known 3D model formats in an uniform manner.	assimp
+atk	Accessibility Toolkit	at-spi2-core
+atk-bridge-2.0	ATK/D-Bus Bridge	at-spi2-core
+atkmm-1.6	C++ binding for the ATK accessibility toolkit	atkmm2.28
+atspi-2	Accessibility Technology software library	at-spi2-core
+aubio	a library for audio labelling	aubio
+audacious	versatile and handy multi platform media player	audacious
+audiofile	audiofile	audiofile
+avahi-client	Avahi Multicast DNS Responder (Client Support)	avahi
+avahi-compat-libdns_sd	Avahi Multicast DNS Responder (libdns_sd Compatibility)	avahi
+avahi-core	Avahi Multicast DNS Responder (Embeddable Stack)	avahi
+avahi-glib	Avahi Multicast DNS Responder (GLib Support)	avahi
+avahi-gobject	Avahi Multicast DNS Responder (GLib GObject Support)	avahi
+ayatana-appindicator3-0.1	Ayatana Application Indicators (for GTK-3+)	libayatana-appindicator
+ayatana-indicator3-0.4	libayatana-indicator3.	libayatana-indicator
+babl-0.1	Pixel encoding and color space conversion engine.	babl
+bash	Bash headers for bash loadable builtins	bash
+bash-completion	programmable completion for the bash shell	bash-completion
+basu	basu library	basu
+bdw-gc	A garbage collector for C and C++	bdwgc
+bigreqsproto	BigReqs extension headers	xorgproto
+blkid	Block device id library	util-linux
+blockdev	Library for doing low-level operations with block devices	libblockdev
+blockdev-utils	A library with utility functions used by the libblockdev library	libblockdev
+blosc	A blocking, shuffling and lossless compression library	c-blosc
+blueprint-compiler	Markup compiler for GTK user interface definitions	blueprint-compiler
+bluez	Bluetooth protocol stack for Linux	bluez
+botan-3	Crypto and TLS for Modern C++	botan
+brltty	Braille Device Daemon	brltty
+bytesize	Library for working with sizes in bytes	libbytesize
+bzip2	Block-sorting file compression library	bzip2
+c++utilities	Useful C++ classes and routines such as argument parser, IO and conversion utilities	cpp-utilities
+cairo	Multi-platform 2D graphics library	cairo
+cairo-fc	Fontconfig font backend for cairo graphics library	cairo
+cairo-ft	FreeType font backend for cairo graphics library	cairo
+cairo-gobject	cairo-gobject for cairo graphics library	cairo
+cairo-pdf	PDF surface backend for cairo graphics library	cairo
+cairo-png	PNG functions for cairo graphics library	cairo
+cairo-ps	PostScript surface backend for cairo graphics library	cairo
+cairo-script	script surface backend for cairo graphics library	cairo
+cairo-script-interpreter	script surface backend for cairo graphics library	cairo
+cairo-svg	SVG surface backend for cairo graphics library	cairo
+cairo-tee	Tee surface backend for cairo graphics library	cairo
+cairo-xcb	XCB surface backend for cairo graphics library	cairo
+cairo-xcb-shm	XCB/SHM functions for cairo graphics library	cairo
+cairo-xlib	Xlib surface backend for cairo graphics library	cairo
+cairo-xlib-xcb	Xlib/XCB functions for cairo graphics library	cairo
+cairo-xlib-xrender	Xlib Xrender surface backend for cairo graphics library	cairo
+cairomm-1.0	C++ binding for the cairo graphics library	cairomm1.14
+cairomm-1.16	C++ binding for the cairo graphics library	cairomm
+cairomm-ft-1.0	C++ wrapper for cairo - ft support	cairomm1.14
+cairomm-ft-1.16	C++ wrapper for cairo - FreeType font backend	cairomm
+cairomm-pdf-1.0	C++ wrapper for cairo - pdf support	cairomm1.14
+cairomm-pdf-1.16	C++ wrapper for cairo - PDF surface backend	cairomm
+cairomm-png-1.0	C++ wrapper for cairo - png support	cairomm1.14
+cairomm-png-1.16	C++ wrapper for cairo - PNG functions	cairomm
+cairomm-ps-1.0	C++ wrapper for cairo - postscript support	cairomm1.14
+cairomm-ps-1.16	C++ wrapper for cairo - PostScript surface backend	cairomm
+cairomm-svg-1.0	C++ wrapper for cairo - svg support	cairomm1.14
+cairomm-svg-1.16	C++ wrapper for cairo - SVG surface backend	cairomm
+cairomm-xlib-1.0	C++ wrapper for cairo - xlib support	cairomm1.14
+cairomm-xlib-1.16	C++ wrapper for cairo - Xlib surface backend	cairomm
+cairomm-xlib-xrender-1.0	C++ wrapper for cairo - xlib-xrender support	cairomm1.14
+cairomm-xlib-xrender-1.16	C++ wrapper for cairo - Xlib Xrender surface backend	cairomm
+capstone	Capstone disassembly engine	capstone
+cfitsio	FITS File Subroutine Library	cfitsio
+chafa	Image to character art facsimile	chafa
+chemical-mime-data	Chemical MIME and file type support for KDE, GNOME and ROX desktops.	chemical-mime-data
+codec2	A speech codec for 2400 bit/s and below	codec2
+coeurl	Simple library to do http requests asynchronously via CURL in C++.	coeurl
+com_err	Common error description library	e2fsprogs
+compositeproto	Composite extension headers	xorgproto
+cppzmq	C++ binding for libzmq	cppzmq
+cups	CUPS API Library	cups
+d0_blind_id	Library for user identification using RSA blind signatures	xonotic
+d0_rijndael	Library for Rijndael encryption	xonotic
+damageproto	Damage extension headers	xorgproto
+datrie-0.2	Double-array trie library	libdatrie
+dav1d	AV1 decoding library	dav1d
+dbus-1	Free desktop message bus	dbus
+dbus-python	Python bindings for D-Bus	python3-dbus
+dbusmenu-glib-0.4	libdbusmenu-glib.	libdbusmenu
+dbusmenu-gtk3-0.4	libdbusmenu-gtk3.	libdbusmenu
+dbusmenu-lxqt	Qt implementation of dbusmenu spec	libdbusmenu-lxqt
+dbusmenu-qt5	Qt implementation of dbusmenu spec	libdbusmenu-qt5
+dcmtk	DICOM Toolkit (DCMTK)	dcmtk
+dconf	dconf client library	dconf
+ddcutil	Control display settings	ddcutil
+ddjvuapi	DjVu Decoding API	djvulibre
+default-icon-theme	The default fallback theme used by XDG icon-theme implementations.	hicolor-icon-theme
+devmapper	device-mapper library	lvm2
+devmapper-event	device-mapper event library	lvm2
+dmxproto	DMX extension headers	xorgproto
+docopt	C++11 port of docopt	docopt.cpp
+dotconf	config file parser	dotconf
+double-conversion	Binary-decimal and decimal-binary routines for IEEE doubles	double-conversion
+dovi	Dolby Vision metadata parsing and writing	libdovi
+dpmsproto	DPMS extension headers	xorgproto
+draco	Draco geometry de(com)pression library.	draco
+dri	Direct Rendering Infrastructure	mesa
+dri2proto	DRI2 extension headers	xorgproto
+dri3proto	DRI3 extension headers	xorgproto
+duktape	Embeddable JavaScript engine	duktape
+dvdnav	DVD Navigation library	libdvdnav
+dvdread	Low level DVD access library	libdvdread
+e2p	Ext2fs userspace programs utility library	e2fsprogs
+efiboot	UEFI Boot variable support	efivar
+efisec	UEFI Security Features	efivar
+efivar	UEFI Variable Management	efivar
+egl	EGL library and headers	libglvnd
+eigen3	A C++ template library for linear algebra: vectors, matrices, and related algorithms	eigen
+enchant-2	A spell checking library	enchant
+epoxy	GL dispatch library	libepoxy
+erfa	Essential Routines for Fundamental Astronomy	erfa
+espeak-ng	eSpeak NG is a multi-lingual software speech synthesizer	espeak-ng
+exempi-2.0	Library for easy parsing of XMP metadata.	exempi
+exiv2	Exif/IPTC/Xmp C++ metadata library and tools plus ICC Profiles, Previews and more.	exiv2
+exo-2	Extension library for Xfce	exo
+expat	expat XML parser	expat
+ext2fs	Ext2fs library	e2fsprogs
+faad2	Freeware Advanced Audio (AAC) Decoder	faad2
+fcft	Simple font loading and glyph rasterization library	fcft
+fdisk	fdisk library	util-linux
+fdk-aac	AAC codec library	fdk-aac
+fftw3	fast Fourier transform library	fftw
+fftw3f	fast Fourier transform library	fftw
+fftw3l	fast Fourier transform library	fftw
+fixesproto	X Fixes extension headers	xorgproto
+flac	Free Lossless Audio Codec Library	flac
+flac++	Free Lossless Audio Codec Library (C++ API)	flac
+flashrom	library to interact with flashrom	flashrom
+fluidsynth	Software SoundFont synth	fluidsynth
+flxmlrpc	An xmlrpc data interface library	flxmlrpc
+fmt	A modern formatting library	fmt
+fontconfig	Font configuration and customization library	fontconfig
+fontenc	The fontenc Library	libfontenc
+fontsproto	Fonts extension headers	xorgproto
+fontutil	Font utilities dirs	font-util
+formw	ncurses 6.6 add-on library	ncurses
+freerdp-client3	FreeRDP: A Remote Desktop Protocol Implementation	freerdp
+freerdp3	FreeRDP: A Remote Desktop Protocol Implementation	freerdp
+freetype2	A free, high-quality, and portable font engine.	freetype2
+freexl	a simple library extracting data from .xls (Excel BIFF) files	freexl
+frei0r	minimalistic plugin API for video effects	frei0r-plugins
+fribidi	Unicode Bidirectional Algorithm Library	fribidi
+fuse3	Filesystem in Userspace	fuse
+fwupd	fwupd is a system daemon for installing device firmware	fwupd
+fwupd-efi	fwupd-efi is the UEFI binary used with fwupd for installing UEFI firmware updates	fwupd-efi
+gail-3.0	GNOME Accessibility Implementation Library	gtk3
+gavl	Gmerlin Audio Video Library	gavl
+gbm	Mesa gbm library	mesa
+gdal	Geospatial Data Abstraction Library	gdal
+gdk-3.0	GTK+ Drawing Kit	gtk3
+gdk-pixbuf-2.0	Image loading and scaling	gdk-pixbuf
+gdk-wayland-3.0	GTK+ Drawing Kit	gtk3
+gdk-x11-3.0	GTK+ Drawing Kit	gtk3
+gdkmm-3.0	C++ binding for the GDK drawing kit	gtkmm3
+gdlib	GD graphics library	libgd
+geany	A fast and lightweight IDE using GTK+	geany
+gee-0.8	The GObject collection library	libgee
+gegl-0.4	Generic Graphics Library	gegl
+gegl-sc-0.4	Seamless Cloning Library Based on GEGL	gegl
+geoclue-2.0	The Geoinformation Service	geoclue
+geos	Geometry Engine, Open Source - C API	geos
+gexiv2	GObject bindings for exiv2	gexiv2
+gflags	A commandline flags library that allows for distributed flags.	gflags
+ggml	The GGML Tensor Library for Machine Learning	libggml
+gig	C++ library for accessing Gigasampler/GigaStudio, DLS, SoundFont and KORG sound files	libgig
+gimp-3.0	GIMP Library	gimp
+gimpthumb-3.0	GIMP Thumbnail Library	gimp
+gimpui-3.0	GIMP User Interface Library	gimp
+gio-2.0	glib I/O library	glib
+gio-unix-2.0	unix specific headers for glib I/O library	glib
+giomm-2.4	C++ binding for gio	glibmm2.66
+giomm-2.68	C++ wrapper for gio	glibmm
+girepository-2.0	GObject Introspection repository parser	glib
+gl	Legacy OpenGL and GLX library and headers.	libglvnd
+glesv2	OpenGL ES v2/v3 library and headers.	libglvnd
+glew	The OpenGL Extension Wrangler library	glew
+glfw3	A multi-platform library for OpenGL, window and input	glfw
+glib-2.0	C Utility Library	glib
+glibmm-2.4	C++ binding for GLib	glibmm2.66
+glibmm-2.68	C++ wrapper for GLib	glibmm
+glm	OpenGL Mathematics	glm
+glproto	GL extension headers	xorgproto
+glu	Mesa OpenGL Utility Library	glu
+glut	A freely licensed and improved alternative to the GLUT library	freeglut
+glx	GLX library and headers.	libglvnd
+gmime-3.0	MIME parser and utility library	gmime
+gmock	GoogleMock (without main() function)	gtest
+gmock_main	GoogleMock (with main() function)	gtest
+gmodule-2.0	Dynamic module loader for GLib	glib
+gmodule-export-2.0	Dynamic module loader for GLib	glib
+gmodule-no-export-2.0	Dynamic module loader for GLib	glib
+gmp	GNU Multiple Precision Arithmetic Library	gmp
+gmpxx	GNU Multiple Precision Arithmetic Library (C++ bindings)	gmp
+gnu-efi	EFI development toolkit	gnu-efi
+gnuastro	GNU Astronomy Utilities	gnuastro
+gnuradio-analog	GNU Radio blocks for analog communications	gnuradio
+gnuradio-audio	The GNU Radio block for all supported audio sound systems	gnuradio
+gnuradio-blocks	GNU Radio basic block library	gnuradio
+gnuradio-channels	GNU Radio's channel model blocks	gnuradio
+gnuradio-digital	GNU Radio blocks for digital communications	gnuradio
+gnuradio-dtv	GNU Radio's digital TV signal processing blocks	gnuradio
+gnuradio-fec	GNU Radio's FEC signal processing blocks	gnuradio
+gnuradio-fft	GNU Radio's FFT signal processing blocks	gnuradio
+gnuradio-filter	GNU Radio's filter signal processing blocks	gnuradio
+gnuradio-iio	GNU Radio blocks for IIO devices	gnuradio
+gnuradio-network	GNU Radio network block library	gnuradio
+gnuradio-pdu	GNU Radio blocks for PDU based processing	gnuradio
+gnuradio-qtgui	GNU Radio blocks for QT GUI	gnuradio
+gnuradio-runtime	GNU Radio core runtime infrastructure	gnuradio
+gnuradio-soapy	GNU Radio blocks for SoapySDR	gnuradio
+gnuradio-trellis	GNU Radio blocks for trellis-based processing	gnuradio
+gnuradio-uhd	GNU Radio blocks for UHD	gnuradio
+gnuradio-vocoder	GNU Radio blocks implementing voice codecs	gnuradio
+gnuradio-wavelet	Wavelet signal processing blocks for GNU Radio	gnuradio
+gnuradio-zeromq	GNU Radio blocks to interface with ZeroMQ	gnuradio
+gnutls	Transport Security Layer implementation for the GNU system	gnutls
+gobject-2.0	GLib Type, Object, Parameter and Signal Library	glib
+gobject-introspection-1.0	GObject Introspection	gobject-introspection
+gobject-introspection-no-export-1.0	GObject Introspection	gobject-introspection
+goocanvas-3.0	A GTK+ canvas widget using cairo	goocanvas
+gpg-error	GPG Runtime	libgpg-error
+gpgme	GnuPG Made Easy to access GnuPG	gpgme
+gpgme-glib	GnuPG Made Easy to access GnuPG with Glib	gpgme
+gpgmepp	GnuPG Made Easy (C++ binding)	gpgmepp
+graphene-1.0	Math classes for graphic libraries	graphene
+graphene-gobject-1.0	GObject types for Graphene	graphene
+graphite2	Font rendering engine for Complex Scripts	graphite2
+gsettings-desktop-schemas	Shared GSettings schemas for the desktop, including helper headers	gsettings-desktop-schemas
+gsl	GNU Scientific Library	gsl
+gspell-1	Spell-checking for GTK applications	gspell
+gssrpc	GSSAPI RPC implementation	krb5
+gstreamer-1.0	Streaming media framework	gstreamer
+gstreamer-allocators-1.0	Allocators implementation	gst-plugins-base
+gstreamer-analytics-1.0	GStreamer analytics metadata library	gst-plugins-bad
+gstreamer-app-1.0	Helper functions and base classes for application integration	gst-plugins-base
+gstreamer-audio-1.0	Audio helper functions and base classes	gst-plugins-base
+gstreamer-bad-audio-1.0	Bad audio library for GStreamer elements	gst-plugins-bad
+gstreamer-base-1.0	Base classes for GStreamer elements	gstreamer
+gstreamer-check-1.0	Unit testing helper library for GStreamer modules	gstreamer
+gstreamer-codecparsers-1.0	Bitstream parsers for GStreamer elements	gst-plugins-bad
+gstreamer-controller-1.0	Dynamic parameter control for GStreamer elements	gstreamer
+gstreamer-cuda-1.0	Unstable library to work with CUDA inside GStreamer	gst-plugins-bad
+gstreamer-fft-1.0	FFT implementation	gst-plugins-base
+gstreamer-gl-1.0	Streaming media framework, OpenGL plugins libraries	gst-plugins-base
+gstreamer-gl-egl-1.0	Streaming media framework, OpenGL plugins libraries (EGL specifics)	gst-plugins-base
+gstreamer-gl-prototypes-1.0	Streaming media framework, OpenGL plugins libraries (OpenGL Prototypes)	gst-plugins-base
+gstreamer-gl-wayland-1.0	Streaming media framework, OpenGL plugins libraries (Wayland specifics)	gst-plugins-base
+gstreamer-hip-1.0	GStreamer HIP library	gst-plugins-bad
+gstreamer-hip-gl-1.0	GStreamer HIP library (OpenGL specifics)	gst-plugins-bad
+gstreamer-insertbin-1.0	Bin to automatically and insertally link elements	gst-plugins-bad
+gstreamer-mpegts-1.0	GStreamer MPEG-TS support	gst-plugins-bad
+gstreamer-mse-1.0	GStreamer Support for W3C Media Source Extensions	gst-plugins-bad
+gstreamer-net-1.0	Network-enabled GStreamer plug-ins and clocking	gstreamer
+gstreamer-pbutils-1.0	General utility functions	gst-plugins-base
+gstreamer-photography-1.0	High level API for transcoding using GStreamer	gst-plugins-bad
+gstreamer-play-1.0	GStreamer Player convenience library	gst-plugins-bad
+gstreamer-player-1.0	GStreamer Player convenience library	gst-plugins-bad
+gstreamer-plugins-bad-1.0	Streaming media framework, bad plugins libraries	gst-plugins-bad
+gstreamer-plugins-base-1.0	Streaming media framework, base plugins libraries	gst-plugins-base
+gstreamer-riff-1.0	RIFF helper functions	gst-plugins-base
+gstreamer-rtp-1.0	RTP base classes and helper functions	gst-plugins-base
+gstreamer-rtsp-1.0	RTSP base classes and helper functions	gst-plugins-base
+gstreamer-sctp-1.0	SCTP helper functions	gst-plugins-bad
+gstreamer-sdp-1.0	SDP helper functions	gst-plugins-base
+gstreamer-tag-1.0	Tag base classes and helper functions	gst-plugins-base
+gstreamer-transcoder-1.0	High level API for transcoding using GStreamer	gst-plugins-bad
+gstreamer-va-1.0	GStreamer VA support	gst-plugins-bad
+gstreamer-video-1.0	Video base classes and helper functions	gst-plugins-base
+gstreamer-vulkan-1.0	GStreamer Vulkan support	gst-plugins-bad
+gstreamer-vulkan-wayland-1.0	GStreamer Vulkan support (Wayland Specifics)	gst-plugins-bad
+gstreamer-wayland-1.0	GStreamer Wayland support	gst-plugins-bad
+gstreamer-webrtc-1.0	GStreamer WebRTC support	gst-plugins-bad
+gstreamer-webrtc-nice-1.0	libnice based implementaion for GstWebRTCICE	gst-plugins-bad
+gtest	GoogleTest (without main() function)	gtest
+gtest_main	GoogleTest (with main() function)	gtest
+gthread-2.0	Thread support for GLib	glib
+gtk+-3.0	GTK+ Graphical UI Library	gtk3
+gtk+-unix-print-3.0	GTK+ Unix print support	gtk3
+gtk+-wayland-3.0	GTK+ Graphical UI Library	gtk3
+gtk+-x11-3.0	GTK+ Graphical UI Library	gtk3
+gtk-doc	API documentation generator	gtk-doc
+gtk-vnc-2.0	GTK widget for a VNC client	gtk-vnc
+gtk4	GTK Graphical UI Library	gtk4
+gtk4-atspi	GTK AT-SPI accessibility support	gtk4
+gtk4-unix-print	GTK Unix print support	gtk4
+gtk4-wayland	GTK Graphical UI Library	gtk4
+gtk4-x11	GTK Graphical UI Library	gtk4
+gtkmm-3.0	C++ binding for the GTK+ toolkit	gtkmm3
+gtkmm-4.0	C++ binding for the GTK toolkit	gtkmm4
+gtksourceview-4	Source code editing Gtk+ widget.	gtksourceview4
+gtksourceview-5	Source code editing GTK widget	gtksourceview5
+gts	GNU Triangulated Surface Library	gts
+gudev-1.0	GObject bindings for libudev	libgudev
+guile-3.0	GNU's Ubiquitous Intelligent Language for Extension	guile
+gumbo	HTML parser library implemented in C99	gumbo-parser
+gusb	GUsb is a GLib binding for libusb1	gusb
+gutenprint	Gutenprint Top Quality Printer Drivers	gutenprint
+gvnc-1.0	GObject for VNC client connections	gtk-vnc
+gvncpulse-1.0	Pulse audio bridge for VNC client connections	gtk-vnc
+haisrt	SRT library set	libsrt
+hamlib	Library to control radio and rotator equipment.	hamlib
+harfbuzz	HarfBuzz text shaping library	harfbuzz
+harfbuzz-cairo	HarfBuzz cairo support	harfbuzz
+harfbuzz-gobject	HarfBuzz text shaping library GObject integration	harfbuzz
+harfbuzz-gpu	HarfBuzz GPU rasterization library	harfbuzz
+harfbuzz-icu	HarfBuzz text shaping library ICU integration	harfbuzz
+harfbuzz-raster	HarfBuzz CPU rasterizer	harfbuzz
+harfbuzz-subset	HarfBuzz font subsetter	harfbuzz
+harfbuzz-vector	HarfBuzz vector converter	harfbuzz
+hdf5	HDF5 (Hierarchical Data Format 5) Software Library	hdf5
+hdf5_cpp	HDF5 (Hierarchical Data Format 5) Software Library	hdf5
+hdf5_fortran	HDF5 (Hierarchical Data Format 5) Software Library	hdf5
+hdf5_hl	HDF5 (Hierarchical Data Format 5) Software Library	hdf5
+hdf5_hl_cpp	HDF5 (Hierarchical Data Format 5) Software Library	hdf5
+hdf5_hl_fortran	HDF5 (Hierarchical Data Format 5) Software Library	hdf5
+hidapi-hidraw	C Library for USB/Bluetooth HID device access from Linux, Mac OS X, FreeBSD, and Windows. This is the hidraw implementation.	hidapi
+highs	Linear Optimization Software	highs
+history	Gnu History library for managing previously-entered lines	readline
+hogweed	Nettle low-level cryptographic library (public-key algorithms)	nettle
+htslib	C library for high-throughput sequencing data formats	htslib
+hunspell	Hunspell spellchecking library	hunspell
+hwdata	Hardware identification and configuration data	hwdata
+hwloc	Hardware locality detection and management library	hwloc
+ice	X Inter Client Exchange Library	libICE
+icon-naming-utils	Utilities for mapping legacy GNOME and KDE icon names to the new Icon Naming Specification	icon-naming-utils
+icu-i18n	International Components for Unicode: Internationalization library	icu
+icu-io	International Components for Unicode: Stream and I/O Library	icu
+icu-uc	International Components for Unicode: Common and Data libraries	icu
+id3tag	ID3 tag manipulation library for MP3 files	libid3tag
+igdgmm	Intel(R) Graphics Memory Management Library	intel-gmmlib
+igfxcmrt	Intel(R) C for Media Runtime	intel-media-driver
+iir	IIR filter library.	iir1
+imagequant	Convert 24/32-bit images to 8-bit palette with alpha channel.	libimagequant
+inih	simple .INI file parser	inih
+iniparser	Simple C library offering ini file parsing services	iniparser
+inputproto	Input extension headers	xorgproto
+iso-codes	ISO country, language, script, currency codes, and translations	iso-codes
+jack	PipeWire JACK API	pipewire
+jackserver	PipeWire JACK Control API	pipewire
+jansson	Library for encoding, decoding and manipulating JSON data	jansson
+jasper	Image Processing/Coding Tool Kit with JPEG-2000 Support	jasper
+javascriptcoregtk-4.1	GTK+ version of the JavaScriptCore engine	webkitgtk
+javascriptcoregtk-6.0	GTK+ version of the JavaScriptCore engine	webkitgtk6
+jbig2dec	JBIG2 decoder library.	jbig2dec
+jemalloc	A general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support.	jemalloc
+json-c	A JSON implementation in C	json-c
+json-glib-1.0	JSON Parser for GLib.	json-glib
+jsoncpp	A C++ library for interacting with JSON	jsoncpp
+kadm-client	Kerberos administration client library	krb5
+kadm-server	Kerberos administration server library	krb5
+kbproto	KB extension headers	xorgproto
+kdb	Kerberos database access libraries	krb5
+kmod	Tools to deal with kernel modules	kmod
+kpathsea	Kpathsea filename lookup library	texlive
+krb5	An implementation of Kerberos network authentication	krb5
+krb5-gssapi	Kerberos implementation of the GSSAPI	krb5
+ksba	X.509 and CMS support library	libksba
+kseexpr	KSeExpr - An embeddable expression evaluation engine	kseexpr
+lame	high quality MPEG Audio Layer III (MP3) encoder library	lame
+lasem-0.6	SVG and MathML rendering library	lasem
+lastlog2	Y2038 safe version of lastlog	util-linux
+lber	OpenLDAP Lightweight ASN.1 Basic Encoding Rules library	openldap
+lc3	LC3 codec library	liblc3
+lcms2	LCMS Color Management Library	lcms2
+ldacBT-abr	LDAC Bluetooth ABR library.	ldacbt
+ldacBT-enc	LDAC Bluetooth encoder.	ldacbt
+ldap	OpenLDAP Lightweight Directory Access Protocol library	openldap
+ldns	Library for DNS programming	ldns
+lensfun	A photographic lens database and access library	lensfun
+lept	An open source C library for efficient image processing and image analysis operations	leptonica
+lib3mf	An implementation of the 3D Manufacturing Format file standard	lib3mf
+libR	R as a library	R
+libRmath	The Rmath function library	R
+liba52	A decoding library for ATSC A/52 streams.	a52dec
+libacl	A library for POSIX Access Control Lists	acl
+libad9361	Device specific library for AD936X transceivers	libad9361
+libadmesh	Library for woring with admesh	admesh
+libadwaita-1	Building blocks for modern GNOME applications	libadwaita
+libairspy	C Utility Library	airspy
+libairspyhf	C Utility Library	airspyhf
+libarchive	library that can create and read several streaming archive formats	libarchive
+libargon2	Development libraries for libargon2	argon2
+libass	libass is an SSA/ASS subtitles rendering library	libass
+libassuan	IPC library for the GnuPG components	libassuan
+libatasmart	ATA S.M.A.R.T. Reading and Parsing Library	libatasmart
+libattr	A library for filesystem extended attribute support	attr
+libavcodec	FFmpeg codec library	ffmpeg
+libavdevice	FFmpeg device handling library	ffmpeg
+libavfilter	FFmpeg audio/video filtering library	ffmpeg
+libavformat	FFmpeg container format library	ffmpeg
+libavif	Library for encoding and decoding .avif files	libavif
+libavutil	FFmpeg utility library	ffmpeg
+libayatana-ido3-0.4	Ayatana Indicator Display Objects	ayatana-ido
+libbaresip		baresip
+libbcc	BCC Program library	bcc
+libbfio	Library to support (abstracted) basic file input/output (IO)	libbfio
+libbinio	Binary I/O stream class library	libbinio
+libblack-hole-solver	Library for Solving Black Hole and All in a Row Solitaires	black-hole-solver
+libbladeRF	C Library for the nuand bladeRF	bladerf
+libbluray	library supporting Blu-ray playback	libbluray
+libbpf	BPF library	libbpf
+libbrasero-burn3	Brasero Optical Media Burning library	brasero
+libbrasero-media3	Brasero Optical Media library	brasero
+libbrotlicommon	Brotli common dictionary library	brotli
+libbrotlidec	Brotli decoder library	brotli
+libbrotlienc	Brotli encoder library	brotli
+libbs2b	Bauer stereophonic-to-binaural DSP library	libbs2b
+libbsd	Utility functions from BSD systems	libbsd
+libbsd-overlay	Utility functions from BSD systems (overlay)	libbsd
+libbtrfsutil	libbtrfsutil library	btrfs-progs
+libburn-1	Library to read/write optical discs	libburn
+libcacard	CAC (Common Access Card) library	libcacard
+libcamera	Complex Camera Support Library	libcamera
+libcamera-base	Camera support base utility library	libcamera
+libcanberra	Event Sound API	libcanberra
+libcanberra-gtk3	Gtk3 Event Sound API	libcanberra
+libcap	libcap - linux capabilities library	libcap
+libcap-ng	An alternate POSIX capabilities library.	libcap-ng
+libcares	asynchronous DNS lookup library	c-ares
+libcbor	libcbor - CBOR protocol implementation	libcbor
+libcdio	Portable CD-ROM I/O library	libcdio
+libcdio++	C++ OO Portable CD-ROM I/O library	libcdio
+libcdio_cdda	CD paranoia CD-DA library from libcdio	libcdio-paranoia
+libcdio_paranoia	CD paranoia library from libcdio	libcdio-paranoia
+libcdr-0.1	Library for parsing the Corel Draw file format structure	libcdr
+libcdt	Container DataType library	graphviz
+libcec	Pulse-Eight libCEC 8.1.7	libcec
+libcerf	Complex error function library, C ABI	libcerf
+libcgraph	Graph library (file i/o, dot language parsing, graph, subgraph, node, edge, attribute, data structure manipulation)	graphviz
+libchromaprint	Audio fingerprint library	chromaprint
+libcjson	Ultralightweight JSON parser in ANSI C	cjson
+libcjson_utils	An implementation of JSON Pointer, Patch and Merge Patch based on cJSON.	cjson
+libclamav	A GPL virus scanner	clamav
+libclc	Library requirements of the OpenCL C programming language	libclc
+libcm256cc	Fast GF(256) Cauchy MDS Block Erasure Codec in C++	cm256cc
+libcmark	CommonMark parsing, rendering, and manipulation	cmark
+libconfig	C Configuration File Library	libconfig
+libconfig++	C++ Configuration File Library	libconfig
+libcrypto	OpenSSL cryptography library	openssl
+libcryptsetup	cryptsetup library	cryptsetup
+libcss	CSS parsing and selection library	libcss
+libcue	Cuesheet parser library	libcue
+libcupsfilters	Library providing everything for filtering/converting print/scan job data	libcupsfilters
+libcurl	Library to transfer files with HTTP, FTP, etc.	curl
+libcxl	Manage CXL devices	ndctl
+libdaemon	a lightweight C library that eases the writing of UNIX daemons	libdaemon
+libdaxctl	Manage "Device DAX" devices	ndctl
+libde265	H.265/HEVC video decoder.	libde265
+libdecor-0	library for Wayland client-side window decors	libdecor
+libdeflate	Fast implementation of DEFLATE, zlib, and gzip	libdeflate
+libdiscid	The MusicBrainz DiscID Library.	libdiscid
+libdisplay-info	EDID and DisplayID library	libdisplay-info
+libdmtx	Library for reading and writing Data Matrix barcodes	libdmtx
+libdom	W3C DOM implementation	libdom
+libdrm	Userspace interface to kernel DRM services	libdrm
+libdrm_amdgpu	Userspace interface to kernel DRM services for amdgpu	libdrm
+libdrm_intel	Userspace interface to intel kernel DRM services	libdrm
+libdrm_nouveau	Userspace interface to nouveau kernel DRM services	libdrm
+libdrm_radeon	Userspace interface to kernel DRM services for radeon	libdrm
+libdsdcc	Digital Speech Decoder (DSD) rewritten as a C++ library	dsdcc
+libdvbpsi	libdvbpsi is a simple library designed for decoding and generation of MPEG TS and DVB PSI tables.	libdvbpsi
+libdvbv5	DVBv5 utility library	v4l-utils
+libdvdcss	DVD access and decryption library	libdvdcss
+libdw	elfutils library for DWARF data and ELF file or process inspection	elfutils
+libebml	Library for parsing EBML data structures	libebml
+libebur128	EBU R 128 standard for loudness normalisation	libebur128
+libecpg	PostgreSQL libecpg library	postgresql
+libecpg_compat	PostgreSQL libecpg_compat library	postgresql
+libedit	command line editor library provides generic line editing, history, and tokenization functions.	libedit
+libei-1.0	Emulated Input client library	libei
+libeis-1.0	Emulated Input server library	libei
+libelf	elfutils libelf library to read and write ELF files	elfutils
+libenet	Low-latency UDP networking library supporting optional reliability	enet
+libetpan	Libetpan C library.	libetpan
+libevdev	Handler library for evdev events	libevdev
+libevent	libevent is an asynchronous notification event loop library	libevent
+libevent_core	libevent_core	libevent
+libevent_extra	libevent_extra	libevent
+libevent_openssl	libevent_openssl adds openssl-based TLS support to libevent	libevent
+libevent_pthreads	libevent_pthreads adds pthreads-based threading support to libevent	libevent
+libewf	Library to access the Expert Witness Compression Format (EWF) format	libewf
+libexecline	The execline library.	execline
+libexif	Library for easy access to EXIF data	libexif
+libexslt	EXSLT Extension library	libxslt
+libfdt	Flat Device Tree manipulation	dtc
+libffi	Library supporting Foreign Function Interfaces	libffi
+libffmpegthumbnailer	Generates thumbnails for movie files	ffmpegthumbnailer
+libfido2	A FIDO2 library	libfido2
+libfilezilla		libfilezilla
+libfobos	C Utility Library	libfobos
+libfprint-2	Generic C API for fingerprint reader access	libfprint
+libfreeaptx	Open Source aptX codec library	libfreeaptx
+libfreecell-solver	Library for Solving Freecell and Similar Solitaire Games.	freecell-solver
+libfreeipmi	FreeIPMI library	freeipmi
+libftdi1	Library to program and control the FTDI USB controller	libftdi
+libfyaml	Fancy YAML 1.3 parser library	libfyaml
+libfzssh-client	The FileZilla SSH client library	fzssh
+libgcrypt	General purpose cryptographic library	libgcrypt
+libgeoclue-2.0	A convenience library to interact with Geoclue service	geoclue
+libgeotiff	GeoTIFF file format library	libgeotiff
+libgit2	The git library, take 2	libgit2
+libglabels-3.0	GLabels Template Library	glabels
+libglbarcode-3.0	GLabels Built-In Barcode Library	glabels
+libglog	Google Log (glog) C++ logging framework	glog
+libglvnd	Vendor-neutral OpenGL dispatch library vendor interface	libglvnd
+libgme	A video game emulation library for music.	libgme
+libgoffice-0.10	G Office support library	goffice
+libgphoto2	Library for easy access to digital cameras	libgphoto2
+libgphoto2_port	Device-independent access to serial, USB, and other ports	libgphoto2
+libgpiod	Library and tools for the Linux GPIO chardev	libgpiod
+libgpiotools	Collection of high-level functions for building programs using libgpiod	libgpiod
+libgpod-1.0	A library to manipulate songs and playlists stored on an ipod	libgpod
+libgps	GPS Daemon communication library	gpsd
+libgrapheme	Unicode string library	libgrapheme
+libgsf-1	A library for reading and writing structured files (eg MS OLE and Zip)	libgsf
+libgvc	The GraphVizContext library	graphviz
+libgvpr	The GVPR library	graphviz
+libhackrf	C Utility Library	hackrf
+libhandy-1	Handy Mobile widgets	libhandy
+libhangul	Hangul hanja input support	libhangul
+libheif	HEIF image codec.	libheif
+libhubbub	HTML5 parsing library	libhubbub
+libhwy	Efficient and performance-portable SIMD wrapper	highway
+libhwy-contrib	Additions to Highway: dot product, image, math, sort	highway
+libical	An implementation of basic iCAL protocols	libical
+libicalss	An implementation of basic iCAL protocols (Storage Support)	libical
+libicalvcal	An implementation of basic iCAL protocols (VCal)	libical
+libicalvcard	An implementation of basic iCAL protocols (VCard)	libical
+libidn	IETF stringprep, nameprep, punycode, IDNA text processing.	libidn
+libidn2	Library implementing IDNA2008 and TR46	libidn2
+libiio	Library for interfacing IIO devices	libiio
+libimobiledevice-1.0	A library to communicate with services running on Apple iOS devices.	libimobiledevice
+libimobiledevice-glue-1.0	Common library for libimobiledevice and co.	libimobiledevice-glue
+libinput	Input device library	libinput
+libip4tc	iptables IPv4 ruleset ADT and kernel interface	iptables
+libip6tc	iptables IPv6 ruleset ADT and kernel interface	iptables
+libipmiconsole	FreeIPMI library for serial-over-lan (SOL) remote console access	freeipmi
+libipmidetect	FreeIPMI library to discover IPMI capable hardware	freeipmi
+libipmimonitoring	FreeIPMI library for IPMI system event and sensor monitoring	freeipmi
+libiptc	iptables v4/v6 ruleset ADT and kernel interface	iptables
+libiptcdata	Library for easy access to IPTC data	libiptcdata
+libiscsi	iSCSI initiator library	libiscsi
+libiso9660	ISO-9660 library of libcdio	libcdio
+libiso9660++	C++ OO ISO-9660 library of libcdio	libcdio
+libisoburn-1	Multi-session filesystem extension to libisofs, libburn.	libisoburn
+libisofs-1	ISO9660 filesystem creation library	libisofs
+libixion-0.20	Generic formula computation library	libixion
+libjaylink	Library to access J-Link devices	libjaylink
+libjpeg	A SIMD-accelerated JPEG codec that provides the libjpeg API	libjpeg-turbo
+libjq	Library to process JSON using a query language	jq
+libjxl	Loads and saves JPEG XL files	libjxl
+libjxl_cms	CMS support library for libjxl	libjxl
+libjxl_threads	JPEG XL multi-thread runner using std::threads.	libjxl
+libkeyutils	keyutils library	keyutils
+libkiwix	A library that contains useful primitives that Kiwix readers have in common	libkiwix
+libkmod	Library to deal with kernel modules	kmod
+liblhasa	LHA (de)compression library	lhasa
+liblo	A lightweight OSC server/client library	liblo
+liblouis	a braille translator and back-translator	liblouis
+liblxi	A Library for managing LXI compatible test instruments	liblxi
+liblz4	extremely fast lossless compression algorithm library	lz4
+liblzma	General purpose data compression library	xz
+libmagic	Magic number recognition library	file
+libmarkdown	C implementation of John Gruber's Markdown markup language	discount
+libmatroska	Library for parsing EBML data structures	libmatroska
+libmaxminddb	C library for the MaxMind DB file format	libmaxminddb
+libmd	Message Digest functions from BSD systems	libmd
+libmediainfo	MediaInfoLib	libmediainfo
+libmicrohttpd	A library for creating an embedded HTTP server	libmicrohttpd
+libmikmod	Library for playing Module Files and for Sound Effects	libmikmod
+libmirisdr	C Utility Library	libmirisdr
+libmnl	Minimalistic Netlink communication library	libmnl
+libmodbus	Modbus library	libmodbus
+libmodplug	The ModPlug mod file playing library.	libmodplug
+libmosquitto	mosquitto MQTT library (C bindings)	mosquitto
+libmosquittopp	mosquitto MQTT library (C++ bindings)	mosquitto
+libmpdec	C library for decimal floating point arithmetic	mpdecimal
+libmpdec++	C++ library for decimal floating point arithmetic	mpdecimal
+libmpeg2	MPEG-1 and MPEG-2 stream decoding library	libmpeg2
+libmpeg2convert	Image conversion library helper for libmpeg2	libmpeg2
+libmpg123	An optimised MPEG Audio decoder	mpg123
+libmspack	Compressors and decompressors for Microsoft formats	libmspack
+libmtp	libmtp is a library for accessing Media Transfer Protocol devices	libmtp
+libmusicbrainz5	The Musicbrainz Client Library.	libmusicbrainz5
+libmypaint	MyPaint's brushstroke rendering library (1.6.1)	libmypaint
+libmysofa	SOFA file reader for better HRTFs	libmysofa
+libnbd	NBD client library in userspace	libnbd
+libndctl	Manage "libnvdimm" subsystem devices (Non-volatile Memory)	ndctl
+libndp	Neighbour discovery library.	libndp
+libnewt	A development library for text mode user interfaces	newt
+libnfs	libnfs is a client library for accessing NFS shares over a network.	libnfs
+libnfsidmap	Library that handles mapping between names and ids for NFSv4.	nfs-utils
+libnftables	Netfilter nf_tables user library	nftables
+libnftnl	Netfilter nf_tables infrastructure library	libnftnl
+libnghttp2	HTTP/2 C library	nghttp2
+libnghttp3	nghttp3 library	nghttp3
+libngtcp2	ngtcp2 library	ngtcp2
+libngtcp2_crypto_ossl	ngtcp2 ossl crypto library	ngtcp2
+libnl-3.0	Convenience library for netlink sockets	libnl
+libnl-cli-3.0	Command Line Interface library for netlink sockets	libnl
+libnl-genl-3.0	Generic Netlink Library	libnl
+libnl-idiag-3.0	Netlink Inet Diag Family Library	libnl
+libnl-nf-3.0	Netfilter Netlink Library	libnl
+libnl-route-3.0	Netlink Routing Family Library	libnl
+libnl-xfrm-3.0	Netlink Routing Family Library	libnl
+libnm	Convenience library for clients of NetworkManager	networkmanager
+libnotify	Notifications Library	libnotify
+libnsbmp	Provides bmp loading and conversion	libnsbmp
+libnsgif	Provides gif loading and conversion	libnsgif
+libnslog	NetSurf Logging sublayer	libnslog
+libnspsl	NetSurf Public Suffix List	libnspsl
+libnsutils	NetSurf utilities	libnsutils
+libntfs-3g	NTFS-3G Read/Write Driver Library	ntfs-3g
+libnutclient	UPS monitoring with Network UPS Tools	nut
+libnutclientstub	Stub for UPS monitoring with Network UPS Tools (primarily for C++ tests)	nut
+libnutscan	Power devices discovery with Network UPS Tools	nut
+libnvme	Manage "libnvme" subsystem devices (Non-volatile Memory Express)	libnvme
+libnvme-mi	Manage "libnvme" subsystem devices (Non-volatile Memory Express) over Management Interface	libnvme
+libnvme3	Manage "libnvme" subsystem devices (Non-volatile Memory Express)	nvme-cli
+liboath	Library for Open AuTHentication (OATH) HOTP etc support.	oath-toolkit
+libobs	OBS Studio core compositor library	obs-studio
+liboeffis-1.0	RemoteDesktop portal DBus helper library	libei
+libofx	libofx is a library for processing Open Financial eXchange (OFX) data	libofx
+libomemo-c	OMEMO C Library	libomemo-c
+libonnxruntime	ONNX runtime	onnxruntime
+libopenjp2	JPEG2000 library (Part 1 and 2)	openjpeg
+libopenmpt	Tracker module player based on OpenMPT	libopenmpt
+libopusenc	High-level Opus encoding library	libopusenc
+liborcus-0.20	Standalone file import filter library for spreadsheet documents.	liborcus
+liborcus-spreadsheet-model-0.20	Standalone file import filter library for spreadsheet documents.	liborcus
+libosinfo-1.0	libosinfo library	libosinfo
+libosmodsp	C Utility Library	libosmo-dsp
+libout123	A streaming audio output API derived from mpg123	mpg123
+libparserutils	Utility library for facilitating parser development	libparserutils
+libparted	The GNU Parted disk partitioning shared library	parted
+libparted-fs-resize	The GNU Parted filesystem resize shared library	parted
+libpathplan	Library for planning polyline and bezier paths around polygon obstacles	graphviz
+libpcap	Platform-independent network traffic capture library	libpcap
+libpci	libpci	pciutils
+libpcre2-16	PCRE2 - Perl compatible regular expressions C library (2nd API) with 16 bit character support	pcre2
+libpcre2-32	PCRE2 - Perl compatible regular expressions C library (2nd API) with 32 bit character support	pcre2
+libpcre2-8	PCRE2 - Perl compatible regular expressions C library (2nd API) with 8 bit character support	pcre2
+libpcre2-posix	Posix compatible interface to libpcre2-8	pcre2
+libpcsclite	PC/SC smart card interface	pcsc-lite
+libpdfium	Chromium's PDF renderer	pdfium
+libpeas-1.0	GObject plugins library	libpeas
+libpeas-gtk-1.0	GObject plugins library widgetery	libpeas
+libperseus-sdr	C Utility Library	libperseus-sdr
+libpgtypes	PostgreSQL libpgtypes library	postgresql
+libphodav-3.0	A WebDAV library based on libsoup	phodav
+libpipewire-0.3	PipeWire Interface	pipewire
+libpkgconf	a library for accessing and manipulating development framework configuration	pkgconf
+libplacebo	Reusable library for GPU-accelerated video/image rendering	libplacebo
+libplist++-2.0	C++ binding for libplist	libplist
+libplist-2.0	A library to handle Apple Property Lists whereas they are binary or XML	libplist
+libpng16	Loads and saves PNG files	libpng
+libpodofo	A C++ library to work with the PDF file format	podofo
+libportal	Portal API wrappers	libportal
+libportal-gtk3	Portal API wrappers (GTK3)	libportal
+libportal-gtk4	Portal API wrappers (GTK4)	libportal
+libpowerman	Centralized Power Distribution Unit (PDU) management	powerman
+libppd	Library for handling PPD files and PostScript output	libppd
+libpq	PostgreSQL libpq library	postgresql
+libproc2	Library to control and query process state	procps-ng
+libprotobuf-c	Protocol Buffers implementation in C	protobuf-c
+libpsl	Public Suffix List C library.	libpsl
+libpst	A library for reading PST files	libpst
+libpsx	libpsx - linux posix syscall API for threads	libcap
+libpulse	PulseAudio Client Interface	libpulse
+libpulse-mainloop-glib	PulseAudio GLib 2.0 Main Loop Wrapper	libpulse
+libpulse-simple	PulseAudio Simplified Synchronous Client Interface	libpulse
+libqalculate	libqalculate	libqalculate
+libqpdf	PDF transformation library	qpdf
+libqrencode	A QR Code encoding library	qrencode
+libraw	Raw image decoder library (non-thread-safe)	libraw
+libraw_r	Raw image decoder library (thread-safe)	libraw
+libre	Generic library for real-time communications	libre
+libresidfp	cycle exact SID emulation library.	libresidfp
+librevenge-0.0	API library for generic document converters	librevenge
+librevenge-generators-0.0	Input generators implementation for librevenge	librevenge
+librevenge-stream-0.0	Sample Input stream implementation for librevenge	librevenge
+librfnm	Hardware Driver for the RFNM SDR	librfnm
+librinutils	Ad hoc headers library for C	rinutils
+librist	Reliable Internet Stream Transport (RIST)	librist
+librsvg-2.0	library that renders svg files	librsvg
+librtlsdr	C Utility Library	rtl-sdr
+libs6	The s6 library.	s6
+libs6auto	The s6auto library (C helpers to create service directories)	s6
+libsasl2	Cyrus SASL implementation	cyrus-sasl
+libseat	Seat management library	seatd
+libseccomp	The enhanced seccomp library	libseccomp
+libsecret-1	GObject bindings for Secret Service API	libsecret
+libsecret-unstable	GObject bindings for Secret Service API (Unstable)	libsecret
+libserialport	Cross-platform serial port access library.	libserialport
+libsharpyuv	Library for sharp RGB to YUV conversion	libwebp
+libsidplayfp	C64 cycle exact stereo sidplayer library.	libsidplayfp
+libsigrok	Backend library for the sigrok signal analysis software suite	libsigrok
+libsigrokdecode	Protocol decoder library of the sigrok logic analyzer software	libsigrokdecode
+libsixel	A lightweight, fast C implementation of DEC SIXEL graphics codec	libsixel
+libskarnet	The skarnet.org C programming library (skalibs)	skalibs
+libsmi	SMI parser library	libsmi
+libsodium	A modern and easy-to-use crypto library	libsodium
+libsoup-3.0	A glib-based HTTP library	libsoup3
+libspa-0.2	Simple Plugin API	pipewire
+libsparsehash	hash_map and hash_set classes with minimal space overhead	sparsehash
+libspatialindex	Generic C/C++ library for spatial indexing	libspatialindex
+libspectre	libgs wrapper library	libspectre
+libspectrum	libspectrum is a library which is designed to make the input and output of ZX Spectrum emulator files slightly easier than it would be otherwise.	libspectrum
+libspelling-1	A spellcheck library for GTK	libspelling
+libspiro	A library for curve design. Clothoid to bezier conversion. A mechanism for drawing smooth contours with constant curvature at the spline joins.	libspiro
+libspreadsheet-1.12	The spreadsheet internals of Gnumeric (DEVELOPMENT VERSION)	gnumeric
+libsrtp2	Library for SRTP (Secure Realtime Transport Protocol)	libsrtp
+libssh	The SSH Library	libssh
+libssh2	Library for SSH-based communication	libssh2
+libssl	Secure Sockets Layer and cryptography libraries	openssl
+libstilview	STILview library.	libsidplayfp
+libstoragemgmt	Storage array management library	libstoragemgmt
+libstrophe	A simple, lightweight C library for writing XMPP clients	libstrophe
+libsvgtiny	SVG Tiny 1.1 rendering library	libsvgtiny
+libswresample	FFmpeg audio resampling library	ffmpeg
+libswscale	FFmpeg image rescaling library	ffmpeg
+libsyn123	A signal synthesis library accompanying mpg123	mpg123
+libsyslog	RFC5424 compliant syslogp() API and syslog() replacement from sysklogd	sysklogd
+libtasn1	Library for ASN.1 and DER manipulation	libtasn1
+libtatsu-1.0	Tatsu Signing Server library for handling idevice personalization	libtatsu
+libthai	Thai support library	libthai
+libtiff-4	Tag Image File Format (TIFF) library.	libtiff
+libtirpc	Transport Independent RPC Library	libtirpc
+libtommath	public domain library for manipulating large integer numbers	libtommath
+libtorrent-rasterbar	Bittorrent library	libtorrent-rasterbar
+libtpms	libtpms	libtpms
+libtraceevent	Manage trace event	libtraceevent
+libtracefs	Manage trace fs	libtracefs
+libturbojpeg	A SIMD-accelerated JPEG codec that provides the TurboJPEG API	libjpeg-turbo
+libudev	Library to access udev device information	eudev
+libudf	UDF library of libcdio	libcdio
+libudfread	UDF filesystem access library	libudfread
+libunibreak	Library to implement Unicode algorithms for line and word breaking	libunibreak
+libunshield	Library to extract CAB files from InstallShield installers	unshield
+libunwind	libunwind base library	libunwind-nongnu
+libunwind-coredump	libunwind coredump library	libunwind-nongnu
+libunwind-generic	libunwind generic library	libunwind-nongnu
+libunwind-ptrace	libunwind ptrace library	libunwind-nongnu
+libunwind-setjmp	libunwind setjmp library	libunwind-nongnu
+libupsclient	UPS monitoring with Network UPS Tools	nut
+liburcu	A userspace RCU (read-copy-update) library, standard version	liburcu
+liburcu-bp	A userspace RCU (read-copy-update) library, bulletproof version	liburcu
+liburcu-cds	Data structures leveraging RCU and atomic operations to provide efficient concurrency-aware storage	liburcu
+liburcu-mb	A userspace RCU (read-copy-update) library, memory barriers version	liburcu
+liburcu-memb	A userspace RCU (read-copy-update) library, membarrier syscall version	liburcu
+liburcu-qsbr	A userspace RCU (read-copy-update) library, quiescent state version	liburcu
+liburing	io_uring library	liburing
+liburing-ffi	io_uring FFI library	liburing
+liburiparser	URI parsing and handling library	uriparser
+libusb	USB access library (libusb-1.0 compat wrapper)	libusb-compat
+libusb-1.0	C API for USB device access from Linux, Mac OS X, Windows, OpenBSD/NetBSD and Solaris userspace	libusb
+libusbmuxd-2.0	A library to communicate with the usbmux daemon	libusbmuxd
+libusbredirhost	usbredirhost library	usbredir
+libusbredirparser-0.5	usbredirparser library	usbredir
+libutf8proc	UTF8 processing	utf8proc
+libutmps	The utmps library, a secure utmp implementation	utmps
+libuv	multi-platform support library with a focus on asynchronous I/O.	libuv
+libv4l1	v4l1 compatibility library	v4l-utils
+libv4l2	v4l2 device access library	v4l-utils
+libv4l2rds	v4l2 RDS decode library	v4l-utils
+libv4lconvert	v4l format conversion library	v4l-utils
+libva	Userspace Video Acceleration (VA) core interface	libva
+libva-drm	Userspace Video Acceleration (VA) DRM interface	libva
+libva-wayland	Userspace Video Acceleration (VA) Wayland interface	libva
+libvala-0.56	The Vala compiler library	vala
+libvhdi	Library to access the Virtual Hard Disk (VHD) image format	libvhdi
+libvirt	libvirt library	libvirt
+libvirt-admin	libvirt admin library	libvirt
+libvirt-gconfig-1.0	libvirt GConfig library	libvirt-glib
+libvirt-glib-1.0	libvirt glib library	libvirt-glib
+libvirt-gobject-1.0	libvirt GObject library	libvirt-glib
+libvirt-lxc	libvirt LXC library	libvirt
+libvirt-qemu	libvirt QEMU library	libvirt
+libvisio-0.1	Library for parsing the visio file format structure	libvisio
+libvlc	VLC media player external control library	vlc
+libvmdk	Library to access the VMware Virtual Disk (VMDK) format	libvmdk
+libvncclient	A library for easy implementation of a VNC client.	libvncserver
+libvncserver	A library for easy implementation of a VNC server.	libvncserver
+libvslvm	Library to access the Linux Logical Volume Manager (LVM) volume system	libvslvm
+libwacom	Wacom model feature query library	libwacom
+libwapcaplet	String internalisation dictionary	libwapcaplet
+libwebp	Library for the WebP graphics format	libwebp
+libwebpdecoder	Library for the WebP graphics format (decode only)	libwebp
+libwebpdemux	Library for parsing the WebP graphics format container	libwebp
+libwebpmux	Library for manipulating the WebP graphics format container	libwebp
+libwebsockets	Websockets server and client library	libwebsockets
+libwebsockets_static	Websockets server and client static library	libwebsockets
+libwoff2common	Shared data used by libwoff2 and libwoff2dec libraries	woff2
+libwoff2dec	WOFF2 decoder library	woff2
+libwoff2enc	WOFF2 encoder library	woff2
+libwpd-0.10	A library for reading and writing Corel WordPerfect(tm) documents	libwpd
+libwpg-0.3	Library for importing and converting Corel WordPerfect(tm) Graphics images	libwpg
+libxcvt	A Library to generate VESA CVT standard timing modelines.	libxcvt
+libxdg-basedir	An implementation of the XDG Base Directory specification	libxdg-basedir
+libxdot	Library for parsing graphs in xdot format	graphviz
+libxfce4ui-2	Widgets library for Xfce	libxfce4ui
+libxfce4util-1.0	Utility library for the Xfce 4 desktop environment	libxfce4util
+libxfconf-0	Configuration library for Xfce	xfconf
+libxml-2.0	libXML library version2.	libxml2
+libxmp	Xmp module player library	libxmp
+libxslt	XSLT library version 2.	libxslt
+libxxhash	extremely fast hash algorithm	xxhash
+libzen	ZenLib	libzen
+libzim	A Library to read/write ZIM files.	libzim
+libzip	library for handling zip archives	libzip
+libzmq	0MQ c++ library	zeromq
+libzstd	fast lossless compression algorithm library	zstd
+lilv-0	Library for hosting LV2 plugins	lilv
+liquid-dsp	Software-defined radio digital signal processing library	liquid-dsp
+lirc	LIRC Linux Infrared Control client libs.	lirc
+lirc-driver	LIRC Linux Infrared Control userspace driver lib.	lirc
+llama	Port of Facebook's LLaMA model in C/C++	llama.cpp
+lmdb	Lightning Memory-mapped key-value database	lmdb
+lrdf	liblrdf, a lightweight RDF library with extensions for LADSPA	lrdf
+lua	An Extensible Extension Language	lua
+lua5.4	An Extensible Extension Language	lua54
+luajit	Just-in-time compiler for Lua	luajit
+lv2	Plugin standard for audio systems	lv2
+lzo2	LZO - a real-time data compression library	lzo
+mad	MPEG audio decoder library	libmad
+manifold	Geometry library for topological robustness	manifold
+matio	MATIO Library	matio
+mbedcrypto	Mbed TLS is a C library that implements cryptographic primitives, X.509 certificate manipulation and the SSL/TLS and DTLS protocols. Its small code footprint makes it suitable for embedded systems.	mbedtls
+mbedtls	Mbed TLS is a C library that implements cryptographic primitives, X.509 certificate manipulation and the SSL/TLS and DTLS protocols. Its small code footprint makes it suitable for embedded systems.	mbedtls
+mbedx509	Mbed TLS is a C library that implements cryptographic primitives, X.509 certificate manipulation and the SSL/TLS and DTLS protocols. Its small code footprint makes it suitable for embedded systems.	mbedtls
+mbim-glib	Library to communicate with MBIM-powered modems	libmbim
+mdds-3.0	A collection of multi-dimensional data structure and indexing algorithm	mdds
+menuw	ncurses 6.6 add-on library	ncurses
+miniupnpc	UPnP IGD client lightweight library	miniupnpc
+minizip	Minizip zip file manipulation library	minizip
+minizip-ng	Zip manipulation library	minizip-ng
+mit-krb5	An implementation of Kerberos network authentication	krb5
+mit-krb5-gssapi	Kerberos implementation of the GSSAPI	krb5
+mlt++-7	C++ API for MLT multimedia framework	mlt
+mlt-framework-7	MLT multimedia framework	mlt
+mm-glib	Library to control and monitor the ModemManager	modemmanager
+mobile-broadband-provider-info	Mobile Broadband Service Provider Information Database	mobile-broadband-provider-info
+motif	Motif User Interface Toolkit	motif
+mount	mount library	util-linux
+movit	Movit is a library for high-quality, high-performance video filters.	movit
+mpc	A complex floating-point library with exact rounding	mpc
+mpfr	C library for multiple-precision floating-point computations	mpfr
+mpv	mpv media player client library	mpv
+mt32emu	C/C++ library to emulate (approximately) the Roland MT-32, CM-32L and LAPC-I synthesiser modules	libmt32emu
+mtdev	Multitouch Protocol Translation Library	mtdev
+musl-fts	Implementation of fts(3) functions for musl libc	musl-fts
+musl-obstack	Implementation of obstack functions for musl libc	musl-obstack
+mypaint-brushes-2.0	Brushes used by MyPaint and other software using libmypaint.	mypaint-brushes
+mythes	MyThes spellchecking library	mythes
+nbdkit	A toolkit for creating NBD servers	nbdkit
+ncurses++w	ncurses 6.6 add-on library	ncurses
+ncursesw	ncurses 6.6 library	ncurses
+ndr	Network Data Representation Core Library	samba
+ndr_krb5pac	NDR marshallers for the KRB5 PAC formats	samba
+ndr_nbt	NDR marshallers for nbt formats	samba
+ndr_standard	NDR marshallers for the standard set of DCE/RPC interfaces	samba
+neatvnc	A Neat VNC server library	neatvnc
+neon	HTTP/WebDAV client library	neon
+netapi	A library to control CIFS servers	samba
+netcdf	NetCDF Client Library for C	netcdf-c
+netpbm	Graphics utilities	netpbm
+netsnmp	SNMP (Simple Network Management Protocol) daemon and applications.	net-snmp
+netsnmp-agent	SNMP (Simple Network Management Protocol) sub-agent SDK.	net-snmp
+nettle	Nettle low-level cryptographic library (symmetric algorithms)	nettle
+ngspice	General-purpose circuit simulator	ngspice
+nice	ICE library	libnice
+nilfs	NILFS library	nilfs-utils
+nilfsgc	NILFS garbage collector library	nilfs-utils
+nlohmann_json	JSON for Modern C++	nlohmann-json
+nlopt	nonlinear optimization library	nlopt
+npth	New GNU Portable Threads Library	npth
+nspr	The Netscape Portable Runtime	nspr
+nss	Network Security Services	nss
+numa	NUMA policy library	numactl
+numpy	NumPy is the fundamental package for scientific computing with Python.	numpy
+obs-frontend-api	OBS Studio frontend API library	obs-studio
+ocl-icd	Open Computing Language generic Installable Client Driver support	ocl-icd
+octave	C++ interface to GNU Octave underlying library.	octave
+octinterp	C++ interface to GNU Octave interpreter.	octave
+octmex	C interface (MEX) to GNU Octave interpreter.	octave
+odbc	unixODBC Driver Manager library	unixodbc
+odbccr	unixODBC Cursor Library	unixodbc
+odbcinst	unixODBC Configuration Library	unixodbc
+ogg	ogg is a library for manipulating ogg bitstreams	libogg
+olm	implementation of the Double Ratchet cryptographic ratchet in C++	olm
+oniguruma	Regular expression library	oniguruma
+openal	OpenAL is a cross-platform 3D audio API	openal-soft
+openbabel-3	libopenbabel	openbabel
+openblas	OpenBLAS is an optimized BLAS library based on GotoBLAS2 1.13 BSD version	openblas
+opencc	Open Chinese Convert	opencc
+openconnect	OpenConnect VPN client	openconnect
+opencv4	Open Source Computer Vision Library	opencv
+opengl	OpenGL (without GLX) library and headers.	libglvnd
+openh264	OpenH264 is a codec library which supports H.264 encoding and decoding. It is suitable for use in real time applications such as WebRTC.	openh264
+opensc-pkcs11	OpenSC PKCS#11 module	opensc
+openssl	Secure Sockets Layer and cryptography libraries and tools	openssl
+opus	Opus IETF audio codec (floating-point build)	opus
+opusfile	High-level Opus decoding library	opusfile
+opusurl	High-level Opus decoding library, URL support	opusfile
+orc-0.4	Library of Optimized Inner Loops Runtime Compiler	orc
+orc-test-0.4	Test Library of Optimized Inner Loops Runtime Compiler	orc
+p11-kit-1	Library and proxy module for properly loading and sharing PKCS#11 modules.	p11-kit
+pam	The primary Linux-PAM library. It is used by PAM modules and PAM-aware applications.	pam
+pam_misc	Miscellaneous functions that make the job of writing PAM-aware applications easier.	pam
+pamc	The PAM client API library and binary prompt support. Rarely used.	pam
+panelw	ncurses 6.6 add-on library	ncurses
+pango	Internationalized text handling	pango
+pangocairo	Cairo rendering support for Pango	pango
+pangofc	Fontconfig support for Pango	pango
+pangoft2	FreeType 2.0 and fontconfig font support for Pango	pango
+pangomm-1.4	C++ binding for Pango	pangomm2.46
+pangomm-2.48	C++ binding for Pango	pangomm
+pangoot	OpenType font support for Pango (deprecated)	pango
+pangoxft	Xft font support for Pango	pango
+parakeet	Port of NVIDIA's Parakeet model in C/C++	whisper.cpp
+pciaccess	Library providing generic access to the PCI bus and devices	libpciaccess
+pdal	Point Data Abstraction Library	pdal
+pdfio	PDF read/write library	pdfio
+pdfium	Chromium's PDF renderer	pdfium
+phonon4qt6	Phonon library needed to build applications	phonon
+physfs	PhysicsFS is a library to provide abstract access to various archives.	physfs
+pixman-1	The pixman library (version 1)	pixman
+plutosvg	Tiny SVG rendering library in C	plutosvg
+plutovg	Tiny 2D vector graphics library in C	plutovg
+polkit-agent-1	PolicyKit Authentication Agent API	polkit
+polkit-gobject-1	PolicyKit Authorization API	polkit
+polkit-qt6-1	Convenience library for using polkit with a Qt-styled API	polkit-qt6
+polkit-qt6-agent-1	Convenience library for using polkit Agent with a Qt-styled API	polkit-qt6
+polkit-qt6-core-1	Convenience library for using polkit with a Qt-styled API, non-GUI classes	polkit-qt6
+polkit-qt6-gui-1	Convenience library for using polkit with a Qt-styled API, GUI classes	polkit-qt6
+polyclipping	polygon clipping library	polyclipping
+poppler	PDF rendering library	poppler
+poppler-cpp	cpp backend for Poppler PDF rendering library	poppler
+poppler-data	Encoding files for use with poppler	poppler-data
+poppler-glib	GLib wrapper for poppler	poppler
+poppler-qt6	Qt6 bindings for poppler	poppler
+popt	popt library.	popt
+portSMF	Portmedia Simple Midi File library	portsmf
+portaudio-2.0	Portable audio I/O	portaudio
+portaudiocpp	Portable audio I/O C++ bindings	portaudio
+portmidi	Cross-Platform MIDI IO	portmidi
+pppd	Point-to-Point Protocol (PPP) daemon	ppp
+presentproto	Present extension headers	xorgproto
+proj	Coordinate transformation software library	proj
+protobuf	Google's Data Interchange Format	protobuf
+protobuf-lite	Google's Data Interchange Format	protobuf
+ptexenc	Ptexenc pTeX encoding library	texlive
+pugixml	Light-weight, simple and fast XML parser for C++ with XPath support.	pugixml
+pwquality	Password quality checker	libpwquality
+py3cairo	Python 3 bindings for cairo	python3-cairo
+pybind11	Seamless operability between C++11 and Python	python3-pybind11
+pygobject-3.0	Python bindings for GObject	python3-gobject
+pyside6	Support library for Python bindings of Qt5-based libraries.	python3-pyside6
+python-3.14	Build a C extension for Python	python3
+python-3.14-embed	Embed Python into an application	python3
+qca2-qt5	Qt Cryptographic Architecture library	qca-qt5
+qhull_r	Qhull reentrant shared library	qhull
+qhullcpp	Qhull C++ library	qhull
+qhullstatic	Qhull static library	qhull
+qhullstatic_r	Qhull reentrant static library	qhull
+qmi-glib	Library to communicate with QMI-powered modems	libqmi
+qqwing	Sudoku generator and solver library	qqwing
+qrtr-glib	Library to use and monitor the QRTR bus	libqrtr-glib
+qrupdate	The qrupdate library	qrupdate
+qtforkawesome	Library that bundles ForkAwesome for use within Qt applications	qtforkawesome
+qtforkawesomeiconengine	QIconEngine for ForkAwesome	qtforkawesome
+qtquickforkawesome	QQuickImageProvider for ForkAwesome	qtforkawesome
+qtutilities	Common Qt related C++ classes and routines used by my applications such as dialogs, widgets and models	qtutilities
+quazip1-qt6	Minizip wrapper library for Qt 6.x	quazip
+randrproto	Randr extension headers	xorgproto
+raptor2	RDF Syntax Library	raptor2
+raqm	A library for complex text layout	libraqm
+re2	RE2 is a fast, safe, thread-friendly regular expression engine.	re2
+readline	Gnu Readline library for command line editing	readline
+recordproto	Record extension headers	xorgproto
+remmina	The GTK+ Remote Desktop Client	remmina
+renderproto	Render extension headers	xorgproto
+resourceproto	Resource extension headers	xorgproto
+rhythmbox	plugin API for rhythmbox	rhythmbox
+rnnoise	RNN-based noise suppression	rnnoise
+rtaudio	RtAudio - a set of C++ classes that provide a common API for realtime audio input/output	rtaudio
+rtmidi	RtMidi - a set of C++ classes that provide a common API for realtime MIDI input/output	rtmidi
+rttopo	the RT Topology library	librttopo
+rubberband	Audio time-stretching and pitch-shifting library	rubberband
+ruby-4.0	Object Oriented Script Language	ruby
+rz_arch	rizin foundation libraries	rizin
+rz_bin	rizin foundation libraries	rizin
+rz_config	rizin foundation libraries	rizin
+rz_cons	rizin foundation libraries	rizin
+rz_core	rizin foundation libraries	rizin
+rz_crypto	rizin foundation libraries	rizin
+rz_debug	rizin foundation libraries	rizin
+rz_demangler	rizin foundation libraries	rizin
+rz_diff	rizin foundation libraries	rizin
+rz_egg	rizin foundation libraries	rizin
+rz_flag	rizin foundation libraries	rizin
+rz_hash	rizin foundation libraries	rizin
+rz_il	rizin foundation libraries	rizin
+rz_io	rizin foundation libraries	rizin
+rz_lang	rizin foundation libraries	rizin
+rz_magic	rizin foundation libraries	rizin
+rz_main	rizin foundation libraries	rizin
+rz_mark	rizin foundation libraries	rizin
+rz_reg	rizin foundation libraries	rizin
+rz_search	rizin foundation libraries	rizin
+rz_sign	rizin foundation libraries	rizin
+rz_socket	rizin foundation libraries	rizin
+rz_syscall	rizin foundation libraries	rizin
+rz_type	rizin foundation libraries	rizin
+rz_util	rizin foundation libraries	rizin
+samba-util	Samba utility functions	samba
+samplerate	An audio Sample Rate Conversion library	libsamplerate
+sane-backends	Backends for SANE, the universal scanner interface	sane-backends
+sbc	SBC library	sbc
+sbsms	C++ library for subband sinusoidal modeling time stretching and pitch scaling	libsbsms
+scdoc	Man page generator	scdoc
+scrnsaverproto	ScrnSaver extension headers	xorgproto
+sdl12_compat	An SDL-1.2 compatibility layer that uses SDL 2.0 behind the scenes.	sdl12-compat
+sdl2-compat	An SDL2 compatibility layer that uses SDL3 behind the scenes.	sdl2-compat
+sdl3	Simple DirectMedia Layer is a cross-platform multimedia library designed to provide low level access to audio, keyboard, mouse, joystick, 3D hardware via OpenGL, and 2D video framebuffer.	sdl3
+sdl3-image	image loading library for Simple DirectMedia Layer	sdl3-image
+sdl3-mixer	mixer library for Simple DirectMedia Layer	sdl3-mixer
+sdl3-ttf	ttf library for Simple DirectMedia Layer with FreeType 2 support	sdl3-ttf
+serd-0	Lightweight C library for working with RDF data	serd
+sfsexp	small and fast s-expressions library	sfsexp
+shaderc	Tools and libraries for Vulkan shader compilation	shaderc
+shapelib	C API for processing ESRI Shapefiles	shapelib
+shared-mime-info	Freedesktop common MIME database	shared-mime-info
+shiboken6	Support library for Python bindings created with the Shiboken6 generator.	python3-pyside6
+sigc++-2.0	Typesafe signal and callback system for C++	libsigc++2
+sigc++-3.0	Typesafe signal and callback system for C++	libsigc++3
+simde	Portable SIMD wrapper library	simde
+slang	S-Lang programming library and interpreter	slang
+slirp	User-space network stack	libslirp
+sm	X Session Management Library	libSM
+smartcols	table or tree library	util-linux
+smbclient	A SMB library interface	samba
+sndfile	A library for reading and writing audio files	libsndfile
+sord-0	Lightweight C library for storing RDF in memory	sord
+soundtouch	SoundTouch is an open-source audio processing library for changing the Tempo, Pitch and Playback Rates of audio streams or files	soundtouch
+sox	Audio file format and effects library	sox
+soxr	High quality, one-dimensional sample-rate conversion library	soxr
+soxr-lsr	High quality, one-dimensional sample-rate conversion library (with libsamplerate-like bindings)	soxr
+spatialaudio	Spatial audio rendering library	libspatialaudio
+spatialite	Spatial SQL database engine based on SQLite	libspatialite
+spdlog	Fast C++ logging library.	spdlog
+speech-dispatcher	speech-dispatcher provides a device independent layer for speech synthesis	speech-dispatcher
+speex	Speex is an audio codec tuned for speech	speex
+speexdsp	Speexdsp is a speech processing library that goes along with the Speex codec	speexdsp
+spice-client-glib-2.0	SPICE Client GLib 2.0 library	spice-gtk
+spice-client-gtk-3.0	SPICE Client Gtk 3.0 library	spice-gtk
+spice-protocol	SPICE protocol headers	spice-protocol
+spice-server	SPICE server library	spice
+spnav	Library to access 6-DoF input devices managed by spacenavd or the proprietary 3dxsrv driver.	libspnav
+spng	PNG decoding and encoding library	libspng
+sqlite3	SQL database engine	sqlite
+sratom-0	Small library for serializing LV2 atoms	sratom
+srt	SRT library set	libsrt
+ss	Subsystem command parsing library	e2fsprogs
+stfl	Structured Terminal Forms Language/Library	stfl
+suil-0	Library for loading and wrapping LV2 plugin UIs	suil
+synctex	SyncTeX parser library	texlive
+syncthingconnector	Connection backend of Syncthing Tray	syncthingtray
+syncthingmodel	Data models of Syncthing Tray	syncthingtray
+syncthingwidgets	Tray application for Syncthing	syncthingtray
+taglib	Audio meta-data library	taglib
+taglib_c	Audio meta-data library (C bindings)	taglib
+talloc	A hierarchical pool based memory system with destructors	talloc
+tbb	C++ library for parallel programming on multi-core processors.	onetbb
+tcl	Tcl is a powerful, easy-to-learn dynamic programming language, suitable for a wide range of uses.	tcl
+tdb	A trivial database	tdb
+tesseract	An OCR Engine that was developed at HP Labs (1985-1995) and Google (2006-2018).	tesseract
+tevent	An event system library	tevent
+texlua53	Lua 5.3, modified for use with LuaTeX	texlive
+texluajit	LuaJIT, modified for use with LuaJITTeX	texlive
+theora	Theora video codec	libtheora
+theoradec	Theora video codec (decoder)	libtheora
+theoraenc	Theora video codec (encoder)	libtheora
+thrift	Thrift C++ API	thrift
+thrift-nb	Thrift Nonblocking API	thrift
+thrift-z	Thrift Zlib API	thrift
+tinyxml	Small C++ XML parser	tinyxml
+tinyxml2	simple, small, C++ XML parser	tinyxml2
+tk	Tk is a cross-platform graphical user interface toolkit, the standard GUI not only for Tcl, but for many other dynamic languages as well.	tk
+tllist	A C header file only implementation of a typed linked list	tllist
+tomlplusplus	TOML config file parser and serializer for C++	tomlplusplus
+totem-plparser	Totem Playlist Parser library	totem-pl-parser
+totem-plparser-mini	Totem Playlist Parser library, mini version	totem-pl-parser
+tree-sitter	An incremental parsing system for programming tools	tree-sitter
+tsk	An open source forensic toolkit	sleuthkit
+tss2-esys	TPM2 Enhanced System API library.	tpm2-tss
+tss2-fapi	TPM2 Feature API library.	tpm2-tss
+tss2-mu	TPM2 type marshaling and unmarshaling library.	tpm2-tss
+tss2-policy	TPM2 policy library.	tpm2-tss
+tss2-rc	TPM2 error decoding library.	tpm2-tss
+tss2-sys	TPM2 System API library.	tpm2-tss
+tss2-tcti-cmd	TCTI library for communicating with a subproccess that can communicate with the TPM.	tpm2-tss
+tss2-tcti-device	TCTI library for communicating with a TPM device node.	tpm2-tss
+tss2-tcti-i2c-ftdi	TCTI library for communicating with a TPM over USB-FTDI-I2C converter.	tpm2-tss
+tss2-tcti-i2c-helper	TCTI library for communicating with the TPM over I2C.	tpm2-tss
+tss2-tcti-libtpms	TCTI library for communicating with the libtpms library.	tpm2-tss
+tss2-tcti-mssim	TCTI library for communicating with the Microsoft TPM2 simulator.	tpm2-tss
+tss2-tcti-null	TCTI library which only provides TCTI initialization.	tpm2-tss
+tss2-tcti-pcap	TCTI library for debugging at the TCTI interface.	tpm2-tss
+tss2-tcti-spi-ftdi	TCTI library for communicating with a TPM over USB-FTDI-SPI converter.	tpm2-tss
+tss2-tcti-spi-helper	TCTI library for communicating with the TPM over SPI.	tpm2-tss
+tss2-tcti-spi-ltt2go	TCTI library for communicating with the LetsTrust-TPM2Go over USB.	tpm2-tss
+tss2-tcti-spidev	TCTI library for communicating with the TPM over spidev.	tpm2-tss
+tss2-tcti-swtpm	TCTI library for communicating with swtpm.	tpm2-tss
+tss2-tctildr	Library to simplify management of TCTIs.	tpm2-tss
+twolame	An optimized MPEG Audio Layer 2 encoder	twolame
+ublksrv	ublk server library and headers	ubdsrv
+uchardet	An encoding detector library ported from Mozilla	uchardet
+udev	eudev	eudev
+udisks2	UDisks Client Library	udisks2
+udisks2-btrfs	UDisks btrfs module client library	udisks2
+udisks2-lsm	UDisks LSM module client library	udisks2
+udisks2-lvm2	UDisks LVM2 module client library	udisks2
+uhd	Ettus Research - USRP Hardware Driver	uhd
+upb	Google's Data Interchange Format	protobuf
+upower-glib	UPower is a system daemon for managing power devices	upower
+utf8_range	Google's UTF8 Library	protobuf
+uuid	Universally unique id library	util-linux
+valgrind	A dynamic binary instrumentation framework	valgrind
+vamp	An API for audio analysis and feature extraction plugins	vamp-sdk
+vamp-hostsdk	Development library for Vamp audio analysis plugin hosts	vamp-sdk
+vamp-sdk	Development library for Vamp audio analysis plugins	vamp-sdk
+vapigen-0.56	Vala API Generator	vala
+verilator	fast free Verilog simulator	verilator
+videoproto	Video extension headers	xorgproto
+vidstab	Vid.Stab, a library for stabilizing video clips	vidstab
+vips	Image processing library	libvips
+vips-cpp	C++ API for vips8 image processing library	libvips
+vlc-plugin	VLC media player plugin interface	vlc
+volk	VOLK: Vector Optimized Library of Kernels	libvolk
+vorbis	vorbis is the primary Ogg Vorbis library	libvorbis
+vorbisenc	vorbisenc is a library that provides a convenient API for setting up an encoding environment using libvorbis	libvorbis
+vorbisfile	vorbisfile is a library that provides a convenient high-level API for decoding and basic manipulation of all Vorbis I audio streams	libvorbis
+vpx	WebM Project VPx codec implementation	libvpx
+vte-2.91	VTE widget for GTK+ 3.0	vte3
+vte-2.91-gtk4	VTE widget for GTK+ 4.0	vte3
+vulkan	Vulkan Loader	vulkan-loader
+wavpack	wavpack library	wavpack
+wayland-client	Wayland client side library	wayland
+wayland-client++	Wayland C++ client side library	waylandpp
+wayland-client-extra++	Wayland C++ client side library extra rotocols	waylandpp
+wayland-client-unstable++	Wayland C++ client side library unstable protocols	waylandpp
+wayland-cursor	Wayland cursor helper library	wayland
+wayland-cursor++	Wayland C++ cursor helper library	waylandpp
+wayland-egl	Frontend wayland-egl library	wayland
+wayland-egl++	Mesa C++ egl helper library	waylandpp
+wayland-egl-backend	Backend wayland-egl interface	wayland
+wayland-protocols	Wayland protocol files	wayland-protocols
+wayland-scanner	Wayland scanner	wayland
+wayland-scanner++	Wayland C++ scanner	waylandpp
+wayland-server	Server side implementation of the Wayland protocol	wayland
+wayland-server++	Wayland C++ server side library	waylandpp
+wayland-server-extra++	Wayland C++ server side library extra rotocols	waylandpp
+wayland-server-unstable++	Wayland C++ server side library unstable protocols	waylandpp
+wbclient	Winbind client	samba
+wcslib	An implementation of the FITS World Coordinate System standard	wcslib
+webkit2gtk-4.1	Web content engine for GTK	webkitgtk
+webkit2gtk-web-extension-4.1	Web content engine for GTK - web process extensions	webkitgtk
+webkitgtk-6.0	Web content engine for GTK	webkitgtk6
+webkitgtk-web-process-extension-6.0	Web content engine for GTK - web process extensions	webkitgtk6
+webrtc-audio-processing-2	WebRTC Audio Processing library	webrtc-audio-processing
+weechat	WeeChat plugins headers	weechat
+whisper	Port of OpenAI's Whisper model in C/C++	whisper.cpp
+wimlib	Library to extract, create, modify, and mount Windows Imaging (WIM) files	wimlib
+winpr-tools3	WinPR: Windows Portable Runtime	freerdp
+winpr3	WinPR: Windows Portable Runtime	freerdp
+wireplumber-0.5	wireplumber: wireplumber-0.5	wireplumber
+wlroots-0.20	Wayland compositor library	wlroots
+wv-1.0	Word Document Filter library and utilities	wv
+x11	X Library	libX11
+x11-xcb	X Library XCB interface	libX11
+x264	H.264 (MPEG4 AVC) encoder library	x264
+x265	H.265/HEVC video encoder	x265
+xapian-core	Search Engine Library	xapian-core
+xau	X authorization file management library	libXau
+xbitmaps	Bitmaps that are shared between X applications	xbitmaps
+xcb	X-protocol C Binding	libxcb
+xcb-atom	XCB atom cache	xcb-util
+xcb-aux	XCB convenient functions	xcb-util
+xcb-composite	XCB Composite Extension	libxcb
+xcb-cursor	XCB cursor utility library	xcb-util-cursor
+xcb-damage	XCB Damage Extension	libxcb
+xcb-dbe	XCB Double Buffer Extension	libxcb
+xcb-dpms	XCB DPMS Extension	libxcb
+xcb-dri2	XCB DRI2 Extension	libxcb
+xcb-dri3	XCB DRI3 Extension	libxcb
+xcb-event	XCB event callback interface	xcb-util
+xcb-ewmh	XCB EWMH binding	xcb-util-wm
+xcb-glx	XCB GLX Extension	libxcb
+xcb-icccm	XCB ICCCM binding	xcb-util-wm
+xcb-image	XCB image convenience library	xcb-util-image
+xcb-keysyms	XCB Keysyms	xcb-util-keysyms
+xcb-present	XCB Present Extension	libxcb
+xcb-proto	X protocol descriptions for XCB	xcb-proto
+xcb-randr	XCB RandR Extension	libxcb
+xcb-record	XCB Record Extension	libxcb
+xcb-render	XCB Render Extension	libxcb
+xcb-renderutil	XCB RENDER-extension utilities library	xcb-util-renderutil
+xcb-res	XCB X-Resource Extension	libxcb
+xcb-screensaver	XCB Screensaver Extension	libxcb
+xcb-shape	XCB Shape Extension	libxcb
+xcb-shm	XCB Shm Extension	libxcb
+xcb-sync	XCB Sync Extension	libxcb
+xcb-util	XCB util core interface	xcb-util
+xcb-xf86dri	XCB XFree86-DRI Extension	libxcb
+xcb-xfixes	XCB XFixes Extension	libxcb
+xcb-xinerama	XCB Xinerama Extension	libxcb
+xcb-xinput	XCB XInput Extension (EXPERIMENTAL)	libxcb
+xcb-xkb	XCB Keyboard Extension (EXPERIMENTAL)	libxcb
+xcb-xtest	XCB XTEST Extension	libxcb
+xcb-xv	XCB Xv Extension	libxcb
+xcb-xvmc	XCB XvMC Extension	libxcb
+xcmiscproto	XCMisc extension headers	xorgproto
+xcomposite	X Composite Extension Library	libXcomposite
+xcursor	X Cursor Library	libXcursor
+xdamage	X Damage Library	libXdamage
+xdg-desktop-portal	Desktop integration portal	xdg-desktop-portal
+xdmcp	X Display Manager Control Protocol library	libXdmcp
+xerces-c	Validating XML parser library for C++	xerces-c
+xext	Misc X Extension Library	libXext
+xextproto	XExt extension headers	xorgproto
+xf86bigfontproto	XF86BigFont extension headers	xorgproto
+xf86dgaproto	XF86DGA extension headers	xorgproto
+xf86driproto	XF86DRI extension headers	xorgproto
+xf86vidmodeproto	XF86VidMode extension headers	xorgproto
+xfixes	X Fixes Library	libXfixes
+xfont2	X font Library version 2	libXfont2
+xft	X FreeType library	libXft
+xi	X Input Extension Library	libXi
+xinerama	The Xinerama Library	libXinerama
+xineramaproto	Xinerama extension headers	xorgproto
+xkbcommon	XKB API common to servers and clients	libxkbcommon
+xkbcommon-x11	XKB API common to servers and clients - X11 support	libxkbcommon
+xkbcomp	XKB keymap compiler	xkbcomp
+xkbfile	The xkbfile Library	libxkbfile
+xkbregistry	XKB API to query available rules, models, layouts, variants and options	libxkbcommon
+xkeyboard-config-2	X Keyboard configuration data	xkeyboard-config
+xlsxwriter	A C library for creating Excel XLSX files	libxlsxwriter
+xmlb	libxmlb is a library to create or query compressed XML files	libxmlb
+xmlrpc	Xmlrpc-c basic XML-RPC library	xmlrpc-c
+xmlrpc++	Xmlrpc-c basic XML-RPC C++ library	xmlrpc-c
+xmlrpc_abyss	Xmlrpc-c Abyss HTTP C library	xmlrpc-c
+xmlrpc_abyss++	Xmlrpc-c Abyss HTTP C++ library	xmlrpc-c
+xmlrpc_client	Xmlrpc-c XML-RPC client library	xmlrpc-c
+xmlrpc_client++	Xmlrpc-c XML-RPC client C++ library	xmlrpc-c
+xmlrpc_expat	Xmlrpc-c XML parsing library	xmlrpc-c
+xmlrpc_openssl	Openssl convenience function from Xmlrpc-c package	xmlrpc-c
+xmlrpc_server	Xmlrpc-c XML-RPC server library	xmlrpc-c
+xmlrpc_server++	Xmlrpc-c XML-RPC server C++ library	xmlrpc-c
+xmlrpc_server_abyss	Xmlrpc-c Abyss XML-RPC server library	xmlrpc-c
+xmlrpc_server_cgi	Xmlrpc-c CGI XML-RPC server library	xmlrpc-c
+xmlrpc_server_pstream++	Xmlrpc-c packet stream XML-RPC server library	xmlrpc-c
+xmlrpc_util	Xmlrpc-c utility functions library	xmlrpc-c
+xmlrpc_util++	Xmlrpc-c C++ utility functions library	xmlrpc-c
+xmu	Xmu Library	libXmu
+xmuu	Mini Xmu Library	libXmu
+xorg-macros	A set of autoconf project macros for X.Org modules	util-macros
+xpm	X Pixmap Library	libXpm
+xpresent	X Present Library	libXpresent
+xproto	Xproto headers	xorgproto
+xrandr	X RandR Library	libXrandr
+xrender	X Render Library	libXrender
+xres	X Resource Information Extension Library	libXres
+xscrnsaver	The XScrnSaver Library	libXScrnSaver
+xshmfence	The X Shared Memory Fence Library	libxshmfence
+xsimd	xsimd provides a unified means for using SIMD features for library authors..	xsimd
+xt	X Toolkit Library	libXt
+xtables	Shared Xtables code for extensions and iproute2	iptables
+xtrans	Abstract network code for X	xtrans
+xtst	The Xtst Library	libXtst
+xv	The Xv Library	libXv
+xwayland	X Server for Wayland	xwayland
+xwaylandproto	Xwayland extension headers	xorgproto
+xxf86vm	XFree86 Video Mode Extension Library	libXxf86vm
+yajl	A Portable JSON parsing and serialization library in ANSI C	yajl
+yaml-0.1	Library to parse and emit YAML	yaml
+yaml-cpp	A YAML parser and emitter for C++	yaml-cpp
+yara	YARA library	yara
+z3	The Z3 Theorem Prover	z3
+zbar	bar code scanning and decoding	zbar
+zimg	Scaling, colorspace conversion, and dithering library	zimg
+zix-0	Lightweight C library of portability wrappers and data structures	zix
+zlib	zlib compression library	zlib
+zlib-ng	zlib-ng compression library	zlib-ng
+zxing	ZXing-C++ library	zxing-cpp
+zzipfseeko	ZZipLib - libZ-based ZIP-access Library with an Easy-to-Use API	zziplib
+zziplib	ZZipLib - libZ-based ZIP-access Library with an Easy-to-Use API	zziplib
+zzipmmapped	ZZipLib - libZ-based ZIP-access Library with an Easy-to-Use API	zziplib

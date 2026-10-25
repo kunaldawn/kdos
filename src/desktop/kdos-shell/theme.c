@@ -49,7 +49,7 @@
  * THE SWATCHES ARE LITERAL COLOURS, AND THIS IS THE ONLY SURFACE ON THE
  * DESKTOP THAT MAY SET ONE. Chrome draws in slots so that one word repaints
  * everything; a swatch drawn in slots would take the CURRENT accent and show
- * seven identical rows, which is the one thing this window exists not to do.
+ * eight identical rows, which is the one thing this window exists not to do.
  * The rule holds everywhere else and `preflight.sh` names this file as the
  * exception rather than dropping the check.
  *
@@ -511,9 +511,9 @@ int theme_main(int argc, char **argv)
 		 * THE POINTER, ON THE SAME TWO LISTS THE ARROWS WALK.
 		 *
 		 * This window is what the Appearance page's `Accent…` row
-		 * opens, and it answered no pointer event at all: a person who
-		 * arrived here with a mouse could look at seven schemes and
-		 * choose none of them. A press previews like an arrow does and
+		 * opens; without this a person who arrived here with a mouse
+		 * could look at every scheme and choose none of them. A press
+		 * previews like an arrow does and
 		 * a press on the row already under the caret keeps it, which
 		 * is `ktui_rows_event`'s rule and every other list's here.
 		 *

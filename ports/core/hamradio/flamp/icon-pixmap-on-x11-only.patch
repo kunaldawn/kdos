@@ -1,0 +1,18 @@
+Subject: Make the X11 icon pixmap only on an X11 display: under Wayland its zero-size helper window is a protocol error
+
+--- a/src/flamp.cxx
++++ b/src/flamp.cxx
+@@ -2957,8 +2957,11 @@
+ 	main_window->icon((char*)LoadIcon(fl_display, MAKEINTRESOURCE(IDI_ICON)));
+ 	main_window->show (argc, argv);
+ #elif !defined(__APPLE__)
+-	make_pixmap(&flamp_icon_pixmap, flamp_icon);
+-	main_window->icon((char *)flamp_icon_pixmap);
++	fl_open_display();
++	if (fl_x11_display()) {
++		make_pixmap(&flamp_icon_pixmap, flamp_icon);
++		main_window->icon((char *)flamp_icon_pixmap);
++	}
+ 	main_window->show(argc, argv);
+ 
+ 	// read in the current window hints, then modify them to allow icon transparency

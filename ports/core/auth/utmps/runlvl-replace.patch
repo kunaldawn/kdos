@@ -1,0 +1,19 @@
+Subject: replace the runlevel record in utmp rather than appending another
+
+utmpd finds the record a pututxline() replaces by its type alone only for
+BOOT_TIME, OLD_TIME and NEW_TIME, so every RUN_LVL record init writes is
+appended. glibc matches RUN_LVL by type as well, and sysvinit relies on it:
+its runlevel(8) prints the first RUN_LVL record in the file, which with the
+records appended is the one written at boot, whatever the runlevel since.
+
+--- a/src/utmps/utmps-utmpd.c
++++ b/src/utmps/utmps-utmpd.c
+@@ -92,7 +92,7 @@
+
+ static int idmatch (unsigned short type, char const *id, struct utmpx const *b)
+ {
+-  if (type == BOOT_TIME || type == OLD_TIME || type == NEW_TIME)
++  if (type == RUN_LVL || type == BOOT_TIME || type == OLD_TIME || type == NEW_TIME)
+   {
+     if (type == (unsigned short)b->ut_type) return 1 ;
+   }

@@ -18,8 +18,9 @@
 # --root and an A/B update install into a tree that is not the running one, and
 # an account made in / instead would be missing from the system that needs it.
 #
-# The guard reads the files: no getent on musl, and a missing one returns 127,
-# so the test never holds and useradd runs against the account it already made.
+# The guard reads PKG_ROOT's files: getent answers for the running root, not
+# the tree being installed, and would let useradd run against an account the
+# target already has.
 root="${PKG_ROOT:-/}"
 grep -q '^avahi:' "$root/etc/group" 2>/dev/null || groupadd -R "$root" -r avahi
 grep -q '^avahi:' "$root/etc/passwd" 2>/dev/null || \
@@ -29,3 +30,11 @@ grep -q '^avahi-autoipd:' "$root/etc/group" 2>/dev/null || \
 grep -q '^avahi-autoipd:' "$root/etc/passwd" 2>/dev/null || \
 	useradd -R "$root" -r -g avahi-autoipd -d /var/lib/avahi-autoipd \
 		-s /sbin/nologin avahi-autoipd
+
+# chown resolves a name against the running root's passwd, so the ids are read
+# out of PKG_ROOT's. The directory is avahi-autoipd's home and the root it
+# chroots into; it must belong to that account.
+while IFS=: read -r n _ uid gid _; do
+	[ "$n" = avahi-autoipd ] || continue
+	chown "$uid:$gid" "$root/var/lib/avahi-autoipd"
+done < "$root/etc/passwd"

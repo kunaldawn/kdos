@@ -209,7 +209,7 @@ static int bt_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 	pending = 0;
 	if (sd_bus_message_is_method_error(reply, NULL)) {
 		snprintf(why, sizeof(why),
-			 "not running — service start 60_bluetooth");
+			 "not running — service start bluetooth");
 		return 0;
 	}
 	why[0] = '\0';
@@ -664,7 +664,7 @@ static void draw_frame(void)
 		int tx = 4;
 		if (icon >= 0) {
 			ktui_draw_sprite(krect(2, y, 2, 1), icon,
-					 on	      ? KT_SURFACE
+					 on	      ? fg
 					 : d->connected ? KT_ACCENT
 						      : KT_MID,
 					 bg);
@@ -673,22 +673,22 @@ static void draw_frame(void)
 			ktui_draw_text(2, y, 1,
 				       d->connected ? ktui_glyph[KT_G_BULLET]
 						    : ktui_glyph[KT_G_DOT],
-				       on ? KT_SURFACE
-					  : d->connected ? KT_ACCENT : KT_DIM,
+				       on ? fg
+					  : d->connected ? KT_ACCENT : KT_MID,
 				       bg, KT_A_NONE);
 		}
 		ktui_draw_text(tx, y, 26, d->alias[0] ? d->alias : d->addr, fg,
 			       bg, KT_A_NONE);
-		ktui_draw_text(31, y, 18, d->addr, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(31, y, 18, d->addr, ktui_sel_dim(on, 1), bg,
 			       KT_A_NONE);
 		const char *st = d->connected ? "connected"
 				 : d->paired	? "paired"
 						: "";
-		ktui_draw_text(50, y, 10, st, on ? KT_SURFACE : KT_MID, bg,
+		ktui_draw_text(50, y, 10, st, ktui_sel_dim(on, 1), bg,
 			       KT_A_NONE);
 		if (d->trusted)
 			ktui_draw_text(61, y, 8, "trusted",
-				       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
+				       ktui_sel_dim(on, 1), bg, KT_A_NONE);
 		if (d->battery)
 			ktui_draw_textf(w - 7, y, 5, fg, bg, KT_A_NONE, "%u%%",
 					d->battery);

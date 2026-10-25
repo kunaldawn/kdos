@@ -34,7 +34,7 @@ void ktui_kv(int x, int y, int w, const char *k, const char *v, int fg)
 
 void ktui_note(int x, int y, int w, const char *s)
 {
-	ktui_draw_text(x, y, w, s, KT_DIM, KT_BG, 0);
+	ktui_draw_text(x, y, w, s, KT_MID, KT_BG, 0);
 }
 
 /*

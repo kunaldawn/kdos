@@ -639,7 +639,7 @@ static void draw(void)
 
 		const struct tmitem *it = &tm[rows[idx]];
 		bool on = idx == sel;
-		uint8_t fg = it->enabled ? KT_TEXT : KT_DIM;
+		uint8_t fg = it->enabled ? KT_TEXT : KT_MID;
 		uint8_t bg = KT_SURFACE;
 
 		if (it->separator) {
@@ -652,7 +652,7 @@ static void draw(void)
 		/* THE PLATE AND THE CELL FORM OF IT, which is kdos-menu's
 		 * rule: the pixel plate is the whole highlight where there is
 		 * a pixel layer, and on a character grid — a `--tty` run, and
-		 * every dump — an accent fill with the slots swapped is what
+		 * every dump — the selection fill from ktui_sel_slots() is what
 		 * says which row Enter will take. The plate slides to a new
 		 * row as the cascading menu's does. */
 		if (on) {
@@ -709,14 +709,16 @@ static void draw(void)
 
 		ktui_draw_text(lx, 1 + r, lw, it->label, fg, bg, KT_A_NONE);
 		/*
-		 * THE CHORD IS DIMMED EVEN ON THE SELECTED ROW. It is not a
-		 * thing to aim at — this desktop cannot press it — and at the
-		 * label's own weight it reads as a second label.
+		 * THE CHORD IS A SECONDARY COLUMN. It is not a thing to aim at
+		 * — this desktop cannot press it — so it is muted on the page.
+		 * On a selected row it is lifted whichever highlight is drawn:
+		 * muted measures 2.57:1 on the pixel plate and less on the cell
+		 * fill, and only the cell fill changes `bg`.
 		 */
 		if (it->chord[0] && chordw)
 			ktui_draw_text_right(w - 4 - chordw + 1, 1 + r,
 					     chordw - 1, it->chord,
-					     it->enabled ? KT_MID : KT_DIM, bg,
+					     ktui_sel_dim(on, 1), bg,
 					     KT_A_NONE);
 		if (it->submenu)
 			ktui_draw_text(w - 3, 1 + r, 1, ktui_glyph[KT_G_RIGHT],

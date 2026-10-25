@@ -1,0 +1,12 @@
+# KDOS corrections to Alpine's security database, applied by vendor.py.
+#
+#   <alpine-package> <fixed-version as Alpine wrote it> <correct version>
+#   <alpine-package> <fixed-version as Alpine wrote it> drop
+#
+# A row Alpine recorded under a version upstream never released cannot be
+# compared: a version above every real one flags every pin forever, and no
+# version update clears it. Each line names the row exactly as the table
+# carries it, so a corrected row Alpine later fixes itself stops matching and
+# vendor.py reports the line as stale.
+aerc 1.21.0-r0 0.21.0
+vorbis-tools 9.54-r1 1.4.3

@@ -46,6 +46,7 @@ Comment=Double-entry accounting from a plain-text ledger
 Exec=ledger
 Icon=office-chart-line
 Terminal=true
+NoDisplay=true
 Categories=Office;Finance;
 Keywords=account;ledger;finance;money;
 EOF

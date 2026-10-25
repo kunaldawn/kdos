@@ -104,8 +104,8 @@ its text files.
 
 Orca is a host port, with at-spi2-core's accessibility bus, for the native GTK and Qt
 applications, whose toolkits publish a tree of accessible objects. It is set up to speak through
-speech-dispatcher and to reach braille through BrlAPI. Neither Orca nor at-spi2-core has been
-through a build. Nothing starts it: KDOS runs no autostart agent, so it is started by running
+speech-dispatcher and to reach braille through BrlAPI. Both are built and on the image, and
+neither has been run on it. Nothing starts it: KDOS runs no autostart agent, so it is started by running
 `orca`. The keys typed into other windows reach it through the compositor's
 [keyboard monitor](../04-programs/kdos-comp.md#the-keyboard-monitor), which is the one interface of
 its family `kdos-comp` serves: there is no pointer locator (`PointerLocator`), and Orca's mouse
@@ -209,6 +209,15 @@ without it, so the list read back at the next login, when `~/.config/kdos/sessio
 is whatever the last of the first two routes wrote. See
 [Session, screen and media](../02-user-guide/desktop.md#session-screen-and-media).
 
+### Log Out ends the desktop, not the login
+
+Log Out stops the compositor and leaves a shell prompt on `tty1`, still logged in. Everything else
+the session started keeps running there: PipeWire, WirePlumber and `pipewire-pulse`, the portal
+front end, mpd and its watcher, the per-user timer loops and the `kdos-box gc` loop. They end only
+when the login does, with `exit` at that prompt; with autologin on, a new login and desktop start
+at once. Measured on the live medium. See
+[What `kdos-desktop-start` does](../03-architecture/session.md#what-kdos-desktop-start-does).
+
 ### The control centre's *Sync…* row opens the network-share window
 
 On the System page of `kdos-settings`, the row *Sync…* is described as calendars and address
@@ -287,7 +296,8 @@ on an overlay. When `kdos-packd` composes a box there, the layer falls back to a
 the session. `kdos doctor` reports this as a warning about where the session's home directory
 lives, not as a failure. `kdos-box create <name> base=pack:<id>` asks podman for a container on
 top of that composition, and when podman refuses on a live session it says that a persistent box
-needs an installed system, takes the composition down, and leaves the profile it wrote.
+needs an installed system, takes the composition down, and leaves the profile it wrote, which
+`kdos-box remove <name>` deletes.
 
 ### `kdos-box create` with a `box:` base never finishes
 
@@ -422,14 +432,17 @@ its output.
 `kdos-rec`'s *Transcribe* runs `whisper-cli` over the file it has just recorded. Both need the same
 model, and `base.en` ships.
 
-### The native applications have not been built
+### The native applications have not been run
 
 The browsers, office suites, editors, games and the rest of the graphical applications are recipes
 under `ports/core`, named in the lists of the userland phases, `40_lang` to `44_apps`, with every
-source fetched and hashed. None of them has been through a build, and none has been started on a KDOS image, so
-what is written about any of them here and in [the ports catalogue](ports-catalogue.md) describes
-its recipe. The published source archive holds almost none of their sources, so `make fetch` on
-another clone takes them from upstream. See
+source fetched and hashed. Every one of them has been through a build: the build tree holds every
+port of `42_graphics`, `43_toolkits` and `44_apps`, and the image it made carries them (see
+[Build times and snapshots are measured for the early phases
+only](#build-times-and-snapshots-are-measured-for-the-early-phases-only)). No application has
+been started on a KDOS image, so what is written here and in [the ports
+catalogue](ports-catalogue.md) about how any of them behaves describes its recipe. The published source archive holds almost
+none of their sources, so `make fetch` on another clone takes them from upstream. See
 [The source archive has one public location](#the-source-archive-has-one-public-location).
 
 ### Five applications have no port
@@ -572,15 +585,15 @@ that is plugged in later shows no logical volumes until you run `sudo vgchange -
 hotplug activation runs through `systemd-run`, so it is built off and its udev rule is not
 installed.
 
-### A root filesystem on LVM has not been booted
+### A root filesystem on LVM has been booted in one shape only
 
-The installer's erase plan creates the volume group and slot A's volume, its reuse plan lists
-existing volumes, and the initramfs carries `thin_check`, `cache_check` and the thin, cache and
-snapshot targets. The commands were run against a loop device in a container and the installer's
-probe and dry run were read back there, but no install onto LVM (plain, encrypted, thin or cached)
-has been booted. The installer lays out only one shape, a volume group of one physical volume on the
-target disk, and makes no `root_b`: slot B's space is left free, and its volume is made by hand like
-the rest of slot B; see
+An unattended install onto plain LVM, in a virtual machine with UEFI firmware, booted: slot A's
+volume `kdos/root_a` was mounted by the initramfs, and a slot B made as an LVM snapshot of it booted
+as `/dev/mapper/kdos-root_b`. An encrypted, thin or cached root has not been booted, and neither has
+a volume group spread over more than one disk. The initramfs carries `thin_check`, `cache_check` and
+the thin, cache and snapshot targets for them. The installer lays out only one shape, a volume group
+of one physical volume on the target disk, and makes no `root_b`: slot B's space is left free, and
+its volume is made by hand like the rest of slot B; see
 [Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups).
 
 ### `lsblk` shows a filesystem's type, label and UUID to root only
@@ -619,7 +632,7 @@ through either on this system.
 
 `opensc` has not been used with a card in a reader, `libwacom`'s pairing with a tablet, or the
 SoapySDR modules with a radio; each is built and never tried against the hardware. The SDR
-applications (GNU Radio, SDR++, SDRangel, Gqrx, URH) have not been through a build. SDRplay receivers have a udev permission rule
+applications (GNU Radio, SDR++, SDRangel, Gqrx, URH) are built and have not been run. SDRplay receivers have a udev permission rule
 and no driver, because SDRplay's API is published only as a closed library, so SoapySDRPlay3,
 SDRangel's SDRplay input and SDR++'s SDRplay source are all off. XTRX is not supported at all: it
 needs the out-of-tree `xtrx_linux_pcie_drv` kernel module, and its libraries are unmaintained.
@@ -662,23 +675,13 @@ read-back run against a scratch file; the `O_EXCL` claim, the cache drop before 
 partition re-read after it act only on a real block device and have not met one. `write` offers
 only a disk the daemon lists, which means a disk carrying a filesystem it recognises: a blank stick,
 or one holding only a partition type it does not probe, cannot be written through it, and in a live
-session any disk with an ISO 9660 partition is refused as the boot disk.
+session any disk with an ISO 9660 superblock, on the disk or on a partition, is refused as the boot
+disk.
 
 `kdos-verify` checks a BLAKE3 list with `b3sum`, which is not a port, so such a list answers that
 `b3sum` is not on this machine. SHA-256, SHA-512 and par2 are checked.
 
 ## Installation
-
-### An interactive install stays on the Summary page
-
-The wizard's pages are counted from zero, and Summary, Install and Done are pages 8, 9 and 10.
-*BEGIN INSTALL* starts the install and moves to page 8, which is Summary itself, so the progress,
-the log and the *Retry step* button on the Install page are never shown, and neither is the Done
-page. *BEGIN INSTALL* stays live while the install runs, and pressing it again starts a second
-install child beside the first. The Install page's *Continue*, when it is reached, moves to page 9,
-which is Install again. The install itself runs to the end and writes its log to
-`/var/log/kinstall.log` on the live system. An unattended install is not affected: it finds the
-Install page by its id. See [The pages](../04-programs/kinstall.md#the-pages).
 
 ### Applications imported or built during an install stay in the live session
 
@@ -698,21 +701,24 @@ makes before it lets you continue are never run: that the target is not the runn
 and not read-only, that it is large enough, that the two passphrases and the two passwords match,
 that the hostname and user name are well formed, that root is not locked while the user is not an
 administrator, and that no other disk already holds a volume group named `kdos`. An answer file
-that the wizard would refuse goes to the install as it is. Loading the same file into the wizard
+that the wizard would refuse goes to the install as it is. The one page check the Prepare step
+also makes is the firmware one: on a machine booted in legacy BIOS mode it refuses a reused GPT
+disk with no BIOS boot partition. Loading the same file into the wizard
 (`kinstall --config <file>`) and stepping through the pages runs the checks. See
 [Installing unattended](../02-user-guide/installation.md#installing-unattended).
 
-### The installer's warnings are shown nowhere
-
-The install child reports its progress to the wizard as one-letter lines, and the wizard drops every
-warning (`W`) line: it is neither drawn nor written to `/var/log/kinstall.log`. What goes unreported
-is a Limine with no `BOOTIA32.EFI`, a failed `limine bios-install` or no `limine` on the path, no
-partition index for the EFI partition and so no firmware boot entry, an EFI partition too small for
-a second slot's kernel, and an application route that fell back to *pending*. The install finishes
-as if none of them happened. See [The install runs in a child
-process](../04-programs/kinstall.md#the-install-runs-in-a-child-process).
-
 ## Boot and updates
+
+### On an installed machine the boot messages are drawn over the splash
+
+An installed machine's boot entries carry `console=tty0` alone, so `/dev/console` is the screen.
+The initramfs's first line is printed there about a millisecond after `/init` starts, which ends
+the console's deferred takeover of the framebuffer before the splash has started. Every later line
+the initramfs and `rcS` print (`Running: 55_powerd.sh start` and the rest) is then drawn by the
+console on top of the splash animation, until the splash quits. The live medium prints on the
+serial line instead and does not show this. Measured in the rig by booting the medium's own kernel
+and initramfs with `console=tty0`. See
+[The splash](../03-architecture/boot-and-init.md#the-splash).
 
 ### A disk-encryption key is typed, not sealed in the TPM
 
@@ -736,7 +742,9 @@ container and not B's, which is the failure the mechanism exists to prevent.
 ### The update path has not been run against a published tree
 
 `kdos update fetch` takes `kdos-ports.tar.xz` from the latest release, and only a release made by
-`ports/publish --release` with a release key carries one; until then it reports `fetch-failed`. Its
+`ports/publish --release` with a release key carries one; until then it reports `fetch-failed`. An
+image built without that key has an empty `/etc/kdos/keys/tree`, and on it `fetch` stops before the
+network and reports `no-key`: such an image updates only from the recipes in its own `/ports`. Its
 signature check, the refusal of an older tree, the exchange with `/ports`, `kpkg fetch`'s archive
 and upstream order, and the recorded problems have been exercised against local directories in a
 container with no network, and `kpkg fetch` is asserted by the self-test, but none of it against a
@@ -744,16 +752,17 @@ real release over the internet. No `kdos update apply` has built a
 large set on an installed machine, so how long one takes, and how much of `/var/cache/kpkg` it
 needs, is not measured.
 
-### Per-slot kernels have not been booted
+### Per-slot kernels have been booted on virtual firmware only
 
-`deploy`, the regenerated boot menu, the hand-picked entry and the rollback onto the confirmed
-slot's kernel are asserted on the host against a fixture EFI partition, and the `linux`
-postinstall's appended initramfs was assembled and inspected, not started. The UEFI `BootNext` trial
-has not met a real firmware: the load option is compared byte for byte with the specification's
-layout, and the trial menu, rollback and clean-up are asserted against a fixture EFI partition, a
-fixture GPT image and a directory standing in for `efivarfs`. A firmware that ignores `BootNext`, or
-deletes a `Boot####` entry that is not in `BootOrder`, rolls every candidate back unbooted rather
-than looping. On BIOS, a candidate kernel that dies before its initramfs runs spends no attempt,
+On an installed virtual machine with UEFI firmware (OVMF), `kdos-bootctl deploy` put slot B's
+kernel on the EFI partition, `try b` booted it once through `BootNext` and the `KDOS update trial`
+entry, and the boot confirmed it. A trial led by the menu, with `efivarfs` unmounted, booted and
+confirmed the same way, and a trial boot that hung in `rcS` was reset and came back on the
+confirmed slot with the trial cleared. No physical firmware has run a trial, so a firmware that
+ignores `BootNext`, or deletes a `Boot####` entry that is not in `BootOrder`, has not been met: by
+the code it rolls every candidate back unbooted rather than looping. Neither BIOS boot of a slot nor
+the `linux` postinstall's appended initramfs has been started, as no newer `linux` package exists
+to install. On BIOS, a candidate kernel that dies before its initramfs runs spends no attempt,
 because Limine counts nothing: the menu keeps leading with it until you pick the confirmed slot's
 `/KDOS (slot <x>)` entry by hand; see
 [One boot through BootNext](../03-architecture/boot-and-init.md#one-boot-through-bootnext).
@@ -761,24 +770,6 @@ because Limine counts nothing: the menu keeps leading with it until you pick the
 A root that has no `/boot/initramfs.modules` builds a new kernel's initramfs from the module set its
 own initramfs carries, rather than from a list; that path has been exercised on test archives only.
 See [A new kernel](../03-architecture/boot-and-init.md#a-new-kernel).
-
-### A slot keeps the init it was installed with until that slot is updated
-
-This affects a slot whose initramfs `init` does not read `kdos_slot=`, the word on each boot entry
-naming the slot its kernel came from (see [Command-line parameters KDOS
-reads](../03-architecture/boot-and-init.md#command-line-parameters-kdos-reads)). An update appends
-modules to an initramfs and never replaces its `init`, and the confirmed slot's `init` is the one
-that carries out a rollback. While an update is on trial on a machine whose confirmed slot has such
-an `init`:
-
-- in a trial led by the boot menu, a rollback returns to the confirmed slot's root but still on the
-  candidate's kernel, until `kdos-bootctl mark-good` corrects the menu at the end of that boot;
-- after a UEFI `BootNext` trial's one boot, the next boot starts the candidate's root on the
-  confirmed slot's kernel once, and `mark-good` then sees the confirmed slot's `kdos_slot=` and rolls
-  the candidate back.
-
-Both stop once the confirmed slot is itself updated, which gives it an `init` that reads
-`kdos_slot=`. See [One kernel per slot](../03-architecture/boot-and-init.md#one-kernel-per-slot).
 
 ## Security
 
@@ -790,8 +781,9 @@ The full statement is
   the kernel only marks itself tainted;
 - the live image's serial console is a root shell with no password (an installed system's asks
   for a login);
-- on the live image, `root` and `kdos` both have the password `kdos`, and `sshd` starts at boot
-  behind the firewall's drop policy;
+- on the live image, `root` and `kdos` both have the password `kdos`, and opening `ssh` in the
+  firewall starts `sshd` with those accounts as they are; until then the image's
+  `/etc/service.disabled/sshd` keeps it stopped;
 - the live image logs in as `kdos` automatically; an installed system does so only when its
   answer file set `autologin = yes` or `kdos-power autologin` set it later;
 - disk encryption protects data at rest only;
@@ -874,6 +866,12 @@ never fetched on demand either; the transformations that need no grid are the on
 `default.themedump` inside the vendored `syntect` crate. Their `.tmTheme` sources are in syntect's
 repository and not in the crate, and the only way to swap in a rebuilt dump is a patch to
 presenterm's theme loading. Its grammars, and bat's themes, are compiled here by the `bat` port.
+
+### `ping` and `tracepath` take no internationalised host name
+
+`iputils` is built with `-DUSE_IDN=false`: with IDN on, both pass glibc's `AI_IDN` to `getaddrinfo`,
+which musl rejects, and every lookup fails. A host name is looked up as written, so a non-ASCII name
+must be given in its `xn--` form.
 
 ### Strawberry has no tag fetcher
 
@@ -968,16 +966,18 @@ see [Testing](../05-developer/testing.md).
 | `gdb` | CTF traces, source highlighting through GNU source-highlight, Intel Processor Trace, AMD GPU debugging, debuginfod | babeltrace, source-highlight, libipt, amd-dbgapi; elfutils is built without debuginfod | one feature each, vendor; Pygments colours the source |
 | `gdk-pixbuf` | Sandboxed image loading through glycin | glycin | one feature; the built-in loaders read every format |
 | `gimp` | MNG, WMF and ILBM files; JavaScript and Lua plug-ins; full dashboard backtraces | libmng, libwmf, libilbm, gjs, lua-lgi, libbacktrace | one feature each |
+| `git` | `git svn` and `git cvsserver`, which are removed from the package | Subversion's Perl bindings (SVN::Core); DBI with DBD::SQLite | one feature each |
 | `glabels` | GNU Barcode and IEC 16022 symbologies; the Evolution address book | GNU Barcode, libiec16022, Evolution Data Server | one feature each; QR comes from qrencode |
 | `glib-networking`, `openconnect` | PAC proxy configuration | libproxy | one feature; `http_proxy` and friends are honoured |
 | `gmsh` | CGNS, Mmg remeshing and PETSc solvers | CGNS, Mmg, PETSc | large |
-| `gnucash` | The SQL back ends and online banking | libdbi, AqBanking | one feature each; XML books are built |
+| `gnucash` | The SQL back ends, online banking and online price quotes | libdbi, AqBanking, Finance::Quote and its Perl modules (JSON, LWP, HTML::TreeBuilder, DateTime) | one feature each; XML books are built |
 | `gnumeric` | Psion and Paradox import, the database plug-in | psiconv, pxlib, libgda | one feature each |
 | `goldendict-ng` | EPWING dictionaries | libeb | one feature |
+| `gramps` | The Geography view | osm-gps-map | service (online tiles); its only release links libsoup 2, which is not a port |
 | `gthumb` | Display colour management | colord | one feature |
 | `gvfs` | Approving a WebDAV server's untrusted certificate; Windows network discovery | gcr, wsdd | one feature each; `network://` lists what Avahi finds |
 | `ifcopenshell` | COLLADA and USD output, the RocksDB cache | OpenCOLLADA, USD, RocksDB | large |
-| `imagemagick` | Liquid rescale, Ultra HDR, MagickCache | liblqr, libultrahdr, MagickCache | one feature each |
+| `imagemagick` | Liquid rescale, Ultra HDR, MagickCache; the PostScript base-35 font names (`Helvetica`, `Times-Roman`, …) | liblqr, libultrahdr, MagickCache, URW base-35 fonts | one feature each; the Liberation fonts are metric-compatible under their own names |
 | `iperf3` | SCTP tests | lksctp-tools | one feature |
 | `k3b`, `scummvm`, `vlc` | Musepack audio | libmpcdec | one feature |
 | `kate` | The telemetry settings page | KUserFeedback | one feature |
@@ -1068,15 +1068,21 @@ The `tzdata` port does not own `/etc/localtime`, so upgrading `tzdata` on a mach
 
 ## Building
 
-### The phase lists have not been through a build
+### Build times and snapshots are measured for the early phases only
 
-The thirteen phases under `script/phases/`, the five userland phases `40_lang` to `44_apps` and the
-ports tree filed on shelves pass preflight, `testing/phaseclosure.py` and the self-test, and no
-build has run through them. How long each phase takes and how large its snapshot is are not
-measured; layered snapshots have been measured only on a synthetic ten-phase tree, where they came
-to 23% of full ones. Every phase up to `50_desktop` takes a snapshot, the first of each path whole
-and the rest as layers; `60_kernel` and `70_image` leave `KDOS_SNAPSHOT_PATHS` empty in their
-`phase.env` and are re-run instead of restored.
+The thirteen phases under `script/phases/` and the ports tree filed on shelves pass preflight,
+`testing/phaseclosure.py` and the self-test. A build has run every phase from `00_cross` to
+`70_image` on these lists and written `build/iso-build/kdos.iso`; its tree holds every port the
+lists name but `kdos-kfs` of `41_system` (see the ports tree under [Host and packaging](status.md#host-and-packaging) in Status).
+A phase's progress is the names in its `packages.d/*.txt` that `ls build/fs/var/lib/kpkg/db` also
+shows. `build/snapshots/timings.json` holds step times for `00_cross` to `31_compilers` only,
+because that build's figures for the later phases were not recorded, and nothing else it left
+measures a port's build: see [Build times](../../kfs/17-appendices/sbu.md). Only `30_foundation`
+has a measured snapshot, 412 MiB whole. Layered snapshots have been measured
+only on a synthetic ten-phase tree, where they came to 23% of full ones. A run writes snapshots
+only when given `--snapshot` or the picker's `S`; then every phase up to `50_desktop` takes one,
+the first of each path whole and the rest as layers, and `60_kernel` and `70_image` leave
+`KDOS_SNAPSHOT_PATHS` empty in their `phase.env` and are re-run instead of restored.
 
 ### Some command-line programs build after Qt
 
@@ -1207,7 +1213,7 @@ most machines. `testing/devdeps-image.sh` builds a container where they run.
 `testing/selftest.sh` runs the orchestrator end to end against a synthetic two-phase tree (forking
 steps, writing logs, taking and restoring snapshots) and a three-phase one whose snapshots are
 layers, each restored and compared entry by entry with the tree it came from, and `kdosbuild --selftest` asserts its view
-geometry, log classifier, retry and jobserver. `testing/selftest.sh` also builds `kpkg` and drives it against
+geometry, log classifier, phase retry, jobserver and timings merge. `testing/selftest.sh` also builds `kpkg` and drives it against
 synthetic, source-less ports, covering reproducible packaging, shared indexes, file ownership,
 recipe-hash skipping, binhost signing and package deltas. A package built twice to compare its
 bytes is that synthetic port, not a real one, and no test reconstructs a pack from a pack delta

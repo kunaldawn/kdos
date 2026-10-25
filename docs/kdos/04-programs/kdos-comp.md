@@ -143,7 +143,9 @@ A path value may start with `~/` or `$HOME/`; both are expanded. A yes/no value 
 ### Keys applied on reload
 
 These take effect when the compositor reloads, which happens on `SIGHUP`, `kdos-comp -r`, the
-**Reload Configuration** entry in the desktop's right-click menu, and every `kdos theme`.
+**Reload Configuration** entry in the compositor's root menu, and every `kdos theme`. A right click
+on the wallpaper opens the root menu only with `desktop_icons = no`; the desktop's own menu has no
+reload entry.
 
 | Key | Default | Range | Does |
 |---|---|---|---|
@@ -204,7 +206,7 @@ compositor never believes a setting that the panel on screen is not using.
 | `slit` | `no` | yes/no | The dockapp column (the slit): one line of text per *dockapp*, a command re-run on an interval, as set in `~/.config/kdos/slit.conf` |
 | `clipboard` | `yes` | yes/no | The clipboard history daemon |
 | `icons` | `yes` | yes/no | Whether the panel and the desktop draw pictures at all |
-| `chrome_font` | `Terminus:pixelsize=32` | a fontconfig pattern | The font of every [supervised child](#supervised-children) except the panel: the desktop icons, the slit and the session daemons. The panel does not pass it on to the menus and popups it opens, which draw in `libkwl`'s default |
+| `chrome_font` | `Terminus:pixelsize=32` | a fontconfig pattern | The font of every [supervised child](#supervised-children) except the panel and the on-screen keyboard: the desktop icons, the slit and the session daemons. The panel does not pass it on to the menus and popups it opens, which draw in `libkwl`'s default |
 | `clock_format` | `%H:%M` | a `strftime` format | The panel clock |
 | `osk` | `off` | `off`, `manual`, `auto` | [The on-screen keyboard](#the-on-screen-keyboard): not started, started hidden, or also shown while a text field has the focus |
 
@@ -241,8 +243,7 @@ they are listed here because they sit beside `comp.conf`.
 
 `~/.config/kdos/favorites` has a similar role but ships with seven pinned entries, because an empty
 list leaves the Start menu's pinned column and the palette's pinned rows blank on a new machine.
-Delete every line if you want it empty. The panel's quick-launch row reads the whole line as the
-identifier, and every shipped line carries a `code=`, so on a new account that row is empty; see
+Delete every line if you want it empty; the format is in
 [Configuration](../06-reference/configuration.md#configkdosfavorites). An identifier with no
 matching desktop entry is skipped silently, so an application that is not installed leaves no
 launcher that opens nothing.
@@ -530,8 +531,11 @@ Scanlines ship off because they fight the text underneath. The desktop is a grid
 and a dark line on every third physical row crosses the glyphs at a period nothing on screen
 shares, so crisp two-colour text arrives striped. `crt_scanlines = 60` turns them on.
 
-The pass needs the GLES2 renderer. On software rendering, including a virtual machine with plain
-graphics, it is switched off at startup and the log says so.
+The pass needs the GLES2 renderer on a GPU. It is switched off at startup, and the log says so,
+on the pixman renderer and on a GLES2 renderer whose `GL_RENDERER` names `llvmpipe`, `softpipe` or
+`swrast`: Mesa's software drivers, which wlroots accepts when EGL falls back to `kms_swrast` and on
+which the shader would run on the CPU over every pixel of every frame. A virtual machine with plain
+graphics is one of these.
 
 Two short animations belong to the pass and run only when it is active and `motion` is on (see
 [Motion](#motion)):
@@ -1132,13 +1136,20 @@ apply at the next login:
 
 A child that exits more than five times within 30 seconds is not restarted again. The log records
 it, and a `kdos-prompt` dialog names the program that was given up on (one dialog per reload,
-however many children fail). **Reload Configuration** in the desktop's right-click menu, or
-`kdos-comp -r`, resets the counters and gives it another run of attempts.
+however many children fail). Any reload, `kdos-comp -r` or `pkill -HUP -x kdos-comp`, resets the
+counters and gives it another run of attempts.
 
 Before starting a child, the compositor clears the signal mask and resets every signal the session
 had ignored. Ignored signals survive `exec`, so a session started under something like `nohup`
 would otherwise pass that on, and the live retint, which is delivered as `SIGHUP`, would never
 arrive.
+
+Every child, and the dialog that names one given up on, is sent `SIGTERM` when the compositor
+exits (`PR_SET_PDEATHSIG`, set after `setsid()`; a child whose compositor is already gone by then
+exits at once). Each child runs in a session of its own, so nothing else would end it, and a
+desktop restarted from tty1 would meet the previous one's children still running: the old
+`kdos-netagent` still registered with NetworkManager, which refuses the new one, and the new one's
+every exit counted as a crash until it is given up on.
 
 Programs launched by key bindings are not supervised: a terminal opened with a key is not part of
 the desktop's chrome.

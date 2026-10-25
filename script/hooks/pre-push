@@ -35,6 +35,25 @@
 # the same and more; this holds when preflight is not run.
 # KDOS_SKIP_LAYOUT_CHECK=1 bypasses it.
 #
+# EVERY NEW OR CHANGED PATCH SAYS WHAT IT CHANGES, also from git's tree: a
+# .patch or .diff under ports/ or src/ that a pushed commit no remote holds
+# adds or modifies must have a `Subject:` line in its mail header at the tip,
+# because KDOS from Scratch prints that line on the port's page. A move that
+# keeps the content whole (R100) of a patch the remotes already hold is not a
+# change, and the patches that predate the rule pass until one is edited; a
+# patch added and then moved whole before the push is still new, so the
+# commits are read oldest first and a move carries its path's state to the
+# new path. testing/kfscheck.py and preflight hold
+# the same rule. KDOS_SKIP_PATCH_CHECK=1 bypasses it.
+#
+# THE BOOKS come next, and are the one check here that reads the WORKING COPY
+# rather than the pushed commit, so push from a checkout of what is pushed:
+# testing/docscheck.sh (both books' links, prose and page contract, and the
+# port counts) and testing/kfscheck.py (KDOS from Scratch's sidecars, notes,
+# patches, recipe stamp, includes and a full render). A stale recipe stamp
+# fails here until `make book-stamp` (no built tree needed) or `make
+# book-data` is run. KDOS_SKIP_BOOK_CHECK=1 bypasses them.
+#
 # A recipe's `sha256 =` is a promise that ports/fetch can find those bytes. A
 # commit whose recipe names a hash the archive does not hold builds on the
 # machine that wrote it and nowhere else, and nothing notices until somebody
@@ -122,6 +141,68 @@ if [ "${KDOS_SKIP_LAYOUT_CHECK:-}" != 1 ]; then
         echo "pre-push: (KDOS_SKIP_LAYOUT_CHECK=1 git push … skips this check)" >&2
         exit 1
     done
+fi
+
+# patch_problems <commit> — one line per patch that a commit reachable from
+# <commit> and on no remote adds or modifies (or moves whole, once one of them
+# has added or modified it: the state follows the path, oldest commit first),
+# and that has no Subject: line
+# before its first `diff `, `--- ` or `Index: ` line at <commit>. The rule is
+# testing/kfscheck.py's `patches` check; a `[PATCH]` tag alone is no subject.
+patch_problems() {
+    git log --reverse --format= --name-status -M "$1" --not --remotes -- \
+            'ports/*.patch' 'ports/*.diff' 'src/*.patch' 'src/*.diff' 2>/dev/null |
+    awk -F '\t' '
+        $1 ~ /^[AM]/ { s[$2] = 1 }
+        $1 ~ /^D/    { delete s[$2] }
+        $1 ~ /^[RC]/ { if ($1 !~ /100$/ || ($2 in s)) s[$3] = 1
+                       if ($1 ~ /^R/) delete s[$2] }
+        END { for (p in s) print p }' |
+    LC_ALL=C sort -u | while IFS= read -r p; do
+        git cat-file -e "$1:$p" 2>/dev/null || continue
+        git show "$1:$p" | awk '
+            BEGIN { r = 1 }
+            /^(diff |--- |Index: )/ { exit }
+            /^Subject:/ {
+                s = $0
+                sub(/^Subject:[[:space:]]*/, "", s)
+                sub(/^\[[^]]*PATCH[^]]*\][[:space:]]*/, "", s)
+                if (s != "") r = 0
+                exit
+            }
+            END { exit r }' || echo "$p: no Subject: line says what it changes"
+    done
+}
+
+if [ "${KDOS_SKIP_PATCH_CHECK:-}" != 1 ]; then
+    declare -A PATCHED=()
+    for line in "${LINES[@]}"; do
+        read -r _lref lsha _rref _rsha <<< "$line"
+        [ -n "$lsha" ] && [[ ! "$lsha" =~ ^0+$ ]] || continue
+        [ -z "${PATCHED[$lsha]:-}" ] || continue
+        PATCHED[$lsha]=1
+        bad=$(patch_problems "$lsha")
+        [ -z "$bad" ] && continue
+        echo "pre-push: a new or changed patch has no Subject: header at $(git rev-parse --short "$lsha"):" >&2
+        sed 's/^/  /' <<< "$bad" >&2
+        echo "pre-push: (KDOS_SKIP_PATCH_CHECK=1 git push … skips this check)" >&2
+        exit 1
+    done
+fi
+
+if [ "${KDOS_SKIP_BOOK_CHECK:-}" != 1 ]; then
+    BOOKLOG=$(mktemp) || exit 1
+    if ! (cd "$ROOT" || exit 1
+          bash testing/docscheck.sh; d=$?
+          python3 testing/kfscheck.py; k=$?
+          [ "$d" = 0 ] && [ "$k" = 0 ]) > "$BOOKLOG" 2>&1; then
+        cat "$BOOKLOG" >&2
+        rm -f "$BOOKLOG"
+        echo "pre-push: the books do not match the tree (testing/docscheck.sh, testing/kfscheck.py)" >&2
+        echo "pre-push: (KDOS_SKIP_BOOK_CHECK=1 git push … skips this check)" >&2
+        exit 1
+    fi
+    rm -f "$BOOKLOG"
 fi
 
 [ "${KDOS_SKIP_PUBLISH_CHECK:-}" = 1 ] && exit 0

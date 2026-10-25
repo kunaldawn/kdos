@@ -1,0 +1,24 @@
++=[ Updates ]==================================================================+
+| Updates                                                                      |
+| 3 behind, 0 with a known vulnerability                                       |
+|------------------------------------------------------------------------------|
+|  Behind    Security                                                          |
+|                                                                              |
+| nothing installed matches the security table                                 |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|------------------------------------------------------------------------------|
+| table 2026-08-12, 26 days old, 600 unchecked                                 |
+| Left/Right page | r refresh | Esc Close                                      |
+| slot A is live, slot B was marked good 3 boots ago    [ Refresh ] [ Close ]  |
++==============================================================================+

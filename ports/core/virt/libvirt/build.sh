@@ -130,8 +130,8 @@ case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
         echo "[KDOS] Starting $NAME..."
-        # No --daemon: ksvc must watch the daemon itself.
-        supervise "$NAME" "$DAEMON"
+        mkdir -p /run/libvirt
+        supervise "$NAME" "$DAEMON" --pid-file /run/libvirt/virtlogd.pid
         ;;
     stop)   stop_service "$NAME" ;;
     status) check_status "$NAME" ;;
@@ -151,8 +151,8 @@ case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
         echo "[KDOS] Starting $NAME..."
-        # No --daemon: ksvc must watch the daemon itself.
-        supervise "$NAME" "$DAEMON"
+        mkdir -p /run/libvirt
+        supervise "$NAME" "$DAEMON" --pid-file /run/libvirt/libvirtd.pid
         ;;
     stop)   stop_service "$NAME" ;;
     status) check_status "$NAME" ;;

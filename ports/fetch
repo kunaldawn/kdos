@@ -41,6 +41,10 @@
 #   4. the recipe's `source =` the URL that names this filename, if one does
 #   5. regeneration            only for the port's own vendor bundle
 #
+# A fetched file beside a recipe that none of its lines names any more, and
+# that is a hard link into the cache, is removed from the port directory; see
+# fetch_port.
+#
 # The hash is the identity and every location is advisory: a copy from the
 # archive and a copy from upstream are the same file or neither verifies. The
 # archive is asked before upstream because it cannot 404 when an upstream host
@@ -852,6 +856,28 @@ fetch_port() {
         fi
         rc=1
     done 3<<< "$list"
+
+    # A FILE NO LINE OF THE RECIPE NAMES ANY MORE IS REMOVED when it is a hard
+    # link to its own cache entry. kp_recipe_hash hashes every file beside a
+    # recipe that no `sha256 =` line names, so the tarball a version change
+    # left behind would change the port's hash, and rebuild it, for bytes no
+    # build reads. The cache keeps those bytes, so the removal loses nothing.
+    # A file with one link, a copy across filesystems, or one git tracks is
+    # not the cache's and is left for a person; --check only reports.
+    local stale
+    for stale in "$portdir"/*; do
+        f=${stale##*/}
+        [ -f "$stale" ] && [ ! -L "$stale" ] || continue
+        [ -z "${hashed[$f]:-}" ] && [ -z "${url_of[$f]:-}" ] && [ "$f" != "$vendor_file" ] || continue
+        [ "$(stat -c %h "$stale")" -ge 2 ] || continue
+        is_tracked "$portdir" "$f" && continue
+        [ "$stale" -ef "$(src_cache_path "$(sha256sum "$stale" | cut -d' ' -f1)")" ] || continue
+        if [ "$MODE" = check ]; then
+            echo "⚠  $port/$f: no line of the recipe names it; make fetch removes it"
+        elif rm -f "$stale"; then
+            echo "✓  $port: removed $f, which no line of the recipe names (a copy stays in the cache)"
+        fi
+    done
 
     [ "$MODE" = check ] && return 0
 

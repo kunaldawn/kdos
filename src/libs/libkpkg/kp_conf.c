@@ -570,9 +570,16 @@ typedef struct {
 	char *owner;
 } OwnedPair;
 
+/* A path two packages claim (a `kpkgadd -f` install, or a merged-/usr pair
+ * of spellings) sorts its claims by package name, so the run of equal keys
+ * has one order whatever the C library's qsort does with ties: glibc's is a
+ * stable merge, musl's is not, and the order the manifests were read in
+ * would otherwise decide nothing on one and everything on the other. */
 static int cmp_owned(const void *a, const void *b)
 {
-	return strcmp(((const OwnedPair *)a)->path, ((const OwnedPair *)b)->path);
+	const OwnedPair *x = a, *y = b;
+	int r = strcmp(x->path, y->path);
+	return r ? r : strcmp(x->owner, y->owner);
 }
 
 static int cmp_str(const void *a, const void *b)
@@ -726,21 +733,26 @@ static int cmp_stored_rel(const char *stored, const char *rel)
 	return strcmp(stored + 2, rel);
 }
 
-/* Binary search; -1 when nothing claims it. */
+/* Binary search for the first of the equal keys; -1 when nothing claims it.
+ * The first is the claimant whose package name sorts first, which is the
+ * owner whatever the table's size: a search that stopped at any equal key
+ * would land on a different claimant in the partial table than in the full
+ * one. */
 static int owned_find(const KpOwned *o, const char *rel)
 {
-	int lo = 0, hi = o->n - 1;
+	int lo = 0, hi = o->n - 1, hit = -1;
 	while (lo <= hi) {
 		int mid = lo + (hi - lo) / 2;
 		int r = cmp_stored_rel(o->path[mid], rel);
-		if (!r)
-			return mid;
-		if (r < 0)
+		if (!r) {
+			hit = mid;
+			hi = mid - 1;
+		} else if (r < 0)
 			lo = mid + 1;
 		else
 			hi = mid - 1;
 	}
-	return -1;
+	return hit;
 }
 
 /* `rel` is `usr/bin/tar`; the database spells it `./usr/bin/tar`. */
@@ -752,24 +764,19 @@ const char *kp_owned_owner(const KpOwned *o, const char *rel)
 	return i < 0 ? NULL : o->owner[i];
 }
 
-/* Equal keys sit side by side in the sorted table and the search lands on any
- * one of them, so the run is walked both ways from where it landed. */
+/* Equal keys sit side by side in the sorted table, in package-name order, and
+ * the search lands on the first, so the walk runs forward through the run and
+ * the other claimant named is the first by name that is not `self`. */
 const char *kp_owned_other(const KpOwned *o, const char *rel,
 			   const char *self)
 {
 	char *key = kp_canon_path(&o->canon, rel);
 	int i = owned_find(o, key);
 	const char *hit = NULL;
-	if (i >= 0) {
-		for (int j = i; j >= 0 && !hit &&
-				!cmp_stored_rel(o->path[j], key); j--)
-			if (strcmp(o->owner[j], self))
-				hit = o->owner[j];
-		for (int j = i + 1; j < o->n && !hit &&
-				!cmp_stored_rel(o->path[j], key); j++)
-			if (strcmp(o->owner[j], self))
-				hit = o->owner[j];
-	}
+	for (int j = i; i >= 0 && j < o->n && !hit &&
+			!cmp_stored_rel(o->path[j], key); j++)
+		if (strcmp(o->owner[j], self))
+			hit = o->owner[j];
 	free(key);
 	return hit;
 }

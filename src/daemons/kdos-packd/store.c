@@ -120,6 +120,35 @@ int kd_retain(void)
 }
 
 /*
+ * A KEPT VERSION OF `id` is `<id>-<version>.kpack` in the store whose own
+ * metadata names `id`. The name alone cannot say so: an id may contain `-`,
+ * so `foo-bar.kpack` reads as a kept `bar` of foo by its name and is the
+ * installed pack foo-bar by its contents, and a sweep or a rollback of foo
+ * that trusted the name would delete or install the other application.
+ * Answers 1 with the version the name carries, 0 for any other file.
+ */
+static int kept_version(const char *name, const char *id, char *ver,
+			size_t cap)
+{
+	size_t l = strlen(name), idlen = strlen(id);
+	char *path;
+	KpkPack p;
+	int ok;
+
+	if (l < idlen + 8 || strcmp(name + l - 6, ".kpack"))
+		return 0;
+	if (strncmp(name, id, idlen) || name[idlen] != '-')
+		return 0;
+	if (l - 6 - idlen - 1 >= cap)
+		return 0;
+	kb_strlcpy(ver, name + idlen + 1, l - 6 - idlen);
+	path = kb_path_join(kd_store_dir(), name);
+	ok = kpk_open(path, &p) == 0 && !strcmp(p.meta.id, id);
+	free(path);
+	return ok;
+}
+
+/*
  * Drop superseded copies of one id down to `kd_retain()`, newest kept.
  * Run after an install, which is the only moment a new one appears — a sweep
  * on a timer would be a background job deleting somebody's rollback while
@@ -130,7 +159,6 @@ static void kd_sweep(const char *id)
 	char **names = kb_listdir(kd_store_dir(), NULL);
 	char keep[8][96];
 	int nkeep = 0, retain = kd_retain();
-	size_t idlen = strlen(id);
 
 	if (retain > 8)
 		retain = 8;
@@ -140,15 +168,9 @@ static void kd_sweep(const char *id)
 	/* The newest `retain` versions, by kp_vercmp so `1.10` beats `1.9`. */
 	for (char **nm = names; *nm; nm++) {
 		char ver[96];
-		size_t l = strlen(*nm);
 
-		if (l < idlen + 8 || strcmp(*nm + l - 6, ".kpack"))
+		if (!kept_version(*nm, id, ver, sizeof(ver)))
 			continue;
-		if (strncmp(*nm, id, idlen) || (*nm)[idlen] != '-')
-			continue;
-		if (l - 6 - idlen - 1 >= sizeof(ver))
-			continue;
-		kb_strlcpy(ver, *nm + idlen + 1, l - 6 - idlen);
 		if (nkeep < retain) {
 			kb_strlcpy(keep[nkeep++], ver, sizeof(keep[0]));
 		} else if (retain > 0) {
@@ -163,16 +185,10 @@ static void kd_sweep(const char *id)
 
 	for (char **nm = names; *nm; nm++) {
 		char path[KD_PATH * 2], ver[96];
-		size_t l = strlen(*nm);
 		int kept = 0;
 
-		if (l < idlen + 8 || strcmp(*nm + l - 6, ".kpack"))
+		if (!kept_version(*nm, id, ver, sizeof(ver)))
 			continue;
-		if (strncmp(*nm, id, idlen) || (*nm)[idlen] != '-')
-			continue;
-		if (l - 6 - idlen - 1 >= sizeof(ver))
-			continue;
-		kb_strlcpy(ver, *nm + idlen + 1, l - 6 - idlen);
 		for (int i = 0; i < nkeep; i++)
 			if (!strcmp(keep[i], ver))
 				kept = 1;
@@ -227,11 +243,28 @@ static void scan_dir(const char *dir, KdOrigin origin)
 		}
 
 		/*
+		 * IN THE STORE THE ROW IS `<id>.kpack` AND NOTHING ELSE. An
+		 * install names the version it installs so and renames the one
+		 * it supersedes `<id>-<version>.kpack`, which is what rollback
+		 * reads and never a row: `-` sorts before `.`, so a scan that
+		 * took the first file naming an id would list and mount the
+		 * kept version in place of the installed one.
+		 */
+		if (origin == KD_ORIGIN_STORE) {
+			size_t il = strlen(p.meta.id);
+			if (strncmp(*n, p.meta.id, il) ||
+			    strcmp(*n + il, ".kpack")) {
+				free(path);
+				continue;
+			}
+		}
+
+		/*
 		 * An id already in the table wins if it is INSTALLED: the store
 		 * shadows the medium, so a pack the user updated is the one
 		 * that runs even while the older one is still on the stick.
-		 * A second copy in the same directory is the older version kept
-		 * for rollback and is not a row of its own.
+		 * Of two files on the medium naming one id, the first read is
+		 * the row.
 		 */
 		at = kd_find(p.meta.id);
 		if (at >= 0) {
@@ -523,19 +556,25 @@ int kd_rollback(const char *id, char *msg, size_t n)
 		return -1;
 	}
 
-	/* The newest kept version that is not the one installed. */
+	snprintf(cur, sizeof(cur), "%s/%s.kpack", kd_store_dir(), id);
+	if (kpk_open(cur, &p) != 0) {
+		snprintf(msg, n, "%s is unreadable", cur);
+		return -1;
+	}
+
+	/* The newest kept version, by kp_vercmp as the sweep keeps them, so
+	 * `1.10` is newer than `1.9`. One equal to the installed version is
+	 * skipped: the installed file is renamed to that same name below, so
+	 * taking it would overwrite the kept copy and restore nothing. */
 	names = kb_listdir(kd_store_dir(), NULL);
 	for (char **nm = names; nm && *nm; nm++) {
-		char idpart[KPK_ID_MAX + 96];
-		size_t l = strlen(*nm);
-		if (l < 8 || strcmp(*nm + l - 6, ".kpack"))
+		char ver[sizeof(best)];
+		if (!kept_version(*nm, id, ver, sizeof(ver)))
 			continue;
-		kb_strlcpy(idpart, *nm, sizeof(idpart));
-		idpart[l - 6] = 0;
-		if (strncmp(idpart, id, strlen(id)) || idpart[strlen(id)] != '-')
+		if (!strcmp(ver, p.meta.version))
 			continue;
-		if (!best[0] || strcmp(idpart + strlen(id) + 1, best) > 0)
-			kb_strlcpy(best, idpart + strlen(id) + 1, sizeof(best));
+		if (!best[0] || kp_vercmp(ver, best) > 0)
+			kb_strlcpy(best, ver, sizeof(best));
 	}
 	kb_strv_free(names);
 	if (!best[0]) {
@@ -543,12 +582,7 @@ int kd_rollback(const char *id, char *msg, size_t n)
 		return -1;
 	}
 
-	snprintf(cur, sizeof(cur), "%s/%s.kpack", kd_store_dir(), id);
 	snprintf(prev, sizeof(prev), "%s/%s-%s.kpack", kd_store_dir(), id, best);
-	if (kpk_open(cur, &p) != 0) {
-		snprintf(msg, n, "%s is unreadable", cur);
-		return -1;
-	}
 	snprintf(keep, sizeof(keep), "%s/%s-%s.kpack", kd_store_dir(), id,
 		 p.meta.version);
 

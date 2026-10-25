@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/sdl-create-state-dir.patch"
+
 DOS2UNIX=true ./configure --prefix=/usr --libdir=/usr/lib \
 	--enable-sdl2ui \
 	--with-sdlsound \

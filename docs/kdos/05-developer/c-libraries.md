@@ -234,8 +234,9 @@ program could share. It is a file name, never a security check.
   `$XDG_STATE_HOME` (or `~/.local/state`) on every call, and returns 0 when there is no home.
 - `kb_json_str()` is the escaper every `--json` output goes through.
 - `kb_notify()` raises a desktop notification through `gdbus`, detached and best effort, so a
-  program that emitted a notification escape is never blocked by it. Nothing here links a D-Bus
-  library.
+  program that emitted a notification escape is never blocked by it. `gdbus`'s reply, the
+  notification's id, goes to `/dev/null` rather than to the caller's terminal. Nothing here links a
+  D-Bus library.
 - `kb_terminal()` names the terminal emulator to open a terminal program in, and answers NULL where
   there is no session (a bare virtual terminal, a serial console, an ssh login).
 - `kb_desktop_prefix()` gives the lowercased first name in `$XDG_CURRENT_DESKTOP`, which is how
@@ -582,9 +583,16 @@ Night light is a transform over the slots, not a scheme. `ktui_theme_night()` wa
 is the shape of a lower colour temperature, and it is why a warmed accent still reads as itself.
 It hands out a copy and keeps the chosen scheme beside it: eight-bit values do not divide back
 exactly, so turning night light off returns to the table rather than undoing the arithmetic. The
-caller reads the toggle, because this library holds no opinion about where a desktop keeps its
-state, and the call returns whether the palette actually changed, so a caller can skip a repaint it
-does not owe. The warmed copy is one buffer rewritten in place, so its address stays the same when
+call returns whether the palette actually changed, so a caller can skip a repaint it does not owe.
+
+A desktop surface calls neither of those directly. `ktui_theme_load()` reads the accent through
+`kcol_theme_name()` and the `night-light` toggle through `kb_toggle_on()`, sets the scheme (the
+default when there is no state file), then applies the toggle, in that order because the scheme is
+what the warm copy is made from. Every surface that follows the desktop's accent loads it through
+this one call, at startup and on every retint, so none can follow the accent and miss the toggle;
+the night-light pass has to run even when the state file is absent, or turning the toggle off would
+leave that surface warm. A program that picks its own scheme, such as the installer or the build
+screen, calls `ktui_theme_set()` instead. The warmed copy is one buffer rewritten in place, so its address stays the same when
 the scheme under it changes. Anything that caches work per palette (the terminal backend's SGR
 table is one) compares the eight slot colours, never the pointer.
 
@@ -1024,7 +1032,7 @@ It is the one place a port is found by name, and every tool that looks a port up
 | `kp_port_dir(c, name)` | `kp_port_find` for a caller that reads NULL as "no such port". A name filed twice dies with the message, because every answer a caller could make of NULL there (skip it, build without it, take one copy) builds something other than the tree says |
 | `kp_ports_scan(c, &count, err, errcap)` | Every port of every repository, sorted, at both depths; the first repository wins a name two of them hold. NULL with `err` set when one repository holds a name twice or a port sits deeper than one shelf. A repository that exists and yields no port warns, since that is a walker and a tree that disagree about the layout |
 | `kp_all_ports(c, &count)` | `kp_ports_scan` that dies on a malformed tree |
-| `kp_owned_load(c)` | Every path an installed package claims, sorted, keyed on its canonical merged-`/usr` spelling, for `kp_owned_owner` and `kp_owned_other` to ask |
+| `kp_owned_load(c)` | Every path an installed package claims, sorted, keyed on its canonical merged-`/usr` spelling, for `kp_owned_owner` and `kp_owned_other` to ask. A path several packages claim is sorted by package name, and `kp_owned_owner` names the first, so the owner does not depend on the C library's `qsort` |
 | `kp_owned_load_some(c, rel, n)` | The same table holding only the claims on the `n` given paths, canonicalised the way a question is. Those two functions answer exactly as from the full table for those paths, and NULL for any other. It streams every manifest but keeps a handful of pairs, which is what an install, an upgrade's orphan sweep and a removal need |
 | `kp_db_lock(c)` | Takes the database's writer lock, an exclusive `flock` on `<db>/.lock`, blocking, and returns the descriptor; closing it releases the lock. -1 when the database directory cannot hold the file |
 
@@ -1481,7 +1489,11 @@ from its name:
   the pages that are drawn. Every header field, directory entry and blob extent is checked against
   the mapped length before use, so a damaged atlas is absent rather than partial. The atlas is
   tinted into the accent like every other piece of KDOS artwork, so one atlas serves all eight
-  accents.
+  accents. `kicon_slot_ink(name, cw, ch, rgb)` asks for a picture to sit on a lit plate: an atlas
+  picture whose covered pixels are all one colour is a mask and is drawn in `rgb` at its own alpha,
+  and anything else comes back as `kicon_slot()` draws it. The test runs in the pass over pixels the
+  decode has just produced, once per picture built, and the ink is part of the picture's key, so a
+  retint or night light that moves the ink builds a new picture rather than reusing the old one.
 - An application's own icon, found as a PNG under `/usr/share/icons/hicolor/<size>/apps/`, is drawn
   untinted.
 

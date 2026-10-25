@@ -50,6 +50,15 @@ service disable <name>        # do not start it at boot
 `ksvc check <name>` asks the supervisor directly whether the process it started under that name is
 alive, which is how a single periodic job is checked (see [Periodic jobs](#periodic-jobs)).
 
+A supervised service is `[ OK ]` only while its daemon runs. A daemon that keeps exiting is not:
+the supervisor stays up and restarts it every five seconds, and `service status` reports
+`[FAIL] <name>  (exited with code N; restarting)` between the starts, or `(crash loop: …)` while a
+daemon that has failed twice in a row is running again and has not yet lasted a minute. A daemon
+whose supervisor was killed outright is `[FAIL] <name>  (supervisor gone; daemon pid N still
+running)`; `service start` will not start a second beside it, and `service stop` ends it. The
+daemon's own last words are in `/run/kdos-svc.<name>.log`. The exact lines are in
+[ksvc and service](../04-programs/kdos-command.md#ksvc-and-service).
+
 `<name>` is the part of the file name between the number and `.sh`: `sshd` for `70_sshd.sh`. For
 `status`, `start`, `stop` and `restart`, an exact name is tried first and then any service whose
 name contains what you typed, so `service status ssh` finds `sshd`. `enable` and `disable` check
@@ -76,6 +85,7 @@ are absent if that package is removed.
 | `02_modules` | Modules listed in `/etc/modules-load.d` |
 | `03_lvm` | LVM volume groups, activated once at boot, then any `fstab` entry on a logical volume checked and mounted. On a disk boot the initramfs has already activated the groups it saw; this pass catches the rest — every group on a live boot, and any on a disk that appeared after the initramfs ran. A group plugged in later is not activated automatically; run `sudo vgchange -aay` |
 | `05_hostname` | The hostname |
+| `06_utmps` | Login records: `utmpd` and `wtmpd`, the two daemons through which `login`, `who`, `last` and init read and write the records of who is logged in and since when, because musl's own utmp calls do nothing. It waits up to two seconds for their sockets, so init's boot record is not lost — see [Login records](../03-architecture/boot-and-init.md#login-records) |
 | `10_sysctl` | Kernel parameters from `/etc/sysctl.conf`: unprivileged `ping`; the name of the fatal signal in the kernel log when a program crashes; the `fs.protected_*` link protections, which stop a user redirecting a root job's write in `/tmp` onto another file; per-task delay accounting, which `iotop`'s IO% and `htop`'s delay columns read, at a small cost on every wait the kernel accounts; no ICMP redirect accepted or sent; the loose reverse-path filter; and kernel addresses hidden from every account but root |
 | `12_zram` | Compressed swap in RAM — see [Storage](#storage) |
 | `15_userdirs` | `/run/user/<uid>` for every account with a UID from 1000 to 65533, and a delegated cgroup subtree for each with the `cpu`, `memory` and `pids` controllers, which is what lets rootless podman apply a *box*'s memory and CPU limits (a box is the rootless container one application runs in; see [the glossary](../06-reference/glossary.md)) |
@@ -179,7 +189,8 @@ Twelve scripts leave nothing for the supervisor to watch: `01_udev`, `02_modules
 result to the kernel, which keeps it. For these, `service status` reports what the script applied
 rather than a running process: `sysctl: applied`, the zram device and its nominal size, whether a
 firewall ruleset is loaded, the logical volumes (`lvs`), or TLP's own summary (`tlp-stat -s`).
-`02_modules` and `15_userdirs` print nothing. Two report a process after all:
+`02_modules` and `15_userdirs` print nothing, and `service list` shows `—` for them. Two report a
+process after all:
 `service status boltd` says whether the bus has `boltd` running, and `service status udev` says
 whether `udevd` is running, because `udevd` runs on its own once the script has started it.
 
@@ -245,9 +256,10 @@ a desktop switched off every night would never reach an overnight one.
 ### Your own jobs
 
 Put your own jobs in `~/.config/kdos/timers.d/*.timer`, in the same format. Your desktop session
-starts them when you log in and stops them when you log out: a job that writes into your home
-directory should not outlive the login that started it. While you are logged in they repeat like
-the system ones — each line runs in a loop that restarts `snooze` after every run.
+starts them when you log in, and they repeat like the system ones — each line runs in a loop that
+restarts `snooze` after every run. Log Out does not stop them: they keep running at the tty1
+prompt it leaves, and end when that login ends (`exit` at the prompt). Starting the desktop again
+from the same prompt stops the running set before starting its own.
 
 Differences from the system table:
 
@@ -255,7 +267,8 @@ Differences from the system table:
   is skipped **silently**. If a job never fires, check the line with `snooze -n <timespec>`, which
   prints the next five times it would run.
 - The job's output is discarded.
-- A job that must run every night whether or not anyone is logged in belongs in the system table.
+- A job that must run every night whether or not anyone has logged in since boot belongs in the
+  system table.
 
 Give each job a minute of its own. A laptop that wakes after its slots have passed runs every job
 whose slack covers the gap at the same moment, and jobs that start together compete for one disk.
@@ -331,7 +344,26 @@ Add the other groups from the table as needed. Two things to check afterwards:
   shipped files give `kdos` the range starting at 100000 and `root` the one starting at 200000,
   65536 IDs each, so a range added by hand for another account must not overlap those.
 - **`/run/user/<uid>`** is created by `15_userdirs` at boot for the accounts that exist then. For an
-  account added since, run `sudo service start userdirs` or reboot before its first desktop login.
+  account added since, run `sudo service start userdirs` or reboot before its first desktop login;
+  until then each of its logins prints `kdos: no /run/user/<uid> yet` with that instruction.
+
+No account keeps a mailbox: nothing on KDOS delivers local mail, so `/etc/login.defs` names no mail
+spool, `/etc/default/useradd` sets `CREATE_MAIL_SPOOL=no`, and `useradd` and `userdel` neither
+make nor look for one.
+
+**Removing a user.** End the account's processes first, then remove it with its home directory:
+
+```sh
+sudo pkill -u alice
+sudo userdel -r alice
+```
+
+Every login starts an `ssh-agent` for the account (`/etc/profile.d/50-ssh-agent.sh`, from the
+`openssh` package), and it keeps running after the login ends. `userdel` refuses an account with a
+running process, printing `user alice is currently used by process <pid>` and exiting 8 with
+nothing removed. `userdel -r` also takes the account's own group and its `/etc/subuid` and
+`/etc/subgid` ranges. If `/etc/kdos/login.conf` names the account, point `autologin` elsewhere
+first, or `tty1` boots to a login nobody can complete.
 
 ## Storage
 
@@ -443,16 +475,25 @@ stores nothing; only a request that allows interaction raises a box.
 
 **DNS.** NetworkManager starts a caching `dnsmasq` on `127.0.0.1` and `::1` and feeds it the
 servers of each connection, as set by `/usr/lib/NetworkManager/conf.d/10-kdos-dns.conf`. DNS is
-split: a VPN's servers answer for the VPN's own domains rather than replacing every server the
-machine has. A file of the same name in `/etc/NetworkManager/conf.d` overrides the shipped one.
+split by domain: each connection's servers answer for the domains in its search list, and a name
+in no connection's list goes to the servers of the connections holding the default route. A VPN
+that carries only its own networks answers only for its own domains; one that takes the default
+route answers every other name as well. A file of the same name in `/etc/NetworkManager/conf.d`
+overrides the shipped one.
 `/etc/resolv.conf` has one writer, `resolvconf` (openresolv), which NetworkManager, the fallback
-`dhcpcd` and `wg-quick` all go through, so none of them overwrites another's entries.
+`dhcpcd` and `wg-quick` all go through, so none of them overwrites another's entries. After each
+change it runs `service restart nscd` when `service status nscd` reports it running; a
+`dnsmasq`, `named` or `unbound` subscriber turned on in `/etc/resolvconf.conf` restarts its own
+service the same way.
 
 **VPNs.** OpenVPN works through NetworkManager with certificate and password authentication;
 PKCS#11 hardware tokens are not supported by the OpenVPN build. WireGuard works two ways:
 
 - `nmcli connection import type wireguard file wg0.conf` makes a NetworkManager profile, and its
-  `DNS=` servers go to the local `dnsmasq` for the tunnel's domains.
+  `DNS=` addresses go to the local `dnsmasq`. The names on the `DNS=` line become the tunnel's
+  domains; a line with addresses only gives the profile the domain `~`, so the tunnel's servers
+  answer every name. A `DNS=` line is dropped for an address family the `Address=` line has none
+  of.
 - `wg-quick up wg0` hands a `DNS=` line to `resolvconf`, which makes the tunnel's servers the only
   ones in `/etc/resolv.conf` until `wg-quick down wg0`.
 
@@ -641,11 +682,11 @@ Check, then apply:
 
 ```sh
 sudo nft -c -f /etc/nftables.conf     # check only
-sudo service nftables start           # apply
+sudo service start nftables           # apply
 ```
 
 `25_nftables` runs the same check before loading, so a file with a mistake is refused as a whole
-and the rules already loaded stay in force. `sudo service nftables stop` removes the `inet filter`
+and the rules already loaded stay in force. `sudo service stop nftables` removes the `inet filter`
 table, which leaves the machine unfiltered until the next start.
 
 ## Hardware
@@ -747,7 +788,7 @@ descriptor declares FIDO, and the scanner rule every scanner a SANE backend supp
 | `kdos-i2c.conf` | `i2c-dev` | No `/dev/i2c-*`, and the i2c rule has nothing to grant |
 | `kdos-hwmon.conf` | `nct6775` (Nuvoton), `it87` (ITE), `drivetemp` (SATA disk temperature) | `sensors` and `kdos-res` show CPU and GPU temperatures only — no fans, voltages or board temperatures |
 | `kdos-containers.conf` | `tun`, `overlay` | Container networking and overlay storage |
-| `kdos-drm.conf` | `virtio_gpu`, `qxl`, `bochs`, `vmwgfx` | Virtual machines' display drivers |
+| `kdos-drm.conf` | `qxl`, `vmwgfx`; it also names `virtio_gpu` and `bochs`, which are built into the kernel | Virtual machines' display drivers |
 
 Each hwmon driver binds only a chip it finds; on other hardware, or where the firmware has claimed
 the chip, the load fails and `02_modules` logs a skip. `sensors-detect` is not shipped, because it
@@ -838,7 +879,10 @@ mode.
 OpenPGP and national ID cards. Its `opensc.module` registers it with p11-kit, so openconnect accepts
 a `pkcs11:` URI and GnuTLS programs see the card's certificates; `ssh -I /usr/lib/opensc-pkcs11.so`
 uses it directly. `pkcs11-tool --list-slots` tells you whether the card is seen at all. Members of
-`wheel` reach smart cards without `sudo`.
+`wheel` reach smart cards without `sudo`. `/etc/default/pcscd` hides readers by name or adds text
+to every reader's name, through pcsc-lite's `PCSCLITE_FILTER_IGNORE_READER_NAMES` and
+`PCSCLITE_FILTER_EXTEND_READER_NAMES`; `sudo service restart pcscd` applies it (see
+[Configuration](../06-reference/configuration.md#other-machine-files)).
 
 ## Printing
 
@@ -850,10 +894,13 @@ sudo service enable cups
 sudo service start cups
 ```
 
-`kdos-print` (Printers in Settings, under System) lists the queues and their jobs, and adds a
-printer CUPS has discovered. It runs as you, not through a root daemon: CUPS is built with
-`lpadmin` as its system group, so membership of `lpadmin` is the authority to manage printers, and
-the `kdos` account has it. It sets a printer up only as IPP Everywhere, the driverless protocol a
+`kdos-print` (Printers in Settings, under System) lists the queues with their state and the
+default, and on a second page the devices `lpinfo -v` reports, less the `file` and `serial`
+backends and the bare backend names with no address, which name no printer. It adds one of those
+devices as a queue, makes a queue the default and removes one. It shows no print jobs; `lpstat -o`
+lists them. It runs as you, not through a root daemon: CUPS is built with `lpadmin` as its system
+group, so membership of `lpadmin` is the authority to manage printers, and the `kdos` account has
+it. It sets a printer up only as IPP Everywhere, the driverless protocol a
 printer advertises and CUPS configures without a PPD file; a printer that needs a vendor driver is
 refused, and the window says so. The same from a terminal:
 
@@ -965,7 +1012,7 @@ more than 180 days old.
 [glossary](../06-reference/glossary.md)). What counts as "an update" is a newer ports tree, so
 `kdos update` needs one on the machine, and every image carries one at `/ports`: each port's
 `kpkgbuild`, `build.sh` and patches, `ports/shelves`, `ports/sources.idx`, KDOS's own programs
-under `/ports/src` and the book they render under `/ports/docs`, with no source archive. `PORT_REPO` in `/etc/kpkg.conf` names where `kpkg`
+under `/ports/src` and the two books they render under `/ports/docs`, with no source archive. `PORT_REPO` in `/etc/kpkg.conf` names where `kpkg`
 looks: a space-separated list of recipe directories, by default the five of that tree,
 `/ports/core /ports/src/system /ports/src/art /ports/src/desktop /ports/src/daemons`. The KDOS
 source tree keeps its recipes in the same five directories — `ports/core` for upstream software,
@@ -1051,8 +1098,8 @@ The checks are grouped into sections:
 | Hardware | The wireless regulatory database is signed and loaded, and the domain is not the world domain `00`; Intel audio firmware (`sof-firmware`); GPU firmware; device nodes you cannot open, naming the group that owns each (see [the udev rules](#the-device-groups-and-the-udev-rules)); the boot medium |
 | Boxes | The application packs |
 | Session | `WAYLAND_DISPLAY` names a socket that exists; `XDG_RUNTIME_DIR` is set; `kdos-comp`, `kdos-shell` and the wlr desktop portal are running |
-| Containers | The mount namespace root is `/`, and `/etc/subuid` and `/etc/subgid` carry your range |
-| Desktop | The accent, the foot theme and the KDE palette (`kdeglobals`) are applied; Xwayland is reachable; the setuid bits on `kdos-checkpass`, `kdos-resctl`, `newuidmap` and `newgidmap`, and on `dbus-daemon-launch-helper` with group `messagebus`; `/etc/subuid` and `/etc/subgid` exist; `kdos-powerd`, `kdos-energyd` (or the absence of any RAPL energy counter) and `kdos-oomd` are running, and `fcitx5` when it is installed; the compositor's frame-timing and command sockets exist; `kdos-keys` and the screen-capture portal with `kdos-portals.conf` are installed; `~/.local/bin` is on `PATH` |
+| Containers | The mount namespace root is `/`; `/etc/subuid` and `/etc/subgid` carry your range; `podman info` opens your container store |
+| Desktop | The accent, the foot theme and the KDE palette (`kdeglobals`) are applied; Xwayland is reachable; the setuid bits on `kdos-checkpass`, `kdos-resctl`, `newuidmap` and `newgidmap`, and on `dbus-daemon-launch-helper` with group `messagebus`; `/etc/subuid` and `/etc/subgid` exist; `kdos-powerd`, `kdos-energyd` (a `skip` where there is no RAPL energy counter, as in most virtual machines) and `kdos-oomd` are running, and `fcitx5` when it is installed; the compositor's frame-timing and command sockets exist (a `skip` when the compositor runs under another account); `kdos-keys` and the screen-capture portal with `kdos-portals.conf` are installed; `~/.local/bin` is on `PATH` |
 | Security | Run as root only: whether the `kdos` account still has the shipped password `kdos` |
 
 Without its setuid bit, `kdos-checkpass` cannot read `/etc/shadow`, so the lock screen refuses every
@@ -1060,7 +1107,8 @@ password and locks you out of your own session, recoverable only from `tty2`; th
 `chown root` and `chmod 4755`. The shipped-password check needs to read `/etc/shadow`, so an
 ordinary user's run has no Security section at all rather than a check that pretends to have
 looked; run `sudo kdos doctor` to get it, and expect the session and container checks of that run
-to warn, since root has no desktop session.
+to warn, since root has no desktop session; the compositor's sockets are a `skip` there, because
+they are in the desktop user's runtime directory.
 
 `service list` and `service status <name>` show each service's state. After an upgrade,
 `kdos restarts` lists the running processes that still use code the upgrade replaced or removed;
@@ -1075,13 +1123,16 @@ no separate `klogd`. `/etc/syslog.conf` routes them:
 | File | Holds |
 |---|---|
 | `/var/log/messages` | Everything except authentication |
-| `/var/log/auth.log` | Logins, `sudo` and other authentication |
+| `/var/log/auth.log` | Logins, `sudo`, polkit and other authentication |
 | `/var/log/kern.log` | Kernel messages |
 | `/var/log/cron` | The `cron` facility; nothing on the image logs there by default |
 
-`syslogd` rotates each file itself at 1 MB and keeps five old copies, so no `logrotate` job exists.
+`syslogd` rotates each file itself at 1 MB and keeps six old copies — `messages.0`, then
+`messages.1.gz` to `messages.5.gz`, compressed — so no `logrotate` job exists.
 The limit matters on the live medium, where `/var/log` is in RAM and an unbounded log would take
 memory rather than disk. Emergency messages are also written to every logged-in terminal.
+`syslogd` runs with `-8`, so a message in UTF-8 is written as it was sent and the files stay text
+that a plain `grep` reads; only ASCII control characters are rewritten, as `^x`.
 
 Three more places hold what the system log does not:
 
@@ -1176,7 +1227,9 @@ baseline level there is nothing to measure, and it says so.
 listing the snapshots in your repository, newest first: `b` starts a backup (it does not wait for
 it to finish) and `r` re-reads the repository. `kdos-backup --once` backs up without a window, waits
 for restic, and exits 0 on success, 1 on any failure and 2 on a bad argument; that is what the
-timer runs.
+timer runs. restic's summary and errors are printed where `--once` runs, and a failure inside
+restic ends with `kdos-backup: restic exited N`, restic's own status. Under the timer both are
+discarded.
 
 Set it up once:
 

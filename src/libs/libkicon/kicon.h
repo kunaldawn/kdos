@@ -32,7 +32,8 @@
  *       this tree and there is not going to be one. Shipped in upstream's own
  *       colours and tinted at load through kcol_remap — the wallpaper's
  *       pipeline — so one atlas serves all eight accents and `kdos theme amber`
- *       retints it live.
+ *       retints it live. A caller drawing on a lit plate asks for an INK
+ *       (kicon_slot_ink), and a one-colour picture is then drawn in it.
  * ---------------------------------
  */
 
@@ -119,6 +120,22 @@ int kicon_slot(const char *name, int cw, int ch);
  * `cw` x `ch` cells either way.
  */
 int kicon_slot_pad(const char *name, int cw, int ch, int pad);
+
+/*
+ * The same, for a picture drawn on a LIT PLATE, with `rgb` (0xRRGGBB) the ink
+ * the plate's own text takes.
+ *
+ * An atlas picture whose opaque pixels are all one colour is a MASK: its shape
+ * is its alpha, and it is drawn in `rgb` at that alpha. That is most of the
+ * atlas — Papirus's symbolic set, one light grey — and the tint keeps
+ * lightness, so through kicon_slot() it is light on a light plate and cannot
+ * be seen. A picture of two colours or more, and every application icon, is
+ * drawn exactly as kicon_slot() draws it.
+ *
+ * The ink is part of the picture's identity, so a caller passes the slot's
+ * RGB as it stands now and a retint or night light needs nothing more.
+ */
+int kicon_slot_ink(const char *name, int cw, int ch, uint32_t rgb);
 
 /*
  * A sprite from PNG BYTES the caller already holds, rather than from a name.

@@ -420,6 +420,8 @@ int pix_main(int argc, char **argv)
 	sh_pic_backend();
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		draw();
 
 		KtuiEvent ev;

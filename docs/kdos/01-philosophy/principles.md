@@ -68,8 +68,9 @@ this in two ways:
    that holds processes cannot enable controllers for its children, and podman creates its
    container cgroups beside the caller's.
 2. [`kdos-oomd`](../04-programs/daemons.md#kdos-oomd) watches memory pressure through
-   `/proc/pressure/memory` and, when the machine stalls, kills the largest process that is neither
-   the desktop nor its plumbing. A box over the `memory` budget its profile declares is chosen
+   `/proc/pressure/memory` and, when the machine stalls while `MemAvailable` is at most a tenth of
+   `MemTotal` ([how it decides](../04-programs/daemons.md#how-it-decides)), kills the largest
+   process that is neither the desktop nor its plumbing. A box over the `memory` budget its profile declares is chosen
    first, so the profile key still means something where the limit itself could not be applied.
    Otherwise the largest boxed process is preferred to a host one whenever it holds at least half
    the memory of the largest candidate.
@@ -198,7 +199,7 @@ Five classes are exempt, and nothing outside them is:
   `ttf-dejavu`, `terminus-ttf`, `noto-emoji`, `font-liberation` and the X.org bitmap fonts.
 - **Bootstrap seeds.** The `rust` stage-0 toolchain, the `go` bootstrap toolchain, `zig1.wasm`
   inside the `zig` source, the upstream musl GHC that `ghc` builds with, the musl JDK that
-  `openjdk` boots from, `ocaml`'s `boot/ocamlc`, and the Groovy jars `kodi`'s binding generator
+  `openjdk` boots from, `ocaml`'s `boot/ocamlc` and `boot/ocamllex`, and the Groovy jars `kodi`'s binding generator
   runs on. A compiler written in its own language needs a working copy first; the seed is used by
   the build and never installed.
 - **Data with no other source form.** The `tessdata-eng` OCR models, the Whisper and SoundFont

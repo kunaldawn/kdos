@@ -23,6 +23,7 @@ cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release \
 	-DWITH_SYSTEMD=OFF -DWITH_SRV=OFF -DWITH_DLT=OFF
 make
 make DESTDIR=$PKG install
+install -dm755 "$PKG/var/lib/mosquitto"
 
 install -d "$PKG/etc/init.d"
 cat > "$PKG/etc/init.d/73_mosquitto.sh" <<'KDOS_SH'

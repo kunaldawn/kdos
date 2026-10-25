@@ -18,12 +18,12 @@ case "$(cat /sys/class/drm/card0/device/modalias 2>/dev/null)" in
 		# Without virgl there is no GL at all and wlroots must take its
 		# software renderer — that is what makes plain `make run` (no
 		# virgl) work. Read the feature bits from sysfs, NOT dmesg:
-		# dmesg is root-only under dmesg_restrict, so the old grep
-		# forced pixman for every normal user. The features file is one
-		# character per feature bit; VIRGL is bit 0. (The old check
-		# also demanded RESOURCE_BLOB — a smithay-era lesson; wlroots'
-		# GLES2 renderer runs fine on virgl without blob, measured on
-		# the labwc fork with the CRT pass on.)
+		# dmesg is root-only under dmesg_restrict, so a grep of it would
+		# force pixman for every normal user. The features file is one
+		# character per feature bit; VIRGL is bit 0. RESOURCE_BLOB is
+		# not required: wlroots' GLES2 renderer runs on virgl without
+		# blob, measured on the labwc fork with the CRT pass on, and
+		# demanding it would take GL from a guest that has it.
 		_gpu_virgl=0
 		for _vdev in /sys/bus/virtio/devices/virtio*; do
 			case "$(readlink "$_vdev/driver" 2>/dev/null)" in
@@ -40,6 +40,15 @@ case "$(cat /sys/class/drm/card0/device/modalias 2>/dev/null)" in
 		unset _gpu_virgl _vdev
 		;;
 esac
+
+# A display device with no render node has no GL of its own: bochs-drm behind
+# QEMU's std VGA, QXL, simpledrm, ast, mgag200, cirrus, hyperv_drm, vboxvideo.
+# Its only GL is Mesa's software rasteriser, which wlroots either refuses or
+# runs GLES2 on as llvmpipe, emulating on the CPU what pixman draws directly.
+# A render node with no hardware GL behind it is kdos-desktop-start's case.
+if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
+	export WLR_RENDERER=pixman
+fi
 
 kdos_session_runtime
 kdos_session_keymap

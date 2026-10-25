@@ -169,6 +169,8 @@ static int prompt_input(const char *msg, const char *font,
 	int rc = EXIT_CANCELLED;
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		prompt_input_draw(msg, &f);
 		ktui_draw_flush();
 
@@ -371,6 +373,8 @@ int prompt_main(int argc, char **argv)
 	int no_x = 0, no_end = 0, yes_x = 0, yes_end = 0;
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		prompt_draw(lines, nlines, yes, no, sel, &no_x, &no_end,
 			    &yes_x, &yes_end);
 		ktui_draw_flush();

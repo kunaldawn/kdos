@@ -673,7 +673,7 @@ static void draw(void)
 			rx -= 8;
 		}
 		if (c->alien)
-			ktui_draw_text_right(0, y, rx, "[box]", on ? fg : KT_DIM,
+			ktui_draw_text_right(0, y, rx, "[box]", ktui_sel_dim(on, 1),
 					     bg, KT_A_NONE);
 	}
 
@@ -708,7 +708,7 @@ static void draw(void)
 		snprintf(line, sizeof(line), "[%s] Always use this application",
 			 set_default ? "x" : " ");
 		ktui_draw_text(2, check_row, w - 4, line,
-			       set_default ? KT_ACCENT : KT_DIM, KT_SURFACE,
+			       set_default ? KT_ACCENT : KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 	}
 

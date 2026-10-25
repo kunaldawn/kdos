@@ -261,7 +261,7 @@ static void draw_startup_frame(StartupView *v)
 	if (nrow == 1) {
 		ktui_draw_text(4, ++y, ktui_w - 6,
 			       "no snapshots yet — the first build will "
-			       "create them", KT_DIM, KT_BG, 0);
+			       "create them", KT_MID, KT_BG, 0);
 		y++;
 	}
 	y++;
@@ -356,7 +356,7 @@ static void draw_startup_frame(StartupView *v)
 	char foot[640];
 	snprintf(foot, sizeof(foot), "codec: %s   writing: %s   snapshots: %s",
 		 snap_codec(), v->snap_on ? "on" : "off", m->snap_root);
-	ktui_draw_text(2, ktui_h - 1, ktui_w - 4, foot, KT_DIM, KT_BG, 0);
+	ktui_draw_text(2, ktui_h - 1, ktui_w - 4, foot, KT_MID, KT_BG, 0);
 }
 
 int screen_startup(Manager *m, int *index, const char *commit,
@@ -543,7 +543,7 @@ static void draw_packages_frame(PackView *v)
 	ktui_draw_text(2, 3, ktui_w - 4, line, KT_TEXT, KT_BG, KT_A_BOLD);
 	snprintf(line, sizeof(line), "%d selected, %d of %d shown",
 		 *st->nchosen, nmatch, st->npkg);
-	ktui_draw_text(2, 4, ktui_w - 4, line, KT_DIM, KT_BG, 0);
+	ktui_draw_text(2, 4, ktui_w - 4, line, KT_MID, KT_BG, 0);
 
 	int top = 6, rows = ktui_h - top - 3;
 	if (sel < v->off)
@@ -1074,7 +1074,7 @@ static void draw_activity(Manager *m)
 	 * plus a 2-column gap (26 total), so what is left for the path is
 	 * (w - 4) - 26 = w - 30, ending at r.x + w - 3 like every other line
 	 * — NOT w - 28, which ran one column into the box's own border. */
-	ktui_draw_text(r.x + 2 + 26, r.y + 5, w - 30, a->current, KT_DIM,
+	ktui_draw_text(r.x + 2 + 26, r.y + 5, w - 30, a->current, KT_MID,
 		       KT_SURFACE, 0);
 	ktui_draw_text(r.x + 2, r.y + 6, w - 4, "[Q] cancel", KT_WARN,
 		       KT_SURFACE, KT_A_BOLD);
@@ -1303,7 +1303,7 @@ static void node_icon(BStep *n, char *out, size_t cap, int *fg)
 {
 	if (n->is_group) {
 		snprintf(out, cap, " [%s]", n->expanded ? "-" : "+");
-		*fg = n->status == ST_SKIPPED ? KT_DIM : KT_ACCENT;
+		*fg = n->status == ST_SKIPPED ? KT_MID : KT_ACCENT;
 		return;
 	}
 	switch (n->status) {
@@ -1313,7 +1313,7 @@ static void node_icon(BStep *n, char *out, size_t cap, int *fg)
 		break;
 	case ST_SKIPPED:
 		kb_strlcpy(out, (ktui_caps & KT_CAP_UTF8) ? " ·· " : " .. ", cap);
-		*fg = KT_DIM;
+		*fg = KT_MID;
 		break;
 	case ST_RUNNING:
 		snprintf(out, cap, " %s  ", spin());
@@ -1395,7 +1395,7 @@ static void draw_tree_row(BStep *n, int rx, int y, int width, int bg, int sel)
 	int x = rx;
 	if (!n->is_group)
 		x += 2;
-	ktui_draw_text(x, y, width - x, icon, sel ? KT_BG : icon_fg, bg,
+	ktui_draw_text(x, y, width - x, icon, sel ? KT_TEXT : icon_fg, bg,
 		       KT_A_BOLD);
 	x += (int)strlen(icon) > 4 ? ktui_utf8_width(icon) : 4;
 	x += 1;
@@ -1418,7 +1418,7 @@ static void draw_tree_row(BStep *n, int rx, int y, int width, int bg, int sel)
 	if (room < 1)
 		room = 1;
 	ktui_draw_text(x, y, room, n->title,
-		       sel ? KT_BG : n->installed ? KT_MID : KT_TEXT, bg,
+		       sel ? KT_TEXT : n->installed ? KT_MID : KT_TEXT, bg,
 		       sel ? KT_A_BOLD : 0);
 
 	if (n->is_group && n->nchild) {
@@ -1432,13 +1432,10 @@ static void draw_tree_row(BStep *n, int rx, int y, int width, int bg, int sel)
 		if (width - bw + 1 > x)
 			ktui_gauge(width - bw + 1, y, bw,
 				   (double)cdone / n->nchild,
-				   sel ? KT_BG : KT_ACCENT, bg);
+				   sel ? KT_TEXT : KT_ACCENT, bg);
 	} else if (t[0]) {
 		ktui_draw_text_right(x, y, width - x + 1, t,
-				     sel ? KT_BG
-				     : (n->status == ST_SKIPPED ? KT_DIM
-								: KT_MID),
-				     bg, 0);
+				     ktui_sel_dim(sel, 1), bg, 0);
 	}
 }
 
@@ -1575,7 +1572,7 @@ static void draw_search_bar(BuildView *v, int x, int w, int bottom)
 	char cnt[48];
 	snprintf(cnt, sizeof(cnt), "%d hit%s%s", v->nhit,
 		 v->nhit == 1 ? "" : "s", v->nhit ? "  [n]/[N]" : "");
-	ktui_draw_text_right(x, bottom, w, cnt, KT_DIM, KT_BG, 0);
+	ktui_draw_text_right(x, bottom, w, cnt, KT_MID, KT_BG, 0);
 }
 
 static void draw_detail(BuildView *v)
@@ -1595,7 +1592,7 @@ static void draw_detail(BuildView *v)
 	else if (n->status == ST_FAIL)
 		fg = KT_ERR;
 	else if (n->status == ST_SKIPPED)
-		fg = KT_DIM;
+		fg = KT_MID;
 
 	char head[256];
 	snprintf(head, sizeof(head), " STEP: %s ", n->title);
@@ -1659,7 +1656,7 @@ static void draw_detail(BuildView *v)
 				: n->installed
 					? "Installed and current: not run."
 					: "No logs.";
-		ktui_draw_text(x, log_y, w, msg, KT_DIM, KT_BG, 0);
+		ktui_draw_text(x, log_y, w, msg, KT_MID, KT_BG, 0);
 		draw_search_bar(v, x, w, bottom);
 		return;
 	}
@@ -2366,12 +2363,12 @@ static void draw_failure_panel(Manager *m, BStep *n)
 	const char *err[FAIL_LOG_LINES];
 	int nerr = collect_err_lines(n, err, FAIL_LOG_LINES);
 	if (nerr) {
-		ktui_draw_text(x, y++, iw, "last errors:", KT_DIM, KT_SURFACE, 0);
+		ktui_draw_text(x, y++, iw, "last errors:", KT_MID, KT_SURFACE, 0);
 		for (int i = 0; i < nerr; i++)
 			ktui_draw_text(x, y++, iw, err[i], KT_ERR, KT_SURFACE, 0);
 	} else {
 		ktui_draw_text(x, y++, iw, "(no lines classified as an error)",
-			       KT_DIM, KT_SURFACE, 0);
+			       KT_MID, KT_SURFACE, 0);
 	}
 
 	/* Pinned to the panel's own last interior row regardless of how many
@@ -2484,7 +2481,7 @@ static void draw_success_panel(Manager *m)
 			 human_bytes(isz));
 	else
 		snprintf(buf, sizeof(buf), "iso         not produced by this run");
-	ktui_draw_text(x, y++, iw, buf, isz > 0 ? KT_TEXT : KT_DIM, KT_SURFACE,
+	ktui_draw_text(x, y++, iw, buf, isz > 0 ? KT_TEXT : KT_MID, KT_SURFACE,
 		       0);
 
 	ktui_draw_hline(r.x + 1, y++, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);

@@ -45,7 +45,7 @@
  * a person with `cat`. */
 static int manifest_add(const char *id, const char *path)
 {
-	FILE *f = fopen(kd_manifest(), "a");
+	FILE *f = fopen(kd_manifest(), "ae");
 
 	if (!f)
 		return -1;

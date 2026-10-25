@@ -1,0 +1,383 @@
+Subject: Use trace_add("write") instead of the trace("w") and trace_variable("w") API Tk 9 removed
+
+diff -ru a/lib/python/qtvcp/lib/ripper/gcode_ripper.py b/lib/python/qtvcp/lib/ripper/gcode_ripper.py
+--- a/lib/python/qtvcp/lib/ripper/gcode_ripper.py
++++ b/lib/python/qtvcp/lib/ripper/gcode_ripper.py
+@@ -570,7 +570,7 @@
+         self.Entry_GscaleXY = Entry(self.master,width="15")
+         self.Entry_GscaleXY.configure(textvariable=self.SCALEXY)
+         self.Entry_GscaleXY.bind('<Return>', self.Recalculate_Click)
+-        self.SCALEXY.trace_variable("w", self.Entry_GscaleXY_Callback)
++        self.SCALEXY.trace_add("write", self.Entry_GscaleXY_Callback)
+         self.NormalColor =  self.Entry_GscaleXY.cget('bg')
+ 
+ 
+@@ -579,7 +579,7 @@
+         self.Entry_GscaleZ = Entry(self.master,width="15")
+         self.Entry_GscaleZ.configure(textvariable=self.SCALEZ)
+         self.Entry_GscaleZ.bind('<Return>', self.Recalculate_Click)
+-        self.SCALEZ.trace_variable("w", self.Entry_GscaleZ_Callback)
++        self.SCALEZ.trace_add("write", self.Entry_GscaleZ_Callback)
+         self.NormalColor =  self.Entry_GscaleZ.cget('bg')
+ 
+         self.Label_GscaleF = Label(self.master,text="Scale Feed", anchor=CENTER)
+@@ -587,7 +587,7 @@
+         self.Entry_GscaleF = Entry(self.master,width="15")
+         self.Entry_GscaleF.configure(textvariable=self.SCALEF)
+         self.Entry_GscaleF.bind('<Return>', self.Recalculate_Click)
+-        self.SCALEF.trace_variable("w", self.Entry_GscaleF_Callback)
++        self.SCALEF.trace_add("write", self.Entry_GscaleF_Callback)
+         self.NormalColor =  self.Entry_GscaleF.cget('bg')
+         
+         self.Label_Rotate = Label(self.master,text="Rotate")
+@@ -595,7 +595,7 @@
+         self.Entry_Rotate = Entry(self.master,width="15")
+         self.Entry_Rotate.configure(textvariable=self.ROTATE)
+         self.Entry_Rotate.bind('<Return>', self.Recalculate_Click)
+-        self.ROTATE.trace_variable("w", self.Entry_Rotate_Callback)
++        self.ROTATE.trace_add("write", self.Entry_Rotate_Callback)
+ 
+         self.Label_Origin      = Label(self.master,text="Origin", anchor=CENTER )
+         self.Origin_OptionMenu = OptionMenu(root, self.origin,
+@@ -629,7 +629,7 @@
+         self.Radio_View_ISO3 = Radiobutton(self.master,text="ISO3", value="ISO3",
+                                          width="100", anchor=W)
+         self.Radio_View_ISO3.configure(variable=self.plot_view)
+-        self.plot_view.trace_variable("w", self.menu_View_Refresh_Callback)
++        self.plot_view.trace_add("write", self.menu_View_Refresh_Callback)
+ 
+ 
+         #-----------------------
+@@ -654,7 +654,7 @@
+                                          width="100", anchor=W)
+         self.Radio_Gcode_Probe.configure(variable=self.gcode_op )
+         
+-        self.gcode_op.trace_variable("w", self.Entry_recalc_var_Callback)
++        self.gcode_op.trace_add("write", self.Entry_recalc_var_Callback)
+ 
+         
+         # End Left Column #
+@@ -677,26 +677,26 @@
+         self.Entry_SplitX = Entry(self.master,width="15")
+         self.Entry_SplitX.configure(textvariable=self.SPLITX)
+         self.Entry_SplitX.bind('<Return>', self.Recalculate_Click)
+-        self.SPLITX.trace_variable("w", self.Entry_SplitX_Callback)
++        self.SPLITX.trace_add("write", self.Entry_SplitX_Callback)
+ 
+         self.Label_SplitY = Label(self.master,text="Split Y Position", anchor=CENTER )
+         self.Label_SplitY_u = Label(self.master,textvariable=self.units, anchor=W)
+         self.Entry_SplitY = Entry(self.master,width="15")
+         self.Entry_SplitY.configure(textvariable=self.SPLITY)
+         self.Entry_SplitY.bind('<Return>', self.Recalculate_Click)
+-        self.SPLITY.trace_variable("w", self.Entry_SplitY_Callback)
++        self.SPLITY.trace_add("write", self.Entry_SplitY_Callback)
+         
+         self.Label_SplitA = Label(self.master,text="Split Angle", anchor=CENTER )
+         self.Label_SplitA_u = Label(self.master,text="deg", anchor=W)
+         self.Entry_SplitA = Entry(self.master,width="15")
+         self.Entry_SplitA.configure(textvariable=self.SPLITA)
+         self.Entry_SplitA.bind('<Return>', self.Recalculate_Click)
+-        self.SPLITA.trace_variable("w", self.Entry_SplitA_Callback)
++        self.SPLITA.trace_add("write", self.Entry_SplitA_Callback)
+ 
+         self.Label_rotateb = Label(self.master,text="Rotate Black")
+         self.Checkbutton_rotateb = Checkbutton(self.master,text=" ", anchor=W)   
+         self.Checkbutton_rotateb.configure(variable=self.rotateb)
+-        self.rotateb.trace_variable("w", self.Entry_recalc_var_Callback)
++        self.rotateb.trace_add("write", self.Entry_recalc_var_Callback)
+ 
+         self.Label_gcode_opt = Label(self.master,text="G-Code Properties:", anchor=W)
+         
+@@ -705,14 +705,14 @@
+         self.Entry_Feed = Entry(self.master,width="15")
+         self.Entry_Feed.configure(textvariable=self.FEED)
+         self.Entry_Feed.bind('<Return>', self.Recalculate_Click)
+-        self.FEED.trace_variable("w", self.Entry_Feed_Callback)
++        self.FEED.trace_add("write", self.Entry_Feed_Callback)
+ 
+         self.Label_Zsafe = Label(self.master,text="Z Safe")
+         self.Label_Zsafe_u = Label(self.master,textvariable=self.units, anchor=W)
+         self.Entry_Zsafe = Entry(self.master,width="15")
+         self.Entry_Zsafe.configure(textvariable=self.ZSAFE)
+         self.Entry_Zsafe.bind('<Return>', self.Recalculate_Click)
+-        self.ZSAFE.trace_variable("w", self.Entry_Zsafe_Callback)
++        self.ZSAFE.trace_add("write", self.Entry_Zsafe_Callback)
+ 
+         ### WRAP ###
+         self.Label_Gcode_Wrap_Properties = Label(self.master,text="G-Code Wrap Properties:",\
+@@ -723,7 +723,7 @@
+         self.Entry_Wrap_DIA = Entry(self.master,width="15")
+         self.Entry_Wrap_DIA.configure(textvariable=self.WRAP_DIA)
+         self.Entry_Wrap_DIA.bind('<Return>', self.Recalculate_Click)
+-        self.WRAP_DIA.trace_variable("w", self.Entry_Wrap_DIA_Callback)
++        self.WRAP_DIA.trace_add("write", self.Entry_Wrap_DIA_Callback)
+ 
+         self.Label_Radio_Wrap = Label(self.master,text="Axis Wrap Type:", anchor=W)
+         self.Radio_Wrap_Y2A = Radiobutton(self.master,text="Y-axis to A-axis", value="Y2A",
+@@ -738,7 +738,7 @@
+         self.Radio_Wrap_X2A = Radiobutton(self.master,text="X-axis to A-axis", value="X2A",
+                                          width="100", anchor=W)
+         self.Radio_Wrap_X2A.configure(variable=self.WRAP_TYPE )
+-        self.WRAP_TYPE.trace_variable("w", self.Entry_recalc_var_Callback)
++        self.WRAP_TYPE.trace_add("write", self.Entry_recalc_var_Callback)
+         
+         self.Label_WRAP_FSCALE = Label(self.master,text="Feed Adjust:", anchor=W)
+         self.WRAP_FSCALE_OptionMenu = OptionMenu(root, self.WRAP_FSCALE, "Scale-Rotary", "None")
+@@ -765,7 +765,7 @@
+         self.Radio_Export_CSV = Radiobutton(self.master,text="CSV (text)", value="CSV",
+                                          width="100", anchor=W)
+         self.Radio_Export_CSV.configure(variable=self.EXP_TYPE )
+-        self.WRAP_TYPE.trace_variable("w", self.Entry_recalc_var_Callback)
++        self.WRAP_TYPE.trace_add("write", self.Entry_recalc_var_Callback)
+ 
+ 
+         self.Label_EXP_RAPIDS = Label(self.master,text="Include Rapid Moves", anchor=W)
+@@ -785,52 +785,52 @@
+         self.Entry_ProbeOffsetX   = Entry(self.master,width="15")
+         self.Entry_ProbeOffsetX.configure(textvariable=self.probe_offsetX)
+         self.Entry_ProbeOffsetX.bind('<Return>', self.Recalculate_Click)
+-        self.probe_offsetX.trace_variable("w", self.Entry_ProbeOffsetX_Callback)
++        self.probe_offsetX.trace_add("write", self.Entry_ProbeOffsetX_Callback)
+ 
+         self.Label_ProbeOffsetY   = Label(self.master,text="Probe Y Offset", anchor=CENTER )
+         self.Label_ProbeOffsetY_u = Label(self.master,textvariable=self.units, anchor=W)
+         self.Entry_ProbeOffsetY   = Entry(self.master,width="15")
+         self.Entry_ProbeOffsetY.configure(textvariable=self.probe_offsetY)
+         self.Entry_ProbeOffsetY.bind('<Return>', self.Recalculate_Click)
+-        self.probe_offsetY.trace_variable("w", self.Entry_ProbeOffsetY_Callback)
++        self.probe_offsetY.trace_add("write", self.Entry_ProbeOffsetY_Callback)
+ 
+         self.Label_ProbeOffsetZ   = Label(self.master,text="Probe Z Offset", anchor=CENTER )
+         self.Label_ProbeOffsetZ_u = Label(self.master,textvariable=self.units, anchor=W)
+         self.Entry_ProbeOffsetZ   = Entry(self.master,width="15")
+         self.Entry_ProbeOffsetZ.configure(textvariable=self.probe_offsetZ)
+         self.Entry_ProbeOffsetZ.bind('<Return>', self.Recalculate_Click)
+-        self.probe_offsetZ.trace_variable("w", self.Entry_ProbeOffsetZ_Callback)
++        self.probe_offsetZ.trace_add("write", self.Entry_ProbeOffsetZ_Callback)
+         
+         self.Label_ProbeSafe = Label(self.master,text="Probe Z Safe")
+         self.Label_ProbeSafe_u = Label(self.master,textvariable=self.units, anchor=W)
+         self.Entry_ProbeSafe = Entry(self.master,width="15")
+         self.Entry_ProbeSafe.configure(textvariable=self.probe_safe)
+-        self.probe_safe.trace_variable("w", self.Entry_ProbeSafe_Callback)
++        self.probe_safe.trace_add("write", self.Entry_ProbeSafe_Callback)
+ 
+         self.Label_ProbeDepth = Label(self.master,text="Probe Depth")
+         self.Label_ProbeDepth_u = Label(self.master,textvariable=self.units, anchor=W)
+         self.Entry_ProbeDepth = Entry(self.master,width="15")
+         self.Entry_ProbeDepth.configure(textvariable=self.probe_depth)
+         self.Entry_ProbeDepth.bind('<Return>', self.Recalculate_Click)
+-        self.probe_depth.trace_variable("w", self.Entry_ProbeDepth_Callback)
++        self.probe_depth.trace_add("write", self.Entry_ProbeDepth_Callback)
+ 
+         self.Label_ProbeFeed = Label(self.master,text="Probe Feed")
+         self.Label_ProbeFeed_u = Label(self.master,textvariable=self.funits, anchor=W)
+         self.Entry_ProbeFeed = Entry(self.master,width="15")
+         self.Entry_ProbeFeed.configure(textvariable=self.probe_feed)
+-        self.probe_feed.trace_variable("w", self.Entry_ProbeFeed_Callback)
++        self.probe_feed.trace_add("write", self.Entry_ProbeFeed_Callback)
+         
+         self.Label_Probe_Num_X = Label(self.master,text="X Points")
+         self.Entry_Probe_Num_X = Entry(self.master,width="15")
+         self.Entry_Probe_Num_X.configure(textvariable=self.probe_nX)
+         self.Entry_Probe_Num_X.bind('<Return>', self.Recalculate_Click)
+-        self.probe_nX.trace_variable("w", self.Entry_probe_nX_Callback)
++        self.probe_nX.trace_add("write", self.Entry_probe_nX_Callback)
+ 
+         self.Label_Probe_Num_Y = Label(self.master,text="Y Points")
+         self.Entry_Probe_Num_Y = Entry(self.master,width="15")
+         self.Entry_Probe_Num_Y.configure(textvariable=self.probe_nY)
+         self.Entry_Probe_Num_Y.bind('<Return>', self.Recalculate_Click)
+-        self.probe_nY.trace_variable("w", self.Entry_probe_nY_Callback)
++        self.probe_nY.trace_add("write", self.Entry_probe_nY_Callback)
+ 
+ #        self.Label_ProbeInterpSpace = Label(self.master,text="Interp. Steps")
+ #        self.Entry_ProbeInterpSpace = Entry(self.master,width="15")
+@@ -3504,7 +3504,7 @@
+                                          width="100", anchor=W)
+         self.Radio_Units_MM.place(x=w_label+110, y=D_Yloc, width=75, height=23)
+         self.Radio_Units_MM.configure(variable=self.units )
+-        self.units.trace_variable("w", self.Entry_units_var_Callback)
++        self.units.trace_add("write", self.Entry_units_var_Callback)
+         
+         D_Yloc=D_Yloc+D_dY
+         self.Label_ArcAngle = Label(gen_settings,text="Arc Angle")
+@@ -3515,7 +3515,7 @@
+         self.Entry_ArcAngle.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_ArcAngle.configure(textvariable=self.segarc)
+         self.Entry_ArcAngle.bind('<Return>', self.Settings_ReLoad_Click)
+-        self.segarc.trace_variable("w", self.Entry_ArcAngle_Callback)
++        self.segarc.trace_add("write", self.Entry_ArcAngle_Callback)
+         self.entry_set(self.Entry_ArcAngle,self.Entry_ArcAngle_Check(),2)
+ 
+         D_Yloc=D_Yloc+D_dY
+@@ -3527,7 +3527,7 @@
+         self.Entry_Accuracy.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_Accuracy.configure(textvariable=self.accuracy)
+         self.Entry_Accuracy.bind('<Return>', self.Settings_ReLoad_Click)
+-        self.accuracy.trace_variable("w", self.Entry_Accuracy_Callback)
++        self.accuracy.trace_add("write", self.Entry_Accuracy_Callback)
+         self.entry_set(self.Entry_Accuracy,self.Entry_Accuracy_Check(),2)
+         
+         D_Yloc=D_Yloc+D_dY
+@@ -3536,7 +3536,7 @@
+         self.Checkbutton_clean = Checkbutton(gen_settings,text="", anchor=W)
+         self.Checkbutton_clean.place(x=xd_entry_L, y=D_Yloc, width=75, height=23)
+         self.Checkbutton_clean.configure(variable=self.arc2line)
+-        self.arc2line.trace_variable("w", self.Settings_ReLoad_Click)
++        self.arc2line.trace_add("write", self.Settings_ReLoad_Click)
+         
+         D_Yloc=D_Yloc+D_dY
+         self.Label_Gpre = Label(gen_settings,text="G Code Header")
+@@ -3566,7 +3566,7 @@
+         self.Entry_DPlaces_L.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_DPlaces_L.configure(textvariable=self.DPlaces_L)
+         self.Entry_DPlaces_L.bind('<Return>', self.Settings_ReLoad_Click)
+-        self.DPlaces_L.trace_variable("w", self.Entry_DPlaces_L_Callback)
++        self.DPlaces_L.trace_add("write", self.Entry_DPlaces_L_Callback)
+         self.entry_set(self.Entry_DPlaces_L,self.Entry_DPlaces_L_Check(),2)
+         
+         D_Yloc=D_Yloc+D_dY
+@@ -3576,7 +3576,7 @@
+         self.Entry_DPlaces_R.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_DPlaces_R.configure(textvariable=self.DPlaces_R)
+         self.Entry_DPlaces_R.bind('<Return>', self.Settings_ReLoad_Click)
+-        self.DPlaces_R.trace_variable("w", self.Entry_DPlaces_R_Callback)
++        self.DPlaces_R.trace_add("write", self.Entry_DPlaces_R_Callback)
+         self.entry_set(self.Entry_DPlaces_R,self.Entry_DPlaces_R_Check(),2)
+ 
+         D_Yloc=D_Yloc+D_dY
+@@ -3586,7 +3586,7 @@
+         self.Entry_DPlaces_F.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_DPlaces_F.configure(textvariable=self.DPlaces_F)
+         self.Entry_DPlaces_F.bind('<Return>', self.Settings_ReLoad_Click)
+-        self.DPlaces_F.trace_variable("w", self.Entry_DPlaces_F_Callback)
++        self.DPlaces_F.trace_add("write", self.Entry_DPlaces_F_Callback)
+         self.entry_set(self.Entry_DPlaces_F,self.Entry_DPlaces_F_Check(),2)
+         
+         D_Yloc=D_Yloc+D_dY
+@@ -3674,7 +3674,7 @@
+         self.Entry_SR_Tool_DIA = Entry(stock_round_win,width="15")
+         self.Entry_SR_Tool_DIA.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_SR_Tool_DIA.configure(textvariable=self.sr_tool_dia)
+-        self.sr_tool_dia.trace_variable("w", self.Entry_SR_Tool_DIA_Callback)
++        self.sr_tool_dia.trace_add("write", self.Entry_SR_Tool_DIA_Callback)
+         self.entry_set(self.Entry_SR_Tool_DIA,self.Entry_SR_Tool_DIA_Check(),2)
+ 
+         D_Yloc=D_Yloc+D_dY
+@@ -3685,7 +3685,7 @@
+         self.Entry_SR_Step = Entry(stock_round_win,width="15")
+         self.Entry_SR_Step.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_SR_Step.configure(textvariable=self.sr_step)
+-        self.sr_step.trace_variable("w", self.Entry_SR_Step_Callback)
++        self.sr_step.trace_add("write", self.Entry_SR_Step_Callback)
+         self.entry_set(self.Entry_SR_Step,self.Entry_SR_Step_Check(),2)
+ 
+         D_Yloc=D_Yloc+D_dY
+@@ -3697,7 +3697,7 @@
+         self.Entry_SR_Remove.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_SR_Remove.configure(textvariable=self.sr_remove)
+         self.Entry_SR_Remove.bind('<Return>', self.Settings_ReLoad_Click)
+-        self.sr_remove.trace_variable("w", self.Entry_SR_Remove_Callback)
++        self.sr_remove.trace_add("write", self.Entry_SR_Remove_Callback)
+         self.entry_set(self.Entry_SR_Remove,self.Entry_SR_Remove_Check(),2)
+ 
+         D_Yloc=D_Yloc+D_dY
+@@ -3708,7 +3708,7 @@
+         self.Entry_SR_MIN_X = Entry(stock_round_win,width="15")
+         self.Entry_SR_MIN_X.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_SR_MIN_X.configure(textvariable=self.sr_minx)
+-        self.sr_minx.trace_variable("w", self.Entry_SR_MIN_X_Callback)
++        self.sr_minx.trace_add("write", self.Entry_SR_MIN_X_Callback)
+         self.entry_set(self.Entry_SR_MIN_X,self.Entry_SR_MIN_X_Check(),2)
+ 
+         D_Yloc=D_Yloc+D_dY
+@@ -3719,7 +3719,7 @@
+         self.Entry_SR_MAX_X = Entry(stock_round_win,width="15")
+         self.Entry_SR_MAX_X.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_SR_MAX_X.configure(textvariable=self.sr_maxx)
+-        self.sr_maxx.trace_variable("w", self.Entry_SR_MAX_X_Callback)
++        self.sr_maxx.trace_add("write", self.Entry_SR_MAX_X_Callback)
+         self.entry_set(self.Entry_SR_MAX_X,self.Entry_SR_MAX_X_Check(),2)
+ 
+         D_Yloc=D_Yloc+D_dY
+@@ -3730,7 +3730,7 @@
+         self.Entry_SR_ZSafe = Entry(stock_round_win,width="15")
+         self.Entry_SR_ZSafe.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_SR_ZSafe.configure(textvariable=self.sr_zsafe)
+-        self.sr_zsafe.trace_variable("w", self.Entry_SR_ZSafe_Callback)
++        self.sr_zsafe.trace_add("write", self.Entry_SR_ZSafe_Callback)
+         self.entry_set(self.Entry_SR_ZSafe,self.Entry_SR_ZSafe_Check(),2)
+ 
+         D_Yloc=D_Yloc+D_dY
+@@ -3742,7 +3742,7 @@
+         self.Entry_SR_Feed.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_SR_Feed.configure(textvariable=self.sr_feed)
+         self.Entry_SR_Feed.bind('<Return>', self.Settings_ReLoad_Click)
+-        self.sr_feed.trace_variable("w", self.Entry_SR_Feed_Callback)
++        self.sr_feed.trace_add("write", self.Entry_SR_Feed_Callback)
+         self.entry_set(self.Entry_SR_Feed,self.Entry_SR_Feed_Check(),2)
+ 
+         D_Yloc=D_Yloc+D_dY
+@@ -3754,7 +3754,7 @@
+         self.Entry_SR_PlungeFeed.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+         self.Entry_SR_PlungeFeed.configure(textvariable=self.sr_plungef)
+         self.Entry_SR_PlungeFeed.bind('<Return>', self.Settings_ReLoad_Click)
+-        self.sr_plungef.trace_variable("w", self.Entry_SR_PlungeFeed_Callback)
++        self.sr_plungef.trace_add("write", self.Entry_SR_PlungeFeed_Callback)
+         self.entry_set(self.Entry_SR_PlungeFeed,self.Entry_SR_PlungeFeed_Check(),2)
+ 
+         ##self.round_type #"axial" or "spiral"
+diff -ru a/nc_files/holecircle.py b/nc_files/holecircle.py
+--- a/nc_files/holecircle.py
++++ b/nc_files/holecircle.py
+@@ -92,7 +92,7 @@
+         var.set(v)
+         svar = tkinter.StringVar(f)
+         svar.set(options[v])
+-        svar.trace("w", trace)
++        svar.trace_add("write", trace)
+         wp = f._w.rstrip(".") + ".c" + svar._name
+         f.tk.call("combobox::combobox", wp, "-editable", 0, "-width",
+                 max(len(opt) for opt in options)+3, "-textvariable", svar._name,
+@@ -185,11 +185,11 @@
+         # from inside linuxcnc eg. gladevcp filechooser or AXIS GUI
+         #print(("update_ok", args), file=sys.stderr)
+ 
+-    vars['count'].trace('w', update_preview)
+-    vars['inc'].trace('w', update_preview)
+-    vars['th0'].trace('w', update_preview)
++    vars['count'].trace_add('write', update_preview)
++    vars['inc'].trace_add('write', update_preview)
++    vars['th0'].trace_add('write', update_preview)
+ 
+-    for i in vars.values(): i.trace('w', update_ok)
++    for i in vars.values(): i.trace_add('write', update_ok)
+ 
+     update_preview()
+ 
+diff -ru a/src/emc/usr_intf/axis/scripts/image-to-gcode.py b/src/emc/usr_intf/axis/scripts/image-to-gcode.py
+--- a/src/emc/usr_intf/axis/scripts/image-to-gcode.py
++++ b/src/emc/usr_intf/axis/scripts/image-to-gcode.py
+@@ -599,7 +599,7 @@
+         var.set(v)
+         svar = tkinter.StringVar(f)
+         svar.set(options[v])
+-        svar.trace("w", trace)
++        svar.trace_add("write", trace)
+         wp = f._w.rstrip(".") + ".c" + svar._name
+         f.tk.call("combobox::combobox", wp, "-editable", 0, "-width",
+                 max(len(opt) for opt in options)+3, "-textvariable", svar._name,
+@@ -713,9 +713,9 @@
+             widgets['roughing_depth'].configure(state='normal')
+         else:
+             widgets['roughing_depth'].configure(state='disabled')
+-    vars['pattern'].trace('w', trace_pattern)
+-    vars['bounded'].trace('w', trace_bounded)
+-    vars['roughing_offset'].trace('w', trace_offset)
++    vars['pattern'].trace_add('write', trace_pattern)
++    vars['bounded'].trace_add('write', trace_bounded)
++    vars['roughing_offset'].trace_add('write', trace_offset)
+ 
+     trace_pattern()
+     trace_bounded()

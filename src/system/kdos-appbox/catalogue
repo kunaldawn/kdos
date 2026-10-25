@@ -470,36 +470,36 @@ group games       app.gnome-chess
 # must never be an error — otherwise adding software is a two-file change
 # for no benefit.
 meta app.aegisub              Aegisub|AudioVideo|73260353|A free, cross-platform open source tool for creating and modifying subtitles
-meta app.apertium             app.apertium|Other|24838994|
+meta app.apertium             Apertium|Office|24838994|Rule-based machine translation between related languages
 meta app.arduino              Arduino IDE|Development|336719721|Open-source electronics prototyping platform
-meta app.astrometry           app.astrometry|Other|48128859|
+meta app.astrometry           Astrometry.net|Science|48128859|Plate-solve a sky photograph: find where in the sky it points
 meta app.audio-plugins        Calf Plugin Pack for JACK|AudioVideo|60209088|Process and produce sounds using a set of plugins with JACK interface
 meta app.baobab               Disk Usage Analyzer|System|1774929|Check folder sizes and available disk space
 meta app.bleachbit            BleachBit|System|36108790|Free space and maintain privacy
-meta app.claws-mail           Claws Mail|Network||A lightweight GTK email client
+meta app.claws-mail           Claws Mail|Network|11681792|A lightweight GTK email client
 meta app.colmap               COLMAP|Graphics|24900535|Structure-from-Motion and Multi-View Stereo
-meta app.cp2k                 app.cp2k|Other|217379656|
-meta app.desmume              app.desmume|Other|6849359|
+meta app.cp2k                 CP2K|Science|217379656|Quantum chemistry and solid-state molecular simulation
+meta app.desmume              DeSmuME|Game|6849359|Nintendo DS emulator
 meta app.drawing              Drawing|Graphics|25676649|Edit screenshots or memes
 meta app.ds9                  SAOImage DS9|Education|124676004|Astronomical Data Visualization Application
 meta app.easyeffects          Easy Effects|AudioVideo|21886980|Audio Effects for PipeWire Applications
-meta app.eccodes              app.eccodes|Other|301548411|
+meta app.eccodes              ecCodes and CDO|Science|301548411|Read, write and process GRIB and NetCDF weather and climate data
 meta app.f3d                  F3D|Graphics|262518214|A fast and minimalist 3D viewer
-meta app.fityk                Fityk|Science||Curve fitting and peak analysis, with Engauge Digitizer for reading data off a plot
+meta app.fityk                Fityk|Science|51259392|Curve fitting and peak analysis, with Engauge Digitizer for reading data off a plot
 meta app.foliate              Foliate|Office|169059851|Read e-books in style
 meta app.gerbv                Gerbv Gerber File Viewer|Development|4658759|Gerber file viewer for PCB design
-meta app.ghdl                 app.ghdl|Other|5149510|
+meta app.ghdl                 GHDL|Development|5149510|VHDL simulator
 meta app.ghex                 GHex|Development|1733919|Inspect and edit binary files
-meta app.gmic                 app.gmic|Other|122102600|
-meta app.gmt                  app.gmt|Other|246281029|
+meta app.gmic                 G'MIC|Graphics|122102600|Image processing framework with hundreds of filters
+meta app.gmt                  GMT|Science|246281029|Generic Mapping Tools: maps and plots of geographic data, with GSHHG coastlines
 meta app.gnome-chess          Chess|Game|2180476|Play the classic two-player board game of chess
-meta app.grace                Grace|Education|25864939|Core Font Set containing 35 freely distributable fonts from (URW)++
+meta app.grace                Grace|Science|25864939|WYSIWYG 2D plotting of numerical data
 meta app.grass                GRASS GIS 8|Education|163715981|GRASS GIS, the Open Source Geographic Information System
-meta app.gromacs              app.gromacs|Other|333730655|
+meta app.gromacs              GROMACS and LAMMPS|Science|333730655|Molecular dynamics simulation
 meta app.grsync               Grsync|System|4541751|Synchronize files and folders (a GTK GUI for rsync)
 meta app.gwyddion             Gwyddion|Science|13864070|Program for SPM (scanning probe microscopy) data visualization and analysis
 meta app.heaptrack            Heaptrack|Development|3704828|A heap memory profiler for Linux
-meta app.hugin                Hugin|Graphics||Panorama stitching, with Luminance HDR and Entangle for tethered capture
+meta app.hugin                Hugin|Graphics|948849664|Panorama stitching, with Luminance HDR and Entangle for tethered capture
 meta app.hexchat              HexChat|Network|5537523|IRC Client
 meta app.igv                  Integrative Genomics Viewer|Science|191418197|desktop genome vizualisation tool
 meta app.imagej               ImageJ|Graphics|102488017|Image processing and analysis
@@ -514,9 +514,9 @@ meta app.meld                 Meld|Development|27420076|Compare and merge your f
 meta app.meshlab              MeshLab|Graphics|21299497|View and process meshes
 meta app.mousepad             Mousepad|Utility|27109392|Mousepad is a simple text editor for the Xfce desktop environment
 meta app.nanovna-saver        NanoVNASaver|Electronics|132036605|Tool for reading, displaying and saving data from the NanoVNA
-meta app.nwchem               app.nwchem|Other|172651342|
+meta app.nwchem               NWChem|Science|172651342|Computational chemistry from molecules to periodic solids
 meta app.okteta               Okteta|Utility|11835288|Hex editor
-meta app.openfoam             app.openfoam|Other|313987950|
+meta app.openfoam             OpenFOAM|Science|313987950|Computational fluid dynamics toolbox
 meta app.paraview             ParaView|Science|638795766|Data analysis and visualization
 meta app.pcmanfm              PCMan File Manager|System|5022734|Browse the file system and manage the files
 meta app.pdfarranger          PDF Arranger|Office|35959437|Merge, shuffle, and crop PDFs
@@ -524,15 +524,15 @@ meta app.pspp                 GNU PSPP|Science|13106664|GNU PSPP is a program fo
 meta app.pulseview            PulseView|Development|20521522|Logic analyzer, oscilloscope and MSO GUI
 meta app.qpwgraph             qpwgraph|AudioVideo|34401364|A PipeWire Graph Qt GUI Interface
 meta app.quadrapassel         Quadrapassel|Game|5420687|Fit falling blocks together
-meta app.quantum-espresso     app.quantum-espresso|Other|272638816|
-meta app.rr                   app.rr|Other|32154432|
-meta app.rtklib               app.rtklib|Other|5923727|
+meta app.quantum-espresso     Quantum ESPRESSO|Science|272638816|Electronic-structure calculations and materials modelling with plane waves
+meta app.rr                   rr|Development|32154432|Record a program's execution and replay it deterministically under gdb
+meta app.rtklib               RTKLIB|Science|5923727|GNSS positioning: RTK and PPP processing of receiver data
 meta app.scilab               Scilab|Science|337266491|Scientific software for numerical computations
 meta app.scipy-stack          Jupyter Notebook|Development|173446126|Run Jupyter Notebook
 meta app.scribus              Scribus|Graphics|194802512|Open Source Page Layout and Desktop Publishing (DTP)
 meta app.seaview              SeaView|Biology|5481472|Edits multiple sequence alignments and prints them in PostScript format.
 meta app.simple-scan          Document Scanner|Graphics|61777196|Make a digital copy of your photos and documents
-meta app.sioyek               Sioyek|Development|67424790|A sanserif type­face fam­ily
+meta app.sioyek               Sioyek|Office|67424790|A PDF viewer for research papers and technical books
 meta app.siril                Siril|Science|39508199|Astronomical image processor
 meta app.sonicpi              SuperCollider IDE|AudioVideo|265815844|realtime computer music system
 meta app.surf                 Surf|Network|275196928|Simple web browser by the suckless community
@@ -540,7 +540,7 @@ meta app.vorta                Vorta|Utility|33146013|Backup client
 meta app.vscodium             VSCodium|TextEditor|371281015|VSCodium. Code editing. Redefined.
 meta app.xarchiver            Xarchiver|Utility|5275935|Create, extract and modify archives
 meta app.xournalpp            Xournal++|Office|13530622|Take handwritten notes
-meta app.xtb                  app.xtb|Other|4281157|
+meta app.xtb                  xtb|Science|4281157|Semi-empirical extended tight-binding quantum chemistry
 meta app.zathura              Zathura|Office|8969283|A minimalistic document viewer
-meta data.kicad-packages3d    data.kicad-packages3d|Other|1169343364|
-meta data.tesseract-langs     data.tesseract-langs|Other|10658768|
+meta data.kicad-packages3d    KiCad 3D models|Electronics|1169343364|3D models of footprints for the KiCad 3D viewer
+meta data.tesseract-langs     Tesseract languages|Office|10658768|OCR language data: German, French, Spanish, Hindi, Simplified Chinese and Japanese, with English

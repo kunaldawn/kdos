@@ -302,7 +302,7 @@ void res_draw_drives(int x, int y, int w, int h)
 		 "%d virtual hidden  %s  whole disks only  %s  Enter for "
 		 "details", hidden, ktui_glyph[KT_G_DOT],
 		 ktui_glyph[KT_G_DOT]);
-	ktui_draw_text(x, bottom - 1, w, foot, KT_DIM, KT_BG, 0);
+	ktui_draw_text(x, bottom - 1, w, foot, KT_MID, KT_BG, 0);
 }
 
 int res_drive_key(int k)
@@ -534,7 +534,7 @@ void res_draw_net(int x, int y, int w, int h)
 			ktui_draw_fill(krect(x, row, w, 1), bg);
 		ktui_draw_text(x, row, 12, f->name, fg, bg, 0);
 		ktui_draw_text(x + 13, row, 6, f->up ? "up" : "down",
-			       sel ? KT_SURFACE : (f->up ? KT_ACCENT : KT_DIM),
+			       sel ? KT_SURFACE : (f->up ? KT_ACCENT : KT_MID),
 			       bg, 0);
 		/* No speed is a dash: a wireless driver publishes none, and
 		 * 0 Mbit would be a claim about the link. */
@@ -550,7 +550,7 @@ void res_draw_net(int x, int y, int w, int h)
 			       bg, 0);
 		if (w >= 70)
 			ktui_draw_text(x + 52, row, 18, f->mac,
-				       sel ? KT_SURFACE : KT_DIM, bg, 0);
+				       sel ? KT_SURFACE : KT_MID, bg, 0);
 		row++;
 	}
 
@@ -585,7 +585,7 @@ void res_draw_net(int x, int y, int w, int h)
 		 "totals since boot  %s  Enter for details  %s  n opens "
 		 "kdos-net for Wi-Fi and VPN", ktui_glyph[KT_G_DOT],
 		 ktui_glyph[KT_G_DOT]);
-	ktui_draw_text(x, bottom - 1, w, nfoot, KT_DIM, KT_BG, 0);
+	ktui_draw_text(x, bottom - 1, w, nfoot, KT_MID, KT_BG, 0);
 }
 
 int res_net_key(int k)
@@ -759,7 +759,7 @@ void res_draw_batt(int x, int y, int w, int h)
 		}
 		if (b->tech[0]) {
 			snprintf(line, sizeof(line), "technology  %s", b->tech);
-			ktui_draw_text(x + 1, row++, w - 2, line, KT_DIM,
+			ktui_draw_text(x + 1, row++, w - 2, line, KT_MID,
 				       KT_BG, 0);
 		}
 		row++;
@@ -780,6 +780,6 @@ void res_draw_batt(int x, int y, int w, int h)
 	 * reads as a page that failed to load. */
 	if (!any)
 		ktui_draw_text(x + 1, y + 1, w - 2,
-			       "This machine has no battery.", KT_DIM,
+			       "This machine has no battery.", KT_MID,
 			       KT_BG, 0);
 }

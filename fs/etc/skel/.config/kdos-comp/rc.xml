@@ -165,8 +165,8 @@
          gives the strip back to the windows and re-fits every one of them. -->
     <keybind key="W-S-space"><action name="Execute" command="kdos panel toggle"/></keybind>
 
-    <!-- The notification CENTRE. A toast that expired used to be gone; the
-         daemon keeps a history now and this is the way back to it, which
+    <!-- The notification CENTRE. A toast that expires stays in the daemon's
+         history, and this is the way back to it, which
          matters most for the notifications nobody was there to see. Shift,
          because W-n is Iconify and a minimise key is pressed far more often
          than a history is read. -->
@@ -191,49 +191,49 @@
       <action name="ForEach">
         <query identifier="mc"/>
         <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot -e mc"/></none>
+        <none><action name="Execute" command="foot --app-id=mc -e mc"/></none>
       </action>
     </keybind>
     <keybind key="W-S-e">
       <action name="ForEach">
         <query identifier="aerc"/>
         <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot -e aerc"/></none>
+        <none><action name="Execute" command="foot --app-id=aerc -e aerc"/></none>
       </action>
     </keybind>
     <keybind key="W-S-b">
       <action name="ForEach">
         <query identifier="lynx"/>
         <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot -e lynx"/></none>
+        <none><action name="Execute" command="foot --app-id=lynx -e lynx"/></none>
       </action>
     </keybind>
     <keybind key="W-S-u">
       <action name="ForEach">
         <query identifier="rmpc"/>
         <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot -e rmpc"/></none>
+        <none><action name="Execute" command="foot --app-id=rmpc -e rmpc"/></none>
       </action>
     </keybind>
     <keybind key="W-S-c">
       <action name="ForEach">
         <query identifier="ikhal"/>
         <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot -e ikhal"/></none>
+        <none><action name="Execute" command="foot --app-id=ikhal -e ikhal"/></none>
       </action>
     </keybind>
     <keybind key="W-S-g">
       <action name="ForEach">
         <query identifier="iamb"/>
         <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot -e iamb"/></none>
+        <none><action name="Execute" command="foot --app-id=iamb -e iamb"/></none>
       </action>
     </keybind>
     <keybind key="W-S-w">
       <action name="ForEach">
         <query identifier="micro"/>
         <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot -e micro"/></none>
+        <none><action name="Execute" command="foot --app-id=micro -e micro"/></none>
       </action>
     </keybind>
     <!-- THE SCRATCHPAD, and it is one flag. The flag is omnipresence: the
@@ -336,11 +336,11 @@
     <keybind key="W-S-4"><action name="SendToDesktop" to="4"/></keybind>
 
     <!-- 5 to 9 as well, and they are here even though <desktops number> above
-         is 4: the panel's strip has room for four digits and does not scroll,
-         so a fifth workspace was reachable with the WHEEL and with nothing
-         else. Raise the number above and these keys are already bound; leave
-         it at 4 and labwc resolves them to nothing, which is the same answer
-         the strip gives. -->
+         is 4: the panel's pager draws however many workspaces there are, and
+         without these a fifth one would be reachable from the pager and the
+         wheel but from no key. Raise the number above and these keys are
+         already bound; leave it at 4 and labwc resolves them to nothing,
+         which is the same answer the pager gives. -->
     <keybind key="W-5"><action name="GoToDesktop" to="5"/></keybind>
     <keybind key="W-6"><action name="GoToDesktop" to="6"/></keybind>
     <keybind key="W-7"><action name="GoToDesktop" to="7"/></keybind>

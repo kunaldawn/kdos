@@ -408,10 +408,10 @@ void res_detail_draw(int x, int y, int w, int h)
 	 * usually "it is not yours", which is an instruction.
 	 */
 	if (why && left > 2)
-		ktui_draw_text(x, bottom - 1, left - 1, why, KT_DIM, KT_BG, 0);
+		ktui_draw_text(x, bottom - 1, left - 1, why, KT_MID, KT_BG, 0);
 	else if (!why && left > 2)
 		ktui_draw_text(x, bottom - 1, left - 1,
-			       "Esc  back to the list", KT_DIM, KT_BG, 0);
+			       "Esc  back to the list", KT_MID, KT_BG, 0);
 }
 
 /* ── the verbs ───────────────────────────────────────────────────────── */

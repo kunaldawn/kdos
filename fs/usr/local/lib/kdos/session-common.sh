@@ -2,8 +2,8 @@
 # session-common.sh — the session bring-up, in one place.
 #
 # Sourced, never executed. Everything below runs before the compositor does,
-# and every one of these blocks carries a trap that cost a debugging session
-# to find. A second copy is a second place to lose one.
+# and every one of these blocks carries a trap that fails without a message
+# when it is missed. A second copy is a second place to lose one.
 #
 #   kdos_session_open      $BROWSER, which the login shell may not have set
 #   kdos_session_runtime   XDG_RUNTIME_DIR, before anything uses it
@@ -85,16 +85,17 @@ kdos_session_keymap() {
 kdos_session_boxes() {
 	# Pre-create and start the alien-app box while the desktop is coming up, so
 	# the first launcher click doesn't pay for container init. nice 10, not 19:
-	# at 19 the warmup loses every CPU slice to the starting desktop, so it was
-	# still mid-init minutes later — and a launch that lands in that window has to
-	# wait for it to finish.
+	# at 19 the warmup loses every CPU slice to the starting desktop and stays
+	# mid-init for minutes, and a launch that lands in that window has to wait
+	# for it to finish.
 	(nice -n 10 /usr/local/bin/kdos-appbox warmup >/dev/null 2>&1 &)
 
-	# AND GIVE THE IDLE ONES BACK. `kdos-box gc` stops a box that has sat past its
-	# profile's `autostop` with no window on the screen; it existed and nothing
-	# called it, so a warmed box was a leak. Ten minutes, from the session rather
-	# than from a root service, because the boxes are the user's and so is the
-	# question the compositor is asked before any is stopped.
+	# AND GIVE THE IDLE ONES BACK. `kdos-box gc` stops a box past its profile's
+	# `autostop` with no window on the screen; nothing else calls it. The loop
+	# runs on past Log Out and ends with the login, and a box stops for neither.
+	# Ten minutes, from the session rather than from a root service, because
+	# the boxes are the user's and so is the question the compositor is asked
+	# before any is stopped.
 	(while sleep 600; do nice -n 10 /usr/local/bin/kdos-box gc >/dev/null 2>&1; done &)
 }
 
@@ -118,10 +119,10 @@ kdos_session_bus() {
 	# a boot hangs forever with no output at all. dbus-daemon --fork inherits every
 	# open descriptor, fd 7 among them; the subshell then exits and drops its own
 	# reference, but the daemon holds the flock for as long as the session bus
-	# lives — which is until logout. Every later kdos-desktop blocks on `flock 7`
-	# before it has printed a single line, so the symptom is a tty that sits there:
-	# no compositor, no error, nothing in a log. Measured in QEMU with three
-	# `flock 7` processes queued behind one dbus-daemon.
+	# lives, which is past every login: it forks into a session of its own. Every
+	# later kdos-desktop blocks on `flock 7` before it has printed a single line,
+	# so the symptom is a tty that sits there: no compositor, no error, nothing in
+	# a log. Measured in QEMU with three `flock 7` queued behind one dbus-daemon.
 	(
 		flock 7
 		if ! dbus-send --session --print-reply --dest=org.freedesktop.DBus \
@@ -196,8 +197,8 @@ kdos_session_once() {
 		# THE MUSIC DAEMON, ONCE SOMEBODY HAS CONFIGURED ONE. mpd exits at
 		# once with no configuration file and the image ships none, so a
 		# file in one of the four places mpd itself looks is the opt-in.
-		# --no-daemon keeps it this login's child, ending with the login
-		# rather than outliving it; one already running is left alone.
+		# --no-daemon keeps it in this login: it runs on past Log Out and
+		# ends with the login itself; one already running is left alone.
 		# The watcher is what feeds the panel's media cell, and it
 		# reconnects across mpd restarts on its own, so one per login is
 		# enough — started even when this login found mpd already up.
@@ -283,32 +284,32 @@ kdos_session_once() {
 		# memory rather than this list. Staggered, because six
 		# `kdos-appbox run` at once contend for the same box the login
 		# warmup is still building.
-		# THE PER-USER TIMERS, and they die with the session.
+		# THE PER-USER TIMERS, as this session's own loops.
 		#
 		# `ksvc supervise` writes its pidfile into /run, which an
 		# ordinary user cannot, so the system table's supervisor is not
-		# available here — and it should not be: a job that writes into
-		# $HOME has no business outliving the login that started it,
-		# and a supervised one would go on firing on a machine the
-		# person has walked away from. The loops below are this
-		# session's own children and die with it, and their pids are
-		# in the session's runtime directory rather than in /run.
+		# available here. The loops below are background children of
+		# this script, and their pids are in the session's runtime
+		# directory rather than in /run.
+		# NOTHING STOPS THEM WHEN THE COMPOSITOR EXITS: they run on at
+		# the tty1 prompt Log Out leaves, until the next start below or
+		# the end of the login, whose hangup ends them.
 		#
 		# The table is parsed the same way /etc/kdos/timers.d is —
 		# `NAME TIMESPEC... -- COMMAND...`, an argument vector and not
 		# a shell line — because two parses of one format is one of
 		# them being wrong the day a field is added.
 		#
-		# AND THEY REPEAT, WHICH TOOK A PIDFILE TO MAKE POSSIBLE.
+		# AND THEY REPEAT, WHICH IS WHAT THE PIDFILE IS FOR.
 		# `snooze` waits for its slot, runs the command ONCE and exits,
 		# so a bare background job is one run per login and not a
-		# schedule — a reminder set for every Monday fired on the
-		# Monday somebody happened to log in. The loop that repeats it
+		# schedule — a reminder set for every Monday would fire only on
+		# a Monday somebody happened to log in. The loop that repeats it
 		# has to be FINDABLE, or a start script that re-execs itself
 		# adds a second set of loops on top of the first: the pid of
-		# each goes in the session's own runtime directory, which is
-		# cleared when the login ends, and the next start stops what
-		# the last one left before it starts anything.
+		# each goes in the session's own runtime directory, which lasts
+		# until a reboot, and the next start stops what the last one
+		# left before it starts anything.
 		#
 		_tpid="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kdos/timers.pid"
 		mkdir -p "${_tpid%/*}" 2>/dev/null

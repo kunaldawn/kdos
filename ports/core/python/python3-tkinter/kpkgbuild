@@ -17,7 +17,7 @@ group       = python3
 
 source      = python3-$version.tar.xz::https://www.python.org/ftp/python/$version/Python-$version.tar.xz
 sha256      = c2215904f02b175596dc49351585104f4bc20341e1c47378b26a2c274360ce73  python3-3.14.8.tar.xz
-description = Python's binding to Tk, the _tkinter module and the tkinter package (X11 under Xwayland)
+description = Python's binding to Tk, the _tkinter module and the tkinter package, with turtle and the IDLE editor (X11 under Xwayland)
 homepage    = https://docs.python.org/3/library/tkinter.html
 license     = PSF-2.0
 depends     = python3 tcl tk pkgconf libX11

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Disks
+GenericName=Disk Utility
+Comment=Mount, format and check disks
+Exec=kdos-disks
+Icon=drive-harddisk
+Terminal=false
+NoDisplay=true
+Categories=System;Utility;
+StartupWMClass=kdos-disks

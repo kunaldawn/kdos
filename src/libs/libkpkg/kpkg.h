@@ -310,13 +310,16 @@ KpOwned *kp_owned_load(const KpConf *c);
  * will ask about pays for a scan, not for a million-entry sort. */
 KpOwned *kp_owned_load_some(const KpConf *c, char **rel, int n);
 /* The package claiming `rel` (`usr/bin/tar`; the database spells it
- * `./usr/bin/tar`), under either spelling of a merged-/usr path, or NULL. A
+ * `./usr/bin/tar`), under either spelling of a merged-/usr path, or NULL. Of
+ * several claimants it is the one whose package name sorts first in byte
+ * order, in the full table and the partial one alike. A
  * path no package claims is NOT a conflict: the bootstrap phases install tar,
  * musl, binutils and gcc by hand, so those files exist with no database entry,
  * and the self-hosting phase that rebuilds them with kpkg cannot run if an
  * unowned file counts as one. */
 const char *kp_owned_owner(const KpOwned *o, const char *rel);
-/* A package OTHER than `self` claiming `rel`, or NULL. An upgrade's orphan
+/* A package OTHER than `self` claiming `rel` (the first such by package
+ * name), or NULL. An upgrade's orphan
  * sweep and a removal ask this before deleting a file: a path the old version
  * listed that another package also claims is that package's file now. */
 const char *kp_owned_other(const KpOwned *o, const char *rel,

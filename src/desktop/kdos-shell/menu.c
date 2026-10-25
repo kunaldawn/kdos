@@ -549,9 +549,9 @@ static void draw(const struct view *v)
 	 * The plate is the whole highlight, so in a dump
 	 * the selected row was indistinguishable from every other row — a
 	 * menu with no visible cursor, on a display where the cursor is the
-	 * only thing saying what Enter will do. An accent fill with the slots
-	 * swapped is what a character grid has, and it is what the row's mark
-	 * is already coloured for.
+	 * only thing saying what Enter will do. The selection fill from
+	 * ktui_sel_slots() is what a character grid has, and its fg is what
+	 * the row's mark is coloured with.
 	 */
 			if (!kch_px_live()) {
 				/* The slots are `uint8_t` here and the rule
@@ -1528,14 +1528,13 @@ int menu_main(int argc, char **argv)
 		 * a client cannot express "grow upwards" by anchoring TOP: it
 		 * does not know the output's pixel height.
 		 *
-		 * The panel has spawned `kdos-menu system --at-bottom X Y` and
-		 * `kdos-menu --windows APP --at-bottom X Y` for a release and
-		 * this program did not accept the flag, so both fell into the
-		 * usage branch below and exited before a surface existed. The
-		 * System menu and every grouped task button did nothing at all
-		 * when clicked; kdos-start and kdos-clip took the same
-		 * argument and worked, which is what made it look like a panel
-		 * fault rather than a missing flag.
+		 * The panel spawns `kdos-menu system --at-bottom X Y` and
+		 * `kdos-menu --windows APP --at-bottom X Y`. Without this flag
+		 * both would fall into the usage branch below and exit before
+		 * a surface existed: the System menu and every grouped task
+		 * button would do nothing at all when clicked, while kdos-start
+		 * and kdos-clip, which take the same argument, worked — a
+		 * missing flag that looks like a panel fault.
 		 */
 		else if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
 			at_x = atoi(argv[++i]);

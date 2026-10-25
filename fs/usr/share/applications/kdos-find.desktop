@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Find
+GenericName=File Search
+Comment=Search applications, recent files, file names and file contents
+Exec=kdos-find
+Icon=system-search
+Terminal=false
+NoDisplay=true
+Categories=Utility;
+StartupWMClass=kdos-find

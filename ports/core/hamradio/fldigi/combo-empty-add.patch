@@ -1,0 +1,13 @@
+Subject: Do not index past an empty string in Fl_ComboBox::add
+
+--- a/src/combo/combo.cxx
++++ b/src/combo/combo.cxx
+@@ -521,7 +521,7 @@
+ {
+ 	std::string str = s;
+ 	std::string sinsert;
+-	if (str[str.length() - 1] == '|') str.erase(str.length() - 1, 1);
++	if (!str.empty() && str[str.length() - 1] == '|') str.erase(str.length() - 1, 1);
+ 	size_t p = str.find("|");
+ 	bool found = false;
+ 	bool last_one = false;

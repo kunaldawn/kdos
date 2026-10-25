@@ -29,6 +29,7 @@
  * ---------------------------------
  */
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,11 +64,24 @@ static char marks[32];			/* marks[d]: day d of the shown month */
 static char agenda[CAL_AGENDA][64];	/* today's, already formatted         */
 static int nagenda, more_today;
 
+/* The scan in flight: the month it asks about, and today's strip as it is
+ * being filled. The strip is staged and lands whole when khal is done, so a
+ * month change never empties the strip that is on screen while it waits. */
+static int scan_y, scan_m, scan_mine, scan_ty, scan_tm, scan_td;
+static char st_agenda[CAL_AGENDA][64];
+static int st_nagenda, st_more;
+static ShJob job;
+
 /*
  * ASKED ONCE PER MONTH, NEVER FROM draw(). A fork inside the draw path would
  * run once a frame and would put $PATH — which nothing freezes for a dump —
  * inside the picture; every other capture on this desktop is on a load, a
  * click or an idle slot, and this is one too.
+ *
+ * AND NEVER WAITED FOR BEFORE THE SURFACE IS UP. khal is seconds on a cold
+ * start, and a popup that maps only when it answers is a click on the clock
+ * that does nothing for that long. The month draws at once; khal runs as a
+ * job the loop pumps, and its marks and today's strip arrive when it exits.
  *
  * ISO IN AND ISO OUT, AND THAT IS A CONTRACT WITH THE SHIPPED CONFIG. khal
  * parses the dates on its command line with the `dateformat` from its own
@@ -77,88 +91,144 @@ static int nagenda, more_today;
  * `--format` alone does not. An all-day event has an EMPTY start time, which
  * is why the time column is padded rather than skipped.
  *
- * A STORE WITH NOTHING IN IT IS SILENT AND EXITS 0, and khal's warnings go to
- * stderr, so what arrives here is events or nothing at all.
+ * A STORE WITH NOTHING IN IT IS SILENT AND EXITS 0. The job's pipe carries
+ * khal's stderr too, and a warning is dropped by the parse because it does
+ * not open with a date; a run that exits non-zero leaves no marks at all.
  */
-static void cal_scan(int year, int mon, int today_y, int today_m, int today_d)
+static void scan_begin(int year, int mon, int today_y, int today_m,
+		       int today_d)
 {
-	KbArgv a = { 0 };
-	KbBuf out = { 0 };
-	char from[16], *text;
-	const char *fixture = getenv("KDOS_CAL_LIST");
-	int mine = year == today_y && mon == today_m;
-
 	memset(marks, 0, sizeof(marks));
-	if (mine) {
-		nagenda = 0;
-		more_today = 0;
-	}
+	scan_y = year;
+	scan_m = mon;
+	scan_mine = year == today_y && mon == today_m;
+	scan_ty = today_y;
+	scan_tm = today_m;
+	scan_td = today_d;
+	st_nagenda = 0;
+	st_more = 0;
+}
 
-	/*
-	 * THE HARNESS'S SEAM. A dump cannot fork khal: neither $PATH nor a
-	 * calendar store is fixed for one, so a file stands in, in exactly the
-	 * format khal is asked to print. Never set on a login.
-	 */
-	if (fixture && *fixture) {
-		text = kb_read_all(fixture, NULL);
-		if (!text)
-			return;
-	} else {
-		if (!kb_have_prog("khal"))
-			return;
-		snprintf(from, sizeof(from), "%04d-%02d-01", year, mon + 1);
-		kb_argv_add(&a, "khal");
-		kb_argv_add(&a, "list");
-		kb_argv_add(&a, "--day-format");
-		kb_argv_add(&a, "");
-		kb_argv_add(&a, "--format");
-		kb_argv_add(&a, "{start-date}\t{start-time}\t{title}");
-		kb_argv_add(&a, from);
-		kb_argv_add(&a, "31d");
-		kb_argv_end(&a);
-		if (kb_run_capture_buf(&a, &out) != 0) {
-			kb_buf_free(&out);
-			return;
-		}
-		text = out.p;
-	}
+static void scan_line(const char *ln)
+{
+	char p[256];
+	char *t1, *t2;
+	int y, m, d;
 
-	for (char *p = text; p && *p;) {
-		char *nl = strchr(p, '\n');
-		char *t1, *t2;
-		int y, m, d;
+	snprintf(p, sizeof(p), "%s", ln);
+	if (sscanf(p, "%4d-%2d-%2d", &y, &m, &d) != 3)
+		return;
+	if (y == scan_y && m == scan_m + 1 && d >= 1 && d <= 31)
+		marks[d] = 1;
 
-		if (nl)
-			*nl = '\0';
-		if (sscanf(p, "%4d-%2d-%2d", &y, &m, &d) != 3)
-			goto next;
-		if (y == year && m == mon + 1 && d >= 1 && d <= 31)
-			marks[d] = 1;
-
-		/* The strip is TODAY's, whichever month is being looked at:
-		 * the grid answers "which days have something", the strip
-		 * answers "what is on now". */
-		if (!mine || y != today_y || m != today_m + 1 || d != today_d)
-			goto next;
-		t1 = strchr(p, '\t');
-		t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
-		if (!t2)
-			goto next;
-		*t1 = *t2 = '\0';
-		if (nagenda < CAL_AGENDA)
-			snprintf(agenda[nagenda++], sizeof(agenda[0]),
-				 "%-5.5s %s", t1 + 1, t2 + 1);
-		else
-			more_today++;
-next:
-		if (!nl)
-			break;
-		p = nl + 1;
-	}
-	if (fixture && *fixture)
-		free(text);
+	/* The strip is TODAY's, whichever month is being looked at: the grid
+	 * answers "which days have something", the strip answers "what is on
+	 * now". */
+	if (!scan_mine || y != scan_ty || m != scan_tm + 1 || d != scan_td)
+		return;
+	t1 = strchr(p, '\t');
+	t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+	if (!t2)
+		return;
+	*t1 = *t2 = '\0';
+	if (st_nagenda < CAL_AGENDA)
+		snprintf(st_agenda[st_nagenda++], sizeof(st_agenda[0]),
+			 "%-5.5s %s", t1 + 1, t2 + 1);
 	else
-		kb_buf_free(&out);
+		st_more++;
+}
+
+/* The scan is over: today's strip is replaced only by a scan of today's
+ * month, which is the only one that read it. */
+static void scan_end(int ok)
+{
+	if (!ok) {
+		memset(marks, 0, sizeof(marks));
+		return;
+	}
+	if (!scan_mine)
+		return;
+	memcpy(agenda, st_agenda, sizeof(agenda));
+	nagenda = st_nagenda;
+	more_today = st_more;
+}
+
+static void job_line_cb(const char *ln, void *user)
+{
+	(void)user;
+	scan_line(ln);
+}
+
+/* A month changed under a scan still running: its answer is for a month
+ * nobody is looking at, and it is stopped rather than waited for. */
+static void scan_stop(void)
+{
+	if (!job.running)
+		return;
+	kill(job.pid, SIGTERM);
+	job.line = NULL;
+	sh_job_wait(&job);
+}
+
+/*
+ * THE HARNESS'S SEAM. A dump cannot fork khal: neither $PATH nor a calendar
+ * store is fixed for one, so a file stands in, in exactly the format khal is
+ * asked to print, and is read at once. Never set on a login. Returns 1 when
+ * a khal job was started and the loop has to pump it.
+ */
+static int cal_scan(int year, int mon, int today_y, int today_m, int today_d)
+{
+	const char *fixture = getenv("KDOS_CAL_LIST");
+	char from[16];
+
+	scan_stop();
+	scan_begin(year, mon, today_y, today_m, today_d);
+	if (fixture && *fixture) {
+		char *text = kb_read_all(fixture, NULL);
+
+		if (!text) {
+			scan_end(0);
+			return 0;
+		}
+		for (char *p = text; *p;) {
+			char *nl = strchr(p, '\n');
+
+			if (nl)
+				*nl = '\0';
+			scan_line(p);
+			if (!nl)
+				break;
+			p = nl + 1;
+		}
+		free(text);
+		scan_end(1);
+		return 0;
+	}
+	if (!kb_have_prog("khal")) {
+		scan_end(0);
+		return 0;
+	}
+	snprintf(from, sizeof(from), "%04d-%02d-01", year, mon + 1);
+	const char *argv[] = { "khal", "list", "--day-format", "",
+			       "--format", "{start-date}\t{start-time}\t{title}",
+			       from, "31d", NULL };
+	job.line = job_line_cb;
+	job.user = NULL;
+	if (sh_job_start(&job, argv, NULL) != 0) {
+		scan_end(0);
+		return 0;
+	}
+	return 1;
+}
+
+/* One turn of the loop's pump; khal's answer lands when it exits. */
+static void cal_scan_pump(void)
+{
+	if (!job.running)
+		return;
+	sh_job_pump(&job);
+	if (!job.running)
+		scan_end(job.status == 0);
 }
 
 /* The rows the strip asks the surface for: none at all when nothing is on, so
@@ -272,8 +342,9 @@ static void draw(int year, int mon, int today_y, int today_m, int today_d)
 	}
 
 	/*
-	 * TODAY'S STRIP, on the rows the surface asked for when it opened. It
-	 * is today's whichever month is being looked at: the grid answers
+	 * TODAY'S STRIP, on the rows the surface grew by when khal answered,
+	 * and clipped to the surface when it could not grow. It is today's
+	 * whichever month is being looked at: the grid answers
 	 * "which days have something", this answers "what is on now".
 	 */
 	for (int i = 0; i < nagenda && 8 + i < h - 4; i++)
@@ -374,10 +445,10 @@ int cal_main(int argc, char **argv)
 			at_x = atoi(argv[++i]);
 			at_y = atoi(argv[++i]);
 		}
-		/* The panel is on the BOTTOM edge and has spawned
-		 * `kdos-cal --at-bottom X Y` for a release; this program only
-		 * knew `--at`, so it fell into the usage branch and exited
-		 * before a surface existed — a click on the clock did nothing
+		/* The panel is on the BOTTOM edge and spawns
+		 * `kdos-cal --at-bottom X Y`; a program that knew only `--at`
+		 * would fall into the usage branch and exit before a surface
+		 * existed — a click on the clock would do nothing
 		 * whatsoever. Anchoring TOP cannot express "above the bar":
 		 * the client does not know the output's pixel height. */
 		else if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
@@ -401,9 +472,12 @@ int cal_main(int argc, char **argv)
 	    today_d = nt.tm_mday;
 	int year = today_y, mon = today_m;
 
-	cal_scan(year, mon, today_y, today_m, today_d);
-
 	if (dump) {
+		/* A dump draws the finished month, so it waits for khal. */
+		if (cal_scan(year, mon, today_y, today_m, today_d)) {
+			sh_job_wait(&job);
+			scan_end(job.status == 0);
+		}
 		sh_theme_from_cache();
 		ktui_offscreen_init(CAL_COLS, CAL_ROWS + agenda_rows());
 		draw(year, mon, today_y, today_m, today_d);
@@ -414,10 +488,11 @@ int cal_main(int argc, char **argv)
 	KDispConfig cfg = {
 		.role = KDISP_ROLE_OVERLAY,
 		.cols = CAL_COLS,
-		/* The strip is sized ONCE, here: a layer surface cannot be
-		 * resized under itself, so what today has on it decides the
-		 * height and browsing another month never moves it. */
-		.rows = CAL_ROWS + agenda_rows(),
+		/* The month alone. Today's strip is khal's answer, and the
+		 * surface grows to it when that lands. Opened from the panel
+		 * it is anchored at the bottom and grows upwards, so the rows
+		 * beside the clock stay where they were. */
+		.rows = CAL_ROWS,
 		.corner = at_x < 0	? KDISP_CORNER_CENTER
 			  : at_bottom	? KDISP_CORNER_BOTTOM_LEFT
 					: KDISP_CORNER_TOP_LEFT,
@@ -440,8 +515,10 @@ int cal_main(int argc, char **argv)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
-	/* Already scanned for the month this opened on. */
-	int shown_y = year, shown_m = mon;
+	/* The scan for the month this opened on starts once the surface is
+	 * up, so the grid is on screen while khal works. */
+	cal_scan(year, mon, today_y, today_m, today_d);
+	int shown_y = year, shown_m = mon, asked = CAL_ROWS;
 
 	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
@@ -454,10 +531,28 @@ int cal_main(int argc, char **argv)
 			shown_y = year;
 			shown_m = mon;
 		}
+		/*
+		 * THE STRIP COSTS ROWS ONLY WHEN THERE IS SOMETHING IN IT, and
+		 * the surface is resized only once the compositor has said yes:
+		 * drawing the taller picture into the buffer it already had
+		 * would be a protocol error. A refusal keeps the old height,
+		 * draw() clips the strip to it, and the same height is not
+		 * asked for again: each ask can wait a quarter of a second.
+		 */
+		cal_scan_pump();
+		if (!job.running && CAL_ROWS + agenda_rows() != asked) {
+			asked = CAL_ROWS + agenda_rows();
+			if (kdisp_overlay_resize(CAL_COLS, asked) == 0) {
+				ktui_draw_resize();
+				ktui_draw_invalidate();
+			}
+		}
 		draw(year, mon, today_y, today_m, today_d);
 
+		/* A tenth of a second while khal runs, so its answer is drawn
+		 * when it lands rather than on the next clock tick. */
 		KtuiEvent ev;
-		if (!ktui_backend()->poll_event(&ev, 1000)) {
+		if (!ktui_backend()->poll_event(&ev, job.running ? 100 : 1000)) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();
@@ -543,6 +638,7 @@ int cal_main(int argc, char **argv)
 		}
 	}
 done:
+	scan_stop();
 	kdisp_shutdown();
 	return 0;
 }

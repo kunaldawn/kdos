@@ -230,8 +230,16 @@ int mediad_main(int argc, char **argv)
 	sd_bus *bus = NULL;
 	int sub, r;
 
-	(void)argc;
-	(void)argv;
+	/* It takes no arguments. One given is a mistake or a question, and
+	 * answering it by starting a second daemon would put every toast on
+	 * the screen twice. */
+	if (argc > 1) {
+		int help = !strcmp(argv[1], "-h") || !strcmp(argv[1], "--help");
+		fprintf(help ? stdout : stderr,
+			"usage: kdos-mediad   (no arguments; the session starts "
+			"it)\n");
+		return help ? 0 : 2;
+	}
 
 	sub = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (sub < 0)

@@ -30,7 +30,7 @@ cp -r subprojects/packagefiles/rustc-hash-2-rs/* subprojects/rustc-hash-2.1.1/
 export LIBCLANG_PATH=/usr/lib/
 export LIBCLANG_STATIC_PATH=/usr/lib/
 export RUST_BACKTRACE=1
-export RUSTFLAGS="-C prefer-dynamic"
+export RUSTC="rustc -C target-feature=-crt-static"
 
 meson setup build \
 	--prefix=/usr --libdir=lib --sysconfdir=/etc \
@@ -66,3 +66,10 @@ meson setup build \
 
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+
+for so in $(find "$PKG/usr/lib" -type f -name '*.so*'); do
+	if readelf -Ws "$so" | awk '$5 == "LOCAL" && ($8 == "__libc" || $8 == "__libc_malloc_impl" || $8 == "__stdio_write") { f = 1 } END { exit !f }'; then
+		echo "mesa: ${so#$PKG} carries a private copy of the C library" >&2
+		exit 1
+	fi
+done

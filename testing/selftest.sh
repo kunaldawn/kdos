@@ -172,6 +172,21 @@ assert d["apps"], "the plan chose no applications"
 assert d["apps_bytes"] > 0, "the chosen set costs nothing"
 assert d["apps_route"] in ("none","import","network","pending"), d["apps_route"]'
 echo "  kinstall plan"
+# An answer file's unknown key is named, and a file `--save` wrote names none:
+# a key the parser drops in silence installs its default with no sign.
+printf 'packs = x\napps = essential\n' > "$OUT/answers-unknown"
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --config "$OUT/answers-unknown" --dump plan 2>&1 >/dev/null \
+    | grep -qx "kinstall: $OUT/answers-unknown: unknown key 'packs' ignored" \
+    || { echo "kinstall did not name an unknown answer-file key" >&2; exit 1; }
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --save "$OUT/answers-saved"
+if KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --config "$OUT/answers-saved" --dump plan 2>&1 >/dev/null | grep -q 'unknown key'; then
+    echo "kinstall does not read back a key its own --save writes" >&2
+    exit 1
+fi
+echo "  kinstall answer file"
 $CC $STD $WARN $INC -Isrc/system/kdos-appbox -o "$OUT/kdos-appbox" \
     src/system/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
     src/libs/libkcolor/*.c src/libs/libkxdg/*.c
@@ -187,6 +202,16 @@ KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kdos-appbox" \
     catalogue >/dev/null
 KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kdos-appbox" \
     catalogue --groups >/dev/null
+# The parser's own test against a file without the fixture's rows reports each
+# missing row as a failure and exits 1; a signal here is a lookup that read a
+# field of a row that is not there.
+rc=0
+KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kdos-appbox" \
+    catalogue --selftest >/dev/null 2>&1 || rc=$?
+if [ "$rc" != 1 ]; then
+    echo "catalogue --selftest over the shipped file exits $rc, not 1" >&2
+    exit 1
+fi
 echo "  catalogue"
 # The Containerfile generator. podman is not here and never will be, so what is
 # under test is the one part that is pure — and it is the part that matters: a
@@ -413,6 +438,22 @@ check 'boxgraft tiles -> ~/.local/share/kdos/packs/tiles' \
 grep -q 'data\.tiles.*REFUSED' "$OUT/fx.txt" && { echo "  FAIL  data pack graft"; exit 1; }
 echo "  ok    a data pack is never composed into a box root"
 
+# THE INSTALLED PACK IS <id>.kpack. An install keeps the version it supersedes
+# as <id>-<version>.kpack for rollback, and `-` sorts before `.`, so a store
+# holding both lists the kept one unless the scan reads the name. v1 and v2
+# are the two versions of v.demo assembled above.
+mkdir -p "$OUT/kept"
+cp "$OUT/v2.kpack" "$OUT/kept/v.demo.kpack"
+cp "$OUT/v1.kpack" "$OUT/kept/v.demo-1.0.kpack"
+"$OUT/kdos-packd" --fixture "$OUT/kept" > "$OUT/fxkept.txt"
+if grep -qE '^  v\.demo +9\.9 ' "$OUT/fxkept.txt" &&
+   [ "$(grep -cE '^  v\.demo +[0-9]' "$OUT/fxkept.txt")" = 1 ]; then
+    echo "  ok    the store lists <id>.kpack, never the version kept for rollback"
+else
+    echo "  FAIL  the kept <id>-<version>.kpack was listed"
+    sed 's/^/        /' "$OUT/fxkept.txt"; exit 1
+fi
+
 
 # libkcell and libkwl are the TWO libraries here with real external
 # dependencies — libkcell is the glyph cache and the cell painter, libkwl is
@@ -556,7 +597,7 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
             $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/asciicheck" testing/fixtures/ascii/asciicheck.c \
-            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c \
             src/libs/libkbase/*.c \
             $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/asciicheck" >/dev/null
@@ -569,7 +610,7 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
             $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/clipcheck" testing/fixtures/cellclip/clipcheck.c \
-            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c \
             src/libs/libkbase/*.c \
             $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/clipcheck" >/dev/null
@@ -589,7 +630,7 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
             $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/tilecheck" testing/fixtures/tile/tilecheck.c \
             src/libs/libkchrome/kch_tile.c \
-            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c \
             src/libs/libkbase/*.c \
             $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/tilecheck" >/dev/null \
@@ -611,7 +652,7 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
             $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/plotcheck" testing/fixtures/plot/plotcheck.c \
             src/libs/libkchrome/kch_plot.c src/libs/libkchrome/kch_tile.c \
-            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c \
             src/libs/libkbase/*.c \
             $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/plotcheck" >/dev/null \
@@ -669,7 +710,7 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
             $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/obliquecheck" testing/fixtures/oblique/obliquecheck.c \
-            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c \
             src/libs/libkbase/*.c \
             $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/obliquecheck" >/dev/null
@@ -684,7 +725,7 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
             -Isrc/libs/libkcolor -Isrc/libs/libkcell \
             $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/fontcheck" testing/fixtures/fontpolicy/fontcheck.c \
-            src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkcell/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c \
             src/libs/libkbase/*.c \
             $(pkg-config --libs fcft fontconfig pixman-1)
         "$OUT/fontcheck" || { echo "  fontcheck FAILED"; exit 1; }
@@ -714,6 +755,25 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
             $(pkg-config --libs pixman-1 fcft fontconfig libpng)
         "$OUT/iconpng" 2>/dev/null \
             || { echo "  kicon_slot_png FAILED"; exit 1; }
+
+        # A HEADER'S PICTURE ON ITS PLATE, read off the committed atlas: a
+        # one-colour name is inked and must clear 4.5:1 on KT_ACCENT in every
+        # accent, warmed or not, and a picture of several colours asked for
+        # with an ink must come back exactly as kicon_slot() draws it. No
+        # golden can hold this — every dump turns icons off.
+        mkdir -p "$OUT/iconink.d/kdos/icons"
+        cp src/art/kdos-icons/atlas/atlas.kia "$OUT/iconink.d/kdos/icons/"
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkicon \
+            -Isrc/libs/libkxdg -Isrc/libs/libkchrome -Isrc/libs/libkwl \
+            $(pkg-config --cflags pixman-1 fcft fontconfig libpng) \
+            -o "$OUT/iconink" testing/fixtures/iconink/iconink.c \
+            src/libs/libkchrome/kch_chrome.c \
+            src/libs/libkicon/*.c src/libs/libkcell/*.c src/libs/libktui/*.c \
+            src/libs/libkcolor/*.c src/libs/libkbase/*.c src/libs/libkxdg/*.c \
+            $(pkg-config --libs pixman-1 fcft fontconfig libpng) -lm
+        "$OUT/iconink" "$OUT/iconink.d" \
+            || { echo "  kicon_slot_ink FAILED"; exit 1; }
         else
             echo "  kicon_slot_png (skipped — no libpng on this host)"
         fi
@@ -789,7 +849,7 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
             $(pkg-config --cflags fcft fontconfig pixman-1) \
             -o "$OUT/inspcheck" testing/fixtures/kwl/inspcheck.c \
             src/libs/libkwl/kwl_insp.c src/libs/libkcell/*.c \
-            src/libs/libktui/*.c src/libs/libkbase/*.c \
+            src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkbase/*.c \
             $(pkg-config --libs fcft fontconfig pixman-1)
         KDOS_INSPECT=1 "$OUT/inspcheck" >/dev/null \
             || { KDOS_INSPECT=1 "$OUT/inspcheck"; echo "  inspcheck FAILED"; exit 1; }
@@ -1662,7 +1722,11 @@ echo "==> a game's desktop entry is what makes it reachable, and nothing checks 
 # with the plural, a missing `Terminal=true`, or an `Exec=` naming a binary the
 # recipe never installs all build, install and then land the program under
 # Accessories or nowhere, with no warning at any stage. That is the whole of
-# what a game port can get wrong here, so it is what this asserts.
+# what a game port can get wrong here, so it is what this asserts. An Exec=
+# is a bare command, or the full path of a program in /usr/games: that
+# directory is on a login's PATH (profile.d/10-wayland.sh) but not on the
+# PATH testing/entrycheck.py resolves a bare name against, so a game there is
+# named by its path.
 #
 # The entries are read out of the build.sh heredocs rather than out of a built
 # image, so this runs on any host and fails at the recipe rather than after a
@@ -1694,7 +1758,8 @@ for _p in nethack frotz bsd-games moon-buggy; do
            if(!c) printf "  ENTRY %s: Categories has no Game token\n", n
            if(x=="") printf "  ENTRY %s: no Exec\n", n
            split(x,w," ");
-           if(w[1] ~ /\//) printf "  ENTRY %s: Exec names a path, not a command\n", n
+           if(w[1] ~ /\// && w[1] !~ /^\/usr\/games\/[^\/]+$/)
+             printf "  ENTRY %s: Exec names a path outside /usr/games, not a command\n", n
            print "  " n " -> " w[1]
            e=0 }' "$_bs" > "$OUT/game-$_p.entries"
     grep -q "^  ENTRY " "$OUT/game-$_p.entries" && { sed -n 's/^  ENTRY/    /p' \
@@ -1703,7 +1768,7 @@ for _p in nethack frotz bsd-games moon-buggy; do
 done
 if [ "$_gamefail" = 0 ]; then
     echo "  four recipes parse; every entry is Terminal=true, Game-categorised"
-    echo "  and names a bare command"
+    echo "  and names a bare command or a program in /usr/games"
 else
     echo "  A GAME ENTRY WOULD INSTALL AND NOT BE REACHABLE"
     exit 1
@@ -1927,6 +1992,7 @@ for f in usr/share/locale/de/LC_MESSAGES/pol.mo usr/share/locale/en_GB/LC_MESSAG
          usr/share/doc/pol/README usr/share/doc/pol/a.html usr/share/doc/pol/b.PDF \
          usr/share/doc/pol/html/x.png usr/share/doc/mednafen/index.html \
          usr/share/doc/kdos/index.html usr/share/doc/HTML/en/pol/index.docbook \
+         usr/share/doc/kfs/index.html usr/share/doc/kfs/kfs.pdf \
          usr/share/doc/HTML/de/pol/index.docbook usr/share/man/man1/pol.1 \
          usr/share/man/de/man1/pol.1 usr/share/texmf-dist/doc/latex/pol/pol.pdf \
          usr/share/licenses/pol/extra.html usr/share/X11/locale/de_DE.UTF-8/Compose \
@@ -1964,6 +2030,7 @@ for _p in usr/share/licenses/pol/LICENSE usr/share/licenses/pol/COPYING.LIB \
           usr/share/pol/translations/pol_en.qm usr/share/pol/translations/pol_rgb2pct.qm \
           usr/share/doc/pol/README usr/share/doc/mednafen/index.html \
           usr/share/doc/kdos/index.html usr/share/doc/HTML/en/pol/index.docbook \
+          usr/share/doc/kfs/index.html usr/share/doc/kfs/kfs.pdf \
           usr/share/man/man1/pol.1 usr/share/X11/locale/de_DE.UTF-8/Compose \
           usr/share/licenses/pol/LICENCE.alias usr/share/pol/org.kde.pol.mo \
           usr/share/doc/R/html/index.html usr/share/doc/R/html/R.css \
@@ -1985,7 +2052,7 @@ done
     || { echo "  a licence was written through a symlink out of \$PKG"; exit 1; }
 grep -qxF 'pol-license: [unset]' "$PP/out" \
     || { echo "  the license key reached build.sh as \$license"; exit 1; }
-echo "  licences copied; HTML, PDF and non-English catalogs, handbooks and man pages pruned; English, the HTML programs open and the book kept"
+echo "  licences copied; HTML, PDF and non-English catalogs, handbooks and man pages pruned; English, the HTML programs open and both books kept"
 if [ -n "$_pcc" ]; then
     rm -rf "$PP/x"; mkdir -p "$PP/x"
     tar -xf "$PP/pkgs/pol-1.0-1.tar.xz" -C "$PP/x" ./usr/bin/big ./usr/lib/libbig.a ./usr/lib/big.o
@@ -2098,6 +2165,17 @@ EOF
 cat > "$TR/ports/icontool/build.sh" <<'EOF'
 install -Dm755 /dev/null "$PKG/usr/bin/gtk-update-icon-cache"
 EOF
+mkdir -p "$TR/ports/vlcplug"
+cat > "$TR/ports/vlcplug/kpkgbuild" <<'EOF'
+name        = vlcplug
+version     = 1.0
+release     = 1
+description = a synthetic port that carries a VLC plugin and the plugin cache tool
+EOF
+cat > "$TR/ports/vlcplug/build.sh" <<'EOF'
+install -Dm755 /dev/null "$PKG/usr/lib/vlc/vlc-cache-gen"
+install -Dm755 /dev/null "$PKG/usr/lib/vlc/plugins/misc/libfeed_plugin.so"
+EOF
 # The MIME and desktop-database stubs leave a generated file behind, as the
 # real tools do: that is what keeps each directory alive after the last XML or
 # desktop entry is removed. The makewhatis stub writes the database, which is
@@ -2177,7 +2255,23 @@ grep -q 'index skipped: man' "$TR/skip.log" \
     || { echo "  KPKG_SKIP_INDEX=man did not say it skipped the manual index"; exit 1; }
 [ -e "$TR/root2/usr/share/man/mandoc.db" ] || grep -q makewhatis "$TR/calls" \
     && { echo "  KPKG_SKIP_INDEX=man still ran makewhatis"; exit 1; }
-echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index, ls-R, desktop database and icon caches"
+# vlc-cache-gen runs inside the root, so as a user the trigger can only say it
+# needs root; as root it runs the stub, which is not a program.
+( cd "$TR/ports/vlcplug" && ktrig "$OUT/kpkgbuild" >/dev/null ) \
+    || { echo "  the synthetic VLC plugin port did not build"; exit 1; }
+mkdir -p "$TR/root3"
+ktrig "$OUT/kpkgadd" --root "$TR/root3" "$TR/pkgs/vlcplug-1.0-1.tar.xz" > "$TR/vlc.log" \
+    || { echo "  the synthetic VLC plugin package did not install"; exit 1; }
+if [ "$(id -u)" = 0 ]; then
+    grep -q 'Updating index: /usr/lib/vlc/vlc-cache-gen' "$TR/vlc.log"
+else
+    grep -q "vlc-cache-gen under $TR/root3 needs root" "$TR/vlc.log"
+fi || { echo "  installing a VLC plugin did not rebuild plugins.dat"; exit 1; }
+: > "$TR/root3/usr/lib/vlc/plugins/plugins.dat"
+ktrig "$OUT/kpkgdel" --root "$TR/root3" vlcplug >/dev/null
+[ -e "$TR/root3/usr/lib/vlc" ] \
+    && { echo "  removing vlc-cache-gen left plugins.dat and its directories"; exit 1; }
+echo "  install and removal rebuild the MIME database, info dir, hwdb, font cache, manual index, ls-R, desktop database, icon caches and VLC plugin cache"
 
 echo
 
@@ -2454,6 +2548,38 @@ kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
 kstrict KPKG_STRICT_RECIPE=1 >/dev/null
 echo "  a source-less port's own sources are part of its recipe"
 
+# THE BOOK'S NOTE IS NOT PART OF THE RECIPE. `kfs.md` beside a recipe is
+# docs/kfs's prose about the port and no build reads it, so adding, editing or
+# removing it leaves the hash where it was, while build.sh beside it still
+# moves it. Below the port directory the name is an ordinary source file.
+H4=$(cat "$SIDE")
+printf '# demo\n\n## Notes\nA note.\n' > "$SR/ports/demo/kfs.md"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  adding kfs.md rebuilt the port"; exit 1; }
+printf '# demo\n\n## Notes\nAnother note.\n' > "$SR/ports/demo/kfs.md"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  editing kfs.md rebuilt the port"; exit 1; }
+[ "$H4" = "$(cat "$SIDE")" ] \
+    || { echo "  the recipe hash moved with kfs.md"; exit 1; }
+printf '# with a note beside it\n' >> "$SR/ports/demo/build.sh"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+    || { echo "  build.sh changed beside kfs.md and the port did not rebuild"
+         exit 1; }
+H5=$(cat "$SIDE")
+[ "$H4" != "$H5" ] || { echo "  the recipe hash did not move with build.sh"; exit 1; }
+rm -f "$SR/ports/demo/kfs.md"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  removing kfs.md rebuilt the port"; exit 1; }
+mkdir -p "$SR/ports/demo/src"
+printf 'not a note\n' > "$SR/ports/demo/src/kfs.md"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+    || { echo "  a kfs.md below the port directory was not hashed"; exit 1; }
+rm -rf "$SR/ports/demo/src"
+kstrict KPKG_STRICT_RECIPE=1 >/dev/null
+[ "$H5" = "$(cat "$SIDE")" ] \
+    || { echo "  the recipe hash did not return once src/kfs.md went"; exit 1; }
+echo "  kfs.md beside a recipe leaves its hash alone; build.sh still moves it"
+
 # UNKNOWN, both ways. An absent sidecar is every package on a tree that
 # predates the mechanism; a corrupt one is a truncated write. Neither may read
 # as "changed".
@@ -2597,6 +2723,13 @@ kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Building withsrc" \
     || { echo "  EDITING a file beside a sourced recipe did not rebuild it"; exit 1; }
 rm -f "$KB/ports/withsrc/demo.config"
 echo "  a file beside a sourced recipe that no sha256 names is part of its hash"
+# Except the book's note, which a sourced port skips as a source-less one does.
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 >/dev/null
+printf '# withsrc\n\n## Notes\nA note.\n' > "$KB/ports/withsrc/kfs.md"
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  kfs.md beside a sourced recipe rebuilt it"; exit 1; }
+rm -f "$KB/ports/withsrc/kfs.md"
+echo "  kfs.md beside a sourced recipe is not part of its hash"
 
 # ── kpkg install --build-only / --commit ────────────────────────────────────
 #
@@ -3111,6 +3244,243 @@ grep -q "no '--' or no command" "$_tw/out" \
     || { echo "  a row with no -- was skipped silently"; exit 1; }
 rm -rf "$_tw"
 echo "  a star stays a star, and a row with no -- is reported and skipped"
+
+#
+# A CRASH-LOOPING SERVICE IS NOT REPORTED AS RUNNING. The pid file names the
+# supervisor, which outlives every exit of its daemon, so `ksvc check` reads
+# the supervisor's state file as well: judged by the pid file alone, a daemon
+# that aborts on every start is `[ OK ]` for as long as the machine is up. One
+# exit with status 0 is not yet a loop — a supervised snooze exits 0 after
+# every job. ksvc is built with RUN_DIR inside the suite's directory, so
+# nothing touches /run.
+#
+echo "==> a crash-looping service is [FAIL], a running one [ OK ]"
+_kv="$OUT/ksvc-run"
+mkdir -p "$_kv/run"
+printf 'int ksvc_main(int, char **);\nint main(int c, char **v) { return ksvc_main(c, v); }\n' \
+    > "$_kv/main.c"
+$CC $STD $WARN $INC -Isrc/system/kdos-tools -DRUN_DIR="\"$_kv/run\"" \
+    -o "$_kv/ksvc" "$_kv/main.c" src/system/kdos-tools/ksvc.c \
+    src/libs/libkbase/*.c
+"$_kv/ksvc" supervise crash sh -c 'exit 3' >/dev/null
+"$_kv/ksvc" supervise good sleep 600 >/dev/null
+"$_kv/ksvc" supervise clean true >/dev/null
+sleep 1
+_kfail=""
+"$_kv/ksvc" check crash > "$_kv/out" && _kfail="$_kfail crash-exits-0"
+grep -q '^\[FAIL\] crash  (exited with code 3' "$_kv/out" || _kfail="$_kfail crash-not-FAIL"
+"$_kv/ksvc" check good | grep -q '^\[ OK \] good' || _kfail="$_kfail running-not-OK"
+"$_kv/ksvc" check clean | grep -q '^\[ OK \] clean' || _kfail="$_kfail one-exit-0-not-OK"
+for _n in crash good clean; do "$_kv/ksvc" stop-supervised "$_n" >/dev/null; done
+if [ -e "$_kv/run/kdos-svc.crash.state" ]; then _kfail="$_kfail state-left-by-stop"; fi
+if [ -z "$_kfail" ]; then
+    echo "  a daemon that exits non-zero is [FAIL]; a running one and one exit 0 are [ OK ]"
+else
+    echo "  KSVC REPORTS A CRASH LOOP WRONGLY:$_kfail"
+    cat "$_kv/out"
+    exit 1
+fi
+
+#
+# ONE SUPERVISOR PER NAME, AND A STOP THAT WAITS FOR THE DAEMON. A second
+# `supervise` of a live name would take over the pid file, and the first
+# supervisor and its daemon would run on with nothing that can stop them.
+# `stop` waits for the process group to empty, up to the name's stop grace:
+# a daemon that exits at once is stopped at once, one that needs two seconds
+# for its shutdown gets them, and one that ignores SIGTERM is killed when the
+# grace runs out.
+#
+echo "==> a running service is supervised once, and stop waits out its grace"
+_kfail=""
+# Microseconds from bash itself: busybox date has no %N.
+_now() { echo "${EPOCHREALTIME/./}"; }
+_ms() { echo $(( ($(_now) - $1) / 1000 )); }
+"$_kv/ksvc" supervise twice sleep 600 >/dev/null
+_p1=$(cat "$_kv/run/twice.pid")
+"$_kv/ksvc" supervise twice sleep 600 > "$_kv/out"
+grep -q '^\[SKIP\] twice: already supervised' "$_kv/out" || _kfail="$_kfail no-skip"
+[ "$(cat "$_kv/run/twice.pid")" = "$_p1" ] || _kfail="$_kfail pid-file-taken"
+sleep 0.3
+_t=$(_now)
+"$_kv/ksvc" stop-supervised twice >/dev/null
+[ "$(_ms "$_t")" -lt 800 ] || _kfail="$_kfail quick-stop-$(_ms "$_t")ms"
+kill -0 "$_p1" 2>/dev/null && _kfail="$_kfail first-supervisor-left"
+"$_kv/ksvc" supervise twice sleep 600 | grep -q 'Supervisor started' \
+    || _kfail="$_kfail no-start-after-stop"
+"$_kv/ksvc" stop-supervised twice >/dev/null
+"$_kv/ksvc" supervise --stop-grace 10 slow \
+    sh -c 'trap "sleep 2; exit 0" TERM; while :; do sleep 0.1; done' >/dev/null
+sleep 0.3
+_d=$(awk '{print $2}' "$_kv/run/kdos-svc.slow.state")
+_t=$(_now)
+"$_kv/ksvc" stop-supervised slow > "$_kv/out"
+_e=$(_ms "$_t")
+{ [ "$_e" -ge 1800 ] && [ "$_e" -lt 5000 ]; } || _kfail="$_kfail slow-stop-${_e}ms"
+grep -q 'killing' "$_kv/out" && _kfail="$_kfail slow-killed"
+kill -0 "$_d" 2>/dev/null && _kfail="$_kfail slow-daemon-left"
+"$_kv/ksvc" supervise --stop-grace 1 deaf \
+    sh -c 'trap "" TERM; while :; do sleep 0.1; done' >/dev/null
+sleep 0.3
+_d=$(awk '{print $2}' "$_kv/run/kdos-svc.deaf.state")
+_t=$(_now)
+"$_kv/ksvc" stop-supervised deaf > "$_kv/out"
+_e=$(_ms "$_t")
+{ [ "$_e" -ge 900 ] && [ "$_e" -lt 2500 ]; } || _kfail="$_kfail deaf-stop-${_e}ms"
+grep -q 'Still running after 1s, killing' "$_kv/out" || _kfail="$_kfail deaf-not-killed"
+sleep 0.2
+kill -0 "$_d" 2>/dev/null && _kfail="$_kfail deaf-daemon-left"
+if [ -z "$_kfail" ]; then
+    echo "  a second supervise is [SKIP]; stop waits for the daemon, up to its grace, then kills"
+else
+    echo "  KSVC SUPERVISES TWICE OR STOPS WRONGLY:$_kfail"
+    cat "$_kv/out"
+    exit 1
+fi
+
+#
+# A SUPERVISOR NEVER LEAVES ITS DAEMON BEHIND UNNOTICED. SIGTERM to the
+# supervisor alone is passed on to its group, so the daemon goes with it; a
+# SIGTERM `stop` sent the group reaches the daemon once, not twice (some
+# daemons take a second as "exit now"). A supervisor that SIGKILL ended
+# leaves its daemon running where no live supervisor names it: `check` calls
+# that [FAIL], `supervise` refuses to start a second beside it after waiting
+# out the grace, and `stop-supervised` ends it.
+#
+echo "==> a supervisor's daemon is never orphaned silently, and gets one SIGTERM"
+_kfail=""
+"$_kv/ksvc" supervise direct sleep 600 >/dev/null
+sleep 0.3
+_s=$(cat "$_kv/run/direct.pid"); _d=$(awk '{print $2}' "$_kv/run/kdos-svc.direct.state")
+kill -TERM "$_s"
+sleep 0.3
+kill -0 "$_d" 2>/dev/null && _kfail="$_kfail direct-term-orphaned"
+"$_kv/ksvc" check direct | grep -q '^\[DOWN\] direct' || _kfail="$_kfail direct-not-DOWN"
+# The daemon counts its TERMs for a second after the first. Two TERMs that
+# arrive together are one pending signal and would count as one, so the
+# supervisor is held stopped while `stop` signals the group and continued
+# once the daemon has taken that TERM: one it passed on would then be a second.
+_trap="n=0; trap 'n=\$((n+1)); echo t >> $_kv/terms' TERM; while [ \$n -lt 1 ]; do sleep 0.05; done; i=0; while [ \$i -lt 20 ]; do sleep 0.05; i=\$((i+1)); done"
+"$_kv/ksvc" supervise once bash -c "$_trap" >/dev/null
+sleep 0.3
+: > "$_kv/terms"
+_s=$(cat "$_kv/run/once.pid")
+kill -STOP "$_s"
+"$_kv/ksvc" stop-supervised once >/dev/null &
+_sp=$!
+sleep 0.3
+kill -CONT "$_s"
+wait "$_sp"
+[ "$(wc -l < "$_kv/terms")" = 1 ] || _kfail="$_kfail stop-sent-$(wc -l < "$_kv/terms")-TERMs"
+"$_kv/ksvc" supervise once bash -c "$_trap" >/dev/null
+sleep 0.3
+: > "$_kv/terms"
+kill -TERM "$(cat "$_kv/run/once.pid")"
+sleep 1.4
+[ "$(wc -l < "$_kv/terms")" = 1 ] || _kfail="$_kfail kill-passed-$(wc -l < "$_kv/terms")-TERMs"
+"$_kv/ksvc" supervise --stop-grace 1 orphan sleep 600 >/dev/null
+sleep 0.3
+_s=$(cat "$_kv/run/orphan.pid"); _d=$(awk '{print $2}' "$_kv/run/kdos-svc.orphan.state")
+kill -KILL "$_s"
+sleep 0.2
+"$_kv/ksvc" check orphan > "$_kv/out" && _kfail="$_kfail orphan-check-exits-0"
+grep -q "^\[FAIL\] orphan  (supervisor gone; daemon pid $_d" "$_kv/out" \
+    || _kfail="$_kfail orphan-not-FAIL"
+"$_kv/ksvc" supervise orphan sleep 600 > "$_kv/out" && _kfail="$_kfail orphan-second-started"
+grep -q '^\[FAIL\] orphan: daemon pid' "$_kv/out" || _kfail="$_kfail orphan-no-refusal"
+"$_kv/ksvc" stop-supervised orphan > "$_kv/out"
+sleep 0.1
+kill -0 "$_d" 2>/dev/null && _kfail="$_kfail orphan-left-by-stop"
+"$_kv/ksvc" supervise orphan sleep 600 | grep -q 'Supervisor started' \
+    || _kfail="$_kfail no-start-after-orphan-stop"
+"$_kv/ksvc" stop-supervised orphan >/dev/null
+if [ -z "$_kfail" ]; then
+    echo "  a killed supervisor takes its daemon along; an orphan is [FAIL], refused a twin, and stoppable"
+else
+    echo "  KSVC ORPHANS A DAEMON OR SIGNALS IT TWICE:$_kfail"
+    cat "$_kv/out"
+    exit 1
+fi
+
+#
+# --restart-with FOLLOWS ANOTHER SERVICE'S DAEMON. NetworkManager does not
+# exit when the system bus goes away, so its supervisor restarts it when the
+# bus's daemon changes, once the bus is back, and not as a failure. A crash of
+# the dependent alone restarts nothing else.
+#
+echo "==> --restart-with restarts a daemon with the service it names"
+_kfail=""
+# The dependent fails its first start, so its state carries exit code 3 and
+# one failure into the run the bus restart ends: the restart's wait must still
+# read [ OK ], and the count must stay at one.
+"$_kv/ksvc" supervise bus sleep 600 >/dev/null
+sleep 0.3
+"$_kv/ksvc" supervise --restart-with bus dep sh -c \
+    "[ -e '$_kv/dep-ran' ] || { : > '$_kv/dep-ran'; exit 3; }; exec sleep 600" >/dev/null
+_i=0
+while [ "$_i" -lt 120 ]; do
+    read -r _ph _d _sn _fl _ls _rest 2>/dev/null < "$_kv/run/kdos-svc.dep.state" || :
+    [ "$_ph" = up ] && [ "$_ls" = 3 ] && break
+    sleep 0.1; _i=$((_i + 1))
+done
+[ "$_i" -lt 120 ] || _kfail="$_kfail dep-never-up-after-its-failure"
+_b=$(awk '{print $2}' "$_kv/run/kdos-svc.bus.state")
+kill "$_b"
+sleep 1
+kill -0 "$_d" 2>/dev/null && _kfail="$_kfail dep-left-on-old-bus"
+"$_kv/ksvc" check dep | grep -q '^\[ OK \] dep' || _kfail="$_kfail restart-wait-not-OK"
+_i=0
+while [ "$_i" -lt 120 ]; do
+    read -r _ph _dp _sn _fl _rest < "$_kv/run/kdos-svc.dep.state"
+    [ "$_ph" = up ] && [ "$_dp" != "$_d" ] && break
+    sleep 0.1; _i=$((_i + 1))
+done
+[ "$_i" -lt 120 ] || _kfail="$_kfail dep-not-restarted"
+[ "$_fl" = 1 ] || _kfail="$_kfail bounce-counted-as-failure"
+_b2=$(awk '{print $2}' "$_kv/run/kdos-svc.bus.state")
+[ "$_b2" != "$_b" ] || _kfail="$_kfail bus-not-restarted"
+kill -0 "$_b2" 2>/dev/null || _kfail="$_kfail dep-started-before-bus"
+"$_kv/ksvc" check dep | grep -q '^\[ OK \] dep' || _kfail="$_kfail dep-not-OK"
+grep -q 'bus restarted or stopped: restarting dep' "$_kv/run/kdos-svc.dep.log" \
+    || _kfail="$_kfail no-bounce-line"
+"$_kv/ksvc" stop-supervised dep >/dev/null
+"$_kv/ksvc" stop-supervised bus >/dev/null
+if [ -z "$_kfail" ]; then
+    echo "  the dependent is restarted after the bus is back, and not counted as a failure"
+else
+    echo "  KSVC --restart-with IS WRONG:$_kfail"
+    cat "$_kv/run/kdos-svc.dep.log"
+    exit 1
+fi
+
+#
+# A `service list` ROW IS ONE LINE. A script's status is free-form: nothing,
+# or several lines. Printed as it comes, a silent one joins the next row and a
+# long one spills into it.
+#
+echo "==> service list prints one line per service"
+mkdir -p "$_kv/init.d" "$_kv/off"
+printf '#!/bin/sh\n' > "$_kv/init.d/02_quiet.sh"
+printf '#!/bin/sh\necho "  one: fine"\n' > "$_kv/init.d/10_single.sh"
+printf '#!/bin/sh\necho a; echo; echo b; echo c\n' > "$_kv/init.d/20_many.sh"
+chmod 755 "$_kv/init.d"/*.sh
+$CC $STD $WARN $INC -Isrc/system/kdos-tools -DRUN_DIR="\"$_kv/run\"" \
+    -DINIT_DIR="\"$_kv/init.d\"" -DDISABLED_DIR="\"$_kv/off\"" \
+    -o "$_kv/ksvc-list" "$_kv/main.c" src/system/kdos-tools/ksvc.c \
+    src/libs/libkbase/*.c
+"$_kv/ksvc-list" list > "$_kv/out"
+_kfail=""
+grep -qx '  quiet                \[ENABLED\]    —' "$_kv/out" || _kfail="$_kfail silent-not-dash"
+grep -qx '  single               \[ENABLED\]    one: fine' "$_kv/out" || _kfail="$_kfail single"
+grep -qx '  many                 \[ENABLED\]    a (+2 more: service status many)' "$_kv/out" \
+    || _kfail="$_kfail many"
+[ "$(grep -c '^  [a-z]' "$_kv/out")" = 3 ] || _kfail="$_kfail row-count"
+if [ -z "$_kfail" ]; then
+    echo "  a silent script is —, a multi-line one its first line and a count"
+else
+    echo "  SERVICE LIST ROWS ARE BROKEN:$_kfail"
+    cat "$_kv/out"
+    exit 1
+fi
 
 #
 # AND A PER-USER TIMER REPEATS, which for a release it did not.
@@ -3707,6 +4077,28 @@ esb deploy "$ES/rc" a >/dev/null \
 mkird "$ES/rc/boot/initramfs-kdos.cpio.gz" ""
 esb deploy "$ES/rc" a >/dev/null \
     || { echo "  an initramfs with no module tree was refused"; exit 1; }
+# The reader stops at the first matching module path, and whatever follows it
+# must not hold deploy up: here a megabyte of archive comes after the match,
+# far more than a pipe buffer, as the rest of a real initramfs does.
+python3 - "$ES/rc/boot/initramfs-kdos.cpio.gz" <<'PYEOF'
+import gzip, sys
+def ent(i, n, body=b''):
+    nb = n.encode() + b'\0'
+    f = [i, 0o100644, 0, 0, 1, 0, len(body), 0, 0, 0, 0, len(nb), 0]
+    h = b'070701' + b''.join(b'%08X' % x for x in f) + nb
+    h += b'\0' * (-len(h) % 4)
+    return h + body + b'\0' * (-len(body) % 4)
+a = ent(1, 'lib/modules/7.2.8/kernel/fs/fat/vfat.ko')
+a += ent(2, 'blob', bytes(range(256)) * 4096) + ent(3, 'TRAILER!!!')
+open(sys.argv[1], 'wb').write(gzip.compress(a))
+PYEOF
+timeout 20 env KDOS_BOOTSTATE="$ES/esp/EFI/kdos/bootstate" "$OUT/kdos-bootctl" \
+    deploy "$ES/rc" a >/dev/null 2>&1 </dev/null
+case $? in
+0) ;;
+124) echo "  deploy hung on an initramfs larger than a pipe buffer"; exit 1 ;;
+*) echo "  an initramfs whose module tree comes first was refused"; exit 1 ;;
+esac
 # With no boot state the kernel goes where the menu boots it from, which is
 # slot A's directory on anything kinstall wrote.
 rm -f "$ES/esp/EFI/kdos/bootstate" "$ES/esp/EFI/kdos/vmlinuz"
@@ -4006,6 +4398,86 @@ sed -n '/Wait for device to appear/,/^    done$/p' "$IR/init" | grep -q 'activat
     || { echo "  the root wait no longer activates a late physical volume's group"; exit 1; }
 echo "  volume groups: no lvm without a PV, once per newly seen set of PVs, thin and cache targets first"
 
+# AND THE PERSISTENCE STORE IS LOOKED FOR UNTIL USB STORAGE HAS SETTLED.
+# find_persist reads a fake USB device tree (USB_DEVICES) and a blkid stub
+# that answers `-L KDOS_PERSIST` from its Nth call on, running $PS/on_<n> as
+# that call is made so the tree can change mid-wait. A stick whose disk has
+# not been scanned is waited for; a boot with nothing pending pays one
+# lookup, and one more for each USB disk, whose partitions the first lookup
+# may not yet see; a stick that never answers costs the 10-second bound and
+# no more.
+PS="$OUT/persist"
+mkdir -p "$PS/bin"
+cat > "$PS/bin/blkid" <<'EOF'
+#!/bin/sh
+[ "$1 $2" = "-L KDOS_PERSIST" ] || exit 2
+n=$(( $(cat "$PS/count") + 1 )); echo "$n" > "$PS/count"
+[ -x "$PS/on_$n" ] && "$PS/on_$n"
+[ -n "$STORE_AT" ] && [ "$n" -ge "$STORE_AT" ] && { echo /dev/sdb1; exit 0; }
+exit 2
+EOF
+chmod +x "$PS/bin/blkid"
+persist_try() {   # <store at call N, or ""> -> prints "<rc> <calls> <PERSIST>"
+    echo 0 > "$PS/count"
+    ( . /dev/stdin <<EOF
+$(sed -n '/^: ".*USB_DEVICES:=/p; /^uptime_cs() {/,/^}/p; /^usb_scan() {/,/^}/p; /^find_persist() {/,/^}/p' "$IR/init")
+EOF
+      export PS STORE_AT="$1"
+      PATH="$PS/bin:$PATH" USB_DEVICES="$PS/sys"
+      find_persist >/dev/null 2>&1
+      echo "$? $(cat "$PS/count") $PERSIST" )
+}
+persist_tree() {  # a root hub with two empty ports, plus what the case adds
+    rm -rf "$PS/sys" "$PS"/on_*
+    mkdir -p "$PS/sys/usb1" "$PS/sys/1-0:1.0/usb1-port1" "$PS/sys/1-0:1.0/usb1-port2"
+    echo 09 > "$PS/sys/usb1/bDeviceClass"
+    echo "not attached" > "$PS/sys/1-0:1.0/usb1-port1/state"
+    echo "not attached" > "$PS/sys/1-0:1.0/usb1-port2/state"
+}
+persist_stick() { # <device>: configured, its mass-storage interface not yet scanned
+    mkdir -p "$PS/sys/$1" "$PS/sys/$1:1.0/host2"
+    echo 00 > "$PS/sys/$1/bDeviceClass"
+    echo 08 > "$PS/sys/$1:1.0/bInterfaceClass"
+}
+persist_on() {    # <n> <shell line>: run at the nth lookup
+    printf '#!/bin/sh\n%s\n' "$2" > "$PS/on_$1"; chmod +x "$PS/on_$1"
+}
+_disk='mkdir -p "$PS/sys/1-1:1.0/host2/target2:0:0/2:0:0:0/block/sdb"'
+
+persist_tree
+[ "$(persist_try "")" = "1 1 " ] \
+    || { echo "  with no USB storage pending, find_persist did not stop after one lookup"; exit 1; }
+persist_tree; persist_stick 1-1; persist_on 5 "$_disk"
+[ "$(persist_try 6)" = "0 6 /dev/sdb1" ] \
+    || { echo "  a store on a stick scanned late was not found ($(persist_try 6))"; exit 1; }
+persist_tree; persist_stick 1-1; persist_on 5 "$_disk"
+[ "$(persist_try "")" = "1 7 " ] \
+    || { echo "  a late stick with no store did not end the wait one lookup after its disk appeared"; exit 1; }
+persist_tree; persist_stick 1-1; eval "$_disk"
+[ "$(persist_try 2)" = "0 2 /dev/sdb1" ] \
+    || { echo "  a store whose partition the first lookup missed was not looked for again"; exit 1; }
+persist_tree; persist_stick 1-1; eval "$_disk"
+[ "$(persist_try "")" = "1 2 " ] \
+    || { echo "  a USB disk already scanned cost more than one extra lookup ($(persist_try ""))"; exit 1; }
+persist_tree; echo default > "$PS/sys/1-0:1.0/usb1-port2/state"
+persist_on 3 'echo configured > "$PS/sys/1-0:1.0/usb1-port2/state"; mkdir -p "$PS/sys/1-1" "$PS/sys/1-1:1.0/host2"; echo 08 > "$PS/sys/1-1:1.0/bInterfaceClass"'
+persist_on 8 "$_disk"
+[ "$(persist_try 9)" = "0 9 /dev/sdb1" ] \
+    || { echo "  a store on a device still enumerating was not found"; exit 1; }
+persist_tree; mkdir -p "$PS/sys/1-2"; echo 09 > "$PS/sys/1-2/bDeviceClass"
+_r=$(persist_try ""); _n=${_r#1 }; _n=${_n% }
+[ "${_r%% *}" = 1 ] && [ "$_n" -ge 5 ] && [ "$_n" -le 13 ] \
+    || { echo "  behind an idle hub, find_persist did not wait its one quiet second ($_r)"; exit 1; }
+persist_tree; persist_stick 1-1
+_t0=$(date +%s)
+_r=$(persist_try "")
+_t=$(( $(date +%s) - _t0 ))
+[ "${_r%% *}" = 1 ] && [ "$_t" -ge 9 ] && [ "$_t" -le 12 ] \
+    || { echo "  a stick that never scans did not cost exactly the 10-second bound ($_r, ${_t}s)"; exit 1; }
+grep -qE '^[[:space:]]+find_persist ;;$' "$IR/init" \
+    || { echo "  the overlay no longer looks for its store through find_persist"; exit 1; }
+echo "  persistence store: one lookup when USB is idle, one more per new disk, waits for a late stick, bounded at 10 s"
+
 # AND THE blkid THE INITRAMFS SHIPS IS UTIL-LINUX'S. Every lookup in the
 # generated init is `blkid -U` — the root filesystem, the ESP holding the A/B
 # state, and the LUKS container — and a prober without `-U` or `crypto_LUKS`
@@ -4216,8 +4688,16 @@ echo "  restore and resume"
 # A plan writes no snapshot unless --snapshot asks, and must set KDOS_REPLAY
 # for a step it named — 17 phase scripts exit 0 on a second pass without it.
 beta_id=$(grep -o '"id": "[^"]*"' "$E/build/snapshots/01_beta/manifest.json")
+# The first match is the figure: "steps" is written before "machine", which
+# names the same key with a machine id.
+alpha_t=$(grep -o '"00_alpha/build the rootfs": [0-9.]*' "$E/build/snapshots/timings.json" | head -n 1)
+[ -n "$alpha_t" ] && grep -q '"01_beta/ports": [0-9.]*' "$E/build/snapshots/timings.json" \
+    && grep -q '"00_alpha": [0-9.]*' "$E/build/snapshots/timings.json" \
+    || { echo "  the build recorded no step timings"; cat "$E/build/snapshots/timings.json"; exit 1; }
 ( cd "$E" && "$KB" --script-dir script --build-dir build \
     --steps beta:00_ports.sh ) > "$OUT/e2e-plan.log" 2>&1
+grep -qF "$alpha_t" "$E/build/snapshots/timings.json" \
+    || { echo "  a narrower run lost a step it did not run from timings.json"; exit 1; }
 [ "$(grep -o '"id": "[^"]*"' "$E/build/snapshots/01_beta/manifest.json")" = "$beta_id" ] \
     || { echo "  a plan wrote a snapshot nobody asked for"; exit 1; }
 grep -q "replay=1" "$E"/build/logs/01_beta/*.log \
@@ -4478,8 +4958,8 @@ printf 'cur\nnew\nfrc\ngone\n' > "$HS/script/phases/10_pk/packages.txt"
 printf '#!/bin/bash\ntouch "$PWD/after"\n' > "$HS/script/phases/20_after/00_mark.sh"
 printf '#!/bin/bash\ncat "%s/order"\n' "$HS" > "$HS/bin/kpkgdepends"
 # A step for `new` runs whatever $HS/during holds first: an edit made while
-# the phase is running.
-printf '#!/bin/bash\n[ "${@: -1}" = new ] && [ -f "%s/during" ] && . "%s/during"\necho "$*" >> "%s/kpkg.log"\n' \
+# the phase is running. It is the one port the stub says it builds.
+printf '#!/bin/bash\n[ "${@: -1}" = new ] && [ -f "%s/during" ] && . "%s/during"\n[ "${@: -1}" = new ] && echo "==> Building new..."\necho "$*" >> "%s/kpkg.log"\n' \
     "$HS" "$HS" "$HS" > "$HS/bin/kpkg"
 chmod +x "$HS/script/chroot/exec.sh" "$HS/script/phases/20_after/00_mark.sh" \
     "$HS/bin/kpkgdepends" "$HS/bin/kpkg"
@@ -4523,6 +5003,12 @@ for want in "install new" "install -f frc" "install gone"; do
 done
 grep -q '"installed": 1,' "$HS/run.json" \
     || { echo "  the result does not count the installed port"; cat "$HS/run.json"; exit 1; }
+# Only a port whose step built it is timed: `new` said so, `frc` and `gone`
+# printed no build line and `cur` never ran.
+grep -q '"10_pk/new": [0-9.]*' "$HS/build/snapshots/timings.json" \
+    || { echo "  a port that built was not timed"; cat "$HS/build/snapshots/timings.json"; exit 1; }
+grep -q '"10_pk/\(cur\|frc\|gone\)"' "$HS/build/snapshots/timings.json" \
+    && { echo "  a port that built nothing was timed"; cat "$HS/build/snapshots/timings.json"; exit 1; }
 
 # Every port current: no step runs, and the phase still finishes — its
 # snapshot is taken, and counts every port as done.
@@ -4721,6 +5207,29 @@ grep -qE "^ +[0-9]+ +Packs +skipped" "$OUT/plan.txt" \
     || { echo "  the packs step ran with no medium"; exit 1; }
 grep -q '"title": "Partition".*"state": "skipped"' "$OUT/plan.json" \
     || { echo "  text and json disagree about Partition"; exit 1; }
+# The erase plan's layout, by the names the install gives it: the ESP first,
+# the BIOS boot partition Limine's legacy stage goes into second, swap when it
+# is a partition, the root last. A disk the probe cannot see keeps the payload
+# walk out of this, and says "all of the group" with the -l that lvcreate gets.
+"$KI" --save "$OUT/wipe.conf" >/dev/null
+sed -i 's|^disk .*|disk = /dev/kinstall-fixture0|; s/^plan.*/plan = wipe/; s/^swap .*/swap = partition/; s/^lvm .*/lvm = 1/' \
+    "$OUT/wipe.conf"
+"$KI" --config "$OUT/wipe.conf" --dump plan > "$OUT/wipe.txt" 2>&1
+"$KI" --config "$OUT/wipe.conf" --dump plan --json > "$OUT/wipe.json" 2>&1
+grep -qx 'esp           /dev/kinstall-fixture0p1 (format)' "$OUT/wipe.txt" \
+    && grep -qx 'bios boot     /dev/kinstall-fixture0p2, 1 MiB, made by the layout' "$OUT/wipe.txt" \
+    && grep -qx 'root          lvm kdos/root_a on /dev/kinstall-fixture0p4, all of the group (-l 100%FREE)' "$OUT/wipe.txt" \
+    || { echo "  the erase plan's layout is not ESP, BIOS boot, swap, root"; cat "$OUT/wipe.txt"; exit 1; }
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1]));
+assert d["bios_boot"] == "/dev/kinstall-fixture0p2", d["bios_boot"]
+assert d["root"] == "/dev/kinstall-fixture0p4", d["root"]
+assert d["lvm"]["extent"] == "100%FREE" and not d["lvm"]["half"], d["lvm"]' "$OUT/wipe.json" \
+    || { echo "  text and json disagree about the erase plan's layout"; exit 1; }
+# A reused disk the probe cannot see has no BIOS boot partition to find, and
+# the plan says what that costs.
+grep -qx 'bios boot     none: the disk starts on UEFI only' "$OUT/plan.txt" \
+    || { echo "  a reuse plan with no BIOS boot partition claims a BIOS path"; cat "$OUT/plan.txt"; exit 1; }
+echo "  the erase plan lays out a BIOS boot partition"
 # A dump ends up in bug reports and CI logs, and the answer file carries the
 # passwords in the clear because crypt() is about to be called on them. The
 # sentinel is what proves neither rendering repeats one.
@@ -5234,7 +5743,9 @@ alwant() {  # <arg> <expected substring> <what it proves>
     esac
 }
 alwant "definitely-not-an-account" "no such account" \
-    "an account that cannot log in is refused"
+    "an account that does not exist is refused"
+alwant "root" "not an account that can log in" \
+    "an account that exists and cannot log in is refused as that"
 # An account `kb_users()` WOULD list, chosen the way it chooses — uid in
 # [1000, 65534) with a shell that is not a refusal. This picks the daemon's
 # INPUT, it does not re-decide the rule: if the two ever disagreed the daemon
@@ -5268,6 +5779,23 @@ _alw=$(grep -c '^#' fs/etc/kdos/login.conf)
     && echo "  ok    and every comment in login.conf survived the rewrite" \
     || { echo "  FAIL  the rewrite lost comments ($_alc against $_alw)"
          al_fail=1; }
+# OFF KEEPS THE ACCOUNT. It comments the line as it stands, the form the
+# installer writes, so the file still says who autologin was for; off checks no
+# account, so this half needs none from the host.
+ALO="$OUT/alwork-off"
+rm -rf "$ALO"
+mkdir -p "$ALO/kdos"
+printf '# a comment\nautologin = someone-else\n' > "$ALO/kdos/login.conf"
+KDOS_POWERD_ETC="$ALO" "$OUT/kdos-powerd" --set-autologin off >/dev/null 2>&1 || true
+grep -qx "#autologin = someone-else" "$ALO/kdos/login.conf" \
+    && echo "  ok    off comments the key and keeps the account it named" \
+    || { echo "  FAIL  off did not keep the account"
+         cat "$ALO/kdos/login.conf"; al_fail=1; }
+KDOS_POWERD_ETC="$ALO" "$OUT/kdos-powerd" --set-autologin off >/dev/null 2>&1 || true
+grep -qx "#autologin = someone-else" "$ALO/kdos/login.conf" \
+    && echo "  ok    and off on a commented key leaves it as it is" \
+    || { echo "  FAIL  a second off changed the commented key"
+         cat "$ALO/kdos/login.conf"; al_fail=1; }
 [ "$al_fail" = 0 ] || exit 1
 
 echo "  --explain, the non-root refusal, and the client's message"
@@ -5399,6 +5927,25 @@ grep -q "would kill kdosbuild" "$OUT/oomd4.txt" \
          cat "$OUT/oomd4.txt"; exit 1; }
 echo "  a box over its own declared budget is preferred, and the check is load-bearing"
 
+# …and a stall is not a shortage. One copy streaming through the page cache
+# stalls every task that wants to run — itself — with most of memory still
+# available, and killing it frees nothing anyone was short of. The same tree
+# with a meminfo at 80% available is no kill; at 7.5% it is the usual answer.
+cp -R testing/fixtures/oomd/hostwins "$OUT/oomd-mem"
+printf 'MemTotal:        4000000 kB\nMemFree:          200000 kB\nMemAvailable:    3200000 kB\n' \
+    > "$OUT/oomd-mem/meminfo"
+if "$OUT/kdos-oomd" --fixture "$OUT/oomd-mem" > "$OUT/oomd5.txt"; then
+    echo "  a stall with 80% of memory available chose a victim"; cat "$OUT/oomd5.txt"; exit 1
+fi
+grep -q "no kill: 3200000 of 4000000 kB available" "$OUT/oomd5.txt" \
+    || { echo "  the refusal does not say how much was available"; cat "$OUT/oomd5.txt"; exit 1; }
+printf 'MemTotal:        4000000 kB\nMemFree:          100000 kB\nMemAvailable:     300000 kB\n' \
+    > "$OUT/oomd-mem/meminfo"
+"$OUT/kdos-oomd" --fixture "$OUT/oomd-mem" > "$OUT/oomd6.txt" \
+    && grep -q "would kill kdosbuild (pid 950" "$OUT/oomd6.txt" \
+    || { echo "  memory short and stalled, and no victim"; cat "$OUT/oomd6.txt"; exit 1; }
+echo "  a stall kills only when MemAvailable is at or under a tenth of MemTotal"
+
 echo
 echo "==> kdos-mountd offers the stick and refuses everything else"
 # Mounting needs root and a real device, so the ACTION cannot be summoned in a
@@ -5424,19 +5971,19 @@ export KDOS_MOUNTD_MOUNTS="$MF/mounts"
 "$OUT/kdos-mountd" --fixture "$MF/sys" "$MF/dev" > "$MO" 2>&1
 grep -q "sdb1	KDOSSTICK	vfat" "$MO" \
     || { echo "  the removable stick was not offered"; cat "$MO"; exit 1; }
-# Five: the stick, the encrypted stick, the live medium's two partitions and
-# the data disc. The count is asserted so a rule that started offering the
+# Seven: the stick, the encrypted stick, the partitioned live medium's two
+# partitions, the hybrid stick's ESP, the ext4 stick and the data disc. This
+# run has a real root and nothing of theirs mounted, so none of them is the
+# boot medium. The count is asserted so a rule that started offering the
 # INTERNAL disk shows up as an extra row rather than as nothing.
-grep -q "^5 eligible" "$MO" \
-    || { echo "  the eligible set is not the five the fixture carries"
+grep -q "^7 eligible" "$MO" \
+    || { echo "  the eligible set is not the seven the fixture carries"
          cat "$MO"; exit 1; }
 grep -q "sda1" "$MO" \
     && { echo "  the INTERNAL disk was offered"; cat "$MO"; exit 1; }
 # The optical disc IS offered on a machine with a real root — this run has one.
-# On the LIVE ISO it must not be, and that half cannot be asserted here: the
-# rule keys off `/` being an overlay, which is the running system's own
-# /proc/mounts and not something a fixture can supply. Recorded rather than
-# faked; it was found by kdos-mountd offering the disc it had booted from.
+# In a LIVE session it must not be; that half is asserted by the served run
+# below, whose mounts file has an overlay at `/`.
 grep -q "sr0	-	iso9660" "$MO" \
     || { echo "  the data disc was not offered"; cat "$MO"; exit 1; }
 # The fstab claims the STICK by label and says nothing about the disc, so the
@@ -5451,6 +5998,30 @@ grep -q "sr0" "$MO" \
 echo "  the stick and the disc are offered; the internal disk and an fstab"
 echo "  entry are not"
 
+# THE BOOT DISK IS FOUND BY WHAT IS MOUNTED FROM IT, on a real root as well as
+# a live one. `sde` is the shipped isohybrid image as a stick carries it: the
+# ISO 9660 superblock on the WHOLE disk, `sde1` a 64-sector stub with no
+# filesystem, `sde2` the FAT ESP. The initramfs mounts the whole disk at
+# /mnt/iso, so no partition row carries that mount and every per-partition
+# rule offers the ESP. `sdf` is a persistence store, whole-disk ext4 at
+# /mnt/persist, the session's own upper layer. The mounts file names the
+# fixture's own nodes, because that is what the scan compares against.
+cat "$MF/mounts" > "$OUT/mounts-boot"
+printf '%s/dev/sde /mnt/iso iso9660 ro 0 0\n%s/dev/sdf /mnt/persist ext4 rw 0 0\n' \
+    "$MF" "$MF" >> "$OUT/mounts-boot"
+KDOS_MOUNTD_MOUNTS="$OUT/mounts-boot" \
+    "$OUT/kdos-mountd" --fixture "$MF/sys" "$MF/dev" > "$MO" 2>&1
+grep -q "sde2" "$MO" \
+    && { echo "  the ESP of the disk mounted at /mnt/iso was offered"
+         cat "$MO"; exit 1; }
+grep -q "sdf" "$MO" \
+    && { echo "  the persistence store at /mnt/persist was offered"
+         cat "$MO"; exit 1; }
+grep -q "^5 eligible" "$MO" \
+    || { echo "  refusing the boot disk took other rows with it"; cat "$MO"; exit 1; }
+echo "  the disk mounted at /mnt/iso and the store at /mnt/persist are not"
+echo "  offered, partitions and all"
+
 # ── THE PRIVILEGED VERBS, AND THE REFUSALS THAT MATTER MORE ───────────────
 #
 # This daemon spawns children now — eject, cryptsetup, mkfs — which it never
@@ -5458,12 +6029,15 @@ echo "  entry are not"
 # is a REFUSAL except three, because the failure that costs a person their data
 # is a verb that runs when it should not have.
 #
-# THE LIVE-MEDIUM CASE IS THE ONE TO KEEP. `sdd` is a boot medium: an iso9660
-# partition AND a vfat ESP beside it. Every per-partition rule offers the ESP —
-# it is removable, it probes as vfat, it is unmounted and no fstab claims it —
-# so a format there destroys the running session, and the typed-name
-# confirmation does not help because the person genuinely typed the name of the
-# row they meant. The refusal has to be by the DISK.
+# THE LIVE-MEDIUM CASE IS THE ONE TO KEEP. `sdd` is a boot medium with an
+# iso9660 partition and a vfat ESP beside it; `sde` is the shipped isohybrid
+# image, the iso9660 superblock on the whole disk and no filesystem on `sde1`;
+# `sdf` is the persistence store at /mnt/persist. Every per-partition rule
+# offers both ESPs — removable, vfat, unmounted, in no fstab — so a format
+# there destroys the running session, and the typed-name confirmation does not
+# help because the person genuinely typed the name of the row they meant. The
+# refusal has to be by the DISK, and it has to keep those rows out of `list`
+# altogether: a row that is never listed has no index any verb can name.
 #
 # `--fixture-serve` runs the real dispatch over a real socket with the
 # fixture's roots, and km_exec PRINTS the argv instead of running it. Nothing
@@ -5487,7 +6061,9 @@ printf 'format = yes\n' > "$OUT/mountd.conf"
 rm -f "$KMSOCK"
 rm -f "$OUT/km.uevent"; mkfifo "$OUT/km.uevent"
 mkdir -p "$OUT/media"
-KDOS_MOUNTD_SOCKET="$KMSOCK" KDOS_MOUNTD_MOUNTS="$MF/mounts-live" \
+cat "$MF/mounts-live" > "$OUT/mounts-live"
+printf '%s/dev/sdf /mnt/persist ext4 rw 0 0\n' "$MF" >> "$OUT/mounts-live"
+KDOS_MOUNTD_SOCKET="$KMSOCK" KDOS_MOUNTD_MOUNTS="$OUT/mounts-live" \
 KDOS_MOUNTD_CONF="$OUT/mountd.conf" KDOS_MOUNTD_UEVENT="$OUT/km.uevent" \
 KDOS_MOUNTD_MEDIA="$OUT/media" KDOS_MOUNTD_SINK="$OUT/km.sink" \
     "$OUT/kdos-mountd" --fixture-serve "$MF/sys" "$MF/dev" > "$OUT/km.exec" 2>&1 &
@@ -5509,11 +6085,29 @@ kmwant 'list
 kmwant 'list
 ' 'SAFEBOX' "and its LUKS2 label is read"
 
-# The live medium. sdd2 is the ESP on the disk this session booted from.
-kmwant 'eject 2
-' 'booted from' "eject refuses a partition of the boot DISK, not just the iso"
-kmwant 'format 2 vfat 4
-sdd2' 'booted from' "and so does format, even with the right name typed"
+# The live media. Only the two sticks that are not the session's are rows,
+# so the indices the boot disks' rows would take are past the list — `eject`
+# answers no such device, the framed verbs a bad request — and no program is
+# ever pointed at sdd, sde or sdf.
+_kml=$(kmask 'list
+')
+case "$_kml" in
+*sdd*|*sde*|*sdf*|*sr0*)
+    echo "  FAIL  list offers a disk the session is running from"
+    echo "        $_kml"; mountd_fail=1 ;;
+*) echo "  ok    list offers no boot disk, no persistence store and no disc" ;;
+esac
+for _i in 2 3 4; do
+    kmwant "eject $_i
+" 'err no such device' "eject $_i names no row on a boot disk"
+    for _n in sdd2 sde2 sdf; do
+        kmwant "format $_i vfat ${#_n}
+$_n" 'err bad request' "format $_i, confirmed as $_n, names no row"
+    done
+done
+grep -E '/sd[def]([0-9]|$)' "$OUT/km.exec" \
+    && { echo "  FAIL  a program was pointed at a boot disk"; mountd_fail=1; } \
+    || echo "  ok    and no program was pointed at one"
 
 # The typed confirmation is the row's own kernel name.
 kmwant 'format 0 vfat 4
@@ -5674,8 +6268,11 @@ sdb' - 'travels as a descriptor' "a write with no descriptor attached is refused
 kmwrite 'write 0 4
 sdb1' "$OUT/km.img" 'type sdb to confirm' \
     "the confirmation is the DISK's name, not the partition's"
-kmwrite 'write 2 3
-sdd' "$OUT/km.img" 'booted from' "the live medium's disk is refused whole"
+for _n in sdd sde sdf; do
+    kmwrite "write 2 3
+$_n" "$OUT/km.img" 'err bad request' \
+        "a write confirmed as the boot disk $_n names no row"
+done
 kmwrite 'write 0 3
 sdb' "$OUT" 'not a file' "a directory is not an image"
 kmwrite 'write 0 3
@@ -7201,6 +7798,12 @@ if "$DUMPCK" --have update; then
     KDOS_UPDATE_JSON="$_uf/update.json" KDOS_CVE_JSON="$_uf/cve.json" \
     KDOS_SLOT_TEXT="$_uf/slot.txt" \
         golden update-security 80x24 update --security --dump
+    # No findings and two bundled copies: the subtitle says 0 with a known
+    # vulnerability, because the `"bundled"` rows after the findings share
+    # their shape and are not findings.
+    KDOS_UPDATE_JSON="$_uf/update.json" KDOS_CVE_JSON="$_uf/cve-bundled.json" \
+    KDOS_SLOT_TEXT="$_uf/slot.txt" \
+        golden update-bundled 80x24 update --security --dump
 fi
 # kdos-firewall asks kdos-powerd for the service table, so its picture depends
 # on a running daemon. Recorded instead.
@@ -8151,6 +8754,15 @@ KDOS_CONTACT_LIST="$OUT/contacts.txt" \
 keydrive chars 80x24 \
     "text:arrow down down pgdn home bs resize:60x22 esc tick" chars
 keydrive verify 80x24 "l text:abc f1 f10 bs resize:70x20 esc tick" verify
+# THE DESKTOP MENU OPENED ON THE BOTTOM ROWS stands on the status row, not in
+# it: its bottom border is the row above the hints. No Esc — the frame wanted
+# is the one with the menu down. The live path makes the fixture's ~/Desktop,
+# and kdos-start lists that as a place: it is taken away again, or every later
+# frame of the start menu gains a row.
+_dkd=testing/fixtures/shell/Desktop
+_dkhad=0; [ -e "$_dkd" ] && _dkhad=1
+keydrive desk-menu 80x24 "rclick:40,21 tick" desk
+[ "$_dkhad" = 1 ] || rmdir "$_dkd" 2>/dev/null || true
 KDOS_UPDATE_JSON="$PWD/testing/fixtures/update/update.json" \
 KDOS_CVE_JSON="$PWD/testing/fixtures/update/cve.json" \
 KDOS_SLOT_TEXT="$PWD/testing/fixtures/update/slot.txt" \
@@ -8351,11 +8963,14 @@ fi
 
 echo
 echo "==> kdos cve compares pins against the vendored security database"
-# Four ports and a five-row table, which is enough to exercise every rule the
-# real 4 099-row one exercises: a pin behind two fixes, a pin that only LOOKS
-# behind one because Alpine's `-rN` packaging revision is not upstream's
-# version, a port whose Alpine name differs (`secdb =`), and a port Alpine has
-# never heard of — which must read as UNKNOWN and never as clean.
+# Six ports and an eleven-row table, which is enough to exercise every rule
+# the real 4 099-row one exercises: a pin behind two fixes, a pin that only
+# LOOKS behind one because Alpine's `-rN` packaging revision is not upstream's
+# version, a port whose Alpine name differs (`secdb =`), a port Alpine has
+# never heard of — which must read as UNKNOWN and never as clean — and two on
+# a branch: one whose CVEs its own branch's row closed although a newer
+# branch's row names them too, which is clean, and one still behind its own
+# branch's fix, whose CVE that only the newer branch fixed stays open.
 CV="$OUT/cve.txt"
 ln -sf kdos-tools "$OUT/kdos"
 if PORT_REPO="$PWD/testing/fixtures/cve/ports" KPKG_CONF=/nonexistent \
@@ -8375,7 +8990,12 @@ if grep -q "newpkg" "$CV"; then
 fi
 grep -q "mappedpkg .*fixed in 3.1" "$CV" \
     || { echo "  the 'secdb =' name mapping was not honoured"; exit 1; }
-grep -q "4 checked, 1 not in the database, 2 behind a recorded fix" "$CV" \
+if grep -q "branchpkg" "$CV"; then
+    echo "  a CVE its own branch closed was reported from a newer branch's row"; cat "$CV"; exit 1
+fi
+grep -q "branchold .*3.6.5 .*fixed in 4.1.1 .*CVE-2026-7001,CVE-2026-7002" "$CV" \
+    || { echo "  a pin behind its own branch's fix was not reported"; cat "$CV"; exit 1; }
+grep -q "6 checked, 1 not in the database, 3 behind a recorded fix" "$CV" \
     || { echo "  the summary miscounted"; cat "$CV"; exit 1; }
 grep -q "the database is .* days old" "$CV" \
     || { echo "  a stale database was not called stale"; exit 1; }
@@ -8385,7 +9005,53 @@ PORT_REPO="$PWD/testing/fixtures/cve/ports" KPKG_CONF=/nonexistent \
     >/dev/null 2>&1 || rc=$?
 test "$rc" = 2 \
     || { echo "  a missing database did not report itself as unrunnable"; exit 1; }
-echo "  fix rows merged, -rN ignored, 'secdb =' honoured, unknown ≠ clean"
+echo "  fix rows merged, -rN ignored, branches judged per CVE, 'secdb =' honoured, unknown ≠ clean"
+
+# One port per run: a second name would silently replace the first, and the
+# answer would be about a port nobody asked for the last.
+rc=0
+PORT_REPO="$PWD/testing/fixtures/cve/ports" KPKG_CONF=/nonexistent \
+    PKGDB_DIR=/dev/null KDOS_SECDB="$PWD/testing/fixtures/cve/secdb.txt" \
+    "$OUT/kdos" cve oldpkg newpkg > "$CV" 2>&1 || rc=$?
+test "$rc" = 2 && grep -q "usage: kdos cve" "$CV" \
+    || { echo "  two port names were not refused with usage and status 2"; cat "$CV"; exit 1; }
+rc=0
+PORT_REPO="$PWD/testing/fixtures/cve/ports" KPKG_CONF=/nonexistent \
+    PKGDB_DIR=/dev/null KDOS_SECDB="$PWD/testing/fixtures/cve/secdb.txt" \
+    "$OUT/kdos" cve --jsno > "$CV" 2>&1 || rc=$?
+test "$rc" = 2 \
+    || { echo "  an unknown option was not refused with status 2"; cat "$CV"; exit 1; }
+PORT_REPO="$PWD/testing/fixtures/cve/ports" KPKG_CONF=/nonexistent \
+    PKGDB_DIR=/dev/null KDOS_SECDB="$PWD/testing/fixtures/cve/secdb.txt" \
+    "$OUT/kdos" cve newpkg > "$CV" 2>&1 \
+    || { echo "  one clean port named alone did not exit 0"; cat "$CV"; exit 1; }
+grep -q "1 checked" "$CV" \
+    || { echo "  a named port was not the only one checked"; cat "$CV"; exit 1; }
+echo "  one port name or none; a second name or an unknown option is usage and status 2"
+
+echo
+echo "==> kdos appid matches a window to a NoDisplay entry, not to a Hidden one"
+# Every kdos-shell front end's entry is NoDisplay: the menu does not list it,
+# but the taskbar matches its windows to it by file ID, so appid must too.
+# Hidden=true is a deleted entry and matches nothing.
+_ah="$OUT/appid-home"
+mkdir -p "$_ah/.local/share/applications" "$_ah/.local/share/kdos"
+printf '[Desktop Entry]\nType=Application\nName=Front\nExec=true\nNoDisplay=true\n' \
+    > "$_ah/.local/share/applications/kdos-selftest-front.desktop"
+printf '[Desktop Entry]\nType=Application\nName=Gone\nExec=true\nHidden=true\n' \
+    > "$_ah/.local/share/applications/kdos-selftest-gone.desktop"
+echo kdos-selftest-front > "$_ah/.local/share/kdos/observed-app-ids"
+HOME="$_ah" "$OUT/kdos" appid > "$_ah/out" 2>&1 \
+    || { echo "  a NoDisplay entry's window was not matched"; cat "$_ah/out"; exit 1; }
+grep -q "ok .*kdos-selftest-front" "$_ah/out" \
+    || { echo "  the NoDisplay entry was not reported ok"; cat "$_ah/out"; exit 1; }
+echo kdos-selftest-gone >> "$_ah/.local/share/kdos/observed-app-ids"
+if HOME="$_ah" "$OUT/kdos" appid > "$_ah/out" 2>&1; then
+    echo "  a Hidden entry was taken as a match"; cat "$_ah/out"; exit 1
+fi
+grep -q "MISMATCH.*kdos-selftest-gone" "$_ah/out" \
+    || { echo "  the Hidden entry's window was not a MISMATCH"; cat "$_ah/out"; exit 1; }
+echo "  a NoDisplay entry is a match, a Hidden one is not"
 
 echo
 echo "==> the key card can be printed without a display server"

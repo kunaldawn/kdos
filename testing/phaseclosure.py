@@ -31,6 +31,25 @@
 # dependency that resolves only on a later phase's PORT_REPO — that port cannot
 # be built where the phase needs it.
 #
+# The four phases split by what a port's closure reaches (its own name and
+# every `depends =` name under it) are held to the rule of the phase table in
+# docs/kdos/05-developer/writing-ports.md, "Which phase lists a port", for
+# every port each one installs. The graphics stack is GRAPHICS_ROOTS, a
+# toolkit is TOOLKIT_ROOTS, the application shelves are APP_SHELVES, and a
+# port nothing depends on is one no `depends =` of any port a phase installs
+# names; the table, its shelf list and these three sets are one rule, and a
+# change to one changes the others.
+#   41_system    reaches neither the graphics stack nor a toolkit
+#   42_graphics  reaches the graphics stack and no toolkit, and is not a port
+#                nothing depends on that sits on an application shelf
+#   43_toolkits  reaches a toolkit
+#   44_apps      nothing depends on it, and it reaches a toolkit, or sits on an
+#                application shelf and reaches the graphics stack
+# A port refused here is listed later than its closure puts it, or earlier
+# than its kind admits; the failure names the phase the table gives it. A
+# library over a toolkit that nothing depends on stays in 43_toolkits: what
+# is a library is not something a closure says.
+#
 # Names resolve as libkpkg resolves them across repositories: each PORT_REPO
 # entry in order, as <repo>/<name>/ and then <repo>/<shelf>/<name>/, the first
 # repository with the name winning. Within one repository this takes the first
@@ -54,6 +73,13 @@ NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]*$')
 SHELF_BANNER_RE = re.compile(r'^# [a-z0-9][a-z0-9-]* — ')
 ORDER_FILE = '00-order.txt'
 REPO_RE = re.compile(r'^\s*(?:export\s+)?PORT_REPO=(["\']?)(.*?)\1\s*(?:#.*)?$')
+GRAPHICS_ROOTS = {'wayland', 'libX11', 'mesa', 'libdrm', 'cairo', 'pango', 'gstreamer',
+                  'ffmpeg', 'pipewire'}
+TOOLKIT_ROOTS = {'gtk3', 'gtk4', 'qt5-qtbase', 'qt6-qtbase', 'wxwidgets', 'fltk', 'motif'}
+APP_SHELVES = {'3d', 'browsers', 'cad', 'chat', 'editors', 'emulators', 'files',
+               'games-action', 'games-board', 'games-rpg', 'games-shooter', 'games-strategy',
+               'graphics', 'libretro', 'mail', 'mobile', 'music-players', 'pim', 'studio',
+               'video-players', 'video-tools'}
 
 sys.setrecursionlimit(100000)
 
@@ -164,6 +190,63 @@ def read_list(files, split):
                 if s and not s.startswith('#'):
                     names.append((s, path, n, in_run))
     return names
+
+
+def phase_rule(phases, res):
+    """The phase table's rule for 41_system to 44_apps, as the header states it."""
+    home = {}
+    for ph in phases:
+        for p in ph.get('emitted', ()):
+            home.setdefault(p, ph)
+    depended = set()
+    for p, ph in home.items():
+        pdir = res.find(ph['repos'], p)
+        if pdir:
+            depended.update(read_depends(pdir))
+    reach = {}
+
+    def reaches(p, repos):
+        """(graphics stack, toolkit) for p's closure, p included."""
+        if p in reach:
+            return reach[p]
+        reach[p] = (p in GRAPHICS_ROOTS, p in TOOLKIT_ROOTS)
+        g, t = reach[p]
+        pdir = res.find(repos, p)
+        for dep in read_depends(pdir) if pdir else ():
+            dg, dt = reaches(dep, repos)
+            g, t = g or dg, t or dt
+        reach[p] = (g, t)
+        return reach[p]
+
+    fails = []
+    for ph in phases:
+        d = ph['dir']
+        if d not in ('41_system', '42_graphics', '43_toolkits', '44_apps'):
+            continue
+        for p in ph.get('emitted', ()):
+            pdir = res.find(ph['repos'], p)
+            shelf = os.path.basename(os.path.dirname(pdir)) if pdir else ''
+            g, t = reaches(p, ph['repos'])
+            app = shelf in APP_SHELVES
+            leaf = p not in depended
+            if t:
+                want = '44_apps' if leaf and d == '44_apps' else '43_toolkits'
+            elif g:
+                want = '44_apps' if leaf and app else '42_graphics'
+            else:
+                want = '41_system'
+            if want == d:
+                continue
+            why = ('its closure reaches a toolkit' if t else
+                   'its closure reaches the graphics stack and no toolkit' if g else
+                   'its closure reaches neither the graphics stack nor a toolkit')
+            if d == '44_apps' and not leaf:
+                why += ', and a port depends on it'
+            elif want == '44_apps':
+                why += ', it is on the application shelf %s and nothing depends on it' % shelf
+            fails.append(f'{p}: installed by {d}, but {why}, so the phase table puts it '
+                         f'in {want}')
+    return fails
 
 
 def main():
@@ -299,10 +382,13 @@ def main():
                                  f'in its list')
         for p in emitted:
             installed[p] = d
+        ph['emitted'] = emitted
         summary.append(f'{d}: {len(ph["names"])} names, installs {len(emitted)}'
                        + (f', re-lists {relisted}' if relisted else '')
                        + ('' if ph['num'] >= EQUALITY_FROM else ' (closure not checked below '
                           f'{EQUALITY_FROM})'))
+
+    fails += phase_rule(phases, res)
 
     for f in fails:
         print('FAIL ' + f)
@@ -311,7 +397,8 @@ def main():
     if fails:
         print(f'phaseclosure: {len(fails)} problem(s)')
         return 1
-    print('phaseclosure: every package phase installs exactly the ports its list names')
+    print('phaseclosure: every package phase installs exactly the ports its list names, '
+          'each in the phase its closure gives it')
     return 0
 
 

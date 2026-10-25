@@ -23,6 +23,14 @@
  *   reaches it by SOURCE — the atlas is tinted, /usr/share/icons/hicolor is
  *   not — rather than by guessing from the name.
  *
+ * - **A one-colour atlas picture is a MASK when the caller names an ink.**
+ *   Most of the atlas is symbolic artwork in a single light grey, and a tint
+ *   keeps lightness, so on a lit plate it comes out light on light. A
+ *   picture whose opaque pixels all share one colour carries its shape in
+ *   its alpha alone, and kicon_slot_ink() draws that alpha in the colour the
+ *   plate's own text takes. A picture of two colours or more is drawn as
+ *   kicon_slot() draws it, because its colours are the picture.
+ *
  * - **The cache is keyed by CONTENT and so is the sprite slot.** Two frames
  *   drawing the same icon at the same size must produce byte-identical cells,
  *   or the row diff repaints the whole panel sixty times a second. The hot
@@ -232,18 +240,29 @@ static uint64_t hash64_mem(const void *p, size_t n, uint64_t h)
 	return h;
 }
 
-static uint64_t pic_key(const char *name, int cw, int ch, int pad)
+/* No ink: the picture is tinted. Above 24 bits so no RGB can collide. */
+#define KI_NO_INK 0xffffffffu
+
+static uint64_t pic_key(const char *name, int cw, int ch, int pad,
+			uint32_t ink)
 {
 	uint64_t h = hash64(name, 1469598103934665603ull);
-	char tag[64];
+	char tag[96];
 	/* The accent is part of the identity: a tinted folder is a different
 	 * picture in amber, and a key that ignored it would hand the panel the
 	 * previous accent's icon for the life of the process. `pad` for the
 	 * same reason — the same name in the same cells at two paddings is two
 	 * pictures, and one key for both hands the second caller the first
-	 * one's. */
-	snprintf(tag, sizeof(tag), "|%d|%d|%d|%d|%s", cw, ch, pad, ki_scale,
-		 ktui_theme ? ktui_theme->name : "");
+	 * one's. The ink for the same reason: a mask inked for one plate is a
+	 * different picture on another, and night light moves the ink without
+	 * moving the scheme's name. */
+	if (ink == KI_NO_INK)
+		snprintf(tag, sizeof(tag), "|%d|%d|%d|%d|%s", cw, ch, pad,
+			 ki_scale, ktui_theme ? ktui_theme->name : "");
+	else
+		snprintf(tag, sizeof(tag), "|%d|%d|%d|%d|%s|ink%06x", cw, ch,
+			 pad, ki_scale, ktui_theme ? ktui_theme->name : "",
+			 (unsigned)ink);
 	return hash64(tag, h);
 }
 
@@ -258,18 +277,51 @@ static void kicon_free_bits(pixman_image_t *img, void *data)
 }
 
 /*
+ * Whether every pixel with any coverage is one colour. Straight alpha, so an
+ * antialiased edge keeps its colour and only its alpha falls off — the
+ * symbolic artwork is exactly one RGB to the last pixel, and a picture with
+ * any second colour in it is not a mask. One pass over pixels the decode has
+ * just produced, run once per picture built and never on the hot path.
+ */
+static int one_colour(const uint8_t *rgba, int n)
+{
+	int seen = 0;
+	uint8_t r = 0, g = 0, b = 0;
+
+	for (int i = 0; i < n; i++) {
+		const uint8_t *p = rgba + (size_t)i * 4;
+
+		if (!p[3])
+			continue;
+		if (!seen) {
+			r = p[0];
+			g = p[1];
+			b = p[2];
+			seen = 1;
+		} else if (p[0] != r || p[1] != g || p[2] != b) {
+			return 0;
+		}
+	}
+	return seen;
+}
+
+/*
  * RGBA8888 (straight) -> a premultiplied a8r8g8b8 pixman image, tinted on the
- * way if asked.
+ * way if asked — or, for a mask with an `ink` (KI_NO_INK for none), every
+ * covered pixel set to the ink at its own alpha.
  *
  * PREMULTIPLY LAST. The tint runs on the colour, and a colour that has already
  * been multiplied by its alpha is not the colour — that is the halo bug
  * kdos-cursors paid for once, arriving here in a different shape.
  */
-static pixman_image_t *to_pixman(const uint8_t *rgba, int w, int h, int tint)
+static pixman_image_t *to_pixman(const uint8_t *rgba, int w, int h, int tint,
+				 uint32_t ink)
 {
 	uint32_t *px = malloc((size_t)w * h * 4);
 	if (!px)
 		return NULL;
+
+	int mask = ink != KI_NO_INK && one_colour(rgba, w * h);
 
 	for (int i = 0; i < w * h; i++) {
 		uint32_t r = rgba[i * 4 + 0];
@@ -277,7 +329,11 @@ static pixman_image_t *to_pixman(const uint8_t *rgba, int w, int h, int tint)
 		uint32_t b = rgba[i * 4 + 2];
 		uint32_t a = rgba[i * 4 + 3];
 
-		if (tint && a) {
+		if (mask) {
+			r = (ink >> 16) & 0xff;
+			g = (ink >> 8) & 0xff;
+			b = ink & 0xff;
+		} else if (tint && a) {
 			uint32_t c = tint_rgb((r << 16) | (g << 8) | b);
 			r = (c >> 16) & 0xff;
 			g = (c >> 8) & 0xff;
@@ -652,12 +708,25 @@ static uint32_t fallback_cp(void)
 	return (ktui_caps & KT_CAP_UTF8) ? 0x2593u : (uint32_t)'#';
 }
 
+static int ki_slot(const char *name, int cw, int ch, int pad, uint32_t ink);
+
 int kicon_slot(const char *name, int cw, int ch)
 {
-	return kicon_slot_pad(name, cw, ch, 0);
+	return ki_slot(name, cw, ch, 0, KI_NO_INK);
 }
 
 int kicon_slot_pad(const char *name, int cw, int ch, int pad)
+{
+	return ki_slot(name, cw, ch, pad, KI_NO_INK);
+}
+
+int kicon_slot_ink(const char *name, int cw, int ch, uint32_t rgb)
+{
+	return ki_slot(name, cw, ch, 0, rgb & 0xffffffu);
+}
+
+/* `ink` is KI_NO_INK, or the RGB a one-colour atlas picture is drawn in. */
+static int ki_slot(const char *name, int cw, int ch, int pad, uint32_t ink)
 {
 	if (!kicon_enabled() || !name || !*name || cw < 1 || ch < 1)
 		return -1;
@@ -667,7 +736,7 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 		pad = 0;
 	pad *= ki_scale;
 
-	uint64_t key = pic_key(name, cw, ch, pad);
+	uint64_t key = pic_key(name, cw, ch, pad, ink);
 
 	/* The hot path: the same icon at the same size was drawn last frame,
 	 * so there is nothing to do but hand back the slot. */
@@ -745,14 +814,18 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 			tint = 1;
 		}
 	}
-	if (!rgba)
+	/* An application's own icon is never inked, for the reason it is
+	 * never tinted: the ink applies to the atlas alone. */
+	if (!rgba) {
 		rgba = load_hicolor(name, want, &w, &h);
+		ink = KI_NO_INK;
+	}
 	if (!rgba) {
 		miss_add(key);
 		return -1;
 	}
 
-	pixman_image_t *src = to_pixman(rgba, w, h, tint);
+	pixman_image_t *src = to_pixman(rgba, w, h, tint, ink);
 	free(rgba);
 	if (!src)
 		return -1;
@@ -782,7 +855,7 @@ int kicon_slot_pad(const char *name, int cw, int ch, int pad)
 /*
  * A SPRITE FROM BYTES, for a picture that never came from a theme.
  *
- * The body below kicon_slot_pad's search is the same body — decode, to
+ * The body below ki_slot's search is the same body — decode, to
  * pixman, fit, cache, register — and only the source of the pixels differs,
  * so what is NOT shared is the search: there is nothing to search for. A
  * caller holding the bytes has already resolved the lookup this library
@@ -846,7 +919,7 @@ int kicon_slot_png(const void *png, size_t len, int cw, int ch)
 		return -1;
 	}
 
-	pixman_image_t *src = to_pixman(rgba, w, h, 0);
+	pixman_image_t *src = to_pixman(rgba, w, h, 0, KI_NO_INK);
 
 	free(rgba);
 	if (!src)
@@ -911,7 +984,7 @@ pixman_image_t *kicon_pixmap(const char *name, int box_w, int box_h)
 	if (!rgba)
 		return NULL;
 
-	pixman_image_t *src = to_pixman(rgba, w, h, tint);
+	pixman_image_t *src = to_pixman(rgba, w, h, tint, KI_NO_INK);
 	free(rgba);
 	if (!src)
 		return NULL;

@@ -32,10 +32,10 @@ si::sysinit:/etc/init.d/rcS
 # broken login path still gives a console.
 1:2345:respawn:/usr/local/sbin/kdos-getty tty1 /usr/local/sbin/kdos-login tty1
 
-# Second console, root login prompt. THE RECOVERY CONSOLE: it is a plain
-# agetty with no --autologin, and nothing above may be allowed to make it
-# one too, because it is what is left when the desktop on tty1 does not
-# come up.
+# Second console, a login prompt for any account. THE RECOVERY CONSOLE: it
+# is a plain agetty with no --autologin, and nothing above may be allowed to
+# make it one too, because it is what is left when the desktop on tty1 does
+# not come up.
 2:2345:respawn:/usr/local/sbin/kdos-getty tty2 /sbin/agetty --noclear tty2 38400 linux
 
 # Serial console. The live image logs root in with no password; the

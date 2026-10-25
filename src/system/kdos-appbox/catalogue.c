@@ -657,10 +657,11 @@ void cat_chk(int cond, const char *what)
 
 /* A lookup that cannot return NULL, so an assertion below reads a field
  * rather than crashing on a row the fixture lost. A miss is a failure here and
- * every field then reads empty, which fails its own assertion too. */
+ * every field then reads empty, which fails its own assertion too; `packages`
+ * is the one pointer, so it points at "" or strcmp on it would crash. */
 static const CatPack *must(const char *id)
 {
-	static const CatPack none;
+	static const CatPack none = { .packages = (char *)"" };
 	const CatPack *p = cat_find(id);
 
 	if (!p) {

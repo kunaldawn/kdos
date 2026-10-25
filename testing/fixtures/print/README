@@ -1,12 +1,14 @@
-Recorded answers from `lpstat -p`, `lpstat -d` and `lpinfo -v`.
+Recorded answers from `lpstat -p`, `lpstat -d` and `lpinfo -v`; `lpstat -r` is
+read too, and a file that is not here reads as an empty answer.
 
 A surface whose picture depends on three programs on the host's PATH cannot be
 goldened: a machine with CUPS set up and one without draw different frames and
 neither is wrong. `kdos-print --fixture testing/fixtures/print` reads these
 instead of running them.
 
-The `serial` and `file` rows are here ON PURPOSE. `lpinfo -v` lists every
-backend CUPS has, including one that prints to a file and one that names a
-serial port with nothing on it; offering either as a printer to add is offering
-a queue that will never produce a page. The golden is what proves they are
-dropped.
+The `serial`, `file` and bare `network socket` rows are here ON PURPOSE.
+`lpinfo -v` lists every backend CUPS has, including one that prints to a file,
+one that names a serial port with nothing on it, and each backend that found no
+device by itself, as a scheme with no address; offering any of them as a printer
+to add is offering a queue that will never produce a page. The golden is what
+proves they are dropped.

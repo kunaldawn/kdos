@@ -14,7 +14,8 @@ KDOS has no unit-test framework and ships no test binaries. Its checks fall into
   program that uses them and runs their assertions in a few minutes; two of its parts are the
   *goldens*, committed reference frames of every surface that can be drawn deterministically, and
   the *fixtures*, recorded system state that a program can be pointed at instead of the live
-  machine. `docscheck.sh` checks this book.
+  machine. `docscheck.sh`, `anchorcheck.py` and `booknav.py` check this book and *KDOS from
+  Scratch*, and `kfscheck.py` checks the second book against the recipes it is generated from.
 - **A source check**, `make fetch-check`, which confirms every upstream source a recipe names is on
   disk and matches its hash.
 - **Boot-time harnesses** built on the *rig*, a virtual machine that boots the real image, drives
@@ -37,7 +38,10 @@ Start with [What each tool proves](#what-each-tool-proves) and
 | `testing/vnc-shot.py` | That a real session does a thing, photographed | Anything the renderer in use cannot show | Minutes per boot |
 | `testing/quick.sh` | That a changed program behaves on a booted desktop, without repacking the ISO | Anything about the shipped image | About three minutes |
 | `testing/usability.sh` | That the desktop can be driven by hand (hover, click, chord), photographed step by step | Nothing on its own: it asserts nothing and a person reads the result | About six minutes |
-| `testing/docscheck.sh` | That this book's links resolve, that it avoids the common historical phrasings, that each page keeps its contract, and that the port counts and catalogue rows match the tree | Anything a reader has to judge | Under a second |
+| `testing/docscheck.sh` | That both books' links resolve, that they avoid the common historical phrasings, that each page keeps its book's contract, and that the port counts and catalogue rows match the tree | Anything a reader has to judge | A few seconds |
+| `testing/anchorcheck.py` | That every `#fragment` link in both books lands on a heading | That the heading says what the link promises | Under a second |
+| `testing/booknav.py` | That every chapter footer, and the contents of *KDOS from Scratch*, follow the reading order | Whether the order is a good one | A few seconds |
+| `testing/kfscheck.py` | That *KDOS from Scratch*'s notes, includes, kernel option table and recipe stamp match the tree, that every port renders, and that a new or changed patch carries a `Subject:` line | That a note is still true | A few seconds |
 | `make fetch-check` | That every source a recipe names is on disk and matches its hash | That the sources build | About a minute, offline |
 | `testing/packlane.sh` | The pack lane (installing boxed applications from packs; see [Packs and boxes](../03-architecture/packs-and-boxes.md#two-lanes-one-box)) end to end on a booted machine | Anything without application packs to install | Minutes |
 | `testing/install-to-disk.sh` | That the installer installs | That the installed system boots, which is the second half of the run | Minutes |
@@ -56,7 +60,9 @@ tested by building the distribution with them.
 | A surface's layout or colours | The self-test in the development image (`testing/devdeps-image.sh`); if the change is intended, regenerate with the command under [Regenerating](#regenerating), then read `git diff testing/goldens/` |
 | A recipe's `sha256 =` line or its sources | `make fetch-check` |
 | Something only a running desktop shows | `testing/quick.sh`, then the rig on a real ISO |
-| A page of this book | `bash testing/docscheck.sh` |
+| A page of either book | `bash testing/docscheck.sh`, `python3 testing/anchorcheck.py` and `python3 testing/booknav.py` |
+| A chapter added, removed or reordered | `python3 testing/booknav.py --write`, after editing `docs/kdos/README.md`'s contents for this book |
+| A recipe, a patch, a `kfs.md`, a phase list, `kdos.config` or a script a page of *KDOS from Scratch* includes | `python3 testing/kfscheck.py`, then `make book-stamp` when it reports the stamp stale and `kfscheck.py --repin` when it reports an include range moved |
 | Nothing, but a build finished and a phase is about to be built with `--port-jobs` | `python3 testing/depdrift.py` in the development image |
 | A recipe's flags, `depends` or installed files, once its port is built | `make debuginfo`, `make linkcheck` and `make entrycheck`, from a container or as root; `70_image` runs the last two and stops on them |
 
@@ -88,8 +94,8 @@ check that finds its directory there reports what is missing from it.
 | Group | Checks |
 |---|---|
 | Layout | Every recipe under `ports/core` sits exactly at `ports/core/<shelf>/<name>/kpkgbuild`, and `ports/core` holds nothing but shelves; `ports/shelves` lists every shelf once, each with a volume that is a positive integer and a description, an id of lowercase letters, digits and `-`, not `libs` or `core` and not a port's name, and each a non-empty directory; `src/` holds only its six areas and every port of KDOS's own sits at `src/<area>/<name>/`; the orphan sweep searches every `src/` area that holds a recipe; every bare name is one port across the shelves and the `src/` areas; every `name =` is its directory's name; every `group =` family sits on one shelf; every file of a `packages.d/` is `00-order.txt`, a listed shelf's `<shelf>.txt` or a `src-<area>.txt`, and names only ports filed there, and no phase has both `packages.txt` and `packages.d/` |
-| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball (`linux` and `perf`) agree on its version and hash; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone or listed in `ports/unbuilt` |
-| Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every recipe and build script carries the KDOS banner; every source a port declares is named by a checksum and is non-empty where it is on disk (one not yet fetched is reported as a `make fetch` note, not a failure); every recipe carries a `description`, a `homepage` and a `license` that is an SPDX expression, its first source spells the version as `$version` (`docbook-xml` excepted), and its `description` is exactly the one its row in the [ports catalogue](../06-reference/ports-catalogue.md) gives, every port having one row there (all read by `testing/recipemeta.py`); the switches that turn off a feature whose library is a port are counted by `testing/optdeps.py`, a report that never fails |
+| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, and each port of `41_system` to `44_apps` is in the phase the phase table gives its closure, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball (`linux` and `perf`) agree on its version and hash; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone or listed in `ports/unbuilt` |
+| Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every recipe and build script carries the KDOS banner; every source a port declares is named by a checksum and is non-empty where it is on disk (one not yet fetched is reported as a `make fetch` note, not a failure); every recipe carries a `description`, a `homepage` and a `license` that is an SPDX expression, its first source spells the version as `$version` (`docbook-xml` excepted), and its `description` is exactly the one its row in the [ports catalogue](../06-reference/ports-catalogue.md) gives, every port having one row there (all read by `testing/recipemeta.py`); the switches that turn off a feature whose library is a port are counted by `testing/optdeps.py`, a report that never fails; every `.patch` or `.diff` under `ports/` or `src/` that is new or changed (on no remote yet) has a `Subject:` line in its mail header, by `testing/kfscheck.py --only patches`, with `KDOS_CHECK_BASE=<ref>` measuring against a ref instead (see [kfscheck.py](#kfscheckpy)) |
 | Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value option types validated; every recipe that runs `meson setup` names its buildtype; every `go build` and `go install` passes `-s` and `-w` in its `-ldflags`, read with its backslash continuations joined; every recipe that runs cargo builds against a shared C library; every consumer of a shared library generates the Wayland protocols it includes |
 | Sources | Every source file in a port of KDOS's own is compiled by its recipe, unless that recipe globs its own `$PORT_SRC` directory (a glob of the shared `libk*` trees does not exempt it); a first source whose members are `./`-prefixed is accounted for; a flat first source is unpacked by its own recipe |
 | The sources archive | No archive a recipe hashes is tracked by git; `.gitignore` ignores every archive suffix under `ports/core` and the source cache, and none of the archive fixtures under `testing/fixtures`; `ports/srclib.sh`, `ports/fetch`, `ports/publish` and `script/hooks/pre-push` exist, are executable where they must be, and pass `bash -n`; `ports/sources.idx` holds every format-2 rule: `# kdos-sources-index 2` on line 1, each line `<sha256> <tag> <asset> <port>/<file>` with an optional `parts=<N>:…` of 2 to 99 hashes, each tag `sources-<N>` with `N` a positive integer, or a `src-<name>` of the older layout, which passes and is counted in a `WARNING` note saying `make publish-rehome` moves those lines, one line per hash, no part hash equal to a line's hash, no two asset names in one tag equal ignoring case (a split file's parts and its bare name counted), and hash order. An unset `core.hooksPath` is printed as a note, not a failure |
@@ -97,8 +103,8 @@ check that finds its directory there reports what is missing from it.
 | Permissions and accounts | `/etc/shadow` on the built tree is mode 600 or 640 and the file-system step narrows it; the polkit and udev rule directories and files are owned by root; no udev rule sets `GROUP=`, `MODE=` or `OWNER=` on a device class that has no node, and every group a rule grants is one the desktop user is in; every account a shipped daemon drops to exists in `fs/etc/passwd`; the desktop user is in the groups its surfaces need |
 | Shell | All shipped and build shell is syntactically valid; every file a build script, a `phase.env` or a shared environment file sources exists, and a step sources its own phase's `phase.env`; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
 | Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; every script under `fs/etc/init.d` but `service_helper` is executable in the work tree and recorded as `100755` in git; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the compiler cache sets no `base_dir`, checks the compiler by a string rather than a modification time, has its `KDOS_CCACHE` switch both passed by the `Makefile` and named by `script/chroot/exec.sh`, and puts no masquerade directory on a `PATH`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; only `kdos_crt_scanout()` in the compositor writes the scene's direct-scanout switch; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
-| Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load; every `kdos-*` command on the built tree has a manual page |
-| Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; every icon name a surface asks for resolves on the image; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=`; no visible entry reads as a server, session picker, launch pad, tray helper or diagnostic unless `testing/visible-entries.allow` names it, and that file names only entries that are visible and read that way |
+| Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every window a program of ours opens as a toplevel has a desktop entry named after its `app_id`; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load; every `kdos-*` command on the built tree has a manual page |
+| Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; no text draw under `src/` takes `KT_DIM` as its foreground, except a rule, shade or block glyph, a blank cell, or a call marked `/* not text */`; no text, menu-label, sprite or gauge draw takes `KT_SURFACE` or `KT_BG` ink, in the call or through a local, on a background `ktui_sel_slots()` or `ktui_sel_row()` filled; every icon name a surface asks for resolves on the image; every front end that names an icon calls `kicon_init()` or points its runner descriptor's `.icons` at its flag; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=`; no visible entry reads as a server, session picker, launch pad, tray helper or diagnostic unless `testing/visible-entries.allow` names it, and that file names only entries that are visible and read that way |
 
 Preflight cannot prove the build works. It proves the build will not fail for a mechanical reason
 such as a missing port, a misspelt option or a script that does not parse. Run it after touching a
@@ -165,7 +171,9 @@ blocks fall into these groups, in roughly this order:
    `Version`, a build-directory `RPATH`, an executable stack) and rolling one that holds a path
    from each allowlist, with the Python bytecode compiled into the package and `direct_url.json`
    left out; the
-   shared indexes, file ownership, skip-if-installed, the package store (a hit installs the same
+   shared indexes, file ownership, skip-if-installed (a book note `kfs.md` beside a recipe added,
+   edited or removed leaving its hash where it was, and `build.sh` beside it still moving it), the
+   package store (a hit installs the same
    files without running `build.sh`; a dependency's changed bytes, a changed `CFLAGS`, a
    dependency without `.pkgsha`, a truncated stored file and `-f` all build; a job count does
    not; an undeclared link is recorded as `X:` and a change to it misses; check mode logs a
@@ -173,16 +181,20 @@ blocks fall into these groups, in roughly this order:
    host's signed index and delta packages; `kdosbuild --selftest` laying out the build screen and
    its HUD at every size, and retrying a failed phase over a three-phase tree in a temporary
    directory (kpkg's step first, a finished script keeping its result, a package phase's rows
-   dropped and resolved again, nothing pointing at a freed row), and its jobserver FIFO keeping
-   its token count across a level; `kdosbuild` running a synthetic
-   two-phase build end to end, writing no snapshot unless `--snapshot` asks and timing every phase
-   in its result;
+   dropped and resolved again, nothing pointing at a freed row), its jobserver FIFO keeping
+   its token count across a level, and `timings.json` merged on every
+   record (each figure filed under the machine of the run that measured it, a second machine
+   under a second id, a machine no figure names dropped, a silent step, a skipped port and a retried phase keeping their earlier figures, a
+   port's own build line told from another port's); `kdosbuild` running a synthetic
+   two-phase build end to end, writing no snapshot unless `--snapshot` asks, timing every phase
+   in its result, and keeping in `timings.json` the steps a narrower run did not measure;
    `kdosbuild` writing a three-phase build's snapshots as a full archive and then layers, each
    restored and compared entry by entry with the tree its phase left, a retaken phase written full
    with the old chain held until nothing needs it, a deleted base held for its dependants and
    freed after them, a schema-3 snapshot restored and layered on, and a snapshot whose base is gone
    refused as unusable; and `kdosbuild` running no
-   step for a port installed and current in a chroot package phase over a real database, never
+   step for a port installed and current in a chroot package phase over a real database, timing
+   only the port whose step built it, never
    announcing one as running, and running it after all when its recipe is edited while an earlier
    step of the phase runs; and `kdosbuild --port-jobs` over a stub `kpkg`: the order run first,
    a level's ports building side by side, committed together in serial order before the next level
@@ -796,13 +808,13 @@ or a variable moves one directory walk. There are 50 fixture directories under
 | `res/*/sys/class/net/*/device` | A `uevent` file inside the directory | Whether an interface is real. The test is the directory's presence, and git stores no empty directory, so the file keeps the directory in every clone |
 | `stutter` | Two snapshots half a second apart, plus the frame events between them | That the application is named with its box, the blocked process comes first, pressure is quoted, and exactly one event is blamed on the compositor |
 | `energy` | Four recorded power and process trees | The nesting rule, the counter wrap, the roll-up onto one application, and the short-lived residue |
-| `oomd` | Three trees arranged so only the memory budget produces the right answer | That the budget check matters: the host process is larger than anything in either box |
+| `oomd` | Three trees arranged so only the memory budget produces the right answer; the self-test replays one with a `meminfo` written beside it | That the budget check matters: the host process is larger than anything in either box. And that a stall with 80% of memory available kills nothing while the same tree at 7.5% does |
 | `mountd` | A block-device tree plus two hand-built superblocks | The acceptance and both refusals. The internal disk carries a real superblock, so a broken check shows up as an extra row rather than as nothing |
 | `privacy` | Three processes: one holding a camera twice, one an audio device that must be ignored | The camera indicator, on a machine with no camera |
 | `portup` | Recorded upstream responses (a registry index, git tag lists and branch heads, feeds, a releases API answer, directory listings) and, under `ports/`, the recipes seven ports were recorded at | Every discovery adapter and filter in `kdos-portup --selftest`, and all three outcomes end to end, offline and unaffected by bumps to the live recipes |
 | `cve` | Four ports and a five-row database | A version behind two fixes, one that only looks behind because of a packaging revision, a name mapping, and a package the database has never heard of |
 | `about` | A whole machine under one root: `os-release` with a build stamp, a kernel, eight threads, a process tree with a boxed browser, a boot state mid-trial, one empty keyring and one with a key, a fourteen-package database, and the logo | `kdos-about`'s three pages, through `KDOS_ABOUT_ROOT` |
-| `update` | Recorded answers from `kdos update check --json`, `kdos cve --json` and `kdos-bootctl status` | `kdos-update`'s frames, through `KDOS_UPDATE_JSON`, `KDOS_CVE_JSON` and `KDOS_SLOT_TEXT` |
+| `update` | Recorded answers from `kdos update check --json`, `kdos cve --json` and `kdos-bootctl status`, plus a second `kdos cve` answer with no findings and two bundled copies | `kdos-update`'s frames, through `KDOS_UPDATE_JSON`, `KDOS_CVE_JSON` and `KDOS_SLOT_TEXT`, and that bundled copies are not counted as vulnerabilities |
 | `clone` | Three hand-built image headers | The two-record length rule |
 | `tray` | A second *process* that behaves like a real tray item | The whole protocol conversation |
 | `traymenu`, `net`, `netagent` | D-Bus peers on a private bus | See [Surfaces that talk D-Bus](#surfaces-that-talk-d-bus) |
@@ -829,6 +841,7 @@ or a variable moves one directory walk. There are 50 fixture directories under
 | `box` | Four box profiles | What a profile says it enforced and what it could not |
 | `openwith`, `places`, `recent` | A MIME glob table and files, a home with a renamed desktop folder, a recently-used list | File-type resolution, the places list and the recent list |
 | `ascii`, `cellclip`, `deco`, `iconpng`, `oblique`, `tone`, `view` | A small driver of their own | The ASCII engine's claims; that painting never writes outside the buffer; that a window has a frame; tray icon data decoded from bytes; the synthetic slant; the tone ladder in every accent; the four list views |
+| `iconink` | `iconink.c`, which links `kch_chrome.c` and `libkicon` over the committed atlas | That a one-colour picture `kch_header` draws clears 4.5:1 on its `KT_ACCENT` plate in every accent, warmed and not, and that an ink leaves a picture of several colours byte-identical to `kicon_slot()`'s |
 
 A recorded stream is not a running program, so beside the `vt` fixtures the library assertions
 also open real programs on a real pseudo-terminal, press one key in each, and check that the
@@ -1143,9 +1156,9 @@ itself, as the login shell's profile would have.
 | `--wait <s>` | Seconds to let the session settle after boot (default 25) |
 | `--soak <s>` | Let the session run after every step and before the final shot (default 0) |
 | `--cmd <cmd>` | Run a command in the desktop session |
-| `--root-cmd <cmd>` | Run a command as root on the serial console and print its output |
+| `--root-cmd <cmd>` | Run a command as root on the serial console, wait for it to finish and print its output |
 | `--root-script <file>` | Send a local script into the guest and run it as root |
-| `--script-timeout <s>` | How long a `--root-script` may take (default 900) |
+| `--script-timeout <s>` | How long a `--root-script` or a `--root-cmd` may take (default 900) |
 | `--console-cmd <text>` | Type this on `tty1` during start-up, before any step. `tty1` is the desktop, so it reaches the icon layer's type-ahead, not a shell; to run a command in a terminal window use `--keys meta_l-ret` then `--type` |
 | `--size WxH` | The guest's screen (default `1280x800`, virtio-gpu's own default) |
 | `--gl` | `virtio-vga-gl` on a headless EGL display, so the compositor gets GLES2 and the phosphor pass runs. Needs `/dev/dri`. No Vulkan |
@@ -1153,6 +1166,7 @@ itself, as the login shell's profile would have.
 | `--audio` | Give the guest an HDA controller, so audio paths reach a real device |
 | `--disk <qcow2>` | Attach a virtio disk, the target an unattended `kinstall` writes to |
 | `--no-cdrom` | Leave the ISO off, so the disk is what boots |
+| `--root-password <pw>` | What to answer when the serial console's login asks root for a password, as an installed system does; the live image asks none (default `kdos`, the one `install-to-disk.sh` sets) |
 | `--boot-disk` | Boot the disk with the ISO still attached, so an installed system can still reach the medium |
 | `--data-disk <file>` | Attach a raw file as a plain virtio disk, to carry a large file into a guest with no network. Input only |
 | `--scratch <file>` | Attach a raw file the guest writes a tar onto, which is how files come back out |
@@ -1281,8 +1295,9 @@ The following behaviours of the rig and the guest cause false results.
 - The harness stops the emulator without a shutdown, so a root script must `sync` after writing,
   or a file it wrote comes back zero-length, whether it is read out of the guest or found on the
   next boot.
-- A pipeline that reads a supervised service's output never returns, because the supervisor keeps
-  the pipe open.
+- A supervised daemon's output is not on the pipe that started it. `service start x | cat` returns
+  as soon as the script does, with the script's own lines only; the daemon's are in
+  `/run/kdos-svc.<name>.log` and syslog.
 - A static screen produces no frame events, so anything about dropped frames needs something
   animating first.
 - A step costs seconds, so anything with a timeout must be photographed with no sleep before it.
@@ -1291,7 +1306,7 @@ The following behaviours of the rig and the guest cause false results.
   the shot photographs the desktop after the thing has gone, and the picture looks exactly like the
   feature being broken.
 - A `--root-cmd` or `--root-script` round trip outlasts a five-second toast. It runs over the
-  serial console and waits for a prompt, which takes longer than the notification it raised stays
+  serial console and waits for the command to finish, which takes longer than the notification it raised stays
   on screen. Raise a toast with `--type`, which goes over the keyboard and is quick, or ask for a
   timeout longer than the rest of the run.
 
@@ -1316,10 +1331,12 @@ preflight with "recipe-hashed archives are tracked by git — git rm --cached th
 
 ## docscheck.sh
 
-`testing/docscheck.sh` is the authoring check for this book.
+`testing/docscheck.sh` is the authoring check for both books, this one under `docs/kdos` and
+*KDOS from Scratch* under `docs/kfs`.
 
 ```sh
-bash testing/docscheck.sh                                     # every page, plus README.md
+bash testing/docscheck.sh                                     # both books, plus README.md
+bash testing/docscheck.sh --book docs/kfs                     # one book (repeatable)
 bash testing/docscheck.sh docs/kdos/05-developer/testing.md   # only the named pages
 ```
 
@@ -1327,15 +1344,16 @@ It reports:
 
 | Report | Means |
 |---|---|
-| `DEADLINK` | A relative link whose target file exists neither beside the page nor from the repository root. The part after `#` is not checked |
+| `DEADLINK` | A relative link whose target file exists neither beside the page nor from the repository root. The part after `#` is not checked; [anchorcheck.py](#anchorcheckpy) checks it |
 | `HISTORY` | A line containing a phrase from the list in the script's `BAD` variable, phrases that almost always record the past rather than state the present. At most five lines are printed per page |
-| `NOTITLE` | A page under `docs/kdos/` whose first line is not a `# ` title |
-| `NOSEEALSO` | A page under `docs/kdos/` with no `## See also` section |
-| `UNLISTED` | A page the book's index, `docs/kdos/README.md`, does not name (full runs only) |
+| `NOTITLE` | A page of either book whose first line is not a `# ` title |
+| `NOSEEALSO` | A page of either book with no `## See also` section |
+| `UNLISTED` | A page its own book's `README.md` does not link (whole-book runs only). In `docs/kfs` the contents is written by `testing/booknav.py --write`, so an unlisted page there is one booknav has not been run over |
+| `WIKISKEL` | A topic page of *KDOS from Scratch*'s system administration part (the `*-wiki` directory, every page but its `intro.md`) whose `## ` headings are not exactly Installation, Configuration, Usage, Tips, Troubleshooting, Known gaps and See also, in that order. Deeper headings are free |
 | `MISSING` | A path given on the command line that does not exist |
-| `BOOKCOUNT` | A port count on one of the three pages that state exact counts, or a row of the ports catalogue, that the tree contradicts (full runs only; see below) |
+| `BOOKCOUNT` | A port count on one of the three pages that state exact counts, or a row of the ports catalogue, that the tree contradicts (whole-book runs that include `docs/kdos` only; see below) |
 
-A full run also runs `testing/bookcounts.py`. Exact counts of the ports tree are written on three
+A whole-book run that includes `docs/kdos` also runs `testing/bookcounts.py`. Exact counts of the ports tree are written on three
 pages only: [Status](../06-reference/status.md), [The ports
 catalogue](../06-reference/ports-catalogue.md) and [Packaging](../03-architecture/packaging.md).
 Every other page says "about 2,000" or links to one of them. The script recomputes each figure those
@@ -1351,7 +1369,69 @@ found by the sentence or table row that states it, so rewording one of those sen
 check report it as not found until the pattern in the script is changed with it.
 
 It prints `docscheck: ok` and exits 0 when nothing is reported, and exits 1 otherwise. It cannot
-catch a paragraph that narrates history in its own words, or a link to a heading that was renamed.
+catch a paragraph that narrates history in its own words.
+
+## anchorcheck.py
+
+`python3 testing/anchorcheck.py` checks the part of a link after `#`, in every page of both books
+and in `README.md` (`--book DIR` narrows it, a path checks one page). The fragment must be an id
+the target page has as GitHub assigns it: the heading's rendered text lowercased, every character
+other than a letter, digit, `_`, `-` or space dropped, each space turned into `-`, and a repeated id
+suffixed `-1`, `-2` in page order. An `<a id="…">` counts too; a heading inside a code fence does
+not. The rule is the one `script/book/kfsgen.py` and `kdos-doc`'s `mkbook.py` give their headings,
+so the three change together. Each broken link is printed as `BADANCHOR page:line -> target` with
+the reason, and the last line counts the fragment links it checked.
+
+The package pages of *KDOS from Scratch* are generated and never committed, so a link to one is
+checked against the tree instead: on a `docs/kfs` page, a bare `#port-<name>` must name a recipe
+(`+` spelled `x`), `#phase-<name>` a directory under `script/phases`, and
+`#shelf-<phase>-<shelf>` a phase and a shelf. The same anchor after a page name, or on a
+`docs/kdos` page, is refused, because neither the renderer nor GitHub can resolve it.
+
+## booknav.py
+
+Every chapter of both books ends with a footer after a `<!-- book-nav -->` line: the part and
+chapter number, then Previous, Contents and Next. `python3 testing/booknav.py` checks every footer
+and exits 1 naming each page whose footer differs from the one it would write; `--write`
+(`make booknav-write`) rewrites them. In `docs/kdos` the order and the titles are read from
+`docs/kdos/README.md`'s contents, which stays the authority, and a chapter number out of sequence
+fails the check. In `docs/kfs` the order is the rendered book's, and booknav writes the contents
+too, between `<!-- book-contents -->` and `<!-- /book-contents -->` in `docs/kfs/README.md`. A
+part's `<!-- kfs:order … -->` directive gives its page order, and a `[Label]` written between the
+names heads the pages after it in the contents with a `#### Label` line; the rendered book ignores
+the labels. In a part that uses labels, a page its directive does not name fails the check, because
+it would otherwise be listed under the last label. Its
+chapter numbers count the generated chapters (one per shelf of each package phase), which only a
+render knows, so booknav runs `kfsgen.py` into a temporary directory and reads the result. A recipe
+that gives a phase its first port on a new shelf therefore renumbers every later chapter, and the
+check fails until `--write` is run.
+
+## kfscheck.py
+
+`python3 testing/kfscheck.py` (`make kfscheck`) holds *KDOS from Scratch* to the tree it is
+rendered from. `--only` runs a subset by name:
+
+| Check | Fails when |
+|---|---|
+| `sidecars` | A `kfs.md` beside a recipe has a section other than About, Flags, Patches or Notes; a `## Flags` bullet names a flag the port's `build.sh` does not name whole (a prefix of a longer flag or value does not count), or names none; a `## Patches` bullet names a file that is not in the port's directory |
+| `notes` | A new or changed port meeting a Tier B criterion (a patch, vendored dependencies, a `build.sh` of more than 30 lines, 20 or more reverse dependencies) has no `kfs.md` with an About or a Notes section |
+| `patches` | A new or changed `.patch` or `.diff` under `ports/` or `src/` has no `Subject:` line before its first `diff `, `--- ` or `Index: ` line |
+| `snapshot` | Only with `--strict`: a port's version and release in `docs/kfs/data/packages.tsv` are not its recipe's. Without it the count is printed |
+| `stamp` | `docs/kfs/data/recipes.stamp` is not this tree's digest, which covers every recipe, every `kfs.md`, the phase lists and environments, the bootstrap step scripts, `fs/etc/os-release` and every included file; `make book-stamp` rewrites it with no built tree, `make book-data` after a build |
+| `includes` | A `kfs:include` names a file that does not exist; or its `lines=A-B` lies outside the file, carries no `pin=`, or holds other lines than the ones its pin was taken from. When the pinned lines are elsewhere in the file the failure says where, and `kfscheck.py --repin` moves the range there and pins every unpinned one; a range whose lines changed is never repinned, so the prose around it is read again first |
+| `kernel` | A row of the option tables in `docs/kfs/14-kernel/configuring.md` disagrees with the `linux` port's `kdos.config`. A row's first cell is the backquoted `CONFIG_…` symbol and its third the backquoted value: `y`, `m`, `n` for a `# CONFIG_… is not set` line, or the text after `=`, quotes kept. A row also fails when `kdos.config` does not set its symbol, since a kernel default is checked by nothing, and so does a repeated symbol, a row of fewer than four cells, or a page with no rows |
+| `render` | `kfsgen.py` leaves a port unplaced or prints a warning |
+
+New or changed means on no remote yet: the paths that HEAD's commits not held by any
+`refs/remotes/*` ref add or modify, the working tree's changes against HEAD, and its untracked
+files. A move that keeps the content whole is not a change, so reshelving a port does not make its
+old patches new; a file already new or changed stays so when a later commit moves it, because the
+commits are read oldest first and a move carries the state to its new path. `--base REF`, or `KDOS_CHECK_BASE=REF`, measures against `REF` instead. With no
+remote-tracking ref and no base, or outside a checkout, the two gated checks print how many ports
+and patches they would refuse and pass. `testing/preflight.sh` runs `--only patches`, and
+`script/hooks/pre-push` applies the same `Subject:` rule to the commits it pushes and then runs
+`docscheck.sh` and `kfscheck.py` over the working copy; `KDOS_SKIP_PATCH_CHECK=1` and
+`KDOS_SKIP_BOOK_CHECK=1` skip those two parts of the hook.
 
 ## Measuring frame rate
 
@@ -1490,15 +1570,15 @@ stock ISO:
   `/var/lib/kdos/packs` when there is no medium, and reports every check that needs one (a base,
   `rt-gtk`, the index, `app.vorta` (`PACKLANE_APP`) and `app.meld` (`PACKLANE_QTAPP`)) as
   failed;
-- `install-to-disk.sh` asks the installer for `app.zathura app.kcalc alpine` unless
-  `INSTALL_PACKS` names others.
+- `install-to-disk.sh` asks the installer for the `essential` group unless `INSTALL_APPS` names
+  other catalogue group ids.
 
 Run them against a medium or a store you have put those packs into.
 
 | Harness | Runs | Does |
 |---|---|---|
 | `packlane.sh` | In the guest, desktop up | The pack lane end to end: the daemon, the keyring, an install from the medium or the store, the launchers, a box on a pack base, the telemetry and a timed launch, reporting pass, fail or skip with a reason and carrying on past a failure. It exercises no rollback, and its checks for a base and `rt-gtk` in the store fail until packs have been imported |
-| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The second half boots the disk with `--no-cdrom` |
+| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The answer file sets root's password to `kdos`. The second half boots the disk with `--no-cdrom`, and the rig logs root in on the serial console with `--root-password` |
 | `bios-boot.sh` | On the host | Boots the ISO as a USB stick on an xHCI controller under SeaBIOS, with no OVMF anywhere. `vnc-shot.py` always boots UEFI, so it cannot answer this. The proof is the serial log reaching `switch_root`, not the exit status |
 | `appsweep.sh` | In the guest, `--boot-disk` | For each catalogue application: install it off the medium, launch it through its shim, wait for the compositor to report a window, photograph it, and remove the box. Usage `appsweep.sh <outdev> <runtime\|all> [max]` |
 | `appreport.sh` | On the host, needs ImageMagick | Reads what the sweep wrote to the scratch disk and renders it as a table and a contact sheet, flagging windows that mapped but painted nothing. Usage `appreport.sh <scratch.img> [outdir]` |
@@ -1623,6 +1703,7 @@ outside its package root, a tool run against the live root, or a manifest that l
 
 ```sh
 python3 testing/unowned.py --root build/fs        # --fs <repo>/fs; --all lists every path
+python3 testing/unowned.py --root build/fs --fail-under usr/share/doc   # fail only on findings there
 ```
 
 Paths are keyed as `kpkg` keys them, and a manifest line is read with `tar`'s quoting undone, so a
@@ -1640,7 +1721,14 @@ what the build's own tools wrote is unowned until `020_cleanup.sh` deletes it, w
 unfinished tree would otherwise list.
 
 The report groups paths by directory, largest group first. Exit status is 1 when it reports a path
-and 0 otherwise. `70_image` runs it in `087_gates.sh` as a report and does not stop on it.
+and 0 otherwise. `--fail-under DIR`, which may be repeated, keeps the report whole but makes the
+status 1 only for a path under one of the named directories, and prints each such path on a
+`FAIL unowned` line. `70_image` runs it in `087_gates.sh` with `--fail-under` for
+`usr/share/locale`, `usr/share/man`, `usr/share/doc` and `usr/share/info`, after `020_cleanup.sh`
+has removed every unowned file there that the
+[size and language policy](writing-ports.md#size-and-language-policy) prunes: what is left there
+unowned is documentation that would ship and nothing could remove, and it stops the image. Any
+other finding is a report the step does not stop on.
 
 ### Run-time references
 

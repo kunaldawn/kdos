@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Network
+GenericName=Network Settings
+Comment=Join a wired or wireless network
+Exec=kdos-net
+Icon=network-wired
+Terminal=false
+NoDisplay=true
+Categories=Settings;Network;
+StartupWMClass=kdos-net

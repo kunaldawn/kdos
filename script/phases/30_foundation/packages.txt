@@ -74,9 +74,9 @@ zlib
 # ---------------------------------
 ca-certificates
 
-# utmps is the utmp and wtmp service, over skalibs. coreutils, sysvinit and
-# util-linux build against it; coreutils' `depends` already installs it in the
-# first run above, ahead of all three.
+# utmps, the utmp and wtmp service over skalibs (shelves auth and base-libs):
+# coreutils, sysvinit, util-linux and shadow build against it, and coreutils'
+# `depends` installs both in the pinned run above, ahead of the other three.
 skalibs
 utmps
 sysvinit

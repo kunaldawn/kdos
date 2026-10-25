@@ -1,0 +1,13 @@
+Subject: login.defs: name no mail spool, so the user tools keep none
+
+--- a/etc/login.defs
++++ b/etc/login.defs
+@@ -127,7 +127,7 @@
+ #   Directory where mailboxes reside, _or_ name of file, relative to the
+ #   home directory.  If you _do_ define both, MAIL_DIR takes precedence.
+ #
+-MAIL_DIR	/var/spool/mail
++#MAIL_DIR	/var/spool/mail
+ #MAIL_FILE	.mail
+ 
+ #

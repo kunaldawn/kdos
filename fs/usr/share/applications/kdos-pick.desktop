@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+GenericName=File Chooser
+Comment=Choose a file, or browse the file system
+Exec=kdos-pick
+Icon=folder
+Terminal=false
+NoDisplay=true
+Categories=System;FileTools;
+StartupWMClass=kdos-pick

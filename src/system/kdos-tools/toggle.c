@@ -53,7 +53,7 @@ static const struct {
 	{ "stay-awake", "never save, lock or blank on idle",
 	  "kdos-comp's idle policy", 0 },
 	{ "night-light", "warm the palette",
-	  "every surface, on the retint signal", 1 },
+	  "every KDOS cell surface, with the accent", 1 },
 	{ "dnd", "hold notifications back", "kdos-notifyd", 0 },
 };
 

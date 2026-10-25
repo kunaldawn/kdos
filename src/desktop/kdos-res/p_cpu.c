@@ -81,7 +81,7 @@ static void facts(int x, int y, int w)
 				      "Hyper-V", "Xen" };
 	const char *v = (c->virt >= 0 && c->virt < 8) ? VIRT[c->virt] : "?";
 	snprintf(line, sizeof(line), "running on %s", v);
-	ktui_draw_text(x, y + 3, w, line, KT_DIM, KT_BG, 0);
+	ktui_draw_text(x, y + 3, w, line, KT_MID, KT_BG, 0);
 }
 
 const char *res_cpu_headline(void)
@@ -150,7 +150,7 @@ void res_draw_cpu(int x, int y, int w, int h)
 		char off[64];
 		snprintf(off, sizeof(off), "pressure  %s  this kernel has "
 			 "PSI off", res_none());
-		ktui_draw_text(x + 1, row, w - 2, off, KT_DIM, KT_BG, 0);
+		ktui_draw_text(x + 1, row, w - 2, off, KT_MID, KT_BG, 0);
 		row++;
 	}
 
@@ -201,7 +201,7 @@ void res_draw_cpu(int x, int y, int w, int h)
 		char lbl[16];
 		snprintf(lbl, sizeof(lbl), "%d", i);
 		if (R.cpu.online && !R.cpu.online[i]) {
-			ktui_draw_text(cx, cy, cw - 1, lbl, KT_DIM, KT_BG, 0);
+			ktui_draw_text(cx, cy, cw - 1, lbl, KT_MID, KT_BG, 0);
 			continue;
 		}
 		res_graph(100 + i, krect(cx, cy, cw - 1, ch), &R.h_core[i],

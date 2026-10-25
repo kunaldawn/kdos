@@ -398,8 +398,10 @@ void ktui_menu_draw(KtuiMenu *m)
 		/* A menu pane always holds the keyboard while it is open, so
 		 * its highlighted item is always the focused-pane case. */
 		ktui_sel_slots(on, 1, KT_SURFACE, &fg, &bg);
+		/* A disabled item is muted, and lifts on the fill like any
+		 * other secondary text: KT_MID on KT_DIM is unreadable. */
 		if (!it->enabled)
-			fg = KT_DIM;
+			fg = ktui_sel_dim(on, 1);
 		ktui_draw_fill(krect(r.x + 1, y, r.w - 2, 1), bg);
 		ktui_menu_label(r.x + 2, y, r.w - 4, it->label, fg, bg);
 		/*
@@ -411,7 +413,7 @@ void ktui_menu_draw(KtuiMenu *m)
 		 */
 		if (it->accel)
 			ktui_draw_text_right(r.x, y, r.w - 2, it->accel,
-					     on ? KT_SURFACE : KT_MID, bg,
+					     ktui_sel_dim(on, 1), bg,
 					     KT_A_NONE);
 		y++;
 	}

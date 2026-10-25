@@ -60,3 +60,4 @@ libmatroska
 libdvbpsi
 gavl
 openh264
+libdovi

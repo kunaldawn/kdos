@@ -5,7 +5,7 @@
 
 [0;33mλ[0m [0;37mkdos-desktop  [0m start the KDOS desktop from a tty
 [0;33mλ[0m [0;37mkdos help     [0m keybinds and commands
-[0;33mλ[0m [0;37mkdos app gimp [0m install an alien app into a container
+[0;33mλ[0m [0;37mkdos app list [0m installed applications; --all lists the store
 [0;33mλ[0m [0;37mkdos theme    [0m phosphor · amber · ice · bone
 [0;33mλ[0m [0;37mkdos doctor   [0m check the session for common breakage
 [0;33mλ[0m [0;37mkdos cve      [0m pinned versions with known holes, offline

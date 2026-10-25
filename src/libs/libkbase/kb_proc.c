@@ -414,6 +414,10 @@ int kb_run_tty(const KbArgv *a)
  *
  * No bus library is linked. `gdbus` is on every image for the portal, and a
  * machine without it raises nothing rather than failing.
+ *
+ * `gdbus call` prints the reply, `(uint32 N,)`, on its stdout, so the
+ * grandchild's stdout is /dev/null: otherwise the notification's id lands on
+ * the caller's terminal, after its prompt, from a process nobody waits for.
  */
 void kb_notify(const char *app, const char *summary, const char *body)
 {
@@ -460,6 +464,12 @@ void kb_notify(const char *app, const char *summary, const char *body)
 			 */
 			av[n++] = "5000";
 			av[n] = NULL;
+			int null = open("/dev/null", O_WRONLY);
+			if (null >= 0) {
+				dup2(null, STDOUT_FILENO);
+				if (null > STDERR_FILENO)
+					close(null);
+			}
 			kb_child_reset_signals();
 			execvp(av[0], (char *const *)av);
 			_exit(127);

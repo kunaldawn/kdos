@@ -2,10 +2,12 @@ title: a swapfile is made differently on each filesystem, and fails at NEXT boot
 cite: kinstall
 port: kdos-installer
 
-fallocate leaves unwritten extents and swapon refuses those on xfs
-("swapfile has holes"); btrfs needs the file NOCOW and uncompressed, which is
-what `btrfs filesystem mkswapfile` is for. So ext4 gets fallocate, xfs gets
-dd, btrfs gets mkswapfile.
+btrfs needs the file NOCOW and uncompressed, which is what `btrfs filesystem
+mkswapfile` is for; swapon refuses a fallocate'd one with "Invalid argument".
+fallocate leaves unwritten extents, and whether swapon takes those on xfs and
+f2fs depends on the kernel (the KDOS kernel does), so those two get a file dd
+writes out in full. So ext4 gets fallocate, xfs and f2fs get dd, btrfs gets
+mkswapfile.
 
 The failure is at the next boot's `swapon -a`, with no swap and nothing saying
 why. Same table, same file: fs_passno is 1 for ext4 and 0 for everything else,

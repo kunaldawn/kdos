@@ -10,7 +10,7 @@
 
 name        = parallel
 version     = 20260922
-release     = 1
+release     = 2
 source      = https://ftp.gnu.org/gnu/parallel/$name-$version.tar.bz2
 sha256      = 54837e9e8c16134a3c2e95f91c5fe2f7893d4cc89f252b26735713ceca866387  parallel-20260922.tar.bz2
 description = Run shell command lines in parallel across cores and hosts

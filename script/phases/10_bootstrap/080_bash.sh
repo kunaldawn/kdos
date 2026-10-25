@@ -32,10 +32,15 @@ mkdir -p build && cd build
     --with-curses \
     --enable-readline \
     --without-bash-malloc \
-    --with-installed-readline
+    --with-installed-readline \
+    --disable-nls
 
 make
 make DESTDIR=$SYSROOT install
+
+# kpkg prunes the HTML manuals from the bash port's package, so no package
+# adopts these copies and they would outlive every install.
+rm -f $SYSROOT/usr/share/doc/bash/{bash,bashref}.html
 
 cd "$SYSROOT/usr/bin"
 ln -sv bash sh

@@ -577,14 +577,14 @@ init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 
 The files that describe how to build one *port*: its *kpkgbuild*, its `build.sh`, and any
 `postinstall.sh` and patches beside them. The *recipe hash* is taken over them and every other
-file beside them that no `sha256 =` line names. See [Writing
+file beside them that no `sha256 =` line names, except the book note `kfs.md`. See [Writing
 ports](../05-developer/writing-ports.md).
 
 ### recipe hash
 
 The other of the two package hashes: a SHA-256 over a port's recipe files (`kpkgbuild`, `build.sh`,
 `postinstall.sh` and every patch) and every other file in its directory that no `sha256 =` line
-names, so editing a kernel config beside a recipe changes it. For a port with no `source =` that is
+names except the book note `kfs.md`, so editing a kernel config beside a recipe changes it. For a port with no `source =` that is
 the port's whole directory, and for one of KDOS's own ports under `src/` all of `src/libs` as well, so editing a
 program's source or a shared library changes it. Written `E:` in a package index. It decides what
 the build rebuilds. Not to be confused with a *source hash*. See
@@ -603,10 +603,9 @@ and init](../03-architecture/boot-and-init.md#restamping-an-installed-machine).
 
 To re-read the theme and repaint in its colours. A running surface retints on `SIGHUP`, which `kdos
 theme` and `kdos toggle night-light` send; a program with no `SIGHUP` handler is not signalled.
-Most `kdos-shell` front ends are not sent it and poll the theme file's time instead, once per pass
-of their loop; every front end on the surface runner does. A front end that does neither keeps the
-colours it opened with until it is closed. See
-[Theming](../02-user-guide/theming.md) and [Filesystem and IPC](filesystem-and-ipc.md).
+Most `kdos-shell` front ends are not sent it and instead check, once per pass of their loop,
+the theme file's time and whether the `night-light` toggle has changed; every front end on the
+surface runner does. See [Theming](../02-user-guide/theming.md) and [Filesystem and IPC](filesystem-and-ipc.md).
 
 ### rig
 

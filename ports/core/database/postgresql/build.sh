@@ -51,8 +51,7 @@ DATA="/var/lib/postgres/data"
 case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
-        # Read /etc/passwd directly: there is no getent on musl.
-        if ! grep -q '^postgres:' /etc/passwd 2>/dev/null; then
+        if ! getent passwd postgres >/dev/null; then
             echo "[SKIP] $NAME: no postgres account (the port's postinstall makes it)"
             exit 0
         fi
@@ -61,8 +60,8 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
-        supervise "$NAME" setpriv --reuid=postgres --regid=postgres \
-            --init-groups "$DAEMON" -D "$DATA"
+        supervise --stop-grace 30 "$NAME" setpriv --reuid=postgres \
+            --regid=postgres --init-groups "$DAEMON" -D "$DATA"
         ;;
     stop)   stop_service "$NAME" ;;
     status) check_status "$NAME" ;;

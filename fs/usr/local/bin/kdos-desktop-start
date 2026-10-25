@@ -10,8 +10,8 @@
 # OBS's screen capture goes portal -> ScreenCast -> pipewire, so without this
 # stack the capture source never appears.
 #
-# The xdg-desktop portals are started by hand below rather than left to D-Bus
-# activation: the front end snapshots its backends at startup and
+# The xdg-desktop portals are started below rather than left to the first
+# client's call: the front end snapshots its backends at startup and
 # xdg-desktop-portal-wlr is a Wayland client, so the backend goes up only once
 # the compositor socket exists, and the front end only once the backend owns
 # its bus name.
@@ -47,30 +47,51 @@ kdos_session_audio
 # exists, so it has no WAYLAND_DISPLAY — and xdg-desktop-portal-wlr is a
 # Wayland client: activated with that stale env it dies instantly, and the
 # main portal then reports no ScreenCast (OBS: "No capture sources
-# available"). Wait for the compositor socket, push the env, start the
-# wlr backend ourselves, and restart any main portal that raced ahead.
+# available"). Wait for the compositor socket, push the env, have the bus
+# start the wlr backend, and replace any main portal that raced ahead of it.
+#
+# BOTH ARE STARTED THROUGH THE BUS, NEVER BY RUNNING THE BINARY. The bus runs
+# one instance per name and folds every concurrent request into it. A copy run
+# by hand while a client's call activates another is two front ends: one
+# loses the name and exits, and which one is a race, so the survivor can be
+# the one that started before the wlr backend.
 (
 	_wait_wayland || exit 0
 	dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP \
 		XDG_SESSION_TYPE XCURSOR_THEME XCURSOR_SIZE BROWSER >/dev/null 2>&1
-	[ -x /usr/lib/xdg-desktop-portal-wlr ] && \
-		/usr/lib/xdg-desktop-portal-wlr >/dev/null 2>&1 &
-	# The main portal snapshots its backends at startup — it must not come
-	# up until the wlr backend actually owns its bus name, or ScreenCast
-	# stays empty for the whole session.
-	for _ in $(seq 1 100); do
+	_owned() {
 		dbus-send --session --print-reply --dest=org.freedesktop.DBus \
 			/org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
-			string:org.freedesktop.impl.portal.desktop.wlr 2>/dev/null \
-			| grep -q 'boolean true' && break
-		sleep 0.2
-	done
+			"string:$1" 2>/dev/null | grep -q 'boolean true'
+	}
+	_activate() {
+		dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+			/org/freedesktop/DBus org.freedesktop.DBus.StartServiceByName \
+			"string:$1" uint32:0 >/dev/null 2>&1
+	}
+	# The main portal snapshots its backends at startup — it must not come
+	# up until the wlr backend actually owns its bus name, or ScreenCast
+	# stays empty for the whole session. The request repeats because a
+	# backend a client activated with the old environment is still pending
+	# when the first one arrives, and the bus answers it with that one.
+	if [ -x /usr/lib/xdg-desktop-portal-wlr ]; then
+		for _ in $(seq 1 100); do
+			_owned org.freedesktop.impl.portal.desktop.wlr && break
+			_activate org.freedesktop.impl.portal.desktop.wlr
+			sleep 0.2
+		done
+	fi
+	# A main portal that came up first is ended. Its name is waited out
+	# before the bus is asked, or the dying instance would answer.
 	MAIN=$(pgrep -f '^/usr/lib/xdg-desktop-portal$')
 	if [ -n "$MAIN" ]; then
 		kill $MAIN 2>/dev/null
-		sleep 0.5
+		for _ in $(seq 1 25); do
+			_owned org.freedesktop.portal.Desktop || break
+			sleep 0.2
+		done
 	fi
-	/usr/lib/xdg-desktop-portal >/dev/null 2>&1 &
+	_activate org.freedesktop.portal.Desktop
 ) &
 
 # The input method, if one is installed. fcitx5 is a Wayland client and speaks
@@ -147,6 +168,23 @@ tail -f "$_log" >&2 2>/dev/null &
 _tail=$!
 kdos-comp 2>>"$_log"
 rc=$?
+# A RENDER NODE IS NOT HARDWARE GL. When the EGL device on it reports itself
+# as software, wlroots refuses it, says so in the log ("Software rendering
+# detected") and exits before it opens a socket. kdos-desktop cannot tell such
+# a device from sysfs, so the refusal is the test: when nothing chose a
+# renderer, run the compositor once more on pixman, in place. Re-exec'ing this
+# script instead would start a second set of the background waiters above
+# while the first set is still waiting for a socket, and both would start every
+# portal and helper. A node whose Mesa falls back to kms_swrast instead is not
+# refused: wlroots composites in GLES2 on llvmpipe, the compositor runs, and
+# only the phosphor pass is declined, by the GL renderer's name.
+if [ "$rc" -ne 0 ] && [ -z "$WLR_RENDERER" ] && \
+   grep -q 'Software rendering detected' "$_log"; then
+	echo "kdos-desktop: no hardware GL; starting kdos-comp on the pixman renderer" >>"$_log"
+	export WLR_RENDERER=pixman
+	kdos-comp 2>>"$_log"
+	rc=$?
+fi
 kill "$_tail" 2>/dev/null
 wait "$_tail" 2>/dev/null
 

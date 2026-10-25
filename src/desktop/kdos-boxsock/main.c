@@ -93,13 +93,16 @@ static const struct wl_registry_listener registry_listener = {
 /*
  * A box name is interpolated into a socket path, so it is checked rather than
  * trusted — the same rule kdos-comp applies to the app_id it reads back, and
- * the same one ksvc applies to a service name.
+ * the same one ksvc applies to a service name. It starts with a letter or a
+ * digit: one starting with `-` is an option nobody here knows, and taken as a
+ * name it would bind a socket called `--help`.
  */
 static bool box_name_ok(const char *name)
 {
 	if (!name || !*name || strlen(name) > 64)
 		return false;
-	if (!strcmp(name, ".") || !strcmp(name, ".."))
+	if (!((*name >= 'a' && *name <= 'z') || (*name >= 'A' && *name <= 'Z') ||
+	      (*name >= '0' && *name <= '9')))
 		return false;
 	for (const char *p = name; *p; p++) {
 		bool ok = (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
@@ -187,6 +190,11 @@ static void display_tag(char *out, size_t cap)
 
 int main(int argc, char **argv)
 {
+	if (argc == 2 &&
+	    (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help"))) {
+		printf("usage: kdos-boxsock <box> [instance-id]\n");
+		return 0;
+	}
 	if (argc < 2 || argc > 3) {
 		fprintf(stderr, "usage: kdos-boxsock <box> [instance-id]\n");
 		return 2;

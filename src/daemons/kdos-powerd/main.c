@@ -520,11 +520,15 @@ static int fw_verb(const char *arg, char *out, size_t nout)
  * THE ACCOUNT MUST BE ONE THAT CAN LOG IN. `kb_users()` is the one place that
  * decides who may, and pointing autologin at a name it would not list is a
  * machine that boots to a login nobody can complete — a service account with
- * `nologin`, or a name that is not there at all.
+ * `nologin`, or a name that is not there at all. The refusal says which of the
+ * two it is: "no such account" for root would send the reader looking for a
+ * typo.
  *
  * OFF IS A COMMENTED LINE, NOT AN EMPTY VALUE. kdos-login asks for a password
  * when it finds no key, and `autologin =` with nothing after it would be a key
- * naming an account called "", which agetty would be handed.
+ * naming an account called "", which agetty would be handed. Off comments the
+ * line as it stands, so the account it named stays in the file — the form the
+ * installer writes — and an already-commented line is left as it is.
  */
 static int set_autologin(const char *who, char *out, size_t nout)
 {
@@ -545,7 +549,10 @@ static int set_autologin(const char *who, char *out, size_t nout)
 			if (!strcmp(u[i].name, who))
 				break;
 		if (i == n) {
-			snprintf(out, nout, "err no such account\n");
+			snprintf(out, nout, getpwnam(who)
+				 ? "err not an account that can log in (a "
+				   "system account, or no login shell)\n"
+				 : "err no such account\n");
 			return -1;
 		}
 	}
@@ -553,9 +560,9 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	/*
 	 * ON THE HEAP, BECAUSE A CONFIGURATION FILE GROWS. `kb_read_file`
 	 * fills a fixed buffer and NUL-terminates whatever fitted, so a
-	 * login.conf past that size was read as its own first N bytes and this
-	 * rewrote the machine's login settings out of a truncated file —
-	 * silently, and the last comment came out cut in half. libkbase says
+	 * login.conf past that size would be read as its own first N bytes and
+	 * this would rewrite the machine's login settings out of a truncated
+	 * file — silently, with the last comment cut in half. libkbase says
 	 * so in its own header: a file a PERSON edits wants kb_read_whole.
 	 */
 	size_t len = 0;
@@ -593,9 +600,10 @@ static int set_autologin(const char *who, char *out, size_t nout)
 
 		if (*key == '#')
 			key++;
-		if (!strncmp(key, "autologin", 9) && strchr(key, '='))
-			snprintf(row, sizeof(row), off ? "#autologin = kdos"
-						       : "autologin = %s", who);
+		if (!strncmp(key, "autologin", 9) && strchr(key, '=') && off)
+			snprintf(row, sizeof(row), "#%s", key);
+		else if (!strncmp(key, "autologin", 9) && strchr(key, '='))
+			snprintf(row, sizeof(row), "autologin = %s", who);
 		else
 			snprintf(row, sizeof(row), "%s", ln);
 		int k = snprintf(next + used, cap - used, "%s\n", row);
@@ -685,7 +693,7 @@ static bool zone_name_ok(const char *z)
  *
  * ITS ARGUMENT IS TIGHTER THAN EVERY OTHER VERB'S. A zone is `Area/City`, so a
  * slash is legal and `../../etc/shadow` is legal-LOOKING — which is why
- * `zone_name_ok` exists. An accent is one of seven strings compiled into
+ * `zone_name_ok` exists. An accent is one of eight strings compiled into
  * libkcolor. There is no path to aim and nothing to traverse: a name that is
  * not a scheme names nothing at all, and `kcol_find` is the whole check.
  *
@@ -928,7 +936,11 @@ static int serve(void)
 	}
 
 	for (;;) {
-		int c = accept(srv, NULL, NULL);
+		/* CLOEXEC, because a verb runs programs that outlive it: `firewall
+		 * ssh on` starts 70_sshd.sh, whose supervisor and sshd would
+		 * otherwise inherit this connection and hold it open, so the
+		 * client never reads the end of its reply and waits for ever. */
+		int c = accept4(srv, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) {
 			if (errno == EINTR)
 				continue;
@@ -1177,7 +1189,7 @@ static int request(const char *cmd, bool show)
 	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sock_path());
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		fprintf(stderr, "kdos-power: no kdos-powerd — `service "
-				"kdos-powerd start`\n");
+				"start powerd`\n");
 		close(fd);
 		return 1;
 	}

@@ -334,7 +334,7 @@ void res_draw_procs(int x, int y, int w, int h)
 			 R.sample.nkthread, R.sample.nkthread == 1 ? "" : "s",
 			 ktui_glyph[KT_G_DOT], SORT_NAMES[g_sort],
 			 g_rev ? " (reversed)" : "");
-	ktui_draw_text(x, bottom - 1, w, foot, KT_DIM, KT_BG, 0);
+	ktui_draw_text(x, bottom - 1, w, foot, KT_MID, KT_BG, 0);
 }
 
 int res_procs_key(int k)

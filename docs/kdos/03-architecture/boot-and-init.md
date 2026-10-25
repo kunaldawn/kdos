@@ -95,9 +95,12 @@ the only one. The same binary, the same configuration file and the same menu ser
 so what a machine shows at power-on does not depend on how it started. On UEFI the firmware loads
 `EFI/BOOT/BOOTX64.EFI`. On BIOS it runs the boot code in the first sector, which `limine
 bios-install` writes and which finds `limine-bios.sys` by name in the root, `/boot`, `/limine` or
-`/boot/limine` of a volume it can read. The installer writes that boot code to the target disk
-whatever the installing machine booted as, so a disk installed on a UEFI machine also starts on a
-BIOS one.
+`/boot/limine` of a volume it can read. The live medium carries both paths, and so does an
+installed disk: the installer writes that boot code whatever the installing machine booted as. On
+a GPT disk the gap after the first sector holds the partition table, so Limine's BIOS stage goes
+into a 1 MiB BIOS boot partition (type `21686148-6449-6E6F-744E-656564454649`), partition 2 of the
+erase plan's layout, which `limine bios-install <disk> 2` fills; see
+[kinstall](../04-programs/kinstall.md#both-firmwares).
 
 `BOOTIA32.EFI` sits beside the 64-bit binary, and the two never compete. A 64-bit CPU does not
 imply a 64-bit firmware: early Atom tablets and a few netbooks run this kernel and this userland
@@ -201,7 +204,7 @@ themselves are the ones that name files rather than colours (`wallpaper`, `term_
 
 | File | On the live medium | On an installed machine |
 |---|---|---|
-| Font | `psf2limine.py` converts `ter-i16n` in the image phase and writes `boot/limine/font.bin` straight into the ISO tree. It is not in the root filesystem. | `kinstall` copies `/boot/limine/font.bin`, or `/mnt/iso/boot/limine/font.bin` (where the initramfs mounts the medium), to `EFI/kdos/font.bin` |
+| Font | `psf2limine.py` converts `ter-i16n` in the image phase and writes `boot/limine/font.bin` straight into the ISO tree. It is not in the root filesystem. | `kinstall` copies `/mnt/iso/boot/limine/font.bin` (where the initramfs mounts the medium; the target is mounted beside it at `/mnt/kinstall`), else the running system's own `/boot/efi/EFI/kdos/font.bin`, to `EFI/kdos/font.bin` |
 | Backdrop | `/usr/share/kdos/boot/kdos-backdrop.png`, falling back to `kdos-banner.png`, copied to `boot/limine/wallpaper.png` | The same two files, which the `fs/` overlay ships in the root, copied to `EFI/kdos/wallpaper.png`, so an install run with no medium mounted still gets its artwork |
 
 Either file missing is survivable: Limine draws its own face on a plain backdrop, and the entries
@@ -425,12 +428,12 @@ The programs carried, and the rule each follows:
 | Program | Rule |
 |---|---|
 | `cat`, `chmod`, `cut`, `ls`, `mkdir`, `mknod`, `seq`, `sleep` | GNU coreutils: what `init` runs. The build stops if one is missing or its `--version` names no GNU package. |
-| `cp`, `mv`, `rm`, `ln`, `rmdir`, `head`, `tail`, `wc`, `stat`, `df`, `dd`, `sync`, `uname`, `readlink`, `touch`, `sort`, `tr`, `grep`, `sed` | GNU coreutils, grep and sed, for the [rescue shell](#the-rescue-shell), under the same check. |
+| `cp`, `mv`, `rm`, `ln`, `rmdir`, `head`, `tail`, `wc`, `stat`, `df`, `dd`, `sync`, `uname`, `readlink`, `touch`, `basename`, `sort`, `tr`, `grep`, `sed` | GNU coreutils, grep and sed, for the [rescue shell](#the-rescue-shell) and the udev rules (`63-md-raid-arrays.rules` runs `readlink` and `basename`), under the same check. |
 | `switch_root`, `mount`, `umount`, `losetup`, `dmesg`, `setsid` | Always util-linux's: the build stops unless each one's `--version` names util-linux. See [`switch_root`](#switch_root). |
 | `blkid` | Always util-linux's, under the same check; see [`blkid`](#blkid). |
 | `kdos-splash` | Carried with `/usr/share/kdos/splash.psf` when installed; otherwise the build warns and the machine boots without a splash. |
-| `udevd`, `udevadm`, `kmod` (as `modprobe`, `insmod`, `depmod`) | Always, with the udev rules from `/usr/lib/udev` and `/etc/udev`. |
-| `mdadm` | When installed. |
+| `udevd`, `udevadm`, `kmod` (as `modprobe`, `insmod`, `depmod`) | Always, with the udev rules from `/usr/lib/udev` and `/etc/udev` whose programs the initramfs carries (below). |
+| `mdadm` | When installed, at `/usr/sbin/mdadm`, the path its udev rules run, with `bin/mdadm` a link to it. |
 | `e2fsck` | With `libext2fs`, `libcom_err` and `libe2p`, or not at all. |
 | `kdos-bootctl` | With `libpng16`, or not at all (below). |
 | `cryptsetup` | With its libraries, only when installed. |
@@ -455,10 +458,25 @@ thin-provisioning-tools' single binary, `pdata_tools`, which is copied with its 
 the matching one before it activates a thin pool or a cache, and refuses the volume without it. A
 generated `etc/lvm/lvm.conf` names those two paths and nothing else.
 
+The udev rules name the real root's paths, and the initramfs answers at them: `/usr/bin` is a link
+to `bin/`, `/sbin` a link to `bin/`, `/usr/lib/udev` a link to `lib/udev` (udevd runs a bare helper
+name from there), and `/usr/sbin/blkid` a link to `bin/blkid`. Once every program and library is
+in the tree, two passes decide what udev keeps. A helper in `lib/udev` that links a library the
+initramfs does not carry (`mtp-probe`, libinput's and libgpod's) is removed. Then every rules file
+any of whose `RUN`, `PROGRAM` or `IMPORT{program}` keys names a program the tree lacks is removed
+whole, and the build prints a `Note:` line naming the file and the program; removing single lines
+would leave a file's `GOTO`s and `LABEL`s unbalanced. Nothing is lost by it, because the root's
+`01_udev` replays every rule, but a rule left in would make udevd log `failed to execute` for each
+device it matched. The rules that assemble a root are never removed: `10-dm`, `11-dm-lvm`,
+`13-dm-disk`, `95-dm-notify`, `63-md-raid-arrays`, `64-md-raid-assembly`, `64-btrfs` and
+`60-persistent-storage`, each when the root has it.
+
 The build stops, naming the problem, when:
 
 - lvm2 is installed and `lvm`, `dmsetup`, `thin_check` or `cache_check` is missing;
 - a udev rule names `dmsetup` or `lvm` anywhere but `/usr/sbin`;
+- one of the rules that assemble a root names a program the initramfs does not carry, or is on the
+  root and not in the initramfs;
 - a library in a program's closure is installed nowhere;
 - a GNU or util-linux program above is missing, or its `--version` does not name its package;
 - no working `readelf` is found. `readelf`, or `llvm-readelf` in its place, must find libblkid
@@ -477,8 +495,13 @@ machine would look like one whose slot was never marked good rather than one mis
 
 The packed file is the microcode cpio, when there is any microcode, followed by the whole tree as a
 `gzip -9` archive in newc, the portable cpio format the kernel unpacks; see [Microcode](#microcode).
-Both archives are written by GNU cpio from a byte-sorted file list with `--reproducible`, so the
-same tree packs to the same bytes. The tree carries no `System.map` (`depmod` reads the build's
+Both archives are written by GNU cpio from a byte-sorted file list with `--reproducible`, which
+records no number for the device a file is stored on, numbers the inodes in archive order from 0
+and gives every directory a link count of 2, so the archive does not depend on the filesystem the
+tree is staged on. It still records each file's modification time, owner and mode, and the step
+resets none of them, so two builds of the same tree pack to the same bytes only when every staged
+file carries the same times. The gzip header holds no time, because gzip reads the archive from a
+pipe. The tree carries no `System.map` (`depmod` reads the build's
 copy in `/boot`) and no `hwdb.d` sources: udev reads only a compiled `hwdb.bin`, and the tree
 carries none.
 
@@ -520,14 +543,23 @@ manager, and it runs until `rcS` quits it just before the login prompt.
 | `kdos-splash preview WxH T out.ppm` | Render the frame T seconds into the power-on animation, with a fixed set of sample stages, to a PPM file without a framebuffer; a T past the animation gives the settled picture |
 
 The kernel is built with deferred framebuffer-console takeover
-(`CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER`), so nothing claims the framebuffer until text is
-written to a virtual terminal, and a process is free to draw on it. Three facts constrain the
-splash.
+(`CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER`), so the text console does not claim the
+framebuffer until a glyph is printed on a virtual terminal, and a process is free to draw on it.
+Three facts constrain the splash.
 
-Deferred takeover means nothing is being displayed yet. Writing to `/dev/fb0` before the display
-driver's own client does its mode set paints a buffer nobody is looking at. One byte written to
-`/dev/tty0` ends the deferral; the splash writes a clear-and-hide-cursor sequence, which ends it
-and hides the cursor in one action.
+Only a printed glyph ends the deferral; escape sequences and spaces do not. The splash writes a
+clear-and-hide-cursor sequence to `/dev/tty0`, which is escape sequences alone, so the splash
+itself never ends it. Which glyph does depends on where `/dev/console` is:
+
+- **On the live medium** (`console=tty0 console=ttyS0`), the initramfs and `rcS` print on the
+  serial line, and the deferral lasts until `kdos-getty` prints its glyph on `tty1` after the
+  splash has quit (measured at 5 to 21 seconds into boot). The splash's frames are on screen
+  before that on the rig's virtio-gpu, whose framebuffer is shown without the takeover.
+- **On an installed machine** (`console=tty0` alone), the initramfs's first line,
+  `KDOS Init Starting...`, is printed on the screen, and the console takes the framebuffer over
+  about a millisecond after `/init` starts, before the splash has started. From then on every
+  line the initramfs and `rcS` print is drawn by the console on top of the splash; see
+  [Known gaps](../06-reference/known-gaps.md#on-an-installed-machine-the-boot-messages-are-drawn-over-the-splash).
 
 Memory-mapped writes need an explicit flush. They reach the display only when the deferred I/O
 worker gets round to it, so each frame ends with a pan-display call to the offset it is already
@@ -926,8 +958,8 @@ runs a second volume-group activation, so a group inside the container is found.
 
 On an installed machine (the command line names `root=UUID=`), the init asks `blkid` for the root
 UUID once a second for up to ten seconds, activating any volume group that has appeared in between.
-On the live medium it rescans `/dev/sr* /dev/sd* /dev/vd* /dev/nvme*` every 100 ms, for up to ten
-seconds from the start of the scan (counted on the uptime clock), and uses the first device that
+On the live medium it rescans `/dev/sr* /dev/sd* /dev/vd* /dev/nvme* /dev/mmcblk*` every 100 ms,
+for up to ten seconds from the start of the scan (counted on the uptime clock), and uses the first device that
 mounts as ISO9660 and holds `system.sfs`. Neither waits before its first attempt: udev has already
 settled by then, so on a machine whose medium is already enumerated the first pass succeeds and
 costs nothing. The ten-second bound covers the slow cases, such as a USB stick or a device behind a
@@ -939,7 +971,10 @@ not always the one holding the medium, and a class that has not appeared yet mus
 chance. A device that mounts is inspected only once, though: a filesystem without `system.sfs` on
 it will not grow one, so it is remembered and skipped, and only nodes that have not mounted yet are
 retried. That is one mount and unmount for a wrong disk across the whole scan, rather than one per
-pass.
+pass. A node that cannot be opened, such as an optical drive with no disc in it or a card reader
+with no card (the open fails with `ENOMEDIUM`), is passed over without a mount and without a
+message, and looked at again on the next pass. Its size in `/sys/class/block` is no test, because
+an empty optical drive reports a guessed size rather than 0.
 
 `/mnt/iso` is the only mount point the scan has, so the unmount is checked. A mount point left
 busy would take a second filesystem stacked on top of it and every later test would read the wrong
@@ -958,13 +993,26 @@ On the live medium the init mounts `system.sfs` read-only through a loop device 
 overlay on top of it as the new root. `system.sfs` is the whole root filesystem, compressed by
 `mksquashfs` in the image phase (`110_iso.sh`) with zstd at level 15 unless `KDOS_ISO_COMP` names
 another codec, with the pseudo-filesystem mount points recreated empty. The
-contents of `/var/cache` and `/var/log` are left out, and both directories are recreated empty too,
-because a daemon makes its own directory under them with a single `mkdir` that needs the parent.
+contents of `/var/cache` and `/var/log` are left out, and both are recreated holding only the
+directories installed packages claim under them, empty and with the build tree's mode and owner: a
+daemon makes its own directory there with a single `mkdir` that needs the parent, some (Samba's,
+libvirt's) never make theirs at all, and a claimed directory that is absent fails
+[`kpkg check --all`](packaging.md#checking-an-installed-root).
 The overlay's writable upper layer decides whether the session survives a power-off:
 
 - A filesystem labelled `KDOS_PERSIST` is used as the upper layer when one is present, in `upper/`
   and `work/` directories on it. `kdos persist` creates such a store, as an ext4 partition in the
-  free space after the image.
+  free space after the image. The label is looked up right after the medium is found, and again
+  every tenth of a second while USB storage is still arriving: a hub port holds a device that is
+  not yet configured, or a mass-storage interface has no disk beneath it yet (usb-storage waits
+  a second before it scans a new stick). While a hub other than a root hub is present, the lookup
+  also waits until the set of USB devices has not changed for one second, because a hub's empty
+  ports show nothing during the moment before a connection is reported. The wait ends at the
+  first answer and is bounded at 10 seconds, the bound the medium and the root get, so a store on
+  a second USB stick is used. A boot with nothing pending and no such hub does not wait; behind an
+  idle hub, a boot with no store waits that one second. A USB disk that has appeared since the
+  previous lookup gets one more lookup at once, because the kernel creates the disk before it has
+  read its partition table and the first lookup can miss the partition that holds the store.
 - With no store, the upper layer is a tmpfs and the session is gone at reboot.
 - `nopersist` on the command line (the menu's `KDOS Live (clean session)` entry) ignores the store.
   That entry exists so a store holding a change that stops the desktop coming up can be bypassed
@@ -978,8 +1026,10 @@ comes up as it would with no store at all.
 Before `switch_root`, `/mnt/iso` and `/mnt/persist` are moved into the new root. Left behind, they
 would be unreachable by name: `kdos rebuild` looks in `/mnt/iso/sources`, `kdos persist` reports
 how full the store is, and the shutdown's `umount -a -r` can only flush a store that is in the new
-root's mount table. The squashfs and tmpfs backing mounts stay in the old root, where the overlay
-keeps its own reference to them.
+root's mount table. The squashfs at `/mnt/system` and the tmpfs at `/mnt/overlay` are detached
+instead, and their mount points removed: the overlay holds its own private copies of its layers,
+and `switch_root`, which never crosses into another filesystem, can then delete the whole of the
+initramfs, `/mnt` included.
 
 ## Checking the root
 
@@ -1082,8 +1132,10 @@ field is free of shell metacharacters, so init executes each one directly rather
 6. Runs each executable `/etc/init.d/NN_name.sh` with `start`, in numeric order, skipping any with a
    marker in `/etc/service.disabled/`. Each script's output goes to `/run/kdos-init.<name>.log` and
    is then printed to the console; the splash shows one stage per script and, if one fails, up to
-   six lines of its output. The output goes to a file rather than through a pipe because a
-   supervised daemon's supervisor would hold a pipe open and `rcS` would never see the end of it. A
+   six lines of its output. The output goes to a file rather than through a pipe because any
+   process a script left running with that output open would hold the pipe's write end, and `rcS`
+   would never see the end of it; a supervised daemon is not such a process, since `ksvc` points
+   it and its supervisor at a log forwarder of their own. A
    supervised daemon's own output does not stay in that file: `ksvc` sends it to syslog and to
    `/run/kdos-svc.<name>.log`; see [The daemons](../04-programs/daemons.md#the-shape-they-share).
 7. Runs `kdos-bootctl mark-good`.
@@ -1185,16 +1237,27 @@ Each is `utmps-utmpd` or `utmps-wtmpd` behind s6's `s6-ipcserver`, run as the `u
 through `s6-setuidgid`; `utmps-utmpd` opens `utmp` in its working directory, which execline's
 `execline-cd` sets. Each daemon reads the client's uid and gid from the socket: `utmpd` changes a
 record only for root or the `utmp` group, and `wtmpd` appends one only for root or for the user the
-record names, so only root's writers (`init`, `agetty`, `login`) can log someone in. `06_utmps` creates `/run/utmps` and `/var/log/wtmp` for `utmp` and waits up
-to two seconds for both sockets, because `init` writes its boot record the moment `rcS` returns
-and a record sent with no socket listening is lost. With either daemon down, `who`, `users` and
+record names, so only root's writers (`init`, `agetty`, `login`) can log someone in. `06_utmps` creates `/run/utmps`, an empty `/run/utmps/utmp` and `/var/log/wtmp` for `utmp`, and
+waits up to two seconds for both sockets, because `init` writes its boot record the moment `rcS`
+returns and a record sent with no socket listening is lost. The empty `utmp` is needed because
+`utmpd` creates the file only when its first request arrives, while `init` checks that the file
+exists and is writable before each record and skips the record silently when it is not: left to
+`utmpd`, the file would first appear with the first `agetty`'s login record, after the boot and
+runlevel records had been skipped. With either daemon down, `who`, `users` and
 `pinky` print nothing and that boot's records are gone; `runlevel` still answers, from
 `/run/runlevel`.
 
 `init` writes an `INIT_PROCESS` record when it starts an inittab entry, such as a console's
-`agetty`, and a `DEAD_PROCESS` record when that entry exits, the `BOOT_TIME` record when it leaves the `sysinit` entries, which is
-after `rcS` has started both daemons, and a `RUN_LVL` record on every runlevel change; `who -b` and
-`who -r` read the last two. Its `wtmp` copies, and `halt`'s shutdown record, do not go through
+`agetty`, and a `DEAD_PROCESS` record when that entry exits, the `BOOT_TIME` record when it leaves
+the `sysinit` entries, which is after `rcS` has started both daemons, and a `RUN_LVL` record on
+every runlevel change. `who -b` reads the boot record and `who -r` the runlevel record
+(`run-level 3`, with the time `init` entered it). `utmpd` keeps one record of each of these two
+types, replacing it with the next: utmps matches a record to replace by its type alone only for
+the time records POSIX lists, and the `utmps` port patches the runlevel record in among them, as
+glibc has it. Without that each runlevel record would be appended, `who -r` would print one line
+for every runlevel entered since boot, and `runlevel`, which prints the first runlevel record it
+finds, would report the runlevel of the boot after any `telinit`. `runlevel` reads the same records
+and, finding none, answers from `/run/runlevel`, which `init` also writes. Its `wtmp` copies, and `halt`'s shutdown record, do not go through
 `wtmpd`: sysvinit appends them to `/var/log/wtmp` itself, in utmps' record layout, because the
 `updwtmp` call it would otherwise use exists only in glibc. A boot record `init` cannot write
 because `/var/log/wtmp` is missing is written before its next `wtmp` record.
@@ -1279,14 +1342,25 @@ table, and it would run after the network scripts while the interfaces are still
 leaving the machine on the network with nothing filtering until power-off. The ruleset goes when
 the kernel does.
 
-Stopping a supervised service costs `ksvc` a second (`SIGTERM` to the process group, a one-second
-wait, then `SIGKILL` if it is still alive), so a shutdown takes about as many seconds as there are
-daemons running. `kdos-powerd` runs `telinit 0` or `telinit 6` and then waits sixty seconds before
+Stopping a supervised service costs `ksvc` as long as its daemon takes to exit: `SIGTERM` to the
+process group, a wait for the group to empty polled every 50 ms, and `SIGKILL` to what is left when
+the stop grace runs out. The grace is five seconds unless the script passed `supervise
+--stop-grace`; PostgreSQL's is 30 and Samba's 15, so a server writing its data out is not killed
+partway through. Most daemons exit within a tick, so `rcK`'s walk costs a fraction of a second per
+service. `kdos-powerd` runs `telinit 0` or `telinit 6` and then waits sixty seconds before
 calling `reboot(2)` itself. That is longer than init's three seconds for the consoles plus `rcK`'s
 walk down to `55_powerd`, which ends it, so the fallback fires only when init never acted on the
 request. No signal can stand in for `telinit`: sysvinit ignores `SIGTERM`, and `SIGUSR2` closes
 `/run/initctl` for the rest of the boot, after which no `telinit`, `shutdown` or `reboot` reaches
 init.
+
+A restarted system bus takes every client's connection with it. `40_dbus` supervises
+`dbus-daemon`, so the bus is back five seconds after it dies, and polkitd, ModemManager, avahi and
+bluetoothd exit with their connection and are restarted onto it by their own supervisors.
+NetworkManager does not exit, so `42_networkmanager` supervises it with `--restart-with dbus`: its
+supervisor restarts it once the new bus is up (see [ksvc and
+service](../04-programs/kdos-command.md#ksvc-and-service)), and it brings `wpa_supplicant`, which
+left with the old bus, back by activation.
 
 ### One DHCP client on the link
 
@@ -1358,6 +1432,12 @@ repairs one.
 libraries compile in the path `/var/run/dbus/system_bus_socket`. If `/var/run` were a real, empty
 directory, every one of those clients would fail to reach the system bus, and report it as the
 *service* being unreachable while that service is running.
+
+`/etc/mtab` is a symlink to `../proc/self/mounts`, shipped in `fs/etc/mtab`. lvm2 finds whether a
+logical volume is mounted by reading `/etc/mtab`, and without the file `lvextend -r` and
+`lvreduce -r` fail before resizing anything, with only `Command failed with status code 5`.
+`mount.nfs4` records the mounts it makes in `/etc/mtab` unless the file is a link; without the file
+it makes the mount and then never returns.
 
 The installer keeps the shipped entries, because of the `/tmp` line: it writes the root, the ESP
 (`/boot/efi`, `vfat`, pass number 2) and any swap at the top of `fstab` and the shipped lines

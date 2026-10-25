@@ -48,9 +48,9 @@ const Filesystem ki_filesystems[] = {
 	  "large files and parallel IO; it cannot be shrunk" },
 	/* fs_passno 0: there is no fsck.f2fs worth running at boot — f2fs.fsck
 	 * exists but is a repair tool, not a boot-time check. The swapfile is
-	 * dd'd for the same reason xfs's is: f2fs refuses a swapfile with
-	 * unwritten extents, so fallocate produces a file `swapon -a` rejects
-	 * at the NEXT boot, with no swap and nothing saying why. */
+	 * dd'd for the same reason xfs's is: a file written out in full has no
+	 * unwritten extent for any kernel's `swapon -a` to refuse at the NEXT
+	 * boot, where a refusal leaves no swap and nothing saying why. */
 	{ "f2fs",  "mkfs.f2fs",  "-f", "defaults,noatime", 0,
 	  KI_SWAPFILE_DD,
 	  "log-structured, for flash: a stick, an SD card or a cheap eMMC" },
@@ -74,12 +74,47 @@ unsigned long long ki_need_bytes(void)
 	       1024;
 }
 
-/* The layout do_partition writes: a 512 MiB ESP, the swap partition when one
- * was asked for, and the rest. */
+void ki_part_name(const char *disk, int n, char *out, size_t cap)
+{
+	size_t l = strlen(disk);
+	int digit = l && isdigit((unsigned char)disk[l - 1]);
+
+	snprintf(out, cap, "%s%s%d", disk, digit ? "p" : "", n);
+}
+
+int ki_wipe_part_swap(void)
+{
+	return cfg.swap == SWAP_PART && cfg.swap_mb > 0 ? 3 : 0;
+}
+
+int ki_wipe_part_root(void)
+{
+	return ki_wipe_part_swap() ? 4 : 3;
+}
+
+int ki_bios_boot_part(void)
+{
+	Disk *d;
+
+	if (cfg.plan == PLAN_WIPE)
+		return KI_PART_BIOS_BOOT;
+	d = disk_by_path(cfg.disk);
+	if (!d)
+		return -1;
+	for (int i = 0; i < d->nparts; i++)
+		if (d->part[i].is_bios_boot && d->part[i].num > 0)
+			return d->part[i].num;
+	return !strcmp(d->table, "dos") ? 0 : -1;
+}
+
+/* The layout do_partition writes: the ESP, the BIOS boot partition, the swap
+ * partition when one was asked for, and the rest. */
 unsigned long long ki_wipe_root_bytes(void)
 {
 	Disk *d = disk_by_path(cfg.disk);
-	unsigned long long total, used = 512ULL << 20;
+	unsigned long long total;
+	unsigned long long used = (unsigned long long)(KI_ESP_MB + KI_BIOS_BOOT_MB)
+				  << 20;
 
 	if (!d)
 		return 0;
@@ -109,6 +144,11 @@ int ki_lvm_half(void)
 		return 0;
 	root -= 32ULL << 20;
 	return root / 2 >= need;
+}
+
+const char *ki_lvm_extent(void)
+{
+	return ki_lvm_half() ? "50%VG" : "100%FREE";
 }
 
 void conf_defaults(void)
@@ -141,7 +181,8 @@ void conf_defaults(void)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-static void set_kv(const char *k, const char *v)
+/* -1 for a key this installer does not know. */
+static int set_kv(const char *k, const char *v)
 {
 	if (!strcmp(k, "keymap"))
 		kb_strlcpy(cfg.keymap, v, sizeof(cfg.keymap));
@@ -198,9 +239,9 @@ static void set_kv(const char *k, const char *v)
 		kb_strlcpy(cfg.theme, v, sizeof(cfg.theme));
 	else if (!strcmp(k, "alien_apps"))
 		cfg.with_appbox = atoi(v);
-	/* Space-separated group or application ids. An unknown one falls back
-	 * to `essential` — see ki_apps_enter(); refusing here would leave a
-	 * machine with no operating system on it over one misspelling. */
+	/* Space-separated catalogue group ids. A line none of whose ids names
+	 * a group falls back to `essential` — see ki_apps_enter(); refusing
+	 * would leave a machine with no operating system over a misspelling. */
 	else if (!strcmp(k, "apps"))
 		kb_strlcpy(cfg.apps, v, sizeof(cfg.apps));
 	else if (!strcmp(k, "reboot"))
@@ -212,7 +253,9 @@ static void set_kv(const char *k, const char *v)
 			if (!p)
 				cfg.svc_off |= 1u << i;
 		}
-	}
+	} else
+		return -1;
+	return 0;
 }
 
 int conf_load(const char *path)
@@ -241,7 +284,12 @@ int conf_load(const char *path)
 		n = strlen(v);
 		while (n && (v[n - 1] == ' ' || v[n - 1] == '\r'))
 			v[--n] = 0;
-		set_kv(k, v);
+		/* Named, not refused: the key still does nothing, but an answer
+		 * file whose key was misspelt or renamed otherwise installs the
+		 * default for it with no sign that the line was never read. */
+		if (set_kv(k, v) < 0)
+			fprintf(stderr, "kinstall: %s: unknown key '%s' ignored\n",
+				path, k);
 	}
 	return 0;
 }

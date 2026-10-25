@@ -392,13 +392,13 @@ slots across the eight accents. `KT_MID` measures 3.40:1 to 6.30:1. Nothing is c
 below about 3:1.
 
 So a label is `KT_MID`. Hint rows, empty-state messages, help text and the brackets round a button
-all belong there. Searching a new surface for `KT_DIM` in a foreground position is how this is
-checked.
+all belong there. `testing/preflight.sh` checks it: it refuses any text draw whose foreground can
+be `KT_DIM`, a ternary arm included.
 
 A two-state colour is a different matter. Where `KT_DIM` is one half of a pair, such as a
 scrollbar's track against its thumb or an unpinned mark against a pinned one, it carries the
 difference, and changing it to `KT_MID` would erase the state rather than make it readable. Those
-pairs stay `KT_DIM`.
+pairs stay `KT_DIM`, and the draw carries `/* not text */` so the check passes it.
 
 For text that must be muted and still readable there is a derived colour, `kcol_muted()`: the
 scheme's `deep` field mixed 56% of the way towards its `text` colour. It measures 3.47:1 to 6.26:1
@@ -414,7 +414,8 @@ a two-word name comes out as one lit block per word with a hole between them, an
 every name that happens to contain no space.
 
 Instead, fill the rectangle, swap the foreground and background slots, then draw the text.
-`kch_header` is drawn this way: an accent fill with the title in `KT_SURFACE` on it.
+`kch_header` is drawn this way: an accent fill with the title in `KT_SURFACE` on it, and its
+picture inked in the same slot (see [A picture on a lit plate is inked](#a-picture-on-a-lit-plate-is-inked)).
 
 ### A selected row is `KT_DIM` under `KT_TEXT`, and the accent is one cell
 
@@ -875,6 +876,25 @@ below, and `kch_tile_draw()` writes all of its cells. Two rules apply:
 
 `kdos theme` drops every tile (`kch_tile_reset`), because each was rasterised in the palette being
 replaced.
+
+### A picture on a lit plate is inked
+
+Atlas pictures are tinted into the accent through `kcol_remap`, which keeps each colour's lightness.
+More than half the atlas is symbolic artwork drawn in one light grey, and a
+tint of it stays light: on the `KT_ACCENT` plate of a header it measures 1.15:1 and cannot be seen.
+
+So a picture drawn on a lit plate is asked for with an ink, `kicon_slot_ink(name, cw, ch, rgb)`,
+where `rgb` is the colour of the slot the plate's own text takes. An atlas picture whose covered
+pixels are all one colour is then a mask: its shape is its alpha, and it is drawn in the ink at
+that alpha. A picture with two colours or more is drawn exactly as `kicon_slot()` draws it, because
+its colours are the picture, and an application's own icon is never inked, for the reason it is
+never tinted.
+
+The header band is the one lit plate a picture sits on. `kch_header` inks in `KT_SURFACE`, the
+title's slot, which clears 5.51:1 on `KT_ACCENT` in the worst accent, warmed by night light or
+not. Every other picture on the desktop sits on `KT_BG`, `KT_SURFACE` or the `KT_DIM` selection
+fill, where the light tint reads, and is asked for with `kicon_slot()`. A new surface that puts a
+picture on a lit plate inks it in the slot of the text beside it.
 
 ### A data trace is antialiased; chrome is not
 

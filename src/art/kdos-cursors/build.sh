@@ -11,8 +11,6 @@
 
 kdos-theme cursors "$PKG/usr/share/icons/KDOS-cursors" phosphor \
 	--src "$PORT_SRC/art"
-mkdir -p "$PKG/etc/skel/.icons"
-cp -a "$PKG/usr/share/icons/KDOS-cursors" "$PKG/etc/skel/.icons/"
 install -d "$PKG/usr/share/icons/default"
 printf '[Icon Theme]\nName=Default\nComment=The KDOS phosphor cursors\nInherits=KDOS-cursors\n' \
 	>"$PKG/usr/share/icons/default/index.theme"

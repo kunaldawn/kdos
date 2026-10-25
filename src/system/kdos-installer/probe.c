@@ -43,6 +43,13 @@ static const unsigned char GUID_ESP[16] = {
 	0xba, 0x4b, 0x00, 0xa0, 0xc9, 0x3e, 0xc9, 0x3b
 };
 
+/* 21686148-6449-6E6F-744E-656564454649 in GPT's mixed-endian byte order,
+ * which spells "Hah!IdontNeedEFI": the BIOS boot partition. */
+static const unsigned char GUID_BIOS_BOOT[16] = {
+	0x48, 0x61, 0x68, 0x21, 0x49, 0x64, 0x6f, 0x6e,
+	0x74, 0x4e, 0x65, 0x65, 0x64, 0x45, 0x46, 0x49
+};
+
 Disk *disk_by_path(const char *path)
 {
 	for (int i = 0; i < ki_ndisk; i++)
@@ -255,6 +262,8 @@ static void read_gpt(Disk *d)
 				continue;
 			if (!memcmp(ent, GUID_ESP, 16))
 				d->part[k].is_esp = 1;
+			if (!memcmp(ent, GUID_BIOS_BOOT, 16))
+				d->part[k].is_bios_boot = 1;
 		}
 	}
 	free(ent);
@@ -730,6 +739,8 @@ void probe_disks(void)
 				char pp[300];
 				snprintf(pp, sizeof(pp), "/dev/%s", pe->d_name);
 				kb_strlcpy(p->path, pp, sizeof(p->path));
+				p->num = (int)sysfs_ull("/sys/block/%s/%s/partition",
+							d->name, pe->d_name);
 				p->start = sysfs_ull("/sys/block/%s/%s/start",
 						     d->name, pe->d_name);
 				p->sectors = sysfs_ull("/sys/block/%s/%s/size",
@@ -795,8 +806,12 @@ static int walk_cb(const char *path, const struct stat *st, int type,
  *
  * FTW_MOUNT does all the excluding that matters: /proc /sys /dev /run /tmp
  * are each their own filesystem, so the walk never enters them and there is
- * no path blacklist to keep in sync with fstab. */
-static void measure_payload(void)
+ * no path blacklist to keep in sync with fstab.
+ *
+ * SEPARATE FROM probe_system() because it is the one slow probe: seconds on
+ * a live medium and minutes on a development machine. `--dump plan` asks
+ * for it only when the answer depends on it. */
+void probe_payload(void)
 {
 	walk_kb = walk_appbox_kb = 0;
 	appbox_len = sizeof(appbox_path) - 1;
@@ -918,8 +933,6 @@ void probe_system(void)
 		}
 		free(mounts);
 	}
-
-	measure_payload();
 }
 
 /* ════════════════════════════════════════════════════════════════════════

@@ -378,7 +378,7 @@ socket file's permissions.
 |---|---|---|
 | `kdos-powerd` | Suspend, poweroff and reboot; the time zone, the accent, autologin and the firewall's service list | root and `wheel`; also `seat` for `ping`, suspend, poweroff and reboot |
 | `kdos-energyd` | Sampling the CPU's RAPL (running average power limit) energy counter and attributing it to applications | root and `wheel` |
-| `kdos-oomd` | Killing the largest non-desktop process when the kernel's pressure-stall information (PSI) says the machine is stalling | root, `seat` and `wheel` |
+| `kdos-oomd` | Killing the largest non-desktop process when the kernel's pressure-stall information (PSI) says the machine is stalling and at most a tenth of memory is available ([how it decides](../04-programs/daemons.md#how-it-decides)) | root, `seat` and `wheel` |
 | `kdos-mountd` | Removable media, encrypted (LUKS) volumes, formatting, SMB shares and disk health (SMART) | root, `seat` and `wheel` |
 | `kdos-packd` | Mounting, installing, verifying and composing application packs | root and `wheel` |
 

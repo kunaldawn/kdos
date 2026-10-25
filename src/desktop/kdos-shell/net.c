@@ -579,7 +579,7 @@ static int nm_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 	if (sd_bus_message_is_method_error(reply, NULL)) {
 		snprintf(why, sizeof(why),
 			 "NetworkManager is not answering "
-			 "(service start 42_networkmanager)");
+			 "(service start networkmanager)");
 		return 0;
 	}
 	why[0] = '\0';
@@ -1646,22 +1646,22 @@ static void draw_frame(void)
 			int tx = 2;
 			if (icon >= 0) {
 				ktui_draw_sprite(krect(2, y, 2, 1), icon,
-						 on ? KT_SURFACE : KT_ACCENT,
+						 on ? fg : KT_ACCENT,
 						 bg);
 				tx = 5;
 			}
 			ktui_draw_text(tx, y, 20, d->iface,
-				       on ? KT_SURFACE : KT_ACCENT, bg,
+				       on ? fg : KT_ACCENT, bg,
 				       KT_A_NONE);
 			const char *st = dev_state_word(d);
 			ktui_draw_text_right(0, y, w - 2, st,
-					     on ? KT_SURFACE : KT_DIM, bg,
+					     ktui_sel_dim(on, 1), bg,
 					     KT_A_NONE);
 			if (d->type == NMDT_WIFI)
 				ktui_draw_text(tx + 22, y, 12,
 					       wifi_enabled ? "wifi on"
 							    : "wifi OFF",
-					       on	     ? KT_SURFACE
+					       on	     ? fg
 					       : wifi_enabled ? KT_MID
 							      : KT_WARN,
 					       bg, KT_A_NONE);
@@ -1690,10 +1690,10 @@ static void draw_frame(void)
 				kindmax = 9;
 			if (kindmax >= (int)strlen(c->type))
 				ktui_draw_text(42, y, kindmax, c->type,
-					       on ? KT_SURFACE : KT_MID, bg,
+					       ktui_sel_dim(on, 1), bg,
 					       KT_A_NONE);
 			ktui_draw_text_right(0, y, w - 2, st,
-					     on		    ? KT_SURFACE
+					     on		    ? fg
 					     : conn_is_up(c) ? KT_ACCENT
 							     : KT_MID,
 					     bg, KT_A_NONE);
@@ -1739,13 +1739,13 @@ static void draw_frame(void)
 			ktui_draw_text(42, y, secmax,
 				       ap_secure(a) ? (a->rsn ? "WPA2" : "WPA")
 						    : "open",
-				       on	     ? KT_SURFACE
+				       on	     ? fg
 				       : ap_secure(a) ? KT_MID
 						      : KT_WARN,
 				       bg, KT_A_NONE);
 		if (state)
 			ktui_draw_text_right(0, y, w - 2, state,
-					     on	       ? KT_SURFACE
+					     on	       ? fg
 					     : a->active ? KT_ACCENT
 							 : KT_MID,
 					     bg, KT_A_NONE);

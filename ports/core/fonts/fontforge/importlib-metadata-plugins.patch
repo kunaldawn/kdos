@@ -1,0 +1,138 @@
+Subject: Discover plugins through importlib.metadata instead of pkg_resources, which setuptools no longer ships
+
+--- a/fontforge/plugin.c
++++ b/fontforge/plugin.c
+@@ -290,23 +290,30 @@
+     PluginEntry *pe;
+     GList_Glib *i;
+     PyObject *str, *str2, *iter, *tmp, *tmp2, *entrypoint;
+-    PyObject *pkgres = PyImport_ImportModule("pkg_resources");
+-    if (pkgres == NULL || !PyObject_HasAttrString(pkgres, "iter_entry_points")) {
+-        LogError(_("Core python package 'pkg_resources' not found: Cannot discover plugins"));
+-	PyErr_Clear();
++    PyObject *metamod = PyImport_ImportModule("importlib.metadata");
++    if (metamod == NULL || !PyObject_HasAttrString(metamod, "entry_points")) {
++        LogError(_("Core python module 'importlib.metadata' not found: Cannot discover plugins"));
++        Py_XDECREF(metamod);
++        PyErr_Clear();
+         return false;
+     }
+-    str = PyUnicode_FromString("iter_entry_points");
+-    str2 = PyUnicode_FromString("fontforge_plugin");
+-    iter = PyObject_CallMethodObjArgs(pkgres, str, str2, NULL);
+-    if (!PyIter_Check(iter)) {
++    tmp = PyObject_GetAttrString(metamod, "entry_points");
++    tmp2 = Py_BuildValue("{s:s}", "group", "fontforge_plugin");
++    str = PyTuple_New(0);
++    str2 = (tmp != NULL && tmp2 != NULL && str != NULL) ? PyObject_Call(tmp, str, tmp2) : NULL;
++    Py_XDECREF(tmp);
++    Py_XDECREF(tmp2);
++    Py_XDECREF(str);
++    iter = str2 != NULL ? PyObject_GetIter(str2) : NULL;
++    Py_XDECREF(str2);
++    if (iter == NULL) {
+         LogError(_("Could not iterate 'fontforge_plugin' entry points."));
++        PyErr_Clear();
++        Py_DECREF(metamod);
+         return false;
+     }
+-    Py_DECREF(str);
+-    Py_DECREF(str2);
+ 
+-    PyObject *getmetastr = PyUnicode_FromString("get_metadata_lines");
++    PyObject *getstr = PyUnicode_FromString("get");
+     while ((entrypoint = PyIter_Next(iter))) {
+         // Find name and module_name
+         str = PyObject_GetAttrString(entrypoint, "name");
+@@ -316,7 +323,7 @@
+             PyErr_Clear();
+             continue;
+         }
+-        str2 = PyObject_GetAttrString(entrypoint, "module_name");
++        str2 = PyObject_GetAttrString(entrypoint, "module");
+         const char *modname = PyUnicode_AsUTF8(str2);
+         if (modname == NULL) {
+             Py_XDECREF(str);
+@@ -341,14 +348,17 @@
+         }
+         Py_DECREF(str);
+         Py_DECREF(str2);
+-        str = PyObject_GetAttrString(entrypoint, "attrs");
++        str = PyObject_GetAttrString(entrypoint, "attr");
+         if (str == NULL) {
+             PyErr_Clear();
+         } else {
+             if (pe->attrs) {
+                 free(pe->attrs);
+             }
+-            const char *attrs = PyUnicode_AsUTF8(str);
++            const char *attrs = str != Py_None ? PyUnicode_AsUTF8(str) : NULL;
++            if (attrs == NULL) {
++                PyErr_Clear();
++            }
+             pe->attrs = attrs != NULL ? copy(attrs) : NULL;
+         }
+         Py_XDECREF(str);
+@@ -357,35 +367,25 @@
+         pe->entrypoint = entrypoint;
+         // Extract project URL from package data
+         PyObject *dist = PyObject_GetAttrString(entrypoint, "dist");
+-        if (dist != NULL) {
+-            tmp = PyObject_GetAttrString(dist, "PKG_INFO");
+-            tmp2 = PyObject_CallMethodObjArgs(dist, getmetastr, tmp, NULL);
+-            Py_DECREF(tmp);
+-            if (PyIter_Check(tmp2)) {
+-                while ((str = PyIter_Next(tmp2))) {
+-                    const char *metaline = PyUnicode_AsUTF8(str);
+-                    // printf("%s\n", metaline);
+-                    if (strncmp(metaline, "Home-page: ", 11) == 0) {
+-                        if (pe->package_url != NULL) {
+-                            free(pe->package_url);
+-                        }
+-                        pe->package_url = copy(metaline + 11);
+-                    } else if (strncmp(metaline, "Name: ", 6) == 0) {
+-                        if (pe->package_name != NULL) {
+-                            free(pe->package_name);
+-                        }
+-                        pe->package_name = copy(metaline + 6);
+-                    } else if (strncmp(metaline, "Summary: ", 9) == 0) {
+-                        if (pe->summary != NULL) {
+-                            free(pe->summary);
+-                        }
+-                        pe->summary = copy(metaline + 9);
+-                    }
+-                    Py_DECREF(str);
++        tmp = (dist != NULL && dist != Py_None) ? PyObject_GetAttrString(dist, "metadata") : NULL;
++        if (tmp != NULL) {
++            static const char *const fields[] = { "Home-page", "Name", "Summary" };
++            char **slots[] = { &pe->package_url, &pe->package_name, &pe->summary };
++            for (int f = 0; f < 3; f++) {
++                str2 = PyUnicode_FromString(fields[f]);
++                str = PyObject_CallMethodObjArgs(tmp, getstr, str2, NULL);
++                Py_DECREF(str2);
++                const char *value = (str != NULL && str != Py_None) ? PyUnicode_AsUTF8(str) : NULL;
++                if (value != NULL) {
++                    free(*slots[f]);
++                    *slots[f] = copy(value);
+                 }
++                Py_XDECREF(str);
++                PyErr_Clear();
+             }
+-            Py_DECREF(tmp2);
++            Py_DECREF(tmp);
+         }
++        PyErr_Clear();
+         if (do_import && pe->startup_mode == sm_on) {
+             LoadPlugin(pe);
+         } else if (do_import && pe->startup_mode == sm_ask) {
+@@ -403,8 +403,8 @@
+         }
+     }
+     Py_DECREF(iter);
+-    Py_DECREF(getmetastr);
+-    Py_DECREF(pkgres);
++    Py_DECREF(getstr);
++    Py_DECREF(metamod);
+     return do_ask;
+ }
+ 

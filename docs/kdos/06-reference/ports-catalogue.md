@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,081 recipes under `ports/core` and the
-25 recipes KDOS writes itself under `src/`, 2,106 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,083 recipes under `ports/core` and the
+26 recipes KDOS writes itself under `src/`, 2,109 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -108,17 +108,17 @@ leaving out any an earlier phase installed.
 | `30_foundation` | Build Foundation | `packages.txt` | 138 | 127 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
 | `40_lang` | Languages | `packages.d/`, 13 files | 177 | 177 |
-| `41_system` | System | `packages.d/`, 96 files | 1,012 | 1,012 |
-| `42_graphics` | Graphics Stack | `packages.d/`, 54 files | 193 | 193 |
-| `43_toolkits` | Toolkits | `packages.d/`, 46 files | 248 | 248 |
-| `44_apps` | Applications | `packages.d/`, 59 files | 286 | 286 |
+| `41_system` | System | `packages.d/`, 96 files | 1,014 | 1,014 |
+| `42_graphics` | Graphics Stack | `packages.d/`, 54 files | 194 | 194 |
+| `43_toolkits` | Toolkits | `packages.d/`, 47 files | 250 | 250 |
+| `44_apps` | Applications | `packages.d/`, 58 files | 284 | 284 |
 | `50_desktop` | Desktop | `packages.txt` | 22 | 22 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,109 | 2,104 |
+| Total | | | 2,112 | 2,107 |
 
-The lists hold 2,109 lines naming 2,100 distinct ports; 9 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,104 ports. With `kdos-installer`, which
+The lists hold 2,112 lines naming 2,103 distinct ports; 9 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,107 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that is every recipe but 1, listed in `ports/unbuilt`: `texlive-doc`,
 a recipe kept for `kpkg install` that no phase builds, marked `not built` in its table.
 `testing/bookcounts.py` fails on any other recipe no phase builds.
@@ -204,7 +204,7 @@ Every recipe, counted by where it lives.
 | [`chat`](#chat) | 16 |
 | [`browsers`](#browsers) | 10 |
 | [`web-engines`](#web-engines) | 14 |
-| [`x11`](#x11) | 43 |
+| [`x11`](#x11) | 44 |
 | [`wl`](#wl) | 17 |
 | [`gpu`](#gpu) | 26 |
 | [`graphics-libs`](#graphics-libs) | 27 |
@@ -214,7 +214,7 @@ Every recipe, counted by where it lives.
 | [`cad`](#cad) | 17 |
 | [`fabrication`](#fabrication) | 13 |
 | [`fonts`](#fonts) | 25 |
-| [`themes`](#themes) | 7 |
+| [`themes`](#themes) | 8 |
 | [`xdg`](#xdg) | 16 |
 | [`accessibility`](#accessibility) | 9 |
 | [`i18n`](#i18n) | 15 |
@@ -268,11 +268,11 @@ Every recipe, counted by where it lives.
 | [`python-dev`](#python-dev) | 14 |
 | [`python-hw`](#python-hw) | 12 |
 | [`perl-cpan`](#perl-cpan) | 20 |
-| [`src/system`](#srcsystem) | 6 |
+| [`src/system`](#srcsystem) | 7 |
 | [`src/art`](#srcart) | 6 |
 | [`src/desktop`](#srcdesktop) | 8 |
 | [`src/daemons`](#srcdaemons) | 5 |
-| Total | 2,106 |
+| Total | 2,109 |
 
 ## The shelves
 
@@ -1453,7 +1453,10 @@ Notes:
 - `f3`: `-largp` goes in `LDFLAGS`, the only variable f3's link lines read; musl has no argp, and
   the Makefile adds `-largp` only off Linux.
 - `gparted`: `gpartedbin` runs as root through pkexec, which drops `WAYLAND_DISPLAY`, so the window
-  is on X11 under Xwayland and the entry's `StartupWMClass` is `Gpartedbin`.
+  is on X11 under Xwayland and the entry's `StartupWMClass` is `Gpartedbin`. Xwayland admits no
+  other account, so the launcher (`--enable-xhost-root`) runs [xhost](#x11) to admit root before
+  pkexec and withdraws the grant when GParted exits; without `xhost` root cannot open the display
+  and no window appears.
 - `impression`: the vendor bundle is unpacked at the source root: meson runs cargo under `build/`,
   and cargo finds `.cargo/config.toml` only by searching upward from there.
 - `liburing`: configure is given no `--prefix` (its default is `/usr`): it resolves one with
@@ -2222,7 +2225,7 @@ Notes:
 
 ### x11
 
-X11 protocol, client libraries and data, plus Xwayland, the one X server. 43 ports, under
+X11 protocol, client libraries and data, plus Xwayland, the one X server. 44 ports, under
 `ports/core/x11/`.
 
 | Port | Version | Description | Phase |
@@ -2266,6 +2269,7 @@ X11 protocol, client libraries and data, plus Xwayland, the one X server. 43 por
 | `xcb-util-keysyms` | 0.4.1 | XCB keysym and keycode conversion library (libxcb-keysyms) | `41_system` |
 | `xcb-util-renderutil` | 0.3.10 | XCB convenience functions for the Render extension | `41_system` |
 | `xcb-util-wm` | 0.4.2 | ICCCM and EWMH helpers for XCB — wlroots' Xwayland xwm needs both | `41_system` |
+| `xhost` | 1.0.10 | X server access control tool — admits a local account such as root to Xwayland | `42_graphics` |
 | `xkbcomp` | 1.5.0 | XKB keymap compiler, invoked by Xwayland at runtime | `42_graphics` |
 | `xorgproto` | 2025.1 | X.Org protocol headers | `41_system` |
 | `xtrans` | 1.6.0 | X transport library (headers only, build-time) | `41_system` |
@@ -2788,12 +2792,13 @@ Notes:
 
 ### themes
 
-Icon, cursor, sound and widget themes, and theme-configuration tools. 7 ports, under
+Icon, cursor, sound and widget themes, and theme-configuration tools. 8 ports, under
 `ports/core/themes/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `adwaita-icon-theme` | 51.0 | GNOME's Adwaita icon and cursor theme — the symbolic-icon fallback GTK applications expect | `44_apps` |
+| `adwaita-icon-theme-legacy` | 46.2 | AdwaitaLegacy, the full-colour icons Adwaita inherits for applications that look up the old icon names | `43_toolkits` |
 | `breeze` | 6.7.5 | Breeze widget style and colour schemes for Qt 6 applications | `43_toolkits` |
 | `hicolor-icon-theme` | 0.18 | Freedesktop.org Hicolor icon theme | `41_system` |
 | `icon-naming-utils` | 0.8.90 | Perl script used for maintaining backwards compatibility with current desktop icon themes | `41_system` |
@@ -3495,7 +3500,7 @@ Music production: DAWs, audio editors, trackers, drum machines and notation. 12 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `ardour` | 9.8.0 | Digital audio workstation: multitrack recording, editing, mixing and LV2 plugins (YTK, X11) | `44_apps` |
-| `audacity` | 4.0.0 | Multitrack audio editor and recorder — the Qt 6 Audacity 4, with LV2, LADSPA and Nyquist effects | `44_apps` |
+| `audacity` | 4.0.0 | Multitrack audio editor and recorder — the Qt 6 Audacity 4, with LV2 and Nyquist effects | `44_apps` |
 | `ft2-clone` | 2.24 | Fasttracker II clone — the XM tracker, pixel for pixel, on SDL2 | `44_apps` |
 | `furnace` | 0.6.8.3 | Chiptune tracker for over fifty sound chips of consoles, computers and arcades | `44_apps` |
 | `hydrogen` | 1.2.6 | Pattern-based drum machine and sequencer with sample drum kits | `44_apps` |
@@ -3567,7 +3572,7 @@ Video codecs, containers, subtitles, disc playback and effects libraries. 23 por
 | `libass` | 0.17.5 | SSA/ASS subtitle renderer — what lets ffmpeg burn subtitles in | `42_graphics` |
 | `libbluray` | 1.5.0 | Blu-ray playlists and titles — mpv's bd:// and ffmpeg's bluray: protocol | `41_system` |
 | `libde265` | 1.1.3 | HEVC decoder — libheif's decode half | `41_system` |
-| `libdovi` | 3.4.0 | C API of dovi_tool's dolby_vision crate: parse, convert and write Dolby Vision RPU metadata | `44_apps` |
+| `libdovi` | 3.4.0 | C API of dovi_tool's dolby_vision crate: parse, convert and write Dolby Vision RPU metadata | `41_system` |
 | `libdvbpsi` | 1.3.3 | MPEG-TS PSI/SI table decoder — VLC's transport-stream and DVB demuxing | `41_system` |
 | `libdvdcss` | 1.6.0 | Reads a CSS-encrypted DVD-Video disc, for libdvdread and every DVD player above it | `41_system` |
 | `libdvdnav` | 7.0.0 | DVD-Video navigation — mpv's dvd:// and GStreamer's rsndvdbin, whose menus it drives | `41_system` |
@@ -3687,7 +3692,8 @@ Notes:
 - `vlc`: every module with an outside library is named on or off, so a missing port fails
   configure. `--enable-lirc` is the exception: a missing library drops the module silently, and
   lirc in `depends` keeps it. Lua is 5.4 through `LUA_CFLAGS` and `LUA_LIBS`, because the system
-  lua is 5.5. `plugins.dat` is not shipped: it records each plugin's mtime, which packaging resets.
+  lua is 5.5. `plugins.dat` is not in the package, because it records each plugin's mtime, which
+  packaging resets; kpkg's `vlc` index trigger writes it after the install.
 
 ### video-tools
 
@@ -4283,7 +4289,8 @@ Notes:
   `.drv` files and fail at print time.
 - `tesseract`: `DISABLE_*=OFF` only means "look", and FindCURL cannot be made required against the
   autotools-built curl, so build.sh checks `config_auto.h` for TIFF, libarchive and libcurl and
-  stops when one is missing.
+  stops when one is missing. `TESSDATA_PREFIX=/usr/share` compiles in where the language files
+  are, which the CMake build otherwise leaves as the current directory; it is checked the same way.
 
 ### math
 
@@ -4806,7 +4813,7 @@ radio. 26 ports, under `ports/core/hamradio/`.
 | `flxmlrpc` | 1.0.1 | XML-RPC library shared by fldigi, flmsg and flamp | `41_system` |
 | `freedv-gui` | 2.4.0 | HF digital voice for amateur radio: RADE, 700D, 700E and 1600 modes over a sound card | `44_apps` |
 | `ggmorse` | 0.1.0.git20250920 | Morse code decoding library, the fork SDRangel's Morse decoder links | `41_system` |
-| `gpsman` | 6.4.4.2 | GPS Manager — waypoints, routes and tracks to and from Garmin, Lowrance and Magellan receivers, with the gpsmanshp Shapefile layer | `44_apps` |
+| `gpsman` | 6.4.4.2 | GPS Manager — waypoints, routes and tracks to and from Garmin, Lowrance and Magellan receivers, with the gpsmanshp Shapefile layer | `43_toolkits` |
 | `hamlib` | 4.7.2 | Radio and rotator control library | `41_system` |
 | `js8call` | 3.0.3 | Weak-signal keyboard-to-keyboard and store-and-forward messaging for HF amateur radio | `44_apps` |
 | `klog` | 2.6 | Amateur radio logbook with DXCC and award tracking, ADIF, LoTW and a DX cluster | `44_apps` |
@@ -4922,7 +4929,7 @@ The python3 interpreter, tkinter, and Python build, packaging and extension tool
 | `python3-setuptools-rust` | 1.13.0 | Builds a Rust extension from setup.py — how maturin bootstraps itself | `40_lang` |
 | `python3-setuptools-scm` | 10.3.4 | Version from VCS — matplotlib requires it at build time | `30_foundation` |
 | `python3-sip` | 6.16.1 | The binding generator PyQt6, QScintilla and QGIS are built with | `40_lang` |
-| `python3-tkinter` | 3.14.8 | Python's binding to Tk, the _tkinter module and the tkinter package (X11 under Xwayland) | `42_graphics` |
+| `python3-tkinter` | 3.14.8 | Python's binding to Tk, the _tkinter module and the tkinter package, with turtle and the IDLE editor (X11 under Xwayland) | `42_graphics` |
 | `python3-tomlkit` | 0.15.1 | Style-preserving TOML reading and writing — hatchling requires it | `30_foundation` |
 | `python3-trove-classifiers` | 2026.9.21.13 | The canonical PyPI classifier list hatchling validates metadata against | `30_foundation` |
 | `python3-vcs-versioning` | 2.5.0 | The VCS version machinery setuptools-scm is built on | `30_foundation` |
@@ -5280,8 +5287,8 @@ version checker behind `ports/update`, which run on the build host rather than i
 
 ### src/system
 
-The system layer: the `kdos` command and its services, packs and boxes, the installer, and the book on the image. On the
-`PORT_REPO` of every phase from `40_lang` to `60_kernel`. 6 ports.
+The system layer: the `kdos` command and its services, packs and boxes, the installer, and the two books on the image. On the
+`PORT_REPO` of every phase from `40_lang` to `60_kernel`. 7 ports.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -5289,6 +5296,7 @@ The system layer: the `kdos` command and its services, packs and boxes, the inst
 | `kdos-boxinit` | 0.1.0 | pid 1 inside a pack box, in place of distrobox-init | `41_system` |
 | `kdos-doc` | 1.0.0 | The KDOS book as HTML, kdos(7) and a manual page per kdos-* command | `41_system` |
 | `kdos-installer` | 4.0 | KDOS installer — the disk wizard, C with no libraries | `10_bootstrap` (by script) |
+| `kdos-kfs` | 1.0.0 | KDOS from Scratch, the build book, as HTML and one PDF | `41_system` |
 | `kdos-pack` | 0.1.0 | Build, sign, index and delta packs | `41_system` |
 | `kdos-tools` | 1.2.0 | KDOS system tools — kdos, services, getty, screenshots, fetch | `42_graphics` |
 
@@ -5302,6 +5310,12 @@ Notes:
 - `kdos-installer`: every `.c` in its directory is compiled by glob, as
   `script/phases/10_bootstrap/130_kinstall.sh` compiles it; a name list in either place lets the two
   builds become different programs.
+- `kdos-kfs`: renders from a checkout, never from `/ports`: the book reads every recipe under
+  `ports/core` and the phase lists under `script/phases`. Its directory holds two links,
+  `docs` to `docs/kfs` and `book` to `script/book`, which the recipe hash follows; a recipe edit
+  reaches the hash through `docs/kfs/data/recipes.stamp`. The full file list on a package's page
+  comes from the package database, so it names only what was installed before this port.
+  `usr/share/doc/kfs` is in the prune's `DOC_KEEP`, or the HTML and the PDF would be stripped.
 - `kdos-tools`: `kdos-bootctl` is linked into `/usr/bin`, the path `090_initramfs.sh` copies it from.
   `-DKDOS_HAVE_LIBPNG` gates the wallpaper retint, so the host selftest builds without libpng.
 
@@ -5325,7 +5339,7 @@ Notes:
 - `kdos-cursors`, `kdos-gtk-theme`, `kdos-icons`: the vendored artwork ships under
   `/usr/share/kdos/`, because `kdos theme <accent>` regenerates each theme from it on the running
   system. `kdos-gtk-theme` and `kdos-icons` install no `/etc/skel` copy: `70_image/050_theme.sh`
-  generates it with `kdos theme phosphor`.
+  generates it with `kdos theme $KDOS_ACCENT`, which `70_image/phase.env` sets to `bone`.
 - `kdos-icons`: the marks (`start-here`, `kdos-launcher`, `distributor-logo-kdos`) go into
   `icons/hicolor` as well as the theme. libkicon searches only its atlas and `hicolor`, so without
   them the Start button draws a fallback glyph. The atlas is optional: without

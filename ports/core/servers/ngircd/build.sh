@@ -35,8 +35,7 @@ case "$1" in
             echo "[SKIP] $NAME: no $CONF (/usr/share/doc/ngircd/sample-ngircd.conf is the template)"
             exit 0
         fi
-        # Read /etc/passwd directly: there is no getent on musl.
-        if ! grep -q '^ngircd:' /etc/passwd 2>/dev/null; then
+        if ! getent passwd ngircd >/dev/null; then
             echo "[SKIP] $NAME: no ngircd account (the port's postinstall makes it)"
             exit 0
         fi

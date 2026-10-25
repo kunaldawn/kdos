@@ -1,0 +1,5 @@
+name        = branchpkg
+version     = 3.6.7
+release     = 1
+source      = https://example.invalid/branchpkg-3.6.7.tar.gz
+description = fixture

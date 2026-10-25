@@ -1,7 +1,7 @@
 # Wayland session environment.
-# Sourced by /etc/profile on every login. Sets up the runtime directory
-# (which would normally be created by elogind/systemd-logind) and the env
-# vars Wayland-aware toolkits look for.
+# Sourced by /etc/profile on every login. Points at the runtime directory
+# (15_userdirs makes one for every account at boot) and sets the env vars
+# Wayland-aware toolkits look for.
 
 uid=$(id -u)
 # A bare console (serial getty, rescue shell) can land here with HOME unset;
@@ -18,10 +18,17 @@ fi
 if [ -z "$XDG_RUNTIME_DIR" ]; then
 	export XDG_RUNTIME_DIR="/run/user/$uid"
 fi
+# /run/user is root's, so only root can make its own directory here. An
+# account added after boot has none until 15_userdirs runs again, and every
+# login of it would otherwise print mkdir and chmod errors that do not say
+# what to do; the desktop, pipewire and rootless podman all fail without it.
 if [ ! -d "$XDG_RUNTIME_DIR" ]; then
-	mkdir -p "$XDG_RUNTIME_DIR"
-	chmod 0700 "$XDG_RUNTIME_DIR"
-	chown "$uid:$uid" "$XDG_RUNTIME_DIR" 2>/dev/null || true
+	if mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null; then
+		chmod 0700 "$XDG_RUNTIME_DIR"
+		chown "$uid:$uid" "$XDG_RUNTIME_DIR" 2>/dev/null || true
+	else
+		echo "kdos: no $XDG_RUNTIME_DIR yet — run 'sudo service start userdirs' (or reboot) before starting the desktop" >&2
+	fi
 fi
 
 export XDG_SESSION_TYPE=wayland

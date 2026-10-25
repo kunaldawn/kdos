@@ -658,7 +658,7 @@ static void draw_frame(void)
 		ktui_sel_slots(on, 1, KT_BG, &fg, &bg);
 
 		ktui_draw_fill(krect(1, y, w - 2, 1), bg);
-		ktui_draw_textf(2, y, 4, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_textf(2, y, 4, ktui_sel_dim(on, 1), bg,
 				KT_A_NONE, "%d", r->idx + 1);
 		ktui_draw_text(6, y, w - 8, r->preview, fg, bg, KT_A_NONE);
 	}

@@ -331,7 +331,7 @@ static void draw_archive(void)
 			       KT_A_NONE);
 		ktui_draw_text(px + pw - 12, y, 11,
 			       kb_human_size(e->bytes),
-			       on ? KT_SURFACE : KT_MID, bg, KT_A_NONE);
+			       ktui_sel_dim(on, 1), bg, KT_A_NONE);
 	}
 }
 
@@ -515,6 +515,8 @@ int peek_main(int argc, char **argv)
 	}
 
 	while (!kdisp_should_close()) {
+		/* Follow a live accent or night light; see sh_theme_poll(). */
+		sh_theme_poll();
 		draw();
 
 		KtuiEvent ev;

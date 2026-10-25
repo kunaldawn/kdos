@@ -26,8 +26,6 @@ EOF2
 cat > "$PKG/etc/containers/storage.conf" <<'EOF2'
 [storage]
 driver = "overlay"
-runroot = "/run/containers/storage"
-graphroot = "/var/lib/containers/storage"
 
 [storage.options.overlay]
 mount_program = "/usr/bin/fuse-overlayfs"

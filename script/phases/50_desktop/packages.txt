@@ -49,8 +49,8 @@ fcitx5-hangul
 # utilities
 # ---------------------------------
 
-# The compositor library. Pinned and vendored; wlroots breaks API every
-# release.
+# The compositor library, from its release tarball with one patch. wlroots
+# breaks API every release, and kdos-comp asks meson for wlroots-0.20 by name.
 wlroots
 
 # ---------------------------------

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Updates
+GenericName=Software Updater
+Comment=What is behind, what is vulnerable, and which slot is live
+Exec=kdos-update
+Icon=system-upgrade
+Terminal=false
+NoDisplay=true
+Categories=System;PackageManager;
+StartupWMClass=kdos-update

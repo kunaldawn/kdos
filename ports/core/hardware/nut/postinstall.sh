@@ -17,9 +17,15 @@
 # --root and an A/B update install into a tree that is not the running one, and
 # an account made in / instead would be missing from the system that needs it.
 #
-# The guard reads the files: no getent on musl, and a missing one returns 127,
-# so the test never holds and useradd runs against the account it already made.
+# The guard reads PKG_ROOT's files: getent answers for the running root, not
+# the tree being installed, and would let useradd run against an account the
+# target already has.
 root="${PKG_ROOT:-/}"
 grep -q '^nut:' "$root/etc/group" 2>/dev/null || groupadd -R "$root" -r nut
 grep -q '^nut:' "$root/etc/passwd" 2>/dev/null || \
-	useradd -R "$root" -r -g nut -G dialout -d /var/lib/nut -s /sbin/nologin nut
+	useradd -R "$root" -r -g nut -G dialout -d /nonexistent -s /sbin/nologin nut
+
+# The guard leaves an existing account as it is, so the home is set apart
+# from it: a tree that already has the account takes /nonexistent too. usermod
+# exits 0 without writing when the home is already /nonexistent.
+usermod -R "$root" -d /nonexistent nut

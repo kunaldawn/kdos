@@ -17,7 +17,8 @@
 # nobody else: without the group every BrlAPI client — brltty-clip included —
 # is refused by the running daemon. The desktop account joins it only when the
 # group is first made, so a user who later leaves it stays out across
-# reinstalls; the guard reads the files because musl has no getent.
+# reinstalls. The guard reads PKG_ROOT's files, because getent answers for the
+# running root and not the tree being installed.
 root="${PKG_ROOT:-/}"
 if ! grep -q '^brlapi:' "$root/etc/group" 2>/dev/null; then
 	groupadd -R "$root" -r brlapi

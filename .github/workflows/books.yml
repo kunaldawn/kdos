@@ -1,0 +1,161 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   books — both books on GitHub Pages, and KDOS from Scratch on each release
+# ---------------------------------
+#
+# ONE WORKFLOW, BOTH BOOKS. A push to main renders docs/kdos with kdos-doc's
+# mkbook.py --html and docs/kfs with `make book`, and deploys one site:
+#
+#   /              the KDOS book (docs/kdos), its README.html as index.html
+#   /kfs/          KDOS from Scratch, chunked HTML
+#   /kfs/kfs.pdf   KDOS from Scratch, the one PDF
+#
+# Pages must be set to deploy from GitHub Actions. With a branch as its
+# source it runs Jekyll over the whole repository instead, and the tree has
+# no _config.yml to keep it out of ports/, build/ and testing/fixtures, so
+# that build dies.
+#
+# A RELEASE GETS THE FROZEN EDITION: when a v* release is published, the
+# book is rendered from its tag and kfs.pdf and kfs-html.tar.zst are attached
+# to it. A v* tag pushed before its release exists renders the book and
+# attaches nothing; the release's own run attaches it. The site is never
+# deployed from a tag, so Pages stays the development edition from main.
+#
+# THE TOOLS ARE THE PORTS' VERSIONS, PINNED BY HASH: pandoc 3.11 and typst
+# 0.15.1 are what ports/core/doctools builds, here as upstream's release
+# binaries, each refused unless its sha256 matches. A version bump in either
+# recipe is a bump here, or Pages and the image render the book with
+# different tools. Python is 3.14, the python3 port's series, because
+# script/book is run by that python3 on the image. lowdown is Ubuntu's, not
+# the port's 3.2: mkbook.py stops when lowdown and its own reading disagree
+# on a page's headings, and Ubuntu 24.04's 1.1 agrees on every page, so a
+# lowdown that does not fails this run rather than publishing broken links.
+#
+# The snapshot under docs/kfs/data is committed, so no build tree is needed;
+# with BUILDFS empty the HTML carries each package's file-list summary, not
+# its full list.
+# ---------------------------------
+
+name: books
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: books-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PANDOC_VERSION: '3.11'
+  PANDOC_SHA256: 37edb3bbcf722f921a009941bf5874e2e0c09263226c9b4a2d980788cb062ab6
+  TYPST_VERSION: '0.15.1'
+  TYPST_SHA256: a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends lowdown zstd
+          tools="$RUNNER_TEMP/tools"
+          mkdir -p "$tools/bin" "$tools/dl"
+          cd "$tools/dl"
+          curl -fsSL -o pandoc.tar.gz \
+            "https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-linux-amd64.tar.gz"
+          curl -fsSL -o typst.tar.xz \
+            "https://github.com/typst/typst/releases/download/v$TYPST_VERSION/typst-x86_64-unknown-linux-musl.tar.xz"
+          printf '%s  %s\n' "$PANDOC_SHA256" pandoc.tar.gz "$TYPST_SHA256" typst.tar.xz | sha256sum -c -
+          tar -xzf pandoc.tar.gz --strip-components=2 -C "$tools/bin" "pandoc-$PANDOC_VERSION/bin/pandoc"
+          tar -xJf typst.tar.xz --strip-components=1 -C "$tools/bin" typst-x86_64-unknown-linux-musl/typst
+          echo "$tools/bin" >> "$GITHUB_PATH"
+
+      - name: Versions
+        run: |
+          pandoc --version | head -1
+          typst --version
+          python3 --version
+
+      - name: The KDOS book
+        run: python3 -B src/system/kdos-doc/mkbook.py --html docs "$RUNNER_TEMP/site"
+
+      - name: KDOS from Scratch
+        run: |
+          make book BUILDFS= KFS_PANDOC=pandoc KFS_TYPST=typst
+          cp -R build/kfs/html "$RUNNER_TEMP/site/kfs"
+          cp build/kfs/kfs.pdf "$RUNNER_TEMP/site/kfs/kfs.pdf"
+
+      - name: Site
+        if: github.event_name != 'release' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/site
+
+      - name: Release files
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: kfs-release
+          path: |
+            build/kfs/kfs.pdf
+            build/kfs/kfs-html.tar.zst
+          if-no-files-found: error
+
+  pages:
+    if: github.event_name != 'release' && github.ref == 'refs/heads/main'
+    needs: render
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: render
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: kfs-release
+          path: kfs
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "no release for $TAG yet: its own run attaches the book once it is published"
+            exit 0
+          fi
+          gh release upload "$TAG" kfs/kfs.pdf kfs/kfs-html.tar.zst --clobber -R "$GITHUB_REPOSITORY"

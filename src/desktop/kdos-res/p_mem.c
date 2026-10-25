@@ -95,7 +95,7 @@ void res_draw_mem(int x, int y, int w, int h)
 		}
 	} else if (row < bottom - 1) {
 		ktui_draw_text(x + 1, row, w - 2, "swap  none configured",
-			       KT_DIM, KT_BG, 0);
+			       KT_MID, KT_BG, 0);
 		row++;
 	}
 
@@ -110,7 +110,7 @@ void res_draw_mem(int x, int y, int w, int h)
 				 "pressure  %s  this kernel has PSI off",
 				 res_none());
 		ktui_draw_text(x + 1, row, w - 2, psi,
-			       R.psi_mem.present ? KT_WARN : KT_DIM, KT_BG, 0);
+			       R.psi_mem.present ? KT_WARN : KT_MID, KT_BG, 0);
 		row += 2;
 	}
 
@@ -143,5 +143,5 @@ void res_draw_mem(int x, int y, int w, int h)
 	if (row < bottom - 1)
 		ktui_draw_text(x + 1, row + 1, w - 2,
 			       "memory device details need kdos-resctl",
-			       KT_DIM, KT_BG, 0);
+			       KT_MID, KT_BG, 0);
 }

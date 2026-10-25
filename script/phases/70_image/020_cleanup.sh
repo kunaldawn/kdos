@@ -27,6 +27,7 @@ FS=/kdos/build/fs
 CLEAN_BUILD_CACHE=1     # /tmp, /var/tmp (the build's HOME), /root's caches, kpkg work dir
 CLEAN_KPKG_PACKAGES=1   # /var/cache/kpkg/packages (built .tar.xz cache, .pending records)
 CHECK_PYCACHE=1         # unowned __pycache__ / *.pyc / *.pyo removed; owned .py checked
+CLEAN_UNOWNED_DOCS=1    # unowned catalogs, translated manuals, HTML, and the bootstrap's extras
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 section() { echo; echo "── $* ──"; }
@@ -187,6 +188,103 @@ if missing:
 print("  every packaged module has checked-hash bytecode")
 PY
     fi
+fi
+
+# ── Unowned documentation and catalogs ──────────────────────────────────
+#
+# THE SIZE AND LANGUAGE POLICY COVERS FILES NO PACKAGE OWNS. kpkg prunes
+# message catalogs, translated manual pages and HTML manuals from every
+# package (prune.c), but 10_bootstrap installs its tools outside any package,
+# and a port installed over them adopts only the paths it ships: a bootstrap
+# copy of something its port prunes is adopted by nothing and would ride
+# into the image. This step removes, when no package owns it and fs/ does
+# not provide it:
+#
+#   - a non-English message catalog under usr/share/locale/<lang>/LC_MESSAGES;
+#   - anything under a usr/share/man directory that is not man<section>;
+#   - an .html, .htm or .pdf under usr/share/doc;
+#   - the files the bootstrap's own ports leave out of their packages:
+#     gawk's gawknotes.info, and binutils' dlltool, windres and windmc pages.
+#
+# The 10_bootstrap steps install none of these themselves; the sweep removes
+# any the tree carries, whatever wrote it. 087_gates.sh then fails the
+# image on any unowned file left under usr/share/{locale,man,doc,info}.
+if [ "$CLEAN_UNOWNED_DOCS" = 1 ]; then
+    section "Unowned documentation and catalogs"
+    python3 -I - "$FS" <<'PY'
+import os, sys
+
+fs = sys.argv[1]
+dbdir = os.path.join(fs, "var/lib/kpkg/db")
+
+def canon(p):
+    p = p[2:] if p.startswith("./") else p.lstrip("/")
+    p = p.rstrip("/")
+    for a in ("bin", "sbin", "lib"):
+        if p == a or p.startswith(a + "/"):
+            return "usr/" + p
+    return p
+
+owned = set()
+for n in os.listdir(dbdir):
+    f = os.path.join(dbdir, n)
+    if n.startswith(".") or not os.path.isfile(f):
+        continue
+    with open(f, encoding="utf-8", errors="surrogateescape") as h:
+        for line in h:
+            if line.startswith("./"):
+                owned.add(canon(line.rstrip("\n")))
+try:
+    with open(os.path.join(fs, "var/lib/kdos/fs-manifest"), encoding="utf-8",
+              errors="surrogateescape") as h:
+        owned.update(canon(ln.strip()) for ln in h if ln.strip())
+except OSError:
+    pass
+
+EXTRA = {
+    "usr/share/info/gawknotes.info",
+    "usr/share/man/man1/dlltool.1",
+    "usr/share/man/man1/windres.1",
+    "usr/share/man/man1/windmc.1",
+}
+
+def english(tag):
+    return tag == "en" or tag.startswith(("en_", "en-", "en@"))
+
+def policy(rel):
+    if rel in EXTRA:
+        return True
+    parts = rel.split("/")
+    if rel.startswith("usr/share/locale/"):
+        return (len(parts) == 6 and parts[4] == "LC_MESSAGES"
+                and parts[5].endswith((".mo", ".gmo", ".qm"))
+                and not english(parts[3]))
+    if rel.startswith("usr/share/man/"):
+        return len(parts) > 4 and not parts[3].startswith("man")
+    if rel.startswith("usr/share/doc/"):
+        return rel.endswith((".html", ".htm", ".pdf"))
+    return False
+
+removed = size = 0
+emptied = set()
+for top in ("usr/share/locale", "usr/share/man", "usr/share/doc", "usr/share/info"):
+    base = os.path.join(fs, top)
+    for d, dirs, files in os.walk(base, topdown=False):
+        for f in files:
+            p = os.path.join(d, f)
+            rel = os.path.relpath(p, fs)
+            if rel in owned or not policy(rel):
+                continue
+            size += os.lstat(p).st_size
+            os.unlink(p)
+            removed += 1
+            emptied.add(d)
+        if (d in emptied and d != base and os.path.relpath(d, fs) not in owned
+                and not os.listdir(d)):
+            os.rmdir(d)
+            emptied.add(os.path.dirname(d))
+print(f"  removed {removed} unowned file(s), {size // 1024} KiB")
+PY
 fi
 
 # ── podman's container store ────────────────────────────────────────────

@@ -1,0 +1,39 @@
+<!--
+  ██╗  ██╗██████╗  ██████╗ ███████╗
+  ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+  █████╔╝ ██║  ██║██║   ██║███████╗
+  ██╔═██╗ ██║  ██║██║   ██║╚════██║
+  ██║  ██╗██████╔╝╚██████╔╝███████║
+  ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+  ---------------------------------
+    template.html — one page of the HTML book
+
+  kfsrender.py fills it with string.Template, once per unit: $title (the
+  whole <title>, the book's name included), $kind,
+  $edition, $crumbs, $nav and $body. A literal dollar sign is written $$.
+  This comment is cut before the template is used, so no page carries it.
+  ---------------------------------
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="kfsgen + pandoc">
+<title>$title</title>
+<link rel="stylesheet" href="kfs.css">
+</head>
+<body class="kfs-$kind">
+<header class="kfs-top">
+<a class="kfs-brand" href="index.html">KDOS from Scratch</a>
+<span class="kfs-edition">$edition</span>
+<a class="kfs-toplink" href="contents.html">Contents</a>
+<a class="kfs-toplink" href="genindex.html">Index</a>
+</header>
+<nav class="kfs-crumbs" aria-label="Breadcrumbs">$crumbs</nav>
+<main>
+$body
+</main>
+<nav class="kfs-nav" aria-label="Pages">$nav</nav>
+</body>
+</html>

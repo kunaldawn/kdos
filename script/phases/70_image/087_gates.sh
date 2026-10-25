@@ -13,7 +13,10 @@
 # The checks on the finished tree, before it is carried into the image.
 #
 #   testing/unowned.py     files no package and no fs/ path provides. A
-#                          report: the step does not stop on it.
+#                          report, except under usr/share/{locale,man,doc,
+#                          info}: 020_cleanup.sh has removed what the size
+#                          and language policy prunes there, so a file left
+#                          is unowned documentation that would ship.
 #   testing/linkcheck.py   a DT_NEEDED owned outside the consumer's
 #                          depends, an interpreter that does not resolve,
 #                          libcrypto.so.3 and .so.4 in one process.
@@ -22,9 +25,10 @@
 #                          udev program that does not exist.
 #
 # EVERY CHECK RUNS BEFORE THE STEP DECIDES, so one build prints every finding
-# instead of the first check's. A finding of linkcheck or entrycheck stops the
-# build here: the ISO is not written from a tree that fails them. Each needs
-# only this phase to re-run once the recipe is fixed.
+# instead of the first check's. A finding of linkcheck or entrycheck, or an
+# unowned file under those four directories, stops the build here: the ISO is
+# not written from a tree that fails them. Each needs only this phase to
+# re-run once the recipe is fixed.
 #
 # RUNS AFTER the sweep and every index (the manual index, the font cache), so
 # what it reads is what the image carries, and before 090_initramfs.sh and
@@ -40,7 +44,9 @@ cd /kdos
 rc=0
 
 echo "[gates] unowned files"
-python3 testing/unowned.py --root / --fs /kdos/fs || true
+python3 testing/unowned.py --root / --fs /kdos/fs \
+    --fail-under usr/share/locale --fail-under usr/share/man \
+    --fail-under usr/share/doc --fail-under usr/share/info || rc=1
 
 echo "[gates] run-time references"
 python3 testing/linkcheck.py --root / || rc=1
@@ -49,7 +55,7 @@ echo "[gates] links, launchers and rules"
 python3 testing/entrycheck.py --root / || rc=1
 
 if [ "$rc" != 0 ]; then
-    echo "FATAL: the tree fails linkcheck or entrycheck; see the FAIL and finding lines above." >&2
+    echo "FATAL: the tree fails unowned, linkcheck or entrycheck; see the FAIL and finding lines above." >&2
     exit 1
 fi
 echo "[gates] clean"

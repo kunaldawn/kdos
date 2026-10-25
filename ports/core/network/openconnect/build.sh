@@ -25,3 +25,4 @@
 	--disable-nls
 make
 make DESTDIR=$PKG install
+rm "$PKG/usr/libexec/openconnect/hipreport-android.sh"

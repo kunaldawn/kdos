@@ -90,9 +90,11 @@ mount --bind "$REPO_ROOT/src" "$CHROOT_DIR/kdos/src"
 # fs/ too: a medium that carries the sources copies the overlay from here, and
 # without the bind /kdos/fs is the container's empty mount point.
 mount --bind "$REPO_ROOT/fs" "$CHROOT_DIR/kdos/fs"
-# docs/ read-only: the kdos-doc port renders the book from it through its
-# `docs` link, and a build has no business writing the book. Without the bind
-# /kdos/docs is the container's empty mount point and the port fails.
+# docs/ read-only: the kdos-doc port renders docs/kdos from it through its
+# `kdos` and `screenshots` links, kdos-kfs renders docs/kfs through its `docs`
+# link, and a build has no business writing either book. Without the bind
+# /kdos/docs is the container's empty mount point and both ports fail.
+# kdos-kfs also reads the recipes at /kdos/ports, bound below with testing/.
 if [ -d "$REPO_ROOT/docs" ]; then
     mount --bind "$REPO_ROOT/docs" "$CHROOT_DIR/kdos/docs"
     mount -o remount,bind,ro "$CHROOT_DIR/kdos/docs" \
@@ -109,6 +111,17 @@ if [ -d "$REPO_ROOT/testing" ]; then
         || log_mount "warning: testing bound read-write: no read-only remount"
     mount --bind "$REPO_ROOT/ports" "$CHROOT_DIR/kdos/ports"
 fi
+# The Makefile and the Dockerfile read-only: kdos-kfs renders Part I of KDOS
+# from Scratch from /kdos, and that part shows lines of both; 110_iso.sh
+# copies both onto a medium that carries the sources. Without the binds each
+# is the container's empty mount point, and the book prints "not in this
+# tree" where the listing goes. A file the container lacks is skipped.
+for _f in Makefile Dockerfile; do
+    [ -f "$REPO_ROOT/$_f" ] && [ -e "$CHROOT_DIR/kdos/$_f" ] || continue
+    mount --bind "$REPO_ROOT/$_f" "$CHROOT_DIR/kdos/$_f"
+    mount -o remount,bind,ro "$CHROOT_DIR/kdos/$_f" \
+        || log_mount "warning: $_f bound read-write: no read-only remount"
+done
 
 # AT LEAST 4096 OPEN FILES, soft and hard. QtWebEngine's configure writes a
 # linker wrapper that runs `ulimit -n 4096` before its bfd link, and that call
@@ -168,9 +181,9 @@ esac
 # tools install there — kdos, kdos-appbox — and 70_image calls kdos-appbox
 # by name: leave it off and `kdos-appbox genlaunchers` in 030_launchers.sh is not
 # on $PATH, that step's own guard reports it as not installed and exits 0, and
-# the image ships launchers for packs it does not carry. Appending fixes that
-# without letting a /usr/local/bin binary shadow a /usr/bin one during a
-# port's configure, which is a different bug and a much harder one to see.
+# the image ships launchers for packs it does not carry. LAST rather than
+# first, so a /usr/local/bin binary cannot shadow a /usr/bin one during a
+# port's configure, a failure much harder to see than a missing tool.
 #
 # /usr/bin comes before /bin. /bin is a link to usr/bin, but CMake turns each
 # PATH entry into a search prefix: with /bin first it finds a package's CMake

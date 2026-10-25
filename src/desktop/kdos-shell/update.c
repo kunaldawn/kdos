@@ -230,10 +230,18 @@ static void scan_cve(void)
 		 gen[0] ? gen : "?", age[0] ? age : "?", unk[0] ? unk : "?");
 
 	const char *p = strstr(buf, "\"findings\":");
+	const char *end;
 
 	if (!p)
 		return;
-	while (ncve < UP_MAX && (p = strchr(p, '{')) != NULL) {
+	/* THE FINDINGS END AT THEIR OWN `]`. The `"bundled"` array follows
+	 * with rows of the same shape and a `port` key, so a walk bounded only
+	 * by the next `{` counts every bundled copy as a vulnerability. No
+	 * field of a finding holds a `]`. */
+	end = strchr(p, ']');
+	if (!end)
+		return;
+	while (ncve < UP_MAX && (p = strchr(p, '{')) != NULL && p < end) {
 		struct row *r = &cve[ncve];
 
 		memset(r, 0, sizeof(*r));
@@ -301,7 +309,7 @@ static void row_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		ktui_draw_text(x, y, w, r->name, fg, bg, KT_A_NONE);
 		break;
 	case 1:
-		ktui_draw_text(x, y, w, r->have, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(x, y, w, r->have, on ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	case 2:
@@ -327,7 +335,7 @@ static void draw(void)
 
 	snprintf(sub, sizeof(sub), "%d behind, %d with a known vulnerability",
 		 nbehind, ncve);
-	top = kch_header(w, "system-software-update", "Updates", sub, icons_on);
+	top = kch_header(w, "system-upgrade", "Updates", sub, icons_on);
 
 	ktui_tabs_draw(krect(2, top, w - 4, 1), PAGES, PG_N, page, -1, 0);
 	/*
@@ -384,7 +392,7 @@ static void draw(void)
 	 * it will land.
 	 */
 	if (room > 0)
-		ktui_draw_text(2, h - 2, room, slot, KT_DIM, KT_BG, KT_A_NONE);
+		ktui_draw_text(2, h - 2, room, slot, KT_MID, KT_BG, KT_A_NONE);
 
 	ktui_hint("Left/Right", "page");
 	ktui_hint("r", "refresh");
@@ -487,6 +495,7 @@ int update_main(int argc, char **argv)
 			.app_id = "kdos-update",
 			.keyboard = 1,
 		},
+		.icons = &icons_on,
 		.usage = "[--font NAME] [--no-icons] [--security] [--dump]",
 		.keys = &keys,
 		.arg = up_arg,

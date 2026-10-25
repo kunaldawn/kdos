@@ -463,8 +463,8 @@ void kcell_tile_free(uint64_t key, const void *pix, void *user);
 
 /* ── pixels to characters, by shape (kcell_ascii.c) ──────────────────────
  *
- * The engine behind `Super+A`, `kdos-shot --text` and the pixman fallback for
- * the compositor's GPU pass. NOT aalib: aalib picks a glyph by luminance alone
+ * The engine behind `kdos-ascii`, which turns a PPM picture into text, and
+ * kdos-devices' camera preview. NOT aalib: aalib picks a glyph by luminance alone
  * and never asks which part of a cell a character covers, which is why chafa
  * and notcurses look better than the 1990s tools. This is the shape-vector
  * method, clean-room from its published description.
@@ -488,8 +488,9 @@ void kcell_ascii_forget(void);
 int kcell_ascii_count(void);
 uint32_t kcell_ascii_glyph(int i);
 const float *kcell_ascii_vector(int i);
-/* The six disc positions as x,y pairs — for the GPU half, which has to sample
- * at exactly the same places or the two implementations disagree. */
+/* The six disc positions as x,y pairs — for a second implementation, such as a
+ * GPU shader, which has to sample at exactly the same places or the two
+ * disagree. */
 void kcell_ascii_discs(float *out_xy);
 
 /* Normalise by the cell's own maximum, square, scale back. Without it every

@@ -225,10 +225,12 @@ static int same_commit(const char *a, const char *b)
  *   fetch <code> <unix time> <detail>
  *   apply <code> <unix time> <detail>
  *
- * <code> is `ok`, `no-network`, `fetch-failed` or `build-failed`; `apply`
- * records a source it could not download as `no-network` or `fetch-failed` on
- * its own line. Each step replaces only its own line, so a fetch tonight does
- * not erase the build that failed yesterday.
+ * <code> is `ok`, `no-key`, `no-network`, `fetch-failed` or `build-failed`;
+ * `no-key` is a fetch refused before any download because /etc/kdos/keys/tree
+ * holds no key. `apply` records a source it could not download as
+ * `no-network` or `fetch-failed` on its own line. Each step replaces only its
+ * own line, so a fetch tonight does not erase the build that failed
+ * yesterday.
  */
 static void state_set(const char *step, const char *code, const char *detail)
 {
@@ -762,6 +764,21 @@ static int tree_fetch(const KpConf *c, const char *from, int quiet)
 		return 2;
 	}
 
+	/* The key before the network. An image built without a release key
+	 * can verify no published tree, so downloading one only to refuse it
+	 * would report a missing release, or a signature, where the truth is
+	 * that this machine trusts no tree at all. */
+	const char *kd = getenv("KDOS_TREE_KEYS");
+	KsigRing ring;
+	char who[KSIG_ID_HEX];
+	if (ksig_ring_load(&ring, kd && *kd ? kd : TREE_KEYS) <= 0) {
+		close(lock);
+		return fetch_fail("no-key", NULL, "no trusted tree key in %s: "
+				  "this image can verify no published tree; "
+				  "`kdos update apply` builds from %s",
+				  kd && *kd ? kd : TREE_KEYS, root);
+	}
+
 	snprintf(stage, sizeof(stage), "%s.new", root);
 	kb_rmtree(stage);
 	if (kb_mkdir_p(stage) != 0) {
@@ -807,14 +824,6 @@ static int tree_fetch(const KpConf *c, const char *from, int quiet)
 				     "downloaded", base, TREE_FILE);
 	}
 
-	const char *kd = getenv("KDOS_TREE_KEYS");
-	KsigRing ring;
-	char who[KSIG_ID_HEX];
-	if (ksig_ring_load(&ring, kd && *kd ? kd : TREE_KEYS) <= 0) {
-		close(lock);
-		return fetch_fail("fetch-failed", stage, "no trusted tree key "
-				  "in %s", kd && *kd ? kd : TREE_KEYS);
-	}
 	if (ksig_verify_path(&ring, tar, sig, who) != 0) {
 		close(lock);
 		return fetch_fail("fetch-failed", stage, "the tree's signature "

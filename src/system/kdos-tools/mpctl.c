@@ -34,8 +34,11 @@
  *
  * AND IT OUTLIVES mpd. The session starts one watcher per login, and mpd is
  * started, stopped and restarted under it; a watcher that left with mpd would
- * leave the panel empty for the rest of the login. It exits only when the
- * session's runtime directory does.
+ * leave the panel empty for the rest of the login. It handles no signal, so
+ * the end of the login ends it as it ends the session's other background
+ * children; Log Out alone does not. With no mpd to follow it also returns once
+ * `$XDG_RUNTIME_DIR/kdos` is gone, which nothing removes while the machine is
+ * up.
  * ---------------------------------
  */
 
@@ -318,7 +321,7 @@ static int mp_watch(void)
 		}
 		sleep(MP_RETRY);
 		if (now_path(path, sizeof(path)) != 0)
-			return 0;	/* the login ended */
+			return 0;	/* no session directory to write to */
 	}
 }
 

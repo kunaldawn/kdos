@@ -32,7 +32,7 @@
  * would be invisible: an account listed here and refused by the daemon reads
  * as a bug in whichever was opened second.
  *
- * WHAT IT DELIBERATELY DOES NOT DO. `passwd`, `adduser`, `deluser` and
+ * WHAT IT DELIBERATELY DOES NOT DO. `passwd`, `useradd`, `userdel` and
  * `usermod` are on the image and are what a person changing accounts uses;
  * wrapping them would mean a surface that has to reproduce their prompts,
  * their validation and their failure modes, and would put a root-spawning
@@ -199,16 +199,16 @@ static void us_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 		ktui_draw_text(x, y, w, u->name, fg, bg, KT_A_NONE);
 		break;
 	case 1:
-		ktui_draw_textf(x, y, w, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_textf(x, y, w, on ? KT_SURFACE : KT_MID, bg,
 				KT_A_NONE, "%u", (unsigned)u->uid);
 		break;
 	case 2:
 		ktui_draw_text(x, y, w, u->gecos[0] ? u->gecos : "-",
-			       on ? KT_SURFACE : u->gecos[0] ? fg : KT_DIM, bg,
+			       on ? KT_SURFACE : u->gecos[0] ? fg : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	default:
-		ktui_draw_text(x, y, w, u->shell, on ? KT_SURFACE : KT_DIM, bg,
+		ktui_draw_text(x, y, w, u->shell, on ? KT_SURFACE : KT_MID, bg,
 			       KT_A_NONE);
 		break;
 	}
@@ -223,7 +223,7 @@ static void draw(void)
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 	sh_frame(w, h, "Accounts", KT_ACCENT, KT_BG, 1);
 	top = kch_header(w, "system-users", "Accounts",
-			 "who may log in — changing one is `passwd` and `adduser`",
+			 "who may log in — changing one is `passwd` and `useradd`",
 			 icons_on);
 
 	/*
@@ -375,6 +375,7 @@ int users_main(int argc, char **argv)
 			.app_id = "kdos-users",
 			.keyboard = 1,
 		},
+		.icons = &icons_on,
 		.usage = "[--font NAME] [--no-icons] [--dump]",
 		.keys = &keys,
 		.arg = us_arg,

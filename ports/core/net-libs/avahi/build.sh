@@ -22,6 +22,7 @@ autoreconf -fi
 	--with-avahi-group=avahi \
 	--with-autoipd-user=avahi-autoipd \
 	--with-autoipd-group=avahi-autoipd \
+	--with-avahi-priv-access-group=wheel \
 	--disable-static \
 	--enable-dbus \
 	--enable-gdbm \
@@ -49,3 +50,4 @@ make
 make DESTDIR=$PKG install
 rm -rf "$PKG/run" "$PKG/var/run"
 rm -f "$PKG/etc/avahi/services/ssh.service" "$PKG/etc/avahi/services/sftp-ssh.service"
+install -dm755 "$PKG/var/lib/avahi-autoipd"

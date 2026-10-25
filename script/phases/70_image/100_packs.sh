@@ -47,12 +47,12 @@ chmod 01777 "$STORE/staging"
 # be inside its own source — and the pseudo-filesystems are not a filesystem's
 # to carry. A pack that swallowed /kdos would be larger than the ISO.
 #
-# AND THE PACK STORE IS EXCLUDED FROM THE PACK, which is not tidiness: the
-# artefact this step writes lands in `/var/lib/kdos/packs`, so a second run
-# would pack the first run's 15 GB pack inside the second one, and a third
-# would carry both. `home/kdos/.local/share/containers` goes for a different
-# reason: it is podman's own store, which a shipped rootfs must not carry, and
-# this pack is a clean tree to build ports in.
+# AND THE PACK STORE IS EXCLUDED FROM THE PACK. `/var/lib/kdos/packs` holds
+# packs and the directories they are mounted on, and a base pack that carried
+# it would carry every pack in the store inside itself.
+# `home/kdos/.local/share/containers` goes for a different reason: it is
+# podman's own store, which a shipped rootfs must not carry, and this pack is
+# a clean tree to build ports in.
 #
 # THE PSEUDO-FILESYSTEMS GO BY REGEX, NOT BY PATH, BECAUSE THE DIRECTORY HAS
 # TO SURVIVE. `--exclude-path=proc` removes the DIRECTORY, and a container
@@ -66,19 +66,19 @@ chmod 01777 "$STORE/staging"
 # a fixture: the dirs come back as empty directories and their contents are
 # gone. `var/cache` and `var/log` ride the same rule because software inside a
 # box expects them to exist. What is excluded by PATH is what should genuinely
-# not be there: the repository bind mounts, the pack store (the artefact lands
-# in it) and podman's own container store.
+# not be there: the repository bind mounts, the pack store and podman's own
+# container store.
 #
 # THEY ARE RELATIVE TO THE SOURCE ROOT AND MUST NOT CARRY A LEADING SLASH.
 # `--exclude-path` matches an EXACT LITERAL path, and mkfs.erofs matches it
 # against the path it built relative to the tree it is packing — so
 # `--exclude-path=/kdos` matches nothing, is not an error, and excludes
-# NOTHING. Measured: against a fixture with one 3 MB directory,
-# `--exclude-path=/drop` produces an image byte-identical to passing no
-# exclusion at all, while `--exclude-path=drop` produces 4 KB. Every flag here
-# was accepted for as long as this had never been run over a real rootfs, and
-# the first run that was swallowed the repository bind mount and reached
-# 107 GB before it was stopped.
+# NOTHING. Against a fixture with one 3 MB directory, `--exclude-path=/drop`
+# produces an image byte-identical to passing no exclusion at all, while
+# `--exclude-path=drop` produces 4 KB. A pack whose excludes match nothing
+# swallows the repository bind mount and grows past a hundred gigabytes
+# before anything stops it; the probe below proves the relative form works.
+#
 # A STALE ONE IS REMOVED WHEN THE FLAG IS OFF, or 110_iso.sh has a 9.1 GB file
 # sitting there from an earlier opt-in run and no way to know it was not asked
 # for. `build/` survives between builds; the flag does not.
@@ -156,12 +156,12 @@ META
     # IT LANDS IN build/, NOT IN THE STORE, AND THAT IS THE WHOLE POINT OF
     # WHERE A PACK LIVES. `/var/lib/kdos/packs` is INSIDE the rootfs, so a pack
     # written there is squashed into system.sfs — and this one is a compressed
-    # image of that same rootfs, so the medium would carry the tree twice.
-    # Measured: system.sfs went to 20 GB and iso_root to 43 GB. Every other
-    # pack goes on ISO9660 beside system.sfs for exactly this reason; 110_iso.sh
-    # picks this one up from build/ and puts it there with them. kdos-packd
-    # scans the medium for *.kpack, so `base=pack:kdos` resolves off the stick
-    # with nothing installed.
+    # image of that same rootfs, so the medium would carry the tree twice. It
+    # is the only pack a medium carries: 110_iso.sh picks it up from build/
+    # and puts it on ISO9660 beside system.sfs, under packs/, and only when
+    # KDOS_PACK_KDOS is set for that run. kdos-packd scans the medium for
+    # *.kpack, so `base=pack:kdos` resolves off the stick with nothing
+    # installed.
     kdos-pack assemble "$OUT/kdos.erofs" "$OUT/meta" "$OUT/kdos.kpack"
     rm -f "$OUT/kdos.erofs"
     echo "[packs] kdos base pack: $(du -h "$OUT/kdos.kpack" | cut -f1) (on the medium)"
