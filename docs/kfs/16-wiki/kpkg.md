@@ -165,7 +165,7 @@ the SHA-256 and mode of every regular file it placed.
    caches but carries every directory a package claims under `/var/log` and `/var/cache`, empty
    ([110_iso](../15-image/110-iso.md)), so none of them is `missing`. Its `config` lines are
    libvirt's network and filter files under `/etc/libvirt`, which `libvirtd` rewrites at its first
-   start, so their recorded hashes no longer match; the `unowned` ones include
+   start, so they differ from their recorded hashes; the `unowned` ones include
    `kpkg` and `kinstall` themselves. The meaning of each line is in
    [Checking an installed root](../../kdos/03-architecture/packaging.md#checking-an-installed-root).
 
