@@ -25,7 +25,9 @@ seeds](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/why-k
 - `-D_LARGEFILE64_SOURCE` — Added to both C and C++ flags. musl declares the `*64` file functions
   the class library's native code calls only under this macro.
 - `--with-jobs="$KDOS_JOBS"` — The build's parallelism. The makefiles take it from here and refuse
-  a `-j` in `MAKEFLAGS`, which is why `build.sh` unsets `MAKEFLAGS` first.
+  a `-j` in `MAKEFLAGS` and any `--jobserver-auth` reaching make, so `build.sh` unsets
+  `MAKEFLAGS`, and `GNUMAKEFLAGS` and `KDOS_JOBSERVER` with it, which carry the jobserver FIFO
+  of a `--port-jobs` build.
 - `--with-jvm-variants=server`, `--with-debug-level=release` — The C2-compiling server VM, in its
   release build; both are upstream's defaults, named here.
 - `--with-native-debug-symbols=none` — Generates no debug symbols for the native code at all,

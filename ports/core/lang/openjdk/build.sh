@@ -19,7 +19,7 @@ _cxxflags="$CXXFLAGS -D_LARGEFILE64_SOURCE"
 _ldflags="$LDFLAGS"
 unset CFLAGS CXXFLAGS LDFLAGS
 
-unset MAKEFLAGS
+unset MAKEFLAGS GNUMAKEFLAGS KDOS_JOBSERVER CARGO_MAKEFLAGS
 
 bash ./configure \
 	--prefix="$_jhome" \
