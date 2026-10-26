@@ -2,6 +2,6 @@
 # phase list and environment, bootstrap step script and kfs:include
 # target; the ports that link a book under docs/ excluded:
 # written by make_data.py, compared by testing/kfscheck.py
-sha256 8b7bdb2a10891c043bdc5a798d2cc102b9c9c763b3404cbd322f300a407554e0
+sha256 efeafd1d19b33ec5be534ed9fde94be2a17c56f5c487922d700d68029ca906fb
 ports 2107
 files 1512
