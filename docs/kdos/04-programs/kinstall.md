@@ -15,14 +15,14 @@ Three terms recur. The **ESP** is the EFI system partition, the FAT32 partition 
 the bootloader read. The **point of no return** is the Summary page's install button: nothing is
 written to any disk before it. A **plan** is how the chosen disk is used: `wipe` (erase and
 repartition it), `reuse` (keep its partitions and format only the root), or `manual` (partition
-it in `cfdisk` first, then reuse).
+it in `cfdisk` first, then reuse; a dry run does not open `cfdisk`).
 
 ## How the installer works
 
 The wizard's pages only fill in a configuration: the keymap, the time zone, the disk and plan, the
-accounts, the services and the applications. None of them writes to a disk. The one exception is
-the Layout page's `cfdisk`, which writes whatever partition table is saved in it. Everything else
-waits for the Summary page's **BEGIN INSTALL** button, the point of no return; see [Nothing is
+accounts, the services and the applications. None of them writes to a disk. The one exception, on
+a real run, is the Layout page's `cfdisk`, which writes whatever partition table is saved in it;
+a dry run does not open it. Everything else waits for the Summary page's **BEGIN INSTALL** button, the point of no return; see [Nothing is
 written before the summary](#nothing-is-written-before-the-summary).
 
 The install itself is eleven steps run in a forked child process. The child reports to the wizard
@@ -81,7 +81,7 @@ kinstall [options]
 | `--config FILE` | Read answers from `FILE`. Options later on the command line still apply |
 | `--save FILE` | Write the current answers (the defaults, any `--config` file and any `--theme`) to `FILE` and exit |
 | `--unattended` | Skip the wizard and install from the answers |
-| `--dry-run` | Log every install command and execute none. The header shows **DRY RUN**. The Layout page's **Open cfdisk** still runs the real `cfdisk`: see [Trying it without installing](#trying-it-without-installing) |
+| `--dry-run` | Log every install command and execute none. The header shows **DRY RUN**, and the Layout page's **Open cfdisk** is disabled: see [Trying it without installing](#trying-it-without-installing) |
 | `--dump probe` | Print what the installer sees on this machine, and exit |
 | `--dump plan` | Print the steps these answers would run, and exit |
 | `--json` | Print `--dump` as JSON instead of text |
@@ -96,7 +96,8 @@ after it overrides the file; `--save` and `--dump` act only after the whole comm
 An option that needs an argument and is last on the line counts as unknown.
 
 The log of a run is `/var/log/kinstall.log`, opened for appending with mode `0600`. Each line
-carries an `[HH:MM:SS]` stamp. On the Install page, `L` shows it in full.
+carries an `[HH:MM:SS]` stamp. On the Install page `L` shows it in full, and on the Done page `L`
+opens it in the same pager as **View log**.
 
 Only `--dump`, `--save`, `--help` and `--version` work without root. The wizard, `--dry-run`
 included, stops on its first page with "kinstall must run as root — try: sudo kinstall" until it
@@ -120,7 +121,7 @@ fails with "kinstall must run as root" instead.
 | Esc | Back a page, or close the help |
 | PgUp, PgDn | Scroll a page taller than the screen; in the full log, scroll ten lines |
 | F1 | Show or hide the key help |
-| L | The full log, on the Install page |
+| L | The full log: drawn in the page on the Install page, in `less` (or `more`) on the Done page |
 | Ctrl+U | Clear a text field |
 | Ctrl+W, Ctrl+Backspace | Delete the word before the caret; Ctrl+Left and Ctrl+Right move by word |
 | Ctrl+Q, Ctrl+C | Quit the installer. It asks first, and while an install is running it warns that stopping leaves the target half written |
@@ -168,12 +169,12 @@ install size, and the firmware (`UEFI` or `legacy BIOS`, with "32-bit firmware" 
 enabled" added when they apply). A preflight list marks each item that fails:
 
 - running as root;
-- at least one disk found (the line reads "at least one writable disk");
+- at least one disk that is not read-only (the line reads "at least one writable disk");
 - `rsync` present;
 - `mkfs.ext4` and `mkfs.vfat` present;
 - the Limine payload, `/usr/share/limine`, present.
 
-The page refuses to continue without root or without a disk. Neither firmware is refused or
+The page refuses to continue without root or without a disk that is not read-only. Neither firmware is refused or
 warned about: a disk the installer partitions starts on both (see [Both
 firmwares](#both-firmwares)).
 
@@ -189,7 +190,8 @@ hardware clock is left as it is. An image with no zone table offers `UTC` alone.
 devices, with its size, transport (`sata`, `nvme`, `usb`, `virtio` or `mmc`) and model, and draws
 its current partition table. It preselects the first disk that is neither the boot medium nor
 read-only. It refuses the medium KDOS is running from, a read-only disk, and a disk smaller than
-the install size plus 768 MiB. The install size is what the live root holds, about 53 GB, since
+the install size plus 768 MiB. Its **install needs** line is drawn in the error colour exactly when the
+selected disk is that small, so a disk drawn in the plain colour passes this check. The install size is what the live root holds, about 53 GB, since
 every package is on the medium, less the container library when **Install the alien app library**
 is unticked. That box is on the System page, after this one, so unticking it lowers the requirement
 only when the Disk page is passed again.
@@ -209,7 +211,9 @@ only when the Disk page is passed again.
   a dos table's MBR, or nowhere ("no BIOS boot partition: this disk will start on UEFI only").
 - **Partition it myself first (cfdisk)** (`manual`): an **Open cfdisk** button runs `cfdisk` on
   the chosen disk. When `cfdisk` exits, the installer re-reads the disks and switches to `reuse`.
-  The page asks for an EFI System partition, a Linux partition and, for legacy BIOS, a 1 MiB BIOS
+  Under `--dry-run` the button is disabled, and the page says that `cfdisk` would write a real
+  partition table and points to **Use partitions that already exist** to rehearse with the table
+  as it is. The page asks for an EFI System partition, a Linux partition and, for legacy BIOS, a 1 MiB BIOS
   boot partition.
 
 The reuse plan shows the filesystem but no swap controls, and the swap choice made on the erase
@@ -218,10 +222,10 @@ swap at all when a swap partition was chosen, because the reuse plan makes no pa
 
 The encryption checkbox is drawn on the erase plan only, but its value is not cleared when the plan
 changes. A tick made on the erase plan and followed by a switch to `reuse` (directly, or through
-`cfdisk`) encrypts the reused root, with no checkbox on the page to show it. The Summary mentions
-LUKS2 only in the erase plan's LVM line, so on the reuse plan, or on the erase plan without LVM,
-it does not show that encryption is on. Untick the box before leaving the erase plan if the reused
-root is to stay unencrypted.
+`cfdisk`) encrypts the reused root, with no checkbox on the page to show it. The Summary names
+LUKS2 on every plan, in the erase plan's LVM line or else in an **encryption** line, so it is the
+place to check. Untick the box before leaving the erase plan if the reused root is to stay
+unencrypted.
 
 The page refuses an empty or mismatched passphrase, encryption on an image without `cryptsetup`,
 LVM on an image without `lvm`, a swap size of zero, the `manual` plan before `cfdisk` has run, an
@@ -541,7 +545,9 @@ Neither needs a terminal, neither writes to a disk, and both print to standard o
   group (-l 100%FREE)` with the `-l` that `lvcreate` will be given; a disk it cannot see leaves the
   measurement out and reads as all of the group.
 
-The JSON form is a rendering of the same data in the same pass, not a second walk. **No password
+The JSON form is a rendering of the same data in the same pass, not a second walk. Its
+`"firmware_bits"` is the firmware's width, `32` or `64`, and `0` when the machine booted in legacy
+BIOS or its kernel does not report the width. **No password
 appears in either form**: the plan says whether root is locked and whether the root is encrypted,
 never a password or passphrase. `testing/selftest.sh` checks this with a sentinel value, and
 checks that `--save` never writes one either.
@@ -558,8 +564,8 @@ kinstall --no-mouse                                 # keyboard only
 A dry run still needs root: the Welcome page and the Prepare step both refuse without it. It
 walks every step, logs each command with "(dry run: not executed)", and its install steps write
 no file on any disk; `/var/log/kinstall.log` is still appended to. The Layout page's **Open
-cfdisk** button is not part of the rehearsal: it runs the real `cfdisk` on the chosen disk, and a
-partition table written there is written to that disk.
+cfdisk** button is disabled, because `cfdisk` writes its table itself, outside every command the
+rehearsal holds back; the reuse plan rehearses with the disk's table as it is.
 
 An unattended rehearsal ends as an unattended install does: with `reboot = 1`, the default, it
 reboots the machine five seconds after its last step. Put `reboot = 0` in the answer file to
@@ -992,7 +998,7 @@ edit of the same sources passes it.
 | `main.c` | The header, sidebar and navigation, the event loop, the command line |
 | `kinstall.h` | The shared types and the version, `KI_VERSION` |
 
-The superblock reader recognises LUKS, NTFS, FAT, xfs, squashfs, ext2/3/4, btrfs, swap and LVM
+The superblock reader recognises LUKS, NTFS, FAT, xfs, f2fs, squashfs, ext2/3/4, btrfs, swap and LVM
 physical volumes itself rather than parsing `blkid` or `lsblk` output, so the installer does not
 inherit another program's output format or exit codes. An ESP is identified by its GPT type GUID,
 not by looking like FAT.
@@ -1005,8 +1011,9 @@ The terminal handling, cell buffer, input layer, widgets, dialogs and palette be
 ### Nothing is written before the summary
 
 Every page fills in the configuration and does nothing else. The install is the single point of no
-return, which is what makes **Back** safe to press on any page before it. The one exception is
-`cfdisk` on the Layout page, which writes whatever partition table you save in it; the Keyboard
+return, which is what makes **Back** safe to press on any page before it. The one exception, on a
+real run, is `cfdisk` on the Layout page, which writes whatever partition table you save in it; a
+dry run disables it, so a rehearsal writes nothing at all. The Keyboard
 page's `loadkeys` changes only the live console.
 
 ### The whole interface is eight colours

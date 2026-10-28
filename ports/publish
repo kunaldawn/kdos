@@ -10,7 +10,7 @@
 #   ports/publish — put every source a recipe names into the archive
 # ---------------------------------
 #
-#   ports/publish [--dry-run | --check] [--history] [port…]
+#   ports/publish [--dry-run | --check] [--history] [--all | port…]
 #   ports/publish --plan [--dry-run]
 #   ports/publish --describe [--dry-run]
 #   ports/publish --rehome [--dry-run] [port…]
@@ -26,8 +26,14 @@
 # where each file is. A file's identity is never its name: every file is the
 # bytes of a recipe's `sha256 =`.
 #
-# THE WANTED SET is every `sha256 =` file named by a recipe under ports/core
-# (or by the named ports) that git does not carry. --history adds every Git
+# THE WANTED SET is the `sha256 =` files git does not carry that are named by
+# the named ports' recipes; with no port named, by a recipe under ports/core
+# that the upstream's recipes do not name or that ports/sources.idx does not
+# name; with --all, by any recipe under ports/core. The upstream is the
+# branch's @{upstream}, or every refs/remotes/* tip when it has none, and
+# without a remote every recipe is wanted. A hash the upstream already names
+# was refused by its pre-push unless archived, so only --all, which HEADs
+# about 2,500 files, looks at it again. --history adds every Git
 # LFS object under ports/core that any ref's history names and the local LFS
 # store or the cache holds; it seeds the archive with what old commits'
 # recipes point at. Objects this clone never downloaded are counted and
@@ -65,7 +71,9 @@
 #
 # PRESENCE means ports/sources.idx names the hash AND an anonymous HEAD on the
 # asset's download URL (on every part's) answers 200; a HEAD costs no API
-# quota. A hash the index does not name is unpublished without asking. A 404
+# quota, and $KDOS_PUBLISH_JOBS (default 16) of them run at once: one at a
+# time, each spends most of a second waiting on GitHub's redirect. A hash the
+# index does not name is unpublished without asking. A 404
 # is absence; any other status or a network failure stops the run, since it
 # proves nothing.
 #
@@ -190,7 +198,7 @@ die() { echo "ports/publish: $*" >&2; exit 1; }
 
 usage() {
     cat <<'EOF'
-usage: ports/publish [--dry-run | --check] [--history] [port…]
+usage: ports/publish [--dry-run | --check] [--history] [--all | port…]
        ports/publish --plan [--dry-run]
        ports/publish --describe [--dry-run]
        ports/publish --rehome [--dry-run] [port…]
@@ -202,7 +210,7 @@ usage: ports/publish [--dry-run | --check] [--history] [port…]
 EOF
 }
 
-DRY=0 CHECK=0 HISTORY=0 DESCRIBE=0 FREEZE="" REHOME=0 ORPHANS=0 PRUNE="" PLAN=0 RETIRE=0
+DRY=0 CHECK=0 HISTORY=0 ALL=0 DESCRIBE=0 FREEZE="" REHOME=0 ORPHANS=0 PRUNE="" PLAN=0 RETIRE=0
 RELEASE="" ISO="" KEY="" UNSIGNED=0 PUBLISH=0
 PORTS=()
 while [ $# -gt 0 ]; do
@@ -210,6 +218,7 @@ while [ $# -gt 0 ]; do
         --dry-run)  DRY=1 ;;
         --check)    CHECK=1 ;;
         --history)  HISTORY=1 ;;
+        --all)      ALL=1 ;;
         --describe) DESCRIBE=1 ;;
         --rehome)   REHOME=1 ;;
         --plan)     PLAN=1 ;;
@@ -247,6 +256,8 @@ fi
 [ -z "$KEY" ] || [ "$UNSIGNED" = 0 ] || die "--key and --unsigned contradict each other"
 [ "$CHECK" = 0 ] || [ "$MODES" = 0 ] || [ -n "$FREEZE" ] || die "--check works alone or with --freeze"
 [ "$HISTORY" = 0 ] || [ "$MODES" = 0 ] || die "--history works only in a plain run"
+[ "$ALL" = 0 ] || [ "$MODES" = 0 ] || die "--all works only in a plain run"
+[ "$ALL" = 0 ] || [ "${#PORTS[@]}" = 0 ] || die "--all and named ports contradict each other"
 [ "${#PORTS[@]}" = 0 ] || [ "$MODES" = 0 ] || [ "$REHOME" = 1 ] ||
     die "ports can be named only in a plain run or with --rehome"
 [ "$ORPHANS" = 0 ] || [ "$DRY" = 0 ] || die "--orphans alone makes no network call; it takes no --dry-run"
@@ -502,6 +513,28 @@ names_named() {
     return 1
 }
 
+# upstream_hashes — UP_HASH[h]=1 for every hash a recipe names at the
+# upstream (@{upstream}, or every refs/remotes/* tip), and UP_NAME saying
+# which. With no remote UP_HASH stays empty and every recipe hash is new.
+declare -A UP_HASH=()
+UP_NAME=""
+upstream_hashes() {
+    local -a bases
+    local h
+    if UP_NAME=$(git -C "$REPO_ROOT" rev-parse -q --abbrev-ref '@{upstream}' 2>/dev/null); then
+        bases=("$UP_NAME")
+    else
+        mapfile -t bases < <(git -C "$REPO_ROOT" for-each-ref --format='%(objectname)' refs/remotes/)
+        UP_NAME="every remote branch"
+    fi
+    [ "${#bases[@]}" -gt 0 ] || { UP_NAME="no remote"; return 0; }
+    while read -r h; do UP_HASH[$h]=1; done < <(
+        for b in "${bases[@]}"; do
+            git -C "$REPO_ROOT" grep -h -o -E '\b[0-9a-f]{64}\b' "$b" -- 'ports/core/*/kpkgbuild' 2>/dev/null || true
+        done | LC_ALL=C sort -u)
+    return 0
+}
+
 # ── the wanted set ────────────────────────────────────────────────────────
 W_HASH=() W_LABEL=()
 declare -A SEEN=() W_SHELF=()
@@ -572,28 +605,41 @@ fetch_archived() {
 # asked again, after 10, 30 and 60 seconds; one that persists (an outage, a
 # 403) says the archive cannot answer, and publish stops, naming the URL,
 # rather than report archived files missing or upload blind. A file in parts
-# is present only when every part is.
-present() {
-    local rc code url wait
-    local -a urls
-    mapfile -t urls < <(src_urls "$1")
-    [ "${#urls[@]}" -gt 0 ] || return 1
-    for url in "${urls[@]}"; do
-        for wait in 10 30 60 0; do
-            rc=0
-            code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
-                        --max-time 120 --retry 2 "$url") || rc=$?
-            [ "$rc" != 0 ] || [ "${code:0:1}" != 5 ] || rc=-1
-            [ "$rc" != 0 ] && [ "$wait" != 0 ] || break
-            sleep "$wait"
-        done
+# is present only when every part is. Each URL is one HEAD with its own
+# retries; a hash is absent when any of its URLs answers 404.
+head_one() {  # "<hash> <url>" — prints "<code> <curl exit> <hash> <url>"
+    local h=${1%% *} url=${1#* } rc code wait
+    for wait in 10 30 60 0; do
+        rc=0
+        code=$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 20 \
+                    --max-time 120 --retry 2 "$url") || rc=$?
+        [ "$rc" != 0 ] || [ "${code:0:1}" != 5 ] || rc=-1
+        [ "$rc" != 0 ] && [ "$wait" != 0 ] || break
+        sleep "$wait"
+    done
+    printf '%s %s %s %s\n' "${code:-000}" "$rc" "$h" "$url"
+}
+export -f head_one
+
+# present_all <hash…> — ABSENT[h]=1 for each hash the archive lacks, after
+# HEADing every URL of every indexed one, $JOBS at a time.
+JOBS=${KDOS_PUBLISH_JOBS:-16}
+declare -A ABSENT=()
+present_all() {
+    local h code rc url
+    ABSENT=()
+    for h in "$@"; do
+        [ -n "${SRC_TAG[$h]:-}" ] || { ABSENT[$h]=1; continue; }
+        src_urls "$h" | sed "s|^|$h |"
+    done > "$TMP/heads"
+    while read -r code rc h url; do
         [ "$rc" -le 0 ] || die "cannot reach the archive for $url (curl exit $rc)"
         case $code in
             200) ;;
-            404) return 1 ;;
+            404) ABSENT[$h]=1 ;;
             *)   die "archive unreachable for $url (HTTP $code)" ;;
         esac
-    done
+    done < <(xargs -r -d '\n' -n 1 -P "$JOBS" bash -c 'head_one "$1"' _ < "$TMP/heads")
     return 0
 }
 
@@ -1481,8 +1527,9 @@ freeze_list() {
         echo "  (not checked against the archive: --dry-run uses no network)"
         return 0
     fi
+    present_all $(awk '{ print $1 }' "$FREEZE_FILE")
     while read -r h f; do
-        present "$h" || { echo "  missing  $h  $f"; missing=$((missing + 1)); }
+        [ -z "${ABSENT[$h]:-}" ] || { echo "  missing  $h  $f"; missing=$((missing + 1)); }
     done < "$FREEZE_FILE"
     [ "$missing" = 0 ] || die "$missing sources are not archived; run ports/publish first"
 }
@@ -1555,18 +1602,24 @@ fi
 
 # release_tree <commit> <out> — the recipe-only ports tree at <commit>, laid
 # out as an image's /ports: ports/core, ports/shelves and ports/sources.idx at
-# the top, src/ and docs/ beside them, and a TREE stamp naming the commit and its time,
-# which `kdos update fetch` orders two trees by. git archive makes it, so it
-# is exactly what the commit records and never a file a checkout happens to
-# hold. The tar is reproducible: sorted names, the commit's time, uid 0.
+# the top, src/, docs/ and script/book beside them, and a TREE stamp naming the
+# commit and its time, which `kdos update fetch` orders two trees by.
+# script/book is there because kdos-kfs's `book` link (../../../script/book)
+# points into it: the recipe hash follows that link, and with the link
+# dangling the fetched tree hashes kdos-kfs differently from the tree its
+# package was built from, so the machine takes the package for stale.
+# git archive makes it, so it is exactly what the commit records and never a
+# file a checkout happens to hold. The tar is reproducible: sorted names, the
+# commit's time, uid 0.
 release_tree() {
     local c=$1 out=$2 d=$TMP/tree t
-    rm -rf "$d"; mkdir -p "$d/raw" "$d/ports"
-    git -C "$REPO_ROOT" archive --format=tar "$c" ports/core ports/shelves ports/sources.idx src docs |
+    rm -rf "$d"; mkdir -p "$d/raw" "$d/ports/script"
+    git -C "$REPO_ROOT" archive --format=tar "$c" ports/core ports/shelves ports/sources.idx src docs script/book |
         tar -x -C "$d/raw" || return 1
     mv "$d/raw/ports/core" "$d/raw/ports/shelves" "$d/raw/ports/sources.idx" "$d/ports/" || return 1
     mv "$d/raw/src" "$d/ports/src" || return 1
     mv "$d/raw/docs" "$d/ports/docs" || return 1
+    mv "$d/raw/script/book" "$d/ports/script/book" || return 1
     t=$(git -C "$REPO_ROOT" log -1 --format=%ct "$c") || return 1
     printf 'kdos-tree 1\ncommit %s\ntime %s\n' "$c" "$t" > "$d/ports/TREE"
     tar --sort=name --mtime="@$t" --owner=0 --group=0 --numeric-owner \
@@ -2233,8 +2286,15 @@ if [ "${#PORTS[@]}" -gt 0 ]; then
     for h in "${R_ORDER[@]}"; do
         if names_named "$h"; then want "$h" "${R_LABEL[$h]}" "${R_SHELF[$h]}"; fi
     done
-else
+elif [ "$ALL" = 1 ]; then
     for h in "${R_ORDER[@]}"; do want "$h" "${R_LABEL[$h]}" "${R_SHELF[$h]}"; done
+else
+    upstream_hashes
+    for h in "${R_ORDER[@]}"; do
+        [ -n "${SRC_TAG[$h]:-}" ] && [ -n "${UP_HASH[$h]:-}" ] && continue
+        want "$h" "${R_LABEL[$h]}" "${R_SHELF[$h]}"
+    done
+    echo "==> ${#W_HASH[@]} of ${#R_ORDER[@]} recipe sources are new against $UP_NAME or unindexed; --all checks every one"
 fi
 
 # History names objects this clone never downloaded: old versions, and paths
@@ -2279,8 +2339,9 @@ if [ "$DRY" = 1 ]; then
     echo "==> ${#W_HASH[@]} sources wanted; $nidx indexed, taken as present (a dry run asks no server)"
 else
     echo "==> ${#W_HASH[@]} sources wanted; checking the archive"
+    present_all "${W_HASH[@]}"
     for i in "${!W_HASH[@]}"; do
-        present "${W_HASH[$i]}" || MISS_I+=("$i")
+        [ -z "${ABSENT[${W_HASH[$i]}]:-}" ] || MISS_I+=("$i")
     done
 fi
 

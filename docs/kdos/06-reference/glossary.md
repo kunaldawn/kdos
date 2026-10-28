@@ -69,7 +69,8 @@ pack `kdos`. See [Packs and boxes](../03-architecture/packs-and-boxes.md#the-cat
 The **binary host**: a directory of prebuilt host packages with a signed index, read by `kpkg
 binhost`. It is a local path, such as a USB stick or an NFS mount, never a URL. It is optional and
 one you make yourself; there is no public one. A package from it is used only when its architecture,
-its *build-config hash* and its *recipe hash* all equal this machine's. See
+its *build-config hash* and its *recipe hash* all equal this machine's, and once installed it is
+recorded as that recipe's build, so the next build does not rebuild it. See
 [Packaging](../03-architecture/packaging.md#the-binary-host).
 
 ### box
@@ -275,8 +276,8 @@ counting every file there except its `README`. See [Testing](../05-developer/tes
 
 A declared placement of a *data pack*'s contents where a consumer will look for them. There are two
 namespaces, because the host's data directories are invisible inside a box. Each graft is recorded
-in a manifest, so that removal is exact. `kdos-packd` places a graft when asked `graft <id>`; no
-program in the tree asks, so a data pack is grafted by hand. See [Packs and
+in a manifest, so that removal is exact. `kdos-packd` places a graft when asked `graft <id>`, which
+`kdos-appbox import` asks for every data pack it installs. See [Packs and
 boxes](../03-architecture/packs-and-boxes.md#grafts-and-data-packs).
 
 `testing/selftest.sh` and the compositor's source comments also call `kdos-comp`'s own files,
@@ -591,8 +592,10 @@ The other of the two package hashes: a SHA-256 over a port's recipe files (`kpkg
 `postinstall.sh` and every patch) and every other file in its directory that no `sha256 =` line
 names except the book note `kfs.md`, so editing a kernel config beside a recipe changes it. For a port with no `source =` that is
 the port's whole directory, and for one of KDOS's own ports under `src/` all of `src/libs` as well, so editing a
-program's source or a shared library changes it. Written `E:` in a package index. It decides what
-the build rebuilds. Not to be confused with a *source hash*. See
+program's source or a shared library changes it. Written `E:` in a package index, where only the
+file of the version and release the recipe names carries it and every other file of the port has an
+empty `E:` that matches nothing. `kpkg binhost` records the `E:` it matched as the installed
+package's recipe hash. It decides what the build rebuilds. Not to be confused with a *source hash*. See
 [Packaging](../03-architecture/packaging.md#e--the-recipe-hash).
 
 ### restamp

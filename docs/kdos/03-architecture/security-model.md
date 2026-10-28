@@ -234,9 +234,10 @@ kdos-resctl renice <pid> <-20..19>
   reniced directly. When the helper is missing or has lost its setuid bit, `kdos-res` disables the
   action and puts the reason on the button.
 
-The `dmi` verb prints the populated memory slots (size and speed, from SMBIOS type 17). No shipped
-program calls it; the Memory page of `kdos-res` says that memory device details need
-`kdos-resctl`.
+The `dmi` verb prints the populated memory slots (size and speed, from SMBIOS type 17). The
+Memory page of `kdos-res` calls it once, the first time the page is drawn, and keeps the answer
+for its per-slot table; a refusal or an unreadable table is written on the page in place of the
+table.
 
 | Exit code | Meaning |
 |---|---|
@@ -435,15 +436,16 @@ same for guests on a `virbr*` bridge and lets them reach the network's dnsmasq f
 and holds the services an administrator has opened.
 
 Opening a port goes through the same rule as every other daemon verb: the client names a service,
-never a port. `kdos-powerd` carries the table of twenty-five names (`ssh`, `http`, `https`, `ipp`,
-`smb`, `kiwix`, `mdns`, `mqtt`, `xmpp`, `nfs`, `babel`, `nut`, `snmp`, `mumble`, `caldav`, `mail`,
+never a port. `kdos-powerd` carries the table of twenty-four names (`ssh`, `http`, `https`, `ipp`,
+`smb`, `kiwix`, `mqtt`, `xmpp`, `nfs`, `babel`, `nut`, `snmp`, `mumble`, `caldav`, `mail`,
 `irc`, `dlna`, `tryton`, `caddy`, `mosh`, `syncthing`, `kdeconnect`, `vnc`, `xonotic`), each with the one rule it adds, so a client that
 can only say `ssh` can open exactly TCP 22 and nothing else. `ssh` is also the switch for the SSH
 server: turning it on removes `/etc/service.disabled/sshd` and starts `sshd`, and turning it off
-puts the marker back and stops it. `mdns` adds `udp dport 5353 accept`, a rule the base input chain
-already carries, so mDNS is accepted whether `mdns` is on or off. The daemon rewrites
+puts the marker back and stops it. mDNS has no name in the table: the base input chain accepts
+UDP 5353 on its own. The daemon rewrites
 `50-kdos-services.nft` whole from the names that are on, checks the full ruleset with `nft --check`,
-and then reloads it. A rule written by hand into that file is dropped on the
+and then reloads it. When the check refuses the ruleset or the reload fails, the daemon puts the
+previous file back, so the file on disk is the ruleset the kernel runs. A rule written by hand into that file is dropped on the
 next change; a hand-written rule belongs in a file of its own beside it.
 
 ```sh
@@ -852,8 +854,9 @@ The directory is the policy:
 
 - Adding trust is copying a `.pub` file in; removing it is deleting one. There is no
   revocation list and no online check.
-- A ring holds at most sixteen keys. The loader stops once it has read sixteen and ignores any
-  further `*.pub` file without a word, so a seventeenth key in a directory is never tried.
+- A ring holds at most sixteen keys, read in name order. Each further `*.pub` file is left
+  untrusted and never tried, and the loader names it on stderr (`<dir>: a keyring holds at most
+  16 keys; <name> is not trusted`).
 - A secret key whose file mode grants any group or other permission is refused for signing: a
   key others could read has to be assumed copied. `kpkg` says so (`<key> is readable by other
   users — refusing to sign with it`); `kdos-pack` prints only `cannot read the signing key <key>`.
@@ -965,7 +968,7 @@ lane* installs a pack somebody else exported (see *lane* in the
 | | Built by the store lane | Imported |
 |---|---|---|
 | Bytes come from | Debian's archive (or another registry), over the network | A `.ktar` set made by `kdos app export`, or a pack from `kdos-box freeze` |
-| Signed by | Nothing in `/etc/kdos/keys` | A `kdos-box freeze` pack: its own signature block, when someone ran `kdos-pack sign`. A `.ktar` set: nothing the import checks (see below) |
+| Signed by | Nothing in `/etc/kdos/keys` | A `kdos-box freeze` pack: its own signature block, when someone ran `kdos-pack sign`. A `.ktar` set: its index (`PACKAGES.sig`), when `kdos app export` had a key; its packs are not signed (see below) |
 | Checked by | Nothing KDOS controls | `kdos-packd`, when it takes the pack in |
 | Needs a network | Yes | No |
 
@@ -981,10 +984,13 @@ client that verified a pack and then asked for an install would have verified no
 
 1. If the staging directory (`/var/lib/kdos/packs/staging`) holds an index (`PACKAGES`) whose
    signature verifies against `/etc/kdos/keys/packs` and which lists the pack, the pack's SHA-256
-   must match the index entry. A match is accepted; a mismatch is refused. Neither
-   `kdos-appbox import` nor `kdos-box import` puts an index there: each copies only the `.kpack`
-   file it installs, so this check applies only when an index was placed in the staging directory
-   by other means.
+   must match the index entry. A match is accepted; a mismatch is refused. `kdos-appbox import`
+   (behind `kdos app import`) copies a set's `PACKAGES` and `PACKAGES.sig` into the staging
+   directory as `PACKAGES.<pid>` and its `.sig` when the archive holds both, names that index in
+   each `install` it sends and takes it away when the import ends, so the packs of a set whose
+   index was signed with a trusted key are checked here. The daemon reads no index a request does
+   not name.
+   `kdos-box import` copies only the `.kpack` file it installs.
 2. Otherwise the pack's own footer is checked: the payload must hash to the value the footer
    records, and then the pack's signature block, if it has one, must verify against the same ring.
    A bad hash, a bad signature, or a signature with no key on this machine to check it is refused.
@@ -1005,10 +1011,11 @@ and `kdos-pack keygen <name>` makes the key pair (`<name>.key` and `<name>.pub`)
 [Packs and boxes](packs-and-boxes.md#building-a-pack) describes; a signed pack's block is checked
 at install by step 2. `kdos app export` signs the set's index (`PACKAGES.sig` beside `PACKAGES`)
 when `KDOS_PACK_KEY` names a readable secret key and otherwise says that the index is unsigned, but
-it does not sign the packs themselves, and `kdos app import` stages each pack without the index.
-Every pack of an exported set therefore reaches `kdos-packd` as an unsigned pack: it is accepted
-on its payload hash alone, and refused outright when `KDOS_REQUIRE_SIG` is set, whether or not the
-exporter had a key.
+it does not sign the packs themselves. `kdos app import` stages the signed index with the packs, so
+a pack of a set whose index verifies against `/etc/kdos/keys/packs` is accepted at step 1 on that
+signature. A pack of a set exported without a key, or signed with a key this machine does not
+trust, reaches `kdos-packd` as an unsigned pack: it is accepted on its payload hash alone, and
+refused outright when `KDOS_REQUIRE_SIG` is set.
 
 Refusing unsigned packs is opt-in. With `KDOS_REQUIRE_SIG` set, `kdos-packd` refuses an unsigned
 pack at install (a medium pack is not covered), and `kdos-pack verify` reports an unsigned one as a

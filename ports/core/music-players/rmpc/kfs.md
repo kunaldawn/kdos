@@ -28,7 +28,8 @@ there.
 The desktop entry is KDOS's own. It is `NoDisplay=true`: rmpc exits at once when no mpd is
 running, and the session starts mpd only once an `mpd.conf` exists, which the image does not ship,
 so Start does not list it. `Super+Shift+U` does not use this entry: a binding in the compositor's
-`rc.xml` raises a running rmpc or starts one in `foot`. The entry sets `Terminal=true` and
+`rc.xml` raises a running rmpc or starts one as `kdos-term --app-id rmpc -e rmpc`, for the same
+reason the entry asks for kdos-term. The entry sets `Terminal=true` and
 `X-KDOS-Term=kdos-term`, which asks for
 [kdos-term](../../../../docs/kdos/04-programs/kdos-term.md) whatever the session's terminal is,
 because the album art is drawn in the terminal's cell grid; see

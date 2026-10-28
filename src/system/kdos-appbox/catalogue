@@ -39,12 +39,11 @@ snapshot = auto
 
 #
 # `env <pack> NAME=VALUE` declares a variable for every application on that
-# row's stack. kdos-appbox's store_env() is the one reader: it collects the
-# whole chain's worth for a box built from the catalogue
-# (`base=image:kdos/<id>`), which has no vendor label to carry the fact. But
-# box_env() calls store_env() only for a launch with no pack id, which
-# run_pack never makes, and `kdos-appbox export` writes no `env =` line into
-# a pack's metadata: no launch exports these rows.
+# row's stack. A launch of a box built from the catalogue
+# (`base=image:kdos/<id>`), which has no vendor label to carry the fact,
+# exports the whole chain's worth, base-first; `kdos-appbox export` writes the
+# same chain into the exported pack's metadata as `env =` lines, which the
+# pack lane exports at a launch.
 #
 # QT_STYLE_OVERRIDE is only safe where a platform theme is present — Fusion
 # with none falls back to Qt's built-in LIGHT palette, which is worse than
@@ -82,7 +81,9 @@ deb app.vscodium https://api.github.com/repos/VSCodium/vscodium/releases/latest 
 # G'MIC is a COMMAND and not an application: `gmic` at a prompt. Without a
 # row like this the pack has no desktop entry AND no command, so nothing on
 # the host can reach what it carries and the sweep records "no launcher"
-# against a pack that was never meant to have one.
+# against a pack that was never meant to have one. Each row becomes a shim and
+# an alien-apps row when the store regenerates the user's launchers, and a
+# `command =` line in the exported pack.
 cmd app.gmic gmic
 # The computational-science segment is COMMANDS: solvers, converters and
 # toolchains driven from a prompt or a script, with no desktop entry to
@@ -235,16 +236,18 @@ app app.foliate      rt-gtk       foliate
 # are the example, which the native kicad port does not carry for exactly that
 # reason. `needs <app> <data>` is the other half for a boxed application:
 # installing the app from the store builds each data row it names first, so
-# the Start menu never offers a launcher onto an empty database. Nothing else
-# reads it: the export writes no `needs` line into a pack's metadata, and
-# `kdos app show` prints no data state.
+# the Start menu never offers a launcher onto an empty database. The export
+# writes it into the exported pack's metadata as a `needs =` line.
 data data.kicad-packages3d base   kicad-packages3d
 data data.tesseract-langs  base   tesseract-ocr-eng tesseract-ocr-deu tesseract-ocr-fra tesseract-ocr-spa tesseract-ocr-hin tesseract-ocr-chi-sim tesseract-ocr-jpn
 # WHAT A DATA PACK GRAFTS, AND HOW THE PROGRAM FINDS IT. A data pack is never
 # composed into a box root, so each one lands where its program looks: KiCad's
 # models under /usr/share/kicad/3dmodels, the native kicad's default model
 # directory; tesseract's languages under /usr/share for the host's tesseract
-# and under the box path for a boxed one.
+# and under the box path for a boxed one. These rows travel as `graft =` and
+# `boxgraft =` lines in a data row's exported pack, and kdos-packd lands them
+# when `kdos-appbox import` installs that pack; a data row built by the store
+# is an image and is grafted nowhere.
 graft    data.kicad-packages3d  usr/share/kicad/3dmodels  kicad/3dmodels
 graft    data.tesseract-langs   usr/share/tesseract-ocr/5/tessdata  tesseract-ocr/5/tessdata
 boxgraft data.tesseract-langs   usr/share/tesseract-ocr/5/tessdata  tessdata

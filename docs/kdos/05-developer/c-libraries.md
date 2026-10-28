@@ -346,7 +346,10 @@ asserts that they disagree, so that nobody unifies them.
 
 Two derived colours exist, and confusing them is a legibility defect. The dim value is a fill and
 measures below any text floor against the background; the muted colour from `kcol_muted` is the
-readable one, and every text role goes through it. See
+readable one, and every text role goes through it. It starts as a 56% mix of the background towards
+the text colour and moves one percent further at a time until it clears 4.5:1 against the
+background, so every dark scheme keeps its 56% mix and `paper`, on its light ground, lands at 60%.
+The self-test asserts the floor for every scheme. See
 [the design language](../03-architecture/design-language.md#colour).
 
 Some consumers cannot take the palette as numbers, so the library writes their format for them,
@@ -1117,6 +1120,10 @@ with the thing it signs is never trusted, since the signature's key identifier o
 from the local keyring; `ksig_keygen` fails rather than fall back when the kernel will not provide
 entropy; and a secret key is held only for the duration of the call that uses it.
 
+A keyring is every `*.pub` in its directory, read in name order, and holds at most `KSIG_MAX_KEYS`
+(16). `ksig_ring_load` names on stderr each `*.pub` past the cap and does not trust it, so the
+owner of a key whose signatures fail is told why, and which keys miss out is the same on every run.
+
 ## libkbuild
 
 The deciding half of the build orchestrator: phase discovery, the phase metadata block, the build
@@ -1885,6 +1892,11 @@ shown in cells.
   window.
 - A Ctrl chord is the letter plus `KT_MOD_CTRL`, never the control code xkb folds it into: the tty
   decoder delivers the letter, and a chord table has one vocabulary.
+- Ctrl+V starts receiving the clipboard, and the key is delivered as well, so with nothing on the
+  clipboard the consumer sees only the key. A consumer whose bare Ctrl+V means something else calls
+  `kwl_paste_needs_shift(1)`, after which only Ctrl+Shift+V starts a receive. `kdos-term` does, so a
+  bare Ctrl+V reaches the child as `^V` (vim's visual block, a shell's quoted insert) and pastes
+  nothing beside it.
 - The cell painter leaves a clip on the image it was handed, so anything drawn into that same image
   afterwards (the panel's frame rule, for example) must drop the clip first or pixman writes
   nothing.

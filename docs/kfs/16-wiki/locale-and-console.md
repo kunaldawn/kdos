@@ -41,7 +41,7 @@ from and `locale -a` lists.
 Keyboard page; the image does not ship it, so the live medium uses the kernel's built-in US map.
 `kdos-getty` loads it on every console, in `src/system/kdos-tools/getty.c`:
 
-<!-- kfs:include src/system/kdos-tools/getty.c lines=354-364 pin=1d8052890c4d -->
+<!-- kfs:include src/system/kdos-tools/getty.c lines=357-367 pin=1d8052890c4d -->
 
 The desktop takes its layout from the same file when the session starts, translating the console
 map's name into an XKB layout name, in `fs/usr/local/lib/kdos/session-common.sh`:

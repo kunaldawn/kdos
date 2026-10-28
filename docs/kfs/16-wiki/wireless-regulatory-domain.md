@@ -49,7 +49,7 @@ The installer writes it from the zone chosen on its *Time* page:
 `kdos-powerd` writes it whenever the time zone is changed later, and runs `iw reg set` so the
 running radio follows at once. A zone with no country, such as `UTC`, removes the file:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=810-821 pin=7a5ecb4a3526 -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=840-851 pin=7a5ecb4a3526 -->
 
 The file is read when `cfg80211` loads, which is during boot, as the first wireless driver loads,
 or, on a machine with no wireless driver, when a program such as `iw` first asks for the wireless

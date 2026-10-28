@@ -221,11 +221,6 @@ execute_update(const char *env_keys, const char *env_unset_keys, bool initialize
 			initialize ? env_keys : env_unset_keys);
 	spawn_sync_no_shell(cmd);
 	free(cmd);
-
-	cmd = strdup_printf("systemctl --user %s %s",
-		initialize ? "import-environment" : "unset-environment", env_keys);
-	spawn_sync_no_shell(cmd);
-	free(cmd);
 }
 
 static void
@@ -333,7 +328,7 @@ session_run_script(const char *script)
 void
 session_autostart_init(void)
 {
-	/* Update dbus and systemd user environment, each may fail gracefully */
+	/* Update the dbus activation environment; a failure is not fatal */
 	update_activation_env(/* initialize */ true);
 	session_run_script("autostart");
 }
@@ -343,6 +338,6 @@ session_shutdown(void)
 {
 	session_run_script("shutdown");
 
-	/* Clear the dbus and systemd user environment, each may fail gracefully */
+	/* Clear the dbus activation environment; a failure is not fatal */
 	update_activation_env(/* initialize */ false);
 }

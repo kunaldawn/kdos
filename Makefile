@@ -69,13 +69,14 @@ fetch-check: ## offline: which archived sources are missing or corrupt
 # for freeze and the release targets.
 #   make publish-dry
 #   make publish PORTS="zstd lz4"
+#   make publish-check PUBLISH_ARGS=--all
 #   make publish-retire PUBLISH_ARGS=--dry-run
 #   make release TAG=v0.2
 PORTS ?=
 PUBLISH_ARGS ?=
 TAG ?=
 
-publish: ## upload every unarchived source into its shelf's sources-N volume
+publish: ## upload unarchived sources new against upstream (or unindexed); PUBLISH_ARGS=--all for every one
 	bash ports/publish $(PUBLISH_ARGS) $(PORTS)
 
 publish-dry: ## offline: what publish would upload, and where
@@ -246,24 +247,26 @@ cleandisk: ## recreate an empty build/kdos.qcow2, sparse, 96G unless KDOS_DISK s
 # the next build. build/.snap-lineage goes with the tree it indexes, so the
 # next snapshot is full.
 #
-# build/keys survives BOTH of these: a key is not a build artefact. Every image
-# built beside kdos-release.key trusts its kdos-release.pub, and the key signs
-# each `ports/publish --release`; lose it and no later release verifies there.
-# linux-module-signing.pem signs the kernel's modules: lose it and the next
-# kernel carries a new certificate, so modules from earlier builds load only as
-# tainted. build/binhost-key is not kept: the next KDOS_MAKE_BINHOST=1 build
-# makes a new binhost key, and a machine holding the old kdos-binhost.pub
-# refuses the index it signs.
-cleanbuild: ## wipe build/ except snapshots, ccache, pkgstore and keys
+# build/keys and build/binhost-key survive BOTH of these: a key is not a build
+# artefact. Every image built beside kdos-release.key trusts its
+# kdos-release.pub, and the key signs each `ports/publish --release`; lose it
+# and no later release verifies there. linux-module-signing.pem signs the
+# kernel's modules: lose it and the next kernel carries a new certificate, so
+# modules from earlier builds load only as tainted. kdos-binhost.key in
+# build/binhost-key signs the binhost's index and 010_binhost.sh makes it only
+# when it is missing; lose it and the next KDOS_MAKE_BINHOST=1 build signs with
+# a new key, which every machine holding the old kdos-binhost.pub refuses.
+cleanbuild: ## wipe build/ except snapshots, ccache, pkgstore, keys and binhost-key
 	test -d build && find build -mindepth 1 -maxdepth 1 \
-		! -name snapshots ! -name keys ! -name ccache ! -name pkgstore \
+		! -name snapshots ! -name keys ! -name binhost-key \
+		! -name ccache ! -name pkgstore \
 		-exec rm -rf {} + || true
 
 # Removes build/snapshots, build/ccache and build/pkgstore along with everything
-# else. Not build/keys.
-clean: ## wipe build/ except keys
+# else. Not build/keys or build/binhost-key.
+clean: ## wipe build/ except keys and binhost-key
 	test -d build && find build -mindepth 1 -maxdepth 1 \
-		! -name keys -exec rm -rf {} + || true
+		! -name keys ! -name binhost-key -exec rm -rf {} + || true
 
 # The checks that stand in for a build. check runs the seven that need no built
 # tree; depdrift, debuginfo, unowned, linkcheck and entrycheck read build/fs,

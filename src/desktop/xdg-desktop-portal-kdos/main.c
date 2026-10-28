@@ -857,9 +857,7 @@ static void pending_finish(struct pending *pend)
 	pending_parse(pend, &p);
 
 	uint32_t code;
-	if (pend->kind == PEND_SAVEFILES) {
-		code = (rc == 0 && p.n > 0) ? 0 : 1;
-	} else if (rc == 0) {
+	if (rc == 0) {
 		code = p.n > 0 ? 0 : 1;
 	} else if (rc == 1) {
 		code = 1;
@@ -1200,13 +1198,23 @@ static void theme_watch_open(void)
 	if (!slash)
 		return;
 	*slash = '\0';
+	/* Create the directory before watching it: a fresh home has no
+	 * ~/.cache, a watch on a missing directory fails, and the first
+	 * `kdos theme` of the session would then send no SettingChanged.
+	 * An existing directory is EEXIST and left as it is. */
+	{
+		char *sep = strrchr(path, '/');
+
+		if (sep && sep != path) {
+			*sep = '\0';
+			(void)mkdir(path, 0700);
+			*sep = '/';
+		}
+		(void)mkdir(path, 0700);
+	}
 	theme_watch = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	if (theme_watch < 0)
 		return;
-	/* A directory that does not exist yet is not an error: nothing has
-	 * switched the accent on this machine, and the default is what every
-	 * reader above already answers. The watch is not retried, so an accent
-	 * first switched later in this process's life sends no SettingChanged. */
 	if (inotify_add_watch(theme_watch, path,
 			      IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE) < 0) {
 		close(theme_watch);
@@ -1283,9 +1291,12 @@ static const sd_bus_vtable file_chooser_vtable[] = {
 /*
  * `version` is the AppChooser property the front end reads to decide which
  * methods and options the back end has; ChooseApplication and UpdateChoices
- * are both implemented here. A getter rather than an offset: with
- * a NULL getter sd-bus reads the value out of the vtable's userdata, which is
- * NULL here, and the read is a crash rather than a wrong number.
+ * are both implemented here. It is 2, the version the installed
+ * org.freedesktop.impl.portal.AppChooser.xml describes: a number above the
+ * interface the front end was built against promises options it never sends.
+ * A getter rather than an offset: with a NULL getter sd-bus reads the value
+ * out of the vtable's userdata, which is NULL here, and the read is a crash
+ * rather than a wrong number.
  */
 static int prop_version(sd_bus *bus, const char *path, const char *iface,
 			const char *prop, sd_bus_message *reply, void *userdata,
@@ -1293,7 +1304,7 @@ static int prop_version(sd_bus *bus, const char *path, const char *iface,
 {
 	(void)bus; (void)path; (void)iface; (void)prop; (void)userdata;
 	(void)err;
-	return sd_bus_message_append(reply, "u", (uint32_t)3);
+	return sd_bus_message_append(reply, "u", (uint32_t)2);
 }
 
 static const sd_bus_vtable app_chooser_vtable[] = {
@@ -1332,7 +1343,7 @@ int main(int argc, char **argv)
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--version")) {
-			printf("xdg-desktop-portal-kdos 0.1.0\n");
+			printf("xdg-desktop-portal-kdos 0.3.0\n");
 			return 0;
 		}
 		fprintf(stderr, "usage: xdg-desktop-portal-kdos\n");

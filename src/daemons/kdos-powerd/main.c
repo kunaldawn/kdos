@@ -274,7 +274,6 @@ static const struct {
 	/* kiwix-serve's default, and the one offline-content port this desktop
 	 * ships a reason for. */
 	{ "kiwix", "tcp dport 8080 accept", "kiwix-serve" },
-	{ "mdns",  "udp dport 5353 accept", "mDNS beyond the default rule" },
 	/* The LAN servers whose ports ship a service script: each is
 	 * unreachable from another machine until its name is on, whatever its
 	 * own configuration says it listens on. */
@@ -358,9 +357,23 @@ static void fw_state(int *on)
 			on[i] = 1;
 }
 
+/* Put back what the file held before fw_write replaced it, or take the file
+ * away if there was none. The check has to read the new file through
+ * /etc/nftables.conf's include, so the new one is on disk before the answer is
+ * known; a refused ruleset left there is what the next boot loads and what
+ * `firewall list` reads back, while the kernel still runs the old one. */
+static void fw_restore(const char *path, const char *prev)
+{
+	if (prev)
+		(void)kb_write_file_atomic(path, prev);
+	else
+		unlink(path);
+}
+
 static int fw_write(const int *on, char *out, size_t nout)
 {
 	char path[320], tmp[336];
+	char *prev;
 	FILE *f;
 
 	snprintf(path, sizeof(path), "%s/%s", fw_etc(), FW_FILE);
@@ -387,8 +400,22 @@ static int fw_write(const int *on, char *out, size_t nout)
 	fprintf(f, "\t}\n}\n");
 	fflush(f);
 	fsync(fileno(f));
-	if (fclose(f) != 0 || rename(tmp, path) != 0) {
+	if (fclose(f) != 0) {
 		unlink(tmp);
+		snprintf(out, nout, "err cannot write the rules\n");
+		return -1;
+	}
+	prev = kb_read_whole(path, NULL);
+	if (!prev && errno != ENOENT) {
+		/* A file that is there but cannot be read could not be put
+		 * back if the new one is refused. */
+		unlink(tmp);
+		snprintf(out, nout, "err cannot read the current rules\n");
+		return -1;
+	}
+	if (rename(tmp, path) != 0) {
+		unlink(tmp);
+		free(prev);
 		snprintf(out, nout, "err cannot write the rules\n");
 		return -1;
 	}
@@ -400,7 +427,8 @@ static int fw_write(const int *on, char *out, size_t nout)
 	 * NetworkManager's NAT tables stay, so a toggle does not cut off running
 	 * containers or hotspot clients. `nft --check` first: a bad ruleset refused is the
 	 * previous one still in the kernel, and a bad ruleset half-applied is
-	 * a machine with no firewall.
+	 * a machine with no firewall. Either refusal puts the previous file
+	 * back, so the disk says what the kernel runs.
 	 */
 	if (!getenv("KDOS_POWERD_ETC")) {
 		KbArgv chk = { 0 }, app = { 0 };
@@ -411,6 +439,8 @@ static int fw_write(const int *on, char *out, size_t nout)
 		kb_argv_add(&chk, "/etc/nftables.conf");
 		kb_argv_end(&chk);
 		if (kb_run(&chk) != 0) {
+			fw_restore(path, prev);
+			free(prev);
 			snprintf(out, nout,
 				 "err the ruleset would not load; nothing changed\n");
 			return -1;
@@ -420,10 +450,13 @@ static int fw_write(const int *on, char *out, size_t nout)
 		kb_argv_add(&app, "/etc/nftables.conf");
 		kb_argv_end(&app);
 		if (kb_run(&app) != 0) {
+			fw_restore(path, prev);
+			free(prev);
 			snprintf(out, nout, "err the ruleset did not apply\n");
 			return -1;
 		}
 	}
+	free(prev);
 	return 0;
 }
 
@@ -537,7 +570,6 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	const char *etc = getenv("KDOS_POWERD_ETC");
 	char path[320], tmp[336];
 	char *buf, *next;
-	size_t cap;
 	int off = !strcmp(who, "off");
 	FILE *f;
 
@@ -577,50 +609,48 @@ static int set_autologin(const char *who, char *out, size_t nout)
 		return -1;
 	}
 
-	/* The one key may grow by a name and every line gains nothing else; the
-	 * slack is a name's worth per line, which no rewrite can exceed. */
-	cap = len + 1024;
-	next = malloc(cap);
-	if (!next) {
-		free(buf);
-		snprintf(out, nout, "err cannot read login.conf\n");
-		return -1;
-	}
-	next[0] = '\0';
+	/* LINE BY LINE AND EVERY LINE KEPT: a blank line is part of the file's
+	 * layout and a long one is part of its text, so each goes out as it
+	 * came in unless it is the key. */
+	KbBuf nb = { 0 };
+	int found = 0;
 
-	size_t used = 0;
-
-	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp); ln;
-	     ln = strtok_r(NULL, "\n", &sp)) {
-		char row[512];
+	for (char *ln = buf, *end = buf + len; ln < end;) {
+		char *nl = memchr(ln, '\n', (size_t)(end - ln));
+		size_t ll = nl ? (size_t)(nl - ln) : (size_t)(end - ln);
 
 		/* THE KEY, COMMENTED OR NOT, and nothing else on the line: a
 		 * comment ABOUT the key — prose that merely mentions it — must
 		 * not be rewritten into a setting, so the match is anchored at
 		 * the line and allows exactly one leading `#`. */
 		const char *key = ln;
+		size_t kl = ll;
 
-		if (*key == '#')
+		if (kl && *key == '#') {
 			key++;
-		if (!strncmp(key, "autologin", 9) && strchr(key, '=') && off)
-			snprintf(row, sizeof(row), "#%s", key);
-		else if (!strncmp(key, "autologin", 9) && strchr(key, '='))
-			snprintf(row, sizeof(row), "autologin = %s", who);
-		else
-			snprintf(row, sizeof(row), "%s", ln);
-		int k = snprintf(next + used, cap - used, "%s\n", row);
-
-		/* A file that would not fit is REFUSED rather than truncated:
-		 * writing half a config leaves a machine whose login settings
-		 * are whatever survived. */
-		if (k < 0 || (size_t)k >= cap - used) {
-			free(buf);
-			free(next);
-			snprintf(out, nout, "err login.conf is too large\n");
-			return -1;
+			kl--;
 		}
-		used += (size_t)k;
+		if (kl >= 9 && !strncmp(key, "autologin", 9) &&
+		    memchr(key, '=', kl)) {
+			found = 1;
+			if (off) {
+				kb_buf_str(&nb, "#");
+				kb_buf_add(&nb, key, kl);
+			} else {
+				kb_buf_printf(&nb, "autologin = %s", who);
+			}
+		} else {
+			kb_buf_add(&nb, ln, ll);
+		}
+		kb_buf_str(&nb, "\n");
+		ln += ll + 1;
 	}
+	/* A FILE WITH NO KEY AT ALL asks for a password already, so off is
+	 * done; on has to add the key, or the reply would name an account the
+	 * next boot does not log in. */
+	if (!found && !off)
+		kb_buf_printf(&nb, "autologin = %s\n", who);
+	next = nb.p;
 
 	snprintf(tmp, sizeof(tmp), "%s/kdos/login.conf.new", etc);
 	f = fopen(tmp, "w");
@@ -1397,7 +1427,9 @@ int main(int argc, char **argv)
 					"       kdos-powerd --set-timezone "
 					"<Area/City>\n"
 					"       kdos-powerd --set-autologin "
-					"<user>|off\n");
+					"<user>|off\n"
+					"       kdos-powerd --firewall list|"
+					"<service> on|off\n");
 			return 2;
 		}
 		return serve();

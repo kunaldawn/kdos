@@ -175,8 +175,8 @@
          <none> when nothing matched, so the key does both halves — it is
          fluxbox's ClientPattern language and labwc already has it compiled in.
          The <query identifier> is the app_id, which for a terminal program is
-         what `foot`'s app-id argument was given: the program's own name,
-         not `foot`.
+         what the terminal's app-id argument was given, in foot's or
+         kdos-term's spelling: the program's own name, not the terminal's.
 
          A ROW WHOSE PROGRAM IS NOT INSTALLED IS DROPPED FROM THE KEY CARD,
          which reads the identifier out of the query. The key stays bound and
@@ -207,7 +207,7 @@
       <action name="ForEach">
         <query identifier="rmpc"/>
         <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot --app-id=rmpc -e rmpc"/></none>
+        <none><action name="Execute" command="kdos-term --app-id rmpc -e rmpc"/></none>
       </action>
     </keybind>
     <keybind key="W-S-c">
@@ -424,8 +424,10 @@
 
     <!-- A power page and a system monitor are what a person reaches for while
          something is going wrong, and both are otherwise reachable only from
-         the Start menu. -->
-    <keybind key="W-C-p"><action name="Execute" command="kdos-energy"/></keybind>
+         the Start menu. The power page is the monitor's Energy page:
+         kdos-energy is the report's command-line client, which prints and
+         exits with no window, so a key bound to it shows nothing. -->
+    <keybind key="W-C-p"><action name="Execute" command="kdos-res --page energy"/></keybind>
     <keybind key="W-C-t"><action name="Execute" command="kdos-res"/></keybind>
 
     <!-- The desk accessories. Summoned over whatever is on the screen and
@@ -433,7 +435,10 @@
          already is. -->
     <keybind key="W-C-q"><action name="Execute" command="kdos-calc"/></keybind>
     <keybind key="W-C-n"><action name="Execute" command="kdos-note"/></keybind>
-    <keybind key="W-C-v"><action name="Execute" command="kdos-clip"/></keybind>
+    <!-- The picker, never bare kdos-clip: with no argument that program is
+         the history daemon, and a second one takes the history socket over
+         from the copy the compositor supervises. -->
+    <keybind key="W-C-v"><action name="Execute" command="kdos-clip --pick"/></keybind>
     <keybind key="W-C-e"><action name="Execute" command="kdos-chars"/></keybind>
     <keybind key="W-C-b"><action name="Execute" command="kdos-contacts"/></keybind>
     <!-- Find, and Shift because W-f is fullscreen: a search one slip from

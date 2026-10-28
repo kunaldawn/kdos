@@ -41,8 +41,8 @@ and a one-row hint line naming the keys that work at that moment, for example
 `F1 help  F10 pages | [/] page | Tab panes | Esc Close`.
 
 In a window, five pages also put their one number at the right of the band, two rows high: the CPU
-page its busy share, Memory the share in use, GPU the first device's busy share (only where its
-driver reports one), Batteries the first battery's charge and Sensors the hottest temperature. It
+page its busy share, Memory the share in use, GPU the busy share of the first device whose driver
+reports one, Batteries the first battery's charge and Sensors the hottest temperature. It
 is [display text](../05-developer/writing-desktop-software.md#display-text), drawn on the pixel
 layer in the chrome's own face (two rows of the 16×32 cell are the 32-pixel Terminus strike
 doubled). The headline already says each of these in words, so the figure is drawn only where the
@@ -151,7 +151,8 @@ counters the caller may not read shows `-`. **CPU%** reads `CPU%m` when the conf
 percentage of the whole machine.
 
 Kernel threads are hidden by default and counted: the footer reads, for example,
-`2 hidden kernel threads  .  sort: cpu`. The selection follows the process ID, not the row, so a
+`2 hidden kernel threads  .  sort: cpu`. With `kernel_threads = yes` they are listed, and the footer
+counts them as `2 listed kernel threads`. The selection follows the process ID, not the row, so a
 table re-sorted by processor use every second does not move the cursor onto somebody else's process.
 
 `/` starts a filter, which matches the process name, the command line, the box or the user name as
@@ -185,8 +186,12 @@ and the second figure would report a healthy machine as full. A machine with no 
 from `/proc/pressure/memory`, and a **breakdown** of available, free, cached, buffers, shared, dirty
 and reclaimable memory, as far as the page has rows for them.
 
-The last line reads `memory device details need kdos-resctl`. No page shows the per-slot memory
-modules; see [Limitations](#limitations).
+The first time the page is drawn, it runs `kdos-resctl dmi` once and keeps the answer: a **memory
+devices** group with one row per populated slot, giving its size and speed, or the SMBIOS table's own
+line saying no memory device is populated. Where there is no table, the page gives the reason
+instead: `kdos-resctl` is not installed, it has lost its setuid bit, it refused (the caller is not
+in `wheel`, or the table is empty), or the SMBIOS table could not be read. A fixture never runs the
+helper, and its frame prints `memory device details need kdos-resctl`.
 
 ### GPU
 
@@ -195,13 +200,13 @@ One group per DRM device (a graphics device of the kernel's Direct Rendering Man
 (`amdgpu` does, through `gpu_busy_percent`) gets a `utilisation` line. Any other driver gets an
 `engine time` line: the milliseconds of engine work in the last sampling interval, taken from the
 DRM file descriptors of every process whose descriptors the caller may read, and summed. The sum is
-not split by device, so on a machine with two such devices both lines show the same machine-wide
-total. It is labelled `ms/s`, which is exact at the default one-second interval; at any other
+machine-wide and not split by device. It is labelled `ms/s`, which is exact at the default one-second interval; at any other
 interval the figure is per interval, not per second. The line carries the note that the driver
-publishes no utilisation. Engine time is not converted into a percentage, because an engine can be
+publishes no utilisation; on a machine with two or more such devices, each line reads `(all N
+devices without utilisation together)` instead, since the total belongs to none of them alone. Engine time is not converted into a percentage, because an engine can be
 busy while the device as a whole is idle. Where the driver publishes them, the page adds used and
 total memory, the clock, and the temperature and power. The headline, and the figure in the band,
-describe the first device listed.
+describe the first device that reports a busy share, or the first device listed when none does.
 
 For the proprietary NVIDIA driver, the page loads `libnvidia-ml.so.1` at run time if it is present
 and reads what the kernel driver does not publish. KDOS does not ship that library, and without it
@@ -275,8 +280,7 @@ name such as `temp1` is unique only within one chip. `kdos-res` does not use `li
 tools on the machine print from the same files.
 
 Temperatures, fan speeds (rpm), voltages and power readings are shown as numbers. The readings, the
-critical points and the headline are always in degrees Celsius; only the figure in the band follows
-the `temperature` setting (see [Limitations](#limitations)). A temperature
+critical points, the headline and the figure in the band follow the `temperature` setting. A temperature
 whose chip publishes a critical point also gets a bar scaled to that point (on pages wider than 56
 columns), drawn in the warning colour from 90% of it and the error colour at or above it; no other
 threshold is invented. The headline names the hottest temperature, the number of temperature
@@ -306,7 +310,8 @@ page body is at least 47, 54, 62 and 71 columns wide respectively. The page hold
 
 A box with a profile in `~/.config/kdos/boxes/<name>.conf` that is not running is still listed,
 marked `(stopped)`, with `-` for its processor and memory. The headline counts boxes and how many are
-running. `Enter` opens a facts page with the box's base, persistence, state, process count, memory,
+running. The footer reads `Enter for one box: its base, persistence, footprint and uptime`, and
+`Enter` opens a facts page with the box's base, persistence, state, process count, memory,
 writable size, energy share where known, and uptime.
 
 ### The sidebar and its three widths
@@ -388,12 +393,13 @@ question is waiting on its answer.
 ### The pointer
 
 The pointer follows the [pointer contract](../03-architecture/design-language.md#the-pointer-contract)
-every KDOS surface keeps. On the Applications, Processes, Boxes and Drives tables, moving over a row
+every KDOS surface keeps. On the Applications, Processes, Boxes, Drives and Network tables, moving over a row
 highlights it, a click selects it, and a click on the row that is already selected opens its detail
 page. A click on a column heading of the Applications, Processes or Boxes table sorts by that column,
 and a second click reverses it. **USER** and **BOX** on Processes are not sort columns, and a click
-on them does nothing; **ENERGY** and **UPTIME** on Boxes are not sort columns either, and a click on
-them sorts by **PROCS**. The wheel scrolls those three tables while the list is longer than
+on them does nothing. On Boxes a click sorts only when it lands on a visible sort heading (**BOX**,
+**CPU%**, **MEMORY**, **DISK** or **PROCS**); **ENERGY** and **UPTIME** are not sort keys, a click
+on them or between headings does nothing, and a column hidden on a narrow page cannot be clicked. The wheel scrolls those three tables while the list is longer than
 the window and moves the selection while it fits; on Drives and Network it moves the selection. The
 Applications, Processes and Boxes tables have a scrollbar that can be dragged, and in a window a
 scroll of those three glides to its new rows instead of jumping (see
@@ -519,8 +525,9 @@ Four further rules shape what you see:
   once after two samples, so a rate computed while drawing would be empty in every reference frame.
 - **A process page coming back into view reports no rate on its first tick.** The previous
   per-process sample may have been taken minutes earlier on another page, and a rate over that gap
-  would be wrong; the second tick reports a correct one. Drives and Network do not follow this rule;
-  see [Limitations](#limitations).
+  would be wrong; the second tick reports a correct one. Drives and Network report a rate on their first tick back:
+  each page keeps its own sampling clock, so that rate spreads what was counted while the page was
+  away over the whole time it was away.
 - **Ages are measured in seconds since boot on both sides.** A box's uptime is the system uptime
   minus the start time of its oldest process, and a start later than the uptime shows `-` rather
   than an underflowed number. A process's elapsed time on the detail page needs the boot time from
@@ -531,7 +538,9 @@ Four further rules shape what you see:
 The loop samples once per interval (1000 ms by default) and redraws on every event in between.
 Keystrokes, pointer movement and resizes all wake the loop, so a loop that always waited a full
 interval after each wake-up would sample unevenly and draw an uneven chart. It waits only for
-whatever remains until the next sample.
+whatever remains until the next sample. A sample that takes longer than the interval moves the next
+one to a full interval after it finished, not after it began, so a slow sample is never followed at
+once by another.
 
 Every sample reads the processor times, memory and the three pressure files. What else it reads is
 decided by the page on screen, so the monitor does not become part of the load it measures:
@@ -643,15 +652,13 @@ start.
 |---|---|---|---|
 | `interval` | milliseconds | `1000` | Sampling period, clamped to 200–60000 |
 | `units` | `1024`, `1000` | `1024` | `1024` gives binary sizes (`K`, `M`, `G`); `1000` gives `kB`, `MB`, `GB` |
-| `temperature` | `c`, `f` | `c` | Temperature scale on the CPU, GPU and Drives pages, the drive facts page and the Sensors page's figure in the band. A value starting with `f` or `F` means Fahrenheit, anything else Celsius. The Sensors page's own readings and headline stay in Celsius |
+| `temperature` | `c`, `f` | `c` | Temperature scale everywhere a temperature is shown: the CPU, GPU, Drives and Sensors pages, the drive facts page and the figures in the band. A value starting with `f` or `F` means Fahrenheit, anything else Celsius |
 | `cpu_percent` | `core`, `machine` | `core` | Whether a Processes or detail-page percentage is of one core (eight busy threads read 800%) or of the running processors of the whole machine. The Applications and Boxes pages always use one core |
-| `memory` | `rss`, `pss` | `rss` | Read and stored; no page consults it, and every memory figure is RSS (resident set size). PSS, proportional set size, would divide a shared page among the processes that map it |
 | `kernel_threads` | boolean | `no` | Show kernel threads in the process table |
 | `virtual_drives` | boolean | `no` | Show loop, `ram`, `zram` and device-mapper devices on Drives |
 | `virtual_net` | boolean | `no` | Show loopback and interfaces with no backing device on Network |
 | `icons` | boolean | `yes` | Draw the page's icon in the header band and the charts as pixels; `no` keeps the whole window character cells |
 | `sort` | a column name | `cpu` | Initial sort column. Processes: `cpu`, `memory`, `pid`, `name`, `disk`. Applications and Boxes: `name`, `cpu`, `memory`, `disk`, `procs`. A name a page does not have leaves that page on its own default |
-| `columns` | column list | empty | Read and stored; no page consults it |
 
 `yes`, `1`, `true` and `on` are true for a boolean; anything else is false.
 
@@ -773,26 +780,18 @@ See [Testing](../05-developer/testing.md#goldens) for how the goldens are regene
 
 ## Limitations
 
-- On the Network page the pointer does not select or open a row; use `↑`, `↓` and `Enter`.
 - The Drives and Network lists have no scrollbar and hold at most sixteen devices each.
 - A signal or renice that the kernel or the helper refuses (for example, when the caller is not in
   `wheel`) fails without any message on the screen.
-- The sampler records when one sample takes longer than the interval, but no page displays it.
+- A sample that takes longer than the interval is not shown on any page; the only effect is that the
+  next sample waits a full interval after it ends.
 - A changed `sort` is not applied on `SIGHUP`; it takes effect when the program is next started.
-- `memory` and `columns` in the configuration are accepted and have no effect.
-- Per-slot memory module details are not shown. `kdos-resctl dmi` reads them from the SMBIOS table,
-  but no page asks it.
 - The Energy page asks the daemon once, the first time the page is drawn; a later visit shows the
   same report until `g` is pressed.
 - `Esc` clears a Processes filter only while it is being typed. With a filter kept by `Enter`,
   `Esc` leaves the program with the filter still set; press `/` and then `Esc` to clear it.
 - While a Processes filter is being typed, `q`, `[`, `]`, `Tab` and `F10` keep their global
   meaning, so a filter cannot contain those characters and typing `q` leaves the program.
-- `temperature = f` does not reach the Sensors page's readings, critical points or headline, which
-  are always in degrees Celsius.
-- Drives and Network share one sampling clock. When one of them comes back into view and the other
-  was shown more recently, its first rate divides everything counted while it was away by the time
-  since the other page's last sample, and draws as a spike.
 
 ## See also
 

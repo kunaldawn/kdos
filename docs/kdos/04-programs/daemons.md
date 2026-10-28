@@ -378,12 +378,11 @@ logs straight into the desktop. `autologin off` turns it off.
   login program treats an empty value, a commented line and a missing key alike: tty1 asks for a
   password.
 - Only key lines change. A line counts as the key when it starts with `autologin`, or with
-  one `#` then `autologin`, and contains `=`. Prose that merely mentions the key is left alone. The
-  verb rewrites key lines and never adds one, so on a `login.conf` with no such line it changes no
-  setting and still answers `ok`. The file is rebuilt line by line, and the rebuild drops its blank
-  lines.
-- A file too large to rewrite safely is refused (`err login.conf is too large`) rather than
-  truncated: half a configuration file is a machine whose login settings are whatever survived.
+  one `#` then `autologin`, and contains `=`. Prose that merely mentions the key is left alone.
+  Every other line, blank and long ones included, is written back byte for byte.
+- On a `login.conf` with no key line, `autologin <user>` appends `autologin = <user>`, so the
+  account the answer names is the one the next boot logs in. `autologin off` changes nothing there
+  and answers `ok`: a missing key already asks for a password.
 
 The file is written to `login.conf.new`, flushed, and renamed over the original.
 
@@ -402,7 +401,6 @@ carrying its own copy.
 | `ipp` | TCP 631 | Sharing a printer with CUPS |
 | `smb` | TCP 445 | Sharing files over SMB |
 | `kiwix` | TCP 8080 | `kiwix-serve` |
-| `mdns` | UDP 5353 | mDNS beyond the default rule. The shipped `/etc/nftables.conf` already accepts UDP 5353 for `avahi`, so on the shipped ruleset turning this on or off changes nothing |
 | `mqtt` | TCP 1883, 8883 | An MQTT broker for LAN devices (`73_mosquitto`) |
 | `xmpp` | TCP 5222 | XMPP clients (`74_prosody`) |
 | `nfs` | TCP 2049 | Sharing files over NFSv4 (`72_nfsd`) |
@@ -430,16 +428,18 @@ How a change is applied:
    the `inet filter` table. It never merges, because merging means parsing nftables syntax, and a
    parser that got it wrong would leave a port open that the surface showed as closed. Anything you
    write by hand belongs in another file under `/etc/nftables.d`, which the daemon never reads or
-   touches. The new file is renamed into place before anything checks it.
-3. It runs `nft --check -f /etc/nftables.conf`. If the ruleset would not load, it answers
-   `err the ruleset would not load; nothing changed` and the kernel keeps the previous rules, but
-   the rewritten file stays on disk: `firewall list` then reports the requested state, and the next
-   boot loads that file. Turning the service back to its previous state rewrites the file as it
-   was.
+   touches. The new file is renamed into place before anything checks it, because the check reads
+   it through `/etc/nftables.conf`'s include. The daemon reads the current file first so that it
+   can put it back; a file that exists but cannot be read refuses the toggle with
+   `err cannot read the current rules`.
+3. It runs `nft --check -f /etc/nftables.conf`. If the ruleset would not load, the previous
+   `50-kdos-services.nft` is put back, or removed if there was none, and the answer is
+   `err the ruleset would not load; nothing changed`. The kernel keeps the previous rules, and
+   `firewall list` and the next boot see the previous state too.
 4. It runs `nft -f /etc/nftables.conf`. That file deletes and rebuilds only its own `inet filter`
    table, so the NAT that netavark (the container network backend) sets up for rootful containers
-   and NetworkManager's for a hotspot survive a toggle. If the load itself fails, it answers
-   `err the ruleset did not apply`.
+   and NetworkManager's for a hotspot survive a toggle. If the load itself fails, the previous file
+   is put back the same way and the answer is `err the ruleset did not apply`.
 
 A successful toggle answers `ok <service> on|off`. An unknown name answers
 `err no service called that`; a state other than `on` or `off` answers `err a service is on or off`.
@@ -807,7 +807,7 @@ if every one of these holds:
 |---|---|
 | Its disk is removable, or is on USB | An internal disk is the administrator's. An external drive in a USB enclosure reports itself as non-removable, so the bus is checked too |
 | It carries a filesystem the daemon recognises | See the list below |
-| It is not named in `/etc/fstab`, by device path or by `LABEL=` | An entry there is a decision somebody already made |
+| It is not named in `/etc/fstab`: an entry's source field is exactly its device path or exactly `LABEL=<its label>`, so `/dev/sdb10` does not claim `/dev/sdb1` and `LABEL=foobar` does not claim `LABEL=foo` | An entry there is a decision somebody already made |
 | It is not on the disk this system runs from | Offering to unmount or eject the live medium, or the persistence store, is offering to end the session |
 
 A device that is already mounted is listed, with its mountpoint in the last column. The disk this
@@ -868,9 +868,10 @@ request that needs it.
 | `format = yes` | `format` refused | The `format` verb is allowed |
 | `write = yes` | `write` refused | The `write` verb is allowed |
 
-The daemon searches the whole file for the text `exec = yes` or `exec=yes` (and likewise for
-`format` and `write`) anywhere, comments included. A commented-out `# exec = yes` therefore still
-turns the setting on. To turn a setting off, delete the text rather than commenting it out.
+The file holds one `key = value` per line; blanks around the key, the `=` and the value are
+ignored. A line whose first non-blank character is `#` is a comment, so `# exec = yes` leaves the
+setting off. The key must be exactly `exec`, `format` or `write` and the value exactly `yes`, and
+the last line for a key wins: `format = no` after `format = yes` turns formatting off.
 
 ### Encrypted volumes
 
@@ -1015,7 +1016,7 @@ verb passes, it refuses:
 |---|---|
 | No descriptor attached | `err no image: the file travels as a descriptor, not a name` |
 | Any row on the same disk mounted, or an unlocked mapping on it | `err unmount <kname> first`, `err close <kname> first` |
-| Any partition of the disk, or the disk itself, that `/etc/fstab` names or the running system is mounted from — partitions `list` leaves out, which the write would replace all the same | `err <name> is in /etc/fstab or holds the running system` |
+| Any partition of the disk, or the disk itself, that `/etc/fstab` names (an entry's source field exactly its device path or exactly `LABEL=<its label>`) or the running system is mounted from — partitions `list` leaves out, which the write would replace all the same | `err <name> is in /etc/fstab or holds the running system` |
 | A second frame that is not the disk's name (`sdb` for a row on `sdb1`) | `err type <disk> to confirm` |
 | A descriptor that is not a regular file with something in it | `err the image is not a file with something in it` |
 | An image larger than the disk | `err the image is <n>G and <disk> is <m>G` |
@@ -1136,7 +1137,7 @@ combined into a box is in [Packs and boxes](../03-architecture/packs-and-boxes.m
 | `mount <id>`, `unmount <id>` | Mount or release a pack. A pack still used by a box is not unmounted |
 | `compose <box> <id>…` | Build a box's overlay stack from 1 to 32 packs. Ids past the 32nd are ignored rather than refused |
 | `decompose <box>` | Tear it down |
-| `install <file>` | Verify a pack in the staging directory and move it into the store |
+| `install <file> [<index>]` | Copy a pack out of the staging directory, verify the copy and move it into the store. `<index>` is a second staged file name, a signed index with its signature staged as `<index>.sig`; the daemon reads no index a request does not name |
 | `remove <id>` | Take a pack out of the store |
 | `rollback <id>` | Return to a retained earlier version |
 | `graft <id>`, `ungraft <id>` | Place a data pack's contents where its consumer looks for them, or remove them (a [graft](../06-reference/glossary.md#graft)) |
@@ -1176,7 +1177,7 @@ not only in fixture mode. The init script sets none of them:
 |---|---|
 | `KDOS_PACK_STORE`, `KDOS_PACK_MEDIUM`, `KDOS_PACK_MANIFEST` | Replace the store, the boot-medium pack directory and the graft record |
 | `KDOS_PACK_HOME`, `KDOS_PACK_SHARE` | Replace the caller's home directory and `/usr/share` as graft and box-upper destinations |
-| `KDOS_PACK_RETAIN` | Overrides `retain` in `packd.conf` (below) |
+| `KDOS_PACK_RETAIN` | Overrides `retain` in `packd.conf` (below); a negative value counts as `0`, as it does in the file |
 | `KDOS_REQUIRE_SIG` | Refuse every unsigned pack at install (`<id> is unsigned and KDOS_REQUIRE_SIG is set`), for a machine that installs only what it can attribute |
 
 All of them are also listed in
@@ -1191,9 +1192,15 @@ count, so a program writing a download into the store does not have to work eith
 a second definition of where an unprivileged write is allowed is the kind of thing that drifts.
 
 Verification happens in the daemon, where the mount happens, because a client that verified and
-then asked a daemon to mount would have verified nothing:
+then asked a daemon to mount would have verified nothing. The daemon first copies the staged pack,
+and the staged index the request names and its `<index>.sig` when there is one, into private root-owned
+files in the store (`.install.part`, `.install-index.part`, mode 0644), and everything after reads
+the copies. The staged file belongs to whoever put it in a directory every user may write, so a
+check on it would say nothing about the bytes a later read found. A staged symlink or anything
+other than a regular file is refused with `err cannot read <name> from the staging directory`.
+An install therefore needs free space in the store for a second copy of the pack while it runs.
 
-1. If the staging directory holds a `PACKAGES` index whose signature is good and which lists this
+1. If the staging directory held a `PACKAGES` index whose signature is good and which lists this
    pack, the pack's SHA-256 must match the index entry; a mismatch is refused
    (`<id> does not match the signed index`).
 2. Otherwise the pack's own signature block is checked against `/etc/kdos/keys/packs`. A good
@@ -1201,6 +1208,9 @@ then asked a daemon to mount would have verified nothing:
    hold is refused.
 3. A pack with no signature at all is accepted and logged as unsigned, unless `KDOS_REQUIRE_SIG`
    is set.
+
+A pack that passes has its copy renamed to `<id>.kpack`, and only then is the staged file deleted;
+a refused install deletes the copies and leaves the staged file where it was.
 
 A pack in the store was verified when it was written and only root can write the store, so it is
 not re-hashed at each mount. A pack on the boot medium was never installed, so it is verified at its

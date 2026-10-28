@@ -104,8 +104,8 @@ the services are stopped and before the filesystems are unmounted:
 
    `stop` runs `swapoff` on the device, which has to bring every page held in it back into RAM
    before the device can be reset; on a machine that is short of memory, reboot instead. If that
-   `swapoff` fails, the restart keeps the old device and prints `zram: /dev/zram0 is already swap`
-   (see [Troubleshooting](#troubleshooting)).
+   `swapoff` fails, the restart keeps the old device, prints `[FAIL] zram: swapoff /dev/zram0 — it
+   is still swap` and then `zram: /dev/zram0 is already swap` (see [Troubleshooting](#troubleshooting)).
 
 3. Check the result with `zramctl`. An algorithm the kernel does not carry, or a `size` outside
    1–90, is reported in the script's output and replaced (see
@@ -252,10 +252,12 @@ On btrfs, `swapon failed: Invalid argument` means the file is copy-on-write or c
 is what `btrfs filesystem mkswapfile` avoids. Remove the file and make it again as
 [above](#adding-a-swap-file-on-an-installed-system).
 
-**`service restart zram` hangs, or prints `zram: /dev/zram0 is already swap`.** `swapoff` could not
-bring the pages held in zram back into RAM. `stop` discards its error, so the device keeps its old
-size and algorithm, and zswap and swap read-ahead are left switched back on as `stop` sets them.
-Close some programs and run the restart again, or reboot.
+**`service restart zram` hangs, or prints `[FAIL] zram: swapoff /dev/zram0 — it is still swap`.**
+`swapoff` could not bring the pages held in zram back into RAM. `stop` exits 1 at that point and
+touches nothing else: the device keeps its old size and algorithm, zswap stays off and
+`vm.page-cluster` stays 0. `restart` runs `start` anyway, which finds the device still in use and
+prints `zram: /dev/zram0 is already swap` after the failure. Close some programs and run the
+restart again, or reboot.
 
 ## Known gaps
 

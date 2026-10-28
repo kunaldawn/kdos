@@ -219,9 +219,17 @@ and a `policy` on that line replaces the chain's own; leave both out of a drop-i
 
 **`kdos-power firewall <name> on` prints `err the ruleset would not load; nothing changed`.**
 A hand-written drop-in is broken, so the whole ruleset fails its check. The kernel keeps the rules
-it had, but the rewritten `50-kdos-services.nft` stays on disk, so `firewall list` shows the
-requested state and the next boot loads it. Run `sudo nft -c -f /etc/nftables.conf`, fix the file it
-names, and repeat the toggle.
+it had, and the daemon puts the previous `50-kdos-services.nft` back, so `firewall list` and the
+next boot keep the previous state. Run `sudo nft -c -f /etc/nftables.conf`, fix the file it names,
+and repeat the toggle. `err the ruleset did not apply` is the same refusal from the kernel after the
+check passed, and leaves the same previous state.
+
+**`kdos-power firewall <name> on` prints `err cannot read the current rules`.**
+`50-kdos-services.nft` exists but the daemon cannot read it, so it could not put the file back if
+the new ruleset were refused, and it changes nothing. Check the file with
+`ls -l /etc/nftables.d/50-kdos-services.nft`; it belongs to root and is readable by its owner.
+If it is damaged, delete it and repeat the toggle: the daemon writes the file whole, and with no
+file every service starts from off, so turn the others back on afterwards.
 
 **`kdos-power firewall` prints `err no service called that`.**
 The name is not in the daemon's table. Run `kdos-power firewall list` for the names, or write a

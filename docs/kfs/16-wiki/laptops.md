@@ -47,7 +47,7 @@ the lid powers the screens back on and never unlocks. See
 The shipped `~/.config/kdos-comp/rc.xml` (`fs/etc/skel/.config/kdos-comp/rc.xml`) binds them to
 `kdos-osd`, which writes the panel's brightness and draws the gauge:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=475-476 pin=79ac4a394ad6 -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=480-481 pin=79ac4a394ad6 -->
 
 The brightness file under `/sys/class/backlight` is root's until udev hands it to `video` at boot,
 with `fs/etc/udev/rules.d/70-kdos-backlight.rules`. The same file covers the keyboard backlight:
@@ -60,7 +60,7 @@ The kernel reports the power button and the sleep key as keys, and only the comp
 them; what each press does is under
 [The power button and the sleep key](#the-power-button-and-the-sleep-key):
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=477-489 pin=6e4bd601eb1e -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=482-494 pin=6e4bd601eb1e -->
 
 ### The battery
 
@@ -78,7 +78,7 @@ graphical session.
 The compositor uses libinput's defaults, with tap-to-click on. The shipped [`rc.xml`]{.idx} carries the
 settings as a commented template:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=492-513 pin=8fd2d5fcc198 -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=497-518 pin=8fd2d5fcc198 -->
 
 ### Charge thresholds
 

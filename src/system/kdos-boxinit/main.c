@@ -68,7 +68,10 @@ static const char *env_or(const char *name, const char *dflt)
 
 /*
  * Put a record into a colon-separated database, REPLACING one that is already
- * there for the same name or id rather than leaving it alone.
+ * there for the same name or id rather than leaving it alone. A NULL id
+ * matches by name alone: /etc/shadow's third field is the last-change date,
+ * not an id, and comparing the uid against it would replace another user's
+ * record whose date happens to read the same.
  *
  * A pack may carry its own entry for this user, and a WRONG one is worse than
  * none: the base pack ships `kdos:*:1000:1000:KDOS Test:/:/bin/sh`, whose home
@@ -122,7 +125,7 @@ static int ensure_record(const char *path, const char *name, const char *id,
 			*colon = 0;
 			if (!strcmp(probe, name)) {
 				match = 1;
-			} else {
+			} else if (id) {
 				/* name:x:<id>: — the third field */
 				second = strchr(colon + 1, ':');
 				if (second) {
@@ -300,7 +303,7 @@ int main(int argc, char **argv)
 	 * surface with no purpose.
 	 */
 	snprintf(line, sizeof(line), "%s:!:20000:0:99999:7:::\n", user);
-	ensure_record("/etc/shadow", user, uid, line);
+	ensure_record("/etc/shadow", user, NULL, line);
 
 	/* The home is bind-mounted from the host and already exists; making it
 	 * covers the private-home case, where the profile pointed somewhere

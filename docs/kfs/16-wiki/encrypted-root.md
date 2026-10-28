@@ -69,7 +69,7 @@ named, by the chosen slot's `crypt_` entry or by `cryptdevice=`, from
 `script/phases/70_image/090_initramfs.sh` (the `\$` is the escape of the heredoc the init is
 written from):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=866-881 pin=093a88f36da4 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=865-880 pin=093a88f36da4 -->
 
 `unlock_root`, the function it calls, is walked through on
 [The initramfs init](../15-image/091-initramfs-init.md#the-unlock-function).

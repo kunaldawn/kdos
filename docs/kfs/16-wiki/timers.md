@@ -59,9 +59,10 @@ The one a port adds, from the [fwupd](#port-fwupd) port's `build.sh`:
 ### /etc/init.d/18_timers.sh
 
 How a line becomes a supervised job. A command that is not installed is skipped with a `[SKIP]`
-line; everything else is handed to `supervise` as the service `kdos-timer-NAME`:
+line; everything else is handed to `supervise` as the service `kdos-timer-NAME`. A status
+query fails when any one job is down, not only the last one read:
 
-<!-- kfs:include fs/etc/init.d/18_timers.sh lines=85-101 pin=18d555adae06 -->
+<!-- kfs:include fs/etc/init.d/18_timers.sh lines=85-105 pin=643feb896825 -->
 
 ### ~/.config/kdos/timers.d/
 
@@ -93,7 +94,8 @@ The two jobs in the skeleton. The backup job is commented out:
    Each job prints `[ OK ] kdos-timer-NAME  (pid N)` or `[DOWN] kdos-timer-NAME`. For the five
    seconds after a run whose command failed, before `snooze` starts again, it prints
    `[FAIL] kdos-timer-NAME  (exited with code N; restarting)`; a run that succeeded leaves it
-   `[ OK ]`.
+   `[ OK ]`. The command exits 0 only when every job is `[ OK ]`; one `[DOWN]` or `[FAIL]` job
+   anywhere in the list makes it exit 1, so a script can test it with `if service status timers`.
 
 2. Ask about one system job:
 
@@ -218,7 +220,8 @@ Each complaint names the file and the line:
 
 `bad timer name` means the name holds a character other than letters, digits, `_` and `-`; a line
 ending `skipped` has no `--` or nothing after it; the `[SKIP]` line means the command's first word
-is not installed, and that job is then listed `[DOWN]` by `service status timers`.
+is not installed, and that job is then listed `[DOWN]` by `service status timers`, which
+therefore exits 1 until the line is corrected or removed.
 Correct the line and run `sudo service restart timers`. The file holds the boot's output only: a
 restart prints the same lines to the terminal and leaves the file as the boot wrote it.
 

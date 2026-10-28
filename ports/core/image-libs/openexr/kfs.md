@@ -22,7 +22,9 @@ and builds again, when the programs already exist.
 
 `exrcheck` is built but not installed: upstream installs it only with
 `OPENEXR_INSTALL_DEVELOPER_TOOLS`, which is off by default and not set here. Its manual page is
-generated from the binary in the build tree and installed with the others.
+still generated from the binary in the build tree and installed with the others, so `build.sh`
+removes `exrcheck.1` after the install: kept, it would document a program the package does not
+contain.
 
 OpenJPH, the High-Throughput JPEG 2000 codec OpenEXR uses for its HTJ2K compression, is not a port.
 When it is not found, OpenEXR compiles the copy it carries in `external/OpenJPH` into

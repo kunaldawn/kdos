@@ -369,16 +369,31 @@ static int cmd_verify(int argc, char **argv)
 	}
 }
 
+/* Exits on a key that cannot sign. ksig_read_secret's -2 is a key readable by
+ * other users, which is refused rather than used, and says so — reported as an
+ * unreadable key, the owner would look for a missing file instead of fixing
+ * its mode. */
+static void read_signing_key(const char *path, uint8_t seed[KSIG_SEED_LEN],
+			     uint8_t pub[KSIG_PUB_LEN])
+{
+	int kr = ksig_read_secret(path, seed, pub);
+
+	if (kr == -2)
+		kb_die("%s is readable by other users — refusing to sign "
+		       "with it", path);
+	if (kr != 0)
+		kb_die("cannot read the signing key %s", path);
+}
+
 static int cmd_sign(int argc, char **argv)
 {
 	uint8_t seed[KSIG_SEED_LEN], pub[KSIG_PUB_LEN];
 
 	if (argc < 2) {
-		fprintf(stderr, "usage: kdos-pack sign <pack> <key.sec>\n");
+		fprintf(stderr, "usage: kdos-pack sign <pack> <name.key>\n");
 		return 2;
 	}
-	if (ksig_read_secret(argv[1], seed, pub) != 0)
-		kb_die("cannot read the signing key %s", argv[1]);
+	read_signing_key(argv[1], seed, pub);
 	if (kpk_sign(argv[0], seed, pub) != 0)
 		kb_die("cannot sign %s", argv[0]);
 	printf("%s signed\n", argv[0]);
@@ -443,7 +458,7 @@ static int cmd_index(int argc, char **argv)
 			dir = argv[i];
 	}
 	if (!dir) {
-		fprintf(stderr, "usage: kdos-pack index <dir> [--sign key.sec]\n");
+		fprintf(stderr, "usage: kdos-pack index <dir> [--sign name.key]\n");
 		return 2;
 	}
 
@@ -568,8 +583,7 @@ static int cmd_index(int argc, char **argv)
 		size_t len = 0;
 		char *text;
 
-		if (ksig_read_secret(key, seed, pub) != 0)
-			kb_die("cannot read the signing key %s", key);
+		read_signing_key(key, seed, pub);
 		text = kb_read_all(out, &len);
 		if (!text)
 			kb_die("cannot re-read %s", out);
@@ -764,12 +778,14 @@ static int usage(void)
 		"usage: kdos-pack build <dir> <meta> <out.kpack> [--icon FILE]\n"
 		"       kdos-pack assemble <image> <meta> <out.kpack> [--icon FILE]\n"
 		"       kdos-pack info <pack>\n"
-	      "       kdos-pack imagehash <pack>\n"
+		"       kdos-pack imagehash <pack>\n"
+		"       kdos-pack uuid <id>\n"
+		"       kdos-pack image <pack> <out.erofs>\n"
 		"       kdos-pack extract-meta <pack> [--icon]\n"
 		"       kdos-pack verify <pack> [--keys DIR]\n"
-		"       kdos-pack sign <pack> <key.sec>\n"
-"       kdos-pack restamp <pack>...\n"
-		"       kdos-pack index <dir> [--sign key.sec]\n"
+		"       kdos-pack sign <pack> <name.key>\n"
+		"       kdos-pack restamp <pack>...\n"
+		"       kdos-pack index <dir> [--sign name.key]\n"
 		"       kdos-pack delta <old> <new> [out.kdelta]\n"
 		"       kdos-pack apply <old> <delta> <out.kpack>\n"
 		"       kdos-pack keygen <name>\n");

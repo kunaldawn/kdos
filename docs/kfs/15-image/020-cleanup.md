@@ -89,10 +89,12 @@ HTML manual. [Part III](../03-bootstrap/intro.md#what-the-bootstrap-leaves-behin
 tools with no package, and a port installed over them later adopts only the paths it ships, so a
 bootstrap copy of a file the policy prunes is adopted by nothing. The bootstrap steps install none
 of these themselves; this pass removes any the tree carries, whatever wrote it. It is a second
-embedded Python program, which reads the package file lists the same way, adds the paths of `fs/`
-from `/var/lib/kdos/fs-manifest`, and then decides what to remove:
+embedded Python program, and like the first it runs only when `python3` is installed; without one
+the step prints that it skipped the pass and leaves what is there for
+[087_gates.sh](087-gates.md) to report. The program reads the package file lists the same way,
+adds the paths of `fs/` from `/var/lib/kdos/fs-manifest`, and then decides what to remove:
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=244-286 pin=0541469b754d -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=247-289 pin=0541469b754d -->
 
 A file is removed only when no package owns it and `fs/` does not provide it, and only when the
 policy would have pruned it from a package: a catalogue under `usr/share/locale/<lang>/LC_MESSAGES`
@@ -105,7 +107,7 @@ The pass walks `usr/share/locale`, `usr/share/man`, `usr/share/doc` and `usr/sha
 
 ## podman's stores
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=298-312 pin=9abf4339ed4b -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=302-316 pin=9abf4339ed4b -->
 
 A shipped root carries no container store. An application's box is built on the machine that asks
 for it, in that user's home, so images in `/home/kdos/.local/share/containers` or in the root
@@ -115,7 +117,7 @@ installed system. No package owns these paths, so they are removed with `rm` and
 
 ## root's home
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=322-329 pin=5d44f628e809 -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=326-333 pin=5d44f628e809 -->
 
 `/root` is replaced with exactly what `fs/root` holds, with no file writable by group or others
 and the directory itself at mode 0700. The chroot's `HOME` is a scratch directory, but a tool that

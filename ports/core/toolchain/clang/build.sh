@@ -11,7 +11,6 @@
 
 cmake -S clang -B build -G Ninja \
     -D CMAKE_INSTALL_PREFIX=/usr \
-    -D CMAKE_INSTALL_LIBEXECDIR=/usr/lib/clang \
     -D CMAKE_BUILD_TYPE=Release \
     -D CMAKE_C_FLAGS_RELEASE="$CFLAGS -DNDEBUG" \
     -D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -DNDEBUG" \

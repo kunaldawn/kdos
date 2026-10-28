@@ -94,7 +94,7 @@ Configure and build in a separate directory:
 
 ## The limits.h fix-up
 
-<!-- kfs:include script/phases/00_cross/01_gcc.sh lines=63-67 pin=748b4e376267 -->
+<!-- kfs:include script/phases/00_cross/01_gcc.sh lines=63-67 pin=eab764b57545 -->
 
 GCC installs a `limits.h` of its own in its private include directory, and normally that header
 ends by including the system's `limits.h` with `#include_next`. GCC decides which version to
@@ -110,8 +110,8 @@ musl's `limits.h` from step 020 onwards.
 
 The link then gives the compiler the name `x86_64-kdos-linux-musl-cc`. A configure script given
 `--host` looks for the target's `gcc` first and its `cc` after it; with the link, either name finds
-this compiler. `ln -sv` has no `-f`, so the step stops here when it is run again over a
-`build/cross` that already has the link.
+this compiler. `-f` replaces a link already in `build/cross`, so the step can be run again over
+it.
 
 ## Contents of cross GCC
 

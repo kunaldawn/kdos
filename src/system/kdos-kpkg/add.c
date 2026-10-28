@@ -701,6 +701,21 @@ int add_main(int argc, char **argv)
 
 	kp_triggers_note(&trig, m);
 	kb_mkdir_p(db);
+
+	/* The recipe hash goes BEFORE the entry is replaced: it names the
+	 * recipe the previous bytes were built from, and nothing here knows
+	 * what these were built from. The caller that does (kpkg install,
+	 * --commit, binhost) records it again once this returns; left in
+	 * place, the solver would take these bytes for that recipe's build.
+	 * Absent reads as unknown, so an interruption past here is safe. */
+	{
+		char *rdir = kb_path_join(db, ".recipe");
+		char *rfile = kb_path_join(rdir, name);
+		unlink(rfile);
+		free(rfile);
+		free(rdir);
+	}
+
 	KbBuf entry = {0};
 	kb_buf_printf(&entry, "%s %s\n", ver, rel);
 	kb_buf_add(&entry, m, mn);

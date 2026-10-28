@@ -26,10 +26,11 @@
  * screensaver that decides for itself when to go away is a screensaver that can
  * decide wrong — and one that took the keyboard would be a lock screen with no
  * password. This surface asks for NO keyboard interactivity and claims NO
- * pointer region at all (kdisp_input_cells(NULL, 0)), so every keystroke and every
- * click goes to whatever is underneath exactly as if this were not here.
- * Nothing in the display takes the surface away on activity: it runs until it
- * is killed or the compositor closes its surface.
+ * pointer region at all (kdisp_input_cells(NULL, 0)). The compositor closes it
+ * on the first key, button or touch and delivers that event to nobody
+ * (kdos_saver_dismiss() in kdos-comp), so the press that wakes the screen
+ * never lands on a window it was hiding. The close arrives as the layer
+ * surface's `closed`, and the loop below ends on it.
  *
  * ONE PROCESS PER OUTPUT, named with `--output`, the same convention the panel
  * and the desktop already follow: libktui has a single cell buffer, so a second
@@ -1076,7 +1077,9 @@ int saver_main(int argc, char **argv)
 		/*
 		 * No keyboard and no dismiss-on-unfocus. This surface must not
 		 * be able to take a keystroke: it is not a lock screen, and one
-		 * that swallowed input would be a lock screen with no password.
+		 * that held the keyboard would be a lock screen with no
+		 * password. The compositor closes it on input instead; the
+		 * namespace "kdos-saver" is how it finds this surface.
 		 */
 	};
 	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {

@@ -251,6 +251,27 @@ static int cmd_box_create(int argc, char **argv)
 	 */
 	kb_proc_verbose = 1;
 
+	/*
+	 * `box:<src>` RESOLVES TO <src>'S OWN BASE, IN PLACE. Clone another
+	 * box's LOWER stack, not its upper: a clone starts from the same
+	 * software with an empty workspace, which is what somebody asking for
+	 * one means. `kdos-box clone` copies the upper as well and is the other
+	 * verb. The resolved base is saved and the lanes below take it from
+	 * here; re-reading the command line would put `box:` back and resolve
+	 * it again for ever.
+	 */
+	if (!strncmp(p.base, "box:", 4)) {
+		Profile src;
+		if (!name_ok(p.base + 4))
+			kb_die("box:<name> — and a name is [A-Za-z0-9._-]");
+		profile_load(&src, p.base + 4);
+		if (strncmp(src.base, "pack:", 5) && strncmp(src.base, "image:", 6))
+			kb_die("%s has no pack or image base to clone",
+			       p.base + 4);
+		kb_strlcpy(p.base, src.base, sizeof(p.base));
+		profile_save(&p);
+	}
+
 	if (!strncmp(p.base, "pack:", 5)) {
 		rc = pack_compose(box, p.base + 5, merged, sizeof(merged));
 		if (rc != 0) {
@@ -291,21 +312,6 @@ static int cmd_box_create(int argc, char **argv)
 			kb_die("could not fetch %s", p.base + 6);
 		kb_strlcpy(p.image, p.base + 6, sizeof(p.image));
 		rc = box_create(&p);
-	} else if (!strncmp(p.base, "box:", 4)) {
-		/* Clone another box's LOWER stack, not its upper: a clone
-		 * starts from the same software with an empty workspace, which
-		 * is what somebody asking for one means. `kdos-box clone`
-		 * copies the upper as well and is the other verb. */
-		Profile src;
-		if (!name_ok(p.base + 4))
-			kb_die("box:<name> — and a name is [A-Za-z0-9._-]");
-		profile_load(&src, p.base + 4);
-		if (!src.base[0])
-			kb_die("%s has no pack or image base to clone",
-			       p.base + 4);
-		kb_strlcpy(p.base, src.base, sizeof(p.base));
-		profile_save(&p);
-		return cmd_box_create(argc, argv);
 	} else {
 		kb_die("%s: a box is made of something — base=pack:<id>, "
 		       "base=image:<ref> or base=box:<name>", box);
@@ -440,46 +446,188 @@ static int cmd_box_apps(const char *box)
  *
  * The shim gets `@<box>` for the same reason, and is a symlink to
  * kdos-appbox: the basename dispatch hands `gimp@arch` to run_as_shim, which
- * looks the whole name up in the alien-apps table. Export writes no row
- * there and nothing splits the name at `@`, so the shim answers
- * `unknown alien app` while the desktop entry, which runs
- * `kdos-box run <box> <app>`, launches.
+ * finds no alien-apps row of that name (export writes none) and splits it at
+ * the last `@` into a command and a box, running what
+ * `kdos-box run <box> <command>` runs. A shim name is therefore a COMMAND:
+ * for an exported desktop id it is the program the entry's Exec runs.
+ *
+ * <app> IS A DESKTOP ID OR A COMMAND. `kdos-box apps` lists the box's desktop
+ * ids, and an id is not a program — `org.gnome.TextEditor` runs
+ * `gnome-text-editor` — so an id that names an entry in the box's
+ * /usr/share/applications has its Exec, Name, Icon and StartupWMClass read
+ * from that entry. A word that names no entry is taken as the command itself.
  */
+struct box_entry {
+	char exec[512];
+	char name[128];
+	char icon[128];
+	char wmclass[128];
+};
+
+static int box_read_entry(const char *box, const char *app,
+			  struct box_entry *e, int start)
+{
+	KbArgv a = {0};
+	char *buf, *line, *save;
+	char state[64];
+	int in_main = 0;
+
+	memset(e, 0, sizeof(*e));
+	if (strchr(app, '/') || app[0] == '.')
+		return 0;
+	if (start) {
+		if (pack_box_start(box) != 0)
+			return 0;
+	} else {
+		box_state(box, state, sizeof(state));
+		if (strcmp(state, "running"))
+			return 0;
+	}
+	buf = kb_calloc(1, 1 << 16);
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "exec");
+	kb_argv_add(&a, box);
+	kb_argv_add(&a, "cat");
+	kb_argv_addf(&a, "/usr/share/applications/%s.desktop", app);
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, buf, 1 << 16) != 0) {
+		free(buf);
+		return 0;
+	}
+	for (line = strtok_r(buf, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		if (*line == '[') {
+			in_main = !strncmp(line, "[Desktop Entry]", 15);
+			continue;
+		}
+		if (!in_main)
+			continue;
+		if (!strncmp(line, "Exec=", 5) && !e->exec[0])
+			kb_strlcpy(e->exec, line + 5, sizeof(e->exec));
+		else if (!strncmp(line, "Name=", 5) && !e->name[0])
+			kb_strlcpy(e->name, line + 5, sizeof(e->name));
+		else if (!strncmp(line, "Icon=", 5) && !e->icon[0])
+			kb_strlcpy(e->icon, line + 5, sizeof(e->icon));
+		else if (!strncmp(line, "StartupWMClass=", 15) && !e->wmclass[0])
+			kb_strlcpy(e->wmclass, line + 15, sizeof(e->wmclass));
+	}
+	free(buf);
+	return e->exec[0] != 0;
+}
+
 static int cmd_box_export(const char *box, const char *app, int undo)
 {
 	char *skel, *entry, *shim, *bin;
-	char id[256];
+	char id[512], key[256];
+	struct box_entry be;
+	int found;
 
 	if (!name_ok(box) || !app || !*app)
 		kb_die("usage: kdos-box export <box> <app>");
 
-	skel = kb_path_join(kb_home_dir(), ".local/share/applications");
+	/* An unexport reads the box's entry only from a box already up:
+	 * starting one to learn which shim to delete costs a box start, and
+	 * the exported entry below names the command as well. */
+	found = box_read_entry(box, app, &be, !undo);
+	kb_strlcpy(key, app, sizeof(key));
+	if (found) {
+		app_exec_key(be.exec, key, sizeof(key));
+		if (!key[0] || strchr(key, '/'))
+			kb_strlcpy(key, app, sizeof(key));
+	}
+
+	/* The applications directory the Start menu and genlaunchers use:
+	 * $XDG_DATA_HOME's when it is set, ~/.local/share's otherwise. */
+	{
+		const char *xdg = getenv("XDG_DATA_HOME");
+		skel = xdg && *xdg ? kb_path_join(xdg, "applications")
+				   : kb_path_join(kb_home_dir(),
+						  ".local/share/applications");
+	}
 	kb_mkdir_p(skel);
 	snprintf(id, sizeof(id), "%s.%s.desktop", app, box);
 	entry = kb_path_join(skel, id);
+	/* A stopped box's unexport takes the command from the entry export
+	 * wrote — `kdos-box run <box> <command> ...` — so the shim named after
+	 * that command goes too rather than outliving its launcher. */
+	if (undo && !found) {
+		KxdgEntry ke;
+
+		if (kxdg_load(&ke, entry, "Desktop Entry") == 0) {
+			char st[1024];
+			const char *w[KB_MAX_ARGV];
+			int nw = kxdg_exec_split(kxdg_get(&ke, "Exec", ""),
+						 NULL, 0, st, sizeof(st), w,
+						 KB_MAX_ARGV);
+
+			/* Quoted back into one line, so the key comes out of
+			 * app_exec_key exactly as the export's did. */
+			if (nw >= 4 && !strcmp(w[0], "kdos-box") &&
+			    !strcmp(w[1], "run")) {
+				KbBuf cl = {0};
+
+				for (int i = 3; i < nw; i++) {
+					char q[512];
+					if (kxdg_exec_quote(w[i], q, sizeof(q)) == 0)
+						kb_buf_printf(&cl, "%s%s",
+							      cl.p ? " " : "", q);
+				}
+				app_exec_key(cl.p ? cl.p : "", key, sizeof(key));
+				kb_buf_free(&cl);
+				if (!key[0] || strchr(key, '/'))
+					kb_strlcpy(key, app, sizeof(key));
+			}
+			kxdg_free(&ke);
+		}
+	}
 	bin = kb_path_join(kb_home_dir(), ".local/bin");
 	kb_mkdir_p(bin);
-	snprintf(id, sizeof(id), "%s@%s", app, box);
+	snprintf(id, sizeof(id), "%s@%s", key, box);
 	shim = kb_path_join(bin, id);
 
 	if (undo) {
 		int n = 0;
 		n += unlink(entry) == 0;
 		n += unlink(shim) == 0;
+		if (strcmp(key, app)) {
+			char *alt;
+			snprintf(id, sizeof(id), "%s@%s", app, box);
+			alt = kb_path_join(bin, id);
+			n += unlink(alt) == 0;
+			free(alt);
+		}
 		printf("%s@%s: %d removed\n", app, box, n);
 	} else {
 		KbBuf d = {0};
 		KbBuf line = {0};
-		const char *words[4] = { "kdos-box", "run", box, app };
+		char store[1024];
+		const char *cmdv[KB_MAX_ARGV];
+		const char *words[KB_MAX_ARGV + 3];
+		int nw = 0, nc = 0;
+
+		if (found)
+			nc = kxdg_exec_split(be.exec, NULL, 0, store,
+					     sizeof(store), cmdv, KB_MAX_ARGV);
+		if (nc <= 0) {
+			memset(&be, 0, sizeof(be));
+			cmdv[0] = app;
+			nc = 1;
+		}
+		words[nw++] = "kdos-box";
+		words[nw++] = "run";
+		words[nw++] = box;
+		for (int i = 0; i < nc; i++)
+			words[nw++] = cmdv[i];
 
 		/*
 		 * Quoted word by word through the same helper genlaunchers
 		 * uses, so what is written here reads back through
-		 * kxdg_exec_split as the four arguments it was built from — a
-		 * box or an app name with a space in it is otherwise three
-		 * arguments the moment somebody clicks it.
+		 * kxdg_exec_split as the arguments it was built from — a box
+		 * or an app name with a space in it is otherwise three
+		 * arguments the moment somebody clicks it. The entry's own
+		 * field codes are dropped by the split and `%U` is appended.
 		 */
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < nw; i++) {
 			char q[512];
 			if (kxdg_exec_quote(words[i], q, sizeof(q)) != 0)
 				continue;
@@ -487,11 +635,13 @@ static int cmd_box_export(const char *box, const char *app, int undo)
 		}
 
 		kb_buf_printf(&d, "[Desktop Entry]\nType=Application\n");
-		kb_buf_printf(&d, "Name=%s (%s)\n", app, box);
+		kb_buf_printf(&d, "Name=%s (%s)\n", be.name[0] ? be.name : app,
+			      box);
 		kb_buf_printf(&d, "Exec=%s %%U\n", line.p ? line.p : "");
-		kb_buf_printf(&d, "Icon=%s\n", app);
+		kb_buf_printf(&d, "Icon=%s\n", be.icon[0] ? be.icon : app);
 		kb_buf_printf(&d, "Terminal=false\n");
-		kb_buf_printf(&d, "StartupWMClass=%s\n", app);
+		kb_buf_printf(&d, "StartupWMClass=%s\n",
+			      be.wmclass[0] ? be.wmclass : app);
 		kb_buf_printf(&d, "Categories=X-KDOS-Box;\n");
 		kb_write_all(entry, d.p, d.n);
 		kb_buf_free(&d);
@@ -500,8 +650,8 @@ static int cmd_box_export(const char *box, const char *app, int undo)
 		unlink(shim);
 		if (symlink("/usr/local/bin/kdos-appbox", shim) != 0)
 			kb_warn("%s: %s", shim, strerror(errno));
-		printf("%s exported as \"%s (%s)\" and as `%s@%s`\n", app, app,
-		       box, app, box);
+		printf("%s exported as \"%s (%s)\" and as `%s@%s`\n", app,
+		       be.name[0] ? be.name : app, box, key, box);
 		printf("  %s\n  %s\n", entry, shim);
 	}
 	free(entry);
@@ -849,8 +999,21 @@ static int cmd_box_remove(const char *box, int force)
 	/* The overlay goes with it; the PACKS do not, because another box may
 	 * be using the same runtime. kdos-packd reference-counts them. */
 	pack_decompose(box);
-	printf("%s removed — its profile and its writable layer are still in "
-	       "~/.local/share/kdos/boxes/%s\n", box, box);
+	/* What is KEPT, by where it actually is: the profile always, and the
+	 * directory only where it exists — a pack box's upper, snapshots and
+	 * private home live there, and a store box's writes went with its
+	 * container. */
+	{
+		char *pp = profile_path(box);
+		char *bd = box_dir(box);
+
+		printf("%s removed — its profile is kept in %s\n", box, pp);
+		if (kb_is_dir(bd))
+			printf("  and its writable layer, snapshots and home in "
+			       "%s\n", bd);
+		free(bd);
+		free(pp);
+	}
 	return 0;
 }
 
@@ -868,7 +1031,7 @@ static int cmd_box_remove(const char *box, int force)
 static int box_has_window(const char *box)
 {
 	KbArgv a = {0};
-	char *buf;
+	char *buf, *save;
 	int found;
 
 	buf = kb_calloc(1, 1 << 16);
@@ -880,7 +1043,15 @@ static int box_has_window(const char *box)
 		free(buf);
 		return -1;	/* no session to ask */
 	}
-	found = strstr(buf, box) != NULL;
+	/* One box per line, indented. Matched whole: a substring test would
+	 * read `app.xyz`'s window as one of `app.x`'s and never collect it. */
+	found = 0;
+	for (char *line = strtok_r(buf, "\n", &save); line && !found;
+	     line = strtok_r(NULL, "\n", &save)) {
+		while (*line == ' ' || *line == '\t')
+			line++;
+		found = !strcmp(line, box);
+	}
 	free(buf);
 	return found;
 }
@@ -936,19 +1107,21 @@ static int cmd_box_gc(int dry)
 			       line);
 			continue;
 		}
+		/* The clock is the container's start, not its last window:
+		 * podman keeps no record of when a box was last used. */
 		if (dry) {
-			printf("  %-16s idle past %ds — would stop\n", line,
-			       p.autostop_s);
+			printf("  %-16s up past %ds, no window — would stop\n",
+			       line, p.autostop_s);
 		} else {
-			printf("  %-16s idle past %ds — stopping\n", line,
-			       p.autostop_s);
+			printf("  %-16s up past %ds, no window — stopping\n",
+			       line, p.autostop_s);
 			cmd_box_stop(line);
 		}
 		stopped++;
 	}
 	free(buf);
 	if (!stopped)
-		printf("  nothing idle\n");
+		printf("  nothing to stop\n");
 	return 0;
 }
 
@@ -967,7 +1140,8 @@ static int box_usage(void)
 "       kdos-box import <file.kpack> [as <name>]\n"
 "       kdos-box clone  <src> <dst>\n"
 "       kdos-box snapshot <name> [tag]      also: snapshots, rollback\n"
-"       kdos-box start | stop | restart | remove <name>\n"
+"       kdos-box start | stop | restart <name>\n"
+"       kdos-box remove <name> [--force]   --force removes a running box\n"
 "       kdos-box profile <name> [key=value ...]\n"
 "       kdos-box gc [--dry-run]\n"
 "\nAn app box and a dev box differ in three profile keys, not in kind:\n"

@@ -1301,12 +1301,18 @@ class Book:
         page-unique ids, directives expanded, links mapped. Returns (title,
         body) where body excludes the title line."""
         lines = page.text.split("\n")
-        out, fen, seen = [], False, {}
+        out, fen, seen, para = [], False, {}, []
         page_dir = os.path.dirname(page.path)
+
+        def flush():
+            if para:
+                out.append(self.map_links(page, page_dir, "\n".join(para)))
+                del para[:]
         for i, line in enumerate(lines):
             if i == 0 and line.startswith("# "):
                 continue
             if FENCE_RE.match(line):
+                flush()
                 fen = not fen
                 out.append(line)
                 continue
@@ -1317,6 +1323,7 @@ class Book:
                 break
             m = DIRECTIVE.match(line)
             if m:
+                flush()
                 if m.group(1) == "include":
                     out.append(include(self.root, m.group(2),
                                        lambda s: self.warn("%s: %s" % (page.rel, s))))
@@ -1325,6 +1332,7 @@ class Book:
                 continue
             m = HEAD_RE.match(line)
             if m:
+                flush()
                 level = len(m.group(1))
                 if part_intro:
                     new = base_level + level
@@ -1345,10 +1353,18 @@ class Book:
                 out.append("%s %s {#%s%s}" % ("#" * new, self.map_links(page, page_dir, text),
                                               hid, (" " + cls) if cls else ""))
                 continue
-            out.append(self.map_links(page, page_dir, line))
+            if line.strip():
+                para.append(line)
+            else:
+                flush()
+                out.append(line)
+        flush()
         return "\n".join(out).strip() + "\n"
 
     def map_links(self, page, page_dir, line):
+        """Map the links in one paragraph. A paragraph, not a line: a link
+        whose text wraps onto the next line is matched only when both lines
+        are read together, as CommonMark reads them."""
         if "](" not in line:
             return line
         # A link that starts inside a code span is code and stays as written;
@@ -1451,14 +1467,19 @@ class Gen:
             rel = p.rel + "/kfs.md"
             id = p.id
         for k, text in p.sidecar.items():
-            out, fen = [], False
-            for line in text.split("\n"):
+            out, fen, para = [], False, []
+            for line in text.split("\n") + [""]:
+                prose = not fen and not FENCE_RE.match(line) and line.strip()
+                if prose:
+                    para.append(line)
+                    continue
+                if para:
+                    out.append(self.book.map_links(Note, p.dir, "\n".join(para)))
+                    para = []
                 if FENCE_RE.match(line):
                     fen = not fen
-                elif not fen:
-                    line = self.book.map_links(Note, p.dir, line)
                 out.append(line)
-            p.sidecar[k] = "\n".join(out)
+            p.sidecar[k] = "\n".join(out[:-1])
 
     def facts(self, p):
         d = p.decl
@@ -2123,10 +2144,23 @@ def edition(root, data):
         epoch = int(when)
     except ValueError:
         epoch = 0
+    # kind: "release edition <tag>" when the commit rendered carries a v* tag,
+    # which is what books.yml checks out for a release; any other commit is
+    # the development edition. KDOS_EDITION names it outright.
+    kind = os.environ.get("KDOS_EDITION", "")
+    if not kind:
+        try:
+            tag = subprocess.run(["git", "-C", root, "describe", "--tags", "--exact-match",
+                                  "--match", "v*", "HEAD"],
+                                 capture_output=True, text=True).stdout.strip()
+        except OSError:
+            tag = ""
+        kind = ("release edition " + tag) if tag else "development edition"
     # epoch: the commit time of the tree rendered, which kfsrender dates the
     # tarball and the PDF by; 0 for a tree with no git and no time given.
     return {"version": version or "unknown", "commit": commit or "unknown",
-            "date": date or "unknown", "epoch": epoch, "snapshot": data.stamp}
+            "date": date or "unknown", "epoch": epoch, "snapshot": data.stamp,
+            "kind": kind}
 
 
 def main():
@@ -2337,6 +2371,7 @@ def main():
             "title: \"KDOS from Scratch\"",
             "subtitle: \"How KDOS is built, phase by phase and package by package, and how a KDOS machine is run\"",
             "kfs-version: \"%s\"" % ed["version"].replace('"', ""),
+            "kfs-edition: \"%s\"" % ed["kind"].replace('"', ""),
             "kfs-commit: \"%s\"" % ed["commit"].replace('"', ""),
             "kfs-date: \"%s\"" % ed["date"].replace('"', ""),
             "kfs-snapshot: \"%s\"" % (data.stamp.get("commit", "none") + " " +

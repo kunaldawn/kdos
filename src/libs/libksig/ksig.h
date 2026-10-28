@@ -108,8 +108,9 @@ void ksig_sig_line(char out[KSIG_LINE_MAX], const uint8_t seed[KSIG_SEED_LEN],
 
 /* ── keyrings ──────────────────────────────────────────────────────────── */
 
-/* Every `*.pub` in `dir`. Returns how many were loaded; a directory that does
- * not exist is zero keys, not an error. */
+/* Every `*.pub` in `dir`, up to KSIG_MAX_KEYS in name order. Returns how many
+ * were loaded; a directory that does not exist is zero keys, not an error.
+ * Each `*.pub` past the cap is named on stderr and left untrusted. */
 int ksig_ring_load(KsigRing *ring, const char *dir);
 
 /*

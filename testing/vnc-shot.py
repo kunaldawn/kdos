@@ -571,9 +571,10 @@ def main():
                          "type-ahead and not a shell — to land a command in a "
                          "terminal window use --keys meta_l-ret then --type")
     ap.add_argument("--soak", type=int, default=0,
-                    help="seconds to let the session run after every step and "
-                         "before the final shot, for a load test that has to "
-                         "last; --sleep is the same wait placed by hand")
+                    help="seconds to let the session run once, after the "
+                         "last step and before the --out shot, for a load "
+                         "test that has to last; --sleep is the same wait "
+                         "placed by hand between steps")
     ap.add_argument("--wait", type=int, default=25,
                     help="seconds to let the session settle")
     ap.add_argument("--script-timeout", type=int, default=900,
@@ -582,8 +583,10 @@ def main():
                          "pack off the medium is minutes, not seconds")
     ap.add_argument("--vnc-port", type=int, default=5909)
     ap.add_argument("--audio", action="store_true",
-                    help="give the guest an HDA controller with a silent "
-                         "backend, so audio paths reach a real device")
+                    help="give the guest an HDA controller, so audio paths "
+                         "reach a real device: on the host's sound server "
+                         "when testing/qemu-audio.sh finds one, a silent "
+                         "backend when it does not")
     ap.add_argument("--disk", default=None,
                     help="attach this qcow2 as a virtio disk — the target an "
                          "unattended kinstall writes to")

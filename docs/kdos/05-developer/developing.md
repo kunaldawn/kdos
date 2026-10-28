@@ -127,7 +127,7 @@ forwarded into the chroot by `script/chroot/exec.sh`:
 | Variable | Effect |
 |---|---|
 | `KDOS_ISO_SOURCES=1` | Copies the tree onto the ISO under `/sources`, beside `system.sfs` rather than inside it: `src/`, `script/`, `fs/`, the `Makefile`, the `Dockerfile`, and `ports/` with every recipe and fetched source but without its dot-directories (the source cache and the compiled helpers), with a `SOURCES` stamp giving the port count, the size and the build time. A binhost this build wrote with `KDOS_MAKE_BINHOST=1` goes beside them as `/sources/binhost`. It roughly doubles the size of the image |
-| `KDOS_PACK_KDOS=1` | Also packs the root filesystem as the base pack `kdos`, in `build/kdos-base/kdos.kpack`, and puts it on the ISO under `/packs`. `kdos-box create ports base=pack:kdos` then gives a running KDOS a clean KDOS to build ports in. Without the flag, a pack left from an earlier build is deleted |
+| `KDOS_PACK_KDOS=1` | Also packs the root filesystem as the base pack `kdos`, in `build/kdos-base/kdos.kpack`, and puts it on the ISO under `/packs`. `kdos-box create ports base=pack:kdos` then gives a running KDOS a clean KDOS to build ports in. `build/kdos-base` is deleted at the start of every `100_packs.sh` run, so the only pack there is one this run made. With the flag set and `mkfs.erofs` or `kdos-pack` missing, the step prints a note and makes no pack |
 | `KDOS_ISO_COMP=zstd:3` | Compresses `system.sfs` with zstd at level 3 instead of the default level 15: a faster `70_image` and an image about 10% larger, for the rig, never a release. `xz` and `zstd:1` to `zstd:22` are accepted; any other value stops `110_iso.sh` |
 | `KDOS_MAKE_BINHOST=1` | Keeps every package the build makes and writes them into a signed binhost in `build/binhost/`, which `kpkg binhost` can install from. Each run adds what it built, so a complete binhost needs one `--fresh` build with the flag set |
 
@@ -169,9 +169,9 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `fetch` | Fetch every port's sources into `ports/core`, generating vendor bundles the archive lacks. `ports/fetch <port>` narrows it | Network; a container only to generate |
 | `fetch-check` | List, offline, every archived source that is missing or fails its hash | A C compiler |
 | `updates` | Check every port for a newer upstream release | Network, `curl`, `git`, `cc` |
-| `publish` | Upload every source a recipe names that the archive lacks, each into its shelf's volume `sources-<N>` (or the lowest-numbered volume with room when that one is full); `PORTS` narrows it | Network, the archive token |
+| `publish` | Upload every source the archive lacks that a recipe names and the upstream branch's recipes do not, or that `ports/sources.idx` does not, each into its shelf's volume `sources-<N>` (or the lowest-numbered volume with room when that one is full); `PORTS` names the ports instead, `PUBLISH_ARGS=--all` takes every recipe | Network, the archive token |
 | `publish-dry` | Print what `publish` would upload, under which names and into which volumes | A C compiler |
-| `publish-check` | List every source the archive lacks, by anonymous requests | Network |
+| `publish-check` | List the sources `publish` would upload, by anonymous requests; `PUBLISH_ARGS=--all` checks every recipe's | Network |
 | `publish-plan` | Give every shelf in `ports/shelves` that has no volume one, packing them in sorted order to about 650 assets a volume; never changes an assigned shelf. `PUBLISH_ARGS=--dry-run` only prints the plan | A C compiler |
 | `publish-describe` | Rewrite every archive release's title and notes from `ports/sources.idx` | Network, the archive token |
 | `publish-rehome` | Move each archived file that is not in its shelf's volume under its `<shelf>--` name there; run it, push the index, and run it again to delete the old copies | Network, the archive token |
@@ -189,8 +189,8 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `check-iso-free` | Refuse to rewrite an ISO a process has open | `fuser`; without it the check is skipped |
 | `check-hw` | Check the accelerated-graphics setup: an error without Docker, warnings without the `nvidia` runtime or `/dev/udmabuf` | |
 | `cleandisk` | Replace `build/kdos.qcow2` with a new, empty, sparse disk image of `KDOS_DISK` (96 GB by default) | QEMU |
-| `cleanbuild` | Delete everything in `build/` except `snapshots`, `ccache`, `pkgstore` and `keys`, and except what only root can remove (see below) | |
-| `clean` | Delete everything in `build/` except `keys`, and except what only root can remove | |
+| `cleanbuild` | Delete everything in `build/` except `snapshots`, `ccache`, `pkgstore`, `keys` and `binhost-key`, and except what only root can remove (see below) | |
+| `clean` | Delete everything in `build/` except `keys` and `binhost-key`, and except what only root can remove | |
 | `help` | List every target that carries a one-line description; `check-iso-free` and `check-hw` carry none | |
 | `check` | Run `preflight`, `selftest`, `docscheck`, `anchorcheck`, `booknav`, `kfscheck` and `phaseclosure` in turn | |
 | `preflight`, `selftest`, `docscheck`, `phaseclosure` | Run that check alone; see [Working without a build at all](#working-without-a-build-at-all) | A C compiler for `preflight` and `selftest`; Python 3 for `preflight`, `docscheck` and `phaseclosure` |
@@ -365,7 +365,7 @@ no firmware.
 | `build/.devplan.json` | The build plan in force | |
 | `build/kdos-base/` | The base pack, with `KDOS_PACK_KDOS=1` | |
 | `build/binhost/` | The signed binhost, with `KDOS_MAKE_BINHOST=1` | Each run adds what it built and keeps what earlier runs added |
-| `build/binhost-key/` | `kdos-binhost.key`, which signs the binhost's index, made on the first `KDOS_MAKE_BINHOST=1` run, and its `.pub` | Removed by both cleans, after which the next binhost is signed with a new key |
+| `build/binhost-key/` | `kdos-binhost.key`, which signs the binhost's index, made on the first `KDOS_MAKE_BINHOST=1` run, and its `.pub` | Kept by both cleans, so every later binhost is signed with the same key |
 | `build/image-ports/` | The recipe-only ports tree `70_image/105_ports.sh` stages, which `110_iso.sh` appends to `system.sfs` as `/ports` | Rewritten by every image build |
 | `build/fetch-home` | The fetch container's home and toolchain caches | Written as your user |
 | `build/freeze/` | `sources-<tag>.sha256`, written by `ports/publish --freeze` | |
@@ -841,8 +841,9 @@ The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, an
    `kdos-<tag>.iso.part01`, `.part02`, … under `build/release/<tag>/`, since GitHub refuses an
    asset of 2 GiB. The parts are deleted when the run ends and cut again on the next.
 4. Makes `build/release/<tag>/kdos-ports.tar.xz`, the tag's recipe tree as an image's `/ports`
-   holds it, from `git archive`: `ports/core`, `ports/shelves`, `ports/sources.idx`, `src/` and
-   `docs/`, and a `TREE` stamp naming the commit and its time, as a reproducible tar compressed with
+   holds it, from `git archive`: `ports/core`, `ports/shelves`, `ports/sources.idx`, `src/`,
+   `docs/` and `script/book`, placed at `script/book` so that `kdos-kfs`'s `book` link resolves, and
+   a `TREE` stamp naming the commit and its time, as a reproducible tar compressed with
    `xz -9 -T1`. It signs the tree with the release key as `kdos-ports.tar.xz.sig` and checks that
    signature against the public key.
 5. Writes `build/release/<tag>/SHA256SUMS` in `sha256sum` format. It names the whole ISO even when

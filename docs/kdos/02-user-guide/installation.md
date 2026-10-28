@@ -18,7 +18,8 @@ writes. How the installer is built inside is in [kinstall](../04-programs/kinsta
 
 Nothing reaches your disk until you press `BEGIN INSTALL` on the Summary page, with one exception:
 the *Partition it myself* plan. Its `Open cfdisk` button runs `cfdisk` on the target disk, and a
-partition table you write in `cfdisk` is on the disk the moment you quit it. Every other page before
+partition table you write in `cfdisk` is on the disk the moment you quit it. Under `--dry-run` that
+button is disabled and the page says why, so a rehearsal writes nothing to any disk. Every other page before
 the Summary only records an answer, so `Back` returns to a page unchanged and quitting leaves the
 machine as you found it. Pressing `Next` on the Summary page does not start the install; it tells
 you to press `BEGIN INSTALL`, so a stray page-forward keystroke cannot erase a disk.
@@ -93,7 +94,7 @@ it.
 | `Ctrl+U` | Clear the field you are in |
 | `Ctrl+W`, `Ctrl+Backspace` | Delete the word before the caret; `Ctrl+←` / `Ctrl+→` move by word |
 | `F1` | Show or hide the key card |
-| `L` | Toggle the full log, on the Install page |
+| `L` | Toggle the full log on the Install page; open the log in a pager on the Done page |
 | `Ctrl+Q`, `Ctrl+C` | Quit. The installer always asks first, and during an install it warns that the target is left half written |
 
 ### Command-line options
@@ -140,8 +141,9 @@ Below that is a preflight list:
 - `mkfs.ext4` and `mkfs.vfat` present;
 - the Limine payload present (the directory `/usr/share/limine`).
 
-The first two stop you on this page; the other three only mark a warning. The disk line counts every
-disk the installer found, read-only ones included; a read-only disk is refused on the Disk page. The
+The first two stop you on this page; the other three only mark a warning. The disk line counts only
+disks the installer can write, so a machine whose only disks are read-only stops here; the number of
+disks shown above it counts every disk found, read-only ones included. The
 install's first step checks `mount`, `umount`, `mkfs.vfat`, `rsync` and the chosen filesystem's
 `mkfs` again, and refuses before anything is written; on a machine that booted in legacy BIOS mode
 it also checks for the `limine` program. It does not check for the Limine files: if they are
@@ -259,7 +261,7 @@ fields appear; they must match, and an image without `cryptsetup` is refused on 
 
 The tick is kept if you then switch to the reuse plan, or pick *Partition it myself*, which switches
 to the reuse plan after `cfdisk`. The root you choose there is then encrypted, destroying what was
-on it, although the reuse plan shows no checkbox and the Summary shows no encryption line. Untick
+on it, although the reuse plan shows no checkbox; the Summary's `encryption` line says so. Untick
 encryption on the erase plan before you switch.
 
 #### The reuse plan
@@ -441,9 +443,9 @@ Your answers on one screen: keymap, time zone, hostname, user, root account, acc
 alien app library is copied, the application groups and their route, the enabled services, the
 target disk, the plan, the root and ESP on the reuse plan, the LVM layout when there is one, which
 firmwares the disk will start on (`UEFI and legacy BIOS`, or `UEFI only` for a reused GPT disk with
-no BIOS boot partition), and swap. The Summary shows encryption only as part of the erase plan's
-LVM line, so with encryption on and LVM off, or on the reuse plan, check the Layout page before you
-begin. The destructive parts are
+no BIOS boot partition), and swap. Encryption is part of the LVM line when there is one; otherwise,
+whenever encryption is on, on either plan, an `encryption` line reads `root inside LUKS2`. The
+destructive parts are
 in the error colour, and a rule across the page reads `EVERYTHING ABOVE THIS LINE IS STILL
 REVERSIBLE`. Two buttons sit under it:
 
@@ -497,7 +499,7 @@ prefix.
 
 What was installed, where, and how long it took, the warnings again under `FINISHED WITH WARNINGS`
 when there were any, and `Reboot now` (which asks first), `Back to the live desktop` and `View
-log`. Remove the boot medium before restarting, or the firmware may start the live image again. An
+log`; `L` opens the same log pager. Remove the boot medium before restarting, or the firmware may start the live image again. An
 unattended run does not show this page.
 
 ## The root filesystem
@@ -715,9 +717,9 @@ dump; the plan says only whether the root account is locked.
 
 `--dry-run` runs the whole wizard and the whole install, logging every install command and
 executing none; the log is still written. The header shows `DRY RUN` and the Summary button reads
-`REHEARSE INSTALL`, so the mode is visible on every page. The rehearsal covers the install steps,
-not the wizard's own actions: `Open cfdisk` on the Layout page runs the real `cfdisk` under
-`--dry-run` too, and a table written there is on the disk. The other thing a dry run does do is the
+`REHEARSE INSTALL`, so the mode is visible on every page. `Open cfdisk` on the Layout page is
+disabled, since `cfdisk` writes its table itself; the page says so and points to the reuse plan,
+which rehearses with the partition table as it is. The one thing a dry run does do is the
 unattended ending: combined with `--unattended` and the default `reboot = 1`, it reboots the
 machine when the rehearsal finishes.
 
@@ -800,7 +802,7 @@ countdown and choose another entry:
 |---|---|
 | `KDOS` | The normal system, with a quiet console |
 | `KDOS (verbose)` | Every kernel message on the console |
-| `KDOS (single user)` | A verbose boot to single-user mode: the services start, then root's password is asked for on the console and a root shell opens, with no desktop and no other consoles. Leaving the shell continues to the normal system. See [Single-user and emergency mode](../03-architecture/boot-and-init.md#single-user-and-emergency-mode) |
+| `KDOS (single user)` | Described in the menu as *A root shell for root's password, no desktop*. A verbose boot to single-user mode: the services start, then root's password is asked for on the console and a root shell opens, with no desktop and no other consoles. Leaving the shell continues to the normal system. See [Single-user and emergency mode](../03-architecture/boot-and-init.md#single-user-and-emergency-mode) |
 | `Memory Test (memtest86+)` | memtest86+. Shown on UEFI only |
 
 When a second slot exists, `kdos-bootctl` rewrites the menu and adds an entry for it. A machine that

@@ -304,17 +304,27 @@ static void scan_snaps(void)
 		kb_argv_end(&a);
 		buf[0] = '\0';
 		if (kb_run_capture(&a, buf, sizeof(buf)) < 0 || !buf[0]) {
-			snprintf(why, sizeof(why),
-				 "restic answered nothing — is %s a "
-				 "repository?", repo);
+			/* restic's errors (no repository, a wrong password, a
+			 * held lock) go to stderr, which kb_run_capture
+			 * discards. The refusal is asked again with stderr
+			 * kept, so the page shows restic's own reason rather
+			 * than one guess for every failure. */
+			char err[512];
+
+			kb_run_feed_env(&a, NULL, 0, "", 0, err, sizeof(err));
+			err[strcspn(err, "\n")] = '\0';
+			if (err[0])
+				snprintf(why, sizeof(why), "%.180s", err);
+			else
+				snprintf(why, sizeof(why),
+					 "restic answered nothing — is %s a "
+					 "repository?", repo);
 			return;
 		}
 	}
 	if (buf[0] != '[') {
 		/* Something on stdout that is not the JSON list, shown as
-		 * restic printed it. restic's errors (no repository, a wrong
-		 * password, a held lock) go to stderr, which kb_run_capture
-		 * discards, so those arrive as the empty answer above. */
+		 * restic printed it. */
 		buf[strcspn(buf, "\n")] = '\0';
 		snprintf(why, sizeof(why), "%.180s", buf);
 		return;

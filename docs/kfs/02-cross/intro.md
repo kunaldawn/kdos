@@ -115,9 +115,9 @@ make build BUILD_ARGS="--phases 00_cross --steps 00_cross:00_binutils.sh"
 
 A step named in a plan runs with `KDOS_REPLAY=1`, which stands its guard down. See
 [Build plans](../../kdos/05-developer/build-system.md#build-plans) for what else a plan changes.
-`01_gcc.sh` run again this way rebuilds the compiler and then fails at its final `ln -sv`, because
-the `x86_64-kdos-linux-musl-cc` link it makes already exists;
-[The limits.h fix-up](gcc.md#the-limitsh-fix-up) says why.
+`01_gcc.sh` run again this way rebuilds the compiler and finishes: its final link is made with
+`ln -sfv`, which replaces the `x86_64-kdos-linux-musl-cc` link the first run left;
+[The limits.h fix-up](gcc.md#the-limitsh-fix-up) shows the lines.
 
 ## See also
 

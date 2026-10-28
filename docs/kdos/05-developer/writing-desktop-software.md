@@ -236,19 +236,22 @@ composing nothing on a grid narrower than it needs.
 
 ### A saver asks for no size and takes no input
 
-`SAVER` covers every pixel of one output, takes its size from the display, and passes all input
-through to what is underneath.
+`SAVER` covers every pixel of one output, takes its size from the display, and is closed by the
+display on the first key, button or touch.
 
 It asks for no size. An overlay is centred and sized in cells by the client, and a client cannot
 see the output; one that measured the screen itself would have to round pixels into cells, and a
 row rounded down is a strip of desktop along the bottom edge of a surface whose job is to cover
 it. The display sends the size in the first configure, exactly as it does for `BACKGROUND`.
 
-It takes no keyboard and claims no pointer region (`kdisp_input_cells(NULL, 0)`). Every keystroke
-and every click goes to what is underneath, which is what lets the display's idle policy see the
-activity and take the surface away; a saver that took input would hide that activity and never be
-removed. It is asked to close rather than killed, so the loop must exit when
-`kdisp_should_close()` answers true; a saver that ignores the request stays on the screen.
+It takes no keyboard and claims no pointer region (`kdisp_input_cells(NULL, 0)`), and the idle
+policy still sees every event. `kdos-comp` finds a mapped overlay surface whose namespace (the
+`app_id`) is `kdos-saver`, closes it on the first key press, button press or touch, and delivers
+that event to nobody: the key's release is eaten with it, so no window sees half a keystroke, and
+no click lands on a window the saver was hiding. In a locked session the saver is still closed
+but the event goes on to the lock screen above it. A saver under another `app_id` is not closed. It
+is asked to close rather than killed, so the loop must exit when `kdisp_should_close()` answers
+true; a saver that ignores the request stays on the screen.
 
 ### Anchoring a popup
 
@@ -677,7 +680,8 @@ ktui_sel_slots(selected, pane_has_keyboard, KT_SURFACE, &fg, &bg);
 
 There are three states: an ordinary row is `KT_TEXT` on the page; the caret in a pane without the
 keyboard is a marker in `KT_MID` with no fill; the caret in the focused pane is a `KT_DIM` fill with
-the marker in `KT_ACCENT`. `ktui_sel_row()` gives the same answer with the fill and the `►` marker
+the marker in `KT_ACCENT`, or in `KT_TEXT` in a scheme whose accent reads below 4.5:1 on the fill
+(`paper`). `ktui_sel_row()` gives the same answer with the fill and the `►` marker
 drawn for you; the row's text starts two cells in. Pass the page slot, `KT_BG` or `KT_SURFACE`,
 rather than letting the control guess, or a translucent window gets an opaque band across it.
 

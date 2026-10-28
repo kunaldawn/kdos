@@ -319,8 +319,11 @@ signs, putting the public key beside the index as `kdos-binhost.pub`. A medium b
 
 `kpkg binhost` uses a package only when its architecture, its build-configuration hash and its
 [recipe hash]{.idx} all equal this machine's. It installs the one package named and nothing it
-depends on. It exits 0 when it used the package, 1 when nothing matched (build from source
-instead), and 2 when it refused: no index (`ERROR: no index at <dir>/PACKAGES`), no trusted key, a
+depends on, and records the recipe hash it matched, as `kpkg install` records the hash of what it
+built. The full form is `kpkg binhost [--root <path>] <dir> <port> [--dry-run] [--insecure]`;
+`--root` installs into another root, as it does for `kpkg install`. An option it does not know, or
+a second port, is refused with exit 1. It exits 0 when it used the package, 1 when nothing matched
+(build from source instead), and 2 when it refused: no index (`ERROR: no index at <dir>/PACKAGES`), no trusted key, a
 failed verification, or a package whose checksum does not match the index. `--dry-run` says what
 it would do. As shipped the ring is empty, so until step 2 `kpkg verify-index` answers
 `ERROR: no trusted keys in /etc/kdos/keys` and exits 2. See
@@ -336,8 +339,8 @@ build on the live medium also compiles into RAM: `/var/cache/kpkg/work` is on th
 
 ## Tips
 
-- `kpkg help` prints the full command list. It also lists `update`, which `kpkg` does not
-  implement; the system is updated with `kdos update` ([Updating](updating.md)).
+- `kpkg help` prints the full command list. `kpkg` has no update command; the system is updated
+  with `kdos update` ([Updating](updating.md)).
 - `kpkg install --root DIR <port>` installs into another root, such as a mounted target or a
   second slot, and `kpkg list --root DIR` lists one.
 - `kpkg check` reads the record taken after the package's install hook ran, so a mode a hook sets

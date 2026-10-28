@@ -14,7 +14,8 @@
  *   kdos-appbox genlaunchers --packs <fs-root>
  *       every installed app pack, into the root tree under <fs-root>
  *   kdos-appbox genlaunchers --packs --user
- *       the same, into the user tree — what `kdos app install` regenerates
+ *       every installed app pack and every store box, into the user tree —
+ *       what `kdos app install` regenerates
  *   kdos-appbox genlaunchers --packs-dir <dir> <fs-root>
  *       the build's form: one extracted pack per subdirectory of <dir>
  *   kdos-appbox genlaunchers <desktop-dir> <fs-root>
@@ -656,12 +657,14 @@ static void write_launchers(const char *dir)
 			      "[Desktop Entry]\n"
 			      "Type=Application\n"
 			      "Name=%s\n"
-			      "Comment=%s (alien app, kdos-apps box)\n"
+			      "Comment=%s (boxed app%s%s)\n"
 			      "Exec=kdos-appbox %srun %s\n"
 			      "Icon=%s\n"
 			      "Terminal=%s\n"
 			      "Categories=%s\n",
-			      a->name, a->name, box, a->exec, a->icon,
+			      a->name, a->name, a->pack[0] ? ", box " : "",
+			      a->pack,
+			      box, a->exec, a->icon,
 			      a->terminal ? "true" : "false", a->cats);
 		if (a->generic[0])
 			kb_buf_printf(&b, "GenericName=%s\n", a->generic);
@@ -898,16 +901,46 @@ static int genlaunchers_packs(void)
 }
 
 /*
+ * A STORE BOX'S COMMANDS ARE THE CATALOGUE'S `cmd` ROWS. Only its desktop
+ * entries are copied out of the image, so there is no usr/bin to probe, and a
+ * command-only application — a solver, a converter — would otherwise reach
+ * the host as nothing at all. The catalogue is loaded only on the store path,
+ * so the build's extracted packs never take this.
+ */
+static int add_catalogue_commands(const char *id)
+{
+	char cmds[16][64];
+	int n;
+
+	if (!cat_count() || !cat_find(id))
+		return 0;
+	n = cat_cmds(id, cmds, 16);
+	for (int i = 0; i < n; i++) {
+		Launcher *a = app_new();
+
+		a->cmdonly = 1;
+		kb_strlcpy(a->pack, id, sizeof(a->pack));
+		kb_strlcpy(a->id, cmds[i], sizeof(a->id));
+		kb_strlcpy(a->base, cmds[i], sizeof(a->base));
+		kb_strlcpy(a->name, cmds[i], sizeof(a->name));
+		kb_strlcpy(a->exec, cmds[i], sizeof(a->exec));
+	}
+	return n;
+}
+
+/*
  * TWO TREES, AND WHICH ONE IS WHOSE DECISION.
  *
  * The ROOT tree — /etc/skel, /usr/share/kdos/alien-apps, /usr/local/bin — is
  * what the BUILD writes for the recommended set. It is a system decision and
  * it is root's.
  *
- * The USER tree — ~/.local/share/applications, ~/.local/share/kdos/alien-apps,
- * ~/.local/bin — is what `kdos app install` writes, AS THE USER, the moment a
- * pack is installed. Every reader already looks there first: the Start menu
- * reads the user's applications directory, the dispatcher reads the user's
+ * The USER tree — $XDG_DATA_HOME/applications and
+ * $XDG_DATA_HOME/kdos/alien-apps (~/.local/share when the variable is unset),
+ * and ~/.local/bin — is what `kdos app install` writes, AS THE USER, the
+ * moment a pack is installed. Every reader already looks there first: the
+ * Start menu reads the user's applications directory, the dispatcher reads the
+ * user's
  * alien-apps table before the system one, and ~/.local/bin is on the PATH the
  * skel profile sets. So an installed application is in the menu before the
  * install command returns, with no root anywhere.
@@ -937,13 +970,16 @@ static int genlaunchers_dirs(const char *root)
 		 * so the parser sees exactly what a mount would show it. */
 		char *sub = kb_path_join(root, *s);
 		char *dir = kb_path_join(sub, "usr/share/applications");
+		int cmds = add_catalogue_commands(*s);
+
 		if (kb_is_dir(dir)) {
 			kb_strlcpy(cur_pack, *s, sizeof(cur_pack));
 			parse_dir(dir);
 			add_commands(dir);
 			cur_pack[0] = 0;
-			packs++;
 		}
+		if (cmds || kb_is_dir(dir))
+			packs++;
 		free(dir);
 		free(sub);
 	}
@@ -957,6 +993,13 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packs
 	if (srcdir && packsdir) {
 		int n = genlaunchers_dirs(srcdir);
 		fprintf(stderr, "%d extracted pack(s) read\n", n);
+		/* The user tree is written whole, so a store regeneration that
+		 * read only the store boxes would delete every installed
+		 * pack's launchers; it reads both sources. */
+		if (user) {
+			n = genlaunchers_packs();
+			fprintf(stderr, "%d app pack(s) read\n", n);
+		}
 	} else if (srcdir) {
 		parse_dir(srcdir);
 		add_commands(srcdir);
@@ -967,10 +1010,20 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packs
 
 	char *apps_dir, *share, *bindir;
 	if (user) {
+		/* $XDG_DATA_HOME when it is set, as the Start menu, `kdos app`
+		 * and the launch path read it: a table written under one
+		 * directory and read under another is an install whose
+		 * applications never launch. ~/.local/bin has no XDG variable
+		 * and is the PATH the skel profile sets. */
 		const char *home = kb_home_dir();
-		apps_dir = kb_path_join(home, ".local/share/applications");
-		share = kb_path_join(home, ".local/share/kdos");
+		const char *xdg = getenv("XDG_DATA_HOME");
+		char *data = xdg && *xdg ? kb_strdup(xdg)
+					 : kb_path_join(home, ".local/share");
+
+		apps_dir = kb_path_join(data, "applications");
+		share = kb_path_join(data, "kdos");
 		bindir = kb_path_join(home, ".local/bin");
+		free(data);
 	} else {
 		apps_dir = kb_path_join(fsroot, "etc/skel/.local/share/applications");
 		share = kb_path_join(fsroot, "usr/share/kdos");

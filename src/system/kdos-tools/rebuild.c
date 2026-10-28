@@ -241,9 +241,16 @@ int rebuild_main(int argc, char **argv)
 		return 2;
 	}
 
-	/* Every missing tool that would fail the build later, asked now. Root
-	 * is not asked: the build's steps need it, so a run without it copies
-	 * the tree and then fails in the first phase. */
+	/* Root is asked first: the chroot steps refuse anyone else, so a run
+	 * without it would copy the tree, compile the orchestrator and fail in
+	 * the first phase. --dry-run touches nothing and needs no root. */
+	if (!dry && geteuid() != 0) {
+		fprintf(stderr, "kdos: a rebuild needs root — `sudo kdos "
+				"rebuild %s`, or --dry-run to check\n", work);
+		return 1;
+	}
+
+	/* Every missing tool that would fail the build later, asked now. */
 	const char *missing = NULL;
 	static const char *const BUILD_TOOLS[] = { "cc", "make", "bash", "tar",
 						   "xz", NULL };

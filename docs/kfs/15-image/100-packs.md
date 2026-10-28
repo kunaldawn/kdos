@@ -24,10 +24,12 @@ daemon had run once.
 
 ## Removing an old base pack
 
-<!-- kfs:include script/phases/70_image/100_packs.sh lines=85-85 pin=678eec0856f6 -->
+<!-- kfs:include script/phases/70_image/100_packs.sh lines=87-87 pin=e38eb30704cb -->
 
-`build/` survives from build to build, and the flag does not. With the flag off, a base pack left
-by an earlier run with it on is deleted, so `110_iso.sh` cannot find one that was not asked for.
+`build/` survives from build to build, and the flag does not. So `build/kdos-base/` is deleted on
+every run, before the step decides whether to make a pack, and the only base pack `110_iso.sh` can
+find is one this run made. A pack left by an earlier run with the flag on goes whether the flag is
+now off or a tool the pack needs is missing.
 
 ## The base pack
 
@@ -41,12 +43,13 @@ make build KDOS_PACK_KDOS=1 BUILD_ARGS="--phases 70_image"
 ```
 
 It runs only when the flag is set and both [`mkfs.erofs`]{.idx} (from [erofs-utils](#port-erofs-utils))
-and [`kdos-pack`]{.idx} are installed; with either missing it is skipped without a word, and a base
-pack an earlier run left in `build/kdos-base/` stays there for `110_iso.sh` to copy.
+and [`kdos-pack`]{.idx} are installed. With the flag set and either tool missing, the step prints a
+note saying there is no kdos base pack and carries on, and `build/kdos-base/` does not exist, so
+`110_iso.sh` has no pack to copy.
 
 ### The metadata
 
-<!-- kfs:include script/phases/70_image/100_packs.sh lines=89-98 pin=de9a724350ba -->
+<!-- kfs:include script/phases/70_image/100_packs.sh lines=97-106 pin=de9a724350ba -->
 
 `version` is `KDOS_VERSION` when the environment has one and the script's fallback otherwise.
 `script/chroot/exec.sh` passes no `KDOS_VERSION`, so a build from `make build` always writes the
@@ -54,7 +57,7 @@ fallback.
 
 ### Testing the excludes
 
-<!-- kfs:include script/phases/70_image/100_packs.sh lines=104-124 pin=e96fc5daf610 -->
+<!-- kfs:include script/phases/70_image/100_packs.sh lines=112-132 pin=e96fc5daf610 -->
 
 `mkfs.erofs --exclude-path` matches an exact literal path, relative to the tree being packed, and
 a path that matches nothing is not an error: `--exclude-path=/kdos`, with its leading slash, is
@@ -66,7 +69,7 @@ honoured all three is a few kilobytes; one over 500,000 bytes, or none at all, s
 
 ### Packing the root
 
-<!-- kfs:include script/phases/70_image/100_packs.sh lines=147-155 pin=456e1d17e4bf -->
+<!-- kfs:include script/phases/70_image/100_packs.sh lines=155-163 pin=456e1d17e4bf -->
 
 `-zzstd`
 : Compress with zstd.
@@ -114,7 +117,7 @@ honoured all three is a few kilobytes; one over 500,000 bytes, or none at all, s
 : The source tree, which in the chroot is `build/fs`. The excludes are written without a leading
   slash because they are matched relative to it.
 
-<!-- kfs:include script/phases/70_image/100_packs.sh lines=165-167 pin=f1550f4c3c9e -->
+<!-- kfs:include script/phases/70_image/100_packs.sh lines=173-175 pin=f1550f4c3c9e -->
 
 `kdos-pack assemble` wraps the image made outside `kdos-pack` with the metadata into a `.kpack`,
 and the bare image is deleted. The excludes are this step's own, which is why the image is made
@@ -133,7 +136,7 @@ on the live system with nothing installed.
 
 On the image, `/var/lib/kdos/packs/staging` at mode 01777 and [`/var/lib/kdos/packs/mnt`]{.idx}, both
 empty. With `KDOS_PACK_KDOS=1` and both tools installed, `build/kdos-base/` holds `meta` and
-`kdos.kpack`; without the flag, `build/kdos-base/` does not exist.
+`kdos.kpack`. Without the flag, or with either tool missing, `build/kdos-base/` does not exist.
 
 ## See also
 

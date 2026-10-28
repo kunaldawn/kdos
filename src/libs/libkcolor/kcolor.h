@@ -246,17 +246,20 @@ uint32_t kcol_mixf(uint32_t a, uint32_t b, double t);
 
 double kcol_luma(uint32_t rgb);	/* 0..1, Rec.601 */
 
-/* The derived READABLE muted text colour: kcol_mix(deep, text, 56). `dim` is a
- * fill/border colour and sits at ~1.7:1 against `deep`, so text written in it
- * (mc's disabled entries, btop's inactive rows, starship's subtext) reads
- * below any legibility floor. Text roles take this; fills, borders and
- * selection backgrounds keep `dim`.
+/* The derived READABLE muted text colour: kcol_mix(deep, text, 56), moved
+ * further towards `text` one percent at a time until it clears the floor.
+ * `dim` is a fill/border colour and sits at ~1.7:1 against `deep`, so text
+ * written in it (mc's disabled entries, btop's inactive rows, starship's
+ * subtext) reads below any legibility floor. Text roles take this; fills,
+ * borders and selection backgrounds keep `dim`.
  *
- * The floor is WCAG AA for normal-size text, 4.5:1 against `deep`, and it is
- * named here so the next change to the mix can be measured rather than
- * guessed: 50% leaves amber at 4.22, bone at 4.07 and ice at 4.48. At 56%
- * phosphor, amber, ice and bone measure 5.73 / 5.07 / 5.35 / 4.82 and every
- * dark scheme clears the floor; `paper`, on its light ground, measures 3.99. */
+ * The floor is WCAG AA for normal-size text, 4.5:1 against `deep` as
+ * kcol_contrast measures it, and the self-test asserts it for every scheme.
+ * 50% leaves amber at 4.22, bone at 4.07 and ice at 4.48. At 56% phosphor,
+ * amber, ice and bone measure 5.73 / 5.07 / 5.35 / 4.81 and every dark
+ * scheme clears the floor with the mix unchanged; `paper`, on its light
+ * ground, measures 3.99 at 56% and walks to 60%, 4.54:1. A walk rather than
+ * a larger fixed mix keeps every dark scheme's muted where it is. */
 uint32_t kcol_muted(const KcolScheme *sc);
 
 /*

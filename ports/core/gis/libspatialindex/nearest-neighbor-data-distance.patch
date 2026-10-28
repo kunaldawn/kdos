@@ -1,0 +1,19 @@
+Subject: Measure a leaf entry by its data in nearestNeighborQuery
+
+Pass the entry itself, not its bounding box, to the comparator, so the
+IData form of getMinimumDistance() runs: a comparator that measures the
+stored geometry, as QGIS's does, is otherwise never called for a leaf,
+results are ranked by bounding box, and max_dist is tested against the
+box distance. libspatialindex issue 276.
+
+--- a/src/rtree/RTree.cc
++++ b/src/rtree/RTree.cc
+@@ -613,7 +613,7 @@
+                     Data* e = new Data(n->m_pDataLength[cChild], n->m_pData[cChild], *(n->m_ptrMBR[cChild]), n->m_pIdentifier[cChild]);
+                     // we need to compare the query with the actual data entry here, so we call the
+                     // appropriate getMinimumDistance method of NearestNeighborComparator.
+-                    queue.push(NNEntry(n->m_pIdentifier[cChild], e, nnc.getMinimumDistance(query, e->m_region)));
++                    queue.push(NNEntry(n->m_pIdentifier[cChild], e, nnc.getMinimumDistance(query, *e)));
+                 }
+                 else
+                 {

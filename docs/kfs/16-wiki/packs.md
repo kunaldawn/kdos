@@ -78,9 +78,9 @@ its secret half would be accepted. Delete it if you want the ring to hold only k
 | `/mnt/iso/packs/` | Packs on the boot medium, mounted from there |
 | [`/var/lib/kdos/pack-manifest`]{.idx} | Every [graft]{.idx} made, for `ungraft` |
 
-An installed pack is the staged file renamed into the store, so it keeps the owner and mode it was
-staged with: a pack that `kdos-appbox import` or `kdos-box import` staged for you is yours, mode
-`0644`, in the store.
+The daemon does not install the staged file itself. It copies it into a private file in the store,
+owned by root with mode `0644`, verifies that copy and renames it to `<id>.kpack`, then deletes the
+staged file. An installed pack is owned by root whoever staged it.
 
 The image step makes the staging directory with its mode, so that a first boot accepts an import
 before the daemon has ever run:
@@ -152,8 +152,9 @@ one `.ktar` file for another machine.
    KDOS_PACK_KEY=~/keys/mine.key kdos app export apps.ktar app.hugin
    ```
 
-   An import does not check the index, signed or not; a signature counts only on the packs
-   themselves, as [Signing packs](#signing-packs) describes.
+   An import stages a signed set's `PACKAGES` and `PACKAGES.sig` beside its packs and names that
+   index in each install it asks for, so the daemon installs each pack the index lists as signed
+   by that key, provided its `.pub` is in `/etc/kdos/keys/packs`. The packs of an unsigned set are accepted as unsigned.
 
 Each pack is the application's whole image flattened, base and runtime included, so it needs no
 other pack. The archive also holds `SELECTION`, the ids that were named and the members of each
@@ -249,8 +250,11 @@ image has no such layer.
 
 The daemon accepts a pack whose signature is good, and one with no signature at all, which it logs
 as unsigned. It refuses the other three outcomes. The packs `kdos-appbox export` makes carry no
-signature block of their own, and an import stages each pack without the set's index, so such a
-pack is accepted as unsigned; sign each pack with `kdos-pack sign` for the signature to count. See
+signature block of their own. A set exported with `KDOS_PACK_KEY` installs as signed through its
+index, which the import stages beside the packs, when that key's `.pub` is in
+`/etc/kdos/keys/packs`; a pack whose hash the signed index contradicts is refused. Only the packs
+of an unsigned set are accepted as unsigned, and `kdos-pack sign` gives a pack a signature of its
+own that counts without an index. See
 [Signature outcomes](../../kdos/03-architecture/packs-and-boxes.md#signature-outcomes).
 
 ### Deltas
@@ -359,8 +363,8 @@ A frozen box imports and its box is not created
 - [Applications imported or built during an install stay in the live session](../../kdos/06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session)
 - [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box)
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)
-- The catalogue's grafts are carried out by nothing in the tree, so a data pack does not reach the
-  application that needs it; see [Grafts and data packs](../../kdos/03-architecture/packs-and-boxes.md#grafts-and-data-packs).
+- A data set built by `kdos app install` is an image and is grafted nowhere; only an imported data
+  pack is grafted. See [Grafts and data packs](../../kdos/03-architecture/packs-and-boxes.md#grafts-and-data-packs).
 - No harness exercises the daemon's `rollback`; see the kdos-packd row of
   [Applications and boxes](../../kdos/06-reference/status.md#applications-and-boxes) in the status page.
 

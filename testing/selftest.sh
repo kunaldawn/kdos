@@ -3501,7 +3501,7 @@ fi
 echo "==> a per-user timer repeats, and the last login's loops are stopped first"
 _sc=fs/usr/local/lib/kdos/session-common.sh
 _tfail=""
-grep -q 'while :; do' "$_sc" || _tfail="$_tfail no-loop"
+grep -q 'while \[ -e "\$_tf" \]; do' "$_sc" || _tfail="$_tfail no-loop"
 grep -q 'snooze \$_spec "\$@"' "$_sc" || _tfail="$_tfail no-snooze-in-loop"
 grep -q 'echo \$! >> "\$_tpid"' "$_sc" || _tfail="$_tfail no-pidfile"
 grep -q 'pkill -P "\$_p"' "$_sc" || _tfail="$_tfail no-child-kill"

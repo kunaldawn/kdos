@@ -1,0 +1,58 @@
+Subject: drop the release check from send and receive, and own /usr/bin/croc-relay
+
+send() and receive() start a background request to api.github.com for
+the latest release, which --local does not stop and --quiet only hides;
+without the two calls a transfer makes no connection but the transfer's
+own. `croc update` stays, and asks only when it is run.
+
+The KDOS package installs the binary as /usr/bin/croc-relay behind a
+/usr/bin/croc wrapper. Naming that path beside /usr/bin/croc makes
+`croc update` answer, without a network request, that the system package
+manager updates it, instead of pointing at the upstream installer.
+
+diff --git a/src/cli/cli.go b/src/cli/cli.go
+index c0ec0e0..7e5ccc2 100644
+--- a/src/cli/cli.go
++++ b/src/cli/cli.go
+@@ -593,9 +593,6 @@ func parseRelayPorts(portsFlag string) []string {
+ }
+ 
+ func send(c *cli.Context) (err error) {
+-	finishVersionCheck := startTransferVersionCheck(c)
+-	defer finishVersionCheck()
+-
+ 	setDebugLevel(c)
+ 	comm.Socks5Proxy = c.String("socks5")
+ 	comm.HttpProxy = c.String("connect")
+@@ -963,9 +960,6 @@ func saveConfig(c *cli.Context, crocOptions croc.Options) {
+ }
+ 
+ func receive(c *cli.Context) (err error) {
+-	finishVersionCheck := startTransferVersionCheck(c)
+-	defer finishVersionCheck()
+-
+ 	comm.Socks5Proxy = c.String("socks5")
+ 	comm.HttpProxy = c.String("connect")
+ 	if storedToken := strings.TrimSpace(os.Getenv("CROC_STORE_TOKEN")); storedToken != "" {
+diff --git a/src/cli/update.go b/src/cli/update.go
+index dfad7a9..5f36cf7 100644
+--- a/src/cli/update.go
++++ b/src/cli/update.go
+@@ -250,7 +250,7 @@ func packageManagedLocation(target string) bool {
+ 		return false
+ 	}
+ 	target = filepath.Clean(target)
+-	return target == "/usr/bin/croc" || target == "/bin/croc" || strings.HasPrefix(target, "/nix/store/")
++	return target == "/usr/bin/croc" || target == "/usr/bin/croc-relay" || target == "/bin/croc" || strings.HasPrefix(target, "/nix/store/")
+ }
+ 
+ func updateGuidance(target string) string {
+@@ -272,7 +272,7 @@ func updateGuidance(target string) string {
+ 		return "Upgrade with Termux pkg: pkg upgrade croc"
+ 	case runtime.GOOS == "freebsd" && normalized == "/usr/local/bin/croc":
+ 		return "Upgrade with FreeBSD pkg: pkg upgrade croc (or rerun the official installer if it owns this file)"
+-	case normalized == "/usr/bin/croc" || normalized == "/bin/croc":
++	case normalized == "/usr/bin/croc" || normalized == "/usr/bin/croc-relay" || normalized == "/bin/croc":
+ 		return "Upgrade croc with the system package manager that installed it (for example apt, dnf, zypper, pacman, or apk)."
+ 	case strings.HasSuffix(normalized, "/go/bin/croc"):
+ 		return "Upgrade the Go installation: go install github.com/schollz/croc/v11@latest"

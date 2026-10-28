@@ -568,6 +568,10 @@ int main(int argc, char **argv)
 				"kdos-term: no display — try --tty\n");
 			return 1;
 		}
+		/* Bare Ctrl+V is the child's ^V; chord() claims only the
+		 * shifted one, and a receive started on the bare key would
+		 * paste into the child behind its own ^V. */
+		kwl_paste_needs_shift(1);
 	}
 	ktui_draw_init();
 

@@ -111,9 +111,8 @@ struct au_dev {
 static struct au_dev au_dev[AU_MAX_DEV];
 static int au_ndev;
 static int au_default_card;	/* what ~/.asoundrc says, or 0 */
-/* Pixel icons beside the rows; only --dump turns them off, because a golden
- * frame is the character grid. The argument loop parses no --no-icons, so
- * comp.conf's `icons = no` has no route to this switch. */
+/* Pixel icons beside the rows: comp.conf's `icons = no`, through --no-icons.
+ * --dump turns them off too, because a golden frame is the character grid. */
 static int au_icons_on = 1;
 /*
  * Where the last frame put its two lists. RECORDED by the draw, read by the
@@ -1276,6 +1275,8 @@ int audio_main(int argc, char **argv)
 		} else
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		else if (!strcmp(argv[i], "--no-icons"))
+			au_icons_on = 0;
 		else if (!strcmp(argv[i], "--dump"))
 			dump = 1;
 		else

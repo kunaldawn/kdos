@@ -160,10 +160,13 @@ a killed run.
 
 Two targets empty `build/`, and they differ in what they keep:
 
-<!-- kfs:include Makefile lines=244-266 pin=93b6a0e75ace -->
+<!-- kfs:include Makefile lines=244-268 pin=88231f703ea7 -->
 
-`make cleanbuild` keeps the snapshots, the compiler cache, the package store and the keys, all of
-which stay valid for the next build. `make clean` keeps only the keys.
+`make cleanbuild` keeps the snapshots, the compiler cache and the package store, which stay valid
+for the next build. `make clean` removes those too. Both keep `build/keys` and
+`build/binhost-key`, because a key is not a build artefact: every image built beside the release
+key trusts its public half, and a binhost signed with a new key is refused by every machine that
+holds the old `kdos-binhost.pub`.
 
 Both run on your machine as your user, and `build/fs` belongs to root, so neither can remove it:
 the `find` fails on it, the target ignores the failure, and the old root is still there for the

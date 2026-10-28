@@ -35,8 +35,6 @@
 
 #include "res.h"
 
-#define RESCTL "/usr/bin/kdos-resctl"
-
 /*
  * Why the helper cannot be used, or NULL when it can. The answer is the text
  * a disabled button carries, so it has to be a sentence rather than an errno.
@@ -55,7 +53,7 @@ const char *res_act_helper_why(void)
 	 */
 	if (R.fixture)
 		return NULL;
-	if (stat(RESCTL, &st) != 0)
+	if (stat(RES_RESCTL, &st) != 0)
 		return "kdos-resctl is not installed";
 	if (!(st.st_mode & S_ISUID))
 		return "kdos-resctl has lost its setuid bit";
@@ -76,7 +74,7 @@ static int via_helper(const char *verb, int pid, const char *arg)
 	snprintf(spid, sizeof(spid), "%d", pid);
 
 	KbArgv a = { 0 };
-	kb_argv_add(&a, RESCTL);
+	kb_argv_add(&a, RES_RESCTL);
 	kb_argv_add(&a, verb);
 	kb_argv_add(&a, spid);
 	kb_argv_add(&a, arg);

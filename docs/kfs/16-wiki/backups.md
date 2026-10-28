@@ -60,7 +60,7 @@ is set on it. A different file can be named with `password-file`.
 **What `--once` runs**, from `src/desktop/kdos-shell/backup.c`. It reads the two files, refuses
 before starting restic if either is missing or unsafe, and waits for restic to finish:
 
-<!-- kfs:include src/desktop/kdos-shell/backup.c lines=941-988 pin=5ef77426b44c -->
+<!-- kfs:include src/desktop/kdos-shell/backup.c lines=951-998 pin=5ef77426b44c -->
 
 It exits 0 when restic succeeded, 2 for an option it does not know, and 1 for any other failure,
 including a missing `repo` or `include`. The checks run in that order: that `backup.conf` exists,
@@ -244,9 +244,15 @@ password file first, so this message appears only once the password file is righ
 or carries a group or other permission bit. Create it, or run `chmod 600 ~/.config/kdos/backup.pass`,
 and check that the file named by `password-file`, if set, is the one you mean.
 
-**The window says `restic answered nothing — is <repo> a repository?`.** restic failed, and the
-window does not show restic's own message. Run `kdos-backup --once` in a terminal, which prints
-it, and look for it below.
+**The window shows a line from restic instead of the snapshot list.** When restic refuses to list
+the snapshots, the window shows the first line restic wrote to its error output, such as
+`Fatal: repository does not exist: unable to open config file` or `Fatal: wrong password or no
+key found`. Look for that line in the entries below; `kdos-backup --once` in a terminal prints the
+same message with restic's exit code.
+
+**The window says `restic answered nothing — is <repo> a repository?`.** restic printed nothing at
+all, neither a snapshot list nor an error. Check that `restic` is installed and that `repo` names
+the path you mean, then run `kdos-backup --once` in a terminal to see how restic exits.
 
 **`--once` prints `restic exited 10`, after restic's `Fatal: repository does not exist: unable to
 open config file`.** The path in `repo` is not a restic repository: a USB disk that is not

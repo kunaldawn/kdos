@@ -160,7 +160,8 @@ it holds one.
 ## Tips
 
 - The screensaver is a separate program, `kdos-saver`, started with Super+Shift+L. It does not
-  lock; the idle policy never starts it.
+  lock; the idle policy never starts it. The first key, click or touch closes it, and that press
+  reaches no window.
 - `kdos why kdos-lock` prints the design notes about the lock screen, among them why a crashed lock
   program leaves the session locked.
 - A lock started from a terminal outside the session needs that session's `WAYLAND_DISPLAY`; from

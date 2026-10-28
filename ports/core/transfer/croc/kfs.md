@@ -31,6 +31,7 @@ The modules come from the vendor bundle, `croc-vendor-<version>.tar.xz`, made by
 `croc.bin` and installed under its other name; the manual page, `croc.1`, describes the command as
 upstream ships it.
 
-`--local` does not cover croc's release check. A `send` or a receive asks `api.github.com` for
-the latest release, at most once a day, and caches the answer in `version-check.json` in croc's
-configuration directory; `--quiet` hides the notice but does not stop the request.
+A `send` or a receive makes no request of its own for croc's latest release:
+`disable-update-check.patch` removes the background check upstream starts with each, which
+`--local` does not stop. `croc update` answers, with no request, that the system package manager
+updates croc, and replaces nothing; `croc update --check` asks `api.github.com` when it is run.

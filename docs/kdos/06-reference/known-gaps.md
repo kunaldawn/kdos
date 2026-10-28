@@ -181,24 +181,17 @@ KDOS installs no configuration, draws none by default. To turn them back on, con
 programs one at a time, knowing the same shell on `tty1` will show holes. Nothing patches the
 console font, so on `tty1` the icons cannot be restored.
 
-### Two shipped chords and two routes show nothing
+### Two menu routes show nothing
 
-The shipped `~/.config/kdos-comp/rc.xml` binds `W-C-v` to bare `kdos-clip`. Without an argument
-that program is the clipboard-history daemon, not the picker, so the chord opens no window; the
-second daemon unlinks and rebinds the history socket and takes the history over from the copy the
-compositor supervises. Binding the chord to `kdos-clip --pick` in your own `rc.xml` opens the
-picker. `W-C-p` runs `kdos-energy`, the per-application energy report, which prints to standard
-output and has no window, so the key shows nothing; a right-click on the panel's meters strip opens
-the same report in a popup.
-
-Two of the routes in `/etc/kdos/menu.conf` fail the same way. `system.power` runs the same
-windowless `kdos-energy`. `setup.tui` runs `kdos app tui` with no subcommand, which prints a usage
-message to standard error and exits with status 2. The Start menu and `kdos-palette` start a route
-with no terminal attached, so choosing either route, from those surfaces or through
-`kdos menu summon`, shows nothing. Adding a terminal program as an application takes
-`kdos app tui add` run in a terminal. See
-[Keyboard shortcuts](../02-user-guide/desktop.md#keyboard-shortcuts),
-[The clipboard](../02-user-guide/desktop.md#the-clipboard) and the route table under
+Two of the routes in `/etc/kdos/menu.conf` start a program that opens no window. `system.power`
+runs `kdos-energy`, the per-application energy report's command-line client, which prints to
+standard output and exits; the same report is the Energy page of `kdos-res`, which `W-C-p` opens,
+and a popup from a right-click on the panel's meters strip. `setup.tui` runs `kdos app tui` with
+no subcommand, which prints a usage message to standard error and exits with status 2. The Start
+menu and `kdos-palette` start a route with no terminal attached, so choosing either route, from
+those surfaces or through `kdos menu summon`, shows nothing. Adding a terminal program as an
+application takes `kdos app tui add` run in a terminal. See
+[Keyboard shortcuts](../02-user-guide/desktop.md#keyboard-shortcuts) and the route table under
 [`/etc/kdos/menu.conf`](configuration.md#etckdosmenuconf-merged-under-configkdosmenuconf).
 
 ### Only two ways of ending the session save the list of open windows
@@ -218,19 +211,6 @@ when the login does, with `exit` at that prompt; with autologin on, a new login 
 at once. Measured on the live medium. See
 [What `kdos-desktop-start` does](../03-architecture/session.md#what-kdos-desktop-start-does).
 
-### The control centre's *Sync…* row opens the network-share window
-
-On the System page of `kdos-settings`, the row *Sync…* is described as calendars and address
-books through `vdirsyncer`, and runs `kdos-connect`, which mounts a share on another machine. No
-surface configures `vdirsyncer`; it is set up through its own configuration file. See
-[kdos-settings](../04-programs/kdos-shell.md#kdos-settings).
-
-### `kdos-audio` refuses the `--no-icons` its usage line offers
-
-The usage text lists `[--font NAME] [--no-icons] [--dump]`, and the argument loop accepts only
-`--at-bottom`, `--font` and `--dump`, so `kdos-audio --no-icons` prints the usage and exits 2.
-Nothing shipped passes the flag. See [kdos-audio](../04-programs/kdos-shell.md#kdos-audio).
-
 ### `kdos-res` draws its selected row in the accent colour
 
 The design language fills a selected row with `KT_DIM` and keeps `KT_ACCENT` for one cell
@@ -247,15 +227,12 @@ GTK rebuilds its style when the portal's `gtk-theme` key changes, and `kdos them
 stylesheet under its own name (`~/.themes/KDOS-<accent>`), so the settings portal's change signal
 is enough for GTK3. libadwaita ignores GTK themes entirely and reads
 `~/.config/gtk-4.0/gtk.css`, which GTK loads once at startup. A Qt 6 application on the host, where
-the session sets `QT_QPA_PLATFORMTHEME=kde`, or in a pack box on the `rt-kde` runtime, runs under the KDE
+the session sets `QT_QPA_PLATFORMTHEME=kde`, or in a box on the `rt-kde` runtime, runs under the KDE
 platform theme and reads `~/.config/kdeglobals`, which KDE re-reads only
 on its own global-settings signal, and there is no KDE daemon here to send it. Both pick up the new
 palette the next time they start. libadwaita 1.6 and later follow the portal's `accent-color` on
-their own, which changes the accent and not the rest of the palette. A Qt application in a pack box
-on the `rt-qt` runtime uses the GTK3 platform theme instead, and takes its palette from GTK. A Qt
-application in a box the store built gets neither platform theme; see
-[A store-built box gets none of the catalogue's `env`
-rows](#a-store-built-box-gets-none-of-the-catalogues-env-rows).
+their own, which changes the accent and not the rest of the palette. A Qt application in a box
+on the `rt-qt` runtime uses the GTK3 platform theme instead, and takes its palette from GTK.
 
 ### A box can be granted only the eight named groups of Wayland globals
 
@@ -291,20 +268,6 @@ boxed browser built before the row carried them reports no hardware decoder and 
 frame on the CPU. Nothing tells you a row changed: the catalogue has no per-row version, so an image
 counts as current until somebody removes it.
 
-### A store-built box gets none of the catalogue's `env` rows
-
-The catalogue declares, per row, the environment variables a runtime or an application needs:
-`rt-qt` sets `QT_QPA_PLATFORMTHEME=gtk3` and `QT_STYLE_OVERRIDE=Fusion`, `rt-kde` sets
-`QT_QPA_PLATFORMTHEME=kde`, `rt-media` points `LD_LIBRARY_PATH` at PipeWire's JACK library, and
-`app.surf` sets `GDK_BACKEND=x11`. A launch exports these only from pack metadata. A box the store
-lane built is named after its catalogue row, the launch looks that name up among the installed
-packs, where it is normally absent, and never falls back to reading the catalogue or the image's
-labels, so such a box gets none of them. A Qt application in it starts with no platform theme and draws Qt's own palette rather than
-the KDOS one, a JACK client on the media runtime loads Debian's own `libjack` rather than
-PipeWire's, and `surf`, which cannot run on GTK's Wayland backend, is started on it. A box
-composed from packs is unaffected. See
-[The environment a box gets](../04-programs/kdos-appbox.md#the-environment-a-box-gets).
-
 ### A live session cannot create a persistent box
 
 The home directory is on the boot overlay, and the kernel refuses to stack a box's writable layer
@@ -315,15 +278,6 @@ lives, not as a failure. `kdos-box create <name> base=pack:<id>` asks podman for
 top of that composition, and when podman refuses on a live session it says that a persistent box
 needs an installed system, takes the composition down, and leaves the profile it wrote, which
 `kdos-box remove <name>` deletes.
-
-### `kdos-box create` with a `box:` base never finishes
-
-`kdos-box create <name> base=box:<other>` copies the other box's base into the new profile and
-calls itself again with the same arguments, which set the base back to `box:<other>`, so it
-recurses until the program crashes. Naming the other box's own base instead (`base=pack:<id>` or
-`base=image:<ref>`, as `kdos-box profile <other>` prints it) gives the same box. `kdos-box clone
-<src> <dst>` does not take this path, and copies the other box's writable layer as well. See
-[create with a box base](../04-programs/kdos-appbox.md#create-with-a-box-base).
 
 ### The *Containers* menu entries have not been opened on a built image
 
@@ -753,15 +707,14 @@ reaches the end of initialisation confirms the slot. A second *encrypted* slot h
 booted. What is measured is on the build host: rolling back from slot B to A hands back A's
 container and not B's, which is the failure the mechanism exists to prevent.
 
-### An update into a slot compiles against the running system
+### An update with --root compiles against the running system
 
-`kdos update apply` installs into the inactive slot by pointing `KPKG_ROOT` at it, which moves the
+`kdos update apply --root DIR` installs into `DIR` by pointing `KPKG_ROOT` at it, which moves the
 installs and the package database and nothing else: every package is still built on the running
 root, with its compiler, headers and libraries. When one run upgrades a library and a package that
 links it, the package is compiled against the running root's older copy, not the one just
-installed into the slot, and nothing in the run rebuilds it afterwards. The slot then boots with a
-package built against a version of the library the slot does not carry. See
-[Updating a machine](../03-architecture/packaging.md#updating-a-machine).
+installed into `DIR`. An A/B apply does not have this problem, because it builds inside a chroot
+of the slot. See [Updating a machine](../03-architecture/packaging.md#updating-a-machine).
 
 ### The update path has not been run against a published tree
 
@@ -945,7 +898,7 @@ reason. Each one below was weighed the same way and left out, for the reason in 
 - **rule**: it belongs to something KDOS excludes, such as systemd or SELinux (see
   [Principles](../01-philosophy/principles.md)).
 
-`python3 testing/optdeps.py --claims` lists every recipe line that says a dependency is not a port,
+`python3 testing/optdeps.py --claims` lists every `kfs.md` line that says a dependency is not a port,
 and `python3 testing/optdeps.py` lists every switch that turns off a feature a port does provide;
 see [Testing](../05-developer/testing.md).
 

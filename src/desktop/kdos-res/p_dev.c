@@ -380,6 +380,8 @@ static int g_nif;
 static struct devh g_dh_if[DEVH_MAX];
 static int g_nsel;
 static int g_nhover = -1;
+/* The rows the last draw laid down, as g_ddrawn is for Drives: a press on
+ * the chart below them selects nothing. */
 static int g_ndrawn;
 
 void res_net_prepare(void)
@@ -406,8 +408,30 @@ static void net_sample(double dt_s)
  */
 void res_dev_sample(void)
 {
-	static double last_s;
-	static int have_last;
+	/*
+	 * ONE CLOCK PER PAGE, because each page's rings keep their own last
+	 * counters. A shared clock would divide what a page counted while it
+	 * was out of view by the time since the OTHER page's last sample, and
+	 * draw the page's first rate on its return as a spike; its own clock
+	 * spreads that count over the whole time it was away.
+	 */
+	static double last_drv, last_net;
+	static int have_drv, have_net;
+	double *last_s;
+	int *have_last;
+
+	switch (res_page_current()) {
+	case RP_DRIVES:
+		last_s = &last_drv;
+		have_last = &have_drv;
+		break;
+	case RP_NETWORK:
+		last_s = &last_net;
+		have_last = &have_net;
+		break;
+	default:
+		return;
+	}
 	/*
 	 * THE INTERVAL IS THE SAMPLER'S OWN, not `R.sample.wall_ms`. That
 	 * field is stamped inside res_sample()'s `if (want)` branch, and
@@ -425,20 +449,14 @@ void res_dev_sample(void)
 		       : kb_now_s();
 	/* A FLAG, not `last_s != 0`: the fixture's first sample is legitimately
 	 * at zero. */
-	double dt_s = have_last && now_s > last_s ? now_s - last_s : 0.0;
+	double dt_s = *have_last && now_s > *last_s ? now_s - *last_s : 0.0;
 
-	switch (res_page_current()) {
-	case RP_DRIVES:
+	if (res_page_current() == RP_DRIVES)
 		drive_sample(dt_s);
-		break;
-	case RP_NETWORK:
+	else
 		net_sample(dt_s);
-		break;
-	default:
-		return;
-	}
-	last_s = now_s;
-	have_last = 1;
+	*last_s = now_s;
+	*have_last = 1;
 }
 
 const char *res_net_headline(void)
@@ -521,6 +539,7 @@ void res_draw_net(int x, int y, int w, int h)
 		chart_h = 0;
 	int list_bottom = bottom - 1 - (chart_h ? chart_h + 1 : 0);
 
+	g_ndrawn = 0;
 	for (int k = 0; k < n && row < list_bottom; k++) {
 		const KprIface *f = &g_if[idx[k]];
 		int sel = (k == g_nsel);
@@ -551,6 +570,7 @@ void res_draw_net(int x, int y, int w, int h)
 			ktui_draw_text(x + 52, row, 18, f->mac,
 				       sel ? KT_SURFACE : KT_MID, bg, 0);
 		row++;
+		g_ndrawn = k + 1;
 	}
 
 	if (chart_h && n) {

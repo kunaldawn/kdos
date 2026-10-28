@@ -3272,14 +3272,14 @@ static void help_body(FILE *o)
 		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | paper | next | prev | list" },
 		{ "kdos theme style <f>", "apply a style file: accent + crt + fonts, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
-		{ "kdos theme --preview <a>", "the state file and the signal only — what kdos-theme's arrows do" },
+		{ "kdos theme --preview <a>", "the state file and the signal only — what kdos-style's arrows do" },
 		{ "kdos status", "packages, containers, exported apps" },
 		{ "kdos doctor", "check the session for common breakage" },
 		{ "kdos appid", "do launcher icons match the windows they open?" },
 		{ "kdos restarts", "what is running code an upgrade replaced" },
 		{ "kdos stutter", "why the desktop hiccuped — with the app's name" },
 		{ "kdos hey list", "every window, from a prompt; run <action> <id>" },
-		{ "kdos update check", "what the ports tree pins that is not installed; --json for a surface" },
+		{ "kdos update check", "installed packages older than their recipe; --json for a surface" },
 		{ "kdos update fetch", "the newest signed ports tree, in place of /ports" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
@@ -3345,14 +3345,14 @@ static void help_body(FILE *o)
 		{ "Alt+F2", "run a command" },
 		{ "Super+Return", "terminal (foot)" },
 		{ "Super+E", "files (mc)" },
-		{ "PrtSc / Shift+PrtSc", "screenshot: a region / the screen" },
+		{ "PrtSc / Shift+PrtSc", "screenshot: the screen / a region" },
 		{ "Super+Q / Alt+F4", "close window" },
 		{ "Super+Tab / Alt+Tab", "switch window (most recent first)" },
 		{ "Super+Shift+Tab", "switch window, backwards" },
 		{ "Super+M", "maximize / restore" },
 		{ "Super+F", "fullscreen / restore" },
 		{ "Super+N", "minimize the window" },
-		{ "Super+Space", "the root menu, without the desktop" },
+		{ "Super+Space", "search windows, apps, settings, files (kdos-palette)" },
 		{ "Super+P", "the screens (kdos-display)" },
 		{ "Super+Arrows", "snap the window to that half or corner" },
 		{ "Alt+Space", "the window menu" },
@@ -3509,16 +3509,15 @@ static int cmd_status(int argc, char **argv)
 	 * created, which is every machine before the first launch. */
 	printf("%s%-16s%s %d\n", C_B, "Alien apps", C_0,
 	       count_lines("/usr/share/kdos/alien-apps"));
-	/* Naming the session rather than saying "wayland": "wayland" would hide
-	 * the case where the session is something else entirely.
-	 * `session_name()` is the one place that decides, so this line cannot
-	 * disagree with `kdos version`. */
+	/* `session_name()` decides tty against a display, so this line cannot
+	 * disagree with `kdos version` about that. It names kdos-comp for any
+	 * WAYLAND_DISPLAY, so whether kdos-comp is really running is asked
+	 * here, and a display with no kdos-comp says so. */
 	const char *sn = session_name();
 
 	printf("%s%-16s%s %s\n", C_B, "Session", C_0,
 	       !sn			      ? "tty"
-	       : strcmp(sn, "kdos-comp")      ? sn
-	       : running("kdos-comp", NULL)   ? "kdos-comp"
+	       : running("kdos-comp", NULL)   ? sn
 					      : "wayland (not kdos-comp)");
 	putchar('\n');
 
@@ -3857,7 +3856,10 @@ static void check_default_password(void)
 
 	char *h = crypt("kdos", hash);
 	if (h && !strcmp(h, hash)) {
-		if (kb_path_exists(INIT_DIR "/70_sshd"))
+		/* Enabled the way rcS decides it: the script executable and
+		 * no /etc/service.disabled marker for its name. */
+		if (access(INIT_DIR "/70_sshd.sh", X_OK) == 0 &&
+		    !kb_path_exists(DISABLED_DIR "/sshd"))
 			warn_("the kdos password is still the shipped default "
 			      "— and sshd is enabled, so anyone who can reach "
 			      "this machine can log in (run: passwd)");
@@ -4308,9 +4310,11 @@ static int cmd_doctor(int argc, char **argv)
 		char sock[512];
 		if (*wd == '/')
 			snprintf(sock, sizeof(sock), "%s", wd);
+		else if (wl_rt && *wl_rt)
+			snprintf(sock, sizeof(sock), "%s/%s", wl_rt, wd);
 		else
-			snprintf(sock, sizeof(sock), "%s/%s",
-				 wl_rt && *wl_rt ? wl_rt : "/run/user/1000", wd);
+			snprintf(sock, sizeof(sock), "/run/user/%u/%s",
+				 (unsigned)getuid(), wd);
 		if (kb_path_exists(sock))
 			ok("WAYLAND_DISPLAY=%s", wd);
 		else
@@ -4337,8 +4341,8 @@ static int cmd_doctor(int argc, char **argv)
 	if (running(NULL, "xdg-desktop-portal-wlr"))
 		ok("wlr portal running");
 	else
-		warn_("wlr portal not running — screen capture and "
-		      "file pickers degraded");
+		warn_("wlr portal not running — screen sharing and "
+		      "screenshots from applications fail");
 	doctor_gap();
 
 	doctor_head("Containers");
@@ -4494,7 +4498,7 @@ static int cmd_doctor(int argc, char **argv)
 	struct stat rst;
 	if (stat("/usr/bin/kdos-resctl", &rst) != 0)
 		warn_("kdos-resctl missing — kdos-res cannot end a process it "
-		      "does not own, and the Memory page has no DIMM details");
+		      "does not own");
 	else if ((rst.st_mode & S_ISUID) && rst.st_uid == 0)
 		ok("kdos-resctl is setuid root");
 	else
@@ -4651,10 +4655,10 @@ static int cmd_doctor(int argc, char **argv)
 
 		/*
 		 * The command socket, and the two failures it distinguishes.
-		 * A compositor that IS running without one is an older
-		 * kdos-comp — `kdos hey` and kdos-teams then fail with a
-		 * message about a socket, which sounds like a permissions
-		 * problem and is a version.
+		 * A compositor that IS running without one is a kdos-comp
+		 * of another version than this tool's — `kdos hey` and
+		 * kdos-teams then fail with a message about a socket, which
+		 * sounds like a permissions problem and is a version.
 		 */
 		char *cs = kb_path_join(rtd, "kdos-cmd.sock");
 		if (kb_path_exists(cs))
@@ -4662,7 +4666,8 @@ static int cmd_doctor(int argc, char **argv)
 		else if (comp_mine)
 			warn_("kdos-comp is running but exposes no command "
 			      "socket — `kdos hey` and kdos-teams have nothing "
-			      "to talk to (this compositor predates it)");
+			      "to talk to (this kdos-comp is not the one "
+			      "kdos-tools was built with)");
 		else if (comp)
 			skip_("kdos-comp runs in another account's session — "
 			      "run kdos doctor as that user to check `kdos hey`");
@@ -4680,11 +4685,11 @@ static int cmd_doctor(int argc, char **argv)
 	 * else, so its absence is otherwise invisible.
 	 */
 	if (kb_have_prog("kdos-keys"))
-		ok("kdos-keys installed — W-F1 and `kdos help` read the real "
-		   "rc.xml");
+		ok("kdos-keys installed — W-F1 shows the keys the real rc.xml "
+		   "binds");
 	else
-		warn_("kdos-keys missing — no keybind card, and `kdos help` "
-		      "falls back to a hand-written key list that rc.xml can "
+		warn_("kdos-keys missing — no keybind card; `kdos help` has "
+		      "only its fixed key table, which a changed rc.xml can "
 		      "contradict");
 
 	/*

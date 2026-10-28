@@ -491,23 +491,29 @@ static void test_colour(void)
 		 * worth asserting are the two that make a shared table worth
 		 * having: a verb whose program is absent is not offered, and a
 		 * verb builds an argument VECTOR rather than a command line.
+		 *
+		 * PATH IS THE TEST'S OWN for the whole block: a directory that
+		 * does not exist, so every verb that names a program is absent
+		 * whatever machine runs this. Read from the caller's PATH the
+		 * answer would depend on whether kdos-shell is installed there.
+		 * No kxdg_verb_at call precedes this block, so the table's
+		 * one-second memo cannot hold an answer from the real PATH.
 		 */
 		{
 			KxdgVerb v;
 			const char *av[12];
 			char store[512];
 			int n, found_place = 0, unbuilt = 0, share = 0;
+			const char *vpath = getenv("PATH");
+			char *vkeep = vpath ? strdup(vpath) : NULL;
 
+			setenv("PATH", "/no/such/kdos-selftest-bin", 1);
 			ok(kxdg_verb_count() > 0, "verbs: the table is not empty");
 			for (int i = 0; i < kxdg_verb_count(); i++) {
 				if (!kxdg_verb_at(i, &v))
 					break;
 				if (v.id == KXDG_VERB_PLACE)
 					found_place = v.present;
-				/* Peek carries the "absent stays hidden" half:
-				 * kdos-peek is a kdos-shell link, absent from
-				 * a build host's PATH. On a KDOS machine it is
-				 * present and the assertion below fails. */
 				if (v.id == KXDG_VERB_PEEK)
 					unbuilt = v.present;
 				if (v.id == KXDG_VERB_SHARE)
@@ -517,8 +523,8 @@ static void test_colour(void)
 			   "verbs: one needing no program of its own is always "
 			   "offered");
 			ok(!unbuilt,
-			   "verbs: and one whose program is not built yet is "
-			   "not offered at all");
+			   "verbs: and one whose program is not on PATH is not "
+			   "offered at all");
 			/* `kdos-share` is a link on the kdos-tools binary, so
 			 * the row turns on exactly when that link is on PATH —
 			 * which is the whole mechanism, and it is a filesystem
@@ -591,6 +597,11 @@ static void test_colour(void)
 					      store, sizeof(store), av, 12), 0,
 			       "verbs: a wrapped verb with no terminal builds "
 			       "nothing rather than half a vector");
+			if (vkeep)
+				setenv("PATH", vkeep, 1);
+			else
+				unsetenv("PATH");
+			free(vkeep);
 		}
 
 		/* A row is refused rather than mangled: an `=` in a name would
@@ -740,10 +751,12 @@ static void test_colour(void)
 	 * and an ordering test passes or fails on which direction the palette
 	 * happens to go rather than on whether the tones separate.
 	 */
-	int muted_ok = 1, muted_far = 1;
+	int muted_ok = 1, muted_far = 1, muted_reads = 1;
 	for (int i = 0; i < kcol_nscheme; i++) {
 		const KcolScheme *sc = &kcol_schemes[i];
 		unsigned m = kcol_muted(sc);
+		if (kcol_contrast(m, sc->deep) < 450)
+			muted_reads = 0;
 		double ld = kcol_luma(sc->deep);
 		double dm = kcol_luma(m) - ld;
 		double dd = kcol_luma(sc->dim) - ld;
@@ -764,6 +777,7 @@ static void test_colour(void)
 	}
 	ok(muted_ok, "muted is its own colour, between deep and text, in every scheme");
 	ok(muted_far, "muted is more than twice as far from the background as dim");
+	ok(muted_reads, "muted reads 4.5:1 or better against deep, in every scheme");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

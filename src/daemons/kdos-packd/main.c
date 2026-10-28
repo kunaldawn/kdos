@@ -23,7 +23,7 @@
  *
  *   - THE CLIENT NEVER NAMES A PATH. Every verb takes an ID out of a list this
  *     daemon itself published; `install` takes a FILENAME in a staging
- *     directory the daemon owns. kdos-mountd established this and the reason
+ *     directory the daemon owns, and a second one for a signed index. kdos-mountd established this and the reason
  *     has not changed: a daemon reachable from `wheel` that takes a path is
  *     `mount /dev/sda2 /etc` from any shell.
  *   - VERIFICATION HAPPENS WHERE THE MOUNT HAPPENS. A client that verifies and
@@ -225,8 +225,9 @@ static void handle(int c, char *line, uid_t uid)
 			dprintf(c, "ok %s\n", msg);
 		else
 			dprintf(c, "err %s\n", msg);
-	} else if (!strcmp(tok[0], "install") && ntok == 2) {
-		if (kd_install(tok[1], msg, sizeof(msg)) == 0)
+	} else if (!strcmp(tok[0], "install") && (ntok == 2 || ntok == 3)) {
+		if (kd_install(tok[1], ntok == 3 ? tok[2] : NULL, msg,
+			       sizeof(msg)) == 0)
 			dprintf(c, "ok %s\n", msg);
 		else
 			dprintf(c, "err %s\n", msg);

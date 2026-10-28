@@ -215,8 +215,9 @@ archive is, `<tag>/<asset>`, in its place, and like any variable it has to be se
 
    It downloads every source of every package that is behind before it compiles anything, so a
    machine that is offline, or a source neither the archive nor upstream has, stops the run in
-   minutes. It then builds and installs each package with `kpkg install -f`, with `KPKG_FETCH=1`
-   so that a dependency the new tree adds fetches its own sources.
+   minutes. It then builds and installs each package with `kpkg install -f`, dependencies first,
+   with `KPKG_FETCH=1` so that a dependency the new tree adds fetches its own sources. On a machine
+   with two slots each build runs in a chroot of the inactive slot, against that slot's libraries.
 
 4. On a machine with two slots, `apply` then runs `kpkg check --all` on the slot it installed into,
    copies `/ports` into it, puts its kernel on the EFI system partition with `kdos-bootctl deploy`,
@@ -376,7 +377,7 @@ The badge shows `!`, or `kdos update check` reports a problem
 
 - [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
 - [Nothing creates or first fills the second root slot](../../kdos/06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot)
-- [An update into a slot compiles against the running system](../../kdos/06-reference/known-gaps.md#an-update-into-a-slot-compiles-against-the-running-system)
+- [An update with --root compiles against the running system](../../kdos/06-reference/known-gaps.md#an-update-with---root-compiles-against-the-running-system)
 - [Per-slot kernels have been booted on virtual firmware only](../../kdos/06-reference/known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only)
 - [There is no public binary host](../../kdos/06-reference/known-gaps.md#there-is-no-public-binary-host)
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)

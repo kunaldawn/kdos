@@ -29,28 +29,28 @@ to be edited for a store to be used: at boot the initramfs asks `blkid` for a fi
 the generator's escaping: the init is written by a heredoc, and the generated script has a plain
 `$`):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1155-1216 pin=df8a4d87c418 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1154-1215 pin=df8a4d87c418 -->
 
 `find_persist` is the lookup. It asks for the label again every tenth of a second while USB storage
 is still arriving, so a store on a stick that is enumerated after the medium is found is still used:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=952-1055 pin=4d82dbf65d60 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=951-1054 pin=4d82dbf65d60 -->
 
 The store's mount is moved into the new root as `/mnt/persist`, so the running session can see it
 and the shutdown's `umount -a -r` flushes it:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1271-1280 pin=65f01fb10a3e -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1270-1279 pin=65f01fb10a3e -->
 
 On the store itself, the overlay uses two directories, `upper/` (the session's files) and `work/`
 (overlayfs's own), which the initramfs creates when they are missing.
 
 `kdos persist create` makes the filesystem with no reserved blocks and the label:
 
-<!-- kfs:include src/system/kdos-tools/persist.c lines=298-313 pin=adc5db1e67b9 -->
+<!-- kfs:include src/system/kdos-tools/persist.c lines=303-318 pin=adc5db1e67b9 -->
 
 The menu entry that skips the store:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=327-332 pin=00a38d5e1ac3 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=329-334 pin=00a38d5e1ac3 -->
 
 ## Usage
 
@@ -191,10 +191,9 @@ to RAM, and the console shows `Mounting OverlayFS (persistent)...` followed by
 last partition on that disk. Name another device, or make a partition by hand and label it.
 
 **`kdos persist create` says the new partition `did not appear`.** The partition was added to the
-table, but the kernel has no device node for it yet, and no filesystem was made. The message says
-to reboot and run the command again; reboot, but then make the filesystem on that partition by
-hand, as `kdos persist create` would have: `sudo mkfs.ext4 -m 0 -L KDOS_PERSIST /dev/sdX<n>`, with
-the device the message named. Running `kdos persist create` again would append a second
+table, but the kernel has no device node for it yet, and no filesystem was made. The message tells
+you to reboot and then run `mkfs.ext4 -m 0 -L KDOS_PERSIST <part>` on the partition it names, as
+`kdos persist create` would have: `sudo mkfs.ext4 -m 0 -L KDOS_PERSIST /dev/sdX<n>`. Running `kdos persist create` again would append a second
 partition, because the first has no label for it to find.
 
 **The desktop does not start after a change.** Boot `KDOS Live (clean session)`, then either start

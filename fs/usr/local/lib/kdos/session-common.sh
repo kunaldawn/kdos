@@ -97,7 +97,22 @@ kdos_session_boxes() {
 	# Ten minutes, from the session rather than from a root service, because
 	# the boxes are the user's and so is the question the compositor is asked
 	# before any is stopped.
-	(while sleep 600; do nice -n 10 /usr/local/bin/kdos-box gc >/dev/null 2>&1; done &)
+	#
+	# ONE LOOP PER LOGIN, found again by its pidfile in the runtime directory:
+	# every session start inside one login runs this, and without the check
+	# each would add another loop. The pid is only trusted while its command
+	# line still names kdos-box, so a reused pid does not stand in for it.
+	_gpid="$XDG_RUNTIME_DIR/kdos/box-gc.pid"
+	mkdir -p "${_gpid%/*}" 2>/dev/null
+	_gp=$(cat "$_gpid" 2>/dev/null)
+	case "$_gp" in ''|*[!0-9]*) _gp=0 ;; esac
+	if [ "$_gp" = 0 ] || ! grep -qa kdos-box "/proc/$_gp/cmdline" 2>/dev/null; then
+		(sh -c 'echo $$ > "$1" 2>/dev/null
+			while sleep 600; do
+				nice -n 10 /usr/local/bin/kdos-box gc >/dev/null 2>&1
+			done' kdos-box-gc "$_gpid" >/dev/null 2>&1 &)
+	fi
+	unset _gpid _gp
 }
 
 kdos_session_bus() {
@@ -138,7 +153,9 @@ kdos_session_bus() {
 
 # THE AUDIO STACK, once per user and not once per session. pgrep-guarded
 # because a session restart must not start a second pipewire: two of them
-# fight over the same devices and the loser's clients get silence.
+# fight over the same devices and the loser's clients get silence. The guard
+# is this user's pipewire only — another account's running daemon serves that
+# account's runtime directory, and taking it for ours leaves this login silent.
 #
 # Not the compositor's — a login sound and a boxed application's audio are the
 # same stack, and neither goes through it.
@@ -153,7 +170,7 @@ kdos_session_bus() {
 # daemon's socket, and the PulseAudio shim announces sinks that do not exist
 # until something has created them.
 kdos_session_audio() {
-	if command -v pipewire >/dev/null 2>&1 && ! pgrep -f '^pipewire$' >/dev/null 2>&1; then
+	if command -v pipewire >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -f '^pipewire$' >/dev/null 2>&1; then
 		pipewire >/dev/null 2>&1 &
 		sleep 0.3
 		command -v wireplumber >/dev/null 2>&1 && \
@@ -372,9 +389,17 @@ kdos_session_once() {
 					# speed of `fork` — one second is far
 					# below any schedule and far above a
 					# spin.
+					#
+					# A REMOVED FILE ENDS ITS ROWS' LOOPS —
+					# `kdos remind fire`, `kdos remind
+					# clear` or a person deleting it. A
+					# snooze restarted with its -t timefile
+					# gone searches from one slack before
+					# now and re-runs the job about once a
+					# second for the whole slack.
 					# shellcheck disable=SC2086
 					(
-						while :; do
+						while [ -e "$_tf" ]; do
 							_t0=$(date +%s)
 							snooze $_spec "$@" \
 								>/dev/null 2>&1

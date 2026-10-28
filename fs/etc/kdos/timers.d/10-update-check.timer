@@ -1,5 +1,5 @@
-# The newest signed ports tree, then what it pins that is not installed, for
-# the panel's badge and kdos-update. --fetch replaces /ports with the latest
+# The newest signed ports tree, then the installed packages older than their
+# recipe in it, for the panel's badge and kdos-update. --fetch replaces /ports with the latest
 # release's tree when that is newer and records a failure — no network, a
 # download or a signature that failed — which the badge then shows; the check
 # answers against whatever tree is in place either way. Nightly and NOT at

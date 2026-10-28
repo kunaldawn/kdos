@@ -39,8 +39,8 @@ void res_sensor_prepare(void)
 	g_nsen = kpr_sensors_list(&g_sen);
 }
 
-/* The hottest reading, in the unit `fahrenheit` asks for. The headline below
- * names the same reading and prints it in Celsius whatever the setting. */
+/* The hottest reading, in the unit `temperature` asks for, as the headline
+ * and every reading on the page are. */
 const char *res_sensor_figure(void)
 {
 	static char s[24];
@@ -79,9 +79,8 @@ const char *res_sensor_headline(void)
 		snprintf(s, sizeof(s), "%d reading%s, no temperature",
 			 g_nsen, g_nsen == 1 ? "" : "s");
 	else
-		snprintf(s, sizeof(s), "%.0f%sC hottest of %d, %d fan%s", hot,
-			 ktui_glyph[KT_G_DEG], ntemp, nfan,
-			 nfan == 1 ? "" : "s");
+		snprintf(s, sizeof(s), "%s hottest of %d, %d fan%s",
+			 res_temp(hot), ntemp, nfan, nfan == 1 ? "" : "s");
 	return s;
 }
 
@@ -97,12 +96,21 @@ static const char *unit_of(int kind)
 
 	switch (kind) {
 	case KPR_SENSOR_TEMP:
-		snprintf(deg, sizeof(deg), "%sC", ktui_glyph[KT_G_DEG]);
+		snprintf(deg, sizeof(deg), "%s%s", ktui_glyph[KT_G_DEG],
+			 RC.fahrenheit ? "F" : "C");
 		return deg;
 	case KPR_SENSOR_FAN:   return "rpm";
 	case KPR_SENSOR_VOLT:  return "V";
 	default:               return "W";
 	}
+}
+
+/* A temperature in the configured scale. The chip reports Celsius, and the
+ * colouring and the bar stay in it: a ratio to the critical point is the
+ * same in either scale only when both ends are in Celsius. */
+static double temp_shown(double c)
+{
+	return RC.fahrenheit ? c * 9.0 / 5.0 + 32.0 : c;
 }
 
 /*
@@ -153,6 +161,9 @@ void res_draw_sensors(int x, int y, int w, int h)
 		if (s->kind == KPR_SENSOR_FAN)
 			snprintf(val, sizeof(val), "%.0f %s", s->value,
 				 unit_of(s->kind));
+		else if (s->kind == KPR_SENSOR_TEMP)
+			snprintf(val, sizeof(val), "%.1f %s",
+				 temp_shown(s->value), unit_of(s->kind));
 		else
 			snprintf(val, sizeof(val), "%.1f %s", s->value,
 				 unit_of(s->kind));
@@ -171,7 +182,7 @@ void res_draw_sensors(int x, int y, int w, int h)
 			ktui_gauge(x + 40, row, w - 52, frac, temp_slot(s),
 				   KT_BG);
 			ktui_draw_textf(x + w - 11, row, 10, KT_MID, KT_BG, 0,
-					"crit %.0f", s->crit);
+					"crit %.0f", temp_shown(s->crit));
 		}
 		row++;
 	}

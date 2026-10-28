@@ -77,13 +77,13 @@ recipe does:
 A box receives no profile environment. [`kdos-appbox`]{.idx} gives it `DISPLAY` itself, from its own
 environment or from the first socket in `/tmp/.X11-unix`, which the box shares with the host:
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=427-441 pin=5b518a0f07ce -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=428-442 pin=5b518a0f07ce -->
 
 When `kdos-appbox` writes launchers for a boxed application, it removes from the entry's `Exec`
 line the assignments that would force X11, so an application whose distribution entry asks for
 X11 runs on Wayland:
 
-<!-- kfs:include src/system/kdos-appbox/launchers.c lines=264-268 pin=9b7f3a80babb -->
+<!-- kfs:include src/system/kdos-appbox/launchers.c lines=265-269 pin=9b7f3a80babb -->
 
 ## Usage
 

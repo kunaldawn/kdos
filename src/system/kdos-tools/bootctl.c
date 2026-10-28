@@ -871,9 +871,9 @@ static int menu_sync(const BootState *st)
 		   "Every kernel message on the console", dir[next], next,
 		   st->slot[next], base.p, "loglevel=7");
 	kb_buf_str(&block, "\n");
-	menu_entry(&block, "KDOS (single user)", "A root shell, no session",
-		   dir[next], next, st->slot[next], base.p,
-		   "loglevel=7 single");
+	menu_entry(&block, "KDOS (single user)",
+		   "A root shell for root's password, no desktop", dir[next],
+		   next, st->slot[next], base.p, "loglevel=7 single");
 	if (dir[other]) {
 		char t[32];
 		int panics = !strncmp(base.p, "panic=", 6) ||
@@ -1963,10 +1963,12 @@ static int cmd_select(BootState *st, int have, int entry)
 				fprintf(stderr, "bootctl: last attempt at slot "
 						"%s\n", slot_name(st->trying));
 		} else {
-			fprintf(stderr, "bootctl: slot %s failed %d times — "
-					"rolling back to %s\n",
-				slot_name(st->trying), TRY_ATTEMPTS,
-				slot_name(st->active));
+			/* The state keeps only the attempts left, not how many
+			 * `try` granted, so the message names no count. */
+			fprintf(stderr, "bootctl: slot %s spent its attempts "
+					"without being marked good — rolling "
+					"back to %s\n",
+				slot_name(st->trying), slot_name(st->active));
 			st->trying = -1;
 			st->attempts = 0;
 		}

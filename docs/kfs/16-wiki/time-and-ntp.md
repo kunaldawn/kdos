@@ -54,7 +54,7 @@ nothing is there at boot, as on every boot of the live medium, `rcS` links UTC, 
 installer writes it, and `kdos-powerd` writes it on every zone change, so the live medium has none
 until the first `kdos-power timezone`. The text, from `src/daemons/kdos-powerd/main.c`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=870-876 pin=6d1b532e0eee -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=900-906 pin=6d1b532e0eee -->
 
 **`/etc/modprobe.d/kdos-regdom.conf`** is the wireless regulatory country, written from the zone
 by the same verb; see

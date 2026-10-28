@@ -16,5 +16,5 @@ behaviour before passing it GNU options such as `--label`.
 and `zmore` likewise only when it finds `more`. The bootstrap runs on the build host, which has
 both, so it installs `zless`. The port does not name `less` in `depends`, and `30_foundation`
 builds it before [less](#port-less) is installed, so its configure finds no `less`: the package
-carries no `zless` and does not claim the bootstrap's copy, which stays in the tree as a file no
-package owns.
+carries no `zless`. The bootstrap deletes the `zless` and `zless.1` it installed, so the tree
+holds no file of gzip's that no package owns.

@@ -167,6 +167,27 @@ static void sniff_fs(const char *path, Part *p)
 		trim_label(p->label);
 	}
 
+	/* f2fs: the superblock is at 1 KiB, magic 0xF2F52010 little-endian at
+	 * +0, uuid at +0x6c and a UTF-16LE volume name at +0x7c. Without it
+	 * an f2fs root reads back with no UUID, and do_config cannot write
+	 * fstab or the boot entry's root=. */
+	if (!p->fstype[0] &&
+	    pread(fd, sb, 1024, 1024) == 1024 &&
+	    sb[0] == 0x10 && sb[1] == 0x20 && sb[2] == 0xf5 && sb[3] == 0xf2) {
+		kb_strlcpy(p->fstype, "f2fs", sizeof(p->fstype));
+		uuid_fmt(p->uuid, sb + 0x6c);
+		size_t n = 0;
+		for (int k = 0; k < 64 && n < sizeof(p->label) - 1; k++) {
+			unsigned c = (unsigned)sb[0x7c + 2 * k] |
+				     ((unsigned)sb[0x7c + 2 * k + 1] << 8);
+			if (!c)
+				break;
+			p->label[n++] = c < 0x80 ? (char)c : '?';
+		}
+		p->label[n] = 0;
+		trim_label(p->label);
+	}
+
 	if (!p->fstype[0] && pread(fd, sb, 4096, 0x10000) == 4096 &&
 	    !memcmp(sb + 0x40, "_BHRfS_M", 8)) {
 		kb_strlcpy(p->fstype, "btrfs", sizeof(p->fstype));

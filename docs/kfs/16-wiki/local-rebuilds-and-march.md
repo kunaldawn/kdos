@@ -77,7 +77,7 @@ per build, default 5), `KDOS_MARCH_LEVEL` (the level to measure against) and `KD
 `KDOS_ISO_SOURCES=1` makes the image's last step copy the tree onto the medium beside the system
 image, and write a stamp `kdos rebuild` prints before it starts:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=193-216 pin=a3950da6288f -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=195-218 pin=0b3f5e742938 -->
 
 ## Usage
 
@@ -271,7 +271,9 @@ carries every source. No rebuild from a medium has been run through every phase;
 3. Mount a real disk with at least 25 GB free, not a tmpfs and not an overlay, for example at
    `/mnt/disk`.
 
-4. Check first, then run. The build enters a chroot for most of its phases, which needs root:
+4. Check first, then run. The build enters a chroot for most of its phases, which needs root, so
+   `kdos rebuild` without root stops before it copies anything; only `--dry-run`, which changes
+   nothing, runs as any user:
 
    ```bash
    sudo kdos rebuild --dry-run /mnt/disk/work

@@ -1395,6 +1395,15 @@ static void paste_pump(void)
 	K.paste_len = 0;
 }
 
+/* Whether the clipboard chord is Ctrl+Shift+V rather than any Ctrl+V. See
+ * kwl_paste_needs_shift. */
+static int paste_shift;
+
+void kwl_paste_needs_shift(int on)
+{
+	paste_shift = on;
+}
+
 static void paste_start(int primary)
 {
 	int rank;
@@ -3583,12 +3592,13 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 	ev.key = kwl_keysym_to_ktui(sym, K.xkb_state, kc);
 	if (!ev.key)
 		return;			/* a bare modifier: nothing to repeat */
-	/* Ctrl+V starts receiving the clipboard. The chord is the letter plus
-	 * the modifier, which is the one vocabulary every backend delivers.
-	 * The key is still delivered: with nothing on the clipboard the
-	 * consumer sees exactly what it always saw. */
+	/* Ctrl+V starts receiving the clipboard — Ctrl+Shift+V alone once the
+	 * consumer has said kwl_paste_needs_shift(1). The chord is the letter
+	 * plus the modifier, which is the one vocabulary every backend
+	 * delivers. The key is still delivered: with nothing on the clipboard
+	 * the consumer sees exactly what it always saw. */
 	if ((ev.mods & KT_MOD_CTRL) && (ev.key == 'v' || ev.key == 'V') &&
-	    K.data_dev)
+	    (!paste_shift || (ev.mods & KT_MOD_SHIFT)) && K.data_dev)
 		paste_start(0);
 	push_event(&ev);
 

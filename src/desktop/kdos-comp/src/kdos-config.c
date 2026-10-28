@@ -213,8 +213,8 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 		 * a key that silently means nothing is indistinguishable from
 		 * a typo.
 		 */
-		wlr_log(WLR_INFO, "%s:%d: `panel_bottom` is retired — there is "
-			"one taskbar now; use `panel = bottom|top|off`",
+		wlr_log(WLR_INFO, "%s:%d: `panel_bottom` is not a setting; "
+			"use `panel = bottom|top|off`",
 			path, lineno);
 	} else if (!strcmp(key, "desktop_icons")) {
 		set_bool(path, lineno, value, &c->desktop_icons);
@@ -287,8 +287,8 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 		 * read, and honouring it would be a second place to configure
 		 * what rc.xml already owns.
 		 */
-		wlr_log(WLR_INFO, "%s:%d: `%s` is rc.xml's since the labwc "
-			"fork — see ~/.config/kdos-comp/rc.xml; ignored here",
+		wlr_log(WLR_INFO, "%s:%d: `%s` belongs in "
+			"~/.config/kdos-comp/rc.xml; ignored here",
 			path, lineno, key);
 	} else {
 		/*
@@ -427,7 +427,7 @@ kdos_conf_reload(void)
 			|| old.panel_margin != kdos_conf.panel_margin
 			|| old.panel_opacity != kdos_conf.panel_opacity) {
 		wlr_log(WLR_INFO, "comp.conf: panel/panel_cells/icons/slit/"
-			"desktop_icons/panel_autohide/panel_margin/"
+			"clipboard/desktop_icons/panel_autohide/panel_margin/"
 			"panel_opacity changed — applies at the next login");
 		kdos_conf.panel_edge = old.panel_edge;
 		kdos_conf.panel_cells = old.panel_cells;

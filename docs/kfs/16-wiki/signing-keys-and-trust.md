@@ -44,7 +44,8 @@ The host ring, for a [binary host]{.idx}'s index and for a package's own `.sig` 
 Every `*.pub` directly in the directory is trusted; the loader does not descend into `packs/` or
 `tree/`, which is what keeps the three rings apart. `KPKG_KEYRING` names another directory for one
 [`kpkg`]{.idx} command. Every ring, this one and the two below, is read in name order and holds at
-most sixteen keys: a seventeenth `.pub` is ignored without a message.
+most sixteen keys: each `.pub` past the sixteenth is not trusted, and the loader names it on
+stderr (`DIR: a keyring holds at most 16 keys; NAME.pub is not trusted`).
 
 ### /etc/kdos/keys/packs/
 
@@ -188,6 +189,8 @@ on a machine whose ring is empty, as it ships; `KPKG_REQUIRE_SIG=1` refuses both
    ```
 
    `sign` prints `app.kpack signed`, and `index` prints `./packs/PACKAGES  N entries, signed`.
+   A secret key that group or others can read is refused by both:
+   `kdos-pack: mypacks.key is readable by other users — refusing to sign with it`.
 
 3. On every machine that should accept them, put the public half in the pack ring. To trust only
    your packs, remove the shipped key as well. No pack the build makes is signed with it,
@@ -272,11 +275,12 @@ verification reads the ring afresh, so the next one does not try the deleted key
 - Keep every `.key` file off the machines that only verify. A secret key is needed only where you
   sign.
 - A build keeps its release key, `kdos-release.key`, and the kernel's module-signing key in
-  `build/keys/`, which `make clean` and `make cleanbuild` leave in place. Lose the release key and
-  images already written keep trusting a key nobody can sign trees with. The binary host's key is
-  in `build/binhost-key/`, which both targets delete: the next `KDOS_MAKE_BINHOST=1` build makes a
-  new key, and every machine holding the old `kdos-binhost.pub` refuses the new index until it is
-  given the new one.
+  `build/keys/`, and the binary host's key in `build/binhost-key/`; `make clean` and
+  `make cleanbuild` leave both directories in place. Lose the release key and images already
+  written keep trusting a key nobody can sign trees with. The binary host's key is made only when
+  it is missing, so deleting `build/binhost-key/` by hand is what makes a new one: the next
+  `KDOS_MAKE_BINHOST=1` build signs with it, and every machine holding the old
+  `kdos-binhost.pub` refuses the new index until it is given the new one.
 - A key placed in the wrong ring is trusted only for that ring's kind of file. A pack key copied
   into `/etc/kdos/keys` would make its holder a trusted source of host packages.
 - `kdos explain libksig` prints the design note on why a key id is not a key; see

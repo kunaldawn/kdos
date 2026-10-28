@@ -1558,7 +1558,9 @@ heading of any level but `##`; a `## ` line inside a fenced block is code and st
 A link is written relative to `kfs.md` itself, so it works on GitHub: the
 renderer turns a link to a page of `docs/kfs` into that page's anchor in the book and any other
 into the file's GitHub URL, and leaves a `#port-<name>` link, or a link to a page's own anchor in
-the rendered book, as it is.
+the rendered book, as it is. Links are mapped a paragraph at a time, in a note and in a
+hand-written page of `docs/kfs` alike, so a link whose text wraps onto the next line is mapped like
+any other; a link inside a fenced block is code and stays as written.
 
 The file is kept honest by `testing/kfscheck.py`'s `sidecars` check. Each `## Flags` bullet opens
 with the flag in backquotes, and the port's `build.sh` must still name that flag whole, so a note
@@ -2848,7 +2850,7 @@ refuses the unhashed archive and `ports/publish` has nothing to publish.
 ### `ports/publish`
 
 ```text
-ports/publish [--dry-run | --check] [--history] [port…]
+ports/publish [--dry-run | --check] [--history] [--all | port…]
 ports/publish --plan [--dry-run]
 ports/publish --describe [--dry-run]
 ports/publish --rehome [--dry-run] [port…]
@@ -2858,8 +2860,14 @@ ports/publish --freeze <kdos-tag> [--dry-run | --check]
 ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned] [--publish] [--dry-run]
 ```
 
-`ports/publish` uploads every file a `sha256 =` line names, under all of `ports/core` or only the
-named ports, that git does not carry and the archive does not hold yet. A port is named by its
+`ports/publish` uploads every file a `sha256 =` line names that git does not carry and the archive
+does not hold yet. Which lines it reads depends on what it is given: the named ports' recipes;
+with `--all`, every recipe under `ports/core`; and with neither, every hash a recipe under
+`ports/core` names that the upstream's recipes do not, or that `ports/sources.idx` does not. The
+upstream is the branch's `@{upstream}`, or every `refs/remotes/*` tip when it has none; without a
+remote every hash is wanted. A hash the upstream already names was let through by its pre-push
+hook only once archived, so a plain run checks only the handful a change adds, in seconds, and
+`--all` is the full sweep, about two and a half minutes over some 2,500 files. A port is named by its
 bare name, on whatever shelf it sits, and a named port that does not exist fails the run, with
 `--check` as without it. A path git tracks as a Git LFS pointer is not carried: the pointer names
 the file and is not the file. The bytes come from the port directory, the cache, or the local LFS
@@ -2867,7 +2875,9 @@ store, and are hashed again immediately before each upload, because an asset who
 the hash its index line names would poison every checkout that asks for it.
 
 A file is present when `ports/sources.idx` names its hash and an anonymous `HEAD` on the asset's
-download URL (on every part's, for a file in parts) answers 200; the `HEAD` costs no API quota. A
+download URL (on every part's, for a file in parts) answers 200; the `HEAD` costs no API quota,
+and `KDOS_PUBLISH_JOBS` (16) of them run at once, since each spends most of a second waiting on
+GitHub's redirect. A
 hash the index does not name is missing without asking. A rerun therefore uploads only what is
 still missing, and an interrupted run is resumed by running it again. Only a 404 counts as
 missing. A 5xx or a dropped connection is asked again after 10, 30 and 60 seconds, since GitHub's
@@ -2932,6 +2942,7 @@ each part), size and SHA-256; a file sits under the shelf its asset name starts 
 |---|---|
 | `--dry-run` | List what would be uploaded: the target volume, the predicted asset name (resolved against the index and the rest of the plan, not against GitHub), the part count and the size. Makes no network call and needs no token, takes every indexed file as present, and takes the index's count of each volume for its assets, so a spill is predicted as it would happen. With `--plan`, `--rehome` or `--retire`, lists what that mode would do |
 | `--check` | Presence only: list what is missing from the archive, as `not in ports/sources.idx` or `indexed in <tag> as <asset> but absent`; exit 1 if anything is |
+| `--all` | Want every recipe hash under `ports/core`, not only those new against the upstream or unindexed. Not with named ports |
 | `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`), to seed the archive with what old commits' recipes point at. Each is labelled `<port>/<file>` from its old path and goes to its port's shelf today, or, when no port of that name exists today, to the highest volume as `attic--<file>`. Objects the local LFS store and the cache do not hold are counted on one line and skipped without failing the run. Without git-lfs no object can be labelled, so none is uploaded, and the count says to install it |
 | `--plan` | Give every shelf `ports/shelves` lists without a volume one, and rewrite those lines; see below. No network, no token |
 | `--describe` | Rewrite the title and notes of every release the index names, uploading nothing. Needs the token |
@@ -3017,6 +3028,7 @@ retries. An upload that meets a 5xx or a dropped connection is retried twice; th
 |---|---|---|
 | `KDOS_SOURCES_TOKEN` | `~/.config/kdos/sources-token` | The upload token |
 | `KDOS_PUBLISH_DELAY` | `8` | Seconds between creating, changing and deleting calls |
+| `KDOS_PUBLISH_JOBS` | `16` | Presence `HEAD`s run at once |
 | `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index read and written |
 | `KDOS_RELEASE_CAP` | `1000` | Assets per archive release, parts counted; a file whose volume would pass it spills into another volume. GitHub's limit is 1000 |
 | `KDOS_VOLUME_FILL` | `650` | The planned assets per volume that `--plan` packs shelves to |

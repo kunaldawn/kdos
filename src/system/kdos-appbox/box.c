@@ -50,6 +50,7 @@
 
 #include "kdos-appbox.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -315,15 +316,19 @@ int profile_load(Profile *p, const char *box)
  * promptly by a start lands exactly here — as does a hung app holding D-state
  * I/O, which can wedge a box in `stopping` for good.
  *
- * Wait it out, then force the way back. A pack box keeps nothing in its
- * container — its packs are mounted read-only and its writable upper lives
- * outside it, on disk or on tmpfs in a live session — so nothing is lost by
- * recreating the container over the same stack. An image box's writes are in
- * the container itself, so a return of 3 has removed them, and the caller
- * recreates only a pack box.
+ * Wait it out, then kill. Only a PACK box is ever removed past that: it keeps
+ * nothing in its container — its packs are mounted read-only and its
+ * writable upper lives outside it, on disk or on tmpfs in a live session — so
+ * recreating the container over the same stack loses nothing, and a return of
+ * 3 tells the caller to create it again. Every other box (a store box over a
+ * local image, or one with no recorded base) keeps its writes inside the
+ * container, and removing it would delete them: it is left stuck, a return of
+ * 4, with a warning naming `kdos-box remove <box> --force`, which is the one
+ * place that data is given up and only when somebody asks.
  */
 int box_unstick(const char *box, char *state, size_t n)
 {
+	Profile p;
 	int i;
 
 	box_state(box, state, n);
@@ -350,6 +355,15 @@ int box_unstick(const char *box, char *state, size_t n)
 	if (strcmp(state, "stopping"))
 		return 2;
 
+	profile_load(&p, box);
+	if (strncmp(p.base, "pack:", 5)) {
+		kb_warn("%s is stuck stopping and its writes are inside its "
+			"container, so it is left as it is — `kdos-box remove "
+			"%s --force` discards the box and everything it wrote",
+			box, box);
+		return 4;
+	}
+
 	{
 		KbArgv r = {0};
 		kb_argv_add(&r, "podman");
@@ -374,8 +388,8 @@ int profile_save(const Profile *p)
 	snprintf(buf, sizeof(buf),
 		 "# KDOS box profile — applied when the box is CREATED.\n"
 		 "# Namespaces and volumes cannot be re-flagged on a live\n"
-		 "# container, so a change here takes effect after\n"
-		 "# `kdos-box recreate %s`.\n"
+		 "# container, so a change here takes effect once the box\n"
+		 "# is removed (`kdos-box remove %s`) and created again.\n"
 		 "base=%s\n"
 		 "image=%s\n"
 		 "accent=%s\n"
@@ -451,8 +465,10 @@ void profile_print(const Profile *p)
 	       "recorded in the profile");
 	if (p->persist != PERSIST_PERSISTENT)
 		printf("            ! %s is not enforced — a box's writes land"
-		       " where its runtime puts them, and every launch here"
-		       " keeps the upper on disk\n", persist_name(p->persist));
+		       " where its runtime puts them: inside the container for"
+		       " an image box, and for a pack box wherever kdos-packd"
+		       " puts the upper, on disk or on tmpfs when $HOME cannot"
+		       " hold one\n", persist_name(p->persist));
 	printf("network     = %-11s %s\n",
 	       p->netnone ? "none" : p->netns ? "private" : "host",
 	       p->netnone ? "--network none" :
@@ -516,8 +532,8 @@ void profile_print(const Profile *p)
 	if (p->pids)
 		printf("pids        = %-11d --pids-limit\n", p->pids);
 	if (p->autostop_s)
-		printf("autostop    = %-11d seconds idle, enforced by `kdos-box gc`\n",
-		       p->autostop_s);
+		printf("autostop    = %-11d seconds after start with no window,"
+		       " enforced by `kdos-box gc`\n", p->autostop_s);
 	/*
 	 * ONE ROUTE, WHICHEVER WORD IS IN THE FILE. `kdos-appbox genlaunchers`
 	 * writes the entries, the shims and the mime cache for every installed
@@ -658,6 +674,24 @@ int box_state(const char *box, char *buf, size_t n)
 	return 0;
 }
 
+/* Letters, digits and dots: a size (`4G`), a count or a fraction (`1.5`),
+ * and nothing a shell would split, expand or quote. */
+static int plain_word(const char *s)
+{
+	if (!*s)
+		return 0;
+	for (; *s; s++)
+		if (!isalnum((unsigned char)*s) && *s != '.')
+			return 0;
+	return 1;
+}
+
+static void add_flag(char *buf, size_t n, const char *flag, const char *val)
+{
+	size_t l = strlen(buf);
+	snprintf(buf + l, n - l, "%s%s %s", l ? " " : "", flag, val);
+}
+
 int box_create(const Profile *p)
 {
 	KbArgv a = {0};
@@ -713,6 +747,36 @@ int box_create(const Profile *p)
 		kb_argv_add(&a, "--volume");
 		kb_argv_add(&a, "/dev/dri:/dev/dri");
 	}
+	/*
+	 * THE LIMITS AND `network = none`, which distrobox has no flags of its
+	 * own for, go to podman through --additional-flags. distrobox-create
+	 * `eval`s the command it builds, so a value is passed only when it is
+	 * made of characters a shell reads as one plain word; anything else is
+	 * refused by name rather than handed to that eval. `--unshare-netns`
+	 * above is what keeps distrobox from adding `--network host`, so
+	 * `--network none` here is the only network flag podman sees.
+	 */
+	if (p->memory[0]) {
+		if (plain_word(p->memory))
+			add_flag(flags, sizeof(flags), "--memory", p->memory);
+		else
+			kb_warn("%s: memory=%s is not a size — not applied",
+				p->name, p->memory);
+	}
+	if (p->cpus[0]) {
+		if (plain_word(p->cpus))
+			add_flag(flags, sizeof(flags), "--cpus", p->cpus);
+		else
+			kb_warn("%s: cpus=%s is not a number — not applied",
+				p->name, p->cpus);
+	}
+	if (p->pids > 0) {
+		char n[16];
+		snprintf(n, sizeof(n), "%d", p->pids);
+		add_flag(flags, sizeof(flags), "--pids-limit", n);
+	}
+	if (p->netnone)
+		add_flag(flags, sizeof(flags), "--network", "none");
 	if (flags[0]) {
 		kb_argv_add(&a, "--additional-flags");
 		kb_argv_add(&a, flags);

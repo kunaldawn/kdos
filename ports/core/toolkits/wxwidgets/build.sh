@@ -9,7 +9,6 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-patch -p1 -i "$PORT_SRC/invalid-header-syntax.patch"
 patch -p1 -i "$PORT_SRC/largefile.patch"
 patch -p1 -i "$PORT_SRC/musl-locale-l.patch"
 patch -p1 -i "$PORT_SRC/no-langinfo-h.patch"

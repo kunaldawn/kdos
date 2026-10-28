@@ -485,6 +485,25 @@ int pack_box_ensure(const char *box, const char *id)
 		return 0;
 	}
 
+	/*
+	 * A STORE BOX IS MADE AGAIN FROM ITS IMAGE. `base=image:` is what
+	 * `kdos app install` creates, over an image this machine built and
+	 * still holds; a box whose container `kdos-box remove` took, the
+	 * profile kept, is recreated over it with an empty writable layer. The
+	 * stuck-in-`stopping` recovery never removes one. Composing
+	 * it from packs would look for a pack named after the box, and a store
+	 * box would then come back only through another install.
+	 */
+	if (!strncmp(p.base, "image:", 6)) {
+		kb_strlcpy(p.image, p.base + 6, sizeof(p.image));
+		fprintf(stderr, "==> Recreating '%s' from %s...\n", box,
+			p.image);
+		rc = box_create(&p);
+		if (fd >= 0)
+			close(fd);
+		return rc;
+	}
+
 	rc = pack_compose(box, id, merged, sizeof(merged));
 	if (rc != 0) {
 		if (fd >= 0)
@@ -543,11 +562,17 @@ int pack_box_start(const char *box)
 	 * a container it will refuse — `container state improper`, which names
 	 * nothing a reader can act on, and the box then looks permanently
 	 * broken. `box_unstick` is the recovery, shared with the app-launch
-	 * path in main.c. A container it had to REMOVE is gone, so the create
-	 * path runs again. */
-	if (box_unstick(box, state, sizeof(state)) == 3)
-		return strncmp(p.base, "pack:", 5)
-			     ? 1 : pack_box_ensure(box, p.base + 5);
+	 * path in main.c. Only a pack box is removed, and the create path then
+	 * runs again over the same packs; any other box that will not settle
+	 * is left stuck with its writes, and this start fails. */
+	switch (box_unstick(box, state, sizeof(state))) {
+	case 3:
+		if (pack_box_ensure(box, p.base + 5) != 0)
+			return 1;
+		break;
+	case 4:
+		return 1;
+	}
 
 	/*
 	 * COMPOSE FIRST, BECAUSE THE OVERLAY DOES NOT SURVIVE A REBOOT.

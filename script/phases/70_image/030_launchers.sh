@@ -51,12 +51,12 @@ source script/phases/70_image/phase.env
 # ghosts — and genlaunchers reads a missing or empty directory alike, as no
 # packs, and sweeps.
 EXTRACT="${KDOS_PACK_EXTRACT:-/var/tmp/kdos-pack-extract}"
-mkdir -p "$EXTRACT"
 
 if ! command -v kdos-appbox >/dev/null 2>&1; then
     echo "[launchers] kdos-appbox is not installed — skipping" >&2
     exit 0
 fi
+mkdir -p "$EXTRACT"
 
 echo "[launchers] reconciling alien launchers against $EXTRACT"
 kdos-appbox genlaunchers --packs-dir "$EXTRACT" /

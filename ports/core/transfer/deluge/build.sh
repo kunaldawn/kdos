@@ -30,6 +30,12 @@ pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
 _site=$(python3 -c 'import sys, sysconfig; print(sysconfig.get_path("platlib", vars={"platbase": sys.argv[1], "base": sys.argv[1]}))' "$PKG/usr")
 find "$_site/deluge/i18n" -mindepth 1 -maxdepth 1 -type d ! -name 'en*' -exec rm -rf {} +
 
+for _egg in "$_site"/deluge/plugins/*.egg; do
+	mv "$_egg" "$_egg.zip"
+	python3 -m zipfile -e "$_egg.zip" "$_egg"
+	rm "$_egg.zip"
+done
+
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/deluge.desktop" <<'DESKTOP'
 [Desktop Entry]

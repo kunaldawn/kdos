@@ -42,7 +42,7 @@ script and the `linux` postinstall, and by one file on the machine.
 
 The module list, in the build script, decides which disks and filesystems can hold a root:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=446-492 pin=e85bf30992e0 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=445-491 pin=e85bf30992e0 -->
 
 The last line writes the same list to the image as [`/boot/initramfs.modules`]{.idx}. That file is the one
 setting on the machine: the [`linux`]{.idx} postinstall reads it to decide which modules to append for a
@@ -53,11 +53,11 @@ escaping: the init is written by a heredoc, and the generated script has a plain
 path checks for `nopersist` separately, to skip the persistence store. Every word is explained in
 [Command-line parameters KDOS reads](../../kdos/03-architecture/boot-and-init.md#command-line-parameters-kdos-reads):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=632-656 pin=0cddbb0c0606 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=631-655 pin=0cddbb0c0606 -->
 
 The rescue helper, which every failure ends in:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=556-578 pin=17c2e4e0f539 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=555-577 pin=17c2e4e0f539 -->
 
 The new kernel's initramfs and its deploy, in the `linux` postinstall:
 

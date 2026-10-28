@@ -39,7 +39,16 @@ read -r ver < "$share/version" || exit 1
 cache=$HOME/.config/rnodeconf/update/$ver
 mkdir -p "$cache" || exit 1
 for f in "$share/$ver"/*; do
-	[ -e "$cache/${f##*/}" ] || ln -s "$f" "$cache/${f##*/}"
+	t=$cache/${f##*/}
+	case ${f##*/} in
+	console_image.bin)
+		[ -L "$t" ] && rm -f "$t"
+		[ -e "$t" ] || cp "$f" "$t" || exit 1
+		;;
+	*)
+		[ -e "$t" ] || ln -s "$f" "$t"
+		;;
+	esac
 done
 exec rnodeconf --nocheck --fw-version "$ver" "$@"
 KDOS_SH

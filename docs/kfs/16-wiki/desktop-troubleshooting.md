@@ -67,7 +67,7 @@ When nothing chose a renderer and the compositor exits because the render node's
 `kdos-desktop: no hardware GL; starting kdos-comp on the pixman renderer`. From
 `fs/usr/local/bin/kdos-desktop-start`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=164-227 pin=b485a0ab3200 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=167-230 pin=b485a0ab3200 -->
 
 ### ~/.config/kdos-comp/rc.xml and ~/.config/kdos/comp.conf
 
@@ -305,7 +305,7 @@ See [Portals and screen sharing](portals-and-screen-sharing.md).
 ## Known gaps
 
 - [There is no graphical login screen (greeter)](../../kdos/06-reference/known-gaps.md#there-is-no-graphical-login-screen-greeter)
-- [Two shipped chords and two routes show nothing](../../kdos/06-reference/known-gaps.md#two-shipped-chords-and-two-routes-show-nothing)
+- [Two menu routes show nothing](../../kdos/06-reference/known-gaps.md#two-menu-routes-show-nothing)
 - [Only two ways of ending the session save the list of open windows](../../kdos/06-reference/known-gaps.md#only-two-ways-of-ending-the-session-save-the-list-of-open-windows)
 - [A tray menu does not update while it is open](../../kdos/06-reference/known-gaps.md#a-tray-menu-does-not-update-while-it-is-open)
 - [Workspace occupancy is inferred, not reported](../../kdos/06-reference/known-gaps.md#workspace-occupancy-is-inferred-not-reported)

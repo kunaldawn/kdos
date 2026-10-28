@@ -96,8 +96,12 @@ timer_stop() {    # <name> <spec> <command...>
     stop_service "kdos-timer-$1"
 }
 
+# Any job down makes the whole status non-zero. timers_each returns whatever
+# its last command did, which is the last job's answer or a skipped comment
+# row's 0, so the result is collected here rather than taken from it.
+timers_rc=0
 timer_status() {  # <name> <spec> <command...>
-    check_status "kdos-timer-$1"
+    check_status "kdos-timer-$1" || timers_rc=1
 }
 
 case "$1" in
@@ -114,6 +118,7 @@ case "$1" in
         ;;
     status)
         timers_each "$SYSDIR" timer_status
+        exit "$timers_rc"
         ;;
     *)
         echo "Usage: $0 {start|stop|status}"

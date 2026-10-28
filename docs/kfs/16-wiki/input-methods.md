@@ -71,7 +71,7 @@ service, and without their Qt configuration windows:
 A boxed application reaches fcitx5 through the compositor, never directly. `kdos-appbox` sets one
 variable for it (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=339-352 pin=fe9f35096fbb -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=340-353 pin=fe9f35096fbb -->
 
 ### The on-screen keyboard
 

@@ -47,7 +47,6 @@ applications only, never the desktop (see
   libraries.
 
 ## Patches
-- `invalid-header-syntax.patch` — in `include/wx/matrix.h`, moves `class` from before `wxDEPRECATED_EXPORT_CORE(...)` to after it, so the macro's attributes precede the class key. GCC ignores attributes in that position with a `-Wattributes` warning: the deprecated `wxTransformMatrix` loses its deprecation and its default visibility, and `libwx_gtk3u_core` exports none of its members.
 - `largefile.patch` — makes `HAVE_LARGEFILE_SUPPORT` an unconditional `#define 1` in CMake's `setup.h.in`. On Unix `init.cmake` already sets it whenever `wxBUILD_LARGEFILE_SUPPORT` is on, which is upstream's default and is not changed here, so the generated `setup.h` differs only if that option is turned off.
 - `musl-locale-l.patch` — in `include/wx/xlocale.h`, defines `strtol_l`, `strtoul_l`, `wcstod_l`, `wcstol_l` and `wcstoul_l` as the plain C calls without the locale argument when they are not macros. musl has none of the five.
 - `no-langinfo-h.patch` — removes the `langinfo.h` probe and its `HAVE_LANGINFO_H` line from CMake's setup, so wx compiles its locale code without `nl_langinfo()`: number separators come from `localeconv()`, and `wxLocale::GetInfo` returns an empty string for the date and time formats.

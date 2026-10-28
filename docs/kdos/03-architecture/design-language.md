@@ -407,9 +407,12 @@ difference, and changing it to `KT_MID` would erase the state rather than make i
 pairs stay `KT_DIM`, and the draw carries `/* not text */` so the check passes it.
 
 For text that must be muted and still readable there is a derived colour, `kcol_muted()`: the
-scheme's `deep` field mixed 56% of the way towards its `text` colour. It measures 3.47:1 to 6.26:1
-against the background and surface slots, above 3:1 in every accent, and the self-test asserts that
-it sits more than twice as far from `deep` in luma (perceived brightness) as `KT_DIM` does. Every
+scheme's `deep` field mixed 56% of the way towards its `text` colour, then moved further towards
+`text` one percent at a time until it reads at 4.5:1 against `deep`. Every dark scheme clears that
+floor at 56% and keeps it; `paper`, on its light ground, lands at 60% (4.54:1). It measures 3.94:1
+to 6.26:1 against the background and surface slots, above 3:1 in every accent, and the self-test
+asserts the 4.5:1 floor for every scheme and that it sits more than twice as far from `deep` in luma
+(perceived brightness) as `KT_DIM` does. Every
 muted text role in the theme generators uses it. `KT_DIM` keeps fills, borders and selection
 backgrounds, where contrast is not the question.
 
@@ -438,11 +441,13 @@ row and draws the marker. There are three states, because they say three differe
 |---|---|
 | A row | `KT_TEXT` on the page, no fill |
 | The selection, pane not focused | `►` in `KT_MID`, label in `KT_TEXT`, still no fill |
-| The selection, pane focused | the row filled `KT_DIM`, `►` in `KT_ACCENT`, label in `KT_TEXT` |
+| The selection, pane focused | the row filled `KT_DIM`, `►` in `KT_ACCENT` (`KT_TEXT` in `paper`), label in `KT_TEXT` |
 
 `KT_TEXT` on `KT_DIM` measures 8.30:1 in the worst accent and 10.22:1 in the best, so the label
-clears 7:1 everywhere, and the `►` marker (`KT_ACCENT` on `KT_DIM`) clears 3.68:1 everywhere. The
-fill is quiet because it is a fill, and the accent is spent on the one cell that says where the
+clears 7:1 everywhere. `KT_ACCENT` on `KT_DIM` clears 4.5:1 in every accent but `paper`, where it
+measures 3.68:1, so `ktui_sel_row()` measures the live palette on each draw and puts the `►` in
+`KT_TEXT` wherever the accent falls below 4.5:1 on the fill; night light's warmed copy is judged
+the same way. The fill is quiet because it is a fill, and the accent is spent on the one cell that says where the
 selection is. The page slot is a parameter, `KT_BG` or `KT_SURFACE`, because a control that guessed
 would paint an opaque band across a translucent window.
 
@@ -468,7 +473,7 @@ process, application, box and device tables in `kdos-res` break this rule: they 
 row with `KT_ACCENT` and the hovered row with `KT_MID`.
 
 The secondary colours cannot be read on the selection fill: `KT_MID` on `KT_DIM` measures 2.19:1
-to 4.21:1, and `kcol_muted()` 2.44:1 to 3.38:1. A row with a secondary column (a tag, a two-letter
+to 4.21:1, and `kcol_muted()` 2.77:1 to 3.38:1. A row with a secondary column (a tag, a two-letter
 code, a unit) therefore raises that column to `KT_TEXT` when the row is selected in a focused pane,
 and `ktui_sel_dim()` answers that in one place. Left muted, the right-hand half of the row would
 disappear exactly when someone is looking at it.

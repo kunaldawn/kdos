@@ -156,7 +156,7 @@ compositor reads it at start and on reconfigure.
 | `Super+Ctrl+N` | `kdos-note` |
 | `Super+Ctrl+E` | `kdos-chars` |
 | `Super+Ctrl+B` | `kdos-contacts` |
-| `Super+Ctrl+V` | `kdos-clip` (no argument: the history daemon, not the picker) |
+| `Super+Ctrl+V` | `kdos-clip --pick`, the clipboard history picker |
 | `Super+Ctrl+Shift+Space` | `kdos-style` |
 | `Super+Ctrl+C` | `kdos-palette --route capture` |
 | `Super+Ctrl+H` | `kdos-palette --route setup` |
@@ -165,9 +165,6 @@ compositor reads it at start and on reconfigure.
 | Volume up and down, mute | `kdos-osd volume +5`, `-5`, `toggle` |
 | Microphone mute | `kdos-osd mic toggle` |
 | Brightness up and down | `kdos-osd brightness +10`, `-10` |
-
-The shipped `Super+Ctrl+V` binding opens no picker; the `kdos-clip` row under
-[The desk accessories](#the-desk-accessories) says why and how to rebind it.
 
 Other chords in the same file start programs that are not this binary, among them `foot`,
 `kdos-lock`, `kdos-power`, `kdos-session-save`, `kdos-res`, `kdos-energy`, `kdos-shot`,
@@ -478,7 +475,8 @@ starts no panel at all. The shipped `comp.conf` documents the defaults the compo
 a key is absent: `panel_cells = 2`, `panel_margin = 0`, `panel_opacity = 80`,
 `panel_autohide = no`, `panel_font = Terminus:pixelsize=20`; with no `--clock` the panel uses
 `%H:%M`. The compositor passes `--font` from `panel_font`, whose default gives a 10×20 cell and so a
-40-pixel two-row bar; only an empty `panel_font` falls back to `chrome_font`. The two keys are
+40-pixel two-row bar. An empty `panel_font` is a line the compositor's parser skips, so the bar
+keeps `Terminus:pixelsize=20` rather than following `chrome_font`. The two keys are
 separate so the bar can be drawn in a different face and size from the menus it opens.
 
 From left to right the bar carries the Start button, the quick-launch row, the window list, the
@@ -1453,12 +1451,11 @@ Nine categories:
 
 System is a list of twelve rows that each open another program: *Resources…* (`kdos-res`),
 *Power…* (`kdos-energy`), *Disks…*, *Burn a disc…* (`kdos-burn`), *Verify files…*
-(`kdos-verify`), *Printers…*, *Accounts…*, *Date and time…* and *Sync…* under "The machine", then
+(`kdos-verify`), *Printers…*, *Accounts…*, *Date and time…* and *Connect to server…* under "The machine", then
 *Firewall…*, *Updates…* and *Backup…* under "Security and updates". Without them those programs
 are reachable only from their own chords and routes, and from nowhere a person looking for a
-control centre would go. *Sync…* is described as calendar and address-book synchronisation
-through vdirsyncer, but the program it opens is `kdos-connect`, the SMB share form (see
-[known gaps](../06-reference/known-gaps.md#the-control-centres-sync-row-opens-the-network-share-window)).
+control centre would go. *Connect to server…* opens `kdos-connect`, which mounts an SMB share on
+another machine, by password or by a Kerberos ticket, through `kdos-mountd`.
 A closing note says what is not here, namely the service list and the root-owned files
 (`/etc/kdos/zram.conf`, `packd.conf`, the timers) that are edited directly, rather than
 implying that the machine is not reachable from here.
@@ -1509,7 +1506,7 @@ in it to read.
 
 The scope tag and the value column lift off the muted colour when their row is selected. `live` and
 `login` are the answer to *did that do anything*, and a selected row is exactly when somebody is
-asking, but muted on the selection fill measures 2.44:1 to 3.38:1 depending on the accent (see
+asking, but muted on the selection fill measures 2.77:1 to 3.38:1 depending on the accent (see
 [The design language](../03-architecture/design-language.md#a-selected-row-is-kt_dim-under-kt_text-and-the-accent-is-one-cell)),
 so left alone the right-hand half of the row would disappear at the moment it matters. `ktui_sel_dim()` is
 that question asked in one place. An `(unset)` value takes the same slot as a set one: the word
@@ -1520,6 +1517,11 @@ store a row writes (the compositor's file, the panel's, the monitor's) is exactl
 needs to know before changing one. A section rule says it once for the rows under it, and the caret
 steps over a rule in whichever direction it was travelling: a heading that could be selected is a
 row where Enter, Left and Right all do nothing, which is the shape of a control that is broken.
+The Panel page has two: *The bar · comp.conf* over `panel`, `panel_cells`, `panel_autohide`,
+`clock_format`, `panel_font`, `panel_margin` and `panel_opacity`, which the compositor reads and
+passes to the bar as arguments, and *What the bar carries · panel.conf* over `overflow`,
+`tray_hide`, `meters`, `task_labels`, `start_label` and `right`, which the bar reads itself.
+`task_labels` shows `no`, its default, when the file does not set it.
 
 The pending counter and the quit guard count every store. A counter that asked `comp.conf` alone
 would show `0 pending` for a change to the panel's file or the monitor's, and a single Escape would
@@ -1562,7 +1564,7 @@ and the changes stay pending. Every file is written through a temporary file, `f
 |---|---|
 | `comp.conf` | `SIGHUP` to `kdos-comp`; each key applies on reload or at the next login per the [compositor's own split](kdos-comp.md#configuration) |
 | `panel.conf` | `SIGHUP` to `kdos-shell`: the bar on screen re-reads it |
-| `res.conf` | `SIGHUP` to `kdos-res`, which re-reads it |
+| `res.conf` | `SIGHUP` to `kdos-res`, which re-reads it. `sort` is tagged `login`: it is read when `kdos-res` starts, so an open monitor keeps its order |
 | `term.conf` | `SIGHUP` to `kdos-term`. An open window applies the accent, `paste_guard`, `image_cells` and `images = no`; the other keys apply to windows opened afterwards, and a window whose font was stepped keeps its stepped size. See [kdos-term](kdos-term.md#changing-it-while-windows-are-open) |
 | `launcher.conf` | No signal. Its one key, `files`, is written here and read by no program: see [known gaps](../06-reference/known-gaps.md#the-launchers-files-setting-does-nothing) |
 | The user's `menu.conf` | No signal: the Start menu reads it when it comes up |
@@ -1730,8 +1732,10 @@ editor's attack surface.
 
 Partitioning is `cfdisk` in a terminal and is not reimplemented. A partition editor is a program in
 its own right, `cfdisk` is on the image and is what somebody who partitions disks already knows, and
-it is pointed at the row's whole disk, because a partition editor aimed at `/dev/sdb1` opens the
-table inside a filesystem, which it reads as an empty disk and offers to write.
+it is pointed at the row's whole disk, the one the kernel names as the partition's parent (`sdb`
+for `sdb1`, `nvme0n1` for `nvme0n1p1`, `mmcblk0` for `mmcblk0p1`), because a partition editor
+aimed at `/dev/sdb1` opens the table inside a filesystem, which it reads as an empty disk and
+offers to write.
 
 There is no `fsck`. On a mounted volume it corrupts; on an unmounted one it takes minutes with no
 progress anybody can read; and a button that started one and could not be stopped would be the most
@@ -2318,8 +2322,10 @@ three-level ramp the rain does, `pipes` has its own ASCII tier, and `matrix` and
 ASCII outright: an effect drawn out of what `ter-kdos32n`, the virtual-terminal font, lacks is
 blank on `tty1` and correct in a terminal, a failure that no test in a terminal would catch.
 
-It never watches input and claims no pointer region. A screensaver that decided for itself when to
-go away could decide wrong, and one that took the keyboard would be a lock screen with no password.
+It never watches input and claims no pointer region. The compositor closes it on the first key,
+button or touch, and that event goes to nobody, so the press that wakes the screen never lands on a
+window the saver was hiding. A screensaver that decided for itself when to go away could decide
+wrong, and one that took the keyboard would be a lock screen with no password.
 
 <a id="the-candidate-window"></a>
 
@@ -2419,7 +2425,7 @@ when something happens, and the small dialogs other programs open.
 | `kdos-chars` | The character map, on `Super+Ctrl+E`. The name index is built at build time by a program that links ICU; this binary does not and must not, because ICU is thirty megabytes of library and data and every surface this binary is would carry it. The index is `mmap`ped and searched in place, not read into memory, so every surface shares one page-cache copy of the megabyte of names instead of each summon dirtying a megabyte of its own. The blob is stored upper case, so a keystroke folds the query and not forty thousand names. `Enter` copies the character — not its name and not its number, which is what a person who wanted `U+2192` would have typed |
 | `kdos-note` | The scratch pad, on `Super+Ctrl+N`: one buffer per user at `~/.local/share/kdos/scratch.txt`, saved on close and every thirty seconds. It is not an editor and must not grow into one — `micro` is the editor, `Ctrl+O` opens this same file in it, and every feature past "type a line and find it later" already exists there and is better done there |
 | `kdos-contacts` | The address book, on `Super+Ctrl+B`: type a name, `Enter` copies the address or the number. The store is `khard` and this window holds none, because a second vCard parser would be a second answer to what a contact is. Two forks per query, never from the draw. Two things khard does cost a line each: `email --parsable` prints `searching for '' ...` as its first row unless told not to, results or not; and an empty book exits non-zero while printing nothing, so what is read is the output and the status is not consulted. An empty book names the program that fills it rather than saying only "0" |
-| `kdos-clip` | Clipboard history. One binary, one name, two roles: the daemon the compositor supervises owns the list, and `kdos-clip --pick` is the picker that draws it — the panel's clipboard widget and the status centre open it that way. The shipped `Super+Ctrl+V` binding in `rc.xml` runs bare `kdos-clip`, which starts a second daemon rather than the picker; that daemon unlinks and rebinds the history socket, so the chord shows nothing and takes the history over from the supervised copy. Bind the chord to `kdos-clip --pick` in `~/.config/kdos-comp/rc.xml` to have it open the picker. It speaks `wlr-data-control`, which is the only protocol that can carry a clipboard history — `wl_data_device` delivers a selection event solely to the client with keyboard focus, so a manager built on it records nothing |
+| `kdos-clip` | Clipboard history. One binary, one name, two roles: the daemon the compositor supervises owns the list, and `kdos-clip --pick` is the picker that draws it — the panel's clipboard widget, the status centre and the shipped `Super+Ctrl+V` binding in `rc.xml` open it that way. A bare `kdos-clip` is a second daemon, which unlinks and rebinds the history socket and takes the history over from the supervised copy, so nothing but the compositor starts one. It speaks `wlr-data-control`, which is the only protocol that can carry a clipboard history — `wl_data_device` delivers a selection event solely to the client with keyboard focus, so a manager built on it records nothing |
 | `kdos-about` | What this machine is, on three pages: Left and Right, Tab or a click on the strip turn them. **Machine** is the KDOS wordmark beside the version, kernel, CPU, thread count, uptime (to the second for the first day, to the minute after it), the boot slot and the session, then a memory map under them: one bar across the card split into the three applications holding the most, the rest in use, the page cache and free memory, with a legend naming each and its size, and the line `no systemd · no xorg · musl · GNU · signed` under it. The uptime and the map are read again every second while the page is open. The applications are grouped as `kdos-res`'s Apps page groups them — a boxed process by its box, a host process by its own name — and measured as resident memory; resident memory counts a shared page once per process mapping it, so the named segments are clamped to what is in use and "other" is the remainder. The slot row is the running slot from the command line's `kdos_slot=` and the trial, if any, from `/boot/efi/EFI/kdos/bootstate`: `b on trial, 1 boot left` over `a known good`, `a known good, b standby`, or `one root` with no state file. **Build** is `BUILD_ID` and `KDOS_BUILD_DATE` from `/etc/os-release` (or `unstamped` on an image built without them), the compiler and build date out of `/proc/version`, the C library, the userland, the package count, and each trusted key in `/etc/kdos/keys` and `/etc/kdos/keys/packs` by the key id `kdos-pack` and `kpkg` print. **Credits** is every package in `/var/lib/kpkg/db` with its version, sorted, under "KDOS stands on N projects"; it rolls a row at a time and starts again from the top, until any key stops it and the arrow keys, Page Up/Down, Home, End and the wheel scroll it by hand. The facts type themselves in over 400 ms when the window opens, and the Konami code (Up Up Down Down Left Right Left Right b a) degausses the wordmark; with `motion = no` in `comp.conf`, and under `--dump`, the facts are whole, the wordmark is still and the credits do not roll. Only the wordmark is drawn — the block of `logo.txt` before its first blank line — because the mascot under it would make the card taller than an 80×24 screen. No grid size — a surface knows the cells it was given and not the ones the screen has, so a figure printed here would be this window's own size under a name every reader takes for the desktop's. Every fact is read rather than forked — `uname`, `/proc`, `/etc/os-release`, the boot state, the keyrings and the package database are files this process can open, and a screenfetch spawned to render them would draw a second program's colours and ANSI onto a surface that paints in slots, and would leave this surface with no offscreen dump. `$KDOS_ABOUT_ROOT` prefixes every one of those paths and becomes `libkproc`'s root, which is how its goldens draw `testing/fixtures/about` |
 | `kdos-teams` | The window list, on `Super+F2`, and what the panel's overflow cell opens. Each row is a window: its application id and title, then its box (or, for a window outside a box, its process id), its workspace and its state, read from `kdos-comp`'s command socket (`{"cmd":"list"}`) rather than from the window-list protocol the panel uses, because that protocol carries no process id and this surface needs one. `Enter`, or a click on the row already selected, asks the compositor to close the window the polite way, so an editor still asks about unsaved work. `k` sends `SIGTERM` to the process behind the window, which is the answer when a fullscreen application has stopped answering and the polite close is ignored; it refuses the session's own chrome (`kdos-comp`, `kdos-shell`, `kdos-desk`, `kdos-notifyd`, `kdos-lock` and `kdos-teams`). `r` refreshes the list and `q` closes it. The cell opens the list rather than stepping the chip row: a row that shifted by one per click costs a click and a reflow per hidden window, and the list reaches any of them in one |
 
@@ -2471,7 +2477,7 @@ which exits 254 as a cancel.
 | `kdos-pick` | `[--save] [--directory] [--multiple] [--browse [DIR]] [--title T] [--name N] [--dir D] [--filter 'Label:*.png *.jpg'] [--dump\|--dump-cells] [--font F] [--parent H]`. It also accepts `--places`, which with `--dump` draws the Places list over the file list and which the usage line leaves out |
 | `kdos-settings` | `[--dump\|--dump-cells] [--dump-size WxH] [--page NAME] [--no-icons] [--font NAME]` |
 | `kdos-net`, `kdos-bt` | `[--font NAME] [--no-icons] [--dump]`. Both also accept `--at-bottom X Y`, which the usage line leaves out |
-| `kdos-audio` | `[--font NAME] [--no-icons] [--dump]`. It accepts `--at-bottom X Y`, which the usage line leaves out, and rejects `--no-icons`, which it lists: `kdos-audio --no-icons` prints the usage line and exits 2 |
+| `kdos-audio` | `[--font NAME] [--no-icons] [--dump]`. `--no-icons` turns the pixel icons off. It also accepts `--at-bottom X Y`, which the usage line leaves out |
 | `kdos-disks`, `kdos-firewall`, `kdos-users` | `[--font NAME] [--no-icons] [--dump]` |
 | `kdos-netagent`, `kdos-ime` | `[--font NAME]` |
 | `kdos-devices` | `[--font NAME] [--fixture DIR] [--dump]`. It also accepts `--at-bottom X Y`, which the usage line leaves out |

@@ -32,5 +32,10 @@ cd "$GZIP_SRC"
 make
 make DESTDIR=$SYSROOT install
 
+# configure installs zless only when it finds less on $PATH. The container
+# has one and the gzip port's chroot does not, so the port's package carries
+# no zless: this one would be owned by nothing and never replaced.
+rm -f $SYSROOT/usr/bin/zless $SYSROOT/usr/share/man/man1/zless.1
+
 rm -rf "$GZIP_SRC"
 touch "$MARK/gzip"

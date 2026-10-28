@@ -230,10 +230,10 @@ Each check reports one of three levels:
 | Kernel | The Landlock ABI level (and whether Landlock is compiled out or merely disabled), and whether the initramfs carries microcode for this processor's vendor |
 | Hardware | The wireless regulatory database, its signature and the regulatory domain; SOF audio firmware and topologies; NVIDIA GSP firmware when `nouveau` is bound; whether the calling user can open each attached serial, camera and instrument device (`/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/video*`, `/dev/usbtmc*`), naming the owning group of any it cannot; and, on a live session, whether the boot medium is reachable at `/mnt/iso` |
 | Boxes | Whether erofs is available to the kernel, whether `kdos-packd` answers and by which mount route, whether the user is uid 1000 (packs are built for it), whether the home directory's filesystem can hold a container's writable layer, and whether every mounted pack still has a file behind it |
-| Session | Whether the compositor's socket exists (not only whether `WAYLAND_DISPLAY` is set), `XDG_RUNTIME_DIR`, and whether `kdos-comp`, `kdos-shell` and `xdg-desktop-portal-wlr` are running |
+| Session | Whether the compositor's socket exists (not only whether `WAYLAND_DISPLAY` is set; with `XDG_RUNTIME_DIR` unset, it is looked for under `/run/user/<uid>` of the calling user), `XDG_RUNTIME_DIR`, and whether `kdos-comp`, `kdos-shell` and `xdg-desktop-portal-wlr` are running |
 | Containers | That the mount-namespace root is `/`, the `/etc/subuid` and `/etc/subgid` entries rootless containers need, and, when podman is installed, that `podman info` opens this account's store: `ok` with the store's path, or a warning with podman's own first line of complaint; run as root, a warning instead |
 | Desktop | The accent state file, the foot theme, the KDOS scheme in `~/.config/kdeglobals`, an Xwayland socket in `/tmp/.X11-unix`, five setuid helpers (below), `/etc/subuid` and `/etc/subgid`, `kdos-powerd`, `kdos-energyd` (a `skip` on a machine with no RAPL energy counter, most virtual machines among them), `fcitx5` when installed, `kdos-oomd`, the compositor's frame-timing and command sockets (a `skip` when `kdos-comp` runs under another account, root's doctor among them, because the sockets are in that account's runtime directory), `kdos-keys`, the screen-capture portal and its `kdos-portals.conf`, and `~/.local/bin` on `PATH` |
-| Security | Whether the `kdos` password is still the shipped default. The section appears only when `/etc/shadow` is readable, so an ordinary user gets no section rather than a check that pretends it looked |
+| Security | Whether the `kdos` password is still the shipped default, and, when it is, whether `sshd` is enabled (`/etc/init.d/70_sshd.sh` executable and no `/etc/service.disabled/sshd`), which turns the warning into one that anyone who can reach the machine can log in. The section appears only when `/etc/shadow` is readable, so an ordinary user gets no section rather than a check that pretends it looked |
 
 The session check looks for the socket because a session that died leaves `WAYLAND_DISPLAY` set in
 every shell that inherited it. A doctor that reported that as fine would send you looking
@@ -655,7 +655,10 @@ local network and reaches no relay. `croc-relay` is the same binary with upstrea
 when you mean to use the public relay. The sending window therefore shows the code word and not
 the `getcroc.com` link croc prints beside it. croc is built with upstream's `croc_no_tailcat` tag,
 which leaves out the Tailscale transport and `croc ssh`, because they run over Tailscale's public
-servers and take no `--local`.
+servers and take no `--local`. croc is also patched (`disable-update-check.patch`) so that a send
+or a receive makes no request to `api.github.com` for the latest release, which `--local` alone
+would not stop: a transfer makes no connection but its own. `croc update` answers, with no
+request, that the system package manager updates croc, and only `croc update --check` asks GitHub.
 
 Started without a terminal (from the desktop's icons, the file chooser or a menu), the command
 opens a terminal window (`foot`, inside a Wayland session) and runs itself inside it, so croc runs
@@ -1013,7 +1016,8 @@ Name a port to check only that one. One name at most: a second, or an option oth
 system with no package database, the recipes in the
 ports tree are checked instead. The report gives the database's date and age, each package that
 is behind a recorded fix with the first three CVEs and a count of the rest, and a summary line. A
-database more than 180 days old is flagged.
+database more than 180 days old is flagged, with the reminder that a newer one arrives with
+`kdos-tools` (through `kdos update`) or that `KDOS_SECDB` can name another.
 
 A package is looked up under its own name, or under the name its recipe gives in `secdb =`. One
 the database does not carry is **unknown**, never clean, and the summary says how many are in
@@ -1047,7 +1051,8 @@ kdos update theme
 
 Upgrades the host system by building it from source. A recipe pins its version, so what is newer
 arrives with the ports tree: every image carries the recipe-only tree at `/ports` (each recipe,
-patch and program of our own, and no source tarball), `fetch` replaces it with the newest signed
+patch and program of our own, the two books under `docs/` and their renderer under `script/book`,
+and no source tarball), `fetch` replaces it with the newest signed
 tree over the network, and `apply` builds every package whose recipe is now ahead of what is
 installed. `kdos update` takes nothing from a [binary package
 host](../03-architecture/packaging.md#the-binary-host): an update needs the network, for the tree
@@ -1064,7 +1069,7 @@ counts.
 |---|---|
 | `check` (the default when no argument is given; name it to pass an option) | Lists each installed package whose version, then release, is older than its recipe's, counts packages with no recipe here, names the tree's commit, and reports the recorded problem. A package newer than its recipe, such as a local rebuild with a higher release, is not listed. Exit 0 up to date, 1 something behind, 2 no tree or no package database. `--json` prints the same as a document; `--out PATH` writes that document atomically to `PATH` and implies `--json`; `--fetch` runs `fetch` first |
 | `fetch` | Downloads the newest published tree, checks its signature against `/etc/kdos/keys/tree`, and installs it as `/ports`. With no key in that directory it downloads nothing and records `no-key`. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
-| `apply` | Downloads the sources of every package `check` lists, then builds and installs each one with `kpkg install -f`. An A/B slot it installed into is then checked with [`kpkg check --all --root`](../03-architecture/packaging.md#checking-an-installed-root), and a slot with a missing file, or a changed one outside `/etc`, is not tried; edited configuration under `/etc` is reported and does not stop it |
+| `apply` | Downloads the sources of every package `check` lists, then builds and installs each one with `kpkg install -f`, dependencies first; on an A/B machine each build runs in a chroot of the inactive slot. An A/B slot it installed into is then checked with [`kpkg check --all --root`](../03-architecture/packaging.md#checking-an-installed-root), and a slot with a missing file, or a changed one outside `/etc`, is not tried; edited configuration under `/etc` is reported and does not stop it |
 | `theme` | Applies the accent in force again, exactly as `kdos theme <accent>` does, so the copies under `$HOME` are regenerated from artwork an update replaced |
 
 **Where a tree comes from.** `fetch` reads `kdos-ports.tar.xz` and `kdos-ports.tar.xz.sig` from
@@ -1106,7 +1111,10 @@ it. `fetch` and `apply` need root and take one lock, so a tree is never replaced
 
 On a machine with A/B root slots, `apply` installs into the inactive slot, which must already be
 mounted, and works out what is behind from that slot's package database rather than the running
-root's. When every package installed and `kpkg check` passed, it copies `/ports` into the slot, runs
+root's. It builds in dependency order inside a chroot of the slot (`chroot <slot> kpkg install -f`),
+with `/proc`, `/sys`, `/dev`, the ports tree, the source cache and `/etc/resolv.conf` bound in, so
+every package compiles against the slot's own libraries; see
+[Updating a machine](../03-architecture/packaging.md#updating-a-machine). When every package installed and `kpkg check` passed, it copies `/ports` into the slot, runs
 `kdos-bootctl deploy` to put that slot's kernel in its directory on the EFI system partition (ESP),
 then `kdos-bootctl try` to mark it as the candidate for the next boot. A failed package, a failed
 check, copy or deploy leaves the slot untried. When the inactive slot is not mounted, `apply`
@@ -1139,7 +1147,8 @@ lz4                      x86-64-v3  baseline 0.321s  -march=x86-64-v3 0.302s  +5
 
 Asks whether building a port for this processor's instruction-set level (`-march=x86-64-v2`,
 `-v3` or `-v4`) makes it faster here. `probe` reads `/proc/cpuinfo` for the flags each level
-needs. `run` builds the port twice on this machine with `kpkgbuild`, once with the `CFLAGS` of
+needs. `run` builds the port twice on this machine with `kpkgbuild`, run directly in the port's
+directory with `CFLAGS`, `CXXFLAGS` and `PACKAGE_DIR` in its environment and no shell between, once with the `CFLAGS` of
 its own environment (`-O2 -pipe` when `CFLAGS` is unset; `CXXFLAGS` gets the same value) and
 once with `-march=<level>` appended, unpacks both, runs the port's own benchmark against each,
 and records the verdict `kept` only when the win is more than 3% plus the noise
@@ -1159,7 +1168,10 @@ The rules:
 - A build that fails with the flag is recorded as `unbuildable`, which is a result rather than an
   error.
 
-A processor with no level above baseline x86-64 has nothing to measure and `run` exits 1.
+`run` with no port exits 2 (`name at least one port`) and does no work. A processor with no
+level above baseline x86-64 has nothing to measure and `run` exits 1. A verdict the ledger cannot
+take is said on standard error, `<port> not recorded — cannot write <path>`, because `report`
+reads only the ledger.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -1209,9 +1221,8 @@ checks and prints the plan.
 
 The build runs as root. It sets owners on the files of the tree it assembles, and most phases
 run their steps inside a chroot whose entry script, `script/chroot/exec.sh`, exits at once for
-any other user. `kdos rebuild` itself does not check, so a run without `sudo` passes every check,
-copies the tree and compiles the orchestrator, and the build then fails at the first step that
-needs root. `sudo` resets the environment, so `KDOS_JOBS` and
+any other user. `kdos rebuild` therefore refuses to run (exit 1) unless it is root, before it
+copies anything; `--dry-run` is the exception, and checks and prints the plan as any user. `sudo` resets the environment, so `KDOS_JOBS` and
 `KDOS_SOURCES` reach the build only when they are passed through it, as in
 `sudo env KDOS_JOBS=4 kdos rebuild /mnt/disk/work`. [How KDOS is built](../05-developer/how-kdos-is-built.md) follows
 the same build from `git clone` to an ISO, and [The build system](../05-developer/build-system.md)

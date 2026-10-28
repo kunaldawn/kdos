@@ -129,9 +129,10 @@ the compressed swap device is active, and back to the kernel's default when it s
    sudo /etc/init.d/02_modules.sh start
    ```
 
-   It prints a line for every name in every file, such as `[KDOS]   loaded: snd-aloop`, and
-   `[KDOS]   skip:   nct6775 (no matching hardware)` for one that did not load. Running it again
-   is harmless: a module already loaded is reported `loaded:` once more.
+   It prints a line for every name in every file, such as `[KDOS]   loaded: snd-aloop`, and for
+   one that did not load a `skip:` line carrying the first line of `modprobe`'s own error, such
+   as `[KDOS]   skip:   nct6775 (modprobe: ERROR: could not insert 'nct6775': No such device)`.
+   Running it again is harmless: a module already loaded is reported `loaded:` once more.
 
 ### Passing a module options
 
@@ -206,9 +207,11 @@ boot, is on
 - `kdos why /etc/sysctl.conf` reports that no package owns the file. It comes from the base
   filesystem, so no package upgrade replaces an edit to it.
 - `kdos explain coldplug` prints why `01_udev.sh` replays devices with `--action=add`.
-- `02_modules.sh` discards `modprobe`'s error and prints `skip: <name> (no matching hardware)` for
-  every failure. When a listed module should have loaded, run `sudo modprobe -v <name>` to see the
-  real error.
+- `02_modules.sh` prints `skip: <name> (<reason>)` for every module that fails to load, where the
+  reason is the first line of `modprobe`'s own error, or `modprobe failed` when it printed none.
+  Absent hardware, a misspelt name, a module this kernel does not carry and a refused option all
+  fail alike, and only the reason tells them apart; `sudo modprobe -v <name>` shows the rest of
+  the message.
 - The kernel's modules are compressed with zstd; `modinfo` and `modprobe` read them as they are.
 - Every key is a file under `/proc/sys`, with the dots as slashes: `sysctl -w vm.swappiness=20` is
   the same as writing `20` to `/proc/sys/vm/swappiness`.

@@ -290,8 +290,13 @@ static int cmd_create(const char *want, int assume_yes)
 	char part[160];
 	partname(disk, before + 1, part, sizeof(part));
 	if (!kb_path_exists(part)) {
-		fprintf(stderr, "kdos persist: %s did not appear — reboot and "
-				"run this again\n", part);
+		/* The partition is in the table now but carries no label, so
+		 * `create` after a reboot would not find it as the store and
+		 * would try to append another. Formatting it is the one step
+		 * left. */
+		fprintf(stderr, "kdos persist: %s did not appear — reboot, then "
+				"format it with `mkfs.ext4 -m 0 -L %s %s`\n",
+			part, PERSIST_LABEL, part);
 		return 1;
 	}
 

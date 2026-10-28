@@ -64,6 +64,18 @@ enum { BS_NAME = 0, BS_CPU, BS_MEM, BS_DISK, BS_PROCS, BS_N };
 static const char *const BS_NAMES[BS_N] = { "name", "cpu", "memory", "disk",
 					    "procs" };
 static const int BS_X[BS_N] = { 0, 20, 28, 38, 48 };
+/* Each sort heading's drawn width: a header press sorts by the heading
+ * under it, and a press between headings or on ENERGY and UPTIME, which
+ * are not sort keys, sorts by nothing. */
+static const int BS_W[BS_N] = { 19, 7, 9, 9, 6 };
+static int g_hdr_w;		/* the width the header was last drawn at */
+
+/* DISK and PROCS give way first on a narrow window, and a hidden column
+ * is neither drawn nor pressable. */
+static int bs_shown(int i, int w)
+{
+	return !((i == BS_DISK && w < 47) || (i == BS_PROCS && w < 54));
+}
 static int g_sort = BS_CPU;
 static int g_rev;
 
@@ -389,18 +401,18 @@ void res_draw_boxes(int x, int y, int w, int h)
 	int row = y;
 	static const char *HDR[BS_N] = { "BOX", "CPU%", "MEMORY", "DISK",
 					 "PROCS" };
-	static const int HDR_W[BS_N] = { 19, 7, 9, 9, 6 };
 
+	g_hdr_w = w;
 	ktui_draw_fill(krect(x, row, w, 1), KT_SURFACE);
 	for (int i = 0; i < BS_N; i++) {
 		char lab[24];
 
-		if ((i == BS_DISK && w < 47) || (i == BS_PROCS && w < 54))
+		if (!bs_shown(i, w))
 			continue;
 		snprintf(lab, sizeof(lab), "%s%s", HDR[i],
 			 i == g_sort ? (g_rev ? ktui_glyph[KT_G_UP]
 					      : ktui_glyph[KT_G_DOWN]) : "");
-		ktui_draw_text(x + BS_X[i], row, HDR_W[i], lab,
+		ktui_draw_text(x + BS_X[i], row, BS_W[i], lab,
 			       i == g_sort ? KT_ACCENT : KT_MID, KT_SURFACE, 0);
 	}
 	/*
@@ -481,8 +493,8 @@ void res_draw_boxes(int x, int y, int w, int h)
 	kch_scrollbar(0, x + w - 1, row, body, g_nbox, g_top, KT_BG);
 
 	ktui_draw_text(x, bottom - 1, w,
-		       "Enter for one box: its profile, its processes and the "
-		       "verbs", KT_MID, KT_BG, 0);
+		       "Enter for one box: its base, persistence, footprint and "
+		       "uptime", KT_MID, KT_BG, 0);
 }
 
 /* ── the pointer and the keys ──────────────────────────────────────────── */
@@ -581,8 +593,9 @@ int res_box_click(int mx, int my, int btn)
 	/* The header is a row of sort controls, and a second press on the
 	 * column already in force reverses it. */
 	if (my == 0) {
-		for (int i = BS_N - 1; i >= 0; i--)
-			if (mx >= BS_X[i]) {
+		for (int i = 0; i < BS_N; i++)
+			if (bs_shown(i, g_hdr_w) && mx >= BS_X[i] &&
+			    mx < BS_X[i] + BS_W[i]) {
 				if (g_sort == i)
 					g_rev = !g_rev;
 				else {

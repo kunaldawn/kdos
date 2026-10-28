@@ -30,7 +30,7 @@ static void usage(void)
 	       "       kdos-theme icons   <out-dir> [accent] [--src DIR] [--marks DIR]\n"
 	       "       kdos-theme cursors <out-dir> [accent] [--src DIR]\n"
 	       "       kdos-theme accents\n\n"
-	       "The accent defaults to phosphor. --src defaults to the\n"
+	       "The accent defaults to " KCOL_DEFAULT_NAME ". --src defaults to the\n"
 	       "installed artwork under /usr/share/kdos.\n");
 }
 

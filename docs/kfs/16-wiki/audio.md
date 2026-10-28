@@ -18,9 +18,9 @@ to check when nothing plays or the sound breaks up. A Bluetooth headset is paire
 | The windows and the [panel]{.idx} | [kdos-shell](#port-kdos-shell): [`kdos-audio`]{.idx} and the panel's volume control |
 
 Every image carries them. No service script runs PipeWire: the desktop session starts it, once
-per user, in this order, and starts nothing when it is already running:
+per user, in this order, and starts nothing when that user's PipeWire is already running:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=155-164 pin=aef01c508310 -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=172-181 pin=158808e2df1c -->
 
 The three keep running after Log Out, at the `tty1` prompt it leaves, and end with the login;
 the next login starts them again. See
@@ -83,7 +83,7 @@ The saved state is `/var/lib/alsa/asound.state`, in the directory alsa-utils cre
 PipeWire runs its threads at real-time priority only when the session is allowed to. `kdos-getty`
 raises three limits before the login starts, and every process of the session inherits them:
 
-<!-- kfs:include src/system/kdos-tools/getty.c lines=241-251 pin=e28f6d5c51ac -->
+<!-- kfs:include src/system/kdos-tools/getty.c lines=244-254 pin=e28f6d5c51ac -->
 
 See [The console](../../kdos/03-architecture/boot-and-init.md#the-console). Whether it took is
 visible per thread: in a desktop session,
@@ -237,7 +237,6 @@ SOF firmware and topology files. `kdos doctor` checks both in its Hardware secti
 
 ## Known gaps
 
-- [`kdos-audio` refuses the `--no-icons` its usage line offers](../../kdos/06-reference/known-gaps.md#kdos-audio-refuses-the---no-icons-its-usage-line-offers)
 - [`kdos doctor` cannot check hardware a machine does not have](../../kdos/06-reference/known-gaps.md#kdos-doctor-cannot-check-hardware-a-machine-does-not-have):
   with no SOF device the SOF check reports only that the firmware is installed,
   `SOF firmware installed (no SOF audio device here)`, and says nothing about the topology files

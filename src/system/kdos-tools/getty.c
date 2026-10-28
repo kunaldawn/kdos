@@ -165,6 +165,11 @@ static int run(const char *const *argv, char *out, size_t outcap)
  * "kdos" here would log in an account the administrator disabled — and on a
  * renamed installation one that does not exist, leaving init respawning a
  * failing agetty. The two callers below both take NULL for "ask".
+ *
+ * THE LAST `autologin =` LINE WINS, and its value ends at whitespace or '#',
+ * as in kdos-login's sed. Reading it any other way moves this process into
+ * one account's cgroup while kdos-login logs in another. An empty last value
+ * means "ask", there as here.
  */
 static const char *autologin_user(void)
 {
@@ -172,6 +177,7 @@ static const char *autologin_user(void)
 	FILE *f = fopen("/etc/kdos/login.conf", "r");
 	char line[256];
 
+	name[0] = '\0';
 	if (!f)
 		return NULL;
 
@@ -191,18 +197,15 @@ static const char *autologin_user(void)
 		v = p + 1;
 		while (*v == ' ' || *v == '\t')
 			v++;
-		for (p = v; *p && !isspace((unsigned char)*p); p++)
+		for (p = v; *p && *p != '#' && !isspace((unsigned char)*p);
+		     p++)
 			;
 		*p = '\0';
-		if (*v) {
-			snprintf(name, sizeof(name), "%s", v);
-			fclose(f);
-			return name;
-		}
+		snprintf(name, sizeof(name), "%s", v);
 	}
 
 	fclose(f);
-	return NULL;
+	return name[0] ? name : NULL;
 }
 
 /*

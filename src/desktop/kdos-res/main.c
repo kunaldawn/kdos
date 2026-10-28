@@ -54,7 +54,7 @@ static void usage(FILE *f)
 	fprintf(f,
 	  "usage: kdos-res [--page <id>] [--tty|--gui]\n"
 	  "                [--fixture <dir>] [--interval <ms>] [--detail <pid>]\n"
-	  "                [--scrub <n>]\n"
+	  "                [--scrub <n>] [--font <name>]\n"
 	  "                [--dump|--dump-cells] [--dump-size WxH] [--json]\n"
 	  "                [--version] [--help]\n"
 	  "\n"
@@ -347,14 +347,16 @@ int main(int argc, char **argv)
 			unsigned long long spent = kpr_mono_ms() - now;
 			/*
 			 * A tick that overran its own interval means this
-			 * program is the load. R.overran records it, and
-			 * nothing reads it; the next deadline is one
-			 * interval after this tick began, so an overrunning
-			 * tick is followed by another at once, with no
-			 * back-off.
+			 * program is the load. Its next deadline is then one
+			 * interval after this tick ENDED, not after it began:
+			 * counted from the start, an overrunning tick is
+			 * already past its deadline and the next one runs at
+			 * once, so a slow sample would keep the program
+			 * sampling back to back and never idle.
 			 */
 			R.overran = spent > (unsigned long long)RC.interval_ms;
-			next = now + (unsigned long long)RC.interval_ms;
+			next = (R.overran ? now + spent : now) +
+			       (unsigned long long)RC.interval_ms;
 		}
 
 		res_draw_frame();

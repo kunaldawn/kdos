@@ -35,13 +35,13 @@ the firmware boot entry labelled `KDOS` is written by the installer with
 The medium's menu is a heredoc in the ISO step, written into the ISO tree and never into the root
 filesystem:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=312-340 pin=315b5e610a4f -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=314-342 pin=315b5e610a4f -->
 
 `$BOOT_THEME` is the output of `kdos-bootctl theme --print` for the [accent]{.idx} the image is built in;
 `$WALLPAPER` and `$FONT_LINES` name the backdrop and the converted Terminus face, when the build
 found them. The memory test entry is appended after it:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=354-368 pin=0c1a7fc58339 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=356-370 pin=0c1a7fc58339 -->
 
 The medium is ISO9660 and read-only, so this file cannot be edited on a written stick. A change
 for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change is a change to
@@ -53,7 +53,7 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2319-2351 pin=49d43fc22fb4 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2319-2351 pin=ab2726a5310b -->
 
 The file is `/boot/efi/limine.conf`. The ESP is mounted with `umask=0077`, as the installer's
 `fstab` line says, so only root can read or change anything under `/boot/efi`.

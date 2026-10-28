@@ -366,7 +366,8 @@ The list is `$XDG_STATE_HOME/kdos/session`, written by `kdos-session-save` befor
 dialog of the desktop menu's Log Out, Restart and Shut Down rows (`~/.config/kdos-comp/menu.xml`)
 and of `Super+Escape` (`rc.xml`). The Start menu's power row does not run it, so a session ended
 from there leaves the previous list in place. Each line is `app <name>` for a boxed application
-found running among `/usr/share/kdos/alien-apps`, or `native <app_id>` for a host window. Only the
+found running among `/usr/share/kdos/alien-apps`, or `native <app_id>` for each host window the
+compositor reports through `kdos hey list --json`. Only the
 `app` lines are relaunched, and only when `kdos-appbox` is installed. Where windows reappear on
 screen is decided by `comp.conf`'s `window_memory`, not by this list.
 
@@ -626,15 +627,13 @@ The resource monitor, `kdos-res`. The file is optional; an unknown key is report
 |---|---|---|
 | `interval` | `1000` | Sampling interval in milliseconds, clamped to 200–60000; a value that is not a number counts as 0 and becomes 200. A monitor sampling faster than 200 ms mostly measures itself |
 | `units` | `1024` | `1024` gives binary sizes with the suffixes `K`, `M`, `G`; `1000` gives `kB`, `MB`, `GB` |
-| `temperature` | `c` | `c` or `f`: the CPU, GPU and Drives pages, and the large hottest-sensor figure in the Sensors page's header. The Sensors page's headline and its rows always read in °C |
+| `temperature` | `c` | `c` or `f`: the CPU, GPU and Drives pages, and on the Sensors page the large hottest-sensor figure, the headline, each reading and each critical point. A sensor's bar and colour measure the reading against its critical point and are the same in either scale |
 | `cpu_percent` | `core` | `core`: eight busy threads read 800%, as in `top`. `machine`: the same load reads 100%. Applies to the Processes page and the process detail; the Apps and Boxes pages always count per core |
-| `memory` | `rss` | Accepts `rss` and `pss` and stores the choice, but no page reads it: every memory figure is the resident set size (RSS), which counts a shared page against every process using it |
-| `kernel_threads` | `no` | Show kernel threads in the process table. The footer says how many are hidden either way |
+| `kernel_threads` | `no` | Show kernel threads in the process table. The footer gives the number of kernel threads either way, as hidden or as listed |
 | `virtual_drives` | `no` | Show loop, `ram`, `zram` and device-mapper devices on the Drives page |
 | `virtual_net` | `no` | Show loopback, bridges and container interfaces on the Network page |
 | `icons` | `yes` | Draw the page's picture in the header band and the charts as pixels. `no` leaves the header text only and draws the charts in character cells. Rows carry no pictures either way |
 | `sort` | `cpu` | The column the Processes, Apps and Boxes pages sort on. Processes accepts `cpu`, `memory`, `pid`, `name`, `disk`; Apps and Boxes accept `name`, `cpu`, `memory`, `disk`, `procs`. A name a page does not have leaves that page on its own default |
-| `columns` | empty | Parsed and stored, but no page applies it: every page draws all of its columns |
 
 `kdos-settings` writes all of these on its Hardware page and signals `kdos-res`, so a change
 applies immediately, except `sort`: each table reads it once, the first time it is drawn, so a new
@@ -708,10 +707,10 @@ Namespace keys (`network`, `ipc`, `processes`, `devices`, `home`) are yes-or-no 
 
 | Key | Default | Applies | Means |
 |---|---|---|---|
-| `base` | — | create time | `pack:<id>` or `image:<ref>`. `box:<name>` parses, but `kdos-box create` does not complete with it; see [known gaps](known-gaps.md#kdos-box-create-with-a-box-base-never-finishes) |
+| `base` | — | create time | `pack:<id>`, `image:<ref>` or `box:<name>`. `kdos-box create` resolves `box:<name>` to that box's own `pack:` or `image:` base and saves the result in the profile, so the new box starts from the same software with an empty writable layer; a box with neither base is refused |
 | `image` | — | create time | The registry reference of an image base. `kdos-box create` copies it from `base = image:<ref>`, replacing whatever the line held, so set `base` rather than this |
 | `persistence` | `persistent` | — | `persistent`, `ephemeral` or `frozen`. Recorded only: no launch reads it, and a box's writes land wherever its runtime puts them |
-| `network` | `host` | create time | `host`, `private`, or `none`. On a pack box `none` is a private namespace with no interface at all; a store-lane box gets `--unshare-netns` for both `private` and `none`, so it keeps an interface |
+| `network` | `host` | create time | `host`, `private`, or `none`. `none` is `--network none` on both lanes: a private namespace with no interface at all. A store-lane box with `private` gets `--unshare-netns`, its own namespace with an interface |
 | `ipc` | shared | create time | IPC namespace |
 | `processes` | shared | create time | PID namespace |
 | `devices` | shared | create time | Whether the host's `/dev` and `/sys` are shared |
@@ -721,9 +720,9 @@ Namespace keys (`network`, `ipc`, `processes`, `devices`, `home`) are yes-or-no 
 | `audio` | `yes` | — | Recorded only. Sound reaches every box through the PipeWire socket in `$XDG_RUNTIME_DIR`, which every box shares; see below |
 | `gpu` | `yes` | create time | The graphics card's device nodes |
 | `render` | `auto` | next launch | Which graphics the box's applications get: `auto`, `gpu`, or `software` |
-| `memory` | — | create time | Memory limit such as `4G`, passed to the engine as `--memory` on the pack lane only; a store-lane box receives no limit. The memory daemon also prefers a box over its limit when it has to kill something, since rootless containers often cannot enforce the flag |
-| `cpus` | — | create time | CPU quota, as the engine's `--cpus` value, on the pack lane only |
-| `pids` | — | create time | Process-count limit (`--pids-limit`), on the pack lane only |
+| `memory` | — | create time | Memory limit such as `4G`, passed to the engine as `--memory` on both lanes, through `distrobox create --additional-flags` on the store lane. A store-lane value that is not letters, digits and dots is refused with a warning and not applied. The memory daemon also prefers a box over its limit when it has to kill something, since rootless containers often cannot enforce the flag |
+| `cpus` | — | create time | CPU quota, as the engine's `--cpus` value, on both lanes, with the same store-lane check as `memory` |
+| `pids` | — | create time | Process-count limit (`--pids-limit`), on both lanes |
 | `autostop` | `0` | next collection | Running time, counted from when the box started, after which `kdos-box gc` stops it if none of its windows is open: `90s`, `30m`, `2h`, or bare seconds. `0` disables |
 | `accent` | `session` | immediate | The box's colour, an accent name, drawn as a chip on its windows' title bars. `session`, or the accent the session already wears, draws no chip |
 | `grant` | — | next client, after a compositor reload | Compositor features the sandbox otherwise refuses, comma-separated (see below). A running client keeps what it bound |
@@ -1164,7 +1163,7 @@ except the ones marked *Generated*, which `kdos theme` rewrites.
 | `~/.config/btop/btop.conf` | The system monitor `btop` | |
 | `~/.config/btop/themes/kdos.theme` | btop's colours | Generated |
 | `~/.config/kdos/term-colors.conf` | The sixteen terminal colours, as this desktop's terminals draw them | Generated |
-| `~/.config/kdos/ls-colors` | `LS_COLORS`, loaded by `~/.bashrc` | Generated |
+| `~/.config/kdos/ls-colors` | `LS_COLORS`, loaded by `~/.bashrc` from `${XDG_CONFIG_HOME:-~/.config}/kdos/ls-colors`, where `kdos theme` writes it | Generated |
 | `~/.config/kdos/fzf-colors` | fzf's `--color` flags, sourced by `/etc/profile.d/30-kdos-colors.sh` | Generated. See the note on `FZF_DEFAULT_OPTS` under [Shell environment](#shell-environment) |
 | `~/.config/bat/config` | The pager `bat` | One line: `--theme="kdos"` |
 | `~/.config/bat/themes/kdos.tmTheme` | bat's theme, selected by file name | Generated |
@@ -1192,7 +1191,7 @@ except the ones marked *Generated*, which `kdos theme` rewrites.
 | `~/.config/fcitx5/profile` | The input method `fcitx5` | One group, `Default`, with the four input methods the image carries: `keyboard-us`, `pinyin`, `anthy` and `hangul` |
 | `~/.config/mimeapps.list` | Your own choices of which application opens which file type | Ships with an empty `[Default Applications]` section. This file outranks the system tables, and *Open With*'s **always** option writes to it |
 | `~/.config/tealdeer/config.toml` | The `tldr` client `tealdeer` | Installed into `/etc/skel` by the `tealdeer` package. `cache_dir` is `/usr/share/tldr`, where the pages ship, so nothing is downloaded. `tldr --update` needs a `cache_dir` you can write |
-| `~/.bashrc`, `~/.bash_profile` | bash | `.bashrc` reads `/etc/bash.bashrc` — through `/run/host` inside a box, since `$HOME` is shared with every box — and `~/.config/kdos/ls-colors`. `.bash_profile` starts the desktop on tty1 |
+| `~/.bashrc`, `~/.bash_profile` | bash | `.bashrc` reads `/etc/bash.bashrc` — through `/run/host` inside a box, since `$HOME` is shared with every box — and `kdos/ls-colors` under `$XDG_CONFIG_HOME` (`~/.config` when unset), the file `kdos theme` writes. `.bash_profile` starts the desktop on tty1 |
 | `~/.hushlogin` | `login` | Empty. Its presence stops `login` printing `/etc/motd` and the last-login line, so the banner `/etc/bash.bashrc` draws is the only one. Deleting it makes each console login print both before that banner |
 | `~/.zprofile` | zsh | Starts the desktop on tty1, as `.bash_profile` does. `/etc/shells` lists zsh, so `chsh -s /usr/bin/zsh` is accepted. `/etc/zsh/zprofile` reads `/etc/profile` and its drop-ins; `/etc/zsh/zshrc` sets up `atuin` and nothing from `/etc/bash.bashrc` |
 

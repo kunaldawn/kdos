@@ -79,7 +79,7 @@ In the initramfs, the `BOOT SLOT` stage mounts the ESP, asks `select` for the ro
 that root's container, and unmounts it again. The `\$` in this excerpt is the generator's escaping:
 the init is written by a heredoc, and the generated script has a plain `$`.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=761-816 pin=75069784095f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=760-815 pin=75069784095f -->
 
 At the end of `rcS`, after every service script has run:
 
@@ -183,7 +183,8 @@ not been run by hand, and a second encrypted slot has not been booted.
    and refuses when it is not mounted.
 2. Fetch the tree and see what is behind: `sudo kdos update fetch`, then `kdos update check`.
 3. Run `sudo kdos update apply`. It fetches the sources, builds every package that is behind in the
-   slot on the running system and installs it into the mounted slot, checks the slot with
+   slot inside a chroot of the mounted slot, dependencies first, so each one compiles against the
+   slot's own libraries, checks the slot with
    `kpkg check --all`, copies `/ports` into it, then runs `kdos-bootctl deploy` for its kernel and
    `kdos-bootctl try` for the slot. When nothing is behind it prints
    `nothing to take: everything installed matches the ports tree` and puts nothing on trial.
@@ -306,7 +307,6 @@ or the live medium, and record it again with both UUIDs:
 - [Nothing creates or first fills the second root slot](../../kdos/06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot)
 - [Per-slot kernels have been booted on virtual firmware only](../../kdos/06-reference/known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only)
 - [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
-- [An update into a slot compiles against the running system](../../kdos/06-reference/known-gaps.md#an-update-into-a-slot-compiles-against-the-running-system)
 - [A root filesystem on LVM has been booted in one shape only](../../kdos/06-reference/known-gaps.md#a-root-filesystem-on-lvm-has-been-booted-in-one-shape-only)
 - [A disk-encryption key is typed, not sealed in the TPM](../../kdos/06-reference/known-gaps.md#a-disk-encryption-key-is-typed-not-sealed-in-the-tpm)
 

@@ -16,12 +16,13 @@
 # assignment syntax, so bash performs `$name`, `${version%.*}` and the rest
 # itself — which is exactly what the recipes were written against.
 #
-# Every key whose name is a shell identifier is evaluated, except four.
-# `description`, `homepage`, `depends` and `pypackages` are skipped: they are
-# free text that could contain a backtick, and nothing here reads them. Every
-# other key — `license`, `group`, `bench`
-# and the recipe helpers alike — goes through eval, so a backtick or `$(` in
-# one of those runs as a command when the recipe is read.
+# Only `name`, `version`, `release`, `vendoring`, `source` and the recipe
+# helpers are evaluated. Every other key kpkg defines — `description`,
+# `homepage`, `depends`, `pypackages`, `license`, `group`, `bench`,
+# `bench_setup`, `pyrequirements` and the rest of the list below — is skipped:
+# it is free text that could hold a backtick, and nothing here reads it. A
+# helper still goes through eval, so a backtick or `$(` in a helper runs as a
+# command when the recipe is read; a new metadata key belongs on the skip list.
 read_recipe() {
     local file=$1 line key val
     unset name version release source vendoring
@@ -44,7 +45,8 @@ read_recipe() {
             source)
                 # Repeating the key appends; the extractor splits on space.
                 eval "source=\"\${source:+\$source }$val\"" ;;
-            description|homepage|depends|pypackages)
+            sha256|description|homepage|depends|pypackages|license|group|\
+            secdb|replaces|bench|bench_setup|pyrequirements|pyruntime|watch)
                 # FREE TEXT. Evaluating it would run whatever a backtick
                 # names — imagemagick's description names `convert`.
                 # Nothing here needs these keys, so nothing here evaluates

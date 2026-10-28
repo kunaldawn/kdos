@@ -451,6 +451,13 @@ void kdos_layer_release_on_demand(struct seat *seat,
 	struct wlr_layer_surface_v1 *pressed);
 
 /*
+ * Close every mapped kdos-saver surface. True when one was closed and the
+ * session is not locked, and the caller then delivers the event that woke it
+ * to nobody. Called from the key, button-press and touch-down paths.
+ */
+bool kdos_saver_dismiss(void);
+
+/*
  * PEEK — fade every window so the desktop behind them can be seen, for as
  * long as the pointer dwells on Show Desktop. Transient: it changes no
  * toplevel state and nothing a client can observe. See kdos-peek.c.

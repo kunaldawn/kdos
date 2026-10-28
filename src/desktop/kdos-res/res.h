@@ -150,13 +150,11 @@ typedef struct {
 	int units_1024;
 	int fahrenheit;
 	int cpu_of_machine;	/* percent of the machine, not of a core */
-	int memory_pss;
 	int kernel_threads;
 	int virtual_drives;
 	int virtual_net;
 	int icons;
 	char sort[24];
-	char columns[128];
 } ResConf;
 
 extern ResConf RC;
@@ -241,6 +239,9 @@ void res_net_motion(int mx, int my);
 void res_dev_sample(void);
 int  res_act_signal(const KprProc *p, int sig);
 int  res_act_renice(const KprProc *p, int nice);
+/* The privileged helper, run by argv for the task verbs and the Memory
+ * page's per-slot table. */
+#define RES_RESCTL "/usr/bin/kdos-resctl"
 const char *res_act_helper_why(void);
 const char *res_act_why_disabled(const KprProc *p);
 void res_energy_prepare(void);

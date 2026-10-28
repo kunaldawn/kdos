@@ -108,18 +108,17 @@ static uint32_t C_PHOS, C_PHOSDIM, C_DIM, C_AMBER, C_ALARM, C_TEXT, C_DEEP;
 static uint32_t C_HOT;		/* mix(text, white, 60) — the beam flash    */
 static uint32_t C_GLOW;		/* mix(text, white, 68) — the mascot rim    */
 
-/* kcol_mix's blend, so a value derived here and one derived by the library are
- * the same number -- but only on a channel that rises from a to b. The signed
- * step truncates toward zero, which is the library's floor only for a rising
- * channel; a falling one can come out one higher (255 to 0 at 33 is 171 here,
- * 170 there). Every mix below is toward white. */
+/* kcol_mix's blend, term for term: the unsigned weighted sum floored once, so
+ * a value derived here and one derived by the library are the same number in
+ * either direction. A signed step would truncate toward zero and land one
+ * higher on a falling channel (171 against 170 for 255 to 0 at 33). */
 static uint32_t spl_mix(uint32_t a, uint32_t b, int pct)
 {
 	uint32_t out = 0;
 
 	for (int sh = 16; sh >= 0; sh -= 8) {
-		int x = (int)((a >> sh) & 0xff), y = (int)((b >> sh) & 0xff);
-		out |= (uint32_t)(x + (y - x) * pct / 100) << sh;
+		unsigned x = (a >> sh) & 0xff, y = (b >> sh) & 0xff;
+		out |= ((x * (100 - (unsigned)pct) + y * (unsigned)pct) / 100) << sh;
 	}
 	return out;
 }

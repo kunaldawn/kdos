@@ -40,8 +40,8 @@ is on the root filesystem.
 
 `kdos-mountd` mounts every share it connects with `nosuid`, `nodev` and `noexec`. The image ships
 no `mountd.conf`; a line `exec = yes` in it drops `noexec` from removable media and network shares
-alike. The daemon finds the text anywhere in the file, comments included, so delete the line to
-turn the setting off. The three settings are in
+alike. Only a line that is exactly `exec = yes`, with the blanks around `=` optional, turns it on;
+a commented-out `# exec = yes` leaves the setting off. The three settings are in
 [/etc/kdos/mountd.conf](../../kdos/04-programs/daemons.md#etckdosmountdconf).
 
 ### /etc/request-key.d/cifs.spnego.conf
@@ -102,13 +102,13 @@ is none:
 `kdos share` hands the transfer to `croc`, and `/usr/bin/croc` is a wrapper that keeps every
 transfer on the local network. `croc-relay` is the same program with upstream's default relay:
 
-<!-- kfs:include ports/core/transfer/croc/build.sh lines=21-26 pin=316ed867bd46 -->
+<!-- kfs:include ports/core/transfer/croc/build.sh lines=23-28 pin=316ed867bd46 -->
 
 ## Usage
 
 ### Mounting an SMB share from the desktop
 
-1. Open `kdos-connect`: type its name at a prompt, or choose the row *Sync…* on the System page
+1. Open `kdos-connect`: type its name at a prompt, or choose the row *Connect to server…* on the System page
    of Settings. The window lists the shares you have connected. `F1` opens its help page, which is
    also `kdos-doc connect`.
 2. Press `b` to list the machines that answered a broadcast, and `Enter` on one to put its name in
@@ -396,7 +396,6 @@ both must be on the same network: global discovery and relays are off in the con
 - [An NFSv3 mount needs `-o nolock`](../../kdos/06-reference/known-gaps.md#an-nfsv3-mount-needs--o-nolock)
 - [Kerberos is built and has never been given a ticket](../../kdos/06-reference/known-gaps.md#kerberos-is-built-and-has-never-been-given-a-ticket):
   `kdos-mount krb5` and `63_gssd` have not been used against a real domain
-- [The control centre's *Sync…* row opens the network-share window](../../kdos/06-reference/known-gaps.md#the-control-centres-sync-row-opens-the-network-share-window)
 - An NFS export below `/` cannot be mounted from a live session; see
   [Serving a folder over NFS](#serving-a-folder-over-nfs)
 - Not run on a booted image: the `kdos-connect` window, a `kdos share` transfer, and Syncthing

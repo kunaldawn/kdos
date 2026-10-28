@@ -101,7 +101,8 @@ shell, `tty1`, `tty2`, serial and SSH alike.
 ### Turning autologin on or off
 
 The first two need membership of `wheel`, the third needs root. Each changes only the key's line in
-`login.conf`, and the change applies the next time `tty1` starts its getty.
+`login.conf`, or adds an `autologin = <user>` line to a file that has none, and keeps every other
+line as it was, blank lines included. The change applies the next time `tty1` starts its getty.
 
 1. With the desktop: open Settings, go to **System**, choose **Accounts…** ([`kdos-users`]{.idx}),
    select the account and press **Autologin**; on the account `tty1` already logs in, the same
@@ -123,8 +124,8 @@ The first two need membership of `wheel`, the third needs root. Each changes onl
 
 3. By hand, as root: edit `/etc/kdos/login.conf` and set or comment out the `autologin` line.
    `kdos-login` reads the last such line, so leave only one. Comment the line rather than
-   deleting it: the first two ways rewrite an existing `autologin` line and add none, so on a file
-   without one they report success and change nothing.
+   deleting it: the commented line keeps the account it named, and the first two ways rewrite it
+   where it stands instead of adding a new line at the end of the file.
 
 4. To apply the change without rebooting, end the desktop session and then the shell it leaves
    on `tty1` (`exit`). `init` respawns the `tty1` line, and the new `agetty` reads the file again.

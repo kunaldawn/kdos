@@ -79,10 +79,18 @@ chmod 01777 "$STORE/staging"
 # swallows the repository bind mount and grows past a hundred gigabytes
 # before anything stops it; the probe below proves the relative form works.
 #
-# A STALE ONE IS REMOVED WHEN THE FLAG IS OFF, or 110_iso.sh has a 9.1 GB file
-# sitting there from an earlier opt-in run and no way to know it was not asked
-# for. `build/` survives between builds; the flag does not.
-[ "${KDOS_PACK_KDOS:-0}" = "1" ] || rm -rf /kdos/build/kdos-base
+# A STALE ONE IS REMOVED ON EVERY RUN, before this run decides whether to make
+# one, or 110_iso.sh has a 9.1 GB file sitting there from an earlier opt-in run
+# and no way to know this run did not make it: with the flag off, or with it on
+# and mkfs.erofs or kdos-pack missing. `build/` survives between builds; the
+# flag does not.
+rm -rf /kdos/build/kdos-base
+
+if [ "${KDOS_PACK_KDOS:-0}" = "1" ] && ! { command -v mkfs.erofs >/dev/null 2>&1 \
+   && command -v kdos-pack >/dev/null 2>&1; }; then
+    echo "[packs] KDOS_PACK_KDOS=1 but mkfs.erofs or kdos-pack is not installed —" \
+         "no kdos base pack" >&2
+fi
 
 if [ "${KDOS_PACK_KDOS:-0}" = "1" ] && command -v mkfs.erofs >/dev/null 2>&1 \
    && command -v kdos-pack >/dev/null 2>&1; then

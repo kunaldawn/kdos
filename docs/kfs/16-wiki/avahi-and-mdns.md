@@ -212,7 +212,7 @@ That is expected; see [Resolving a .local name](#resolving-a-local-name).
 ## See also
 
 - [Services](../../kdos/02-user-guide/administration.md#services): `45_avahi` in the boot order
-- [The firewall](../../kdos/02-user-guide/administration.md#the-firewall): the base rules and the `mdns` name
+- [The firewall](../../kdos/02-user-guide/administration.md#the-firewall): the base rules, which accept UDP 5353
 - [Network shares](../../kdos/04-programs/daemons.md#network-shares): how `kdos-mountd` resolves `.local` and NetBIOS names
 - [File sharing](file-sharing.md), [Printing and scanning](printing-and-scanning.md),
   [Firewall](firewall.md), [SSH server](ssh-server.md), [Services](services.md)

@@ -271,7 +271,7 @@ shipped routes are known to show nothing; see [Known gaps](#known-gaps).
 ## Known gaps
 
 - [The launcher's `files` setting does nothing](../../kdos/06-reference/known-gaps.md#the-launchers-files-setting-does-nothing)
-- [Two shipped chords and two routes show nothing](../../kdos/06-reference/known-gaps.md#two-shipped-chords-and-two-routes-show-nothing)
+- [Two menu routes show nothing](../../kdos/06-reference/known-gaps.md#two-menu-routes-show-nothing)
 - [Workspace occupancy is inferred, not reported](../../kdos/06-reference/known-gaps.md#workspace-occupancy-is-inferred-not-reported)
 - [A tray menu does not update while it is open](../../kdos/06-reference/known-gaps.md#a-tray-menu-does-not-update-while-it-is-open)
 - [Only two ways of ending the session save the list of open windows](../../kdos/06-reference/known-gaps.md#only-two-ways-of-ending-the-session-save-the-list-of-open-windows)

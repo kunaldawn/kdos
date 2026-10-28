@@ -517,7 +517,7 @@ kdos_child_reap(pid_t pid, int status)
 				char msg[256];
 				snprintf(msg, sizeof(msg), "%s crashed "
 					"repeatedly and was given up on — "
-					"Reconfigure (W-Escape menu) retries",
+					"run kdos-comp -r to retry",
 					child_label(c));
 				const char *argv[] = { "kdos-prompt",
 					"--message", msg, NULL };

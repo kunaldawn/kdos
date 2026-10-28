@@ -324,14 +324,17 @@ void res_draw_procs(int x, int y, int w, int h)
 	g_oy = y;
 	kch_scrollbar(0, x + w - 1, row, body, g_nrows, g_top, KT_BG);
 
-	/* The footer says what is NOT on screen. */
+	/* The footer says what is NOT on screen, and with kernel_threads on,
+	 * how many of the rows are kernel threads. */
 	char foot[160];
 	if (g_searching)
 		snprintf(foot, sizeof(foot), "search: %s_", g_search);
 	else
 		snprintf(foot, sizeof(foot),
-			 "%d hidden kernel thread%s  %s  sort: %s%s",
-			 R.sample.nkthread, R.sample.nkthread == 1 ? "" : "s",
+			 "%d %s kernel thread%s  %s  sort: %s%s",
+			 R.sample.nkthread,
+			 RC.kernel_threads ? "listed" : "hidden",
+			 R.sample.nkthread == 1 ? "" : "s",
 			 ktui_glyph[KT_G_DOT], SORT_NAMES[g_sort],
 			 g_rev ? " (reversed)" : "");
 	ktui_draw_text(x, bottom - 1, w, foot, KT_MID, KT_BG, 0);

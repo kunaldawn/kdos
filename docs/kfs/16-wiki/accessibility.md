@@ -76,7 +76,7 @@ at login.
 
 The keys that switch each aid for the session, from `fs/etc/skel/.config/kdos-comp/rc.xml`:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=447-462 pin=636a1a99602f -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=452-467 pin=636a1a99602f -->
 
 The shipped file has no `<magnifier>` block, so the magnifier runs with its defaults. The block and
 its five settings are in [The magnifier](../../kdos/02-user-guide/accessibility.md#the-magnifier).
@@ -87,7 +87,7 @@ An empty file whose existence lets every boxed application publish to an accessi
 `kdos-appbox` reads it, and `KDOS_A11Y` overrides it for one launch. From
 `src/system/kdos-appbox/main.c`:
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=133-155 pin=4bbfad7df825 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=134-156 pin=4bbfad7df825 -->
 
 ### Orca's launcher
 

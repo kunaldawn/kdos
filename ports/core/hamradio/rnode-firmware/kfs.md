@@ -22,7 +22,10 @@ the version the package carries.
 
 `rnodeconf` keeps its images in `~/.config/rnodeconf/update/<version>/` and downloads whatever is
 missing there. `rnodeconf-local`, the script the port installs, links each packaged file into that
-directory (links, not copies, so the cache follows the package when it is upgraded) and runs
+directory (links, not copies, so the cache follows the package when it is upgraded), except
+`console_image.bin`, which it copies: `rnodeconf` unpacks an ESP32 board's archive into that same
+directory, most archives carry a `console_image.bin` of their own, and unpacking onto a link
+would write through it to the root-owned packaged file and fail. It then runs
 `rnodeconf --nocheck --fw-version <version>` with the arguments it was given: `--nocheck` turns off
 the online check for a newer release, and `--fw-version` names the packaged version, so flashing
 and updating reach no network.

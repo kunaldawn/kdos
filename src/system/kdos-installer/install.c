@@ -2339,7 +2339,7 @@ static void do_boot(void)
 	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
 	   "\n"
 	   "/KDOS (single user)\n"
-	   "    comment: A root shell, no session\n"
+	   "    comment: A root shell for root's password, no desktop\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"

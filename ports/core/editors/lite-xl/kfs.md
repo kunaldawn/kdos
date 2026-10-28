@@ -20,12 +20,11 @@ files under `/usr/share/lite-xl`.
 
 Both patches are git commits with their own descriptions.
 `cve-2025-12121-remove-legacy-exec-function.patch` removes `system.exec`, which handed a string to
-`system()`, and changes the folder drop in `rootview.lua` and the tree view's *Open in System*
-to start an argument vector through `process.start`. Against 2.1.8 its hunk for
-`core:open-project-folder` (`data/core/commands/core.lua`) lands on the wrong branch: choosing the
-folder that is already open starts a second window with no folder argument instead of reporting
-it, and choosing any other folder still calls `system.exec` and raises a Lua error instead of
-opening a second window.
+`system()`, and changes `core:open-project-folder` (`data/core/commands/core.lua`), the folder
+drop in `rootview.lua` and the tree view's *Open in System* to start an argument vector through
+`process.start`. Its `core.lua` hunk is cut against 2.1.8 rather than upstream's tree: it must
+replace the `system.exec` call after the already-open check, or any other folder raises a Lua
+error on a function the C side no longer registers.
 `poor-text-rendering-20260312-a17c0455.patch` stops lite-xl setting its own LCD filter weights
 under slight and full hinting, leaving FreeType's filter in place; upstream's issue reports poor
 text rendering with those weights.

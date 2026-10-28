@@ -90,9 +90,7 @@ int kdisp_px_logical(int px) { return px; }
 /* Nothing is drawing a frame round an offscreen grid, so the surface draws its
  * own — which is what makes a golden the picture tty1 shows. */
 int kdisp_decorated(void) { return 0; }
-int kdisp_px_h(void) { return 0; }
 int kdisp_popup_offset(void) { return 0; }
-void kdisp_report_error(void) {}
 void kdisp_set_backdrop(KDispBackdropFn fn) { (void)fn; }
 /* No output, so no scale ever changes and nothing is ever called back. */
 void kdisp_on_scale(KDispScaleFn fn) { (void)fn; }
@@ -120,7 +118,7 @@ int kcell_ascii_image(const uint32_t *argb, int w, int h, int stride_px,
 }
 
 /*
- * THE FIVE kdos-desk AND kdos-notifyd REACH FOR, and every one of them is a
+ * THE FOUR kdos-desk AND kdos-notifyd REACH FOR, and every one of them is a
  * verb rather than a reading: a dump presses nothing, drags nothing and asks
  * the session for nothing, so each does what it does on a machine with no
  * compositor — nothing, and says so in its return value.
@@ -130,7 +128,6 @@ int kcell_ascii_image(const uint32_t *argb, int w, int h, int stride_px,
  * fails and a harness that then skips the whole family. See the note at the
  * top of this file.
  */
-void kdisp_session_action(const char *verb) { (void)verb; }
 int kdisp_drag_start(const char *mime, const char *data, size_t len)
 { (void)mime; (void)data; (void)len; return -1; }
 /* 0 is "no window has the keyboard", which is the truth with no server. */

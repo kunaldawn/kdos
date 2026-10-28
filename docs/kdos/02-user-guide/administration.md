@@ -220,7 +220,8 @@ update-check  -H 4 -M 17 -s 8h  --  kdos update check --fetch --out /var/lib/kdo
 and exits. At boot `18_timers` starts one `snooze` per line under the supervisor, as the service
 `kdos-timer-NAME`; when `snooze` exits after a run, the supervisor starts it again and it sleeps
 until the next slot. That gives one process per job and no shared schedule file to corrupt.
-`service status timers` shows every job, and `ksvc check kdos-timer-update-check` shows one.
+`service status timers` shows every job and exits non-zero when any of them is down, including one
+skipped at boot because its command is not installed; `ksvc check kdos-timer-update-check` shows one.
 
 **The timespec** is `snooze`'s own options, unchanged: `-H 4 -M 17` is 04:17, `-d /2` is every
 second day. `snooze(1)` is the full reference.
@@ -264,7 +265,8 @@ a desktop switched off every night would never reach an overnight one.
 
 Put your own jobs in `~/.config/kdos/timers.d/*.timer`, in the same format. Your desktop session
 starts them when you log in, and they repeat like the system ones — each line runs in a loop that
-restarts `snooze` after every run. Log Out does not stop them: they keep running at the tty1
+restarts `snooze` after every run, for as long as its file exists: deleting a file ends its lines'
+loops after their next run. Log Out does not stop them: they keep running at the tty1
 prompt it leaves, and end when that login ends (`exit` at the prompt). Starting the desktop again
 from the same prompt stops the running set before starting its own.
 
@@ -424,7 +426,8 @@ settings, and `service stop zram` puts both back:
 letters, digits, `.`, `_` and `-` removed), private to you and removed again on unmount. Every
 removable mount is `nosuid,nodev`, and `noexec` by default: a setuid program on someone else's USB
 stick would otherwise be a way to become root. Create `/etc/kdos/mountd.conf` (not shipped) to
-change that:
+change that. Each setting is one `key = value` line, and only a line reading exactly `yes` after the
+`=` turns it on; a line commented out with `#` leaves it off:
 
 | Key | Effect |
 |---|---|
@@ -653,7 +656,6 @@ kdos-power firewall ssh off
 | `ipp` | TCP 631 (sharing a printer) |
 | `smb` | TCP 445 |
 | `kiwix` | TCP 8080 (`kiwix-serve`) |
-| `mdns` | UDP 5353, which the shipped policy already accepts, so turning it on or off changes nothing |
 | `mqtt` | TCP 1883 and 8883 |
 | `xmpp` | TCP 5222 |
 | `nfs` | TCP 2049 |
@@ -815,7 +817,8 @@ descriptor declares FIDO, and the scanner rule every scanner a SANE backend supp
 | `kdos-drm.conf` | `qxl`, `vmwgfx`; it also names `virtio_gpu` and `bochs`, which are built into the kernel | Virtual machines' display drivers |
 
 Each hwmon driver binds only a chip it finds; on other hardware, or where the firmware has claimed
-the chip, the load fails and `02_modules` logs a skip. `sensors-detect` is not shipped, because it
+the chip, the load fails and `02_modules` logs a skip line carrying `modprobe`'s own error as the
+reason. `sensors-detect` is not shipped, because it
 probes the SMBus by writing to it. `fancontrol` is shipped, and nothing starts it.
 
 **One blacklist.** `/etc/modprobe.d/kdos-sdr.conf` blacklists `dvb_usb_rtl28xxu`. Otherwise the
@@ -1149,12 +1152,15 @@ no separate `klogd`. `/etc/syslog.conf` routes them:
 | File | Holds |
 |---|---|
 | `/var/log/messages` | Everything except authentication |
-| `/var/log/auth.log` | Logins, `sudo`, polkit and other authentication |
+| `/var/log/auth.log` | Logins, `sudo`, polkit and other authentication; readable by root only |
 | `/var/log/kern.log` | Kernel messages |
 | `/var/log/cron` | The `cron` facility; nothing on the image logs there by default |
 
 `syslogd` rotates each file itself at 1 MB and keeps six old copies — `messages.0`, then
 `messages.1.gz` to `messages.5.gz`, compressed — so no `logrotate` job exists.
+`/var/log/auth.log` is mode `0600`: `22_syslog` creates it and sets that mode before `syslogd`
+starts, and rotation keeps it, so `auth.log.0` and the compressed copies are root-only too. Read it
+with `sudo`.
 The limit matters on the live medium, where `/var/log` is in RAM and an unbounded log would take
 memory rather than disk. Emergency messages are also written to every logged-in terminal.
 `syslogd` runs with `-8`, so a message in UTF-8 is written as it was sent and the files stay text
@@ -1267,10 +1273,10 @@ shows. A package built for a level runs only on a processor that has it.
 `kdos-backup` backs up with [restic](https://restic.net/). Opened from the menu it is a window
 listing the snapshots in your repository, newest first: `b` starts a backup (it does not wait for
 it to finish), `r` re-reads the repository, and `Enter` opens a snapshot to restore from it (see
-below). When restic fails to list the repository, for a missing repository, a wrong password or a
-lock another process holds alike, the window says `restic answered nothing — is <repo> a
-repository?` and does not show restic's own message; run `restic -r <repo> snapshots` in a
-terminal to read it. `kdos-backup --once` backs up without a window, waits
+below). When restic fails to list the repository — a missing repository, a wrong password, a
+lock another process holds — the window shows the first line restic printed about it, such as
+`Fatal: repository does not exist`; `restic answered nothing — is <repo> a repository?` appears
+only when restic printed nothing at all. `kdos-backup --once` backs up without a window, waits
 for restic, and exits 0 on success, 1 on any failure and 2 on a bad argument; that is what the
 timer runs. restic's summary and errors are printed where `--once` runs, and a failure inside
 restic ends with `kdos-backup: restic exited N`, restic's own status. Under the timer both are

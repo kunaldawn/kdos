@@ -100,8 +100,9 @@ static void probe_json(void)
 {
 	KbBuf b = {0};
 
-	kb_buf_printf(&b, "{\n  \"firmware\": \"%s\", \"secure_boot\": %s,\n",
-		      ki_sys.uefi ? "uefi" : "bios",
+	kb_buf_printf(&b, "{\n  \"firmware\": \"%s\", \"firmware_bits\": %d, "
+		      "\"secure_boot\": %s,\n",
+		      ki_sys.uefi ? "uefi" : "bios", ki_sys.fw_bits,
 		      ki_sys.secure_boot ? "true" : "false");
 	kb_buf_str(&b, "  \"cpu\": ");
 	kb_json_str(&b, ki_sys.cpu);

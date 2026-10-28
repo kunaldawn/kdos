@@ -405,7 +405,12 @@ uint32_t kcol_mix(uint32_t a, uint32_t b, int pct)
 
 uint32_t kcol_muted(const KcolScheme *sc)
 {
-	return kcol_mix(sc->deep, sc->text, 56);
+	int pct = 56;
+	uint32_t m = kcol_mix(sc->deep, sc->text, pct);
+
+	while (pct < 100 && kcol_contrast(m, sc->deep) < 450)
+		m = kcol_mix(sc->deep, sc->text, ++pct);
+	return m;
 }
 
 /*

@@ -25,6 +25,7 @@
 #include "kdos-appbox.h"
 #include "kxdg.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -523,13 +524,18 @@ static int run_pack(int argc, char **argv, const char *app, const char *state)
 	profile_load(&p, g_box);
 
 	/* The box is named after the pack, so the box name IS the id unless
-	 * somebody aimed --box somewhere else. */
-	kb_strlcpy(id, p.base[0] && !strncmp(p.base, "pack:", 5) ? p.base + 5
-								 : g_box,
-		   sizeof(id));
+	 * somebody aimed --box somewhere else. A store box (`base=image:`) has
+	 * no pack, and its empty id is what sends box_env() to the catalogue
+	 * rather than to kdos-packd. */
+	if (!strncmp(p.base, "image:", 6))
+		id[0] = '\0';
+	else
+		kb_strlcpy(id, !strncmp(p.base, "pack:", 5) ? p.base + 5
+							    : g_box,
+			   sizeof(id));
 
-	if (pack_box_ensure(g_box, id) != 0)
-		kb_die("could not compose box '%s' from packs", g_box);
+	if (pack_box_ensure(g_box, id[0] ? id : g_box) != 0)
+		kb_die("could not create box '%s'", g_box);
 	tracef("ensured");
 
 	if (pack_box_start(g_box) != 0)
@@ -612,42 +618,23 @@ int cmd_run(int argc, char **argv)
 	/*
 	 * A hung app (D-state I/O on fuse-overlayfs) can wedge the box in
 	 * "stopping" forever, and every enter then dies instantly with
-	 * "container state improper" — no app ever opens again. Wait it out,
-	 * then force the way back to a startable container. A pack box loses
-	 * nothing: its packs are read-only, its writable upper lives outside
-	 * the container, and run_pack composes it again over the same stack.
-	 * A store box (`base=image:`) keeps its writable layer inside the
-	 * container, so `podman rm` deletes it, and run_pack cannot make it
-	 * again because it composes only from packs.
+	 * "container state improper" — no app ever opens again. box_unstick
+	 * waits it out and kills; a pack box that still will not settle is
+	 * removed, and run_pack composes it again over the same stack, which
+	 * loses nothing. A store box (`base=image:`) keeps its writable layer
+	 * inside the container, so it is left stuck rather than deleted, and
+	 * the launch stops with the command that would discard it.
 	 */
-	if (!strcmp(state, "stopping")) {
-		for (i = 0; i < 15 && !strcmp(state, "stopping"); i++) {
-			sleep(1);
-			box_state(g_box, state, sizeof(state));
-		}
-		if (!strcmp(state, "stopping")) {
-			KbArgv k = {0};
-			kb_argv_add(&k, "podman");
-			kb_argv_add(&k, "kill");
-			kb_argv_add(&k, g_box);
-			kb_argv_end(&k);
-			kb_run(&k);
-			sleep(2);
-			box_state(g_box, state, sizeof(state));
-		}
-		if (!strcmp(state, "stopping")) {
-			KbArgv r = {0};
-			notify("Resetting app container",
-			       "The app container was stuck — recreating it.");
-			kb_argv_add(&r, "podman");
-			kb_argv_add(&r, "rm");
-			kb_argv_add(&r, "-f");
-			kb_argv_add(&r, "-t");
-			kb_argv_add(&r, "0");
-			kb_argv_add(&r, g_box);
-			kb_argv_end(&r);
-			kb_run(&r);
-		}
+	switch (box_unstick(g_box, state, sizeof(state))) {
+	case 3:
+		notify("Resetting app container",
+		       "The app container was stuck — recreating it.");
+		break;
+	case 4:
+		notify("App container stuck",
+		       "It is kept with its data; kdos-box remove --force "
+		       "discards it.");
+		return 1;
 	}
 
 	tracef("run %s status=%s", app, state);
@@ -723,9 +710,16 @@ int cmd_warmup(void)
 		{
 			char path[MAX_LINE];
 			KxdgEntry e;
-			snprintf(path, sizeof(path),
-				 "%s/.local/share/applications/%s.desktop",
-				 kb_home_dir(), line);
+			const char *xdg = getenv("XDG_DATA_HOME");
+
+			if (xdg && *xdg)
+				snprintf(path, sizeof(path),
+					 "%s/applications/%s.desktop", xdg,
+					 line);
+			else
+				snprintf(path, sizeof(path),
+					 "%s/.local/share/applications/%s.desktop",
+					 kb_home_dir(), line);
 			if (!kb_path_exists(path))
 				snprintf(path, sizeof(path),
 					 "/usr/share/applications/%s.desktop", line);
@@ -843,8 +837,35 @@ static int run_as_shim(const char *name, int argc, char **argv)
 	char *vec[KB_MAX_ARGV];
 	int n = 0, i;
 
-	if (!app_lookup_pack(name, cmd, sizeof(cmd), pack, sizeof(pack)))
-		kb_die("unknown alien app '%s' (try: kdos-appbox apps)", name);
+	if (!app_lookup_pack(name, cmd, sizeof(cmd), pack, sizeof(pack))) {
+		/*
+		 * `<command>@<box>` IS A `kdos-box export` SHIM, which writes no
+		 * alien-apps row: split at the LAST `@` and run what
+		 * `kdos-box run <box> <command>` runs. The box part is checked
+		 * as a box name here, because it becomes a podman name and a
+		 * socket path; anything else falls through to the refusal.
+		 */
+		const char *at = strrchr(name, '@');
+		const char *box = at ? at + 1 : NULL;
+		int ok = at && at != name && box[0] && box[0] != '.' &&
+			 box[0] != '-';
+
+		for (const char *c = box; ok && *c; c++)
+			ok = isalnum((unsigned char)*c) || *c == '.' ||
+			     *c == '_' || *c == '-';
+		if (!ok || (size_t)(at - name) >= sizeof(cmd) ||
+		    argc + 1 >= KB_MAX_ARGV)
+			kb_die("unknown alien app '%s' (try: kdos-appbox apps)",
+			       name);
+		memcpy(cmd, name, (size_t)(at - name));
+		cmd[at - name] = '\0';
+		g_box = kb_strdup(box);
+		vec[n++] = cmd;
+		for (i = 0; i < argc; i++)
+			vec[n++] = argv[i];
+		vec[n] = NULL;
+		return cmd_run(n, vec);
+	}
 
 	/*
 	 * ONE BOX PER APPLICATION in the pack lane, named after the pack. The
@@ -1009,12 +1030,16 @@ int main(int argc, char **argv)
 		 * directory, which is what the image lane's bake hands it.
 		 */
 		/* `--packs --user` writes the USER tree — no fs-root, no root:
-		 * this is what `kdos app install` runs as the calling user. */
+		 * this is what `kdos app install` runs as the calling user. It
+		 * reads the store boxes as well as the packs, because the tree
+		 * is written whole and either source alone would delete the
+		 * other's launchers. */
 		if (i + 2 < argc && !strcmp(argv[i + 1], "--packs") &&
 		    !strcmp(argv[i + 2], "--user")) {
 			if (i + 3 < argc)
 				kb_die("usage: kdos-appbox genlaunchers --packs --user");
-			return cmd_genlaunchers(NULL, NULL, 1, 0);
+			store_launchers();
+			return 0;
 		}
 		/* `--packs-dir <root> <fs-root>`: the BUILD's form — one extracted
 		 * pack per subdirectory of <root>, named after the pack. */

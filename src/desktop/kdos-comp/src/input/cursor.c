@@ -1142,6 +1142,12 @@ static uint32_t press_msec;
 bool
 cursor_process_button_press(struct seat *seat, uint32_t button, uint32_t time_msec)
 {
+	/* KDOS: a press that closes the saver is spent on it, release and all */
+	if (kdos_saver_dismiss()) {
+		lab_set_add(&seat->bound_buttons, button);
+		return false;
+	}
+
 	struct cursor_context ctx = get_cursor_context();
 
 	/* Used on next button release to check if it can close menu or select menu item */

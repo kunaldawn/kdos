@@ -1430,14 +1430,15 @@ int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user,
  *
  * Measured against the palette, `KT_TEXT` on `KT_DIM` is 8.30:1 in the worst
  * scheme and 10.22:1 in the best, so the label clears the 7:1 floor in every
- * accent; the marker clears 4.5:1 in every accent but `paper`, where KT_ACCENT
- * on KT_DIM measures 3.68:1. The fill is quiet because
- * it is a fill, and the accent is spent on one cell that says where the caret
- * is.
+ * accent. KT_ACCENT on KT_DIM clears 4.5:1 in every scheme but `paper`, where
+ * it measures 3.68:1, so the focused marker is drawn in KT_TEXT wherever the
+ * live accent falls below 4.5:1 on the fill; ktui_sel_row() measures it on
+ * each draw. The fill is quiet because it is a fill, and the accent is spent
+ * on one cell that says where the caret is.
  *
  * THE SECONDARY COLOURS ARE NOT LEGIBLE ON THE FILL — measured against the
  * live palette, KT_MID on KT_DIM is 2.19:1 to 4.21:1 and kcol_muted() on it
- * 2.44:1 to 3.38:1, below any reading floor. A row with a secondary
+ * 2.77:1 to 3.38:1, below any reading floor. A row with a secondary
  * column in it (a tag, a two-letter code, a units suffix) must lift that
  * column when the row is selected; leaving it muted makes the right-hand half
  * of the row disappear exactly when somebody is looking at it. ktui_sel_dim()

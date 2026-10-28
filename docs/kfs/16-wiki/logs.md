@@ -59,7 +59,7 @@ buffer and the system log.
 | Message | File | Kept |
 |:--|:--|:--|
 | Everything but authentication | [`/var/log/messages`]{.idx} | Rotated by size, as `rotate_size` and `rotate_count` say; older copies gzipped |
-| Logins, `sudo`, polkit, other authentication | `/var/log/auth.log` | The same |
+| Logins, `sudo`, polkit, other authentication | `/var/log/auth.log` (root only, mode 0600, set by `22_syslog.sh` before `syslogd` starts) | The same |
 | The kernel | [`/var/log/kern.log`]{.idx}, and `dmesg` | The same; the ring buffer until it wraps |
 | The `cron` facility | `/var/log/cron`; nothing on the image logs there | The same |
 | A service script's output at boot | `/run/kdos-init.<service>.log` | Until reboot |

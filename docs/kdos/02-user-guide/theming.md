@@ -185,7 +185,7 @@ different moment:
 | `~/.config/aerc/stylesets/kdos` | aerc | Next start |
 | `~/.config/yazi/theme.toml` | yazi | Next start |
 | `~/.local/share/mc/skins/kdos.ini` | mc, selected by `skin = kdos` under `[Midnight-Commander]` in `~/.config/mc/ini` | Next start |
-| `~/.config/kdos/ls-colors` | `ls`, through `$LS_COLORS`, loaded by `.bashrc` | In the next shell |
+| `~/.config/kdos/ls-colors` | `ls`, through `$LS_COLORS`, loaded by `.bashrc`, which follows `$XDG_CONFIG_HOME` as `kdos theme` does | In the next shell |
 | `~/.themes/KDOS-<accent>/` | GTK3 applications, native and in boxes | At once, in windows already open |
 | `~/.config/gtk-{3,4}.0/settings.ini` | GTK, when the settings portal cannot be reached | The application's next launch |
 | `~/.config/gtk-4.0/gtk.css` | libadwaita applications | The application's next launch |

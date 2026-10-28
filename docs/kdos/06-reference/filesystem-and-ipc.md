@@ -57,9 +57,9 @@ The host package manager's own configuration is `/etc/kpkg.conf`; see
 
 | Path | Holds | Written by |
 |---|---|---|
-| `packs/` | Installed application packs, `<id>.kpack` | The pack daemon, as root |
+| `packs/` | Installed application packs, `<id>.kpack`, owned by root, mode 0644 | The pack daemon, as root |
 | `packs/mnt/` | Mount points for packs | The pack daemon |
-| `packs/staging/` | The one place an unprivileged download may land, mode 01777 | Any user, and the application store |
+| `packs/staging/` | The one place an unprivileged download may land, mode 01777; a staged pack is removed once it is installed, and an import's signed index sits there as `PACKAGES.<pid>` with `PACKAGES.<pid>.sig` while that import runs | Any user, and the application store |
 | `pack-manifest` | Every graft made, so removing one is exact | The pack daemon |
 | `fs-manifest` | Every path the build's static tree (`fs/`) provided | The build |
 | `march.ledger` | Measured per-machine optimisation results | `kdos march` |
@@ -203,7 +203,7 @@ the end of a successful boot; otherwise the next boot returns to the active slot
 | `~/.config/kdos/a11y` | Present means boxed applications start with the accessibility stack |
 | `~/.config/kdos/first-run` | Written by `kdos-keys` once its first-login card has been shown; while it is absent, each login opens the card. Delete it to see the card again |
 | `~/.config/kdos/apps-offered` | Written once the login has sent the notification offering the applications in `/var/lib/kdos/apps-pending`; delete it to be offered them again |
-| `~/.local/share/kdos/alien-apps` | Your own launcher table; its entries win over the system one |
+| `$XDG_DATA_HOME/kdos/alien-apps` | Your own launcher table (`~/.local/share/kdos/alien-apps` when `XDG_DATA_HOME` is unset); its entries win over the system one |
 | `~/.local/share/kdos/boxes/<name>/` | A box's writable layer (`upper`, `work`), its `snapshots/<tag>/`, and its home when the profile says `home = private` |
 | `~/.local/share/kdos/packs/` | Where a data pack's contents are grafted for boxed applications |
 | `~/.local/share/kdos/doc/` | Your own help pages, searched beside `/usr/share/kdos/doc` |
@@ -468,7 +468,7 @@ members of `wheel`. Thirteen verbs.
 | `unmount` | A pack ID | |
 | `compose` | A box name, then one or more pack IDs | The merged root of those packs, for that box |
 | `decompose` | A box name | |
-| `install` | A file name in the staging directory | |
+| `install` | A file name in the staging directory, and optionally a second one naming a signed index (its signature staged as `<index>.sig`); the pack is copied into the store, not renamed, and removed once the install succeeds, and the index is left for the caller to remove | |
 | `remove` | A pack ID | |
 | `rollback` | A pack ID | |
 | `graft` | A data pack ID | |
@@ -481,8 +481,10 @@ does not have to work either out.
 
 Every ID comes from `list`. The single exception is `install`, which names a file in the daemon's
 own staging directory, `/var/lib/kdos/packs/staging`, the one place an unprivileged user may
-write. Relative traversal and absolute paths are both refused. Installing is a rename out of that
-directory after the pack is verified. Signatures are checked at install and at mount against
+write. Relative traversal and absolute paths are both refused. Installing copies the staged file, and
+the index the request names with its `.sig` when it names one, into private root-owned files in the store;
+the daemon verifies the copy, renames it into place as `<id>.kpack`, mode 0644, and then removes
+the staged file. A staged symbolic link or anything that is not a regular file is refused. Signatures are checked at install and at mount against
 `/etc/kdos/keys/packs/`; see [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
 A composed box's merged root is `$XDG_RUNTIME_DIR/kdos/boxes/<box>/root`, and its writable layer
@@ -584,7 +586,7 @@ Neither configuration nor storage: these files are how one program tells another
 | `$XDG_RUNTIME_DIR/kdos/nowplaying` | `kdos-mpctl watch` | The panel |
 | `/usr/share/kdos/alien-apps` | The build (`kdos-appbox genlaunchers`) | Every shim, and the launcher dispatcher |
 | `/usr/local/bin/<name>`, `~/.local/bin/<name>` | The build, one symbolic link to `kdos-appbox` per application in a pack the medium carries (none on the default medium); `kdos app install` for an application you install | You, as an ordinary command; `kdos-appbox` dispatches on the name it was called by |
-| `~/.local/share/kdos/alien-apps` | `kdos-appbox genlaunchers --packs --user`, and `kdos-appbox install`, `uninstall` and `import`, which rewrite it from every installed application | The same, winning over the system table |
+| `$XDG_DATA_HOME/kdos/alien-apps` (`~/.local/share/kdos/alien-apps` when unset) | `kdos-appbox genlaunchers --packs --user`, and `kdos-appbox install`, `uninstall` and `import`; every one of them regenerates the whole table from the installed packs and the store's boxes together | The same, winning over the system table |
 | `~/.local/share/kdos/observed-app-ids` | The compositor, once for each new application ID a window presents | `kdos appid` |
 | `/var/lib/kdos/pack-manifest` | The pack daemon | Itself, so ungrafting removes exactly what was added |
 | `/var/lib/kdos/update.json` | The update-check timer, and `kdos update fetch` and `apply` when they finish | The panel's update badge, which reads `~/.local/state/kdos/update.json` instead when this file is missing |
@@ -689,7 +691,7 @@ Read by `make build` and the build scripts on the build machine; see
 
 | Variable | Effect |
 |---|---|
-| `KDOS_ISO_SOURCES=1` | Copy `src/`, `script/`, `fs/`, `ports/` (every fetched source beside its recipe, without the source cache and the host helpers), the `Makefile` and the `Dockerfile` onto the boot medium as `/sources`, with a `SOURCES` stamp, and the binary host in `build/binhost/`, when one is there, as `/sources/binhost`; a live session sees it at `/mnt/iso/sources` |
+| `KDOS_ISO_SOURCES=1` | Copy `src/`, `script/`, `fs/`, `ports/` (every fetched source beside its recipe, without the source cache and the host helpers), the `Makefile` and the `Dockerfile` onto the boot medium as `/sources`, with a `SOURCES` stamp, and the binary host in `build/binhost/` as `/sources/binhost` when the same build sets `KDOS_MAKE_BINHOST=1`; a live session sees it at `/mnt/iso/sources` |
 | `KDOS_MAKE_BINHOST=1` | Keep every package the chroot phases build, and have `70_image` write a signed binary host of them to `build/binhost/` |
 | `KDOS_ISO_COMP=` | The codec of `system.sfs`: `xz` or `zstd:<1-22>`; empty is `zstd:15`, the release setting. `zstd:3` is a faster developer image about 10% larger. Any other value stops the image step |
 | `KDOS_CCACHE=0` | Turn off the compiler cache, default `1`, which CMake ports in the chroot compile through into `build/ccache`; a cached object is byte-identical to a compiled one |
@@ -740,6 +742,7 @@ resolves a source and when the pre-push hook refuses a push are in
 | `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `<tag>` `ports/publish --freeze <tag>` attaches `sources.sha256` to, and `ports/publish --release <tag>` fills |
 | `KDOS_RELEASE_KEY` | `build/keys/kdos-release.key` | The secret key `ports/publish --release` signs `SHA256SUMS` with, when `--key` is not given; the `.pub` beside it is uploaded as `kdos-release.pub` |
 | `KDOS_PUBLISH_DELAY` | `8` | Seconds between uploads |
+| `KDOS_PUBLISH_JOBS` | `16` | Archive `HEAD`s `ports/publish` runs at once to check presence |
 | `KDOS_LFS_STORE` | the clone's `lfs/objects` | Where `ports/publish --history` reads Git LFS (Large File Storage) objects that earlier commits' recipes name, to archive them under their hashes |
 | `KDOS_GITHUB_API`, `KDOS_GITHUB_UPLOADS` | `https://api.github.com`, `https://uploads.github.com` | Replace the API and upload endpoints, for testing against a local stand-in |
 | `KDOS_ALLOW_UNVERIFIED=1` | unset | Let `kpkg` build from a source file whose recipe has no `sha256`, and quiet `ports/fetch`'s warning about it. Without it such a file is refused. `ports/fetch`, and `kpkg install` or `kpkgbuild` run by hand, read it; a `make build` step in the chroot does not see it (see [Build](#build)) |

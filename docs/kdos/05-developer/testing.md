@@ -1197,7 +1197,7 @@ itself, as the login shell's profile would have.
 | `--size WxH` | The guest's screen (default `1280x800`, virtio-gpu's own default) |
 | `--gl` | `virtio-vga-gl` on a headless EGL display, so the compositor gets GLES2 and the phosphor pass runs. Needs `/dev/dri`. No Vulkan |
 | `--venus` | With `--gl`, also publish a Vulkan capability set. Does not work on an NVIDIA host; see below |
-| `--audio` | Give the guest an HDA controller, so audio paths reach a real device |
+| `--audio` | Give the guest an HDA controller, so audio paths reach a real device: backed by the host's sound server when `testing/qemu-audio.sh` finds one, by a silent backend otherwise |
 | `--disk <qcow2>` | Attach a virtio disk, the target an unattended `kinstall` writes to |
 | `--no-cdrom` | Leave the ISO off, so the disk is what boots |
 | `--root-password <pw>` | What to answer when the serial console's login asks root for a password, as an installed system does; the live image asks none (default `kdos`, the one `install-to-disk.sh` sets) |
@@ -1605,7 +1605,7 @@ stock ISO:
   refuses to sweep with exit status 2;
 - `packlane.sh` looks for packs on the medium at `/mnt/iso/packs`, or in the store at
   `/var/lib/kdos/packs` when there is no medium, and reports every check that needs one (a base,
-  `rt-gtk`, the index, `app.vorta` (`PACKLANE_APP`) and `app.meld` (`PACKLANE_QTAPP`)) as
+  `rt-gtk`, the index, `app.vorta` (`PACKLANE_APP`) and `app.meld` (`PACKLANE_GTKAPP`)) as
   failed;
 - `install-to-disk.sh` asks the installer for the `essential` group unless `INSTALL_APPS` names
   other catalogue group ids.
@@ -1626,7 +1626,7 @@ Run them against a medium or a store you have put those packs into.
 | `bootcheck/` | On the host | Plumbing for scripted boots with no display: `boot.sh [soft\|gl]` starts QEMU detached, `guest.py` runs a command on the serial console, `type.py` types into the console, `sock.py` owns one QEMU socket. `bootcheck/README.md` describes them |
 | `quick.sh`, `quickpatch.sh` | Host, then guest | [The fast loop](#the-fast-loop) |
 | `qemu-audio.sh` | Sourced by the run targets and the rig | Picks a working audio backend rather than hard-coding one, because QEMU aborts at start-up on a backend its build lacks, and sets the mixer's rate, because QEMU's default is 44100 and the guest drives the codec at 48000 |
-| `qemu-hw/` | On the host, needs Docker and the NVIDIA container toolkit | The containerised QEMU with accelerated (virgl) graphics behind `make run-hw` and `make rundisk-hw` (`run.sh iso` and `run.sh disk`, built from its `Dockerfile`). Beside them, `probe.py` boots the ISO with blob resources and prints what the guest's kernel reports about the virtio GPU (its command line, the `virtio_gpu` and DRM messages, the blob and host-visible features), to tell a blob-capable QEMU from plain virgl. `verify.py` drives a niri compositor and a noctalia shell, neither of which is in this tree, so it checks nothing on a KDOS image |
+| `qemu-hw/` | On the host, needs Docker and the NVIDIA container toolkit | The containerised QEMU with accelerated (virgl) graphics behind `make run-hw` and `make rundisk-hw` (`run.sh iso` and `run.sh disk`, built from its `Dockerfile`). Beside them, `probe.py` boots the ISO with blob resources and prints what the guest's kernel reports about the virtio GPU (its command line, the `virtio_gpu` and DRM messages, the blob and host-visible features), to tell a blob-capable QEMU from plain virgl. |
 | `rig-image.sh`, `devdeps-image.sh` | On the host | Build the rig image (`kdos-qemu-py`, from `Dockerfile.qemu`) and the development image (`kdos-devdeps`, from `Dockerfile.devdeps`) |
 | `barcheck.c`, `boxcheck.c`, `appindex.c` | Compiled by the self-test | The scrollbar's drawing against its hit test at every position, the shell's two box questions against a fixture store, and the application index keeping every entry past its first allocation |
 
@@ -1684,7 +1684,7 @@ Two scripts read the recipes with no build tree, and preflight runs both:
 python3 testing/recipemeta.py            # every finding; --brief prints a count per rule
 python3 testing/optdeps.py               # every switch that turns off a feature a port provides
 python3 testing/optdeps.py --count       # the number of those switches only
-python3 testing/optdeps.py --claims      # every build-script comment saying something is not a port
+python3 testing/optdeps.py --claims      # every kfs.md line saying something is not a port
 ```
 
 `recipemeta.py` reads each `kpkgbuild` the way `kpkg info` and the version checker do, the first
@@ -1702,9 +1702,10 @@ meson `-DX=disabled` or `-DX=false`, and maps X to a port by its name, by
 a choice or a feature lost to the belief that the library is missing, and the switch cannot say
 which, so the script is a report: preflight prints its count and never fails on it. An upstream
 spelling that maps to no port is silent, so a new port whose upstream name differs from its own
-needs its row in the alias table. `--claims` reads only comment lines in each `build.sh` and marks
-each name in a "not a port" comment that is one; recipes carry no rationale comments, so on this
-tree it prints nothing.
+needs its row in the alias table. `--claims` reads every line of each port's `kfs.md`, where the
+reasons for its flags live, and the comment lines of its `build.sh`, and prints each line that says
+something is not a port, naming its file (`<dir>/kfs.md:N` or `<dir>/build.sh:N`) and marking with
+a `*` each name in it that is one; on this tree it prints 287 lines.
 The features whose library really has no port are listed in
 [known gaps](../06-reference/known-gaps.md#features-whose-library-has-no-port).
 

@@ -286,10 +286,19 @@ int ksig_ring_load(KsigRing *ring, const char *dir)
 {
 	ring->n = 0;
 	char **names = kb_listdir(dir, NULL);
-	for (char **p = names; p && *p && ring->n < KSIG_MAX_KEYS; p++) {
+	for (char **p = names; p && *p; p++) {
 		size_t n = strlen(*p);
 		if (n < 5 || strcmp(*p + n - 4, ".pub"))
 			continue;
+		/* Past the cap a key is not trusted, and saying so is the only
+		 * thing that tells its owner why their signatures fail. The
+		 * listing is sorted, so which keys miss out is the same on
+		 * every run. */
+		if (ring->n == KSIG_MAX_KEYS) {
+			kb_warn("%s: a keyring holds at most %d keys; %s is "
+				"not trusted", dir, KSIG_MAX_KEYS, *p);
+			continue;
+		}
 		char *path = kb_path_join(dir, *p);
 		KsigKey *k = &ring->key[ring->n];
 		if (ksig_read_public(path, k->pub, k->name, sizeof(k->name)) == 0) {

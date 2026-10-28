@@ -4097,9 +4097,14 @@ static int draw_start(struct sh_state *sh, int compact)
 	/*
 	 * KT_SURFACE IS NOT "NO PLATE": it is the slot the backdrop OWNS, so
 	 * the plate start_plate() records shows through the cells instead of
-	 * being filled over.
+	 * being filled over. Without the pixel layer (`--dump`) nothing is
+	 * recorded, so a lit button's plate is a cell slot of its own — the
+	 * one start_plate() paints, the warning tone while the menu is up and
+	 * the accent under the pointer — or the KT_SURFACE ink is drawn on
+	 * KT_SURFACE and the button goes blank.
 	 */
-	int plate = KT_SURFACE;
+	int plate = !lit || px_live ? KT_SURFACE
+				    : start_menu_open() ? KT_WARN : KT_ACCENT;
 
 	if (w > ktui_w / 3) {
 		lw = 0;

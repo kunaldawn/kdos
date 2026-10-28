@@ -134,7 +134,7 @@ The same file emits the prompt marks described in [Prompt marks](#prompt-marks).
 | Double click | Selects the word under the pointer; nothing on blank or unwritten space. The word is not put on the primary selection |
 | Middle click | Pastes the primary selection |
 | `Ctrl+Shift+C` | Copies the selection to the clipboard |
-| `Ctrl+Shift+V` | Pastes the clipboard |
+| `Ctrl+Shift+V` | Pastes the clipboard. A bare `Ctrl+V` reaches the child as `^V` and pastes nothing |
 | `Shift+PgUp`, `Shift+PgDn` | Scroll back or forward half a screen |
 | `Ctrl+Shift+Up`, `Ctrl+Shift+Down` | Jump to the previous or next prompt (see [Prompt marks](#prompt-marks)) |
 | Wheel | Scroll three lines, or pass the wheel to the child when it has asked for the mouse |

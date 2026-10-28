@@ -74,7 +74,7 @@ kdos-bb [aalib-options] [-loop] [-nosound] [-mixer] [N]
 | `-loop` | Play in an endless loop from the chosen stage, never reaching the closing text (see below) |
 | `-nosound` | Run silent. With no player to follow, the closing text turns its pages over a fixed 150 seconds instead of following the music |
 | `-mixer` | Before starting, show libmikmod's mixing switches and sample rate and wait for Continue (see below) |
-| `N` | A single digit, the stage to start at. `2` or `3` starts at that stage; `1`, and any other digit from `4` to `8`, starts at the beginning. `0` and `9` are unrecognised |
+| `N` | A single digit from `1` to `3`, the stage to start at. `1` starts at the beginning; `2` or `3` starts at that stage. Any other digit is unrecognised, and prints the usage summary with exit status 1 |
 | `-driver`, `-kbddriver`, `-mousedriver` | Select an AAlib output, keyboard or mouse driver |
 | `-width`, `-height`, `-minwidth`, `-minheight`, `-maxwidth`, `-maxheight`, `-recwidth`, `-recheight` | Geometry hints for AAlib |
 | `-dim`, `-bold`, `-reverse`, `-normal`, `-boldfont`, `-no<attr>` | Which character attributes the renderer may use |

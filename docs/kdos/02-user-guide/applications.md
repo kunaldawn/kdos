@@ -555,8 +555,8 @@ An application that is useless without a data set can name it with a `needs` row
 application then builds the data set too; the shipped catalogue has none. Both data sets are
 installed by name: `data.kicad-packages3d`, the KiCad 3D model library, whose `graft` row names
 `/usr/share/kicad/3dmodels`, where the natively built KiCad looks, and `data.tesseract-langs`,
-language files for Tesseract OCR. A data set is built but not grafted into its application's box;
-see [What does not work](#what-does-not-work).
+language files for Tesseract OCR. A data set installed this way is built but not grafted into its
+application's box; an imported data pack is grafted. See [What does not work](#what-does-not-work).
 
 `kdos app install --pending` reads `/var/lib/kdos/apps-pending`, where the installer records the
 groups you ticked when it did not install them: it had neither a set to import nor a network, or
@@ -625,13 +625,17 @@ Export flattens each installed application's image, with its base and runtime, i
 puts the set in one `.ktar` file, together with an index of every pack's hash. An application named
 in the selection but not installed here is skipped with a message. The index is signed when the
 variable `KDOS_PACK_KEY` names a readable key file; without one the set still exports and imports,
-and the export states that the index is unsigned. Import does not read the index.
+and the export states that the index is unsigned and that an import treats the packs as unsigned.
 
 Import hands each pack to `kdos-packd`, which checks the payload against the hash recorded in the
 pack's own footer, so a pack damaged in transit is refused rather than run. Export does not sign the
-packs themselves, so each one arrives unsigned: whoever alters a pack can rewrite that hash too,
-and the check catches corruption, not tampering. A daemon started with `KDOS_REQUIRE_SIG` set
-refuses every pack of an exported set. What each lane does and does not prove is in
+packs themselves. A signed index travels with them instead: import puts it beside the packs for the
+daemon, which installs a pack as signed when its hash matches an index signed by a key the
+receiving machine trusts (a `.pub` in `/etc/kdos/keys/packs`), and refuses a pack the signed index
+lists under a different hash. A set exported without a key, or signed by a key the machine does not
+trust, arrives unsigned: whoever alters a pack can rewrite its footer hash too, so the check catches
+corruption, not tampering, and a daemon started with `KDOS_REQUIRE_SIG` set refuses every pack of
+such a set. What each lane does and does not prove is in
 [How an application is verified](../03-architecture/security-model.md#how-an-application-is-verified).
 No network is needed at any point. Importing needs `kdos-packd` running and an account in `wheel`, because the daemon's socket
 accepts only root and `wheel`. A pack the daemon refuses is named and skipped; the rest of the set
@@ -668,7 +672,8 @@ kdos app launch app.scribus  # by id; installs it first if it is not installed
 The command is a *shim*: a symbolic link named after the application that points at `kdos-appbox`,
 which reads its own name, looks the application up and starts it in its box. Shims for applications
 you install go in `~/.local/bin`, which the login profile puts on your `PATH`; the table that maps
-each shim to its box is `~/.local/share/kdos/alien-apps`. `kdos app launch` on an application that
+each shim to its box is `~/.local/share/kdos/alien-apps`, or `$XDG_DATA_HOME/kdos/alien-apps`
+when that variable is set. `kdos app launch` on an application that
 has no launcher, because it is a command-line tool, says so and names `kdos app info`.
 
 A first launch is slow, because a container has to be created or started and its first process
@@ -774,13 +779,16 @@ kdos-appbox -b app.gromacs run gmx mdrun -h
 ```
 
 `-b` (or `--box`) names the box. Without it, `kdos-appbox run` looks the command up in the launcher
-tables, `~/.local/share/kdos/alien-apps` and then `/usr/share/kdos/alien-apps`, and takes the box
-from the row whose command matches. A command-line tool has no row there, so the lookup fails and
-`kdos-appbox` refuses with `no installed pack carries '<command>'`.
+tables, `~/.local/share/kdos/alien-apps` (or `$XDG_DATA_HOME/kdos/alien-apps`) and then
+`/usr/share/kdos/alien-apps`, and takes the box from the row whose command matches. A command with
+no row there fails the lookup, and `kdos-appbox` refuses with `no installed pack carries
+'<command>'`.
 
 Where a shim exists, typing the name is shorter. Shims are made for the programs an application's
-own desktop entries name, and for `wine`, `winecfg` and `winetricks` wherever the box carries them.
-Most command-only tools have no desktop entry and so no shim; use `kdos-appbox -b` for those. A shim
+own desktop entries name, for `wine`, `winecfg` and `winetricks` wherever the box carries them, and,
+for an application built from the catalogue with `kdos app install`, for each of its `cmd` rows,
+which also get a row in the table. An application imported from a set gets shims only for what its
+desktop entries name, so its command-only tools are reached with `kdos-appbox -b`. A shim
 is never made under the name of a host tool (`git`, `gnuplot`, `mpv`, `python3`, the shell and
 file tools, and KDOS's own commands among them), because `~/.local/bin` comes ahead of the system
 directories on `PATH` and the shim would take the name over from the host program.
@@ -854,7 +862,11 @@ Removing an application:
 What happens to the work inside the box depends on the kind of box. Your own files in your home
 directory are never touched, because the box shares your home directory. A store box's writable
 layer, meaning anything the application wrote outside your home directory, lives in the container
-and is removed with it. A pack box's writable layer stays in `~/.local/share/kdos/boxes/<name>/`,
+and is removed with it. A store box that stays `stopping` after a stop, and is still `stopping`
+after it has been killed, is not removed for you: the next launch or `kdos-box start` refuses with
+a warning, the box keeps what it wrote, and `kdos-box remove <name> --force` is how you give that up.
+A stuck pack box is removed and created again over the same packs, which loses nothing. A pack
+box's writable layer stays in `~/.local/share/kdos/boxes/<name>/`,
 and its packs stay in `kdos-packd`'s store.
 
 ## Boxes
@@ -867,7 +879,7 @@ kdos-box list                                      # every box: base, state, per
 kdos-box enter app.scribus                         # a shell inside one, in a new terminal window
 kdos-box create scratch base=image:alpine:3.24.1   # a new box; base= also takes pack:<id>
 kdos-box start | stop | restart | remove <name>
-kdos-box gc                                        # stop idle boxes now (--dry-run to preview)
+kdos-box gc                                        # stop boxes past their autostop now (--dry-run to preview)
 ```
 
 `kdos-box list` also shows a box that has a profile and no container yet, with the state
@@ -879,7 +891,8 @@ can show. The full command set, including `run`, `apps`, `export` and `import`, 
 
 Five commands work on the writable layer under `~/.local/share/kdos/boxes/<name>/`, and so apply
 to pack boxes (imported applications and boxes created with a `pack:` base). A store box keeps its
-writable layer in the container engine's storage, where these commands do not reach.
+writable layer in the container engine's storage, where these commands do not reach, and where it
+is lost when a stuck box is created again over its image.
 
 ```sh
 kdos-box snapshot app.scribus before-plugin        # a full copy of the writable layer, tagged
@@ -918,12 +931,14 @@ box with `kdos-box remove <name>`; its profile is kept. A running box is not rem
 with `kdos-box stop <name>`, or pass `--force`. Then:
 
 - for a pack box, the next launch creates the box again from the kept profile;
-- for a store box, run `kdos app install <id>`, which finds every image already built and creates
-  only the box.
+- for a store box, the next launch creates the box again over the image it was built on, with an
+  empty writable layer; `kdos app install <id>` does the same, finding every image already built and
+  creating only the box. `kdos-box start` does not create a removed box.
 
 ### Idle boxes
 
-Your session runs `kdos-box gc` every ten minutes. It stops a running box whose profile sets
+Your session runs `kdos-box gc` every ten minutes, from one loop per login however often the
+desktop is restarted within it. It stops a running box whose profile sets
 `autostop` and which has been running for longer than that `autostop` time. It asks the compositor
 first: a box with a window on the screen is never stopped, and when there is no session to ask,
 nothing is stopped. `autostop` is off (`0`) unless you set it, for example with `kdos-box profile
@@ -951,10 +966,11 @@ read by Orca on the host; see [Accessibility](accessibility.md#the-desktop-itsel
 - **Microsoft core fonts for Wine**, and `winetricks`. Both download Windows components at run
   time, which an offline system cannot promise, so a Windows program asking for Arial gets a
   substitute.
-- **Data sets reaching their applications.** The catalogue's `graft` and `boxgraft` rows say where
-  a data set should appear, but neither `kdos app install` nor an exported pack applies them. A
-  data set installed from the catalogue is built as an image of its own, so KiCad does not see the
-  3D model library and Tesseract does not see the extra languages.
+- **Data sets reaching their applications from the store.** The catalogue's `graft` and `boxgraft`
+  rows say where a data set should appear, and `kdos-appbox import` applies them to an imported
+  data pack, but `kdos app install` does not: a data set installed from the catalogue is built as an
+  image of its own, so KiCad does not see the 3D model library and Tesseract does not see the extra
+  languages until the set has been exported and imported as packs.
 
 ## See also
 

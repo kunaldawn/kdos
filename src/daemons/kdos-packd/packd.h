@@ -101,7 +101,7 @@ int kd_find(const char *id);
  * daemon is a filename it will join onto a directory it owns. */
 int kd_id_ok(const char *s);
 
-int kd_install(const char *staged, char *msg, size_t n);
+int kd_install(const char *staged, const char *index, char *msg, size_t n);
 int kd_remove(const char *id, char *msg, size_t n);
 int kd_rollback(const char *id, char *msg, size_t n);
 

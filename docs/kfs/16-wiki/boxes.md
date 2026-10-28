@@ -40,9 +40,9 @@ come from:
 
 An application row and its description, as an example:
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=317-317 pin=db241a9ade70 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=320-320 pin=db241a9ade70 -->
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=505-505 pin=6a389e27c186 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=508-508 pin=6a389e27c186 -->
 
 The format of every line kind is in
 [The catalogue file](../../kdos/04-programs/kdos-appbox.md#the-catalogue-file).
@@ -67,10 +67,12 @@ commands in the background. The warmup, once at login:
 
 <!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=92-92 pin=fa4c063a4b0e -->
 
-and the idle sweep, every ten minutes from login on. The loop keeps running after Log Out and ends
-with the login; a box stops for neither:
+and the idle sweep, every ten minutes from login on, started only when the pid in
+`$XDG_RUNTIME_DIR/kdos/box-gc.pid` is not already a running loop, so a login has one however many
+sessions it starts. The loop keeps running after Log Out and ends with the login; a box stops for
+neither:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=100-100 pin=b0b7bb100465 -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=109-114 pin=e3ccc5f78bfa -->
 
 The warmup starts up to eight boxes, the ones behind the entries of
 `~/.config/kdos/favorites`, in order. Its skeleton, `fs/etc/skel/.config/kdos/favorites`, describes
@@ -83,7 +85,7 @@ the format:
 | Path | What |
 |---|---|
 | `~/.local/share/kdos/boxes/<name>/` | A pack box's writable layer (`upper`), its snapshots, and a private home |
-| `~/.local/share/kdos/alien-apps`, `/usr/share/kdos/alien-apps` | The tables that map an application's command to its box |
+| `~/.local/share/kdos/alien-apps` (`$XDG_DATA_HOME/kdos/alien-apps` when that is set), `/usr/share/kdos/alien-apps` | The tables that map an application's command to its box |
 | `~/.local/share/applications/` | The launchers the regeneration writes, each marked `X-KDOS-Alien=true` |
 | `~/.config/kdos/a11y` | When it exists, boxes are started with accessibility on |
 | `$XDG_RUNTIME_DIR/kdos-appbox.trace` | How long each stage of the last launches took |
@@ -175,9 +177,10 @@ container, does not exit on podman's stop signal, so its `stop` takes the whole 
 the kill (15 seconds on the live medium), and `list` may still show it `stopping` for a moment.
 
 `remove` runs `podman rm` without `-f`, which refuses a running box. On success it prints
-`<name> removed — its profile and its writable layer are still in ~/.local/share/kdos/boxes/<name>`
-and exits 0; the profile itself is `~/.config/kdos/boxes/<name>.conf`, and a store box's writes
-were inside its container and go with it. When podman refuses, podman's own error is printed, then
+`<name> removed — its profile is kept in ~/.config/kdos/boxes/<name>.conf`, followed by
+`and its writable layer, snapshots and home in ~/.local/share/kdos/boxes/<name>` when that
+directory exists, and exits 0. A store box has no such directory: its writes were inside its
+container and go with it. When podman refuses, podman's own error is printed, then
 `<name> was not removed (podman rm exited N)`, which without `--force` goes on to say that a
 running box needs `kdos-box stop` first, and `kdos-box remove` exits with podman's status;
 the box and its stack are left as they were. Stop the box first with `kdos-box stop`, then remove
@@ -212,20 +215,21 @@ Inside, `KDOS_BOX` holds the box's name.
    ```
 
 3. Namespaces and shared directories are set when a box is created. For those keys, stop and
-   remove the box, then create it again from the kept profile. A pack box is created again by its
-   next launch. A store box, the kind `kdos app install` makes, is not: install it again, which
-   skips the images already built and creates the box over them.
+   remove the box, then launch the application again: the launch creates the box from the kept
+   profile, a pack box over its packs and a store box, the kind `kdos app install` makes, over its
+   local image `kdos/<id>`, with an empty writable layer. `kdos app install` is needed only when
+   that image is gone; it skips the images still built and creates the box over them.
 
    ```bash
    kdos-box stop app.hugin
    kdos-box remove app.hugin
-   kdos app install app.hugin
    ```
 
-The two kinds of box do not take the same keys. A store box is created by `distrobox create`,
-which receives none of `memory`, `cpus` and `pids` and gives `network=none` the same private
-namespace, with an interface, as `network=private`; `kdos-box profile` still prints the pack box's
-flags (`--memory`, `--network none`) beside those keys. On a pack box, `memory` and `cpus` become
+Both kinds of box take the same keys. A store box is created by `distrobox create`, which passes
+`memory`, `cpus` and `pids` to podman as `--memory`, `--cpus` and `--pids-limit`, and
+`network=none` as `--network none`, a namespace with no interface; a `memory` or `cpus` value
+made of anything but letters, digits and dots is refused with a warning and not applied. On
+either kind, `memory` and `cpus` become
 [cgroup]{.idx} limits only in a session started by autologin, which `kdos-getty` puts in your
 delegated cgroup; in a session started any other way the engine accepts them and the kernel does
 not apply them. See [Box profiles](../../kdos/04-programs/kdos-appbox.md#box-profiles) and
@@ -297,18 +301,20 @@ A box made from a container image is a working environment, not tied to an appli
    ```
 
    `kdos-box apps` lists the desktop ids in the box's `/usr/share/applications`, and prints
-   nothing for an image, such as Alpine's, that has none. `export` writes
+   nothing for an image, such as Alpine's, that has none. `export` starts the box and reads the
+   entry's `Exec`, `Name`, `Icon` and `StartupWMClass`, so an id that is not itself a program,
+   such as `org.gnome.TextEditor`, runs the program its entry names; a word that names no entry
+   is taken as the command itself. It writes
    `~/.local/share/applications/<desktop-id>.scratch.desktop`, whose command is
-   `kdos-box run scratch <desktop-id>`: the name is run as a program inside the box, so the
-   launcher works only for an entry whose desktop id is also its command, such as `gimp`, and not
-   for one such as `org.gnome.gedit`. It also writes a shim `~/.local/bin/<desktop-id>@scratch`,
-   which answers `unknown alien app` until a table row of that name exists.
-   `kdos-box unexport scratch <desktop-id>` removes both.
+   `kdos-box run scratch` followed by the entry's command, and a shim
+   `~/.local/bin/<command>@scratch`, named after the program in that command, which splits its
+   own name at the last `@` and runs what `kdos-box run scratch <command>` runs, with its own
+   arguments appended. `kdos-box unexport scratch <desktop-id>` removes both.
 
 A box on a pack base (`base=pack:<id>`) needs no network, and its pack was verified when it was
-installed. Do not use `base=box:<name>`: that create never finishes, repeating the same step until
-it is interrupted; read the other box's base with
-`kdos-box profile <name>` and pass it instead, or use `kdos-box clone`.
+installed. `base=box:<name>` makes a box on the other box's own base, read from its profile and
+saved in the new one, with an empty writable layer; `kdos-box clone` copies the other box's work
+as well.
 
 ### Stopping idle boxes
 
@@ -320,9 +326,10 @@ kdos-box profile app.hugin autostop=30m
 kdos-box gc --dry-run                  # what the next sweep would stop
 ```
 
-With nothing past its time, `gc --dry-run` prints `nothing idle`.
+With nothing past its time, `gc --dry-run` prints `nothing to stop`.
 
-The session runs `kdos-box gc` every ten minutes, from login until the login ends, so a box left
+The session runs `kdos-box gc` every ten minutes, from login until the login ends, in one loop per
+login that `$XDG_RUNTIME_DIR/kdos/box-gc.pid` finds again on a session restart, so a box left
 running after the login has ended waits for the next login's sweep. It stops a box that has run longer than its
 `autostop` time, counted from when it started, and only after the compositor says the box has no
 window open.
@@ -406,15 +413,16 @@ A box's work is gone after a reboot
 : It ran on the live medium, or `kdos-appbox status` marks it `ephemeral`; see
   [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box).
 
-`could not compose box '<name>' from packs` on a launch
-: The box does not exist and the launch tried to make it from packs. A launch creates only a pack
-  box; a store box that was removed is created again with `kdos app install <id>`. For a pack box,
-  the line above names the cause, such as `kdos-packd is not running`.
+`could not create box '<name>'` on a launch
+: The box does not exist and the launch could not make it. A pack box is made over its packs, and
+  the line above names the cause, such as `kdos-packd is not running`. A store box is made over
+  its local image `kdos/<id>`, with podman's message above; when that image is gone,
+  `kdos app install <id>` builds it and creates the box again.
 
 A profile change has no effect
-: Namespace and directory keys apply at creation: stop and remove the box, then launch a pack box
-  again or run `kdos app install <id>` for a store box. On a store box `memory`, `cpus` and `pids`
-  never apply, and `network=none` is a private network; see
+: Namespace and directory keys apply at creation: stop and remove the box, then launch the
+  application again, which creates either kind of box over its kept profile. A `memory` or `cpus` value that is not a
+  plain size or number is refused at creation with a warning; see
   [Changing what a box may share](#changing-what-a-box-may-share). A `grant` change needs
   `kdos-comp -r`, and then reaches the next client, not a running one.
 
@@ -429,7 +437,6 @@ A profile change has no effect
 - [A boxed application is given your location without being asked](../../kdos/06-reference/known-gaps.md#a-boxed-application-is-given-your-location-without-being-asked)
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)
 - [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box)
-- [kdos-box create with a box: base never finishes](../../kdos/06-reference/known-gaps.md#kdos-box-create-with-a-box-base-never-finishes)
 - [A box is not a security boundary against you](../../kdos/06-reference/known-gaps.md#a-box-is-not-a-security-boundary-against-you)
 - [Changing the accent colour reaches running GTK3 applications, not running libadwaita or KDE ones](../../kdos/06-reference/known-gaps.md#changing-the-accent-colour-reaches-running-gtk3-applications-not-running-libadwaita-or-kde-ones)
 - [Applications imported or built during an install stay in the live session](../../kdos/06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session)

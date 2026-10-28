@@ -464,7 +464,7 @@ The native compilers, the linker, the C library, and the LLVM family. 39 ports, 
 | `clang` | 23.1.2 | The C/C++ compiler, plus clangd, clang-tidy and clang-format | `31_compilers` |
 | `clang21` | 21.1.8 | Clang 21 libraries and compiler, installed under /usr/lib/llvm21 for zig | `31_compilers` |
 | `compiler-rt` | 23.1.2 | clang's runtime libraries — builtins, the profile runtime and UndefinedBehaviorSanitizer | `31_compilers` |
-| `crubit` | 0.20260811 | Crubit's cc_bindings_from_rs, which writes C++ headers for calling Rust crates, and its C++ support library | `40_lang` |
+| `crubit` | 0.20260909 | Crubit's cc_bindings_from_rs, which writes C++ headers for calling Rust crates, and its C++ support library | `40_lang` |
 | `elfutils` | 0.196 | utilities and libraries for handling ELF files | `30_foundation` |
 | `flex` | 2.6.4 | Lexical analyser generator | `30_foundation` |
 | `fortify-headers` | 3.0.2 | Standalone _FORTIFY_SOURCE implementation for musl, as overlay headers | `20_selfhost`, named again by `30_foundation` |
@@ -1609,8 +1609,10 @@ Notes:
   `mbedtls_config.h`, never by a define: `MBEDTLS_THREADING_C` changes the size of the RNG and SSL
   contexts, so a consumer built without it would disagree with the library.
 - `nspr`: `_linux.h` picks libc features by testing `__GLIBC__`, so the `-D_PR_*` flags name poll,
-  `off64_t`, IPv6 and `getaddrinfo` for musl; without them the library falls back to `select()`
-  and IPv4-only name lookup.
+  IPv6, `inet_ntop`, `gethostbyname2` and `getaddrinfo` for musl; without them the library falls
+  back to `select()` and IPv4-only name lookup. Large files come from `nspr-musl-lfs64.patch`,
+  which makes `_linux.h` define `_PR_HAVE_LARGE_OFF_T` for a C library other than glibc, so the
+  64-bit file calls use plain `open`, `stat` and `lseek` on musl's 64-bit `off_t`.
 - `nss`: the `.chk` files are installed with the libraries, because FIPS mode refuses to load a
   library whose self-test signature is missing.
 - `opensc`: `openssl4.patch` is upstream's commit `8ad96adc5f`, which reads `ASN1_STRING` through
@@ -2051,9 +2053,12 @@ Notes:
 
 - `croc`: `/usr/bin/croc` is a wrapper that adds `--local`, because croc otherwise falls back
   silently to its public relay; `croc-relay` is the plain binary. The `croc_no_tailcat` tag leaves
-  out the Tailscale transport and `croc ssh`.
+  out the Tailscale transport and `croc ssh`. A patch removes the release check upstream makes
+  with each send and receive.
 - `deluge`: `chardet` and `ifaddr` stay out of its bundle; `ifaddr`'s site-packages paths belong to
-  cura's bundle.
+  cura's bundle. The bundled plugins are unpacked to `.egg` directories and load through
+  `importlib.metadata`; a zipped `.egg` plugin installed into `~/.config/deluge/plugins` is not
+  found.
 - `fzssh`: `with_server` stays off. The server half is under a proprietary licence.
 - `libtorrent-rasterbar`: `-Dgnutls=OFF` keeps OpenSSL, because the GnuTLS build compiles DHT out.
   The Python binding needs boost built with its Python component.

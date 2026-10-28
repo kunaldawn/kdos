@@ -1301,7 +1301,7 @@ The fastest-first mode selection (see [Choosing the mode](#choosing-the-mode)) i
 | `kdos-boxchip.c` | [The box colour chip](#box-identity) on a title bar |
 | `kdos-grant.c` | Per-box grants beyond the sandbox allowlist |
 | `kdos-group.c` | [Window groups](#window-groups-and-window-memory) (tabbed stacks) |
-| `kdos-layerfocus.c` | Closing menus and other on-demand surfaces when you click elsewhere |
+| `kdos-layerfocus.c` | Closing menus and other on-demand surfaces when you click elsewhere, and closing `kdos-saver` on the first key, button or touch |
 | `kdos-winpos.c` | [Window memory](#window-groups-and-window-memory): reopening windows where they were |
 | `kdos-a11y.c` | [Accessibility](#accessibility): the keyboard aids, dwell click, the pointer size and the on-screen keyboard |
 | `kdos-a11ymon.c` | [The keyboard monitor](#the-keyboard-monitor) on the session bus, and the toggle notifications |

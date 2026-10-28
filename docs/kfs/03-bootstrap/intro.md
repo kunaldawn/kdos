@@ -112,11 +112,14 @@ the part of kpkg's work the bootstrap needs, in three functions:
 `get_port_version NAME`
 : Prints the recipe's `version`. Steps 030 and 100 use it for GCC's versioned paths.
 
-The recipe is read, not sourced. Each `key = value` line is evaluated by bash's own parameter
+The recipe is read, not sourced. Only `name`, `version`, `release`, `vendoring`, `source` and the
+recipe's helpers (any key that is not on kpkg's list) are evaluated, by bash's own parameter
 expansion, which is the subset of shell the recipes are written in, so `$name`, `${version%.*}`
-and a helper declared above `source` all expand. A repeated `source` line adds to the list.
-`description`, `homepage`, `depends` and `pypackages` are free text and are skipped, never
-evaluated.
+and a helper declared above `source` all expand. A repeated `source` line adds to the list. Every
+other key — `sha256`, `description`, `homepage`, `depends`, `pypackages`, `license`, `group`,
+`secdb`, `replaces`, `bench`, `bench_setup`, `pyrequirements`, `pyruntime` and `watch` — is free
+text and is skipped, never evaluated. A helper is still evaluated, so a backtick or `$(` in one
+runs as a command when the recipe is read.
 
 The archive is the first `source =` entry that is an archive present in the port directory. An
 entry `FILE::URL` names its file outright. When the first entry is a plain URL, its local name is
@@ -126,7 +129,7 @@ directory because `make fetch` put it there, linked from `ports/.srccache`, and 
 `Source tarball not found` is a tree that has not been fetched (see
 [Sources and the archive](../01-preparing/sources.md)). It is then unpacked:
 
-<!-- kfs:include script/lib/port.sh lines=156-165 pin=69f7883feabb -->
+<!-- kfs:include script/lib/port.sh lines=158-167 pin=69f7883feabb -->
 
 The printed path is `build/tmp/$name-$version`, so a port whose archive unpacks to a directory of
 any other name cannot be built by a bootstrap step.

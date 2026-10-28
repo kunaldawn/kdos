@@ -9,7 +9,7 @@ carries no application packs, so on a standard build this step removes every gen
 
 ## The step
 
-<!-- kfs:include script/phases/70_image/030_launchers.sh lines=49-62 pin=076ebb19141c -->
+<!-- kfs:include script/phases/70_image/030_launchers.sh lines=49-62 pin=6d8af2dadcf1 -->
 
 `--packs-dir` reads one extracted pack per subdirectory, named after the pack, and takes each
 pack's `usr/share/applications`. The other form, `--packs`, asks `kdos-packd` for the installed
@@ -18,9 +18,9 @@ packs and mounts them, and there is no daemon and no mount in a build chroot. Th
 
 The extraction directory is `/var/tmp/kdos-pack-extract` unless `KDOS_PACK_EXTRACT` names another.
 `script/chroot/exec.sh` does not pass that variable into the chroot, so under `make build` it is
-always the default. The step creates the directory empty when it is missing and removes it again
-at the end if it is still empty; `genlaunchers` reads a missing directory as no packs and still
-sweeps. No step of the phase extracts a pack into it, so on a standard build it is empty.
+always the default. Once `kdos-appbox` is found, the step creates the directory empty when it is
+missing and removes it again at the end if it is still empty; `genlaunchers` reads a missing
+directory as no packs and still sweeps. No step of the phase extracts a pack into it, so on a standard build it is empty.
 
 `genlaunchers` reconciles rather than appends. It removes every desktop entry carrying
 `X-KDOS-Alien=true` and every `/usr/local/bin` link it recognises as its own shim (a symbolic
@@ -31,9 +31,8 @@ it is the population. The four outputs and their naming
 rules are in [Launcher generation](../../kdos/04-programs/kdos-appbox.md#launcher-generation).
 
 `kdos-appbox` installs in `/usr/local/bin`, which is last on the chroot's `PATH`. Without the
-`kdos-appbox` package the step prints that it is not installed and exits 0, and whatever
-launchers the tree holds ship unchanged, beside the empty extraction directory, which the step
-made before it looked.
+`kdos-appbox` package the step prints that it is not installed and exits 0 before it creates
+anything, and whatever launchers the tree holds ship unchanged.
 
 ## The check
 

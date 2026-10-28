@@ -108,7 +108,7 @@ executed, and it defines one function per job:
 | `kdos_session_open` | `kdos-desktop-start` | `$BROWSER` (default `xdg-open`), for a start that read no profile |
 | `kdos_session_runtime` | `kdos-desktop` | `XDG_RUNTIME_DIR` (default `/run/user/<uid>`), before anything uses it |
 | `kdos_session_keymap` | `kdos-desktop` | The console keymap from `/etc/keymap`, translated into `XKB_DEFAULT_LAYOUT` / `XKB_DEFAULT_VARIANT` |
-| `kdos_session_boxes` | `kdos-desktop` | Starts `kdos-appbox warmup` at `nice 10`, and runs `kdos-box gc` every ten minutes to stop boxes that have run longer than their profile's `autostop` and have no window open |
+| `kdos_session_boxes` | `kdos-desktop` | Starts `kdos-appbox warmup` at `nice 10`, and runs `kdos-box gc` every ten minutes to stop boxes that have run longer than their profile's `autostop` and have no window open. There is one such loop per login: its pid is kept in `$XDG_RUNTIME_DIR/kdos/box-gc.pid`, and a later session start that finds that pid still running `kdos-box` starts no second one |
 | `kdos_session_bus` | `kdos-desktop` | One [session bus](#the-session-message-bus) per user, at a fixed path |
 | `kdos_session_audio` | `kdos-desktop-start` | [PipeWire](#audio), once per user rather than once per session |
 | `kdos_session_once` | `kdos-desktop-start` | [Everything done once the display exists](#what-runs-once-after-the-display-exists) |
@@ -178,11 +178,12 @@ lists the program that does each of systemd's jobs on KDOS, `seatd` among them.
    first name in that variable, so it has to be the session's own answer.
 2. Runs `kdos_session_open` and `kdos_session_audio`.
 3. Starts the portal stack, the input method and, when
-   `/usr/libexec/deja-dup/deja-dup-monitor` is installed, Déjà Dup's backup scheduler in
-   background subshells that first wait (up to 30 seconds) for a `wayland-*` socket to appear in
+   `/usr/libexec/deja-dup/deja-dup-monitor` is installed and this user has none running, Déjà
+   Dup's backup scheduler in background subshells that first wait (up to 30 seconds) for a `wayland-*` socket to appear in
    `$XDG_RUNTIME_DIR`. The scheduler is started here because upstream starts it from
    `/etc/xdg/autostart`, which nothing on KDOS reads; without it Déjà Dup's "Back up
-   automatically" never runs a backup.
+   automatically" never runs a backup. The monitor outlives the compositor, so a session
+   restarted within the same login finds the first one and starts no second.
 4. Starts `kdos_session_once` in the background.
 5. Runs `kdos-comp` in the foreground, with its standard error written to
    `$XDG_RUNTIME_DIR/kdos-comp.log` (the previous session's log is kept as `kdos-comp.log.old`)
@@ -222,7 +223,8 @@ When the compositor exits:
   Log Out stops only the compositor and what needs its display, such as the screen-capture
   backend. Everything else the session started is still running at that prompt: PipeWire,
   WirePlumber and `pipewire-pulse`, mpd and its watcher, the per-user timer loops and the
-  `kdos-box gc` loop. All of them are in the login's own session on tty1, so the hangup that ends
+  `kdos-box gc` loop, which the next session start in the same login finds by its pidfile and
+  reuses. All of them are in the login's own session on tty1, so the hangup that ends
   the login ends them too. The session bus is not: `dbus-daemon --fork` starts a session of its
   own, and the bus runs until the machine shuts down, with the portal front end and every other
   service it activated; the next session's start replaces the front end.
@@ -334,7 +336,8 @@ Three details of the startup matter:
 
 PipeWire runs on the host, started by `kdos_session_audio` from `kdos-desktop-start`, once per
 user: a restart finds it running and starts nothing, because two PipeWire daemons would fight
-over the same devices. It keeps running after Log Out and ends with the login, so the next login
+over the same devices. The check counts only this user's `pipewire`; another account's daemon
+serves that account's runtime directory and leaves this login without audio if taken for its own. It keeps running after Log Out and ends with the login, so the next login
 starts it again. Three programs, in this order:
 
 1. `pipewire`, the media graph;
@@ -601,8 +604,10 @@ checking of its own; that is the front end's job.
 `SaveFiles`, "save this set of files into a folder", is a folder choice: `kdos-pick --directory`
 with the title (default "Save Files") and `current_folder`, and the application writes the files
 into the folder it is given. `current_filter` and `choices` are not read. A reply carries at most
-64 chosen URIs; `kdos-pick` exiting 0 with nothing printed is answered as a cancellation, not as
-an empty success.
+64 chosen URIs. All three methods read `kdos-pick`'s exit the same way: 0 with a choice printed is
+success (response 0); 0 with nothing printed, or 1, is a cancellation (response 1), not an empty
+success; anything else, such as 127 when `kdos-pick` could not be executed or 2 when it refused to
+start, is an error (response 2).
 
 **AppChooser draws no dialog.** The front end passes the handlers it found for the file or URI,
 best first, and the previous choice when there is one; the backend answers with the previous
@@ -691,9 +696,9 @@ why `kdos theme` writes each accent's stylesheet to its own `~/.themes/KDOS-<acc
 **The backend watches the accent and emits `SettingChanged`.** A toolkit reads the settings once
 and then waits for that signal; without it, an accent switched while a boxed editor is open would
 reach only its next launch. The watch is on the *directory*, because the file is replaced rather
-than edited, and it is set once, when the backend starts: a backend started before
-`${XDG_CACHE_HOME:-~/.cache}/kdos` existed watches nothing and sends no signal until it is started
-again. The signal is held back until `~/.themes/KDOS-<accent>/index.theme` exists:
+than edited, and it is set once, when the backend starts. The backend creates
+`${XDG_CACHE_HOME:-~/.cache}/kdos` first when it is missing, so the watch is in place even on a
+fresh home where no accent has yet been switched. The signal is held back until `~/.themes/KDOS-<accent>/index.theme` exists:
 `kdos theme --preview` writes the setting without generating a theme, and an application told the
 name of a theme that is not there falls back to its own default.
 

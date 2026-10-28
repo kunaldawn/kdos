@@ -211,6 +211,9 @@ fi
 # image on any unowned file left under usr/share/{locale,man,doc,info}.
 if [ "$CLEAN_UNOWNED_DOCS" = 1 ]; then
     section "Unowned documentation and catalogs"
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "  no python3 on PATH: skipped, and 087_gates.sh reports what is left"
+    else
     python3 -I - "$FS" <<'PY'
 import os, sys
 
@@ -285,6 +288,7 @@ for top in ("usr/share/locale", "usr/share/man", "usr/share/doc", "usr/share/inf
             emptied.add(os.path.dirname(d))
 print(f"  removed {removed} unowned file(s), {size // 1024} KiB")
 PY
+    fi
 fi
 
 # ── podman's container store ────────────────────────────────────────────

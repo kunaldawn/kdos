@@ -414,7 +414,9 @@ the same chord brings it back.
 
 Each of these is *run-or-raise*: if a window with the program's name as its app id is open, the key
 focuses and raises it; if not, the key starts `foot --app-id=`*program* `-e` *program*, so a further
-press raises the window the key opened. A window opened from the Start menu is started with the same
+press raises the window the key opened. The `rmpc` key is the one exception: it starts
+`kdos-term --app-id rmpc -e rmpc`, the terminal rmpc's desktop entry asks for because the album
+art is drawn in the terminal's cell grid. A window opened from the Start menu is started with the same
 app id, and the key raises that one too. A key whose program is not installed opens nothing, and
 that row is left off the shortcut card.
 
@@ -426,8 +428,8 @@ that row is left off the shortcut card.
 | `Super+Ctrl+N` | Scratch pad |
 | `Super+Ctrl+B` | Contacts |
 | `Super+Ctrl+E` | Character map |
-| `Super+Ctrl+V` | Bound to `kdos-clip`; see [The clipboard](#the-clipboard) |
-| `Super+Ctrl+P` | Bound to `kdos-energy`, the per-application energy report. It prints to standard output and has no window, so pressing the key shows nothing; right-click the meters strip for the same report in a popup |
+| `Super+Ctrl+V` | The clipboard history picker, `kdos-clip --pick`; see [The clipboard](#the-clipboard) |
+| `Super+Ctrl+P` | The resource monitor, `kdos-res`, opened on its Energy page: each application's share of energy use |
 | `Super+Ctrl+C` | The palette, opened on its capture routes: screenshots, screen and sound recording, QR decoding |
 | `Super+Ctrl+H` | The palette, opened on its setup routes: network, Bluetooth, sound, displays, devices, printers, users, the clock, terminal programs and the application store |
 | `Super+Ctrl+Shift+Space` | The accent and font picker, `kdos-style` |
@@ -772,9 +774,9 @@ written to disk and the history ends with the session. It does not record the pr
 copied images; an image stays available for as long as the program that copied it is running.
 
 Open the history from the panel's clipboard widget, which appears behind the overflow chevron once
-something has been copied, or from a prompt with `kdos-clip --pick`. The shipped `Super+Ctrl+V`
-binding runs `kdos-clip` with no argument, which starts a second daemon in place of the first and
-opens no picker; bind the key to `kdos-clip --pick` in `rc.xml` to make it open the history.
+something has been copied, with `Super+Ctrl+V`, or from a prompt with `kdos-clip --pick`. Run
+`kdos-clip` with no argument and it is the history daemon itself: a second copy takes the history
+over from the one the compositor started.
 
 Set `clipboard = no` in `comp.conf` to turn the daemon off; the selection then disappears with the
 program that owned it. Like the panel keys, it takes effect at your next login.

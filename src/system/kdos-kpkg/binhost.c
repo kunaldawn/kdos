@@ -11,7 +11,9 @@
  *   kpkg sign <file> <key>        write <file>.sig over any one file
  *   kpkg index <dir> [--sign K]   write PACKAGES (+ PACKAGES.sig, + sidecars)
  *   kpkg verify-index <dir>       check it against the keyring
- *   kpkg binhost <dir> <port>     install the prebuilt package IF it matches
+ *   kpkg binhost [--root R] <dir> <port>
+ *                                 install the prebuilt package IF it matches,
+ *                                 and record its E: as the recipe hash
  *
  * The index format is Alpine's shape — single-character keys, one stanza per
  * package, blank line between — because it parses in sixty lines of C and reads
@@ -274,20 +276,25 @@ int kp_cmd_index(const KpConf *c, int argc, char **argv)
 		}
 
 		/* The recipe hash comes from the ports tree this index is built
-		 * ON, which is the machine that built the packages. A port that
-		 * is no longer in the tree gets an empty E: and can therefore
-		 * never satisfy a client's equality test — which is correct: we
-		 * cannot say what it was built from. */
+		 * ON, which is the machine that built the packages, and only a
+		 * file of the version and release that recipe makes carries it.
+		 * A port no longer in the tree, or a superseded file of one that
+		 * is, gets an empty E: and can therefore never satisfy a
+		 * client's equality test — which is correct: we cannot say what
+		 * it was built from. Stamped on every file of the name, the
+		 * client's first match could install an older version. */
 		char ehash[65] = "";
+		char desc[512] = "";
 		char *portdir = kp_port_dir(c, name);
 		if (portdir) {
-			kp_recipe_hash(portdir, ehash);
-			free(portdir);
-		}
-
-		char desc[512] = "";
-		portdir = kp_port_dir(c, name);
-		if (portdir) {
+			char *rp = kb_path_join(portdir, "kpkgbuild");
+			KpDecl *d = kp_decl_parse(rp);
+			if (d && !strcmp(kp_decl_version(d), ver) &&
+			    !strcmp(kp_decl_release(d), rel))
+				kp_recipe_hash(portdir, ehash);
+			if (d)
+				kp_decl_free(d);
+			free(rp);
 			kp_description(portdir, desc, sizeof(desc));
 			free(portdir);
 		}
@@ -564,24 +571,38 @@ int kp_cmd_verify_pkg(int argc, char **argv)
 
 /* ── the client ────────────────────────────────────────────────────────── */
 
-int kp_cmd_binhost(const KpConf *c, int argc, char **argv)
+int kp_cmd_binhost(const KpConf *conf, int argc, char **argv)
 {
 	const char *dir = NULL, *want = NULL;
 	int insecure = 0, dry = 0;
+	KpConf cc = *conf;
+	const KpConf *c = &cc;
 
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--insecure"))
 			insecure = 1;
 		else if (!strcmp(argv[i], "--dry-run"))
 			dry = 1;
-		else if (!dir)
+		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
+			kb_strlcpy(cc.root, argv[++i], sizeof(cc.root));
+		else if (argv[i][0] == '-' && argv[i][1]) {
+			/* Refused rather than taken as the directory or the
+			 * port: `--root X DIR PKG` would otherwise look for an
+			 * index under `--root` and a port named X. */
+			kp_err("unknown option: %s", argv[i]);
+			return 1;
+		} else if (!dir)
 			dir = argv[i];
 		else if (!want)
 			want = argv[i];
+		else {
+			kp_err("one port at a time: %s", argv[i]);
+			return 1;
+		}
 	}
 	if (!dir || !want) {
-		printf("Usage: kpkg binhost <dir> <port> [--dry-run] "
-		       "[--insecure]\n");
+		printf("Usage: kpkg binhost [--root <path>] <dir> <port> "
+		       "[--dry-run] [--insecure]\n");
 		return 1;
 	}
 
@@ -708,8 +729,16 @@ int kp_cmd_binhost(const KpConf *c, int argc, char **argv)
 			continue;
 		}
 
-		snprintf(rebuilt, sizeof(rebuilt), "%s/%s", c->package_dir,
-			 hit->file);
+		/* A truncated path would reconstruct into a file of another
+		 * name; the full package is used instead. */
+		if ((size_t)snprintf(rebuilt, sizeof(rebuilt), "%s/%s",
+				     c->package_dir, hit->file) >=
+		    sizeof(rebuilt)) {
+			rebuilt[0] = 0;
+			free(dpath);
+			free(have);
+			continue;
+		}
 		kp_msg("%s: applying a %lld-byte delta instead of a %lld-byte "
 		       "package", hit->file, st[i].size, hit->size);
 		if (kp_delta_apply(have, dpath, rebuilt) != 0) {
@@ -757,8 +786,27 @@ int kp_cmd_binhost(const KpConf *c, int argc, char **argv)
 	/* Installed through kpkgadd's own entry point rather than by exec'ing
 	 * it: same process, same config, and no second copy of the install
 	 * path to keep in step with this one. */
-	char *av[2] = { (char *)"kpkgadd", pkgfile };
-	int rc = add_main(2, av);
+	char *av[5];
+	int ac = 0;
+	av[ac++] = (char *)"kpkgadd";
+	if (c->root[0]) {
+		av[ac++] = (char *)"--root";
+		av[ac++] = cc.root;
+	}
+	av[ac++] = pkgfile;
+	av[ac] = NULL;
+	int rc = add_main(ac, av);
 	free(pkgfile);
+
+	/* The stanza's E: equals this tree's recipe hash, so the install is
+	 * that recipe's build and is recorded as one, the way `kpkg install`
+	 * records its own. kpkgadd removed the old record and has released
+	 * the lock by now; taking it here cannot nest. */
+	if (rc == 0) {
+		int lock = kp_db_lock(c);
+		kp_record_recipe_hash(c, want, ehash);
+		if (lock >= 0)
+			close(lock);
+	}
 	return rc;
 }

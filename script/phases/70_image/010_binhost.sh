@@ -22,9 +22,10 @@
 # THE DIRECTORY ACCUMULATES. 020_cleanup.sh empties the package cache on every
 # 70_image run, and an incremental build makes only the packages it rebuilt,
 # so each run adds what it built and keeps what earlier runs added. A package
-# older runs left is indexed beside its successor with the same `E:`: `kpkg
-# index` takes each file's recipe hash from the ports tree it runs on, not from
-# the package, so a client can be handed the older file. Nothing here empties
+# older runs left is indexed beside its successor, and only the file of the
+# version and release the ports tree's recipe makes gets that recipe's hash as
+# its `E:`; a superseded one gets an empty `E:`, which no client's equality
+# test accepts, so it is listed and never installed. Nothing here empties
 # build/binhost; a binhost holding only this tree's packages needs its
 # *.tar.xz removed before a build that installs every port with the flag set.
 #

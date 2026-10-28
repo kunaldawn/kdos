@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kwlstub — libkwl's three symbols, for a build with no Wayland
+ *   kwlstub — libkwl's four symbols, for a build with no Wayland
  *
  * `kdos-term --dump` is the whole terminal short of a display: the state
  * machine, the frame, the child on its pty and the picture. Every one of those
@@ -19,7 +19,7 @@
  * is in on the shipped binary. A stub that claimed a display would send the
  * dump down the window path and the golden would be of something else.
  *
- * NOTHING HERE IS REACHED. The three entries exist so the link succeeds; a
+ * NOTHING HERE IS REACHED. The four entries exist so the link succeeds; a
  * call would mean the terminal took a path a dump cannot be on, so each one
  * aborts rather than returning a plausible value.
  * ---------------------------------
@@ -31,6 +31,7 @@
 
 int kwl_font_step(int step);
 int kwl_frame_throttled(void);
+void kwl_paste_needs_shift(int on);
 
 static int stub_probe(void) { return 0; }
 static int stub_init(const KDispConfig *cfg) { (void)cfg; abort(); }
@@ -43,3 +44,4 @@ const KDispImpl kwl_impl = {
 
 int kwl_font_step(int step) { (void)step; abort(); }
 int kwl_frame_throttled(void) { return 0; }
+void kwl_paste_needs_shift(int on) { (void)on; abort(); }

@@ -17,6 +17,7 @@
  *   /usr/share/kdos/alien-apps          baked into the ISO by
  *                                       the launcher generator, read-only
  *   ~/.local/share/kdos/alien-apps      whatever the user has installed since
+ *                                       ($XDG_DATA_HOME/kdos/ when it is set)
  *
  * Lookups check the user table first. The same split applies to the launchers
  * (/etc/skel copy vs ~/.local/share/applications) and to the shims
@@ -32,6 +33,9 @@
 #include <string.h>
 #include <unistd.h>
 
+/* $XDG_DATA_HOME when it is set, ~/.local/share otherwise: the same rule
+ * `genlaunchers --user` writes the table by, so a reader resolving it any
+ * other way misses every row the writer put down. */
 static char *user_table(void)
 {
 	char *p = kb_calloc(1, MAX_LINE);

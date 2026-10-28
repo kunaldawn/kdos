@@ -51,10 +51,12 @@ Other ports that work on [removable media]{.idx}:
 | `format = yes` | `kdos-disks` cannot format a device | Formatting is allowed |
 | `write = yes` | No disk image can be written through the daemon | Writing an image over a whole removable disk is allowed |
 
-The daemon reads the file on each request that needs it, so no restart is needed. It looks for the
-text anywhere in the file, written with or without the spaces (`exec=yes` works too), comments
-included: a commented-out `# exec = yes` still turns the setting on, and a setting is turned off
-by deleting its text. See
+The daemon reads the file on each request that needs it, so no restart is needed. It takes one
+`key = value` per line, and blanks around the key, the `=` and the value are ignored, so
+`exec=yes` works too. A line whose first non-blank character is `#` is a comment, so
+`# exec = yes` leaves the setting off. The key must be exactly `exec`, `format` or `write`, and
+the value exactly `yes`; anything else leaves the setting off. When a key appears on more than
+one line, the last one wins. See
 [`/etc/kdos/mountd.conf`](../../kdos/04-programs/daemons.md#etckdosmountdconf).
 
 **`/etc/init.d/58_mountd.sh`**, from `fs/etc/init.d/58_mountd.sh`, checks that the daemon is

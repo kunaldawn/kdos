@@ -1058,9 +1058,11 @@ times the base's compressed-to-raw ratio for that path, or half when there is no
 once plus what each phase added, changed or rewrote. Check the free space before a full build with
 snapshot writing on; see [Building from scratch](developing.md#building-from-scratch).
 `make cleanbuild` empties `build/` but keeps `build/snapshots`, the compiler cache `build/ccache`
-and the package store `build/pkgstore`; `make clean` removes all three. Both keep `build/keys`, so a
-signing key kept there survives a clean. The one key the build itself uses is the kernel's
-module-signing key, `build/keys/linux-module-signing.pem`, which the `linux` port writes there when
+and the package store `build/pkgstore`; `make clean` removes all three. Both keep `build/keys` and
+`build/binhost-key`, so a signing key kept in either survives a clean. `build/binhost-key` holds
+`kdos-binhost.key`, which signs the binhost's index; a `KDOS_MAKE_BINHOST=1` build makes it only
+when it is missing, so a machine holding the matching `kdos-binhost.pub` goes on accepting the
+indexes signed after a clean. The key every build uses is the kernel's module-signing key, `build/keys/linux-module-signing.pem`, which the `linux` port writes there when
 it is missing and signs every module with (see
 [Module signing](../03-architecture/security-model.md#module-signing)).
 

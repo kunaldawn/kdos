@@ -362,14 +362,15 @@ static bool in_fstab(const char *node, const char *label)
 		while (*p == ' ' || *p == '\t')
 			p++;
 		if (*p && *p != '#') {
-			if (strstr(p, node))
+			/* The source field, whole: a substring search would
+			 * let /dev/sdb10 hide /dev/sdb1 and LABEL=foobar hide
+			 * LABEL=foo. */
+			size_t n = strcspn(p, " \t");
+			if (strlen(node) == n && !strncmp(p, node, n))
 				found = true;
-			if (label && *label) {
-				char want[KM_NAME + 8];
-				snprintf(want, sizeof(want), "LABEL=%s", label);
-				if (strstr(p, want))
-					found = true;
-			}
+			if (label && *label && n > 6 && !strncmp(p, "LABEL=", 6) &&
+			    strlen(label) == n - 6 && !strncmp(p + 6, label, n - 6))
+				found = true;
 		}
 		if (!nl)
 			break;
@@ -1054,17 +1055,53 @@ static void sanitise(const char *in, char *out, size_t n)
 		out[0] = '\0';
 }
 
-static bool exec_allowed(void)
+/*
+ * Is KEY set to `yes` in mountd.conf? One `key = value` per line, blanks
+ * around either side ignored; a line whose first non-blank is `#` is a
+ * comment. The key must be the whole word before `=`: a substring search
+ * would let `# format = yes` or `reformat = yes` open a destructive verb.
+ */
+static bool conf_yes(const char *key)
 {
-	char *s = kb_read_all(conf_path(), NULL);
+	char *data = kb_read_all(conf_path(), NULL);
+	size_t klen = strlen(key);
 	bool yes = false;
 
-	if (!s)
+	if (!data)
 		return false;
-	yes = strstr(s, "exec = yes") != NULL ||
-	      strstr(s, "exec=yes") != NULL;
-	free(s);
+	for (char *p = data; *p;) {
+		char *nl = strchr(p, '\n');
+		if (nl)
+			*nl = '\0';
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (*p != '#' && !strncmp(p, key, klen)) {
+			char *v = p + klen;
+			while (*v == ' ' || *v == '\t')
+				v++;
+			if (*v == '=') {
+				v++;
+				while (*v == ' ' || *v == '\t')
+					v++;
+				char *e = v + strlen(v);
+				while (e > v && (e[-1] == ' ' || e[-1] == '\t' ||
+						 e[-1] == '\r'))
+					e--;
+				*e = '\0';
+				yes = !strcmp(v, "yes");
+			}
+		}
+		if (!nl)
+			break;
+		p = nl + 1;
+	}
+	free(data);
 	return yes;
+}
+
+static bool exec_allowed(void)
+{
+	return conf_yes("exec");
 }
 
 /*
@@ -1075,15 +1112,7 @@ static bool exec_allowed(void)
  */
 static bool format_allowed(void)
 {
-	char *s = kb_read_all(conf_path(), NULL);
-	bool yes = false;
-
-	if (!s)
-		return false;
-	yes = strstr(s, "format = yes") != NULL ||
-	      strstr(s, "format=yes") != NULL;
-	free(s);
-	return yes;
+	return conf_yes("format");
 }
 
 /*
@@ -2140,15 +2169,7 @@ static int do_format(int idx, const char *fstype, const char *confirm,
  * formatting a stick has not thereby said anything about overwriting one. */
 static bool write_allowed(void)
 {
-	char *s = kb_read_all(conf_path(), NULL);
-	bool yes = false;
-
-	if (!s)
-		return false;
-	yes = strstr(s, "write = yes") != NULL ||
-	      strstr(s, "write=yes") != NULL;
-	free(s);
-	return yes;
+	return conf_yes("write");
 }
 
 /*

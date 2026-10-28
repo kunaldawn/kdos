@@ -215,7 +215,7 @@ static void draw_help(void)
 		{ "Alt + Left/Right", "previous / next page" },
 		{ "Esc", "back a page, or close this" },
 		{ "F1", "this help" },
-		{ "L", "full log, on the install page" },
+		{ "L", "full log, on the install and done pages" },
 		{ "Ctrl+U", "clear a text field" },
 		{ "Ctrl+Q", "quit the installer" },
 		{ "", "" },

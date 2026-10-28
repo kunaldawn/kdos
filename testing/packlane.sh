@@ -34,7 +34,7 @@ OUT=/tmp/packlane
 mkdir -p "$OUT"
 
 APP=${PACKLANE_APP:-app.vorta}        # 33 MB, wants rt-qt
-QTAPP=${PACKLANE_QTAPP:-app.meld}     # 27 MB, wants rt-gtk
+GTKAPP=${PACKLANE_GTKAPP:-app.meld}   # 27 MB, wants rt-gtk
 BOXBASE=${PACKLANE_BOXBASE:-alpine}   # 4.8 MB: the smallest real userland here
 BOX=${PACKLANE_BOX:-packlane}
 USER_NAME=${PACKLANE_USER:-kdos}
@@ -176,9 +176,9 @@ fi
 check "the mount is ro,nosuid,nodev"    "grep '$APP' /proc/mounts | grep -q 'ro,nosuid,nodev'"
 check "the daemon counts it mounted"    "kdos-appbox status 2>&1 | grep -q '[1-9] mounted'"
 
-say "3b. and the Qt one, for the other runtime"
-run "kdos app install $QTAPP"
-check "$QTAPP is mounted too"           "grep -q '$QTAPP.kpack .*erofs' /proc/mounts"
+say "3b. and the GTK one, for the other runtime"
+run "kdos app install $GTKAPP"
+check "$GTKAPP is mounted too"          "grep -q '$GTKAPP.kpack .*erofs' /proc/mounts"
 
 # ── 4. the launcher, which is what a person sees ───────────────────────────
 #

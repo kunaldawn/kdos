@@ -235,7 +235,6 @@ cp /usr/lib/libzstd.so.1 lib/libzstd.so.1
 # a library.
 BOOTCTL=""
 [ -x /usr/bin/kdos-bootctl ] && BOOTCTL=/usr/bin/kdos-bootctl
-[ -z "$BOOTCTL" ] && [ -x /usr/bin/kdos-tools ] && BOOTCTL=/usr/bin/kdos-tools
 if [ -z "$BOOTCTL" ]; then
     echo "Note: kdos-bootctl not installed — no A/B slot selection at boot"
 elif [ ! -f /usr/lib/libpng16.so.16 ]; then

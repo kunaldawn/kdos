@@ -13,7 +13,10 @@ supervisor keeps its own process id in, and with `-8`, which writes the bytes 0x
 arrive. Without it `syslogd` writes each as `M-` followed by the byte with its top bit cleared, in
 caret notation (0x94 becomes `M-^T`), and those are the bytes that follow the first byte of most
 UTF-8 punctuation: an em dash then leaves its first byte alone in the file, which is no longer
-valid UTF-8, and `grep` reports `binary file matches` for the whole of `/var/log/messages`. Which
+valid UTF-8, and `grep` reports `binary file matches` for the whole of `/var/log/messages`. The
+script also makes `/var/log/auth.log` mode 0600 before `syslogd` opens it: `syslogd` creates a
+missing file 0644, readable by every account, and keeps whatever mode a file has when it rotates
+it. Which
 messages go to which file is in [Logs](../../../../docs/kdos/02-user-guide/administration.md#logs).
 
 ## Flags

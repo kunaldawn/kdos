@@ -113,10 +113,11 @@ row without one presents as its own id, category `Other`, no tagline and size 0,
 is a one-line change. The size is an estimate and every surface labels it as one: what apt resolves
 on the day depends on the snapshot.
 
-**`env` rows are declarations the launch path does not read.** A runtime that installs a Qt
+**`env` rows set variables for every application on a row's stack.** A runtime that installs a Qt
 platform theme declares the variable that selects it (`env rt-qt QT_QPA_PLATFORMTHEME=gtk3`), and
-an application may add a line of its own. A store box receives none of these rows: the variables a
-box is given come from pack metadata, as described under
+an application may add a line of its own. A store box is given the rows of its whole chain at every
+launch, base first, so an application's own row wins a collision with its runtime's; an export
+writes the same chain into each pack's metadata. Both routes are described under
 [The environment a box is given](#the-environment-a-box-is-given).
 
 ### The graphics stack is in the base row
@@ -469,10 +470,16 @@ An export is flattened. For each application, a container is created over the bu
 pack therefore contains its base and runtime as well as the application, carries no `requires`
 line, and carries no deletion markers of any kind, so nothing has to agree about how a deletion is
 spelled and no step needs root. Its metadata holds the id, the kind, a version equal to the export
-time in seconds, the display name and the tagline. The archive also contains a `SELECTION` file,
+time in seconds, the display name and the tagline, and the catalogue rows the pack lane cannot
+otherwise see: for an application, an `env =` line for each `env` row of its chain, a `command =`
+line for each `cmd` row and a `needs =` line for each `needs` row; for a data row, its `graft =`
+and `boxgraft =` lines. The archive also contains a `SELECTION` file,
 one id per line with a `group` line recording each group that was picked above the ids it held,
 which is what `import` reads when no ids are named, and a `PACKAGES` index, signed when the `KDOS_PACK_KEY` environment
-variable names a key file that exists and unsigned, with a message saying so, otherwise.
+variable names a key file that exists and unsigned, with a message saying so, otherwise. An import
+stages a signed index beside the packs, so each pack it lists is accepted on that signature (step
+2 of [Installing a pack](#installing-a-pack)); a pack the export built carries no signature block
+of its own, so a set exported without a key installs as unsigned.
 
 A frozen box requires its base. `kdos-box freeze` writes metadata with the id `box.<name>`,
 kind `app`, and a `requires` line naming the box's base pack when the base is a pack, so an import
@@ -534,26 +541,36 @@ published, and `install` takes a *filename* in the staging directory: no slash, 
 `[A-Za-z0-9._-]`. A daemon reachable from `wheel` that accepted a path would be `mount /dev/sda2
 /etc` from any shell.
 
-`install <file>` then:
+`install <file> [<index>]` then:
 
-1. opens the staged file and validates its metadata;
-2. if the staging directory holds a `PACKAGES` index whose `PACKAGES.sig` verifies `GOOD` and which
-   names this id, compares the file's sha256 with the index's `C:` hash and accepts or refuses on
+1. copies the staged file, and the staged index the request names and its `<index>.sig` when it
+   names one, into private root-owned files in the pack store, and works on those copies from
+   then on, because the staged file belongs to whoever put it in a directory every user may write
+   and could be rewritten after a check on it passed; a staged name that is a symlink or anything
+   but a regular file is refused. It then opens the copy and validates its metadata;
+2. if the request named an index whose signature verifies `GOOD` and which names this id, compares the file's sha256 with the index's `C:` hash and accepts or refuses on
    that alone;
 3. otherwise verifies the pack itself, accepting `GOOD` and `NONE` (unless `KDOS_REQUIRE_SIG` is
    set) and refusing `HASH`, `BAD` and `NOKEY`;
 4. if the copy of the same id already in the pack store is mounted, unmounts it, or refuses the
    install when a box is composed over it, so that no later composition puts a new application over
    an old runtime's bytes;
-5. renames the version already installed to `<id>-<version>.kpack`, and moves the new file into the
-   pack store as `<id>.kpack`. Staging is inside the pack store so that this is a rename, and
-   installation has no half-finished state;
+5. renames the version already installed to `<id>-<version>.kpack`, and renames the private copy
+   into place as `<id>.kpack`. The copy was made inside the pack store, so this final step is a
+   rename on one filesystem, and installation has no half-finished state. The staged file is
+   removed once it has worked;
 6. deletes superseded copies beyond the `retain` setting in `/etc/kdos/packd.conf` (default `1`,
-   at most 8; `KDOS_PACK_RETAIN` in the daemon's environment overrides the file), newest kept by
-   version comparison. The sweep runs only after an install.
+   at most 8; `KDOS_PACK_RETAIN` in the daemon's environment overrides the file, and a value below
+   0 from either counts as 0), newest kept by version comparison. The sweep runs only after an
+   install.
 
-`kdos-appbox import` stages each pack file on its own, without the archive's `PACKAGES`, so an
-imported pack is accepted on step 3: its own payload hash and its own signature block.
+`kdos-appbox import` stages the archive's `PACKAGES` and `PACKAGES.sig` as `PACKAGES.<pid>` and
+`PACKAGES.<pid>.sig` when both exist, and names that index in every `install` it sends, so a set
+exported with `KDOS_PACK_KEY` and signed by a key the machine trusts is accepted on step 2. Without
+both files a pack is accepted on step 3: its own payload hash and its own signature block. The index
+is named by the request and never found by the daemon, so two imports at once, or an import beside
+a `kdos-box import`, each judge their packs on their own index; the import removes its index when
+it ends.
 
 The store's row for an id is `<id>.kpack`; a kept `<id>-<version>.kpack` is never listed or
 mounted, and counts as a kept version of an id only when its own metadata names that id. The
@@ -748,10 +765,13 @@ pack wins, and a value from further out is dropped rather than exported, so each
 once and an application can override its runtime. The pack asked for is the one named by the box's
 `pack:` base or, for any other box, the pack whose id is the box's name.
 
-A store box has no such pack, so it gets none of these variables. It also gets none of the
-catalogue's `env` rows, and no `QT_QPA_PLATFORMTHEME` chosen from image labels. The launcher
-contains code for both, but every launch asks the daemon for a pack first, and that question always
-names an id, so the catalogue and label lookups behind it are never reached. The full list of what
+A store box (`base=image:kdos/<id>`) has no such pack and no vendor label, so it asks the
+catalogue instead: the box is named after its catalogue row, and every launch exports the `env`
+rows of that row's whole chain, base first, so an application's own row is exported last and wins a
+collision with its runtime's. A store box whose chain declares no `env` row gets none. Any other box
+with no pack gets `QT_QPA_PLATFORMTHEME` from its image's labels: `kde` when the image carries
+`kdos.qt-kde-theme`, `gtk3` otherwise, with `QT_STYLE_OVERRIDE=Fusion` added when it carries
+`kdos.qt-gtk-theme`. The full list of what
 a box receives is in
 [kdos-appbox: The environment a box gets](../04-programs/kdos-appbox.md#the-environment-a-box-gets).
 
@@ -790,11 +810,14 @@ destination is left alone and logged. Every graft made is recorded in
 what was added, and only a symlink is removed, because a real directory at that path belongs to
 someone else.
 
-The catalogue declares its grafts and the daemon carries them out, but the two are not connected by
-anything in the tree. No program sends `graft` or `ungraft` to the daemon, an exported pack's
-metadata carries no `graft`, `boxgraft`, `env` or `needs` lines, and in the store lane a data row is
-built as an image and becomes a box of its own like any other row. A data set reaches an application
-only when both are placed by hand.
+The catalogue's grafts travel with an exported pack: `kdos-appbox export` writes a data row's
+`graft` and `boxgraft` rows into its pack's metadata. `kdos-appbox import` reads each pack's kind
+back from the daemon after installing it, and for a data pack sends `graft <id>` instead of creating
+a box, so the host grafts land under `/usr/share` and the box grafts in the importing user's home;
+the import prints the daemon's `<id>: N graft(s)`. Nothing sends `ungraft`. In the store lane a data
+row is built as an image and becomes a box of its own like any other row, and that image is grafted
+nowhere: a data set built by `kdos app install` reaches its application only once it has been
+exported and imported as a pack.
 
 ## What an install carries
 
@@ -831,7 +854,7 @@ line. It has four forms:
 
 | Form | Reads | Writes |
 |---|---|---|
-| `genlaunchers --packs --user` | Every installed or mounted app pack, mounted through the daemon | Your own tree |
+| `genlaunchers --packs --user` | Every installed or mounted app pack, mounted through the daemon, and every store box | Your own tree |
 | `genlaunchers --packs <fs-root>` | Every installed or mounted app pack | The system tree under `<fs-root>` |
 | `genlaunchers --packs-dir <dir> <fs-root>` | One extracted pack per subdirectory of `<dir>`, named after the pack | The system tree under `<fs-root>` |
 | `genlaunchers <desktop-dir> <fs-root>` | One directory of desktop entries | The system tree under `<fs-root>` |
@@ -840,18 +863,21 @@ The system tree is `/etc/skel/.local/share/applications`, `/usr/share/kdos/alien
 `/usr/local/bin`; the build's `script/phases/70_image/030_launchers.sh` runs the `--packs-dir` form,
 which with no packs on the medium clears any stale launchers (its place in the build is in
 [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image)). Your own tree is
-`~/.local/share/applications`, `~/.local/share/kdos/alien-apps` and `~/.local/bin`, which every
-reader consults first.
+`$XDG_DATA_HOME/applications` and `$XDG_DATA_HOME/kdos/alien-apps`, which are
+`~/.local/share/applications` and `~/.local/share/kdos/alien-apps` when the variable is unset, plus
+`~/.local/bin`; every reader consults it first.
 
 The pack forms parse the application's own desktop entries: a pack carries the real ones, so the
 existing parser is reused rather than reimplemented against the metadata. Only `app` packs are read,
 and only installed or already-mounted ones, so a regeneration never mounts every pack on the medium.
-Store boxes have no pack for the daemon to mount. After a store install, uninstall or import,
-`kdos-appbox` copies `/usr/share/applications` out of every store box's image with `podman cp` and
-regenerates your tree from those in the `--packs-dir` shape; when no store box yields any entries,
-it walks the installed packs instead. The two sources are not merged in one run, so on a machine
-with at least one store box, an imported application's launcher is dropped by that regeneration.
-`kdos-box export <box> <app>` adds a launcher for one application in any box.
+Store boxes have no pack for the daemon to mount. `genlaunchers --packs --user`, and every store
+install, uninstall or import, copies `/usr/share/applications` out of every store box's image with
+`podman cp` and reads those in the `--packs-dir` shape, then walks the installed app packs in the
+same run, and writes your tree from both. Your tree is written whole, so a run that read only one
+source would delete the other's launchers. A store box's catalogue `cmd` rows become shims and
+name-to-command rows as well, so a command-only application such as `gmic` reaches your prompt with
+no desktop entry. With no catalogue to read, or no answer from `podman`, the run is the pack walk
+alone. `kdos-box export <box> <app>` adds a launcher for one application in any box.
 
 Each run writes its whole set, because the table, the cache and the shims are written whole, and
 dropping any output breaks something visible:

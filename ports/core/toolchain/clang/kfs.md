@@ -16,10 +16,6 @@ against the installed [llvm](#port-llvm), finds it through `/usr/lib/cmake/llvm`
 nothing of LLVM itself.
 
 ## Flags
-- `CMAKE_INSTALL_LIBEXECDIR=/usr/lib/clang` — Installs the helper scripts of the static analyzer
-  and of `intercept-build` (`ccc-analyzer`, `c++-analyzer`, `analyze-cc`, `intercept-cc` and the
-  rest) in `/usr/lib/clang`, beside the resource directory, instead of `/usr/libexec`. See the
-  note on `scan-build` below.
 - `CMAKE_C_FLAGS_RELEASE` — Replaces CMake's Release flags, `-O3 -DNDEBUG`, with the tree's
   `CFLAGS` and `-DNDEBUG`.
 - `CMAKE_CXX_FLAGS_RELEASE` — The same for C++.
@@ -78,9 +74,11 @@ installs, so `clang -fopenmp` compiles against its `omp.h` and links `libomp`. T
 program would link, but every OpenMP pragma would be dropped and it would run serially with no
 diagnostic.
 
-`scan-build` looks for `ccc-analyzer` and `c++-analyzer` in `../libexec` beside its own
-directory and then in that directory itself, `/usr/bin`. With the helpers installed in
-`/usr/lib/clang`, it finds them in neither place and stops with
+The helper scripts of the static analyzer and of `intercept-build` (`ccc-analyzer`,
+`c++-analyzer`, `analyze-cc`, `intercept-cc` and the rest) are installed in CMake's default
+`/usr/libexec`, and must stay there: `scan-build` looks for `ccc-analyzer` and `c++-analyzer`
+only in `../libexec` beside its own directory and in that directory itself, and `analyze-build`
+looks for `analyze-cc` only in `../libexec`. Installed anywhere else, `scan-build` stops with
 `'ccc-analyzer' does not exist at '/usr/bin/ccc-analyzer'`.
 
 The LLVM options named here that `LLVMConfig.cmake` also sets (`LLVM_ENABLE_RTTI`,

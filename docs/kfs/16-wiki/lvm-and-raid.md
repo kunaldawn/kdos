@@ -53,7 +53,7 @@ on hotplug.
 **The initramfs's `lvm.conf`** is a different file, written into the initramfs alone, from
 `script/phases/70_image/090_initramfs.sh`:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=333-341 pin=9b5a3ded256f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=332-340 pin=9b5a3ded256f -->
 
 **[`/etc/init.d/03_lvm.sh`]{.idx}**, from `fs/etc/init.d/03_lvm.sh`. Its `start` activates the groups and,
 when any is active, checks and mounts the `fstab` entries the earlier `mount -a` could not reach,
@@ -76,7 +76,7 @@ system log (`mdadm.conf(5)`).
 **The RAID step of the initramfs**, from `script/phases/70_image/090_initramfs.sh`, assembles every
 array whose members it finds, on the live medium and on an installed system:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=607-615 pin=1019c6f0eacb -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=606-614 pin=1019c6f0eacb -->
 
 ## Usage
 

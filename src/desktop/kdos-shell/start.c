@@ -541,8 +541,13 @@ static int pack_installed(const char *id)
 		"/usr/share/kdos/alien-apps", NULL };
 	char user[512];
 	const char *home = getenv("HOME");
-	snprintf(user, sizeof(user), "%s/.local/share/kdos/alien-apps",
-		 home ? home : "/root");
+	const char *data = getenv("XDG_DATA_HOME");
+	/* Where `genlaunchers --user` writes the table. */
+	if (data && *data)
+		snprintf(user, sizeof(user), "%s/kdos/alien-apps", data);
+	else
+		snprintf(user, sizeof(user), "%s/.local/share/kdos/alien-apps",
+			 home ? home : "/root");
 	for (int t = 0; t < 2; t++) {
 		FILE *f = fopen(t ? user : tables[0], "r");
 		char line[1024];

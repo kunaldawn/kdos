@@ -442,7 +442,7 @@ The front end's commands:
 | `verify-pkg <file>` | Check `<file>.sig` against the trusted keys |
 | `delta <old> <new> [-o <file>]` | Write the difference between two packages |
 | `apply-delta <old> <delta> -o <new> [--expect <sha256>]` | Rebuild a package from a delta; with `--expect`, delete the result and exit 1 unless it hashes to the given SHA-256 |
-| `binhost <dir> <pkg> [--dry-run] [--insecure]` | Install a prebuilt package if it matches this machine exactly; `--dry-run` checks and installs nothing |
+| `binhost [--root <path>] <dir> <pkg> [--dry-run] [--insecure]` | Install a prebuilt package if it matches this machine exactly; `--dry-run` checks and installs nothing. An unknown option or a second port is refused with exit 1 |
 | `store gc <dir> <max-size>` | Shrink a [package store](#the-package-store) to a size such as `60G`; see [Eviction](#eviction) |
 | `help` | Print usage |
 
@@ -450,7 +450,7 @@ Options and environment:
 
 | Option or variable | Effect |
 |---|---|
-| `--root <path>`, `KPKG_ROOT` | Install into, remove from or read another root directory, such as an installer's target. Only the install and the package database move: a build still runs on this system, with its compiler, headers and libraries. `install`, `remove`, `list`, `info`, `check`, `kpkgadd`, `kpkgdel` and `kpkgdepends` take `--root`; `binhost` takes only `KPKG_ROOT`, and reads `--root` as its directory argument |
+| `--root <path>`, `KPKG_ROOT` | Install into, remove from or read another root directory, such as an installer's target. Only the install and the package database move: a build still runs on this system, with its compiler, headers and libraries. `install`, `remove`, `list`, `info`, `check`, `binhost`, `kpkgadd`, `kpkgdel` and `kpkgdepends` take `--root` |
 | `--keep-cache`, `KPKG_KEEP_CACHE=1` | Keep each built package in `PACKAGE_DIR` after installing it, compressed with the kept `xz -9` setting; by default it is compressed with `xz -0` and deleted once installed |
 | `-f`, `--force` | Rebuild the named packages, though not their dependencies. The rebuilt package is installed through the same [conflict scan](#who-owns-a-file) as any other |
 | `install --build-only <pkg>…` | Build exactly the named ports into `PACKAGE_DIR` and install nothing; see [Building apart from installing](#building-apart-from-installing) |
@@ -538,7 +538,7 @@ A package is a compressed tar archive plus a database entry.
 | Compression | `xz -9 -T0 --block-size=32MiB --no-adjust` for every package that outlives its install; `xz -0 -T0 --block-size=8MiB --no-adjust` for one `kpkg install` deletes straight after installing it. See [Reproducible packages](#reproducible-packages) |
 | Database entry | `/var/lib/kpkg/db/<name>`: the version and release on the first line, then the manifest |
 | Manifest | Every path the package owns, one per line, `./`-prefixed, directories with a trailing slash. Each line is the name's own bytes, as `tar --quoting-style=literal` lists it, so a name outside ASCII is stored as the UTF-8 the package holds rather than as tar's octal escapes; a name holding a newline cannot be stored |
-| Recipe hash | `/var/lib/kpkg/db/.recipe/<name>`, one line, written by `kpkg install` and `--commit` only; `kpkg binhost` and a direct `kpkgadd` write none and leave any record an earlier install wrote. See [Deciding what to rebuild](#deciding-what-to-rebuild) |
+| Recipe hash | `/var/lib/kpkg/db/.recipe/<name>`, one line, written by `kpkg install`, `--commit` and `kpkg binhost`, which records the matched stanza's `E:`. `kpkgadd` removes any existing record before it writes the entry, so a direct `kpkgadd` leaves the package with no record. See [Deciding what to rebuild](#deciding-what-to-rebuild) |
 | Package-file hash | `/var/lib/kpkg/db/.pkgsha/<name>`, one line: the SHA-256 of the `.tar.xz` it was installed from, written by `kpkgadd` after the entry; see [The package store](#the-package-store) |
 | File record | `/var/lib/kpkg/db/.files/<name>`, one line per regular file the install placed: `<sha256> <mode> <path>`, the mode as four octal digits and the path as the manifest spells it; written by `kpkgadd` after the entry, once the install hook has run, and read by [`kpkg check`](#checking-an-installed-root) |
 | Writer lock | `/var/lib/kpkg/db/.lock`, empty; held by `kpkgadd` and `kpkgdel` while they change the tree and the database |
@@ -982,8 +982,9 @@ The third row makes the check safe on a tree that has packages without a record:
 *unknown*, never as *changed*, so no package is rebuilt merely for lacking a record. A record that
 is not exactly 64 lowercase hex digits is treated the same way; reading it as a mismatch would
 rebuild that one package on every run, with nothing saying why. The price is that a package with no
-record is never rebuilt for a recipe change: one first installed by `kpkg binhost`, or by `kpkgadd`
-directly, stays as it is until `kpkg install -f` builds it again.
+record is never rebuilt for a recipe change. Only a direct `kpkgadd` leaves a package without one,
+and it does so even over a package that had a record, since it removes the old record before it
+writes the entry; such a package stays as it is until `kpkg install -f` builds it again.
 
 The hash is taken from the port directory when the build starts, and recorded in
 `/var/lib/kpkg/db/.recipe/<name>` after a successful install, never before. A record written ahead
@@ -1167,7 +1168,7 @@ opens the file. Each package stanza carries:
 | `F:` | The package file name |
 | `S:` `C:` | Its size and SHA-256 |
 | `B:` | The build-config hash of the machine that wrote the index |
-| `E:` | The recipe hash, taken from the ports tree on that machine; empty for a package whose port that tree does not have |
+| `E:` | The recipe hash, taken from the ports tree on that machine; empty for a package whose port that tree does not have, or for a file whose version and release are not the ones its recipe there declares |
 | `T:` | The recipe's description |
 
 Three equality tests decide whether a prebuilt package is usable, and there is no "close enough":
@@ -1185,8 +1186,10 @@ the client must run `kpkg binhost` with the `CC`, `CFLAGS`, `CXXFLAGS`, `LDFLAGS
 the indexing machine had. A binhost the build wrote was indexed under the chroot's environment, so
 `kpkg binhost` typed at an ordinary shell reports `different build config` for every package in it.
 
-The package goes in through `kpkgadd`, into `KPKG_ROOT` when that is set. It writes no recipe hash
-(see [The three states](#the-three-states)).
+The package goes in through `kpkgadd`, into `--root` or `KPKG_ROOT` when either is set. After a
+successful install `kpkg binhost` records the stanza's `E:` as the package's recipe hash, the way
+`kpkg install` records its own, since that `E:` equals this tree's recipe hash (see
+[The three states](#the-three-states)).
 
 `make build KDOS_MAKE_BINHOST=1` writes such a directory at `build/binhost/`: every `kpkg install`
 of the build keeps the package it made, and the image phase, `70_image`, copies them there and
@@ -1194,12 +1197,10 @@ indexes them with the key `build/binhost-key/kdos-binhost.key`, made on the firs
 never replaced; its public half is copied beside the index as `kdos-binhost.pub`. The directory
 accumulates: each run adds the packages it built and keeps what earlier runs left, and neither a
 later run nor `--fresh` removes anything from it. `kpkg index` takes each package's `E:` from the
-ports tree it runs on, looked up by package name, so a package an earlier run made carries the
-current recipe hash just as its successor does and passes the same three tests. The client installs
-the first stanza that passes, in file-name order compared byte by byte, which is the older package
-whenever its name sorts first: `foo-1.2.3-1` before `foo-1.2.4-1`, but `foo-1.10-1` before
-`foo-1.9-1`. A binhost that should hold only the current tree's packages starts from an empty
-`build/binhost/`. That phase runs with the default
+ports tree it runs on, looked up by package name, and writes it only for the file whose version and
+release are the ones that recipe declares. A superseded file an earlier run left gets an empty
+`E:`, is listed, and matches no client, so a client is only ever handed the current recipe's
+build. That phase runs with the default
 `PORT_REPO`, `/ports/core` alone, so the index finds no recipe for a package built from `src/` and
 gives it an empty `E:`. Such a package matches no client and always builds from source there. No
 binhost is published; see [Known gaps](../06-reference/known-gaps.md#there-is-no-public-binary-host).
@@ -1243,7 +1244,8 @@ The scheme keeps these rules:
   replaced, and reading it back is refused if its mode has loosened.
 
 The trusted directory is the policy: every readable `*.pub` key file in it is a trusted key, up to
-16, taken in name order; a seventeenth and any after it are not loaded, without a message. There is
+16, taken in name order; a seventeenth and any after it are not loaded, and the loader names each one on stderr
+(`<dir>: a keyring holds at most 16 keys; <name> is not trusted`). There is
 no revocation list and no online check: trusting a key is copying a file in, and removing trust is
 deleting it. The loader does not descend into subdirectories, which keeps `/etc/kdos/keys`
 (host packages), `/etc/kdos/keys/packs` (application packs) and `/etc/kdos/keys/tree` (the signed
@@ -1316,12 +1318,16 @@ and builds each package with `kpkg install -f`. An update therefore needs the ne
 for the sources, and compiles on the machine, for hours on a large set.
 
 On a machine with A/B root slots, `apply` installs into the inactive slot and marks it to be tried
-on the next boot, so the running system is untouched and a bad update rolls back. It does so by
-pointing `KPKG_ROOT` at the mounted slot, which moves only the installs and the package database
-there: every build still runs on the running root, with its compiler, headers and libraries. A
-package whose dependency is upgraded earlier in the same run is therefore compiled against the
-running root's older copy of that dependency, not the one just installed into the slot. A package
-that fails to build leaves the slot untried. Otherwise `apply` runs
+on the next boot, so the running system is untouched and a bad update rolls back. It works out
+what is behind from the slot's package database, puts the list in dependency order, so that a
+package comes after every dependency that is behind with it, and builds each one with
+`chroot <slot> kpkg install -f`: the build runs on the slot's own compiler, headers and libraries,
+so a package whose dependency was upgraded earlier in the run links the copy just installed. Into
+the chroot it binds `/proc`, `/sys`, `/dev`, the ports tree, the running root's source cache that
+the fetch filled (named to the slot's `kpkg` as `SOURCE_DIR`) and `/etc/resolv.conf` when the slot
+has a regular file there, and it unmounts them all before checking the slot. `--root DIR` does none
+of this: it points `KPKG_ROOT` at `DIR`, which moves only the installs and the package database, and
+builds on the running root. A package that fails to build leaves the slot untried. Otherwise `apply` runs
 [`kpkg check --all`](#checking-an-installed-root) on the slot, and a missing file, or a changed one
 outside `/etc`, leaves it untried; it then copies `/ports` into the slot, so the slot boots with the
 recipes it was built from, and puts the slot's kernel on the ESP before marking it. If that slot is
